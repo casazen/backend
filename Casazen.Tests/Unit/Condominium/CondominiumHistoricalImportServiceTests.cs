@@ -83,8 +83,107 @@ public class CondominiumHistoricalImportServiceTests
         Assert.Equal(0, await db.Condominiums.CountAsync());
     }
 
+    [Fact]
+    public async Task TwoYears_SecondHasNoPrior_MatchesWithoutTheSeededBalance()
+    {
+        await using var db = NewDb();
+        var (scope, property) = await SeedAsync(db);
+        var imports = Service(db);
+        var staged = await imports.StageAsync(scope, YearSnapshot(
+            Year("2023/2024", new DateOnly(2023, 6, 1), new DateOnly(2024, 5, 31), 100_000, 100_000, 0, 80_000, "pay:year-1"),
+            Year("2024/2025", new DateOnly(2024, 6, 1), new DateOnly(2025, 5, 31), 49_030, 49_030, 0, 41_280, "pay:year-2")), "user");
+        await imports.VerifyPropertyAsync(scope, staged.Id, staged.Houses.Single().Id, property.Id, "user");
+
+        var confirmed = await imports.ConfirmAsync(scope, staged.Id, "user");
+
+        Assert.True(confirmed.Houses.Single().AffectsBalances);
+        Assert.Equal(1, await db.Condominiums.CountAsync());
+        var second = await db.CondominiumPeriods.SingleAsync(period => period.Label == "2024/2025");
+        Assert.False(await db.CondominiumPriorBalances.AnyAsync(balance => balance.CondominiumPeriodId == second.Id));
+        Assert.Equal(49_030, CondoExportV1.ToCents(await InstallmentTotalAsync(db, second.Id)));
+        Assert.Equal(12, await db.CondominiumInstallments.CountAsync(row => row.CondominiumPeriodId == second.Id));
+    }
+
+    [Fact]
+    public async Task TwoYears_PriorOnTheSecond_StaysOffTheRates()
+    {
+        await using var db = NewDb();
+        var (scope, property) = await SeedAsync(db);
+        var imports = Service(db);
+        var staged = await imports.StageAsync(scope, YearSnapshot(
+            Year("2023/2024", new DateOnly(2023, 6, 1), new DateOnly(2024, 5, 31), 100_000, 100_000, 0, 80_000, "pay:year-1"),
+            Year("2024/2025", new DateOnly(2024, 6, 1), new DateOnly(2025, 5, 31), 49_030, 49_030, 20_000, 41_280, "pay:year-2")), "user");
+        await imports.VerifyPropertyAsync(scope, staged.Id, staged.Houses.Single().Id, property.Id, "user");
+
+        await imports.ConfirmAsync(scope, staged.Id, "user");
+
+        var second = await db.CondominiumPeriods.SingleAsync(period => period.Label == "2024/2025");
+        var prior = await db.CondominiumPriorBalances.SingleAsync(balance => balance.CondominiumPeriodId == second.Id);
+        Assert.Equal(200m, prior.Amount);
+        Assert.Equal(PriorYearBalanceDisposition.CarryForward, prior.Disposition);
+        Assert.Equal(49_030, CondoExportV1.ToCents(await InstallmentTotalAsync(db, second.Id)));
+    }
+
+    [Fact]
+    public async Task LaterSnapshot_ReusesTheBook_AndAConfirmedYearStaysStaged()
+    {
+        await using var db = NewDb();
+        var (scope, property) = await SeedAsync(db);
+        var imports = Service(db);
+        var first = await imports.StageAsync(scope, Snapshot(), "user");
+        var casa = first.Houses.Single(item => item.Name == "Casa A");
+        await imports.VerifyPropertyAsync(scope, first.Id, casa.Id, property.Id, "user");
+        await imports.ConfirmAsync(scope, first.Id, "user");
+        var condominiumId = await db.Condominiums.Select(item => item.Id).SingleAsync();
+
+        var next = await imports.StageAsync(scope, YearSnapshot(
+            Year("2025/2026", new DateOnly(2025, 6, 1), new DateOnly(2026, 5, 31), 120_000, 120_000, 0, 100_000, "pay:year-next")), "user");
+        await imports.VerifyPropertyAsync(scope, next.Id, next.Houses.Single().Id, property.Id, "user");
+        var added = await imports.ConfirmAsync(scope, next.Id, "user");
+
+        Assert.True(added.Houses.Single().AffectsBalances);
+        Assert.Equal(condominiumId, await db.Condominiums.Select(item => item.Id).SingleAsync());
+        var period = await db.CondominiumPeriods.SingleAsync(item => item.Label == "2025/2026");
+        Assert.False(await db.CondominiumPriorBalances.AnyAsync(balance => balance.CondominiumPeriodId == period.Id));
+        Assert.Equal(120_000, CondoExportV1.ToCents(await InstallmentTotalAsync(db, period.Id)));
+
+        var again = await imports.StageAsync(scope, YearSnapshot(
+            Year("2024/2025", new DateOnly(2024, 6, 1), new DateOnly(2025, 5, 31), 49_030, 49_030, 0, 41_280, "pay:repeat")), "user");
+        await imports.VerifyPropertyAsync(scope, again.Id, again.Houses.Single().Id, property.Id, "user");
+        var repeat = await imports.ConfirmAsync(scope, again.Id, "user");
+
+        Assert.False(repeat.Houses.Single().Confirmed);
+        Assert.Equal(1, await db.CondominiumPayments.CountAsync(payment => payment.ExternalSourceHash == "payment:casa-a"));
+        Assert.Equal(condominiumId, await db.Condominiums.Select(item => item.Id).SingleAsync());
+    }
+
+    [Fact]
+    public async Task PropertyAlreadyLinked_ConfirmPostsIntoThatBook()
+    {
+        await using var db = NewDb();
+        var (scope, property) = await SeedAsync(db);
+        var accounting = Accounting(db);
+        var existing = await accounting.CreateCondominiumAsync(
+            scope, new CreateCondominiumCommand("Casa", null, null, null, 6), "user");
+        await accounting.LinkPropertyAsync(
+            scope, existing.Id, new LinkPropertyCommand(property.Id, null, null, null, null), "user");
+        var imports = Service(db);
+        var staged = await imports.StageAsync(scope, Snapshot(), "user");
+        var casa = staged.Houses.Single(item => item.Name == "Casa A");
+        await imports.VerifyPropertyAsync(scope, staged.Id, casa.Id, property.Id, "user");
+
+        var confirmed = await imports.ConfirmAsync(scope, staged.Id, "user");
+
+        Assert.True(confirmed.Houses.Single(item => item.Name == "Casa A").AffectsBalances);
+        Assert.Equal(existing.Id, await db.Condominiums.Select(item => item.Id).SingleAsync());
+        Assert.Equal(1, await db.CondominiumPayments.CountAsync(payment => payment.ExternalSourceHash == "payment:casa-a"));
+    }
+
     private static CondominiumHistoricalImportService Service(AppDbContext db) =>
-        new(db, new CondominiumAccountingService(db, new MigraDocPdfDocumentRenderer(), NullLogger<CondominiumAccountingService>.Instance), NullLogger<CondominiumHistoricalImportService>.Instance);
+        new(db, Accounting(db), NullLogger<CondominiumHistoricalImportService>.Instance);
+
+    private static CondominiumAccountingService Accounting(AppDbContext db) =>
+        new(db, new MigraDocPdfDocumentRenderer(), NullLogger<CondominiumAccountingService>.Instance);
 
     private static AppDbContext NewDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -145,4 +244,65 @@ public class CondominiumHistoricalImportServiceTests
             payments = payments.Select(payment => new { id = payment.Id, fiscalPeriodId = periodId, amountCents = payment.Amount, paidOn = "2025-05-01" }),
             installments,
         };
+
+    private sealed record YearDraft(
+        string Label, DateOnly Start, DateOnly End, long Ordinary, long FinalAmount, long Prior, long Paid, string PaymentId);
+
+    private static YearDraft Year(
+        string label, DateOnly start, DateOnly end, long ordinary, long finalAmount, long prior, long paid, string paymentId) =>
+        new(label, start, end, ordinary, finalAmount, prior, paid, paymentId);
+
+    private static string YearSnapshot(params YearDraft[] years)
+    {
+        var document = new
+        {
+            format = CondoExportV1.Format,
+            currency = "EUR",
+            amountUnit = "cents",
+            houses = new object[]
+            {
+                new
+                {
+                    id = "house:years",
+                    name = "Casa A",
+                    location = "TEST",
+                    fiscalStartMonth = 6,
+                    fiscalPeriods = years.Select(year => new
+                    {
+                        id = year.Label,
+                        label = year.Label,
+                        startDate = year.Start.ToString("yyyy-MM-dd"),
+                        endDate = year.End.ToString("yyyy-MM-dd"),
+                    }),
+                    dues = years.SelectMany(year => new object[]
+                    {
+                        new { id = year.Label + ":ordinary", fiscalPeriodId = year.Label, kind = "budget", voice = "ordinary", amountCents = year.Ordinary },
+                        new { id = year.Label + ":final", fiscalPeriodId = year.Label, kind = "final", voice = (string?)null, amountCents = year.FinalAmount },
+                    }),
+                    priorBalances = years.Where(year => year.Prior != 0).Select(year => new
+                    {
+                        id = year.Label + ":prior",
+                        fiscalPeriodId = year.Label,
+                        amountCents = year.Prior,
+                    }),
+                    payments = years.Select(year => new
+                    {
+                        id = year.PaymentId,
+                        fiscalPeriodId = year.Label,
+                        amountCents = year.Paid,
+                        paidOn = year.End.ToString("yyyy-MM-dd"),
+                    }),
+                    installments = years.SelectMany(year => OwnerInstallmentPlan.Generate(
+                            year.Start, CondominiumInstallmentCadence.Monthly, CondoExportV1.FromCents(year.Ordinary), 0m, 0m)
+                        .Select(row => new { fiscalPeriodId = year.Label, totalCents = CondoExportV1.ToCents(row.Total) })),
+                },
+            },
+        };
+        return JsonSerializer.Serialize(document);
+    }
+
+    private static async Task<decimal> InstallmentTotalAsync(AppDbContext db, Guid periodId) =>
+        await db.CondominiumInstallments
+            .Where(row => row.CondominiumPeriodId == periodId && row.Status != CondominiumInstallmentStatus.Cancelled)
+            .SumAsync(row => row.TotalAmount);
 }

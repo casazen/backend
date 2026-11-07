@@ -89,7 +89,23 @@ public sealed class CondominiumHistoricalImportService(
         }
 
         db.CondominiumImportBatches.Add(batch);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex))
+        {
+            // The same hash was inserted by a request that passed the read above. Return that batch.
+            Detach(batch);
+            var stored = await db.CondominiumImportBatches
+                .Include(item => item.Houses).ThenInclude(house => house.Years)
+                .FirstOrDefaultAsync(item => item.OrgId == scope.OrgId && item.ContentHash == snapshot.ContentHash, cancellationToken);
+            if (stored is null)
+                throw;
+            logger.LogInformation("CondoLedger snapshot {BatchId} was already staged", stored.Id);
+            return ToView(stored, alreadyImported: true);
+        }
+
         logger.LogInformation("CondoLedger snapshot {BatchId} staged ({Houses} houses)", batch.Id, batch.Houses.Count);
         return ToView(batch, alreadyImported: false);
     }
@@ -131,20 +147,34 @@ public sealed class CondominiumHistoricalImportService(
             var batch = await RequireBatchAsync(scope, batchId, cancellationToken);
             foreach (var house in batch.Houses.Where(item => item.PropertyId is not null && item.Status != CondominiumImportStatus.Confirmed))
             {
-                if (await AlreadySourcedAsync(scope, house, cancellationToken))
+                var condominiumId = await ExistingCondominiumIdAsync(scope, house.PropertyId!.Value, cancellationToken);
+                var pending = new List<CondominiumImportYear>();
+                foreach (var year in house.Years.OrderBy(item => item.StartDate))
+                {
+                    if (condominiumId is { } existing && await YearAlreadyInBookAsync(scope, house, existing, year, cancellationToken))
+                        continue;
+                    pending.Add(year);
+                }
+
+                if (pending.Count == 0)
                     continue;
 
-                var condominium = await condominiums.CreateCondominiumAsync(
-                    scope,
-                    new CreateCondominiumCommand(house.Name, null, null, null, house.FiscalStartMonth),
-                    userId,
-                    cancellationToken);
-                await condominiums.LinkPropertyAsync(
-                    scope, condominium.Id, new LinkPropertyCommand(house.PropertyId!.Value, null, null, null, null), userId, cancellationToken);
-                foreach (var year in house.Years.OrderBy(item => item.StartDate))
-                    await PostYearAsync(scope, condominium.Id, year, userId, cancellationToken);
+                if (condominiumId is null)
+                {
+                    var condominium = await condominiums.CreateCondominiumAsync(
+                        scope,
+                        new CreateCondominiumCommand(house.Name, null, null, null, house.FiscalStartMonth),
+                        userId,
+                        cancellationToken);
+                    await condominiums.LinkPropertyAsync(
+                        scope, condominium.Id, new LinkPropertyCommand(house.PropertyId!.Value, null, null, null, null), userId, cancellationToken);
+                    condominiumId = condominium.Id;
+                }
 
-                house.CondominiumId = condominium.Id;
+                foreach (var year in pending)
+                    await PostYearAsync(scope, condominiumId.Value, year, userId, cancellationToken);
+
+                house.CondominiumId = condominiumId;
                 house.Status = CondominiumImportStatus.Confirmed;
             }
 
@@ -176,14 +206,18 @@ public sealed class CondominiumHistoricalImportService(
     {
         var period = await condominiums.CreatePeriodAsync(
             scope, condominiumId, new CreateCondominiumPeriodCommand(year.Label), userId, cancellationToken);
-        if (year.PriorCents != 0)
+        // Closing the previous year seeds this period with that settlement. The file's prior is the one that must match,
+        // and it stays off the rates: the staged installment total is only the export's rates.
+        if (year.PriorCents == 0)
+            await RemoveCarriedPriorAsync(period.Id, cancellationToken);
+        else
         {
             await condominiums.RecordPriorYearBalanceAsync(
                 scope,
                 condominiumId,
                 period.Id,
                 new RecordPriorYearBalanceCommand(
-                    CondoExportV1.FromCents(year.PriorCents), PriorYearBalanceDisposition.NextInstallment, null, "Import CondoLedger"),
+                    CondoExportV1.FromCents(year.PriorCents), PriorYearBalanceDisposition.CarryForward, null, "Import CondoLedger"),
                 userId,
                 cancellationToken);
         }
@@ -242,16 +276,60 @@ public sealed class CondominiumHistoricalImportService(
         }
     }
 
-    private async Task<bool> AlreadySourcedAsync(HostScope scope, CondominiumImportHouse house, CancellationToken cancellationToken)
+    private async Task<Guid?> ExistingCondominiumIdAsync(HostScope scope, Guid propertyId, CancellationToken cancellationToken)
     {
-        var labels = house.Years.Select(year => year.Label).ToList();
-        return await db.CondominiumImportHouses.AnyAsync(
+        var links = await db.CondominiumUnits
+            .Where(unit => unit.OrgId == scope.OrgId && unit.PropertyId == propertyId)
+            .Select(unit => new { unit.CondominiumId, unit.ValidFrom, unit.ValidTo, unit.CreatedAt })
+            .ToListAsync(cancellationToken);
+        var current = links
+            .OrderByDescending(unit => unit.ValidFrom is null && unit.ValidTo is null)
+            .ThenByDescending(unit => unit.CreatedAt)
+            .FirstOrDefault();
+        return current?.CondominiumId;
+    }
+
+    private async Task<bool> YearAlreadyInBookAsync(
+        HostScope scope, CondominiumImportHouse house, Guid condominiumId, CondominiumImportYear year, CancellationToken cancellationToken)
+    {
+        var periodId = await db.CondominiumPeriods
+            .Where(period => period.CondominiumId == condominiumId && period.Label == year.Label)
+            .Select(period => (Guid?)period.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (periodId is { } id)
+        {
+            if (await db.CondominiumStatements.AnyAsync(statement => statement.CondominiumPeriodId == id, cancellationToken))
+                return true;
+            if (await db.CondominiumPayments.AnyAsync(payment => payment.CondominiumPeriodId == id, cancellationToken))
+                return true;
+        }
+
+        return await db.CondominiumImportYears.AnyAsync(
             item => item.OrgId == scope.OrgId
-                && item.Id != house.Id
-                && item.PropertyId == house.PropertyId
-                && item.Status == CondominiumImportStatus.Confirmed
-                && item.Years.Any(year => labels.Contains(year.Label)),
+                && item.HouseId != house.Id
+                && item.Label == year.Label
+                && item.House.PropertyId == house.PropertyId
+                && item.House.Status == CondominiumImportStatus.Confirmed,
             cancellationToken);
+    }
+
+    private async Task RemoveCarriedPriorAsync(Guid periodId, CancellationToken cancellationToken)
+    {
+        var prior = await db.CondominiumPriorBalances
+            .FirstOrDefaultAsync(balance => balance.CondominiumPeriodId == periodId, cancellationToken);
+        if (prior is null)
+            return;
+        db.CondominiumPriorBalances.Remove(prior);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private void Detach(CondominiumImportBatch batch)
+    {
+        foreach (var year in batch.Houses.SelectMany(house => house.Years))
+            db.Entry(year).State = EntityState.Detached;
+        foreach (var house in batch.Houses)
+            db.Entry(house).State = EntityState.Detached;
+        db.Entry(batch).State = EntityState.Detached;
     }
 
     private async Task<CondominiumImportBatch> RequireBatchAsync(HostScope scope, Guid batchId, CancellationToken cancellationToken) =>
