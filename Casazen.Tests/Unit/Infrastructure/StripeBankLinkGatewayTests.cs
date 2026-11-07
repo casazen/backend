@@ -44,9 +44,27 @@ public class StripeBankLinkGatewayTests
         Assert.Equal("customer", sent!.AccountHolder.Type);
         Assert.Equal("cus_landlord", sent.AccountHolder.Customer);
         Assert.Equal("payment_method", Assert.Single(sent.Permissions));
-        Assert.Equal(BankLinkCharges.InstitutionCountry, Assert.Single(sent.Filters.Countries));
-        Assert.DoesNotContain("US", sent.Filters.Countries);
+        Assert.True(sent.Filters.Countries is null || sent.Filters.Countries.Count == 0);
+        Assert.Equal(BankLinkCharges.InstitutionCountry, sent.ExtraParams["filters[country]"]);
+        Assert.DoesNotContain("US", sent.ExtraParams.Values.Select(value => value?.ToString()));
         Assert.Contains("checking", sent.Filters.AccountSubcategories);
+    }
+
+    [Fact]
+    public void Redact_DropsSecretsAndIbans()
+    {
+        var text = StripeBankLinkGateway.Redact(
+            "No such country IT60X0542811101000000123456 for key sk_test_51AbCdEf and whsec_abc123");
+
+        Assert.DoesNotContain("sk_test_", text);
+        Assert.DoesNotContain("whsec_", text);
+        Assert.DoesNotContain("IT60X0542811101000000123456", text);
+        Assert.Contains("[secret]", text);
+        Assert.Contains("[iban]", text);
+
+        var grouped = StripeBankLinkGateway.Redact(
+            "Debit failed for IT60 X054 2811 1010 0000 0123 456 (also IT60-X054-2811-1010-0000-0123-456).");
+        Assert.Equal("Debit failed for [iban] (also [iban]).", grouped);
     }
 
     [Fact]

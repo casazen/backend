@@ -118,18 +118,19 @@ public sealed class StripeBankLinkGateway(
         EnsureApiKey();
         try
         {
-            var session = await new SessionService(Client).CreateAsync(
-                new SessionCreateOptions
+            var options = new SessionCreateOptions
+            {
+                AccountHolder = new SessionAccountHolderOptions { Type = "customer", Customer = customerId },
+                Permissions = [PaymentMethodPermission],
+                Filters = new SessionFiltersOptions
                 {
-                    AccountHolder = new SessionAccountHolderOptions { Type = "customer", Customer = customerId },
-                    Permissions = [PaymentMethodPermission],
-                    Filters = new SessionFiltersOptions
-                    {
-                        Countries = [BankLinkCharges.InstitutionCountry],
-                        AccountSubcategories = ["checking", "savings"],
-                    },
+                    AccountSubcategories = ["checking", "savings"],
                 },
-                cancellationToken: cancellationToken);
+            };
+            // Current Stripe accepts filters[country], not the removed filters[countries] list. Sending the list
+            // makes the test account reject the session, which the API was turning into a bare 503.
+            options.AddExtraParam("filters[country]", BankLinkCharges.InstitutionCountry);
+            var session = await new SessionService(Client).CreateAsync(options, cancellationToken: cancellationToken);
             if (string.IsNullOrWhiteSpace(session.Id) || string.IsNullOrWhiteSpace(session.ClientSecret))
                 throw new PaymentProcessingException("Stripe Financial Connections session did not return a client secret.");
 
@@ -372,10 +373,35 @@ public sealed class StripeBankLinkGateway(
         StripeConfiguration.ApiKey = secretKey;
     }
 
-    private static PaymentProcessingException ProviderFailure(StripeException ex)
+    private PaymentProcessingException ProviderFailure(StripeException ex)
     {
         var code = ex.StripeError?.Code ?? ex.HttpStatusCode.ToString();
+        logger.LogWarning(
+            "Stripe bank-link call failed. Code={Code} Type={Type} Param={Param} RequestId={RequestId} Detail={Detail}",
+            code,
+            ex.StripeError?.Type,
+            ex.StripeError?.Param,
+            ex.StripeResponse?.RequestId,
+            Redact(ex.StripeError?.Message));
         return new PaymentProcessingException($"Stripe bank-link call failed ({code}).");
+    }
+
+    /// <summary>Stripe's message for the logs, with keys and IBANs removed. The client still gets the generic 503.</summary>
+    internal static string Redact(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return string.Empty;
+
+        var redacted = System.Text.RegularExpressions.Regex.Replace(
+            text,
+            @"\b(?:sk|rk|pk)_(?:test|live)_[A-Za-z0-9]+|\bwhsec_[A-Za-z0-9]+",
+            "[secret]");
+        // A space or a dash may sit between characters: Stripe prints IBANs in groups, not only as one uppercase token.
+        redacted = System.Text.RegularExpressions.Regex.Replace(
+            redacted,
+            @"\b[A-Z]{2}\d{2}(?:[ \-]?[A-Z0-9]){11,30}\b",
+            "[iban]");
+        return redacted.Length <= 300 ? redacted : redacted[..300];
     }
 
     private static string Trim(string? value, int max)
