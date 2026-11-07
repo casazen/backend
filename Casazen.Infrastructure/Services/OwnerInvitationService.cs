@@ -402,6 +402,20 @@ public class OwnerInvitationService(
             // Idempotent for the account that accepted it, and for nobody else: the token is one-time use.
             if (existingUser is not null && invitation.OwnerUserId == existingUser.Id)
             {
+                // An ownership that has started since the acceptance (a property given to the owner that begins later) becomes the account's now.
+                var started = await GrantableOwnerships(dbContext, orgId.Value, invitation.PropertyOwnerId, now)
+                    .Where(o => o.OwnerUserId == null)
+                    .ToListAsync(cancellationToken);
+                foreach (var ownership in started)
+                    ownership.OwnerUserId = existingUser.Id;
+
+                if (started.Count > 0)
+                    await dbContext.SaveChangesAsync(cancellationToken);
+
+                // The locks and the transaction end here: the hand-over of the claims is an HTTP call to the identity provider and holds none of them.
+                if (transaction is not null)
+                    await transaction.CommitAsync(cancellationToken);
+
                 logger.LogInformation(
                     "Invitation {InvitationId} already accepted by OwnerUser {OwnerUserId}: same answer",
                     invitation.Id, existingUser.Id);
@@ -500,8 +514,9 @@ public class OwnerInvitationService(
     internal sealed record OwnerClaimRow(Guid PropertyId, Guid PropertyOrgId, Guid OrgId);
 
     /// <summary>
-    /// The ownerships of an owner account that are not over, with their property, across every org (the tenant filter of the caller, who has none, is
-    /// ignored; a deleted property stays out). Built here so that a test can show the PostgreSQL provider translates it.
+    /// The ownerships of an owner account that are in force now (started, not over), with their property, across every org (the tenant filter of
+    /// the caller, who has none, is ignored; a deleted property stays out). The owner portal reads the same period (ADR-011-R8). Built here so that a
+    /// test can show the PostgreSQL provider translates it.
     /// </summary>
     internal static IQueryable<OwnerClaimRow> ClaimRows(AppDbContext db, Guid ownerUserId, DateTime now) =>
         db.Properties
@@ -511,13 +526,14 @@ public class OwnerInvitationService(
                 db.PropertyOwnerships
                     .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
                     .AsNoTracking()
-                    .Where(po => po.OwnerUserId == ownerUserId && (po.OwnershipEnd == null || po.OwnershipEnd >= now)),
+                    .Where(po => po.OwnerUserId == ownerUserId && po.OwnershipStart <= now && (po.OwnershipEnd == null || po.OwnershipEnd >= now)),
                 property => property.Id,
                 ownership => ownership.PropertyId,
                 (property, ownership) => new OwnerClaimRow(property.Id, property.OrgId, ownership.OrgId));
 
     /// <summary>
-    /// The ownerships an acceptance may give the account: of the org of the invitation, of its registry owner, not over, on a property of that org.
+    /// The ownerships an acceptance may give the account: of the org of the invitation, of its registry owner, in force now (started and not over),
+    /// on a property of that org. One that starts later is linked when it has started (the repeat of the acceptance by the same account).
     /// </summary>
     internal static IQueryable<PropertyOwnership> GrantableOwnerships(AppDbContext db, Guid orgId, Guid propertyOwnerId, DateTime now)
     {
@@ -529,6 +545,7 @@ public class OwnerInvitationService(
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(po => po.OrgId == orgId
                          && po.PropertyOwnerId == propertyOwnerId
+                         && po.OwnershipStart <= now
                          && (po.OwnershipEnd == null || po.OwnershipEnd >= now)
                          && propertyIds.Contains(po.PropertyId));
     }

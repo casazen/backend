@@ -219,6 +219,31 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         Assert.Equal(notFound.Code, unknownOwner.Code);
     }
 
+    /// <summary>
+    /// Proof (permission): the acceptance grants the ownerships in force now (ADR-011-R8, the portal reads the same period): one that starts later is
+    /// neither linked nor in the claims, and the repeat of the acceptance by the same account links it once it has started.
+    /// </summary>
+    [Fact]
+    public async Task Accept_AnOwnershipThatStartsLaterIsNotGranted_UntilItHasStarted()
+    {
+        var owner = await AddReadyOwnerAsync("Anna Verdi", "anna@example.com", Granted);
+        // Hidden is hers from 20 October; today is 9 October.
+        var later = await AddPeriodAsync(_world.OrgId, Hidden, owner, new DateOnly(2026, 10, 20));
+        var token = await InviteAsync(owner);
+
+        var first = await Service(NewDb()).AcceptAsync(Accept(token, "auth0|anna", "anna@example.com"), Ct);
+
+        Assert.Equal([Granted], first.PropertyIds);
+        Assert.Null((await _db.PropertyOwnerships.AsNoTracking().SingleAsync(p => p.Id == later)).OwnerUserId);
+
+        _clock.Advance(TimeSpan.FromDays(12));
+        var second = await Service(NewDb()).AcceptAsync(Accept(token, "auth0|anna", "anna@example.com"), Ct);
+
+        Assert.True(second.AlreadyAccepted);
+        Assert.Equal(new[] { Granted, Hidden }.Order(), second.PropertyIds);
+        Assert.Equal(first.OwnerUserId, (await _db.PropertyOwnerships.AsNoTracking().SingleAsync(p => p.Id == later)).OwnerUserId);
+    }
+
     // ---------------------------------------------------------------- the lifecycle
 
     [Fact]
