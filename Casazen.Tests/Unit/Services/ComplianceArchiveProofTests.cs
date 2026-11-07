@@ -141,6 +141,62 @@ public sealed class ComplianceArchiveProofTests
         Assert.Equal(3, await db.ManualComplianceProofs.CountAsync());
     }
 
+    /// <summary>
+    /// PROOF TEST: privacy rule (AC-NF47-2, «by whom»). The log of a stay names the person who declared a send only when that person is a member of
+    /// the caller's own org: the name of a person of another org, of an id that is nobody, of a member with no name and of the channel manager's own
+    /// run (no person) is never given, and the other lines of the log are untouched by it.
+    /// </summary>
+    [Fact]
+    public async Task ComplianceArchive_TheLogNamesWhoDeclaredASend_OnlyForAMemberOfTheCallersOrg_Test()
+    {
+        var world = await World.SeedAsync();
+        var (stay, _) = await world.AddStayAsync(world.Granted, checkInOffset: -3);
+
+        var member = HostScopeScenario.NewUser("auth0|socia", world.Org.Id, UserRole.None);
+        member.FirstName = "Giulia";
+        member.LastName = "Bianchi";
+        var outsider = HostScopeScenario.NewUser("auth0|esterno", world.Foreign.OrgId, UserRole.None);
+        outsider.FirstName = "Mario";
+        outsider.LastName = "Altrove";
+        var nameless = HostScopeScenario.NewUser("auth0|senzanome", world.Org.Id, UserRole.None);
+        nameless.FirstName = " ";
+        nameless.LastName = " ";
+
+        var byMember = LogLine(world.Granted, stay, ComplianceSender.Manual, member.Id);
+        var byOutsider = LogLine(world.Granted, stay, ComplianceSender.Manual, outsider.Id);
+        var byNobody = LogLine(world.Granted, stay, ComplianceSender.Manual, "auth0|nessuno");
+        var byNameless = LogLine(world.Granted, stay, ComplianceSender.Manual, nameless.Id);
+        var byChannelManager = LogLine(world.Granted, stay, ComplianceSender.ChannelManager);
+        await using (var seed = world.Db())
+        {
+            seed.Users.AddRange(member, outsider, nameless);
+            seed.ComplianceSendLogEntries.AddRange(byMember, byOutsider, byNobody, byNameless, byChannelManager);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = world.Db();
+        var service = NewService(world, db, new MemoryStorage());
+        var log = (await service.GetBookingComplianceAsync(world.OrgWide, stay.Id, CancellationToken.None)).SendLog;
+
+        string? NameOn(ComplianceSendLogEntry entry) => Assert.Single(log, line => line.Id == entry.Id).SentBy;
+        Assert.Equal(5, log.Count);
+        Assert.Equal("Giulia Bianchi", NameOn(byMember));
+        Assert.Null(NameOn(byOutsider));
+        Assert.Null(NameOn(byNobody));
+        Assert.Null(NameOn(byNameless));
+        Assert.Null(NameOn(byChannelManager));
+
+        // Nothing else of the person goes out with the name: the line carries the sender and the day, no id of the person and no e-mail.
+        var json = JsonSerializer.Serialize(log);
+        Assert.DoesNotContain(member.Id, json, StringComparison.Ordinal);
+        Assert.DoesNotContain(member.Email, json, StringComparison.Ordinal);
+        Assert.DoesNotContain("Altrove", json, StringComparison.Ordinal);
+
+        // The same through the answer of the endpoint.
+        var dto = ComplianceBookingComplianceDto.From(await service.GetBookingComplianceAsync(world.OrgWide, stay.Id, CancellationToken.None));
+        Assert.Equal(["Giulia Bianchi"], dto.SendLog.Where(line => line.SentBy is not null).Select(line => line.SentBy));
+    }
+
     // ─── Records of money ───────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -800,7 +856,7 @@ public sealed class ComplianceArchiveProofTests
         return proof;
     }
 
-    private static ComplianceSendLogEntry LogLine(Property property, Booking stay, ComplianceSender sender) => new()
+    private static ComplianceSendLogEntry LogLine(Property property, Booking stay, ComplianceSender sender, string? byUserId = null) => new()
     {
         OrgId = property.OrgId,
         PropertyId = property.Id,
@@ -808,6 +864,7 @@ public sealed class ComplianceArchiveProofTests
         Kind = ComplianceSendKind.AlloggiatiGuests,
         Sender = sender,
         SentAt = new DateTime(2026, 11, 3, 8, 0, 0, DateTimeKind.Utc),
+        ByUserId = byUserId,
     };
 
     private static string ReadEntry(ZipArchive zip, string name)
