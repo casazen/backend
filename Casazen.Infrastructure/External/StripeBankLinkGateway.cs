@@ -396,9 +396,10 @@ public sealed class StripeBankLinkGateway(
             text,
             @"\b(?:sk|rk|pk)_(?:test|live)_[A-Za-z0-9]+|\bwhsec_[A-Za-z0-9]+",
             "[secret]");
+        // A space or a dash may sit between characters: Stripe prints IBANs in groups, not only as one uppercase token.
         redacted = System.Text.RegularExpressions.Regex.Replace(
             redacted,
-            @"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b",
+            @"\b[A-Z]{2}\d{2}(?:[ \-]?[A-Z0-9]){11,30}\b",
             "[iban]");
         return redacted.Length <= 300 ? redacted : redacted[..300];
     }

@@ -61,6 +61,10 @@ public class StripeBankLinkGatewayTests
         Assert.DoesNotContain("IT60X0542811101000000123456", text);
         Assert.Contains("[secret]", text);
         Assert.Contains("[iban]", text);
+
+        var grouped = StripeBankLinkGateway.Redact(
+            "Debit failed for IT60 X054 2811 1010 0000 0123 456 (also IT60-X054-2811-1010-0000-0123-456).");
+        Assert.Equal("Debit failed for [iban] (also [iban]).", grouped);
     }
 
     [Fact]
