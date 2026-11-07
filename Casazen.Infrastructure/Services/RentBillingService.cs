@@ -76,10 +76,14 @@ public sealed partial class RentBillingService(
         var lease = await LoadLeaseAsync(leaseId, cancellationToken);
         var entries = await db.RentLedgerEntries
             .AsNoTracking()
+            .Include(e => e.Components)
             .Where(e => e.LeaseContractId == leaseId)
             .OrderBy(e => e.PeriodStart)
             .ToListAsync(cancellationToken);
-        return BuildView(lease, entries);
+        var terms = await db.LeaseCondominiumTerms
+            .AsNoTracking()
+            .SingleOrDefaultAsync(t => t.LeaseContractId == leaseId, cancellationToken);
+        return BuildView(lease, entries, terms);
     }
 
     public async Task<RentLedgerView> ConfigureScheduleAsync(
@@ -108,8 +112,8 @@ public sealed partial class RentBillingService(
                 RentInstallmentPlan.MaxBillingDay);
         }
 
-        var amount = request.Amount ?? RentInstallmentPlan.DefaultAmount(lease.MonthlyRent, request.Cadence);
-        if (amount <= 0 || amount > MaxInstallmentAmount || decimal.Round(amount, 2) != amount)
+        if (request.Amount is { } requestedAmount
+            && (requestedAmount <= 0 || requestedAmount > MaxInstallmentAmount || decimal.Round(requestedAmount, 2) != requestedAmount))
             throw new DomainRuleException(RentBillingErrorCodes.AmountInvalid, "RentAmountInvalid");
 
         // A day after the end of the lease would leave a plan with nothing to track (LR-04a).
@@ -119,8 +123,14 @@ public sealed partial class RentBillingService(
         await using var transaction = await LockLeaseAsync(leaseId, cancellationToken);
         var schedule = await db.RentSchedules.SingleOrDefaultAsync(s => s.LeaseContractId == leaseId, cancellationToken);
         var entries = await db.RentLedgerEntries
+            .Include(e => e.Components)
             .Where(e => e.LeaseContractId == leaseId)
             .ToListAsync(cancellationToken);
+        var terms = await db.LeaseCondominiumTerms
+            .SingleOrDefaultAsync(t => t.LeaseContractId == leaseId, cancellationToken);
+        var amount = request.Amount ?? DefaultInstallmentAmount(lease.MonthlyRent, request.Cadence, terms);
+        if (amount <= 0 || amount > MaxInstallmentAmount || decimal.Round(amount, 2) != amount)
+            throw new DomainRuleException(RentBillingErrorCodes.AmountInvalid, "RentAmountInvalid");
 
         if (schedule is not null && schedule.Cadence != request.Cadence && entries.Any(e => !IsRegenerable(e)))
             throw new DomainRuleException(RentBillingErrorCodes.CadenceLocked, "RentCadenceLocked");
@@ -155,7 +165,7 @@ public sealed partial class RentBillingService(
         schedule.OnlineRequestsEnabled = request.OnlineRequests ?? schedule.OnlineRequestsEnabled;
         schedule.UpdatedAt = now;
 
-        Regenerate(lease, schedule, entries, plan, trackFrom, now);
+        Regenerate(lease, schedule, entries, plan, trackFrom, now, terms);
 
         await db.SaveChangesAsync(cancellationToken);
         if (transaction is not null)
@@ -508,6 +518,47 @@ public sealed partial class RentBillingService(
         return notice;
     }
 
+    public async Task<RentPaymentNotice?> ApplyLinkedBankPaymentAsync(
+        RentPaymentIntentEvent paymentEvent, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(paymentEvent);
+        if (paymentEvent.InstallmentId is not Guid installmentId)
+            return null;
+
+        var leaseId = await db.RentLedgerEntries
+            .Where(e => e.Id == installmentId)
+            .Select(e => (Guid?)e.LeaseContractId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (leaseId is null)
+        {
+            logger.LogWarning("No rent installment {InstallmentId} for bank-link payment {PaymentIntentId}", installmentId, paymentEvent.PaymentIntentId);
+            return null;
+        }
+
+        var ownTransaction = await LockLeaseAsync(leaseId.Value, cancellationToken);
+        if (ownTransaction is not null)
+        {
+            await ownTransaction.DisposeAsync();
+            throw new InvalidOperationException("Rent payment events must be applied inside the webhook event transaction.");
+        }
+
+        var entry = await db.RentLedgerEntries.SingleAsync(e => e.Id == installmentId, cancellationToken);
+        await db.Entry(entry).ReloadAsync(cancellationToken);
+        if (!string.Equals(entry.StripePaymentIntentId, paymentEvent.PaymentIntentId, StringComparison.Ordinal))
+        {
+            logger.LogWarning(
+                "Bank-link payment intent {PaymentIntentId} is not the current intent of installment {InstallmentId}: the due is unchanged",
+                paymentEvent.PaymentIntentId,
+                installmentId);
+            return null;
+        }
+
+        var notice = ApplyEvent(entry, paymentEvent);
+        await AlignBankLinkAsync(entry, paymentEvent.PaymentIntentId, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        return notice;
+    }
+
     private RentPaymentNotice? ApplyEvent(RentLedgerEntry entry, RentPaymentIntentEvent paymentEvent) =>
         _paymentEvents.Apply(entry, paymentEvent);
 
@@ -610,7 +661,9 @@ public sealed partial class RentBillingService(
 
         var inFlight = await db.RentLedgerEntries
             .AsNoTracking()
-            .Where(e => e.Status == RentLedgerStatus.Processing && e.StripePaymentIntentId != null && e.ConnectedAccountId != null)
+            .Where(e => e.Status == RentLedgerStatus.Processing && e.StripePaymentIntentId != null &&
+                        (e.ConnectedAccountId != null ||
+                         db.BankLinkPayments.Any(p => p.StripePaymentIntentId == e.StripePaymentIntentId)))
             .Select(e => new { e.Id, e.LeaseContractId })
             .ToListAsync(cancellationToken);
         foreach (var candidate in inFlight)
@@ -682,14 +735,19 @@ public sealed partial class RentBillingService(
         await using (var transaction = await LockLeaseAsync(leaseId, cancellationToken))
         {
             var entry = await db.RentLedgerEntries.SingleAsync(e => e.Id == installmentId, cancellationToken);
-            if (entry.Status != RentLedgerStatus.Processing || entry.StripePaymentIntentId is null || entry.ConnectedAccountId is null)
+            if (entry.Status != RentLedgerStatus.Processing || entry.StripePaymentIntentId is null)
+                return false;
+            if (entry.ConnectedAccountId is null &&
+                !await db.BankLinkPayments.AnyAsync(p => p.StripePaymentIntentId == entry.StripePaymentIntentId, cancellationToken))
                 return false;
 
             var current = await stripeService.GetPaymentIntentAsync(entry.StripePaymentIntentId, entry.ConnectedAccountId, cancellationToken);
             if (current.Status == "processing")
                 return false;
 
+            var intentId = entry.StripePaymentIntentId;
             notice = ApplyStripeStatus(entry, current);
+            await AlignBankLinkAsync(entry, intentId, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
@@ -719,7 +777,13 @@ public sealed partial class RentBillingService(
     /// <paramref name="trackFrom"/> (LR-04a): tracking from a later day never deletes what the plan already has.
     /// </summary>
     private void Regenerate(
-        LeaseContract lease, RentSchedule schedule, List<RentLedgerEntry> entries, RentPlan plan, DateOnly? trackFrom, DateTime now)
+        LeaseContract lease,
+        RentSchedule schedule,
+        List<RentLedgerEntry> entries,
+        RentPlan plan,
+        DateOnly? trackFrom,
+        DateTime now,
+        LeaseCondominiumTerms? terms)
     {
         var planned = plan.Installments.ToDictionary(i => i.PeriodStart);
         foreach (var entry in entries.Where(IsRegenerable))
@@ -736,6 +800,7 @@ public sealed partial class RentBillingService(
             entry.PeriodEnd = installment.PeriodEnd;
             entry.DueDate = installment.DueDate;
             entry.AmountDue = installment.Amount;
+            ApplyBreakdown(entry, lease.MonthlyRent, schedule.Cadence, terms);
             if (entry.Status == RentLedgerStatus.Cancelled)
             {
                 // Re-enabled: a new payment request will be sent.
@@ -750,7 +815,7 @@ public sealed partial class RentBillingService(
         var existing = entries.Select(e => e.PeriodStart).ToHashSet();
         foreach (var installment in plan.Installments.Where(i => !existing.Contains(i.PeriodStart)))
         {
-            db.RentLedgerEntries.Add(new RentLedgerEntry
+            var created = new RentLedgerEntry
             {
                 OrgId = lease.OrgId,
                 LeaseContractId = lease.Id,
@@ -762,7 +827,9 @@ public sealed partial class RentBillingService(
                 Status = RentLedgerStatus.Scheduled,
                 CreatedAt = now,
                 UpdatedAt = now,
-            });
+            };
+            ApplyBreakdown(created, lease.MonthlyRent, schedule.Cadence, terms);
+            db.RentLedgerEntries.Add(created);
         }
     }
 
@@ -815,6 +882,34 @@ public sealed partial class RentBillingService(
         {
             return await stripeService.GetPaymentIntentAsync(paymentIntentId, account, cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// The bank-link row follows the installment. Succeeded is written only when the installment is paid from this PaymentIntent.
+    /// </summary>
+    private async Task AlignBankLinkAsync(RentLedgerEntry entry, string? paymentIntentId, CancellationToken cancellationToken)
+    {
+        // Cancellation clears StripePaymentIntentId before this runs. The id of the event is what finds the row.
+        if (paymentIntentId is null)
+            return;
+
+        var row = await db.BankLinkPayments
+            .SingleOrDefaultAsync(p => p.StripePaymentIntentId == paymentIntentId, cancellationToken);
+        if (row is null || row.Status == BankLinkPaymentStatus.Succeeded)
+            return;
+        if (row.Status is BankLinkPaymentStatus.Failed or BankLinkPaymentStatus.Canceled
+            && entry.Status == RentLedgerStatus.Processing)
+            return;
+
+        row.Status = entry.Status switch
+        {
+            RentLedgerStatus.Paid => BankLinkPaymentStatus.Succeeded,
+            RentLedgerStatus.Failed => BankLinkPaymentStatus.Failed,
+            RentLedgerStatus.Scheduled => BankLinkPaymentStatus.Canceled,
+            RentLedgerStatus.Processing when row.Status is BankLinkPaymentStatus.Failed or BankLinkPaymentStatus.Canceled => row.Status,
+            _ => BankLinkPaymentStatus.Processing,
+        };
+        row.UpdatedAt = UtcNow;
     }
 
     /// <summary>Records the state Stripe reports for the installment's current PaymentIntent (read, not from an event).</summary>
@@ -910,6 +1005,7 @@ public sealed partial class RentBillingService(
     private async Task<RentLedgerEntry> FindEntryAsync(Guid leaseId, Guid installmentId, CancellationToken cancellationToken)
     {
         var entry = await db.RentLedgerEntries
+            .Include(e => e.Components)
             .SingleOrDefaultAsync(e => e.Id == installmentId && e.LeaseContractId == leaseId, cancellationToken)
             ?? throw new NotFoundException("Rent installment not found")
             {
@@ -939,7 +1035,7 @@ public sealed partial class RentBillingService(
         PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, cancellationToken, (PostgresAdvisoryLocks.Scope.RentLease, leaseId.ToString("N")));
 
-    private RentLedgerView BuildView(LeaseContract lease, IReadOnlyList<RentLedgerEntry> entries)
+    private RentLedgerView BuildView(LeaseContract lease, IReadOnlyList<RentLedgerEntry> entries, LeaseCondominiumTerms? terms)
     {
         var schedule = lease.RentSchedule;
         RentPeriod? partial = null;
@@ -969,7 +1065,8 @@ public sealed partial class RentBillingService(
                     schedule.TrackFrom,
                     schedule.OnlineRequestsEnabled),
             entries.Select(e => ToView(e, today)).ToList(),
-            partial);
+            partial,
+            ToTermsView(terms));
     }
 
     private static RentInstallmentView ToView(RentLedgerEntry entry, DateOnly today) => new(
@@ -986,7 +1083,22 @@ public sealed partial class RentBillingService(
         entry.OfflinePaymentNote,
         entry.PaymentRequestedAt,
         entry.FailureCode,
-        entry.LastFailedAt);
+        entry.LastFailedAt,
+        RentInstallmentRules.AmountPaid(entry.Status, entry.AmountDue),
+        RentInstallmentRules.AmountOutstanding(entry.Status, entry.AmountDue),
+        entry.Components
+            .OrderBy(c => c.Kind)
+            .ThenBy(c => c.Id)
+            .Select(c => new RentLedgerComponentView(
+                c.Id,
+                c.Kind,
+                c.Amount,
+                c.CompetenceStart,
+                c.CompetenceEnd,
+                c.TenantSettlementId,
+                c.SourceId,
+                c.Description))
+            .ToList());
 
     private static string? Truncate(string? value, int max) =>
         value is null || value.Length <= max ? value : value[..max];

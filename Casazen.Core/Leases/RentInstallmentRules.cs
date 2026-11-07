@@ -49,4 +49,12 @@ public static class RentInstallmentRules
     /// <summary>Whole days from the due date to <paramref name="today"/> for an overdue installment, <c>null</c> otherwise.</summary>
     public static int? DaysOverdue(RentLedgerStatus status, DateOnly dueDate, DateOnly today) =>
         IsOverdue(status, dueDate, today) ? today.DayNumber - dueDate.DayNumber : null;
+
+    /// <summary>What has been collected on the line. Partial payments are not stored: a paid line is collected in full.</summary>
+    public static decimal AmountPaid(RentLedgerStatus status, decimal amountDue) =>
+        status == RentLedgerStatus.Paid ? amountDue : 0m;
+
+    /// <summary>What is still due on the line.</summary>
+    public static decimal AmountOutstanding(RentLedgerStatus status, decimal amountDue) =>
+        amountDue - AmountPaid(status, amountDue);
 }

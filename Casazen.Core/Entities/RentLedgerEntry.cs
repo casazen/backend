@@ -102,4 +102,7 @@ public class RentLedgerEntry : ITenantOwned
     public RentSchedule RentSchedule { get; set; } = null!;
     public LeaseContract LeaseContract { get; set; } = null!;
     public Org Org { get; set; } = null!;
+
+    /// <summary>The parts of <see cref="AmountDue"/> (rent, condominium advance, settlement, other). Their sum equals it.</summary>
+    public ICollection<RentLedgerComponent> Components { get; set; } = [];
 }

@@ -72,6 +72,12 @@ public sealed record RentRegisterRow(
     DateTime? LastReminderAt,
     int ReminderCount,
     bool CanRemind,
+    decimal RentAmount,
+    decimal CondominiumAdvanceAmount,
+    decimal CondominiumSettlementAmount,
+    decimal OtherAmount,
+    decimal AmountPaid,
+    decimal AmountOutstanding,
     bool HasTenantPhone = false,
     bool CanWhatsAppRemind = false);
 
