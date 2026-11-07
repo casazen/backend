@@ -632,6 +632,8 @@ public sealed partial class RentBillingService(
             .AsNoTracking()
             .Where(e => e.Status == RentLedgerStatus.Scheduled &&
                         e.PaymentRequestedAt == null &&
+                        e.AmountDue > 0 &&
+                        (e.Components.Count == 0 || e.Components.Any(c => c.Kind != RentLedgerComponentKind.CondominiumSettlement)) &&
                         e.DueDate <= requestUntil &&
                         e.RentSchedule.IsActive &&
                         e.RentSchedule.OnlineRequestsEnabled &&
@@ -788,6 +790,10 @@ public sealed partial class RentBillingService(
         var planned = plan.Installments.ToDictionary(i => i.PeriodStart);
         foreach (var entry in entries.Where(IsRegenerable))
         {
+            // A settlement installment is not a rent period. Regenerating the plan does not rewrite or delete it.
+            if (IsSettlementOnly(entry))
+                continue;
+
             if (!planned.TryGetValue(entry.PeriodStart, out var installment))
             {
                 if (entry.PeriodEnd < trackFrom)

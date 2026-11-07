@@ -220,7 +220,7 @@ public sealed class CondominiumAccountingService(
             CondominiumStatementKind.Final,
             command.Amount,
             userId,
-            [Line(period, unitId, $"Consuntivo {period.Label}", "consuntivo", command.Amount, CondominiumExpenseNature.Ordinary, TenantRecoverability.OwnerOnly)],
+            await FinalLinesAsync(period, unitId, command, cancellationToken),
             cancellationToken);
         period.Status = CondominiumPeriodStatus.FinalStatementReceived;
 
@@ -252,6 +252,184 @@ public sealed class CondominiumAccountingService(
             await transaction.CommitAsync(cancellationToken);
         logger.LogInformation("Final statement of period {PeriodId} confirmed (revision {Revision})", period.Id, statement.RevisionNumber);
         return new FinalConfirmation(ToStatement(statement), nextBalance);
+    }
+
+    public async Task<TenantFinalStatementView> GetConfirmedFinalForPropertyAsync(
+        HostScope scope, Guid propertyId, Guid periodId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        var period = await db.CondominiumPeriods
+            .FirstOrDefaultAsync(item => item.Id == periodId && item.OrgId == scope.OrgId, cancellationToken)
+            ?? throw new NotFoundException("Period not found")
+            {
+                Code = CondominiumErrorCodes.PeriodNotFound,
+                MessageKey = "CondominiumPeriodNotFound",
+            };
+        await RequireCondominiumAsync(scope, period.CondominiumId, cancellationToken);
+        var propertyVisible = await db.Properties
+            .Where(property => property.Id == propertyId && property.OrgId == scope.OrgId)
+            .InScope(scope)
+            .AnyAsync(cancellationToken);
+        if (!propertyVisible)
+            throw PropertyNotFound();
+
+        var units = await db.CondominiumUnits
+            .Where(unit => unit.CondominiumId == period.CondominiumId && unit.PropertyId == propertyId)
+            .ToListAsync(cancellationToken);
+        var linked = units
+            .Where(unit => ValidityOverlaps(unit.ValidFrom, unit.ValidTo, period.StartDate, period.EndDate))
+            .Select(unit => unit.Id)
+            .ToHashSet();
+        if (linked.Count == 0)
+            throw PropertyNotFound();
+
+        var statement = await db.CondominiumStatements
+            .Include(item => item.Lines)
+            .Where(item => item.CondominiumPeriodId == period.Id
+                && item.Kind == CondominiumStatementKind.Final
+                && item.Status == CondominiumStatementStatus.Confirmed)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new DomainRuleException(CondominiumErrorCodes.FinalNotConfirmed, "CondominiumFinalNotConfirmed");
+
+        var unitCount = await db.CondominiumUnits.CountAsync(unit => unit.CondominiumId == period.CondominiumId, cancellationToken);
+        var lines = statement.Lines
+            .Where(line => line.CondominiumUnitId is { } unitId && linked.Contains(unitId)
+                || line.CondominiumUnitId is null && unitCount == 1)
+            .OrderBy(line => line.Description)
+            .Select(line => new TenantFinalLineView(
+                line.Id,
+                line.Description,
+                line.ExpenseNature,
+                line.TenantRecoverability,
+                line.ReviewStatus,
+                line.ClassificationSource,
+                line.Confidence,
+                line.Amount,
+                line.RecoverableAmount,
+                line.CompetenceStart,
+                line.CompetenceEnd,
+                ExpenseClassification.ChargesStored(
+                    line.ExpenseNature,
+                    line.TenantRecoverability,
+                    line.ReviewStatus,
+                    line.RecoverableAmount,
+                    line.Confidence)))
+            .ToList();
+        return new TenantFinalStatementView(
+            period.CondominiumId,
+            period.Id,
+            period.Label,
+            period.StartDate,
+            period.EndDate,
+            statement.Id,
+            statement.RevisionNumber,
+            lines);
+    }
+
+    public async Task<TenantBudgetBasis> GetTenantBudgetBasisAsync(
+        HostScope scope, Guid propertyId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        var propertyVisible = await db.Properties
+            .Where(property => property.Id == propertyId && property.OrgId == scope.OrgId)
+            .InScope(scope)
+            .AnyAsync(cancellationToken);
+        if (!propertyVisible)
+            throw PropertyNotFound();
+
+        var units = await db.CondominiumUnits
+            .Where(unit => unit.OrgId == scope.OrgId && unit.PropertyId == propertyId)
+            .ToListAsync(cancellationToken);
+        if (units.Count == 0)
+            return new TenantBudgetBasis(false, null, null, null);
+
+        var condominiumIds = units.Select(unit => unit.CondominiumId).Distinct().ToList();
+        var periods = await db.CondominiumPeriods
+            .Where(period => period.OrgId == scope.OrgId && condominiumIds.Contains(period.CondominiumId))
+            .ToListAsync(cancellationToken);
+        if (periods.Count == 0)
+            return new TenantBudgetBasis(false, null, null, null);
+
+        var today = DateOnly.FromDateTime(UtcNow);
+        var period = periods.FirstOrDefault(item => item.StartDate <= today && item.EndDate >= today)
+            ?? periods.OrderByDescending(item => item.StartDate).First();
+        var unitIds = units.Where(unit => unit.CondominiumId == period.CondominiumId).Select(unit => unit.Id).ToHashSet();
+        var unitCount = await db.CondominiumUnits.CountAsync(unit => unit.CondominiumId == period.CondominiumId, cancellationToken);
+        var statement = await db.CondominiumStatements
+            .AsNoTracking()
+            .Include(item => item.Lines)
+            .Where(item => item.CondominiumPeriodId == period.Id
+                && item.Kind == CondominiumStatementKind.Budget
+                && item.Status == CondominiumStatementStatus.Confirmed)
+            .SingleOrDefaultAsync(cancellationToken);
+        decimal? recoverable = null;
+        if (statement is not null)
+        {
+            var sum = statement.Lines
+                .Where(line => line.CondominiumUnitId is { } unitId && unitIds.Contains(unitId)
+                    || line.CondominiumUnitId is null && unitCount == 1)
+                .Where(line => ExpenseClassification.ChargesStored(
+                    line.ExpenseNature, line.TenantRecoverability, line.ReviewStatus, line.RecoverableAmount, line.Confidence))
+                .Sum(line => line.RecoverableAmount);
+            if (sum > 0m)
+                recoverable = CondominiumMoney.Round(sum);
+        }
+
+        return new TenantBudgetBasis(true, period.Id, period.Label, recoverable);
+    }
+
+    public async Task<CondominiumInstallmentDue> GetInstallmentDueAsync(
+        HostScope scope, Guid condominiumId, Guid installmentId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        await RequireCondominiumAsync(scope, condominiumId, cancellationToken);
+        var installment = await db.CondominiumInstallments
+            .FirstOrDefaultAsync(
+                item => item.Id == installmentId && item.OrgId == scope.OrgId && item.Period.CondominiumId == condominiumId,
+                cancellationToken)
+            ?? throw new NotFoundException("Installment not found")
+            {
+                Code = CondominiumErrorCodes.InstallmentNotFound,
+                MessageKey = "CondominiumInstallmentNotFound",
+            };
+        if (installment.Status is CondominiumInstallmentStatus.Cancelled or CondominiumInstallmentStatus.Paid)
+            throw new DomainRuleException(CondominiumErrorCodes.PaymentInvalid, "CondominiumPaymentInvalid");
+
+        var paid = await db.CondominiumPayments
+            .Where(payment => payment.CondominiumInstallmentId == installment.Id)
+            .SumAsync(payment => (decimal?)payment.Amount, cancellationToken) ?? 0m;
+        var due = CondominiumMoney.Round(installment.TotalAmount - paid);
+        if (due <= 0m)
+            throw new DomainRuleException(CondominiumErrorCodes.PaymentInvalid, "CondominiumPaymentInvalid");
+        return new CondominiumInstallmentDue(condominiumId, installment.CondominiumPeriodId, installment.Id, due);
+    }
+
+    public async Task<CondominiumPaymentView> RecordBankLinkInstallmentPaymentAsync(
+        HostScope scope,
+        Guid installmentId,
+        decimal amount,
+        DateOnly paidOn,
+        string externalSourceHash,
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        var installment = await db.CondominiumInstallments
+            .AsNoTracking()
+            .Where(item => item.Id == installmentId && item.OrgId == scope.OrgId)
+            .Select(item => new { item.CondominiumPeriodId, CondominiumId = item.Period.CondominiumId })
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw new NotFoundException("Installment not found")
+            {
+                Code = CondominiumErrorCodes.InstallmentNotFound,
+                MessageKey = "CondominiumInstallmentNotFound",
+            };
+        return await RecordPaymentAsync(
+            scope,
+            installment.CondominiumId,
+            installment.CondominiumPeriodId,
+            new RecordCondominiumPaymentCommand(installmentId, false, amount, paidOn, "SEPA", null, externalSourceHash, null),
+            userId,
+            cancellationToken);
     }
 
     public async Task<PriorYearBalanceView> RecordPriorYearBalanceAsync(
@@ -637,17 +815,130 @@ public sealed class CondominiumAccountingService(
         return statement;
     }
 
-    private CondominiumExpenseLine Line(
+    /// <summary>
+    /// A correction that only sends the new total keeps the previous lines and their recoverability, scaled to that
+    /// total. Replacing them with one owner-only line would zero the tenant charge and credit every advance.
+    /// The first consuntivo, which has no previous lines, stays one owner-only line until a breakdown is given.
+    /// </summary>
+    private async Task<IReadOnlyList<CondominiumExpenseLine>> FinalLinesAsync(
+        CondominiumPeriod period, Guid? unitId, ConfirmFinalCommand command, CancellationToken cancellationToken)
+    {
+        if (command.Lines is not { Count: > 0 })
+        {
+            var previous = await db.CondominiumExpenseLines
+                .AsNoTracking()
+                .Where(line => line.Statement.CondominiumPeriodId == period.Id
+                    && line.Statement.Kind == CondominiumStatementKind.Final
+                    && line.Statement.Status == CondominiumStatementStatus.Confirmed)
+                .OrderBy(line => line.Id)
+                .ToListAsync(cancellationToken);
+            if (previous.Count > 0 && previous.Sum(line => line.Amount) > 0m)
+                return ScaleLines(period, previous, command.Amount);
+
+            return
+            [
+                Line(period, unitId, $"Consuntivo {period.Label}", "consuntivo", command.Amount, CondominiumExpenseNature.Ordinary, TenantRecoverability.OwnerOnly, null, ExpenseClassificationSource.Manual, null, null, null, null),
+            ];
+        }
+
+        decimal sum = 0m;
+        var lines = new List<CondominiumExpenseLine>(command.Lines.Count);
+        foreach (var item in command.Lines)
+        {
+            if (string.IsNullOrWhiteSpace(item.Description)
+                || item.Amount <= 0m
+                || !CondominiumMoney.InRange(item.Amount)
+                || !Enum.IsDefined(item.Nature)
+                || !Enum.IsDefined(item.Source)
+                || item.Recoverability is { } recoverability && !Enum.IsDefined(recoverability)
+                || item.ReviewStatus is { } review && !Enum.IsDefined(review)
+                || item.CompetenceEnd < item.CompetenceStart
+                || item.RecoverablePercentage is < 0m or > 100m
+                || item.Confidence is < 0m or > 1m)
+            {
+                throw new DomainRuleException(CondominiumErrorCodes.StatementInvalid, "CondominiumStatementInvalid");
+            }
+
+            sum += item.Amount;
+            lines.Add(Line(
+                period,
+                unitId,
+                item.Description.Trim(),
+                item.Nature == CondominiumExpenseNature.Extraordinary ? "straordinario" : "consuntivo",
+                item.Amount,
+                item.Nature,
+                item.Recoverability,
+                item.RecoverablePercentage,
+                item.Source,
+                item.Confidence,
+                item.CompetenceStart,
+                item.CompetenceEnd,
+                item.ReviewStatus));
+        }
+
+        if (sum != command.Amount)
+            throw new DomainRuleException(CondominiumErrorCodes.StatementInvalid, "CondominiumStatementInvalid");
+        return lines;
+    }
+
+    private static IReadOnlyList<CondominiumExpenseLine> ScaleLines(
+        CondominiumPeriod period, IReadOnlyList<CondominiumExpenseLine> previous, decimal newTotal)
+    {
+        var oldCents = previous.Select(line => (long)(line.Amount * 100m)).ToArray();
+        var oldSum = oldCents.Sum();
+        var newCents = (long)(newTotal * 100m);
+        var scaled = new long[previous.Count];
+        long assigned = 0;
+        for (var i = 0; i < previous.Count - 1; i++)
+        {
+            scaled[i] = oldCents[i] * newCents / oldSum;
+            assigned += scaled[i];
+        }
+
+        scaled[^1] = newCents - assigned;
+        var lines = new List<CondominiumExpenseLine>(previous.Count);
+        for (var i = 0; i < previous.Count; i++)
+        {
+            if (scaled[i] <= 0)
+                continue;
+
+            var source = previous[i];
+            lines.Add(Line(
+                period,
+                source.CondominiumUnitId,
+                source.Description,
+                source.Category ?? "consuntivo",
+                scaled[i] / 100m,
+                source.ExpenseNature,
+                source.TenantRecoverability,
+                source.RecoverablePercentage,
+                source.ClassificationSource,
+                source.Confidence,
+                source.CompetenceStart,
+                source.CompetenceEnd,
+                source.ReviewStatus));
+        }
+
+        return lines;
+    }
+
+    private static CondominiumExpenseLine Line(
         CondominiumPeriod period,
         Guid? unitId,
         string description,
         string category,
         decimal amount,
         CondominiumExpenseNature nature,
-        TenantRecoverability? recoverability)
+        TenantRecoverability? recoverability,
+        decimal? percentage = null,
+        ExpenseClassificationSource source = ExpenseClassificationSource.Manual,
+        decimal? confidence = null,
+        DateOnly? competenceStart = null,
+        DateOnly? competenceEnd = null,
+        ExpenseReviewStatus? reviewStatus = null)
     {
-        var classification = ExpenseClassification.Apply(
-            nature, amount, recoverability, null, ExpenseClassificationSource.Manual, null);
+        var classification = ExpenseClassification.Apply(nature, amount, recoverability, percentage, source, confidence);
+        var review = reviewStatus ?? classification.ReviewStatus;
         return new CondominiumExpenseLine
         {
             OrgId = period.OrgId,
@@ -657,16 +948,24 @@ public sealed class CondominiumAccountingService(
                 : description,
             Category = category,
             Amount = amount,
-            CompetenceStart = period.StartDate,
-            CompetenceEnd = period.EndDate,
+            CompetenceStart = competenceStart ?? period.StartDate,
+            CompetenceEnd = competenceEnd ?? period.EndDate,
             ExpenseNature = nature,
             TenantRecoverability = classification.Recoverability,
             RecoverablePercentage = classification.Percentage,
-            RecoverableAmount = classification.RecoverableAmount,
-            ClassificationSource = ExpenseClassificationSource.Manual,
-            ReviewStatus = classification.ReviewStatus,
+            RecoverableAmount = review == ExpenseReviewStatus.Accepted ? classification.RecoverableAmount : 0m,
+            ClassificationSource = source,
+            Confidence = confidence,
+            ReviewStatus = review,
         };
     }
+
+    private static NotFoundException PropertyNotFound() =>
+        new("Property not found")
+        {
+            Code = CondominiumErrorCodes.PropertyNotFound,
+            MessageKey = "CondominiumPropertyNotFound",
+        };
 
     private async Task<CondominiumPeriod> EnsurePeriodAsync(Condominium condominium, string? label, CancellationToken cancellationToken)
     {

@@ -28,6 +28,9 @@ public class BankLinkPayment : ITenantOwned
     /// <summary>The rent due this debit was started for. Null for a transfer that is not a rent installment.</summary>
     public Guid? RentLedgerEntryId { get; set; }
 
+    /// <summary>The condominium installment this debit pays. Null when the debit is not for the condominium.</summary>
+    public Guid? CondominiumInstallmentId { get; set; }
+
     public BankLinkPayer Payer { get; set; }
 
     [Required, MaxLength(StripeIdMaxLength)]

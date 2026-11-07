@@ -294,6 +294,8 @@ public class AppDbContext(
     public DbSet<RentLedgerEntry> RentLedgerEntries { get; set; } = null!;
     public DbSet<RentLedgerComponent> RentLedgerComponents { get; set; } = null!;
     public DbSet<LeaseCondominiumTerms> LeaseCondominiumTerms { get; set; } = null!;
+    public DbSet<TenantCondominiumSettlement> TenantCondominiumSettlements { get; set; } = null!;
+    public DbSet<TenantExpenseAllocation> TenantExpenseAllocations { get; set; } = null!;
 
     public DbSet<Condominium> Condominiums { get; set; } = null!;
     public DbSet<CondominiumUnit> CondominiumUnits { get; set; } = null!;
@@ -986,6 +988,9 @@ public class AppDbContext(
             .HasIndex(p => p.OrgId);
 
         modelBuilder.Entity<BankLinkPayment>()
+            .HasIndex(p => p.CondominiumInstallmentId);
+
+        modelBuilder.Entity<BankLinkPayment>()
             .HasOne<Org>()
             .WithMany()
             .HasForeignKey(p => p.OrgId)
@@ -1021,6 +1026,17 @@ public class AppDbContext(
 
         modelBuilder.Entity<RentLedgerComponent>()
             .HasIndex(c => c.OrgId);
+
+        modelBuilder.Entity<RentLedgerComponent>()
+            .HasOne<TenantCondominiumSettlement>()
+            .WithMany()
+            .HasForeignKey(c => c.TenantSettlementId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<RentLedgerComponent>()
+            .HasIndex(c => c.TenantSettlementId)
+            .IsUnique()
+            .HasFilter("\"TenantSettlementId\" IS NOT NULL");
 
         // One current condominium clause per lease. The source document is optional and cleared when that document goes.
         modelBuilder.Entity<LeaseCondominiumTerms>()
@@ -2178,6 +2194,37 @@ public class AppDbContext(
                 .HasFilter("\"ExternalSourceHash\" IS NOT NULL");
             entity.HasIndex(payment => payment.CondominiumPeriodId);
             entity.HasIndex(payment => payment.CondominiumInstallmentId);
+        });
+
+        modelBuilder.Entity<TenantCondominiumSettlement>(entity =>
+        {
+            entity.HasOne(settlement => settlement.LeaseContract).WithMany().HasForeignKey(settlement => settlement.LeaseContractId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(settlement => settlement.Period).WithMany().HasForeignKey(settlement => settlement.CondominiumPeriodId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(settlement => settlement.Org).WithMany().HasForeignKey(settlement => settlement.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(settlement => settlement.RecoverableFinalAmount).HasPrecision(18, 2);
+            entity.Property(settlement => settlement.AdvancesAccountedAmount).HasPrecision(18, 2);
+            entity.Property(settlement => settlement.PriorTenantBalanceAmount).HasPrecision(18, 2);
+            entity.Property(settlement => settlement.SettlementAmount).HasPrecision(18, 2);
+            entity.Property(settlement => settlement.Direction).HasConversion<int>();
+            entity.Property(settlement => settlement.Disposition).HasConversion<int>();
+            entity.Property(settlement => settlement.AllocationRule).HasConversion<int>();
+            entity.Property(settlement => settlement.Status).HasConversion<int>();
+            entity.HasIndex(settlement => new { settlement.LeaseContractId, settlement.StatementId }).IsUnique();
+            entity.HasIndex(settlement => new { settlement.OrgId, settlement.CondominiumPeriodId });
+        });
+
+        modelBuilder.Entity<TenantExpenseAllocation>(entity =>
+        {
+            entity.HasOne(allocation => allocation.Settlement).WithMany(settlement => settlement.Allocations).HasForeignKey(allocation => allocation.TenantCondominiumSettlementId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(allocation => allocation.LeaseContract).WithMany().HasForeignKey(allocation => allocation.LeaseContractId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(allocation => allocation.ExpenseLine).WithMany().HasForeignKey(allocation => allocation.CondominiumExpenseLineId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(allocation => allocation.Org).WithMany().HasForeignKey(allocation => allocation.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(allocation => allocation.BaseAmount).HasPrecision(18, 2);
+            entity.Property(allocation => allocation.AllocatedAmount).HasPrecision(18, 2);
+            entity.Property(allocation => allocation.Rule).HasConversion<int>();
+            entity.Property(allocation => allocation.Status).HasConversion<int>();
+            entity.HasIndex(allocation => allocation.TenantCondominiumSettlementId);
+            entity.HasIndex(allocation => allocation.OrgId);
         });
     }
 
