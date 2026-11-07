@@ -499,6 +499,12 @@ public static class ServiceCollectionExtensions
             client.Timeout = TimeSpan.FromSeconds(30);
             client.DefaultRequestHeaders.UserAgent.ParseAdd("CasaZen-ape-register/1.0");
         });
+        services.AddOptions<WhatsAppOptions>().BindConfiguration(WhatsAppOptions.SectionName);
+        services.AddHttpClient<IWhatsAppSender, WhatsAppCloudSender>(client =>
+        {
+            client.BaseAddress = new Uri("https://graph.facebook.com/");
+            client.Timeout = TimeSpan.FromSeconds(20);
+        });
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
         services.AddScoped<IHostResourceLookup, HostResourceLookup>();
         services.AddScoped<IAdminAccessAuditService, AdminAccessAuditService>();

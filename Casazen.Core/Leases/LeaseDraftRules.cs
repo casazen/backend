@@ -94,6 +94,12 @@ public static partial class LeaseDraftRules
 
     private static readonly EmailAddressAttribute EmailRule = new();
 
+    [GeneratedRegex(@"^\+[1-9]\d{7,14}$")]
+    private static partial Regex InternationalPhoneRule();
+
+    [GeneratedRegex(@"^\+[0-9\s().-]+$")]
+    private static partial Regex InternationalPhoneCharactersRule();
+
     [GeneratedRegex("^[A-Za-z]{2}$")]
     private static partial Regex TwoLettersRule();
 
@@ -105,6 +111,7 @@ public static partial class LeaseDraftRules
         && Clean(party.Citizenship) is null
         && Clean(party.Residence) is null
         && Clean(party.ContactEmail) is null
+        && Clean(party.ContactPhone) is null
         && Clean(party.DocumentsVerifiedOn) is null;
 
     /// <summary>
@@ -130,7 +137,19 @@ public static partial class LeaseDraftRules
             problems.Add("residence");
         if (Clean(party.ContactEmail) is { } email && (email.Length > 255 || !EmailRule.IsValid(email)))
             problems.Add("contactEmail");
+        if (Clean(party.ContactPhone) is { } phone
+            && (!InternationalPhoneCharactersRule().IsMatch(phone) || !InternationalPhoneRule().IsMatch(NormalizePhone(phone))))
+        {
+            problems.Add("contactPhone");
+        }
         return problems;
+    }
+
+    /// <summary>Normalizes a phone for storage and WhatsApp: leading plus and digits only.</summary>
+    public static string NormalizePhone(string phone)
+    {
+        var clean = phone.Trim();
+        return (clean.StartsWith('+') ? "+" : string.Empty) + string.Concat(clean.Where(char.IsDigit));
     }
 
     public static bool IsPartyComplete(LeaseDraftParty party) => PartyProblems(party).Count == 0;

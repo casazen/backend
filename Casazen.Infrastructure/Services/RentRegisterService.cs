@@ -75,6 +75,8 @@ public sealed class RentRegisterService(
                     TenantAnonymized = e.LeaseContract.Parties.Where(p => p.Role == PartyRole.Tenant).OrderBy(p => p.Position).Select(p => p.AnonymizedAt != null).FirstOrDefault(),
                     HasTenantEmail = e.LeaseContract.Parties.Any(p =>
                         p.Role == PartyRole.Tenant && p.AnonymizedAt == null && p.ContactEmail != ""),
+                    HasTenantPhone = e.LeaseContract.Parties.Any(p =>
+                        p.Role == PartyRole.Tenant && p.AnonymizedAt == null && p.ContactPhone != null && p.ContactPhone != ""),
                     e.PeriodStart,
                     e.PeriodEnd,
                     e.DueDate,
@@ -120,6 +122,10 @@ public sealed class RentRegisterService(
                 r.ReminderCount,
                 RentInstallmentRules.IsRemindable(r.Status)
                     && r.HasTenantEmail
+                    && (r.LastReminderAt is null || r.LastReminderAt <= reminderAllowedFrom),
+                r.HasTenantPhone,
+                RentInstallmentRules.IsRemindable(r.Status)
+                    && r.HasTenantPhone
                     && (r.LastReminderAt is null || r.LastReminderAt <= reminderAllowedFrom)))
             .ToList();
 

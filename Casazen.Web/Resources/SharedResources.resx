@@ -2857,6 +2857,9 @@
   <data name="RentReminderNotSent" xml:space="preserve">
     <value>Il sollecito non è stato inviato: il servizio email non è disponibile. Riprova più tardi.</value>
   </data>
+  <data name="RentWhatsAppReminderNotSent" xml:space="preserve">
+    <value>Il promemoria WhatsApp non è stato inviato: controlla il numero del conduttore e la configurazione WhatsApp Business.</value>
+  </data>
   <data name="RentReminderNoteTooLong" xml:space="preserve">
     <value>La nota può contenere al massimo 300 caratteri.</value>
   </data>

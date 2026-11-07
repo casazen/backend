@@ -313,6 +313,26 @@ public static partial class LeaseContractTextParser
         return (null, 0);
     }
 
+    // The four characters at positions 12-15 of an Italian fiscal code identify the place of birth. Italian comuni use
+    // a cadastral code (for example H501 for Rome); foreign states use a code beginning with Z. When the contract also
+    // states that the person was born in that introduction, an Italian place is enough to prefill Italian citizenship as
+    // a value for the user to check. A foreign birthplace is deliberately not turned into citizenship: birthplace and
+    // citizenship need not coincide, and the Z code alone cannot prove the person's nationality.
+    [GeneratedRegex(@"\bnat[oa]\s+(?:a|in)\b", Options, Timeout)]
+    private static partial Regex BirthPlaceLabel();
+
+    private static (string? Value, int Confidence) InferCitizenshipFromBirthPlace(
+        string flat, int start, int end, string fiscalCode)
+    {
+        if (start >= end || fiscalCode.Length != 16 || fiscalCode[11] == 'Z'
+            || !BirthPlaceLabel().IsMatch(flat[start..end]))
+        {
+            return (null, 0);
+        }
+
+        return ("IT", AcceptedConfidence);
+    }
+
     // ---- all together ----------------------------------------------------------------------------------------------------
 
     /// <summary>
@@ -372,6 +392,9 @@ public static partial class LeaseContractTextParser
             var (first, last, nameConfidence) = AssignName(intro.NameWords, intro.Code.Code);
             var (residence, residenceConfidence) = ReadResidence(flat, intro.Start, windowEnds[i], intro.Code.Index);
             var (citizenship, citizenshipConfidence) = ReadCitizenship(flat, intro.Start, windowEnds[i]);
+            if (citizenship is null)
+                (citizenship, citizenshipConfidence) = InferCitizenshipFromBirthPlace(
+                    flat, intro.Start, windowEnds[i], intro.Code.Code);
 
             parties.Add(new ReadParty
             {

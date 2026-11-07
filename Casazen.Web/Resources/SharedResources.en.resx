@@ -2857,6 +2857,9 @@
   <data name="RentReminderNotSent" xml:space="preserve">
     <value>The reminder was not sent: the email service is not available. Try again later.</value>
   </data>
+  <data name="RentWhatsAppReminderNotSent" xml:space="preserve">
+    <value>The WhatsApp reminder was not sent: check the tenant's number and the WhatsApp Business configuration.</value>
+  </data>
   <data name="RentReminderNoteTooLong" xml:space="preserve">
     <value>The note can have at most 300 characters.</value>
   </data>

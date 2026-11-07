@@ -46,7 +46,9 @@ public sealed partial class RentBillingService(
     PublicSiteLinks links,
     IConfiguration configuration,
     ILogger<RentBillingService> logger,
-    TimeProvider? timeProvider = null) : IRentBillingService
+    TimeProvider? timeProvider = null,
+    IWhatsAppSender? whatsAppSender = null,
+    Microsoft.Extensions.Options.IOptions<Casazen.Core.Options.WhatsAppOptions>? whatsAppOptions = null) : IRentBillingService
 {
     private const decimal MaxInstallmentAmount = 1_000_000m;
     private const int MaxNoteLength = 500;

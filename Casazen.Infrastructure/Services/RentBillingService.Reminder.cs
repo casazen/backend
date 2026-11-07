@@ -15,6 +15,47 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public sealed partial class RentBillingService
 {
+    public async Task<RentWhatsAppReminderResult> SendWhatsAppReminderAsync(
+        Guid leaseId, Guid installmentId, string? note, CancellationToken cancellationToken = default)
+    {
+        var cleanNote = NormalizeReminderNote(note);
+        var intervalHours = RentCharges.GetReminderIntervalHours(configuration);
+        var lease = await LoadLeaseAsync(leaseId, cancellationToken);
+        await using var transaction = await LockLeaseAsync(leaseId, cancellationToken);
+        var entry = await FindEntryAsync(leaseId, installmentId, cancellationToken);
+        var schedule = await db.RentSchedules.AsNoTracking().SingleAsync(s => s.Id == entry.RentScheduleId, cancellationToken);
+        EnsurePayable(entry, schedule);
+
+        var now = TruncateToMicroseconds(UtcNow);
+        if (entry.LastReminderAt is { } last && now < last.AddHours(intervalHours))
+            throw new DomainRuleException(RentRegisterErrorCodes.ReminderTooSoon, "RentReminderTooSoon", intervalHours);
+
+        var property = lease.Property?.Name ?? string.Empty;
+        var due = entry.DueDate.ToString("dd/MM/yyyy", System.Globalization.CultureInfo.InvariantCulture);
+        var amount = entry.AmountDue.ToString("0.00", System.Globalization.CultureInfo.GetCultureInfo("it-IT"));
+        var settings = whatsAppOptions?.Value ?? new Casazen.Core.Options.WhatsAppOptions();
+        var sent = 0;
+        foreach (var tenant in Tenants(lease).Where(tenant => !string.IsNullOrWhiteSpace(tenant.ContactPhone)))
+        {
+            var result = whatsAppSender is null
+                ? new WhatsAppSendResult(false)
+                : await whatsAppSender.SendTemplateAsync(
+                tenant.ContactPhone!, settings.RentReminderTemplate, settings.LanguageCode,
+                [new(FullName(tenant)), new(amount), new(property), new(due), new(cleanNote ?? "-")], cancellationToken);
+            if (result.Sent) sent++;
+        }
+        if (sent == 0)
+            throw new DomainRuleException(RentRegisterErrorCodes.ReminderNotSent, "RentWhatsAppReminderNotSent");
+
+        entry.LastReminderAt = now;
+        entry.ReminderCount++;
+        entry.UpdatedAt = now;
+        await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        logger.LogInformation("WhatsApp rent reminder of installment {InstallmentId} accepted for {Recipients} tenants", installmentId, sent);
+        return new RentWhatsAppReminderResult(installmentId, now, sent, now.AddHours(intervalHours));
+    }
+
     public async Task<RentReminderResult> SendReminderAsync(
         Guid leaseId, Guid installmentId, string? note, CancellationToken cancellationToken = default)
     {

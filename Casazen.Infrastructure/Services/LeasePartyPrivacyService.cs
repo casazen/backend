@@ -252,6 +252,7 @@ public sealed class LeasePartyPrivacyService(
         party.FiscalCode = AnonymizedValue;
         party.Citizenship = string.Empty;
         party.ContactEmail = AnonymizedEmail(party.Id);
+        party.ContactPhone = null;
         party.Residence = null;
         party.DocumentsVerifiedOn = null;
         party.AnonymizedAt ??= now;

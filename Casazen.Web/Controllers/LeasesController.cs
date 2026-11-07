@@ -190,7 +190,7 @@ public class LeasesController(
                 dto.EndDate,
                 dto.MonthlyRent,
                 dto.Parties.Select(p => new CreatePartyRequest(
-                    p.Role, p.FirstName, p.LastName, p.FiscalCode, p.Citizenship, p.ContactEmail)),
+                    p.Role, p.FirstName, p.LastName, p.FiscalCode, p.Citizenship, p.ContactEmail, p.ContactPhone)),
                 dto.CanoneConcordato?.ToCharacteristics())
             {
                 ContractType = dto.ContractType,
@@ -880,7 +880,8 @@ public record CreatePartyDto(
     [param: Required, MaxLength(100), MinLength(1)] string LastName,
     [param: Required, MaxLength(16), MinLength(1)] string FiscalCode,
     [param: Required, MaxLength(2), MinLength(2), RegularExpression("^[A-Za-z]{2}$", ErrorMessage = "LeasePartyCitizenshipInvalid")] string Citizenship,
-    [param: Required, EmailAddress] string ContactEmail);
+    [param: Required, EmailAddress] string ContactEmail,
+    [param: MaxLength(32), RegularExpression(@"^\+[0-9\s().-]+$", ErrorMessage = "InvalidPhone")] string? ContactPhone = null);
 
 /// <summary>Stipula date of a lease already signed (calendar date, not after today).</summary>
 public record DeclareStipulaDto([param: Required] DateTime? StipulaDate);
