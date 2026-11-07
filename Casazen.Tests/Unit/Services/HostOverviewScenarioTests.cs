@@ -52,8 +52,9 @@ public class HostOverviewScenarioTests
 
         async Task<int> CountAsync(BookingSearchCriteria criteria) => (await Search(db).CountAsync(world.OrgWide, criteria)).All;
 
+        // The channels tell the portals apart (NF-78): the cancelled Expedia stay of each property is Expedia's, not «other» (a local source).
         Assert.Equal(
-            new[] { 2, 4, 6, 4, 2 },
+            new[] { 2, 4, 6, 2, 2, 2 },
             new[]
             {
                 await CountAsync(new BookingSearchCriteria(Channels: [BookingChannel.Airbnb])),
@@ -61,6 +62,7 @@ public class HostOverviewScenarioTests
                 await CountAsync(new BookingSearchCriteria(Channels: [BookingChannel.Manual])),
                 await CountAsync(new BookingSearchCriteria(Channels: [BookingChannel.Other])),
                 await CountAsync(new BookingSearchCriteria(Channels: [BookingChannel.BookingCom])),
+                await CountAsync(new BookingSearchCriteria(Channels: [BookingChannel.Expedia])),
             });
         Assert.Equal(
             new[] { 10, 2, 2, 2, 2 },

@@ -756,6 +756,27 @@
   <data name="CalendarTooManyProperties" xml:space="preserve">
     <value>You can ask for at most {0} properties at a time.</value>
   </data>
+  <data name="CalendarDayRuleInvalidPrice" xml:space="preserve">
+    <value>The price of a night must be between {0} and {1}, with at most two decimals.</value>
+  </data>
+  <data name="CalendarDayRuleInvalidStay" xml:space="preserve">
+    <value>A stay must be between {0} and {1} nights, and the maximum cannot be below the minimum.</value>
+  </data>
+  <data name="CalendarDayRuleInvalidAdvance" xml:space="preserve">
+    <value>The booking advance must be between {0} and {1} days, and the maximum cannot be below the minimum.</value>
+  </data>
+  <data name="CalendarDayRuleRangeInvalid" xml:space="preserve">
+    <value>The last day of the range cannot be before the first.</value>
+  </data>
+  <data name="CalendarDayRuleRangeTooLong" xml:space="preserve">
+    <value>A change can cover at most {0} days: choose a shorter range.</value>
+  </data>
+  <data name="CalendarDayRuleInPast" xml:space="preserve">
+    <value>The days you chose are already over: choose days from today onwards.</value>
+  </data>
+  <data name="CalendarDayRuleNothingToChange" xml:space="preserve">
+    <value>Choose at least one value to change and at least one day.</value>
+  </data>
   <data name="CalendarInvalidRequest" xml:space="preserve">
     <value>The dates or the properties asked for are not valid: check the dates (from 2000 to 2100) and the property ids.</value>
   </data>
@@ -1314,6 +1335,21 @@
   </data>
   <data name="DirectBookingMinNightsNotMet" xml:space="preserve">
     <value>The minimum stay for this property is {0} nights.</value>
+  </data>
+  <data name="DirectBookingArrivalClosed" xml:space="preserve">
+    <value>Arrivals are not possible on this date: choose another arrival day.</value>
+  </data>
+  <data name="DirectBookingDepartureClosed" xml:space="preserve">
+    <value>Departures are not possible on this date: choose another departure day.</value>
+  </data>
+  <data name="DirectBookingMaxNightsExceeded" xml:space="preserve">
+    <value>The maximum stay for this arrival is {0} nights.</value>
+  </data>
+  <data name="DirectBookingAdvanceTooShort" xml:space="preserve">
+    <value>This date must be booked at least {0} days ahead.</value>
+  </data>
+  <data name="DirectBookingAdvanceTooLong" xml:space="preserve">
+    <value>This date can be booked at most {0} days ahead.</value>
   </data>
   <data name="DirectBookingMarketingConsentUnavailable" xml:space="preserve">
     <value>Consent to receive offers is not available right now: try again without selecting it.</value>
@@ -2177,7 +2213,7 @@
     <value>Invalid view: use one of the names all, toConfirm, upcoming, inProgress, completed or cancelled.</value>
   </data>
   <data name="BookingListInvalidChannel" xml:space="preserve">
-    <value>Invalid channel: use the names Direct, Manual, Airbnb, BookingCom or Other, repeated or separated by commas.</value>
+    <value>Invalid channel: use the names Direct, Manual, Airbnb, BookingCom, Expedia, Vrbo, TripAdvisor, Agoda or Other (every other source), repeated or separated by commas.</value>
   </data>
   <data name="BookingListInvalidCheckInStatus" xml:space="preserve">
     <value>Invalid check-in status: use the names NotSent, Sent, InProgress, Completed or Expired, repeated or separated by commas.</value>

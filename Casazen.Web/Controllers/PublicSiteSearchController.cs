@@ -23,7 +23,7 @@ public class PublicSiteSearchController(IOrgService orgService, IPublicSiteSearc
 {
     /// <summary>
     /// Every published house of the site for a stay, in one call (<c>GET api/public/orgs/{slug}/stays</c>). For each house: the card, whether it is
-    /// free for the stay or why not (<c>busy</c>, <c>min_nights</c>, <c>guests</c>, <c>pets</c>, <c>past</c>, <c>not_bookable</c>), the first free
+    /// free for the stay or why not (<c>busy</c>, <c>min_nights</c>, <c>guests</c>, <c>pets</c>, <c>past</c>, <c>not_bookable</c> and, from the rules of the nights of the house (NF-36), <c>arrival_closed</c>, <c>departure_closed</c>, <c>max_nights</c>, <c>advance</c>), the first free
     /// check-in day for the houses that are taken, and the price: the total of the stay as the quote of the checkout adds it up (nights, cleaning,
     /// tourist tax when it can be calculated; <c>includesTouristTax</c> says <c>estimated</c> while the ages of the children are unknown) and the
     /// average price per night. The houses that are not free stay in the list, after the free ones. When no house is free, up to three nearby

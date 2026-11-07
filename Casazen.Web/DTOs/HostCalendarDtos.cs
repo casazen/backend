@@ -124,7 +124,7 @@ public sealed class HostCalendarItemDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? NumberOfGuests { get; init; }
 
-    /// <summary>Where it came from: <c>Direct</c> (the booking site), <c>Manual</c>, <c>Airbnb</c>, <c>BookingCom</c> or <c>Other</c>. Also on an <c>Ical</c> item: the portal of its calendar.</summary>
+    /// <summary>Where it came from: <c>Direct</c> (the booking site), <c>Manual</c>, <c>Airbnb</c>, <c>BookingCom</c>, <c>Expedia</c>, <c>Vrbo</c>, <c>TripAdvisor</c>, <c>Agoda</c> or <c>Other</c> (every other source). Also on an <c>Ical</c> item: the portal of its calendar (<c>Airbnb</c>, <c>BookingCom</c> or <c>Other</c>).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public BookingChannel? Channel { get; init; }
 

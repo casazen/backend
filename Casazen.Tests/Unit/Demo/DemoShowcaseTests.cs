@@ -836,6 +836,47 @@ public class DemoShowcaseTests
         Assert.InRange(activation.RemindInDays, 1, OnboardingPlanLimits.MaxRemindDays);
     }
 
+    /// <summary>
+    /// NF-36 (E08/F05/US01/T02): the scenario has template data (a published house with day rules), every rule is one the service would store (the
+    /// same function decides), the nights are ahead of the demo stays so a rule never sits on a booking, and the showcase shows each kind of rule.
+    /// </summary>
+    [Fact]
+    public void CalendarDayRules_TheDemoHouseHasRulesTheServiceWouldStore_OnNightsWithoutAStay()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.CalendarDayRules, DemoShowcaseCatalog.Scenarios);
+        var house = Assert.Single(
+            DemoShowcaseCatalog.Properties,
+            p => p.Scenarios.Contains(DemoShowcaseCatalog.Scenario.CalendarDayRules));
+        var rules = house.DayRules ?? [];
+
+        Assert.True(house.Publish);
+        Assert.NotEmpty(rules);
+        Assert.Equal(rules.Count, rules.Select(rule => rule.OffsetDays).Distinct().Count());
+        foreach (var rule in rules)
+        {
+            var values = new DayRuleValues(
+                rule.Price, rule.MinNights, rule.MaxNights, rule.ClosedToArrival, rule.ClosedToDeparture, rule.MinAdvanceDays, rule.MaxAdvanceDays);
+            Assert.True(values.HasAny, $"The rule of night +{rule.OffsetDays} has no value: a row exists only while a value is set.");
+            Assert.Null(DayRuleRules.Validate(values));
+            Assert.True(rule.Price is not { } price || price == DayRuleRules.RoundPrice(price));
+            Assert.True(rule.OffsetDays > 0, "A rule of the demo is for a night ahead of the reset.");
+        }
+
+        // The nights of the stays of the house carry no rule.
+        var stayNights = house.Bookings
+            .SelectMany(booking => Enumerable.Range(booking.CheckInOffsetDays, booking.Nights))
+            .ToHashSet();
+        Assert.DoesNotContain(rules, rule => stayNights.Contains(rule.OffsetDays));
+
+        // Each kind of rule is on show: a price of its own, a longer minimum stay, a closed arrival, a closed departure, a maximum stay and an advance.
+        Assert.Contains(rules, rule => rule.Price is not null);
+        Assert.Contains(rules, rule => rule.MinNights is > 1);
+        Assert.Contains(rules, rule => rule.ClosedToArrival);
+        Assert.Contains(rules, rule => rule.ClosedToDeparture);
+        Assert.Contains(rules, rule => rule.MaxNights is not null);
+        Assert.Contains(rules, rule => rule.MinAdvanceDays is not null || rule.MaxAdvanceDays is not null);
+    }
+
     [Fact]
     public void FiscalIssuerProfile_TheDemoOrgHasACompleteProfileOfItsIssuer_InventedAndNeedingNeitherTheFlagNorAConnection()
     {

@@ -154,7 +154,7 @@ public class BookingsControllerListTests
     [InlineData("view", "done", BookingsController.InvalidViewCode)]
     [InlineData("view", "1", BookingsController.InvalidViewCode)]
     [InlineData("view", "upcoming,completed", BookingsController.InvalidViewCode)]
-    [InlineData("channel", "Expedia", BookingsController.InvalidChannelCode)]
+    [InlineData("channel", "Pinterest", BookingsController.InvalidChannelCode)]
     [InlineData("channel", "Airbnb,Foo", BookingsController.InvalidChannelCode)]
     [InlineData("checkInStatus", "Done", BookingsController.InvalidCheckInStatusCode)]
     [InlineData("checkInStatus", "3", BookingsController.InvalidCheckInStatusCode)]
@@ -299,7 +299,7 @@ public class BookingsControllerListTests
         var rows = page.Items.ToList();
         Assert.Equal(("Airbnb", "Partial", 120m, "DaInviareManualmente"), (rows[0].Channel, rows[0].PaymentState, rows[0].PaidAmount, rows[0].AlloggiatiStatus));
         // The exact source stays; the channel is the group the filter speaks of.
-        Assert.Equal(("Expedia", "Other", "Paid", (decimal?)null, (string?)null), (rows[1].Source, rows[1].Channel, rows[1].PaymentState, rows[1].PaidAmount, rows[1].AlloggiatiStatus));
+        Assert.Equal(("Expedia", "Expedia", "Paid", (decimal?)null, (string?)null), (rows[1].Source, rows[1].Channel, rows[1].PaymentState, rows[1].PaidAmount, rows[1].AlloggiatiStatus));
         Assert.Equal(("Manual", "None", (decimal?)null, (string?)null), (rows[2].Channel, rows[2].PaymentState, rows[2].PaidAmount, rows[2].AlloggiatiStatus));
         // Still the booking, as everywhere.
         Assert.Equal("ABCDE-FGHJK", rows[0].BookingCode);
@@ -377,7 +377,7 @@ public class BookingsControllerListTests
     public async Task Counts_TheSameWordsAreRefusedAsInTheSearch()
     {
         var invalidStatus = await CountsAsync(CreateController(), status: ["Done"]);
-        var invalidChannel = await CountsAsync(CreateController(), channel: ["Expedia"]);
+        var invalidChannel = await CountsAsync(CreateController(), channel: ["Pinterest"]);
         var invalidCheckIn = await CountsAsync(CreateController(), checkInStatus: ["Done"]);
         var invalidRange = await CountsAsync(CreateController(), arrivalFrom: new DateOnly(2026, 11, 1), arrivalTo: new DateOnly(2026, 10, 1));
 

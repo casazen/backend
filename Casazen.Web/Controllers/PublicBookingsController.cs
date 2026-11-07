@@ -160,7 +160,9 @@ public class PublicBookingsController(
     /// promised (A3-16). <c>lines</c> (DB-03) is the breakdown in cents: the ordinary nights, the weekend nights when the
     /// property charges a surcharge for them, the cleaning fee, the tourist tax when it could be calculated, and the total
     /// that the lines before it add up to. Errors: 422 <c>booking_too_many_guests</c>, <c>direct_booking_invalid_stay</c>,
-    /// <c>direct_booking_min_nights_not_met</c> (shorter than the minimum stay of the property),
+    /// <c>direct_booking_min_nights_not_met</c> (shorter than the minimum stay of the arrival date: the day rule's, else the property's),
+    /// <c>direct_booking_arrival_closed</c>, <c>direct_booking_departure_closed</c>, <c>direct_booking_max_nights_exceeded</c>,
+    /// <c>direct_booking_advance_too_short</c>, <c>direct_booking_advance_too_long</c> (the rules of the nights, NF-36),
     /// <c>property_not_bookable_in_long_mode</c> (the property is let long-term, PM-01); 404.
     /// </summary>
     [HttpPost("quote")]
@@ -195,6 +197,8 @@ public class PublicBookingsController(
     /// <c>booking_too_many_guests</c>, <c>direct_booking_consent_outdated</c>, <c>direct_booking_invalid_payment_option</c>,
     /// <c>direct_booking_deferred_payment_unavailable</c>, <c>tourist_tax_child_ages_required</c>,
     /// <c>onsite_request_too_many_nights</c>, <c>direct_booking_min_nights_not_met</c> (DB-03),
+    /// <c>direct_booking_arrival_closed</c>, <c>direct_booking_departure_closed</c>, <c>direct_booking_max_nights_exceeded</c>,
+    /// <c>direct_booking_advance_too_short</c>, <c>direct_booking_advance_too_long</c> (E08/F05/US01/T03: the rules of the nights, as the quote),
     /// <c>direct_booking_marketing_consent_unavailable</c> (DB-03: <c>marketingConsent</c>, <c>marketingConsentEmail</c> or
     /// <c>marketingConsentWhatsApp</c> without a versioned text), <c>direct_booking_whatsapp_requires_phone</c> (E07/F04/US01/T02: the WhatsApp
     /// consent without a phone number that can be reached), <c>direct_booking_soft_opt_in_notice_outdated</c> (409, T02: the

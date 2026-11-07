@@ -417,6 +417,12 @@ public class AppDbContext(
     public DbSet<OnboardingPilotMember> OnboardingPilotMembers { get; set; } = null!;
     public DbSet<PropertyOnboardingData> PropertyOnboardingData { get; set; } = null!;
 
+    // The price and the rules of each night of a property, and the changes of the calendar the host sent to the channel manager with their chunks
+    // (E08/F05/US01/T01, NF-36): dates, numbers, states and stable codes, no personal data
+    public DbSet<PropertyDayRule> PropertyDayRules { get; set; } = null!;
+    public DbSet<CalendarChangeProcess> CalendarChangeProcesses { get; set; } = null!;
+    public DbSet<CalendarChangeChunk> CalendarChangeChunks { get; set; } = null!;
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         base.ConfigureConventions(configurationBuilder);
@@ -1937,6 +1943,14 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new OnboardingAssistRequestConfiguration());
         modelBuilder.ApplyConfiguration(new OnboardingPilotMemberConfiguration());
         modelBuilder.ApplyConfiguration(new PropertyOnboardingDataConfiguration());
+
+        // ─── Per-date prices and restrictions (NF-36, E08/F05/US01/T01) ─────────────────────────────────────────────
+        // The price and the rules of a night (one row per property and stay date, the values bounded by a check constraint), and the changes of
+        // the calendar sent to the channel manager (the process the host follows and its chunks). Each row carries its org (restrict) and the
+        // tenant query filter applies to all of them, below, as to every ITenantOwned entity; the rows go with their property (cascade).
+        modelBuilder.ApplyConfiguration(new PropertyDayRuleConfiguration());
+        modelBuilder.ApplyConfiguration(new CalendarChangeProcessConfiguration());
+        modelBuilder.ApplyConfiguration(new CalendarChangeChunkConfiguration());
 
         // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the
         // tenant one) so it composes independently: IgnoreQueryFilters([TenantQueryFilter]) (entitlement counts,
