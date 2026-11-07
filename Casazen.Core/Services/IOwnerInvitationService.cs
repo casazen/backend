@@ -35,6 +35,12 @@ public static class OwnerInvitationErrors
 
     /// <summary>422: the e-mail could not be queued (the provider is not configured, or there is no address); the invitation was withdrawn.</summary>
     public const string EmailNotQueued = "owner_invitation_email_not_queued";
+
+    /// <summary>
+    /// 422: the owner also holds a period on a property the caller (a partial reach) does not reach, and the link would open all of them. The code
+    /// is the one of the owner import and of the exclusion of the preview.
+    /// </summary>
+    public const string SharedOutsideReach = "owner_shared_outside_reach";
 }
 
 /// <summary>
@@ -162,6 +168,12 @@ public static class OwnerInvitationExclusions
 
     /// <summary>The id is not an owner of the caller (another org's, outside the reach, or unknown: one answer).</summary>
     public const string OwnerNotFound = "owner_not_found";
+
+    /// <summary>
+    /// The owner also holds periods on properties the caller (a partial reach) does not reach: the acceptance would open all of them, so only a
+    /// caller that reaches them all offers the link.
+    /// </summary>
+    public const string SharedOutsideReach = "owner_shared_outside_reach";
 }
 
 /// <summary>How many invitations the org has sent in the last 24 hours against the limit of the day.</summary>

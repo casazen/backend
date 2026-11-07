@@ -73,6 +73,8 @@ public class OwnerInvitationService(
             };
         }
 
+        await EnsureNotSharedOutsideReachAsync(scope, propertyOwnerId, cancellationToken);
+
         var now = Now();
         if (await UsedTodayAsync(orgId, now, cancellationToken) >= MaxInvitationsPerDay)
         {
@@ -114,9 +116,12 @@ public class OwnerInvitationService(
             throw new DomainRuleException(OwnerInvitationErrors.SelectionEmpty, "OwnerInvitationSelectionEmpty");
 
         var now = Now();
-        var report = await onboarding.GetReadinessAsync(scope, cancellationToken);
+        var report = await onboarding.GetReadinessAsync(scope, cancellationToken, listEveryOwner: true);
         var byId = report.Owners.ToDictionary(o => o.OwnerId);
         var selection = ownerIds?.Distinct().OrderBy(id => id).ToList();
+
+        // A caller with a partial reach does not send a link that opens the whole portfolio of an owner who also holds properties it cannot reach.
+        var shared = await OwnerOnboardingService.OwnersWithPeriodsOutsideReachAsync(dbContext, scope, [.. byId.Keys], cancellationToken);
 
         var recipients = new List<OwnerReadinessOwner>();
         var exclusions = new List<OwnerInvitationExclusion>();
@@ -126,6 +131,12 @@ public class OwnerInvitationService(
             if (!byId.TryGetValue(id, out var owner))
             {
                 exclusions.Add(new OwnerInvitationExclusion(id, null, [OwnerInvitationExclusions.OwnerNotFound]));
+                continue;
+            }
+
+            if (shared.Contains(id))
+            {
+                exclusions.Add(new OwnerInvitationExclusion(id, owner.DisplayName, [OwnerInvitationExclusions.SharedOutsideReach]));
                 continue;
             }
 
@@ -250,7 +261,7 @@ public class OwnerInvitationService(
     public async Task<IReadOnlyList<OwnerInvitationStatusItem>> ListAsync(HostScope scope, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        var report = await onboarding.GetReadinessAsync(scope, cancellationToken);
+        var report = await onboarding.GetReadinessAsync(scope, cancellationToken, listEveryOwner: true);
         var invitations = (await dbContext.OwnerInvitations
                 .AsNoTracking()
                 .Where(i => i.OrgId == scope.OrgId)
@@ -290,6 +301,7 @@ public class OwnerInvitationService(
 
         await using var transaction = await LockAsync(scope.OrgId, cancellationToken);
         var invitation = await FindVisibleAsync(scope, invitationId, cancellationToken);
+        await EnsureNotSharedOutsideReachAsync(scope, invitation.PropertyOwnerId, cancellationToken);
 
         // The owner has accepted (this invitation or an earlier one): there is no link to send again.
         if (await dbContext.OwnerInvitations.AnyAsync(
@@ -669,6 +681,20 @@ public class OwnerInvitationService(
             throw new NotFoundException("Owner invitation not found.") { Code = OwnerInvitationErrors.NotFound, MessageKey = "OwnerInvitationNotFound" };
 
         return invitation;
+    }
+
+    /// <summary>
+    /// A caller with a partial reach does not send a link to an owner who also holds a period on a property it cannot reach: the acceptance opens
+    /// the whole portfolio of the owner in the org, not only the part the caller sees. Whoever reaches all of it sends the link.
+    /// </summary>
+    private async Task EnsureNotSharedOutsideReachAsync(HostScope? scope, Guid ownerId, CancellationToken cancellationToken)
+    {
+        if (scope is null || scope.IsOrgWide)
+            return;
+
+        var shared = await OwnerOnboardingService.OwnersWithPeriodsOutsideReachAsync(dbContext, scope, [ownerId], cancellationToken);
+        if (shared.Count > 0)
+            throw new DomainRuleException(OwnerInvitationErrors.SharedOutsideReach, "OwnerInvitationSharedOutsideReach");
     }
 
     /// <summary>An owner of the org not anonymized, and, for a caller with a partial reach, one that holds a period on a property it reaches.</summary>

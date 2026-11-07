@@ -9,7 +9,7 @@ namespace Casazen.Infrastructure.Services;
 
 public sealed partial class OwnerOnboardingService
 {
-    public async Task<OwnerReadinessReport> GetReadinessAsync(HostScope scope, CancellationToken ct)
+    public async Task<OwnerReadinessReport> GetReadinessAsync(HostScope scope, CancellationToken ct, bool listEveryOwner = false)
     {
         ArgumentNullException.ThrowIfNull(scope);
         var today = Today();
@@ -146,7 +146,8 @@ public sealed partial class OwnerOnboardingService
             .OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(p => p.PropertyId)
             .ToList();
-        var truncated = orderedOwners.Count > OwnerOnboardingLimits.MaxListed || orderedProperties.Count > OwnerOnboardingLimits.MaxListed;
+        var ownerCap = listEveryOwner ? int.MaxValue : OwnerOnboardingLimits.MaxListed;
+        var truncated = orderedOwners.Count > ownerCap || orderedProperties.Count > OwnerOnboardingLimits.MaxListed;
 
         // Counts only: no name, no identifier, no address.
         logger.LogInformation(
@@ -159,7 +160,7 @@ public sealed partial class OwnerOnboardingService
         return new OwnerReadinessReport(
             today,
             summary,
-            [.. orderedOwners.Take(OwnerOnboardingLimits.MaxListed)],
+            [.. orderedOwners.Take(ownerCap)],
             [.. orderedProperties.Take(OwnerOnboardingLimits.MaxListed)],
             truncated);
     }

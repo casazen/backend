@@ -5121,6 +5121,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerInvitationSelectionEmpty" xml:space="preserve">
     <value>Scegli almeno un proprietario da invitare.</value>
   </data>
+  <data name="OwnerInvitationSharedOutsideReach" xml:space="preserve">
+    <value>Questo proprietario ha quote anche su immobili che non rientrano nei tuoi accessi: il link apre tutto il suo portafoglio, quindi lo invia chi li raggiunge tutti.</value>
+  </data>
   <data name="ContactIdMissing" xml:space="preserve">
     <value>L'identificativo del contatto è obbligatorio.</value>
   </data>

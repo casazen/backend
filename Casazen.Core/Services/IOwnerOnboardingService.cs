@@ -44,9 +44,11 @@ public interface IOwnerOnboardingService
     /// <summary>
     /// For every owner and every property inside the reach of <paramref name="scope"/>: what is missing for the registry, the ownership, the mandate,
     /// the fiscal profile, the payment data and the portal, each fact by its code. Read only, computed on every call; the readiness of the owner
-    /// accounting never depends on, and never changes, the readiness of the OTA channels.
+    /// accounting never depends on, and never changes, the readiness of the OTA channels. An owner whose every period is over is history, not a
+    /// person to complete: it is not listed and not counted. The owners are cut at <see cref="OwnerOnboardingLimits.MaxListed"/> unless
+    /// <paramref name="listEveryOwner"/> (the invitations, which must see every owner, ask for them all).
     /// </summary>
-    Task<OwnerReadinessReport> GetReadinessAsync(HostScope scope, CancellationToken ct);
+    Task<OwnerReadinessReport> GetReadinessAsync(HostScope scope, CancellationToken ct, bool listEveryOwner = false);
 }
 
 /// <summary>The names of the columns of the owner file in the answer (cross-repo contract): never rename one.</summary>

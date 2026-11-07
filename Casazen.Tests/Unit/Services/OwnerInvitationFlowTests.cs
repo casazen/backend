@@ -315,6 +315,67 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ACollaboratorWithSomePropertiesDoesNotOfferALinkToAnOwnerWhoAlsoHoldsPropertiesItDoesNotReach()
+    {
+        // Anna holds half of Granted (inside the reach) and the whole of Hidden (outside it); Carla the other half of Granted.
+        var shared = await AddReadyOwnerAsync("Anna Verdi", "anna@example.com", Granted, share: 50m);
+        await AddPeriodAsync(_world.OrgId, Hidden, shared, new DateOnly(2025, 1, 1));
+        var alone = await AddReadyOwnerAsync("Carla Gialli", "carla@example.com", Granted, share: 50m);
+
+        var preview = await Service(NewDb()).PreviewBatchAsync(_world.Restricted, null, Ct);
+
+        // The link of Anna would open Hidden too: it is not offered, with the reason; Carla's is.
+        Assert.Equal([alone], preview.Recipients.Select(r => r.OwnerId));
+        var excluded = Assert.Single(preview.Exclusions);
+        Assert.Equal(shared, excluded.OwnerId);
+        Assert.Equal([OwnerInvitationExclusions.SharedOutsideReach], excluded.Reasons);
+        var sent = await Service(NewDb()).ConfirmBatchAsync(_world.Restricted, Admin, null, preview.Fingerprint, Ct);
+        Assert.Equal(1, sent.Sent);
+        Assert.Equal(["carla@example.com"], _queue.Sent.Select(s => s.To));
+
+        // Whoever reaches everything offers it.
+        var orgWide = await Service(NewDb()).PreviewBatchAsync(_world.OrgWide, null, Ct);
+        Assert.Equal([shared], orgWide.Recipients.Select(r => r.OwnerId));
+
+        // The single invitation and the resend of the collaborator refuse it with the same code.
+        var single = await Assert.ThrowsAsync<DomainRuleException>(
+            () => Service(NewDb()).CreateInvitationAsync(_world.OrgId, shared, Admin, Ct, _world.Restricted));
+        Assert.Equal(OwnerInvitationErrors.SharedOutsideReach, single.Code);
+        await Service(NewDb()).CreateInvitationAsync(_world.OrgId, shared, Admin, Ct);
+        var invitation = await _db.OwnerInvitations.AsNoTracking().SingleAsync(i => i.PropertyOwnerId == shared);
+        var resend = await Assert.ThrowsAsync<DomainRuleException>(
+            () => Service(NewDb()).ResendAsync(_world.Restricted, Admin, invitation.Id, Ct));
+        Assert.Equal(OwnerInvitationErrors.SharedOutsideReach, resend.Code);
+        Assert.Equal(2, _queue.Sent.Count);
+    }
+
+    [Fact]
+    public async Task TheListAndThePreviewSeeEveryOwner_EvenPastTheCutOfTheReadiness()
+    {
+        var total = OwnerOnboardingLimits.MaxListed + 1;
+        _db.PropertyOwners.AddRange(Enumerable.Range(0, total).Select(i => new PropertyOwner
+        {
+            OrgId = _world.OrgId,
+            FirstName = "Owner",
+            LastName = $"{i:D4}",
+            LegalName = $"Owner {i:D4}",
+            Email = $"owner{i}@example.com",
+            CreatedAt = DateTime.UtcNow,
+        }));
+        await _db.SaveChangesAsync();
+        var last = await _db.PropertyOwners.AsNoTracking().SingleAsync(o => o.LegalName == $"Owner {total - 1:D4}");
+
+        var list = await Service(NewDb()).ListAsync(_world.OrgWide, Ct);
+        var preview = await Service(NewDb()).PreviewBatchAsync(_world.OrgWide, [last.Id], Ct);
+
+        // The last owner of the order is past the cut of the readiness: it is listed, and an id naming it is an owner, not an unknown id.
+        Assert.Equal(total, list.Count);
+        Assert.Contains(list, i => i.OwnerId == last.Id);
+        var excluded = Assert.Single(preview.Exclusions);
+        Assert.DoesNotContain(OwnerInvitationExclusions.OwnerNotFound, excluded.Reasons);
+    }
+
+    [Fact]
     public async Task Confirm_ABatchThatDoesNotFitTheLimitOfTheDay_IsRefusedWholeAndNoneIsSent()
     {
         await AddReadyOwnerAsync("Anna Verdi", "anna@example.com", Granted);
