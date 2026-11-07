@@ -5094,6 +5094,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OnboardingImportColumnsUnrecognized" xml:space="preserve">
     <value>Nell'intestazione manca la colonna dell'immobile (propertyId o cinCode) oppure una colonna con i dati da importare.</value>
   </data>
+  <data name="OwnerInvitationEmailNotQueued" xml:space="preserve">
+    <value>Non siamo riusciti a mettere in coda l'email dell'invito: l'invito è stato ritirato. Controlla l'indirizzo del proprietario e riprova.</value>
+  </data>
   <data name="OwnerImportColumnsUnrecognized" xml:space="preserve">
     <value>Nell'intestazione manca una colonna che identifichi il proprietario (ownerId, ownerKey, fiscalCode o vatNumber): l'email da sola non basta.</value>
   </data>

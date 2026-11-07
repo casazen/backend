@@ -51,6 +51,19 @@ public interface IAuth0ManagementService
     Task<Auth0UserRolesResult> GetUserRolesAsync(string userId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Writes the owner portal claims of an owner into the <c>app_metadata</c> of its Auth0 account (<c>PATCH /users/{id}</c>, scope
+    /// <c>update:users</c>), under the key <c>owner_portal</c>: <c>owner_id</c>, <c>agency_ids</c> and <c>owned_property_ids</c> (ADR-011-R7). The
+    /// post-login Action of the tenant copies them into the access token (runbook <c>auth0.md</c> § 6), so the next token carries them. The whole
+    /// object is replaced, so an ownership that ended leaves the claims at the next acceptance or resend. Idempotent. Ids only: no name, no address.
+    /// </summary>
+    Task<Auth0SyncResult> SetOwnerPortalClaimsAsync(
+        string userId,
+        Guid ownerUserId,
+        IReadOnlyCollection<Guid> agencyIds,
+        IReadOnlyCollection<Guid> propertyIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Fetches email, name and <c>email_verified</c> from Auth0 (not cached). Returns null when Management API is not
     /// configured or the call fails.
     /// </summary>
