@@ -4403,6 +4403,9 @@
   <data name="OctorateRequestRejected" xml:space="preserve">
     <value>The channel manager refused the request.</value>
   </data>
+  <data name="OctoratePartnerFailed" xml:space="preserve">
+    <value>The channel or tool you are connecting did not accept the request: the problem is not on CasaZen's side. Check your login details and try again later.</value>
+  </data>
   <data name="OctorateChatNotLicensed" xml:space="preserve">
     <value>Chat is not available for this property in the channel manager (usually the chat module is not included in the license): guest messages cannot be read.</value>
   </data>
@@ -4702,6 +4705,48 @@
   </data>
   <data name="MarketplaceEntryNotFound" xml:space="preserve">
     <value>Marketplace entry not found.</value>
+  </data>
+  <data name="MarketplaceOctorateNotConnected" xml:space="preserve">
+    <value>The connection to the channel manager is not active: connect it from the channel settings, then try again.</value>
+  </data>
+  <data name="MarketplacePropertyNotLinked" xml:space="preserve">
+    <value>This property is not matched to a channel manager listing yet: confirm the match, then try again.</value>
+  </data>
+  <data name="MarketplacePortalUnknown" xml:space="preserve">
+    <value>Channel or tool not found.</value>
+  </data>
+  <data name="MarketplacePortalNotCreatable" xml:space="preserve">
+    <value>This channel or tool cannot be connected from CasaZen: the channel manager only handles it from its own panel.</value>
+  </data>
+  <data name="MarketplaceCredentialsRequired" xml:space="preserve">
+    <value>Some details needed to connect the channel are missing (property identifier on the channel, username or password): complete them and try again.</value>
+  </data>
+  <data name="MarketplaceCredentialsTooLong" xml:space="preserve">
+    <value>One of the channel login details is too long.</value>
+  </data>
+  <data name="MarketplaceConnectionExists" xml:space="preserve">
+    <value>This property is already connected to this channel on the channel manager: check the existing connection instead of creating another one.</value>
+  </data>
+  <data name="MarketplaceActivationKindRequired" xml:space="preserve">
+    <value>Say whether it is a sales channel or a connected tool.</value>
+  </data>
+  <data name="MarketplaceActivationNotFound" xml:space="preserve">
+    <value>Activation not found among those you can access.</value>
+  </data>
+  <data name="MarketplaceConnectionMissing" xml:space="preserve">
+    <value>The connection is no longer on the channel manager: start the activation of the channel again.</value>
+  </data>
+  <data name="MarketplacePanelAccessPending" xml:space="preserve">
+    <value>Before you continue, give access to the channel from the channel manager's panel, then come back here.</value>
+  </data>
+  <data name="MarketplaceMappingRequired" xml:space="preserve">
+    <value>Choose at least one channel room to match with your unit.</value>
+  </data>
+  <data name="MarketplaceMappingInvalid" xml:space="preserve">
+    <value>One of the chosen rooms is not among those of the channel or of the property.</value>
+  </data>
+  <data name="MarketplaceD6OperationUnverified" xml:space="preserve">
+    <value>This step is not available for this channel yet: the channel manager's operation has not been checked on a real property yet. Complete it from the channel manager's panel.</value>
   </data>
   <data name="Marketplace.Channel.Benefit" xml:space="preserve">
     <value>Get the bookings from {0} in CasaZen.</value>
