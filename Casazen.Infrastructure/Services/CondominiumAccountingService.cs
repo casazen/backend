@@ -497,12 +497,17 @@ public sealed class CondominiumAccountingService(
             installment.UpdatedAt = now;
         }
 
+        var parked = await db.CondominiumInstallments
+            .Where(installment => installment.CondominiumPeriodId == period.Id && installment.Status == CondominiumInstallmentStatus.Cancelled)
+            .ToListAsync(cancellationToken);
+        var active = new List<CondominiumInstallment>(updated.Count);
         foreach (var row in updated)
         {
-            var installment = existing.FirstOrDefault(item => item.SlotIndex == row.SlotIndex);
+            var installment = existing.FirstOrDefault(item => item.SlotIndex == row.SlotIndex)
+                ?? parked.FirstOrDefault(item => item.SlotIndex == row.SlotIndex);
             if (installment is null)
             {
-                db.CondominiumInstallments.Add(new CondominiumInstallment
+                installment = new CondominiumInstallment
                 {
                     OrgId = period.OrgId,
                     CondominiumPeriodId = period.Id,
@@ -516,16 +521,26 @@ public sealed class CondominiumAccountingService(
                     TotalAmount = row.Total,
                     CreatedAt = now,
                     UpdatedAt = now,
-                });
-                continue;
+                };
+                db.CondominiumInstallments.Add(installment);
+            }
+            else if (installment.Status == CondominiumInstallmentStatus.Cancelled)
+            {
+                installment.Label = row.Label;
+                installment.PeriodStart = row.PeriodStart;
+                installment.DueDate = row.DueDate;
+                installment.OrdinaryAmount = row.Ordinary;
+                installment.ExtraordinaryAmount = row.Extraordinary;
+                installment.Status = CondominiumInstallmentStatus.Scheduled;
             }
 
             installment.PriorSettlementAmount = row.Prior;
             installment.TotalAmount = installment.OrdinaryAmount + row.Prior + installment.ExtraordinaryAmount;
             installment.UpdatedAt = now;
+            active.Add(installment);
         }
 
-        await RefreshInstallmentStatusAsync(period.Id, cancellationToken);
+        await ApplyPaymentStatusAsync(period.Id, active, cancellationToken);
     }
 
     private async Task ClearCarriedBalanceAsync(Condominium condominium, CondominiumPeriod period, CancellationToken cancellationToken)
@@ -693,17 +708,27 @@ public sealed class CondominiumAccountingService(
     private async Task RefreshInstallmentStatusAsync(Guid periodId, CancellationToken cancellationToken)
     {
         var installments = await LoadInstallmentsAsync(periodId, cancellationToken);
-        var paid = await db.CondominiumPayments
-            .Where(payment => payment.CondominiumPeriodId == periodId && payment.CondominiumInstallmentId != null)
-            .GroupBy(payment => payment.CondominiumInstallmentId)
-            .Select(group => new { Id = group.Key, Amount = group.Sum(payment => payment.Amount) })
+        await ApplyPaymentStatusAsync(periodId, installments, cancellationToken);
+    }
+
+    private async Task ApplyPaymentStatusAsync(
+        Guid periodId,
+        IReadOnlyList<CondominiumInstallment> installments,
+        CancellationToken cancellationToken)
+    {
+        var payments = await db.CondominiumPayments
+            .Where(payment => payment.CondominiumPeriodId == periodId)
+            .Select(payment => new { payment.CondominiumInstallmentId, payment.Amount })
             .ToListAsync(cancellationToken);
+        var allocated = SituazioneReport.Allocate(
+            installments.Select(installment => (installment.Id, installment.DueDate, installment.TotalAmount)).ToList(),
+            payments.Select(payment => ((Guid?)payment.CondominiumInstallmentId, payment.Amount)).ToList());
         var now = UtcNow;
         foreach (var installment in installments)
         {
             if (installment.Status == CondominiumInstallmentStatus.Cancelled)
                 continue;
-            var amount = paid.FirstOrDefault(row => row.Id == installment.Id)?.Amount ?? 0m;
+            var amount = allocated.GetValueOrDefault(installment.Id);
             installment.Status = amount <= 0.005m
                 ? CondominiumInstallmentStatus.Scheduled
                 : amount + 0.01m >= installment.TotalAmount
