@@ -192,10 +192,10 @@ public class ComplianceArchiveNpgsqlTranslationTests
         {
             var (service, statements) = Build();
             await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.ListAsync(
-                Restricted, new ComplianceArchiveQuery(MoneyProofs: moneyProofs), CancellationToken.None));
-            await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.OpenDownloadAsync(Restricted, ProofId, moneyProofs, CancellationToken.None));
+                OrgWide, new ComplianceArchiveQuery(MoneyProofs: moneyProofs), CancellationToken.None));
+            await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.OpenDownloadAsync(OrgWide, ProofId, moneyProofs, CancellationToken.None));
             await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.ExportAsync(
-                Restricted, new ComplianceArchiveExportQuery(new DateOnly(2026, 10, 1), new DateOnly(2026, 11, 30), PropertyId, moneyProofs), CancellationToken.None));
+                OrgWide, new ComplianceArchiveExportQuery(new DateOnly(2026, 10, 1), new DateOnly(2026, 11, 30), PropertyId, moneyProofs), CancellationToken.None));
             return statements.Where(sql => sql.Contains("FROM \"ManualComplianceProofs\"", StringComparison.Ordinal)).ToList();
         }
 
