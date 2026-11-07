@@ -293,8 +293,8 @@ public static class DemoShowcaseCatalog
             "FRRNNA85E50H501B", "IT07X0300203280284975071923", OwnerTaxRegime.VatHolder, 100m, 18m, Scenario.OwnerMandate),
         // E10/F02/US02: an owner of the portfolio import with the registry only (no kind, no residence, no currency, no ownership): the readiness of
         // the owner accounting lists what is missing, and the portal invitation waits for an ownership.
-        new("paolo-gialli", "Paolo", "Gialli", "paolo.proprietario.com", null,
-            "RSSMRA80A01H501U", "IT21Q0542811101000000654321", OwnerTaxRegime.Private, 100m, 15m, Scenario.OwnerOnboarding),
+        new("paolo-gialli", "Paolo", "Gialli", "paolo.proprietario@example.com", null,
+            "RSSMRA80A01H501U", "IT76Q0542811101000000654321", OwnerTaxRegime.Private, 100m, 15m, Scenario.OwnerOnboarding),
     ];
 
     /// <summary>
