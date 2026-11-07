@@ -29,7 +29,27 @@ public interface IComplianceStatusService
     /// stays, properties and months that were looked at (the universe the To do list is reconciled against).
     /// </summary>
     Task<ComplianceStatusResult> EvaluateAsync(HostScope scope, CancellationToken ct);
+
+    /// <summary>
+    /// The same decisions for the stays that arrived in <paramref name="window"/> and the closed months wholly inside it, whatever their age
+    /// (the coverage report of the proof archive, E03/F02/US03/T01): a report on last year's months does not stop at the lookback of the
+    /// cockpit, and the stays of a property deleted since are still there (compliance exports). It judges the state of those obligations
+    /// <b>now</b> and holds only the Alloggiati, ISTAT and tourist tax items: the identity, the connection, the credentials, the CIN and the
+    /// tax rate, which are about the present of a property, are not part of it. Nothing is read from Octorate, so a stay entrusted to the
+    /// channel manager stays «external verification required» and the report does not depend on its availability.
+    /// </summary>
+    Task<ComplianceStatusResult> EvaluateAsync(HostScope scope, ComplianceStatusWindow window, CancellationToken ct);
 }
+
+/// <summary>
+/// The part of the past a coverage report looks at: the stays that arrive from <paramref name="From"/> to <paramref name="To"/> (Europe/Rome
+/// days, both included; a stay that has not arrived yet owes nothing yet and is not there) and the months that lie wholly inside those days and
+/// are over.
+/// </summary>
+/// <param name="From">First day.</param>
+/// <param name="To">Last day.</param>
+/// <param name="PropertyId">Only this property; <c>null</c> = every property of the caller's reach.</param>
+public sealed record ComplianceStatusWindow(DateOnly From, DateOnly To, Guid? PropertyId = null);
 
 /// <summary>What an item of the compliance status is about.</summary>
 public enum ComplianceItemKind

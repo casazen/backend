@@ -109,8 +109,22 @@ public class DemoComplianceTrafficLightSeedTests
         Assert.StartsWith("%PDF", text, StringComparison.Ordinal);
         Assert.Contains(DemoDocumentPdf.Marker, text, StringComparison.Ordinal);
 
+        // The log of what was sent (E03/F02/US03/T01): the line of the channel manager for the entrusted stay and the host's declaration, by the owner and
+        // the arrival day, for the finished one; no guest, no reference.
+        var lines = await world.Db.ComplianceSendLogEntries.AsNoTracking().ToListAsync();
+        var automatic = Assert.Single(lines, l => l.BookingId == entrustedStay.Id);
+        Assert.Equal((entrustedHouse.Id, ComplianceSender.ChannelManager, (string?)null), (automatic.PropertyId, automatic.Sender, automatic.ByUserId));
+        var declared = Assert.Single(lines, l => l.BookingId == archivedStay.Id);
+        Assert.Equal(
+            (archivedHouse.Id, ComplianceSender.Manual, world.Owner.Id, DateOnly.FromDateTime(archivedStay.CheckInDate)),
+            (declared.PropertyId, declared.Sender, declared.ByUserId, DateOnly.FromDateTime(declared.SentAt)));
+        Assert.All(lines, l => Assert.Equal((world.Org.Id, ComplianceSendKind.AlloggiatiGuests, (string?)null), (l.OrgId, l.Kind, l.Reference)));
+
         // Every row the seeding wrote is marked as showcase data, so the reset finds it.
         var markers = await world.Db.TestDataMarkers.AsNoTracking().Where(m => m.Origin == TestDataOrigins.Showcase).ToListAsync();
+        Assert.Equal(
+            lines.Select(l => l.Id).Order(),
+            markers.Where(m => m.EntityType == TestDataEntities.ComplianceSendLogEntry).Select(m => m.EntityId).Order());
         Assert.Contains(markers, m => m.EntityType == TestDataEntities.PropertyComplianceSender && m.EntityId == sender.Id);
         Assert.Contains(markers, m => m.EntityType == TestDataEntities.ManualComplianceProof && m.EntityId == proof.Id);
         Assert.Equal(
@@ -136,6 +150,8 @@ public class DemoComplianceTrafficLightSeedTests
         Assert.Single(await world.Db.PropertyComplianceSenders.AsNoTracking().ToListAsync());
         Assert.Single(await world.Db.ManualComplianceProofs.AsNoTracking().ToListAsync());
         Assert.Equal(2, await world.Db.StayGuestOctorateLinks.CountAsync());
+        Assert.Equal(2, await world.Db.ComplianceSendLogEntries.CountAsync());
+        Assert.Empty(await world.Db.ComplianceSendLogEntries.AsNoTracking().Where(l => l.BookingId == plain.Id).ToListAsync());
     }
 
     /// <summary>

@@ -1,12 +1,18 @@
 using System.Reflection;
+using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Options;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Unit.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Authorization;
@@ -177,6 +183,18 @@ public class OrgRoleActionMatrixTests
         { typeof(OrgMembersController), nameof(OrgMembersController.List), Team },
         { typeof(OrgMembersController), nameof(OrgMembersController.GetProperties), Team },
         { typeof(OrgMembersController), nameof(OrgMembersController.SetProperties), Team },
+
+        // E03/F02/US03/T01: the proof archive. Every role of the team reads it, but the receipts of a tourist tax declaration or payment are records
+        // of money and are given, inside the action, only to who holds payment.read (ProofArchive_TaxReceipts_... below); the coverage report is a
+        // state per obligation, with no file and no amount. Uploading is for who sends the Alloggiati communication, and a tax receipt asks
+        // payment.write on top, inside the action.
+        { typeof(ComplianceArchiveController), nameof(ComplianceArchiveController.List), Everyone },
+        { typeof(ComplianceArchiveController), nameof(ComplianceArchiveController.GetBookingCompliance), Everyone },
+        { typeof(ComplianceArchiveController), nameof(ComplianceArchiveController.Download), Everyone },
+        { typeof(ComplianceArchiveController), nameof(ComplianceArchiveController.Export), Everyone },
+        { typeof(ComplianceArchiveController), nameof(ComplianceArchiveController.GetReport), Everyone },
+        { typeof(ComplianceArchiveController), nameof(ComplianceArchiveController.ExportReport), Everyone },
+        { typeof(ComplianceArchiveController), nameof(ComplianceArchiveController.Upload), Operators },
     };
 
     [Theory]
@@ -190,6 +208,74 @@ public class OrgRoleActionMatrixTests
         var allowed = Enum.GetValues<OrgRole>().Where(role => Allows(role, action)).Select(role => role.ToString()).Order(StringComparer.Ordinal).ToList();
 
         Assert.Equal(expectedRoles.Split(',').Order(StringComparer.Ordinal).ToList(), allowed);
+    }
+
+    /// <summary>
+    /// PROOF TEST: money and permission rule (AM-03, E03/F02/US03/T01). The receipts of a tourist tax declaration or payment are records of money, so
+    /// the proof archive gives them (list, total, ZIP, download) only to who holds <c>payment.read</c>. The role gives the permission (the seeded
+    /// roles), the permission gives the answer of the policy, and the controller tells the service: the owner, the administrators, the property
+    /// managers and the accountant may read money; the collaborator, who reads the archive like the others, never does.
+    /// </summary>
+    [Theory]
+    [InlineData(nameof(OrgRole.Owner), true)]
+    [InlineData(nameof(OrgRole.Admin), true)]
+    [InlineData(nameof(OrgRole.PropertyManager), true)]
+    [InlineData(nameof(OrgRole.Accountant), true)]
+    [InlineData(nameof(OrgRole.Collaborator), false)]
+    public async Task ProofArchive_TaxReceipts_AreGivenOnlyToTheRolesThatHoldPaymentRead(string roleName, bool mayReadMoney)
+    {
+        var role = Enum.Parse<OrgRole>(roleName);
+        var (contexts, permission) = CasazenPolicies.ParseContextPolicy(CasazenPolicies.PaymentRead);
+        var holdsPaymentRead = contexts.Any(context => PermissionsOf(role, context).Contains(permission));
+        Assert.Equal(mayReadMoney, holdsPaymentRead);
+
+        // Every role of the team reads the archive (the policy of the class), which is what makes the cut inside the action necessary.
+        Assert.True(Allows(role, typeof(ComplianceArchiveController).GetMethod(nameof(ComplianceArchiveController.List))!));
+
+        var orgId = Guid.NewGuid();
+        ComplianceArchiveQuery? listed = null;
+        bool? downloaded = null;
+        ComplianceArchiveExportQuery? exported = null;
+        var archive = new Mock<IComplianceArchiveService>();
+        archive
+            .Setup(a => a.ListAsync(It.IsAny<HostScope>(), It.IsAny<ComplianceArchiveQuery>(), It.IsAny<CancellationToken>()))
+            .Callback<HostScope, ComplianceArchiveQuery, CancellationToken>((_, query, _) => listed = query)
+            .ReturnsAsync(new ComplianceArchivePage([], 1, 25, 0));
+        archive
+            .Setup(a => a.OpenDownloadAsync(It.IsAny<HostScope>(), It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .Callback<HostScope, Guid, bool, CancellationToken>((_, _, money, _) => downloaded = money)
+            .ReturnsAsync(new ComplianceArchiveDownload(new Uri("https://storage.example/private/prova"), null, "prova.pdf", "application/pdf"));
+        archive
+            .Setup(a => a.ExportAsync(It.IsAny<HostScope>(), It.IsAny<ComplianceArchiveExportQuery>(), It.IsAny<CancellationToken>()))
+            .Callback<HostScope, ComplianceArchiveExportQuery, CancellationToken>((_, query, _) => exported = query)
+            .ReturnsAsync(() => new ComplianceArchiveExportFile(new MemoryStream(), "prove.zip", 0));
+        var authorization = new Mock<IAuthorizationService>();
+        authorization
+            .Setup(a => a.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), CasazenPolicies.PaymentRead))
+            .ReturnsAsync(holdsPaymentRead ? AuthorizationResult.Success() : AuthorizationResult.Failed());
+        var orgs = new Mock<IOrgContextResolver>();
+        orgs.Setup(o => o.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(orgId);
+        var scopes = new Mock<IHostScopeResolver>();
+        scopes
+            .Setup(s => s.ResolveAsync("auth0|persona", It.IsAny<IReadOnlySet<string>>(), orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HostScope(orgId));
+
+        var sut = new ComplianceArchiveController(
+            archive.Object, orgs.Object, scopes.Object, authorization.Object, Microsoft.Extensions.Options.Options.Create(new ComplianceOptions()))
+        {
+            ControllerContext = new Microsoft.AspNetCore.Mvc.ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", "auth0|persona")], "test")) },
+            },
+        };
+
+        await sut.List(null, null, null, null, CancellationToken.None);
+        await sut.Download(Guid.NewGuid(), CancellationToken.None);
+        await sut.Export(new DateOnly(2026, 10, 1), new DateOnly(2026, 11, 30), null, CancellationToken.None);
+
+        Assert.Equal(mayReadMoney, listed!.MoneyProofs);
+        Assert.Equal(mayReadMoney, downloaded);
+        Assert.Equal(mayReadMoney, exported!.MoneyProofs);
     }
 
     /// <summary>

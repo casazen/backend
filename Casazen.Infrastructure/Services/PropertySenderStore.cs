@@ -45,15 +45,31 @@ public sealed class PropertySenderStore(
         return senders[property.Id];
     }
 
-    public async Task<IReadOnlyDictionary<Guid, PropertySenderInfo>> GetManyAsync(IReadOnlyCollection<Guid> propertyIds, CancellationToken ct)
+    public Task<IReadOnlyDictionary<Guid, PropertySenderInfo>> GetManyAsync(IReadOnlyCollection<Guid> propertyIds, CancellationToken ct) =>
+        ReadManyAsync(propertyIds, includeDeleted: false, ct);
+
+    public Task<IReadOnlyDictionary<Guid, PropertySenderInfo>> GetManyForHistoryAsync(IReadOnlyCollection<Guid> propertyIds, CancellationToken ct) =>
+        ReadManyAsync(propertyIds, includeDeleted: true, ct);
+
+    /// <summary>
+    /// The senders of the properties asked for. With <paramref name="includeDeleted"/> the soft-delete filter is lifted (the history of a deleted
+    /// property is kept, PC-05); the tenant filter never is, so the properties of another org are left out either way.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<Guid, PropertySenderInfo>> ReadManyAsync(
+        IReadOnlyCollection<Guid> propertyIds,
+        bool includeDeleted,
+        CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(propertyIds);
         var ids = propertyIds.Where(id => id != Guid.Empty).Distinct().ToList();
         if (ids.Count == 0)
             return new Dictionary<Guid, PropertySenderInfo>();
 
-        var properties = await db.Properties
-            .AsNoTracking()
+        var query = db.Properties.AsNoTracking();
+        if (includeDeleted)
+            query = query.IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]);
+
+        var properties = await query
             .Where(p => ids.Contains(p.Id))
             .Select(p => new PropertyRef(p.Id, p.OrgId, p.Country))
             .ToListAsync(ct);

@@ -118,6 +118,82 @@ public class CheckInOctorateSyncServiceTests
         }
     }
 
+    /// <summary>
+    /// NF-47, AC-NF47-2 (E03/F02/US03/T01): a send that handed the guests to the channel manager for good writes one line of the log of what was
+    /// sent, with no guest and no reference; a second send that finds everything unchanged writes none; a send that failed, a draft and a stay that
+    /// owes nothing write none; a send that only partly worked writes none (the stay is not sent), and the retry that completes it writes the line.
+    /// </summary>
+    [Fact]
+    public async Task OctorateCheckIn_ASuccessfulSendWritesOneLineOfTheSendLog_AFailedOrDraftOneNone_Test()
+    {
+        var h = await Harness.CreateAsync(ComplianceSenderType.ChannelManager);
+
+        var sent = await h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None);
+
+        Assert.Equal(OctorateCheckInSendState.Sent, sent.State);
+        await using (var db = h.NewDb())
+        {
+            var line = Assert.Single(await db.ComplianceSendLogEntries.ToListAsync());
+            Assert.Equal((OrgA, h.PropertyId, h.BookingId), (line.OrgId, line.PropertyId, line.BookingId));
+            Assert.Equal((ComplianceSendKind.AlloggiatiGuests, ComplianceSender.ChannelManager), (line.Kind, line.Sender));
+            Assert.Equal(Now.UtcDateTime, line.SentAt);
+            Assert.Null(line.ByUserId);
+            Assert.Null(line.Reference);
+        }
+
+        // Nothing changed: nothing is sent, and no second line.
+        var again = await h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None);
+        Assert.Equal(OctorateCheckInSendState.NothingToSend, again.State);
+        await using (var db = h.NewDb())
+            Assert.Single(await db.ComplianceSendLogEntries.ToListAsync());
+
+        // A guest changed after the send goes again: another send, another line.
+        await h.ChangeGuestAsync(0, "Verdi");
+        Assert.Equal(OctorateCheckInSendState.Sent, (await h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None)).State);
+        await using (var db = h.NewDb())
+            Assert.Equal(2, await db.ComplianceSendLogEntries.CountAsync());
+
+        // A send Octorate refused writes no line.
+        var failing = await Harness.CreateAsync(ComplianceSenderType.ChannelManager);
+        failing.ClientFails(CheckInErrorCodes.Server);
+        Assert.Equal(OctorateCheckInSendState.Failed, (await failing.Service().SendGuestsAsync(failing.BookingId, CancellationToken.None)).State);
+        await using (var db = failing.NewDb())
+            Assert.Empty(await db.ComplianceSendLogEntries.ToListAsync());
+
+        // A send that only partly worked (one guest accepted, one refused) is not a sent stay: no line. The retry that completes it writes it.
+        var partly = await Harness.CreateAsync(ComplianceSenderType.ChannelManager);
+        partly.Client
+            .Setup(c => c.UpsertCheckInGuestsAsync(
+                Accommodation, Reservation, It.IsAny<IReadOnlyList<OctorateCheckInGuestUpsert>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, string _, IReadOnlyList<OctorateCheckInGuestUpsert> guests, CancellationToken _) =>
+                guests
+                    .Select(g => g.Position == 0
+                        ? new OctorateCheckInGuestResult(0, "guest-0", true, true, null)
+                        : new OctorateCheckInGuestResult(g.Position, null, false, null, CheckInErrorCodes.Server))
+                    .ToArray());
+        Assert.Equal(OctorateCheckInSendState.PartlyFailed, (await partly.Service().SendGuestsAsync(partly.BookingId, CancellationToken.None)).State);
+        await using (var db = partly.NewDb())
+            Assert.Empty(await db.ComplianceSendLogEntries.ToListAsync());
+
+        partly.ClientSucceeds();
+        Assert.Equal(OctorateCheckInSendState.Sent, (await partly.Service().RetryGuestsAsync(partly.BookingId, CancellationToken.None)).State);
+        await using (var db = partly.NewDb())
+            Assert.Single(await db.ComplianceSendLogEntries.ToListAsync());
+
+        // A draft is not sent to the police (Octorate transmits what is not a draft): no line.
+        var draft = await Harness.CreateAsync(ComplianceSenderType.Manual, sendWhenNotChannelManager: true);
+        var drafted = await draft.Service().SendGuestsAsync(draft.BookingId, CancellationToken.None);
+        Assert.True(drafted.Draft);
+        await using (var db = draft.NewDb())
+            Assert.Empty(await db.ComplianceSendLogEntries.ToListAsync());
+
+        // A stay that owes nothing sends nothing and writes nothing.
+        var noShow = await Harness.CreateAsync(ComplianceSenderType.ChannelManager, noShow: true);
+        await noShow.Service().SendGuestsAsync(noShow.BookingId, CancellationToken.None);
+        await using (var db = noShow.NewDb())
+            Assert.Empty(await db.ComplianceSendLogEntries.ToListAsync());
+    }
+
     [Fact]
     public async Task OctorateCheckIn_RetrySendsOnlyGuestsWhoseLinkIsPendingOrFailed_Test()
     {

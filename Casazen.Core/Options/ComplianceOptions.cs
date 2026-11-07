@@ -47,6 +47,9 @@ public class ComplianceOptions
     /// region that is not here is «to define»</b>: it produces no ISTAT item, because CasaZen never guesses a deadline (E03/F02/US01/T03).
     /// </summary>
     public Dictionary<string, int> IstatDeadlineDays { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The archive of the proofs, its uploads, downloads and exports (<c>Compliance:Archive</c>, E03/F02/US03/T01).</summary>
+    public ComplianceArchiveOptions Archive { get; set; } = new();
 }
 
 /// <summary>Section <c>Compliance:StatusCheck</c> (CO-06).</summary>

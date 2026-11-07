@@ -5358,6 +5358,42 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="AssistStepAlreadyDone" xml:space="preserve">
     <value>Questo passaggio è già completato: non c'è nulla da chiedere all'assistenza.</value>
   </data>
+  <data name="ComplianceProofNotFound" xml:space="preserve">
+    <value>Prova non trovata tra quelle della tua organizzazione.</value>
+  </data>
+  <data name="ComplianceBookingNotFound" xml:space="preserve">
+    <value>Soggiorno non trovato tra quelli della tua organizzazione.</value>
+  </data>
+  <data name="ComplianceProofFileInvalid" xml:space="preserve">
+    <value>Manca il file della prova, oppure è vuoto.</value>
+  </data>
+  <data name="ComplianceProofTypeUnsupported" xml:space="preserve">
+    <value>Il file deve essere un PDF, una foto JPEG o un'immagine PNG.</value>
+  </data>
+  <data name="ComplianceProofTooLarge" xml:space="preserve">
+    <value>Il file è troppo grande: il limite è {0} MB.</value>
+  </data>
+  <data name="ComplianceProofDayInvalid" xml:space="preserve">
+    <value>Il giorno della prova non è valido: non può essere nel futuro né prima del 2000.</value>
+  </data>
+  <data name="ComplianceProofKindInvalid" xml:space="preserve">
+    <value>Il tipo di prova non è valido: usa AlloggiatiReceipt, IstatProof, TouristTaxDeclaration o TouristTaxPayment.</value>
+  </data>
+  <data name="ComplianceExportTooLarge" xml:space="preserve">
+    <value>Le prove del periodo sono troppe per una sola esportazione: scegli un periodo più breve o un solo immobile.</value>
+  </data>
+  <data name="ComplianceProofPropertyRequired" xml:space="preserve">
+    <value>Indica l'immobile a cui si riferisce la prova.</value>
+  </data>
+  <data name="ComplianceProofKindRequired" xml:space="preserve">
+    <value>Indica che cosa prova il file.</value>
+  </data>
+  <data name="ComplianceProofDayRequired" xml:space="preserve">
+    <value>Indica il giorno a cui si riferisce la prova (AAAA-MM-GG).</value>
+  </data>
+  <data name="ComplianceReportInvalidFormat" xml:space="preserve">
+    <value>Formato non valido: usa pdf o csv.</value>
+  </data>
   <data name="OnboardingPartNotReopenable" xml:space="preserve">
     <value>Questa parte non è disponibile: non c'è nessun passaggio da riaprire.</value>
   </data>

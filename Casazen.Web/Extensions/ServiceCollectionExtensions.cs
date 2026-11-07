@@ -617,6 +617,11 @@ public static class ServiceCollectionExtensions
         // only with an archived proof; the feeder keeps one To do per item and closes it when the item turns green. Both are read-side of the
         // cockpit (ComplianceWizardService.GetSummaryAsync); nothing is sent to an authority or to Octorate.
         services.AddScoped<IComplianceStatusService, ComplianceStatusService>();
+        // The archive of the proofs CasaZen holds for those obligations and the log of what was sent (E03/F02/US03/T01, NF-47): the proofs the host
+        // uploads (private bucket, signed addresses), the line every successful send writes, the coverage report over the same rules as the light
+        // and the exports built on request. Options: Compliance:Archive (all optional, docs/runbooks/deploy-checklist.md § 2).
+        services.AddScoped<IComplianceSendLog, ComplianceSendLog>();
+        services.AddScoped<IComplianceArchiveService, ComplianceArchiveService>();
         services.AddScoped<IComplianceActivityFeeder, ComplianceActivityFeeder>();
         services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
         // «Gestisci con AI» of the page of the adempimenti: asks the guests for their data (e-mail with the check-in link, chat messages the

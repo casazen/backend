@@ -208,6 +208,13 @@ public static class TestDataEntities
     /// </summary>
     public const string ManualComplianceProof = "ManualComplianceProof";
 
+    /// <summary>
+    /// A line of the log of what was sent to the authorities for a showcase stay (<see cref="Entities.ComplianceSendLogEntry"/>, E03/F02/US03/T01, NF-47):
+    /// the one the channel manager's send of the guests, or the host's declaration, would have written. Invented like the rest and sent nowhere. It
+    /// follows its house (cascade); a real line has no marker and is never touched.
+    /// </summary>
+    public const string ComplianceSendLogEntry = "ComplianceSendLogEntry";
+
     // E10/F01/US01/T04: the tables of the activation of CasaZen with Octorate. The reset deletes only the rows of these tables that carry a showcase
     // marker of the org (before its houses), so a real row has no marker and is never touched.
 

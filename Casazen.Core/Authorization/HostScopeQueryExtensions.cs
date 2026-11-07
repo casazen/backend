@@ -67,6 +67,14 @@ public static class HostScopeQueryExtensions
     public static IQueryable<InternalActivity> InScope(this IQueryable<InternalActivity> source, HostScope scope) =>
         source.InScope(scope, activity => activity.Property);
 
+    /// <summary>The compliance proofs of the scope (those of a property it reaches, E03/F02/US03/T01, NF-47).</summary>
+    public static IQueryable<ManualComplianceProof> InScope(this IQueryable<ManualComplianceProof> source, HostScope scope) =>
+        source.InScope(scope, proof => proof.Property);
+
+    /// <summary>The lines of the send log of the scope (those of a property it reaches, E03/F02/US03/T01, NF-47).</summary>
+    public static IQueryable<ComplianceSendLogEntry> InScope(this IQueryable<ComplianceSendLogEntry> source, HostScope scope) =>
+        source.InScope(scope, entry => entry.Property);
+
     /// <summary>
     /// The guests of the scope (SR-04b). A guest belongs to the org and to no property, so it is reached through its stays: in a
     /// restricted scope it is one with a booking at a property the scope reaches (the rule of the bookings above, whatever the status

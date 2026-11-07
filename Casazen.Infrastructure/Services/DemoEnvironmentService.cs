@@ -1870,6 +1870,9 @@ public class DemoEnvironmentService(
                 await MarkAsync(
                     orgId, TestDataEntities.StayGuestOctorateLink, links[position].Id, TestDataOrigins.Showcase, $"{templateKey}/{position}", cancellationToken);
             }
+
+            // NF-47: and the line of the log of what was sent that the send of the guests to the channel manager writes (the page of the stay shows it).
+            await AddSendLogLineAsync(orgId, property, booking, ComplianceSender.ChannelManager, now.AddHours(-2), null, templateKey, cancellationToken);
         }
 
         if (template.ReceiptArchived)
@@ -1897,7 +1900,37 @@ public class DemoEnvironmentService(
             db.ManualComplianceProofs.Add(proof);
             await db.SaveChangesAsync(cancellationToken);
             await MarkAsync(orgId, TestDataEntities.ManualComplianceProof, proof.Id, TestDataOrigins.Showcase, templateKey, cancellationToken);
+
+            // NF-47: the host sent the communication on the portal on the arrival day and declared it: the line of the log of what was sent, by the owner.
+            await AddSendLogLineAsync(
+                orgId, property, booking, ComplianceSender.Manual, DateTime.SpecifyKind(proof.Day.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc), ownerId, templateKey, cancellationToken);
         }
+    }
+
+    /// <summary>One line of the log of what was sent for a showcase stay (E03/F02/US03/T01, NF-47): no guest data, no reference, marked like the rest.</summary>
+    private async Task AddSendLogLineAsync(
+        Guid orgId,
+        Property property,
+        Booking booking,
+        ComplianceSender sender,
+        DateTime sentAt,
+        string? byUserId,
+        string templateKey,
+        CancellationToken cancellationToken)
+    {
+        var line = new ComplianceSendLogEntry
+        {
+            OrgId = orgId,
+            PropertyId = property.Id,
+            BookingId = booking.Id,
+            Kind = ComplianceSendKind.AlloggiatiGuests,
+            Sender = sender,
+            SentAt = sentAt,
+            ByUserId = byUserId,
+        };
+        db.ComplianceSendLogEntries.Add(line);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.ComplianceSendLogEntry, line.Id, TestDataOrigins.Showcase, templateKey, cancellationToken);
     }
 
     /// <summary>
