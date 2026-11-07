@@ -296,8 +296,9 @@ public static class LeaseDraftContractFill
             }
 
             // Somebody else is already typed in this role: not replaced, not added to (it may be the wrong contract): the person is told.
-            // An empty role gets the person of the contract.
-            if (list.Count > 0 || list.Count >= LeasePartyRules.MaxPerRole)
+            // An empty role gets the people of the contract, all of them (a contract can have co-tenants), up to what the flow accepts: it is
+            // the role as it was before this reading that counts, not the people this same reading has just put there.
+            if (existing.Count > 0 || list.Count >= LeasePartyRules.MaxPerRole)
             {
                 run.Add("party", FieldReadingState.Conflict, read.FiscalCodeConfidence, role: role);
                 continue;
