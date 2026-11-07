@@ -2152,6 +2152,163 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.CondominiumImportBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ConfirmedByUserId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "ContentHash")
+                        .IsUnique();
+
+                    b.ToTable("CondominiumImportBatches");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.CondominiumImportHouse", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BatchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CondominiumId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("FiscalStartMonth")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SourceId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("OrgId", "PropertyId");
+
+                    b.ToTable("CondominiumImportHouses");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.CondominiumImportYear", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("Cadence")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date");
+
+                    b.Property<long>("ExtraordinaryCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("FinalCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("HouseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("InstallmentCount")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("InstallmentTotalCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<long>("OrdinaryCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("PaymentCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("PaymentsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("PriorCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("SettlementCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("SourceId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HouseId");
+
+                    b.HasIndex("OrgId");
+
+                    b.ToTable("CondominiumImportYears");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.CondominiumInstallment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -14356,6 +14513,62 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Unit");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.CondominiumImportBatch", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", "Org")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Org");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.CondominiumImportHouse", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.CondominiumImportBatch", "Batch")
+                        .WithMany("Houses")
+                        .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", "Org")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", "Property")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Batch");
+
+                    b.Navigation("Org");
+
+                    b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.CondominiumImportYear", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.CondominiumImportHouse", "House")
+                        .WithMany("Years")
+                        .HasForeignKey("HouseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", "Org")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("House");
+
+                    b.Navigation("Org");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.CondominiumInstallment", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.CondominiumPeriod", "Period")
@@ -16922,6 +17135,16 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Periods");
 
                     b.Navigation("Units");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.CondominiumImportBatch", b =>
+                {
+                    b.Navigation("Houses");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.CondominiumImportHouse", b =>
+                {
+                    b.Navigation("Years");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.CondominiumInstallment", b =>

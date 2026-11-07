@@ -118,6 +118,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.CondominiumCoreExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.TenantCondominiumSettlementExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.TenantExpenseProposalExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.CondominiumHistoricalImportExamples.Select(example => example.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -978,6 +979,20 @@ public class DemoShowcaseTests
         Assert.Equal(example.Preventivo, proposal.AnnualAmount);
         Assert.True(proposal.SettledAtConsuntivo);
         Assert.Equal(example.PreviousConsuntivo, proposal.PreviousConsuntivo);
+    }
+
+    [Fact]
+    public void HistoricalImport_CasaA_MatchesToTheCent()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.CondominiumHistoricalImport, DemoShowcaseCatalog.Scenarios);
+        var example = Assert.Single(DemoShowcaseCatalog.CondominiumHistoricalImportExamples);
+        var settlement = Conguaglio.Compute(example.FinalAmount, example.Extraordinary, example.Prior, example.Payments);
+        Assert.NotNull(settlement);
+        Assert.Equal(example.ExpectedSettlement, settlement.Amount);
+        var rows = OwnerInstallmentPlan.Generate(
+            new DateOnly(2024, 6, 1), CondominiumInstallmentCadence.Monthly, example.Ordinary, example.Extraordinary, example.Prior);
+        Assert.Equal(example.InstallmentCount, rows.Count);
+        Assert.Equal(example.InstallmentTotal, rows.Sum(row => row.Total));
     }
 
     [Fact]

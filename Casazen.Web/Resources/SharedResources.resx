@@ -5550,4 +5550,13 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="TenantExpenseProposalInvalid" xml:space="preserve">
     <value>Indica l'acconto del contratto, oppure il consuntivo dell'anno scorso e il preventivo del nuovo anno, oppure un importo che si conguaglia al consuntivo.</value>
   </data>
+  <data name="CondominiumImportInvalid" xml:space="preserve">
+    <value>Lo snapshot non è un condo-export-v1 valido.</value>
+  </data>
+  <data name="CondominiumImportNotFound" xml:space="preserve">
+    <value>Import non trovato.</value>
+  </data>
+  <data name="CondominiumImportMismatch" xml:space="preserve">
+    <value>L'esercizio {0} non torna al centesimo ({1}). La riga resta in staging e i saldi non cambiano.</value>
+  </data>
 </root>

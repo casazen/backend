@@ -232,6 +232,12 @@ public static class DemoShowcaseCatalog
         /// preventivo € 1,920 become twelve advances of € 160. Template only.
         /// </summary>
         public const string TenantExpenseProposal = "tenant-expense-proposal";
+
+        /// <summary>
+        /// Historical CondoLedger copy (condo-export-v1): Casa A 2024/2025 matches to the cent and stays a template.
+        /// A house without a verified property is not written into the book.
+        /// </summary>
+        public const string CondominiumHistoricalImport = "condominium-historical-import";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -306,6 +312,7 @@ public static class DemoShowcaseCatalog
         Scenario.CondominiumCore,
         Scenario.TenantCondominiumSettlement,
         Scenario.TenantExpenseProposal,
+        Scenario.CondominiumHistoricalImport,
     ];
 
     /// <summary>
@@ -353,6 +360,15 @@ public static class DemoShowcaseCatalog
     public static IReadOnlyList<DemoTenantExpenseProposalTemplate> TenantExpenseProposalExamples { get; } =
     [
         new("preventivo-1920", 1800m, 1920m, 12, 160m, Scenario.TenantExpenseProposal),
+    ];
+
+    /// <summary>
+    /// Casa A 2024/2025 from the condo-export-v1 sample: ordinary, extraordinary, final, prior, payments,
+    /// the resulting balance, and the installment count and total, to the cent. Not written as rows.
+    /// </summary>
+    public static IReadOnlyList<DemoCondominiumImportTemplate> CondominiumHistoricalImportExamples { get; } =
+    [
+        new("casa-a-2024", 490.30m, 0m, 490.30m, 0m, 412.80m, 77.50m, 12, 490.30m, Scenario.CondominiumHistoricalImport),
     ];
 
     /// <summary>
@@ -1684,6 +1700,18 @@ public sealed record DemoTenantSettlementTemplate(
 /// The wizard proposal when the property has no condominium year yet: the advance is the new preventivo split into
 /// <see cref="Installments"/>, and <see cref="PreviousConsuntivo"/> is kept for the settlement.
 /// </summary>
+public sealed record DemoCondominiumImportTemplate(
+    string Key,
+    decimal Ordinary,
+    decimal Extraordinary,
+    decimal FinalAmount,
+    decimal Prior,
+    decimal Payments,
+    decimal ExpectedSettlement,
+    int InstallmentCount,
+    decimal InstallmentTotal,
+    string Scenario);
+
 public sealed record DemoTenantExpenseProposalTemplate(
     string Key,
     decimal PreviousConsuntivo,
