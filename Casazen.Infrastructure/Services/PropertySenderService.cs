@@ -72,6 +72,45 @@ public sealed class PropertySenderService(
             RequireDelegationTextInForce(delegationTextVersion);
 
         var current = await store.GetAsync(propertyId, ct);
+        var grantDelegation = await RequireSwitchAllowedAsync(current, newSender, confirmed, delegationConsent, ct);
+
+        // The version recorded is the one the person read: it was checked to be the text in force when the consent came in.
+        if (grantDelegation)
+            await delegation.GrantAsync(current.OrgId, userId, AlloggiatiDelegationTexts.CurrentVersion, ct);
+
+        var stored = await store.SetAsync(propertyId, newSender, userId, ct);
+        return await BuildAsync(stored, ct);
+    }
+
+    public async Task<SenderSwitchCheck> CheckSwitchAsync(
+        Guid propertyId,
+        ComplianceSenderType newSender,
+        CancellationToken ct,
+        ComplianceSenderType? istatSender = null)
+    {
+        if (!Enum.IsDefined(newSender))
+            throw new ArgumentOutOfRangeException(nameof(newSender), newSender, "Not a compliance sender.");
+
+        if (istatSender is { } istat && istat != newSender)
+            throw new DomainRuleException(SenderErrorCodes.IstatMismatch, "SenderIstatMismatch");
+
+        // Reads only: the store, the mapping and the delegation. Nothing is written and Octorate is not called.
+        var current = await store.GetAsync(propertyId, ct);
+        await RequireSwitchAllowedAsync(current, newSender, confirmed: true, delegationConsent: false, ct);
+        return new SenderSwitchCheck(current.AlloggiatiSender, newSender);
+    }
+
+    /// <summary>
+    /// The checks of a switch to <paramref name="newSender"/>, in order, shared by the switch and by its read-only check so the two can never
+    /// disagree. Reads only. Returns whether the consent to the delegation has to be recorded before the sender is set.
+    /// </summary>
+    private async Task<bool> RequireSwitchAllowedAsync(
+        PropertySenderInfo current,
+        ComplianceSenderType newSender,
+        bool confirmed,
+        bool delegationConsent,
+        CancellationToken ct)
+    {
         if (!current.Applies)
             throw new DomainRuleException(PropertySenderStore.NotApplicableCode, "SenderNotApplicable");
 
@@ -106,12 +145,7 @@ public sealed class PropertySenderService(
             grantDelegation = !accepted;
         }
 
-        // The version recorded is the one the person read: it was checked to be the text in force when the consent came in.
-        if (grantDelegation)
-            await delegation.GrantAsync(current.OrgId, userId, AlloggiatiDelegationTexts.CurrentVersion, ct);
-
-        var stored = await store.SetAsync(propertyId, newSender, userId, ct);
-        return await BuildAsync(stored, ct);
+        return grantDelegation;
     }
 
     public async Task<SenderConnectionTestResult> TestConnectionAsync(Guid propertyId, CancellationToken ct)

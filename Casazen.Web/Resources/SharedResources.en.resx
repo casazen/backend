@@ -4968,6 +4968,30 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OnboardingTestBookingNotFound" xml:space="preserve">
     <value>This property has no booking imported from Octorate to run the final test on.</value>
   </data>
+  <data name="OnboardingSelectionInvalid" xml:space="preserve">
+    <value>The selection of properties is not valid: choose all the properties, a list of properties or at least one criterion of the filter.</value>
+  </data>
+  <data name="OnboardingSelectionTooLarge" xml:space="preserve">
+    <value>The selection holds too many properties: at most {0} at a time. Narrow the filter.</value>
+  </data>
+  <data name="OnboardingChoiceInvalid" xml:space="preserve">
+    <value>The choice to apply is not valid.</value>
+  </data>
+  <data name="OnboardingPilotGroupTooLarge" xml:space="preserve">
+    <value>The pilot group can have at most {0} properties.</value>
+  </data>
+  <data name="OnboardingPilotGroupNotActive" xml:space="preserve">
+    <value>Before the other properties are activated, the pilot group must be active in every flow you chose.</value>
+  </data>
+  <data name="OnboardingPilotGroupEmpty" xml:space="preserve">
+    <value>The pilot group has not been chosen yet.</value>
+  </data>
+  <data name="OnboardingCohortInvalid" xml:space="preserve">
+    <value>The group to activate is not valid: choose the pilot group or the other properties.</value>
+  </data>
+  <data name="OnboardingFlowsEmpty" xml:space="preserve">
+    <value>Choose at least one flow to activate.</value>
+  </data>
   <data name="ContactIdMissing" xml:space="preserve">
     <value>The contact identifier is required.</value>
   </data>

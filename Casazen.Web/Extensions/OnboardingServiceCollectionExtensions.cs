@@ -74,6 +74,10 @@ public static class OnboardingServiceCollectionExtensions
         // part. It reads the facts the other epics store and clears a deferral through the plan; it adds no path that changes a sender.
         services.AddScoped<IOnboardingIntegrationService, OnboardingIntegrationService>();
 
+        // The bulk configuration of an agency (E10/F02/US01/T01, NF-105): a choice applied to many properties through the sender switch of E03, the
+        // progress («142 of 250 ready»), the pilot group and the progressive activation through the activation service above.
+        services.AddScoped<IOnboardingBulkService, OnboardingBulkService>();
+
         return services;
     }
 }

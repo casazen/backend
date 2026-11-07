@@ -58,6 +58,21 @@ public interface IPropertySenderService
         string? delegationTextVersion = null);
 
     /// <summary>
+    /// What <see cref="SwitchAsync"/> would do for <paramref name="newSender"/> if the host confirmed the switch and gave no new consent to the
+    /// delegation (E10/F02/US01/T01, the bulk configuration): the same checks in the same order, with the confirmation taken as given, and
+    /// <b>nothing is written</b>: no sender row (not even for a property that only has the default), no consent, no audit line, and no call to
+    /// Octorate. It throws what <see cref="SwitchAsync"/> would throw (<c>property_not_found</c>, <c>sender_not_applicable</c>,
+    /// <see cref="SenderErrorCodes.IstatMismatch"/>, <see cref="SenderErrorCodes.CasaZenNotAvailable"/>,
+    /// <see cref="SenderErrorCodes.ChannelManagerNotAvailable"/>, <see cref="SenderErrorCodes.DelegationRequired"/>) and otherwise answers the sender in
+    /// effect and the one asked, so the caller knows whether the switch would change anything.
+    /// </summary>
+    Task<SenderSwitchCheck> CheckSwitchAsync(
+        Guid propertyId,
+        ComplianceSenderType newSender,
+        CancellationToken ct,
+        ComplianceSenderType? istatSender = null);
+
+    /// <summary>
     /// Tests the sender. Channel manager: reads the police account of the accommodation on Octorate (bounded in time, like the read of the
     /// sender: a slow Octorate is <see cref="SenderConnectionTestOutcome.Unverifiable"/>, not an error) and answers <see cref="SenderConnectionTestOutcome.Verified"/> only when the
     /// police account is valid and its automatic send is on (both read), <see cref="SenderConnectionTestOutcome.Inactive"/> when it is not, and
@@ -186,6 +201,17 @@ public sealed record SenderConnectionTestResult(
     bool? PoliceAutorun,
     DateTime? PoliceLastCron,
     DateTime CheckedAt);
+
+/// <summary>
+/// The answer of <see cref="IPropertySenderService.CheckSwitchAsync"/>: the sender in effect (the stored one, or the default) and the one asked.
+/// </summary>
+/// <param name="Current">The sender in effect for the Alloggiati and ISTAT communications.</param>
+/// <param name="New">The sender asked.</param>
+public sealed record SenderSwitchCheck(ComplianceSenderType Current, ComplianceSenderType New)
+{
+    /// <summary>True when the switch would change the sender in effect (the other one would go off).</summary>
+    public bool WouldChange => Current != New;
+}
 
 /// <summary>The stable codes of the errors of the sender endpoints (<c>code</c> of the problem the API answers with).</summary>
 public static class SenderErrorCodes

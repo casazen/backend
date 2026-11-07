@@ -297,6 +297,62 @@ public class PropertySenderServiceTests
         Assert.Equal<(bool?, bool?, DateTime?)>((null, null, null), (none.Valid, none.Autorun, none.LastCron));
     }
 
+    /// <summary>
+    /// The read-only check of a switch (E10/F02/US01/T01, the dry run of the bulk configuration): it refuses exactly what the switch refuses, in
+    /// the same order, takes the confirmation as given and the consent as not given, and writes nothing at all: no sender row (not even for a
+    /// property that only has the default), no consent, no audit line, and Octorate is not called.
+    /// </summary>
+    [Fact]
+    public async Task CheckSwitch_RefusesWhatTheSwitchRefuses_AndWritesNothing()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        var world = await SeedAsync(databaseName);
+        var clock = new FakeTimeProvider(Start);
+        var octorate = new Mock<IOctorateApiClient>();
+        OctorateExposes(octorate, valid: true, autorun: true);
+        await using var db = OrgTeamTestData.NewDb(databaseName);
+        var service = NewService(db, clock, octorate);
+        var ct = CancellationToken.None;
+
+        // The connected property has the channel manager by default: manual would change it, the channel manager would not.
+        var toManual = await service.CheckSwitchAsync(world.Connected, ComplianceSenderType.Manual, ct);
+        Assert.Equal((ComplianceSenderType.ChannelManager, ComplianceSenderType.Manual, true), (toManual.Current, toManual.New, toManual.WouldChange));
+        var notConnected = await service.CheckSwitchAsync(world.NotConnected, ComplianceSenderType.Manual, ct);
+        Assert.False(notConnected.WouldChange);
+
+        // The same refusals as the switch, with the same codes.
+        async Task<string> RefusalAsync(Guid propertyId, ComplianceSenderType sender, ComplianceSenderType? istat = null)
+        {
+            var refused = await Assert.ThrowsAnyAsync<Exception>(() => service.CheckSwitchAsync(propertyId, sender, ct, istat));
+            return refused switch
+            {
+                DomainException domain => domain.Code,
+                NotFoundException missing => missing.Code!,
+                _ => throw refused,
+            };
+        }
+
+        Assert.Equal("sender_casazen_not_available", await RefusalAsync(world.Connected, ComplianceSenderType.CasaZen));
+        Assert.Equal("sender_istat_mismatch", await RefusalAsync(world.Connected, ComplianceSenderType.Manual, ComplianceSenderType.ChannelManager));
+        Assert.Equal("sender_channel_manager_not_available", await RefusalAsync(world.NotConnected, ComplianceSenderType.ChannelManager));
+        Assert.Equal("sender_not_applicable", await RefusalAsync(world.Swiss, ComplianceSenderType.Manual));
+        Assert.Equal("property_not_found", await RefusalAsync(Guid.NewGuid(), ComplianceSenderType.Manual));
+        Assert.Equal("alloggiati_delegation_required", await RefusalAsync(world.Connected, ComplianceSenderType.ChannelManager));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.CheckSwitchAsync(world.Connected, (ComplianceSenderType)99, ct));
+
+        // With the delegation accepted the channel manager is what the connected property has already: nothing would change.
+        await new AlloggiatiDelegationService(db, new ActivityLog(db, clock), clock)
+            .GrantAsync(world.OrgId, Host, AlloggiatiDelegationTexts.CurrentVersion, ct);
+        var lines = await db.OrgActivityEntries.CountAsync();
+        var sameSender = await service.CheckSwitchAsync(world.Connected, ComplianceSenderType.ChannelManager, ct);
+        Assert.False(sameSender.WouldChange);
+
+        // Nothing was written by any of it, and Octorate was not asked.
+        Assert.False(await db.PropertyComplianceSenders.AnyAsync());
+        Assert.Equal(lines, await db.OrgActivityEntries.CountAsync());
+        octorate.Verify(o => o.GetPoliceAccountAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     /// <summary>The sender service over the real store and delegation service, with the clock, Octorate and the flags under the test's control.</summary>
     private static PropertySenderService NewService(AppDbContext db, FakeTimeProvider clock, Mock<IOctorateApiClient> octorate)
     {
