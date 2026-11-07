@@ -618,6 +618,46 @@ public class MarketplacePartnerActivationTests
             Assert.Equal(MarketplaceCardStatus.NotActive, CardOf(await w.Catalog(db).GetCatalogAsync(OrgA, w.OrgWide, null, "it"), "partner-uno").Status);
     }
 
+    [Fact]
+    public async Task TheActiveTab_ExposesTheDayDeclaredAndTheProof_AfterAReload()
+    {
+        var w = await World.CreateAsync();
+        await w.AddPartnerAsync("partner-uno", portalCode: "portal-uno");
+        await w.AddPartnerAsync("partner-due");
+        await w.AddRowAsync(Row(OrgA, w.PropertyId, MarketplaceActivationKind.Tool, "portal-uno", MarketplaceActivationStatus.Active, verified: true));
+
+        // One partner proven by the connection of the same property, one that is only the host's word.
+        await using (var db = w.NewDb())
+        {
+            await w.Service(db).DeclareAsync(OrgA, w.OrgWide, "partner-uno", w.PropertyId, new DateOnly(2026, 11, 3), Host);
+            await w.Service(db).DeclareAsync(OrgA, w.OrgWide, "partner-due", w.PropertyId, new DateOnly(2026, 11, 4), Host);
+        }
+
+        // A new request reads the Active tab: the day and the proof come from the rows, in the answer the client gets.
+        await using var reload = w.NewDb();
+        var active = await w.Catalog(reload).GetActiveAsync(OrgA, w.OrgWide, null);
+        var json = JsonSerializer.Serialize(
+            MarketplaceActiveResponse.From(active, new ResxMarketplaceTexts(), "it"), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        using var document = JsonDocument.Parse(json);
+        var byCode = document.RootElement.GetProperty("integrations").EnumerateArray().ToDictionary(item => item.GetProperty("code").GetString()!);
+
+        string? Text(string code, string field) =>
+            byCode[code].GetProperty(field) is { ValueKind: not JsonValueKind.Null } value ? value.GetString() : null;
+
+        Assert.Equal(3, byCode.Count);
+        Assert.False(byCode["partner-uno"].GetProperty("isDeclared").GetBoolean());
+        Assert.Equal("2026-11-03T00:00:00Z", Text("partner-uno", "declaredAt"));
+        Assert.Equal("2026-11-07T09:30:00Z", Text("partner-uno", "verifiedAt"));
+
+        Assert.True(byCode["partner-due"].GetProperty("isDeclared").GetBoolean());
+        Assert.Equal("2026-11-04T00:00:00Z", Text("partner-due", "declaredAt"));
+        Assert.Null(Text("partner-due", "verifiedAt"));
+
+        // The same two fields on every kind: the connection was never declared by the host, and it was proven on the day its row says.
+        Assert.Null(Text("portal-uno", "declaredAt"));
+        Assert.Equal("2026-11-02T08:00:00Z", Text("portal-uno", "verifiedAt"));
+    }
+
     // ─── The endpoints, the registration and the words ────────────────────────────────────────────────────
 
     [Fact]
