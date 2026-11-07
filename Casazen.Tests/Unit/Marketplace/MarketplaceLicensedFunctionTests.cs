@@ -348,6 +348,75 @@ public class MarketplaceLicensedFunctionTests
     }
 
     [Fact]
+    public async Task RequestAsync_AskedAgainWhileTheLicenseCannotBeRead_ReturnsTheRequestUnderWay_AndWithoutOneTheErrorStays()
+    {
+        var w = await World.CreateAsync();
+        w.Licenses[World.Accommodation] = License(off: ["chat"]);
+
+        // A request made while the channel manager answers, one waiting as a Pending row, and two functions with no request under way (to fix, active).
+        MarketplaceFunctionEntry first;
+        await using (var db = w.NewDb())
+            first = await w.Service(db).RequestAsync(w.OrgA, w.OrgWide, w.PropertyId, "chat", Host);
+
+        await w.AddRowAsync("rms", MarketplaceActivationStatus.Pending, declared: true);
+        await w.AddRowAsync("invoice", MarketplaceActivationStatus.ToFix, verified: true, error: MarketplaceFunctionErrorCodes.LicenseModuleOff);
+        await w.AddRowAsync("smartOffer", MarketplaceActivationStatus.Active, verified: true);
+        var before = await w.RowsAsync();
+        w.Clock.Set(new DateTimeOffset(2026, 11, 8, 9, 30, 0, TimeSpan.Zero));
+
+        // The failures worth a retry (no answer, a 5xx, the quota used): asking again gives the same request, with its first date, and changes nothing.
+        foreach (var failure in new OctorateException[] { new OctorateServerException(null), new OctorateServerException(503), new OctorateRateLimitException(null) })
+        {
+            w.ReadFailure = failure;
+            await using var db = w.NewDb();
+            var service = w.Service(db);
+
+            var again = await service.RequestAsync(w.OrgA, w.OrgWide, w.PropertyId, "chat", Host);
+            Assert.Equal(first.ActivationId, again.ActivationId);
+            Assert.Equal(first.RequestedAt, again.RequestedAt);
+            Assert.Equal((MarketplaceFunctionStatus.Requested, true), (again.Status, again.IsDeclared));
+            Assert.Contains(w.PropertyName, again.RequestGuidance, StringComparison.Ordinal);
+
+            var waiting = await service.RequestAsync(w.OrgA, w.OrgWide, w.PropertyId, "rms", Host);
+            Assert.Equal(MarketplaceFunctionStatus.Requested, waiting.Status);
+
+            // With no request under way there is nothing to return: the error stays as it is (a module with no row, one to fix, one that is active).
+            foreach (var code in new[] { "metaSearch", "invoice", "smartOffer" })
+            {
+                var raised = await Assert.ThrowsAnyAsync<OctorateException>(() => service.RequestAsync(w.OrgA, w.OrgWide, w.PropertyId, code, Host));
+                Assert.Same(failure, raised);
+            }
+        }
+
+        // A refusal (the token, an accommodation Octorate does not know) is no failure worth a retry: raised as it is, request under way or not.
+        foreach (var refusal in new OctorateException[] { OctorateAuthException.Refused(403), new OctorateNotFoundException() })
+        {
+            w.ReadFailure = refusal;
+            await using var db = w.NewDb();
+            var raised = await Assert.ThrowsAnyAsync<OctorateException>(() => w.Service(db).RequestAsync(w.OrgA, w.OrgWide, w.PropertyId, "chat", Host));
+            Assert.Same(refusal, raised);
+        }
+
+        // Nothing was written in any of these cases, and the log says which request was returned and why, with ids and codes, never the property name.
+        Assert.Equal(before, await w.RowsAsync());
+        Assert.Contains(first.ActivationId!.Value.ToString(), w.Logs.AllOutput, StringComparison.Ordinal);
+        Assert.Contains("octorate_unavailable", w.Logs.AllOutput, StringComparison.Ordinal);
+        Assert.Contains("octorate_rate_limited", w.Logs.AllOutput, StringComparison.Ordinal);
+        Assert.DoesNotContain(w.PropertyName, w.Logs.AllOutput, StringComparison.Ordinal);
+
+        // The 409 stays for a read that answers: the channel manager is back and shows the module on, so there is nothing to ask for.
+        w.ReadFailure = null;
+        w.Licenses[World.Accommodation] = License(on: ["chat"]);
+        await using (var db = w.NewDb())
+        {
+            var on = await Assert.ThrowsAsync<DomainConflictException>(() => w.Service(db).RequestAsync(w.OrgA, w.OrgWide, w.PropertyId, "chat", Host));
+            Assert.Equal("marketplace_function_already_active", on.Code);
+        }
+
+        Assert.Equal(MarketplaceActivationStatus.Active, (await w.ActivationsAsync()).Single(row => row.TargetCode == "chat").Status);
+    }
+
+    [Fact]
     public async Task Methods_NeedTheConnectorAndALinkedProperty_AndNothingIsReadOtherwise()
     {
         // The connector is off, the org has no connected account, or the property has no confirmed listing (a proposed one is not one).

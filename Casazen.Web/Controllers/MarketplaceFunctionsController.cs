@@ -98,7 +98,7 @@ public sealed class MarketplaceFunctionsController(
     /// <response code="404"><c>marketplace_function_unknown</c>, <c>marketplace_property_not_found</c>.</response>
     /// <response code="409"><c>marketplace_function_already_active</c> (the license shows the module on), <c>marketplace_octorate_not_connected</c>.</response>
     /// <response code="422"><c>marketplace_property_not_linked</c>.</response>
-    /// <response code="502">The channel manager failed or did not answer (<c>octorate_unavailable</c>, ...): nothing is recorded.</response>
+    /// <response code="502">The channel manager failed or did not answer (<c>octorate_unavailable</c>, ...): nothing is recorded, unless the same request is already under way (answered as it is, 200).</response>
     [HttpPost("{moduleCode}/request")]
     [Authorize(Policy = CasazenPolicies.OtaWrite)]
     [ProducesResponseType(typeof(MarketplaceFunctionDto), StatusCodes.Status200OK)]

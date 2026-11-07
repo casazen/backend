@@ -54,8 +54,10 @@ public interface IMarketplaceLicensedFunctionService
     /// Records that the host asked the channel manager for a module: reads the license live (and reconciles with it), then creates the activation
     /// of the module for the property with status <see cref="MarketplaceFunctionStatus.Requested"/>, declared by the host, or returns the one that
     /// exists. Idempotent: a request under way is returned as it is, with its first <c>RequestedAt</c>; a module that went off (To fix) or was turned
-    /// off is asked for again. <paramref name="userId"/> is the person who asked, for the log. Nothing is ever sent to the channel manager: the
-    /// request is the host's.
+    /// off is asked for again. When the live read fails with a failure worth a retry (no answer, a 5xx, the quota used) and a request is under way
+    /// (Requested, or Pending), that request is returned as it is, so that asking again always gives the same one; with no request under way the typed
+    /// error of the client is raised and nothing is recorded. <paramref name="userId"/> is the person who asked, for the log. Nothing is ever sent to
+    /// the channel manager: the request is the host's.
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.NotFoundException"><c>marketplace_function_unknown</c> (the code is not a module of the list), <c>marketplace_property_not_found</c>.</exception>
     /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">

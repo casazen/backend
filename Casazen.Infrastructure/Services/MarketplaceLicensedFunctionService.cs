@@ -24,7 +24,9 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>Only the license decides.</b> A module the license shows on is Active, verified and no longer declared; a verified Active module the license
 /// shows off is To fix (<see cref="MarketplaceFunctionErrorCodes.LicenseModuleOff"/>); a module the license does not state changes nothing, because an
 /// absent flag is not an off flag; a Requested row waits. The reads and the writes happen only with the connector on and the org connected
-/// (<see cref="ConnectedAccountAsync"/>), and an Octorate failure is raised as it is: nothing is recorded on a read that failed.</para>
+/// (<see cref="ConnectedAccountAsync"/>), and an Octorate failure is raised as it is: nothing is recorded on a read that failed. The one exception is
+/// asking again for a request under way while the channel manager cannot be read (no answer, a 5xx, the quota used): that request is returned as it is,
+/// so that asking again always gives the same one.</para>
 /// <para><b>Last read.</b> The plan and the room limit of the last live read are kept in memory for a week, by org, property and accommodation (a
 /// property linked to another accommodation starts again), not in a table: after a restart they are absent until the next read, and
 /// <see cref="MarketplaceFunctionList.LicenseReadAt"/> says so. Only the plan and the number are kept, never the answer of Octorate.</para>
@@ -104,7 +106,26 @@ public sealed class MarketplaceLicensedFunctionService(
 
         // The license is read first and applied: what it shows is recorded even when it is the reason of the refusal, so that the card of a module that
         // is already on says Active at once instead of waiting for the daily check.
-        var license = await ReadAndApplyAsync(orgId, propertyId, link, ct);
+        OctorateLicense license;
+        try
+        {
+            license = await ReadAndApplyAsync(orgId, propertyId, link, ct);
+        }
+        catch (OctorateException ex) when (ex is OctorateRateLimitException or OctorateServerException)
+        {
+            // Asking again gives the same request (AC-NF56-3), also while the channel manager cannot be read (no answer, a 5xx, the quota used): the
+            // request under way is returned as it is, nothing is changed, and the next check applies the license. With no request under way there is
+            // nothing to return: the error is raised as it is and nothing is recorded. Any other refusal (the token, an unknown accommodation) is raised too.
+            var waiting = await RequestUnderWayAsync(orgId, propertyId, code, ct);
+            if (waiting is null)
+                throw;
+
+            logger.LogWarning(
+                "Licensed function {Code} asked again for property {PropertyId} of org {OrgId} by {UserId}: the license could not be read ({Error}), activation {ActivationId} is returned as it is",
+                code, propertyId, orgId, userId, ex.Code, waiting.Id);
+            return EntryOf(code, waiting, propertyName, lang);
+        }
+
         if (license.Modules.TryGetValue(code, out var isOn) && isOn)
             throw new DomainConflictException(MarketplaceFunctionErrorCodes.AlreadyActive, "MarketplaceFunctionAlreadyActive");
 
@@ -377,6 +398,18 @@ public sealed class MarketplaceLicensedFunctionService(
                 ForgetTrackedRows();
             }
         }
+    }
+
+    /// <summary>The request of the module under way for the property (Requested, or Pending), as it is stored; <c>null</c> when there is none. Nothing is tracked.</summary>
+    private async Task<MarketplaceActivation?> RequestUnderWayAsync(Guid orgId, Guid propertyId, string code, CancellationToken ct)
+    {
+        return await db.MarketplaceActivations.AsNoTracking().FirstOrDefaultAsync(
+            a => a.OrgId == orgId
+                 && a.PropertyId == propertyId
+                 && a.Kind == MarketplaceActivationKind.LicensedFunction
+                 && a.TargetCode == code
+                 && (a.Status == MarketplaceActivationStatus.Requested || a.Status == MarketplaceActivationStatus.Pending),
+            ct);
     }
 
     /// <summary>The rows are read again after a failed save: nothing tracked from the failed attempt may be kept.</summary>
