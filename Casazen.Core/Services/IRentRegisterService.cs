@@ -70,7 +70,13 @@ public sealed record RentRegisterRow(
     DateTime? PaymentRequestedAt,
     DateTime? LastReminderAt,
     int ReminderCount,
-    bool CanRemind);
+    bool CanRemind,
+    decimal RentAmount,
+    decimal CondominiumAdvanceAmount,
+    decimal CondominiumSettlementAmount,
+    decimal OtherAmount,
+    decimal AmountPaid,
+    decimal AmountOutstanding);
 
 /// <summary>
 /// A page of the register. <c>OnlinePaymentsAvailable</c>: the org accepts rent online (Stripe Connect), so a reminder carries

@@ -292,6 +292,8 @@ public class AppDbContext(
     public DbSet<LeaseSigner> LeaseSigners { get; set; } = null!;
     public DbSet<RentSchedule> RentSchedules { get; set; } = null!;
     public DbSet<RentLedgerEntry> RentLedgerEntries { get; set; } = null!;
+    public DbSet<RentLedgerComponent> RentLedgerComponents { get; set; } = null!;
+    public DbSet<LeaseCondominiumTerms> LeaseCondominiumTerms { get; set; } = null!;
     public DbSet<RentBankMovement> RentBankMovements { get; set; } = null!;
 
     // ConcordatoFacile integration (NF-02, NF-03, ADR-004)
@@ -969,6 +971,76 @@ public class AppDbContext(
         // The rent register of the long-term area (LR-01): the installments of an org by month of due date, in due date order.
         modelBuilder.Entity<RentLedgerEntry>()
             .HasIndex(e => new { e.OrgId, e.DueDate });
+
+        // CondoLedger phase 1: the parts of an installment. They go with the installment; AmountDue stays the total.
+        modelBuilder.Entity<RentLedgerComponent>()
+            .HasOne(c => c.RentLedgerEntry)
+            .WithMany(e => e.Components)
+            .HasForeignKey(c => c.RentLedgerEntryId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<RentLedgerComponent>()
+            .HasOne(c => c.Org)
+            .WithMany()
+            .HasForeignKey(c => c.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<RentLedgerComponent>()
+            .Property(c => c.Amount)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<RentLedgerComponent>()
+            .Property(c => c.Kind)
+            .HasConversion<int>();
+
+        modelBuilder.Entity<RentLedgerComponent>()
+            .HasIndex(c => c.RentLedgerEntryId);
+
+        modelBuilder.Entity<RentLedgerComponent>()
+            .HasIndex(c => c.OrgId);
+
+        // One current condominium clause per lease. The source document is optional and cleared when that document goes.
+        modelBuilder.Entity<LeaseCondominiumTerms>()
+            .HasOne(t => t.LeaseContract)
+            .WithOne(l => l.CondominiumTerms)
+            .HasForeignKey<LeaseCondominiumTerms>(t => t.LeaseContractId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<LeaseCondominiumTerms>()
+            .HasOne(t => t.Org)
+            .WithMany()
+            .HasForeignKey(t => t.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<LeaseCondominiumTerms>()
+            .HasOne(t => t.SourceDocument)
+            .WithMany()
+            .HasForeignKey(t => t.SourceDocumentId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<LeaseCondominiumTerms>()
+            .Property(t => t.AdvanceAmount)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<LeaseCondominiumTerms>()
+            .Property(t => t.ExtractionConfidence)
+            .HasPrecision(5, 4);
+
+        modelBuilder.Entity<LeaseCondominiumTerms>()
+            .Property(t => t.AdvanceMode)
+            .HasConversion<int>();
+
+        modelBuilder.Entity<LeaseCondominiumTerms>()
+            .HasIndex(t => t.LeaseContractId)
+            .IsUnique();
+
+        modelBuilder.Entity<LeaseCondominiumTerms>()
+            .HasIndex(t => t.OrgId);
+
+        modelBuilder.Entity<LeaseCondominiumTerms>()
+            .ToTable(t => t.HasCheckConstraint(
+                "CK_LeaseCondominiumTerms_Confidence",
+                "\"ExtractionConfidence\" IS NULL OR (\"ExtractionConfidence\" >= 0 AND \"ExtractionConfidence\" <= 1)"));
 
         // The credits of a bank statement confirmed as rent payments (import of the statement of the Canoni page): the fingerprint is
         // unique per org, so the same movement is imported once; the payer hashes are looked up per org to recognize who paid before.

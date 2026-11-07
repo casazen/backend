@@ -2812,6 +2812,12 @@
   <data name="RentAmountInvalid" xml:space="preserve">
     <value>L'importo della rata deve essere maggiore di zero, con al massimo due decimali.</value>
   </data>
+  <data name="RentCondominiumTermsInvalid" xml:space="preserve">
+    <value>Le condizioni condominiali non sono valide: un acconto fisso richiede importo e cadenza, le date devono essere in ordine e la confidenza fra 0 e 1.</value>
+  </data>
+  <data name="RentCondominiumSourceNotFound" xml:space="preserve">
+    <value>Il documento indicato non appartiene a questo contratto.</value>
+  </data>
   <data name="RentCadenceLocked" xml:space="preserve">
     <value>La periodicità non può essere cambiata: ci sono rate già pagate o con un pagamento avviato.</value>
   </data>

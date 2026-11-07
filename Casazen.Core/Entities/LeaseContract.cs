@@ -267,6 +267,9 @@ public class LeaseContract : ITenantOwned
     public virtual ICollection<LeaseEvent> Events { get; set; } = [];
     public virtual RentSchedule? RentSchedule { get; set; }
 
+    /// <summary>Condominium advance and settlement clause of this lease (CondoLedger phase 1). One current row.</summary>
+    public virtual LeaseCondominiumTerms? CondominiumTerms { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

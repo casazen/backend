@@ -55,6 +55,36 @@ public class LeaseRentController(
             cancellationToken));
     }
 
+    /// <summary>
+    /// Confirms the condominium terms of the lease (advance, cadence, settlement clause) and, when the plan is still the rent
+    /// alone, adds a confirmed fixed advance to the installments. 422 <c>rent_condominium_terms_invalid</c>,
+    /// <c>rent_condominium_source_not_found</c>.
+    /// </summary>
+    [HttpPut("condominium-terms")]
+    [Authorize(Policy = CasazenPolicies.LeaseCreate)]
+    public async Task<ActionResult<RentLedgerView>> ConfirmCondominiumTerms(
+        Guid leaseId, [FromBody] ConfirmLeaseCondominiumTermsDto dto, CancellationToken cancellationToken)
+    {
+        if (User.GetUserId() is not { } userId)
+            return Unauthorized();
+        if (await AuthorizeLeaseAsync(leaseId, LeaseOperations.Create) is { } denied)
+            return denied;
+        return Ok(await rentBilling.ConfirmCondominiumTermsAsync(
+            leaseId,
+            new ConfirmLeaseCondominiumTermsRequest(
+                dto.AdvanceMode!.Value,
+                dto.AdvanceAmount,
+                dto.Cadence,
+                dto.SettlementRequired,
+                dto.ProrationRule,
+                dto.EffectiveFrom,
+                dto.EffectiveTo,
+                dto.SourceDocumentId,
+                dto.ExtractionConfidence),
+            userId,
+            cancellationToken));
+    }
+
     /// <summary>Stops the schedule: unpaid installments are cancelled (their payable PaymentIntents canceled on Stripe).</summary>
     [HttpPost("schedule/disable")]
     [Authorize(Policy = CasazenPolicies.LeaseCreate)]
@@ -135,6 +165,38 @@ public sealed class ConfigureRentScheduleDto
 
     /// <summary>LR-04a: the daily job emails the tenants the payment links; absent = off for a new plan, unchanged for an existing one.</summary>
     public bool? OnlineRequests { get; set; }
+}
+
+/// <summary>
+/// Condominium clause of the lease. A fixed advance needs an amount and a cadence. Saving confirms the values.
+/// </summary>
+public sealed class ConfirmLeaseCondominiumTermsDto
+{
+    [Required(ErrorMessage = "RentCondominiumTermsInvalid")]
+    [EnumDataType(typeof(CondominiumAdvanceMode), ErrorMessage = "RentCondominiumTermsInvalid")]
+    public CondominiumAdvanceMode? AdvanceMode { get; set; }
+
+    [Range(typeof(decimal), "0.01", "1000000", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
+        ErrorMessage = "RentCondominiumTermsInvalid")]
+    public decimal? AdvanceAmount { get; set; }
+
+    [EnumDataType(typeof(RentCadence), ErrorMessage = "RentCondominiumTermsInvalid")]
+    public RentCadence? Cadence { get; set; }
+
+    public bool SettlementRequired { get; set; }
+
+    [MaxLength(200, ErrorMessage = "RentCondominiumTermsInvalid")]
+    public string? ProrationRule { get; set; }
+
+    public DateOnly? EffectiveFrom { get; set; }
+
+    public DateOnly? EffectiveTo { get; set; }
+
+    public Guid? SourceDocumentId { get; set; }
+
+    [Range(typeof(decimal), "0", "1", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
+        ErrorMessage = "RentCondominiumTermsInvalid")]
+    public decimal? ExtractionConfidence { get; set; }
 }
 
 /// <summary>Offline payment of an installment: the day it was paid (not in the future) and an optional note.</summary>

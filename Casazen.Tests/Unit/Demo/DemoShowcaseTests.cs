@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Casazen.Core.Demo;
 using Casazen.Core.Entities;
+using Casazen.Core.Leases;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Models;
@@ -112,6 +113,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.TouristTaxChannelRules.Select(rule => rule.Scenario))
             .Concat(DemoShowcaseCatalog.WelcomeLinks.Select(link => link.Scenario))
             .Concat(DemoShowcaseCatalog.OnboardingActivations.Select(activation => activation.Scenario))
+            .Concat(DemoShowcaseCatalog.RentLedgerComponentExamples.Select(example => example.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -913,5 +915,17 @@ public class DemoShowcaseTests
         Assert.Empty(FiscalDocumentRules.MissingIssuerFields(issuer, profile.Regime, profile.FatturaPaRegimeCode, "12345678903", null));
         Assert.Equal(5, profile.PostalCode.Length);
         Assert.Equal(2, profile.Province.Length);
+    }
+
+    [Fact]
+    public void RentLedgerComponents_FixedAdvance_TwelveMonthsOfRentPlusAdvance()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.RentLedgerComponents, DemoShowcaseCatalog.Scenarios);
+        var example = Assert.Single(DemoShowcaseCatalog.RentLedgerComponentExamples);
+        Assert.Equal(DemoShowcaseCatalog.Scenario.RentLedgerComponents, example.Scenario);
+        Assert.Equal(12, example.Months);
+
+        var components = RentLedgerLine.FixedContract(example.Rent, example.CondominiumAdvance);
+        Assert.Equal(1_050m, RentLedgerLine.Sum(components));
     }
 }
