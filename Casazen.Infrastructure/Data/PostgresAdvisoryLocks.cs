@@ -394,6 +394,14 @@ internal static class PostgresAdvisoryLocks
         /// activation (epic E10).
         /// </summary>
         OnboardingPanelAssist = 21_011,
+
+        /// <summary>
+        /// The start of the activation of one channel or tool for one property (key: <c>orgId.ToString("N")</c> + ":" + <c>propertyId.ToString("N")</c> + ":" + portal
+        /// code, E09/F02/US01/T02): two clicks, or two instances, never create two connections on the channel manager for the same property and portal,
+        /// because the second waits and then finds the activation of the first. Held until the commit, the calls to the channel manager included, as the
+        /// checkout of a service is. The values 20_900 to 20_999 are the marketplace (epic E09).
+        /// </summary>
+        MarketplaceChannelActivation = 20_931,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
