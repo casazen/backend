@@ -25,7 +25,8 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>Declared, then verified only by a connection.</b> A declaration is the host's word (<c>IsDeclared</c>); it becomes verified only when the
 /// partner has a portal in Octorate's catalog and the same property has a proven, Active connection of that portal. The connection is read from the
 /// activation rows of CasaZen, and only while the connector is on and the org is connected (with the flag off, nothing is read and the declaration stays a
-/// declaration).</para>
+/// declaration). It is looked at when the host declares, and again when it declares a row that is Active and only declared: the proof is then added
+/// and nothing else of the row moves. No other job upgrades a partner's row (the health sync reads channels, tools and license functions only).</para>
 /// <para><b>Logs.</b> Ids and the partner code: never a name, an address or a CIN of a property.</para>
 /// </remarks>
 public sealed class MarketplacePartnerActivationService(
@@ -79,34 +80,47 @@ public sealed class MarketplacePartnerActivationService(
         {
             var now = Now();
             var row = await TrackedRowAsync(orgId, propertyId, partner.Code, ct);
+            var onlyTheProof = false;
 
-            // Declaring twice changes nothing: an activation that is Active (declared or verified) is the answer, and no day given later rewrites it.
-            if (row is { Status: MarketplaceActivationStatus.Active })
-                return Describe(row);
-
-            if (row is null)
+            if (row is { Status: MarketplaceActivationStatus.Active } active)
             {
-                // The collection of the DbSet, not the navigation of another entity: a row with an id of its own is added, never attached as modified.
-                row = new MarketplaceActivation
-                {
-                    OrgId = orgId,
-                    PropertyId = propertyId,
-                    Kind = MarketplaceActivationKind.Partner,
-                    TargetCode = partner.Code,
-                    CreatedAt = now,
-                };
-                db.MarketplaceActivations.Add(row);
-            }
+                // Declaring twice changes nothing: an activation that is Active is the answer, and no day given later rewrites it. The one thing that can
+                // move is the proof (Q-006): a row that is only declared is verified when a proven connection of the same property shows it now, since no
+                // other job picks that up for a partner. The host's day and everything else of the row stay as they were.
+                if (!active.IsDeclared || !verified)
+                    return Describe(active);
 
-            // A new row, or one that was turned off or is to fix: Active, with the day the host gave. The status is the host's word unless a connection shows it.
-            row.Status = MarketplaceActivationStatus.Active;
-            row.IsDeclared = !verified;
-            row.DeclaredAt = declaredAt;
-            row.VerifiedAt = verified ? now : null;
-            row.LastErrorCode = null;
-            row.LastErrorAt = null;
-            row.ChangeRequestedAt = null;
-            row.UpdatedAt = now;
+                active.IsDeclared = false;
+                active.VerifiedAt = now;
+                active.UpdatedAt = now;
+                onlyTheProof = true;
+            }
+            else
+            {
+                if (row is null)
+                {
+                    // The collection of the DbSet, not the navigation of another entity: a row with an id of its own is added, never attached as modified.
+                    row = new MarketplaceActivation
+                    {
+                        OrgId = orgId,
+                        PropertyId = propertyId,
+                        Kind = MarketplaceActivationKind.Partner,
+                        TargetCode = partner.Code,
+                        CreatedAt = now,
+                    };
+                    db.MarketplaceActivations.Add(row);
+                }
+
+                // A new row, or one that was turned off or is to fix: Active, with the day the host gave. The status is the host's word unless a connection shows it.
+                row.Status = MarketplaceActivationStatus.Active;
+                row.IsDeclared = !verified;
+                row.DeclaredAt = declaredAt;
+                row.VerifiedAt = verified ? now : null;
+                row.LastErrorCode = null;
+                row.LastErrorAt = null;
+                row.ChangeRequestedAt = null;
+                row.UpdatedAt = now;
+            }
 
             try
             {
@@ -119,9 +133,19 @@ public sealed class MarketplacePartnerActivationService(
                 continue;
             }
 
-            logger.LogInformation(
-                "Partner {PartnerCode} declared Active for org {OrgId} (property {PropertyId}) by {UserId}: activation {ActivationId}, verified by a connection {Verified}",
-                partner.Code, orgId, propertyId, userId, row.Id, verified);
+            if (onlyTheProof)
+            {
+                logger.LogInformation(
+                    "Partner {PartnerCode} declared before is verified by a connection for org {OrgId} (property {PropertyId}), asked by {UserId}: activation {ActivationId}",
+                    partner.Code, orgId, propertyId, userId, row.Id);
+            }
+            else
+            {
+                logger.LogInformation(
+                    "Partner {PartnerCode} declared Active for org {OrgId} (property {PropertyId}) by {UserId}: activation {ActivationId}, verified by a connection {Verified}",
+                    partner.Code, orgId, propertyId, userId, row.Id, verified);
+            }
+
             return Describe(row);
         }
     }

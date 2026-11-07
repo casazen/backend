@@ -434,6 +434,66 @@ public class MarketplacePartnerActivationTests
     }
 
     [Fact]
+    public async Task TheDeclaration_OfARowThatIsOnlyDeclared_IsVerifiedWhenAProvenConnectionAppearsLater_AndNothingElseMoves()
+    {
+        var w = await World.CreateAsync();
+        await w.AddPartnerAsync("partner-uno", portalCode: "portal-uno");
+
+        // Declared first, with no connection yet: the host's word, with the day it gave.
+        MarketplacePartnerActivation first;
+        await using (var db = w.NewDb())
+            first = await w.Service(db).DeclareAsync(OrgA, w.OrgWide, "partner-uno", w.PropertyId, new DateOnly(2026, 11, 3), Host);
+
+        Assert.True(first.IsDeclared);
+        Assert.Null(first.VerifiedAt);
+        var before = Assert.Single(await w.ActivationsAsync());
+
+        // The connection comes after the declaration. With the connector off nothing is read: declaring again is as before and the row is untouched.
+        await w.AddRowAsync(Row(OrgA, w.PropertyId, MarketplaceActivationKind.Tool, "portal-uno", MarketplaceActivationStatus.Active, verified: true));
+        w.Clock.Set(new DateTimeOffset(2026, 11, 9, 9, 30, 0, TimeSpan.Zero));
+        w.ConnectorOn = false;
+        await using (var db = w.NewDb())
+            Assert.Equal(first, await w.Service(db).DeclareAsync(OrgA, w.OrgWide, "partner-uno", w.PropertyId, new DateOnly(2026, 11, 9), Collaborator));
+
+        Assert.Equal(Describe(before), Describe(PartnerRow(await w.ActivationsAsync())));
+
+        // Connector on: the proven connection of the same property shows it now. The same activation is verified, with another day given it keeps the first
+        // one, and only the proof is added.
+        w.ConnectorOn = true;
+        MarketplacePartnerActivation verified;
+        await using (var db = w.NewDb())
+            verified = await w.Service(db).DeclareAsync(OrgA, w.OrgWide, "partner-uno", w.PropertyId, new DateOnly(2026, 11, 9), Collaborator);
+
+        Assert.Equal(first.ActivationId, verified.ActivationId);
+        Assert.Equal(MarketplaceActivationStatus.Active, verified.Status);
+        Assert.False(verified.IsDeclared);
+        Assert.Equal<DateTime?>(w.Clock.Now, verified.VerifiedAt);
+        Assert.Equal(first.DeclaredAt, verified.DeclaredAt);
+
+        var after = PartnerRow(await w.ActivationsAsync());
+        Assert.Equal(
+            (before.Id, before.CreatedAt, before.DeclaredAt, before.Status, before.RequestedAt, before.LastSyncedAt, before.PropertyId),
+            (after.Id, after.CreatedAt, after.DeclaredAt, after.Status, after.RequestedAt, after.LastSyncedAt, after.PropertyId));
+        Assert.False(after.IsDeclared);
+        Assert.Equal<DateTime?>(w.Clock.Now, after.VerifiedAt);
+        Assert.Equal(w.Clock.Now, after.UpdatedAt);
+
+        // Verified, declaring again changes nothing at all.
+        w.Clock.Set(new DateTimeOffset(2026, 11, 10, 9, 30, 0, TimeSpan.Zero));
+        await using (var db = w.NewDb())
+            Assert.Equal(verified, await w.Service(db).DeclareAsync(OrgA, w.OrgWide, "partner-uno", w.PropertyId, new DateOnly(2026, 11, 10), Host));
+
+        Assert.Equal(Describe(after), Describe(PartnerRow(await w.ActivationsAsync())));
+
+        // A declaration for the whole org has no property to compare: the connection of a property never verifies it, not even declaring again.
+        await using (var db = w.NewDb())
+        {
+            Assert.True((await w.Service(db).DeclareAsync(OrgA, w.OrgWide, "partner-uno", null, new DateOnly(2026, 11, 10), Host)).IsDeclared);
+            Assert.True((await w.Service(db).DeclareAsync(OrgA, w.OrgWide, "partner-uno", null, new DateOnly(2026, 11, 10), Host)).IsDeclared);
+        }
+    }
+
+    [Fact]
     public async Task TheGuidedDeactivation_TurnsTheRowOff_KeepsItAsHistory_AndTheHostCanDeclareAgain()
     {
         var w = await World.CreateAsync();
@@ -667,6 +727,10 @@ public class MarketplacePartnerActivationTests
             DeclaredAt = declared ? new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc) : null,
             VerifiedAt = verified ? new DateTime(2026, 11, 2, 8, 0, 0, DateTimeKind.Utc) : null,
         };
+
+    /// <summary>The row of the partner among the activations of an org (the one partner row, the other kinds left out).</summary>
+    private static MarketplaceActivation PartnerRow(IEnumerable<MarketplaceActivation> rows) =>
+        rows.Single(row => row.Kind == MarketplaceActivationKind.Partner);
 
     /// <summary>Every public member of an entity as text, to compare before and after.</summary>
     private static string Describe(object entity) =>

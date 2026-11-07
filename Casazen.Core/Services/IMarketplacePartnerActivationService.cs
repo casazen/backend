@@ -43,11 +43,13 @@ public interface IMarketplacePartnerActivationService
     /// <summary>
     /// Records that the host activated the partner on its own site, on <paramref name="declaredOn"/>: the row (kind <c>Partner</c>, target = the partner's
     /// code, the property given or none) becomes Active and declared, with that day as <c>DeclaredAt</c> (midnight UTC of the day, the storage convention
-    /// of date-only values). Idempotent: a row that is already Active is returned as it is and nothing is written, whatever the day given; a row that was
-    /// turned off, or is to fix, is made Active again. When the partner has a portal code in Octorate's catalog and the property has an Active, proven
-    /// connection of that portal (a channel or a tool), the row is verified instead (<c>VerifiedAt</c> set, no longer declared); an org-level declaration
-    /// has no property to compare and stays declared. Nothing is asked of Octorate: only CasaZen's own rows are read, and only while the connector is on
-    /// and the org is connected. <paramref name="userId"/> is the person who declared, for the log.
+    /// of date-only values). Idempotent: a row that is already Active is returned as it is, whatever the day given, and its declaration (the day included) is
+    /// never rewritten; a row that was turned off, or is to fix, is made Active again. When the partner has a portal code in Octorate's catalog and the
+    /// property has an Active, proven connection of that portal (a channel or a tool), the row is verified instead (<c>VerifiedAt</c> set, no longer
+    /// declared); an org-level declaration has no property to compare and stays declared. The proof is looked at again for a row that is Active and only
+    /// declared (the connection came after the declaration): then, and only then, a declaring again writes: <c>VerifiedAt</c> and <c>UpdatedAt</c> are set
+    /// and <c>IsDeclared</c> is cleared, the rest of the row stays. Nothing is asked of Octorate: only CasaZen's own rows are read, and only while the
+    /// connector is on and the org is connected. <paramref name="userId"/> is the person who declared, for the log.
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException"><c>marketplace_declared_date_invalid</c>: the day is after today in Rome.</exception>
     /// <exception cref="Casazen.Core.Exceptions.DomainForbiddenException"><c>marketplace_partner_needs_whole_org</c>: no property, and the caller does not reach the whole org.</exception>
