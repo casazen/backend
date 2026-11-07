@@ -238,6 +238,12 @@ public static class DemoShowcaseCatalog
         /// A house without a verified property is not written into the book.
         /// </summary>
         public const string CondominiumHistoricalImport = "condominium-historical-import";
+
+        /// <summary>
+        /// A free-form administrator preventivo: the reader proposes esercizio 2024/2025, quota ordinaria € 490,30
+        /// and straordinarie € 600. It does not post, and it does not read millesimi, payments or the rate plan.
+        /// </summary>
+        public const string AdministratorStatementPdf = "administrator-statement-pdf";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -313,6 +319,7 @@ public static class DemoShowcaseCatalog
         Scenario.TenantCondominiumSettlement,
         Scenario.TenantExpenseProposal,
         Scenario.CondominiumHistoricalImport,
+        Scenario.AdministratorStatementPdf,
     ];
 
     /// <summary>
@@ -369,6 +376,21 @@ public static class DemoShowcaseCatalog
     public static IReadOnlyList<DemoCondominiumImportTemplate> CondominiumHistoricalImportExamples { get; } =
     [
         new("casa-a-2024", 490.30m, 0m, 490.30m, 0m, 412.80m, 77.50m, 12, 490.30m, Scenario.CondominiumHistoricalImport),
+    ];
+
+    /// <summary>
+    /// The sentence a free-form administrator PDF can be read for. The extraordinary amount is proposed and not charged
+    /// until a person accepts it. Not written as a file.
+    /// </summary>
+    public static IReadOnlyList<DemoAdministratorStatementTemplate> AdministratorStatementPdfExamples { get; } =
+    [
+        new(
+            "preventivo-casa-a",
+            "Preventivo\nEsercizio 2024/2025\nQuota ordinaria 490,30\nSpese straordinarie 600,00",
+            "2024/2025",
+            490.30m,
+            600m,
+            Scenario.AdministratorStatementPdf),
     ];
 
     /// <summary>
@@ -1700,6 +1722,14 @@ public sealed record DemoTenantSettlementTemplate(
 /// The wizard proposal when the property has no condominium year yet: the advance is the new preventivo split into
 /// <see cref="Installments"/>, and <see cref="PreviousConsuntivo"/> is kept for the settlement.
 /// </summary>
+public sealed record DemoAdministratorStatementTemplate(
+    string Key,
+    string Text,
+    string Label,
+    decimal Ordinary,
+    decimal Extraordinary,
+    string Scenario);
+
 public sealed record DemoCondominiumImportTemplate(
     string Key,
     decimal Ordinary,

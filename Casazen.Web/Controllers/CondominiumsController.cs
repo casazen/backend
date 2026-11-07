@@ -21,6 +21,7 @@ namespace Casazen.Web.Controllers;
 public class CondominiumsController(
     ICondominiumAccountingService condominiums,
     ITenantCondominiumSettlementService settlements,
+    IAdministratorStatementReaderService statements,
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
@@ -169,8 +170,43 @@ public class CondominiumsController(
     }
 
     /// <summary>
+    /// Reads a free-form administrator PDF and proposes the budget or the final in the fiscal year it names.
+    /// Nothing is posted. A scanned file with no text, or a file without a year and an amount, is refused.
+    /// The same statement can still be entered by hand.
+    /// </summary>
+    [HttpPost("{condominiumId:guid}/statements/read")]
+    [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
+    [RequestSizeLimit(1_048_576)]
+    public async Task<ActionResult<StatementProposalView>> ReadStatement(Guid condominiumId, IFormFile file, CancellationToken cancellationToken)
+    {
+        var (scope, userId) = await ScopeAsync(cancellationToken);
+        if (scope is null || userId is null)
+            return Unauthorized();
+        if (file is null || file.Length == 0)
+            return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, CondominiumErrorCodes.FileUnsupported, "CondominiumStatementFileUnsupported");
+
+        await using var stream = file.OpenReadStream();
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer, cancellationToken);
+        return Ok(await statements.ProposeAsync(
+            scope, condominiumId, new StatementFileUpload(file.FileName, buffer.ToArray()), userId, cancellationToken));
+    }
+
+    /// <summary>Posts a proposal the reader stored. An uncertain line is not charged to the tenant.</summary>
+    [HttpPost("{condominiumId:guid}/statements/proposals/{proposalId:guid}/confirm")]
+    [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
+    public async Task<ActionResult<StatementProposalView>> ConfirmProposal(
+        Guid condominiumId, Guid proposalId, CancellationToken cancellationToken)
+    {
+        var (scope, userId) = await ScopeAsync(cancellationToken);
+        if (scope is null || userId is null)
+            return Unauthorized();
+        return Ok(await statements.ConfirmAsync(scope, condominiumId, proposalId, userId, cancellationToken));
+    }
+
+    /// <summary>
     /// Posts a <c>condo-statement-v1</c> text or PDF into the fiscal year named in the file. The same numbers can be entered
-    /// by hand. A free-form administrator PDF is refused: it is not read by a model.
+    /// by hand. A free-form administrator PDF is refused here; it is proposed by <c>statements/read</c> and posted only after confirmation.
     /// </summary>
     [HttpPost("{condominiumId:guid}/statements/import")]
     [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]

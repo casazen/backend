@@ -119,6 +119,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.TenantCondominiumSettlementExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.TenantExpenseProposalExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.CondominiumHistoricalImportExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.AdministratorStatementPdfExamples.Select(example => example.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -993,6 +994,22 @@ public class DemoShowcaseTests
             new DateOnly(2024, 6, 1), CondominiumInstallmentCadence.Monthly, example.Ordinary, example.Extraordinary, example.Prior);
         Assert.Equal(example.InstallmentCount, rows.Count);
         Assert.Equal(example.InstallmentTotal, rows.Sum(row => row.Total));
+    }
+
+    [Fact]
+    public void AdministratorStatementPdf_ProposesTheYearAndDoesNotChargeExtraordinaryByItself()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.AdministratorStatementPdf, DemoShowcaseCatalog.Scenarios);
+        var example = Assert.Single(DemoShowcaseCatalog.AdministratorStatementPdfExamples);
+        Assert.True(AdministratorStatementReader.TryRead(example.Text, 6, out var proposal, out _));
+        Assert.NotNull(proposal);
+        Assert.Equal(example.Label, proposal.Label);
+        Assert.Equal(example.Ordinary, proposal.Ordinary);
+        Assert.Equal(example.Extraordinary, proposal.Extraordinary);
+        Assert.Contains("millesimi", proposal.NotExtracted);
+        var extraordinary = ExpenseClassification.Apply(
+            CondominiumExpenseNature.Extraordinary, example.Extraordinary, null, null, ExpenseClassificationSource.Document, proposal.Confidence);
+        Assert.False(extraordinary.ChargesTenantAutomatically);
     }
 
     [Fact]
