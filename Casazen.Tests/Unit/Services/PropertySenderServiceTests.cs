@@ -353,6 +353,92 @@ public class PropertySenderServiceTests
         octorate.Verify(o => o.GetPoliceAccountAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    /// <summary>
+    /// The switch without the view (E10/F02/US01, the bulk configuration, which discards the view): it refuses what the switch refuses, with the
+    /// same codes, and writes nothing then; it writes what the switch writes (the sender for both communications, one audit line, the consent of the
+    /// delegation only when the caller gives it); and it never reads the police account on Octorate, which only builds the view. The switch of a
+    /// single property still builds its view, and so still reads it.
+    /// </summary>
+    [Fact]
+    public async Task SwitchWithoutView_DoesTheSwitch_AndNeverAsksOctorate_WhileTheSwitchStillDoes()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        var world = await SeedAsync(databaseName);
+        var clock = new FakeTimeProvider(Start);
+        var octorate = new Mock<IOctorateApiClient>();
+        OctorateExposes(octorate, valid: true, autorun: true);
+        await using var db = OrgTeamTestData.NewDb(databaseName);
+        var service = NewService(db, clock, octorate);
+        var ct = CancellationToken.None;
+        var seen = AlloggiatiDelegationTexts.CurrentVersion;
+        void NeverAsked() => octorate.Verify(o => o.GetPoliceAccountAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        Task<int> LinesAsync() => db.OrgActivityEntries.CountAsync(e => e.Type == OrgActivityType.PropertySenderChanged);
+
+        // The refusals: the same code from the two, nothing written, nobody asked.
+        (Guid Property, ComplianceSenderType Sender, bool Confirmed, bool Consent, string? Version, ComplianceSenderType? Istat, string Code)[] refusals =
+        [
+            (world.Connected, ComplianceSenderType.Manual, false, false, null, null, "sender_switch_confirmation_required"),
+            (world.Connected, ComplianceSenderType.CasaZen, true, false, null, null, "sender_casazen_not_available"),
+            (world.Connected, ComplianceSenderType.Manual, true, false, null, ComplianceSenderType.ChannelManager, "sender_istat_mismatch"),
+            (world.NotConnected, ComplianceSenderType.ChannelManager, true, false, null, null, "sender_channel_manager_not_available"),
+            (world.Swiss, ComplianceSenderType.Manual, true, false, null, null, "sender_not_applicable"),
+            (Guid.NewGuid(), ComplianceSenderType.Manual, true, false, null, null, "property_not_found"),
+            (world.Connected, ComplianceSenderType.ChannelManager, true, false, null, null, "alloggiati_delegation_required"),
+            (world.Connected, ComplianceSenderType.ChannelManager, true, true, null, null, "alloggiati_delegation_text_version_required"),
+            (world.Connected, ComplianceSenderType.ChannelManager, true, true, "2026-10-v0", null, "alloggiati_delegation_text_outdated"),
+        ];
+        async Task<string> CodeAsync(Func<Task> call)
+        {
+            var refused = await Assert.ThrowsAnyAsync<Exception>(call);
+            return refused switch
+            {
+                DomainException domain => domain.Code,
+                NotFoundException missing => missing.Code!,
+                _ => throw refused,
+            };
+        }
+
+        foreach (var c in refusals)
+        {
+            var viaSwitch = await CodeAsync(() => service.SwitchAsync(c.Property, c.Sender, c.Confirmed, c.Consent, Host, ct, c.Istat, c.Version));
+            var withoutView = await CodeAsync(() => service.SwitchWithoutViewAsync(c.Property, c.Sender, c.Confirmed, c.Consent, Host, ct, c.Istat, c.Version));
+            Assert.Equal((c.Code, c.Code), (viaSwitch, withoutView));
+        }
+
+        Assert.False(await db.PropertyComplianceSenders.AnyAsync());
+        Assert.Equal(0, await LinesAsync());
+        Assert.Null(await DelegationGrantedAtAsync(db, world.OrgId));
+        NeverAsked();
+
+        // The write: the connected property has the channel manager by default; confirmed, manual is stored for both communications, once in the audit.
+        clock.Advance(TimeSpan.FromMinutes(1));
+        var manual = await service.SwitchWithoutViewAsync(world.Connected, ComplianceSenderType.Manual, true, false, Host, ct);
+        Assert.Equal(
+            (ComplianceSenderType.Manual, ComplianceSenderType.Manual, SenderSource.Stored),
+            (manual.AlloggiatiSender, manual.IstatSender, manual.Source));
+        Assert.Equal(ComplianceSenderType.Manual, (await StoredAsync(db, world.Connected)).AlloggiatiSender);
+        Assert.Equal(1, await LinesAsync());
+        NeverAsked();
+
+        // The consent of the delegation is recorded when the caller gives it, with the text it read, and then the channel manager is stored.
+        clock.Advance(TimeSpan.FromMinutes(1));
+        var automatic = await service.SwitchWithoutViewAsync(world.Connected, ComplianceSenderType.ChannelManager, true, true, Host, ct, delegationTextVersion: seen);
+        Assert.Equal((ComplianceSenderType.ChannelManager, ComplianceSenderType.ChannelManager), (automatic.AlloggiatiSender, automatic.IstatSender));
+        var org = await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == world.OrgId);
+        Assert.Equal((Host, seen), (org.AlloggiatiDelegationGrantedByUserId, org.AlloggiatiDelegationTextVersion));
+        Assert.Equal(2, await LinesAsync());
+        NeverAsked();
+
+        // The switch of a single property builds its view: to the channel manager it reads the police account on Octorate, once, and says «Active».
+        clock.Advance(TimeSpan.FromMinutes(1));
+        await service.SwitchAsync(world.Connected, ComplianceSenderType.Manual, true, false, Host, ct);
+        NeverAsked();
+        clock.Advance(TimeSpan.FromMinutes(1));
+        var view = await service.SwitchAsync(world.Connected, ComplianceSenderType.ChannelManager, true, false, Host, ct);
+        Assert.Equal((ComplianceSenderType.ChannelManager, SenderState.Active), (view.Sender, view.State));
+        octorate.Verify(o => o.GetPoliceAccountAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     /// <summary>The sender service over the real store and delegation service, with the clock, Octorate and the flags under the test's control.</summary>
     private static PropertySenderService NewService(AppDbContext db, FakeTimeProvider clock, Mock<IOctorateApiClient> octorate)
     {

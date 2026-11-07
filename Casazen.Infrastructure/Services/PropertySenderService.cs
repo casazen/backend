@@ -58,6 +58,20 @@ public sealed class PropertySenderService(
         ComplianceSenderType? istatSender = null,
         string? delegationTextVersion = null)
     {
+        var stored = await SwitchWithoutViewAsync(propertyId, newSender, confirmed, delegationConsent, userId, ct, istatSender, delegationTextVersion);
+        return await BuildAsync(stored, ct);
+    }
+
+    public async Task<PropertySenderInfo> SwitchWithoutViewAsync(
+        Guid propertyId,
+        ComplianceSenderType newSender,
+        bool confirmed,
+        bool delegationConsent,
+        string userId,
+        CancellationToken ct,
+        ComplianceSenderType? istatSender = null,
+        string? delegationTextVersion = null)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         if (!Enum.IsDefined(newSender))
             throw new ArgumentOutOfRangeException(nameof(newSender), newSender, "Not a compliance sender.");
@@ -78,8 +92,8 @@ public sealed class PropertySenderService(
         if (grantDelegation)
             await delegation.GrantAsync(current.OrgId, userId, AlloggiatiDelegationTexts.CurrentVersion, ct);
 
-        var stored = await store.SetAsync(propertyId, newSender, userId, ct);
-        return await BuildAsync(stored, ct);
+        // The sender as stored, with no view: the read of the police account on Octorate that builds it belongs to SwitchAsync alone.
+        return await store.SetAsync(propertyId, newSender, userId, ct);
     }
 
     public async Task<SenderSwitchCheck> CheckSwitchAsync(

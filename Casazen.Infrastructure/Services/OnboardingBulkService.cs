@@ -442,8 +442,10 @@ public sealed class OnboardingBulkService(
                 return Item(property, check.WouldChange ? BulkApplyOutcomes.WouldChange : BulkApplyOutcomes.Unchanged, null);
             }
 
-            // The confirmation was asked once for the whole call; the consent to the delegation is never given in bulk.
-            await senders.SwitchAsync(property.Id, sender, confirmed: true, delegationConsent: false, actorUserId, ct);
+            // The confirmation was asked once for the whole call; the consent to the delegation is never given in bulk. The switch without the view:
+            // the answer of a bulk call is the outcome, so the read of the police account on Octorate that builds the view (up to 8 seconds for each
+            // property, one after the other in one request) is not made.
+            await senders.SwitchWithoutViewAsync(property.Id, sender, confirmed: true, delegationConsent: false, actorUserId, ct);
             return Item(property, current == sender ? BulkApplyOutcomes.Unchanged : BulkApplyOutcomes.Applied, null);
         }
         catch (DomainException ex)

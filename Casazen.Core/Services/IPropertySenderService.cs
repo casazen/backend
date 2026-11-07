@@ -58,6 +58,23 @@ public interface IPropertySenderService
         string? delegationTextVersion = null);
 
     /// <summary>
+    /// <see cref="SwitchAsync"/> without the view: the same checks, in the same order and with the same errors, the same consent and the same write
+    /// (<c>IPropertySenderStore.SetAsync</c> with its audit line), and it answers the sender as stored, <b>without the read of the police account on
+    /// Octorate</b> that builds the view. For a caller that discards the view, like the bulk configuration of an agency (E10/F02/US01/T01), which
+    /// switches hundreds of properties one after the other in one request: the read would cost up to eight seconds of waiting for each of them for
+    /// an answer nobody uses.
+    /// </summary>
+    Task<PropertySenderInfo> SwitchWithoutViewAsync(
+        Guid propertyId,
+        ComplianceSenderType newSender,
+        bool confirmed,
+        bool delegationConsent,
+        string userId,
+        CancellationToken ct,
+        ComplianceSenderType? istatSender = null,
+        string? delegationTextVersion = null);
+
+    /// <summary>
     /// What <see cref="SwitchAsync"/> would do for <paramref name="newSender"/> if the host confirmed the switch and gave no new consent to the
     /// delegation (E10/F02/US01/T01, the bulk configuration): the same checks in the same order, with the confirmation taken as given, and
     /// <b>nothing is written</b>: no sender row (not even for a property that only has the default), no consent, no audit line, and no call to

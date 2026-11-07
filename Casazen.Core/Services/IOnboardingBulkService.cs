@@ -29,7 +29,7 @@ public interface IOnboardingBulkService
     Task<BulkPreview> PreviewAsync(HostScope scope, BulkSelection selection, CancellationToken ct);
 
     /// <summary>
-    /// Applies <paramref name="choice"/> to the selection, one property at a time through the sender switch of E03 (<c>SwitchAsync</c>), never by
+    /// Applies <paramref name="choice"/> to the selection, one property at a time through the sender switch of E03 (<c>SwitchWithoutViewAsync</c>: the switch of <c>SwitchAsync</c> without the view, so with no read of Octorate), never by
     /// writing the sender directly: the confirmation, the other sender going off, the delegation and the audit line of every change apply to each
     /// property. With <paramref name="dryRun"/> or without <paramref name="confirmed"/> nothing is written: each property is judged by the same
     /// rules (<c>CheckSwitchAsync</c>) and reported <see cref="BulkApplyOutcomes.WouldChange"/>, <see cref="BulkApplyOutcomes.Unchanged"/> or

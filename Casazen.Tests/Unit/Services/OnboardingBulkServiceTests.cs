@@ -334,6 +334,11 @@ public class OnboardingBulkServiceTests : IAsyncLifetime
             row => Assert.Equal(ComplianceSenderType.ChannelManager, row.AlloggiatiSender));
         Assert.Equal(ComplianceSenderType.Manual, (await _db.PropertyComplianceSenders.AsNoTracking().SingleAsync(s => s.PropertyId == plain.Id)).AlloggiatiSender);
 
+        // The answer of a bulk call is the outcome of each property, so the view of a switched property is not built: the read of the police account
+        // on Octorate that builds it (up to 8 seconds for each property, one after the other in one request) is not made, not even for the two
+        // properties that were switched to the channel manager.
+        _octorate.Verify(o => o.GetPoliceAccountAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+
         // A choice is required, and it is one this version knows.
         var missing = await Assert.ThrowsAsync<DomainRuleException>(
             () => bulk.ApplyAsync(_world.OrgWide, _world.OwnerUserId, All(), new BulkChoice(null), false, true, Ct));
