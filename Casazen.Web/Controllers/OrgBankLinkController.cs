@@ -51,8 +51,9 @@ public class OrgBankLinkController(IOrgContextResolver orgContextResolver, IBank
 
     /// <summary>
     /// Starts the debit Stripe supports for the linked account. A rent installment is left in flight and is paid only
-    /// when Stripe confirms, or by the existing offline declaration. An ad-hoc debit (no installment) requires the
-    /// <c>Idempotency-Key</c> header: a retry with that key is the same PaymentIntent.
+    /// when Stripe confirms, or by the existing offline declaration. A condominium installment is the landlord paying
+    /// the condominium (SEPA, euros, the Italian bank already linked); it is not a contract or tenant payment. An
+    /// ad-hoc debit (no installment) requires the <c>Idempotency-Key</c> header: a retry with that key is the same PaymentIntent.
     /// </summary>
     [HttpPost("payments")]
     [ProducesResponseType(typeof(BankLinkPaymentStarted), StatusCodes.Status200OK)]
@@ -66,7 +67,14 @@ public class OrgBankLinkController(IOrgContextResolver orgContextResolver, IBank
 
         var started = await bankLinks.StartOrgPaymentAsync(
             orgId,
-            new StartBankLinkPayment(body.AmountCents, body.Currency, body.LeaseId, body.InstallmentId, IdempotencyKey()),
+            new StartBankLinkPayment(
+                body.AmountCents,
+                body.Currency,
+                body.LeaseId,
+                body.InstallmentId,
+                IdempotencyKey(),
+                body.CondominiumId,
+                body.CondominiumInstallmentId),
             Caller(),
             cancellationToken);
         return Ok(started);
@@ -105,4 +113,9 @@ public sealed class StartBankLinkPaymentDto
     public Guid? LeaseId { get; set; }
 
     public Guid? InstallmentId { get; set; }
+
+    /// <summary>With <see cref="CondominiumInstallmentId"/>, the landlord pays that condominium rate. Not a contract field.</summary>
+    public Guid? CondominiumId { get; set; }
+
+    public Guid? CondominiumInstallmentId { get; set; }
 }

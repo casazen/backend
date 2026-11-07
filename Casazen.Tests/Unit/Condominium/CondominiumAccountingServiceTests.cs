@@ -270,6 +270,8 @@ public class CondominiumAccountingServiceTests
             "Casazen.Infrastructure/Services/RentBillingService.Components.cs",
             "Casazen.Infrastructure/Services/RentBillingService.Term.cs",
             "Casazen.Infrastructure/Services/RentRegisterService.cs",
+            "Casazen.Infrastructure/Services/TenantCondominiumSettlementService.cs",
+            "Casazen.Infrastructure/Services/TenantExpenseProposalService.cs",
         })
         {
             var text = File.ReadAllText(Path.Combine(root, relative));

@@ -54,4 +54,28 @@ public static class ExpenseClassification
         nature == CondominiumExpenseNature.Ordinary
             ? TenantRecoverability.Recoverable
             : TenantRecoverability.NeedsReview;
+
+    /// <summary>
+    /// A stored line becomes a tenant charge only when a person has accepted it, it is recoverable, and it is not an
+    /// uncertain extraordinary. <see cref="TenantRecoverability.NeedsReview"/> and confidence under 0.85 never charge.
+    /// </summary>
+    public static bool ChargesStored(
+        CondominiumExpenseNature nature,
+        TenantRecoverability recoverability,
+        ExpenseReviewStatus review,
+        decimal recoverableAmount,
+        decimal? confidence)
+    {
+        if (recoverability is TenantRecoverability.NeedsReview or TenantRecoverability.OwnerOnly)
+            return false;
+        if (review != ExpenseReviewStatus.Accepted)
+            return false;
+        if (nature == CondominiumExpenseNature.Extraordinary && review != ExpenseReviewStatus.Accepted)
+            return false;
+        if (confidence is < ChargeConfidence)
+            return false;
+        if (recoverability is not (TenantRecoverability.Recoverable or TenantRecoverability.PartiallyRecoverable))
+            return false;
+        return recoverableAmount != 0m;
+    }
 }
