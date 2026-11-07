@@ -107,7 +107,10 @@ public sealed class MarketplaceActivationsController(
     /// <summary>Imports the rooms, the reservations and the calendar of the channel into the channel manager (asynchronous there) and answers the state.</summary>
     /// <response code="200">The state.</response>
     /// <response code="404"><c>marketplace_activation_not_found</c>.</response>
-    /// <response code="409"><c>marketplace_connection_missing</c>, <c>marketplace_panel_access_pending</c>.</response>
+    /// <response code="409">
+    /// <c>d6_operation_unverified</c> (an operation of the D6 sequence is not verified for the channel: it is not called), <c>marketplace_connection_missing</c>
+    /// (the connection is no longer on the channel manager: the activation is freed, start it again), <c>marketplace_panel_access_pending</c>.
+    /// </response>
     [HttpPost("{id:guid}/import")]
     [Authorize(Policy = CasazenPolicies.OtaWrite)]
     [ProducesResponseType(typeof(MarketplaceActivationStateDto), StatusCodes.Status200OK)]
@@ -164,10 +167,14 @@ public sealed class MarketplaceActivationsController(
 
     /// <summary>
     /// Marks the connection connected and verifies it: Active only when the channel manager shows it working, otherwise To fix with the error code.
+    /// Needs the D6 flag of «mark connected» for the channel (fail closed).
     /// </summary>
     /// <response code="200">The state.</response>
     /// <response code="404"><c>marketplace_activation_not_found</c>.</response>
-    /// <response code="409"><c>marketplace_connection_missing</c>, <c>marketplace_panel_access_pending</c>.</response>
+    /// <response code="409">
+    /// <c>d6_operation_unverified</c> («mark connected» is not verified for the channel: it is not called, nor are the pulls switched on),
+    /// <c>marketplace_connection_missing</c>, <c>marketplace_panel_access_pending</c>.
+    /// </response>
     /// <response code="422"><c>marketplace_mapping_required</c>: no room is mapped yet.</response>
     [HttpPost("{id:guid}/activate")]
     [Authorize(Policy = CasazenPolicies.OtaWrite)]

@@ -4709,6 +4709,9 @@
   <data name="MarketplaceMappingInvalid" xml:space="preserve">
     <value>One of the chosen rooms is not among those of the channel or of the property.</value>
   </data>
+  <data name="MarketplaceD6OperationUnverified" xml:space="preserve">
+    <value>This step is not available for this channel yet: the channel manager's operation has not been checked on a real property yet. Complete it from the channel manager's panel.</value>
+  </data>
   <data name="Marketplace.Channel.Benefit" xml:space="preserve">
     <value>Get the bookings from {0} in CasaZen.</value>
   </data>

@@ -60,8 +60,13 @@ public interface IMarketplaceChannelActivationService
 
     /// <summary>
     /// Imports the rooms, the reservations and the calendar of the channel into the channel manager (the imports are asynchronous there) and answers
-    /// the state. A channel that needs the access on the panel is not asked before the person gave it.
+    /// the state. A channel that needs the access on the panel is not asked before the person gave it. Each of the three is called only when its D6 flag
+    /// is on for the channel: the verified ones run in order and the import stops at the first that is not.
     /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
+    /// <c>d6_operation_unverified</c>, <c>marketplace_panel_access_pending</c>, <c>marketplace_connection_missing</c> (the connection is no longer on the
+    /// channel manager: the activation was freed and a new start makes a connection).
+    /// </exception>
     Task<MarketplaceActivationState> ImportAsync(Guid orgId, HostScope scope, Guid activationId, CancellationToken ct = default);
 
     /// <summary>The rooms of the channel and the products of the listing, with the proposals of CasaZen (the same normalised name, else none).</summary>
@@ -80,7 +85,11 @@ public interface IMarketplaceChannelActivationService
 
     /// <summary>
     /// Marks the connection connected, verifies it and, once it works, switches the calendar and reservation pulls on. Active only when the channel
-    /// manager shows the connection working; otherwise To fix with the error code. Needs at least one room mapped (D6).
+    /// manager shows the connection working; otherwise To fix with the error code. Needs at least one room mapped (D6), and the D6 flag of «mark
+    /// connected» for the channel, which also covers the switching on of the pulls.
     /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
+    /// <c>d6_operation_unverified</c>, <c>marketplace_panel_access_pending</c>, <c>marketplace_connection_missing</c>.
+    /// </exception>
     Task<MarketplaceActivationState> ActivateAsync(Guid orgId, HostScope scope, Guid activationId, CancellationToken ct = default);
 }

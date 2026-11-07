@@ -69,6 +69,14 @@ So each operation has a flag for each channel, **off by default**: `Octorate__Ex
 with `d6_operation_unverified` and the step stays guided (the host, or CasaZen support through «Fallo per me», completes it in the Octorate
 panel). Never turn a flag on for a channel the pilot has not recorded here.
 
+**The same flags gate the activation of a channel or a tool from the marketplace** (`POST /api/marketplace/activations/{id}/import` and `/activate`,
+E09/F02/US01): `IMPORT_ROOMS`, `IMPORT_RESERVATIONS` and `IMPORT_CALENDAR` of the import step, and `MARK_CONNECTED` of the activation step, each with its
+flag of the channel. With a flag off the step answers 409 `d6_operation_unverified` and the operation is not called (the import runs the verified ones in
+order and stops at the first that is not). The switching on of `updateCalendar` and `pullReservations` that follows `MARK_CONNECTED` has no flag of its
+own: it follows the one of `MARK_CONNECTED`, so turning that flag on for a channel also lets the activation push the calendar to it. Record in the
+matrix below what the pilot saw for these two calls too: that `MARK_CONNECTED` leaves the pulls off (so the activation has to switch them on), or
+already switches them on (the patch is then redundant).
+
 Evidence matrix (update this table with the real-property pilot; one line for each channel, one cell for each operation: date, structure,
 what was seen):
 

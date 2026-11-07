@@ -6,6 +6,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
@@ -351,6 +352,55 @@ public class MarketplaceChannelActivationTests
         Assert.Equal(["ImportRooms", "ImportReservations", "ImportCalendar"], w.Calls);
         Assert.Equal((MarketplaceActivationStatus.Pending, true, "WAITING"), (state.Status, state.ConnectionFound, state.ConnectionStatus));
         Assert.Equal(w.Now, state.LastSyncedAt);
+    }
+
+    [Fact]
+    public async Task ImportAndActivate_AnOperationNotVerifiedForTheChannel_IsNeverCalled_AndTheStepIsA409()
+    {
+        var w = await World.CreateAsync();
+        var started = await w.StartAsync();
+        w.Rooms.Add(new OctorateChannelRoom("3301", "Camera", "956528"));
+
+        // The defaults, no flag on: nothing at all is asked of the channel manager, and nothing changes in CasaZen.
+        w.Octorate.ExistingInventory.Channels.Clear();
+        w.Client.Invocations.Clear();
+        var before = await w.RowsAsync();
+        await using (var db = w.NewDb())
+        {
+            var service = w.Service(db);
+            Assert.Equal("d6_operation_unverified", (await Assert.ThrowsAsync<DomainConflictException>(() => service.ImportAsync(w.OrgA, w.OrgWide, started.ActivationId))).Code);
+            Assert.Equal("d6_operation_unverified", (await Assert.ThrowsAsync<DomainConflictException>(() => service.ActivateAsync(w.OrgA, w.OrgWide, started.ActivationId))).Code);
+        }
+
+        Assert.Empty(w.Client.Invocations);
+        Assert.Equal(before, await w.RowsAsync());
+
+        // Only the rooms are verified: they are imported, and the import stops at the first operation that is not.
+        w.Octorate.ExistingInventory.Channels["142"] = new OctorateExistingInventoryChannelOptions { ImportRooms = true };
+        w.Calls.Clear();
+        await using (var db = w.NewDb())
+            Assert.Equal("d6_operation_unverified", (await Assert.ThrowsAsync<DomainConflictException>(() => w.Service(db).ImportAsync(w.OrgA, w.OrgWide, started.ActivationId))).Code);
+
+        Assert.Equal(["ImportRooms"], w.Calls);
+
+        // «Mark connected» is the one that is not verified: it is not sent, and the pulls that follow it are not switched on.
+        w.Octorate.ExistingInventory.Channels["142"] = new OctorateExistingInventoryChannelOptions { ImportRooms = true, ImportReservations = true, ImportCalendar = true };
+        w.Calls.Clear();
+        await using (var db = w.NewDb())
+            Assert.Equal("d6_operation_unverified", (await Assert.ThrowsAsync<DomainConflictException>(() => w.Service(db).ActivateAsync(w.OrgA, w.OrgWide, started.ActivationId))).Code);
+
+        Assert.Empty(w.Calls);
+        Assert.Empty(w.Patches);
+        Assert.Equal(MarketplaceActivationStatus.Pending, Assert.Single(await w.ActivationsAsync()).Status);
+
+        // The flags of another channel do not open this one.
+        w.Octorate.ExistingInventory.Channels.Clear();
+        w.Octorate.ExistingInventory.Channels["274"] = new OctorateExistingInventoryChannelOptions { ImportRooms = true, ImportReservations = true, ImportCalendar = true, MarkConnected = true };
+        w.Client.Invocations.Clear();
+        await using (var db = w.NewDb())
+            Assert.Equal("d6_operation_unverified", (await Assert.ThrowsAsync<DomainConflictException>(() => w.Service(db).ImportAsync(w.OrgA, w.OrgWide, started.ActivationId))).Code);
+
+        Assert.Empty(w.Client.Invocations);
     }
 
     [Fact]
@@ -852,6 +902,27 @@ public class MarketplaceChannelActivationTests
 
         public Exception? ListFailure { get; set; }
 
+        /// <summary>
+        /// The flags of the D6 operations by channel (<c>Octorate:ExistingInventory:Channels</c>): all on for the portal «142», as after the pilot. A test turns
+        /// them off through this object, which the service reads at every call.
+        /// </summary>
+        public OctorateOptions Octorate { get; } = new()
+        {
+            ExistingInventory =
+            {
+                Channels =
+                {
+                    ["142"] = new OctorateExistingInventoryChannelOptions
+                    {
+                        ImportRooms = true,
+                        ImportReservations = true,
+                        ImportCalendar = true,
+                        MarkConnected = true,
+                    },
+                },
+            },
+        };
+
         /// <summary>The status the connection has once «mark connected» ran; <c>null</c> removes it from the list.</summary>
         public string? StatusAfterMarkConnected { get; set; } = "ENABLED";
 
@@ -876,7 +947,14 @@ public class MarketplaceChannelActivationTests
             var host = new Mock<IHostEnvironment>();
             host.SetupGet(h => h.EnvironmentName).Returns("Staging");
             return new MarketplaceChannelActivationService(
-                db, Client.Object, new OctorateOrgScope(NullTenantContext.Instance), flags.Object, host.Object, Clock, Logs);
+                db,
+                Client.Object,
+                new OctorateOrgScope(NullTenantContext.Instance),
+                flags.Object,
+                host.Object,
+                Microsoft.Extensions.Options.Options.Create(Octorate),
+                Clock,
+                Logs);
         }
 
         /// <summary>The start of the first property for the portal «142», with the credentials, as the wizard sends it.</summary>

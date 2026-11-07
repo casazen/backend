@@ -4709,6 +4709,9 @@
   <data name="MarketplaceMappingInvalid" xml:space="preserve">
     <value>Una delle camere scelte non è tra quelle del canale o dell'immobile.</value>
   </data>
+  <data name="MarketplaceD6OperationUnverified" xml:space="preserve">
+    <value>Questo passaggio non è ancora disponibile per questo canale: il channel manager non lo ha ancora verificato su una struttura reale. Completalo dal pannello del channel manager.</value>
+  </data>
   <data name="Marketplace.Channel.Benefit" xml:space="preserve">
     <value>Ricevi in CasaZen le prenotazioni di {0}.</value>
   </data>

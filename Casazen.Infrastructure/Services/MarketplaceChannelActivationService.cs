@@ -3,12 +3,14 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -33,6 +35,11 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>Only the channel manager decides.</b> Active is written only when it lists the connection as working after «mark connected»; the pulls of the
 /// connection are switched on after that, and only once at least one room is mapped (D6). A failure of the channel itself (550) leaves the activation To fix
 /// with its code and is raised again; a failure worth a retry (rate limit, no answer) changes nothing and is raised.</para>
+/// <para><b>Fail closed (D6).</b> The four operations of the D6 sequence (<c>IMPORT_ROOMS</c>, <c>IMPORT_RESERVATIONS</c>, <c>IMPORT_CALENDAR</c>,
+/// <c>MARK_CONNECTED</c>) were never run on a real property: each is called only when its flag
+/// <c>Octorate:ExistingInventory:Channels:{code}</c> is on (<see cref="OctorateExistingInventoryOptions.IsVerified"/>), the same rule as the import of the
+/// listings that exist already. With the flag off the step is a 409 <c>d6_operation_unverified</c> and nothing is asked of the channel manager for that
+/// operation; the switching on of the pulls that follows «mark connected» is part of that operation and needs its flag. The defaults are all off.</para>
 /// </remarks>
 public sealed class MarketplaceChannelActivationService(
     AppDbContext db,
@@ -40,6 +47,7 @@ public sealed class MarketplaceChannelActivationService(
     IOctorateOrgScope orgScope,
     IFeatureFlags featureFlags,
     IHostEnvironment hostEnvironment,
+    IOptions<OctorateOptions> options,
     TimeProvider timeProvider,
     ILogger<MarketplaceChannelActivationService> logger) : IMarketplaceChannelActivationService
 {
@@ -50,11 +58,11 @@ public sealed class MarketplaceChannelActivationService(
     private const string UnknownOutcomeCode = "octorate_unavailable";
 
     /// <summary>The imports of the D6 sequence, in order: the rooms first (they are what is mapped), then the reservations and the calendar.</summary>
-    private static readonly OctorateConnectionAction[] ImportActions =
+    private static readonly (OctorateConnectionAction Action, OctorateD6Operation Operation)[] ImportActions =
     [
-        OctorateConnectionAction.ImportRooms,
-        OctorateConnectionAction.ImportReservations,
-        OctorateConnectionAction.ImportCalendar,
+        (OctorateConnectionAction.ImportRooms, OctorateD6Operation.ImportRooms),
+        (OctorateConnectionAction.ImportReservations, OctorateD6Operation.ImportReservations),
+        (OctorateConnectionAction.ImportCalendar, OctorateD6Operation.ImportCalendar),
     ];
 
     public async Task<MarketplaceActivationPlan> GetPlanAsync(
@@ -229,6 +237,9 @@ public sealed class MarketplaceChannelActivationService(
     {
         var activation = await FindActivationAsync(orgId, scope, activationId, track: true, ct);
         var link = await RequireLinkAsync(orgId, activation.PropertyId!.Value, ct);
+
+        // Fail closed (D6): a channel whose first operation was never verified is asked nothing, not even to list its connection.
+        EnsureVerified(activation, ImportActions[0].Operation);
         var connection = await RequireConnectionAsync(orgId, link, activation, ct);
         await EnsurePanelAccessAsync(activation, connection, ct);
         var connectionId = activation.OctorateConnectionId!;
@@ -238,8 +249,12 @@ public sealed class MarketplaceChannelActivationService(
             activation,
             async () =>
             {
-                foreach (var action in ImportActions)
+                foreach (var (action, operation) in ImportActions)
+                {
+                    // The operations that are verified run in order and the import stops at the first one that is not (the first was checked above).
+                    EnsureVerified(activation, operation);
                     await client.RunConnectionActionAsync(link.AccommodationId, connectionId, action, ct);
+                }
             },
             ct);
 
@@ -371,6 +386,9 @@ public sealed class MarketplaceChannelActivationService(
     {
         var activation = await FindActivationAsync(orgId, scope, activationId, track: true, ct);
         var link = await RequireLinkAsync(orgId, activation.PropertyId!.Value, ct);
+
+        // Fail closed (D6): «mark connected», and the switching on of the pulls that goes with it, need the flag of the channel. Nothing is asked before.
+        EnsureVerified(activation, OctorateD6Operation.MarkConnected);
         var current = await RequireConnectionAsync(orgId, link, activation, ct);
         await EnsurePanelAccessAsync(activation, current, ct);
 
@@ -392,7 +410,8 @@ public sealed class MarketplaceChannelActivationService(
 
                 await client.RunConnectionActionAsync(link.AccommodationId, connectionId, OctorateConnectionAction.MarkConnected, ct);
 
-                // The proof is what the channel manager lists, not the answer of the action.
+                // The proof is what the channel manager lists, not the answer of the action. The pulls are switched on under the flag of «mark
+                // connected», checked at the top of the step (the operations of the D6 sequence have no flag of their own for it).
                 verified = Match(await client.ListConnectionsAsync(link.AccommodationId, ct), activation);
                 if (verified is { IsConnected: true } && (verified.UpdateCalendar != true || verified.PullReservations != true))
                 {
@@ -599,6 +618,22 @@ public sealed class MarketplaceChannelActivationService(
             .FirstOrDefaultAsync(ct);
         if (needsPanel && !connection.PanelAccessDone)
             throw new DomainConflictException(MarketplaceActivationErrorCodes.PanelAccessPending, "MarketplacePanelAccessPending");
+    }
+
+    /// <summary>
+    /// Fail closed (D6): an operation of the D6 sequence is called only when the pilot verified it for the channel and its flag is on
+    /// (<see cref="OctorateExistingInventoryOptions.IsVerified"/>, the rule of the import of the listings that exist already). Otherwise the step is a
+    /// 409 <c>d6_operation_unverified</c> and nothing is asked of the channel manager for that operation.
+    /// </summary>
+    private void EnsureVerified(MarketplaceActivation activation, OctorateD6Operation operation)
+    {
+        if (options.Value.ExistingInventory.IsVerified(activation.TargetCode, operation))
+            return;
+
+        logger.LogInformation(
+            "Marketplace activation {ActivationId} of org {OrgId}: the operation {Operation} is not verified for the portal {PortalCode}, it is not called",
+            activation.Id, activation.OrgId, operation, activation.TargetCode);
+        throw new DomainConflictException(OctorateInventoryErrorCodes.D6OperationUnverified, "MarketplaceD6OperationUnverified");
     }
 
     private async Task<MarketplaceActivationState> StateAsync(Guid orgId, Link link, MarketplaceActivation activation, CancellationToken ct) =>
