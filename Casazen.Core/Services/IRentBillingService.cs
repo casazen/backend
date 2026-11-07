@@ -226,8 +226,9 @@ public interface IRentBillingService
     Task<RentLedgerView> DisableScheduleAsync(Guid leaseId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Stores the condominium terms of the lease and confirms them. A confirmed fixed advance is added to an active plan
-    /// whose installment amount is still the rent alone (or already the rent plus that advance). 422
+    /// Stores the condominium terms of the lease and confirms them. An active plan whose installment is still the rent,
+    /// still the rent plus the advance already confirmed, or already the new rent plus advance, takes the new total (the
+    /// rent alone when the clause charges nothing). A different amount is left as the landlord set it. 422
     /// <c>rent_condominium_terms_invalid</c> when the values cannot be charged, <c>rent_condominium_source_not_found</c>
     /// when the source document is not one of this lease.
     /// </summary>

@@ -56,8 +56,9 @@ public class LeaseRentController(
     }
 
     /// <summary>
-    /// Confirms the condominium terms of the lease (advance, cadence, settlement clause) and, when the plan is still the rent
-    /// alone, adds a confirmed fixed advance to the installments. 422 <c>rent_condominium_terms_invalid</c>,
+    /// Confirms the condominium terms of the lease (advance, cadence, settlement clause). An active plan whose installment
+    /// is still the rent, or still the rent plus the advance already confirmed, takes the new total; a corrected amount
+    /// replaces it and clearing the advance removes it. 422 <c>rent_condominium_terms_invalid</c>,
     /// <c>rent_condominium_source_not_found</c>.
     /// </summary>
     [HttpPut("condominium-terms")]

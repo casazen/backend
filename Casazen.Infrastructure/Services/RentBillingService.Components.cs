@@ -178,15 +178,21 @@ public sealed partial class RentBillingService
 
         foreach (var draft in drafts)
         {
-            entry.Components.Add(new RentLedgerComponent
+            // The constructor already sets an id. On an installment EF is tracking, that id is written as an update of a
+            // missing row and the confirm fails. An empty id is a new part and has to be inserted.
+            var component = new RentLedgerComponent
             {
+                Id = Guid.Empty,
                 OrgId = entry.OrgId,
                 Kind = draft.Kind,
                 Amount = draft.Amount,
                 CompetenceStart = entry.PeriodStart,
                 CompetenceEnd = entry.PeriodEnd,
                 Description = Truncate(draft.Description, 500),
-            });
+            };
+            entry.Components.Add(component);
+            if (db.Entry(entry).State != EntityState.Detached)
+                db.Entry(component).State = EntityState.Added;
         }
     }
 
