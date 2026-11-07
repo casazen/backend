@@ -82,6 +82,33 @@ public class Auth0ManagementService(
             cancellationToken);
 
     /// <inheritdoc />
+    public Task<Auth0SyncResult> SetOwnerPortalClaimsAsync(
+        string userId,
+        Guid ownerUserId,
+        IReadOnlyCollection<Guid> agencyIds,
+        IReadOnlyCollection<Guid> propertyIds,
+        CancellationToken cancellationToken = default)
+    {
+        // app_metadata is merged key by key: the whole owner_portal object is replaced, nothing else of the account is touched.
+        var claims = new Dictionary<string, object>
+        {
+            ["owner_portal"] = new Dictionary<string, object>
+            {
+                ["owner_id"] = ownerUserId.ToString("D"),
+                ["agency_ids"] = agencyIds.Select(id => id.ToString("D")).ToArray(),
+                ["owned_property_ids"] = propertyIds.Select(id => id.ToString("D")).ToArray(),
+            },
+        };
+        return CallAsync(
+            "write the owner portal claims of",
+            userId,
+            ct => ExecuteAsync(
+                client => client.Users.UpdateAsync(userId, new UserUpdateRequest { AppMetadata = claims }, ct),
+                ct),
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
     public async Task<Auth0SyncResult> DeleteUserAsync(string userId, CancellationToken cancellationToken = default)
     {
         if (!tokenProvider.IsConfigured)

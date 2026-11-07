@@ -95,6 +95,18 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         return Build($"/invito-host/{Uri.EscapeDataString(inviteToken)}");
     }
 
+    /// <summary>
+    /// Page of the web app where a property owner accepts the invitation of its agency to the owner portal (route
+    /// <c>/portale-proprietari/invito</c>, E10/F02/US02/T02, ADR-011-R6): the page keeps the token through the Auth0 sign-in and sends it once, in the body
+    /// of <c>POST api/owner-invitations/accept</c>. Only the secret token is in the link: no name, no address. The address is the one public domain of
+    /// the product (<c>App:PublicSiteBaseUrl</c>, decision D3), checked at startup to be an absolute https URL.
+    /// </summary>
+    public string OwnerInvitationAccept(string inviteToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(inviteToken);
+        return Build($"/portale-proprietari/invito?token={Uri.EscapeDataString(inviteToken)}");
+    }
+
     /// <summary>The people page of the account (AM-02, route <c>/app/account/people</c>, built by AM-04): who works in the org and its invitations.</summary>
     public string AccountPeople() => Build("/app/account/people");
 

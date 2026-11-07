@@ -1944,6 +1944,9 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new OnboardingPilotMemberConfiguration());
         modelBuilder.ApplyConfiguration(new PropertyOnboardingDataConfiguration());
 
+        // The key an agency gives its owners (E10/F02/US02/T01): unique in the org, for the owners that have one.
+        modelBuilder.ApplyConfiguration(new PropertyOwnerConfiguration());
+
         // ─── Per-date prices and restrictions (NF-36, E08/F05/US01/T01) ─────────────────────────────────────────────
         // The price and the rules of a night (one row per property and stay date, the values bounded by a check constraint), and the changes of
         // the calendar sent to the channel manager (the process the host follows and its chunks). Each row carries its org (restrict) and the

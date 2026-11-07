@@ -101,7 +101,7 @@ public sealed class OnboardingBulkImportService(
     /// The table of the file, or the refusal: 415 for a name that is not <c>.csv</c> or <c>.xlsx</c> and for content that is not the type the name
     /// says (an archive called <c>.csv</c>, a text called <c>.xlsx</c>), 413 for more than 2 MB. The file is read from memory and not kept.
     /// </summary>
-    private static List<ImportTableRow> ReadTable(string fileName, byte[] content)
+    internal static List<ImportTableRow> ReadTable(string fileName, byte[] content)
     {
         var extension = Path.GetExtension(fileName ?? string.Empty).ToLowerInvariant();
         if (extension is not (".csv" or ".xlsx"))

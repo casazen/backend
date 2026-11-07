@@ -49,6 +49,8 @@ public class OrgActivityCatalogTests
     [InlineData(OrgActivityType.OnboardingAssistRequested, 110)]
     [InlineData(OrgActivityType.OnboardingAssistUpdated, 111)]
     [InlineData(OrgActivityType.ContactInfoRead, 120)]
+    [InlineData(OrgActivityType.OwnerImportApplied, 130)]
+    [InlineData(OrgActivityType.OwnerInvitationChanged, 140)]
     public void Type_TheIntegerOfEveryEvent_IsPinned(OrgActivityType type, int value)
     {
         // The value is what the database holds: reordering or reusing it would rewrite history.
@@ -58,7 +60,7 @@ public class OrgActivityCatalogTests
     [Fact]
     public void Type_EveryEventOfTheEnum_IsPinnedAbove()
     {
-        Assert.Equal(29, Enum.GetValues<OrgActivityType>().Length);
+        Assert.Equal(31, Enum.GetValues<OrgActivityType>().Length);
     }
 
     [Fact]
@@ -68,14 +70,14 @@ public class OrgActivityCatalogTests
         Assert.Equal(
             ["Account", "ShortRent", "LongRent", "Supplier"],
             Enum.GetValues<OrgActivityArea>().Select(a => a.ToString()));
-        Assert.Equal([1, 2, 3, 4, 5, 6], Enum.GetValues<OrgActivitySubjectType>().Select(s => (int)s));
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7], Enum.GetValues<OrgActivitySubjectType>().Select(s => (int)s));
         Assert.Equal(
-            ["Member", "Invitation", "Org", "Property", "Supplier", "Booking"],
+            ["Member", "Invitation", "Org", "Property", "Supplier", "Booking", "OwnerInvitation"],
             Enum.GetValues<OrgActivitySubjectType>().Select(s => s.ToString()));
     }
 
     [Fact]
-    public void Catalog_DescribesEveryEventOnce_AndTheCatalogStaysUnderThirtyEvents()
+    public void Catalog_DescribesEveryEventOnce_AndTheCatalogStaysUnderThirtyTwoEvents()
     {
         var described = OrgActivityCatalog.All.Select(e => e.Type).ToList();
 
@@ -83,8 +85,9 @@ public class OrgActivityCatalogTests
         Assert.Equal(described.Count, described.Distinct().Count());
         // AM-D18: the catalog is closed and grows one row at a time. The cap was twenty-five events; the Octorate plan adds six more
         // (the compliance handoff, the sender and delegation of E03/F01/US05 and the two of «Do it for me» of E10/F01/US03), so it is
-        // thirty until the PO decides otherwise.
-        Assert.InRange(described.Count, 1, 30);
+        // thirty until the PO decides otherwise; the owner portfolio of an agency (E10/F02/US02: the import and the invitations, ADR-011-R11) adds two
+        // more, thirty-two, which the PO is asked to confirm (docs/runbooks/org-team.md section 30).
+        Assert.InRange(described.Count, 1, 32);
     }
 
     [Fact]

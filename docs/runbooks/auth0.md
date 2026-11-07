@@ -195,7 +195,7 @@ Applications → Applications → **Create Application** → *Machine to Machine
    | Scope | Used for |
    |---|---|
    | `read:users` | profile backfill (email/name) in admin listings; account email and `email_verified` for supplier invites and claims, for the `emailVerified` of `GET /api/users/me` and for the guest area of the mobile app (`api/guest/*`) when the access token lacks the Action claims (SU-02); roles of a user before its deactivation (PL-03) |
-   | `update:users` | **blocking and unblocking** a deactivated / reactivated user (`PATCH /users/{id}` with `blocked`, PL-03) |
+   | `update:users` | **blocking and unblocking** a deactivated / reactivated user (`PATCH /users/{id}` with `blocked`, PL-03); **the owner portal claims** of an owner who accepts its invitation (`PATCH /users/{id}` with `app_metadata.owner_portal`, E10/F02/US02/T02, § 6.1) |
    | `delete:users` | **permanent removal** of a registered account from the admin console (`DELETE /api/users/{id}/account` → `DELETE /api/v2/users/{id}`) and **from the mobile app by the guest** who deletes their own account (`DELETE /api/guest/account`, section 12). Without it the CasaZen row stays and the call answers 502 |
    | `read:roles` | resolving role ids (cached); roles of a user before its deactivation |
    | `create:role_members` | adding a role to a user (`POST /users/{id}/roles`); giving the roles back at the reactivation |
@@ -275,6 +275,34 @@ belongs to task PL-04. The claims are copied at login: after verifying the email
 (`getAccessTokenSilently({ cacheMode: 'off' })`, which the web claim page does on *Riprova*). The guest area of the mobile app (section 12)
 reads the two claims too: the bookings of `api/guest/bookings` are the ones whose guest has the account's **verified** email, and the
 `emailVerified` of `GET /api/users/me` is the same claim.
+
+### 6.1 Owner portal claims (E10/F02/US02/T02, ADR-011-R5/R7)
+
+The owner portal (`/api/owner-portal/*`, policy `OwnerPortal`) wants three claims on the access token of a property owner: `context` =
+`owner_portal`, `owner_id` (the id of its `OwnerUser`) and, for the owner portal shell, `agency_ids` and `owned_property_ids`. An owner has no role
+and no org, so they cannot come from the roles above. **The backend writes them** when the owner accepts its invitation
+(`POST /api/owner-invitations/accept`): the Management API call `PATCH /api/v2/users/{id}` puts them in `app_metadata.owner_portal`
+(`{ owner_id, agency_ids, owned_property_ids }`: ids only), the whole object each time, and the answer of the acceptance says whether it worked
+(`claimsRefresh`: `published`, `not_configured` when the Management API is not configured, `failed`; accepting again repeats the call). The Action
+copies them into the token, so add this to the Action of § 6 (the same Action, one more block; it is **live in every application of the tenant** the
+moment it is deployed, review it like production code):
+
+```javascript
+  // Owner portal (ADR-011-R7): written by the backend into app_metadata when the owner accepts its invitation.
+  const portal = event.user.app_metadata?.owner_portal;
+  if (portal?.owner_id) {
+    api.accessToken.setCustomClaim(`${ns}/context`, 'owner_portal');
+    api.accessToken.setCustomClaim(`${ns}/owner_id`, portal.owner_id);
+    api.accessToken.setCustomClaim(`${ns}/agency_ids`, portal.agency_ids ?? []);
+    api.accessToken.setCustomClaim(`${ns}/owned_property_ids`, portal.owned_property_ids ?? []);
+  }
+```
+
+Like the roles, the claims are copied at login and at every refresh: after accepting, the web app asks Auth0 for a new token
+(`getAccessTokenSilently({ cacheMode: 'off' })`) before it opens `/portale-proprietari`. The portal never trusts the claims for the data: every endpoint
+filters by `PropertyOwnership.OwnerUserId` and the ownership period in the database (ADR-011-R2), so a stale claim shows nothing that is not the owner's.
+An account that also holds a host role (`PropertyOwner`, `Staff`, `Manager`, `LongTermLandlord`) is refused by the policy (ADR-011-R5): an owner who is
+also a host uses two accounts.
 
 Roles are copied into tokens at login: after a role change the client must get a new token
 (web: `getAccessTokenSilently({ cacheMode: 'off' })`; mobile: refresh-token grant). Backend authorization

@@ -5094,6 +5094,36 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OnboardingImportColumnsUnrecognized" xml:space="preserve">
     <value>The header has no column for the property (propertyId or cinCode), or no column with data to import.</value>
   </data>
+  <data name="OwnerInvitationEmailNotQueued" xml:space="preserve">
+    <value>We could not queue the invitation e-mail: the invitation was withdrawn. Check the owner's address and try again.</value>
+  </data>
+  <data name="OwnerImportColumnsUnrecognized" xml:space="preserve">
+    <value>The header has no column that identifies the owner (ownerId, ownerKey, fiscalCode or vatNumber): an e-mail address alone is not enough.</value>
+  </data>
+  <data name="OwnerInvitationEmailNotVerified" xml:space="preserve">
+    <value>The e-mail of your account is not verified: verify it and try again.</value>
+  </data>
+  <data name="OwnerInvitationNotFound" xml:space="preserve">
+    <value>Invitation not found.</value>
+  </data>
+  <data name="OwnerInvitationNotLive" xml:space="preserve">
+    <value>The invitation is no longer in progress: there is nothing to revoke.</value>
+  </data>
+  <data name="OwnerInvitationNothingToSend" xml:space="preserve">
+    <value>No owner to invite: check the exclusions of the preview.</value>
+  </data>
+  <data name="OwnerInvitationPreviewRequired" xml:space="preserve">
+    <value>The confirmation needs the preview: its fingerprint is missing.</value>
+  </data>
+  <data name="OwnerInvitationPreviewStale" xml:space="preserve">
+    <value>The preview is no longer valid: the owners' data has changed. Preview again and confirm again.</value>
+  </data>
+  <data name="OwnerInvitationSelectionEmpty" xml:space="preserve">
+    <value>Choose at least one owner to invite.</value>
+  </data>
+  <data name="OwnerInvitationSharedOutsideReach" xml:space="preserve">
+    <value>This owner also holds shares of properties you have no access to: the link opens the whole portfolio, so it is sent by someone who reaches all of them.</value>
+  </data>
   <data name="ContactIdMissing" xml:space="preserve">
     <value>The contact identifier is required.</value>
   </data>

@@ -80,6 +80,10 @@ public static class OnboardingServiceCollectionExtensions
         services.AddScoped<IOnboardingBulkService, OnboardingBulkService>();
         services.AddScoped<IOnboardingBulkImportService, OnboardingBulkImportService>();
 
+        // The owner portfolio of an agency (E10/F02/US02/T01, NF-109): the import of the owners and of their shares of the properties from a CSV
+        // or Excel file, and the readiness of every owner and property for the owner accounting and the portal. It never sends an invitation.
+        services.AddScoped<IOwnerOnboardingService, OwnerOnboardingService>();
+
         return services;
     }
 }

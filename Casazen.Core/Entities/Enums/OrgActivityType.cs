@@ -167,4 +167,21 @@ public enum OrgActivityType
     /// Details: the purpose (<c>message_to_guest</c>). The area is short-rent. Never the address, the phone number or a word of the message.
     /// </summary>
     ContactInfoRead = 120,
+
+    // ─── Owner onboarding of an agency (E10/F02/US02) ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// An owner file was imported and changed something (owners created or completed, ownership periods written). Written by
+    /// <c>OwnerOnboardingService.ImportAsync</c>, in the save of the import, only when something changed (an import that finds everything done
+    /// records nothing, so a second import of the same file leaves no line). Subject: the org. Details: how many rows the file had, how many it
+    /// changed and the first 32 characters of the fingerprint of the file. Never a name, an identifier or a cell of the file.
+    /// </summary>
+    OwnerImportApplied = 130,
+
+    /// <summary>
+    /// An invitation of a property owner to the owner portal changed: it was sent, sent again (which replaces the previous link), accepted, withdrawn
+    /// (ADR-011-R11). Written by <c>OwnerInvitationService</c> in the unit of work of the change. Subject: the invitation. Details: the
+    /// <c>status</c> (<c>sent</c>, <c>resent</c>, <c>accepted</c>, <c>revoked</c>). Never the address, the name of the owner or the link.
+    /// </summary>
+    OwnerInvitationChanged = 140,
 }
