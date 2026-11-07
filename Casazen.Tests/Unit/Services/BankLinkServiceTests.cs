@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
@@ -221,7 +222,7 @@ public class BankLinkServiceTests : IDisposable
         await _rent.MarkPaidOfflineAsync(
             seeded.Lease.Id,
             seeded.Entry.Id,
-            new MarkRentPaidOfflineRequest(DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1)), "bonifico TEST"),
+            new MarkRentPaidOfflineRequest(DateOnly.FromDateTime(TimeProvider.System.TodayInRome().AddDays(-1)), "bonifico TEST"),
             "auth0|owner");
 
         var paid = await _db.RentLedgerEntries.SingleAsync();
