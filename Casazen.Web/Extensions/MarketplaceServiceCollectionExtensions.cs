@@ -28,6 +28,11 @@ public static class MarketplaceServiceCollectionExtensions
         // The detail card of an entry (E09/F01/US01/T04).
         services.AddScoped<IMarketplaceEntryDetailService, MarketplaceEntryDetailService>();
 
+        // The activation of a channel or a tool through the channel manager's API, and the check of the guided step «access to a channel» that reads
+        // it (E09/F02/US01/T02). The verifier has the order 10 and replaces the default one (order 0) of the activation epic for that kind of step.
+        services.AddScoped<IMarketplaceChannelActivationService, MarketplaceChannelActivationService>();
+        services.AddScoped<IPanelStepVerifier, ChannelAccessPanelVerifier>();
+
         return services;
     }
 }

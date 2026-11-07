@@ -155,6 +155,19 @@ public sealed class OctorateRequestRejectedException(int octorateStatusCode)
 }
 
 /// <summary>
+/// The channel or tool behind a connection failed (Octorate's 550, «the partner fails», E09/F02/US01/T01, ADR-023-R6): Octorate took the request and
+/// the portal did not (wrong access data, the portal down, the portal refusing the connection). Not a failure of CasaZen and not one of Octorate's
+/// API: 502, and the host checks the access data of the channel and tries again later. Raised by the operations on a connection only; the other
+/// calls keep their mapping of 5xx.
+/// </summary>
+public sealed class OctoratePartnerFailureException()
+    : OctorateException("octorate_partner_failed", "OctoratePartnerFailed", StatusCodes.Status502BadGateway, OctorateStatus)
+{
+    /// <summary>The status Octorate answers with when the partner (the channel or tool) fails.</summary>
+    public const int OctorateStatus = 550;
+}
+
+/// <summary>
 /// The <c>state</c> of a consent is not valid (E02/F01/US02/T01): unknown, already used, expired, or bound to another org, user or
 /// redirect address. Always the same 400, whatever failed, so the answer tells nothing about which check refused it.
 /// </summary>
