@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Stripe;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
@@ -25,6 +26,7 @@ public class BankLinkServiceTests : IDisposable
     private const string AccountId = "fca_1Nlinked";
     private readonly AppDbContext _db = new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private readonly FakeGateway _gateway = new();
+    private readonly Mock<IStripeService> _stripe = new();
     private readonly BankLinkService _service;
     private readonly RentBillingService _rent;
 
@@ -37,7 +39,7 @@ public class BankLinkServiceTests : IDisposable
             _db,
             billing.Object,
             _gateway,
-            Mock.Of<IStripeService>(),
+            _stripe.Object,
             new RentBillingService(
                 _db,
                 Mock.Of<IStripeService>(),
@@ -229,6 +231,72 @@ public class BankLinkServiceTests : IDisposable
         Assert.Equal(RentLedgerStatus.Paid, paid.Status);
         Assert.Equal(RentPaymentChannel.Offline, paid.PaidVia);
         Assert.Equal("bonifico TEST", paid.OfflinePaymentNote);
+    }
+
+    [Fact]
+    public async Task OpenCardIntent_InFlight_RefusesTheSepaDebit()
+    {
+        var seeded = await SeedAsync(linked: true);
+        seeded.Entry.PaymentTokenHash = CheckoutOutcomes.HashToken(Token);
+        seeded.Entry.StripePaymentIntentId = "pi_card";
+        seeded.Entry.ConnectedAccountId = "acct_host";
+        seeded.Lease.StripeCustomerId = "cus_org";
+        seeded.Lease.FinancialConnectionsAccountId = AccountId;
+        await _db.SaveChangesAsync();
+        _stripe.Setup(s => s.GetPaymentIntentAsync("pi_card", "acct_host", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PaymentIntent { Id = "pi_card", Status = "processing" });
+
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(() => _service.StartLeasePaymentAsync(
+            seeded.Entry.Id, Token, new BankLinkCaller("203.0.113.5", "CasaZen")));
+
+        Assert.Equal(RentBillingErrorCodes.InstallmentInFlight, ex.Code);
+        Assert.Empty(_gateway.CreatedKeys);
+        Assert.Empty(_db.BankLinkPayments);
+        Assert.Equal("pi_card", (await _db.RentLedgerEntries.SingleAsync()).StripePaymentIntentId);
+    }
+
+    [Fact]
+    public async Task OpenCardIntent_StillPayable_IsCanceledBeforeSepa()
+    {
+        var seeded = await SeedAsync(linked: true);
+        seeded.Entry.PaymentTokenHash = CheckoutOutcomes.HashToken(Token);
+        seeded.Entry.StripePaymentIntentId = "pi_card";
+        seeded.Entry.ConnectedAccountId = "acct_host";
+        seeded.Lease.StripeCustomerId = "cus_org";
+        seeded.Lease.FinancialConnectionsAccountId = AccountId;
+        await _db.SaveChangesAsync();
+        _stripe.Setup(s => s.GetPaymentIntentAsync("pi_card", "acct_host", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PaymentIntent { Id = "pi_card", Status = "requires_payment_method" });
+        _stripe.Setup(s => s.CancelPaymentIntentAsync("pi_card", "acct_host", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PaymentIntent { Id = "pi_card", Status = "canceled" });
+
+        var started = await _service.StartLeasePaymentAsync(
+            seeded.Entry.Id, Token, new BankLinkCaller("203.0.113.5", "CasaZen"));
+
+        Assert.Equal(BankLinkCharges.SepaDebit, started.PaymentMethodType);
+        _stripe.Verify(s => s.CancelPaymentIntentAsync("pi_card", "acct_host", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        var entry = await _db.RentLedgerEntries.SingleAsync();
+        Assert.Equal("pi_linked", entry.StripePaymentIntentId);
+        Assert.Null(entry.ConnectedAccountId);
+    }
+
+    [Fact]
+    public async Task PaidInstallment_DoesNotLetTheTokenReplaceTheLinkedAccount()
+    {
+        var seeded = await SeedAsync();
+        seeded.Entry.PaymentTokenHash = CheckoutOutcomes.HashToken(Token);
+        seeded.Entry.Status = RentLedgerStatus.Paid;
+        seeded.Lease.StripeCustomerId = "cus_lease";
+        seeded.Lease.FinancialConnectionsAccountId = AccountId;
+        await _db.SaveChangesAsync();
+        _gateway.Holder = "cus_lease";
+
+        await Assert.ThrowsAsync<DomainConflictException>(() =>
+            _service.AttachLeaseAccountAsync(seeded.Entry.Id, Token, "fca_1Nother"));
+        await Assert.ThrowsAsync<DomainConflictException>(() =>
+            _service.CreateLeaseSessionAsync(seeded.Entry.Id, Token));
+
+        Assert.Equal(AccountId, (await _db.LeaseContracts.SingleAsync()).FinancialConnectionsAccountId);
     }
 
     [Fact]

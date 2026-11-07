@@ -5,6 +5,7 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
@@ -76,12 +77,16 @@ public sealed class BankLinkService(
     {
         ArgumentNullException.ThrowIfNull(request);
         var org = await LoadOrgAsync(orgId, cancellationToken);
-        if (request.InstallmentId is Guid installmentId && request.LeaseId is Guid leaseId)
+        if (request.InstallmentId is Guid openId && request.LeaseId is Guid openLeaseId)
         {
             var open = await db.RentLedgerEntries.SingleOrDefaultAsync(
-                e => e.Id == installmentId && e.LeaseContractId == leaseId && e.OrgId == org.Id, cancellationToken);
-            if (open is not null && await ResumeDueAsync(open, caller, cancellationToken) is { } resumed)
-                return resumed;
+                e => e.Id == openId && e.LeaseContractId == openLeaseId && e.OrgId == org.Id, cancellationToken);
+            if (open?.Status == RentLedgerStatus.Processing)
+            {
+                return await DebitInstallmentAsync(
+                    open, null, org.StripeCustomerId, org.FinancialConnectionsAccountId, org.DisplayName,
+                    BankLinkPayer.Landlord, caller, cancellationToken);
+            }
         }
 
         var (resolvedLeaseId, installment, amount, currency) = await ResolveAmountAsync(org.Id, request, cancellationToken);
@@ -104,6 +109,11 @@ public sealed class BankLinkService(
         Guid installmentId, string token, CancellationToken cancellationToken = default)
     {
         var entry = await LoadByTokenAsync(installmentId, token, cancellationToken);
+        await using var transaction = await LockLeaseAsync(entry.LeaseContractId, cancellationToken);
+        await db.Entry(entry).ReloadAsync(cancellationToken);
+        if (!CheckoutOutcomes.TokenMatches(entry.PaymentTokenHash, token))
+            throw LinkInvalid();
+        EnsureOpen(entry);
         var lease = entry.LeaseContract;
         lease.StripeCustomerId = await gateway.EnsureCustomerAsync(
             lease.StripeCustomerId,
@@ -113,6 +123,8 @@ public sealed class BankLinkService(
             cancellationToken);
         lease.UpdatedAt = UtcNow;
         await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
         return await gateway.CreateSessionAsync(lease.StripeCustomerId, cancellationToken);
     }
 
@@ -120,6 +132,11 @@ public sealed class BankLinkService(
         Guid installmentId, string token, string accountId, CancellationToken cancellationToken = default)
     {
         var entry = await LoadByTokenAsync(installmentId, token, cancellationToken);
+        await using var transaction = await LockLeaseAsync(entry.LeaseContractId, cancellationToken);
+        await db.Entry(entry).ReloadAsync(cancellationToken);
+        if (!CheckoutOutcomes.TokenMatches(entry.PaymentTokenHash, token))
+            throw LinkInvalid();
+        EnsureOpen(entry);
         var lease = entry.LeaseContract;
         if (string.IsNullOrWhiteSpace(lease.StripeCustomerId))
             throw new DomainRuleException(BankLinkErrorCodes.NotLinked, "BankLinkNotLinked");
@@ -128,6 +145,8 @@ public sealed class BankLinkService(
         lease.FinancialConnectionsAccountId = account.Id;
         lease.UpdatedAt = UtcNow;
         await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
         logger.LogInformation(
             "Lease {LeaseId} linked Financial Connections account {AccountId}",
             lease.Id,
@@ -139,21 +158,13 @@ public sealed class BankLinkService(
         Guid installmentId, string token, BankLinkCaller caller, CancellationToken cancellationToken = default)
     {
         var entry = await LoadByTokenAsync(installmentId, token, cancellationToken);
-        if (await ResumeDueAsync(entry, caller, cancellationToken) is { } resumed)
-            return resumed;
-        EnsureOpen(entry);
-        var lease = entry.LeaseContract;
-        return await StartAsync(
-            entry.OrgId,
-            lease.Id,
+        return await DebitInstallmentAsync(
             entry,
-            lease.StripeCustomerId,
-            lease.FinancialConnectionsAccountId,
+            token,
+            entry.LeaseContract.StripeCustomerId,
+            entry.LeaseContract.FinancialConnectionsAccountId,
             "Conduttore",
             BankLinkPayer.Tenant,
-            RentCharges.ToCents(entry.AmountDue),
-            RentCharges.Currency,
-            DueKey(entry),
             caller,
             cancellationToken);
     }
@@ -221,6 +232,19 @@ public sealed class BankLinkService(
         BankLinkCaller caller,
         CancellationToken cancellationToken)
     {
+        if (installment is not null)
+        {
+            return await DebitInstallmentAsync(
+                installment,
+                token: null,
+                customerId,
+                accountId,
+                billingName,
+                payer,
+                caller,
+                cancellationToken);
+        }
+
         if (string.IsNullOrWhiteSpace(customerId) || string.IsNullOrWhiteSpace(accountId))
             throw new DomainRuleException(BankLinkErrorCodes.NotLinked, "BankLinkNotLinked");
 
@@ -229,9 +253,6 @@ public sealed class BankLinkService(
             throw new DomainRuleException(BankLinkErrorCodes.AccountHolderMismatch, "BankLinkAccountHolderMismatch");
         if (!string.Equals(currency, BankLinkCharges.Currency, StringComparison.Ordinal))
             throw new DomainRuleException(BankLinkErrorCodes.CurrencyInvalid, "BankLinkCurrencyInvalid");
-
-        if (installment is not null)
-            await CancelOpenCardIntentAsync(installment, cancellationToken);
 
         // The PaymentIntent is created unconfirmed. The row is saved before confirm, under one key per due,
         // so a retry returns the same debit instead of starting another.
@@ -270,15 +291,6 @@ public sealed class BankLinkService(
                 UpdatedAt = UtcNow,
             };
             db.BankLinkPayments.Add(row);
-            if (installment is not null)
-            {
-                installment.StripePaymentIntentId = created.PaymentIntentId;
-                installment.ConnectedAccountId = null;
-                installment.Status = RentLedgerStatus.Processing;
-                installment.ChargedAt ??= UtcNow;
-                installment.UpdatedAt = UtcNow;
-            }
-
             await db.SaveChangesAsync(cancellationToken);
         }
 
@@ -294,24 +306,116 @@ public sealed class BankLinkService(
     }
 
     /// <summary>
-    /// A due already has an unconfirmed or in-flight debit. Confirm that PaymentIntent again; do not create another.
+    /// Starts or resumes the SEPA debit of one installment under the same lease lock as the card payment session.
+    /// A card PaymentIntent that can still be paid is canceled first. One that is already in flight refuses the debit.
     /// </summary>
-    private async Task<BankLinkPaymentStarted?> ResumeDueAsync(
-        RentLedgerEntry entry, BankLinkCaller caller, CancellationToken cancellationToken)
+    private async Task<BankLinkPaymentStarted> DebitInstallmentAsync(
+        RentLedgerEntry entry,
+        string? token,
+        string? customerId,
+        string? accountId,
+        string billingName,
+        BankLinkPayer payer,
+        BankLinkCaller caller,
+        CancellationToken cancellationToken)
     {
-        if (entry.Status != RentLedgerStatus.Processing || entry.StripePaymentIntentId is null)
-            return null;
+        if (string.IsNullOrWhiteSpace(customerId) || string.IsNullOrWhiteSpace(accountId))
+            throw new DomainRuleException(BankLinkErrorCodes.NotLinked, "BankLinkNotLinked");
 
-        var row = await db.BankLinkPayments.SingleOrDefaultAsync(
-            p => p.RentLedgerEntryId == entry.Id && p.StripePaymentIntentId == entry.StripePaymentIntentId,
+        await using var transaction = await LockLeaseAsync(entry.LeaseContractId, cancellationToken);
+        await db.Entry(entry).ReloadAsync(cancellationToken);
+        if (token is not null && !CheckoutOutcomes.TokenMatches(entry.PaymentTokenHash, token))
+            throw LinkInvalid();
+
+        if (entry.Status == RentLedgerStatus.Processing && entry.StripePaymentIntentId is not null)
+        {
+            var open = await db.BankLinkPayments.SingleOrDefaultAsync(
+                p => p.RentLedgerEntryId == entry.Id && p.StripePaymentIntentId == entry.StripePaymentIntentId,
+                cancellationToken);
+            if (open is null || open.Status != BankLinkPaymentStatus.Processing)
+                throw new DomainConflictException(RentBillingErrorCodes.InstallmentInFlight, "RentInstallmentInFlight");
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+            var again = await gateway.ConfirmDebitAsync(
+                open.StripePaymentIntentId, DueKey(entry), caller.IpAddress, caller.UserAgent, cancellationToken);
+            return Started(open, again.ClientSecret, again.Status);
+        }
+
+        EnsureOpen(entry);
+        await CancelOpenCardIntentAsync(entry, cancellationToken);
+
+        var linked = await gateway.GetAccountAsync(accountId, cancellationToken);
+        if (!string.Equals(linked.CustomerId, customerId, StringComparison.Ordinal))
+            throw new DomainRuleException(BankLinkErrorCodes.AccountHolderMismatch, "BankLinkAccountHolderMismatch");
+
+        var idempotencyKey = DueKey(entry);
+        var created = await gateway.CreateDebitAsync(
+            new BankDebitCommand(
+                customerId,
+                linked.Id,
+                linked.SupportedPaymentMethodTypes,
+                RentCharges.ToCents(entry.AmountDue),
+                RentCharges.Currency,
+                idempotencyKey,
+                billingName,
+                caller.IpAddress,
+                caller.UserAgent,
+                Metadata(entry.OrgId, entry.LeaseContractId, entry, payer)),
             cancellationToken);
-        if (row is null || row.Status != BankLinkPaymentStatus.Processing)
-            throw new DomainConflictException(RentBillingErrorCodes.InstallmentInFlight, "RentInstallmentInFlight");
+
+        var row = await db.BankLinkPayments
+            .SingleOrDefaultAsync(p => p.StripePaymentIntentId == created.PaymentIntentId, cancellationToken);
+        if (row is null)
+        {
+            row = new BankLinkPayment
+            {
+                OrgId = entry.OrgId,
+                LeaseContractId = entry.LeaseContractId,
+                RentLedgerEntryId = entry.Id,
+                Payer = payer,
+                FinancialConnectionsAccountId = linked.Id,
+                StripePaymentIntentId = created.PaymentIntentId,
+                StripePaymentMethodId = created.PaymentMethodId,
+                PaymentMethodType = created.PaymentMethodType,
+                AmountCents = RentCharges.ToCents(entry.AmountDue),
+                Currency = RentCharges.Currency,
+                Status = BankLinkPaymentStatus.Processing,
+                CreatedAt = UtcNow,
+                UpdatedAt = UtcNow,
+            };
+            db.BankLinkPayments.Add(row);
+            entry.StripePaymentIntentId = created.PaymentIntentId;
+            entry.ConnectedAccountId = null;
+            entry.Status = RentLedgerStatus.Processing;
+            entry.ChargedAt ??= UtcNow;
+            entry.UpdatedAt = UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
 
         var confirmed = await gateway.ConfirmDebitAsync(
-            row.StripePaymentIntentId, DueKey(entry), caller.IpAddress, caller.UserAgent, cancellationToken);
+            created.PaymentIntentId, idempotencyKey, caller.IpAddress, caller.UserAgent, cancellationToken);
+        logger.LogInformation(
+            "Bank-link payment {PaymentId} confirmed for org {OrgId} ({PaymentIntentId}, {PaymentMethodType})",
+            row.Id,
+            entry.OrgId,
+            confirmed.PaymentIntentId,
+            confirmed.PaymentMethodType);
         return Started(row, confirmed.ClientSecret, confirmed.Status);
     }
+
+    private Task<IDbContextTransaction?> LockLeaseAsync(Guid leaseId, CancellationToken cancellationToken) =>
+        PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db, cancellationToken, (PostgresAdvisoryLocks.Scope.RentLease, leaseId.ToString("N")));
+
+    private static NotFoundException LinkInvalid() =>
+        new("Rent payment link does not match an installment")
+        {
+            Code = RentBillingErrorCodes.PaymentLinkInvalid,
+            MessageKey = "RentPaymentLinkInvalid",
+        };
 
     private async Task CancelOpenCardIntentAsync(RentLedgerEntry entry, CancellationToken cancellationToken)
     {
