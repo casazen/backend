@@ -2267,7 +2267,7 @@ public class AppDbContext(
             entity.Property(proposal => proposal.ExtraordinaryAmount).HasPrecision(18, 2);
             entity.Property(proposal => proposal.FinalAmount).HasPrecision(18, 2);
             entity.Property(proposal => proposal.Confidence).HasPrecision(5, 4);
-            entity.HasIndex(proposal => new { proposal.OrgId, proposal.CondominiumId, proposal.ContentHash });
+            entity.HasIndex(proposal => new { proposal.OrgId, proposal.CondominiumId, proposal.ContentHash }).IsUnique();
         });
     }
 

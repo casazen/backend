@@ -2666,7 +2666,8 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("CondominiumId");
 
-                    b.HasIndex("OrgId", "CondominiumId", "ContentHash");
+                    b.HasIndex("OrgId", "CondominiumId", "ContentHash")
+                        .IsUnique();
 
                     b.ToTable("CondominiumStatementProposals");
                 });

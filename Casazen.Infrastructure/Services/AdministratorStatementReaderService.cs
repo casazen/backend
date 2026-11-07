@@ -38,10 +38,7 @@ public sealed class AdministratorStatementReaderService(
             throw new DomainRuleException(CondominiumErrorCodes.FileInvalid, "CondominiumStatementUnreadable");
 
         var hash = Convert.ToHexString(SHA256.HashData(file.Content)).ToLowerInvariant();
-        var existing = await db.CondominiumStatementProposals
-            .FirstOrDefaultAsync(
-                item => item.OrgId == scope.OrgId && item.CondominiumId == condominiumId && item.ContentHash == hash && item.Status == CondominiumStatementProposalStatus.Proposed,
-                cancellationToken);
+        var existing = await FindByHashAsync(scope.OrgId, condominiumId, hash, cancellationToken);
         if (existing is not null)
             return ToView(existing);
 
@@ -68,7 +65,20 @@ public sealed class AdministratorStatementReaderService(
             Excerpt = reading.Excerpt,
         };
         db.CondominiumStatementProposals.Add(proposal);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex))
+        {
+            // A parallel upload of the same file inserted the row first.
+            db.Entry(proposal).State = EntityState.Detached;
+            existing = await FindByHashAsync(scope.OrgId, condominiumId, hash, cancellationToken);
+            if (existing is not null)
+                return ToView(existing);
+            throw;
+        }
+
         logger.LogInformation("Administrator statement {ProposalId} proposed for condominium {CondominiumId}", proposal.Id, condominiumId);
         return ToView(proposal);
     }
@@ -79,6 +89,11 @@ public sealed class AdministratorStatementReaderService(
         ArgumentNullException.ThrowIfNull(scope);
         RequireUser(userId);
         await RequireCondominiumAsync(scope, condominiumId, cancellationToken);
+
+        // Held until the proposal is marked confirmed, so the post and the status are one commit.
+        // The book methods join this transaction and do not commit it themselves.
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db, cancellationToken, (PostgresAdvisoryLocks.Scope.Condominium, condominiumId.ToString("N")));
         var proposal = await db.CondominiumStatementProposals
             .FirstOrDefaultAsync(item => item.Id == proposalId && item.CondominiumId == condominiumId && item.OrgId == scope.OrgId, cancellationToken)
             ?? throw new NotFoundException("Proposal not found")
@@ -89,19 +104,27 @@ public sealed class AdministratorStatementReaderService(
         if (proposal.Status == CondominiumStatementProposalStatus.Confirmed)
             return ToView(proposal);
 
+        if (proposal.Kind == CondominiumStatementKind.Budget)
+        {
+            if (proposal.OrdinaryAmount is not > 0m)
+                throw new DomainRuleException(CondominiumErrorCodes.FileInvalid, "CondominiumStatementUnreadable");
+        }
+        else if (proposal.FinalAmount is not > 0m || proposal.Settlement is not { })
+        {
+            throw new DomainRuleException(CondominiumErrorCodes.FileInvalid, "CondominiumStatementUnreadable");
+        }
+
         var period = await condominiums.CreatePeriodAsync(
             scope, condominiumId, new CreateCondominiumPeriodCommand(proposal.Label), userId, cancellationToken);
         Guid statementId;
         if (proposal.Kind == CondominiumStatementKind.Budget)
         {
-            if (proposal.OrdinaryAmount is not > 0m)
-                throw new DomainRuleException(CondominiumErrorCodes.FileInvalid, "CondominiumStatementUnreadable");
             var budget = await condominiums.ConfirmBudgetAsync(
                 scope,
                 condominiumId,
                 period.Id,
                 new ConfirmBudgetCommand(
-                    proposal.OrdinaryAmount.Value,
+                    proposal.OrdinaryAmount!.Value,
                     "Preventivo",
                     proposal.ExtraordinaryAmount is > 0m
                         ? [new ExtraordinaryExpenseCommand(proposal.ExtraordinaryAmount.Value, proposal.ExtraordinaryDescription)]
@@ -114,18 +137,13 @@ public sealed class AdministratorStatementReaderService(
         }
         else
         {
-            if (proposal.FinalAmount is not > 0m)
-                throw new DomainRuleException(CondominiumErrorCodes.FileInvalid, "CondominiumStatementUnreadable");
-            var recoverability = proposal.ChargesTenant ? TenantRecoverability.Recoverable : TenantRecoverability.NeedsReview;
-            var review = proposal.ChargesTenant ? ExpenseReviewStatus.Accepted : ExpenseReviewStatus.Pending;
+            // No expense lines: a free-form total is not a breakdown. The first consuntivo stays owner-only
+            // until someone names recoverable lines. Extraordinary and unknown costs are not folded into ordinary.
             var final = await condominiums.ConfirmFinalAsync(
                 scope,
                 condominiumId,
                 period.Id,
-                new ConfirmFinalCommand(
-                    proposal.FinalAmount.Value,
-                    proposal.Settlement ?? PriorYearBalanceDisposition.CarryForward,
-                    [new FinalExpenseLineCommand("Consuntivo", proposal.FinalAmount.Value, CondominiumExpenseNature.Ordinary, recoverability, null, proposal.Confidence, ExpenseClassificationSource.Document, null, null, review)]),
+                new ConfirmFinalCommand(proposal.FinalAmount!.Value, proposal.Settlement!.Value),
                 userId,
                 cancellationToken);
             statementId = final.Statement.Id;
@@ -137,9 +155,17 @@ public sealed class AdministratorStatementReaderService(
         proposal.ConfirmedAt = DateTime.UtcNow;
         proposal.ConfirmedByUserId = userId;
         await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
         logger.LogInformation("Administrator statement {ProposalId} confirmed into period {PeriodId}", proposal.Id, period.Id);
         return ToView(proposal);
     }
+
+    private Task<CondominiumStatementProposal?> FindByHashAsync(
+        Guid orgId, Guid condominiumId, string hash, CancellationToken cancellationToken) =>
+        db.CondominiumStatementProposals.FirstOrDefaultAsync(
+            item => item.OrgId == orgId && item.CondominiumId == condominiumId && item.ContentHash == hash,
+            cancellationToken);
 
     private async Task<Condominium> RequireCondominiumAsync(HostScope scope, Guid condominiumId, CancellationToken cancellationToken)
     {

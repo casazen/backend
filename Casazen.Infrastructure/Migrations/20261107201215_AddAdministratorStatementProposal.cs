@@ -62,7 +62,8 @@ namespace Casazen.Infrastructure.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_CondominiumStatementProposals_OrgId_CondominiumId_ContentHa~",
                 table: "CondominiumStatementProposals",
-                columns: new[] { "OrgId", "CondominiumId", "ContentHash" });
+                columns: new[] { "OrgId", "CondominiumId", "ContentHash" },
+                unique: true);
         }
 
         /// <inheritdoc />

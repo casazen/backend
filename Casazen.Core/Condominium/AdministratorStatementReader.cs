@@ -98,7 +98,16 @@ public static partial class AdministratorStatementReader
 
         var settlement = TrySettlement(text, out var settlementConflict);
         if (settlementConflict)
+        {
+            // Two dispositions are not a choice. Confirm must not invent one.
             settlement = null;
+        }
+        else if (kind == CondominiumStatementKind.Final)
+        {
+            // A final that names none is carried forward, and that choice is stored here.
+            // Confirm then posts the stored disposition and does not guess.
+            settlement ??= PriorYearBalanceDisposition.CarryForward;
+        }
 
         confidence = Math.Max(0m, confidence);
         var charges = confidence >= ChargeConfidence;
@@ -125,7 +134,9 @@ public static partial class AdministratorStatementReader
             model.Extraordinary > 0m ? model.Extraordinary : null,
             model.ExtraordinaryDescription,
             model.FinalAmount,
-            model.Settlement,
+            model.Kind == CondominiumStatementKind.Final
+                ? model.Settlement ?? PriorYearBalanceDisposition.CarryForward
+                : model.Settlement,
             0.95m,
             true,
             StatementFile.Marker,
@@ -187,11 +198,14 @@ public static partial class AdministratorStatementReader
     private static bool TryDateRange(string text, int fiscalStartMonth, out string label)
     {
         label = string.Empty;
-        var dates = DatePattern().Matches(text)
-            .Select(match => new DateOnly(int.Parse(match.Groups[3].Value), int.Parse(match.Groups[2].Value), int.Parse(match.Groups[1].Value)))
-            .Distinct()
-            .Order()
-            .ToList();
+        var dates = new List<DateOnly>();
+        foreach (Match match in DatePattern().Matches(text))
+        {
+            if (TryCalendarDate(match, out var date))
+                dates.Add(date);
+        }
+
+        dates = dates.Distinct().Order().ToList();
         if (dates.Count < 2)
             return false;
 
@@ -206,6 +220,21 @@ public static partial class AdministratorStatementReader
         }
 
         return false;
+    }
+
+    private static bool TryCalendarDate(Match match, out DateOnly date)
+    {
+        var day = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+        var month = int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+        var year = int.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
+        if (month is < 1 or > 12 || day < 1 || day > DateTime.DaysInMonth(year, month))
+        {
+            date = default;
+            return false;
+        }
+
+        date = new DateOnly(year, month, day);
+        return true;
     }
 
     private static bool Accept(string value, int fiscalStartMonth, out string label)
