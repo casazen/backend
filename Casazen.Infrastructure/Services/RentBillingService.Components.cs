@@ -170,11 +170,10 @@ public sealed partial class RentBillingService
     private void ReplaceComponents(RentLedgerEntry entry, IReadOnlyList<RentComponentDraft> drafts)
     {
         RentLedgerLine.EnsureAmountDue(entry.AmountDue, drafts);
+        // Delete the previous parts. Clearing the collection would null the required foreign key and the save would fail
+        // the next time the plan is written (the installment already has components).
         if (entry.Components.Count > 0)
-        {
             db.RentLedgerComponents.RemoveRange(entry.Components.ToList());
-            entry.Components.Clear();
-        }
 
         foreach (var draft in drafts)
         {
@@ -184,6 +183,7 @@ public sealed partial class RentBillingService
             {
                 Id = Guid.Empty,
                 OrgId = entry.OrgId,
+                RentLedgerEntry = entry,
                 Kind = draft.Kind,
                 Amount = draft.Amount,
                 CompetenceStart = entry.PeriodStart,
