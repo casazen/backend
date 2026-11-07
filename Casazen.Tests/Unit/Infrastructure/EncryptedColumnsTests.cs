@@ -52,9 +52,11 @@ public class EncryptedColumnsTests
                 // NF-13: encrypted property access codes (gate, lockbox, smart lock PIN).
                 "PropertyAccessCode.EncryptedCode:Casazen.PropertyAccessCode",
                 "PropertyICalFeed.ImportUrl:Casazen.PropertyICalFeed.ImportUrl",
-                // ADR-012: property owner financial data (IBAN and fiscal code).
+                // ADR-012: property owner financial data (IBAN and fiscal code), and the BIC and the VAT number of the owner profile (E10/F02/US02/T01).
+                "PropertyOwner.Bic:Casazen.PropertyOwner.Financial",
                 "PropertyOwner.FiscalCode:Casazen.PropertyOwner.Financial",
                 "PropertyOwner.Iban:Casazen.PropertyOwner.Financial",
+                "PropertyOwner.VatNumber:Casazen.PropertyOwner.Financial",
                 "PropertyQuesturaCredentials.Password:Casazen.PropertyQuesturaCredentials",
                 "PropertyQuesturaCredentials.Username:Casazen.PropertyQuesturaCredentials",
                 "PropertyQuesturaCredentials.WsKey:Casazen.PropertyQuesturaCredentials",
