@@ -46,6 +46,9 @@ public sealed class MarketplaceChannelActivationService(
     /// <summary>The longest portal code CasaZen sends as the number Octorate calls <c>channelId</c>.</summary>
     private const int MaxPortalCodeDigits = 18;
 
+    /// <summary>The code kept on a row whose create may or may not have reached the channel manager (the same as <see cref="OctorateServerException"/>).</summary>
+    private const string UnknownOutcomeCode = "octorate_unavailable";
+
     /// <summary>The imports of the D6 sequence, in order: the rooms first (they are what is mapped), then the reservations and the calendar.</summary>
     private static readonly OctorateConnectionAction[] ImportActions =
     [
@@ -162,22 +165,25 @@ public sealed class MarketplaceChannelActivationService(
                 using (orgScope.Use(orgId))
                     connection = await client.CreateConnectionAsync(link.AccommodationId, create, ct);
             }
-            catch (OctorateServerException ex)
+            catch (Exception ex) when (ex is OctorateServerException or OperationCanceledException)
             {
-                // Whether the channel manager made the connection is not known: the activation is kept without its id, so that the next start
-                // finds the connection in the list and takes it instead of making a second one.
+                // Whether the channel manager made the connection is not known (no answer, an answer that cannot be read, or the caller went away
+                // while the create was out): the activation is kept without its id, so that the next start finds the connection in the list and
+                // takes it instead of refusing it as one CasaZen did not make, or making a second one. It is saved even when the request was
+                // cancelled (hence no token): the row is the only trace of the create.
+                var code = ex is OctorateException octorate ? octorate.Code : UnknownOutcomeCode;
                 activation.Status = MarketplaceActivationStatus.Pending;
                 activation.OctorateConnectionId = null;
-                activation.LastErrorCode = ex.Code;
+                activation.LastErrorCode = code;
                 activation.LastErrorAt = now;
                 activation.UpdatedAt = now;
-                await db.SaveChangesAsync(ct);
+                await db.SaveChangesAsync(CancellationToken.None);
                 if (transaction is not null)
-                    await transaction.CommitAsync(ct);
+                    await transaction.CommitAsync(CancellationToken.None);
 
                 logger.LogWarning(
                     "Marketplace activation {ActivationId} of org {OrgId}: the connection was not confirmed ({Error}), the next start looks for it",
-                    activation.Id, orgId, ex.Code);
+                    activation.Id, orgId, code);
                 throw;
             }
             catch (OctorateConflictException)

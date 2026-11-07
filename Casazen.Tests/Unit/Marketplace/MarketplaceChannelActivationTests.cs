@@ -253,6 +253,33 @@ public class MarketplaceChannelActivationTests
     }
 
     [Fact]
+    public async Task StartAsync_ACreateTheCallerAbandoned_KeepsTheRow_AndTheNextStartTakesTheConnectionWithoutA409()
+    {
+        var w = await World.CreateAsync();
+        using var abandoned = new CancellationTokenSource();
+
+        // The caller goes away while the create is out: the channel manager may have made the connection.
+        w.OnCreate = abandoned.Cancel;
+        w.CreateFailure = new OperationCanceledException(abandoned.Token);
+        await using (var db = w.NewDb())
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => w.Service(db).StartAsync(w.OrgA, w.OrgWide, w.StartRequest(), abandoned.Token));
+
+        var kept = Assert.Single(await w.ActivationsAsync());
+        Assert.Equal((MarketplaceActivationStatus.Pending, "octorate_unavailable"), (kept.Status, kept.LastErrorCode));
+        Assert.Null(kept.OctorateConnectionId);
+        AssertNoSecret(Describe(kept));
+
+        // The connection is there: the next start takes it, on the same row, and neither makes a second one nor refuses it as one CasaZen did not make.
+        w.OnCreate = null;
+        w.CreateFailure = null;
+        w.Connections.Add(new OctorateConnectionInfo("7009", "142", "WAITING", null, null));
+        var restarted = await w.StartAsync();
+        Assert.Equal((kept.Id, MarketplaceActivationStatus.Pending, true), (restarted.ActivationId, restarted.Status, restarted.ConnectionFound));
+        Assert.Equal("7009", Assert.Single(await w.ActivationsAsync()).OctorateConnectionId);
+        Assert.Single(w.Created);
+    }
+
+    [Fact]
     public async Task StartAsync_RefusesWithTheStableCodes_BeforeAnythingLeaves()
     {
         // The connector is off: nobody is connected.
@@ -783,6 +810,9 @@ public class MarketplaceChannelActivationTests
 
         public Exception? CreateFailure { get; set; }
 
+        /// <summary>Runs when a create reaches the channel manager, before it answers (a caller that goes away while the create is out).</summary>
+        public Action? OnCreate { get; set; }
+
         public Exception? ListFailure { get; set; }
 
         /// <summary>The status the connection has once «mark connected» ran; <c>null</c> removes it from the list.</summary>
@@ -811,6 +841,10 @@ public class MarketplaceChannelActivationTests
             return new MarketplaceChannelActivationService(
                 db, Client.Object, new OctorateOrgScope(NullTenantContext.Instance), flags.Object, host.Object, Clock, Logs);
         }
+
+        /// <summary>The start of the first property for the portal «142», with the credentials, as the wizard sends it.</summary>
+        public MarketplaceActivationStart StartRequest() =>
+            new(MarketplaceActivationKind.Channel, "142", PropertyId, HotelId, Username, Password);
 
         /// <summary>Starts the activation of the first property for the portal «142» with credentials, as the wizard does.</summary>
         public async Task<MarketplaceActivationState> StartAsync(
@@ -920,6 +954,7 @@ public class MarketplaceChannelActivationTests
                 .Returns((string _, OctorateConnectionCreate request, CancellationToken _) =>
                 {
                     Created.Add(request);
+                    OnCreate?.Invoke();
                     if (CreateFailure is { } failure)
                         return Task.FromException<OctorateConnectionInfo>(failure);
 
