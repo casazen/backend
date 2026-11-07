@@ -30,6 +30,8 @@ public sealed class CondominiumAccountingService(
         HostScope scope, CreateCondominiumCommand command, string userId, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
+        if (!scope.IsOrgWide)
+            throw new DomainForbiddenException(CondominiumErrorCodes.NeedsWholeOrg, "CondominiumNeedsWholeOrg");
         var name = RequireText(command.Name, Condominium.NameMaxLength, "condominium_statement_invalid", "CondominiumStatementInvalid");
         if (!FiscalYear.IsValidStartMonth(command.FiscalStartMonth))
             throw new DomainRuleException(CondominiumErrorCodes.StatementInvalid, "CondominiumStatementInvalid");
@@ -231,7 +233,11 @@ public sealed class CondominiumAccountingService(
         var settlement = Conguaglio.Compute(command.Amount, extraordinary, prior?.Amount ?? 0m, paid);
 
         PriorYearBalanceView? nextBalance = null;
-        if (settlement is { Direction: not Conguaglio.Direction.Even })
+        if (settlement is { Direction: Conguaglio.Direction.Even })
+        {
+            await ClearCarriedBalanceAsync(condominium, period, cancellationToken);
+        }
+        else if (settlement is not null)
         {
             if (command.Settlement == PriorYearBalanceDisposition.Refund && settlement.Direction != Conguaglio.Direction.Credit)
                 throw new DomainRuleException(CondominiumErrorCodes.PriorBalanceInvalid, "CondominiumPriorBalanceInvalid");
@@ -425,26 +431,19 @@ public sealed class CondominiumAccountingService(
             .OrderBy(payment => payment.PaidOn)
             .ToListAsync(cancellationToken);
 
-        var lines = installments.Select(installment =>
-        {
-            var paid = payments
-                .Where(payment => payment.CondominiumInstallmentId == installment.Id
-                    || (payment.CondominiumInstallmentId is null
-                        && payment.PriorBalanceId is null
-                        && payment.PaidOn >= installment.PeriodStart
-                        && payment.PaidOn <= installment.DueDate))
-                .Sum(payment => payment.Amount);
-            return new SituazioneReport.InstallmentLine(
-                installment.Id,
-                installment.SlotIndex,
-                installment.Label,
-                installment.DueDate,
-                installment.OrdinaryAmount,
-                installment.PriorSettlementAmount,
-                installment.ExtraordinaryAmount,
-                installment.TotalAmount,
-                CondominiumMoney.Round(paid));
-        }).ToList();
+        var allocated = SituazioneReport.Allocate(
+            installments.Select(installment => (installment.Id, installment.DueDate, installment.TotalAmount)).ToList(),
+            payments.Select(payment => ((Guid?)payment.CondominiumInstallmentId, payment.Amount)).ToList());
+        var lines = installments.Select(installment => new SituazioneReport.InstallmentLine(
+            installment.Id,
+            installment.SlotIndex,
+            installment.Label,
+            installment.DueDate,
+            installment.OrdinaryAmount,
+            installment.PriorSettlementAmount,
+            installment.ExtraordinaryAmount,
+            installment.TotalAmount,
+            allocated[installment.Id])).ToList();
 
         var paymentLines = payments.Select(payment => new SituazioneReport.PaymentLine(
             payment.Id,
@@ -471,10 +470,7 @@ public sealed class CondominiumAccountingService(
         if (payment.PriorBalanceId is not null)
             return "Conguaglio anno precedente";
         var linked = installments.FirstOrDefault(installment => installment.Id == payment.CondominiumInstallmentId);
-        if (linked is not null)
-            return linked.Label;
-        var byDate = installments.FirstOrDefault(installment => payment.PaidOn >= installment.PeriodStart && payment.PaidOn <= installment.DueDate);
-        return byDate?.Label ?? "Non assegnato";
+        return linked?.Label ?? "Esercizio";
     }
 
     private async Task ApplyRecoveryAsync(
@@ -488,12 +484,19 @@ public sealed class CondominiumAccountingService(
             installment.DueDate,
             installment.OrdinaryAmount,
             installment.PriorSettlementAmount,
-            installment.ExtraordinaryAmount)).ToList();
+            installment.ExtraordinaryAmount,
+            installment.Status == CondominiumInstallmentStatus.Paid)).ToList();
         var updated = OwnerInstallmentPlan.ApplyRecovery(issued, amount, disposition, FiscalYear.SeparateBalanceDueDate(period.StartDate));
-        if (ReferenceEquals(updated, issued))
-            return;
-
+        var kept = updated.Select(row => row.SlotIndex).ToHashSet();
         var now = UtcNow;
+        foreach (var installment in existing.Where(installment => !kept.Contains(installment.SlotIndex)))
+        {
+            installment.PriorSettlementAmount = 0m;
+            installment.TotalAmount = installment.OrdinaryAmount + installment.ExtraordinaryAmount;
+            installment.Status = CondominiumInstallmentStatus.Cancelled;
+            installment.UpdatedAt = now;
+        }
+
         foreach (var row in updated)
         {
             var installment = existing.FirstOrDefault(item => item.SlotIndex == row.SlotIndex);
@@ -521,7 +524,31 @@ public sealed class CondominiumAccountingService(
             installment.TotalAmount = installment.OrdinaryAmount + row.Prior + installment.ExtraordinaryAmount;
             installment.UpdatedAt = now;
         }
+
+        await RefreshInstallmentStatusAsync(period.Id, cancellationToken);
     }
+
+    private async Task ClearCarriedBalanceAsync(Condominium condominium, CondominiumPeriod period, CancellationToken cancellationToken)
+    {
+        var nextLabel = NextLabel(condominium, period);
+        var next = await db.CondominiumPeriods
+            .SingleOrDefaultAsync(item => item.CondominiumId == condominium.Id && item.Label == nextLabel, cancellationToken);
+        if (next is null)
+            return;
+
+        var balance = await db.CondominiumPriorBalances
+            .SingleOrDefaultAsync(item => item.CondominiumPeriodId == next.Id && item.SourcePeriodId == period.Id, cancellationToken);
+        if (balance is null)
+            return;
+
+        db.CondominiumPriorBalances.Remove(balance);
+        await ApplyRecoveryAsync(next, 0m, PriorYearBalanceDisposition.CarryForward, cancellationToken);
+    }
+
+    private static string NextLabel(Condominium condominium, CondominiumPeriod period) =>
+        condominium.FiscalStartMonth == 1
+            ? (period.StartDate.Year + 1).ToString()
+            : $"{period.StartDate.Year + 1}/{period.StartDate.Year + 2}";
 
     private async Task<PriorYearBalanceView> SavePriorAsync(
         CondominiumPeriod period,
@@ -660,10 +687,7 @@ public sealed class CondominiumAccountingService(
     private async Task<CondominiumPeriod> EnsureNextPeriodAsync(
         Condominium condominium, CondominiumPeriod period, CancellationToken cancellationToken)
     {
-        var nextLabel = condominium.FiscalStartMonth == 1
-            ? (period.StartDate.Year + 1).ToString()
-            : $"{period.StartDate.Year + 1}/{period.StartDate.Year + 2}";
-        return await EnsurePeriodAsync(condominium, nextLabel, cancellationToken);
+        return await EnsurePeriodAsync(condominium, NextLabel(condominium, period), cancellationToken);
     }
 
     private async Task RefreshInstallmentStatusAsync(Guid periodId, CancellationToken cancellationToken)
@@ -719,16 +743,17 @@ public sealed class CondominiumAccountingService(
             .Select(unit => (Guid?)unit.Id)
             .FirstOrDefaultAsync(cancellationToken);
 
+    /// <summary>
+    /// A condominium with no property is an org-level row: only an org-wide scope reaches it
+    /// (<c>HostScopeQueryExtensions</c> leaves a row with no property outside every restricted scope).
+    /// Once a property is linked, the caller must reach that property.
+    /// </summary>
     private async Task<Condominium> RequireCondominiumAsync(HostScope scope, Guid condominiumId, CancellationToken cancellationToken)
     {
         var condominium = await db.Condominiums
             .FirstOrDefaultAsync(item => item.Id == condominiumId && item.OrgId == scope.OrgId, cancellationToken)
             ?? throw NotFound();
         if (scope.IsOrgWide)
-            return condominium;
-
-        var linked = await db.CondominiumUnits.AnyAsync(unit => unit.CondominiumId == condominium.Id, cancellationToken);
-        if (!linked)
             return condominium;
 
         var visible = await db.CondominiumUnits

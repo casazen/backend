@@ -66,7 +66,10 @@ public static class FiscalYear
     public static bool Overlaps(DateOnly start, DateOnly end, DateOnly otherStart, DateOnly otherEnd) =>
         start <= otherEnd && otherStart <= end;
 
-    /// <summary>Due date CondoLedger uses for a conguaglio paid on its own: the last day of the third month.</summary>
+    /// <summary>
+    /// Due date of a conguaglio paid on its own: the last day of the third month of the year.
+    /// A June start is due on 31 August.
+    /// </summary>
     public static DateOnly SeparateBalanceDueDate(DateOnly periodStart) =>
-        periodStart.AddMonths(4).AddDays(-1);
+        periodStart.AddMonths(3).AddDays(-1);
 }

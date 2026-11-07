@@ -18,7 +18,8 @@ public static class OwnerInstallmentPlan
         DateOnly DueDate,
         decimal Ordinary,
         decimal Prior,
-        decimal Extraordinary)
+        decimal Extraordinary,
+        bool Paid = false)
     {
         public decimal Total => CondominiumMoney.Round(Ordinary + Prior + Extraordinary);
 
@@ -62,8 +63,10 @@ public static class OwnerInstallmentPlan
     }
 
     /// <summary>
-    /// Applies the owner's recovery choice. Existing ordinary and extraordinary amounts are copied unchanged.
-    /// Carry-forward and refund do not touch the rows.
+    /// Applies the owner's recovery choice. Ordinary and extraordinary of issued rows stay as they are.
+    /// Any prior already written on a rate is cleared first, so a new choice cannot bill the same balance twice.
+    /// Carry-forward and refund leave no prior on a rate. The next-installment choice uses the next rate that is
+    /// not already paid.
     /// </summary>
     public static IReadOnlyList<Row> ApplyRecovery(
         IReadOnlyList<Row> issued,
@@ -72,37 +75,51 @@ public static class OwnerInstallmentPlan
         DateOnly separateDue)
     {
         ArgumentNullException.ThrowIfNull(issued);
+        var cleared = issued
+            .Where(row => !row.IsPriorOnly)
+            .Select(row => row with { Prior = 0m })
+            .ToList();
         return disposition switch
         {
-            PriorYearBalanceDisposition.CarryForward or PriorYearBalanceDisposition.Refund => issued,
-            PriorYearBalanceDisposition.SeparateInstallment => WithSeparateRow(issued, amount, separateDue),
-            _ => PutOnNext(issued, amount),
+            PriorYearBalanceDisposition.CarryForward or PriorYearBalanceDisposition.Refund => cleared,
+            PriorYearBalanceDisposition.SeparateInstallment => WithSeparateRow(issued, cleared, amount, separateDue),
+            _ => PutOnNextUnpaid(cleared, amount),
         };
     }
 
-    private static IReadOnlyList<Row> PutOnNext(IReadOnlyList<Row> issued, decimal amount)
+    private static IReadOnlyList<Row> PutOnNextUnpaid(List<Row> cleared, decimal amount)
     {
-        if (issued.Count == 0)
-            return issued;
+        if (amount == 0m)
+            return cleared;
 
-        var target = issued.FirstOrDefault(row => !row.IsPriorOnly) ?? issued[0];
-        return issued.Select(row => row with
-        {
-            Prior = row.SlotIndex == target.SlotIndex ? amount : 0m,
-        }).ToList();
+        var target = cleared.FirstOrDefault(row => !row.Paid);
+        if (target is null)
+            return cleared;
+
+        return cleared.Select(row => row.SlotIndex == target.SlotIndex ? row with { Prior = amount } : row).ToList();
     }
 
-    private static IReadOnlyList<Row> WithSeparateRow(IReadOnlyList<Row> issued, decimal amount, DateOnly due)
+    private static IReadOnlyList<Row> WithSeparateRow(IReadOnlyList<Row> issued, List<Row> cleared, decimal amount, DateOnly due)
     {
         var existing = issued.FirstOrDefault(row => row.IsPriorOnly);
+        var start = new DateOnly(due.Year, due.Month, 1);
+        var label = $"Conguaglio · {Months[due.Month - 1]} {due.Year}";
         if (existing is not null)
         {
-            return issued.Select(row => row.SlotIndex == existing.SlotIndex ? row with { Prior = amount } : row).ToList();
+            cleared.Add(existing with
+            {
+                Label = label,
+                PeriodStart = start,
+                DueDate = due,
+                Prior = amount,
+                Ordinary = 0m,
+                Extraordinary = 0m,
+            });
+            return cleared;
         }
 
         var slot = issued.Count == 0 ? 0 : issued.Max(row => row.SlotIndex) + 1;
-        var start = new DateOnly(due.Year, due.Month, 1);
-        var added = new Row(slot, $"Conguaglio · {Months[due.Month - 1]} {due.Year}", start, due, 0m, amount, 0m);
-        return issued.Concat([added]).ToList();
+        cleared.Add(new Row(slot, label, start, due, 0m, amount, 0m));
+        return cleared;
     }
 }

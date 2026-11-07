@@ -125,6 +125,102 @@ public class CondominiumAccountingServiceTests
     }
 
     [Fact]
+    public async Task UnlinkedCondominium_IsOnlyForAnOrgWideScope()
+    {
+        await using var db = NewDb();
+        var orgWide = await SeedAsync(db);
+        var restricted = orgWide with { OwnerId = "user" };
+        var service = Service(db);
+
+        var denied = await Assert.ThrowsAsync<DomainForbiddenException>(() =>
+            service.CreateCondominiumAsync(restricted, new CreateCondominiumCommand("Casa", null, null, null, 6), "user"));
+        Assert.Equal(CondominiumErrorCodes.NeedsWholeOrg, denied.Code);
+
+        var condo = await service.CreateCondominiumAsync(orgWide, new CreateCondominiumCommand("Casa", null, null, null, 6), "user");
+        var period = await service.CreatePeriodAsync(orgWide, condo.Id, new CreateCondominiumPeriodCommand("2024/2025"), "user");
+        await Assert.ThrowsAsync<NotFoundException>(() => service.GetReportAsync(restricted, condo.Id, period.Id));
+        await Assert.ThrowsAsync<NotFoundException>(() => service.ConfirmBudgetAsync(
+            restricted, condo.Id, period.Id, new ConfirmBudgetCommand(100m, null, null, CondominiumInstallmentCadence.Monthly), "user"));
+
+        var propertyId = await db.Properties.Select(property => property.Id).SingleAsync();
+        await service.LinkPropertyAsync(orgWide, condo.Id, new LinkPropertyCommand(propertyId, null, null, null, null), "user");
+        var report = await service.GetReportAsync(restricted, condo.Id, period.Id);
+        Assert.Equal("Casa", report.CondominiumName);
+
+        var outsider = orgWide with { OwnerId = "someone-else" };
+        await Assert.ThrowsAsync<NotFoundException>(() => service.GetReportAsync(outsider, condo.Id, period.Id));
+    }
+
+    [Fact]
+    public async Task Recovery_ClearsThePreviousPrior_AndAnEvenFinalRemovesTheCarry()
+    {
+        await using var db = NewDb();
+        var scope = await SeedAsync(db);
+        var service = Service(db);
+        var condo = await service.CreateCondominiumAsync(scope, new CreateCondominiumCommand("Casa", null, null, null, 6), "user");
+        var first = await service.CreatePeriodAsync(scope, condo.Id, new CreateCondominiumPeriodCommand("2024/2025"), "user");
+        var second = await service.CreatePeriodAsync(scope, condo.Id, new CreateCondominiumPeriodCommand("2025/2026"), "user");
+        await service.ConfirmBudgetAsync(scope, condo.Id, first.Id, new ConfirmBudgetCommand(100m, null, null, CondominiumInstallmentCadence.Single), "user");
+        var nextPlan = await service.ConfirmBudgetAsync(
+            scope, condo.Id, second.Id, new ConfirmBudgetCommand(120m, null, null, CondominiumInstallmentCadence.Monthly), "user");
+        var ordinary = nextPlan.Installments.Select(row => row.OrdinaryAmount).ToArray();
+        var extraordinary = nextPlan.Installments.Select(row => row.ExtraordinaryAmount).ToArray();
+
+        await service.ConfirmFinalAsync(scope, condo.Id, first.Id, new ConfirmFinalCommand(100m, PriorYearBalanceDisposition.NextInstallment), "user");
+        var withPrior = await db.CondominiumInstallments.Where(row => row.CondominiumPeriodId == second.Id).OrderBy(row => row.SlotIndex).ToListAsync();
+        Assert.Equal(100m, withPrior[0].PriorSettlementAmount);
+        Assert.Equal(CondominiumInstallmentStatus.Scheduled, withPrior[0].Status);
+
+        await service.RecordPriorYearBalanceAsync(
+            scope, condo.Id, second.Id, new RecordPriorYearBalanceCommand(100m, PriorYearBalanceDisposition.SeparateInstallment, first.Id, "Conguaglio"), "user");
+        var separate = await db.CondominiumInstallments.Where(row => row.CondominiumPeriodId == second.Id && row.Status != CondominiumInstallmentStatus.Cancelled).OrderBy(row => row.SlotIndex).ToListAsync();
+        Assert.Equal(100m, separate.Sum(row => row.PriorSettlementAmount));
+        Assert.Equal(0m, separate.Where(row => row.OrdinaryAmount != 0m).Sum(row => row.PriorSettlementAmount));
+        Assert.Equal(new DateOnly(2025, 8, 31), separate.Single(row => row.OrdinaryAmount == 0m && row.ExtraordinaryAmount == 0m).DueDate);
+
+        await service.RecordPaymentAsync(
+            scope, condo.Id, first.Id, new RecordCondominiumPaymentCommand(null, false, 100m, new DateOnly(2025, 5, 1), "Bonifico", null, null, null), "user");
+        var even = await service.ConfirmFinalAsync(scope, condo.Id, first.Id, new ConfirmFinalCommand(100m, PriorYearBalanceDisposition.CarryForward), "user");
+        Assert.Null(even.NextYearBalance);
+        Assert.False(await db.CondominiumPriorBalances.AnyAsync(balance => balance.CondominiumPeriodId == second.Id));
+        var cleared = await db.CondominiumInstallments.Where(row => row.CondominiumPeriodId == second.Id && row.Status != CondominiumInstallmentStatus.Cancelled).OrderBy(row => row.SlotIndex).ToListAsync();
+        Assert.All(cleared, row => Assert.Equal(0m, row.PriorSettlementAmount));
+        Assert.Equal(ordinary, cleared.Where(row => row.OrdinaryAmount != 0m).Select(row => row.OrdinaryAmount));
+        Assert.Equal(extraordinary, cleared.Where(row => row.OrdinaryAmount != 0m).Select(row => row.ExtraordinaryAmount));
+    }
+
+    [Fact]
+    public async Task Prior_GoesOnTheNextUnpaidRate_AndAYearPaymentReducesTheYear()
+    {
+        await using var db = NewDb();
+        var scope = await SeedAsync(db);
+        var service = Service(db);
+        var condo = await service.CreateCondominiumAsync(scope, new CreateCondominiumCommand("Casa", null, null, null, 6), "user");
+        var period = await service.CreatePeriodAsync(scope, condo.Id, new CreateCondominiumPeriodCommand("2025/2026"), "user");
+        var budget = await service.ConfirmBudgetAsync(
+            scope, condo.Id, period.Id, new ConfirmBudgetCommand(120m, null, null, CondominiumInstallmentCadence.Monthly), "user");
+        var first = budget.Installments[0];
+        await service.RecordPaymentAsync(
+            scope, condo.Id, period.Id, new RecordCondominiumPaymentCommand(first.Id, false, first.TotalAmount, new DateOnly(2025, 6, 15), "Bonifico", null, null, null), "user");
+
+        await service.RecordPriorYearBalanceAsync(
+            scope, condo.Id, period.Id, new RecordPriorYearBalanceCommand(40m, PriorYearBalanceDisposition.NextInstallment, null, "Conguaglio"), "user");
+        var rates = await db.CondominiumInstallments.Where(row => row.CondominiumPeriodId == period.Id).OrderBy(row => row.SlotIndex).ToListAsync();
+        Assert.Equal(CondominiumInstallmentStatus.Paid, rates[0].Status);
+        Assert.Equal(0m, rates[0].PriorSettlementAmount);
+        Assert.Equal(40m, rates[1].PriorSettlementAmount);
+        Assert.Equal(budget.Installments.Select(row => row.OrdinaryAmount), rates.Select(row => row.OrdinaryAmount));
+
+        await service.RecordPaymentAsync(
+            scope, condo.Id, period.Id, new RecordCondominiumPaymentCommand(null, false, 25m, new DateOnly(2025, 6, 20), "Bonifico", null, null, null), "user");
+        var report = await service.GetReportAsync(scope, condo.Id, period.Id);
+        var open = report.Installments.Where(row => row.IsOpen).Sum(row => row.Remaining);
+        Assert.Equal(report.StillToPay, open);
+        Assert.Equal(10m, report.Installments[0].Paid);
+        Assert.True(report.Installments.Count(row => row.Paid > 0m) > 1);
+    }
+
+    [Fact]
     public void RentLedgerServices_DoNotQueryCondominiumTables()
     {
         var root = FindRepo();

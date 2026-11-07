@@ -5511,4 +5511,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="CondominiumPeriodClosed" xml:space="preserve">
     <value>L'esercizio è chiuso.</value>
   </data>
+  <data name="CondominiumNeedsWholeOrg" xml:space="preserve">
+    <value>Un condominio non ancora collegato a un immobile è dell'intera organizzazione: serve l'accesso a tutti gli immobili.</value>
+  </data>
 </root>

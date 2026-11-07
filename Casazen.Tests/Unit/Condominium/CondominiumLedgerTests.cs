@@ -99,9 +99,52 @@ public class CondominiumLedgerTests
         Assert.Equal(extraordinary, separate.Take(issued.Count).Select(row => row.Extraordinary));
         Assert.True(separate[^1].IsPriorOnly);
         Assert.Equal(77.50m, separate[^1].Prior);
+        Assert.Equal(new DateOnly(2025, 8, 31), separate[^1].DueDate);
+        Assert.Equal(77.50m, separate.Sum(row => row.Prior));
 
-        Assert.Same(issued, carry);
-        Assert.Same(issued, refund);
+        Assert.Equal(ordinary, carry.Select(row => row.Ordinary));
+        Assert.Equal(extraordinary, carry.Select(row => row.Extraordinary));
+        Assert.All(carry, row => Assert.Equal(0m, row.Prior));
+        Assert.All(refund, row => Assert.Equal(0m, row.Prior));
+    }
+
+    [Fact]
+    public void ApplyRecovery_ClearsThePreviousPrior_AndSkipsAPaidRate()
+    {
+        var issued = OwnerInstallmentPlan.Generate(
+            new DateOnly(2025, 6, 1), CondominiumInstallmentCadence.Monthly, 120m, 60m, 0m);
+        var withNext = OwnerInstallmentPlan.ApplyRecovery(
+            issued, 40m, PriorYearBalanceDisposition.NextInstallment, issued[0].DueDate);
+        var separateDue = FiscalYear.SeparateBalanceDueDate(new DateOnly(2025, 6, 1));
+        var switched = OwnerInstallmentPlan.ApplyRecovery(
+            withNext, 40m, PriorYearBalanceDisposition.SeparateInstallment, separateDue);
+
+        Assert.Equal(40m, switched.Where(row => row.IsPriorOnly).Sum(row => row.Prior));
+        Assert.All(switched.Where(row => !row.IsPriorOnly), row => Assert.Equal(0m, row.Prior));
+        Assert.Equal(withNext.Select(row => row.Ordinary), switched.Where(row => !row.IsPriorOnly).Select(row => row.Ordinary));
+
+        var paidFirst = withNext.Select((row, index) => index == 0 ? row with { Paid = true } : row with { Prior = 0m }).ToList();
+        var onNextOpen = OwnerInstallmentPlan.ApplyRecovery(
+            paidFirst, 40m, PriorYearBalanceDisposition.NextInstallment, issued[0].DueDate);
+        Assert.Equal(0m, onNextOpen[0].Prior);
+        Assert.Equal(40m, onNextOpen[1].Prior);
+        Assert.Equal(paidFirst.Select(row => row.Ordinary), onNextOpen.Select(row => row.Ordinary));
+        Assert.Equal(paidFirst.Select(row => row.Extraordinary), onNextOpen.Select(row => row.Extraordinary));
+    }
+
+    [Fact]
+    public void Allocate_YearPayment_FillsRatesInOrder_NotTheMonthOfThePayment()
+    {
+        var rates = Enumerable.Range(0, 12)
+            .Select(index => (Id: Guid.NewGuid(), DueDate: new DateOnly(2025, 6, 1).AddMonths(index), Due: 10m))
+            .ToList();
+        var paid = SituazioneReport.Allocate(rates, [(null, 25m)]);
+
+        Assert.Equal(10m, paid[rates[0].Id]);
+        Assert.Equal(10m, paid[rates[1].Id]);
+        Assert.Equal(5m, paid[rates[2].Id]);
+        Assert.Equal(0m, paid[rates[3].Id]);
+        Assert.Equal(95m, rates.Sum(rate => rate.Due - paid[rate.Id]));
     }
 
     [Fact]

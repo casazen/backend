@@ -12,7 +12,8 @@ namespace Casazen.Web.Controllers;
 /// <summary>
 /// The owner's condominium year (CondoLedger): preventivo, consuntivo, rates, prior-year balance and the paid /
 /// still-to-pay report. Reads need long-rent <c>property.read</c>; changes need <c>property.write</c>. Rows stay inside
-/// the caller's org and, when the caller does not reach every property, inside the properties they reach.
+/// the caller's org. Until a property is linked, only a caller who reaches the whole org can see or change it.
+/// After that, the caller must reach the linked property.
 /// </summary>
 [ApiController]
 [Route("api/long-rent/condominiums")]

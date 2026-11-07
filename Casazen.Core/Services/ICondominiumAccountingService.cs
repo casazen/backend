@@ -123,4 +123,5 @@ public static class CondominiumErrorCodes
     public const string FileUnsupported = "condominium_statement_file_unsupported";
     public const string FileInvalid = "condominium_statement_file_invalid";
     public const string PeriodClosed = "condominium_period_closed";
+    public const string NeedsWholeOrg = "condominium_needs_whole_org";
 }

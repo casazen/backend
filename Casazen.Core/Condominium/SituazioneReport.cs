@@ -41,6 +41,37 @@ public static class SituazioneReport
         IReadOnlyList<InstallmentLine> Installments,
         IReadOnlyList<PaymentLine> Payments);
 
+    /// <summary>
+    /// What each rate has received. A payment tied to a rate stays there. A year-level payment (no rate) fills the
+    /// rates in due order, up to each rate's amount, instead of landing on the single month that contains its date.
+    /// </summary>
+    public static IReadOnlyDictionary<Guid, decimal> Allocate(
+        IReadOnlyList<(Guid Id, DateOnly DueDate, decimal Due)> installments,
+        IReadOnlyList<(Guid? InstallmentId, decimal Amount)> payments)
+    {
+        var paid = installments.ToDictionary(row => row.Id, _ => 0m);
+        decimal pool = 0m;
+        foreach (var payment in payments)
+        {
+            if (payment.InstallmentId is { } id && paid.ContainsKey(id))
+                paid[id] = CondominiumMoney.Round(paid[id] + payment.Amount);
+            else
+                pool = CondominiumMoney.Round(pool + payment.Amount);
+        }
+
+        foreach (var row in installments.OrderBy(row => row.DueDate).ThenBy(row => row.Id))
+        {
+            var room = row.Due - paid[row.Id];
+            if (pool <= 0m || room <= 0m)
+                continue;
+            var take = Math.Min(pool, room);
+            paid[row.Id] = CondominiumMoney.Round(paid[row.Id] + take);
+            pool = CondominiumMoney.Round(pool - take);
+        }
+
+        return paid;
+    }
+
     public static Year Build(
         string condominiumName,
         string periodLabel,
