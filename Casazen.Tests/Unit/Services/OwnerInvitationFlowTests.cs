@@ -350,6 +350,23 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Preview_AnOwnerWhoseEveryPeriodIsOver_IsNotOffered_AfterAHandOver()
+    {
+        // Anna held Granted until the end of 2025 and sold it to Bruno, who holds it since 2026: she has nothing the link could open.
+        var former = await AddOwnerAsync("Anna Verdi", "anna@example.com");
+        await AddPeriodAsync(_world.OrgId, Granted, former, new DateOnly(2020, 1, 1), new DateOnly(2025, 12, 31));
+        var current = await AddOwnerAsync("Bruno Neri", "bruno@example.com");
+        await AddPeriodAsync(_world.OrgId, Granted, current, new DateOnly(2026, 1, 1));
+
+        var preview = await Service(NewDb()).PreviewBatchAsync(_world.OrgWide, null, Ct);
+        var list = await Service(NewDb()).ListAsync(_world.OrgWide, Ct);
+
+        Assert.Equal([current], preview.Recipients.Select(r => r.OwnerId));
+        Assert.Empty(preview.Exclusions);
+        Assert.Equal([current], list.Select(i => i.OwnerId));
+    }
+
+    [Fact]
     public async Task TheListAndThePreviewSeeEveryOwner_EvenPastTheCutOfTheReadiness()
     {
         var total = OwnerOnboardingLimits.MaxListed + 1;

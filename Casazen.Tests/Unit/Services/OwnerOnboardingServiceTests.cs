@@ -715,6 +715,36 @@ public class OwnerOnboardingServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Readiness_AnOwnerWhoseEveryPeriodIsOver_IsHistory_NotAPersonToComplete_AfterAHandOver()
+    {
+        // Anna held Granted until the end of 2025; Bruno holds it since 2026, with no day in between, and the whole of Hidden.
+        var former = await AddOwnerAsync("Anna Verdi", "anna@example.com", key: "A-1", complete: true);
+        var current = await AddOwnerAsync("Bruno Neri", "bruno@example.com", key: "B-1", complete: true);
+        await AddPeriodAsync(Granted, former, 100m, new DateOnly(2020, 1, 1), new DateOnly(2025, 12, 31));
+        var onGranted = await AddPeriodAsync(Granted, current, 100m, new DateOnly(2026, 1, 1));
+        var onHidden = await AddPeriodAsync(Hidden, current, 100m, new DateOnly(2025, 1, 1));
+        _db.OwnerMandates.Add(new OwnerMandate { OrgId = _world.OrgId, PropertyOwnershipId = onGranted, MandatePdfUrl = "mandates/g.pdf", EffectiveFrom = HostScopeScenario.Day(2026, 1, 1) });
+        _db.OwnerMandates.Add(new OwnerMandate { OrgId = _world.OrgId, PropertyOwnershipId = onHidden, MandatePdfUrl = "mandates/h.pdf", EffectiveFrom = HostScopeScenario.Day(2025, 1, 1) });
+        await _db.SaveChangesAsync();
+
+        var report = await Service().GetReadinessAsync(_world.OrgWide, Ct);
+
+        // Anna's periods are all over: she is neither listed nor counted, so she cannot hold the financial readiness back for ever (nothing could
+        // complete her mandate), and Bruno alone is the owner of the org.
+        var row = Assert.Single(report.Owners);
+        Assert.Equal(current, row.OwnerId);
+        Assert.True(row.AccountingReady);
+        Assert.Equal((true, 1, 1), (report.Summary.FinancialReady, report.Summary.AccountingReadyOwners, report.Summary.Owners));
+        Assert.DoesNotContain(report.Owners, o => o.OwnerId == former);
+
+        // An owner with no period at all is not history: it is still to complete.
+        var registryOnly = await AddOwnerAsync("Carla Gialli", "carla@example.com", key: "C-1");
+        var again = await Service().GetReadinessAsync(_world.OrgWide, Ct);
+        Assert.Contains(again.Owners, o => o.OwnerId == registryOnly && !o.Ready.Ownership);
+        Assert.False(again.Summary.FinancialReady);
+    }
+
+    [Fact]
     public async Task Readiness_ACollaboratorWithSomePropertiesSeesOnlyTheirs_AndTheirOwners()
     {
         var onGranted = await AddOwnerAsync("Anna Verdi", "anna@example.com");

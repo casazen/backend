@@ -91,6 +91,9 @@ public sealed partial class OwnerOnboardingService(
         return [.. outside];
     }
 
+    /// <summary>True when the period is not over on <paramref name="today"/>: it has no end, or its last day is today or later.</summary>
+    private static bool IsLive(PeriodRow row, DateOnly today) => row.End is not { } end || RomeCalendar.DateInRome(end) >= today;
+
     private static OwnershipPeriod ToPeriod(PeriodRow row) =>
         new(row.OwnerId, row.SharePercent, RomeCalendar.DateInRome(row.Start), row.End is { } end ? RomeCalendar.DateInRome(end) : null);
 

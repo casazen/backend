@@ -57,8 +57,13 @@ public sealed partial class OwnerOnboardingService
         }
 
         var periodsByOwner = periods.ToLookup(p => p.OwnerId);
-        var ownerRows = new List<OwnerReadinessOwner>(owners.Count);
-        foreach (var owner in owners)
+
+        // An owner whose every period is over (it sold, the agency was handed over) is history, not a person to complete: out of the lists, the
+        // counts, the financial readiness and the invitations, as its past stays in the registry and in the periods. An owner with no period at all
+        // is still to complete.
+        var current = owners.Where(o => !periodsByOwner[o.Id].Any() || periodsByOwner[o.Id].Any(p => IsLive(p, today))).ToList();
+        var ownerRows = new List<OwnerReadinessOwner>(current.Count);
+        foreach (var owner in current)
         {
             var facts = periodsByOwner[owner.Id]
                 .Select(p => new OwnerOwnershipFact(
@@ -75,7 +80,9 @@ public sealed partial class OwnerOnboardingService
                 pair => (IReadOnlyList<OwnershipIssue>)[.. pair.Value.Where(i => i.Kind != OwnershipIssueKind.OwnerOverlap || i.OwnerId == owner.Id)]);
 
             var registry = OwnerReadinessRules.Registry(owner);
-            var ownership = OwnerReadinessRules.Ownership(facts, ownIssues);
+
+            // Only the periods that are not over are the owner's today: the shares of a property it left are not its reason to complete.
+            var ownership = OwnerReadinessRules.Ownership([.. facts.Where(f => f.End is not { } last || last >= today)], ownIssues);
             var mandate = OwnerReadinessRules.Mandate(facts, mandates, today);
             var fiscal = OwnerReadinessRules.FiscalProfile(owner);
             var payment = OwnerReadinessRules.Payment(owner);
