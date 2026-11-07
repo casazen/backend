@@ -149,6 +149,19 @@ public class LeasesController(
         return File(document.Content, "application/pdf", document.FileName);
     }
 
+    /// <summary>Deletes a document of this lease and its file. 404 when the document is not on this lease.</summary>
+    [HttpDelete("{id:guid}/documents/{documentId:guid}")]
+    [Authorize(Policy = CasazenPolicies.LeaseCreate)]
+    public async Task<IActionResult> DeleteDocument(Guid id, Guid documentId,
+        [FromServices] ILeaseDocumentService documents, CancellationToken ct)
+    {
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Create);
+        if (denied is not null) return denied;
+        if (!await documents.DeleteAsync(id, documentId, ct))
+            return NotFound();
+        return NoContent();
+    }
+
     /// <summary>
     /// What the receipt of a registration says (CF-DOCS-REAL): the PDF the person uploaded as a document of kind <c>Registration</c>, read
     /// in process (no OCR), with the code, the date, the office, the figures and the town the Agenzia delle Entrate wrote, and the codes of what

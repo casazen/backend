@@ -219,6 +219,19 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
         return stream is null ? null : new LeaseDocumentDownload(stream, document.FileName);
     }
 
+    public async Task<bool> DeleteAsync(Guid leaseId, Guid documentId, CancellationToken ct = default)
+    {
+        var document = await db.LeaseDocuments.SingleOrDefaultAsync(d => d.Id == documentId && d.LeaseContractId == leaseId, ct);
+        if (document is null)
+            return false;
+
+        await storage.DeleteAsync(StorageBucket.Private, document.StorageKey, ct);
+        db.LeaseDocuments.Remove(document);
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation("Lease document {DocumentId} of lease {LeaseId} deleted", documentId, leaseId);
+        return true;
+    }
+
     public async Task<LeaseReadingDto> GetReadingAsync(Guid leaseId, CancellationToken ct = default)
     {
         var documents = await db.LeaseDocuments.AsNoTracking()
