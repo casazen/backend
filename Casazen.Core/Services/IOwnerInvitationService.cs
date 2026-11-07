@@ -66,6 +66,7 @@ public interface IOwnerInvitationService
     /// <param name="propertyOwnerId">The PropertyOwner being invited.</param>
     /// <param name="actorUserId">The user sending the invitation (User.Id).</param>
     /// <param name="cancellationToken"></param>
+    /// <param name="scope">The reach of the caller: with a partial one, an owner that holds nothing inside it is the same 404 as one that does not exist.</param>
     /// <returns>The created invitation.</returns>
     /// <exception cref="Casazen.Core.Exceptions.NotFoundException">PropertyOwner not found or not in this org.</exception>
     /// <exception cref="Casazen.Core.Exceptions.DomainTooManyRequestsException">Daily rate limit reached (100/day/org).</exception>
@@ -73,7 +74,8 @@ public interface IOwnerInvitationService
         Guid orgId,
         Guid propertyOwnerId,
         string actorUserId,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        HostScope? scope = null);
 
     /// <summary>
     /// The batch that confirming would send, sent to nobody: the owners of <paramref name="ownerIds"/> (or all of them when <c>null</c>; an empty list

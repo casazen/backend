@@ -477,6 +477,60 @@ public class OwnerOnboardingServiceTests : IAsyncLifetime
         Assert.Equal(BulkImportCodes.FileTooLarge, tooLarge.Code);
     }
 
+    [Fact]
+    public async Task Import_ACollaboratorWithSomePropertiesWritesNothingTiedToNoProperty_AndCannotCompleteAnOwnerOfPropertiesItDoesNotReach()
+    {
+        var shared = await AddOwnerAsync("Anna Verdi", "anna@example.com", key: "A-1");
+        var alone = await AddOwnerAsync("Carla Gialli", "carla@example.com", key: "C-1");
+        // Anna holds half of Granted (inside the reach) and the whole of Hidden (outside it); Carla only the other half of Granted.
+        await AddPeriodAsync(Granted, shared, 50m, new DateOnly(2025, 1, 1));
+        await AddPeriodAsync(Hidden, shared, 100m, new DateOnly(2025, 1, 1));
+        await AddPeriodAsync(Granted, alone, 50m, new DateOnly(2025, 1, 1));
+        var iban = "IT60X0542811101000000123456";
+
+        var result = await ImportAsync(
+            Csv(
+                "propertyId,ownerKey,legalName,iban,sharePercent,ownershipStart",
+                // No property: it would create an owner of the whole org.
+                ",N-1,Nuovo Proprietario,,,",
+                // Anna also holds Hidden, which the caller does not reach: the row may repeat her period, not give her an IBAN.
+                $"{Granted},A-1,,{iban},50,2025-01-01",
+                $"{Granted},A-1,,,50,2025-01-01",
+                // Carla holds nothing outside the reach: she can be completed.
+                $"{Granted},C-1,,{iban},50,2025-01-01"),
+            dryRun: false,
+            scope: _world.Restricted);
+
+        Assert.Equal(
+            [OwnerImportRowCodes.PropertyNotFound, OwnerImportRowCodes.OwnerSharedOutsideReach, OwnerImportRowCodes.Ok, OwnerImportRowCodes.Ok],
+            result.Rows.Select(r => r.Status));
+        Assert.Equal([false, false, false, true], result.Rows.Select(r => r.Applied));
+        Assert.Null((await _db.PropertyOwners.AsNoTracking().SingleAsync(o => o.Id == shared)).Iban);
+        Assert.Equal(iban, (await _db.PropertyOwners.AsNoTracking().SingleAsync(o => o.Id == alone)).Iban);
+        Assert.Equal(2, await _db.PropertyOwners.CountAsync());
+    }
+
+    [Fact]
+    public async Task Dtos_TheDaysAreFormattedAsDays_ForRealValues()
+    {
+        // A property whose only owner left in 2025: nobody holds it since 1 January 2026 (gap) and the days are strings of the API.
+        var owner = await AddOwnerAsync("Anna Verdi", "anna@example.com", key: "A-1");
+        await AddPeriodAsync(Granted, owner, 100m, new DateOnly(2024, 1, 1), new DateOnly(2025, 12, 31));
+
+        var report = await Service().GetReadinessAsync(_world.OrgWide, Ct);
+        var dto = Casazen.Web.DTOs.Onboarding.OwnerReadinessDto.From(report);
+
+        Assert.Equal("2026-10-09", dto.AsOf);
+        var issue = Assert.Single(Assert.Single(dto.Properties, p => p.PropertyId == Granted).Issues);
+        Assert.Equal(("gap", "2026-01-01", "2026-10-09", 0m), (issue.Kind, issue.From, issue.To, issue.TotalPercent));
+
+        // The import's shares issues travel the same way.
+        var result = await ImportAsync(Csv("propertyId,ownerKey,legalName,sharePercent,ownershipStart", $"{Granted},B-1,Bruno Neri,60,2026-06-01"), dryRun: true);
+        var imported = Casazen.Web.DTOs.Onboarding.OwnerImportResultDto.From(result);
+        var shares = Assert.Single(Assert.Single(imported.PropertyIssues).Issues);
+        Assert.Equal(("shortfall", "2026-06-01", 60m), (shares.Kind, shares.From, shares.TotalPercent));
+    }
+
     // ---------------------------------------------------------------- the readiness
 
     [Fact]

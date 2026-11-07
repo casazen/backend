@@ -123,6 +123,12 @@ public static class OwnerImportRowCodes
     /// <summary>The owner is known and holds a different value for a field the file also gives: the import fills what is empty and never overwrites.</summary>
     public const string OwnerFieldConflict = "owner_field_conflict";
 
+    /// <summary>
+    /// The owner also holds properties outside the reach of the caller, so its data is not the caller's to complete: a row of a caller with a partial
+    /// reach may add a period of the owner on a property it reaches, but not give the owner a value it lacks.
+    /// </summary>
+    public const string OwnerSharedOutsideReach = "owner_shared_outside_reach";
+
     public const string LegalNameRequired = "legal_name_required";
     public const string LegalNameInvalid = "legal_name_invalid";
     public const string EntityKindInvalid = "entity_kind_invalid";

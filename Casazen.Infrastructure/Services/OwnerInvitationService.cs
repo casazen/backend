@@ -54,7 +54,8 @@ public class OwnerInvitationService(
         Guid orgId,
         Guid propertyOwnerId,
         string actorUserId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        HostScope? scope = null)
     {
         await using var transaction = await LockAsync(orgId, cancellationToken);
 
@@ -63,7 +64,7 @@ public class OwnerInvitationService(
             .Include(po => po.Org)
             .FirstOrDefaultAsync(po => po.Id == propertyOwnerId && po.OrgId == orgId, cancellationToken);
 
-        if (propertyOwner == null)
+        if (propertyOwner == null || (scope is { IsOrgWide: false } && !await OwnerVisibleAsync(scope, propertyOwnerId, cancellationToken)))
         {
             throw new NotFoundException("Property owner not found or does not belong to this organization")
             {
@@ -441,17 +442,7 @@ public class OwnerInvitationService(
 
         // Only the ownerships of this invitation: this org, this registry owner, a property of this org, not over. Never one already given to
         // somebody else, never another org's.
-        var propertyIds = dbContext.Properties
-            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .Where(p => p.OrgId == orgId.Value)
-            .Select(p => p.Id);
-        var ownerships = await dbContext.PropertyOwnerships
-            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .Where(po => po.OrgId == orgId.Value
-                         && po.PropertyOwnerId == invitation.PropertyOwnerId
-                         && (po.OwnershipEnd == null || po.OwnershipEnd >= now)
-                         && propertyIds.Contains(po.PropertyId))
-            .ToListAsync(cancellationToken);
+        var ownerships = await GrantableOwnerships(dbContext, orgId.Value, invitation.PropertyOwnerId, now).ToListAsync(cancellationToken);
         foreach (var ownership in ownerships.Where(o => o.OwnerUserId is null))
             ownership.OwnerUserId = ownerUser.Id;
 
@@ -485,18 +476,7 @@ public class OwnerInvitationService(
         DateTime now,
         CancellationToken cancellationToken)
     {
-        var existing = (await dbContext.Properties
-                .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-                .AsNoTracking()
-                .Join(
-                    dbContext.PropertyOwnerships
-                        .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-                        .AsNoTracking()
-                        .Where(po => po.OwnerUserId == ownerUserId && (po.OwnershipEnd == null || po.OwnershipEnd >= now)),
-                    property => property.Id,
-                    ownership => ownership.PropertyId,
-                    (property, ownership) => new { PropertyId = property.Id, PropertyOrgId = property.OrgId, ownership.OrgId })
-                .ToListAsync(cancellationToken))
+        var existing = (await ClaimRows(dbContext, ownerUserId, now).ToListAsync(cancellationToken))
             .Where(r => r.PropertyOrgId == r.OrgId)
             .ToList();
         var agencyIds = existing.Select(r => r.OrgId).Distinct().Order().ToList();
@@ -513,6 +493,43 @@ public class OwnerInvitationService(
     }
 
     // ---------------------------------------------------------------- shared
+
+    /// <summary>One ownership of an owner account and the property it is on, with the org of each (the claims of the account are the ones whose two orgs are the same).</summary>
+    internal sealed record OwnerClaimRow(Guid PropertyId, Guid PropertyOrgId, Guid OrgId);
+
+    /// <summary>
+    /// The ownerships of an owner account that are not over, with their property, across every org (the tenant filter of the caller, who has none, is
+    /// ignored; a deleted property stays out). Built here so that a test can show the PostgreSQL provider translates it.
+    /// </summary>
+    internal static IQueryable<OwnerClaimRow> ClaimRows(AppDbContext db, Guid ownerUserId, DateTime now) =>
+        db.Properties
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Join(
+                db.PropertyOwnerships
+                    .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+                    .AsNoTracking()
+                    .Where(po => po.OwnerUserId == ownerUserId && (po.OwnershipEnd == null || po.OwnershipEnd >= now)),
+                property => property.Id,
+                ownership => ownership.PropertyId,
+                (property, ownership) => new OwnerClaimRow(property.Id, property.OrgId, ownership.OrgId));
+
+    /// <summary>
+    /// The ownerships an acceptance may give the account: of the org of the invitation, of its registry owner, not over, on a property of that org.
+    /// </summary>
+    internal static IQueryable<PropertyOwnership> GrantableOwnerships(AppDbContext db, Guid orgId, Guid propertyOwnerId, DateTime now)
+    {
+        var propertyIds = db.Properties
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(p => p.OrgId == orgId)
+            .Select(p => p.Id);
+        return db.PropertyOwnerships
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(po => po.OrgId == orgId
+                         && po.PropertyOwnerId == propertyOwnerId
+                         && (po.OwnershipEnd == null || po.OwnershipEnd >= now)
+                         && propertyIds.Contains(po.PropertyId));
+    }
 
     private Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction?> LockAsync(Guid orgId, CancellationToken cancellationToken) =>
         PostgresAdvisoryLocks.BeginLockedTransactionAsync(

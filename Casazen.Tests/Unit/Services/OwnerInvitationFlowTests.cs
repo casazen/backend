@@ -132,6 +132,11 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         var token = await InviteAsync(owner);
         var service = Service(NewDb());
 
+        // Only the hash of the token is stored.
+        var stored = Assert.Single(await _db.OwnerInvitations.AsNoTracking().ToListAsync());
+        Assert.Equal(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(token))), stored.TokenHash);
+        Assert.NotEqual(token, stored.TokenHash);
+
         var first = await service.AcceptAsync(Accept(token, "auth0|anna", "Anna@Example.com"), Ct);
         var second = await Service(NewDb()).AcceptAsync(Accept(token, "auth0|anna", "anna@example.com"), Ct);
 
@@ -267,6 +272,14 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
 
         var preview = await Service(NewDb()).PreviewBatchAsync(_world.Restricted, null, Ct);
         Assert.Equal([onGranted], preview.Recipients.Select(r => r.OwnerId));
+
+        // The single invitation looks at the reach too: the owner it cannot see is the same 404 as one that does not exist.
+        var hidden = await Assert.ThrowsAsync<NotFoundException>(
+            () => Service(NewDb()).CreateInvitationAsync(_world.OrgId, onHidden, Admin, Ct, _world.Restricted));
+        Assert.Equal(OwnerInvitationErrors.PropertyOwnerNotFound, hidden.Code);
+        Assert.Empty(_queue.Sent);
+        await Service(NewDb()).CreateInvitationAsync(_world.OrgId, onGranted, Admin, Ct, _world.Restricted);
+        Assert.Single(_queue.Sent);
 
         // Naming the owner it cannot see is the same answer as an owner that does not exist.
         var named = await Service(NewDb()).PreviewBatchAsync(_world.Restricted, [onHidden], Ct);
@@ -437,6 +450,21 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
             db, _queue, NullLogger<OwnerInvitationService>.Instance, unconfigured, new ActivityLog(db, _clock), Onboarding(db), _auth0.Object, _clock);
         await Assert.ThrowsAsync<EmailConfigurationException>(() => service.CreateInvitationAsync(_world.OrgId, other, Admin, Ct));
         Assert.Equal(1, await _db.OwnerInvitations.CountAsync());
+    }
+
+    [Theory]
+    [InlineData("http://app.example.test", false)]
+    [InlineData("not an address", false)]
+    [InlineData("", false)]
+    [InlineData("https://app.example.test?next=/x", false)]
+    [InlineData("https://app.example.test", true)]
+    public void ThePublicAddressOfTheLink_IsAnAbsoluteHttpsUrl_ElseTheStartupRefusesIt(string address, bool valid)
+    {
+        // The address of the invitation is the one public domain of the product: where the configuration must be complete (everywhere but
+        // Development and Testing) the startup validator refuses a value that is missing, is not a URL or is not https.
+        var result = new PublicSiteOptionsValidator().Validate(null, new PublicSiteOptions { PublicSiteBaseUrl = address });
+
+        Assert.Equal(valid, result.Succeeded);
     }
 
     [Fact]

@@ -143,9 +143,18 @@ public sealed partial class OwnerOnboardingService
 
         await ResolvePropertiesAsync(scope, judged.Rows, ct);
 
+        // A caller with a partial reach writes nothing that is tied to no property it reaches: a row with no property would create or complete an
+        // owner of the whole org, and no declaration is never inside the reach.
+        if (!scope.IsOrgWide)
+        {
+            foreach (var row in judged.Rows.Where(r => !r.Source.NamesProperty))
+                row.Fail(OwnerImportColumns.PropertyId, OwnerImportRowCodes.PropertyNotFound);
+        }
+
         var owners = await LoadVisibleOwnersAsync(scope, ct);
         var lookups = new OwnerLookups(owners);
         await CollectHiddenKeysAsync(scope, judged.Rows, lookups, ct);
+        var sharedOutsideReach = await OwnersSharedOutsideReachAsync(scope, owners, ct);
 
         var propertyIds = judged.Rows.Where(r => r.PropertyId is not null).Select(r => r.PropertyId!.Value).Distinct().ToList();
         var periods = propertyIds.Count == 0
@@ -187,7 +196,7 @@ public sealed partial class OwnerOnboardingService
             if (!row.Valid)
                 continue;
 
-            if (!AssignPlan(row, plansByExisting, newByKey, newByFiscal, newByVat))
+            if (!AssignPlan(row, plansByExisting, newByKey, newByFiscal, newByVat, sharedOutsideReach))
                 continue;
 
             ClassifyOwnership(row, today, periodsByProperty, mandatesByOwnership, seenPeriods);
@@ -291,6 +300,25 @@ public sealed partial class OwnerOnboardingService
     }
 
     /// <summary>
+    /// For a caller with a partial reach: the owners it sees that also hold a period on a property it does not reach. Empty for an org-wide scope.
+    /// </summary>
+    private async Task<HashSet<Guid>> OwnersSharedOutsideReachAsync(HostScope scope, List<PropertyOwner> visible, CancellationToken ct)
+    {
+        if (scope.IsOrgWide)
+            return [];
+
+        var ids = visible.Select(o => o.Id).ToList();
+        var reachable = db.Properties.Where(p => p.OrgId == scope.OrgId).InScope(scope).Select(p => p.Id);
+        var outside = await db.PropertyOwnerships
+            .AsNoTracking()
+            .Where(po => po.OrgId == scope.OrgId && ids.Contains(po.PropertyOwnerId) && !reachable.Contains(po.PropertyId))
+            .Select(po => po.PropertyOwnerId)
+            .Distinct()
+            .ToListAsync(ct);
+        return [.. outside];
+    }
+
+    /// <summary>
     /// Who in the registry the row is about, in this order: the <c>ownerId</c> of the row, the key, the fiscal identifier. The e-mail address is
     /// never looked at. A fiscal identifier that matches more than one owner is ambiguous; a key and a fiscal identifier that point to two owners,
     /// or to an owner that holds other ones, are a conflict of identity.
@@ -377,7 +405,8 @@ public sealed partial class OwnerOnboardingService
         Dictionary<Guid, OwnerPlan> plansByExisting,
         Dictionary<string, OwnerPlan> newByKey,
         Dictionary<string, OwnerPlan> newByFiscal,
-        Dictionary<string, OwnerPlan> newByVat)
+        Dictionary<string, OwnerPlan> newByVat,
+        ISet<Guid> sharedOutsideReach)
     {
         var values = row.Values;
         OwnerPlan plan;
@@ -389,6 +418,15 @@ public sealed partial class OwnerOnboardingService
             {
                 plan = new OwnerPlan(existing.Id, existing) { FirstRow = row.Source.Number };
                 plansByExisting[existing.Id] = plan;
+            }
+
+            // An owner that also holds properties outside the reach of the caller is not the caller's to complete: the row may add a period, nothing
+            // the owner lacks.
+            if (sharedOutsideReach.Contains(existing.Id) && OwnerRowRules.Fill(OwnerRowRules.ValuesOf(existing), values))
+            {
+                row.Fail(OwnerImportColumns.OwnerId, OwnerImportRowCodes.OwnerSharedOutsideReach);
+                row.OwnerAction = OwnerImportActions.Conflict;
+                return false;
             }
 
             // What the owner holds is what is stored, then what earlier rows of the file gave it.

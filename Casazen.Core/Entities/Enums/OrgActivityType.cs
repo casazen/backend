@@ -180,7 +180,7 @@ public enum OrgActivityType
 
     /// <summary>
     /// An invitation of a property owner to the owner portal changed: it was sent, sent again (which replaces the previous link), accepted, withdrawn
-    /// or it lapsed (ADR-011-R11). Written by <c>OwnerInvitationService</c> in the unit of work of the change. Subject: the invitation. Details: the
+    /// (ADR-011-R11). Written by <c>OwnerInvitationService</c> in the unit of work of the change. Subject: the invitation. Details: the
     /// <c>status</c> (<c>sent</c>, <c>resent</c>, <c>accepted</c>, <c>revoked</c>). Never the address, the name of the owner or the link.
     /// </summary>
     OwnerInvitationChanged = 140,
