@@ -74,6 +74,69 @@ public class OpenapiNonConcordatoRegistrationTests
     }
 
     [Fact]
+    public void Build_UnknownFieldOrderName_StillOccupiesItsIndex()
+    {
+        var search = OpenapiLeaseSearch.Build(
+            Lease(LeaseContractType.Libero),
+            default,
+            ["contractType", "not-a-casazen-field", "taxRegime"]);
+
+        Assert.Equal("Libero", search["field0"]);
+        Assert.Equal(string.Empty, search["field1"]);
+        Assert.Equal(LeaseTaxRegime.Ordinario.ToString(), search["field2"]);
+    }
+
+    [Fact]
+    public async Task Submit_ReadsTheOAuthTokenFromTheDataEnvelope()
+    {
+        string? bearer = null;
+        var calls = 0;
+        var handler = new StubHandler(request =>
+        {
+            calls++;
+            if (request.RequestUri!.AbsolutePath.EndsWith("/tokens", StringComparison.Ordinal))
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""{"success":true,"data":{"token":"minted-token"}}"""),
+                };
+            }
+
+            bearer = request.Headers.Authorization?.Parameter;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"success":true,"data":{"id":"66c881896de559cb65055392","state":"WAIT"}}"""),
+            };
+        });
+        var client = NewClient(handler, token: null);
+
+        var id = await client.SubmitLeaseRegistrationAsync(Lease(LeaseContractType.Libero), default);
+
+        Assert.Equal("66c881896de559cb65055392", id);
+        Assert.Equal("minted-token", bearer);
+        Assert.Equal(2, calls);
+    }
+
+    [Theory]
+    [InlineData("""{"token":"root-token"}""")]
+    [InlineData("""{"success":true,"data":{"token":""}}""")]
+    public async Task Submit_RejectsATokenThatIsNotInTheDataEnvelope(string oauthBody)
+    {
+        var calls = 0;
+        var handler = new StubHandler(_ =>
+        {
+            calls++;
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(oauthBody) };
+        });
+        var client = NewClient(handler, token: null);
+
+        await Assert.ThrowsAsync<LeaseRegistrationProviderException>(() =>
+            client.SubmitLeaseRegistrationAsync(Lease(LeaseContractType.Libero), default));
+
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
     public async Task Gate_Unpaid_Refuses_And_PaidQuote_Passes()
     {
         await using var db = NewDb();
@@ -213,7 +276,7 @@ public class OpenapiNonConcordatoRegistrationTests
         return (service, openapi, provider, db);
     }
 
-    private static OpenapiDocuEngineClient NewClient(HttpMessageHandler handler)
+    private static OpenapiDocuEngineClient NewClient(HttpMessageHandler handler, string? token = "token")
     {
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.docuengine.openapi.com/") };
         return new OpenapiDocuEngineClient(
@@ -221,7 +284,10 @@ public class OpenapiNonConcordatoRegistrationTests
             Options.Create(new OpenapiOptions
             {
                 BaseUrl = "https://test.docuengine.openapi.com",
-                Token = "token",
+                OAuthUrl = "https://test.oauth.openapi.com",
+                Email = "host@example.com",
+                ApiKey = "key",
+                Token = token,
                 LeaseDocumentId = "doc-lease",
             }),
             NullLogger<OpenapiDocuEngineClient>.Instance);

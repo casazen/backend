@@ -40,13 +40,11 @@ public static class OpenapiLeaseSearch
         var order = fieldOrder.Count > 0 ? fieldOrder : DefaultFieldOrder;
         var values = Values(lease, signedContract);
         var search = new Dictionary<string, string>(order.Count, StringComparer.Ordinal);
-        var index = 0;
-        foreach (var key in order)
+        for (var index = 0; index < order.Count; index++)
         {
-            if (!values.TryGetValue(key, out var value))
-                continue;
-            search["field" + index.ToString(CultureInfo.InvariantCulture)] = value;
-            index++;
+            // A name CasaZen does not know still occupies fieldN. Skipping it would shift every later value left.
+            values.TryGetValue(order[index], out var value);
+            search["field" + index.ToString(CultureInfo.InvariantCulture)] = value ?? string.Empty;
         }
 
         return search;

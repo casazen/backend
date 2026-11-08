@@ -67,24 +67,27 @@ public sealed class OpenapiRegistrationCheckoutService(
             throw new DomainConflictException(OpenapiRegistrationFee.AlreadyPaidCode, "OpenapiRegistrationAlreadyPaid");
         }
 
-        var reusable = existing.FirstOrDefault(p =>
-            p.Status == OpenapiRegistrationPaymentStatus.Pending
-            && p.AmountCents == quote.AmountCents
-            && p.FeePercent == quote.Percent
-            && p.CreatedAt >= now - SessionLifetime
-            && !string.IsNullOrWhiteSpace(p.SessionUrl));
-        if (reusable is not null)
-        {
-            if (transaction is not null)
-                await transaction.CommitAsync(cancellationToken);
-            return new CheckoutResult(reusable.StripeCheckoutSessionId, reusable.SessionUrl!, Reused: true);
-        }
-
-        foreach (var stale in existing.Where(p => p.Status == OpenapiRegistrationPaymentStatus.Pending))
-            stale.Status = OpenapiRegistrationPaymentStatus.Failed;
-
         if (stripeClient is null)
             ConfigureStripe();
+
+        var sessions = new SessionService(Client);
+        var pending = await ResolvePendingSessionsAsync(sessions, existing, now, cancellationToken);
+        if (pending.PaidOnStripe || pending.PaymentInFlight)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+            throw new DomainConflictException(OpenapiRegistrationFee.AlreadyPaidCode, "OpenapiRegistrationAlreadyPaid");
+        }
+
+        if (pending.Reuse is not null)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+            return pending.Reuse;
+        }
+
 
         var baseUrl = WebAppBaseUrl();
         var metadata = new Dictionary<string, string>
@@ -94,7 +97,6 @@ public sealed class OpenapiRegistrationCheckoutService(
             ["orgId"] = orgId.ToString(),
             ["userId"] = userId,
         };
-        var sessions = new SessionService(Client);
         var session = await sessions.CreateAsync(new SessionCreateOptions
         {
             Mode = "payment",
@@ -147,6 +149,73 @@ public sealed class OpenapiRegistrationCheckoutService(
 
         return new CheckoutResult(session.Id, session.Url ?? throw new InvalidOperationException("Stripe checkout session URL missing"), Reused: false);
     }
+
+    /// <summary>
+    /// Asks Stripe about every pending session before another one is opened. A session Stripe says is paid is marked
+    /// paid here (the webhook may still be late) and no second session is created, including when the local row is
+    /// older than <see cref="SessionLifetime"/> or the quote has changed. An open session is reused. Only a session
+    /// Stripe no longer has, or an expired one, is closed so a new checkout can start.
+    /// </summary>
+    private async Task<PendingSessions> ResolvePendingSessionsAsync(
+        SessionService sessions,
+        IReadOnlyList<OpenapiLeaseRegistrationPayment> existing,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var paid = false;
+        var inFlight = false;
+        CheckoutResult? reuse = null;
+        foreach (var row in existing.Where(p => p.Status == OpenapiRegistrationPaymentStatus.Pending))
+        {
+            var session = await FindSessionAsync(sessions, row, cancellationToken);
+            switch (session?.Status)
+            {
+                case "complete" when string.Equals(session.PaymentStatus, "paid", StringComparison.Ordinal):
+                    if (session.AmountTotal == row.AmountCents
+                        && string.Equals(session.Currency, "eur", StringComparison.OrdinalIgnoreCase))
+                    {
+                        row.Status = OpenapiRegistrationPaymentStatus.Completed;
+                        row.PaidAt = now;
+                        row.StripePaymentIntentId = session.PaymentIntentId;
+                    }
+
+                    paid = true;
+                    break;
+                case "complete":
+                    inFlight = true;
+                    break;
+                case "open" when !string.IsNullOrWhiteSpace(session.Url):
+                    row.SessionUrl = session.Url;
+                    reuse ??= new CheckoutResult(session.Id, session.Url, Reused: true);
+                    break;
+                default:
+                    row.Status = OpenapiRegistrationPaymentStatus.Failed;
+                    break;
+            }
+        }
+
+        return new PendingSessions(paid, inFlight, reuse);
+    }
+
+    private async Task<Session?> FindSessionAsync(
+        SessionService sessions,
+        OpenapiLeaseRegistrationPayment row,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await sessions.GetAsync(row.StripeCheckoutSessionId, cancellationToken: cancellationToken);
+        }
+        catch (Stripe.StripeException ex) when (ex.StripeError?.Code == "resource_missing")
+        {
+            logger.LogInformation(
+                "Previous OpenAPI checkout session {SessionId} is gone",
+                row.StripeCheckoutSessionId);
+            return null;
+        }
+    }
+
+    private readonly record struct PendingSessions(bool PaidOnStripe, bool PaymentInFlight, CheckoutResult? Reuse);
 
     private string WebAppBaseUrl()
     {

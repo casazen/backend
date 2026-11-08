@@ -4,23 +4,40 @@ using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Stripe;
+using Stripe.Checkout;
 
 namespace Casazen.Infrastructure.External;
 
 /// <summary>
-/// Records a paid Openapi filing fee. The amount must match the pending row of that lease and org; a mismatch grants nothing.
+/// Records a paid Openapi filing fee from the platform webhook only, and only for the Checkout session that row stores.
+/// A Connect PaymentIntent with the same kind, lease, org and amount is the host's charge: it does not pay this fee.
+/// A late success completes that session's Pending row and no other.
 /// </summary>
-public sealed class OpenapiRegistrationPaymentHandler(AppDbContext db, ILogger<OpenapiRegistrationPaymentHandler> logger)
+public sealed class OpenapiRegistrationPaymentHandler(
+    AppDbContext db,
+    ILogger<OpenapiRegistrationPaymentHandler> logger,
+    Stripe.IStripeClient? stripeClient = null)
 {
+    private Stripe.IStripeClient Client => stripeClient ?? Stripe.StripeConfiguration.StripeClient;
+
     public static bool IsPayment(PaymentIntent? paymentIntent) =>
         paymentIntent?.Metadata is { } metadata
         && metadata.TryGetValue("kind", out var kind)
         && string.Equals(kind, OpenapiRegistrationFee.StripeKind, StringComparison.Ordinal);
 
-    public async Task HandlePaymentIntentSucceededAsync(PaymentIntent paymentIntent, DateTime? paidAt = null)
+    public async Task HandlePaymentIntentSucceededAsync(
+        PaymentIntent paymentIntent,
+        WebhookSource source,
+        DateTime? paidAt = null)
     {
-        if (!IsPayment(paymentIntent))
+        if (source != WebhookSource.Platform || !IsPayment(paymentIntent))
+        {
+            logger.LogInformation(
+                "OpenAPI registration payment ignored. PaymentIntentId={PaymentIntentId} Source={Source}",
+                paymentIntent.Id,
+                source);
             return;
+        }
 
         var metadata = paymentIntent.Metadata;
         if (!Guid.TryParse(metadata.GetValueOrDefault("leaseId"), out var leaseId)
@@ -31,24 +48,46 @@ public sealed class OpenapiRegistrationPaymentHandler(AppDbContext db, ILogger<O
             return;
         }
 
-        var amount = (int)paymentIntent.Amount;
-        var payment = await db.OpenapiLeaseRegistrationPayments
-            .Where(p => p.LeaseContractId == leaseId && p.OrgId == orgId && p.AmountCents == amount)
-            .OrderByDescending(p => p.CreatedAt)
-            .FirstOrDefaultAsync();
-        if (payment is null)
+        var sessionId = await CheckoutSessionIdAsync(paymentIntent.Id);
+        if (sessionId is null)
         {
-            logger.LogError(
-                "OpenAPI registration payment {PaymentIntentId} matches no quote for LeaseId={LeaseId} OrgId={OrgId} AmountCents={AmountCents}",
-                paymentIntent.Id,
-                leaseId,
-                orgId,
-                amount);
+            logger.LogWarning(
+                "OpenAPI registration payment {PaymentIntentId} is not a stored Checkout session",
+                paymentIntent.Id);
             return;
         }
 
-        if (payment.Status == OpenapiRegistrationPaymentStatus.Completed)
+        var payment = await db.OpenapiLeaseRegistrationPayments
+            .FirstOrDefaultAsync(p => p.StripeCheckoutSessionId == sessionId
+                && p.LeaseContractId == leaseId
+                && p.OrgId == orgId);
+        if (payment is null)
+        {
+            logger.LogError(
+                "OpenAPI registration payment {PaymentIntentId} matches no row for session {SessionId}",
+                paymentIntent.Id,
+                sessionId);
             return;
+        }
+
+        if (payment.Status != OpenapiRegistrationPaymentStatus.Pending)
+        {
+            logger.LogInformation(
+                "OpenAPI registration payment {PaymentId} is {Status}: a late success changes nothing",
+                payment.Id,
+                payment.Status);
+            return;
+        }
+
+        if (payment.AmountCents != (int)paymentIntent.Amount)
+        {
+            logger.LogError(
+                "OpenAPI registration payment {PaymentIntentId} amount {Amount} does not match session {SessionId}",
+                paymentIntent.Id,
+                paymentIntent.Amount,
+                sessionId);
+            return;
+        }
 
         payment.Status = OpenapiRegistrationPaymentStatus.Completed;
         payment.PaidAt = DateTime.SpecifyKind(paidAt ?? paymentIntent.Created, DateTimeKind.Utc);
@@ -60,5 +99,13 @@ public sealed class OpenapiRegistrationPaymentHandler(AppDbContext db, ILogger<O
             orgId,
             payment.FeePercent,
             payment.AmountCents);
+    }
+
+    /// <summary>The Checkout session of this PaymentIntent on the platform account, or null when it is not one of ours.</summary>
+    private async Task<string?> CheckoutSessionIdAsync(string paymentIntentId)
+    {
+        var list = await new SessionService(Client).ListAsync(
+            new SessionListOptions { PaymentIntent = paymentIntentId, Limit = 1 });
+        return list.Data.FirstOrDefault()?.Id;
     }
 }

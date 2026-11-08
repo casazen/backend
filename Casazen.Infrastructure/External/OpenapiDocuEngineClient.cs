@@ -150,12 +150,32 @@ public sealed class OpenapiDocuEngineClient(
         }, options: Json);
 
         using var response = await http.SendAsync(request, cancellationToken);
-        var token = await response.Content.ReadFromJsonAsync<TokenResponse>(Json, cancellationToken);
-        if (!response.IsSuccessStatusCode || string.IsNullOrWhiteSpace(token?.Token))
+        var token = await ReadTokenAsync(response, cancellationToken);
+        // POST /tokens uses the same data envelope as DocuEngine. A root "token", or an empty one, is not a credential.
+        if (!response.IsSuccessStatusCode || string.IsNullOrWhiteSpace(token))
             throw Failed(RliRegistrationFailureCodes.ProviderError, "Openapi did not issue a token.");
 
-        _mintedToken = token.Token;
+        _mintedToken = token;
         return _mintedToken;
+    }
+
+    private static async Task<string?> ReadTokenAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("data", out var data)
+                || data.ValueKind != JsonValueKind.Object
+                || !data.TryGetProperty("token", out var token))
+                return null;
+            return token.GetString();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static async Task<JsonDocument?> ReadDocumentAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -206,8 +226,4 @@ public sealed class OpenapiDocuEngineClient(
         return new LeaseRegistrationProviderException(code, message);
     }
 
-    private sealed class TokenResponse
-    {
-        public string? Token { get; set; }
-    }
 }
