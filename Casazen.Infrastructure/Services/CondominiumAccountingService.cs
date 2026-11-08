@@ -610,7 +610,7 @@ public sealed class CondominiumAccountingService(
             .ToListAsync(cancellationToken);
 
         var allocated = SituazioneReport.Allocate(
-            installments.Select(installment => (installment.Id, installment.PeriodStart, installment.DueDate, installment.TotalAmount)).ToList(),
+            installments.Select(installment => (installment.Id, installment.PeriodStart, installment.DueDate, installment.TotalAmount, IsPriorOnly(installment))).ToList(),
             payments.Select(payment => ((Guid?)payment.CondominiumInstallmentId, payment.PaidOn, payment.Amount)).ToList());
         var lines = installments.Select(installment => new SituazioneReport.InstallmentLine(
             installment.Id,
@@ -1033,12 +1033,13 @@ public sealed class CondominiumAccountingService(
             .Select(payment => new { payment.CondominiumInstallmentId, payment.PaidOn, payment.Amount })
             .ToListAsync(cancellationToken);
         var allocated = SituazioneReport.Allocate(
-            installments.Select(installment => (installment.Id, installment.PeriodStart, installment.DueDate, installment.TotalAmount)).ToList(),
+            installments.Select(installment => (installment.Id, installment.PeriodStart, installment.DueDate, installment.TotalAmount, IsPriorOnly(installment))).ToList(),
             payments.Select(payment => ((Guid?)payment.CondominiumInstallmentId, payment.PaidOn, payment.Amount)).ToList());
         var now = UtcNow;
         foreach (var installment in installments)
         {
-            if (installment.Status == CondominiumInstallmentStatus.Cancelled)
+            // A paid rate keeps its status. Re-allocating must not move that payment onto an overlapping conguaglio.
+            if (installment.Status is CondominiumInstallmentStatus.Cancelled or CondominiumInstallmentStatus.Paid)
                 continue;
             var amount = allocated.GetValueOrDefault(installment.Id);
             installment.Status = amount <= 0.005m

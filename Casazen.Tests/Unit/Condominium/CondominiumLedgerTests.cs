@@ -142,7 +142,7 @@ public class CondominiumLedgerTests
             {
                 var periodStart = start.AddMonths(index);
                 var due = new DateOnly(periodStart.Year, periodStart.Month, DateTime.DaysInMonth(periodStart.Year, periodStart.Month));
-                return (Id: Guid.NewGuid(), PeriodStart: periodStart, DueDate: due, Due: 10m);
+                return (Id: Guid.NewGuid(), PeriodStart: periodStart, DueDate: due, Due: 10m, PriorOnly: false);
             })
             .ToList();
         var paid = SituazioneReport.Allocate(rates, [(null, new DateOnly(2025, 8, 1), 25m)]);
@@ -157,6 +157,36 @@ public class CondominiumLedgerTests
         Assert.Equal(4m, onlyAugust[rates[2].Id]);
         Assert.Equal(0m, onlyAugust[rates[0].Id]);
         Assert.Equal(0m, onlyAugust[rates[1].Id]);
+    }
+
+    [Fact]
+    public void Allocate_OverlappingConguaglio_PaysTheMonthlyRate_WhateverTheIdOrder()
+    {
+        var augustStart = new DateOnly(2025, 8, 1);
+        var augustDue = new DateOnly(2025, 8, 31);
+        var low = Guid.Parse("00000000-0000-0000-0000-000000000001");
+        var high = Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff");
+        var june = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+
+        foreach (var (monthlyId, conguaglioId) in new[] { (low, high), (high, low) })
+        {
+            var rows = new (Guid Id, DateOnly PeriodStart, DateOnly DueDate, decimal Due, bool PriorOnly)[]
+            {
+                (june, new DateOnly(2025, 6, 1), new DateOnly(2025, 6, 30), 10m, false),
+                (monthlyId, augustStart, augustDue, 10m, false),
+                (conguaglioId, augustStart, augustDue, 40m, true),
+            };
+
+            var exact = SituazioneReport.Allocate(rows, [(null, new DateOnly(2025, 8, 15), 10m)]);
+            Assert.Equal(10m, exact[monthlyId]);
+            Assert.Equal(0m, exact[conguaglioId]);
+            Assert.Equal(0m, exact[june]);
+
+            var extra = SituazioneReport.Allocate(rows, [(null, new DateOnly(2025, 8, 15), 25m)]);
+            Assert.Equal(10m, extra[monthlyId]);
+            Assert.Equal(10m, extra[june]);
+            Assert.Equal(5m, extra[conguaglioId]);
+        }
     }
 
     [Fact]

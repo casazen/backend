@@ -262,6 +262,35 @@ public class CondominiumAccountingServiceTests
     }
 
     [Fact]
+    public async Task YearPayment_StaysOnTheAugustRate_WhenTheConguaglioSharesItsWindow()
+    {
+        await using var db = NewDb();
+        var scope = await SeedAsync(db);
+        var service = Service(db);
+        var condo = await service.CreateCondominiumAsync(scope, new CreateCondominiumCommand("Casa", null, null, null, 6), "user");
+        var period = await service.CreatePeriodAsync(scope, condo.Id, new CreateCondominiumPeriodCommand("2025/2026"), "user");
+        var budget = await service.ConfirmBudgetAsync(
+            scope, condo.Id, period.Id, new ConfirmBudgetCommand(120m, null, null, CondominiumInstallmentCadence.Monthly), "user");
+        var august = budget.Installments[2];
+        await service.RecordPaymentAsync(
+            scope, condo.Id, period.Id, new RecordCondominiumPaymentCommand(null, false, august.TotalAmount, new DateOnly(2025, 8, 15), "Bonifico", null, null, null), "user");
+
+        await service.RecordPriorYearBalanceAsync(
+            scope, condo.Id, period.Id, new RecordPriorYearBalanceCommand(40m, PriorYearBalanceDisposition.SeparateInstallment, null, "Conguaglio"), "user");
+
+        var rates = await db.CondominiumInstallments.Where(row => row.CondominiumPeriodId == period.Id).ToListAsync();
+        var monthly = rates.Single(row => row.Id == august.Id);
+        var conguaglio = rates.Single(row => row.Status != CondominiumInstallmentStatus.Cancelled && row.OrdinaryAmount == 0m && row.PriorSettlementAmount == 40m);
+        Assert.Equal(CondominiumInstallmentStatus.Paid, monthly.Status);
+        Assert.Equal(august.TotalAmount, monthly.TotalAmount);
+        Assert.Equal(CondominiumInstallmentStatus.Scheduled, conguaglio.Status);
+
+        var report = await service.GetReportAsync(scope, condo.Id, period.Id);
+        Assert.Equal(august.TotalAmount, report.Installments.Single(row => row.Id == monthly.Id).Paid);
+        Assert.Equal(0m, report.Installments.Single(row => row.Id == conguaglio.Id).Paid);
+    }
+
+    [Fact]
     public async Task ChangingRecovery_DoesNotBillAPaidRateAgain()
     {
         await using var db = NewDb();
