@@ -247,17 +247,47 @@ public class CondominiumAccountingServiceTests
 
         var covered = await db.CondominiumInstallments.Where(row => row.CondominiumPeriodId == period.Id).OrderBy(row => row.SlotIndex).ToListAsync();
         Assert.Equal(CondominiumInstallmentStatus.Paid, covered[0].Status);
-        Assert.Equal(CondominiumInstallmentStatus.Paid, covered[1].Status);
-        Assert.Equal(CondominiumInstallmentStatus.PartiallyPaid, covered[2].Status);
+        Assert.Equal(CondominiumInstallmentStatus.PartiallyPaid, covered[1].Status);
+        Assert.Equal(CondominiumInstallmentStatus.Paid, covered[2].Status);
 
         await service.RecordPriorYearBalanceAsync(
             scope, condo.Id, period.Id, new RecordPriorYearBalanceCommand(40m, PriorYearBalanceDisposition.NextInstallment, null, "Conguaglio"), "user");
         var after = await db.CondominiumInstallments.Where(row => row.CondominiumPeriodId == period.Id).OrderBy(row => row.SlotIndex).ToListAsync();
         Assert.Equal(0m, after[0].PriorSettlementAmount);
-        Assert.Equal(0m, after[1].PriorSettlementAmount);
-        Assert.Equal(40m, after[2].PriorSettlementAmount);
+        Assert.Equal(40m, after[1].PriorSettlementAmount);
+        Assert.Equal(0m, after[2].PriorSettlementAmount);
         Assert.Equal(CondominiumInstallmentStatus.Paid, after[0].Status);
+        Assert.Equal(CondominiumInstallmentStatus.Paid, after[2].Status);
         Assert.Equal(40m, after.Sum(row => row.PriorSettlementAmount));
+    }
+
+    [Fact]
+    public async Task ChangingRecovery_DoesNotBillAPaidRateAgain()
+    {
+        await using var db = NewDb();
+        var scope = await SeedAsync(db);
+        var service = Service(db);
+        var condo = await service.CreateCondominiumAsync(scope, new CreateCondominiumCommand("Casa", null, null, null, 6), "user");
+        var period = await service.CreatePeriodAsync(scope, condo.Id, new CreateCondominiumPeriodCommand("2025/2026"), "user");
+        await service.ConfirmBudgetAsync(
+            scope, condo.Id, period.Id, new ConfirmBudgetCommand(120m, null, null, CondominiumInstallmentCadence.Monthly), "user");
+        await service.RecordPriorYearBalanceAsync(
+            scope, condo.Id, period.Id, new RecordPriorYearBalanceCommand(40m, PriorYearBalanceDisposition.NextInstallment, null, "Conguaglio"), "user");
+        var first = await db.CondominiumInstallments.Where(row => row.CondominiumPeriodId == period.Id).OrderBy(row => row.SlotIndex).FirstAsync();
+        Assert.Equal(40m, first.PriorSettlementAmount);
+        await service.RecordPaymentAsync(
+            scope, condo.Id, period.Id, new RecordCondominiumPaymentCommand(first.Id, false, first.TotalAmount, new DateOnly(2025, 6, 15), "Bonifico", null, null, null), "user");
+
+        await service.RecordPriorYearBalanceAsync(
+            scope, condo.Id, period.Id, new RecordPriorYearBalanceCommand(40m, PriorYearBalanceDisposition.SeparateInstallment, null, "Conguaglio"), "user");
+
+        var rates = await db.CondominiumInstallments.Where(row => row.CondominiumPeriodId == period.Id).OrderBy(row => row.SlotIndex).ToListAsync();
+        var paid = rates[0];
+        Assert.Equal(CondominiumInstallmentStatus.Paid, paid.Status);
+        Assert.Equal(40m, paid.PriorSettlementAmount);
+        Assert.Equal(first.TotalAmount, paid.TotalAmount);
+        Assert.Equal(40m, rates.Where(row => row.Status != CondominiumInstallmentStatus.Cancelled).Sum(row => row.PriorSettlementAmount));
+        Assert.DoesNotContain(rates.Skip(1), row => row.Status != CondominiumInstallmentStatus.Cancelled && row.PriorSettlementAmount != 0m);
     }
 
     [Fact]

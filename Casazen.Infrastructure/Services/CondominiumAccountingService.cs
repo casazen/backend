@@ -610,8 +610,8 @@ public sealed class CondominiumAccountingService(
             .ToListAsync(cancellationToken);
 
         var allocated = SituazioneReport.Allocate(
-            installments.Select(installment => (installment.Id, installment.DueDate, installment.TotalAmount)).ToList(),
-            payments.Select(payment => ((Guid?)payment.CondominiumInstallmentId, payment.Amount)).ToList());
+            installments.Select(installment => (installment.Id, installment.PeriodStart, installment.DueDate, installment.TotalAmount)).ToList(),
+            payments.Select(payment => ((Guid?)payment.CondominiumInstallmentId, payment.PaidOn, payment.Amount)).ToList());
         var lines = installments.Select(installment => new SituazioneReport.InstallmentLine(
             installment.Id,
             installment.SlotIndex,
@@ -667,8 +667,16 @@ public sealed class CondominiumAccountingService(
         var updated = OwnerInstallmentPlan.ApplyRecovery(issued, amount, disposition, FiscalYear.SeparateBalanceDueDate(period.StartDate));
         var kept = updated.Select(row => row.SlotIndex).ToHashSet();
         var now = UtcNow;
+        var active = new List<CondominiumInstallment>(updated.Count);
         foreach (var installment in existing.Where(installment => !kept.Contains(installment.SlotIndex)))
         {
+            // A paid rate stays, including a paid separate conguaglio. Cancelling it would bill the balance again.
+            if (installment.Status == CondominiumInstallmentStatus.Paid)
+            {
+                active.Add(installment);
+                continue;
+            }
+
             installment.PriorSettlementAmount = 0m;
             installment.TotalAmount = installment.OrdinaryAmount + installment.ExtraordinaryAmount;
             installment.Status = CondominiumInstallmentStatus.Cancelled;
@@ -678,11 +686,16 @@ public sealed class CondominiumAccountingService(
         var parked = await db.CondominiumInstallments
             .Where(installment => installment.CondominiumPeriodId == period.Id && installment.Status == CondominiumInstallmentStatus.Cancelled)
             .ToListAsync(cancellationToken);
-        var active = new List<CondominiumInstallment>(updated.Count);
         foreach (var row in updated)
         {
             var installment = existing.FirstOrDefault(item => item.SlotIndex == row.SlotIndex)
                 ?? parked.FirstOrDefault(item => item.SlotIndex == row.SlotIndex);
+            if (installment is { Status: CondominiumInstallmentStatus.Paid })
+            {
+                active.Add(installment);
+                continue;
+            }
+
             if (installment is null)
             {
                 installment = new CondominiumInstallment
@@ -1017,11 +1030,11 @@ public sealed class CondominiumAccountingService(
     {
         var payments = await db.CondominiumPayments
             .Where(payment => payment.CondominiumPeriodId == periodId)
-            .Select(payment => new { payment.CondominiumInstallmentId, payment.Amount })
+            .Select(payment => new { payment.CondominiumInstallmentId, payment.PaidOn, payment.Amount })
             .ToListAsync(cancellationToken);
         var allocated = SituazioneReport.Allocate(
-            installments.Select(installment => (installment.Id, installment.DueDate, installment.TotalAmount)).ToList(),
-            payments.Select(payment => ((Guid?)payment.CondominiumInstallmentId, payment.Amount)).ToList());
+            installments.Select(installment => (installment.Id, installment.PeriodStart, installment.DueDate, installment.TotalAmount)).ToList(),
+            payments.Select(payment => ((Guid?)payment.CondominiumInstallmentId, payment.PaidOn, payment.Amount)).ToList());
         var now = UtcNow;
         foreach (var installment in installments)
         {

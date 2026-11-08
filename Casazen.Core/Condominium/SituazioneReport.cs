@@ -42,24 +42,45 @@ public static class SituazioneReport
         IReadOnlyList<PaymentLine> Payments);
 
     /// <summary>
-    /// What each rate has received. A payment tied to a rate stays there. A year-level payment (no rate) fills the
-    /// rates in due order, up to each rate's amount, instead of landing on the single month that contains its date.
+    /// What each rate has received. A payment tied to a rate stays there. A year-level payment (no rate) is applied
+    /// first to the rate whose window contains <c>PaidOn</c>, then any remainder fills the other rates in due order.
+    /// The rate of the payment date is therefore the one whose status moves, and a payment larger than that rate
+    /// still covers the rates it is enough for.
     /// </summary>
     public static IReadOnlyDictionary<Guid, decimal> Allocate(
-        IReadOnlyList<(Guid Id, DateOnly DueDate, decimal Due)> installments,
-        IReadOnlyList<(Guid? InstallmentId, decimal Amount)> payments)
+        IReadOnlyList<(Guid Id, DateOnly PeriodStart, DateOnly DueDate, decimal Due)> installments,
+        IReadOnlyList<(Guid? InstallmentId, DateOnly PaidOn, decimal Amount)> payments)
     {
         var paid = installments.ToDictionary(row => row.Id, _ => 0m);
+        var order = installments.OrderBy(row => row.DueDate).ThenBy(row => row.PeriodStart).ThenBy(row => row.Id).ToList();
         decimal pool = 0m;
         foreach (var payment in payments)
         {
             if (payment.InstallmentId is { } id && paid.ContainsKey(id))
+            {
                 paid[id] = CondominiumMoney.Round(paid[id] + payment.Amount);
-            else
-                pool = CondominiumMoney.Round(pool + payment.Amount);
+                continue;
+            }
+
+            var left = payment.Amount;
+            var window = order.FindIndex(row => row.PeriodStart <= payment.PaidOn && payment.PaidOn <= row.DueDate);
+            if (window >= 0)
+            {
+                var row = order[window];
+                var room = row.Due - paid[row.Id];
+                if (room > 0m && left > 0m)
+                {
+                    var take = Math.Min(left, room);
+                    paid[row.Id] = CondominiumMoney.Round(paid[row.Id] + take);
+                    left = CondominiumMoney.Round(left - take);
+                }
+            }
+
+            if (left > 0m)
+                pool = CondominiumMoney.Round(pool + left);
         }
 
-        foreach (var row in installments.OrderBy(row => row.DueDate).ThenBy(row => row.Id))
+        foreach (var row in order)
         {
             var room = row.Due - paid[row.Id];
             if (pool <= 0m || room <= 0m)

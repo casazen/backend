@@ -40,6 +40,19 @@ public class AdministratorStatementReaderTests
     }
 
     [Fact]
+    public void TwoAmountsUnderOneLabel_AreNotCharged()
+    {
+        const string text = """
+            Preventivo esercizio 2024/2025
+            Quota ordinaria 490,30 1.234,56
+            """;
+        Assert.True(AdministratorStatementReader.TryRead(text, 6, out var proposal, out _));
+        Assert.NotNull(proposal);
+        Assert.False(proposal.ChargesTenant);
+        Assert.True(proposal.Confidence < AdministratorStatementReader.ChargeConfidence);
+    }
+
+    [Fact]
     public void TwoOrdinaryAmounts_AreNotCharged()
     {
         const string text = """
