@@ -26,6 +26,7 @@ public static class AiProviderRegistration
         services.AddScoped<DeepSeekAiProvider>();
         services.AddScoped<StubAiProvider>();
         services.AddScoped<IAiProvider, SwitchingAiProvider>();
+        services.AddScoped<ICheckInDocumentReader, CheckInDocumentAiReader>();
 
         services.AddHttpClient("DeepSeek", client => client.Timeout = TimeSpan.FromSeconds(30));
         // Calls with photos and a long answer (the text of a listing): a vision model takes longer.

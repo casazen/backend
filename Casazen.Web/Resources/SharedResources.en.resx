@@ -1430,13 +1430,19 @@
     <value>The photo of the document is not the one read before: take a photo of the same document again.</value>
   </data>
   <data name="CheckInProvinceInvalid" xml:space="preserve">
-    <value>Enter the two-letter province code (e.g. RM).</value>
+    <value>This is not an Italian province code (e.g. RM).</value>
   </data>
   <data name="CheckInCodeInvalid" xml:space="preserve">
     <value>This code is not valid for Alloggiati Web.</value>
   </data>
   <data name="CheckInCodeUnknown" xml:space="preserve">
-    <value>This code is not in the official Alloggiati table: pick it from the list.</value>
+    <value>This value is not in the official table: pick it from the list.</value>
+  </data>
+  <data name="CheckInDocumentMissing" xml:space="preserve">
+    <value>Upload a photo of the document.</value>
+  </data>
+  <data name="CheckInDocumentRejected" xml:space="preserve">
+    <value>The photo is not valid: use a JPG, PNG or WebP up to 5 MB.</value>
   </data>
   <data name="CheckInDocumentNumberInvalid" xml:space="preserve">
     <value>The document number may contain only letters and digits, at most {0}.</value>
