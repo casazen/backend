@@ -288,6 +288,7 @@ public class AppDbContext(
     public DbSet<Party> Parties { get; set; } = null!;
     public DbSet<LeaseRegistration> LeaseRegistrations { get; set; } = null!;
     public DbSet<LeaseEvent> LeaseEvents { get; set; } = null!;
+    public DbSet<LeaseMaintenanceRequest> LeaseMaintenanceRequests { get; set; } = null!;
     public DbSet<LeaseRegistrationAuthorization> LeaseRegistrationAuthorizations { get; set; } = null!;
 
     public DbSet<OpenapiLeaseRegistrationPayment> OpenapiLeaseRegistrationPayments { get; set; } = null!;
@@ -1019,6 +1020,37 @@ public class AppDbContext(
             .HasOne<Org>()
             .WithMany()
             .HasForeignKey(p => p.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<BankLinkPayment>()
+            .HasIndex(p => p.LeaseMaintenanceRequestId);
+
+        // One open debit per maintenance request. Failed and canceled rows stay, so a retry can start the next one.
+        modelBuilder.Entity<BankLinkPayment>()
+            .HasIndex(p => p.LeaseMaintenanceRequestId)
+            .IsUnique()
+            .HasFilter("\"LeaseMaintenanceRequestId\" IS NOT NULL AND \"Status\" IN (0, 1)")
+            .HasDatabaseName("UIX_BankLinkPayments_OpenMaintenanceRequest");
+
+        modelBuilder.Entity<LeaseMaintenanceRequest>()
+            .HasOne(r => r.LeaseContract)
+            .WithMany()
+            .HasForeignKey(r => r.LeaseContractId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<LeaseMaintenanceRequest>()
+            .HasOne<Org>()
+            .WithMany()
+            .HasForeignKey(r => r.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<LeaseMaintenanceRequest>()
+            .HasIndex(r => new { r.OrgId, r.LeaseContractId, r.CreatedAt });
+
+        modelBuilder.Entity<BankLinkPayment>()
+            .HasOne<LeaseMaintenanceRequest>()
+            .WithMany()
+            .HasForeignKey(p => p.LeaseMaintenanceRequestId)
             .OnDelete(DeleteBehavior.Restrict);
 
         // The rent register of the long-term area (LR-01): the installments of an org by month of due date, in due date order.

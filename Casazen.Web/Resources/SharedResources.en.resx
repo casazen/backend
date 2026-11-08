@@ -5580,4 +5580,55 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="CondominiumStatementProposalNotFound" xml:space="preserve">
     <value>Proposal not found.</value>
   </data>
+  <data name="MaintenanceTitleInvalid" xml:space="preserve">
+    <value>The title is required and cannot be longer than 120 characters.</value>
+  </data>
+  <data name="MaintenanceDescriptionInvalid" xml:space="preserve">
+    <value>The description is required and cannot be longer than 4000 characters.</value>
+  </data>
+  <data name="MaintenanceUrgencyInvalid" xml:space="preserve">
+    <value>Urgency must be Normal, High or Emergency.</value>
+  </data>
+  <data name="MaintenancePhotoInvalid" xml:space="preserve">
+    <value>The photo must be a JPEG, a PNG or a WebP.</value>
+  </data>
+  <data name="MaintenancePhotoTooLarge" xml:space="preserve">
+    <value>Each photo can be at most 5 MB.</value>
+  </data>
+  <data name="MaintenanceTooManyPhotos" xml:space="preserve">
+    <value>At most 5 photos can be attached.</value>
+  </data>
+  <data name="MaintenanceDecisionInvalid" xml:space="preserve">
+    <value>The decision must be Approved or Rejected.</value>
+  </data>
+  <data name="MaintenanceReasonRequired" xml:space="preserve">
+    <value>A rejection needs a short reason.</value>
+  </data>
+  <data name="MaintenanceReasonInvalid" xml:space="preserve">
+    <value>The reason cannot be longer than 500 characters.</value>
+  </data>
+  <data name="MaintenanceNotPayable" xml:space="preserve">
+    <value>A request that is still waiting or was rejected cannot be paid.</value>
+  </data>
+  <data name="MaintenanceAlreadyDecided" xml:space="preserve">
+    <value>This request already has a decision.</value>
+  </data>
+  <data name="MaintenanceRequestNotFound" xml:space="preserve">
+    <value>Maintenance request not found.</value>
+  </data>
+  <data name="MaintenanceForbidden" xml:space="preserve">
+    <value>You cannot act on this maintenance request.</value>
+  </data>
+  <data name="MaintenanceNotTenant" xml:space="preserve">
+    <value>Only the tenant of the lease can open the request.</value>
+  </data>
+  <data name="MaintenanceEmailNotVerified" xml:space="preserve">
+    <value>A verified email equal to the tenant's is required.</value>
+  </data>
+  <data name="MaintenanceAmountMismatch" xml:space="preserve">
+    <value>The amount must be the one stored when the request was approved.</value>
+  </data>
+  <data name="MaintenancePhotoNotFound" xml:space="preserve">
+    <value>Photo not found.</value>
+  </data>
 </root>

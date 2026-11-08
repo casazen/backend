@@ -27,6 +27,7 @@ public class BankLinkServiceTests : IDisposable
     private readonly AppDbContext _db = new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private readonly FakeGateway _gateway = new();
     private readonly Mock<IStripeService> _stripe = new();
+    private readonly Mock<ILeaseMaintenancePaymentApplier> _maintenance = new();
     private readonly BankLinkService _service;
     private readonly RentBillingService _rent;
 
@@ -48,6 +49,7 @@ public class BankLinkServiceTests : IDisposable
                 new ConfigurationBuilder().Build(),
                 NullLogger<RentBillingService>.Instance),
             Mock.Of<ICondominiumAccountingService>(),
+            _maintenance.Object,
             NullLogger<BankLinkService>.Instance);
         _gateway.RowIsSaved = () => _db.BankLinkPayments.Any(p => p.StripePaymentIntentId == "pi_linked");
         _rent = new RentBillingService(
@@ -93,6 +95,32 @@ public class BankLinkServiceTests : IDisposable
         Assert.Equal(BankLinkPaymentStatus.Processing, (await _db.BankLinkPayments.SingleAsync()).Status);
 
         await _service.ApplyStripeEventAsync(new BankLinkStripeEvent(started.PaymentIntentId, "payment_intent.succeeded", 90_000, null));
+        Assert.Equal(BankLinkPaymentStatus.Succeeded, (await _db.BankLinkPayments.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task SucceededMaintenanceDebit_MarksTheRequestPaid()
+    {
+        var seeded = await SeedAsync(linked: true);
+        var requestId = Guid.NewGuid();
+        _db.BankLinkPayments.Add(new BankLinkPayment
+        {
+            OrgId = seeded.Org.Id,
+            LeaseContractId = seeded.Lease.Id,
+            LeaseMaintenanceRequestId = requestId,
+            Payer = BankLinkPayer.Landlord,
+            FinancialConnectionsAccountId = AccountId,
+            StripePaymentIntentId = "pi_maintenance",
+            PaymentMethodType = BankLinkCharges.SepaDebit,
+            AmountCents = 4_500,
+            Currency = "eur",
+            Status = BankLinkPaymentStatus.Processing,
+        });
+        await _db.SaveChangesAsync();
+
+        await _service.ApplyStripeEventAsync(new BankLinkStripeEvent("pi_maintenance", "payment_intent.succeeded", 4_500, null));
+
+        _maintenance.Verify(m => m.MarkPaidFromBankAsync(seeded.Org.Id, requestId, 4_500, It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(BankLinkPaymentStatus.Succeeded, (await _db.BankLinkPayments.SingleAsync()).Status);
     }
 

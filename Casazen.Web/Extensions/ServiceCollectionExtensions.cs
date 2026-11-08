@@ -570,6 +570,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICondominiumHistoricalImportService, CondominiumHistoricalImportService>();
         services.AddScoped<IAdministratorStatementReaderService, AdministratorStatementReaderService>();
         services.AddScoped<IStripeBankLinkGateway, StripeBankLinkGateway>();
+        services.AddScoped<ILeaseMaintenanceService, LeaseMaintenanceService>();
+        services.AddScoped<ILeaseMaintenancePaymentApplier>(sp => sp.GetRequiredService<ILeaseMaintenanceService>());
         services.AddScoped<IBankLinkService, BankLinkService>();
         // ConcordatoFacile one-time payment (ADR-005): Stripe Checkout with validated Price ID configuration.
         services.AddOptions<Casazen.Core.Options.ConcordatoFacileOptions>()

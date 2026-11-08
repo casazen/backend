@@ -137,6 +137,7 @@ public class OrgRoleActionMatrixTests
         { typeof(LeasesController), nameof(LeasesController.GetAll), WithMoney },
         { typeof(LeasesController), nameof(LeasesController.Create), Operators },
         { typeof(LeasesController), nameof(LeasesController.TriggerRegistration), Operators },
+        { typeof(LeaseMaintenanceRequestsController), nameof(LeaseMaintenanceRequestsController.Decide), Operators },
 
         // LR-09: the tenants are read like the leases; their personal data in clear (the copy) and their erasure are for who may create a lease.
         { typeof(LongRentTenantsController), nameof(LongRentTenantsController.GetAll), WithMoney },

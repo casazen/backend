@@ -68,6 +68,12 @@ public static class DemoShowcaseCatalog
         /// transfer of a rent due is still the fallback: the id is not an IBAN.
         /// </summary>
         public const string LandlordBankLink = "landlord-bank-link";
+
+        /// <summary>
+        /// A tenant maintenance request on the long-rent demo house: waiting, not paid, marked TEST.
+        /// Approval is a decision; the euro debit is a separate step. Not written as a row.
+        /// </summary>
+        public const string TenantMaintenanceRequest = "tenant-maintenance-request";
         public const string BookingUpcoming = "booking-upcoming";
         public const string BookingPast = "booking-past";
         public const string BookingManualLight = "booking-manual-light";
@@ -254,6 +260,7 @@ public static class DemoShowcaseCatalog
         Scenario.ActivationPending,
         Scenario.LongStayCadastral,
         Scenario.LandlordBankLink,
+        Scenario.TenantMaintenanceRequest,
         Scenario.BookingUpcoming,
         Scenario.BookingPast,
         Scenario.BookingManualLight,
@@ -337,6 +344,21 @@ public static class DemoShowcaseCatalog
     /// The fixed contractual advance the rent ledger posts (CondoLedger phase 1): twelve months of rent € 900 plus condominium
     /// advance € 150, total € 1.050. Not written as a lease: the showcase reset refuses a lease on a showcase house.
     /// </summary>
+    /// <summary>
+    /// One request the demo tenant would open: a leaking tap, normal urgency, still waiting. Not written as a row,
+    /// and it does not start a payment. The title says TEST.
+    /// </summary>
+    public static IReadOnlyList<DemoLeaseMaintenanceTemplate> LeaseMaintenanceExamples { get; } =
+    [
+        new(
+            "rubinetto-test",
+            "TEST perdita dal rubinetto",
+            "Il rubinetto del bagno perde. Dimostrazione, nessuna spesa.",
+            "Normal",
+            "InAttesa",
+            Scenario.TenantMaintenanceRequest),
+    ];
+
     public static IReadOnlyList<DemoRentLedgerComponentTemplate> RentLedgerComponentExamples { get; } =
     [
         new("canone-900-acconto-150", 900m, 150m, 12, Scenario.RentLedgerComponents),
@@ -842,7 +864,7 @@ public static class DemoShowcaseCatalog
             NightlyRate: 0m,
             CleaningFee: 0m,
             Cadastral: new DemoCadastral("12", "345", "6", "A/2", 450m),
-            Scenarios: [Scenario.LongStayCadastral, Scenario.LandlordBankLink],
+            Scenarios: [Scenario.LongStayCadastral, Scenario.LandlordBankLink, Scenario.TenantMaintenanceRequest],
             Bookings: []),
         new(
             Key: DraftKey,
@@ -1697,6 +1719,19 @@ public sealed record DemoStayGuestTemplate(
     string? TaxExemptionCode = null,
     bool DocumentExpired = false,
     bool BirthPlaceMissing = false);
+
+/// <summary>
+/// A tenant maintenance request of the showcase. <see cref="Paid"/> stays false: opening and approving do not pay it.
+/// Not written as a row.
+/// </summary>
+public sealed record DemoLeaseMaintenanceTemplate(
+    string Key,
+    string Title,
+    string Description,
+    string Urgency,
+    string Status,
+    string Scenario,
+    bool Paid = false);
 
 /// <summary>
 /// One rent line of the showcase example: <see cref="Rent"/> plus <see cref="CondominiumAdvance"/> for

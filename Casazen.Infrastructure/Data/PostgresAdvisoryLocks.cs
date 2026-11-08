@@ -422,6 +422,12 @@ internal static class PostgresAdvisoryLocks
         /// one request at a time, so two confirms cannot issue two plans or two balances.
         /// </summary>
         Condominium = 21_042,
+
+        /// <summary>
+        /// The euro debit of one tenant maintenance request (key: request id). Two pays wait, then the second
+        /// joins the debit the first saved. A failed debit is a new key only after that failed row is recorded.
+        /// </summary>
+        MaintenancePayment = 21_043,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

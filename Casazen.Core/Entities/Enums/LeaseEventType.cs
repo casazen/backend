@@ -137,4 +137,26 @@ public enum LeaseEventType
     /// moves no money, it records what the landlord did outside it.
     /// </summary>
     DepositReturnRecorded,
+
+    /// <summary>
+    /// The tenant opened a maintenance request. Payload: <c>{requestId}:{urgency}</c>. No title and no personal data.
+    /// Appended last: the stored integers of the other types do not change.
+    /// </summary>
+    MaintenanceRequested,
+
+    /// <summary>
+    /// The landlord or the agency approved or rejected a maintenance request. Payload: <c>{requestId}:Approved</c> or
+    /// <c>{requestId}:Rejected</c>. The rejection reason is not in the payload.
+    /// </summary>
+    MaintenanceDecided,
+
+    /// <summary>
+    /// A euro debit was started for an approved request. Payload: <c>{requestId}:{amountCents}</c>. The request is not paid yet.
+    /// </summary>
+    MaintenancePaymentStarted,
+
+    /// <summary>
+    /// Stripe confirmed the euro debit. Payload: <c>{requestId}:{amountCents}</c>. This is the only event that marks the request paid.
+    /// </summary>
+    MaintenancePaid,
 }

@@ -24,6 +24,7 @@ public sealed class BankLinkService(
     IStripeService stripe,
     IRentBillingService rent,
     ICondominiumAccountingService condominiums,
+    ILeaseMaintenancePaymentApplier maintenance,
     ILogger<BankLinkService> logger) : IBankLinkService
 {
     private const long MaxAmountCents = 100_000_000;
@@ -265,6 +266,11 @@ public sealed class BankLinkService(
                 row.StripePaymentIntentId,
                 "bank-link",
                 cancellationToken);
+        }
+        else if (row.LeaseMaintenanceRequestId is Guid maintenanceRequestId
+            && row.Status == BankLinkPaymentStatus.Succeeded)
+        {
+            await maintenance.MarkPaidFromBankAsync(row.OrgId, maintenanceRequestId, row.AmountCents, cancellationToken);
         }
 
         await db.SaveChangesAsync(cancellationToken);

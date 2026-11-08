@@ -114,6 +114,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.TouristTaxChannelRules.Select(rule => rule.Scenario))
             .Concat(DemoShowcaseCatalog.WelcomeLinks.Select(link => link.Scenario))
             .Concat(DemoShowcaseCatalog.OnboardingActivations.Select(activation => activation.Scenario))
+            .Concat(DemoShowcaseCatalog.LeaseMaintenanceExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.RentLedgerComponentExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.CondominiumCoreExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.TenantCondominiumSettlementExamples.Select(example => example.Scenario))
@@ -1023,5 +1024,17 @@ public class DemoShowcaseTests
         Assert.Contains("TEST", DemoShowcaseCatalog.BankLinkAccountId, StringComparison.Ordinal);
         Assert.StartsWith("fca_", DemoShowcaseCatalog.BankLinkAccountId, StringComparison.Ordinal);
         Assert.DoesNotContain("IT", DemoShowcaseCatalog.BankLinkAccountId, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TenantMaintenance_TheDemoRequestWaitsAndIsNotPaid()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.TenantMaintenanceRequest, DemoShowcaseCatalog.Scenarios);
+        var example = Assert.Single(DemoShowcaseCatalog.LeaseMaintenanceExamples);
+        Assert.Equal(DemoShowcaseCatalog.Scenario.TenantMaintenanceRequest, example.Scenario);
+        Assert.Contains("TEST", example.Title, StringComparison.Ordinal);
+        Assert.Equal("Normal", example.Urgency);
+        Assert.Equal("InAttesa", example.Status);
+        Assert.False(example.Paid);
     }
 }
