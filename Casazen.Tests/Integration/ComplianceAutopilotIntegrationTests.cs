@@ -73,7 +73,10 @@ public class ComplianceAutopilotIntegrationTests : IClassFixture<CasazenWebAppli
         Assert.Equal($"Departure:{over:N}", closing.GetProperty("key").GetString());
         var leftToTheHost = Item(plan, "Departure", today);
         Assert.Equal(("Host", "departure_today"), (leftToTheHost.GetProperty("status").GetString(), leftToTheHost.GetProperty("reason").GetString()));
-        Assert.Equal("no_contact", Item(plan, "GuestData", over).GetProperty("reason").GetString());
+        // The stay that ended still lacks guest fields: it is not a guest-data alert the home can open.
+        Assert.DoesNotContain(
+            plan.GetProperty("items").EnumerateArray(),
+            i => i.GetProperty("topic").GetString() == "GuestData" && i.GetProperty("bookingId").GetGuid() == over);
 
         var run = await host.PostAsJsonAsync("/api/compliance/autopilot/run", new { keys = new[] { $"Departure:{over:N}" } });
 

@@ -93,16 +93,21 @@ public class HostOverviewScenarioTests
         Assert.Equal(("arrives", AlloggiatiWebStatus.DaInviareManualmente, HostTodayCheckInState.Sent), (arrival.Stay.GuestName.Split(' ')[0], arrival.Alloggiati!.Status, arrival.CheckIn!.State));
         var departure = Assert.Single(restricted.Departures.Items);
         Assert.Equal(ServiceRequestStatus.Richiesto, departure.Cleaning!.Status);
-        // The things to do about an intervention, the three kinds, in the scope of the caller. The org's list is cut at twenty, after the
-        // fifth priority, so the jobs to pay (the sixth) are the collaborator's list alone.
-        Assert.Equal(14, restricted.Todo.Count);
+        // Ended stays that still lack guest fields, and houses with no CIN, are not on the list. What remains of the
+        // org fits in the twenty shown, so the jobs to pay are in it too. The collaborator still sees one of each intervention.
+        Assert.Equal(11, restricted.Todo.Count);
         Assert.Equal(
             new[] { HostTodoAction.RespondToServiceRequest, HostTodoAction.ConfirmFinalAmount, HostTodoAction.PayServiceRequest },
             restricted.Todo.Items.Where(i => i.ServiceRequestId is not null).Select(i => i.Action).Order());
         Assert.Equal(20, wholeOrg.Todo.Items.Count);
-        Assert.Equal(26, wholeOrg.Todo.Count);
+        Assert.Equal(20, wholeOrg.Todo.Count);
         Assert.Equal(
-            new[] { HostTodoAction.RespondToServiceRequest, HostTodoAction.RespondToServiceRequest, HostTodoAction.ConfirmFinalAmount, HostTodoAction.ConfirmFinalAmount },
+            new[]
+            {
+                HostTodoAction.RespondToServiceRequest, HostTodoAction.RespondToServiceRequest,
+                HostTodoAction.ConfirmFinalAmount, HostTodoAction.ConfirmFinalAmount,
+                HostTodoAction.PayServiceRequest, HostTodoAction.PayServiceRequest,
+            },
             wholeOrg.Todo.Items.Where(i => i.ServiceRequestId is not null).Select(i => i.Action));
         Assert.DoesNotContain(wholeOrg.Services.Items, s => s.PropertyId == world.OtherOrgProperty.Id);
     }

@@ -110,13 +110,9 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         var ownerTodo = ownerDay.GetProperty("todo").GetProperty("items").EnumerateArray().ToList();
         var collaboratorTodo = collaboratorDay.GetProperty("todo").GetProperty("items").EnumerateArray().ToList();
 
-        // Properties to activate and turnovers to close do not depend on the day: both properties for the owner, one for the other.
-        Assert.Equal(
-            new[] { world.GrantedId, world.HiddenId }.Order(),
-            ownerTodo.Where(i => i.GetProperty("action").GetString() == "ActivateProperty").Select(i => i.GetProperty("propertyId").GetGuid()).Order());
-        Assert.Equal(
-            [world.GrantedId],
-            collaboratorTodo.Where(i => i.GetProperty("action").GetString() == "ActivateProperty").Select(i => i.GetProperty("propertyId").GetGuid()));
+        // These houses have no CIN, so the home does not offer activation. Turnovers to close do not depend on the day.
+        Assert.DoesNotContain(ownerTodo, i => i.GetProperty("action").GetString() == "ActivateProperty");
+        Assert.DoesNotContain(collaboratorTodo, i => i.GetProperty("action").GetString() == "ActivateProperty");
         Assert.Equal(
             2,
             ownerTodo.Count(i => i.GetProperty("action").GetString() == "ConfirmPropertyReady"));
