@@ -1038,8 +1038,7 @@ public sealed class CondominiumAccountingService(
         var now = UtcNow;
         foreach (var installment in installments)
         {
-            // A paid rate keeps its status. Re-allocating must not move that payment onto an overlapping conguaglio.
-            if (installment.Status is CondominiumInstallmentStatus.Cancelled or CondominiumInstallmentStatus.Paid)
+            if (installment.Status == CondominiumInstallmentStatus.Cancelled)
                 continue;
             var amount = allocated.GetValueOrDefault(installment.Id);
             installment.Status = amount <= 0.005m

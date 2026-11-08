@@ -291,6 +291,39 @@ public class CondominiumAccountingServiceTests
     }
 
     [Fact]
+    public async Task SeparateConguaglio_TakesOnlyTheOverflow_AndALaterRateDoesNotStayPaid()
+    {
+        await using var db = NewDb();
+        var scope = await SeedAsync(db);
+        var service = Service(db);
+        var condo = await service.CreateCondominiumAsync(scope, new CreateCondominiumCommand("Casa", null, null, null, 6), "user");
+        var period = await service.CreatePeriodAsync(scope, condo.Id, new CreateCondominiumPeriodCommand("2025/2026"), "user");
+        await service.ConfirmBudgetAsync(
+            scope, condo.Id, period.Id, new ConfirmBudgetCommand(120m, null, null, CondominiumInstallmentCadence.Monthly), "user");
+        await service.RecordPaymentAsync(
+            scope, condo.Id, period.Id, new RecordCondominiumPaymentCommand(null, false, 40m, new DateOnly(2025, 6, 15), "Bonifico", null, null, null), "user");
+
+        await service.RecordPriorYearBalanceAsync(
+            scope, condo.Id, period.Id, new RecordPriorYearBalanceCommand(40m, PriorYearBalanceDisposition.SeparateInstallment, null, "Conguaglio"), "user");
+
+        var rates = await db.CondominiumInstallments
+            .Where(row => row.CondominiumPeriodId == period.Id && row.Status != CondominiumInstallmentStatus.Cancelled)
+            .OrderBy(row => row.SlotIndex)
+            .ToListAsync();
+        var conguaglio = Assert.Single(rates, row => row.OrdinaryAmount == 0m && row.ExtraordinaryAmount == 0m);
+        Assert.Equal(CondominiumInstallmentStatus.Paid, rates[0].Status);
+        Assert.Equal(CondominiumInstallmentStatus.Paid, rates[1].Status);
+        Assert.Equal(CondominiumInstallmentStatus.Paid, rates[2].Status);
+        Assert.Equal(CondominiumInstallmentStatus.Scheduled, rates[3].Status);
+        Assert.Equal(CondominiumInstallmentStatus.PartiallyPaid, conguaglio.Status);
+
+        var report = await service.GetReportAsync(scope, condo.Id, period.Id);
+        Assert.Equal(10m, report.Installments.Single(row => row.Id == rates[2].Id).Paid);
+        Assert.Equal(0m, report.Installments.Single(row => row.Id == rates[3].Id).Paid);
+        Assert.Equal(10m, report.Installments.Single(row => row.Id == conguaglio.Id).Paid);
+    }
+
+    [Fact]
     public async Task ChangingRecovery_DoesNotBillAPaidRateAgain()
     {
         await using var db = NewDb();
