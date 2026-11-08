@@ -5580,4 +5580,49 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="CondominiumStatementProposalNotFound" xml:space="preserve">
     <value>Proposta non trovata.</value>
   </data>
+  <data name="MaintenanceTitleInvalid" xml:space="preserve">
+    <value>Il titolo è obbligatorio e non può superare 120 caratteri.</value>
+  </data>
+  <data name="MaintenanceDescriptionInvalid" xml:space="preserve">
+    <value>La descrizione è obbligatoria e non può superare 4000 caratteri.</value>
+  </data>
+  <data name="MaintenanceUrgencyInvalid" xml:space="preserve">
+    <value>L'urgenza deve essere Normal, High o Emergency.</value>
+  </data>
+  <data name="MaintenancePhotoInvalid" xml:space="preserve">
+    <value>La foto deve essere un JPEG, un PNG o un WebP.</value>
+  </data>
+  <data name="MaintenancePhotoTooLarge" xml:space="preserve">
+    <value>Ogni foto può pesare al massimo 5 MB.</value>
+  </data>
+  <data name="MaintenanceTooManyPhotos" xml:space="preserve">
+    <value>Si possono allegare al massimo 5 foto.</value>
+  </data>
+  <data name="MaintenanceDecisionInvalid" xml:space="preserve">
+    <value>La decisione deve essere Approved o Rejected.</value>
+  </data>
+  <data name="MaintenanceReasonRequired" xml:space="preserve">
+    <value>Un rifiuto richiede una motivazione breve.</value>
+  </data>
+  <data name="MaintenanceReasonInvalid" xml:space="preserve">
+    <value>La motivazione non può superare 500 caratteri.</value>
+  </data>
+  <data name="MaintenanceNotPayable" xml:space="preserve">
+    <value>Una richiesta ancora in attesa o rifiutata non si può pagare.</value>
+  </data>
+  <data name="MaintenanceAlreadyDecided" xml:space="preserve">
+    <value>Questa richiesta ha già una decisione.</value>
+  </data>
+  <data name="MaintenanceRequestNotFound" xml:space="preserve">
+    <value>Richiesta di manutenzione non trovata.</value>
+  </data>
+  <data name="MaintenanceForbidden" xml:space="preserve">
+    <value>Non hai il permesso per questa richiesta di manutenzione.</value>
+  </data>
+  <data name="MaintenanceNotTenant" xml:space="preserve">
+    <value>Solo il conduttore del contratto può aprire la richiesta.</value>
+  </data>
+  <data name="MaintenanceEmailNotVerified" xml:space="preserve">
+    <value>Serve un indirizzo email verificato, uguale a quello del conduttore.</value>
+  </data>
 </root>

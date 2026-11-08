@@ -31,6 +31,9 @@ public class BankLinkPayment : ITenantOwned
     /// <summary>The condominium installment this debit pays. Null when the debit is not for the condominium.</summary>
     public Guid? CondominiumInstallmentId { get; set; }
 
+    /// <summary>The tenant maintenance request this debit pays. Null when the debit is not for maintenance.</summary>
+    public Guid? LeaseMaintenanceRequestId { get; set; }
+
     public BankLinkPayer Payer { get; set; }
 
     [Required, MaxLength(StripeIdMaxLength)]

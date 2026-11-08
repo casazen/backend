@@ -530,6 +530,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid?>("LeaseContractId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("LeaseMaintenanceRequestId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
 
@@ -562,6 +565,8 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CondominiumInstallmentId");
+
+                    b.HasIndex("LeaseMaintenanceRequestId");
 
                     b.HasIndex("OrgId");
 
@@ -4225,6 +4230,83 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("LeaseContractId", "OccurredAt");
 
                     b.ToTable("LeaseEvents");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.LeaseMaintenanceRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("AmountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("BankLinkPaymentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecidedByUserId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<Guid>("LeaseContractId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PhotosJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Urgency")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LeaseContractId");
+
+                    b.HasIndex("OrgId", "LeaseContractId", "CreatedAt");
+
+                    b.ToTable("LeaseMaintenanceRequests");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.LeaseRegistration", b =>
@@ -14325,6 +14407,11 @@ namespace Casazen.Infrastructure.Migrations
 
             modelBuilder.Entity("Casazen.Core.Entities.BankLinkPayment", b =>
                 {
+                    b.HasOne("Casazen.Core.Entities.LeaseMaintenanceRequest", null)
+                        .WithMany()
+                        .HasForeignKey("LeaseMaintenanceRequestId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Casazen.Core.Entities.Org", null)
                         .WithMany()
                         .HasForeignKey("OrgId")
@@ -15287,6 +15374,23 @@ namespace Casazen.Infrastructure.Migrations
                         .WithMany("Events")
                         .HasForeignKey("LeaseContractId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("LeaseContract");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.LeaseMaintenanceRequest", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.LeaseContract", "LeaseContract")
+                        .WithMany()
+                        .HasForeignKey("LeaseContractId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("LeaseContract");
