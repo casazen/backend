@@ -19,13 +19,15 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class LeaseMaintenanceServiceTests : IDisposable
 {
-    private readonly AppDbContext _db = new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+    private readonly string _databaseName = Guid.NewGuid().ToString();
+    private readonly AppDbContext _db;
     private readonly FakeGateway _gateway = new();
     private readonly MemoryStorage _storage = new();
     private readonly LeaseMaintenanceService _service;
 
     public LeaseMaintenanceServiceTests()
     {
+        _db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_databaseName).Options);
         _service = new LeaseMaintenanceService(_db, _gateway, _storage, NullLogger<LeaseMaintenanceService>.Instance);
         _gateway.Saved = id => _db.BankLinkPayments.Any(p => p.StripePaymentIntentId == id);
     }
@@ -232,6 +234,38 @@ public class LeaseMaintenanceServiceTests : IDisposable
         Assert.Contains(second.PaymentIntentId, _gateway.ConfirmedIntentIds);
         Assert.Equal(2, await _db.BankLinkPayments.CountAsync());
         Assert.DoesNotContain(await _db.BankLinkPayments.Select(p => p.FinancialConnectionsAccountId).ToListAsync(), id => id.Contains("IT", StringComparison.Ordinal));
+        Assert.Equal($"maint-{created.Id:N}", _gateway.CreatedKeys[0]);
+        Assert.Equal($"maint-{created.Id:N}-1", _gateway.CreatedKeys[1]);
+    }
+
+    [Fact]
+    public async Task TwoOverlappingPays_JoinTheFirstDebit()
+    {
+        var world = await SeedAsync(linked: true);
+        var created = await _service.CreateAsync(world.Tenant, world.Lease.Id, Command(), default);
+        await _service.DecideAsync(
+            world.Landlord, world.Lease.Id, created.Id, new LeaseMaintenanceDecisionCommand(LeaseMaintenanceDecision.Approved, null, 4_500), default);
+
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _gateway.PauseCreate = release.Task;
+        await using var otherDb = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_databaseName).Options);
+        var other = new LeaseMaintenanceService(otherDb, _gateway, _storage, NullLogger<LeaseMaintenanceService>.Instance);
+
+        var first = _service.PayAsync(world.Landlord, world.Lease.Id, created.Id, new LeaseMaintenancePaymentCommand(4_500), Caller(), default);
+        var started = await _gateway.CreateStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(started);
+        var second = other.PayAsync(world.Landlord, world.Lease.Id, created.Id, new LeaseMaintenancePaymentCommand(4_500), Caller(), default);
+        await Task.Delay(100);
+        Assert.Single(_gateway.CreatedKeys);
+
+        release.SetResult();
+        var paid = await Task.WhenAll(first, second);
+
+        Assert.Equal(paid[0].PaymentIntentId, paid[1].PaymentIntentId);
+        Assert.Single(_gateway.CreatedKeys);
+        Assert.Equal($"maint-{created.Id:N}", _gateway.CreatedKeys[0]);
+        Assert.Equal(1, await _db.BankLinkPayments.CountAsync());
+        Assert.All(paid, view => Assert.False(view.Paid));
     }
 
     [Fact]
@@ -389,6 +423,10 @@ public class LeaseMaintenanceServiceTests : IDisposable
 
         public bool FailNextConfirm { get; set; }
 
+        public Task? PauseCreate { get; set; }
+
+        public TaskCompletionSource<bool> CreateStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public Func<string, bool>? Saved { get; set; }
 
         public Task<string> EnsureCustomerAsync(
@@ -401,11 +439,14 @@ public class LeaseMaintenanceServiceTests : IDisposable
         public Task<LinkedFinancialAccount> GetAccountAsync(string accountId, CancellationToken cancellationToken = default) =>
             Task.FromResult(new LinkedFinancialAccount(accountId, "cus_org", "Test Bank", "6789", "Checking", "active", [BankLinkCharges.SepaDebit]));
 
-        public Task<StartedBankDebit> CreateDebitAsync(BankDebitCommand command, CancellationToken cancellationToken = default)
+        public async Task<StartedBankDebit> CreateDebitAsync(BankDebitCommand command, CancellationToken cancellationToken = default)
         {
             CreatedKeys.Add(command.IdempotencyKey);
-            return Task.FromResult(new StartedBankDebit(
-                "pi_" + command.IdempotencyKey, "secret", "requires_confirmation", BankLinkCharges.SepaDebit, "pm_sepa"));
+            CreateStarted.TrySetResult(true);
+            if (PauseCreate is not null)
+                await PauseCreate.WaitAsync(cancellationToken);
+            return new StartedBankDebit(
+                "pi_" + command.IdempotencyKey, "secret", "requires_confirmation", BankLinkCharges.SepaDebit, "pm_sepa");
         }
 
         public Task<StartedBankDebit> ConfirmDebitAsync(

@@ -1025,6 +1025,13 @@ public class AppDbContext(
         modelBuilder.Entity<BankLinkPayment>()
             .HasIndex(p => p.LeaseMaintenanceRequestId);
 
+        // One open debit per maintenance request. Failed and canceled rows stay, so a retry can start the next one.
+        modelBuilder.Entity<BankLinkPayment>()
+            .HasIndex(p => p.LeaseMaintenanceRequestId)
+            .IsUnique()
+            .HasFilter("\"LeaseMaintenanceRequestId\" IS NOT NULL AND \"Status\" IN (0, 1)")
+            .HasDatabaseName("UIX_BankLinkPayments_OpenMaintenanceRequest");
+
         modelBuilder.Entity<LeaseMaintenanceRequest>()
             .HasOne(r => r.LeaseContract)
             .WithMany()

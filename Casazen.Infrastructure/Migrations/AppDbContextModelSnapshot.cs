@@ -566,7 +566,10 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("CondominiumInstallmentId");
 
-                    b.HasIndex("LeaseMaintenanceRequestId");
+                    b.HasIndex("LeaseMaintenanceRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_BankLinkPayments_OpenMaintenanceRequest")
+                        .HasFilter("\"LeaseMaintenanceRequestId\" IS NOT NULL AND \"Status\" IN (0, 1)");
 
                     b.HasIndex("OrgId");
 
