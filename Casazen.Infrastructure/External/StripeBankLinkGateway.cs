@@ -1,3 +1,4 @@
+using System.Reflection;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Microsoft.Extensions.Configuration;
@@ -127,10 +128,13 @@ public sealed class StripeBankLinkGateway(
                     AccountSubcategories = ["checking", "savings"],
                 },
             };
-            // Current Stripe accepts filters[country], not the removed filters[countries] list. Sending the list
-            // makes the test account reject the session, which the API was turning into a bare 503.
+            // Stripe.net 50 sends Stripe-Version 2025-12-15.clover. That version only accepts filters[countries]
+            // and rejects filters[country], which the API was turning into 503. filters[country] exists from
+            // 2026-09-30.endive. This call pins that later version and sends Italy as the single country.
             options.AddExtraParam("filters[country]", BankLinkCharges.InstitutionCountry);
-            var session = await new SessionService(Client).CreateAsync(options, cancellationToken: cancellationToken);
+            var requestOptions = new RequestOptions();
+            PinSessionApiVersion(requestOptions);
+            var session = await new SessionService(Client).CreateAsync(options, requestOptions, cancellationToken);
             if (string.IsNullOrWhiteSpace(session.Id) || string.IsNullOrWhiteSpace(session.ClientSecret))
                 throw new PaymentProcessingException("Stripe Financial Connections session did not return a client secret.");
 
@@ -348,6 +352,30 @@ public sealed class StripeBankLinkGateway(
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Pins <see cref="BankLinkCharges.SessionApiVersion"/> on this call. <c>StripeVersion</c> is internal on
+    /// Stripe.net 50; the public client would otherwise send <c>2025-12-15.clover</c>.
+    /// </summary>
+    internal static void PinSessionApiVersion(RequestOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var property = typeof(RequestOptions).GetProperty(
+            "StripeVersion",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        if (property?.SetMethod is null)
+            throw new InvalidOperationException("Stripe.net RequestOptions.StripeVersion is not settable.");
+
+        property.SetValue(options, BankLinkCharges.SessionApiVersion);
+    }
+
+    internal static string? ReadSessionApiVersion(RequestOptions options)
+    {
+        var property = typeof(RequestOptions).GetProperty(
+            "StripeVersion",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        return property?.GetValue(options) as string;
     }
 
     internal static bool IsAccountId(string? accountId) =>
