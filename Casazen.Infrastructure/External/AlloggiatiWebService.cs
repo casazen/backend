@@ -90,6 +90,7 @@ public class AlloggiatiWebService(
             .Include(b => b.Property)
             // A no-show (NF-45) has nothing to send: it leaves the list of the communications.
             .Where(b => b.OrgId == scope.OrgId && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
+            .Where(OpenableStayRules.CanOpen)
             .InScope(scope);
 
         if (propertyId.HasValue)

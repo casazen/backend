@@ -94,6 +94,7 @@ public class ComplianceWizardService(
             .Include(b => b.Guest)
             .Where(b => b.OrgId == orgId)
             .InScope(scope)
+            .Where(OpenableStayRules.CanOpen)
             .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn)
             .Where(b => b.NoShowAt == null) // NF-45: the guests of a no-show never came, there is no data to complete
             .Where(b => b.CheckInDate.Date <= today.AddDays(1))
@@ -123,6 +124,7 @@ public class ComplianceWizardService(
                 .AsNoTracking()
                 .Where(b => b.OrgId == orgId)
                 .InScope(scope)
+                .Where(OpenableStayRules.CanOpen)
                 .Where(StayLifecycleRules.CheckOutDue(today))
                 .OrderBy(b => b.CheckOutDate)
                 .Select(b => new { b.Id, b.CheckInDate, b.CheckOutDate, b.ArrivedAt, GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim() })
@@ -288,6 +290,8 @@ public class ComplianceWizardService(
             .Where(c => c.OrgId == scope.OrgId && c.CompletedAt != null && c.PropertyReadyAt == null)
             .InScope(scope)
             .Where(c => c.Booking.Status == BookingStatus.CheckedOut)
+            // The check-out page of a stay whose property or guest is gone answers 404: it is not a thing to close.
+            .Where(c => c.Booking.Property != null && c.Booking.Guest != null && !c.Booking.Guest.IsDeleted)
             .Where(c => !db.Bookings.Any(next =>
                 next.PropertyId == c.Booking.PropertyId
                 && next.Id != c.BookingId
@@ -334,6 +338,7 @@ public class ComplianceWizardService(
             .AsNoTracking()
             .Where(b => b.OrgId == scope.OrgId)
             .InScope(scope)
+            .Where(OpenableStayRules.CanOpen)
             .Where(b => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
             .Where(b => b.CheckInDate <= today)
             .Select(b => new

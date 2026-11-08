@@ -578,6 +578,37 @@ public class ComplianceWizardServiceTests
     }
 
     [Fact]
+    public async Task Summary_AStayWhosePropertyOrGuestIsGone_IsNotListed()
+    {
+        // The booking page answers 404 when the property was deleted, and the guest sheet and the Alloggiati section
+        // have nothing to open when the guest was deleted. Unfinished guest data of a stay that still opens stays listed.
+        await using var db = CreateDb(nameof(Summary_AStayWhosePropertyOrGuestIsGone_IsNotListed));
+        var property = await SeedPropertyAsync(db, complianceStatus: PropertyComplianceStatus.Active);
+        var removedProperty = await SeedPropertyAsync(db, property.OrgId, complianceStatus: PropertyComplianceStatus.Active);
+        var todayInRome = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
+
+        var openGuest = new Guest { FirstName = "Mario", LastName = "Rossi", Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId };
+        var removedGuest = new Guest { FirstName = "Diego", LastName = "Test", Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId, IsDeleted = true };
+        var guestOfRemovedProperty = new Guest { FirstName = "Luca", LastName = "Test", Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId };
+        db.Guests.AddRange(openGuest, removedGuest, guestOfRemovedProperty);
+
+        var open = BuildBooking(property, openGuest, todayInRome, BookingStatus.Confirmed);
+        var guestGone = BuildBooking(property, removedGuest, todayInRome, BookingStatus.Confirmed);
+        var propertyGone = BuildBooking(removedProperty, guestOfRemovedProperty, todayInRome, BookingStatus.CheckedIn);
+        db.Bookings.AddRange(open, guestGone, propertyGone);
+        removedProperty.IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(new HostScope(property.OrgId));
+
+        Assert.Equal(open.Id, Assert.Single(summary.GuestCheckInsIncomplete.Items).Id);
+        Assert.Equal(open.Id, Assert.Single(summary.CheckoutsDue.Items).Id);
+        Assert.Equal(open.Id, Assert.Single(summary.AlloggiatiManualRequired.Items).Id);
+        Assert.DoesNotContain(summary.AlloggiatiFailures.Items, i => i.Id == guestGone.Id || i.Id == propertyGone.Id);
+        Assert.DoesNotContain(summary.TurnoversPending.Items, i => i.Id == guestGone.Id || i.Id == propertyGone.Id);
+    }
+
+    [Fact]
     public async Task Summary_EverySection_ReturnsItsActionAndTargetIdNeverAFrontEndPath()
     {
         await using var db = CreateDb(nameof(Summary_EverySection_ReturnsItsActionAndTargetIdNeverAFrontEndPath));

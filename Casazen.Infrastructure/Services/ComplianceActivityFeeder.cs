@@ -25,8 +25,9 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>Stays that owe nothing any more.</b> A stay that was cancelled, became a no-show, is gone or arrived before the lookback is not evaluated
 /// any more, so it has no item to turn green: its open To do (of the actions of a stay) would stay on the list for ever, and a red one in the
 /// count of the urgent. The second step finds the open To do of the caller's reach about stays the evaluation did not look at and closes those
-/// whose stay no longer owes a communication (<see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/> and no no-show, the one definition), or is
-/// older than the lookback. A stay that is active and simply not in this evaluation (arriving later) keeps its To do.</para>
+/// whose stay no longer owes a communication (<see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/> and no no-show, the one definition), is
+/// older than the lookback, or can no longer be opened (its property or guest is gone). A stay that is active and simply not in this evaluation
+/// (arriving later) keeps its To do.</para>
 /// <para><b>Same action and id as the cockpit.</b> The action of the To do is the name of the cockpit action wherever the list already has an
 /// equivalent (<see cref="ActivityAction"/>); an item of a month is about the property and carries the month in its entity type
 /// (<c>PropertyPeriod:yyyy-MM</c>), so the key is (action, property, month).</para>
@@ -324,10 +325,30 @@ public sealed class ComplianceActivityFeeder(
             candidates.AddRange(await activities.FindOpenInScopeAsync(scope, action.ToString(), InternalActivity.BookingEntityType, looked, ct));
         }
 
+        // A stay whose property was deleted is already absent from the list the host reads (that list joins the
+        // property). It is closed here too, so it does not come back if the row is read without that join.
+        var propertyGone = await db.InternalActivities
+            .Where(a => a.OrgId == scope.OrgId
+                        && a.CompletedAt == null
+                        && a.Action != null
+                        && a.EntityType == InternalActivity.BookingEntityType
+                        && a.EntityId != null
+                        && a.PropertyId != null
+                        && !db.Properties.Any(p => p.Id == a.PropertyId))
+            .ToListAsync(ct);
+        candidates.AddRange(propertyGone.Where(a => Fed.Values.Any(m => m.Level == Level.Booking && m.Action == a.Action)));
+
         if (candidates.Count == 0)
             return candidates;
 
         var ids = candidates.Select(a => a.EntityId!.Value).Distinct().ToList();
+        var openableIds = (await db.Bookings
+                .AsNoTracking()
+                .Where(b => ids.Contains(b.Id))
+                .Where(OpenableStayRules.CanOpen)
+                .Select(b => b.Id)
+                .ToListAsync(ct))
+            .ToHashSet();
         var stays = (await db.Bookings
                 .AsNoTracking()
                 .Where(b => ids.Contains(b.Id))
@@ -338,7 +359,8 @@ public sealed class ComplianceActivityFeeder(
         return candidates
             .Where(activity =>
             {
-                if (!stays.TryGetValue(activity.EntityId!.Value, out var stay))
+                // Gone, or still stored but no longer openable (the booking page or its guest and Alloggiati parts answer nothing).
+                if (!stays.TryGetValue(activity.EntityId!.Value, out var stay) || !openableIds.Contains(stay.Id))
                     return true;
 
                 var owes = AlloggiatiStatusRules.ActiveBookingStatuses.Contains(stay.Status) && stay.NoShowAt is null;
