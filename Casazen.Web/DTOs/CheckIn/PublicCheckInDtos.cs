@@ -711,3 +711,18 @@ public class SelfieUploadResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? LockCode { get; set; }
 }
+
+/// <summary>Answer of <c>POST /api/public/checkin/{token}/read-document</c>. The photo itself is never returned.</summary>
+public class CheckInDocumentReadResponse
+{
+    public bool Read { get; set; }
+    public string? Reason { get; set; }
+    public CheckInDocumentFields? Guest { get; set; }
+
+    public static CheckInDocumentReadResponse From(CheckInDocumentRead read) => new()
+    {
+        Read = read.Read,
+        Reason = read.Reason,
+        Guest = read.Fields,
+    };
+}
