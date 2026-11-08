@@ -283,6 +283,18 @@ public sealed class TenantCondominiumSettlementService(
                 continue;
             }
 
+            // A consumption or explicit amount that cannot be matched onto the new lines must stay posted.
+            // Dropping it would post a credit of every advance.
+            if (!TryReplayExplicitLines(row.CalculationSnapshotJson, final.Lines, out var explicitLines))
+            {
+                logger.LogWarning(
+                    "Tenant settlement {SettlementId} kept: explicit lines of the new consuntivo do not match",
+                    row.Id);
+                var current = await RequireSettlementAsync(scope, row.LeaseContractId, row.Id, cancellationToken);
+                views.Add(await ToViewAsync(current, cancellationToken));
+                continue;
+            }
+
             var calculated = await CalculateAsync(
                 scope,
                 row.LeaseContractId,
@@ -290,7 +302,7 @@ public sealed class TenantCondominiumSettlementService(
                     periodId,
                     row.Disposition,
                     row.AllocationRule,
-                    ExplicitLinesFromSnapshot(row.CalculationSnapshotJson, final.Lines)),
+                    explicitLines),
                 userId,
                 cancellationToken);
             if (calculated.Status == TenantSettlementStatus.Draft)
@@ -603,36 +615,54 @@ public sealed class TenantCondominiumSettlementService(
     }
 
     /// <summary>
-    /// Consumption and explicit amounts are matched onto the new consuntivo by description, so a replacement
-    /// does not drop them and credit every advance.
+    /// Consumption and explicit amounts are matched onto the new consuntivo by description.
+    /// False when a charged line has no match: the caller must not post a credit of every advance.
     /// </summary>
-    private static IReadOnlyList<ExplicitSettlementLine>? ExplicitLinesFromSnapshot(
-        string snapshotJson, IReadOnlyList<TenantFinalLineView> lines)
+    private static bool TryReplayExplicitLines(
+        string snapshotJson,
+        IReadOnlyList<TenantFinalLineView> lines,
+        out IReadOnlyList<ExplicitSettlementLine>? explicitLines)
     {
-        if (lines.Count == 0 || string.IsNullOrWhiteSpace(snapshotJson))
-            return null;
+        explicitLines = null;
+        if (string.IsNullOrWhiteSpace(snapshotJson))
+            return true;
 
-        var snapshot = TenantSettlementMath.Replay(snapshotJson);
+        TenantSettlementMath.Snapshot snapshot;
+        try
+        {
+            snapshot = TenantSettlementMath.Replay(snapshotJson);
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+
         if (snapshot.Rule is not (TenantAllocationRule.Consumption or TenantAllocationRule.ExplicitAmount))
-            return null;
+            return true;
+
+        var charged = snapshot.Lines
+            .Where(line => line.Charged && line.Rule is TenantAllocationRule.Consumption or TenantAllocationRule.ExplicitAmount)
+            .ToList();
+        if (charged.Count == 0)
+            return true;
 
         var remaining = lines.ToList();
-        var matched = new List<ExplicitSettlementLine>();
-        foreach (var old in snapshot.Lines.Where(line =>
-            line.Charged && line.Rule is TenantAllocationRule.Consumption or TenantAllocationRule.ExplicitAmount))
+        var matched = new List<ExplicitSettlementLine>(charged.Count);
+        foreach (var old in charged)
         {
             var index = remaining.FindIndex(line =>
                 !string.IsNullOrEmpty(old.Description)
                 && string.Equals(line.Description, old.Description, StringComparison.Ordinal));
             if (index < 0)
-                continue;
+                return false;
 
             var line = remaining[index];
             remaining.RemoveAt(index);
             matched.Add(new ExplicitSettlementLine(line.LineId, old.AllocatedAmount));
         }
 
-        return matched.Count == 0 ? null : matched;
+        explicitLines = matched;
+        return true;
     }
 
     private async Task<IDbContextTransaction?> BeginUnitOfWorkAsync(CancellationToken cancellationToken)

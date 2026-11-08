@@ -183,6 +183,33 @@ public class BankLinkServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ProcessingEvent_DoesNotReopenAFailedInstallment()
+    {
+        var seeded = await SeedAsync(linked: true);
+        seeded.Entry.StripePaymentIntentId = "pi_late";
+        seeded.Entry.Status = RentLedgerStatus.Failed;
+        _db.BankLinkPayments.Add(new BankLinkPayment
+        {
+            OrgId = seeded.Org.Id,
+            LeaseContractId = seeded.Lease.Id,
+            RentLedgerEntryId = seeded.Entry.Id,
+            Payer = BankLinkPayer.Tenant,
+            FinancialConnectionsAccountId = AccountId,
+            StripePaymentIntentId = "pi_late",
+            PaymentMethodType = BankLinkCharges.SepaDebit,
+            AmountCents = 90_000,
+            Currency = "eur",
+            Status = BankLinkPaymentStatus.Processing,
+        });
+        await _db.SaveChangesAsync();
+
+        await _service.ApplyStripeEventAsync(new BankLinkStripeEvent("pi_late", "payment_intent.processing", 90_000, null));
+
+        Assert.Equal(RentLedgerStatus.Failed, (await _db.RentLedgerEntries.SingleAsync()).Status);
+        Assert.Equal(BankLinkPaymentStatus.Failed, (await _db.BankLinkPayments.SingleAsync()).Status);
+    }
+
+    [Fact]
     public async Task CanceledPayment_DoesNotStayProcessing_AfterTheIntentIdIsCleared()
     {
         var seeded = await SeedAsync(linked: true);

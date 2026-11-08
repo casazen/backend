@@ -243,13 +243,35 @@ public static partial class AdministratorStatementReader
     private static List<(decimal Amount, string Excerpt)> AmountsAfter(string text, string label)
     {
         var found = new List<(decimal Amount, string Excerpt)>();
-        foreach (Match match in AmountAfterPattern(label).Matches(text))
+        foreach (Match match in LabelPattern(label).Matches(text))
         {
-            if (TryMoney(match.Groups[1].Value, out var amount))
-                found.Add((amount, match.Value.Trim()));
+            var window = WindowAfter(text, match.Index + match.Length);
+            foreach (Match money in MoneyPattern().Matches(window))
+            {
+                if (TryMoney(money.Groups[1].Value, out var amount))
+                    found.Add((amount, (match.Value + " " + window).Trim()));
+            }
         }
 
         return found;
+    }
+
+    /// <summary>
+    /// Text after one label, up to the next label. Two amounts in that span stay ambiguous.
+    /// A following heading is the next label, so its amount is not counted twice.
+    /// </summary>
+    private static string WindowAfter(string text, int start)
+    {
+        var rest = text.Length - start > 240 ? text.Substring(start, 240) : text[start..];
+        var stop = rest.Length;
+        foreach (var label in OrdinaryLabels.Concat(ExtraordinaryLabels).Concat(FinalLabels))
+        {
+            var found = Regex.Match(rest, label, RegexOptions.IgnoreCase);
+            if (found.Success && found.Index < stop)
+                stop = found.Index;
+        }
+
+        return rest[..stop];
     }
 
     private static decimal Penalty(int count) => count > 1 ? 0.30m : 0m;
@@ -316,8 +338,10 @@ public static partial class AdministratorStatementReader
         @"consuntivo\s*totale",
     ];
 
-    private static Regex AmountAfterPattern(string label) =>
-        new(label + @"[:\s]{0,30}((?:€\s*)?(?:\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}|\d+\.\d{2}))", RegexOptions.IgnoreCase);
+    private static Regex LabelPattern(string label) => new(label, RegexOptions.IgnoreCase);
+
+    private static Regex MoneyPattern() =>
+        new(@"((?:€\s*)?(?:\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}|\d+\.\d{2}))", RegexOptions.IgnoreCase);
 
     [GeneratedRegex(@"preventiv[oi]", RegexOptions.IgnoreCase)]
     private static partial Regex PreventivoPattern();
