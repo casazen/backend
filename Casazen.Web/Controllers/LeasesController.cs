@@ -497,6 +497,37 @@ public class LeasesController(
     }
 
     /// <summary>
+    /// Stripe Checkout for the Openapi filing fee of a lease that is not canone concordato. No body.
+    /// The amount is the existing registration-tax percentage of the annual rent. 409
+    /// <c>openapi_registration_unpaid</c> is the filing itself when this has not been paid;
+    /// <c>openapi_registration_already_paid</c> when it has; <c>openapi_registration_concordato</c> for a canone concordato.
+    /// </summary>
+    [HttpPost("{id:guid}/registration/checkout")]
+    [FeatureGate(FeatureFlags.RliProvider)]
+    [Authorize(Policy = CasazenPolicies.LeaseRegister)]
+    public async Task<IActionResult> CreateOpenapiRegistrationCheckout(
+        Guid id,
+        [FromServices] IOpenapiRegistrationCheckoutService checkout,
+        CancellationToken cancellationToken)
+    {
+        if (GetOwnerId() is null) return Unauthorized();
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Register);
+        if (denied is not null)
+            return denied;
+
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, "org_not_found", "NoOrganizationAssigned");
+
+        var result = await checkout.CreateCheckoutSessionAsync(id, orgId.Value, GetOwnerId()!, cancellationToken);
+        return Ok(new Casazen.Web.Dtos.ConcordatoFacile.CheckoutResponse
+        {
+            SessionId = result.SessionId,
+            SessionUrl = result.SessionUrl,
+        });
+    }
+
+    /// <summary>
     /// Manual registration (LT-01, default path, D15): the contract was registered on the official channel of the
     /// Agenzia delle Entrate (by the landlord, or for a contract made with the guided service by the service) and the landlord declares the
     /// registration number or protocol, its date and the receipt PDF (private bucket, FD-07). Only now the lease becomes Registered.

@@ -289,6 +289,8 @@ public class AppDbContext(
     public DbSet<LeaseRegistration> LeaseRegistrations { get; set; } = null!;
     public DbSet<LeaseEvent> LeaseEvents { get; set; } = null!;
     public DbSet<LeaseRegistrationAuthorization> LeaseRegistrationAuthorizations { get; set; } = null!;
+
+    public DbSet<OpenapiLeaseRegistrationPayment> OpenapiLeaseRegistrationPayments { get; set; } = null!;
     public DbSet<LeaseSigner> LeaseSigners { get; set; } = null!;
     public DbSet<RentSchedule> RentSchedules { get; set; } = null!;
     public DbSet<RentLedgerEntry> RentLedgerEntries { get; set; } = null!;
@@ -927,6 +929,25 @@ public class AppDbContext(
         modelBuilder.Entity<LeaseRegistrationAuthorization>()
             .HasIndex(a => a.LeaseContractId);
         modelBuilder.Entity<LeaseRegistrationAuthorization>().HasIndex(a => a.OrgId);
+
+        modelBuilder.Entity<OpenapiLeaseRegistrationPayment>()
+            .HasOne(p => p.LeaseContract)
+            .WithMany()
+            .HasForeignKey(p => p.LeaseContractId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<OpenapiLeaseRegistrationPayment>()
+            .HasOne(p => p.Org)
+            .WithMany()
+            .HasForeignKey(p => p.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<OpenapiLeaseRegistrationPayment>()
+            .Property(p => p.FeePercent)
+            .HasPrecision(7, 4);
+        modelBuilder.Entity<OpenapiLeaseRegistrationPayment>()
+            .HasIndex(p => p.StripeCheckoutSessionId)
+            .IsUnique();
+        modelBuilder.Entity<OpenapiLeaseRegistrationPayment>()
+            .HasIndex(p => new { p.OrgId, p.LeaseContractId });
 
         modelBuilder.Entity<RentSchedule>()
             .HasOne(s => s.LeaseContract)

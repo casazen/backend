@@ -50,6 +50,11 @@ public class StripeWebhookHandler(
     private ConcordatoFacilePaymentHandler CfPayments =>
         concordatoFacilePayments ??= new ConcordatoFacilePaymentHandler(dbContext, NullLogger<ConcordatoFacilePaymentHandler>.Instance);
 
+    private OpenapiRegistrationPaymentHandler OpenapiPayments =>
+        openapiRegistrationPayments ??= new OpenapiRegistrationPaymentHandler(dbContext, NullLogger<OpenapiRegistrationPaymentHandler>.Instance);
+
+    private OpenapiRegistrationPaymentHandler? openapiRegistrationPayments;
+
     public Task HandleEventAsync(Event stripeEvent) =>
         HandleEventAsync(stripeEvent, WebhookSource.Platform);
 
@@ -143,6 +148,9 @@ public class StripeWebhookHandler(
                 case "payment_intent.payment_failed" when cfPaymentEnded:
                 case "payment_intent.canceled" when cfPaymentEnded:
                     await CfPayments.HandlePaymentNotCompletedAsync((PaymentIntent)stripeEvent.Data.Object, stripeEvent.Type);
+                    break;
+                case "payment_intent.succeeded" when OpenapiRegistrationPaymentHandler.IsPayment(stripeEvent.Data.Object as PaymentIntent):
+                    await OpenapiPayments.HandlePaymentIntentSucceededAsync((PaymentIntent)stripeEvent.Data.Object, stripeEvent.Created);
                     break;
                 // The payment of a supplier's service (SP-15b, kind = service-charge): BEFORE the generic payment_intent.succeeded
                 // below, like the rent. Otherwise the event would be "processed" with no effect on the Connect endpoint (the generic
