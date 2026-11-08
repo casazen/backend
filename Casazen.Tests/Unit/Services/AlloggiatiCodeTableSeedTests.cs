@@ -63,6 +63,27 @@ public class AlloggiatiCodeTableSeedTests
         Assert.Equal(1, await db.AlloggiatiCodeTableImports.CountAsync());
     }
 
+    [Fact]
+    public async Task ImportAsync_HistoricalProvinceSigle_AreAccepted()
+    {
+        await using var db = CreateDb();
+        var service = new AlloggiatiCodeTableService(db, NullLogger<AlloggiatiCodeTableService>.Instance);
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(
+            """
+            Codice,Descrizione,Provincia
+            408040001,BAGNO DI ROMAGNA,FO
+            411041001,ACQUALAGNA,PS
+            450500501,ABBAZIA,FU
+            450501501,ALBONA,PL
+            450502501,LAGOSTA,ZA
+            """));
+
+        var result = await service.ImportAsync(AlloggiatiCodeTable.Comuni, stream, "comuni.csv", "v1", "system");
+
+        Assert.True(result.Success);
+        Assert.Equal(5, result.RowCount);
+    }
+
     private static AppDbContext CreateDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())

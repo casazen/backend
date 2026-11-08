@@ -59,6 +59,7 @@ public class CheckInIdentityVerificationFeatureFlagTests(CasazenWebApplicationFa
     [Theory]
     [InlineData(nameof(PublicGuestCheckInController.UploadDocument))]
     [InlineData(nameof(PublicGuestCheckInController.UploadSelfie))]
+    [InlineData(nameof(PublicGuestCheckInController.ReadDocument))]
     public void ImageEndpoint_BuffersTheWholeRequestInMemory_NeverOnDisk(string action)
     {
         var method = typeof(PublicGuestCheckInController).GetMethod(action)!;
@@ -69,6 +70,7 @@ public class CheckInIdentityVerificationFeatureFlagTests(CasazenWebApplicationFa
         Assert.NotNull(sizeLimit);
         Assert.Equal((long?)PublicGuestCheckInController.MaxImageRequestBytes, ((IRequestSizeLimitMetadata)sizeLimit).MaxRequestBodySize);
         Assert.True(formLimits.MemoryBufferThreshold >= PublicGuestCheckInController.MaxImageRequestBytes);
+        Assert.True(formLimits.MultipartBodyLengthLimit >= PublicGuestCheckInController.MaxImageRequestBytes);
     }
 
     private async Task<(string Token, Guid SessionId, Guid BookingId)> SeedSessionAsync()

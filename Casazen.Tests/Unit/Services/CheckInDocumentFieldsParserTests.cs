@@ -53,5 +53,28 @@ public class CheckInDocumentFieldsParserTests
         Assert.Equal("ITALIA", ItalianCitizenshipNames.OfficialNormalizedKey("Italiana"));
         Assert.False(AlloggiatiRecordRules.IsValidProvince("ER"));
         Assert.True(AlloggiatiRecordRules.IsValidProvince("rm"));
+        Assert.True(AlloggiatiRecordRules.IsValidProvince("FO"));
+        Assert.True(AlloggiatiRecordRules.IsValidProvince("ps"));
+        Assert.True(AlloggiatiRecordRules.IsValidProvince("FU"));
+        Assert.True(AlloggiatiRecordRules.IsValidProvince("PL"));
+        Assert.True(AlloggiatiRecordRules.IsValidProvince("ZA"));
+    }
+
+    [Fact]
+    public void Parse_OnlyProvinceKindAndIssuePlace_IsStillARead()
+    {
+        const string json = """
+            {"bornInItaly":true,"birthProvince":"FO","documentKind":"Patente","issuePlace":"Forli"}
+            """;
+
+        var fields = CheckInDocumentFieldsParser.Parse(json, Today);
+
+        Assert.NotNull(fields);
+        Assert.True(fields.BornInItaly);
+        Assert.Equal("FO", fields.BirthProvince);
+        Assert.Equal("DriversLicense", fields.DocumentKind);
+        Assert.Equal("Forli", fields.IssuePlace);
+        Assert.Null(fields.FirstName);
+        Assert.Null(fields.DocumentNumber);
     }
 }

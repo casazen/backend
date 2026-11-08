@@ -199,17 +199,20 @@ public static partial class AlloggiatiRecordRules
     }
 
     /// <summary>
-    /// Italian province codes, including the ones abolished in 2016 that still appear on older documents (CI, OG, OT, VS).
+    /// Italian province codes, including ones abolished that still appear on older documents and in the official comuni
+    /// table: the 2016 Sardinian codes (CI, OG, OT, VS) and earlier sigle (FO Forlì, PS Pesaro, FU Fiume, PL Pola, ZA Zara).
+    /// A code the table still lists has to pass here, because the import rejects the whole file on one invalid province
+    /// and check-in copies the chosen row's province onto the guest.
     /// </summary>
     private static readonly HashSet<string> Provinces = new(StringComparer.Ordinal)
     {
         "AG", "AL", "AN", "AO", "AP", "AQ", "AR", "AT", "AV", "BA", "BG", "BI", "BL", "BN", "BO", "BR", "BS", "BT",
         "BZ", "CA", "CB", "CE", "CH", "CI", "CL", "CN", "CO", "CR", "CS", "CT", "CZ", "EN", "FC", "FE", "FG", "FI",
-        "FM", "FR", "GE", "GO", "GR", "IM", "IS", "KR", "LC", "LE", "LI", "LO", "LT", "LU", "MB", "MC", "ME", "MI",
-        "MN", "MO", "MS", "MT", "NA", "NO", "NU", "OG", "OR", "OT", "PA", "PC", "PD", "PE", "PG", "PI", "PN", "PO",
-        "PR", "PT", "PU", "PV", "PZ", "RA", "RC", "RE", "RG", "RI", "RM", "RN", "RO", "SA", "SI", "SO", "SP", "SR",
-        "SS", "SU", "SV", "TA", "TE", "TN", "TO", "TP", "TR", "TS", "TV", "UD", "VA", "VB", "VC", "VE", "VI", "VR",
-        "VS", "VT", "VV",
+        "FM", "FO", "FR", "FU", "GE", "GO", "GR", "IM", "IS", "KR", "LC", "LE", "LI", "LO", "LT", "LU", "MB", "MC",
+        "ME", "MI", "MN", "MO", "MS", "MT", "NA", "NO", "NU", "OG", "OR", "OT", "PA", "PC", "PD", "PE", "PG", "PI",
+        "PL", "PN", "PO", "PR", "PS", "PT", "PU", "PV", "PZ", "RA", "RC", "RE", "RG", "RI", "RM", "RN", "RO", "SA",
+        "SI", "SO", "SP", "SR", "SS", "SU", "SV", "TA", "TE", "TN", "TO", "TP", "TR", "TS", "TV", "UD", "VA", "VB",
+        "VC", "VE", "VI", "VR", "VS", "VT", "VV", "ZA",
     };
 
     /// <summary>Province of birth: a real Italian province code (e.g. RM), not any two letters.</summary>

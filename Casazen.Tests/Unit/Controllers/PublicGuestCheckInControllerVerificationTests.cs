@@ -1,3 +1,4 @@
+using System.Reflection;
 using Casazen.Core.Entities;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
@@ -5,6 +6,7 @@ using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.CheckIn;
 using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
@@ -155,6 +157,21 @@ public class PublicGuestCheckInControllerVerificationTests
         _flow.VerifyNoOtherCalls();
     }
 
+    [Fact]
+    public void ReadDocument_BuffersThePhotoInMemory_AndAcceptsMultipartFramingAroundTheImageCap()
+    {
+        var method = typeof(PublicGuestCheckInController).GetMethod(nameof(PublicGuestCheckInController.ReadDocument))!;
+        var formLimits = method.GetCustomAttribute<RequestFormLimitsAttribute>();
+        var sizeLimit = method.GetCustomAttribute<RequestSizeLimitAttribute>();
+
+        Assert.NotNull(formLimits);
+        Assert.NotNull(sizeLimit);
+        var requestBytes = Assert.IsType<long>(((IRequestSizeLimitMetadata)sizeLimit).MaxRequestBodySize);
+        Assert.True(requestBytes > CheckInDocumentLimits.MaxImageBytes);
+        Assert.True(formLimits.MemoryBufferThreshold >= requestBytes);
+        Assert.True(formLimits.MultipartBodyLengthLimit >= requestBytes);
+    }
+
     private static IdentityVerificationState State() =>
         new(IdentityVerificationSteps.Operator, IdentityVerificationGuestResults.Operator, true, false, true, false, 3, true, false, 0);
 
@@ -174,6 +191,7 @@ public class PublicGuestCheckInControllerVerificationTests
     private PublicGuestCheckInController Controller() => new(
         _checkIn.Object,
         Mock.Of<IAlloggiatiCodeTableService>(),
+        Mock.Of<ICheckInDocumentReader>(),
         Mock.Of<IAlloggiatiReportScheduler>(),
         _flow.Object,
         Mock.Of<IFeatureFlags>(),

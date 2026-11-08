@@ -247,6 +247,7 @@ public class PublicCheckInInvoiceProofTests
         new(
             checkIn,
             Mock.Of<IAlloggiatiCodeTableService>(),
+            Mock.Of<ICheckInDocumentReader>(),
             Mock.Of<IAlloggiatiReportScheduler>(),
             Mock.Of<IIdentityVerificationFlowService>(),
             Mock.Of<Casazen.Core.Features.IFeatureFlags>(),

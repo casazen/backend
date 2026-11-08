@@ -40,9 +40,13 @@ public static class CheckInDocumentFieldsParser
                 || fields.LastName is not null
                 || fields.Gender is not null
                 || fields.DateOfBirth is not null
+                || fields.BornInItaly is not null
                 || fields.BirthPlace is not null
+                || fields.BirthProvince is not null
                 || fields.Citizenship is not null
-                || fields.DocumentNumber is not null;
+                || fields.DocumentKind is not null
+                || fields.DocumentNumber is not null
+                || fields.IssuePlace is not null;
             return any ? fields : null;
         }
         catch (JsonException)

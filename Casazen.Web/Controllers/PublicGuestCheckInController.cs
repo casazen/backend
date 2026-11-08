@@ -46,9 +46,11 @@ public class PublicGuestCheckInController(
     public const string ValidationCodesExtension = "codes";
 
     /// <summary>
-    /// Largest request of <c>/document</c> and <c>/selfie</c> (10 MB). Their multipart body is buffered in memory up to this size
-    /// (<see cref="RequestFormLimitsAttribute.MemoryBufferThreshold"/>), so an image is never spilled to a temporary file on disk
-    /// (ADR-013-R2): the default threshold is 64 KB.
+    /// Largest request of <c>/document</c>, <c>/selfie</c> and <c>/read-document</c> (10 MB). Their multipart body is buffered in
+    /// memory up to this size (<see cref="RequestFormLimitsAttribute.MemoryBufferThreshold"/>), so an image is never spilled to a
+    /// temporary file on disk (ADR-013-R2): the default threshold is 64 KB. <c>/read-document</c> still refuses a picture over
+    /// <see cref="CheckInDocumentLimits.MaxImageBytes"/> with <c>checkin_document_too_large</c>; the request is larger than that
+    /// picture so the multipart framing is not answered as a generic 413.
     /// </summary>
     public const int MaxImageRequestBytes = 10_000_000;
 
@@ -157,7 +159,8 @@ public class PublicGuestCheckInController(
     /// </summary>
     [HttpPost("{token}/read-document")]
     [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
-    [RequestSizeLimit(CheckInDocumentLimits.MaxImageBytes)]
+    [RequestSizeLimit(MaxImageRequestBytes)]
+    [RequestFormLimits(MemoryBufferThreshold = MaxImageRequestBytes, MultipartBodyLengthLimit = MaxImageRequestBytes)]
     public async Task<ActionResult<CheckInDocumentReadResponse>> ReadDocument(string token, IFormFile? file)
     {
         if (await checkInService.GetSessionByTokenAsync(token) is null)
