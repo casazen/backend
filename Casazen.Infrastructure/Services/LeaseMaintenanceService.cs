@@ -104,6 +104,35 @@ public sealed class LeaseMaintenanceService(
         return new LeaseMaintenanceListView(rows.Select(ToView).ToList());
     }
 
+    public async Task<LeaseMaintenancePhotoFile> ReadPhotoAsync(
+        LeaseMaintenanceCaller caller, Guid leaseId, Guid requestId, Guid photoId, CancellationToken cancellationToken = default)
+    {
+        var lease = await RequireLeaseAsync(caller.OrgId, leaseId, cancellationToken);
+        if (!caller.CanReadLease && !await IsTenantAsync(lease, caller, cancellationToken))
+            throw new DomainForbiddenException("maintenance_forbidden", "MaintenanceForbidden");
+
+        var request = await RequireRequestAsync(lease, requestId, cancellationToken);
+        var photos = JsonSerializer.Deserialize<List<StoredPhoto>>(request.PhotosJson, PhotosJson) ?? [];
+        var photo = photos.SingleOrDefault(p => p.Id == photoId)
+            ?? throw new NotFoundException("Maintenance photo not found")
+            {
+                Code = "maintenance_photo_not_found",
+                MessageKey = "MaintenancePhotoNotFound",
+            };
+        var stream = await storage.OpenReadAsync(StorageBucket.Private, photo.StorageKey, cancellationToken)
+            ?? throw new NotFoundException("Maintenance photo not found")
+            {
+                Code = "maintenance_photo_not_found",
+                MessageKey = "MaintenancePhotoNotFound",
+            };
+        await using (stream)
+        {
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer, cancellationToken);
+            return new LeaseMaintenancePhotoFile(photo.FileName, photo.ContentType, buffer.ToArray());
+        }
+    }
+
     public async Task<LeaseMaintenanceRequestView> DecideAsync(
         LeaseMaintenanceCaller caller,
         Guid leaseId,
@@ -130,7 +159,11 @@ public sealed class LeaseMaintenanceService(
                 request.RejectionReason = reason;
                 break;
             case LeaseMaintenanceDecision.Approved:
+                if (command.AmountCents is not long cents || cents is <= 0 or > MaxAmountCents)
+                    throw new DomainRuleException(BankLinkErrorCodes.AmountInvalid, "BankLinkAmountInvalid");
                 request.Status = LeaseMaintenanceStatus.Approvata;
+                request.AmountCents = cents;
+                request.Currency = BankLinkCharges.Currency;
                 request.RejectionReason = null;
                 break;
             default:
@@ -165,10 +198,8 @@ public sealed class LeaseMaintenanceService(
     {
         ArgumentNullException.ThrowIfNull(command);
         ArgumentNullException.ThrowIfNull(bankCaller);
-        if (!caller.CanManageLease)
+        if (!caller.CanDebitOrg)
             throw new DomainForbiddenException("maintenance_forbidden", "MaintenanceForbidden");
-        if (command.AmountCents is <= 0 or > MaxAmountCents)
-            throw new DomainRuleException(BankLinkErrorCodes.AmountInvalid, "BankLinkAmountInvalid");
 
         var lease = await RequireLeaseAsync(caller.OrgId, leaseId, cancellationToken);
         var request = await RequireRequestAsync(lease, requestId, cancellationToken);
@@ -178,10 +209,18 @@ public sealed class LeaseMaintenanceService(
         LeaseMaintenanceRules.EnsurePayable(request.Status);
         if (request.Status != LeaseMaintenanceStatus.Approvata)
             throw new DomainConflictException("maintenance_not_payable", "MaintenanceNotPayable");
+        if (request.AmountCents is not long stored || command.AmountCents != stored)
+            throw new DomainRuleException("maintenance_amount_mismatch", "MaintenanceAmountMismatch");
 
         var open = await OpenPaymentAsync(request, cancellationToken);
-        if (open is not null)
-            return ToPayment(request, open, clientSecret: null, stripeStatus: StripeStatus(open));
+        if (open?.Status == BankLinkPaymentStatus.Succeeded)
+            return ToPayment(request, open, clientSecret: null, stripeStatus: "succeeded");
+        if (open?.Status == BankLinkPaymentStatus.Processing)
+        {
+            var again = await gateway.ConfirmDebitAsync(
+                open.StripePaymentIntentId, DebitKey(request.Id, open.Id), bankCaller.IpAddress, bankCaller.UserAgent, cancellationToken);
+            return ToPayment(request, open, again.ClientSecret, again.Status);
+        }
 
         var org = await db.Orgs.SingleAsync(o => o.Id == lease.OrgId, cancellationToken);
         if (string.IsNullOrWhiteSpace(org.StripeCustomerId) || string.IsNullOrWhiteSpace(org.FinancialConnectionsAccountId))
@@ -191,71 +230,83 @@ public sealed class LeaseMaintenanceService(
         if (!string.Equals(linked.CustomerId, org.StripeCustomerId, StringComparison.Ordinal))
             throw new DomainRuleException(BankLinkErrorCodes.AccountHolderMismatch, "BankLinkAccountHolderMismatch");
 
-        var idempotencyKey = $"maint-{request.Id:N}";
-        var created = await gateway.CreateDebitAsync(
-            new BankDebitCommand(
-                org.StripeCustomerId,
-                linked.Id,
-                linked.SupportedPaymentMethodTypes,
-                command.AmountCents,
-                BankLinkCharges.Currency,
-                idempotencyKey,
-                org.DisplayName,
-                bankCaller.IpAddress,
-                bankCaller.UserAgent,
-                new Dictionary<string, string>
-                {
-                    ["kind"] = BankLinkCharges.Kind,
-                    ["orgId"] = lease.OrgId.ToString(),
-                    ["leaseId"] = lease.Id.ToString(),
-                    ["payer"] = BankLinkPayer.Landlord.ToString().ToLowerInvariant(),
-                    ["maintenanceRequestId"] = request.Id.ToString(),
-                }),
-            cancellationToken);
-
-        var row = await db.BankLinkPayments
-            .SingleOrDefaultAsync(p => p.StripePaymentIntentId == created.PaymentIntentId, cancellationToken);
-        if (row is null)
+        for (var attempt = 0; attempt < 2; attempt++)
         {
-            var now = DateTime.UtcNow;
-            row = new BankLinkPayment
+            var paymentId = Guid.NewGuid();
+            var idempotencyKey = DebitKey(request.Id, paymentId);
+            var created = await gateway.CreateDebitAsync(
+                new BankDebitCommand(
+                    org.StripeCustomerId,
+                    linked.Id,
+                    linked.SupportedPaymentMethodTypes,
+                    stored,
+                    BankLinkCharges.Currency,
+                    idempotencyKey,
+                    org.DisplayName,
+                    bankCaller.IpAddress,
+                    bankCaller.UserAgent,
+                    new Dictionary<string, string>
+                    {
+                        ["kind"] = BankLinkCharges.Kind,
+                        ["orgId"] = lease.OrgId.ToString(),
+                        ["leaseId"] = lease.Id.ToString(),
+                        ["payer"] = BankLinkPayer.Landlord.ToString().ToLowerInvariant(),
+                        ["maintenanceRequestId"] = request.Id.ToString(),
+                    }),
+                cancellationToken);
+
+            var existing = await db.BankLinkPayments
+                .SingleOrDefaultAsync(p => p.StripePaymentIntentId == created.PaymentIntentId, cancellationToken);
+            if (existing is { Status: BankLinkPaymentStatus.Failed or BankLinkPaymentStatus.Canceled })
+                continue;
+
+            var row = existing;
+            if (row is null)
             {
-                OrgId = lease.OrgId,
-                LeaseContractId = lease.Id,
-                LeaseMaintenanceRequestId = request.Id,
-                Payer = BankLinkPayer.Landlord,
-                FinancialConnectionsAccountId = linked.Id,
-                StripePaymentIntentId = created.PaymentIntentId,
-                StripePaymentMethodId = created.PaymentMethodId,
-                PaymentMethodType = created.PaymentMethodType,
-                AmountCents = command.AmountCents,
-                Currency = BankLinkCharges.Currency,
-                Status = BankLinkPaymentStatus.Processing,
-                CreatedAt = now,
-                UpdatedAt = now,
-            };
-            db.BankLinkPayments.Add(row);
-            request.AmountCents = command.AmountCents;
-            request.Currency = BankLinkCharges.Currency;
-            request.BankLinkPaymentId = row.Id;
-            request.UpdatedAt = now;
-            db.LeaseEvents.Add(new LeaseEvent
-            {
-                LeaseContractId = lease.Id,
-                EventType = LeaseEventType.MaintenancePaymentStarted,
-                OccurredAt = now,
-                Payload = $"{request.Id:N}:{command.AmountCents}",
-            });
-            await db.SaveChangesAsync(cancellationToken);
+                var now = DateTime.UtcNow;
+                row = new BankLinkPayment
+                {
+                    Id = paymentId,
+                    OrgId = lease.OrgId,
+                    LeaseContractId = lease.Id,
+                    LeaseMaintenanceRequestId = request.Id,
+                    Payer = BankLinkPayer.Landlord,
+                    FinancialConnectionsAccountId = linked.Id,
+                    StripePaymentIntentId = created.PaymentIntentId,
+                    StripePaymentMethodId = created.PaymentMethodId,
+                    PaymentMethodType = created.PaymentMethodType,
+                    AmountCents = stored,
+                    Currency = BankLinkCharges.Currency,
+                    Status = BankLinkPaymentStatus.Processing,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                };
+                db.BankLinkPayments.Add(row);
+                request.BankLinkPaymentId = row.Id;
+                request.UpdatedAt = now;
+                db.LeaseEvents.Add(new LeaseEvent
+                {
+                    LeaseContractId = lease.Id,
+                    EventType = LeaseEventType.MaintenancePaymentStarted,
+                    OccurredAt = now,
+                    Payload = $"{request.Id:N}:{stored}",
+                });
+                await db.SaveChangesAsync(cancellationToken);
+            }
+
+            var confirmed = await gateway.ConfirmDebitAsync(
+                row.StripePaymentIntentId, DebitKey(request.Id, row.Id), bankCaller.IpAddress, bankCaller.UserAgent, cancellationToken);
+            logger.LogInformation(
+                "Maintenance payment {PaymentId} started for request {RequestId} ({PaymentIntentId})",
+                row.Id, request.Id, confirmed.PaymentIntentId);
+            return ToPayment(request, row, confirmed.ClientSecret, confirmed.Status);
         }
 
-        var confirmed = await gateway.ConfirmDebitAsync(
-            created.PaymentIntentId, idempotencyKey, bankCaller.IpAddress, bankCaller.UserAgent, cancellationToken);
-        logger.LogInformation(
-            "Maintenance payment {PaymentId} started for request {RequestId} ({PaymentIntentId})",
-            row.Id, request.Id, confirmed.PaymentIntentId);
-        return ToPayment(request, row, confirmed.ClientSecret, confirmed.Status);
+        throw new DomainConflictException("maintenance_not_payable", "MaintenanceNotPayable");
     }
+
+    /// <summary>One key per payment row, so a failed debit is not confirmed again and a retry starts another.</summary>
+    private static string DebitKey(Guid requestId, Guid paymentId) => $"maint-{requestId:N}-{paymentId:N}";
 
     public async Task MarkPaidFromBankAsync(
         Guid orgId, Guid requestId, long amountCents, CancellationToken cancellationToken = default)

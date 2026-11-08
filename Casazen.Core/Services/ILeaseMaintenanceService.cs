@@ -13,7 +13,8 @@ public sealed record LeaseMaintenanceCaller(
     string? Email,
     bool EmailVerified,
     bool CanReadLease,
-    bool CanManageLease);
+    bool CanManageLease,
+    bool CanDebitOrg);
 
 public sealed record LeaseMaintenancePhotoContent(string FileName, byte[] Content);
 
@@ -23,7 +24,7 @@ public sealed record CreateLeaseMaintenanceCommand(
     LeaseMaintenanceUrgency Urgency,
     IReadOnlyList<LeaseMaintenancePhotoContent> Photos);
 
-public sealed record LeaseMaintenanceDecisionCommand(LeaseMaintenanceDecision Decision, string? Reason);
+public sealed record LeaseMaintenanceDecisionCommand(LeaseMaintenanceDecision Decision, string? Reason, long? AmountCents = null);
 
 public sealed record LeaseMaintenancePaymentCommand(long AmountCents);
 
@@ -31,6 +32,9 @@ public sealed record LeaseMaintenancePaymentCommand(long AmountCents);
 public sealed record LeaseMaintenanceAccess(Guid LeaseId, Guid OrgId, Guid PropertyId, string? PropertyOwnerId);
 
 public sealed record LeaseMaintenancePhotoView(Guid Id, string FileName, string ContentType);
+
+/// <summary>A private photo. The bytes are served by the authenticated endpoint. There is no public URL.</summary>
+public sealed record LeaseMaintenancePhotoFile(string FileName, string ContentType, byte[] Content);
 
 public sealed record LeaseMaintenanceRequestView(
     Guid Id,
@@ -77,6 +81,10 @@ public interface ILeaseMaintenanceService : ILeaseMaintenancePaymentApplier
 
     Task<LeaseMaintenanceListView> ListAsync(
         LeaseMaintenanceCaller caller, Guid leaseId, CancellationToken cancellationToken = default);
+
+    /// <summary>The photo bytes for the tenant of the lease or anyone who may read it. Missing and other-org photos are not found.</summary>
+    Task<LeaseMaintenancePhotoFile> ReadPhotoAsync(
+        LeaseMaintenanceCaller caller, Guid leaseId, Guid requestId, Guid photoId, CancellationToken cancellationToken = default);
 
     Task<LeaseMaintenanceRequestView> DecideAsync(
         LeaseMaintenanceCaller caller, Guid leaseId, Guid requestId, LeaseMaintenanceDecisionCommand command, CancellationToken cancellationToken = default);

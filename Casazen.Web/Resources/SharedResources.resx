@@ -5625,4 +5625,10 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="MaintenanceEmailNotVerified" xml:space="preserve">
     <value>Serve un indirizzo email verificato, uguale a quello del conduttore.</value>
   </data>
+  <data name="MaintenanceAmountMismatch" xml:space="preserve">
+    <value>L'importo deve essere quello approvato sulla richiesta.</value>
+  </data>
+  <data name="MaintenancePhotoNotFound" xml:space="preserve">
+    <value>Foto non trovata.</value>
+  </data>
 </root>

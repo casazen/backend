@@ -21,11 +21,12 @@ public class LeaseMaintenanceServiceTests : IDisposable
 {
     private readonly AppDbContext _db = new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private readonly FakeGateway _gateway = new();
+    private readonly MemoryStorage _storage = new();
     private readonly LeaseMaintenanceService _service;
 
     public LeaseMaintenanceServiceTests()
     {
-        _service = new LeaseMaintenanceService(_db, _gateway, new MemoryStorage(), NullLogger<LeaseMaintenanceService>.Instance);
+        _service = new LeaseMaintenanceService(_db, _gateway, _storage, NullLogger<LeaseMaintenanceService>.Instance);
         _gateway.Saved = id => _db.BankLinkPayments.Any(p => p.StripePaymentIntentId == id);
     }
 
@@ -72,7 +73,7 @@ public class LeaseMaintenanceServiceTests : IDisposable
         var other = world.Tenant with { OrgId = world.OtherOrg.Id, CanReadLease = true, CanManageLease = true };
         await Assert.ThrowsAsync<NotFoundException>(() => _service.ListAsync(other, world.Lease.Id, default));
         await Assert.ThrowsAsync<NotFoundException>(() =>
-            _service.DecideAsync(other, world.Lease.Id, created.Id, new LeaseMaintenanceDecisionCommand(LeaseMaintenanceDecision.Approved, null), default));
+            _service.DecideAsync(other, world.Lease.Id, created.Id, new LeaseMaintenanceDecisionCommand(LeaseMaintenanceDecision.Approved, null, 4_500), default));
         Assert.Null(await _service.FindLeaseAsync(world.OtherOrg.Id, world.Lease.Id, default));
     }
 
@@ -112,11 +113,11 @@ public class LeaseMaintenanceServiceTests : IDisposable
         var world = await SeedAsync(linked: true);
         var created = await _service.CreateAsync(world.Tenant, world.Lease.Id, Command(), default);
         var approved = await _service.DecideAsync(
-            world.Landlord, world.Lease.Id, created.Id, new LeaseMaintenanceDecisionCommand(LeaseMaintenanceDecision.Approved, null), default);
+            world.Landlord, world.Lease.Id, created.Id, new LeaseMaintenanceDecisionCommand(LeaseMaintenanceDecision.Approved, null, 4_500), default);
 
         Assert.Equal(LeaseMaintenanceStatus.Approvata, approved.Status);
         Assert.False(approved.Paid);
-        Assert.Null(approved.AmountCents);
+        Assert.Equal(4_500, approved.AmountCents);
 
         var first = await _service.PayAsync(
             world.Landlord, world.Lease.Id, created.Id, new LeaseMaintenancePaymentCommand(4_500), Caller(), default);
@@ -147,7 +148,7 @@ public class LeaseMaintenanceServiceTests : IDisposable
         var world = await SeedAsync(linked: true);
         var created = await _service.CreateAsync(world.Tenant, world.Lease.Id, Command(), default);
         await _service.DecideAsync(
-            world.Landlord, world.Lease.Id, created.Id, new LeaseMaintenanceDecisionCommand(LeaseMaintenanceDecision.Approved, null), default);
+            world.Landlord, world.Lease.Id, created.Id, new LeaseMaintenanceDecisionCommand(LeaseMaintenanceDecision.Approved, null, 4_500), default);
 
         await _service.PayAsync(world.Landlord, world.Lease.Id, created.Id, new LeaseMaintenancePaymentCommand(4_500), Caller(), default);
         var again = await _service.PayAsync(
@@ -165,13 +166,113 @@ public class LeaseMaintenanceServiceTests : IDisposable
         var created = await _service.CreateAsync(world.Tenant, world.Lease.Id, Command(), default);
 
         var decide = await Assert.ThrowsAsync<DomainForbiddenException>(() =>
-            _service.DecideAsync(world.Tenant, world.Lease.Id, created.Id, new LeaseMaintenanceDecisionCommand(LeaseMaintenanceDecision.Approved, null), default));
+            _service.DecideAsync(world.Tenant, world.Lease.Id, created.Id, new LeaseMaintenanceDecisionCommand(LeaseMaintenanceDecision.Approved, null, 4_500), default));
         var pay = await Assert.ThrowsAsync<DomainForbiddenException>(() =>
             _service.PayAsync(world.Tenant, world.Lease.Id, created.Id, new LeaseMaintenancePaymentCommand(4_500), Caller(), default));
 
         Assert.Equal("maintenance_forbidden", decide.Code);
         Assert.Equal("maintenance_forbidden", pay.Code);
         Assert.Empty(_gateway.CreatedKeys);
+    }
+
+    [Fact]
+    public async Task PropertyManager_CanApprove_AndCannotDebitTheOrgAccount()
+    {
+        var world = await SeedAsync(linked: true);
+        var manager = world.Landlord with { CanDebitOrg = false };
+        var created = await _service.CreateAsync(world.Tenant, world.Lease.Id, Command(), default);
+        var approved = await _service.DecideAsync(
+            manager, world.Lease.Id, created.Id, new LeaseMaintenanceDecisionCommand(LeaseMaintenanceDecision.Approved, null, 4_500), default);
+
+        Assert.Equal(LeaseMaintenanceStatus.Approvata, approved.Status);
+        Assert.Equal(4_500, approved.AmountCents);
+        Assert.False(approved.Paid);
+
+        var pay = await Assert.ThrowsAsync<DomainForbiddenException>(() =>
+            _service.PayAsync(manager, world.Lease.Id, created.Id, new LeaseMaintenancePaymentCommand(4_500), Caller(), default));
+        Assert.Equal("maintenance_forbidden", pay.Code);
+        Assert.Empty(_gateway.CreatedKeys);
+        Assert.Empty(_gateway.ConfirmedIntentIds);
+    }
+
+    [Fact]
+    public async Task Pay_RejectsAnAmountDifferentFromTheApprovedOne()
+    {
+        var world = await SeedAsync(linked: true);
+        var created = await _service.CreateAsync(world.Tenant, world.Lease.Id, Command(), default);
+        await _service.DecideAsync(
+            world.Landlord, world.Lease.Id, created.Id, new LeaseMaintenanceDecisionCommand(LeaseMaintenanceDecision.Approved, null, 4_500), default);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            _service.PayAsync(world.Landlord, world.Lease.Id, created.Id, new LeaseMaintenancePaymentCommand(9_900), Caller(), default));
+        Assert.Equal("maintenance_amount_mismatch", ex.Code);
+        Assert.Empty(_gateway.CreatedKeys);
+    }
+
+    [Fact]
+    public async Task FailedDebit_IsRetriedWithANewKey_AndTheFailedIntentIsNotConfirmed()
+    {
+        var world = await SeedAsync(linked: true);
+        var created = await _service.CreateAsync(world.Tenant, world.Lease.Id, Command(), default);
+        await _service.DecideAsync(
+            world.Landlord, world.Lease.Id, created.Id, new LeaseMaintenanceDecisionCommand(LeaseMaintenanceDecision.Approved, null, 4_500), default);
+        var first = await _service.PayAsync(
+            world.Landlord, world.Lease.Id, created.Id, new LeaseMaintenancePaymentCommand(4_500), Caller(), default);
+        var failed = await _db.BankLinkPayments.SingleAsync();
+        failed.Status = BankLinkPaymentStatus.Failed;
+        await _db.SaveChangesAsync();
+        _gateway.ConfirmedIntentIds.Clear();
+
+        var second = await _service.PayAsync(
+            world.Landlord, world.Lease.Id, created.Id, new LeaseMaintenancePaymentCommand(4_500), Caller(), default);
+
+        Assert.NotEqual(first.PaymentIntentId, second.PaymentIntentId);
+        Assert.Equal(2, _gateway.CreatedKeys.Distinct().Count());
+        Assert.DoesNotContain(first.PaymentIntentId, _gateway.ConfirmedIntentIds);
+        Assert.Contains(second.PaymentIntentId, _gateway.ConfirmedIntentIds);
+        Assert.Equal(2, await _db.BankLinkPayments.CountAsync());
+        Assert.DoesNotContain(await _db.BankLinkPayments.Select(p => p.FinancialConnectionsAccountId).ToListAsync(), id => id.Contains("IT", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task PayRetry_ConfirmsTheUnconfirmedIntent_AndDoesNotStartAnother()
+    {
+        var world = await SeedAsync(linked: true);
+        var created = await _service.CreateAsync(world.Tenant, world.Lease.Id, Command(), default);
+        await _service.DecideAsync(
+            world.Landlord, world.Lease.Id, created.Id, new LeaseMaintenanceDecisionCommand(LeaseMaintenanceDecision.Approved, null, 4_500), default);
+        _gateway.FailNextConfirm = true;
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _service.PayAsync(world.Landlord, world.Lease.Id, created.Id, new LeaseMaintenancePaymentCommand(4_500), Caller(), default));
+        Assert.Equal(BankLinkPaymentStatus.Processing, (await _db.BankLinkPayments.SingleAsync()).Status);
+
+        var again = await _service.PayAsync(
+            world.Landlord, world.Lease.Id, created.Id, new LeaseMaintenancePaymentCommand(4_500), Caller(), default);
+
+        Assert.False(again.Paid);
+        Assert.Single(_gateway.CreatedKeys);
+        Assert.Equal(1, await _db.BankLinkPayments.CountAsync());
+        Assert.Equal(2, _gateway.ConfirmedIntentIds.Count);
+        Assert.Equal(_gateway.ConfirmedIntentIds[0], _gateway.ConfirmedIntentIds[1]);
+    }
+
+    [Fact]
+    public async Task Photo_IsReadByTheTenantAndTheLandlord_FromThePrivateBucket()
+    {
+        var world = await SeedAsync();
+        var created = await _service.CreateAsync(world.Tenant, world.Lease.Id, Command(withPhoto: true), default);
+        var photo = Assert.Single(created.Photos);
+        Assert.Equal(StorageBucket.Private, Assert.Single(_storage.Puts).Bucket);
+
+        var asTenant = await _service.ReadPhotoAsync(world.Tenant, world.Lease.Id, created.Id, photo.Id, default);
+        var asLandlord = await _service.ReadPhotoAsync(world.Landlord, world.Lease.Id, created.Id, photo.Id, default);
+
+        Assert.Equal(TinyJpeg(), asTenant.Content);
+        Assert.Equal("image/jpeg", asTenant.ContentType);
+        Assert.Equal(asTenant.Content, asLandlord.Content);
+        var other = world.Tenant with { OrgId = world.OtherOrg.Id, CanReadLease = true };
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            _service.ReadPhotoAsync(other, world.Lease.Id, created.Id, photo.Id, default));
     }
 
     public void Dispose() => _db.Dispose();
@@ -243,19 +344,28 @@ public class LeaseMaintenanceServiceTests : IDisposable
             org,
             other,
             lease,
-            new LeaseMaintenanceCaller(org.Id, "auth0|tenant", "giulia.verdi@example.com", true, false, false),
-            new LeaseMaintenanceCaller(org.Id, "auth0|landlord", "mario.rossi@example.com", true, true, true));
+            new LeaseMaintenanceCaller(org.Id, "auth0|tenant", "giulia.verdi@example.com", true, false, false, false),
+            new LeaseMaintenanceCaller(org.Id, "auth0|landlord", "mario.rossi@example.com", true, true, true, true));
     }
 
     private sealed record World(OrgEntity Org, OrgEntity OtherOrg, LeaseContract Lease, LeaseMaintenanceCaller Tenant, LeaseMaintenanceCaller Landlord);
 
     private sealed class MemoryStorage : IFileStorage
     {
-        public Task PutAsync(StorageBucket bucket, string key, Stream content, string contentType, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+        public List<(StorageBucket Bucket, string Key)> Puts { get; } = [];
+
+        private readonly Dictionary<string, byte[]> _objects = [];
+
+        public async Task PutAsync(StorageBucket bucket, string key, Stream content, string contentType, CancellationToken cancellationToken = default)
+        {
+            using var buffer = new MemoryStream();
+            await content.CopyToAsync(buffer, cancellationToken);
+            _objects[key] = buffer.ToArray();
+            Puts.Add((bucket, key));
+        }
 
         public Task<Stream?> OpenReadAsync(StorageBucket bucket, string key, CancellationToken cancellationToken = default) =>
-            Task.FromResult<Stream?>(null);
+            Task.FromResult<Stream?>(_objects.TryGetValue(key, out var bytes) ? new MemoryStream(bytes) : null);
 
         public Task<bool> ExistsAsync(StorageBucket bucket, string key, CancellationToken cancellationToken = default) =>
             Task.FromResult(false);
@@ -274,6 +384,10 @@ public class LeaseMaintenanceServiceTests : IDisposable
     private sealed class FakeGateway : IStripeBankLinkGateway
     {
         public List<string> CreatedKeys { get; } = [];
+
+        public List<string> ConfirmedIntentIds { get; } = [];
+
+        public bool FailNextConfirm { get; set; }
 
         public Func<string, bool>? Saved { get; set; }
 
@@ -297,8 +411,15 @@ public class LeaseMaintenanceServiceTests : IDisposable
         public Task<StartedBankDebit> ConfirmDebitAsync(
             string paymentIntentId, string idempotencyKey, string? ipAddress, string? userAgent, CancellationToken cancellationToken = default)
         {
+            ConfirmedIntentIds.Add(paymentIntentId);
             if (Saved is not null && !Saved(paymentIntentId))
                 throw new InvalidOperationException("PaymentIntent confirmed before the bank-link row was saved.");
+            if (FailNextConfirm)
+            {
+                FailNextConfirm = false;
+                throw new InvalidOperationException("Confirm did not finish.");
+            }
+
             return Task.FromResult(new StartedBankDebit(paymentIntentId, "secret", "processing", BankLinkCharges.SepaDebit, "pm_sepa"));
         }
     }

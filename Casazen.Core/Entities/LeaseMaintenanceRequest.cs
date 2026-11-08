@@ -41,7 +41,7 @@ public class LeaseMaintenanceRequest : ITenantOwned
     [MaxLength(ReasonMaxLength)]
     public string? RejectionReason { get; set; }
 
-    /// <summary>Euros of the debit that was started. Null until the landlord or the agency pays. Not a paid flag.</summary>
+    /// <summary>Euros agreed when the request was approved. The debit uses this amount. Null until then. Not a paid flag.</summary>
     public long? AmountCents { get; set; }
 
     [Required, MaxLength(CurrencyMaxLength)]

@@ -5625,4 +5625,10 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="MaintenanceEmailNotVerified" xml:space="preserve">
     <value>A verified email equal to the tenant's is required.</value>
   </data>
+  <data name="MaintenanceAmountMismatch" xml:space="preserve">
+    <value>The amount must be the one stored when the request was approved.</value>
+  </data>
+  <data name="MaintenancePhotoNotFound" xml:space="preserve">
+    <value>Photo not found.</value>
+  </data>
 </root>

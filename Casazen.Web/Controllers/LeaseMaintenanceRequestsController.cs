@@ -79,6 +79,25 @@ public class LeaseMaintenanceRequestsController(
     }
 
     /// <summary>
+    /// One photo of a request, for the tenant of the lease or anyone who may read it. The file is private:
+    /// this response is the only copy, it is not cached, and it has no public URL.
+    /// </summary>
+    [HttpGet("{id:guid}/photos/{photoId:guid}")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetPhoto(Guid leaseId, Guid id, Guid photoId, CancellationToken cancellationToken)
+    {
+        if (await CallerAsync(leaseId, cancellationToken) is not { } caller)
+            return MissingCaller();
+        if (caller.Missing is { } missing)
+            return missing;
+        var photo = await maintenance.ReadPhotoAsync(caller.Caller!, leaseId, id, photoId, cancellationToken);
+        Response.Headers.CacheControl = "private, no-store";
+        return File(photo.Content, photo.ContentType, photo.FileName);
+    }
+
+    /// <summary>
     /// Approves or rejects. <c>decision</c> is <c>Approved</c> or <c>Rejected</c>. A rejection needs <c>reason</c>.
     /// Approval does not mark the request paid.
     /// </summary>
@@ -98,16 +117,17 @@ public class LeaseMaintenanceRequestsController(
         if (caller.Missing is { } missing)
             return missing;
         return Ok(await maintenance.DecideAsync(
-            caller.Caller!, leaseId, id, new LeaseMaintenanceDecisionCommand(body.Decision!.Value, body.Reason), cancellationToken));
+            caller.Caller!, leaseId, id, new LeaseMaintenanceDecisionCommand(body.Decision!.Value, body.Reason, body.AmountCents), cancellationToken));
     }
 
     /// <summary>
-    /// Starts the euro debit of an approved request from the org's linked account. A request still
+    /// Starts the euro debit of an approved request from the org's linked account. Only an org billing admin can,
+    /// and <c>amountCents</c> must be the amount stored when the request was approved. A request still
     /// <see cref="LeaseMaintenanceStatus.InAttesa"/> or <see cref="LeaseMaintenanceStatus.Rifiutata"/> cannot be paid.
-    /// A second call returns the debit already started and does not create another.
+    /// A debit already started is confirmed again instead of charged twice. A failed debit can be retried.
     /// </summary>
     [HttpPost("{id:guid}/payment")]
-    [Authorize(Policy = CasazenPolicies.LeaseCreate)]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
     [ProducesResponseType(typeof(LeaseMaintenancePaymentView), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -147,9 +167,10 @@ public class LeaseMaintenanceRequestsController(
         var resource = new HostResource(access.OrgId, access.PropertyOwnerId, access.PropertyId);
         var canRead = await authorizationService.IsAuthorizedAsync(User, resource, LeaseOperations.Read);
         var canManage = await authorizationService.IsAuthorizedAsync(User, resource, LeaseOperations.Create);
+        var canDebit = (await authorizationService.AuthorizeAsync(User, CasazenPolicies.OrgBillingAdmin)).Succeeded;
         var (email, verified) = await emails.ResolveAsync(User, userId, cancellationToken);
         return new CallerResolution(
-            new LeaseMaintenanceCaller(orgId.Value, userId, email, verified, canRead, canManage),
+            new LeaseMaintenanceCaller(orgId.Value, userId, email, verified, canRead, canManage, canDebit),
             null);
     }
 
@@ -184,7 +205,10 @@ public sealed class LeaseMaintenancePhotoDto
     public string ContentBase64 { get; set; } = string.Empty;
 }
 
-/// <summary><c>decision</c> is <c>Approved</c> or <c>Rejected</c>. <c>reason</c> is required when rejecting.</summary>
+/// <summary>
+/// <c>decision</c> is <c>Approved</c> or <c>Rejected</c>. <c>reason</c> is required when rejecting.
+/// <c>amountCents</c> is the euros to pay, required when approving, and the later debit must use that amount.
+/// </summary>
 public sealed class LeaseMaintenanceDecisionDto
 {
     [Required(ErrorMessage = "MaintenanceDecisionInvalid")]
@@ -192,9 +216,12 @@ public sealed class LeaseMaintenanceDecisionDto
 
     [MaxLength(LeaseMaintenanceRequestLimits.Reason, ErrorMessage = "MaintenanceReasonInvalid")]
     public string? Reason { get; set; }
+
+    [Range(1, 100_000_000, ErrorMessage = "BankLinkAmountInvalid")]
+    public long? AmountCents { get; set; }
 }
 
-/// <summary>The euros to debit. A retry of a debit already started does not charge this amount again.</summary>
+/// <summary>Must equal the amount stored when the request was approved. A different amount is rejected.</summary>
 public sealed class LeaseMaintenancePaymentDto
 {
     [Range(1, 100_000_000, ErrorMessage = "BankLinkAmountInvalid")]
