@@ -1,3 +1,4 @@
+using System.Net;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.External;
@@ -29,13 +30,18 @@ public class StripeBankLinkGatewayTests
     public async Task CreateSessionAsync_AsksForItalianBanks_NotUs()
     {
         SessionCreateOptions? sent = null;
+        RequestOptions? request = null;
         _client.Setup(c => c.RequestAsync<Session>(
                 HttpMethod.Post,
                 "/v1/financial_connections/sessions",
                 It.IsAny<BaseOptions>(),
                 It.IsAny<RequestOptions>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<HttpMethod, string, BaseOptions, RequestOptions, CancellationToken>((_, _, options, _, _) => sent = (SessionCreateOptions)options)
+            .Callback<HttpMethod, string, BaseOptions, RequestOptions, CancellationToken>((_, _, options, requestOptions, _) =>
+            {
+                sent = (SessionCreateOptions)options;
+                request = requestOptions;
+            })
             .ReturnsAsync(new Session { Id = "fcsess_1", ClientSecret = "fcsess_secret" });
 
         var session = await Gateway().CreateSessionAsync("cus_landlord");
@@ -46,8 +52,28 @@ public class StripeBankLinkGatewayTests
         Assert.Equal("payment_method", Assert.Single(sent.Permissions));
         Assert.True(sent.Filters.Countries is null || sent.Filters.Countries.Count == 0);
         Assert.Equal(BankLinkCharges.InstitutionCountry, sent.ExtraParams["filters[country]"]);
+        Assert.DoesNotContain(sent.ExtraParams.Keys, key => key.Contains("countries", StringComparison.Ordinal));
+        Assert.Equal(BankLinkCharges.SessionApiVersion, StripeBankLinkGateway.ReadSessionApiVersion(request!));
         Assert.DoesNotContain("US", sent.ExtraParams.Values.Select(value => value?.ToString()));
         Assert.Contains("checking", sent.Filters.AccountSubcategories);
+    }
+
+    [Fact]
+    public async Task CreateSessionAsync_SendsItalyOnTheApiVersionThatAcceptsCountry()
+    {
+        var http = new RecordingHttpClient();
+        var client = new StripeClient(apiKey: "sk_test_session_shape", httpClient: http);
+        var gateway = new StripeBankLinkGateway(new ConfigurationBuilder().Build(), NullLogger<StripeBankLinkGateway>.Instance, client);
+
+        var session = await gateway.CreateSessionAsync("cus_landlord");
+
+        Assert.Equal("fcsess_1", session.SessionId);
+        Assert.Equal(BankLinkCharges.SessionApiVersion, http.Request!.StripeHeaders["Stripe-Version"]);
+        var body = Uri.UnescapeDataString(await http.Request.Content.ReadAsStringAsync());
+        Assert.Contains("filters[country]=IT", body);
+        Assert.DoesNotContain("filters[countries]", body);
+        Assert.Contains("account_holder[customer]=cus_landlord", body);
+        Assert.Contains("permissions[0]=payment_method", body);
     }
 
     [Fact]
@@ -185,6 +211,23 @@ public class StripeBankLinkGatewayTests
 
     private StripeBankLinkGateway Gateway() =>
         new(new ConfigurationBuilder().Build(), NullLogger<StripeBankLinkGateway>.Instance, _client.Object);
+
+    private sealed class RecordingHttpClient : IHttpClient
+    {
+        public StripeRequest? Request { get; private set; }
+
+        public Task<StripeResponse> MakeRequestAsync(StripeRequest request, CancellationToken cancellationToken = default)
+        {
+            Request = request;
+            return Task.FromResult(new StripeResponse(
+                HttpStatusCode.OK,
+                new HttpResponseMessage().Headers,
+                """{"id":"fcsess_1","object":"financial_connections.session","client_secret":"fcsess_secret"}"""));
+        }
+
+        public Task<StripeStreamedResponse> MakeStreamingRequestAsync(StripeRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
 
     private static BankDebitCommand Command() =>
         new(

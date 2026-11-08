@@ -106,4 +106,11 @@ public static class BankLinkCharges
 
     /// <summary>Institutions offered in the link flow: Italy, so the list is Intesa and the other Italian banks, not US banks.</summary>
     public const string InstitutionCountry = "IT";
+
+    /// <summary>
+    /// API version that accepts <c>filters[country]</c> (one country). Stripe.net 50 pins
+    /// <c>2025-12-15.clover</c>, whose session create only has <c>filters[countries]</c> and rejects
+    /// <c>filters[country]</c>. The bank-link session sends this version with that header.
+    /// </summary>
+    public const string SessionApiVersion = "2026-10-28.endive";
 }
