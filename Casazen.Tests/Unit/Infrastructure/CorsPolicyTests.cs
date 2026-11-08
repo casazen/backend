@@ -120,6 +120,60 @@ public class CorsPolicyTests
         Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
     }
 
+    [Theory]
+    [InlineData("https://casazen.vercel.app")]
+    [InlineData("https://CASAZEN.vercel.app")]
+    [InlineData("https://casazen-lucalamalfa91s-projects.vercel.app")]
+    public async Task Preflight_FrontendProjectHost_IsAllowedWithoutConfiguration(string origin)
+    {
+        // Staging is the test API: it already has some configured origin, and still has to accept the frontend project.
+        await using var staging = await StartAsync("Staging", new() { ["Cors:AllowedOrigins"] = WebApp });
+        await using var production = await StartAsync(Environments.Production, new() { ["Cors:AllowedOrigins"] = WebApp });
+
+        using var stagingResponse = await PreflightAsync(staging, origin);
+        using var productionResponse = await PreflightAsync(production, origin);
+
+        Assert.Equal(origin, Assert.Single(stagingResponse.Headers.GetValues("Access-Control-Allow-Origin")));
+        Assert.Contains("authorization", stagingResponse.Headers.GetValues("Access-Control-Allow-Headers").Single(), StringComparison.OrdinalIgnoreCase);
+        Assert.False(stagingResponse.Headers.Contains("Access-Control-Allow-Credentials"));
+        Assert.Equal(origin, Assert.Single(productionResponse.Headers.GetValues("Access-Control-Allow-Origin")));
+        Assert.False(productionResponse.Headers.Contains("Access-Control-Allow-Credentials"));
+    }
+
+    [Theory]
+    [InlineData("https://casazen-git-develop-lucalamalfa91s-projects.vercel.app")]
+    [InlineData("https://casazen-21ol3cwwj-lucalamalfa91s-projects.vercel.app")]
+    public async Task Preflight_FrontendPreview_IsAllowedOnTheTestApiOnly(string origin)
+    {
+        await using var staging = await StartAsync("Staging", new() { ["Cors:AllowedOrigins"] = WebApp });
+        await using var production = await StartAsync(Environments.Production, new() { ["Cors:AllowedOrigins"] = WebApp });
+
+        using var stagingResponse = await PreflightAsync(staging, origin);
+        using var productionResponse = await PreflightAsync(production, origin);
+
+        Assert.Equal(origin, Assert.Single(stagingResponse.Headers.GetValues("Access-Control-Allow-Origin")));
+        Assert.False(stagingResponse.Headers.Contains("Access-Control-Allow-Credentials"));
+        Assert.False(productionResponse.Headers.Contains("Access-Control-Allow-Origin"));
+    }
+
+    [Theory]
+    [InlineData("https://evil.vercel.app")]
+    [InlineData("https://notcasazen.vercel.app")]
+    [InlineData("http://casazen.vercel.app")]
+    [InlineData("https://casazen.vercel.app.evil.com")]
+    [InlineData("https://evil.casazen.vercel.app")]
+    [InlineData("https://casazen-git-develop-other.vercel.app")]
+    [InlineData("https://casazen-21ol3cwwj-other-team.vercel.app")]
+    [InlineData("https://casazen-git-develop-lucalamalfa91s-projects.evil.vercel.app")]
+    public async Task Preflight_ForeignVercelHost_IsRejectedOnTheTestApi(string origin)
+    {
+        await using var app = await StartAsync("Staging", new() { ["Cors:AllowedOrigins"] = WebApp });
+
+        using var response = await PreflightAsync(app, origin);
+
+        Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
+    }
+
     [Fact]
     public async Task Preflight_LoopbackOriginInDevelopment_IsAllowedWithoutConfiguration()
     {

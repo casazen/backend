@@ -8,7 +8,7 @@ report-only to enforced.
 
 | Concern | Behaviour | Code |
 |---|---|---|
-| CORS origins | The origin of the public web app `App__PublicSiteBaseUrl` (SE-02, always: the domain may change without touching CORS), the exact origins of `Cors__AllowedOrigins`, plus the Vercel previews matched by `Cors__VercelPreviewPattern` when it is set. No origin is written in code (decision D3). In `Development` any `http://localhost:<port>` is accepted (Vite dev server) | `Casazen.Web/Configuration/CorsOriginOptions.cs` |
+| CORS origins | The origin of the public web app `App__PublicSiteBaseUrl` (SE-02, always: the domain may change without touching CORS), the exact origins of `Cors__AllowedOrigins`, plus the Vercel previews matched by `Cors__VercelPreviewPattern` when it is set. The public domain is not written in code (decision D3). The Vercel project that deploys the frontend (`casazen`, team `lucalamalfa91s-projects`) is allowed as well: `https://casazen.vercel.app`, `https://casazen-lucalamalfa91s-projects.vercel.app`, and — outside Production — its branch and deployment hosts (`casazen-git-<branch>-lucalamalfa91s-projects.vercel.app`, `casazen-<9 chars>-lucalamalfa91s-projects.vercel.app`). Nothing else on `*.vercel.app`. In `Development` any `http://localhost:<port>` is accepted (Vite dev server) | `Casazen.Web/Configuration/CorsOriginOptions.cs` |
 | CORS policy | Methods `GET POST PUT PATCH DELETE OPTIONS`, headers `Authorization Content-Type Accept X-Requested-With Idempotency-Key` (the last one: the key of a payment the host records, SR-06b), **no credentials**: the API authenticates with a Bearer token and sets no cookie | `Casazen.Web/Infrastructure/CasazenCorsPolicyProvider.cs` |
 | Org hosts (BK-16) | `OrgHostCorsOriginSource` (an `ICorsOriginSource`, asked only about origins the configuration rejects): `https://villa.<PublicHost__BaseDomain>` of an org that chose the subdomain mode, and the **verified** custom domain of an org that pays for Pro. The decision is `IPublicHostResolver` (cached, invalidated when a domain is set or verified, a slug or the branding changes). **Public endpoints only** (`/api/public/*`, `/api/legal/*`), `https` on the default port, plain host name; the answer reflects that one origin (`Vary: Origin`), never `*`; no credentials. No wildcard on the base domain, no domain waiting for its verification, no reserved label, no IP address. Section 8 of [`seo-domain.md`](seo-domain.md) | `Casazen.Web/Infrastructure/OrgHostCorsOriginSource.cs`, `PublicHostResolver` |
 | Startup check | A malformed entry (path, wildcard, no scheme) or an invalid pattern stops the startup. Outside `Development`/`Testing` it stops too when neither `Cors__AllowedOrigins` nor `App__PublicSiteBaseUrl` gives an origin (Railway keeps the previous deployment) | `CorsOriginOptionsValidator` |
@@ -26,12 +26,14 @@ report-only to enforced.
 | `Cors__VercelPreviewPattern` | Regular expression for the **label** before `.vercel.app` of our own previews. Anchored and case-insensitive; only `https` on the default port; a label with a dot never matches | no; set it on **test only**, leave production empty |
 
 Vercel preview hostnames are `<project>-<hash>-<team-slug>.vercel.app` (one deployment) and
-`<project>-git-<branch>-<team-slug>.vercel.app` (branch). Copy two real preview URLs from Vercel → Project →
-Deployments and write the tightest pattern that matches them, for example (project `casazen-app`, team slug
-`casazen-team`):
+`<project>-git-<branch>-<team-slug>.vercel.app` (branch). The frontend repository deploys as project `casazen` on team
+`lucalamalfa91s-projects`. Those hosts, and the stable `https://casazen.vercel.app`, are allowed by the API itself
+(branch and deployment hosts on the test API only). `Cors__VercelPreviewPattern` is only needed for another project.
+Copy two real preview URLs from Vercel → Project → Deployments and write the tightest pattern that matches them, for
+example:
 
 ```
-Cors__VercelPreviewPattern=casazen-app-(git-[a-z0-9-]+|[a-z0-9]{9})-casazen-team
+Cors__VercelPreviewPattern=casazen-(git-[a-z0-9-]+|[a-z0-9]{9})-lucalamalfa91s-projects
 ```
 
 Security note: the pattern is a convenience for the test environment, not a security boundary. A `*.vercel.app` name
