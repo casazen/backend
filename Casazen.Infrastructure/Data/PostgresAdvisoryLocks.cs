@@ -309,6 +309,12 @@ internal static class PostgresAdvisoryLocks
         ConcordatoFacileCheckout = 1_209,
 
         /// <summary>
+        /// The Openapi filing-fee checkout of one lease that is not canone concordato (key: lease id). Two clicks open one
+        /// Stripe session. Same lock shape as <see cref="ConcordatoFacileCheckout"/>.
+        /// </summary>
+        OpenapiLeaseRegistrationCheckout = 1_212,
+
+        /// <summary>
         /// The privacy acceptance of one lease for the ConcordatoFacile form (key: lease id, <c>leaseId.ToString("N")</c>): two requests at
         /// the same time write one event, not two (CF-BE).
         /// </summary>

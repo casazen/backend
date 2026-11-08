@@ -73,10 +73,15 @@ configured provider (`ILeaseRegistrationProvider.IsConfigured`). Both are checke
 | Flag on, provider not configured | 409 `rli_provider_unavailable`, nothing recorded | registered, does nothing | manual only (`providerFilingAvailable: false`) |
 | Flag on, provider configured | 202: filing **in progress** | every 5 minutes | "Send through the provider (with delega)" next to the manual path |
 
-**There is no real provider client yet.** The registered provider is `UnconfiguredLeaseRegistrationProvider`
-(`IsConfigured = false`, every call refuses), so the provider path stays unavailable even with the flag on. RS-4 found
-the Openapi DocuEngine API publicly documented, but the lease-registration service id and its input fields are **not in
-the public specification** (`rli-esign.md` §1.3, §1.7): writing the mapping without them would invent the payload.
+**There is no real provider client for canone concordato.** The registered provider is `UnconfiguredLeaseRegistrationProvider`
+(`IsConfigured = false`, every call refuses). A contract that is **not** canone concordato (`Libero`, `Transitorio`) can
+be filed through Openapi DocuEngine when `Openapi` is configured (`Openapi__Token` or `Openapi__Email` + `Openapi__ApiKey`,
+plus `Openapi__LeaseDocumentId`). Openapi publishes one lease-registration product, not a separate non-concordato one:
+CasaZen branches on `LeaseContractType` and does not send a concordato down this path. The filing fee is the existing
+registration-tax percentage (`CedolareAdvisory:Registro:Rate`, minimum `FirstYearMinimumEur`) of the annual rent, collected
+with Stripe Checkout **before** `POST /api/leases/{id}/registration` calls DocuEngine. Without the Openapi settings the
+client is not configured and the manual path is unchanged. The service id and the field order still have to be confirmed
+with `GET /documents` (`rli-esign.md` §1.3, §1.7); `Openapi__LeaseFieldOrder` overrides the default order.
 
 ### What is needed before writing the Openapi client
 

@@ -675,6 +675,15 @@
   <data name="LeasePartyCitizenshipInvalid" xml:space="preserve">
     <value>Citizenship must be the 2-letter ISO country code (for example IT, DE, US).</value>
   </data>
+  <data name="OpenapiRegistrationUnpaid" xml:space="preserve">
+    <value>The registration fee has to be paid before the contract is filed. Nothing was sent.</value>
+  </data>
+  <data name="OpenapiRegistrationAlreadyPaid" xml:space="preserve">
+    <value>The registration fee for this contract is already paid.</value>
+  </data>
+  <data name="OpenapiRegistrationConcordato" xml:space="preserve">
+    <value>A canone concordato contract is not filed on this path.</value>
+  </data>
   <data name="RliProviderUnavailable" xml:space="preserve">
     <value>RLI filing through a provider is not available. Register the contract on the official channel of the Agenzia delle Entrate and enter the registration number, date and receipt here.</value>
   </data>

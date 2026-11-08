@@ -43,7 +43,9 @@ public class RliRegistrationService(
     IOptions<RliOptions> rliOptions,
     IOrgHolderService orgHolder,
     ILogger<RliRegistrationService> logger,
-    TimeProvider? timeProvider = null) : IRliRegistrationService
+    TimeProvider? timeProvider = null,
+    IOpenapiDocuEngineClient? openapi = null,
+    IOpenapiRegistrationPaymentGate? registrationPayment = null) : IRliRegistrationService
 {
     /// <summary>A provider reservation still Pending after this long has lost its outcome.</summary>
     public static readonly TimeSpan StaleSubmissionAfter = TimeSpan.FromMinutes(15);
@@ -67,11 +69,16 @@ public class RliRegistrationService(
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
         ArgumentNullException.ThrowIfNull(delega);
 
-        // Flag off or no configured provider: nothing is recorded and nothing reaches a provider.
-        if (!IsProviderFilingAvailable)
+        // The flag is required for every provider filing. A non-concordato contract can use DocuEngine when that client
+        // is configured, even while the generic provider is still the unconfigured one. A canone concordato never takes
+        // this path.
+        if (!featureFlags.IsEnabled(FeatureFlags.RliProvider))
             throw new DomainConflictException(RliRegistrationErrorCodes.ProviderUnavailable, "RliProviderUnavailable");
 
         var lease = await LoadLeaseAsync(leaseId, cancellationToken);
+        var openapiFiling = openapi?.IsConfigured == true && OpenapiRegistrationFee.Applies(lease.ContractType);
+        if (!IsProviderFilingAvailable && !openapiFiling)
+            throw new DomainConflictException(RliRegistrationErrorCodes.ProviderUnavailable, "RliProviderUnavailable");
 
         // The delega is the landlord's: only the holder of the org (its owner or an administrator, S5, AM-03) can authorize a
         // filing in its name. The creator of the property is the holder only for an account in no org team (before the team,
@@ -95,13 +102,38 @@ public class RliRegistrationService(
 
         await apeCompliance.EnsurePropertyHasValidApeAsync(lease.PropertyId);
 
+        if (openapiFiling)
+        {
+            if (registrationPayment is null)
+                throw new DomainConflictException(OpenapiRegistrationFee.UnpaidCode, "OpenapiRegistrationUnpaid");
+            await registrationPayment.EnsurePaidAsync(lease, cancellationToken);
+        }
+
         var registration = await ReserveProviderSubmissionAsync(lease, ownerId, delega.TosVersion, cancellationToken);
 
         // From here on the outcome is always recorded: a client that disconnects must not leave the reservation behind.
         string externalId;
         try
         {
-            externalId = await provider.SubmitAsync(lease, CancellationToken.None);
+            if (openapiFiling)
+            {
+                await using var signed = await storage.OpenReadAsync(
+                        StorageBucket.Private, lease.SignedPdfStoragePath!, CancellationToken.None)
+                    ?? throw new LeaseRegistrationProviderException(
+                        RliRegistrationFailureCodes.ProviderError, "The signed contract is missing.");
+                using var buffer = new MemoryStream();
+                await signed.CopyToAsync(buffer, CancellationToken.None);
+                externalId = await openapi!.SubmitLeaseRegistrationAsync(lease, buffer.ToArray(), CancellationToken.None);
+                logger.LogInformation(
+                    "OpenAPI lease registration submitted. LeaseId={LeaseId} OrgId={OrgId} ContractType={ContractType}",
+                    lease.Id,
+                    lease.OrgId,
+                    lease.ContractType);
+            }
+            else
+            {
+                externalId = await provider.SubmitAsync(lease, CancellationToken.None);
+            }
         }
         catch (LeaseRegistrationProviderException ex)
         {
@@ -288,7 +320,9 @@ public class RliRegistrationService(
 
     public async Task<ProviderSyncResult> SyncProviderRegistrationsAsync(CancellationToken cancellationToken = default)
     {
-        if (!IsProviderFilingAvailable)
+        var canPoll = IsProviderFilingAvailable
+            || (featureFlags.IsEnabled(FeatureFlags.RliProvider) && openapi?.IsConfigured == true);
+        if (!canPoll)
         {
             logger.LogInformation("RLI provider sync skipped: the provider path is not available");
             return new ProviderSyncResult(0, 0, 0, 0);

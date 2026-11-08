@@ -174,6 +174,7 @@ public class PublicGuestCheckInControllerVerificationTests
     private PublicGuestCheckInController Controller() => new(
         _checkIn.Object,
         Mock.Of<IAlloggiatiCodeTableService>(),
+        Mock.Of<ICheckInDocumentReader>(),
         Mock.Of<IAlloggiatiReportScheduler>(),
         _flow.Object,
         Mock.Of<IFeatureFlags>(),

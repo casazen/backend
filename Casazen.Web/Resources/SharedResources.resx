@@ -675,6 +675,15 @@
   <data name="LeasePartyCitizenshipInvalid" xml:space="preserve">
     <value>La cittadinanza deve essere il codice ISO del paese di 2 lettere (per esempio IT, DE, US).</value>
   </data>
+  <data name="OpenapiRegistrationUnpaid" xml:space="preserve">
+    <value>Prima di registrare il contratto va pagata la commissione di registrazione. Il contratto non è stato inviato.</value>
+  </data>
+  <data name="OpenapiRegistrationAlreadyPaid" xml:space="preserve">
+    <value>La commissione di registrazione di questo contratto risulta già pagata.</value>
+  </data>
+  <data name="OpenapiRegistrationConcordato" xml:space="preserve">
+    <value>Un contratto a canone concordato non si registra da questo percorso.</value>
+  </data>
   <data name="RliProviderUnavailable" xml:space="preserve">
     <value>L'invio della RLI tramite provider non è disponibile. Registra il contratto sul canale ufficiale dell'Agenzia delle Entrate e inserisci qui numero, data e ricevuta della registrazione.</value>
   </data>

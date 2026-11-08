@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
+using Casazen.Core.Leases;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
@@ -23,7 +24,8 @@ public class RliChecklistService(
     IOptions<RliOptions> rliOptions,
     IFeatureFlags featureFlags,
     ILeaseRegistrationProvider registrationProvider,
-    TimeProvider? timeProvider = null) : IRliChecklistService
+    TimeProvider? timeProvider = null,
+    IOptions<OpenapiOptions>? openapiOptions = null) : IRliChecklistService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -31,7 +33,10 @@ public class RliChecklistService(
     {
         ArgumentNullException.ThrowIfNull(lease);
 
-        var providerFilingAvailable = RliProviderFiling.IsAvailable(featureFlags, registrationProvider);
+        var providerFilingAvailable = RliProviderFiling.IsAvailable(featureFlags, registrationProvider)
+            || (featureFlags.IsEnabled(FeatureFlags.RliProvider)
+                && openapiOptions?.Value.IsConfigured == true
+                && OpenapiRegistrationFee.Applies(lease.ContractType));
         var auth = await authorizations.GetByLeaseIdAsync(lease.Id);
         var leaseEvents = (await events.GetByLeaseIdAsync(lease.Id)).ToList();
         // min(stipula, start) + 30 on the Rome calendar, or null while it is to be determined (LT-04, A7-04).

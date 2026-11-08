@@ -5715,6 +5715,64 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("OnboardingPilotMembers");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OpenapiLeaseRegistrationPayment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AmountCents")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<decimal>("FeePercent")
+                        .HasPrecision(7, 4)
+                        .HasColumnType("numeric(7,4)");
+
+                    b.Property<Guid>("LeaseContractId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SessionUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("StripeCheckoutSessionId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("StripePaymentIntentId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LeaseContractId");
+
+                    b.HasIndex("StripeCheckoutSessionId")
+                        .IsUnique();
+
+                    b.HasIndex("OrgId", "LeaseContractId");
+
+                    b.ToTable("OpenapiLeaseRegistrationPayments");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.Org", b =>
                 {
                     b.Property<Guid>("Id")
@@ -15524,6 +15582,25 @@ namespace Casazen.Infrastructure.Migrations
                         .HasForeignKey("PropertyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OpenapiLeaseRegistrationPayment", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.LeaseContract", "LeaseContract")
+                        .WithMany()
+                        .HasForeignKey("LeaseContractId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", "Org")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("LeaseContract");
+
+                    b.Navigation("Org");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OrgActivityEntry", b =>

@@ -672,10 +672,23 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRliChecklistService, RliChecklistService>();
         // Questura communication for an extra-EU tenant (LT-07): declared by the landlord, never inferred from a reminder.
         services.AddScoped<IQuesturaCommunicationService, QuesturaCommunicationService>();
-        // RLI registration (LT-01, D15): manual by default. No provider client exists yet (docs/runbooks/rli.md), so the
-        // provider path stays unavailable even with Features:RliProvider on.
+        // RLI registration (LT-01, D15): manual by default. DocuEngine files contracts that are not canone concordato
+        // when Openapi is configured (docs/runbooks/rli.md); without those settings the client refuses every call.
+        services.AddOptions<OpenapiOptions>()
+            .BindConfiguration(OpenapiOptions.SectionName);
+        services.AddHttpClient<IOpenapiDocuEngineClient, OpenapiDocuEngineClient>((sp, client) =>
+        {
+            var configured = sp.GetRequiredService<IOptions<OpenapiOptions>>().Value.BaseUrl;
+            if (Uri.TryCreate(configured, UriKind.Absolute, out var baseUri))
+                client.BaseAddress = baseUri;
+        });
+        services.AddScoped<IOpenapiRegistrationPaymentGate, OpenapiRegistrationPaymentGate>();
+        services.AddScoped<IOpenapiRegistrationCheckoutService, OpenapiRegistrationCheckoutService>();
         services.AddScoped<IRliRegistrationService, RliRegistrationService>();
-        services.AddSingleton<ILeaseRegistrationProvider, UnconfiguredLeaseRegistrationProvider>();
+        services.AddSingleton<UnconfiguredLeaseRegistrationProvider>();
+        services.AddScoped<ILeaseRegistrationProvider>(sp => new OpenapiAwareLeaseRegistrationProvider(
+            sp.GetRequiredService<UnconfiguredLeaseRegistrationProvider>(),
+            sp.GetRequiredService<IOpenapiDocuEngineClient>()));
         services.AddScoped<IFiscalRegimeService, FiscalService>();
         services.AddScoped<IFiscalReportingService>(sp => (FiscalService)sp.GetRequiredService<IFiscalRegimeService>());
         // NF-100: the tourist tax owed, paid and receipted per comune, over the tourist tax report above (GET /api/tourist-tax/summary).
