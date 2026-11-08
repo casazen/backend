@@ -66,23 +66,22 @@ public class HostTodayServiceTests
 
         var today = await NewService(db).GetTodayAsync(world.OrgWide, new HostTodayOptions());
 
-        // A request, a communication to send, the data of an arrival, a turnover and a property to activate, on each property.
+        // A request, the data of an arrival still to come, and a turnover, on each property. The stay that left on
+        // 4 October still lacks guest fields, so it is not a communication to send, and a house with no CIN is not
+        // an activation to open.
         HostTodoAction[] expected =
         [
             HostTodoAction.RespondToRequest, HostTodoAction.RespondToRequest,
-            HostTodoAction.SendAlloggiati, HostTodoAction.SendAlloggiati,
             HostTodoAction.CompleteGuestCheckIn, HostTodoAction.CompleteGuestCheckIn,
             HostTodoAction.ConfirmPropertyReady, HostTodoAction.ConfirmPropertyReady,
-            HostTodoAction.ActivateProperty, HostTodoAction.ActivateProperty,
         ];
         Assert.Equal(expected, today.Todo.Items.Select(i => i.Action));
-        Assert.Equal(10, today.Todo.Count);
+        Assert.Equal(6, today.Todo.Count);
         Assert.Equal(expected.Select(HostTodoPriority.Of), today.Todo.Items.Select(i => i.Priority));
         Assert.All(today.Todo.Items, item => Assert.NotEmpty(item.Missing));
         Assert.All(today.Todo.Items, item => Assert.False(string.IsNullOrWhiteSpace(item.Label)));
         // Never a path: a key and the ids of the target.
-        Assert.All(today.Todo.Items.Where(i => i.Action == HostTodoAction.ActivateProperty), i => Assert.NotNull(i.PropertyId));
-        Assert.All(today.Todo.Items.Where(i => i.Action != HostTodoAction.ActivateProperty), i => Assert.NotNull(i.BookingId));
+        Assert.All(today.Todo.Items, i => Assert.NotNull(i.BookingId));
     }
 
     [Fact]
@@ -97,15 +96,13 @@ public class HostTodayServiceTests
         Assert.All(
             todo.Where(i => i.Action == HostTodoAction.RespondToRequest),
             item => Assert.Equal(HostScopeScenario.Now.UtcDateTime.AddDays(1), item.DueAt));
-        // The communication runs 24 hours from the start of the arrival day (1 October, midnight in Rome = 22:00Z of the 30th).
-        Assert.All(
-            todo.Where(i => i.Action == HostTodoAction.SendAlloggiati),
-            item => Assert.Equal(At(10, 1, 22), item.DueAt));
+        // The stay of 1–4 October has ended with required guest fields still missing: it is not a thing to send.
+        Assert.DoesNotContain(todo, i => i.Action == HostTodoAction.SendAlloggiati);
         // The data are needed by the day of the arrival (10 October, midnight in Rome).
         Assert.All(
             todo.Where(i => i.Action == HostTodoAction.CompleteGuestCheckIn),
             item => Assert.Equal(At(10, 9, 22), item.DueAt));
-        Assert.All(todo.Where(i => i.Action is HostTodoAction.ConfirmPropertyReady or HostTodoAction.ActivateProperty), item => Assert.Null(item.DueAt));
+        Assert.All(todo.Where(i => i.Action == HostTodoAction.ConfirmPropertyReady), item => Assert.Null(item.DueAt));
     }
 
     [Fact]
@@ -119,16 +116,12 @@ public class HostTodayServiceTests
         Assert.All(
             todo.Where(i => i.Action == HostTodoAction.RespondToRequest),
             item => Assert.Equal([new ComplianceMissing(ComplianceMissingCodes.ApprovalNotAnswered, "response")], item.Missing));
-        Assert.All(
-            todo.Where(i => i.Action == HostTodoAction.SendAlloggiati),
-            item => Assert.Equal([new ComplianceMissing(ComplianceMissingCodes.AlloggiatiNotSent, "alloggiati")], item.Missing));
-        // The booker is the only guest the stay has, and has none of the fields of the record.
+        Assert.DoesNotContain(todo, i => i.Action == HostTodoAction.SendAlloggiati);
+        // The booker is the only guest the stay has, and has none of the fields of the record. The arrival is still ahead.
         Assert.All(
             todo.Where(i => i.Action == HostTodoAction.CompleteGuestCheckIn),
             item => Assert.Contains(item.Missing, m => m.Code == ComplianceMissingCodes.GuestFieldMissing && m.Field == "documentNumber"));
-        Assert.All(
-            todo.Where(i => i.Action == HostTodoAction.ActivateProperty),
-            item => Assert.Contains(item.Missing, m => m.Code == "activation_cin_missing" && m.Field == "cin"));
+        Assert.DoesNotContain(todo, i => i.Action == HostTodoAction.ActivateProperty);
     }
 
     [Fact]
@@ -141,8 +134,8 @@ public class HostTodayServiceTests
         var restricted = await service.GetTodayAsync(world.Restricted, new HostTodayOptions());
         var orgWide = await service.GetTodayAsync(world.OrgWide, new HostTodayOptions());
 
-        Assert.Equal(5, restricted.Todo.Count);
-        Assert.Equal(10, orgWide.Todo.Count);
+        Assert.Equal(3, restricted.Todo.Count);
+        Assert.Equal(6, orgWide.Todo.Count);
         Assert.Equal(1, restricted.Approvals.Count);
         Assert.Equal([world.Granted.Id], restricted.Approvals.Items.Select(a => a.PropertyId));
         Assert.All(

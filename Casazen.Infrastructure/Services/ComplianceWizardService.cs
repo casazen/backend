@@ -84,6 +84,7 @@ public class ComplianceWizardService(
             .AsNoTracking()
             .Where(PropertyRentalModeRules.IsShortRent)
             .Where(p => p.OrgId == orgId && p.ComplianceStatus != PropertyComplianceStatus.Active)
+            .Where(p => p.Name != "" && p.Address != "" && p.City != "" && p.CinCode != null && p.CinCode != "")
             .InScope(scope)
             .OrderBy(p => p.Name)
             .Select(p => new { p.Id, p.Name })
@@ -94,28 +95,30 @@ public class ComplianceWizardService(
             .Include(b => b.Guest)
             .Where(b => b.OrgId == orgId)
             .InScope(scope)
-            .Where(OpenableStayRules.CanOpen)
+            .Where(OpenableStayRules.CanShow)
             .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn)
             .Where(b => b.NoShowAt == null) // NF-45: the guests of a no-show never came, there is no data to complete
             .Where(b => b.CheckInDate.Date <= today.AddDays(1))
             .ToListAsync(cancellationToken);
 
+        var checkInDecisions = await ListedStays.OfAsync(
+            db, checkInCandidates.Select(b => b.Id).ToList(), today, cancellationToken);
         var incompleteCheckIns = new List<ComplianceSummaryItem>();
         foreach (var booking in checkInCandidates)
         {
-            // Every guest of the stay, not only the booker (CO-12).
-            var dataComplete = await alloggiatiWebService.IsStayDataCompleteAsync(booking.Id);
-            if (!dataComplete)
+            // A current stay with unfinished guest data stays: the Alloggiati screen is where the host completes it.
+            // One that has ended, or that the screen cannot name, does not.
+            if (!checkInDecisions.TryGetValue(booking.Id, out var decision) || !decision.Listed || decision.DataComplete)
+                continue;
+
+            incompleteCheckIns.Add(ComplianceSummaryItem.ForBooking(
+                ComplianceCockpitAction.CompleteGuestCheckIn,
+                booking.Id,
+                $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim()) with
             {
-                incompleteCheckIns.Add(ComplianceSummaryItem.ForBooking(
-                    ComplianceCockpitAction.CompleteGuestCheckIn,
-                    booking.Id,
-                    $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim()) with
-                {
-                    DueAt = ComplianceDeadlines.Of(
-                        ComplianceCockpitAction.CompleteGuestCheckIn, booking.CheckInDate, booking.CheckOutDate, booking.ArrivedAt),
-                });
-            }
+                DueAt = ComplianceDeadlines.Of(
+                    ComplianceCockpitAction.CompleteGuestCheckIn, booking.CheckInDate, booking.CheckOutDate, booking.ArrivedAt),
+            });
         }
 
         // Departures of today (Europe/Rome), with or without the arrival registered, and checked-in stays not closed
@@ -124,7 +127,7 @@ public class ComplianceWizardService(
                 .AsNoTracking()
                 .Where(b => b.OrgId == orgId)
                 .InScope(scope)
-                .Where(OpenableStayRules.CanOpen)
+                .Where(OpenableStayRules.CanShow)
                 .Where(StayLifecycleRules.CheckOutDue(today))
                 .OrderBy(b => b.CheckOutDate)
                 .Select(b => new { b.Id, b.CheckInDate, b.CheckOutDate, b.ArrivedAt, GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim() })
@@ -291,7 +294,8 @@ public class ComplianceWizardService(
             .InScope(scope)
             .Where(c => c.Booking.Status == BookingStatus.CheckedOut)
             // The check-out page of a stay whose property or guest is gone answers 404: it is not a thing to close.
-            .Where(c => c.Booking.Property != null && c.Booking.Guest != null && !c.Booking.Guest.IsDeleted)
+            .Where(c => c.Booking.Property != null && c.Booking.Guest != null && !c.Booking.Guest.IsDeleted
+                && c.Booking.Property.Name != "" && c.Booking.Guest.FirstName != "" && c.Booking.Guest.LastName != "")
             .Where(c => !db.Bookings.Any(next =>
                 next.PropertyId == c.Booking.PropertyId
                 && next.Id != c.BookingId
@@ -338,7 +342,7 @@ public class ComplianceWizardService(
             .AsNoTracking()
             .Where(b => b.OrgId == scope.OrgId)
             .InScope(scope)
-            .Where(OpenableStayRules.CanOpen)
+            .Where(OpenableStayRules.CanShow)
             .Where(b => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
             .Where(b => b.CheckInDate <= today)
             .Select(b => new
@@ -351,6 +355,9 @@ public class ComplianceWizardService(
                 GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim(),
             })
             .ToListAsync(cancellationToken);
+
+        var listed = await ListedStays.OfAsync(db, stays.Select(b => b.Id).ToList(), today, cancellationToken);
+        stays = stays.Where(b => listed.TryGetValue(b.Id, out var decision) && decision.Listed).ToList();
 
         var stayIds = stays.Select(b => b.Id).ToList();
         var reports = (await db.AlloggiatiWebReports

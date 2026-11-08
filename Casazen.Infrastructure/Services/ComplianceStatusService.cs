@@ -97,7 +97,7 @@ public sealed class ComplianceStatusService(
             stayQuery = stayQuery.IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]);
         else
             // The cockpit is about stays the host can open. A report on the past keeps a stay whose property was deleted since.
-            stayQuery = stayQuery.Where(OpenableStayRules.CanOpen);
+            stayQuery = stayQuery.Where(OpenableStayRules.CanShow);
         if (propertyFilter is { } onlyStayProperty)
             stayQuery = stayQuery.Where(b => b.PropertyId == onlyStayProperty);
 

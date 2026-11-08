@@ -304,7 +304,8 @@ public class ComplianceMissingServiceTests
         var granted = await service.DescribeAsync(await cockpit.GetSummaryAsync(world.Restricted));
         Assert.Equal(2, all.TurnoversPending.Count);
         Assert.Equal(1, granted.TurnoversPending.Count);
-        Assert.Equal(2, all.PropertiesPending.Count);
-        Assert.Equal(1, granted.PropertiesPending.Count);
+        // The houses in this scenario have no CIN, so the activation screen is not offered.
+        Assert.Equal(0, all.PropertiesPending.Count);
+        Assert.Equal(0, granted.PropertiesPending.Count);
     }
 }

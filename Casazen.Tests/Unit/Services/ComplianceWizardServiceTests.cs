@@ -609,6 +609,52 @@ public class ComplianceWizardServiceTests
     }
 
     [Fact]
+    public async Task Summary_AnEndedStayWithRequiredGuestFieldsMissing_IsNotListed_ACurrentOneIs()
+    {
+        await using var db = CreateDb(nameof(Summary_AnEndedStayWithRequiredGuestFieldsMissing_IsNotListed_ACurrentOneIs));
+        var property = await SeedPropertyAsync(db, complianceStatus: PropertyComplianceStatus.Active);
+        var todayInRome = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
+        var currentGuest = new Guest { FirstName = "Mario", LastName = "Rossi", Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId };
+        var endedGuest = new Guest { FirstName = "Luca", LastName = "Test", Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId };
+        var unnamed = new Guest { FirstName = " ", LastName = " ", Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId };
+        db.Guests.AddRange(currentGuest, endedGuest, unnamed);
+
+        // Still in the house, document fields missing: the Alloggiati screen is where the host completes them.
+        var current = BuildBooking(property, currentGuest, todayInRome, BookingStatus.CheckedIn);
+        // Left weeks ago with the same gap: that screen can no longer be completed.
+        var ended = BuildBooking(property, endedGuest, todayInRome.AddDays(-40), BookingStatus.CheckedIn);
+        var blank = BuildBooking(property, unnamed, todayInRome, BookingStatus.CheckedIn);
+        db.Bookings.AddRange(current, ended, blank);
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(new HostScope(property.OrgId));
+
+        Assert.Equal(current.Id, Assert.Single(summary.GuestCheckInsIncomplete.Items).Id);
+        Assert.Equal(current.Id, Assert.Single(summary.AlloggiatiManualRequired.Items).Id);
+        Assert.DoesNotContain(summary.GuestCheckInsIncomplete.Items, i => i.Id == ended.Id || i.Id == blank.Id);
+        Assert.DoesNotContain(summary.AlloggiatiManualRequired.Items, i => i.Id == ended.Id || i.Id == blank.Id);
+    }
+
+    [Fact]
+    public async Task Summary_APropertyMissingItsCinOrItsName_IsNotListed()
+    {
+        await using var db = CreateDb(nameof(Summary_APropertyMissingItsCinOrItsName_IsNotListed));
+        var org = new OrgEntity { Name = "Org", Slug = $"org-{Guid.NewGuid():N}" };
+        db.Orgs.Add(org);
+        await db.SaveChangesAsync();
+        var ready = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Pending);
+        var noCin = await SeedPropertyAsync(db, org.Id, cinCode: null, complianceStatus: PropertyComplianceStatus.Pending);
+        var noName = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Suspended);
+        noName.Name = "";
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db).GetSummaryAsync(new HostScope(org.Id));
+
+        Assert.Equal(ready.Id, Assert.Single(summary.PropertiesPending.Items).Id);
+        Assert.DoesNotContain(summary.PropertiesPending.Items, i => i.Id == noCin.Id || i.Id == noName.Id);
+    }
+
+    [Fact]
     public async Task Summary_EverySection_ReturnsItsActionAndTargetIdNeverAFrontEndPath()
     {
         await using var db = CreateDb(nameof(Summary_EverySection_ReturnsItsActionAndTargetIdNeverAFrontEndPath));

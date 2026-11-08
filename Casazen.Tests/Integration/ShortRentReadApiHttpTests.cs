@@ -291,12 +291,9 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
             Assert.NotEmpty(item.GetProperty("missing").EnumerateArray());
         }
 
-        var activation = summary.GetProperty("propertiesPending").GetProperty("items").EnumerateArray().First();
-        Assert.Contains(
-            activation.GetProperty("missing").EnumerateArray(),
-            m => m.GetProperty("code").GetString() == "activation_cin_missing" && m.GetProperty("field").GetString() == "cin");
-        Assert.Equal(2, summary.GetProperty("propertiesPending").GetProperty("count").GetInt32());
-        Assert.Equal(1, limited.GetProperty("propertiesPending").GetProperty("count").GetInt32());
+        // A house with no CIN is not an activation the home can open.
+        Assert.Equal(0, summary.GetProperty("propertiesPending").GetProperty("count").GetInt32());
+        Assert.Equal(0, limited.GetProperty("propertiesPending").GetProperty("count").GetInt32());
     }
 
     // --- GET /api/bookings/search ---------------------------------------------------------------------
