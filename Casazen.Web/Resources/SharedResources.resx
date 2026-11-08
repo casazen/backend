@@ -1430,13 +1430,19 @@
     <value>La foto del documento non è quella letta prima: fotografa di nuovo lo stesso documento.</value>
   </data>
   <data name="CheckInProvinceInvalid" xml:space="preserve">
-    <value>Inserisci la sigla della provincia di due lettere (es. RM).</value>
+    <value>Sigla di provincia non valida (es. RM).</value>
   </data>
   <data name="CheckInCodeInvalid" xml:space="preserve">
     <value>Codice non valido per Alloggiati Web.</value>
   </data>
   <data name="CheckInCodeUnknown" xml:space="preserve">
-    <value>Codice non presente nella tabella ufficiale Alloggiati: selezionalo dall'elenco.</value>
+    <value>Questo valore non è nella tabella ufficiale: sceglilo dall'elenco.</value>
+  </data>
+  <data name="CheckInDocumentMissing" xml:space="preserve">
+    <value>Carica la foto del documento.</value>
+  </data>
+  <data name="CheckInDocumentRejected" xml:space="preserve">
+    <value>La foto non è valida: usa un JPG, PNG o WebP fino a 5 MB.</value>
   </data>
   <data name="CheckInDocumentNumberInvalid" xml:space="preserve">
     <value>Il numero del documento può contenere solo lettere e cifre, al massimo {0}.</value>
