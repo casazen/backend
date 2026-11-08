@@ -13,8 +13,8 @@ namespace Casazen.Core.Services;
 /// <item><c>properties/{propertyId}/documents/{file}</c> — private bucket</item>
 /// <item><c>guest-documents/{orgId}/{guestId}/{file}</c> — private bucket</item>
 /// <item><c>orgs/{orgId}/branding/{logo|hero}/{file}</c> — public bucket (BK-12)</item>
-    /// <item><c>service-requests/{requestId}/photos/{file}</c> — private bucket (photos of a supplier's work, SP-04)</item>
-    /// <item><c>orgs/{orgId}/leases/{leaseId}/maintenance/{requestId}/{file}</c> — private bucket (photos of a tenant maintenance request)</item>
+/// <item><c>service-requests/{requestId}/photos/{file}</c> — private bucket (photos of a supplier's work, SP-04)</item>
+/// <item><c>orgs/{orgId}/leases/{leaseId}/maintenance/{requestId}/{file}</c> — private bucket (photos of a tenant maintenance request)</item>
 /// <item><c>tourist-tax/{orgId}/{remittanceId}/{file}</c> — private bucket (the receipt of a tourist tax payment, NF-100)</item>
 /// </list>
 /// Private keys are what the database stores for private files (<c>PropertyDocument.StorageUrl</c>,
