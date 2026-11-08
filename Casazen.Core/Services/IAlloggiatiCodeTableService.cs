@@ -55,7 +55,13 @@ public sealed record AlloggiatiCodeTableStatus(
     string? SourceVersion,
     string? SourceFileName);
 
-public sealed record AlloggiatiCodeEntryInfo(AlloggiatiCodeTable Table, string Code, string Description, string? Province);
+/// <param name="CitizenshipLabel">Adjective shown for a citizenship (Italiano). Null for places and unknown countries.</param>
+public sealed record AlloggiatiCodeEntryInfo(
+    AlloggiatiCodeTable Table,
+    string Code,
+    string Description,
+    string? Province,
+    string? CitizenshipLabel = null);
 
 /// <param name="Line">1-based line of the file (0 for the file as a whole).</param>
 /// <param name="Error">Stable snake_case code (see <see cref="AlloggiatiCodeImportErrors"/>).</param>

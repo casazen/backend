@@ -23,6 +23,7 @@ namespace Casazen.Web.Controllers;
 public class PublicGuestCheckInController(
     IGuestCheckInService checkInService,
     IAlloggiatiCodeTableService codeTableService,
+    ICheckInDocumentReader documentReader,
     IAlloggiatiReportScheduler alloggiatiReportScheduler,
     IIdentityVerificationFlowService verificationFlow,
     IFeatureFlags featureFlags,
@@ -148,6 +149,29 @@ public class PublicGuestCheckInController(
         var results = await codeTableService.SearchAsync(
             tables, q ?? string.Empty, AlloggiatiController.CodeSearchLimit, HttpContext.RequestAborted);
         return Ok(results.Select(AlloggiatiCodeEntryDto.From));
+    }
+
+    /// <summary>
+    /// Reads one identity-document photo and returns the fields the guest can confirm. The photo is not stored.
+    /// A missing provider or an unreadable picture answers 200 with <c>read: false</c> so the guest can type the data.
+    /// </summary>
+    [HttpPost("{token}/read-document")]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
+    [RequestSizeLimit(CheckInDocumentLimits.MaxImageBytes)]
+    public async Task<ActionResult<CheckInDocumentReadResponse>> ReadDocument(string token, IFormFile? file)
+    {
+        if (await checkInService.GetSessionByTokenAsync(token) is null)
+            return NotFound();
+
+        if (file is null || file.Length == 0)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "checkin_document_missing", "CheckInDocumentMissing");
+
+        await using var stream = file.OpenReadStream();
+        var read = await documentReader.ReadAsync(stream, HttpContext.RequestAborted);
+        if (read.Reason is "unsupported_file" or "too_large")
+            return this.ApiProblem(StatusCodes.Status400BadRequest, $"checkin_document_{read.Reason}", "CheckInDocumentRejected");
+
+        return Ok(CheckInDocumentReadResponse.From(read));
     }
 
     /// <summary>
