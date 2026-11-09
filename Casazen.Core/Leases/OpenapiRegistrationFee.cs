@@ -4,12 +4,9 @@ using Casazen.Core.Options;
 namespace Casazen.Core.Leases;
 
 /// <summary>
-/// Filing fee for an Openapi lease registration that is not canone concordato.
-/// The percentage and the minimum are <see cref="RegistroTaxOptions"/>: the same registration-tax percentage the
-/// canone concordato advisory already uses (there on 70% of the rent when the ATA relief applies, here on the full
-/// annual rent, which is the ordinary branch of that same formula). No second rate is introduced.
-/// Cedolare secca does not change the percentage: this is the fee CasaZen collects before the filing proceeds, not the
-/// tax the Agenzia charges (that tax stays on the IBAN Openapi debits, and is zero under the cedolare).
+/// Customer price for an Openapi lease registration. It is deliberately independent of the registration tax: taxes due
+/// to the Agenzia are collected by the provider through the IBAN supplied in the filing, while this checkout covers the
+/// published Openapi service price and CasaZen's fixed service fee.
 /// </summary>
 public static class OpenapiRegistrationFee
 {
@@ -20,22 +17,15 @@ public static class OpenapiRegistrationFee
 
     public const string AlreadyPaidCode = "openapi_registration_already_paid";
 
-    /// <summary>This path does not file a canone concordato. That contract stays on its own flow.</summary>
-    public const string NotThisContractCode = "openapi_registration_concordato";
+    public const int OpenapiServiceCents = 1_290;
+    public const int CasazenServiceCents = 2_000;
 
-    public static bool Applies(LeaseContractType contractType) => contractType != LeaseContractType.Concordato;
+    public static bool Applies(LeaseContractType contractType) => true;
 
     public static OpenapiRegistrationQuote Quote(decimal monthlyRent, RegistroTaxOptions registro)
     {
         ArgumentNullException.ThrowIfNull(registro);
-        var percent = registro.Rate;
-        var annual = decimal.Round(monthlyRent * 12m, 2, MidpointRounding.AwayFromZero);
-        var computed = decimal.Round(annual * percent, 2, MidpointRounding.AwayFromZero);
-        var due = computed < registro.FirstYearMinimumEur ? registro.FirstYearMinimumEur : computed;
-        if (due < 0)
-            due = 0;
-        var cents = (int)decimal.Round(due * 100m, 0, MidpointRounding.AwayFromZero);
-        return new OpenapiRegistrationQuote(percent, cents);
+        return new OpenapiRegistrationQuote(0m, OpenapiServiceCents + CasazenServiceCents);
     }
 }
 
