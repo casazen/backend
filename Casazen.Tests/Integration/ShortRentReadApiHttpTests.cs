@@ -110,13 +110,9 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         var ownerTodo = ownerDay.GetProperty("todo").GetProperty("items").EnumerateArray().ToList();
         var collaboratorTodo = collaboratorDay.GetProperty("todo").GetProperty("items").EnumerateArray().ToList();
 
-        // Properties to activate and turnovers to close do not depend on the day: both properties for the owner, one for the other.
-        Assert.Equal(
-            new[] { world.GrantedId, world.HiddenId }.Order(),
-            ownerTodo.Where(i => i.GetProperty("action").GetString() == "ActivateProperty").Select(i => i.GetProperty("propertyId").GetGuid()).Order());
-        Assert.Equal(
-            [world.GrantedId],
-            collaboratorTodo.Where(i => i.GetProperty("action").GetString() == "ActivateProperty").Select(i => i.GetProperty("propertyId").GetGuid()));
+        // These houses have no CIN, so the home does not offer activation. Turnovers to close do not depend on the day.
+        Assert.DoesNotContain(ownerTodo, i => i.GetProperty("action").GetString() == "ActivateProperty");
+        Assert.DoesNotContain(collaboratorTodo, i => i.GetProperty("action").GetString() == "ActivateProperty");
         Assert.Equal(
             2,
             ownerTodo.Count(i => i.GetProperty("action").GetString() == "ConfirmPropertyReady"));
@@ -291,12 +287,9 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
             Assert.NotEmpty(item.GetProperty("missing").EnumerateArray());
         }
 
-        var activation = summary.GetProperty("propertiesPending").GetProperty("items").EnumerateArray().First();
-        Assert.Contains(
-            activation.GetProperty("missing").EnumerateArray(),
-            m => m.GetProperty("code").GetString() == "activation_cin_missing" && m.GetProperty("field").GetString() == "cin");
-        Assert.Equal(2, summary.GetProperty("propertiesPending").GetProperty("count").GetInt32());
-        Assert.Equal(1, limited.GetProperty("propertiesPending").GetProperty("count").GetInt32());
+        // A house with no CIN is not an activation the home can open.
+        Assert.Equal(0, summary.GetProperty("propertiesPending").GetProperty("count").GetInt32());
+        Assert.Equal(0, limited.GetProperty("propertiesPending").GetProperty("count").GetInt32());
     }
 
     // --- GET /api/bookings/search ---------------------------------------------------------------------

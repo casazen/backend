@@ -297,6 +297,42 @@ public class ComplianceStatusServiceTests
         Assert.Equal([failed.Id], status.Evaluated.BookingIds);
     }
 
+    [Fact]
+    public async Task Alloggiati_AStayWhosePropertyOrGuestIsGone_IsNotAnAlert_AndItsTodoCloses()
+    {
+        var world = await World.SeedAsync();
+        var (open, _) = await world.AddStayAsync(world.Granted, checkInOffset: -2);
+        var (goneProperty, _) = await world.AddStayAsync(world.Hidden, checkInOffset: -2);
+        var (goneGuest, _) = await world.AddStayAsync(world.Granted, checkInOffset: -2);
+
+        await using var db = world.Db();
+        ComplianceActivityFeeder Feeder() => new(
+            new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, world.Clock),
+            db,
+            new MemoryCache(new MemoryCacheOptions()),
+            NullLogger<ComplianceActivityFeeder>.Instance);
+
+        await Feeder().FeedAsync(world.OrgWide, await world.StatusService(db).EvaluateAsync(world.OrgWide, CancellationToken.None), CancellationToken.None);
+        Assert.Single(await OpenTodosOfAsync(db, open.Id));
+        Assert.Single(await OpenTodosOfAsync(db, goneProperty.Id));
+        Assert.Single(await OpenTodosOfAsync(db, goneGuest.Id));
+
+        (await db.Properties.SingleAsync(p => p.Id == world.Hidden.Id)).IsDeleted = true;
+        (await db.Guests.SingleAsync(g => g.Id == goneGuest.GuestId)).IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        var status = await world.StatusService(db).EvaluateAsync(world.OrgWide, CancellationToken.None);
+        Assert.Contains(status.Items, i => i.BookingId == open.Id);
+        Assert.DoesNotContain(status.Items, i => i.BookingId == goneProperty.Id || i.BookingId == goneGuest.Id);
+        Assert.DoesNotContain(goneProperty.Id, status.Evaluated.BookingIds);
+        Assert.DoesNotContain(goneGuest.Id, status.Evaluated.BookingIds);
+
+        await Feeder().FeedAsync(world.OrgWide, status, CancellationToken.None);
+        Assert.Single(await OpenTodosOfAsync(db, open.Id));
+        Assert.Empty(await OpenTodosOfAsync(db, goneProperty.Id));
+        Assert.Empty(await OpenTodosOfAsync(db, goneGuest.Id));
+    }
+
     // ─── Identity ───────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

@@ -90,6 +90,7 @@ public class AlloggiatiWebService(
             .Include(b => b.Property)
             // A no-show (NF-45) has nothing to send: it leaves the list of the communications.
             .Where(b => b.OrgId == scope.OrgId && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
+            .Where(OpenableStayRules.CanShow)
             .InScope(scope);
 
         if (propertyId.HasValue)
@@ -110,6 +111,13 @@ public class AlloggiatiWebService(
         var now = UtcNow();
         var today = _clock.TodayInRome();
         return bookings
+            .Where(booking => OpenableStayRules.CanCompleteStay(
+                booking.Property?.Name,
+                booking.Guest?.FirstName,
+                booking.Guest?.LastName,
+                AlloggiatiRecordRules.IsDataComplete(guests[booking.Id]),
+                booking.CheckOutDate,
+                today))
             .Select(booking =>
             {
                 var report = SlotReport(reports[booking.Id].ToList(), booking.GuestId);
