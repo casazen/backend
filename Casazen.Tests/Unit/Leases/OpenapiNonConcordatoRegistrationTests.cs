@@ -35,15 +35,15 @@ public class OpenapiNonConcordatoRegistrationTests
     };
 
     [Fact]
-    public void Quote_UsesTheRegistrationTaxPercentage_AndTheMinimum()
+    public void Quote_IsThePublishedOpenapiPricePlusTheCasazenServiceFee()
     {
         var full = OpenapiRegistrationFee.Quote(1_200m, Registro);
-        Assert.Equal(0.02m, full.Percent);
-        Assert.Equal(28_800, full.AmountCents);
+        Assert.Equal(0m, full.Percent);
+        Assert.Equal(3_290, full.AmountCents);
 
         var minimum = OpenapiRegistrationFee.Quote(100m, Registro);
-        Assert.Equal(6_700, minimum.AmountCents);
-        Assert.False(OpenapiRegistrationFee.Applies(LeaseContractType.Concordato));
+        Assert.Equal(3_290, minimum.AmountCents);
+        Assert.True(OpenapiRegistrationFee.Applies(LeaseContractType.Concordato));
         Assert.True(OpenapiRegistrationFee.Applies(LeaseContractType.Libero));
         Assert.True(OpenapiRegistrationFee.Applies(LeaseContractType.Transitorio));
     }
@@ -192,18 +192,16 @@ public class OpenapiNonConcordatoRegistrationTests
     }
 
     [Fact]
-    public async Task SubmitToProvider_Concordato_DoesNotUseOpenapi()
+    public async Task SubmitToProvider_PaidConcordato_CallsOpenapi()
     {
-        var (service, openapi, provider, _) = await ReadyServiceAsync(LeaseContractType.Concordato, paid: false);
-        provider.Setup(p => p.SubmitAsync(It.IsAny<LeaseContract>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("PROVIDER-1");
+        var (service, openapi, provider, _) = await ReadyServiceAsync(LeaseContractType.Concordato, paid: true);
 
         await service.SubmitToProviderAsync(LeaseId, OwnerId, Delega);
 
         openapi.Verify(
             c => c.SubmitLeaseRegistrationAsync(It.IsAny<LeaseContract>(), It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()),
-            Times.Never);
-        provider.Verify(p => p.SubmitAsync(It.IsAny<LeaseContract>(), It.IsAny<CancellationToken>()), Times.Once);
+            Times.Once);
+        provider.Verify(p => p.SubmitAsync(It.IsAny<LeaseContract>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     private static readonly Guid LeaseId = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
