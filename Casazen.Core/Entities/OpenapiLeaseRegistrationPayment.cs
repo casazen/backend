@@ -6,7 +6,7 @@ using Casazen.Core.Multitenancy;
 namespace Casazen.Core.Entities;
 
 /// <summary>
-/// The filing fee of one Openapi registration of a lease that is not canone concordato.
+/// The prepaid Openapi and CasaZen service fee of one Openapi registration.
 /// <see cref="FeePercent"/> and <see cref="AmountCents"/> are snapshots of the quote at checkout: a later change of the
 /// rate does not rewrite a payment, and the gate accepts only a completed payment of the quote in force now.
 /// </summary>

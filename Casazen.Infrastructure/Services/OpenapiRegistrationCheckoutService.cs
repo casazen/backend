@@ -47,9 +47,6 @@ public sealed class OpenapiRegistrationCheckoutService(
             (PostgresAdvisoryLocks.Scope.OpenapiLeaseRegistrationCheckout, leaseId.ToString("N")));
 
         var lease = await db.LeaseContracts.SingleAsync(l => l.Id == leaseId && l.OrgId == orgId, cancellationToken);
-        if (!OpenapiRegistrationFee.Applies(lease.ContractType))
-            throw new DomainConflictException(OpenapiRegistrationFee.NotThisContractCode, "OpenapiRegistrationConcordato");
-
         var quote = OpenapiRegistrationFee.Quote(lease.MonthlyRent, advisory.Value.Registro);
         if (quote.AmountCents <= 0)
             throw new DomainConflictException(OpenapiRegistrationFee.AlreadyPaidCode, "OpenapiRegistrationAlreadyPaid");
@@ -112,7 +109,8 @@ public sealed class OpenapiRegistrationCheckoutService(
                         UnitAmount = quote.AmountCents,
                         ProductData = new SessionLineItemPriceDataProductDataOptions
                         {
-                            Name = "Registrazione contratto di locazione",
+                            Name = "Registrazione contratto di locazione (OpenAPI + CasaZen)",
+                            Description = "Servizio OpenAPI €12,90 + servizio CasaZen €20,00. Tributi eventualmente dovuti all'Agenzia delle Entrate sono esclusi.",
                         },
                     },
                 },

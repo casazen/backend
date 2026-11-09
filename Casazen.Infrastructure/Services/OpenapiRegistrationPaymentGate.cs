@@ -12,8 +12,7 @@ using Microsoft.Extensions.Options;
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// Refuses an Openapi filing until a completed payment matches the quote in force (same percentage as the
-/// registration-tax advisory, full annual rent). The check is scoped to the lease's org.
+/// Refuses an Openapi filing until a completed checkout matches the fixed Openapi + CasaZen quote. The check is scoped to the lease's org.
 /// </summary>
 public sealed class OpenapiRegistrationPaymentGate(
     AppDbContext db,

@@ -497,10 +497,10 @@ public class LeasesController(
     }
 
     /// <summary>
-    /// Stripe Checkout for the Openapi filing fee of a lease that is not canone concordato. No body.
-    /// The amount is the existing registration-tax percentage of the annual rent. 409
+    /// Stripe Checkout for the Openapi filing fee. Available for every supported lease type, including canone concordato.
+    /// The amount is the Openapi listed service price plus CasaZen's fixed service fee. 409
     /// <c>openapi_registration_unpaid</c> is the filing itself when this has not been paid;
-    /// <c>openapi_registration_already_paid</c> when it has; <c>openapi_registration_concordato</c> for a canone concordato.
+    /// <c>openapi_registration_already_paid</c> when it has.
     /// </summary>
     [HttpPost("{id:guid}/registration/checkout")]
     [FeatureGate(FeatureFlags.RliProvider)]
