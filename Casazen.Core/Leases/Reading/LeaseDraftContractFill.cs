@@ -286,8 +286,14 @@ public static class LeaseDraftContractFill
             }
 
             var index = list.FindIndex(e => ItalianFiscalCode.IsValid(e.FiscalCode) && ItalianFiscalCode.Normalize(e.FiscalCode) == code);
+            // The same person already typed: the name is enough when the row has no code, and also when the code was mistyped
+            // (it does not match). Merging keeps that row, so the contract does not append them a second time. A person this
+            // same reading just added has a code of their own and is not matched by name.
             if (index < 0)
-                index = list.FindIndex(e => LeaseDraftRules.Clean(e.FiscalCode) is null && SameName(e, read));
+            {
+                index = list.FindIndex(e =>
+                    SameName(e, read) && (LeaseDraftRules.Clean(e.FiscalCode) is null || existing.Any(typed => typed.Id == e.Id)));
+            }
 
             if (index >= 0)
             {

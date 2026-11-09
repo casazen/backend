@@ -339,6 +339,71 @@ public sealed class LeaseContractTextParserTests
     }
 
     [Fact]
+    public void TheOtherSideOfTraE_WithoutAFormulaOfItsOwn_DoesNotInheritTheLandlord()
+    {
+        // As the libero is written: «TRA … E La Sig.ra». The tenant's own «di seguito Conduttore» is what an OCR drops.
+        // «E la» is also how a co-tenant is joined, but here it opens the other side, so she is not a second landlord.
+        const string text = """
+            TRA
+            Il Sig. Mario Rossi, nato a Roma (RM) il 01/01/1980, residente in Roma (RM),
+            Via dei Mille n. 5, codice fiscale RSSMRA80A01H501U, di seguito denominato "Locatore"
+            E
+            La Sig.ra Giulia Verdi, nata a Milano (MI) il 02/02/1985, residente in Milano (MI),
+            Via Argiro n. 7, codice fiscale VRDGLI85B42F205E.
+            """;
+
+        var reading = LeaseContractTextParser.Parse(text);
+
+        Assert.Equal("RSSMRA80A01H501U", Assert.Single(reading.Parties).FiscalCode);
+        Assert.Equal(PartyRole.Landlord, reading.Parties[0].Role);
+    }
+
+    [Fact]
+    public void ACoTenantJoinedAfterTraE_KeepsTheTenant_WhenTheFirstTenantHasTheirOwnFormula()
+    {
+        const string text = """
+            TRA
+            Il Sig. Mario Rossi, nato a Roma il 01/01/1980, residente in Roma, Via dei Mille n. 5, C.F. RSSMRA80A01H501U, di seguito Locatore
+            E
+            La Sig.ra Giulia Verdi, nata a Milano il 02/02/1985, residente in Milano, Via Verdi n. 3, C.F. VRDGLI85B42F205E, di seguito Conduttrice,
+            e il Sig. Paolo Bianchi, nato a Monza il 10/07/1968, residente in Milano, Via Roma n. 9, C.F. BNCPLA68L10F704T.
+            """;
+
+        var reading = LeaseContractTextParser.Parse(text);
+
+        Assert.Equal("RSSMRA80A01H501U", Assert.Single(reading.Parties, p => p.Role == PartyRole.Landlord).FiscalCode);
+        Assert.Equal(["BNCPLA68L10F704T", "VRDGLI85B42F205E"], reading.Parties.Where(p => p.Role == PartyRole.Tenant).Select(p => p.FiscalCode).Order());
+    }
+
+    [Theory]
+    [InlineData("in qualità di fideiussore")]
+    [InlineData("quale garante")]
+    public void AGuarantorQualifiedAfterTheFiscalCode_IsNotJoinedAsATenant(string qualifier)
+    {
+        var reading = LeaseContractTextParser.Parse($"""
+            TRA il Sig. Mario Rossi, nato a Roma il 01/01/1980, residente in Roma, Via dei Mille n. 5, C.F. RSSMRA80A01H501U, di seguito Locatore,
+            e la Sig.ra Giulia Verdi, nata a Milano il 02/02/1985, residente in Milano, Via Verdi n. 3, C.F. VRDGLI85B42F205E, di seguito Conduttrice,
+            e il Sig. Paolo Bianchi, nato a Monza il 10/07/1968, residente in Milano, Via Roma n. 9, C.F. BNCPLA68L10F704T, {qualifier}.
+            """);
+
+        Assert.Equal("VRDGLI85B42F205E", Assert.Single(reading.Parties, p => p.Role == PartyRole.Tenant).FiscalCode);
+        Assert.DoesNotContain(reading.Parties, p => p.FiscalCode == "BNCPLA68L10F704T");
+    }
+
+    [Fact]
+    public void ACoTenantIsKept_WhenALaterArticleNamesAFideiussione()
+    {
+        var reading = LeaseContractTextParser.Parse("""
+            TRA il Sig. Mario Rossi, nato a Roma il 01/01/1980, residente in Roma, Via dei Mille n. 5, C.F. RSSMRA80A01H501U, di seguito Locatore,
+            e la Sig.ra Giulia Verdi, nata a Milano il 02/02/1985, residente in Milano, Via Verdi n. 3, C.F. VRDGLI85B42F205E, di seguito Conduttrice,
+            e il Sig. Paolo Bianchi, nato a Monza il 10/07/1968, residente in Milano, Via Roma n. 9, C.F. BNCPLA68L10F704T.
+            PREMESSO CHE a garanzia delle obbligazioni è prestata fideiussione bancaria.
+            """);
+
+        Assert.Equal(["BNCPLA68L10F704T", "VRDGLI85B42F205E"], reading.Parties.Where(p => p.Role == PartyRole.Tenant).Select(p => p.FiscalCode).Order());
+    }
+
+    [Fact]
     public void TheRoleAfterALongIdentityDocument_IsStillThatPersonsRole()
     {
         var padding = string.Join(' ', Enumerable.Repeat("annotazione", 40));

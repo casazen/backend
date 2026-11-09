@@ -353,12 +353,22 @@ public static partial class LeaseContractTextParser
     private const int ContinuationReach = 500;
 
     // "e il", "ed la", "nonché il" at the end of what separates two people: the next one continues the same side.
+    // «TRA … E la Sig.ra» ends the same way, and that «E» opens the other side (see CrossesToTheOtherSide).
     [GeneratedRegex(@"\b(?:e|ed|nonch[eé]|unitamente(?:\s+a)?|altres[iì])(?:\s+(?:il|la|lo|i|gli|le))?\s*$", Options, Timeout)]
     private static partial Regex JoinedToThePrevious();
 
     // A new side of the contract, or someone who signs but does not rent: not another tenant or landlord.
+    // The qualifier often follows the fiscal code («C.F. …, in qualità di fideiussore», «quale garante»).
     [GeneratedRegex(@"\b(?:dall'altra\s+parte|d'altra\s+parte|fideiussor\w*|garant[ei]|testimon[ei])\b", Options, Timeout)]
     private static partial Regex NotACoParty();
+
+    // «TRA il Sig. … E la Sig.ra …» and «FRA … E …»: the opening of the party clause.
+    [GeneratedRegex(@"\b(?:tra|fra)\b", Options, Timeout)]
+    private static partial Regex TraOrFra();
+
+    // Where the introduction of the parties ends and the articles begin. A fideiussione named there is not this person.
+    [GeneratedRegex(@"\b(?:premess[aeoi]\b|articolo\b|art\.|si\s+conviene\b|si\s+stipula\b|concede\s+in\s+locazione\b)", Options, Timeout)]
+    private static partial Regex ArticlesStart();
 
     private static bool NamesAnotherRole(string text, PartyRole role)
     {
@@ -369,6 +379,50 @@ public static partial class LeaseContractTextParser
         }
 
         return false;
+    }
+
+    /// <summary>The join at the end of <paramref name="between"/> is «e» or «ed» (with an optional article), not «nonché» or «unitamente».</summary>
+    private static bool JoinedByE(string between)
+    {
+        var join = JoinedToThePrevious().Match(between);
+        if (!join.Success)
+            return false;
+
+        var head = join.Value.Trim();
+        var space = head.IndexOf(' ');
+        var word = space < 0 ? head : head[..space];
+        return word.Equals("e", StringComparison.OrdinalIgnoreCase) || word.Equals("ed", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// «TRA … E …» (and «FRA … E …») introduces the other side with the same «e il» / «e la» that joins a co-tenant. Copying the
+    /// role across that «e» labels the tenant as another landlord when their own formula was dropped. Once a person of the other
+    /// role has already been read, a later «e il Sig.» stays on the side it follows.
+    /// </summary>
+    private static bool CrossesToTheOtherSide(string flat, List<Intro> intros, RoleEvidence[] roles, int i, string between)
+    {
+        if (roles[i].Role is not { } role || !JoinedByE(between))
+            return false;
+
+        for (var j = 0; j < i; j++)
+        {
+            if (roles[j].Role is { } earlier && earlier != role)
+                return false;
+        }
+
+        var nextStart = intros[i + 1].Start;
+        return nextStart > 0 && TraOrFra().IsMatch(flat[..nextStart]);
+    }
+
+    /// <summary>The words after the fiscal code that still introduce the person, and not the articles that follow the parties.</summary>
+    private static string IntroductionTail(string flat, int from, int to)
+    {
+        if (from >= to || from >= flat.Length)
+            return string.Empty;
+
+        var tail = flat[from..Math.Min(to, flat.Length)];
+        var articles = ArticlesStart().Match(tail);
+        return articles.Success ? tail[..articles.Index] : tail;
     }
 
     private static IReadOnlyList<ReadParty> ReadParties(string flat)
@@ -415,6 +469,7 @@ public static partial class LeaseContractTextParser
 
         // "di seguito Conduttrice, e il Sig. Paolo Bianchi, C.F. …": the second person has no formula of their own.
         // They are the same side when the text joins them, and not when a new side or a guarantor is named.
+        // The guarantor's «fideiussore» / «garante» is often after their fiscal code, in the tail of their own introduction.
         for (var i = 0; i + 1 < intros.Count; i++)
         {
             if (roles[i].Role is not { } role || roles[i + 1].Role is not null)
@@ -427,8 +482,14 @@ public static partial class LeaseContractTextParser
 
             var between = flat[codeEnd..nextStart];
             var preface = nextStart < intros[i + 1].Code.Index ? flat[nextStart..intros[i + 1].Code.Index] : string.Empty;
-            if (between.Length > ContinuationReach || NotACoParty().IsMatch(between) || NotACoParty().IsMatch(preface))
+            var followedCodeEnd = intros[i + 1].Code.Index + intros[i + 1].Code.Length;
+            var tail = IntroductionTail(flat, followedCodeEnd, roleEnds[i + 1]);
+            if (between.Length > ContinuationReach || CrossesToTheOtherSide(flat, intros, roles, i, between)
+                || NotACoParty().IsMatch(between) || NotACoParty().IsMatch(preface) || NotACoParty().IsMatch(tail))
+            {
                 continue;
+            }
+
             // The formula of the person just read ("di seguito Conduttrice") sits in between: the same role does not start a new side.
             if (!JoinedToThePrevious().IsMatch(between) || NamesAnotherRole(between, role) || NamesAnotherRole(preface, role))
                 continue;

@@ -50,6 +50,26 @@ public class LeaseDraftContractFillPartiesTests
         Assert.DoesNotContain(fill.Fields, f => f is { Field: "party", State: FieldReadingState.Conflict });
     }
 
+    [Fact]
+    public void ATenantTypedWithTheRightNameAndTheWrongCode_IsKeptOnce_AndTheCoTenantIsAdded()
+    {
+        // The name is the same person the contract names, so the row is not a stranger and the co-tenant may be added.
+        // The code that was typed does not match: the row is kept (the code stays, and is a conflict), not appended again.
+        var id = Guid.NewGuid();
+        var typed = new LeaseDraftValues
+        {
+            Tenants = [new LeaseDraftParty { Id = id, FirstName = "Giulia", LastName = "Verdi", FiscalCode = TypedTenantCode }],
+        };
+
+        var fill = LeaseDraftContractFill.Merge(typed, Reading(), LeaseOrigin.Imported, Guid.NewGuid);
+
+        Assert.Equal([TypedTenantCode, SecondTenantCode], fill.Values.Tenants.Select(t => t.FiscalCode));
+        Assert.Equal(id, fill.Values.Tenants[0].Id);
+        Assert.Equal("Milano (MI), Via Argiro n. 7", fill.Values.Tenants[0].Residence);
+        Assert.Contains(fill.Fields, f => f is { Field: "fiscalCode", State: FieldReadingState.Conflict, PartyId: var party } && party == id);
+        Assert.DoesNotContain(fill.Values.Tenants, t => t.FiscalCode == FirstTenantCode);
+    }
+
     /// <summary>A contract with a landlord and two tenants, each with a fiscal code, a name and a residence.</summary>
     private static LeaseContractReading Reading() =>
         new()
