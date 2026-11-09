@@ -285,7 +285,7 @@ public static class LeaseDraftContractFill
                 continue;
             }
 
-            var index = list.FindIndex(e => ItalianFiscalCode.Normalize(e.FiscalCode) == code);
+            var index = list.FindIndex(e => ItalianFiscalCode.IsValid(e.FiscalCode) && ItalianFiscalCode.Normalize(e.FiscalCode) == code);
             if (index < 0)
                 index = list.FindIndex(e => LeaseDraftRules.Clean(e.FiscalCode) is null && SameName(e, read));
 
@@ -295,10 +295,10 @@ public static class LeaseDraftContractFill
                 continue;
             }
 
-            // Somebody else is already typed in this role: not replaced, not added to (it may be the wrong contract): the person is told.
-            // An empty role gets the people of the contract, all of them (a contract can have co-tenants), up to what the flow accepts: it is
-            // the role as it was before this reading that counts, not the people this same reading has just put there.
-            if (existing.Count > 0 || list.Count >= LeasePartyRules.MaxPerRole)
+            // Someone already typed who is not a person of this contract: not replaced and not added to (it may be the wrong contract).
+            // A person the contract also names, already in the role, does not block the others the same contract names (a co-tenant the
+            // first reading missed). A row with no name and no code is empty, not a person typed instead.
+            if (TypedByHand(existing, reading, role) || list.Count >= LeasePartyRules.MaxPerRole)
             {
                 run.Add("party", FieldReadingState.Conflict, read.FiscalCodeConfidence, role: role);
                 continue;
@@ -312,6 +312,25 @@ public static class LeaseDraftContractFill
 
     /// <summary>The citizenship a landlord born in Italy is given when the contract of the service does not state it.</summary>
     private const string DerivedCitizenship = "IT";
+
+    /// <summary>
+    /// True when the role already holds a person this contract does not name. The people the contract does name may be completed,
+    /// and the co-tenants it also names may be added; a stranger stays as typed and nobody is added beside them.
+    /// </summary>
+    private static bool TypedByHand(IReadOnlyList<LeaseDraftParty> existing, LeaseContractReading reading, PartyRole role)
+    {
+        bool Named(LeaseDraftParty entry) => reading.Parties.Any(read =>
+            read.Role == role
+            && read.RoleConfidence >= LeaseContractTextParser.AcceptedConfidence
+            && read.FiscalCodeConfidence >= LeaseContractTextParser.AcceptedConfidence
+            && ItalianFiscalCode.IsValid(read.FiscalCode)
+            && ((ItalianFiscalCode.IsValid(entry.FiscalCode) && ItalianFiscalCode.Normalize(entry.FiscalCode) == ItalianFiscalCode.Normalize(read.FiscalCode))
+                || SameName(entry, read)));
+
+        return existing.Any(entry =>
+            (LeaseDraftRules.Clean(entry.FiscalCode) is not null || LeaseDraftRules.Clean(entry.FirstName) is not null || LeaseDraftRules.Clean(entry.LastName) is not null)
+            && !Named(entry));
+    }
 
     private static bool SameName(LeaseDraftParty entry, ReadParty read) =>
         LeaseDraftRules.Clean(entry.FirstName) is { } first && LeaseDraftRules.Clean(entry.LastName) is { } last
