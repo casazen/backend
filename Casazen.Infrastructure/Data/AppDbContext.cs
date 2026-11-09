@@ -296,6 +296,7 @@ public class AppDbContext(
     public DbSet<RentSchedule> RentSchedules { get; set; } = null!;
     public DbSet<RentLedgerEntry> RentLedgerEntries { get; set; } = null!;
     public DbSet<RentLedgerComponent> RentLedgerComponents { get; set; } = null!;
+    public DbSet<TenantPaymentDeclaration> TenantPaymentDeclarations { get; set; } = null!;
     public DbSet<LeaseCondominiumTerms> LeaseCondominiumTerms { get; set; } = null!;
     public DbSet<TenantCondominiumSettlement> TenantCondominiumSettlements { get; set; } = null!;
     public DbSet<TenantExpenseAllocation> TenantExpenseAllocations { get; set; } = null!;
@@ -1094,6 +1095,24 @@ public class AppDbContext(
             .HasIndex(c => c.TenantSettlementId)
             .IsUnique()
             .HasFilter("\"TenantSettlementId\" IS NOT NULL");
+
+        modelBuilder.Entity<TenantPaymentDeclaration>()
+            .HasOne(d => d.LeaseContract)
+            .WithMany()
+            .HasForeignKey(d => d.LeaseContractId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<TenantPaymentDeclaration>()
+            .HasOne(d => d.RentLedgerEntry)
+            .WithMany()
+            .HasForeignKey(d => d.RentLedgerEntryId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<TenantPaymentDeclaration>()
+            .HasIndex(d => new { d.RentLedgerEntryId, d.SubmittedAt });
+
+        modelBuilder.Entity<TenantPaymentDeclaration>()
+            .HasIndex(d => d.OrgId);
 
         // One current condominium clause per lease. The source document is optional and cleared when that document goes.
         modelBuilder.Entity<LeaseCondominiumTerms>()

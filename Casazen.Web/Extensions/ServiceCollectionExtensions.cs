@@ -255,6 +255,11 @@ public static class ServiceCollectionExtensions
             .AddPolicy(CasazenPolicies.GuestAccount, policy => policy
                 .RequireAuthenticatedUser()
                 .RequireAssertion(context => !string.IsNullOrWhiteSpace(context.User.GetUserId())))
+            // A long-rent tenant has no host organization or host role. Each tenant-area action additionally binds the
+            // subject to a lease through the account's verified Auth0 email and the lease's tenant party.
+            .AddPolicy(CasazenPolicies.TenantAccount, policy => policy
+                .RequireAuthenticatedUser()
+                .RequireAssertion(context => !string.IsNullOrWhiteSpace(context.User.GetUserId())))
             // Owner portal access (ADR-011): context=owner_portal claim, MUST NOT include host roles.
             .AddPolicy(CasazenPolicies.OwnerPortal, policy =>
                 policy.Requirements.Add(new OwnerPortalRequirement()));

@@ -59,6 +59,13 @@ public static class CasazenPolicies
     /// </summary>
     public const string GuestAccount = "GuestAccount";
 
+    /// <summary>
+    /// Long-rent tenant self-service area: a signed-in account with a subject. The endpoint resolves the account's
+    /// verified Auth0 email and grants access only when it matches a non-anonymized tenant party of the requested lease.
+    /// A tenant is deliberately not made a member of the landlord's organization.
+    /// </summary>
+    public const string TenantAccount = "TenantAccount";
+
     private const string ShortRent = "RequireContext:short-rent:";
     private const string LongRent = "RequireContext:long-rent:";
 
