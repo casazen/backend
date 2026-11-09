@@ -5631,4 +5631,13 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="MaintenancePhotoNotFound" xml:space="preserve">
     <value>Foto non trovata.</value>
   </data>
+  <data name="TenantEmailNotVerified" xml:space="preserve">
+    <value>Serve un indirizzo email Auth0 verificato, uguale a quello indicato nel contratto di locazione.</value>
+  </data>
+  <data name="TenantDeclarationInvalid" xml:space="preserve">
+    <value>Indica un importo positivo e la data del bonifico.</value>
+  </data>
+  <data name="MaintenanceInvalid" xml:space="preserve">
+    <value>Indica descrizione e urgenza della richiesta di manutenzione.</value>
+  </data>
 </root>
