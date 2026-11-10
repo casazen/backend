@@ -17,6 +17,10 @@ public class EncryptedColumnsTests
         Assert.Equal(
             new[]
             {
+                // ADR-032-R3: the text of an item of the approval queue (a draft of a message to a guest, a mailing) and the host's edit of it: the same purpose as the
+                // words of the conversations (E05/F04/US01/T01).
+                "ApprovalQueueItem.ContentText:Casazen.Message.Content",
+                "ApprovalQueueItem.EditedContentText:Casazen.Message.Content",
                 // NF-81: who an invoice of a booking is made out to (name, fiscal code, VAT number, address, PEC) and, with it, the hash of what was
                 // last written to Octorate (E06/F02/US01/T04).
                 "BookingInvoiceData.AddressCivic:Casazen.BookingInvoiceData",

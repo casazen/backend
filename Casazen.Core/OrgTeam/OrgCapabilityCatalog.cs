@@ -81,7 +81,13 @@ public static class OrgCapabilityCatalog
         new("booking", OrgCapabilityGroups.ShortRent,
             Full: [P(Short, "booking.write")],
             ReadOnly: [P(Short, "booking.read")],
-            Related: [P(Short, "ota.read"), P(Short, "ota.write")]),
+            Related:
+            [
+                P(Short, "ota.read"),
+                P(Short, "ota.write"),
+                // E05/F04/US01/T01: the decision on the items of the approval queue (a draft of a message, a campaign): owner, administrators, property managers.
+                P(Short, HostPermissions.ApprovalDecide),
+            ]),
         new("prices", OrgCapabilityGroups.ShortRent,
             Full: [P(Short, "property.write")],
             ReadOnly: [P(Short, "property.read")],
