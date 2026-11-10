@@ -569,6 +569,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPlatformInvoiceService, PlatformInvoiceService>();
         services.AddScoped<IBillingEntryGate, BillingEntryGate>();
         services.AddScoped<IRentBillingService, RentBillingService>();
+        services.AddScoped<ITenantRentSepaService, TenantRentSepaService>();
+        services.AddScoped<CondominiumPaymentReminderService>();
+        services.AddScoped<IStripeRentSepaGateway, StripeRentSepaGateway>();
         services.AddScoped<ICondominiumAccountingService, CondominiumAccountingService>();
         services.AddScoped<ITenantCondominiumSettlementService, TenantCondominiumSettlementService>();
         services.AddScoped<ITenantExpenseProposalService, TenantExpenseProposalService>();

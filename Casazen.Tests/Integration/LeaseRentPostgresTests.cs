@@ -493,7 +493,9 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         await using var scope = factory.Services.CreateAsyncScope();
         await new RentCollectionJob(
                 scope.ServiceProvider.GetRequiredService<IRentBillingService>(),
-                NullLogger<RentCollectionJob>.Instance)
+                NullLogger<RentCollectionJob>.Instance,
+                scope.ServiceProvider.GetRequiredService<ITenantRentSepaService>(),
+                scope.ServiceProvider.GetRequiredService<Casazen.Infrastructure.Services.CondominiumPaymentReminderService>())
             .ExecuteAsync();
     }
 

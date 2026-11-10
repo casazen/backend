@@ -42,11 +42,13 @@ public class PublicRentPaymentsController(IRentBillingService rentBilling, IBank
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<PublicRentPaymentSession>> CreatePaymentSession(
-        Guid installmentId, [FromBody] RentPaymentTokenRequest request, CancellationToken cancellationToken)
+        Guid installmentId, [FromBody] RentPaymentTokenRequest request,
+        [FromServices] ITenantRentSepaService sepa, CancellationToken cancellationToken)
     {
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
-        return Ok(await rentBilling.CreatePaymentSessionAsync(installmentId, request.Token, cancellationToken));
+        var session = await sepa.PayPublicAsync(installmentId, request.Token, cancellationToken);
+        return Ok(new PublicRentPaymentSession(installmentId, session.ClientSecret, session.PublishableKey, session.StripeAccountId));
     }
 
     /// <summary>

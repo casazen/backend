@@ -49,6 +49,7 @@ public class StripeConnectGateway(
             {
                 CardPayments = new AccountCapabilitiesCardPaymentsOptions { Requested = true },
                 Transfers = new AccountCapabilitiesTransfersOptions { Requested = true },
+                SepaDebitPayments = new AccountCapabilitiesSepaDebitPaymentsOptions { Requested = true },
             },
         };
 

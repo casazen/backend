@@ -165,7 +165,12 @@ public sealed record PublicRentPayment(
     decimal Amount,
     string Currency,
     PublicRentPaymentState State,
-    bool LastPaymentFailed);
+    bool LastPaymentFailed)
+{
+    public IReadOnlyList<RentLedgerComponentView> Components { get; init; } = [];
+    public decimal TransactionFee { get; init; } = Casazen.Core.Leases.TenantSepaAuthorization.TransactionFee;
+    public decimal TotalAmount => Amount + TransactionFee;
+}
 
 /// <summary>The PaymentIntent the tenant confirms with the Stripe Payment Element, on the landlord's connected account.</summary>
 public sealed record PublicRentPaymentSession(
