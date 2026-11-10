@@ -155,7 +155,8 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
 
         var first = await ReadJson(await tenant.PostAsJsonAsync($"/api/public/rent-payments/{installmentId}/payment-session", new { token }));
         var second = await ReadJson(await tenant.PostAsJsonAsync($"/api/public/rent-payments/{installmentId}/payment-session", new { token }));
-        Assert.Equal(seeded.Account, first.GetProperty("stripeAccountId").GetString());
+        Assert.Equal("", first.GetProperty("stripeAccountId").GetString());
+        Assert.Equal(1201m, page.GetProperty("totalAmount").GetDecimal());
         var paymentIntentId = (await InstallmentAsync(installmentId)).StripePaymentIntentId!;
         // The second session reuses the payable PaymentIntent (read back from Stripe): one creation only.
         Assert.StartsWith(paymentIntentId, second.GetProperty("clientSecret").GetString(), StringComparison.Ordinal);
@@ -164,10 +165,10 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         Assert.Equal(paymentIntentId, created.Value.Id);
         Assert.Equal(created.Value.ClientSecret, first.GetProperty("clientSecret").GetString());
         Assert.Equal($"rent-charge:{installmentId:N}:1", created.Key);
-        Assert.Equal(120_000, created.Value.Amount);
+        Assert.Equal(120_100, created.Value.Amount);
         Assert.Equal(RentCharges.Kind, created.Value.Metadata["kind"]);
 
-        var paid = RentEvent("payment_intent.succeeded", paymentIntentId, installmentId, seeded.Account);
+        var paid = RentEvent("payment_intent.succeeded", paymentIntentId, installmentId, account: null);
         await HandleWebhookAsync(paid);
         await HandleWebhookAsync(paid); // duplicate delivery
 
@@ -260,7 +261,7 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         Assert.Equal("2026-09-24", installment.GetProperty("paidOn").GetString());
         Assert.Contains(
             FakeStripeService.CancelledIntents,
-            c => c.IntentId == paymentIntentId && c.AccountId == seeded.Account &&
+            c => c.IntentId == paymentIntentId && c.AccountId == null &&
                  c.IdempotencyKey == $"rent-charge-cancel:{installmentId:N}:{paymentIntentId}");
         var stored = await InstallmentAsync(installmentId);
         Assert.StartsWith("auth0|lt06-offline-", stored.MarkedPaidByUserId, StringComparison.Ordinal);
@@ -296,7 +297,7 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         (await tenant.PostAsJsonAsync($"/api/public/rent-payments/{installmentId}/payment-session", new { token })).EnsureSuccessStatusCode();
         var paymentIntentId = (await InstallmentAsync(installmentId)).StripePaymentIntentId!;
 
-        await HandleWebhookAsync(RentEvent("payment_intent.processing", paymentIntentId, installmentId, seeded.Account));
+        await HandleWebhookAsync(RentEvent("payment_intent.processing", paymentIntentId, installmentId, account: null));
 
         Assert.Equal(RentLedgerStatus.Processing, (await InstallmentAsync(installmentId)).Status);
         var whileInFlight = await seeded.Client.PostAsJsonAsync(
@@ -304,7 +305,7 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         Assert.Equal(HttpStatusCode.Conflict, whileInFlight.StatusCode);
         Assert.Equal(RentBillingErrorCodes.InstallmentInFlight, (await ReadJson(whileInFlight)).GetProperty("code").GetString());
 
-        await HandleWebhookAsync(RentEvent("payment_intent.payment_failed", paymentIntentId, installmentId, seeded.Account, "debit_not_authorized"));
+        await HandleWebhookAsync(RentEvent("payment_intent.payment_failed", paymentIntentId, installmentId, account: null, "debit_not_authorized"));
 
         var failed = await InstallmentAsync(installmentId);
         Assert.Equal(RentLedgerStatus.Failed, failed.Status);
@@ -319,7 +320,7 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
     }
 
     [PostgresFact]
-    public async Task Webhook_RentEventOfThePlatformOrAnotherAccount_LeavesTheInstallmentUnpaid()
+    public async Task Webhook_RentEventOfAnotherIntentOrConnectedAccount_LeavesTheInstallmentUnpaid()
     {
         var seeded = await SignedLeaseAsync("foreign", connect: true);
         var installmentId = await FirstInstallmentIdAsync(seeded);
@@ -328,7 +329,7 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         (await tenant.PostAsJsonAsync($"/api/public/rent-payments/{installmentId}/payment-session", new { token })).EnsureSuccessStatusCode();
         var paymentIntentId = (await InstallmentAsync(installmentId)).StripePaymentIntentId!;
 
-        await HandleWebhookAsync(RentEvent("payment_intent.succeeded", paymentIntentId, installmentId, account: null), WebhookSource.Platform);
+        await HandleWebhookAsync(RentEvent("payment_intent.succeeded", paymentIntentId + "_forged", installmentId, account: null), WebhookSource.Platform);
         await HandleWebhookAsync(RentEvent("payment_intent.succeeded", paymentIntentId, installmentId, "acct_someone_else"));
 
         Assert.Equal(RentLedgerStatus.Scheduled, (await InstallmentAsync(installmentId)).Status);
@@ -499,7 +500,7 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
             .ExecuteAsync();
     }
 
-    private async Task HandleWebhookAsync(Event stripeEvent, WebhookSource source = WebhookSource.Connected)
+    private async Task HandleWebhookAsync(Event stripeEvent, WebhookSource source = WebhookSource.Platform)
     {
         await using var scope = factory.Services.CreateAsyncScope();
         await scope.ServiceProvider.GetRequiredService<StripeWebhookHandler>().HandleEventAsync(stripeEvent, source);
@@ -515,7 +516,7 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
             Object = new PaymentIntent
             {
                 Id = paymentIntentId,
-                Amount = 120_000,
+                Amount = 120_100,
                 Status = type switch
                 {
                     "payment_intent.succeeded" => "succeeded",
@@ -550,6 +551,21 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync(), JsonOpts);
 
     /// <summary>Lease flow factory with a clock the tests control and an email queue that records what is queued.</summary>
+    private sealed class SepaGateway(FakeStripeService stripe) : IStripeRentSepaGateway
+    {
+        public async Task<PaymentIntent> CreateAsync(string account, Guid lease, Guid installment, long amount, string key, CancellationToken ct)
+        {
+            var pi = await stripe.CreateConnectedAccountPaymentIntentAsync(account, amount, "eur", new()
+                { ["kind"] = RentCharges.Kind, [RentCharges.InstallmentMetadataKey] = installment.ToString() }, key, null, ct);
+            pi.TransferData = new PaymentIntentTransferData { DestinationId = account };
+            return pi;
+        }
+        public Task<SetupIntent> SetupAsync(string account, Guid lease, string user, string email, string key, CancellationToken ct) => throw new NotSupportedException();
+        public Task<SetupIntent> ReadSetupAsync(string account, string id, CancellationToken ct) => throw new NotSupportedException();
+        public Task<PaymentIntent> AttachAsync(string id, string customer, string method, CancellationToken ct) => throw new NotSupportedException();
+        public Task<PaymentIntent> ConfirmAsync(string account, string id, string customer, string method, CancellationToken ct) => throw new NotSupportedException();
+    }
+
     public sealed class RentFactory : LeaseFlowWebApplicationFactory
     {
         public FakeTimeProvider Clock { get; } = new(Now);
@@ -567,6 +583,8 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
                 services.AddSingleton<TimeProvider>(Clock);
                 RemoveAllOf<IEmailQueue>(services);
                 services.AddSingleton<IEmailQueue>(Emails);
+                RemoveAllOf<IStripeRentSepaGateway>(services);
+                services.AddScoped<IStripeRentSepaGateway>(sp => new SepaGateway((FakeStripeService)sp.GetRequiredService<IStripeService>()));
             });
         }
     }

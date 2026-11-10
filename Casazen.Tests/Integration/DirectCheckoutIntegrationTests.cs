@@ -1072,6 +1072,7 @@ internal sealed class FakeStripeService : IStripeService
             Id = paymentIntentId,
             Status = StatusOf(paymentIntentId, PaymentIntentStatus),
             ClientSecret = $"{paymentIntentId}_secret_test",
+            TransferData = IdempotentPaymentIntents.Values.FirstOrDefault(pi => pi.Id == paymentIntentId)?.TransferData,
             // Amount of an intent created with an idempotency key (LT-06), so a payable one can be reused.
             Amount = IdempotentPaymentIntents.Values.FirstOrDefault(pi => pi.Id == paymentIntentId)?.Amount ?? 0,
         });

@@ -29,7 +29,7 @@ public sealed class TenantRentSepaServiceTests
         public readonly TenantRentSepaService Service;
         public Fixture()
         {
-            var org = new Org { Name = "Locatore", Slug = "owner", StripeConnectedAccountId = "acct_owner", ConnectChargesEnabled = true };
+            var org = new OrgEntity { Name = "Locatore", Slug = "owner", StripeConnectedAccountId = "acct_owner", ConnectChargesEnabled = true };
             var property = new Casazen.Core.Entities.Property { OrgId = org.Id, OwnerId = "owner", Name = "Casa", Address = "Via Roma", City = "Roma" };
             Lease = new()
             {
@@ -130,7 +130,8 @@ public sealed class TenantRentSepaServiceTests
     public async Task EarlyEndDisablesAutomaticAndRejectsNewPayment()
     {
         using var f = new Fixture();
-        f.Lease.CurrentTermEndDate = f.Lease.TerminatedOn = new DateTime(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc);
+        f.Lease.CurrentTermEndDate = new DateTime(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc);
+        f.Lease.TerminatedOn = f.Lease.CurrentTermEndDate;
         f.Schedule.SepaAutomaticEnabled = true; await f.Db.SaveChangesAsync();
         await f.Service.RunAsync();
         Assert.False((await f.Db.RentSchedules.SingleAsync()).SepaAutomaticEnabled);
