@@ -22,7 +22,7 @@ namespace Casazen.Tests.Unit.Leases;
 
 /// <summary>
 /// Openapi DocuEngine registration of a lease that is not canone concordato: the contract type goes in the request,
-/// the filing fee is the existing registration-tax percentage, and an unpaid fee never reaches Openapi.
+/// the filing fee is the fixed Openapi and CasaZen service price, and an unpaid fee never reaches Openapi.
 /// </summary>
 public class OpenapiNonConcordatoRegistrationTests
 {
@@ -146,8 +146,8 @@ public class OpenapiNonConcordatoRegistrationTests
         {
             OrgId = lease.OrgId,
             LeaseContractId = lease.Id,
-            FeePercent = 0.02m,
-            AmountCents = 28_800,
+            FeePercent = 0m,
+            AmountCents = 3_290,
             Status = OpenapiRegistrationPaymentStatus.Pending,
             StripeCheckoutSessionId = "cs_pending",
         });
@@ -162,6 +162,32 @@ public class OpenapiNonConcordatoRegistrationTests
         await db.SaveChangesAsync();
 
         await gate.EnsurePaidAsync(lease);
+    }
+
+    [Theory]
+    [InlineData(28_800, 0.02)]
+    [InlineData(3_289, 0)]
+    [InlineData(3_290, 0.02)]
+    public async Task Gate_CompletedPayment_WithMismatchedQuote_IsRefused(int amountCents, double feePercent)
+    {
+        await using var db = NewDb();
+        var lease = Lease(LeaseContractType.Libero);
+        lease.OrgId = Guid.NewGuid();
+        db.OpenapiLeaseRegistrationPayments.Add(new OpenapiLeaseRegistrationPayment
+        {
+            OrgId = lease.OrgId,
+            LeaseContractId = lease.Id,
+            FeePercent = (decimal)feePercent,
+            AmountCents = amountCents,
+            Status = OpenapiRegistrationPaymentStatus.Completed,
+            StripeCheckoutSessionId = "cs_stale_quote",
+        });
+        await db.SaveChangesAsync();
+        var gate = new OpenapiRegistrationPaymentGate(db, Options.Create(Advisory()), NullLogger<OpenapiRegistrationPaymentGate>.Instance);
+
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() => gate.EnsurePaidAsync(lease));
+
+        Assert.Equal(OpenapiRegistrationFee.UnpaidCode, error.Code);
     }
 
     [Fact]
@@ -237,8 +263,8 @@ public class OpenapiNonConcordatoRegistrationTests
             {
                 OrgId = org.Id,
                 LeaseContractId = lease.Id,
-                FeePercent = 0.02m,
-                AmountCents = 28_800,
+                FeePercent = 0m,
+                AmountCents = 3_290,
                 Status = OpenapiRegistrationPaymentStatus.Completed,
                 StripeCheckoutSessionId = "cs_paid",
             });
