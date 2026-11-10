@@ -168,6 +168,7 @@ public sealed partial class RentBillingService(
         Regenerate(lease, schedule, entries, plan, trackFrom, now, terms);
 
         await db.SaveChangesAsync(cancellationToken);
+        await BudgetRentAdvanceUpdater.RefreshAsync(db, leaseId, cancellationToken);
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
 
@@ -197,7 +198,7 @@ public sealed partial class RentBillingService(
         foreach (var entry in open)
         {
             // A PaymentIntent the tenant could still pay is canceled first; one paid meanwhile wins.
-            if (entry.StripePaymentIntentId is not null && entry.ConnectedAccountId is not null)
+            if (entry.StripePaymentIntentId is not null && (entry.ConnectedAccountId is not null || entry.TransactionFee > 0))
             {
                 var current = await CancelIfPayableAsync(entry, cancellationToken);
                 if (current.Status != "canceled")
@@ -260,7 +261,7 @@ public sealed partial class RentBillingService(
                     throw NotPayable();
             }
 
-            if (entry.StripePaymentIntentId is not null && entry.ConnectedAccountId is not null)
+            if (entry.StripePaymentIntentId is not null && (entry.ConnectedAccountId is not null || entry.TransactionFee > 0))
             {
                 // The tenant must not be able to pay online an installment declared paid: cancel the PaymentIntent
                 // first. Paid or in flight on Stripe meanwhile: that state is recorded and the declaration refused.
@@ -348,8 +349,10 @@ public sealed partial class RentBillingService(
             entry.DueDate,
             entry.AmountDue,
             RentCharges.Currency.ToUpperInvariant(),
-            PublicStateOf(entry),
-            entry.Status == RentLedgerStatus.Failed);
+            entry.Status is RentLedgerStatus.Paid or RentLedgerStatus.Processing || TenantSepaAuthorization.CanDebit(entry.LeaseContract, Today)
+                ? PublicStateOf(entry) : PublicRentPaymentState.Unavailable,
+            entry.Status == RentLedgerStatus.Failed)
+        { Components = ToView(entry, Today).Components, TransactionFee = entry.Status is RentLedgerStatus.Paid or RentLedgerStatus.Processing ? entry.TransactionFee : TenantSepaAuthorization.TransactionFee };
     }
 
     public async Task<PublicRentPaymentSession> CreatePaymentSessionAsync(
@@ -464,16 +467,6 @@ public sealed partial class RentBillingService(
         RentPaymentIntentEvent paymentEvent, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(paymentEvent);
-        if (string.IsNullOrWhiteSpace(paymentEvent.AccountId))
-        {
-            // Rent PaymentIntents are always created on the landlord's connected account.
-            logger.LogWarning(
-                "Rent event {EventType} for {PaymentIntentId} from the platform account: ignored",
-                paymentEvent.EventType,
-                paymentEvent.PaymentIntentId);
-            return null;
-        }
-
         var installmentId = paymentEvent.InstallmentId ?? await db.RentLedgerEntries
             .Where(e => e.StripePaymentIntentId == paymentEvent.PaymentIntentId)
             .Select(e => (Guid?)e.Id)
@@ -496,6 +489,14 @@ public sealed partial class RentBillingService(
 
         var entry = await db.RentLedgerEntries.SingleAsync(e => e.Id == installmentId, cancellationToken);
         await db.Entry(entry).ReloadAsync(cancellationToken);
+        // A signed event from a different connected account must never settle this platform charge.
+        if (entry.TransactionFee > 0 && (!string.IsNullOrWhiteSpace(paymentEvent.AccountId)
+            || entry.StripePaymentIntentId != paymentEvent.PaymentIntentId
+            || paymentEvent.AmountCents != RentCharges.ToCents(entry.AmountDue + entry.TransactionFee))) return null;
+        // Platform rent events are accepted only for this exact new SEPA intent. Legacy direct charges keep their account boundary.
+        if (string.IsNullOrWhiteSpace(paymentEvent.AccountId)
+            && (entry.ConnectedAccountId is not null || entry.TransactionFee != TenantSepaAuthorization.TransactionFee
+                || entry.StripePaymentIntentId != paymentEvent.PaymentIntentId)) return null;
         if (entry.ConnectedAccountId is { } expected &&
             !string.Equals(expected, paymentEvent.AccountId, StringComparison.Ordinal))
         {
@@ -664,7 +665,7 @@ public sealed partial class RentBillingService(
         var inFlight = await db.RentLedgerEntries
             .AsNoTracking()
             .Where(e => e.Status == RentLedgerStatus.Processing && e.StripePaymentIntentId != null &&
-                        (e.ConnectedAccountId != null ||
+                        (e.ConnectedAccountId != null || e.TransactionFee > 0 ||
                          db.BankLinkPayments.Any(p => p.StripePaymentIntentId == e.StripePaymentIntentId)))
             .Select(e => new { e.Id, e.LeaseContractId })
             .ToListAsync(cancellationToken);
@@ -739,7 +740,7 @@ public sealed partial class RentBillingService(
             var entry = await db.RentLedgerEntries.SingleAsync(e => e.Id == installmentId, cancellationToken);
             if (entry.Status != RentLedgerStatus.Processing || entry.StripePaymentIntentId is null)
                 return false;
-            if (entry.ConnectedAccountId is null &&
+            if (entry.ConnectedAccountId is null && entry.TransactionFee == 0 &&
                 !await db.BankLinkPayments.AnyAsync(p => p.StripePaymentIntentId == entry.StripePaymentIntentId, cancellationToken))
                 return false;
 

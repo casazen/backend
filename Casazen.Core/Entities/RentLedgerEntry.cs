@@ -95,6 +95,11 @@ public class RentLedgerEntry : ITenantOwned
     /// <summary>When the payment was recorded (webhook or landlord declaration).</summary>
     public DateTime? PaidAt { get; set; }
 
+    /// <summary>Fee quoted for this Stripe attempt, separate from rent and condominium amounts.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal TransactionFee { get; set; }
+    public DateTime? SepaAutomaticAttemptedAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

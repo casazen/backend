@@ -81,6 +81,7 @@ public sealed partial class RentBillingService
             logger.LogInformation("Rent schedule of lease {LeaseId} extended to the new term: {Installments} installments added", leaseId, added);
         }
 
+        await BudgetRentAdvanceUpdater.RefreshAsync(db, leaseId, cancellationToken);
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
         return added;
@@ -107,7 +108,7 @@ public sealed partial class RentBillingService
         foreach (var entry in open)
         {
             // A PaymentIntent the tenant could still pay is canceled first; one paid or in flight meanwhile wins and the installment stays.
-            if (entry.StripePaymentIntentId is not null && entry.ConnectedAccountId is not null)
+            if (entry.StripePaymentIntentId is not null && (entry.ConnectedAccountId is not null || entry.TransactionFee > 0))
             {
                 var current = await CancelIfPayableAsync(entry, cancellationToken);
                 if (current.Status != "canceled")

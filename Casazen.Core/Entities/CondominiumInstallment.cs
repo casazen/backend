@@ -46,6 +46,8 @@ public class CondominiumInstallment : ITenantOwned
 
     public CondominiumInstallmentStatus Status { get; set; } = CondominiumInstallmentStatus.Scheduled;
 
+    public DateTime? ReminderSentAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

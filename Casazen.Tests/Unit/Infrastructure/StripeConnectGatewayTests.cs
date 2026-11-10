@@ -162,6 +162,7 @@ public class StripeConnectGatewayTests
         Assert.Equal("connect-account:abc", sentRequestOptions?.IdempotencyKey);
         var options = Assert.IsType<AccountCreateOptions>(sentOptions);
         Assert.Equal("express", options.Type);
+        Assert.True(options.Capabilities.SepaDebitPayments.Requested);
         Assert.Equal("IT", options.Country);
         Assert.Equal("host@example.com", options.Email);
     }

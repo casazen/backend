@@ -1,4 +1,5 @@
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Services;
 using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
@@ -14,7 +15,7 @@ namespace Casazen.Web.BackgroundJobs;
 /// the installment), so a retry, a manual trigger or a second instance never emails it twice. Errors of one installment
 /// are logged and never stop the others.
 /// </remarks>
-public class RentCollectionJob(IRentBillingService rentBilling, ILogger<RentCollectionJob> logger)
+public class RentCollectionJob(IRentBillingService rentBilling, ILogger<RentCollectionJob> logger, ITenantRentSepaService sepa, CondominiumPaymentReminderService condominiumReminders)
 {
     public const string RecurringJobId = "rent-collection";
     public const string Cron = "0 7 * * *";
@@ -23,6 +24,8 @@ public class RentCollectionJob(IRentBillingService rentBilling, ILogger<RentColl
     [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]
     public async Task ExecuteAsync()
     {
+        await sepa.RunAsync(CancellationToken.None);
+        await condominiumReminders.RunAsync(CancellationToken.None);
         var run = await rentBilling.RunCollectionAsync(CancellationToken.None);
         logger.LogInformation(
             "Rent collection job: {RequestsSent} payment request(s) sent, {Synchronized} in-flight payment(s) updated, {Errors} error(s)",

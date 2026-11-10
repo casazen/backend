@@ -18,7 +18,7 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/long-rent/condominiums")]
 [Authorize(Policy = CasazenPolicies.LongRentPropertyRead)]
-public class CondominiumsController(
+public partial class CondominiumsController(
     ICondominiumAccountingService condominiums,
     ITenantCondominiumSettlementService settlements,
     IAdministratorStatementReaderService statements,
