@@ -555,8 +555,12 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
     {
         public async Task<PaymentIntent> CreateAsync(string account, Guid lease, Guid installment, long amount, string key, CancellationToken ct)
         {
-            var pi = await stripe.CreateConnectedAccountPaymentIntentAsync(account, amount, "eur", new()
-                { ["kind"] = RentCharges.Kind, [RentCharges.InstallmentMetadataKey] = installment.ToString() }, key, null, ct);
+            var metadata = new Dictionary<string, string>
+            {
+                ["kind"] = RentCharges.Kind,
+                [RentCharges.InstallmentMetadataKey] = installment.ToString(),
+            };
+            var pi = await stripe.CreateConnectedAccountPaymentIntentAsync(account, amount, "eur", metadata, key, null, ct);
             pi.TransferData = new PaymentIntentTransferData { DestinationId = account };
             return pi;
         }
