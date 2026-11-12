@@ -94,7 +94,8 @@ internal static class OctorateCalendarRequests
     /// The answer of the bulk call: <c>{ "success": true, "process": [ids] }</c>. An answer that says <c>success: false</c> (Octorate's way of saying it found
     /// no access to the room, or no such room) is a refusal of the request (<see cref="OctorateRequestRejectedException"/>); one that is not that object, or
     /// that does not say <c>success: true</c>, is an answer that cannot be read (<c>null</c>), never an acceptance. A <c>process</c> that is empty or absent is
-    /// a result with no id: Octorate wrote nothing (a room with no license answers so).
+    /// a result with no id: Octorate wrote nothing (a room with no license answers so). A <c>process</c> with ids <b>and</b> a non-empty <c>warnings</c> is a refusal of the request
+    /// (<see cref="OctorateRequestRejectedException"/>): any warning is a chunk that was not taken whole.
     /// </summary>
     internal static OctorateCalendarUpdateResult? ReadUpdateResult(string? body, int status)
     {
@@ -131,6 +132,11 @@ internal static class OctorateCalendarRequests
                 }
             }
 
+            // Any warning of the channel manager is a chunk that was not taken whole (octorate-integration-facts.md): with no id the push says nothing was written; with ids
+            // and a warning the answer is not an acceptance either, it is a refusal of the request.
+            if (ids.Count > 0 && HasWarnings(root))
+                throw new OctorateRequestRejectedException(status);
+
             return new OctorateCalendarUpdateResult(ids);
         }
         catch (JsonException)
@@ -138,6 +144,17 @@ internal static class OctorateCalendarRequests
             return null;
         }
     }
+
+    /// <summary>A <c>warnings</c> member that says something: a list with an element, a text, an object with a member.</summary>
+    private static bool HasWarnings(JsonElement root) =>
+        root.TryGetProperty("warnings", out var warnings)
+        && warnings.ValueKind switch
+        {
+            JsonValueKind.Array => warnings.GetArrayLength() > 0,
+            JsonValueKind.String => !string.IsNullOrWhiteSpace(warnings.GetString()),
+            JsonValueKind.Object => warnings.EnumerateObject().Any(),
+            _ => false,
+        };
 
     /// <summary>
     /// The process of a bulk call as <c>GET /rest/v1/calendar/process/{id}</c> answers: <c>status</c>, and <c>sent[]</c> with the <c>date</c> and the

@@ -486,7 +486,8 @@ public interface IOctorateApiClient
     /// included) and the values written to each of them (availability, price, <c>minstay</c>, <c>maxstay</c>, <c>stopSells</c>, <c>closeToArrival</c>,
     /// <c>closeToDeparture</c>, <c>cutOffDays</c>; a member left out is not touched). The call acts for <see cref="IOctorateOrgScope.OrgId"/>, the rooms named are
     /// its own. <b>An answer is not a write</b>: 200 with <c>success: true</c> and no process id means Octorate wrote nothing (the sandbox answers so for a room with no
-    /// license), and the result has no process id; the caller never takes it for an acceptance. <c>success: false</c> (no access to the room, no such room) is
+    /// license), and the result has no process id; the caller never takes it for an acceptance; an answer with process ids <b>and</b> a non-empty <c>warnings</c> is not an
+    /// acceptance either (any warning is a chunk not taken whole): <c>OctorateRequestRejectedException</c>. <c>success: false</c> (no access to the room, no such room) is
     /// <c>OctorateRequestRejectedException</c>; an answer that cannot be read is <c>OctorateServerException</c>; the rest is the typed error of the client. A call
     /// counts for one unit of quota for every 15 room-days it covers (decision D7).
     /// </summary>

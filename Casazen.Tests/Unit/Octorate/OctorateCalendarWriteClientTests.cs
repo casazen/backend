@@ -84,6 +84,28 @@ public class OctorateCalendarWriteClientTests
         }
     }
 
+    /// <summary>
+    /// Any warning of the channel manager is a chunk that was not taken whole (octorate-integration-facts.md): ids together with a non-empty <c>warnings</c> are a refusal of the
+    /// request, never an acceptance; an empty list of warnings changes nothing.
+    /// </summary>
+    [Fact]
+    public async Task AnAnswerWithProcessIdsAndAWarning_IsARefusalOfTheRequest_NeverAnAcceptance()
+    {
+        var h = new Harness();
+        h.Serve("""{ "success": true, "process": [ 12345678 ], "warnings": [ "A date of the interval was ignored" ] }""");
+        h.Serve("""{ "success": true, "process": [ 12345678 ], "warnings": "A date of the interval was ignored" }""");
+        h.Serve("""{ "success": true, "process": [ 12345678 ], "warnings": [] }""");
+
+        using (h.Scope.Use(Org))
+        {
+            await Assert.ThrowsAsync<OctorateRequestRejectedException>(() => h.Client.UpdateCalendarAsync([Update()], CancellationToken.None));
+            await Assert.ThrowsAsync<OctorateRequestRejectedException>(() => h.Client.UpdateCalendarAsync([Update()], CancellationToken.None));
+
+            var accepted = await h.Client.UpdateCalendarAsync([Update()], CancellationToken.None);
+            Assert.Equal(["12345678"], accepted.ProcessIds);
+        }
+    }
+
     [Fact]
     public async Task SuccessFalse_IsARefusalOfTheRequest_AndAnAnswerThatCannotBeRead_IsAFailureNeverASuccess()
     {
