@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -7,6 +8,9 @@ using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.Authorization;
+using Casazen.Web.Controllers;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -187,7 +191,12 @@ public class OwnerAccountingCloseTests
         await world.EndOwnershipAsync(property, swiss, 100m, new DateTime(2026, 10, 15));
         world.Db.OwnerFxRates.Add(new OwnerFxRate
         {
-            OrgId = OrgId, BaseCurrency = "CHF", QuoteCurrency = "EUR", RateDate = new DateOnly(2026, 10, 17), Rate = 1.0650m, Source = "TEST BCE",
+            OrgId = OrgId,
+            BaseCurrency = "CHF",
+            QuoteCurrency = "EUR",
+            RateDate = new DateOnly(2026, 10, 17),
+            Rate = 1.0650m,
+            Source = "TEST BCE",
         });
         await world.Db.SaveChangesAsync();
 
@@ -227,6 +236,35 @@ public class OwnerAccountingCloseTests
         Assert.Equal(lines.Where(e => e.PropertyOwnerId == swiss).Sum(e => e.Amount), swissVersion.ClosingBalance);
         Assert.Equal((OwnerStatementVersionStatus.Flagged, "EUR"), (italianVersion.Status, italianVersion.Currency));
         Assert.Equal(italianPart.Amount, italianVersion.ClosingBalance);
+    }
+
+    /// <summary>
+    /// The permission rules of the owner accounting (E06/F05/US02, E06/F01/US02/T05): approval and publication are distinct permissions; the waiver of a
+    /// close, the legal hold, the charge approvals, the rates, the corrections, the external invoice links, the payouts and the filing states need the
+    /// elevated finance permission, which only the owner and the administrators of the agency hold (as the publication).
+    /// </summary>
+    [Fact]
+    public void OwnerAccounting_PublicationWaiverAndTaxActionsNeedTheirOwnPermission_Test()
+    {
+        static string? PolicyOf(Type controller, string action) =>
+            controller.GetMethod(action)!.GetCustomAttributes(typeof(AuthorizeAttribute), false).Cast<AuthorizeAttribute>().Select(a => a.Policy).SingleOrDefault();
+
+        Assert.Equal(CasazenPolicies.AgencyStatementManage, PolicyOf(typeof(OwnerAccountingController), nameof(OwnerAccountingController.Approve)));
+        Assert.Equal(CasazenPolicies.AgencyStatementPublish, PolicyOf(typeof(OwnerAccountingController), nameof(OwnerAccountingController.Publish)));
+        foreach (var action in new[] { "LegalHold", "ApproveCharge", "CancelCharge", "AddFxRate", "Correct", "AddExternalDocument", "VerifyExternalDocument", "RemoveExternalDocument" })
+            Assert.Equal(CasazenPolicies.AgencyOwnerFinancialManage, PolicyOf(typeof(OwnerAccountingController), action));
+        foreach (var action in new[] { nameof(OwnerPayoutsController.Confirm), nameof(OwnerPayoutsController.Reverse) })
+            Assert.Equal(CasazenPolicies.AgencyOwnerFinancialManage, PolicyOf(typeof(OwnerPayoutsController), action));
+        foreach (var action in new[] { nameof(WithholdingController.SetF24FilingState), nameof(WithholdingController.SetAnnualFilingState) })
+            Assert.Equal(CasazenPolicies.AgencyOwnerFinancialManage, PolicyOf(typeof(WithholdingController), action));
+
+        foreach (var role in new[] { OrgRole.PropertyManager, OrgRole.Collaborator, OrgRole.Accountant })
+        {
+            Assert.DoesNotContain(AgencyPermissions.StatementPublish, OrgRoleCatalog.AgencyPermissionsOf(role));
+            Assert.DoesNotContain(AgencyPermissions.OwnerFinancialManage, OrgRoleCatalog.AgencyPermissionsOf(role));
+        }
+
+        Assert.Contains(AgencyPermissions.StatementPublish, OrgRoleCatalog.AgencyPermissionsOf(OrgRole.Admin));
     }
 
     private static string Sha256(string text) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
@@ -366,13 +404,24 @@ public class OwnerAccountingCloseTests
         {
             var statement = new OwnerStatement
             {
-                OrgId = OrgId, PropertyOwnerId = owner, PropertyId = property, Month = 10, Year = 2026, Currency = "EUR", Status = StatementStatus.Published,
+                OrgId = OrgId,
+                PropertyOwnerId = owner,
+                PropertyId = property,
+                Month = 10,
+                Year = 2026,
+                Currency = "EUR",
+                Status = StatementStatus.Published,
                 NetPayable = amount,
             };
             var batch = new WireBatch
             {
-                OrgId = OrgId, Currency = "EUR", DebitAccount = "IT60X0542811101000000654321", TotalAmount = amount, TransferCount = 1,
-                Status = WireBatchStatus.Paid, PaidAt = new DateTime(2026, 11, 3, 9, 0, 0, DateTimeKind.Utc),
+                OrgId = OrgId,
+                Currency = "EUR",
+                DebitAccount = "IT60X0542811101000000654321",
+                TotalAmount = amount,
+                TransferCount = 1,
+                Status = WireBatchStatus.Paid,
+                PaidAt = new DateTime(2026, 11, 3, 9, 0, 0, DateTimeKind.Utc),
             };
             Db.OwnerStatements.Add(statement);
             Db.WireBatches.Add(batch);

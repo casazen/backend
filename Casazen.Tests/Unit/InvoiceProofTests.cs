@@ -55,8 +55,18 @@ public class InvoiceProofTests
         const string Xml = "<p:FatturaElettronica versione=\"FPR12\">TEST storico</p:FatturaElettronica>";
         var legacy = new AgencyInvoice
         {
-            OrgId = OrgId, OwnerId = owner, InvoiceNumber = "7", Series = "A", Month = 9, Year = 2026, TaxableBase = 100m, VatRate = 22m, VatAmount = 22m,
-            Total = 122m, Status = InvoiceStatus.ToBeIssuedManually, FatturapaXml = Xml,
+            OrgId = OrgId,
+            OwnerId = owner,
+            InvoiceNumber = "7",
+            Series = "A",
+            Month = 9,
+            Year = 2026,
+            TaxableBase = 100m,
+            VatRate = 22m,
+            VatAmount = 22m,
+            Total = 122m,
+            Status = InvoiceStatus.ToBeIssuedManually,
+            FatturapaXml = Xml,
         };
         world.Db.AgencyInvoices.Add(legacy);
         await world.Db.SaveChangesAsync();
@@ -166,8 +176,12 @@ public class InvoiceProofTests
                 new EphemeralDataProtectionProvider());
             db.Orgs.Add(new OrgEntity
             {
-                Id = OrgId, Name = "TEST Agenzia", Slug = "test-agenzia-" + Guid.NewGuid().ToString("N"), DisplayName = "TEST Agenzia",
-                ContactEmail = "agenzia@example.com", PlanTier = PlanTier.Agency,
+                Id = OrgId,
+                Name = "TEST Agenzia",
+                Slug = "test-agenzia-" + Guid.NewGuid().ToString("N"),
+                DisplayName = "TEST Agenzia",
+                ContactEmail = "agenzia@example.com",
+                PlanTier = PlanTier.Agency,
             });
             await db.SaveChangesAsync();
             return new InvoiceWorld(db);
@@ -215,19 +229,33 @@ public class InvoiceProofTests
             var guest = new Guest { OrgId = OrgId, FirstName = "Test", LastName = "Guest", Email = $"{Guid.NewGuid():N}@example.com" };
             var booking = new Booking
             {
-                OrgId = OrgId, PropertyId = property.Id, GuestId = guest.Id, CheckInDate = new DateTime(2026, 10, 10), CheckOutDate = new DateTime(2026, 10, 12),
-                NumberOfGuests = 2, Status = BookingStatus.CheckedOut,
+                OrgId = OrgId,
+                PropertyId = property.Id,
+                GuestId = guest.Id,
+                CheckInDate = new DateTime(2026, 10, 10),
+                CheckOutDate = new DateTime(2026, 10, 12),
+                NumberOfGuests = 2,
+                Status = BookingStatus.CheckedOut,
             };
             Db.Properties.Add(property);
             Db.PropertyOwnerships.Add(new PropertyOwnership
             {
-                OrgId = OrgId, PropertyId = property.Id, PropertyOwnerId = _owner, SharePercent = 100m, OwnershipStart = new DateTime(2026, 1, 1),
+                OrgId = OrgId,
+                PropertyId = property.Id,
+                PropertyOwnerId = _owner,
+                SharePercent = 100m,
+                OwnershipStart = new DateTime(2026, 1, 1),
             });
             Db.Guests.Add(guest);
             Db.Bookings.Add(booking);
             Db.Payments.Add(new Payment
             {
-                OrgId = OrgId, BookingId = booking.Id, Amount = 100m, Status = PaymentStatus.Completed, TransactionId = "TEST-1", Description = "TEST",
+                OrgId = OrgId,
+                BookingId = booking.Id,
+                Amount = 100m,
+                Status = PaymentStatus.Completed,
+                TransactionId = "TEST-1",
+                Description = "TEST",
                 ProcessedAt = new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc),
             });
             await Db.SaveChangesAsync();

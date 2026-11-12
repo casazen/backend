@@ -265,20 +265,34 @@ public class OwnerPayoutTaxTests
             var guest = new Guest { OrgId = OrgId, FirstName = "Test", LastName = "Guest", Email = $"{Guid.NewGuid():N}@example.com" };
             var booking = new Booking
             {
-                OrgId = OrgId, PropertyId = property.Id, GuestId = guest.Id, CheckInDate = new DateTime(2026, 10, 10), CheckOutDate = new DateTime(2026, 10, 12),
-                NumberOfGuests = 2, Status = BookingStatus.CheckedOut,
+                OrgId = OrgId,
+                PropertyId = property.Id,
+                GuestId = guest.Id,
+                CheckInDate = new DateTime(2026, 10, 10),
+                CheckOutDate = new DateTime(2026, 10, 12),
+                NumberOfGuests = 2,
+                Status = BookingStatus.CheckedOut,
             };
             Db.Properties.Add(property);
             Db.PropertyOwnerships.Add(new PropertyOwnership
             {
-                OrgId = OrgId, PropertyId = property.Id, PropertyOwnerId = owner, SharePercent = 100m, OwnershipStart = new DateTime(2026, 1, 1),
+                OrgId = OrgId,
+                PropertyId = property.Id,
+                PropertyOwnerId = owner,
+                SharePercent = 100m,
+                OwnershipStart = new DateTime(2026, 1, 1),
             });
             Db.Guests.Add(guest);
             Db.Bookings.Add(booking);
             Db.Payments.Add(new Payment
             {
-                OrgId = OrgId, BookingId = booking.Id, Amount = paid, Status = PaymentStatus.Completed, TransactionId = "TEST-" + Guid.NewGuid().ToString("N"),
-                Description = "TEST", ProcessedAt = new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc),
+                OrgId = OrgId,
+                BookingId = booking.Id,
+                Amount = paid,
+                Status = PaymentStatus.Completed,
+                TransactionId = "TEST-" + Guid.NewGuid().ToString("N"),
+                Description = "TEST",
+                ProcessedAt = new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc),
             });
             await Db.SaveChangesAsync();
 
