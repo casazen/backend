@@ -352,9 +352,8 @@ public class MarketplaceChangeTests
     [Fact]
     public async Task PreviewDeactivationAsync_ExplainsTheEffectInPlainWords_InBothLanguages_ForEveryKind_AndWritesNothing()
     {
+        // The portals «142» and «300» are in the cache of the world, named «Portal 142» and «Portal 300»; the partner is in the catalog.
         var w = await World.CreateAsync();
-        await w.AddPortalAsync("142", "Booking di prova", MarketplacePortalCategory.Ota);
-        await w.AddPortalAsync("300", "Strumento di prova", MarketplacePortalCategory.ExternalTool);
         await w.AddPartnerAsync("partner-di-prova", "Servizio Uno");
         var channel = await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Channel, "142", MarketplaceActivationStatus.Active, "7001", verified: true);
         var tool = await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Tool, "300", MarketplaceActivationStatus.Active, "7003", verified: true);
@@ -368,8 +367,8 @@ public class MarketplaceChangeTests
         var service = w.Service(db);
         var cases = new (MarketplaceActivation Row, string Name, int Effects, bool Guided)[]
         {
-            (channel, "Booking di prova", 3, false),
-            (tool, "Strumento di prova", 2, false),
+            (channel, "Portal 142", 3, false),
+            (tool, "Portal 300", 2, false),
             (function, texts.Get("Marketplace.Licensed.chat.Name", "it"), 2, true),
             (partner, "Servizio Uno", 2, true),
             (uncatalogued, "999", 3, false),
@@ -393,8 +392,8 @@ public class MarketplaceChangeTests
 
         // The example of the requirement, in plain words: new bookings no longer arrive, and the listing stays published until the host closes it on the channel.
         var channelEffects = (await service.PreviewDeactivationAsync(w.OrgA, w.OrgWide, channel.Id, "en")).Effects;
-        Assert.Contains("New Booking di prova bookings will no longer arrive in CasaZen.", channelEffects);
-        Assert.Contains("Your listing on Booking di prova stays published until you close it on the channel yourself.", channelEffects);
+        Assert.Contains("New Portal 142 bookings will no longer arrive in CasaZen.", channelEffects);
+        Assert.Contains("Your listing on Portal 142 stays published until you close it on the channel yourself.", channelEffects);
 
         // A preview reads: nothing is asked of the channel manager and nothing is written.
         Assert.Empty(w.Client.Invocations);
@@ -796,13 +795,6 @@ public class MarketplaceChangeTests
         {
             await using var db = NewDb();
             db.Set<PropertyMemberAccess>().Add(new PropertyMemberAccess { OrgId = OrgA, UserId = userId, PropertyId = propertyId });
-            await db.SaveChangesAsync();
-        }
-
-        public async Task AddPortalAsync(string code, string name, MarketplacePortalCategory category)
-        {
-            await using var db = NewDb();
-            db.MarketplacePortals.Add(new MarketplacePortal { PortalCode = code, Name = name, Category = category, Enabled = true, IsListed = true });
             await db.SaveChangesAsync();
         }
 
