@@ -195,6 +195,37 @@ public class FiscalDocumentExportServiceTests
         Assert.Empty(await Service(db).ListForExportAsync(new HostScope(OrgId), new FiscalDocumentCriteria(), 100));
     }
 
+    /// <summary>
+    /// The first day of year one is the whole history, not an error: <c>GET api/fiscal/documents?from=0001-01-01</c> was a 500 because the start of that day in Rome is before
+    /// the first instant a <see cref="DateTime"/> holds. The list and the export answer, for a document with a day and for one read by the day it was created.
+    /// </summary>
+    [Fact]
+    public async Task DocumentList_AFirstDayOfYearOne_IsTheWholeHistory_AndNeverAnError()
+    {
+        await using var db = NewDb();
+        var (booking, _) = await SeedBookingAsync(db, OrgId, "TEST Casa");
+        var dated = Document(OrgId, booking, "2026/1", issuedOn: new DateOnly(2026, 10, 5));
+        var undated = Document(OrgId, booking, "OCT/2", source: FiscalDocumentSource.Octorate, issuedOn: new DateOnly(2026, 11, 2));
+        undated.IssueDate = null;
+        db.FiscalDocuments.AddRange(dated, undated);
+        await db.SaveChangesAsync();
+        var service = Service(db);
+        var scope = new HostScope(OrgId);
+
+        foreach (var criteria in new[]
+        {
+            new FiscalDocumentCriteria(From: DateOnly.MinValue),
+            new FiscalDocumentCriteria(From: DateOnly.MinValue, To: DateOnly.MaxValue),
+        })
+        {
+            Assert.Equal(2, (await service.ListAsync(scope, criteria, 1, 20)).TotalCount);
+            Assert.Equal(2, (await service.ListForExportAsync(scope, criteria, 100)).Count);
+        }
+
+        // A first day that is a day of the list still narrows it by the day asked for, not by the one the start of the list is clamped to.
+        Assert.Equal([dated.Id], (await service.ListAsync(scope, new FiscalDocumentCriteria(From: new DateOnly(2026, 10, 1), To: new DateOnly(2026, 10, 31)), 1, 20)).Items.Select(d => d.Id));
+    }
+
     private static FiscalDocumentService Service(AppDbContext db) => new(
         db,
         Mock.Of<IDocumentIssuerService>(),

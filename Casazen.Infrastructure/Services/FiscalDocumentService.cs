@@ -247,6 +247,9 @@ public sealed class FiscalDocumentService(
             .ToList();
     }
 
+    /// <summary>The earliest day the list starts from: no document was created before it, and the start of a day long before it cannot be told in UTC from Europe/Rome.</summary>
+    private static readonly DateOnly FirstDayOfTheList = new(1900, 1, 1);
+
     /// <summary>The documents of the scope that the criteria keep, narrowed in SQL: the one query behind the list and the export.</summary>
     private IQueryable<FiscalDocument> Matching(HostScope scope, FiscalDocumentCriteria criteria)
     {
@@ -266,7 +269,9 @@ public sealed class FiscalDocumentService(
             query = query.Where(d => d.Source == source);
         if (criteria.From is { } from)
         {
-            var start = RomeCalendar.StartOfDayUtc(from);
+            // The start of 0001-01-01 in Rome falls before the first instant a DateTime holds, so RomeCalendar throws for it (a 500 on from=0001-01-01): a day before
+            // FirstDayOfTheList starts the list where no document is older anyway. The issue day is still compared with the day that was asked for.
+            var start = RomeCalendar.StartOfDayUtc(from < FirstDayOfTheList ? FirstDayOfTheList : from);
             query = query.Where(d => d.IssueDate != null ? d.IssueDate >= from : d.CreatedAt >= start);
         }
 
