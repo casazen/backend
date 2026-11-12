@@ -60,6 +60,9 @@ public static class FiscalDocumentExtensions
         // behind Features:FiscalDocumentIssuance.
         services.AddScoped<IFiscalDocumentService, FiscalDocumentService>();
 
+        // The payment ledger of a booking and of a period: card, manual and channel payments with the document of the booking (E06/F04/US01/T03, NF-85).
+        services.AddScoped<IBookingPaymentLedgerService, BookingPaymentLedgerService>();
+
         return services;
     }
 }

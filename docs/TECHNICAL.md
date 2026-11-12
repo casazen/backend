@@ -956,6 +956,20 @@ caller sees and may not use is 403. The accountant reads and cannot write; the c
   collect (`to_collect`) are "To do" items (action `ReviewFiscalDocument`) that close by themselves when a later import shows the state changed. A
   refused or failing call is logged with ids only and read again at the next run.
 
+#### Payment ledger (FIS-05, NF-85, ADR-033-R2, E06/F04/US01/T03)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/payment-ledger/bookings/{bookingId}` | short-rent `payment.read`; the booking authorized like `GET /api/payments?bookingId=` (404 otherwise) | `{ bookingId, bookingCode, channel, currency, lines, degraded }`: the card, manual and channel lines of the booking. A booking with an Octorate reservation reads its individual collections from Octorate (`payments` of the single read, behind `Features:OctorateConnector`); when the read fails the stored OTA amounts are answered with `degraded: true`, never an error |
+| `GET` | `/api/payment-ledger?propertyId=&bookingId=&from=&to=&page=&pageSize=` | the above; `propertyId`/`bookingId` authorized like their payments | One page of the lines of a period (newest first, at most 100 a page; at most 5,000 rows of each source per period), narrowed **in SQL** to the caller's scope. 400 `payment_ledger_invalid_range` |
+
+- **A line** is `{ kind (Card|BankTransfer|Cash|Ota|Other), bookingId, bookingCode, paymentId?, date, gross, providerFee?, net?, providerCurrency?,
+  creditDate?, currency, state (Paid|ToCollect|Refunded|PartiallyRefunded|Failed|Canceled), collectedBy (Host|Channel|Platform|Unknown), document? }`:
+  a card line carries the fee, the net and the credit date captured by `payment-provider-fees` (none until captured, never a guess); a channel line comes
+  from the stored OTA amounts (`OtaPaidAmount` paid, a positive `OtaBalanceAmount` to collect, commission and net only when stored) and a booking with
+  none of them gets no channel line; `document` is the fiscal document of the booking (id, number, kind, status, payment state). Amounts in the currency
+  of the property.
+
 #### Owner statements and withholding exports (agency, ADR-017, ADR-018, NF-25, E06/F01/US01/T02)
 
 | Method | Path | Auth | Description |

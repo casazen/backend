@@ -5991,4 +5991,52 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocLineCredit" xml:space="preserve">
     <value>Storno del documento {0}: {1}</value>
   </data>
+  <data name="PaymentLedgerKindCard" xml:space="preserve">
+    <value>Carta</value>
+  </data>
+  <data name="PaymentLedgerKindBankTransfer" xml:space="preserve">
+    <value>Bonifico</value>
+  </data>
+  <data name="PaymentLedgerKindCash" xml:space="preserve">
+    <value>Contanti</value>
+  </data>
+  <data name="PaymentLedgerKindOta" xml:space="preserve">
+    <value>Incassato dal canale</value>
+  </data>
+  <data name="PaymentLedgerKindOther" xml:space="preserve">
+    <value>Altro metodo</value>
+  </data>
+  <data name="PaymentLedgerStatePaid" xml:space="preserve">
+    <value>Incassato</value>
+  </data>
+  <data name="PaymentLedgerStateToCollect" xml:space="preserve">
+    <value>Da incassare</value>
+  </data>
+  <data name="PaymentLedgerStateRefunded" xml:space="preserve">
+    <value>Rimborsato</value>
+  </data>
+  <data name="PaymentLedgerStatePartiallyRefunded" xml:space="preserve">
+    <value>Rimborsato in parte</value>
+  </data>
+  <data name="PaymentLedgerStateFailed" xml:space="preserve">
+    <value>Non riuscito</value>
+  </data>
+  <data name="PaymentLedgerStateCanceled" xml:space="preserve">
+    <value>Annullato</value>
+  </data>
+  <data name="PaymentLedgerCollectorHost" xml:space="preserve">
+    <value>Incassato dall'host</value>
+  </data>
+  <data name="PaymentLedgerCollectorChannel" xml:space="preserve">
+    <value>Incassato dal portale</value>
+  </data>
+  <data name="PaymentLedgerCollectorPlatform" xml:space="preserve">
+    <value>Incassato da CasaZen</value>
+  </data>
+  <data name="PaymentLedgerCollectorUnknown" xml:space="preserve">
+    <value>Incasso non indicato</value>
+  </data>
+  <data name="PaymentLedgerDegraded" xml:space="preserve">
+    <value>Gli incassi del gestionale non sono stati letti: sono mostrati gli importi registrati all'importazione.</value>
+  </data>
 </root>

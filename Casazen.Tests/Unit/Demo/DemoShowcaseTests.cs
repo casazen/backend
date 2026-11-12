@@ -122,6 +122,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.CondominiumHistoricalImportExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.AdministratorStatementPdfExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.FiscalDocumentExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.PaymentLedgerExamples.Select(example => example.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -1019,6 +1020,25 @@ public class DemoShowcaseTests
             Assert.True(StayCurrency.IsSupported(e.Currency));
         });
         Assert.Equal("FiscalDocument", TestDataEntities.FiscalDocument);
+    }
+
+    /// <summary>
+    /// E06/F04/US01/T03: the demo ledger has a card line whose fee and net add up to its gross, a cash line and a line of a channel, the last two without
+    /// a provider figure (never a guess), every code one the API answers.
+    /// </summary>
+    [Fact]
+    public void PaymentLedger_HasACardLineWithFeeAndNet_ACashLine_AndAChannelLineWithoutGuesses()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.PaymentLedger, DemoShowcaseCatalog.Scenarios);
+        var lines = DemoShowcaseCatalog.PaymentLedgerExamples;
+
+        var card = Assert.Single(lines, l => l.Kind == nameof(PaymentLedgerKind.Card));
+        Assert.Equal(card.Gross, card.ProviderFee + card.Net);
+        Assert.Single(lines, l => l.Kind == nameof(PaymentLedgerKind.Cash) && l.ProviderFee is null && l.Net is null);
+        var channel = Assert.Single(lines, l => l.Kind == nameof(PaymentLedgerKind.Ota));
+        Assert.Null(channel.ProviderFee);
+        Assert.Equal(nameof(PaymentLedgerCollector.Channel), channel.CollectedBy);
+        Assert.All(lines, l => Assert.True(Enum.TryParse<PaymentLedgerCollector>(l.CollectedBy, out _)));
     }
 
     [Fact]

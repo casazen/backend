@@ -5991,4 +5991,52 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="FiscalDocLineCredit" xml:space="preserve">
     <value>Credit of document {0}: {1}</value>
   </data>
+  <data name="PaymentLedgerKindCard" xml:space="preserve">
+    <value>Card</value>
+  </data>
+  <data name="PaymentLedgerKindBankTransfer" xml:space="preserve">
+    <value>Bank transfer</value>
+  </data>
+  <data name="PaymentLedgerKindCash" xml:space="preserve">
+    <value>Cash</value>
+  </data>
+  <data name="PaymentLedgerKindOta" xml:space="preserve">
+    <value>Collected by the channel</value>
+  </data>
+  <data name="PaymentLedgerKindOther" xml:space="preserve">
+    <value>Other method</value>
+  </data>
+  <data name="PaymentLedgerStatePaid" xml:space="preserve">
+    <value>Paid</value>
+  </data>
+  <data name="PaymentLedgerStateToCollect" xml:space="preserve">
+    <value>To collect</value>
+  </data>
+  <data name="PaymentLedgerStateRefunded" xml:space="preserve">
+    <value>Refunded</value>
+  </data>
+  <data name="PaymentLedgerStatePartiallyRefunded" xml:space="preserve">
+    <value>Partially refunded</value>
+  </data>
+  <data name="PaymentLedgerStateFailed" xml:space="preserve">
+    <value>Failed</value>
+  </data>
+  <data name="PaymentLedgerStateCanceled" xml:space="preserve">
+    <value>Canceled</value>
+  </data>
+  <data name="PaymentLedgerCollectorHost" xml:space="preserve">
+    <value>Collected by the host</value>
+  </data>
+  <data name="PaymentLedgerCollectorChannel" xml:space="preserve">
+    <value>Collected by the portal</value>
+  </data>
+  <data name="PaymentLedgerCollectorPlatform" xml:space="preserve">
+    <value>Collected by CasaZen</value>
+  </data>
+  <data name="PaymentLedgerCollectorUnknown" xml:space="preserve">
+    <value>Collector not stated</value>
+  </data>
+  <data name="PaymentLedgerDegraded" xml:space="preserve">
+    <value>The collections of the channel manager were not read: the amounts stored at the import are shown.</value>
+  </data>
 </root>

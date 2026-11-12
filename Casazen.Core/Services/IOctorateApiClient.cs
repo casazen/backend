@@ -495,4 +495,10 @@ public interface IOctorateApiClient
     /// error, never a file. <b>Unverified</b>, behind the same flag.
     /// </summary>
     Task<Stream> GetDocumentPdfAsync(string accommodationId, string documentId, CancellationToken ct);
+
+    /// <summary>
+    /// The collections of a reservation (E06/F04/US01/T03, FIS-05): the <c>payments</c> of its single read (<c>GET /rest/v1/reservation/{acc}/{id}</c>) with
+    /// the amount, the day, the mode and who collects (<c>companyCollect</c>, absent on the sandbox OTA samples). A payment without an amount is left out.
+    /// </summary>
+    Task<IReadOnlyList<OctoratePayment>> GetReservationPaymentsAsync(string accommodationId, string reservationId, CancellationToken ct);
 }
