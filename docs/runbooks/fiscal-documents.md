@@ -79,6 +79,17 @@ are read with the DTD prohibited and no resolver (`XsdValidator`): no external e
 - At the first use of a series the counter starts above the highest number already used in it, the legacy `AgencyInvoices` included.
 - A series has at most 10 characters (the display `{series}/{number}` fits the 20 characters of `Numero`): longer is 422 `series_too_long`.
 
+## Export of the list (`FiscalDocumentExports`, `XlsxWriter`)
+
+- `GET api/fiscal/documents/export?format=csv|xlsx`: the issued documents (CasaZen's and the imported ones) that the caller reaches, the same rows as the list, in a
+  file named `documenti-yyyy-MM`; the same fourteen columns in both formats: kind, number, issue date, booking code, property, recipient, taxable base, VAT, stamp
+  duty, total, currency, payment state, SDI state, source.
+- The amounts are the stored ones, to two places (a credit note keeps its positive amounts: its kind says what it is); the payment state is the current one, as in the
+  list. The recipient is the name only: no fiscal code, VAT number or address leaves in a file. Drafts, discarded drafts, the lines and the XML are not in it, and the
+  channel manager is never named (its documents say «Emesso dal tuo channel manager»).
+- The Excel file is written by `XlsxWriter` (no package, only `System.IO.Compression`): amounts are numbers, days are dates, every text is an inline string, so a text
+  that starts with `= + - @` is never run (the CSV puts an apostrophe before it). More than 9,999 documents is 422 `csv_too_many_rows` or `xlsx_too_many_rows`: narrow the period.
+
 ## Retention and privacy
 
 - A fiscal document is kept ten years (ADR-033-R7): the booking, the credited and the replaced document are restrict foreign keys; the erasure of a

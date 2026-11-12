@@ -1077,6 +1077,7 @@ caller sees and may not use is 403. The accountant reads and cannot write; the c
 | `GET` | `/api/fiscal/documents/{id}/xml` | `payment.read` as for the detail | The FatturaPA XML of an issued CasaZen invoice or credit note; 404 `fiscal_document_xml_unavailable` otherwise |
 | `GET` | `/api/fiscal/documents/{id}/pdf` | `payment.read` as for the detail | The PDF of a CasaZen document (`FiscalDocumentPdfs`) in the language of the request; 422 `document_read_only` for a document of Octorate (its PDF is `octorate-pdf`) |
 | `GET` | `/api/fiscal/documents/{id}/octorate-pdf` | short-rent `payment.read`; the booking of the document authorized like its payments, a document without a booking only for a scope over the whole org; behind `Features:OctorateConnector` **and** `Features:OctorateDocumentImport` (404 while either is off) | The PDF of a document Octorate issued, proxied through CasaZen (never an Octorate address). 404 `fiscal_document_not_found` for another org's document, one not imported from Octorate or one the caller cannot reach; 404 `octorate_pdf_unavailable` when Octorate holds no PDF of it or cannot be read for it (logged with ids only) |
+| `GET` | `/api/fiscal/documents/export?format=csv\|xlsx&from=&to=&kind=&source=&bookingId=&propertyId=` | short-rent `payment.read`; `bookingId`/`propertyId` authorized like their payments (404 otherwise) | The list of the documents as a file (FIS-07, NF-87, E06/F03/US03/T01). `format` is `csv` or `xlsx` (400 `fiscal_export_invalid_format` for anything else, or none); `from`/`to` are Europe/Rome days of the issue, both included (400 `fiscal_export_invalid_range`: backwards, or outside 2000-2100); `kind`, `source`, `bookingId` and `propertyId` narrow as on the list. Only the documents that were **issued** (a draft has no number and no day), the ones CasaZen issued and the ones imported, newest first, narrowed **in SQL** to the caller's scope (a caller who reaches some properties never gets a document of another one, nor one without a booking); at most 9,999 documents (422 `csv_too_many_rows` or `xlsx_too_many_rows`: narrow the period). The same fourteen columns in both files: kind, number, issue date, booking code, property, recipient (the name only), taxable base, VAT, stamp duty, total, currency, payment state (the current one), SDI state, source. Named `documenti-yyyy-MM` after the month of `from` (else of `to`, else the current Rome month), `.csv` or `.xlsx`; `Cache-Control: no-store`; the CORS policy exposes `Content-Disposition`, so a page on another origin reads the name of the file from the answer |
 
 - **Import of the documents Octorate issued (E06/F03/US02/T01).** `IOctorateDocumentImportService` reads, every 30 minutes (job
   `octorate-document-import`), the documents of the mapped accommodations of every org whose issuer is Octorate with a connected connection
@@ -1086,6 +1087,17 @@ caller sees and may not use is 403. The accountant reads and cannot write; the c
   the imported document is stored anyway with an urgent "To do" `two_issuers_detected`. A rejected SDI state (`sdi_rejected_octorate`) and an amount to
   collect (`to_collect`) are "To do" items (action `ReviewFiscalDocument`) that close by themselves when a later import shows the state changed. A
   refused or failing call is logged with ids only and read again at the next run.
+
+- **Export of the list (E06/F03/US03/T01).** `FiscalDocumentExports` (Infrastructure) builds the fourteen columns once as typed cells (text, a day, four amounts) and
+  writes them with `CsvWriter` (UTF-8 with BOM, `;`, decimal comma, a day as `yyyy-MM-dd`) and with `XlsxWriter` (`Casazen.Core.Utilities`, the mirror of
+  `XlsxTableReader`, nothing but `System.IO.Compression` and `XmlWriter`, no package): one sheet, a bold header kept on top, an amount is a number cell with the
+  format `0.00` (the same cents as the CSV), a day is a date cell (`dd/mm/yyyy`), every text is an inline string cell and there is no formula element at all, so a text
+  that starts with `= + - @` (a property or a recipient is typed by people; the rule is `CsvWriter.StartsLikeAFormula`) is never run: the CSV gives it a leading
+  apostrophe, the Excel file the quote prefix of its style. The words (headers, kind, payment state, SDI state, source) are in the language of the request, from
+  `SharedResources` (`FiscalExport*`); the documents of the channel manager say «Emesso dal tuo channel manager» (English: «Issued by your channel manager»), never its name. `IFiscalDocumentService.ListForExportAsync` reads the
+  rows through the same query as the list (`Matching`: the scope in SQL, then the criteria), projects only the columns of the file (the XML of an invoice is never read)
+  and takes the payment state of a document CasaZen issued from its payments, as the list does. The amounts are the stored ones: a credit note carries positive amounts and
+  its kind. The monthly accountant package (NF-101, epic E07) extends `XlsxWriter` with more sheets.
 
 #### Payment ledger (FIS-05, NF-85, ADR-033-R2, E06/F04/US01/T03)
 
