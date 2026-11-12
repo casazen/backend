@@ -786,6 +786,42 @@
   <data name="CalendarDayRuleNothingToChange" xml:space="preserve">
     <value>Scegli almeno un valore da modificare e almeno un giorno.</value>
   </data>
+  <data name="CalendarChangeNoProperties" xml:space="preserve">
+    <value>Scegli almeno un immobile.</value>
+  </data>
+  <data name="CalendarChangeNotFound" xml:space="preserve">
+    <value>Modifica non trovata.</value>
+  </data>
+  <data name="CalendarChangeNotRetryable" xml:space="preserve">
+    <value>Solo una modifica non inviata, o inviata solo in parte, può essere inviata di nuovo.</value>
+  </data>
+  <data name="CalendarChangeWarningPropertyNotMirrored" xml:space="preserve">
+    <value>Questo immobile non è collegato al channel manager: la modifica resta solo in CasaZen.</value>
+  </data>
+  <data name="CalendarChangeWarningRoomNotChosen" xml:space="preserve">
+    <value>La camera di questo immobile sul channel manager non è scelta: la modifica è salvata in CasaZen ma non viene inviata finché non la scegli.</value>
+  </data>
+  <data name="CalendarPushChannelError" xml:space="preserve">
+    <value>Il channel manager ha accettato la modifica ma ha segnalato un errore nell'invio ai canali. Riprova.</value>
+  </data>
+  <data name="CalendarPushNotAuthorized" xml:space="preserve">
+    <value>Il channel manager ha rifiutato l'accesso di CasaZen: collega di nuovo l'account e riprova.</value>
+  </data>
+  <data name="CalendarPushQuotaLow" xml:space="preserve">
+    <value>Il limite di richieste al channel manager è quasi esaurito: l'invio riprende tra pochi minuti.</value>
+  </data>
+  <data name="CalendarPushRejected" xml:space="preserve">
+    <value>Il channel manager ha rifiutato la modifica. Controlla i dati dell'immobile e riprova.</value>
+  </data>
+  <data name="CalendarPushRoomNotChosen" xml:space="preserve">
+    <value>Scegli la camera del channel manager per questo immobile: finché non è scelta, nulla viene inviato.</value>
+  </data>
+  <data name="CalendarPushRoomNotLicensed" xml:space="preserve">
+    <value>Il channel manager non ha registrato la modifica: la camera non risulta attiva sul suo servizio. Controlla il piano e riprova.</value>
+  </data>
+  <data name="CalendarPushUnavailable" xml:space="preserve">
+    <value>Il channel manager non ha risposto dopo diversi tentativi: la modifica è salvata in CasaZen ma non è stata ancora inviata. Riprova.</value>
+  </data>
   <data name="CalendarInvalidRequest" xml:space="preserve">
     <value>Le date o gli immobili richiesti non sono validi: controlla le date (da 2000 a 2100) e gli identificativi degli immobili.</value>
   </data>

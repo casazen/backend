@@ -480,4 +480,23 @@ public interface IOctorateApiClient
     /// <see cref="OctorateProcessState.Unknown"/>, never a success.
     /// </summary>
     Task<OctorateContentProcess> GetContentProcessAsync(string accommodationId, string processId, CancellationToken ct);
+
+    /// <summary>
+    /// Writes the calendar of rooms (<c>POST /rest/v1/calendar/bulk</c>, E08/F05/US02/T01, NF-36, D7): for each element a room, an interval of nights (both days
+    /// included) and the values written to each of them (availability, price, <c>minstay</c>, <c>maxstay</c>, <c>stopSells</c>, <c>closeToArrival</c>,
+    /// <c>closeToDeparture</c>, <c>cutOffDays</c>; a member left out is not touched). The call acts for <see cref="IOctorateOrgScope.OrgId"/>, the rooms named are
+    /// its own. <b>An answer is not a write</b>: 200 with <c>success: true</c> and no process id means Octorate wrote nothing (the sandbox answers so for a room with no
+    /// license), and the result has no process id; the caller never takes it for an acceptance; an answer with process ids <b>and</b> a non-empty <c>warnings</c> is not an
+    /// acceptance either (any warning is a chunk not taken whole): <c>OctorateRequestRejectedException</c>. <c>success: false</c> (no access to the room, no such room) is
+    /// <c>OctorateRequestRejectedException</c>; an answer that cannot be read is <c>OctorateServerException</c>; the rest is the typed error of the client. A call
+    /// counts for one unit of quota for every 15 room-days it covers (decision D7).
+    /// </summary>
+    Task<OctorateCalendarUpdateResult> UpdateCalendarAsync(IReadOnlyList<OctorateCalendarUpdate> updates, CancellationToken ct);
+
+    /// <summary>
+    /// The state of the process Octorate runs for a bulk call (<c>GET /rest/v1/calendar/process/{id}</c>, E08/F05/US02/T02, D7): its status and the dates it has sent,
+    /// each with its status. The endpoint is documented only in the Postman collection: 404 is <c>OctorateNotFoundException</c> and an answer that cannot be read, or
+    /// that reports an error of its own, is <c>OctorateServerException</c>; a caller leaves what it asks about as it was and claims nothing.
+    /// </summary>
+    Task<OctorateCalendarProcess> GetCalendarProcessAsync(string processId, CancellationToken ct);
 }

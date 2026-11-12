@@ -428,6 +428,13 @@ internal static class PostgresAdvisoryLocks
         /// joins the debit the first saved. A failed debit is a new key only after that failed row is recorded.
         /// </summary>
         MaintenancePayment = 21_043,
+
+        /// <summary>
+        /// The push of one calendar change to the channel manager (key: process id, <c>processId.ToString("N")</c>, E08/F05/US02/T01, a session lock held for the whole
+        /// run): the immediate run enqueued after a change and the recurring job that picks up what is due never send the same chunk twice, because a run that finds
+        /// the lock taken leaves and the other one does the work. The values 20_800 to 20_899 are the booking operations of the calendar workspace (epic E08).
+        /// </summary>
+        CalendarChangeProcess = 20_851,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
