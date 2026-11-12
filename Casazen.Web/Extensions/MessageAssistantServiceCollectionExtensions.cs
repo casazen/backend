@@ -20,6 +20,10 @@ public static class MessageAssistantServiceCollectionExtensions
         services.AddScoped<IAssistantRulesService, AssistantRulesService>();
         services.AddScoped<IAssistantKnowledgeService, AssistantKnowledgeService>();
 
+        // E05/F05/US01/T03 (NF-66, NF-67): what the assistant does in each situation (mode, template, source, the start of the trust period) for the organization and as the
+        // exceptions of a property; it grows the version of the instructions through IAssistantRulesService.
+        services.AddScoped<IAssistantSituationService, AssistantSituationService>();
+
         return services;
     }
 }

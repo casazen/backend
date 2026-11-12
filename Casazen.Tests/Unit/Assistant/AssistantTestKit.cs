@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
@@ -5,13 +7,23 @@ using Casazen.Core.Services;
 using Casazen.Core.SiteProfile;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Authorization;
+using Casazen.Tests.Unit.Services;
+using Casazen.Web.Infrastructure;
+using Casazen.Web.Resources;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 
 namespace Casazen.Tests.Unit.Assistant;
 
-/// <summary>What the tests of the assistant (E05/F05/US01) share: a database, the services over it at a fixed instant, and a property with a listing worth reading.</summary>
+/// <summary>What the tests of the assistant (E05/F05/US01) share: a database, the services over it at a fixed instant, a property with a listing worth reading, and the controllers' surroundings.</summary>
 internal static class AssistantTestKit
 {
     /// <summary>The instant the services run at.</summary>
@@ -35,6 +47,9 @@ internal static class AssistantTestKit
 
     public static AssistantKnowledgeService Knowledge(AppDbContext db, TimeProvider? clock = null) =>
         new(db, Rules(db, clock), NullLogger<AssistantKnowledgeService>.Instance, clock ?? new FixedTimeProvider(Now));
+
+    public static AssistantSituationService Situations(AppDbContext db, TimeProvider? clock = null) =>
+        new(db, Rules(db, clock), NullLogger<AssistantSituationService>.Instance, clock ?? new FixedTimeProvider(Now));
 
     public static KnowledgeEntryInput Faq(string title = "Posso arrivare prima?", string text = "Sì, dalle 14 se la casa è pronta.", KnowledgeTopic topic = KnowledgeTopic.CheckIn) =>
         new(topic, KnowledgeEntryKind.Faq, title, text, null, null);
@@ -107,5 +122,63 @@ internal static class AssistantTestKit
             CheckInMethod = new LocalizedText("In autonomia, con cassetta a codice", "Self check-in with a key box"),
             RulesNote = new LocalizedText("Rispettate il vicinato"),
         });
+    }
+
+    // ─── the controllers' surroundings: the real scope resolver and the real resource handler over the scenario of the scope tests ───
+
+    /// <summary>
+    /// The real scope resolver: the collaborator of the scenario is «Solo alcuni» and was given the first property only; the administrator (<paramref name="administrator"/>) reaches the
+    /// whole organization.
+    /// </summary>
+    public static IHostScopeResolver ScopeOf(HostScopeWorld world, bool administrator = false)
+    {
+        var member = administrator
+            ? new OrgMemberSnapshot(world.OrgId, OrgRole.Owner, OrgMemberStatus.Active)
+            : new OrgMemberSnapshot(world.OrgId, OrgRole.Collaborator, OrgMemberStatus.Active, PropertyScope.Selected, new HashSet<Guid> { world.Granted.Id });
+        return HostAuthorizationTestHarness.ScopeResolver(
+            new UserAuthorizationSnapshot(Exists: true, IsActive: true, Role: UserRole.None, SupplierOrgId: null, Memberships: [], OrgId: world.OrgId, OrgMember: member));
+    }
+
+    /// <summary>A real <see cref="IAuthorizationService"/> with the real resource handler: org and reach are the production ones, the permissions are granted unless <paramref name="hasPermission"/> says no.</summary>
+    public static IAuthorizationService Authorization(HostScopeWorld world, bool administrator = false, Func<string, string, bool>? hasPermission = null) =>
+        HostAuthorizationTestHarness.Create(world.OrgId, hasPermission, ScopeOf(world, administrator));
+
+    public static ClaimsPrincipal Collaborator(HostScopeWorld world) => HostAuthorizationTestHarness.User(world.CollaboratorId);
+
+    public static ClaimsPrincipal Administrator(HostScopeWorld world) => HostAuthorizationTestHarness.User(world.OwnerUserId, "PropertyOwner");
+
+    /// <summary>The property records as the application reads them: the row, whatever the org (the controller checks the org and the reach itself).</summary>
+    public static IPropertyService Properties(AppDbContext db)
+    {
+        var properties = new Mock<IPropertyService>();
+        properties
+            .Setup(p => p.GetPropertyRecordAsync(It.IsAny<Guid>()))
+            .ReturnsAsync((Guid id) => db.Properties.AsNoTracking().FirstOrDefault(p => p.Id == id));
+        return properties.Object;
+    }
+
+    public static IOrgContextResolver Org(Guid orgId)
+    {
+        var resolver = new Mock<IOrgContextResolver>();
+        resolver.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(orgId);
+        return resolver.Object;
+    }
+
+    public static ControllerContext ContextOf(ClaimsPrincipal user) => new()
+    {
+        HttpContext = new DefaultHttpContext
+        {
+            User = user,
+            RequestServices = new ServiceCollection().AddSingleton<IStringLocalizer<SharedResources>>(new KeyLocalizer()).BuildServiceProvider(),
+        },
+    };
+
+    private sealed class KeyLocalizer : IStringLocalizer<SharedResources>
+    {
+        public LocalizedString this[string name] => new(name, name);
+
+        public LocalizedString this[string name, params object[] arguments] => new(name, name);
+
+        public IEnumerable<LocalizedString> GetAllStrings(bool includeParentCultures) => [];
     }
 }

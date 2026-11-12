@@ -102,6 +102,11 @@ public class AssistantRulesValidatorTests
             ["Parking", "InvoiceRequest", "WiFi"],
             AssistantRulesValidator.CleanTopics(["parking", "INVOICEREQUEST", "Parking", " wifi "]));
 
+        // The stable code of a situation, which the clients use as the key of its label, is accepted too and saved as the name of the member.
+        Assert.Equal(
+            ["CheckInTime", "CancellationOrRefund", "Parking"],
+            AssistantRulesValidator.CleanTopics(["check_in_time", "CANCELLATION_OR_REFUND", "parking"]));
+
         // No list is the empty list: no restriction by an allowed list, nothing forbidden. Never «every topic».
         Assert.Empty(AssistantRulesValidator.CleanTopics(null));
         Assert.Empty(AssistantRulesValidator.CleanTopics([]));

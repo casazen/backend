@@ -1,26 +1,18 @@
 using System.Security.Claims;
-using Casazen.Core.Authorization;
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.Services;
-using Casazen.Tests.Unit.Authorization;
 using Casazen.Tests.Unit.Services;
 using Casazen.Web.Authorization;
-using Casazen.Web.DTOs.Assistant;
 using Casazen.Web.Controllers;
+using Casazen.Web.DTOs.Assistant;
 using Casazen.Web.Infrastructure;
-using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Localization;
-using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Assistant;
@@ -146,8 +138,8 @@ public class AssistantKnowledgeProofTests
         var wide = await knowledge.CreateEntryAsync(orgId, null, AssistantTestKit.Fact(KnowledgeTopic.Contacts, SecretOfOrganizationA), Host);
         await rules.SavePropertySettingsAsync(orgId, hidden.Id, new PropertyAssistantSettingsInput(null, AssistantTone.Formal, "Firma di Casa Bianca", null, null, null, null), Host);
 
-        var authorization = HostAuthorizationTestHarness.Create(orgId, scopeResolver: ResolverOf(world));
-        var asCollaborator = HostAuthorizationTestHarness.User(world.CollaboratorId);
+        var authorization = AssistantTestKit.Authorization(world);
+        var asCollaborator = AssistantTestKit.Collaborator(world);
         var knowledgeController = KnowledgeController(db, authorization, asCollaborator, orgId);
         var rulesController = RulesController(db, authorization, asCollaborator, orgId);
         var entriesBefore = await db.PropertyKnowledgeEntries.AsNoTracking().CountAsync();
@@ -197,8 +189,8 @@ public class AssistantKnowledgeProofTests
         Assert.True((await rules.GetAsync(orgId)).InstructionVersion > versionBefore);
 
         // The administrator of the organization (every property) reaches both.
-        var administrator = HostAuthorizationTestHarness.User(world.OwnerUserId, "PropertyOwner");
-        var allProperties = HostAuthorizationTestHarness.Create(orgId, scopeResolver: ResolverOf(world, administrator: true));
+        var administrator = AssistantTestKit.Administrator(world);
+        var allProperties = AssistantTestKit.Authorization(world, administrator: true);
         var asAdministrator = KnowledgeController(db, allProperties, administrator, orgId);
         foreach (var propertyId in new[] { granted.Id, hidden.Id })
             Assert.IsType<OkObjectResult>((await asAdministrator.GetForProperty(propertyId, "it", CancellationToken.None)).Result);
@@ -250,63 +242,16 @@ public class AssistantKnowledgeProofTests
     private static SaveKnowledgeEntryRequest Request(KnowledgeTopic topic, string text) =>
         new() { Topic = topic, Kind = KnowledgeEntryKind.Fact, Text = text };
 
-    /// <summary>
-    /// The real scope resolver: the collaborator of the scenario is «Solo alcuni» and was given the first property only; the administrator reaches the whole organization.
-    /// </summary>
-    private static IHostScopeResolver ResolverOf(HostScopeWorld world, bool administrator = false)
-    {
-        var member = administrator
-            ? new OrgMemberSnapshot(world.OrgId, OrgRole.Owner, OrgMemberStatus.Active)
-            : new OrgMemberSnapshot(world.OrgId, OrgRole.Collaborator, OrgMemberStatus.Active, PropertyScope.Selected, new HashSet<Guid> { world.Granted.Id });
-        return HostAuthorizationTestHarness.ScopeResolver(
-            new UserAuthorizationSnapshot(Exists: true, IsActive: true, Role: UserRole.None, SupplierOrgId: null, Memberships: [], OrgId: world.OrgId, OrgMember: member));
-    }
-
     private static AssistantKnowledgeController KnowledgeController(AppDbContext db, IAuthorizationService authorization, ClaimsPrincipal user, Guid orgId) =>
-        new(AssistantTestKit.Knowledge(db), Properties(db), Org(orgId), authorization) { ControllerContext = ContextOf(user) };
+        new(AssistantTestKit.Knowledge(db), AssistantTestKit.Properties(db), AssistantTestKit.Org(orgId), authorization) { ControllerContext = AssistantTestKit.ContextOf(user) };
 
     private static AssistantRulesController RulesController(AppDbContext db, IAuthorizationService authorization, ClaimsPrincipal user, Guid orgId) =>
-        new(AssistantTestKit.Rules(db), Properties(db), Org(orgId), authorization) { ControllerContext = ContextOf(user) };
-
-    /// <summary>The property records as the application reads them: the row, whatever the org (the controller checks the org and the reach itself).</summary>
-    private static IPropertyService Properties(AppDbContext db)
-    {
-        var properties = new Mock<IPropertyService>();
-        properties
-            .Setup(p => p.GetPropertyRecordAsync(It.IsAny<Guid>()))
-            .ReturnsAsync((Guid id) => db.Properties.AsNoTracking().FirstOrDefault(p => p.Id == id));
-        return properties.Object;
-    }
-
-    private static IOrgContextResolver Org(Guid orgId)
-    {
-        var resolver = new Mock<IOrgContextResolver>();
-        resolver.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(orgId);
-        return resolver.Object;
-    }
-
-    private static ControllerContext ContextOf(ClaimsPrincipal user) => new()
-    {
-        HttpContext = new DefaultHttpContext
-        {
-            User = user,
-            RequestServices = new ServiceCollection().AddSingleton<IStringLocalizer<SharedResources>>(new KeyLocalizer()).BuildServiceProvider(),
-        },
-    };
+        new(AssistantTestKit.Rules(db), AssistantTestKit.Properties(db), AssistantTestKit.Org(orgId), authorization) { ControllerContext = AssistantTestKit.ContextOf(user) };
 
     private static void AssertNotFound(IActionResult? result)
     {
         var problem = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status404NotFound, problem.StatusCode);
         Assert.Equal("property_not_found", Assert.IsAssignableFrom<ProblemDetails>(problem.Value).Extensions["code"]);
-    }
-
-    private sealed class KeyLocalizer : IStringLocalizer<SharedResources>
-    {
-        public LocalizedString this[string name] => new(name, name);
-
-        public LocalizedString this[string name, params object[] arguments] => new(name, name);
-
-        public IEnumerable<LocalizedString> GetAllStrings(bool includeParentCultures) => [];
     }
 }

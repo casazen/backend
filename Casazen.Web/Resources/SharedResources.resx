@@ -5685,4 +5685,16 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="AssistantConcurrentChange" xml:space="preserve">
     <value>Le istruzioni dell’assistente sono state modificate da un’altra persona nello stesso momento. Ricarica e riprova.</value>
   </data>
+  <data name="AssistantModeNotAllowed" xml:space="preserve">
+    <value>Questa situazione può solo essere passata a una persona o preparata come bozza: l’assistente non può mai rispondere da solo.</value>
+  </data>
+  <data name="AssistantTemplateInvalid" xml:space="preserve">
+    <value>Il testo della risposta deve avere da 1 a 1000 caratteri e restare un messaggio valido anche con i valori di una prenotazione.</value>
+  </data>
+  <data name="AssistantSituationNotFound" xml:space="preserve">
+    <value>Situazione non trovata.</value>
+  </data>
+  <data name="AssistantSituationInvalid" xml:space="preserve">
+    <value>L’argomento da cui l’assistente ricava la risposta non è valido.</value>
+  </data>
 </root>

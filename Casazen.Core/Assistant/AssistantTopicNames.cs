@@ -14,7 +14,8 @@ public static class AssistantTopicNames
         [.. Enum.GetNames<KnowledgeTopic>().Concat(Enum.GetNames<AssistantSituation>()).Distinct(StringComparer.Ordinal)];
 
     /// <summary>
-    /// The canonical spelling of <paramref name="name"/>, a name of <see cref="Known"/> in any case; <c>false</c> for anything else, a number included.
+    /// The canonical spelling of <paramref name="name"/> (a name of <see cref="Known"/> in any case, or the stable code of a situation of <see cref="AssistantSituationCatalog"/>,
+    /// <c>check_in_time</c>); <c>false</c> for anything else, a number included.
     /// </summary>
     public static bool TryNormalize(string? name, out string canonical)
     {
@@ -24,11 +25,19 @@ public static class AssistantTopicNames
             return false;
 
         var known = Known.FirstOrDefault(candidate => candidate.Equals(text, StringComparison.OrdinalIgnoreCase));
-        if (known is null)
-            return false;
+        if (known is not null)
+        {
+            canonical = known;
+            return true;
+        }
 
-        canonical = known;
-        return true;
+        if (AssistantSituationCatalog.TryFromCode(text, out var situation))
+        {
+            canonical = situation.ToString();
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>True when <paramref name="names"/> lists the situation or the topic (by the spelling of <see cref="Known"/>).</summary>
