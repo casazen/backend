@@ -5769,4 +5769,31 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="RentSepaNotAuthorized" xml:space="preserve">
     <value>Autorizza il mandato SEPA prima di attivare il pagamento automatico.</value>
   </data>
+  <data name="AssistantRulesInvalid" xml:space="preserve">
+    <value>Le regole dell’assistente non sono valide: indica almeno una lingua di due lettere minuscole, una firma fino a 300 caratteri, un orario con inizio e fine diversi (entrambi o nessuno) e solo argomenti o situazioni che l’assistente conosce.</value>
+  </data>
+  <data name="AssistantThresholdInvalid" xml:space="preserve">
+    <value>La soglia di confidenza deve essere compresa tra 0,50 e 0,99, con al massimo tre decimali.</value>
+  </data>
+  <data name="AssistantEntryInvalid" xml:space="preserve">
+    <value>Indica un argomento, un tipo e un testo da 1 a 1000 caratteri; una domanda frequente ha anche la domanda (fino a 200 caratteri) e la lingua, se la indichi, è un codice di due lettere minuscole.</value>
+  </data>
+  <data name="AssistantEntryNotFound" xml:space="preserve">
+    <value>Voce non trovata.</value>
+  </data>
+  <data name="AssistantConcurrentChange" xml:space="preserve">
+    <value>Le istruzioni dell’assistente sono state modificate da un’altra persona nello stesso momento. Ricarica e riprova.</value>
+  </data>
+  <data name="AssistantModeNotAllowed" xml:space="preserve">
+    <value>Questa situazione può solo essere passata a una persona o preparata come bozza: l’assistente non può mai rispondere da solo.</value>
+  </data>
+  <data name="AssistantTemplateInvalid" xml:space="preserve">
+    <value>Il testo della risposta deve avere da 1 a 1000 caratteri e restare un messaggio valido anche con i valori di una prenotazione.</value>
+  </data>
+  <data name="AssistantSituationNotFound" xml:space="preserve">
+    <value>Situazione non trovata.</value>
+  </data>
+  <data name="AssistantSituationInvalid" xml:space="preserve">
+    <value>L’argomento da cui l’assistente ricava la risposta non è valido.</value>
+  </data>
 </root>

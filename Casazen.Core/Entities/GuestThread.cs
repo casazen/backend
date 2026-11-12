@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Microsoft.EntityFrameworkCore;
 
@@ -106,6 +107,21 @@ public class GuestMessage : ITenantOwned
     /// <summary>The user who wrote it, for a message of the host (<c>User.Id</c>), an opaque id with no foreign key; <c>null</c> for the guest.</summary>
     [MaxLength(255)]
     public string? AuthorUserId { get; set; }
+
+    /// <summary>The longest <see cref="RuleCode"/>, the same as the one of an OTA message (<see cref="OtaMessage.RuleCodeMaxLength"/>).</summary>
+    public const int RuleCodeMaxLength = 64;
+
+    /// <summary>
+    /// Who wrote the message, as CasaZen tells it (E05/F05/US01/T01, NF-67): the guest, a person of the host side, or the assistant. It makes «written by a
+    /// person or by the assistant, and by which rule» true for the direct threads as it is for the OTA ones (<see cref="OtaMessage.Origin"/>). The migration
+    /// gave the messages that existed <see cref="MessageOrigin.Guest"/> (<see cref="GuestMessageSender.Guest"/>) and <see cref="MessageOrigin.Person"/>
+    /// (<see cref="GuestMessageSender.Host"/>); the code that writes a message sets it. A value left unset reads as the guest's (the default of the column).
+    /// </summary>
+    public MessageOrigin Origin { get; set; }
+
+    /// <summary>The situation code of the rule that produced an assistant message (<c>parking</c>…); <c>null</c> for the others.</summary>
+    [MaxLength(RuleCodeMaxLength)]
+    public string? RuleCode { get; set; }
 }
 
 /// <summary>Who wrote a <see cref="GuestMessage"/>. Stored as an integer.</summary>
