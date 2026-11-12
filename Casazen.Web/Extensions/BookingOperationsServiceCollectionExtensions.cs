@@ -2,6 +2,7 @@ using Casazen.Core.Events;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Events;
+using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Options;
@@ -65,12 +66,17 @@ public static class BookingOperationsServiceCollectionExtensions
         // the calendar; the quote, the checkout, the public calendar and the search of the booking site read the rules through it (T03, T04).
         services.AddScoped<IPropertyDayRuleService, PropertyDayRuleService>();
 
-        // E08/F05/US02/T01 (NF-36, NF-78): the changes of the calendar reach the channel manager. The recorder adds the process of a change (a manual block, a change of the
+        // E08/F05/US02 (NF-36, NF-78): the changes of the calendar reach the channel manager. The recorder adds the process of a change (a manual block, a change of the
         // price and the rules, a first publication) to the unit of work of the caller; the push sends its chunks (quota, back-off, a process id or a failure, never a false
-        // success).
+        // success); the runner follows what is due and what the channel manager accepted; the queries read it back for the host; the handler records the whole horizon of a
+        // listing when it is published for the first time. The job runs them in the background.
         services.AddOptions<OctorateCalendarOptions>().BindConfiguration(OctorateCalendarOptions.SectionName);
         services.AddScoped<ICalendarChangeRecorder, CalendarChangeRecorder>();
         services.AddScoped<ICalendarPushService, CalendarPushService>();
+        services.AddScoped<ICalendarChangeRunner, CalendarChangeRunner>();
+        services.AddScoped<ICalendarChangeQueries, CalendarChangeQueries>();
+        services.AddScoped<CalendarChangeProcessJob>();
+        services.AddScoped<IEventHandler<ListingPublishedEvent>, ListingPublishedCalendarHandler>();
         return services;
     }
 }
