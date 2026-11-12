@@ -98,15 +98,22 @@ jobs:
           curl -s https://packages.stripe.dev/api/security/keypair/stripe-cli-gpg/public | gpg --dearmor | sudo tee /usr/share/keyrings/stripe.gpg >/dev/null
           echo "deb [signed-by=/usr/share/keyrings/stripe.gpg] https://packages.stripe.dev/stripe-cli-debian-local stable main" | sudo tee /etc/apt/sources.list.d/stripe.list
           sudo apt-get update && sudo apt-get install -y stripe
-      - name: Build backend
-        run: dotnet build backend/Casazen.Web -c Release
-      - name: Install frontend and Chromium
+      # The frontend install does not depend on the backend build: it runs in the background while the backend compiles
+      # (about a minute saved), and the step after the build waits for it.
+      - name: Install frontend and Chromium (background)
         working-directory: frontend
         run: |
-          npm ci
-          # No --with-deps: the ubuntu-latest image already has every library Chromium needs; --with-deps only added
+          # No --with-deps: the ubuntu image already has every library Chromium needs; --with-deps only added
           # fonts from the apt mirror, which at times took 10 minutes to download (~45 kB/s).
-          npx playwright install chromium
+          nohup bash -c 'set -e; npm ci; npx playwright install chromium; echo ok > "$RUNNER_TEMP/frontend-install.ok"' > "$RUNNER_TEMP/frontend-install.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/frontend-install.pid"
+      - name: Build backend
+        run: dotnet build backend/Casazen.Web -c Release
+      - name: Wait for the frontend and Chromium install
+        run: |
+          while kill -0 "$(cat "$RUNNER_TEMP/frontend-install.pid")" 2>/dev/null; do sleep 1; done
+          cat "$RUNNER_TEMP/frontend-install.log"
+          [ -f "$RUNNER_TEMP/frontend-install.ok" ] || { echo "::error::npm ci or the Chromium install failed (log above)"; exit 1; }
       - name: Golden Journey L3 (stack up, suite, stack down)
         working-directory: frontend
         run: bash e2e/stack/ci-run.sh

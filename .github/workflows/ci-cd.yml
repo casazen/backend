@@ -118,6 +118,13 @@ jobs:
       TEST_POSTGRES_CONNECTION: Host=localhost;Port=5432;Username=postgres;Password=postgres;Include Error Detail=true
 
     steps:
+      # Local document OCR tools (tesseract + poppler): first step, installed in the background while the checkout, the
+      # .NET setup and the download of the build output run; "Wait for the OCR tools" below joins it.
+      - name: Install local document OCR tools (background)
+        run: |
+          (sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends tesseract-ocr tesseract-ocr-ita tesseract-ocr-eng poppler-utils) > "$RUNNER_TEMP/ocr-install.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/ocr-install.pid"
+
       # The source tree is needed at the same path as in the build job: the tests read the content root of Casazen.Web
       # and the seed files from it.
       - uses: actions/checkout@v4
@@ -126,12 +133,6 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-
-      # Local document OCR tools (tesseract + poppler), installed in the background while the build output downloads.
-      - name: Install local document OCR tools (background)
-        run: |
-          (sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends tesseract-ocr tesseract-ocr-ita tesseract-ocr-eng poppler-utils) > "$RUNNER_TEMP/ocr-install.log" 2>&1 &
-          echo $! > "$RUNNER_TEMP/ocr-install.pid"
 
       - name: Download the test build
         uses: actions/download-artifact@v4

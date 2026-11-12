@@ -4,7 +4,9 @@ Workflows in `.github/workflows/`. Task FD-02 (audit defects A9-26 and the backe
 
 | Workflow | Job (check name) | Trigger | Gate |
 |---|---|---|---|
-| `ci-cd.yml` | `Build & Test` | PR and push to `develop` / `main` | **Required**: `dotnet restore` (NuGet audit, High/Critical = error), vulnerable packages gate (`scripts/check-vulnerable-packages.sh`), `dotnet build -c Release`, `dotnet test` on a `postgres:16` service (section 7) |
+| `ci-cd.yml` | `Build & Test` | PR and push to `develop` / `main` | **Required**: green only when `Build` and every `Test shard i/5` below are green (it keeps the name the runbooks and the delivery tooling know; section 7) |
+| `ci-cd.yml` | `Build` | PR and push to `develop` / `main` | `dotnet restore` (NuGet audit, High/Critical = error), vulnerable packages gate (`scripts/check-vulnerable-packages.sh`), `dotnet build -c Release`, then the discovery of the tests and the plan of the shards |
+| `ci-cd.yml` | `Test shard 1/5` … `Test shard 5/5` | PR and push to `develop` / `main` | `dotnet test` of the assembly built by `Build`, one share of the classes each, on a `postgres:16` service (section 7) |
 | `ci-cd.yml` | `Format` | PR and push to `develop` / `main` | **Required**: `dotnet format --verify-no-changes`, in parallel with `Build & Test` |
 | `verify-railway-deploy.yml` | `Verify Railway Test (native deploy)` | after a green `CI/CD Pipeline` push to `develop` | The test API runs this commit and `/api/health/ready` answers 200, then smoke tests (FD-12). Separate workflow so Railway Wait for CI is not deadlocked |
 | `verify-railway-deploy.yml` | `Verify Railway Production (native deploy)` | after a green `CI/CD Pipeline` push to `main` | Same on production (FD-12) |
@@ -122,7 +124,7 @@ When the run fails:
 
 ## 5. Verify
 
-1. Open a PR against `develop`: the `Build & Test` check shows the steps "Vulnerable packages (fails on High/Critical, including transitive)", "Build", "Test"; the `Format` check, beside it, shows "Check formatting". There is no "E2E Golden Journey" workflow any more.
+1. Open a PR against `develop`: the `Build` check shows the steps "Vulnerable packages (fails on High/Critical, including transitive)", "Build" and "Plan the test shards"; the five `Test shard i/5` checks show "Test" and "Every planned class ran"; `Build & Test` waits for all of them; the `Format` check, beside them, shows "Check formatting".
 2. Locally, the same commands as CI (with `TEST_POSTGRES_CONNECTION` set, see `AGENTS.md`):
    `dotnet restore && bash scripts/check-vulnerable-packages.sh && dotnet build -c Release --no-restore && dotnet test -c Release --no-build && dotnet format --verify-no-changes`.
 3. Keep-alive: **Actions → Supabase Keep-Alive → Run workflow**. With the variables set, the log shows "Supabase REST ping OK"; without them, a warning annotation and no ping.
@@ -169,7 +171,20 @@ InMemory does **not** enforce foreign keys, unique indexes, `CHECK`s, `timestamp
 
 ## 7. CI time
 
-A run of `CI/CD Pipeline` takes about as long as its `Test` step. Two rules keep it short:
+A run of `CI/CD Pipeline` takes about as long as `Build` plus its slowest `Test shard`. Three rules keep it short:
+
+- **The solution is compiled once and the ~19,000 tests run in 5 parallel shards.** `Build` compiles and uploads the output of
+  `Casazen.Tests`; each `Test shard i/5` downloads it and runs `dotnet test Casazen.Tests.dll --filter <its classes>` on its own
+  `postgres:16` service (in one job a PR run took 13-19 minutes, 10-12 of them tests). The shards are a partition of the classes that
+  `dotnet test --list-tests` discovers in the built assembly (`scripts/ci/test_shards.py plan`), balanced with the measured seconds
+  per class in `scripts/ci/test-class-weights.tsv`. The plan is built from the very discovery the shards run on, so no test can fall
+  between shards, and each shard fails when a class planned for it has no result (`scripts/ci/test_shards.py verify`). A class that
+  is not in the weights file (a new one) is placed with an average cost and still runs: the weights only decide how balanced the
+  shards are. Refresh them when one shard drifts away from the others (compare the durations of the five `Test shard` jobs):
+  `gh run download <run-id> --pattern 'test-results-*' --dir trx`, then
+  `python3 scripts/ci/test_shards.py weights --trx trx/*/*.trx > scripts/ci/test-class-weights.tsv`.
+  To change the number of shards change `TEST_SHARDS` and the `matrix.shard` list in `ci-cd.yml` together (a step checks that they
+  agree). A failed shard can be re-run alone (**Re-run failed jobs**): a few minutes, not a whole run.
 
 - **Each migration runs once per run, not once per test.** Applying the EF migrations to a new database takes seconds, and the
   suite creates hundreds of databases (one per `WebApplicationFactory`, one per test of a class with `IAsyncLifetime`): it was
@@ -187,3 +202,8 @@ A run of `CI/CD Pipeline` takes about as long as its `Test` step. Two rules keep
 
 Playwright installs Chromium without `--with-deps` (here and in `casazen/frontend`): the `ubuntu-latest` image already has its
 libraries, and `--with-deps` only added fonts from the apt mirror, a download that at times took 10 minutes.
+
+The jobs run on `ubuntu-24.04`, not on `ubuntu-latest`: the label has moved to Ubuntu 26.04, where `npx playwright install chromium`
+stops with "Playwright does not support chromium on ubuntu26.04-x64" (`Golden Journey L3` failed on every run until it was pinned,
+as the frontend workflows already were). `ci-cd.yml` is pinned too, so the build and the test environment do not change under the
+runs when GitHub moves the label again; move all the pins together, after a run of `Golden Journey L3` on the new image.
