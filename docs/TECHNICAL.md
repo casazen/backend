@@ -1061,6 +1061,48 @@ owner's), `groupBy` `none` (default, the total only) or `property` (no channel c
 - **Wiring.** `IOwnerPortalService` was not registered in the dependency injection (the controller could not be built); it is now. Its
   new constructor parameter, `IHostDashboardService`, is optional so that code that builds the service for the older reads compiles.
 
+#### Owner portal operations: calendar and owner stays (E07/F07/US01/T01, NF-111, ADR-011)
+
+Behind `Features:AgencyTier` (404 while off); registered in `AddCasazenOwnerPortalOperations`. What the caller of the portal reaches is
+`IOwnerPortalAccessResolver.ResolveAsync`, **resolved again at every request**: its ownerships in force (`PropertyOwnership.OwnerUserId`, started
+and not ended, on a property of the same org that is not deleted, of an owner profile that is not anonymized) with every permission, plus (T02) the
+delegations an owner gave it. The caller has no org, so every read of the portal ignores the tenant filter of the request (fail-closed for an
+authenticated caller without org) and names the org, the owner profile and the property explicitly. 404 for a property of another owner, an
+ended ownership or a missing one; 403 `owner_portal_permission_missing` for a permission the caller holds nowhere.
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/owner-portal/calendar?propertyId=&from=&to=` | OwnerPortal, `calendar.read` | Runs `{ start, end (excluded), kind, stayId?, stayState? }` of `available`, `occupied` (a guest: nothing else is said), `blocked` (a block or a co-owner's stay) and `ownerStay` (the caller's, with its id and state). Nights `from`..`to` (default today + 90, at most 366: 422 `owner_calendar_range_invalid`), cut to the ownerships of the caller. Bookings by the one rule of the nights taken (`PropertyOccupancy`, `CheckoutHolds.OccupiesDates`), reading their dates only |
+| `GET` | `/api/owner-portal/stays` | OwnerPortal, `calendar.read` or `stays.request` | The stays of the owner profiles the caller holds on that property now, newest first: `{ id, propertyName, startDate, endDate, nights, status, state, syncState, releaseSyncState, syncErrorCode, ... }` |
+| `GET` | `/api/owner-portal/stays/rule?propertyId=` | OwnerPortal, `stays.request` | The rule the owner follows (its own, else the property's, else the default: approval, no limit) and the nights held this year |
+| `POST` | `/api/owner-portal/stays` | OwnerPortal, `stays.request` | `{ propertyId, startDate, endDate }` → 201 `requested`. 422 `owner_stay_invalid_range`, `_in_past`, `_too_short`, `_too_long`, `_notice_too_short`, `_beyond_window`, `_blackout`, `_outside_period` (also outside the ownership), `_allowance_exceeded`; 409 `owner_stay_dates_unavailable` (a guest, a block, another owner stay of the property, a co-owner's included: one code, nothing said of whose) |
+| `POST` | `/api/owner-portal/stays/{id}/cancel` | OwnerPortal, `stays.request` | Withdraws a stay that has not ended (409 `owner_stay_not_cancellable`); an approved one gives its block back in the background. Idempotent |
+| `GET` | `/api/owner-stays?status=&propertyId=` | `agency.owner.view`, whole org | The stays of the org with the owner's display name (never a fiscal or bank value) |
+| `POST` | `/api/owner-stays/{id}/approve` · `/reject` · `/cancel` · `/retry-sync` | `agency.owner.manage`, whole org | 409 `owner_stay_not_pending`, `owner_stay_dates_unavailable`, `owner_stay_not_cancellable`; 404 `owner_stay_not_found` (another org's, missing), `owner_stay_owner_not_found` (the ownership ended). Idempotent: a second approval finds the block, a retry with nothing failed sends nothing |
+| `GET` / `PUT` / `DELETE` | `/api/owner-stays/rules[?propertyId=]` · `/api/owner-stays/rules/{id}` | view / manage, whole org | The rules: `{ propertyId, propertyOwnerId? (null: every owner), yearlyNightAllowance?, minAdvanceDays, maxAdvanceDays?, minNights, maxNights?, approvalRequired, activeFrom?, activeUntil?, blackouts: [{ from, to }] }`; one row per property and one per owner (a second save replaces it). 422 `owner_stay_rule_invalid` with the field; 404 `owner_stay_property_not_found`, `owner_stay_owner_not_found`, `owner_stay_rule_not_found` |
+
+- **A request blocks nothing.** It is stored `Requested` after the rule (`OwnerStayRules.EnsureObeys`: notice, window, shortest and longest stay,
+  active period, blocked dates; the nights of the owner profile on the property in each calendar year against `yearlyNightAllowance`, requested and
+  approved stays counted) and the free dates. The approval creates **one** manual block, reason `Owner`, **with the id of the stay**
+  (`ICalendarBlockService.CreateTrackedAsync`, the path of every block towards the channel manager: the calendar change of NF-78 is recorded with
+  it), in the transaction of the approval; a second approval finds it. A rule with `approvalRequired: false` is approved by the background work
+  (`OwnerPortalOperationsJob.ProcessStayAsync`, enqueued after the save; the recurring `owner-portal-operations` every 5 minutes is the safety net),
+  never in the owner's request: the calendar services read the property through the tenant filter, which the owner has not. Dates taken meanwhile
+  leave the request to a person (its «To do»). An owner stay is never a booking: no guest, no price, no message, no invoice, no tourist tax.
+- **Confirmed only when acknowledged.** `state` is `confirmed` only when the change of the block is `Applied` (the property is not on the channel
+  manager), `Sent` or `Confirmed`; `approved_syncing` while it is `Queued`/`Sending`; `sync_failed` when `Failed`/`PartiallySent` (a «To do»
+  `OwnerStaySyncFailed` of the agency, urgent, closed when acknowledged). The read derives it from the change itself; the job records each change
+  of state with its line of the activity log.
+- **Only its own block.** A withdrawal (the owner, then the background work) or a cancellation (the agency, at once) removes the block whose id is
+  the stay's, with the change that opens the nights (`ReleaseOwnerStayBlockAsync`); the block of an owner stay cannot be deleted by hand
+  (422 `calendar_block_held_by_owner_stay` on `DELETE /api/properties/{id}/blocks/{blockId}`).
+- **One lock per property** (`PostgresAdvisoryLocks.Scope.OwnerStays` = 21071): requests, decisions, withdrawals and the background work of a
+  property are taken one at a time, so two co-owners never get the same nights and the allowance is never counted twice; the dates lock of the
+  property is taken inside it, by the block.
+- **Audit.** One event of the activity log, `OwnerPortalChanged` (subject `OwnerPortalItem`, details `part` = `stay` / `stayRule` and `status`).
+  «To do»: `OwnerStayToReview` (a request a person decides, raised once) and `OwnerStaySyncFailed`, action `ReviewOwnerStay`, entity `OwnerStay`.
+- **Agency scope.** A whole-org function, as the owner accounting: a collaborator «Solo alcuni» is refused (403) even with the permission.
+
 #### Guests & digital check-in
 
 | Method | Path | Auth | Description |

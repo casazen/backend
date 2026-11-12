@@ -6393,4 +6393,73 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="AssistantSituationInvalid" xml:space="preserve">
     <value>L’argomento da cui l’assistente ricava la risposta non è valido.</value>
   </data>
+  <data name="OwnerPortalPermissionMissing" xml:space="preserve">
+    <value>Il proprietario non ti ha dato il permesso per questa funzione.</value>
+  </data>
+  <data name="OwnerPortalPermissionsEmpty" xml:space="preserve">
+    <value>Scegli almeno un permesso.</value>
+  </data>
+  <data name="OwnerPortalPermissionUnknown" xml:space="preserve">
+    <value>Uno dei permessi indicati non esiste.</value>
+  </data>
+  <data name="OwnerPortalPropertyNotFound" xml:space="preserve">
+    <value>Immobile non trovato.</value>
+  </data>
+  <data name="OwnerStayNotFound" xml:space="preserve">
+    <value>Soggiorno del proprietario non trovato.</value>
+  </data>
+  <data name="OwnerStayInvalidRange" xml:space="preserve">
+    <value>La partenza deve essere dopo l'arrivo, e il soggiorno non può superare un anno.</value>
+  </data>
+  <data name="OwnerStayInPast" xml:space="preserve">
+    <value>L'arrivo è già passato.</value>
+  </data>
+  <data name="OwnerStayTooShort" xml:space="preserve">
+    <value>Il soggiorno deve durare almeno {0} notti.</value>
+  </data>
+  <data name="OwnerStayTooLong" xml:space="preserve">
+    <value>Il soggiorno può durare al massimo {0} notti.</value>
+  </data>
+  <data name="OwnerStayNoticeTooShort" xml:space="preserve">
+    <value>Il soggiorno va chiesto con almeno {0} giorni di anticipo.</value>
+  </data>
+  <data name="OwnerStayBeyondWindow" xml:space="preserve">
+    <value>Il soggiorno può essere chiesto al massimo {0} giorni prima dell'arrivo.</value>
+  </data>
+  <data name="OwnerStayBlackout" xml:space="preserve">
+    <value>Le date scelte sono chiuse ai soggiorni del proprietario.</value>
+  </data>
+  <data name="OwnerStayOutsidePeriod" xml:space="preserve">
+    <value>Le date scelte sono fuori dal periodo in cui sono ammessi i soggiorni del proprietario.</value>
+  </data>
+  <data name="OwnerStayAllowanceExceeded" xml:space="preserve">
+    <value>Supereresti le {0} notti all'anno concesse per il {1}.</value>
+  </data>
+  <data name="OwnerStayDatesUnavailable" xml:space="preserve">
+    <value>Alcune notti scelte non sono libere.</value>
+  </data>
+  <data name="OwnerStayNotPending" xml:space="preserve">
+    <value>Il soggiorno non è più in attesa di una decisione.</value>
+  </data>
+  <data name="OwnerStayNotCancellable" xml:space="preserve">
+    <value>Questo soggiorno non può più essere annullato.</value>
+  </data>
+  <data name="OwnerCalendarRangeInvalid" xml:space="preserve">
+    <value>Il periodo del calendario non è valido: al massimo {0} giorni, e la fine non prima dell'inizio.</value>
+  </data>
+  <data name="OwnerStayRuleInvalid" xml:space="preserve">
+    <value>Un valore della regola dei soggiorni non è valido: {0}.</value>
+  </data>
+  <data name="OwnerStayRuleNotFound" xml:space="preserve">
+    <value>Regola dei soggiorni non trovata.</value>
+  </data>
+  <data name="OwnerStayPropertyNotFound" xml:space="preserve">
+    <value>Immobile non trovato.</value>
+  </data>
+  <data name="OwnerStayOwnerNotFound" xml:space="preserve">
+    <value>Il proprietario non ha una proprietà in corso su questo immobile.</value>
+  </data>
+  <data name="CalendarBlockHeldByOwnerStay" xml:space="preserve">
+    <value>Questo blocco tiene le date di un soggiorno del proprietario: si toglie annullando il soggiorno.</value>
+  </data>
 </root>

@@ -184,4 +184,16 @@ public enum OrgActivityType
     /// <c>status</c> (<c>sent</c>, <c>resent</c>, <c>accepted</c>, <c>revoked</c>). Never the address, the name of the owner or the link.
     /// </summary>
     OwnerInvitationChanged = 140,
+
+    // ─── Owner portal operations (E07/F07/US01, NF-111) ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Something of the owner portal operations of an agency changed (E07/F07/US01): an owner stay was requested, approved, rejected, withdrawn or
+    /// cancelled, its block was acknowledged or refused by the channel manager or sent again; a rule of the owner stays was saved or removed; and,
+    /// with the documents, the contacts and the inbox of the portal, what they record. Written by the owner portal services in the unit of work of the
+    /// change, by a person of the agency, by the owner (<c>owner:{id}</c>) or by the reconciliation (no actor). Subject: the item (the owner stay, the
+    /// rule, ...). Details: the <c>part</c> (<c>stay</c>, <c>stayRule</c>, ...) and the <c>status</c>, codes only: never a name, a date of a guest, a
+    /// text or an amount. One event for the whole feature: the catalog is closed (AM-D18).
+    /// </summary>
+    OwnerPortalChanged = 150,
 }

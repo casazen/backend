@@ -112,4 +112,17 @@ public enum ActivityType
     /// property; closes when a rate is known.
     /// </summary>
     MunicipalityTaxRateMissing = 51,
+
+    /// <summary>
+    /// An owner asked for a stay in its property and a person of the agency decides (E07/F07/US01/T01, NF-111): the rule asks for an approval, or the
+    /// automatic approval found the dates taken. About the owner stay (entity type <c>OwnerStay</c>), on its property; closes when the stay is approved,
+    /// rejected or withdrawn. The numbers from 70 keep clear of the values the tasks that run in parallel append after 51 and 60.
+    /// </summary>
+    OwnerStayToReview = 70,
+
+    /// <summary>
+    /// The channel manager refused the block of an owner stay, or its release (E07/F07/US01/T01): the stay is not confirmed until the block is sent
+    /// again. About the owner stay, on its property, urgent; closes when the block (or its release) is acknowledged or the stay is cancelled.
+    /// </summary>
+    OwnerStaySyncFailed = 71,
 }

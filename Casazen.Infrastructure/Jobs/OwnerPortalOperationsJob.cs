@@ -1,0 +1,56 @@
+using Casazen.Core.Features;
+using Casazen.Core.Services;
+using Hangfire;
+using Microsoft.Extensions.Logging;
+
+namespace Casazen.Infrastructure.Jobs;
+
+/// <summary>
+/// The background work of the owner portal operations (E07/F07/US01, NF-111): <see cref="ProcessStayAsync"/> finishes one owner stay right after an owner
+/// asked for it or withdrew it (the automatic approval and its block, the block to give back), and <see cref="ExecuteAsync"/> is the safety net that runs
+/// every five minutes: the same for every stay that waits, the sync results of the blocks and the «To do» of the agency.
+/// </summary>
+/// <remarks>
+/// <para>Behind <c>Features:AgencyTier</c>, the flag of the agency owner portal: the schedule is removed while it is off, and a run enqueued before does
+/// nothing. The channel manager itself is reached only through the calendar changes, which follow <c>Features:OctorateConnector</c>.</para>
+/// <para>It lives next to the other jobs because the services of this project enqueue it after their save is committed and cannot see the web project.
+/// No automatic retry of the run enqueued after an owner request: what could not be done is done by the recurring run.</para>
+/// </remarks>
+public class OwnerPortalOperationsJob(IOwnerStayService stays, IFeatureFlags featureFlags, ILogger<OwnerPortalOperationsJob> logger)
+{
+    public const string RecurringJobId = "owner-portal-operations";
+
+    /// <summary>Every five minutes.</summary>
+    public const string Cron = "*/5 * * * *";
+
+    /// <summary>The seconds a run waits for the previous run of the same job.</summary>
+    public const int LockTimeoutSeconds = 60;
+
+    [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
+    [DisableConcurrentExecution("OwnerPortalOperationsJob.ProcessStayAsync:{0}", LockTimeoutSeconds)]
+    public async Task ProcessStayAsync(Guid stayId, CancellationToken cancellationToken)
+    {
+        if (!featureFlags.IsEnabled(FeatureFlags.AgencyTier))
+        {
+            logger.LogInformation("Owner stay {StayId} not processed: Features:AgencyTier is off", stayId);
+            return;
+        }
+
+        await stays.ProcessAsync(stayId, cancellationToken);
+    }
+
+    [DisableConcurrentExecution(LockTimeoutSeconds)]
+    public async Task ExecuteAsync(CancellationToken cancellationToken)
+    {
+        if (!featureFlags.IsEnabled(FeatureFlags.AgencyTier))
+        {
+            logger.LogInformation("Owner portal operations not run: Features:AgencyTier is off");
+            return;
+        }
+
+        var stayRun = await stays.ReconcileAsync(cancellationToken);
+        logger.LogInformation(
+            "Owner stays: {Approved} approved automatically, {Released} blocks given back, {SyncChanges} sync results, {Raised} To do raised, {Closed} closed",
+            stayRun.Approved, stayRun.Released, stayRun.SyncChanges, stayRun.TodosRaised, stayRun.TodosClosed);
+    }
+}

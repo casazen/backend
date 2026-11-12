@@ -27,4 +27,10 @@ public enum OrgActivitySubjectType
 
     /// <summary>An invitation of a property owner to the owner portal: the id is <c>OwnerInvitation.Id</c> (E10/F02/US02).</summary>
     OwnerInvitation = 7,
+
+    /// <summary>
+    /// An item of the owner portal operations (E07/F07/US01): the id is the one of the owner stay, of the rule of the owner stays, ... as the <c>part</c>
+    /// detail of the line says.
+    /// </summary>
+    OwnerPortalItem = 8,
 }

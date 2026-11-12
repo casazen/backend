@@ -397,6 +397,11 @@ public class AppDbContext(
 
     // The payouts to the owners, their append-only withholding evidence and the annual tax datasets (E06/F05/US02/T03, NF-110)
     public DbSet<OwnerPayout> OwnerPayouts { get; set; } = null!;
+
+    // The owner portal operations (E07/F07/US01, NF-111): the rules and the requests of the owner stays.
+    public DbSet<OwnerStayRule> OwnerStayRules { get; set; } = null!;
+    public DbSet<OwnerStayRequest> OwnerStayRequests { get; set; } = null!;
+
     public DbSet<TaxObligationEvidence> TaxObligationEvidence { get; set; } = null!;
     public DbSet<TaxReportingDataset> TaxReportingDatasets { get; set; } = null!;
 
@@ -2056,6 +2061,10 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new OwnerFxRateConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerExternalDocumentReferenceConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerPayoutConfiguration());
+
+        // The owner portal operations (E07/F07/US01, NF-111). The tenant query filter is applied below, to every ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new OwnerStayRuleConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerStayRequestConfiguration());
         modelBuilder.ApplyConfiguration(new TaxObligationEvidenceConfiguration());
         modelBuilder.ApplyConfiguration(new TaxReportingDatasetConfiguration());
 

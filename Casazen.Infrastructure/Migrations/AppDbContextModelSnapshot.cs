@@ -8737,6 +8737,188 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerStayRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AutoApprove")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("BlockChangeProcessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("BlockReleasedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CalendarBlockId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CancelledBy")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecidedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("Nights")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyOwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ReleaseChangeProcessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ReleaseSyncState")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("RequestedByContactId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RequestedByOwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("SyncCheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SyncErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("SyncState")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CalendarBlockId")
+                        .IsUnique()
+                        .HasFilter("\"CalendarBlockId\" IS NOT NULL");
+
+                    b.HasIndex("PropertyOwnerId");
+
+                    b.HasIndex("Status", "EndDate");
+
+                    b.HasIndex("OrgId", "PropertyOwnerId", "StartDate");
+
+                    b.HasIndex("PropertyId", "Status", "StartDate");
+
+                    b.ToTable("OwnerStayRequests", t =>
+                        {
+                            t.HasCheckConstraint("CK_OwnerStayRequests_Dates", "\"EndDate\" > \"StartDate\" AND \"Nights\" >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerStayRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly?>("ActiveFrom")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("ActiveUntil")
+                        .HasColumnType("date");
+
+                    b.Property<bool>("ApprovalRequired")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("BlackoutsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("MaxAdvanceDays")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MaxNights")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MinAdvanceDays")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MinNights")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PropertyOwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int?>("YearlyNightAllowance")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
+
+                    b.HasIndex("PropertyId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OwnerStayRules_Property")
+                        .HasFilter("\"PropertyOwnerId\" IS NULL");
+
+                    b.HasIndex("PropertyOwnerId");
+
+                    b.HasIndex("PropertyId", "PropertyOwnerId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OwnerStayRules_Property_Owner")
+                        .HasFilter("\"PropertyOwnerId\" IS NOT NULL");
+
+                    b.ToTable("OwnerStayRules", t =>
+                        {
+                            t.HasCheckConstraint("CK_OwnerStayRules_Advance", "\"MinAdvanceDays\" >= 0 AND (\"MaxAdvanceDays\" IS NULL OR \"MaxAdvanceDays\" >= \"MinAdvanceDays\")");
+
+                            t.HasCheckConstraint("CK_OwnerStayRules_Allowance", "\"YearlyNightAllowance\" IS NULL OR \"YearlyNightAllowance\" BETWEEN 0 AND 366");
+
+                            t.HasCheckConstraint("CK_OwnerStayRules_Nights", "\"MinNights\" >= 1 AND (\"MaxNights\" IS NULL OR \"MaxNights\" >= \"MinNights\")");
+
+                            t.HasCheckConstraint("CK_OwnerStayRules_Period", "\"ActiveFrom\" IS NULL OR \"ActiveUntil\" IS NULL OR \"ActiveUntil\" >= \"ActiveFrom\"");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OwnerUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -18150,6 +18332,47 @@ namespace Casazen.Infrastructure.Migrations
                         .HasForeignKey("PropertyOwnerId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerStayRequest", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.PropertyOwner", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyOwnerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerStayRule", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.PropertyOwner", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyOwnerId")
+                        .OnDelete(DeleteBehavior.Cascade);
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.Party", b =>
