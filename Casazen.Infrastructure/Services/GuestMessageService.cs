@@ -364,7 +364,7 @@ public sealed class GuestMessageService(
             OrgId = orgId,
             ThreadId = threadId,
             Sender = sender,
-            Origin = sender == GuestMessageSender.Host ? MessageOrigin.Person : MessageOrigin.Guest,
+            Origin = GuestMessageRules.OriginOf(sender),
             Text = text,
             CreatedAt = now,
             IdempotencyKey = key,

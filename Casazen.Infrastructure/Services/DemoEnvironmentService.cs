@@ -879,12 +879,13 @@ public class DemoEnvironmentService(
             db.GuestThreads.Add(thread);
             foreach (var (message, at) in messages)
             {
+                var sender = message.FromGuest ? GuestMessageSender.Guest : GuestMessageSender.Host;
                 db.GuestMessages.Add(new GuestMessage
                 {
                     OrgId = orgId,
                     ThreadId = thread.Id,
-                    Sender = message.FromGuest ? GuestMessageSender.Guest : GuestMessageSender.Host,
-                    Origin = message.FromGuest ? MessageOrigin.Guest : MessageOrigin.Person,
+                    Sender = sender,
+                    Origin = GuestMessageRules.OriginOf(sender),
                     Text = message.Text,
                     CreatedAt = at,
                     AuthorUserId = message.FromGuest ? null : ownerId,

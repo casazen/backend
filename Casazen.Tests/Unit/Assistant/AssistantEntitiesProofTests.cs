@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Data.Encryption;
 using Microsoft.AspNetCore.DataProtection;
@@ -220,6 +221,22 @@ public class AssistantEntitiesProofTests
     }
 
     [Fact]
+    public void GuestMessageRules_OriginOf_AMessageOfTheGuestIsTheGuests_AMessageOfTheHostIsAPersons_AndTheMigrationSaysTheSame()
+    {
+        Assert.Equal(MessageOrigin.Guest, GuestMessageRules.OriginOf(GuestMessageSender.Guest));
+        Assert.Equal(MessageOrigin.Person, GuestMessageRules.OriginOf(GuestMessageSender.Host));
+
+        // The migration gave the messages that existed the origin the writers give a new one: the statement is written with the numbers of the two enums, and this fails if they move.
+        Assert.Equal(1, (int)GuestMessageSender.Host);
+        Assert.Equal(2, (int)MessageOrigin.Person);
+        var migration = Directory
+            .EnumerateFiles(Path.Combine(FindRepositoryRoot(), "Casazen.Infrastructure", "Migrations"), "*_AddMessageAssistant.cs")
+            .Select(File.ReadAllText)
+            .Single();
+        Assert.Contains("UPDATE \\\"GuestMessages\\\" SET \\\"Origin\\\" = 2 WHERE \\\"Sender\\\" = 1;", migration, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TheValuesOfTheEnums_AreStoredAsNumbers_AndNeverMove()
     {
         Assert.Equal(
@@ -239,6 +256,15 @@ public class AssistantEntitiesProofTests
         Assert.Equal(new[] { 1, 2, 3 }, Enum.GetValues<LessonStatus>().Select(v => (int)v).Order());
         Assert.Equal(new[] { 1, 2, 3 }, Enum.GetValues<LessonScope>().Select(v => (int)v).Order());
         Assert.Equal(new[] { 1, 2, 3 }, Enum.GetValues<TrustProposalStatus>().Select(v => (int)v).Order());
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(System.AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Casazen.sln")))
+            directory = directory.Parent;
+
+        return directory?.FullName ?? throw new InvalidOperationException("Casazen.sln not found above the test output folder.");
     }
 
     private static AppDbContext NewNpgsqlContext() =>
