@@ -36,8 +36,11 @@ public sealed class AssistantSituationService(
     /// <summary>Stable code of the 404 of a situation that is none of the 15.</summary>
     public const string SituationNotFoundCode = "assistant_situation_not_found";
 
-    /// <summary>The values a template is filled in with to check it: a stay with every date and time, and the names of a guest, a property and a host.</summary>
-    private static readonly MessageTemplateValues SampleValues = new(
+    /// <summary>
+    /// The values a template is filled in with to check it: a stay with every date and time, and the names of a guest, a property and a host. The simulator of the drafts
+    /// (E05/F05/US02/T01) fills a template with the same values.
+    /// </summary>
+    internal static readonly MessageTemplateValues SampleValues = new(
         GuestName: "Maria",
         PropertyName: "Casa Esempio",
         BookingCode: "CZ-0001",
