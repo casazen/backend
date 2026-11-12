@@ -5949,4 +5949,10 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocPdfCourtesyCopy" xml:space="preserve">
     <value>Copia di cortesia della fattura elettronica: il documento valido ai fini fiscali è il file XML trasmesso al Sistema di Interscambio.</value>
   </data>
+  <data name="FiscalDocumentNotFound" xml:space="preserve">
+    <value>Documento fiscale non trovato.</value>
+  </data>
+  <data name="OctoratePdfUnavailable" xml:space="preserve">
+    <value>Il PDF di questo documento non è disponibile dal gestionale: aprilo in Octorate.</value>
+  </data>
 </root>

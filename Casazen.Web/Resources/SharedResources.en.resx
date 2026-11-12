@@ -5949,4 +5949,10 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="FiscalDocPdfCourtesyCopy" xml:space="preserve">
     <value>Courtesy copy of the electronic invoice: the document valid for tax purposes is the XML file sent to the Exchange System.</value>
   </data>
+  <data name="FiscalDocumentNotFound" xml:space="preserve">
+    <value>Fiscal document not found.</value>
+  </data>
+  <data name="OctoratePdfUnavailable" xml:space="preserve">
+    <value>The PDF of this document is not available from the channel manager: open it in Octorate.</value>
+  </data>
 </root>

@@ -52,6 +52,10 @@ public static class FiscalDocumentExtensions
         services.AddSingleton<FatturaPaSchemaProvider>();
         services.AddSingleton<IFatturaPaXmlBuilder, FatturaPaXmlBuilder>();
 
+        // The import of the documents Octorate issued, read-only, behind Features:OctorateConnector and Features:OctorateDocumentImport
+        // (E06/F03/US02/T01, NF-84); run by the job octorate-document-import.
+        services.AddScoped<IOctorateDocumentImportService, OctorateDocumentImportService>();
+
         return services;
     }
 }

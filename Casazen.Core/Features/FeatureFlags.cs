@@ -211,6 +211,15 @@ public static class FeatureFlags
     /// </summary>
     public const string MessageTranslationAi = "MessageTranslationAi";
 
+    /// <summary>
+    /// E06/F03/US02/T01 (NF-84, FIS-04, D19): the import of the documents Octorate issued, <b>off by default</b> until the documents list is proven on a
+    /// structure with the invoice module: the operations are documented in the OpenAPI (S24) but the sandbox answers an empty list (S25), so the
+    /// names of the members are not verified. It gates the recurring job <c>octorate-document-import</c> (removed while off), the import service and
+    /// <c>GET api/fiscal/documents/{id}/octorate-pdf</c> (404 while off). It also needs <c>Features:OctorateConnector</c> and an org whose issuer is
+    /// Octorate with a connected connection. It needs no variable to start. This task owns the flag.
+    /// </summary>
+    public const string OctorateDocumentImport = "OctorateDocumentImport";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -233,5 +242,6 @@ public static class FeatureFlags
         OctorateBillingSync,
         ComplianceTrafficLight,
         MessageTranslationAi,
+        OctorateDocumentImport,
     ];
 }

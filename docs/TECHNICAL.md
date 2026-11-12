@@ -932,6 +932,21 @@ caller sees and may not use is 403. The accountant reads and cannot write; the c
   the structure and **no live VAT fallback**: the kind, the rate and the nature codes are empty until the accountant approves them, and
   `IDocumentIssuerService.RequireRuleAsync` answers 422 `document_rule_not_configured` for a rule that is not complete.
 
+#### Fiscal documents of the bookings (FIS-03, FIS-04, NF-83, NF-84, E06/F01/US01, E06/F01/US02, E06/F03/US02)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/fiscal/documents/{id}/octorate-pdf` | short-rent `payment.read`; the booking of the document authorized like its payments, a document without a booking only for a scope over the whole org; behind `Features:OctorateConnector` **and** `Features:OctorateDocumentImport` (404 while either is off) | The PDF of a document Octorate issued, proxied through CasaZen (never an Octorate address). 404 `fiscal_document_not_found` for another org's document, one not imported from Octorate or one the caller cannot reach; 404 `octorate_pdf_unavailable` when Octorate holds no PDF of it or cannot be read for it (logged with ids only) |
+
+- **Import of the documents Octorate issued (E06/F03/US02/T01).** `IOctorateDocumentImportService` reads, every 30 minutes (job
+  `octorate-document-import`), the documents of the mapped accommodations of every org whose issuer is Octorate with a connected connection
+  (`GET /rest/v2/invoice/{codice}`, documented in the OpenAPI, **never seen with content**: the sandbox has no invoice module), upserts them by (org,
+  Octorate id) as `Source = Octorate`, `Status = Issued` (read-only in CasaZen), links the booking of the same org by `OctorateReservationId` and maps
+  `fiscalInvoiceGroup` to the SDI state (`unknown` when Octorate gives none). It locks the booking to Octorate as its issuer; when CasaZen issued for it
+  the imported document is stored anyway with an urgent "To do" `two_issuers_detected`. A rejected SDI state (`sdi_rejected_octorate`) and an amount to
+  collect (`to_collect`) are "To do" items (action `ReviewFiscalDocument`) that close by themselves when a later import shows the state changed. A
+  refused or failing call is logged with ids only and read again at the next run.
+
 #### Owner statements and withholding exports (agency, ADR-017, ADR-018, NF-25, E06/F01/US01/T02)
 
 | Method | Path | Auth | Description |
@@ -2568,6 +2583,7 @@ The migration is `AddOnboardingActivation`. The tables are not part of the demo 
 | `InAppNotificationJob` | On push queued (`IPushNotificationService`) | UI-12a: writes one in-app notification per user of the push's audience, once per event and user (`docs/runbooks/in-app-notifications.md`) |
 | `InAppNotificationRetentionJob` | Daily at 03:45 UTC | UI-12a: deletes the in-app notifications older than 90 days |
 | `StripeWebhookJob` | On Stripe event (enqueued) | Process Stripe webhook events asynchronously |
+| `OctorateDocumentImportJob` (`octorate-document-import`) | Every 30 minutes, never two runs at once; only with `Features:OctorateConnector` and `Features:OctorateDocumentImport` on (removed otherwise) | E06/F03/US02/T01 (FIS-04, NF-84): one import per org whose issuer is Octorate with a connected connection, from the last change of its imported documents minus two days (the first time: 400 days); an org that fails does not stop the others |
 | `PaymentProviderFeeJob` (`payment-provider-fees`) | Every 15 minutes, never two runs at once | E06/F04/US01/T02 (FIS-05, NF-85): for the settled card payments (completed or refunded) settled more than 10 minutes ago without provider figures and with fewer than 5 attempts, 50 a run, reads the balance transaction of the charge (`latest_charge.balance_transaction`, on the connected account of a direct charge, without it for an intent on the platform) and stores `ProviderFeeAmount`, `ProviderNetAmount`, `ProviderBalanceCurrency`, `ProviderBalanceTransactionId`, `ProviderAvailableOn`, `ProviderFeeFetchedAt`. Idempotent, never changes `Amount`, `RefundedAmount` or `Status`; a miss or a Stripe error counts an attempt (`ProviderFeeFetchAttempts`, at most 5, then one log line with the payment id). Without `Stripe__SecretKey` it reads nothing and counts no attempt |
 
 ### Deployment
