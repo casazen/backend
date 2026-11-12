@@ -376,6 +376,30 @@ public class AppDbContext(
     public DbSet<OrgFiscalIssuerProfile> OrgFiscalIssuerProfiles { get; set; } = null!;
     public DbSet<BookingDocumentIssuer> BookingDocumentIssuers { get; set; } = null!;
 
+    // The fiscal documents issued by CasaZen or imported from Octorate, their lines and the counters of their numbers (NF-83, NF-84, E06/F01/US02/T01)
+    public DbSet<FiscalDocument> FiscalDocuments { get; set; } = null!;
+    public DbSet<FiscalDocumentLine> FiscalDocumentLines { get; set; } = null!;
+    public DbSet<FiscalNumberSequence> FiscalNumberSequences { get; set; } = null!;
+
+    // The owner accounting of the agencies: the approved rule sets and the effective-dated fiscal profiles of the owners (NF-109, NF-110, E06/F05/US02/T01)
+    public DbSet<OwnerAccountingPolicy> OwnerAccountingPolicies { get; set; } = null!;
+    public DbSet<OwnerFiscalProfile> OwnerFiscalProfiles { get; set; } = null!;
+
+    // The owner ledger and the month-end close (NF-110, E06/F05/US02/T02): the append-only lines, the statement versions, the months, the charges and the exchange rates
+    public DbSet<OwnerLedgerEntry> OwnerLedgerEntries { get; set; } = null!;
+    public DbSet<OwnerStatementVersion> OwnerStatementVersions { get; set; } = null!;
+    public DbSet<OwnerClosePeriod> OwnerClosePeriods { get; set; } = null!;
+    public DbSet<OwnerCharge> OwnerCharges { get; set; } = null!;
+    public DbSet<OwnerFxRate> OwnerFxRates { get; set; } = null!;
+
+    // The links from the owner statement versions to the invoices of the agency's external fiscal system (E06/F01/US02/T05): ids, numbers, hashes
+    public DbSet<OwnerExternalDocumentReference> OwnerExternalDocumentReferences { get; set; } = null!;
+
+    // The payouts to the owners, their append-only withholding evidence and the annual tax datasets (E06/F05/US02/T03, NF-110)
+    public DbSet<OwnerPayout> OwnerPayouts { get; set; } = null!;
+    public DbSet<TaxObligationEvidence> TaxObligationEvidence { get; set; } = null!;
+    public DbSet<TaxReportingDataset> TaxReportingDatasets { get; set; } = null!;
+
     // The check-in guests and the states of a stay sent to Octorate (NF-41, NF-45, E03/F01/US01/T03): ids, hashes and codes, no personal data
     public DbSet<StayGuestOctorateLink> StayGuestOctorateLinks { get; set; } = null!;
     public DbSet<OctorateStayStateSync> OctorateStayStateSyncs { get; set; } = null!;
@@ -411,6 +435,17 @@ public class AppDbContext(
     public DbSet<OtaMessage> OtaMessages { get; set; } = null!;
     public DbSet<OtaMessageSyncState> OtaMessageSyncStates { get; set; } = null!;
     public DbSet<MessageTemplate> MessageTemplates { get; set; } = null!;
+
+    // The assistant that answers the guests' messages (E05/F05/US01/T01, NF-66, NF-67): the knowledge base of a property and of an organization (the free text
+    // encrypted), the rules of the organization and the exceptions of a property, what it does in each situation, the lessons it proposes, the log of what it
+    // decided for each message (ids and codes only) and the changes of trust level it proposes
+    public DbSet<PropertyKnowledgeEntry> PropertyKnowledgeEntries { get; set; } = null!;
+    public DbSet<OrgAssistantRules> OrgAssistantRules { get; set; } = null!;
+    public DbSet<PropertyAssistantSettings> PropertyAssistantSettings { get; set; } = null!;
+    public DbSet<AssistantSituationSetting> AssistantSituationSettings { get; set; } = null!;
+    public DbSet<AssistantLesson> AssistantLessons { get; set; } = null!;
+    public DbSet<AssistantDecisionLog> AssistantDecisionLogs { get; set; } = null!;
+    public DbSet<AssistantTrustProposal> AssistantTrustProposals { get; set; } = null!;
 
     // The tourist tax a host paid to a comune and the receipt of the payment: the «paid» half of the summary per comune (NF-100, REP-05)
     public DbSet<TouristTaxRemittance> TouristTaxRemittances { get; set; } = null!;
@@ -456,6 +491,20 @@ public class AppDbContext(
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, DataProtectionModelCacheKeyFactory>();
+
+    /// <summary>Refuses a change of the evidence before anything is written (<see cref="AppendOnlyGuard"/>, E06/F05/US02/T02).</summary>
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        AppendOnlyGuard.Check(ChangeTracker);
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    /// <inheritdoc cref="SaveChanges(bool)"/>
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        AppendOnlyGuard.Check(ChangeTracker);
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -1875,6 +1924,19 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new OtaMessageSyncStateConfiguration());
         modelBuilder.ApplyConfiguration(new MessageTemplateConfiguration());
 
+        // ─── The AI assistant (E05/F05/US01/T01, NF-66, NF-67, ADR-032) ───────────────
+        // The free text of a host (the entries of the knowledge base, the lessons, the response templates) is encrypted by EncryptedColumns; the decision log holds ids
+        // and codes, never text. One rules row per organization, one exceptions row per property, one situation row per organization (or property) and situation,
+        // and one decision per incoming message (unique indexes). The rows of a property go with it (cascade) but for the decision log, which stays when its property is
+        // removed (SET NULL: it is the audit of what was sent to a guest); every OrgId foreign key restricts.
+        modelBuilder.ApplyConfiguration(new PropertyKnowledgeEntryConfiguration());
+        modelBuilder.ApplyConfiguration(new OrgAssistantRulesConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyAssistantSettingsConfiguration());
+        modelBuilder.ApplyConfiguration(new AssistantSituationSettingConfiguration());
+        modelBuilder.ApplyConfiguration(new AssistantLessonConfiguration());
+        modelBuilder.ApplyConfiguration(new AssistantDecisionLogConfiguration());
+        modelBuilder.ApplyConfiguration(new AssistantTrustProposalConfiguration());
+
         // ─── Automation routines (NF-26, ADR-022) ────────────────────────────────
         // Unique constraint on (RoutineId, EventId) ensures idempotence: a routine executes at most once per event (ADR-022-R7).
         modelBuilder.Entity<RoutineExecution>()
@@ -1976,6 +2038,30 @@ public class AppDbContext(
         // the database itself refuses a second one of either (FIS-02, NF-82).
         modelBuilder.ApplyConfiguration(new OrgFiscalIssuerProfileConfiguration());
         modelBuilder.ApplyConfiguration(new BookingDocumentIssuerConfiguration());
+
+        // The fiscal documents (NF-83, NF-84, E06/F01/US02/T01): issued by CasaZen or imported from Octorate, kept ten years (no cascade from the
+        // booking, the guest or another document reaches them), numbered without duplicates per org and series, an Octorate document imported once;
+        // their lines (cascade with the document) and the counter of the numbers (one row per org and series).
+        modelBuilder.ApplyConfiguration(new FiscalDocumentConfiguration());
+        modelBuilder.ApplyConfiguration(new FiscalDocumentLineConfiguration());
+        modelBuilder.ApplyConfiguration(new FiscalNumberSequenceConfiguration());
+
+        // The owner accounting (NF-109, NF-110, E06/F05/US02): the rule sets of the agency and the effective-dated fiscal profiles of the owners.
+        modelBuilder.ApplyConfiguration(new OwnerAccountingPolicyConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerFiscalProfileConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerLedgerEntryConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerStatementVersionConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerClosePeriodConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerChargeConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerFxRateConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerExternalDocumentReferenceConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerPayoutConfiguration());
+        modelBuilder.ApplyConfiguration(new TaxObligationEvidenceConfiguration());
+        modelBuilder.ApplyConfiguration(new TaxReportingDatasetConfiguration());
+
+        // The invoices of the retired agency-to-owner generator stay readable and are never called compliant (E06/F01/US02/T05): the rows that exist
+        // when the column is added get the legacy code.
+        modelBuilder.Entity<AgencyInvoice>().Property(i => i.ComplianceStatus).HasDefaultValue(AgencyInvoiceCompliance.LegacyUnverified);
 
         // A payment is recorded on its Octorate reservation once (E08/F01/US01/T01, AC-NF74-4): its transaction is unique in the org. Only
         // the payments recorded there are in the index.

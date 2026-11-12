@@ -84,6 +84,14 @@ public static partial class GuestMessageRules
     public static string? NormalizeText(string? text) => ReviewRules.NormalizeText(text);
 
     /// <summary>
+    /// Who wrote a message of a direct thread, as CasaZen tells it (E05/F05/US01/T01, NF-67): <see cref="Entities.Enums.MessageOrigin.Guest"/> for a message of the guest,
+    /// <see cref="Entities.Enums.MessageOrigin.Person"/> for one of the host side. The assistant of feature E05/F05 sets <see cref="Entities.Enums.MessageOrigin.Assistant"/> and the
+    /// rule code of its message itself.
+    /// </summary>
+    public static Entities.Enums.MessageOrigin OriginOf(GuestMessageSender sender) =>
+        sender == GuestMessageSender.Host ? Entities.Enums.MessageOrigin.Person : Entities.Enums.MessageOrigin.Guest;
+
+    /// <summary>
     /// The key of a send as stored: 8 to 64 letters, digits, dashes or underscores (a UUID fits); <c>null</c> when the header is
     /// missing or is something else.
     /// </summary>

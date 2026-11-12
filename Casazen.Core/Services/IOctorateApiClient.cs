@@ -482,6 +482,27 @@ public interface IOctorateApiClient
     Task<OctorateContentProcess> GetContentProcessAsync(string accommodationId, string processId, CancellationToken ct);
 
     /// <summary>
+    /// The documents Octorate issued for an accommodation and changed from <paramref name="modifiedAfter"/> (E06/F03/US02/T01, FIS-04):
+    /// <c>GET /rest/v2/invoice/{codice}</c> of the OpenAPI (S24), every page read. <b>Unverified:</b> the sandbox answers an empty <c>data</c> (no invoice
+    /// module, S25), so the member names are the OpenAPI's (<c>type</c>, <c>number</c>, <c>date</c>, <c>paid</c>, <c>fiscalInvoiceGroup</c>, <c>refer</c>)
+    /// and were never seen with content; the import that calls it is behind <c>Features:OctorateDocumentImport</c>. An item without an id is left out.
+    /// </summary>
+    Task<OctorateFiscalDocument[]> GetDocumentsAsync(string accommodationId, DateTime modifiedAfter, CancellationToken ct);
+
+    /// <summary>
+    /// The PDF of a document of an accommodation: <c>GET /rest/v2/invoice/pdf/{acc}/summary/{idDocumentEncrypted}</c>, the only PDF operation the
+    /// OpenAPI documents (S24 notes no download of the PDF or the XML of a fiscal document). An answer that is not a PDF, or larger than 20 MB, is an
+    /// error, never a file. <b>Unverified</b>, behind the same flag.
+    /// </summary>
+    Task<Stream> GetDocumentPdfAsync(string accommodationId, string documentId, CancellationToken ct);
+
+    /// <summary>
+    /// The collections of a reservation (E06/F04/US01/T03, FIS-05): the <c>payments</c> of its single read (<c>GET /rest/v1/reservation/{acc}/{id}</c>) with
+    /// the amount, the day, the mode and who collects (<c>companyCollect</c>, absent on the sandbox OTA samples). A payment without an amount is left out.
+    /// </summary>
+    Task<IReadOnlyList<OctoratePayment>> GetReservationPaymentsAsync(string accommodationId, string reservationId, CancellationToken ct);
+
+    /// <summary>
     /// Writes the calendar of rooms (<c>POST /rest/v1/calendar/bulk</c>, E08/F05/US02/T01, NF-36, D7): for each element a room, an interval of nights (both days
     /// included) and the values written to each of them (availability, price, <c>minstay</c>, <c>maxstay</c>, <c>stopSells</c>, <c>closeToArrival</c>,
     /// <c>closeToDeparture</c>, <c>cutOffDays</c>; a member left out is not touched). The call acts for <see cref="IOctorateOrgScope.OrgId"/>, the rooms named are

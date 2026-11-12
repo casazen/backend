@@ -127,6 +127,29 @@ public static class EncryptedColumns
     public const string OtaMessageTextPurpose = "Casazen.Message.Content";
 
     /// <summary>
+    /// Purpose of the fiscal documents (NF-83, E06/F01/US02/T01): the recipient snapshot of <see cref="FiscalDocument"/> (name, fiscal code, VAT
+    /// number, address, recipient code, PEC) and its FatturaPA XML, which repeats them. Kept ten years for the legal retention; nothing is searched in
+    /// them. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string FiscalDocumentPurpose = "Casazen.FiscalDocument";
+
+    /// <summary>
+    /// Purpose of the fiscal profiles of the owners (ADR-012, NF-109, E06/F05/US02/T01): the legal name, the legal address, the fiscal code, the VAT number,
+    /// the foreign tax id and the bank account of <see cref="OwnerFiscalProfile"/>. Read in full only with <c>agency.owner.financial.manage</c>; never
+    /// searched. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string OwnerFiscalProfilePurpose = "Casazen.OwnerFiscalProfile";
+
+    /// <summary>
+    /// Purpose of the free text a host writes for the assistant (NF-66, PO-09, E05/F05/US01/T01): <see cref="PropertyKnowledgeEntry.Text"/> (a fact, a rule or the answer
+    /// of a FAQ), <see cref="AssistantLesson.ProposedText"/> (what the assistant proposes to learn from a correction) and
+    /// <see cref="AssistantSituationSetting.ResponseTemplate"/> (the text of an answer with its variables). Any of them can hold a Wi-Fi password, a code or a note
+    /// about a person. Its own purpose, apart from the words of the conversations: it is read by the hosts who reach the property it is about, and by the draft
+    /// pipeline, and never searched or logged. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string AssistantContentPurpose = "Casazen.Assistant.Content";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -262,6 +285,30 @@ public static class EncryptedColumns
         new EncryptedEntity<OtaMessage>(
             OtaMessageTextPurpose,
             nameof(OtaMessage.Text)),
+        // NF-83: the recipient snapshot of a fiscal document and its XML (E06/F01/US02/T01).
+        new EncryptedEntity<FiscalDocument>(
+            FiscalDocumentPurpose,
+            nameof(FiscalDocument.RecipientName),
+            nameof(FiscalDocument.RecipientFiscalCode),
+            nameof(FiscalDocument.RecipientVatNumber),
+            nameof(FiscalDocument.RecipientAddressStreet),
+            nameof(FiscalDocument.RecipientAddressCivic),
+            nameof(FiscalDocument.RecipientPostalCode),
+            nameof(FiscalDocument.RecipientCity),
+            nameof(FiscalDocument.RecipientProvince),
+            nameof(FiscalDocument.RecipientCountryCode),
+            nameof(FiscalDocument.RecipientSdiCode),
+            nameof(FiscalDocument.RecipientPec),
+            nameof(FiscalDocument.FatturaPaXml)),
+        // ADR-012, NF-109: the identifiers, the address and the bank account of the fiscal profile of an owner (E06/F05/US02/T01).
+        new EncryptedEntity<OwnerFiscalProfile>(
+            OwnerFiscalProfilePurpose,
+            nameof(OwnerFiscalProfile.LegalName),
+            nameof(OwnerFiscalProfile.LegalAddress),
+            nameof(OwnerFiscalProfile.FiscalCode),
+            nameof(OwnerFiscalProfile.VatNumber),
+            nameof(OwnerFiscalProfile.ForeignTaxId),
+            nameof(OwnerFiscalProfile.BankAccountReference)),
         // ADR-032-R3: the text of an item of the approval queue is the text of a message to a guest (or of a mailing) before it is sent, and the one the host
         // edited: the same purpose as the words of the conversations, so a draft is never in clear where the message it becomes is not (E05/F04/US01/T01).
         // The reason of a rejection is the host's own note, a column of its own with a length, and stays in clear.
@@ -269,6 +316,17 @@ public static class EncryptedColumns
             OtaMessageTextPurpose,
             nameof(ApprovalQueueItem.ContentText),
             nameof(ApprovalQueueItem.EditedContentText)),
+        // NF-66, PO-09: the free text a host writes for the assistant (the knowledge base, the lessons, the response templates of the situations): a Wi-Fi password or a
+        // note of the host can be in it (E05/F05/US01/T01). The decision log keeps no text at all.
+        new EncryptedEntity<PropertyKnowledgeEntry>(
+            AssistantContentPurpose,
+            nameof(PropertyKnowledgeEntry.Text)),
+        new EncryptedEntity<AssistantLesson>(
+            AssistantContentPurpose,
+            nameof(AssistantLesson.ProposedText)),
+        new EncryptedEntity<AssistantSituationSetting>(
+            AssistantContentPurpose,
+            nameof(AssistantSituationSetting.ResponseTemplate)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

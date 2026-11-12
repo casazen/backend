@@ -3986,12 +3986,6 @@
   <data name="StatementNotDraft" xml:space="preserve">
     <value>Il rendiconto non è nello stato Bozza</value>
   </data>
-  <data name="StatementCsvExportNotImplemented" xml:space="preserve">
-    <value>Esportazione CSV dei rendiconti non ancora disponibile</value>
-  </data>
-  <data name="StatementPdfExportNotImplemented" xml:space="preserve">
-    <value>Esportazione PDF dei rendiconti non ancora disponibile</value>
-  </data>
   <data name="StatementNotFound" xml:space="preserve">
     <value>Rendiconto non trovato o non appartiene alla tua organizzazione</value>
   </data>
@@ -5768,5 +5762,635 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="RentSepaNotAuthorized" xml:space="preserve">
     <value>Autorizza il mandato SEPA prima di attivare il pagamento automatico.</value>
+  </data>
+  <data name="StatementNotExportable" xml:space="preserve">
+    <value>Si può esportare solo un rendiconto approvato o pubblicato.</value>
+  </data>
+  <data name="StatementDocNonFiscal" xml:space="preserve">
+    <value>Rendiconto gestionale - non è una fattura</value>
+  </data>
+  <data name="StatementDocTitle" xml:space="preserve">
+    <value>Rendiconto del proprietario {0}</value>
+  </data>
+  <data name="StatementDocOwner" xml:space="preserve">
+    <value>Proprietario: {0}</value>
+  </data>
+  <data name="StatementDocProperty" xml:space="preserve">
+    <value>Immobile: {0}</value>
+  </data>
+  <data name="StatementDocPeriod" xml:space="preserve">
+    <value>Periodo: {0}</value>
+  </data>
+  <data name="StatementDocVersion" xml:space="preserve">
+    <value>Versione del rendiconto: {0}</value>
+  </data>
+  <data name="StatementDocStatus" xml:space="preserve">
+    <value>Stato: {0}</value>
+  </data>
+  <data name="StatementDocStatusDraft" xml:space="preserve">
+    <value>Bozza</value>
+  </data>
+  <data name="StatementDocStatusApproved" xml:space="preserve">
+    <value>Approvato</value>
+  </data>
+  <data name="StatementDocStatusPublished" xml:space="preserve">
+    <value>Pubblicato</value>
+  </data>
+  <data name="StatementDocShare" xml:space="preserve">
+    <value>Quota di proprietà: {0}%</value>
+  </data>
+  <data name="StatementDocCurrency" xml:space="preserve">
+    <value>Importi in {0}, come registrati sul rendiconto.</value>
+  </data>
+  <data name="StatementDocLinesHeading" xml:space="preserve">
+    <value>Movimenti del periodo</value>
+  </data>
+  <data name="StatementDocNoLines" xml:space="preserve">
+    <value>Nessun movimento nel periodo.</value>
+  </data>
+  <data name="StatementDocColType" xml:space="preserve">
+    <value>Tipo</value>
+  </data>
+  <data name="StatementDocColReference" xml:space="preserve">
+    <value>Riferimento</value>
+  </data>
+  <data name="StatementDocColDescription" xml:space="preserve">
+    <value>Descrizione</value>
+  </data>
+  <data name="StatementDocColCashYear" xml:space="preserve">
+    <value>Anno di incasso</value>
+  </data>
+  <data name="StatementDocColGross" xml:space="preserve">
+    <value>Lordo ({0})</value>
+  </data>
+  <data name="StatementDocColCommission" xml:space="preserve">
+    <value>Commissione ({0})</value>
+  </data>
+  <data name="StatementDocColExpenses" xml:space="preserve">
+    <value>Spese ({0})</value>
+  </data>
+  <data name="StatementDocColWithholding" xml:space="preserve">
+    <value>Ritenuta ({0})</value>
+  </data>
+  <data name="StatementDocColItem" xml:space="preserve">
+    <value>Voce</value>
+  </data>
+  <data name="StatementDocColAmount" xml:space="preserve">
+    <value>Importo ({0})</value>
+  </data>
+  <data name="StatementDocColPayout" xml:space="preserve">
+    <value>Pagamento al proprietario</value>
+  </data>
+  <data name="StatementDocColDate" xml:space="preserve">
+    <value>Data</value>
+  </data>
+  <data name="StatementDocColState" xml:space="preserve">
+    <value>Stato del pagamento</value>
+  </data>
+  <data name="StatementDocColRule" xml:space="preserve">
+    <value>Regola e versione</value>
+  </data>
+  <data name="StatementDocColDecision" xml:space="preserve">
+    <value>Esito</value>
+  </data>
+  <data name="StatementDocColBase" xml:space="preserve">
+    <value>Imponibile ({0})</value>
+  </data>
+  <data name="StatementDocLineBooking" xml:space="preserve">
+    <value>Prenotazione</value>
+  </data>
+  <data name="StatementDocLineOtaRevenue" xml:space="preserve">
+    <value>Incasso del canale</value>
+  </data>
+  <data name="StatementDocLineExpense" xml:space="preserve">
+    <value>Spesa</value>
+  </data>
+  <data name="StatementDocLineAdjustment" xml:space="preserve">
+    <value>Rettifica</value>
+  </data>
+  <data name="StatementDocTotalsHeading" xml:space="preserve">
+    <value>Totali</value>
+  </data>
+  <data name="StatementDocTotalRevenue" xml:space="preserve">
+    <value>Ricavi lordi</value>
+  </data>
+  <data name="StatementDocTotalCommission" xml:space="preserve">
+    <value>Commissioni dell'agenzia</value>
+  </data>
+  <data name="StatementDocTotalExpenses" xml:space="preserve">
+    <value>Spese addebitate</value>
+  </data>
+  <data name="StatementDocTotalWithholding" xml:space="preserve">
+    <value>Ritenute registrate</value>
+  </data>
+  <data name="StatementDocNetPayable" xml:space="preserve">
+    <value>Netto dovuto al proprietario</value>
+  </data>
+  <data name="StatementDocLedgerHeading" xml:space="preserve">
+    <value>Libro mastro del proprietario, versione {0} ({1})</value>
+  </data>
+  <data name="StatementDocLedgerOpening" xml:space="preserve">
+    <value>Saldo di apertura</value>
+  </data>
+  <data name="StatementDocLedgerRevenue" xml:space="preserve">
+    <value>Ricavi</value>
+  </data>
+  <data name="StatementDocLedgerChannelFees" xml:space="preserve">
+    <value>Commissioni del canale</value>
+  </data>
+  <data name="StatementDocLedgerCommission" xml:space="preserve">
+    <value>Commissione dell'agenzia</value>
+  </data>
+  <data name="StatementDocLedgerCharges" xml:space="preserve">
+    <value>Addebiti e spese</value>
+  </data>
+  <data name="StatementDocLedgerPayments" xml:space="preserve">
+    <value>Pagamenti al proprietario</value>
+  </data>
+  <data name="StatementDocLedgerCorrections" xml:space="preserve">
+    <value>Rettifiche</value>
+  </data>
+  <data name="StatementDocLedgerClosing" xml:space="preserve">
+    <value>Saldo di chiusura</value>
+  </data>
+  <data name="StatementDocLedgerHash" xml:space="preserve">
+    <value>SHA-256 delle righe del libro mastro: {0}</value>
+  </data>
+  <data name="StatementDocPayoutsHeading" xml:space="preserve">
+    <value>Pagamenti al proprietario</value>
+  </data>
+  <data name="StatementDocPayoutsNone" xml:space="preserve">
+    <value>Nessun pagamento registrato per questo rendiconto.</value>
+  </data>
+  <data name="StatementDocWithholdingHeading" xml:space="preserve">
+    <value>Ritenute d'acconto registrate</value>
+  </data>
+  <data name="StatementDocWithholdingNone" xml:space="preserve">
+    <value>Nessuna ritenuta registrata. Il rendiconto non calcola ritenute: una ritenuta nasce solo da un pagamento al proprietario autorizzato, con la regola approvata in vigore.</value>
+  </data>
+  <data name="StatementDocDecisionApplicable" xml:space="preserve">
+    <value>Ritenuta dovuta</value>
+  </data>
+  <data name="StatementDocDecisionNotApplicable" xml:space="preserve">
+    <value>Ritenuta non dovuta</value>
+  </data>
+  <data name="StatementDocFootnote" xml:space="preserve">
+    <value>Importi come registrati, senza ricalcoli. Il rendiconto non ha numero né serie fiscale e non produce XML FatturaPA: un'eventuale fattura è emessa dal sistema fiscale esterno dell'agenzia.</value>
+  </data>
+  <data name="F24DocTitle" xml:space="preserve">
+    <value>Dati per il modello F24 {0}</value>
+  </data>
+  <data name="F24DocNotFiled" xml:space="preserve">
+    <value>Dati per compilare il modello F24: non è la delega presentata.</value>
+  </data>
+  <data name="F24DocOrg" xml:space="preserve">
+    <value>Sostituto d'imposta: {0}</value>
+  </data>
+  <data name="F24DocPeriod" xml:space="preserve">
+    <value>Periodo di riferimento: {0}</value>
+  </data>
+  <data name="F24DocSectionErario" xml:space="preserve">
+    <value>Sezione Erario</value>
+  </data>
+  <data name="F24DocTaxCode" xml:space="preserve">
+    <value>Codice tributo</value>
+  </data>
+  <data name="F24DocColMonth" xml:space="preserve">
+    <value>Mese di riferimento</value>
+  </data>
+  <data name="F24DocColYear" xml:space="preserve">
+    <value>Anno di riferimento</value>
+  </data>
+  <data name="F24DocAmount" xml:space="preserve">
+    <value>Importo a debito (euro)</value>
+  </data>
+  <data name="F24DocDueDate" xml:space="preserve">
+    <value>Scadenza: {0}</value>
+  </data>
+  <data name="F24DocPaidAt" xml:space="preserve">
+    <value>Versato il {0}</value>
+  </data>
+  <data name="F24DocNotPaid" xml:space="preserve">
+    <value>Versamento non ancora registrato.</value>
+  </data>
+  <data name="F24DocDisclaimer" xml:space="preserve">
+    <value>Documento generato da CasaZen con i dati registrati. Il versamento si esegue con il proprio intermediario o con i servizi telematici dell'Agenzia delle Entrate: CasaZen non presenta il modello.</value>
+  </data>
+  <data name="FiscalSeriesTooLong" xml:space="preserve">
+    <value>La serie dei documenti fiscali deve avere da 1 a {0} caratteri.</value>
+  </data>
+  <data name="FatturaPaXmlInvalid" xml:space="preserve">
+    <value>Il documento elettronico non è valido secondo lo schema ufficiale FatturaPA: {0} errori (righe e posizioni dei primi: {1}). Nessun documento è stato salvato.</value>
+  </data>
+  <data name="FatturaPaSchemaUnavailable" xml:space="preserve">
+    <value>Lo schema ufficiale FatturaPA non è installato: il documento elettronico non può essere convalidato e non viene prodotto.</value>
+  </data>
+  <data name="FiscalDocumentAmountsInvalid" xml:space="preserve">
+    <value>Gli importi non permettono di preparare il documento fiscale (importi negativi, nulla da fatturare o aliquota non valida).</value>
+  </data>
+  <data name="FiscalDocPdfTitle" xml:space="preserve">
+    <value>{0} n. {1}</value>
+  </data>
+  <data name="FiscalDocPdfTitleDraft" xml:space="preserve">
+    <value>{0} (bozza)</value>
+  </data>
+  <data name="FiscalDocPdfDraftWatermark" xml:space="preserve">
+    <value>BOZZA</value>
+  </data>
+  <data name="FiscalDocPdfKindInvoice" xml:space="preserve">
+    <value>Fattura</value>
+  </data>
+  <data name="FiscalDocPdfKindReceipt" xml:space="preserve">
+    <value>Ricevuta</value>
+  </data>
+  <data name="FiscalDocPdfKindCreditNote" xml:space="preserve">
+    <value>Nota di credito</value>
+  </data>
+  <data name="FiscalDocPdfKindProforma" xml:space="preserve">
+    <value>Fattura proforma</value>
+  </data>
+  <data name="FiscalDocPdfIssueDate" xml:space="preserve">
+    <value>Data del documento: {0}</value>
+  </data>
+  <data name="FiscalDocPdfCredits" xml:space="preserve">
+    <value>Storna il documento {0} del {1}</value>
+  </data>
+  <data name="FiscalDocPdfIssuer" xml:space="preserve">
+    <value>Emittente</value>
+  </data>
+  <data name="FiscalDocPdfRecipient" xml:space="preserve">
+    <value>Destinatario</value>
+  </data>
+  <data name="FiscalDocPdfVatNumber" xml:space="preserve">
+    <value>Partita IVA: {0}</value>
+  </data>
+  <data name="FiscalDocPdfFiscalCode" xml:space="preserve">
+    <value>Codice fiscale: {0}</value>
+  </data>
+  <data name="FiscalDocPdfLinesHeading" xml:space="preserve">
+    <value>Dettaglio</value>
+  </data>
+  <data name="FiscalDocPdfColLine" xml:space="preserve">
+    <value>N.</value>
+  </data>
+  <data name="FiscalDocPdfColDescription" xml:space="preserve">
+    <value>Descrizione</value>
+  </data>
+  <data name="FiscalDocPdfColQuantity" xml:space="preserve">
+    <value>Quantità</value>
+  </data>
+  <data name="FiscalDocPdfColUnitPrice" xml:space="preserve">
+    <value>Prezzo unitario ({0})</value>
+  </data>
+  <data name="FiscalDocPdfColTotal" xml:space="preserve">
+    <value>Importo ({0})</value>
+  </data>
+  <data name="FiscalDocPdfColVat" xml:space="preserve">
+    <value>IVA</value>
+  </data>
+  <data name="FiscalDocPdfSummaryHeading" xml:space="preserve">
+    <value>Riepilogo IVA</value>
+  </data>
+  <data name="FiscalDocPdfColRate" xml:space="preserve">
+    <value>Aliquota o natura</value>
+  </data>
+  <data name="FiscalDocPdfColTaxable" xml:space="preserve">
+    <value>Imponibile ({0})</value>
+  </data>
+  <data name="FiscalDocPdfColTax" xml:space="preserve">
+    <value>Imposta ({0})</value>
+  </data>
+  <data name="FiscalDocPdfColItem" xml:space="preserve">
+    <value>Voce</value>
+  </data>
+  <data name="FiscalDocPdfColAmount" xml:space="preserve">
+    <value>Importo ({0})</value>
+  </data>
+  <data name="FiscalDocPdfTaxableBase" xml:space="preserve">
+    <value>Totale imponibile</value>
+  </data>
+  <data name="FiscalDocPdfVatAmount" xml:space="preserve">
+    <value>Totale IVA</value>
+  </data>
+  <data name="FiscalDocPdfStampDuty" xml:space="preserve">
+    <value>Imposta di bollo</value>
+  </data>
+  <data name="FiscalDocPdfTotal" xml:space="preserve">
+    <value>Totale documento</value>
+  </data>
+  <data name="FiscalDocPdfPayment" xml:space="preserve">
+    <value>Pagamento: {0}</value>
+  </data>
+  <data name="FiscalDocPdfPaymentPaid" xml:space="preserve">
+    <value>pagato</value>
+  </data>
+  <data name="FiscalDocPdfPaymentToCollect" xml:space="preserve">
+    <value>da incassare</value>
+  </data>
+  <data name="FiscalDocPdfPaymentUnknown" xml:space="preserve">
+    <value>non indicato</value>
+  </data>
+  <data name="FiscalDocPdfCourtesyCopy" xml:space="preserve">
+    <value>Copia di cortesia della fattura elettronica: il documento valido ai fini fiscali è il file XML trasmesso al Sistema di Interscambio.</value>
+  </data>
+  <data name="FiscalDocumentNotFound" xml:space="preserve">
+    <value>Documento fiscale non trovato.</value>
+  </data>
+  <data name="OctoratePdfUnavailable" xml:space="preserve">
+    <value>Il PDF di questo documento non è disponibile dal gestionale: aprilo in Octorate.</value>
+  </data>
+  <data name="FiscalDocumentConfirmationRequired" xml:space="preserve">
+    <value>Conferma l'emissione: un documento emesso non si può più modificare.</value>
+  </data>
+  <data name="FiscalDocumentNotDraft" xml:space="preserve">
+    <value>Il documento non è una bozza: un documento emesso o scartato non si modifica.</value>
+  </data>
+  <data name="FiscalDocumentReadOnly" xml:space="preserve">
+    <value>Il documento è stato emesso in Octorate: in CasaZen si può solo consultare.</value>
+  </data>
+  <data name="FiscalDocumentAlreadyIssued" xml:space="preserve">
+    <value>Per questa prenotazione esiste già un documento emesso: per emetterne un altro serve prima una nota di credito totale.</value>
+  </data>
+  <data name="FiscalDocumentBookingNotActive" xml:space="preserve">
+    <value>La prenotazione non è attiva (richiesta, annullata o no-show): non si emette un documento fiscale per questa prenotazione.</value>
+  </data>
+  <data name="FiscalDocumentCreditAmountExceeds" xml:space="preserve">
+    <value>L'importo della nota di credito deve essere positivo e non superare il residuo da stornare ({0}).</value>
+  </data>
+  <data name="FiscalDocumentNotCreditable" xml:space="preserve">
+    <value>Si può stornare solo una fattura o una ricevuta emessa da CasaZen.</value>
+  </data>
+  <data name="FiscalDocumentInvoiceDataMissing" xml:space="preserve">
+    <value>Mancano i dati di fatturazione del destinatario (nome, codice fiscale o partita IVA, indirizzo).</value>
+  </data>
+  <data name="FiscalDocumentXmlUnavailable" xml:space="preserve">
+    <value>Questo documento non ha un file XML (solo le fatture e le note di credito emesse lo hanno).</value>
+  </data>
+  <data name="FiscalDocLineLodging" xml:space="preserve">
+    <value>Soggiorno di {0} notti</value>
+  </data>
+  <data name="FiscalDocLineCleaning" xml:space="preserve">
+    <value>Pulizie finali</value>
+  </data>
+  <data name="FiscalDocLineTouristTax" xml:space="preserve">
+    <value>Imposta di soggiorno riscossa per conto del comune</value>
+  </data>
+  <data name="FiscalDocLineCredit" xml:space="preserve">
+    <value>Storno del documento {0}: {1}</value>
+  </data>
+  <data name="PaymentLedgerKindCard" xml:space="preserve">
+    <value>Carta</value>
+  </data>
+  <data name="PaymentLedgerKindBankTransfer" xml:space="preserve">
+    <value>Bonifico</value>
+  </data>
+  <data name="PaymentLedgerKindCash" xml:space="preserve">
+    <value>Contanti</value>
+  </data>
+  <data name="PaymentLedgerKindOta" xml:space="preserve">
+    <value>Incassato dal canale</value>
+  </data>
+  <data name="PaymentLedgerKindOther" xml:space="preserve">
+    <value>Altro metodo</value>
+  </data>
+  <data name="PaymentLedgerStatePaid" xml:space="preserve">
+    <value>Incassato</value>
+  </data>
+  <data name="PaymentLedgerStateToCollect" xml:space="preserve">
+    <value>Da incassare</value>
+  </data>
+  <data name="PaymentLedgerStateRefunded" xml:space="preserve">
+    <value>Rimborsato</value>
+  </data>
+  <data name="PaymentLedgerStatePartiallyRefunded" xml:space="preserve">
+    <value>Rimborsato in parte</value>
+  </data>
+  <data name="PaymentLedgerStateFailed" xml:space="preserve">
+    <value>Non riuscito</value>
+  </data>
+  <data name="PaymentLedgerStateCanceled" xml:space="preserve">
+    <value>Annullato</value>
+  </data>
+  <data name="PaymentLedgerCollectorHost" xml:space="preserve">
+    <value>Incassato dall'host</value>
+  </data>
+  <data name="PaymentLedgerCollectorChannel" xml:space="preserve">
+    <value>Incassato dal portale</value>
+  </data>
+  <data name="PaymentLedgerCollectorPlatform" xml:space="preserve">
+    <value>Incassato da CasaZen</value>
+  </data>
+  <data name="PaymentLedgerCollectorUnknown" xml:space="preserve">
+    <value>Incasso non indicato</value>
+  </data>
+  <data name="PaymentLedgerDegraded" xml:space="preserve">
+    <value>Gli incassi del gestionale non sono stati letti: sono mostrati gli importi registrati all'importazione.</value>
+  </data>
+  <data name="OwnerPolicyInvalid" xml:space="preserve">
+    <value>Un dato della regola contabile non è valido o manca.</value>
+  </data>
+  <data name="OwnerPolicyVersionExists" xml:space="preserve">
+    <value>Esiste già questa versione della regola: una modifica è una versione nuova.</value>
+  </data>
+  <data name="OwnerPolicyAlreadyApproved" xml:space="preserve">
+    <value>La regola è già approvata e non si modifica più: crea una versione nuova.</value>
+  </data>
+  <data name="OwnerPolicyNotFound" xml:space="preserve">
+    <value>Regola contabile non trovata.</value>
+  </data>
+  <data name="OwnerFiscalProfileInvalid" xml:space="preserve">
+    <value>Un dato del profilo fiscale del proprietario non è valido.</value>
+  </data>
+  <data name="OwnerFiscalProfileOverlap" xml:space="preserve">
+    <value>Esiste già un profilo fiscale che inizia in questa data o dopo: i profili non si sovrappongono.</value>
+  </data>
+  <data name="OwnerFiscalProfileMissing" xml:space="preserve">
+    <value>Il proprietario non ha un profilo fiscale valido in questa data.</value>
+  </data>
+  <data name="OwnerFiscalProfileIncomplete" xml:space="preserve">
+    <value>Il profilo fiscale del proprietario è incompleto.</value>
+  </data>
+  <data name="OwnerFiscalPolicyMissing" xml:space="preserve">
+    <value>Il profilo fiscale del proprietario non indica una regola contabile.</value>
+  </data>
+  <data name="OwnerFiscalPolicyNotApproved" xml:space="preserve">
+    <value>La regola contabile del proprietario non è approvata dal commercialista: le operazioni finanziarie sono bloccate.</value>
+  </data>
+  <data name="OwnerFiscalPolicyNotEffective" xml:space="preserve">
+    <value>La regola contabile del proprietario non è in vigore in questa data.</value>
+  </data>
+  <data name="OwnerFiscalPolicyJurisdictionMismatch" xml:space="preserve">
+    <value>La regola contabile non è della giurisdizione fiscale del proprietario.</value>
+  </data>
+  <data name="OwnerNotFound" xml:space="preserve">
+    <value>Proprietario non trovato.</value>
+  </data>
+  <data name="OwnerPeriodInvalid" xml:space="preserve">
+    <value>Il periodo non è valido: indica un anno tra 2000 e 2100 e un mese tra 1 e 12.</value>
+  </data>
+  <data name="OwnerPeriodClosed" xml:space="preserve">
+    <value>Il mese di questo proprietario è chiuso e non cambia più.</value>
+  </data>
+  <data name="OwnerPeriodDirty" xml:space="preserve">
+    <value>Il registro del mese è cambiato dopo l'ultima versione del rendiconto: genera una nuova versione.</value>
+  </data>
+  <data name="OwnerLedgerImmutable" xml:space="preserve">
+    <value>Le righe registrate e i rendiconti pubblicati non si modificano: registra uno storno e una nuova riga.</value>
+  </data>
+  <data name="OwnerLedgerEntryNotFound" xml:space="preserve">
+    <value>Riga del registro non trovata.</value>
+  </data>
+  <data name="OwnerLedgerEntryAlreadyReversed" xml:space="preserve">
+    <value>Questa riga del registro è già stata stornata.</value>
+  </data>
+  <data name="OwnerCorrectionInvalid" xml:space="preserve">
+    <value>La rettifica non è valida: controlla il campo indicato.</value>
+  </data>
+  <data name="OwnerStatementVersionNotFound" xml:space="preserve">
+    <value>Versione del rendiconto non trovata.</value>
+  </data>
+  <data name="OwnerStatementUnchanged" xml:space="preserve">
+    <value>Nulla è cambiato dopo l'ultima versione approvata: non serve una nuova versione.</value>
+  </data>
+  <data name="OwnerStatementFlagged" xml:space="preserve">
+    <value>La versione ha problemi bloccanti: risolvili e genera una nuova versione prima di approvarla.</value>
+  </data>
+  <data name="OwnerStatementNotDraft" xml:space="preserve">
+    <value>Si approva solo una versione in bozza.</value>
+  </data>
+  <data name="OwnerStatementNotApproved" xml:space="preserve">
+    <value>Il rendiconto deve prima essere approvato.</value>
+  </data>
+  <data name="OwnerStatementNotPublished" xml:space="preserve">
+    <value>Questa versione del rendiconto non è stata pubblicata.</value>
+  </data>
+  <data name="OwnerCloseUnreconciled" xml:space="preserve">
+    <value>Il saldo approvato non corrisponde ai pagamenti registrati (payout confermati o bonifici pagati) o è negativo: risolvi la differenza o indica il motivo della deroga.</value>
+  </data>
+  <data name="OwnerCloseNotReady" xml:space="preserve">
+    <value>Il mese non è pronto per la chiusura: ci sono fonti non registrate nel libro mastro o dati mancanti. Registra le fonti, genera una nuova versione e approvala.</value>
+  </data>
+  <data name="OwnerPeriodNotEnded" xml:space="preserve">
+    <value>Il mese non è ancora finito: si chiude dal giorno dopo l'ultimo giorno del mese.</value>
+  </data>
+  <data name="OwnerCloseWaiverForbidden" xml:space="preserve">
+    <value>Solo chi gestisce le finanze dei proprietari può chiudere il mese con una deroga.</value>
+  </data>
+  <data name="OwnerLegalHoldReasonRequired" xml:space="preserve">
+    <value>Indica il motivo del blocco legale.</value>
+  </data>
+  <data name="OwnerChargeInvalid" xml:space="preserve">
+    <value>L'addebito non è valido: controlla il campo indicato.</value>
+  </data>
+  <data name="OwnerChargeDuplicate" xml:space="preserve">
+    <value>Esiste già lo stesso addebito per questo immobile.</value>
+  </data>
+  <data name="OwnerChargeNotFound" xml:space="preserve">
+    <value>Addebito non trovato.</value>
+  </data>
+  <data name="OwnerChargeNotPending" xml:space="preserve">
+    <value>L'addebito non è in uno stato che lo permette.</value>
+  </data>
+  <data name="OwnerFxRateInvalid" xml:space="preserve">
+    <value>Il cambio non è valido: controlla il campo indicato.</value>
+  </data>
+  <data name="OwnerFxRateExists" xml:space="preserve">
+    <value>Esiste già un cambio per queste valute in questo giorno.</value>
+  </data>
+  <data name="OwnerInvoiceIssuanceRemoved" xml:space="preserve">
+    <value>CasaZen non emette più fatture dell'agenzia ai proprietari: collega al rendiconto la fattura emessa dal tuo sistema fiscale.</value>
+  </data>
+  <data name="OwnerExternalDocumentInvalid" xml:space="preserve">
+    <value>Il collegamento alla fattura esterna non è valido: controlla il campo indicato.</value>
+  </data>
+  <data name="OwnerExternalDocumentDuplicate" xml:space="preserve">
+    <value>Questa fattura esterna è già collegata a questa versione del rendiconto.</value>
+  </data>
+  <data name="OwnerExternalDocumentNotFound" xml:space="preserve">
+    <value>Collegamento alla fattura esterna non trovato.</value>
+  </data>
+  <data name="OwnerExternalDocumentRemoved" xml:space="preserve">
+    <value>Il collegamento è stato rimosso e non cambia più.</value>
+  </data>
+  <data name="TaxApplicabilityUnresolved" xml:space="preserve">
+    <value>Manca un fatto necessario per decidere la ritenuta: completa il campo indicato.</value>
+  </data>
+  <data name="OwnerPayoutInvalid" xml:space="preserve">
+    <value>Il pagamento al proprietario non è valido: controlla il campo indicato.</value>
+  </data>
+  <data name="OwnerPayoutKeyReused" xml:space="preserve">
+    <value>Questa chiave è già stata usata per un pagamento diverso.</value>
+  </data>
+  <data name="OwnerPayoutNotFound" xml:space="preserve">
+    <value>Pagamento al proprietario non trovato.</value>
+  </data>
+  <data name="OwnerPayoutReversed" xml:space="preserve">
+    <value>Il pagamento è già stato stornato.</value>
+  </data>
+  <data name="TaxNoObligations" xml:space="preserve">
+    <value>Non ci sono ritenute applicabili in questo periodo.</value>
+  </data>
+  <data name="F24TaxCodeMixed" xml:space="preserve">
+    <value>Le ritenute del periodo hanno codici tributo diversi: servono F24 separati.</value>
+  </data>
+  <data name="TaxFileAlreadyFiled" xml:space="preserve">
+    <value>Il file è già stato verificato o trasmesso e non si rigenera.</value>
+  </data>
+  <data name="TaxFilingTransitionInvalid" xml:space="preserve">
+    <value>Questo passaggio di stato non è permesso.</value>
+  </data>
+  <data name="TaxFilingReferenceRequired" xml:space="preserve">
+    <value>Indica il riferimento richiesto: consegna, ricevuta o motivo dello scarto.</value>
+  </data>
+  <data name="TaxDatasetNotFound" xml:space="preserve">
+    <value>Dati annuali non trovati.</value>
+  </data>
+  <data name="F24DocFilingState" xml:space="preserve">
+    <value>Stato: {0}</value>
+  </data>
+  <data name="F24DocReceipt" xml:space="preserve">
+    <value>Ricevuta: {0}</value>
+  </data>
+  <data name="TaxFilingStateGenerated" xml:space="preserve">
+    <value>generato, non trasmesso</value>
+  </data>
+  <data name="TaxFilingStateReviewed" xml:space="preserve">
+    <value>verificato, non trasmesso</value>
+  </data>
+  <data name="TaxFilingStateSubmitted" xml:space="preserve">
+    <value>consegnato per la trasmissione</value>
+  </data>
+  <data name="TaxFilingStateAccepted" xml:space="preserve">
+    <value>accettato</value>
+  </data>
+  <data name="TaxFilingStateRejected" xml:space="preserve">
+    <value>scartato</value>
+  </data>
+  <data name="AssistantRulesInvalid" xml:space="preserve">
+    <value>Le regole dell’assistente non sono valide: indica almeno una lingua di due lettere minuscole, una firma fino a 300 caratteri, un orario con inizio e fine diversi (entrambi o nessuno) e solo argomenti o situazioni che l’assistente conosce.</value>
+  </data>
+  <data name="AssistantThresholdInvalid" xml:space="preserve">
+    <value>La soglia di confidenza deve essere compresa tra 0,50 e 0,99, con al massimo tre decimali.</value>
+  </data>
+  <data name="AssistantEntryInvalid" xml:space="preserve">
+    <value>Indica un argomento, un tipo e un testo da 1 a 1000 caratteri; una domanda frequente ha anche la domanda (fino a 200 caratteri) e la lingua, se la indichi, è un codice di due lettere minuscole.</value>
+  </data>
+  <data name="AssistantEntryNotFound" xml:space="preserve">
+    <value>Voce non trovata.</value>
+  </data>
+  <data name="AssistantConcurrentChange" xml:space="preserve">
+    <value>Le istruzioni dell’assistente sono state modificate da un’altra persona nello stesso momento. Ricarica e riprova.</value>
+  </data>
+  <data name="AssistantModeNotAllowed" xml:space="preserve">
+    <value>Questa situazione può solo essere passata a una persona o preparata come bozza: l’assistente non può mai rispondere da solo.</value>
+  </data>
+  <data name="AssistantTemplateInvalid" xml:space="preserve">
+    <value>Il testo della risposta deve avere da 1 a 1000 caratteri e restare un messaggio valido anche con i valori di una prenotazione.</value>
+  </data>
+  <data name="AssistantSituationNotFound" xml:space="preserve">
+    <value>Situazione non trovata.</value>
+  </data>
+  <data name="AssistantSituationInvalid" xml:space="preserve">
+    <value>L’argomento da cui l’assistente ricava la risposta non è valido.</value>
   </data>
 </root>

@@ -138,3 +138,25 @@ The owner import (NF-109, ONB-06) needs a place for the facts an agency knows ab
   inside the period of its ownership; the import refuses a row that would leave it outside.
 - Log and answer rules of ADR-012-R2 hold for the new columns: the readiness answers codes and field names, the import answers codes and ids, the
   activity log gets counts and a hash of the file.
+
+## Amendment 2026-11 (E06/F05/US02/T01): the structured fiscal profile of an owner
+
+**Decision.** The fiscal identity an owner has for the statements, the payouts and the tax evidence is an effective-dated `OwnerFiscalProfile`, apart
+from the registry facts of `PropertyOwner`, with the approved rule set it follows (`OwnerAccountingPolicy`). It is not an invoice-recipient profile:
+CasaZen issues no agency-to-owner invoice (ADR-019 amended), so there is no SDI code or PEC.
+
+| Column | Meaning | Storage |
+|---|---|---|
+| `LegalName`, `LegalAddress` | the name and the legal address the evidence carries | **encrypted** with `Casazen.OwnerFiscalProfile` |
+| `FiscalCode`, `VatNumber`, `ForeignTaxId` | the identifiers the applicable reporting needs (an Italian fiscal code, a VAT number, a Swiss or other tax id) | **encrypted** with `Casazen.OwnerFiscalProfile` |
+| `BankAccountReference` | the account the owner is paid on | **encrypted** with `Casazen.OwnerFiscalProfile` |
+| `TaxResidenceCountry`, `TaxJurisdiction`, `SettlementCurrency`, the mandate role and dates, the recognition, expense and working-capital rules | the facts the rule set is chosen and applied with | clear |
+
+- **Purpose of its own.** `Casazen.OwnerFiscalProfile` is never shared with `Casazen.PropertyOwner.Financial`: a payload of one never reads as the other.
+- **Least privilege.** Only `agency.owner.financial.manage` (owner and administrators of the agency) reads the full values and changes a profile or a rule
+  set; `agency.owner.view` gets the values masked (the last four characters). A read of the full values is logged with the ids of the owner and of the
+  user, never a value (ADR-012-R2, R3).
+- **No inference.** Neither the country nor the kind of the owner selects a liability: a profile names its jurisdiction and its rule set, the rule set
+  must be approved by a qualified accountant and of the same jurisdiction, and anything missing blocks the financial operations with a precise code.
+- **History.** Profiles never overlap and are never edited after the fact: a change is a new profile from a date; the documents keep the rule version
+  they used.

@@ -1,3 +1,4 @@
+using Casazen.Core.Documents;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Events;
 using Casazen.Core.Features;
@@ -8,6 +9,7 @@ using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Services;
 using Casazen.Web.Extensions;
+using Casazen.Web.Resources;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -46,6 +48,25 @@ public class FiscalDocumentsRegistrationTests
             // The two consumers of the sync with Octorate (E06/F02/US01/T04): the pre-fill on BookingCreated, then the write-back on InvoiceDataSaved.
             (typeof(IEventHandler<DomainEvent>), typeof(InvoiceDataFromOctorateHandler), ServiceLifetime.Scoped),
             (typeof(IEventHandler<DomainEvent>), typeof(OctorateBillingWriteBackHandler), ServiceLifetime.Scoped),
+
+            // What the other tasks of the epic register, in the order they were added: the labels of the documents and the statement files (E06/F01/US01/T02),
+            // the fees of the card payments (E06/F04/US01/T02), the gap-free numbers (E06/F01/US02/T02), the FatturaPA XML and its schema set (E06/F01/US02/T03),
+            // the import of the documents Octorate issued (E06/F03/US02/T01), the fiscal documents (E06/F01/US01/T01) and the payment ledger (E06/F04/US01/T03).
+            (typeof(IDocumentTexts), typeof(ResxDocumentTexts), ServiceLifetime.Singleton),
+            (typeof(IStatementExportService), typeof(StatementExportService), ServiceLifetime.Scoped),
+            (typeof(IPaymentProviderFeeService), typeof(PaymentProviderFeeService), ServiceLifetime.Scoped),
+            (typeof(IFiscalNumberingService), typeof(FiscalNumberingService), ServiceLifetime.Scoped),
+            (typeof(FatturaPaSchemaProvider), typeof(FatturaPaSchemaProvider), ServiceLifetime.Singleton),
+            (typeof(IFatturaPaXmlBuilder), typeof(FatturaPaXmlBuilder), ServiceLifetime.Singleton),
+            (typeof(IOctorateDocumentImportService), typeof(OctorateDocumentImportService), ServiceLifetime.Scoped),
+            (typeof(IFiscalDocumentService), typeof(FiscalDocumentService), ServiceLifetime.Scoped),
+            (typeof(IBookingPaymentLedgerService), typeof(BookingPaymentLedgerService), ServiceLifetime.Scoped),
+
+            // The owner accounting of the agencies (E06/F05/US02): the fiscal profiles and rule sets (T01), the ledger, the versions and the close (T02), the payouts
+            // with their withholding evidence and the filing states (T03).
+            (typeof(IOwnerFiscalProfileService), typeof(OwnerFiscalProfileService), ServiceLifetime.Scoped),
+            (typeof(IOwnerAccountingService), typeof(OwnerAccountingService), ServiceLifetime.Scoped),
+            (typeof(IOwnerPayoutService), typeof(OwnerPayoutService), ServiceLifetime.Scoped),
         };
 
         Assert.Equal(expected, ours);

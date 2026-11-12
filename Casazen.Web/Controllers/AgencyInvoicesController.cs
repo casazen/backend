@@ -6,9 +6,9 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Agency invoices (FatturaPA) for property owners (ADR-019). Every action is scoped to the caller's
-/// agency org: an invoice of another org answers 404. Phase 1: no automatic SDI transmission,
-/// status ToBeIssuedManually, agency downloads XML/PDF and submits manually.
+/// The historical agency invoices for property owners (ADR-019 amended, E06/F01/US02/T05): their generation is retired (410); the stored XML and
+/// the courtesy copy stay readable, marked <c>legacy_unverified</c>. Every action is scoped to the caller's agency org: an invoice of another org
+/// answers 404.
 /// </summary>
 [ApiController]
 [Route("api/agency-invoices")]
@@ -18,24 +18,14 @@ public class AgencyInvoicesController(
     ILogger<AgencyInvoicesController> logger) : ControllerBase
 {
     /// <summary>
-    /// Generates a FatturaPA invoice from a monthly owner statement (ADR-019).
-    /// Validates single supplier per invoice, assigns sequential invoice number,
-    /// calculates VAT and stamp duty, generates FatturaPA XML validated against AdE XSD.
-    /// Requires <c>agency.invoice.manage</c> policy.
+    /// Retired (ADR-019 amended, E06/F01/US02/T05, AC-NF110-6): CasaZen issues no agency-to-owner invoice, fiscal number or FatturaPA XML. Always 410
+    /// <c>owner_invoice_issuance_removed</c>; the agency links the invoice of its external fiscal system to the statement version
+    /// (<c>POST api/owner-accounting/versions/{id}/external-documents</c>). The stored invoices stay readable below.
     /// </summary>
     /// <param name="request">Invoice generation request with statement ID.</param>
-    /// <response code="200">Invoice generated successfully.</response>
-    /// <response code="422">
-    /// Business rule violated:
-    /// - invoice_multiple_suppliers: statement lines reference multiple property owners.
-    /// - structured_address_required: agency missing required structured address fields.
-    /// - statement_not_found: statement does not exist or not in caller's org.
-    /// - statement_not_approved: statement status is not Approved.
-    /// - invoice_already_exists: an invoice for this statement already exists.
-    /// </response>
+    /// <response code="410">owner_invoice_issuance_removed: the internal generation is retired.</response>
     [HttpPost("generate")]
-    [ProducesResponseType(typeof(InvoiceGenerationDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status410Gone)]
     public async Task<ActionResult<InvoiceGenerationDto>> GenerateInvoice(
         [FromBody] GenerateInvoiceRequest request)
     {

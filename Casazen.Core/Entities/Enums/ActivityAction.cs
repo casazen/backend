@@ -71,4 +71,11 @@ public enum ActivityAction
 
     /// <summary>The police credentials kept in CasaZen were refused: the Alloggiati dashboard, where the host sets them again. About the property.</summary>
     RenewPoliceCredentials = 24,
+
+    /// <summary>
+    /// A fiscal document that needs the host (E06/F03/US02/T01, NF-84): the documents of the booking (a document Octorate issued and the SDI rejected,
+    /// one still to collect, a booking with documents of two issuers). About the document, or the booking for the two issuers. The numbers 30 to 39
+    /// are the fiscal documents (epic E06), so the tasks of the waves that run in parallel never pick the same number.
+    /// </summary>
+    ReviewFiscalDocument = 30,
 }

@@ -250,6 +250,20 @@ public static class DemoShowcaseCatalog
         /// and straordinarie € 600. It does not post, and it does not read millesimi, payments or the rate plan.
         /// </summary>
         public const string AdministratorStatementPdf = "administrator-statement-pdf";
+
+        /// <summary>
+        /// The fiscal documents CasaZen issues for a direct booking (E06/F01/US01/T01, FIS-03, NF-83): a draft (no number, the amounts of the stay with
+        /// the VAT separated) and an issued receipt with its number, on a direct stay of the demo. Invented amounts and a TEST recipient, marked with
+        /// <c>TestDataEntities.FiscalDocument</c>; a template only, issuance being off (<c>Features:FiscalDocumentIssuance</c>).
+        /// </summary>
+        public const string FiscalDocumentsDirect = "fiscal-documents-direct";
+
+        /// <summary>
+        /// The payment ledger (E06/F04/US01/T03, FIS-05, NF-85): a card payment with the commission and the net the provider reported, a cash payment
+        /// the host recorded, and a booking of a channel with the amount the channel collected (commission not given by Octorate: not shown). Invented
+        /// amounts, a template of the lines the ledger answers.
+        /// </summary>
+        public const string PaymentLedger = "payment-ledger";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -327,6 +341,8 @@ public static class DemoShowcaseCatalog
         Scenario.TenantExpenseProposal,
         Scenario.CondominiumHistoricalImport,
         Scenario.AdministratorStatementPdf,
+        Scenario.FiscalDocumentsDirect,
+        Scenario.PaymentLedger,
     ];
 
     /// <summary>
@@ -413,6 +429,27 @@ public static class DemoShowcaseCatalog
             490.30m,
             600m,
             Scenario.AdministratorStatementPdf),
+    ];
+
+    /// <summary>
+    /// The fiscal documents of a direct demo stay (E06/F01/US01/T01): a draft without a number and an issued receipt, the amounts as the guest paid them
+    /// (lodging and cleaning, the tourist tax without VAT) and the TEST recipient. Not written at reset while issuance is off.
+    /// </summary>
+    public static IReadOnlyList<DemoFiscalDocumentTemplate> FiscalDocumentExamples { get; } =
+    [
+        new("bozza-soggiorno-diretto", "Draft", null, "TEST Ospite Diretto", 362.00m, 12.00m, "EUR", Scenario.FiscalDocumentsDirect),
+        new("ricevuta-soggiorno-diretto", "Issued", "2026/1", "TEST Ospite Diretto", 248.00m, 8.00m, "EUR", Scenario.FiscalDocumentsDirect),
+    ];
+
+    /// <summary>
+    /// The lines of the payment ledger of the demo (E06/F04/US01/T03): a card payment with the provider's commission and net, a cash payment, a booking of a
+    /// channel with what it collected. The commission of the channel is absent, as Octorate gives it today.
+    /// </summary>
+    public static IReadOnlyList<DemoPaymentLedgerTemplate> PaymentLedgerExamples { get; } =
+    [
+        new("carta-soggiorno-diretto", "Card", 450.00m, 6.55m, 443.45m, "Host", "EUR", Scenario.PaymentLedger),
+        new("contanti-soggiorno-manuale", "Cash", 120.00m, null, null, "Host", "EUR", Scenario.PaymentLedger),
+        new("incasso-canale-booking", "Ota", 380.00m, null, null, "Channel", "EUR", Scenario.PaymentLedger),
     ];
 
     /// <summary>
@@ -1757,6 +1794,28 @@ public sealed record DemoTenantSettlementTemplate(
 /// The wizard proposal when the property has no condominium year yet: the advance is the new preventivo split into
 /// <see cref="Installments"/>, and <see cref="PreviousConsuntivo"/> is kept for the settlement.
 /// </summary>
+/// <summary>A line of the demo payment ledger: its kind and collector codes, the gross and, only when stored, the provider's fee and net.</summary>
+public sealed record DemoPaymentLedgerTemplate(
+    string Key,
+    string Kind,
+    decimal Gross,
+    decimal? ProviderFee,
+    decimal? Net,
+    string CollectedBy,
+    string Currency,
+    string Scenario);
+
+/// <summary>A fiscal document of a direct demo stay: its status, the number of an issued one, the TEST recipient, the total and the tourist tax in it.</summary>
+public sealed record DemoFiscalDocumentTemplate(
+    string Key,
+    string Status,
+    string? Number,
+    string RecipientName,
+    decimal Total,
+    decimal TouristTax,
+    string Currency,
+    string Scenario);
+
 public sealed record DemoAdministratorStatementTemplate(
     string Key,
     string Text,
