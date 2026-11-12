@@ -147,17 +147,28 @@ public class CampaignService(
         if (campaign is null)
             throw new DomainRuleException("campaign_not_found", $"Campaign {campaignId} not found");
 
-        // A retry after a scheduling that failed (or after the item could not be saved) finds the work done: the edits of the first call stand.
+        // A retry after a scheduling that failed (or after the item could not be saved) finds the work done. What the host approved last is the text that goes out, so an edit of this
+        // call is applied (to a scheduled campaign too: the send job reads the campaign when it runs); with no edit the campaign is returned as it is.
         if (campaign.Status is CampaignStatus.Approved or CampaignStatus.Scheduled)
+        {
+            if (subject is not null && body is not null
+                && (!string.Equals(campaign.Subject, subject, StringComparison.Ordinal) || !string.Equals(campaign.Body, body, StringComparison.Ordinal)))
+            {
+                CheckEditedText(subject, body);
+                campaign.Subject = subject;
+                campaign.Body = body;
+                await db.SaveChangesAsync(cancellationToken);
+            }
+
             return campaign;
+        }
 
         if (campaign.Status != CampaignStatus.PendingApproval)
             throw new DomainConflictException("campaign_not_pending_approval", "Only campaigns waiting for approval can be approved");
 
         if (subject is not null && body is not null)
         {
-            if (subject.Length is 0 or > ApprovalQueueRules.CampaignSubjectMaxLength || string.IsNullOrWhiteSpace(body))
-                throw new ArgumentException("The edited subject is one line of at most 200 characters and the body is not empty.", nameof(subject));
+            CheckEditedText(subject, body);
 
             campaign.Subject = subject;
             campaign.Body = body;
@@ -177,19 +188,30 @@ public class CampaignService(
         return campaign;
     }
 
+    private static void CheckEditedText(string subject, string body)
+    {
+        if (subject.Length is 0 or > ApprovalQueueRules.CampaignSubjectMaxLength || string.IsNullOrWhiteSpace(body))
+            throw new ArgumentException("The edited subject is one line of at most 200 characters and the body is not empty.", nameof(subject));
+    }
+
     public async Task ReturnToDraftAsync(Guid campaignId, Guid orgId, CancellationToken cancellationToken = default)
     {
         var campaign = await db.Campaigns
             .Where(c => c.Id == campaignId && c.OrgId == orgId)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (campaign is null || campaign.Status != CampaignStatus.PendingApproval)
+        if (campaign is null || campaign.Status is not (CampaignStatus.PendingApproval or CampaignStatus.Approved or CampaignStatus.Scheduled))
         {
             logger.LogInformation(
                 "Campaign {CampaignId} of org {OrgId} was not waiting for approval: nothing to return to a draft",
                 campaignId, orgId);
             return;
         }
+
+        // An approval that went halfway (the campaign approved or scheduled while its item was still waiting) is undone with its time: a rejected campaign is never left approved or
+        // scheduled, and a send job that is still waiting finds a draft and sends nothing.
+        if (campaign.Status is CampaignStatus.Approved or CampaignStatus.Scheduled)
+            campaign.ScheduledAt = null;
 
         campaign.Status = CampaignStatus.Draft;
         await db.SaveChangesAsync(cancellationToken);

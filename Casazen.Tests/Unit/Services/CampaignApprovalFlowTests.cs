@@ -205,22 +205,60 @@ public class CampaignApprovalFlowTests : IDisposable
     }
 
     [Fact]
-    public async Task ARetryAfterTheCampaignWasApproved_FindsTheWorkDoneAndSchedulesOnce()
+    public async Task ARetryAfterTheCampaignWasApproved_FindsTheWorkDone_AndTheLastEditIsTheOneThatGoesOut()
     {
         var (campaigns, queue) = await BuildAsync();
         var draft = await campaigns.CreateDraftAsync(_rig.OrgId, _segmentId, "Oggetto", "<p>Testo</p>", false);
         await campaigns.SubmitForApprovalAsync(draft.Id, _rig.OrgId);
         var item = await _rig.Db.ApprovalQueueItems.AsNoTracking().SingleAsync();
 
+        // The first approval went halfway (the item was not saved, or the schedule failed): the campaign is approved with the first edit.
         var firstCall = await campaigns.MarkApprovedAsync(draft.Id, _rig.OrgId, "Un altro oggetto", "<p>Un altro testo</p>");
-        var secondCall = await campaigns.MarkApprovedAsync(draft.Id, _rig.OrgId, "Ancora un altro", "<p>Ancora</p>");
-
-        // The second call finds the campaign approved and changes nothing, edits included.
         Assert.Equal(CampaignStatus.Approved, firstCall.Status);
-        Assert.Equal(("Un altro oggetto", "<p>Un altro testo</p>"), (secondCall.Subject, secondCall.Body));
+
+        // The host edits again and tries again: the campaign takes the text it approved last, and is approved once.
+        await queue.EditAsync(_rig.OrgWide, item.Id, "Ancora un altro\n\n<p>Ancora</p>", ApprovalQueueRig.Owner);
         var decision = await queue.ApproveAsync(_rig.OrgWide, item.Id, ApprovalQueueRig.Owner);
+
         Assert.Equal("Approved", decision.ActionState);
-        Assert.Equal(CampaignStatus.Approved, (await _rig.Db.Campaigns.AsNoTracking().SingleAsync()).Status);
+        var approved = await _rig.Db.Campaigns.AsNoTracking().SingleAsync();
+        Assert.Equal((CampaignStatus.Approved, "Ancora un altro", "<p>Ancora</p>"), (approved.Status, approved.Subject, approved.Body));
+
+        // A call with no edit changes nothing.
+        var noEdit = await campaigns.MarkApprovedAsync(draft.Id, _rig.OrgId, null, null);
+        Assert.Equal(("Ancora un altro", "<p>Ancora</p>"), (noEdit.Subject, noEdit.Body));
+    }
+
+    /// <summary>
+    /// Trust rule (nothing leaves rejected): an approval that went halfway leaves the campaign approved or scheduled while its item still waits. Rejecting the item undoes it: the campaign is
+    /// a draft again with no time, it cannot be scheduled, and a send job that is still waiting finds a draft and sends nothing.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ARejectionAfterAPartialApproval_ReturnsTheCampaignToADraft_WithNoTime(bool scheduled)
+    {
+        var (campaigns, queue) = await BuildAsync();
+        var draft = await campaigns.CreateDraftAsync(_rig.OrgId, _segmentId, "Oggetto", "<p>Testo</p>", false);
+        var at = ApprovalQueueRig.Noon.AddDays(2);
+        (await _rig.Db.Campaigns.SingleAsync()).ScheduledAt = at;
+        await _rig.Db.SaveChangesAsync();
+        await campaigns.SubmitForApprovalAsync(draft.Id, _rig.OrgId);
+        var item = await _rig.Db.ApprovalQueueItems.AsNoTracking().SingleAsync();
+        await campaigns.MarkApprovedAsync(draft.Id, _rig.OrgId, null, null);
+        if (scheduled)
+            await campaigns.ScheduleAsync(draft.Id, at, _rig.OrgId);
+
+        await queue.RejectAsync(_rig.OrgWide, item.Id, ApprovalQueueRig.Owner, "Non va inviata");
+
+        var campaign = await _rig.Db.Campaigns.AsNoTracking().SingleAsync();
+        Assert.Equal((CampaignStatus.Draft, (DateTime?)null), (campaign.Status, campaign.ScheduledAt));
+        Assert.Equal(ApprovalStatus.Rejected, (await _rig.Db.ApprovalQueueItems.AsNoTracking().SingleAsync()).Status);
+        var notApproved = await Assert.ThrowsAsync<DomainRuleException>(() => campaigns.ScheduleAsync(draft.Id, at, _rig.OrgId));
+        Assert.Equal("campaign_not_approved", notApproved.Code);
+        await campaigns.SendCampaignAsync(draft.Id);
+        var afterTheJob = await _rig.Db.Campaigns.AsNoTracking().SingleAsync();
+        Assert.Equal((CampaignStatus.Draft, (DateTime?)null), (afterTheJob.Status, afterTheJob.SentAt));
     }
 
     [Fact]
@@ -239,18 +277,26 @@ public class CampaignApprovalFlowTests : IDisposable
     }
 
     [Fact]
-    public async Task ReturnToDraft_OnlyAffectsACampaignThatWaited()
+    public async Task ReturnToDraft_OnlyAffectsACampaignThatWaitedOrWasApprovedHalfway()
     {
         var (campaigns, _) = await BuildAsync();
         var draft = await campaigns.CreateDraftAsync(_rig.OrgId, _segmentId, "Oggetto", "<p>Testo</p>", false);
         await campaigns.SubmitForApprovalAsync(draft.Id, _rig.OrgId);
         await campaigns.MarkApprovedAsync(draft.Id, _rig.OrgId, null, null);
 
-        // Approved campaigns, campaigns of another org and campaigns that are gone are left as they are, with no error.
-        await campaigns.ReturnToDraftAsync(draft.Id, _rig.OrgId);
+        // Campaigns of another org and campaigns that are gone are left as they are, with no error.
         await campaigns.ReturnToDraftAsync(draft.Id, Guid.NewGuid());
         await campaigns.ReturnToDraftAsync(Guid.NewGuid(), _rig.OrgId);
-
         Assert.Equal(CampaignStatus.Approved, (await _rig.Db.Campaigns.AsNoTracking().SingleAsync()).Status);
+
+        // An approval that went halfway is undone; a second call, a draft and a campaign that was sent are left as they are.
+        await campaigns.ReturnToDraftAsync(draft.Id, _rig.OrgId);
+        Assert.Equal(CampaignStatus.Draft, (await _rig.Db.Campaigns.AsNoTracking().SingleAsync()).Status);
+        await campaigns.ReturnToDraftAsync(draft.Id, _rig.OrgId);
+        Assert.Equal(CampaignStatus.Draft, (await _rig.Db.Campaigns.AsNoTracking().SingleAsync()).Status);
+        (await _rig.Db.Campaigns.SingleAsync()).Status = CampaignStatus.Sent;
+        await _rig.Db.SaveChangesAsync();
+        await campaigns.ReturnToDraftAsync(draft.Id, _rig.OrgId);
+        Assert.Equal(CampaignStatus.Sent, (await _rig.Db.Campaigns.AsNoTracking().SingleAsync()).Status);
     }
 }

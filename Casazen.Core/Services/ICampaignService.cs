@@ -42,7 +42,8 @@ public interface ICampaignService
     /// subject and the body the host edited in the queue when it edited them (<paramref name="subject"/> and <paramref name="body"/> both, or neither). It is
     /// the one place that sets <c>Approved</c> (<see cref="ScheduleAsync"/> needs it). A time that was asked for and has passed while the campaign waited is
     /// dropped (<c>ScheduledAt</c> is <c>null</c> in the answer: approved, to be scheduled again by the host). Repeating it is safe: a campaign already
-    /// <c>Approved</c> or <c>Scheduled</c> is returned as it is, with no edit applied, so a retry after a failed scheduling finds the work done.
+    /// <c>Approved</c> or <c>Scheduled</c> is returned as it is but for the edit of this call, which is applied (the text the host approved last is the one that goes out), so a
+    /// retry after a failed scheduling finds the work done.
     /// 422 <c>campaign_not_found</c>; 409 <c>campaign_not_pending_approval</c> for a draft or a campaign already sent.
     /// </summary>
     /// <param name="campaignId">Campaign ID.</param>
@@ -59,8 +60,10 @@ public interface ICampaignService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns a campaign whose approval was rejected to a draft (E05/F04/US01/T02): <c>PendingApproval</c> becomes <c>Draft</c>, so the host can change it and
-    /// submit it again. Repeating it is safe, and a campaign in any other state (already a draft, approved, scheduled, sent, or gone) is left as it is.
+    /// Returns a campaign whose approval was rejected (or whose item expired) to a draft (E05/F04/US01/T02): <c>PendingApproval</c> becomes <c>Draft</c>, so the host can change it and
+    /// submit it again. An approval that went halfway (the campaign <c>Approved</c> or <c>Scheduled</c> while its item was still waiting: the item could not be saved, or the schedule
+    /// failed) is undone too, with its time (<c>ScheduledAt</c> is <c>null</c>): a rejected campaign is never left approved or scheduled, and a send job still waiting finds a draft and
+    /// sends nothing. Repeating it is safe, and a campaign in any other state (already a draft, sent, or gone) is left as it is.
     /// </summary>
     Task ReturnToDraftAsync(Guid campaignId, Guid orgId, CancellationToken cancellationToken = default);
 
