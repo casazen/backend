@@ -70,6 +70,16 @@ public enum DomainEventType
     OtaThreadSynced = 50,
 
     /// <summary>
+    /// CasaZen issued a fiscal document of a booking (E06/F01/US01/T01, NF-83): about the document (<c>EntityId</c>), with the payload
+    /// <c>FiscalDocumentIssuedPayload</c> (ids and the kind, nothing personal), recorded in the unit of work of the issue. Starts no routine; nothing
+    /// consumes it yet. The numbers 60 to 69 are the fiscal documents (epic E06), so the tasks of the waves that run in parallel never pick the same one.
+    /// </summary>
+    FiscalDocumentIssued = 60,
+
+    /// <summary>CasaZen issued a credit note of one of its documents (E06/F01/US01/T01): about the credit note, with the same payload and the credited document.</summary>
+    FiscalDocumentCreditNoteIssued = 61,
+
+    /// <summary>
     /// An org administrator activated a flow on a property after the server verified its prerequisites (E10/F01/US01/T04, NF-104, NF-106):
     /// about the property (<c>EntityId</c>), with the payload <c>OnboardingFlowEventPayload</c> (the property, the flow, the activation row). Recorded
     /// in the same unit of work as the activation row. Starts no routine; nothing consumes it yet. The numbers 100 to 109 are the activation of

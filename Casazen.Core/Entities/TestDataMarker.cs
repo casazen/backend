@@ -247,4 +247,10 @@ public static class TestDataEntities
 
     /// <summary>A "To do" of the demo host (<see cref="Entities.InternalActivity"/>): the reminder of the deferred part. No property: deleted by its marker.</summary>
     public const string Todo = "InternalActivity";
+
+    /// <summary>
+    /// A fiscal document of a demo stay (<see cref="Entities.FiscalDocument"/>, E06/F01/US01/T01) with its lines: a draft or an issued receipt of the
+    /// showcase, never a real one. A real document has no marker and is never touched by the reset (it is kept ten years).
+    /// </summary>
+    public const string FiscalDocument = "FiscalDocument";
 }

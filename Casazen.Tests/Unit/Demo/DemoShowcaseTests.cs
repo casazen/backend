@@ -121,6 +121,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.TenantExpenseProposalExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.CondominiumHistoricalImportExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.AdministratorStatementPdfExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.FiscalDocumentExamples.Select(example => example.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -995,6 +996,29 @@ public class DemoShowcaseTests
             new DateOnly(2024, 6, 1), CondominiumInstallmentCadence.Monthly, example.Ordinary, example.Extraordinary, example.Prior);
         Assert.Equal(example.InstallmentCount, rows.Count);
         Assert.Equal(example.InstallmentTotal, rows.Sum(row => row.Total));
+    }
+
+    /// <summary>
+    /// E06/F01/US01/T01: the demo has a draft (no number) and an issued receipt (with its number) of a direct stay, for a TEST recipient, each with the
+    /// tourist tax inside its total, in a currency of a stay.
+    /// </summary>
+    [Fact]
+    public void FiscalDocumentsDirect_HasADraftWithoutNumber_AndAnIssuedDocumentWithIt_ForATestRecipient()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.FiscalDocumentsDirect, DemoShowcaseCatalog.Scenarios);
+        var examples = DemoShowcaseCatalog.FiscalDocumentExamples;
+
+        var draft = Assert.Single(examples, e => e.Status == nameof(FiscalDocumentStatus.Draft));
+        Assert.Null(draft.Number);
+        var issued = Assert.Single(examples, e => e.Status == nameof(FiscalDocumentStatus.Issued));
+        Assert.Matches("^[0-9]{4}/[0-9]+$", issued.Number!);
+        Assert.All(examples, e =>
+        {
+            Assert.StartsWith("TEST", e.RecipientName, StringComparison.Ordinal);
+            Assert.True(e.TouristTax > 0m && e.TouristTax < e.Total);
+            Assert.True(StayCurrency.IsSupported(e.Currency));
+        });
+        Assert.Equal("FiscalDocument", TestDataEntities.FiscalDocument);
     }
 
     [Fact]

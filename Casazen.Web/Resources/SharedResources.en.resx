@@ -5955,4 +5955,40 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OctoratePdfUnavailable" xml:space="preserve">
     <value>The PDF of this document is not available from the channel manager: open it in Octorate.</value>
   </data>
+  <data name="FiscalDocumentConfirmationRequired" xml:space="preserve">
+    <value>Confirm the issue: an issued document can no longer be changed.</value>
+  </data>
+  <data name="FiscalDocumentNotDraft" xml:space="preserve">
+    <value>The document is not a draft: an issued or discarded document cannot be changed.</value>
+  </data>
+  <data name="FiscalDocumentReadOnly" xml:space="preserve">
+    <value>The document was issued in Octorate: in CasaZen it can only be viewed.</value>
+  </data>
+  <data name="FiscalDocumentAlreadyIssued" xml:space="preserve">
+    <value>This booking already has an issued document: issuing another one needs a full credit note first.</value>
+  </data>
+  <data name="FiscalDocumentCreditAmountExceeds" xml:space="preserve">
+    <value>The amount of the credit note must be positive and not exceed what is left to credit ({0}).</value>
+  </data>
+  <data name="FiscalDocumentNotCreditable" xml:space="preserve">
+    <value>Only an invoice or a receipt issued by CasaZen can be credited.</value>
+  </data>
+  <data name="FiscalDocumentInvoiceDataMissing" xml:space="preserve">
+    <value>The billing data of the recipient is missing (name, tax code or VAT number, address).</value>
+  </data>
+  <data name="FiscalDocumentXmlUnavailable" xml:space="preserve">
+    <value>This document has no XML file (only issued invoices and credit notes have one).</value>
+  </data>
+  <data name="FiscalDocLineLodging" xml:space="preserve">
+    <value>Stay of {0} nights</value>
+  </data>
+  <data name="FiscalDocLineCleaning" xml:space="preserve">
+    <value>Final cleaning</value>
+  </data>
+  <data name="FiscalDocLineTouristTax" xml:space="preserve">
+    <value>Tourist tax collected on behalf of the municipality</value>
+  </data>
+  <data name="FiscalDocLineCredit" xml:space="preserve">
+    <value>Credit of document {0}: {1}</value>
+  </data>
 </root>

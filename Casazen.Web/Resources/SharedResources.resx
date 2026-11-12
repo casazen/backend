@@ -5955,4 +5955,40 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OctoratePdfUnavailable" xml:space="preserve">
     <value>Il PDF di questo documento non è disponibile dal gestionale: aprilo in Octorate.</value>
   </data>
+  <data name="FiscalDocumentConfirmationRequired" xml:space="preserve">
+    <value>Conferma l'emissione: un documento emesso non si può più modificare.</value>
+  </data>
+  <data name="FiscalDocumentNotDraft" xml:space="preserve">
+    <value>Il documento non è una bozza: un documento emesso o scartato non si modifica.</value>
+  </data>
+  <data name="FiscalDocumentReadOnly" xml:space="preserve">
+    <value>Il documento è stato emesso in Octorate: in CasaZen si può solo consultare.</value>
+  </data>
+  <data name="FiscalDocumentAlreadyIssued" xml:space="preserve">
+    <value>Per questa prenotazione esiste già un documento emesso: per emetterne un altro serve prima una nota di credito totale.</value>
+  </data>
+  <data name="FiscalDocumentCreditAmountExceeds" xml:space="preserve">
+    <value>L'importo della nota di credito deve essere positivo e non superare il residuo da stornare ({0}).</value>
+  </data>
+  <data name="FiscalDocumentNotCreditable" xml:space="preserve">
+    <value>Si può stornare solo una fattura o una ricevuta emessa da CasaZen.</value>
+  </data>
+  <data name="FiscalDocumentInvoiceDataMissing" xml:space="preserve">
+    <value>Mancano i dati di fatturazione del destinatario (nome, codice fiscale o partita IVA, indirizzo).</value>
+  </data>
+  <data name="FiscalDocumentXmlUnavailable" xml:space="preserve">
+    <value>Questo documento non ha un file XML (solo le fatture e le note di credito emesse lo hanno).</value>
+  </data>
+  <data name="FiscalDocLineLodging" xml:space="preserve">
+    <value>Soggiorno di {0} notti</value>
+  </data>
+  <data name="FiscalDocLineCleaning" xml:space="preserve">
+    <value>Pulizie finali</value>
+  </data>
+  <data name="FiscalDocLineTouristTax" xml:space="preserve">
+    <value>Imposta di soggiorno riscossa per conto del comune</value>
+  </data>
+  <data name="FiscalDocLineCredit" xml:space="preserve">
+    <value>Storno del documento {0}: {1}</value>
+  </data>
 </root>

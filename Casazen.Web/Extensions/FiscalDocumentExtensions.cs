@@ -56,6 +56,10 @@ public static class FiscalDocumentExtensions
         // (E06/F03/US02/T01, NF-84); run by the job octorate-document-import.
         services.AddScoped<IOctorateDocumentImportService, OctorateDocumentImportService>();
 
+        // The fiscal documents CasaZen issues for its direct bookings and the reading of every document (E06/F01/US01/T01, NF-83); the changes are
+        // behind Features:FiscalDocumentIssuance.
+        services.AddScoped<IFiscalDocumentService, FiscalDocumentService>();
+
         return services;
     }
 }
