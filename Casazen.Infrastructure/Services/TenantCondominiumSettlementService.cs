@@ -330,7 +330,7 @@ public sealed class TenantCondominiumSettlementService(
         {
             var confirmation = await condominiums.ConfirmFinalAsync(
                 scope, condominiumId, periodId, command, userId, cancellationToken);
-            await ReplacePostedForPeriodAsync(scope, periodId, userId, cancellationToken);
+            await ReconcileConfirmedFinalAsync(scope, condominiumId, periodId, userId, cancellationToken);
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
             return confirmation;
@@ -340,6 +340,41 @@ public sealed class TenantCondominiumSettlementService(
             if (transaction is not null)
                 await transaction.RollbackAsync(cancellationToken);
             throw;
+        }
+    }
+
+    public async Task ReconcileConfirmedFinalAsync(HostScope scope, Guid condominiumId, Guid periodId,
+        string userId, CancellationToken cancellationToken = default)
+    {
+        await ReplacePostedForPeriodAsync(scope, periodId, userId, cancellationToken);
+        var report = await condominiums.GetReportAsync(scope, condominiumId, periodId, cancellationToken);
+        var periodStart = report.PeriodStart;
+        var periodEnd = report.PeriodEnd;
+        var properties = (await condominiums.ListPropertiesAsync(scope, cancellationToken))
+            .Where(p => p.Books.Any(b => b.Id == condominiumId)).Select(p => p.PropertyId).ToList();
+        var leaseIds = await db.LeaseCondominiumTerms.Where(t => t.OrgId == scope.OrgId && t.ConfirmedAt != null
+            && t.SettlementRequired && properties.Contains(t.LeaseContract.PropertyId)
+            && (t.LeaseContract.Status == LeaseStatus.Signed || t.LeaseContract.Status == LeaseStatus.Registered || t.LeaseContract.Status == LeaseStatus.RegistrationPending)
+            && t.LeaseContract.StartDate <= periodEnd.ToDateTime(TimeOnly.MaxValue)
+            && t.LeaseContract.CurrentTermEndDate >= periodStart.ToDateTime(TimeOnly.MinValue))
+            .Select(t => t.LeaseContractId).ToListAsync(cancellationToken);
+        foreach (var leaseId in leaseIds.Order())
+        {
+            var alreadyPosted = await db.TenantCondominiumSettlements.AnyAsync(s => s.LeaseContractId == leaseId
+                && s.CondominiumPeriodId == periodId && (s.Status == TenantSettlementStatus.Posted || s.Status == TenantSettlementStatus.Settled), cancellationToken);
+            var hasAdvances = await db.RentLedgerComponents.AnyAsync(c => c.RentLedgerEntry.LeaseContractId == leaseId
+                && c.OrgId == scope.OrgId && c.Kind == RentLedgerComponentKind.CondominiumAdvance
+                && c.CompetenceStart <= periodEnd && c.CompetenceEnd >= periodStart, cancellationToken);
+            if (!alreadyPosted && hasAdvances)
+            {
+                var final = await condominiums.GetConfirmedFinalForPropertyAsync(scope,
+                    (await RequireLeaseAsync(scope, leaseId, cancellationToken)).PropertyId, periodId, cancellationToken);
+                if (final.Lines.Any(line => line.ReviewStatus == ExpenseReviewStatus.Pending)) continue;
+                var calculated = await CalculateAsync(scope, leaseId, new(periodId, TenantSettlementDisposition.CarryForward, null, null), userId, cancellationToken);
+                await ConfirmAsync(scope, leaseId, calculated.Id, userId, cancellationToken);
+                await PostAsync(scope, leaseId, calculated.Id, userId, cancellationToken);
+            }
+            await BudgetRentAdvanceUpdater.RefreshAsync(db, leaseId, cancellationToken);
         }
     }
 

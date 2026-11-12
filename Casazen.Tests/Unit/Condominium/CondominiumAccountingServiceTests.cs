@@ -374,6 +374,95 @@ public class CondominiumAccountingServiceTests
         }
     }
 
+
+    [Fact]
+    public async Task VacantProperty_HasAnIndependentBook_AndRespectsScope()
+    {
+        await using var db = NewDb();
+        var scope = await SeedAsync(db);
+        var property = await db.Properties.SingleAsync();
+        var service = Service(db);
+        Assert.Empty((await service.ListPropertiesAsync(scope)).Single().Books);
+        var condo = await service.SetupPropertyAsync(new HostScope(scope.OrgId, OwnerId: "user"), property.Id,
+            new("Casa", null, null, null, 1), "user");
+        var again = await service.SetupPropertyAsync(scope, property.Id, new("Casa", null, null, null, 1), "user");
+        Assert.Equal(condo.Id, again.Id);
+        var period = await service.CreatePeriodAsync(scope, condo.Id, new("2027"), "user");
+        await service.ConfirmBudgetAsync(scope, condo.Id, period.Id,
+            new(1800m, null, null, CondominiumInstallmentCadence.Monthly), "user");
+        var report = await service.GetReportAsync(scope, condo.Id, period.Id);
+        Assert.Equal(1800m, report.StillToPay);
+        Assert.Equal(12, report.Installments.Count);
+        Assert.Empty(db.LeaseContracts);
+        Assert.Single((await service.ListPropertiesAsync(scope)).Single().Books);
+        Assert.Empty(await service.ListPropertiesAsync(new HostScope(scope.OrgId, OwnerId: "other")));
+    }
+
+    [Fact]
+    public void CustomPlan_ValidatesDates_AndPreservesEveryCent()
+    {
+        var start = new DateOnly(2027, 1, 1);
+        var dates = new[] { start.AddMonths(1), start.AddMonths(4), start.AddMonths(10) };
+        var rates = OwnerInstallmentPlan.Generate(start, CondominiumInstallmentCadence.Custom, 100m, 20m, 30m, dates);
+        Assert.Equal(dates, rates.Select(r => r.DueDate));
+        Assert.Equal(150m, rates.Sum(r => r.Total));
+        Assert.Equal(30m, rates[0].Prior);
+        Assert.Throws<ArgumentException>(() => OwnerInstallmentPlan.Generate(start,
+            CondominiumInstallmentCadence.Custom, 100m, 0m, 0m, new[] { start.AddYears(1) }));
+    }
+
+
+    [Fact]
+    public async Task YearPayment_AlsoSettlesTheManualPaymentList_WithoutDuplicatePayments()
+    {
+        await using var db = NewDb();
+        var scope = await SeedAsync(db);
+        var service = Service(db);
+        var property = await db.Properties.SingleAsync();
+        var condo = await service.SetupPropertyAsync(scope, property.Id, new("Casa", null, null, null, 1), "user");
+        var period = await service.CreatePeriodAsync(scope, condo.Id, new("2027"), "user");
+        await service.ConfirmBudgetAsync(scope, condo.Id, period.Id, new(1200m, null, null, CondominiumInstallmentCadence.Monthly), "user");
+        await service.RecordPaymentAsync(scope, condo.Id, period.Id,
+            new(null, false, 200m, new DateOnly(2027, 1, 15), "Bonifico", null, null, null), "user");
+        var reminders = new CondominiumPaymentReminderService(db, service,
+            Moq.Mock.Of<Casazen.Infrastructure.Email.IEmailQueue>(), new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        var rows = await reminders.ListAsync(scope, default);
+        Assert.Equal(2, rows.Count(r => r.Paid));
+        Assert.Equal(1000m, rows.Sum(r => r.Amount));
+        await reminders.MarkPaidAsync(scope, rows.First(r => r.Paid).Id, "user", default);
+        Assert.Equal(200m, (await service.GetReportAsync(scope, condo.Id, period.Id)).Paid);
+    }
+
+
+    [Fact]
+    public async Task WizardChoice_IsPersistedWithoutARentSchedule_AndManualInputOverridesTheBudget()
+    {
+        await using var db = NewDb();
+        var scope = await SeedAsync(db);
+        var property = await db.Properties.SingleAsync();
+        var accounting = Service(db);
+        var book = await accounting.SetupPropertyAsync(scope, property.Id, new("Casa", null, null, null, 1), "user");
+        var period = await accounting.CreatePeriodAsync(scope, book.Id, new("2027"), "user");
+        await accounting.ConfirmBudgetAsync(scope, book.Id, period.Id, new(2400m, null, null, CondominiumInstallmentCadence.Monthly), "user");
+        var lease = new LeaseContract { OrgId = scope.OrgId, PropertyId = property.Id, Status = LeaseStatus.Draft,
+            MonthlyRent = 650m, StartDate = new DateTime(2027, 1, 1), EndDate = new DateTime(2030, 12, 31) };
+        db.LeaseContracts.Add(lease);
+        await db.SaveChangesAsync();
+        var proposals = new TenantExpenseProposalService(db, accounting);
+        var manual = new ProposeTenantExpenseCommand(null, null, RentCadence.Monthly, null, null, 150m, false);
+        var choice = await proposals.ProposeAsync(lease.Id, manual);
+        Assert.Equal(TenantExpenseProposal.Source.Manual, choice.Source);
+        Assert.Equal(150m, choice.InstallmentAmount);
+        await proposals.SaveAsync(lease.Id, choice, manual, "user");
+        db.ChangeTracker.Clear();
+        var saved = await proposals.GetSavedAsync(lease.Id);
+        Assert.NotNull(saved);
+        Assert.Equal(150m, saved.InstallmentAmount);
+        Assert.False(saved.SettledAtConsuntivo);
+        Assert.Empty(db.RentSchedules);
+        Assert.Empty(db.RentLedgerEntries);
+    }
+
     private static CondominiumAccountingService Service(AppDbContext db) =>
         new(db, new MigraDocPdfDocumentRenderer(), NullLogger<CondominiumAccountingService>.Instance);
 

@@ -10,6 +10,10 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface ICondominiumAccountingService
 {
+    Task<IReadOnlyList<PropertyCondominiumView>> ListPropertiesAsync(HostScope scope, CancellationToken cancellationToken = default);
+
+    Task<CondominiumView> SetupPropertyAsync(HostScope scope, Guid propertyId, CreateCondominiumCommand command, string userId, CancellationToken cancellationToken = default);
+
     Task<CondominiumView> CreateCondominiumAsync(HostScope scope, CreateCondominiumCommand command, string userId, CancellationToken cancellationToken = default);
 
     Task<CondominiumUnitView> LinkPropertyAsync(HostScope scope, Guid condominiumId, LinkPropertyCommand command, string userId, CancellationToken cancellationToken = default);
@@ -88,7 +92,8 @@ public sealed record ConfirmBudgetCommand(
     string? Description,
     IReadOnlyList<ExtraordinaryExpenseCommand>? Extraordinary,
     CondominiumInstallmentCadence Cadence,
-    bool OrdinaryNeedsReview = false);
+    bool OrdinaryNeedsReview = false,
+    IReadOnlyList<DateOnly>? CustomDueDates = null);
 
 public sealed record FinalExpenseLineCommand(
     string Description,
@@ -202,3 +207,6 @@ public static class CondominiumErrorCodes
     public const string FinalNotConfirmed = "condominium_final_not_confirmed";
     public const string NeedsWholeOrg = "condominium_needs_whole_org";
 }
+
+public sealed record PropertyCondominiumView(Guid PropertyId, string PropertyName, IReadOnlyList<PropertyCondominiumBook> Books);
+public sealed record PropertyCondominiumBook(Guid Id, string Name, int FiscalStartMonth, IReadOnlyList<CondominiumPeriodView> Periods);

@@ -43,6 +43,14 @@ public class LeaseDraftsController(
     /// budget, or the fixed advance when the contract says that. With nothing loaded, send the previous consuntivo and
     /// the new preventivo, or a manual amount that is settled at the consuntivo. This does not take a payment.
     /// </summary>
+    [HttpGet("{id:guid}/draft/condominium-expense")]
+    public async Task<IActionResult> SavedExpense(Guid id, CancellationToken cancellationToken)
+    {
+        if (await AuthorizeLeaseAsync(id, cancellationToken) is { } denied) return denied;
+        NoStore();
+        return new JsonResult(await expenses.GetSavedAsync(id, cancellationToken));
+    }
+
     [HttpPost("{id:guid}/draft/condominium-expense")]
     [ProducesResponseType(typeof(TenantExpenseProposalView), StatusCodes.Status200OK)]
     public async Task<IActionResult> ProposeExpense(
@@ -59,8 +67,10 @@ public class LeaseDraftsController(
                 dto.Cadence,
                 dto.PreviousConsuntivo,
                 dto.Preventivo,
-                dto.ManualAmount),
+                dto.ManualAmount, dto.SettlementRequired),
             cancellationToken);
+        await expenses.SaveAsync(id, proposal, new(dto.AdvanceMode, dto.ContractualAdvance, dto.Cadence,
+            dto.PreviousConsuntivo, dto.Preventivo, dto.ManualAmount, dto.SettlementRequired), User.GetUserId()!, cancellationToken);
         NoStore();
         return Ok(proposal);
     }
@@ -399,6 +409,7 @@ public sealed record CreateLeaseDraftDto([param: Required] Guid PropertyId, Leas
 /// </summary>
 public sealed class ProposeTenantExpenseDto
 {
+    public bool? SettlementRequired { get; set; }
     public CondominiumAdvanceMode? AdvanceMode { get; set; }
 
     public decimal? ContractualAdvance { get; set; }

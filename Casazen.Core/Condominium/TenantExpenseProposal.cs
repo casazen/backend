@@ -43,17 +43,12 @@ public static class TenantExpenseProposal
     {
         ArgumentNullException.ThrowIfNull(request);
         var installments = InstallmentCount(request.Cadence ?? RentCadence.Monthly);
-        if (hasFiscalYear && request.AdvanceMode == CondominiumAdvanceMode.FixedContractAmount)
+        if (request.AdvanceMode == CondominiumAdvanceMode.FixedContractAmount)
         {
             var advance = RequirePositive(request.ContractualAdvance);
             var annual = CondominiumMoney.Round(advance * installments);
             return new Result(
                 Source.FixedContract, advance, advance, installments, annual, null, null, false, periodId, label);
-        }
-
-        if (hasFiscalYear && recoverableAnnual is > 0m)
-        {
-            return Split(Source.ConfirmedBudget, recoverableAnnual.Value, installments, false, null, recoverableAnnual, periodId, label);
         }
 
         if (request.ManualAmount is not null && (request.PreviousConsuntivo is not null || request.Preventivo is not null))
@@ -64,6 +59,11 @@ public static class TenantExpenseProposal
             var manual = RequirePositive(request.ManualAmount);
             var annual = CondominiumMoney.Round(manual * installments);
             return new Result(Source.Manual, manual, manual, installments, annual, null, null, true, null, null);
+        }
+
+        if (hasFiscalYear && recoverableAnnual is > 0m)
+        {
+            return Split(Source.ConfirmedBudget, recoverableAnnual.Value, installments, false, null, recoverableAnnual, periodId, label);
         }
 
         if (request.PreviousConsuntivo is not null || request.Preventivo is not null)
