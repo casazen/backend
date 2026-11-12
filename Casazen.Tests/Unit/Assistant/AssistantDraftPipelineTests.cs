@@ -1,11 +1,17 @@
+using System.Globalization;
+using System.Text;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Services;
+using Hangfire.Common;
+using Hangfire.States;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -24,6 +30,9 @@ public sealed class AssistantDraftPipelineTests : IDisposable
     private const string GuestQuestion =
         "Ciao, sono Giulia Verdi (prenotazione K7M2Q-9X4BN, codice Airbnb HMXYZ987). Scrivetemi a giulia.verdi@example.com o al 333 1234567, "
         + "codice fiscale RSSMRA80A01H501U, pratica 12345678. Dove posso parcheggiare?";
+
+    private const string UrgentClassification =
+        """{"situation":"malfunction","situationMatch":0.8,"urgency":"urgent","sensitiveCategories":["damage"],"language":"it"}""";
 
     private readonly AssistantDraftRig _rig = new();
 
@@ -66,6 +75,34 @@ public sealed class AssistantDraftPipelineTests : IDisposable
         var logged = string.Join("|", row.GateFailures) + row.SourceRefs + row.Model + row.ModelVersion + row.ThreadKey;
         Assert.DoesNotContain("Giulia", logged, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("parcheggio", logged, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AssistantPrompt_NamesWrittenWithoutTheAccentOrWithATypographicApostrophe_AreTakenOutToo_Test()
+    {
+        // The booking knows the guest as «José D'Angelo»; the guest writes «Jose» and the apostrophe of a phone.
+        await _rig.SeedAsync();
+        var guest = await _rig.Db.Guests.SingleAsync(g => g.Id == _rig.Guest.Id);
+        guest.FirstName = "José";
+        guest.LastName = "D'Angelo";
+        await _rig.Db.SaveChangesAsync();
+        _rig.Db.ChangeTracker.Clear();
+        var message = await _rig.GuestWritesAsync("Buongiorno, sono Jose D’Angelo (la prenotazione e di JOSÉ D'ANGELO). Dove posso parcheggiare?");
+
+        var outcome = await _rig.Service().ProcessInboundAsync(_rig.OrgId, _rig.Key, message.Id, AssistantProcessOptions.Automatic);
+
+        Assert.Equal(AssistantDecision.Drafted, outcome.Decision);
+        var sent = _rig.EverythingSentToTheProvider();
+        foreach (var personal in new[] { "Jose", "José", "Angelo", "D’Angelo", "D'Angelo" })
+            Assert.DoesNotContain(personal, sent, StringComparison.OrdinalIgnoreCase);
+
+        // Whatever the form of the accent (a letter with it, or a letter and a mark), the name is not in the text without the accents either.
+        var withoutAccents = new string(sent.Normalize(NormalizationForm.FormD).Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark).ToArray());
+        Assert.DoesNotContain("Jose", withoutAccents, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("[guest]", sent, StringComparison.Ordinal);
+
+        // The server fills the name in: the draft greets the guest by the name the booking has.
+        Assert.StartsWith("Ciao José,", (await _rig.Db.ApprovalQueueItems.SingleAsync()).ContentText, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -500,6 +537,313 @@ public sealed class AssistantDraftPipelineTests : IDisposable
         Assert.Equal(MessageThreadKey.ForDirect(booking.Id).ToString(), (await _rig.Db.ApprovalQueueItems.SingleAsync()).ThreadKey);
     }
 
+    // ─── The «To do» of a conversation is as urgent as its most urgent message (AC 3) ───
+
+    [Fact]
+    public async Task AnUrgentMessageAfterAnEscalatedOne_RaisesTheOpenTodoOfTheConversation_AndALessUrgentOneNeverLowersIt()
+    {
+        await _rig.SeedAsync();
+        await AssistantTestKit.Situations(_rig.Db).SaveAsync(_rig.OrgId, null, AssistantSituation.Parking, AssistantMode.Escalate, null, null, _rig.World.OwnerUserId);
+        var service = _rig.Service();
+        var now = AssistantDraftRig.Now.UtcDateTime;
+
+        // A question the host answers himself: a «To do» of normal urgency, due the day after.
+        var first = await _rig.GuestWritesAsync("Dove posso parcheggiare?", minutesAgo: 30);
+        var escalated = await service.ProcessInboundAsync(_rig.OrgId, _rig.Key, first.Id, AssistantProcessOptions.Automatic);
+        var opened = await TodoAsync(escalated.ActivityId);
+        Assert.Equal((ActivityUrgency.Medium, now.AddHours(24), "parking"), (opened.Urgency, opened.Deadline, opened.Reason));
+
+        // An urgent message follows in the same conversation while that «To do» is open: the same item, raised to High and due in an hour, among the urgent ones of the list.
+        _rig.Ai.Classification = UrgentClassification;
+        var second = await _rig.GuestWritesAsync("Esce acqua dal soffitto del bagno!", minutesAgo: 5);
+        var urgent = await service.ProcessInboundAsync(_rig.OrgId, _rig.Key, second.Id, AssistantProcessOptions.Automatic);
+        Assert.Equal(escalated.ActivityId, urgent.ActivityId);
+        var raised = await TodoAsync(urgent.ActivityId);
+        Assert.Equal((ActivityUrgency.High, now.AddHours(1), "malfunction"), (raised.Urgency, raised.Deadline, raised.Reason));
+        Assert.Equal(1, await _rig.Db.InternalActivities.CountAsync(a => a.ActivityType == nameof(ActivityType.MessageToReply)));
+        var pending = await _rig.Activities().GetPendingAsync(_rig.World.OrgWide, CancellationToken.None);
+        Assert.Equal(
+            [escalated.ActivityId!.Value],
+            pending.Where(a => a.ActivityType == nameof(ActivityType.MessageToReply) && a.Urgency == ActivityUrgency.High).Select(a => a.Id));
+
+        // A less urgent one afterwards leaves it as it is: the urgency does not go down and the deadline does not move later.
+        _rig.Ai.Classification = ScriptedAiProvider.ParkingClassification;
+        var third = await _rig.GuestWritesAsync("E per i bagagli?", minutesAgo: 1);
+        var lessUrgent = await service.ProcessInboundAsync(_rig.OrgId, _rig.Key, third.Id, AssistantProcessOptions.Automatic);
+        Assert.Equal(escalated.ActivityId, lessUrgent.ActivityId);
+        var kept = await TodoAsync(lessUrgent.ActivityId);
+        Assert.Equal((ActivityUrgency.High, now.AddHours(1), "malfunction"), (kept.Urgency, kept.Deadline, kept.Reason));
+    }
+
+    [Fact]
+    public async Task AnEscalatedMessageAfterAnUrgentOne_LeavesTheTodoHighAndDueInAnHour()
+    {
+        await _rig.SeedAsync();
+        await AssistantTestKit.Situations(_rig.Db).SaveAsync(_rig.OrgId, null, AssistantSituation.Parking, AssistantMode.Escalate, null, null, _rig.World.OwnerUserId);
+        var service = _rig.Service();
+        var now = AssistantDraftRig.Now.UtcDateTime;
+
+        _rig.Ai.Classification = UrgentClassification;
+        var first = await _rig.GuestWritesAsync("Esce acqua dal soffitto del bagno!", minutesAgo: 30);
+        var urgent = await service.ProcessInboundAsync(_rig.OrgId, _rig.Key, first.Id, AssistantProcessOptions.Automatic);
+        _rig.Ai.Classification = ScriptedAiProvider.ParkingClassification;
+        var second = await _rig.GuestWritesAsync("Dove posso parcheggiare?", minutesAgo: 5);
+        var escalated = await service.ProcessInboundAsync(_rig.OrgId, _rig.Key, second.Id, AssistantProcessOptions.Automatic);
+
+        Assert.Equal(AssistantDecision.Escalated, escalated.Decision);
+        Assert.Equal(urgent.ActivityId, escalated.ActivityId);
+        var todo = await TodoAsync(escalated.ActivityId);
+        Assert.Equal((ActivityUrgency.High, now.AddHours(1), "malfunction"), (todo.Urgency, todo.Deadline, todo.Reason));
+        Assert.Equal(1, await _rig.Db.InternalActivities.CountAsync(a => a.ActivityType == nameof(ActivityType.MessageToReply)));
+    }
+
+    // ─── The alert of an urgent message is never lost by a job that stops (no event consumed with no effect) ───
+
+    [Fact]
+    public async Task TheAlertOfAnUrgentMessage_IsDoneBeforeTheRowOfTheLogIsWritten_SoAJobThatStopsAfterwardsLosesNothing()
+    {
+        await _rig.SeedAsync();
+        _rig.Ai.Classification = UrgentClassification;
+        var message = await _rig.GuestWritesAsync("Esce acqua dal soffitto del bagno!");
+
+        // The run stops after the alert and before its row is written (the gate, asked for the draft, fails): the people were alerted, and there is no row to make Hangfire return at once.
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _rig.Service(new FailingGate()).ProcessInboundAsync(_rig.OrgId, _rig.Key, message.Id, AssistantProcessOptions.Automatic));
+        Assert.Single(_rig.Asked, context => context.EventType == NotificationEventType.UrgentGuestMessage);
+        Assert.False(await _rig.Db.AssistantDecisionLogs.AnyAsync());
+
+        // Hangfire repeats the job: it does the work, and the alert again (the keys of the alert make that tell nobody twice).
+        var repeated = await _rig.Service().ProcessInboundAsync(_rig.OrgId, _rig.Key, message.Id, AssistantProcessOptions.Automatic);
+        Assert.Equal(AssistantDecision.Drafted, repeated.Decision);
+        Assert.Equal(2, _rig.Asked.Count(context => context.EventType == NotificationEventType.UrgentGuestMessage));
+
+        // The row exists now: a third run returns at once and alerts nobody.
+        var third = await _rig.Service().ProcessInboundAsync(_rig.OrgId, _rig.Key, message.Id, AssistantProcessOptions.Automatic);
+        Assert.True(third.AlreadyProcessed);
+        Assert.Equal(2, _rig.Asked.Count(context => context.EventType == NotificationEventType.UrgentGuestMessage));
+    }
+
+    [Fact]
+    public async Task AnUrgentAlertThatFails_IsHandedToTheJobOfTheAlerts_AndOneThatCannotEvenBeHandedOverFailsTheRun_SoItIsRepeated()
+    {
+        await _rig.SeedAsync();
+        _rig.Ai.Classification = UrgentClassification;
+        var first = await _rig.GuestWritesAsync("Esce acqua dal soffitto del bagno!", minutesAgo: 2);
+        _rig.Preferences
+            .Setup(p => p.ResolveAsync(It.Is<NotificationEventContext>(context => context.EventType == NotificationEventType.UrgentGuestMessage), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("The preferences cannot be read."));
+
+        // The alert fails and the job of the alerts takes it over: the run goes on and writes its row.
+        var handedOver = await _rig.Service().ProcessInboundAsync(_rig.OrgId, _rig.Key, first.Id, AssistantProcessOptions.Automatic);
+        Assert.Equal(AssistantDecision.Drafted, handedOver.Decision);
+        _rig.Jobs.Verify(j => j.Create(It.Is<Job>(job => job.Type == typeof(HostMessageAlertDueJob)), It.IsAny<IState>()), Times.Once);
+
+        // The job of the alerts cannot be queued either: the failure is not swallowed, the run fails before it writes its row, and Hangfire repeats it.
+        var second = await _rig.GuestWritesAsync("Ancora acqua, sempre piu forte!", minutesAgo: 1);
+        _rig.Jobs
+            .Setup(j => j.Create(It.Is<Job>(job => job.Type == typeof(HostMessageAlertDueJob)), It.IsAny<IState>()))
+            .Throws(new InvalidOperationException("The storage of the jobs is down."));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _rig.Service().ProcessInboundAsync(_rig.OrgId, _rig.Key, second.Id, AssistantProcessOptions.Automatic));
+        Assert.False(await _rig.Db.AssistantDecisionLogs.AnyAsync(row => row.InboundMessageId == second.Id));
+
+        _rig.Jobs.Setup(j => j.Create(It.IsAny<Job>(), It.IsAny<IState>())).Returns("job-2");
+        var repeated = await _rig.Service().ProcessInboundAsync(_rig.OrgId, _rig.Key, second.Id, AssistantProcessOptions.Automatic);
+        Assert.Equal(AssistantDecision.Drafted, repeated.Decision);
+    }
+
+    // ─── Another organization's conversation or message is never read (tenant) ───
+
+    [Fact]
+    public async Task AConversationOrAMessageOfAnotherOrg_IsNeverRead_WithNoCallToTheModel_AndNothingOfThatOrgChanges()
+    {
+        await _rig.SeedAsync();
+        var otherOrg = _rig.World.OtherOrgId;
+
+        // The conversation of another org (on a house of its own) with two messages of its guest, and its guest area: a direct booking with a message.
+        var foreignThread = _rig.NewThread(_rig.World.OtherOrgProperty.Id, null, "Anna Altrove");
+        foreignThread.OrgId = otherOrg;
+        _rig.Db.OtaMessageThreads.Add(foreignThread);
+        var foreignBooking = new Booking
+        {
+            OrgId = otherOrg,
+            PropertyId = _rig.World.OtherOrgProperty.Id,
+            GuestId = _rig.Guest.Id,
+            CheckInDate = HostScopeScenario.Day(2026, 10, 11),
+            CheckOutDate = HostScopeScenario.Day(2026, 10, 13),
+            NumberOfGuests = 2,
+            NumberOfAdults = 2,
+            Status = BookingStatus.Confirmed,
+            Source = BookingSource.Direct,
+            BasePrice = 200m,
+            TotalPrice = 200m,
+        };
+        var foreignGuestThread = new GuestThread
+        {
+            OrgId = otherOrg,
+            PropertyId = _rig.World.OtherOrgProperty.Id,
+            BookingId = foreignBooking.Id,
+            CreatedAt = AssistantDraftRig.Now.UtcDateTime,
+            LastMessageAt = AssistantDraftRig.Now.UtcDateTime,
+        };
+        var foreignGuestMessage = new GuestMessage
+        {
+            OrgId = otherOrg,
+            ThreadId = foreignGuestThread.Id,
+            Sender = GuestMessageSender.Guest,
+            Origin = MessageOrigin.Guest,
+            Text = "Dove posso parcheggiare?",
+            CreatedAt = AssistantDraftRig.Now.UtcDateTime.AddMinutes(-3),
+        };
+        _rig.Db.Bookings.Add(foreignBooking);
+        _rig.Db.GuestThreads.Add(foreignGuestThread);
+        _rig.Db.GuestMessages.Add(foreignGuestMessage);
+        await _rig.Db.SaveChangesAsync();
+        var firstOfOther = await _rig.GuestWritesAsync("Dove posso parcheggiare?", thread: foreignThread);
+        var secondOfOther = await _rig.GuestWritesAsync("E il wifi?", minutesAgo: 4, thread: foreignThread);
+        await _rig.GuestWritesAsync("Domanda di questa org");
+        var service = _rig.Service();
+        var before = await CountsAsync();
+
+        // The job of this org is told a conversation of the other one (of a channel, of a direct booking): it is not there, for this org.
+        var ota = await service.ProcessInboundAsync(_rig.OrgId, MessageThreadKey.ForOta(foreignThread.Id), firstOfOther.Id, AssistantProcessOptions.Automatic);
+        var direct = await service.ProcessInboundAsync(_rig.OrgId, MessageThreadKey.ForDirect(foreignBooking.Id), foreignGuestMessage.Id, AssistantProcessOptions.Automatic);
+
+        // ...or a message of the other one in a conversation of its own: that message is not there.
+        var message = await service.ProcessInboundAsync(_rig.OrgId, _rig.Key, secondOfOther.Id, AssistantProcessOptions.Automatic);
+
+        // A person of this org cannot ask for a draft of either conversation: the 404 of a conversation that does not exist.
+        var deniedOta = await Assert.ThrowsAsync<NotFoundException>(() =>
+            service.DraftNowAsync(_rig.World.OrgWide, MessageThreadKey.ForOta(foreignThread.Id), _rig.World.OwnerUserId));
+        var deniedDirect = await Assert.ThrowsAsync<NotFoundException>(() =>
+            service.DraftNowAsync(_rig.World.OrgWide, MessageThreadKey.ForDirect(foreignBooking.Id), _rig.World.OwnerUserId));
+
+        Assert.Equal(
+            [AssistantDecisionCodes.ThreadNotFound, AssistantDecisionCodes.ThreadNotFound, AssistantDecisionCodes.MessageNotFound],
+            new[] { ota, direct, message }.Select(outcome => outcome.Reason));
+        Assert.All(new[] { ota, direct, message }, outcome => Assert.Equal(AssistantDecision.NotHandled, outcome.Decision));
+        Assert.Equal(MessageHubService.ThreadNotFoundCode, deniedOta.Code);
+        Assert.Equal(MessageHubService.ThreadNotFoundCode, deniedDirect.Code);
+
+        // No call to the model, nothing queued, raised or sent; and nothing was written for the other org.
+        Assert.Empty(_rig.Ai.Calls);
+        var after = await CountsAsync();
+        Assert.Equal((before.Items, before.Todos, before.OtaMessages, before.GuestMessages, before.Events), (after.Items, after.Todos, after.OtaMessages, after.GuestMessages, after.Events));
+        Assert.Empty(await _rig.Db.ApprovalQueueItems.Where(i => i.OrgId == otherOrg).ToListAsync());
+        Assert.Empty(await _rig.Db.InternalActivities.Where(a => a.OrgId == otherOrg).ToListAsync());
+        Assert.All(await _rig.Db.AssistantDecisionLogs.ToListAsync(), row => Assert.Equal(_rig.OrgId, row.OrgId));
+        _rig.Replies.VerifyNoOtherCalls();
+    }
+
+    // ─── The codes of a message that is not handled, beyond the brief: no call to the model, nothing queued, the code in the log ───
+
+    [Fact]
+    public async Task AnAnonymizedConversation_OrAClosedDirectOne_IsClosed_SoAnErasedGuestNeverReachesTheModel()
+    {
+        await _rig.SeedAsync();
+        var erased = await _rig.Db.OtaMessageThreads.SingleAsync(t => t.Id == _rig.Thread.Id);
+        erased.AnonymizedAt = AssistantDraftRig.Now.UtcDateTime.AddDays(-1);
+        var booking = new Booking
+        {
+            OrgId = _rig.OrgId,
+            PropertyId = _rig.World.Granted.Id,
+            GuestId = _rig.Guest.Id,
+            CheckInDate = HostScopeScenario.Day(2026, 9, 17),
+            CheckOutDate = HostScopeScenario.Day(2026, 9, 20),
+            NumberOfGuests = 2,
+            NumberOfAdults = 2,
+            Status = BookingStatus.CheckedOut,
+            Source = BookingSource.Direct,
+            BasePrice = 200m,
+            TotalPrice = 200m,
+        };
+        var guestThread = new GuestThread { OrgId = _rig.OrgId, PropertyId = _rig.World.Granted.Id, BookingId = booking.Id, CreatedAt = AssistantDraftRig.Now.UtcDateTime, LastMessageAt = AssistantDraftRig.Now.UtcDateTime };
+        var guestMessage = new GuestMessage
+        {
+            OrgId = _rig.OrgId,
+            ThreadId = guestThread.Id,
+            Sender = GuestMessageSender.Guest,
+            Origin = MessageOrigin.Guest,
+            Text = "Posso lasciare le valigie?",
+            CreatedAt = AssistantDraftRig.Now.UtcDateTime.AddMinutes(-3),
+        };
+        _rig.Db.Bookings.Add(booking);
+        _rig.Db.GuestThreads.Add(guestThread);
+        _rig.Db.GuestMessages.Add(guestMessage);
+        await _rig.Db.SaveChangesAsync();
+        _rig.Db.ChangeTracker.Clear();
+        var message = await _rig.GuestWritesAsync("Dove posso parcheggiare?", minutesAgo: 2);
+
+        var ota = await _rig.Service().ProcessInboundAsync(_rig.OrgId, _rig.Key, message.Id, AssistantProcessOptions.Automatic);
+        var direct = await _rig.Service().ProcessInboundAsync(_rig.OrgId, MessageThreadKey.ForDirect(booking.Id), guestMessage.Id, AssistantProcessOptions.Automatic);
+
+        await AssertNotHandledAsync(ota, AssistantDecisionCodes.ThreadClosed);
+        await AssertNotHandledAsync(direct, AssistantDecisionCodes.ThreadClosed);
+    }
+
+    [Fact]
+    public async Task ASituationOutsideTheAllowedTopics_IsEscalatedWithItsTodo_AndGetsNoDraft()
+    {
+        await _rig.SeedAsync();
+        await AssistantTestKit.Rules(_rig.Db).SaveAsync(
+            _rig.OrgId,
+            AssistantTestKit.RulesInput(enabled: true, languages: ["it", "en"], signature: AssistantDraftRig.Signature, threshold: 0.9m, allowed: ["Pets"]),
+            _rig.World.OwnerUserId);
+        var message = await _rig.GuestWritesAsync("Dove posso parcheggiare?");
+
+        var outcome = await _rig.Service().ProcessInboundAsync(_rig.OrgId, _rig.Key, message.Id, AssistantProcessOptions.Automatic);
+
+        Assert.Equal((AssistantDecision.Escalated, AssistantDecisionCodes.TopicNotAllowed), (outcome.Decision, outcome.Reason));
+        Assert.NotNull(outcome.ActivityId);
+        Assert.Equal([AiModelTier.Economy], _rig.Ai.Calls.Select(call => call.Tier));
+        Assert.False(await _rig.Db.ApprovalQueueItems.AnyAsync());
+        var row = await _rig.Db.AssistantDecisionLogs.SingleAsync();
+        Assert.Equal(AssistantDecision.Escalated, row.Decision);
+        Assert.Equal([AssistantDecisionCodes.TopicNotAllowed], row.GateFailures);
+    }
+
+    [Fact]
+    public async Task AnAnswerOfTheDraftThatCannotBeUsed_IsNotHandled_AndNeverAnEmptyDraftInTheQueue()
+    {
+        await _rig.SeedAsync();
+
+        // Not an object with a draft, and a draft that is nothing once the unknown variables are taken out: the model was asked twice for each message, and nothing is queued.
+        _rig.Ai.Draft = "Non riesco a scrivere la bozza.";
+        var first = await _rig.GuestWritesAsync("Dove posso parcheggiare?", minutesAgo: 2);
+        var notAnObject = await _rig.Service().ProcessInboundAsync(_rig.OrgId, _rig.Key, first.Id, AssistantProcessOptions.Automatic);
+        await AssertNotHandledAsync(notAnObject, AssistantDecisionCodes.AiInvalidAnswer, modelCalls: 2);
+
+        _rig.Ai.Draft = """{"draft":"{{nonsense}}","language":"it","missingFacts":false,"topics":[]}""";
+        var second = await _rig.GuestWritesAsync("Ancora il parcheggio?", minutesAgo: 1);
+        var nothingLeft = await _rig.Service().ProcessInboundAsync(_rig.OrgId, _rig.Key, second.Id, AssistantProcessOptions.Automatic);
+        await AssertNotHandledAsync(nothingLeft, AssistantDecisionCodes.AiInvalidAnswer, modelCalls: 4);
+    }
+
+    [Fact]
+    public async Task AChannelWhileTheConnectorIsOff_IsNotHandled_WithNoCallToTheModel()
+    {
+        await _rig.SeedAsync();
+        _rig.Flags.Set(FeatureFlags.OctorateConnector, false);
+        var message = await _rig.GuestWritesAsync("Dove posso parcheggiare?");
+
+        var outcome = await _rig.Service().ProcessInboundAsync(_rig.OrgId, _rig.Key, message.Id, AssistantProcessOptions.Automatic);
+
+        await AssertNotHandledAsync(outcome, AssistantDecisionCodes.OctorateNotConnected);
+    }
+
+    [Fact]
+    public async Task AMessageOrAConversationThatIsNotThere_IsNotHandled_WithNoCallToTheModel()
+    {
+        await _rig.SeedAsync();
+        var service = _rig.Service();
+
+        var noMessage = await service.ProcessInboundAsync(_rig.OrgId, _rig.Key, Guid.NewGuid(), AssistantProcessOptions.Automatic);
+        var noConversation = await service.ProcessInboundAsync(_rig.OrgId, MessageThreadKey.ForOta(Guid.NewGuid()), Guid.NewGuid(), AssistantProcessOptions.Automatic);
+
+        await AssertNotHandledAsync(noMessage, AssistantDecisionCodes.MessageNotFound);
+        await AssertNotHandledAsync(noConversation, AssistantDecisionCodes.ThreadNotFound);
+    }
+
     // ─── Helpers ───
 
     private async Task<(int Logs, int Items, int Todos, int OtaMessages, int GuestMessages, int Events)> CountsAsync() =>
@@ -509,6 +853,30 @@ public sealed class AssistantDraftPipelineTests : IDisposable
             await _rig.Db.OtaMessages.CountAsync(),
             await _rig.Db.GuestMessages.CountAsync(),
             await _rig.Db.OutboxEvents.CountAsync());
+
+    /// <summary>The «To do» as the database has it now (the tracker is cleared, so a change made through another context of the services is read).</summary>
+    private async Task<InternalActivity> TodoAsync(Guid? id)
+    {
+        _rig.Db.ChangeTracker.Clear();
+        return await _rig.Db.InternalActivities.AsNoTracking().SingleAsync(a => a.Id == id);
+    }
+
+    /// <summary>A message not handled: the decision and its code, as many calls to the model as expected (none by default), nothing in the queue, and the code in the row of the log.</summary>
+    private async Task AssertNotHandledAsync(AssistantDraftOutcome outcome, string code, int modelCalls = 0)
+    {
+        Assert.Equal((AssistantDecision.NotHandled, code), (outcome.Decision, outcome.Reason));
+        Assert.Equal(modelCalls, _rig.Ai.Calls.Count);
+        Assert.False(await _rig.Db.ApprovalQueueItems.AnyAsync());
+        var row = await _rig.Db.AssistantDecisionLogs.SingleAsync(l => l.InboundMessageId == outcome.InboundMessageId);
+        Assert.Equal(AssistantDecision.NotHandled, row.Decision);
+        Assert.Equal([code], row.GateFailures);
+        Assert.Null(row.ApprovalItemId);
+    }
+
+    private sealed class FailingGate : IAutoSendGate
+    {
+        public Task<AutoSendVerdict> EvaluateAsync(AutoSendContext context, CancellationToken ct) => throw new InvalidOperationException("The run stopped before its row was written.");
+    }
 
     private sealed class AllowingGate : IAutoSendGate
     {
