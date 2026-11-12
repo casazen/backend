@@ -31,7 +31,8 @@ namespace Casazen.Infrastructure.Services;
 /// says the send is active again (or nobody sends automatically any more) the state is reset, so a later incident is alerted again, and its "To do"
 /// is closed.</item>
 /// <item><b>Once.</b> Each stage is claimed before it is sent with a compare-and-set on <see cref="ComplianceAlertState"/> (unique per property, type and
-/// reference): it is delivered at most once, with retries, a manual trigger or two runs at once. A delivery that fails after the claim is logged and not
+/// reference): it is delivered at most once, with retries, a manual trigger or two runs at once. Who is told is read before the claim (once, for the email
+/// and the popup): a read that fails leaves the stage unclaimed, so the next run tries again. A delivery that fails after the claim is logged and not
 /// repeated.</item>
 /// <item><b>Behind the module's flag.</b> With <c>Features:ComplianceTrafficLight</c> off the run does nothing and writes nothing.</item>
 /// <item><b>Leaves behind</b> (<see cref="IComplianceAlertFollowUp"/>): the "To do" of the condition (the same item the feed of the cockpit raises) and,
@@ -351,13 +352,31 @@ public sealed class ComplianceAlertService(
 
     private async Task<int> DeliverAsync(Guid orgId, ComplianceAlertStep step, DateTime now, CancellationToken ct)
     {
+        // Who is told is read BEFORE the stage is claimed, once, for the email and for the popup. A read that fails (a passing database error) leaves the stage
+        // unclaimed: the next run finds it due again and tries again, so an alert about a legal deadline is not lost for a hiccup that has nothing to do with
+        // sending it.
+        ComplianceAlertRecipients audience;
+        try
+        {
+            audience = await recipients.ForPropertyAsync(orgId, step.Alert.PropertyId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(
+                ex,
+                "Compliance alert {Type} (stage {Stage}) of property {PropertyId} not sent: its audience could not be read, the next run tries again",
+                step.Type,
+                step.Stage,
+                step.Alert.PropertyId);
+            return 0;
+        }
+
         if (!await ClaimAsync(orgId, step, now, ct))
             return 0;
 
         var delivered = true;
         try
         {
-            var audience = await recipients.ForPropertyAsync(orgId, step.Alert.PropertyId, ct);
             await notificationService.SendComplianceAlertAsync(
                 step.Alert,
                 audience.Emails,
@@ -376,7 +395,7 @@ public sealed class ComplianceAlertService(
                 step.Alert.PropertyId);
         }
 
-        await FollowUpAsync(orgId, step, now, ct);
+        await FollowUpAsync(orgId, step, now, audience, ct);
 
         if (delivered)
         {
@@ -390,8 +409,11 @@ public sealed class ComplianceAlertService(
         return delivered ? 1 : 0;
     }
 
-    /// <summary>The "To do" of the stage and, for a legal deadline within 24 hours, its popup. A failure is logged and does not undo the stage.</summary>
-    private async Task FollowUpAsync(Guid orgId, ComplianceAlertStep step, DateTime now, CancellationToken ct)
+    /// <summary>
+    /// The "To do" of the stage and, for a legal deadline within 24 hours, its popup for the people of <paramref name="audience"/> (read once, before the
+    /// claim). A failure is logged and does not undo the stage.
+    /// </summary>
+    private async Task FollowUpAsync(Guid orgId, ComplianceAlertStep step, DateTime now, ComplianceAlertRecipients audience, CancellationToken ct)
     {
         try
         {
@@ -411,7 +433,7 @@ public sealed class ComplianceAlertService(
 
         try
         {
-            await followUp.PopupAsync(ComplianceFollowUps.PopupForPeriod(orgId, step), now, ct);
+            await followUp.PopupAsync(ComplianceFollowUps.PopupForPeriod(orgId, step) with { UserIds = audience.UserIds }, now, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

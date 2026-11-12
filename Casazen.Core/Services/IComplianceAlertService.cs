@@ -264,13 +264,19 @@ public sealed record ComplianceAlertRecipients(IReadOnlyList<string> Emails, IRe
 /// <param name="EntityType">The kind of the entity the client opens (<see cref="PopupAlert.BookingEntityType"/>, <see cref="PopupAlert.PropertyEntityType"/>).</param>
 /// <param name="EntityId">The id of that entity: the id of the cockpit item.</param>
 /// <param name="DeadlineUtc">The legal deadline the alert is about (UTC).</param>
+/// <param name="UserIds">
+/// The people to alert (<c>User.Id</c>) when the caller already read the audience of the property (the alerts about a period or the connection read it
+/// before the stage is claimed, for the email as well): they are used as they are, with no second read. <c>null</c> = not read yet, the follow-up asks the
+/// recipient port; an empty list is nobody, never «everybody».
+/// </param>
 public sealed record ComplianceAlertPopup(
     Guid OrgId,
     Guid PropertyId,
     AlertType Type,
     string EntityType,
     Guid EntityId,
-    DateTime? DeadlineUtc);
+    DateTime? DeadlineUtc,
+    IReadOnlyList<string>? UserIds = null);
 
 /// <summary>
 /// What a stage that is sent leaves behind besides its email and its push (E03/F02/US02/T01, NF-48, ADR-025, ADR-026): the "To do" item of the
@@ -287,7 +293,8 @@ public interface IComplianceAlertFollowUp
     /// <summary>
     /// Alerts, through the popup router (<see cref="IAlertRouter"/>, which applies the quiet hours of each person and never holds back a legal
     /// alert), the people who reach the property of <paramref name="popup"/>, when its deadline is within
-    /// <see cref="ComplianceAlertSchedule.LegalDeadlinePopupWindow"/> of <paramref name="nowUtc"/>; otherwise nothing.
+    /// <see cref="ComplianceAlertSchedule.LegalDeadlinePopupWindow"/> of <paramref name="nowUtc"/>; otherwise nothing. The people are
+    /// <see cref="ComplianceAlertPopup.UserIds"/> when the caller already read the audience (no second read), else the ones the recipient port says.
     /// </summary>
     Task PopupAsync(ComplianceAlertPopup popup, DateTime nowUtc, CancellationToken ct);
 

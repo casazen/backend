@@ -112,6 +112,29 @@ public class ComplianceAlertFollowUpTests : IDisposable
     }
 
     [Fact]
+    public async Task PopupAsync_WithTheAudienceAlreadyRead_UsesItWithNoSecondRead_AndAnEmptyListIsNobody()
+    {
+        var (orgId, propertyId) = await SeedPropertyAsync();
+        var deadline = Now.AddHours(10);
+
+        await FollowUp().PopupAsync(
+            new ComplianceAlertPopup(orgId, propertyId, AlertType.IstatDeadline, PopupAlert.PropertyEntityType, propertyId, deadline, ["auth0|owner", "auth0|owner"]),
+            Now,
+            CancellationToken.None);
+        await FollowUp().PopupAsync(
+            new ComplianceAlertPopup(orgId, propertyId, AlertType.IstatDeadline, PopupAlert.PropertyEntityType, propertyId, deadline, []),
+            Now,
+            CancellationToken.None);
+
+        // The people already read are alerted once each; an empty list alerts nobody and never asks the port for «everybody».
+        _router.Verify(
+            r => r.RouteAlertAsync(AlertType.IstatDeadline, propertyId, "Property", "auth0|owner", AlertUrgency.High, deadline, It.IsAny<CancellationToken>()),
+            Times.Once);
+        _router.VerifyNoOtherCalls();
+        _recipients.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task PopupAsync_ADeadlineMoreThanTwentyFourHoursAway_OrNone_RaisesNothingAndReadsNoAudience()
     {
         var (orgId, propertyId) = await SeedPropertyAsync();

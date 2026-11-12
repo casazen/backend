@@ -14,7 +14,8 @@ namespace Casazen.Infrastructure.Services;
 /// <list type="bullet">
 /// <item><b>The "To do"</b> goes through <see cref="IInternalActivityService"/> only: <c>CreateAsync</c> is idempotent while an item is open (two parallel
 /// calls return the same one) and <c>CloseAsync</c> closes as the system. The row of a closed item is kept for the audit.</item>
-/// <item><b>The popup</b> goes to the people <see cref="IComplianceAlertRecipientResolver"/> says reach the property, one by one, through
+/// <item><b>The popup</b> goes to the people <see cref="IComplianceAlertRecipientResolver"/> says reach the property (read once by the caller when it
+/// already needed them, <see cref="ComplianceAlertPopup.UserIds"/>), one by one, through
 /// <see cref="IAlertRouter"/>: it stores the alert for the person, applies its quiet hours (a legal alert is never held back) and pushes it to its open
 /// sessions; an alert still open for the same person, type and entity is not written twice. A person who cannot be alerted does not stop the others: every
 /// failure is logged with the type, the entity and the org, never the person, and thrown after the last one was tried.</item>
@@ -53,9 +54,11 @@ public sealed class ComplianceAlertFollowUp(
         if (!ComplianceAlertSchedule.IsLegalDeadlineNear(popup.DeadlineUtc, nowUtc))
             return;
 
-        var audience = await recipients.ForPropertyAsync(popup.OrgId, popup.PropertyId, ct);
+        // The caller that already read the audience (the alerts about a period or the connection read it before the claim, for the email too) hands it
+        // over: no second read. An empty list is nobody, never «everybody»; only «not read» (null) asks the port.
+        var userIds = popup.UserIds ?? (await recipients.ForPropertyAsync(popup.OrgId, popup.PropertyId, ct)).UserIds;
         var failures = new List<Exception>();
-        foreach (var userId in audience.UserIds.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
+        foreach (var userId in userIds.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
         {
             try
             {

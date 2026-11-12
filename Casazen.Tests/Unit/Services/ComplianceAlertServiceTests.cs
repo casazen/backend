@@ -231,10 +231,14 @@ public class ComplianceAlertServiceTests : IDisposable
                     && p.Type == AlertType.IstatDeadline
                     && p.EntityType == "Property"
                     && p.EntityId == propertyId
-                    && p.DeadlineUtc == RomeCalendar.StartOfDayUtc(new DateOnly(2026, 11, 11))),
+                    && p.DeadlineUtc == RomeCalendar.StartOfDayUtc(new DateOnly(2026, 11, 11))
+                    && p.UserIds != null
+                    && p.UserIds.Single() == "auth0|owner"),
                 Start.UtcDateTime,
                 It.IsAny<CancellationToken>()),
             Times.Once);
+        // The audience is read once for the stage, for the email and for the popup alike: the popup carries the people already read.
+        _recipients.Verify(r => r.ForPropertyAsync(orgId, propertyId, It.IsAny<CancellationToken>()), Times.Once);
 
         // The morning after the deadline day the engine says red and the next stage is due: overdue, once.
         _clock.SetUtcNow(new DateTimeOffset(2026, 11, 11, 8, 0, 0, TimeSpan.Zero));
@@ -362,6 +366,62 @@ public class ComplianceAlertServiceTests : IDisposable
             Times.Once);
         Assert.Equal(ComplianceAlertStage.DeadlineApproaching, (await _db.ComplianceAlertStates.SingleAsync()).Stage);
         _followUp.Verify(f => f.OpenTodoAsync(It.IsAny<CreateTodoRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task RunAsync_TheAudienceCannotBeRead_TheStageIsNotClaimed_AndTheNextRunDeliversIt()
+    {
+        var (orgId, propertyId) = await SeedAsync();
+        Evaluation(orgId, propertyId, IstatItem(propertyId, new DateOnly(2026, 11, 7)));
+        _recipients
+            .Setup(r => r.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("a passing database error"));
+
+        var failed = await Service().RunAsync();
+
+        // Nothing claimed, nothing sent, nothing left behind: an alert about a legal deadline is not lost for a hiccup of the audience read.
+        Assert.Equal(0, failed.Sent);
+        Assert.Empty(await _db.ComplianceAlertStates.ToListAsync());
+        _notifications.VerifyNoOtherCalls();
+        _followUp.Verify(f => f.OpenTodoAsync(It.IsAny<CreateTodoRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        _followUp.Verify(f => f.PopupAsync(It.IsAny<ComplianceAlertPopup>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // The next run finds the stage due again and delivers it, once.
+        _recipients
+            .Setup(r => r.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ComplianceAlertRecipients(["org@example.com"], ["auth0|owner"]));
+        var next = await Service().RunAsync();
+        var again = await Service().RunAsync();
+
+        Assert.Equal(1, next.Sent);
+        Assert.Equal(0, again.Sent);
+        VerifySent(ComplianceAlertKind.PeriodDeadlineApproaching, ComplianceAlertType.IstatPeriod, Times.Once());
+        Assert.Equal(ComplianceAlertStage.DeadlineApproaching, (await _db.ComplianceAlertStates.SingleAsync()).Stage);
+    }
+
+    [Fact]
+    public async Task RunAsync_TheAudienceCannotBeRead_ForTheConnection_TheStageIsNotClaimedEither()
+    {
+        var (orgId, propertyId) = await SeedAsync();
+        await SeedStayAsync(orgId, propertyId, daysAhead: 4);
+        _recipients
+            .Setup(r => r.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("a passing database error"));
+
+        var failed = await Service().RunAsync();
+
+        Assert.Equal(0, failed.Sent);
+        Assert.Empty(await _db.ComplianceAlertStates.ToListAsync());
+        _notifications.VerifyNoOtherCalls();
+
+        _recipients
+            .Setup(r => r.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ComplianceAlertRecipients(["org@example.com"], ["auth0|owner"]));
+        var next = await Service().RunAsync();
+
+        Assert.Equal(1, next.Sent);
+        VerifySent(ComplianceAlertKind.ConnectionInactive, ComplianceAlertType.ConnectionInactive, Times.Once());
+        Assert.Equal(ComplianceAlertStage.ConnectionDetected, (await _db.ComplianceAlertStates.SingleAsync()).Stage);
     }
 
     [Fact]
