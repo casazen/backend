@@ -143,6 +143,7 @@ public sealed class CalendarChangeRunner(
 
         var stop = false;
         var transient = false;
+        var quotaWait = false;
         var changed = false;
         using (orgScope.Use(orgId))
         {
@@ -161,9 +162,11 @@ public sealed class CalendarChangeRunner(
                     }
                     catch (OctorateException ex) when (ex is OctorateRateLimitException or OctorateServerException)
                     {
-                        // Cannot tell now (no answer, an answer that reports an error of its own): asked again later.
+                        // Cannot tell now (no answer, an answer that reports an error of its own, a quota that is used up: a 403 of its own type, OCT-13): asked again
+                        // later, after the five minutes the push waits for a quota. Never read as «the endpoint is not there».
                         transient = true;
                         stop = true;
+                        quotaWait |= ex is OctorateRateLimitException { QuotaExhausted: true };
                         logger.LogInformation("Calendar change {ProcessId}: the process of a chunk cannot be read now ({Code})", processId, ex.Code);
                         break;
                     }
@@ -214,7 +217,7 @@ public sealed class CalendarChangeRunner(
         {
             var followed = now - (process.StartedAt ?? process.CreatedAt) < CalendarPushRules.ConfirmationWindow;
             process.NextAttemptAt = states.Contains(CalendarChunkState.Accepted) && (transient || !stop) && followed
-                ? now + CalendarPushRules.ConfirmationEvery
+                ? now + (quotaWait ? CalendarPushRules.QuotaRetryAfter : CalendarPushRules.ConfirmationEvery)
                 : null;
         }
 

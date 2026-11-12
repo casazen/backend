@@ -157,6 +157,25 @@ public class CalendarChangeRunnerTests
     }
 
     [Fact]
+    public async Task Follow_AQuotaThatIsUsedUp_IsAskedAgainAfterFiveMinutes_NeverTakenForAnEndpointThatIsNotThere()
+    {
+        var h = new Runner();
+        var id = await h.SeedAsync(OrgA, CalendarChangeState.Sent, due: 0, CalendarChunkState.Accepted, startedMinutesAgo: 1);
+        // The 403 of a quota that is used up (OCT-13) is not a refusal of the endpoint: the chunk waits as the push waits for a quota.
+        h.Client
+            .Setup(c => c.GetCalendarProcessAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OctorateRateLimitException(403, quotaExhausted: true));
+
+        await h.Service().RunDueAsync();
+
+        var (process, chunks) = await h.ReadAsync(id);
+        Assert.Equal(CalendarChunkState.Accepted, Assert.Single(chunks).State);
+        Assert.Equal(CalendarChangeState.Sent, process.State);
+        Assert.Equal(Now.UtcDateTime + CalendarPushRules.QuotaRetryAfter, process.NextAttemptAt);
+        h.Client.Verify(c => c.GetCalendarProcessAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Follow_ARefusalToAnswerNow_IsAskedAgainLater_ButOnlyWhileTheWindowOfTheConfirmationIsOpen()
     {
         var h = new Runner();

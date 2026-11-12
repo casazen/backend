@@ -476,7 +476,7 @@ a booking, a hold or a block of a channel holds is left alone. Adjacent nights w
 
 *What an answer means* (`CalendarPushService`): a process id is `Accepted`; success **without** a process id wrote nothing (a room with no license) and the chunk is `Failed`
 `octorate_room_not_licensed`, never accepted; a rate limit, a 5xx or a timeout keeps the chunk `Pending` with a back-off of 1, 2, 4 and 8 minutes and fails it
-`octorate_unavailable` after the fifth attempt; a refusal of the access is `octorate_not_authorized`, another refusal `octorate_request_rejected`. The quota is read once for a
+`octorate_unavailable` after the fifth attempt; a refusal of the access is `octorate_not_authorized`, another refusal `octorate_request_rejected`; the quota that Octorate says is used up (its 403 `ApiQuotaException`, OCT-13: a 403 that is not a refusal) is a wait, on the write, on the read of the quota and on the follow-up alike: the chunk stays `Pending` with no attempt used and the change waits five minutes with `octorate_quota_low`, never a failure and never `octorate_not_authorized`. The quota is read once for a
 run (`GetConfigurationAsync`); a chunk whose estimate (`ceil(room-days / RoomDaysPerQuotaUnit)`) would take `QuotaStatus` past `QuotaLimit - QuotaReserve` waits five minutes
 with `octorate_quota_low` on the change, never a failure. The state of the change is derived from its chunks (`CalendarPushRules.Derive`): `Applied`, `Queued`, `Sending`, `Sent`
 (every chunk accepted by the channel manager), `Confirmed`, `PartiallySent`, `Failed`; it never says published. A chunk is `Confirmed` only when

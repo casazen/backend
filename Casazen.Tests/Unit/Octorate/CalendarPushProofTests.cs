@@ -356,6 +356,7 @@ public class CalendarPushProofTests
         await h.Db.SaveChangesAsync();
         h.Client
             .Setup(c => c.UpdateCalendarAsync(It.IsAny<IReadOnlyList<OctorateCalendarUpdate>>(), It.IsAny<CancellationToken>()))
+            // A real refusal of the access (a 403 of the permissions, not the 403 of a quota that is used up: that one is OctorateRateLimitException, see the test below).
             .ThrowsAsync(OctorateAuthException.Refused(403));
 
         await h.Service().RunAsync(process.Id);
@@ -364,6 +365,52 @@ public class CalendarPushProofTests
         Assert.All(chunks, c => Assert.Equal((CalendarChunkState.Failed, "octorate_not_authorized"), (c.State, c.ErrorCode)));
         Assert.Equal((CalendarChangeState.Failed, "octorate_not_authorized"), ((await h.ProcessAsync()).State, (await h.ProcessAsync()).ErrorCode));
         h.Client.Verify(c => c.UpdateCalendarAsync(It.IsAny<IReadOnlyList<OctorateCalendarUpdate>>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// The quota that Octorate says is used up (its 403 <c>ApiQuotaException</c>, OCT-13) comes from the write, from the read of the quota or from a lookup of the room: it is a
+    /// wait, never a refusal of the access (the test above is the refusal, another type) and never a failure. The chunks stay <c>Pending</c> with no attempt used, the process
+    /// keeps <c>Queued</c> with <c>octorate_quota_low</c> and the next attempt five minutes later, and nothing more leaves in the run.
+    /// </summary>
+    [Theory]
+    [InlineData("write")]
+    [InlineData("read of the quota")]
+    [InlineData("lookup of the room")]
+    public async Task Run_TheQuotaOctorateSaysIsUsedUp_IsAWait_NeverAFailureNorARefusalOfTheAccess(string where)
+    {
+        var h = new Push();
+        h.Options.MaxDaysPerCall = 5;
+        var (process, _) = await h.SeedAsync(Push.Today.AddDays(1), Push.Today.AddDays(5));
+        h.Db.CalendarChangeChunks.Add(
+            new CalendarChangeChunk { OrgId = Push.OrgId, ProcessId = process.Id, PropertyId = h.PropertyId, FromDate = Push.Today.AddDays(6), ToDate = Push.Today.AddDays(10) });
+        await h.Db.SaveChangesAsync();
+        var quota = new OctorateRateLimitException(403, quotaExhausted: true);
+        switch (where)
+        {
+            case "write":
+                h.Client
+                    .Setup(c => c.UpdateCalendarAsync(It.IsAny<IReadOnlyList<OctorateCalendarUpdate>>(), It.IsAny<CancellationToken>()))
+                    .ThrowsAsync(quota);
+                break;
+            case "read of the quota":
+                h.Client.Setup(c => c.GetConfigurationAsync(It.IsAny<CancellationToken>())).ThrowsAsync(quota);
+                break;
+            default:
+                h.Targets.Setup(t => t.LookupAsync(h.PropertyId, It.IsAny<CancellationToken>())).ThrowsAsync(quota);
+                break;
+        }
+
+        await h.Service().RunAsync(process.Id);
+
+        var chunks = await h.Db.CalendarChangeChunks.AsNoTracking().OrderBy(c => c.FromDate).ToListAsync();
+        Assert.All(chunks, c => Assert.Equal((CalendarChunkState.Pending, 0, (string?)null), (c.State, c.Attempts, c.ErrorCode)));
+        var after = await h.ProcessAsync();
+        Assert.Equal((CalendarChangeState.Queued, "octorate_quota_low"), (after.State, after.ErrorCode));
+        Assert.NotEqual("octorate_not_authorized", after.ErrorCode);
+        Assert.Equal(Push.Now.UtcDateTime.AddMinutes(5), after.NextAttemptAt);
+        Assert.Null(after.FinishedAt);
+        // The run stops at the first answer: the second chunk is not tried.
+        h.Client.Verify(c => c.UpdateCalendarAsync(It.IsAny<IReadOnlyList<OctorateCalendarUpdate>>(), It.IsAny<CancellationToken>()), where == "write" ? Times.Once() : Times.Never());
     }
 
     [Fact]

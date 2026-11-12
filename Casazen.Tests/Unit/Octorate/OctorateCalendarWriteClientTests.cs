@@ -169,6 +169,29 @@ public class OctorateCalendarWriteClientTests
             await Assert.ThrowsAsync<OctorateNotFoundException>(() => h.Client.GetCalendarProcessAsync("123456", CancellationToken.None));
     }
 
+    [Fact]
+    public async Task AQuotaThatIsUsedUp_IsAWaitOfItsOwn_NotARefusalOfTheAccess_OnTheWriteAndOnTheRead()
+    {
+        var h = new Harness();
+        // Octorate answers a quota that is used up with a 403 of its own type (OCT-13): the status of a refusal of the access, but not one.
+        h.Serve("""{ "type": "ApiQuotaException" }""", HttpStatusCode.Forbidden);
+        h.Serve("""{ "type": "ApiQuotaException" }""", HttpStatusCode.Forbidden);
+        h.Serve("""{ "type": "ApiSecurityException" }""", HttpStatusCode.Forbidden);
+
+        using (h.Scope.Use(Org))
+        {
+            var write = await Assert.ThrowsAsync<OctorateRateLimitException>(() => h.Client.UpdateCalendarAsync([Update()], CancellationToken.None));
+            var read = await Assert.ThrowsAsync<OctorateRateLimitException>(() => h.Client.GetCalendarProcessAsync("123456", CancellationToken.None));
+
+            Assert.True(write.QuotaExhausted);
+            Assert.True(read.QuotaExhausted);
+            Assert.Equal("octorate_rate_limited", write.Code);
+
+            // A 403 that is a refusal of the access keeps its meaning.
+            await Assert.ThrowsAsync<OctorateAuthException>(() => h.Client.UpdateCalendarAsync([Update()], CancellationToken.None));
+        }
+    }
+
     private static OctorateCalendarUpdate Update() => new("956528", Day, Day, new OctorateCalendarValues(Price: 100m, StopSells: false));
 
     private sealed class Harness

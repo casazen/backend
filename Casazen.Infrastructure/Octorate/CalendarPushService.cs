@@ -201,6 +201,14 @@ public sealed class CalendarPushService(
 
             await db.SaveChangesAsync(ct);
         }
+        catch (OctorateRateLimitException ex) when (ex.QuotaExhausted)
+        {
+            // Octorate says its quota is used up (403 ApiQuotaException, OCT-13), on the read of the quota, on the write or on a lookup: a wait, never a failure and never a
+            // refusal of the access. The chunk stays Pending with no attempt used, and the process waits five minutes with octorate_quota_low.
+            run.Postponed = true;
+            run.Stop = true;
+            logger.LogInformation("Calendar change {ProcessId} waits: the channel manager says its quota is used up", chunk.ProcessId);
+        }
         catch (OctorateRateLimitException ex)
         {
             await RecordTransientAsync(chunk, run, ex, ct);
