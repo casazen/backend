@@ -7,13 +7,23 @@ namespace Casazen.Core.Services;
 /// opens (<see cref="Route"/>, built with <see cref="PushRoutes"/>) and the ids the app may use.
 /// </summary>
 /// <param name="Type">Kind of push (<see cref="PushTypes"/>), sent as <c>data.type</c> and used in the logs.</param>
+/// <param name="ApprovalItemId">
+/// The item of the approval queue a push about an approval is for (E05/F04/US01/T02): sent as <c>data.approvalItemId</c>, so the app opens that item
+/// (and its Approve and Edit buttons act on it). <c>null</c> for every other push.
+/// </param>
+/// <param name="CategoryId">
+/// The category of notification the app registered, with its buttons (<c>categoryId</c> of the Expo message): <see cref="ApprovalQueueRules.PushCategory"/>
+/// for the alert of an item waiting for approval. <c>null</c> for every other push: the message then carries no category.
+/// </param>
 public sealed record PushNotificationPayload(
     string Title,
     string Body,
     string Type,
     Guid? BookingId,
     string Route,
-    Guid? ServiceRequestId = null);
+    Guid? ServiceRequestId = null,
+    Guid? ApprovalItemId = null,
+    string? CategoryId = null);
 
 /// <summary>Who receives a push. Resolved into devices by the delivery job at send time, never inside the request.</summary>
 public enum PushAudienceKind
@@ -158,6 +168,21 @@ public static class PushDeliveryKeys
     }
 
     /// <summary>
+    /// An item of the approval queue waits for a decision (E05/F04/US01/T02, NF-68), to one host user who may decide: one per alert and user, so an alert
+    /// delivered again is one push and one notification. <paramref name="raisedAtUtc"/> is the instant the alert was raised (whole seconds): an item that
+    /// goes back to pending with a new text is alerted again, with a key of its own. The key is also the delivery key of the in-app notification. A user id
+    /// too long for the 200 characters of a key is replaced by its SHA-256, so the key is stable and never refused.
+    /// </summary>
+    public static string ApprovalQueueItem(Guid itemId, DateTime raisedAtUtc, string userId)
+    {
+        var prefix = $"approval:{itemId:N}:{ApprovalQueueRules.StampOf(raisedAtUtc)}:";
+        var key = prefix + userId;
+        return key.Length <= 200
+            ? key
+            : prefix + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(userId)));
+    }
+
+    /// <summary>
     /// The guest completed the online check-in, to the hosts of the booking: one per completed session, stable across retries
     /// (a link issued again and completed again is another event).
     /// </summary>
@@ -271,6 +296,13 @@ public static class PushTypes
     /// <c>entityId</c> is the thread, the route <c>/messages/{threadKey}</c>. Neither the text nor the name of the guest is ever in it.
     /// </summary>
     public const string OtaMessage = "ota-message";
+
+    /// <summary>
+    /// An item of the approval queue waits for a decision (E05/F04, NF-68): pushed to the one user the preferences selected and written to the bell
+    /// (the type the bell has always written for the queue); <c>entityId</c> is the item, the route is the conversation of a draft of a message or
+    /// <c>/approvals</c>. The push carries <c>data.approvalItemId</c> and the category <see cref="ApprovalQueueRules.PushCategory"/>. Never the text of the item.
+    /// </summary>
+    public const string ApprovalQueueItem = "approval-queue-item";
 
     /// <summary>The guest completed the online check-in (US-020): pushed to the hosts of the booking; <c>entityId</c> is the booking, the route its detail.</summary>
     public const string GuestCheckInCompleted = "guest-checkin-completed";

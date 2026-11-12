@@ -48,6 +48,9 @@ public class HostNotifyingPathsArchitectureTests
         "EmailTemplates.Names.AlloggiatiDeadline",
         "EmailTemplates.Names.GuestCheckInIncomplete",
 
+        // AiDraftToApprove (E05/F04): an item of the approval queue waits for a decision.
+        "EmailTemplates.Names.HostApprovalToDecide",
+
         // The counter of the bell and the popup alerts: whoever writes a row of either for a host tells it something.
         "InAppNotifications.Add",
         "PopupAlerts.Add",
@@ -90,8 +93,6 @@ public class HostNotifyingPathsArchitectureTests
             ("the push to the hosts about a request to a supplier (taken, started, completed, a time proposed, a quote): outside the eight kinds of event of NF-65", "none planned (outside the eight kinds of event of NF-65)"),
         ["Casazen.Infrastructure/Services/ServiceRequestNotifier.Backups.cs"] =
             ("the push to the hosts about the backup suppliers of a request: outside the eight kinds of event of NF-65", "none planned (outside the eight kinds of event of NF-65)"),
-        ["Casazen.Infrastructure/Services/ApprovalQueueService.cs"] =
-            ("the notification of the bell «there is an item to approve» (approval-queue-item), written for every active member of the org, with no scope and no permission", "E05 (F04, the approval alerts)"),
         ["Casazen.Infrastructure/Services/AlertRouter.cs"] =
             ("the popup alerts (ADR-025): the router decides who is alerted and when, and borrows only the quiet hours of the preferences; it does not read the channel settings yet", "E01 (the alert router reads the preferences, assumption of NF-65)"),
         ["Casazen.Infrastructure/Services/DemoEnvironmentService.cs"] =
@@ -152,6 +153,7 @@ public class HostNotifyingPathsArchitectureTests
     [Theory]
     [InlineData("Casazen.Infrastructure/Services/NotificationPreferenceService.cs")]
     [InlineData("Casazen.Infrastructure/Services/HostMessageAlertDelivery.cs")]
+    [InlineData("Casazen.Infrastructure/Services/ApprovalAlertDelivery.cs")]
     public void TheService_AndTheDeliveryOfTheMessageAlerts_AreInsideTheRule(string file)
     {
         var code = CodeWithoutComments(File.ReadAllText(Path.Combine(FindRepositoryRoot(), file.Replace('/', Path.DirectorySeparatorChar))));
@@ -174,6 +176,19 @@ public class HostNotifyingPathsArchitectureTests
             Assert.DoesNotContain("PushAudience.", code, StringComparison.Ordinal);
             Assert.DoesNotContain("EmailTemplates.Names.GuestMessageToHost", code, StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    public void TheApprovalQueue_TellsTheHostsOnlyThroughTheDelivery()
+    {
+        // The queue raises the alert of a new item through the one delivery, which asks the service (E05/F04): it no longer writes the notice of the bell to every member of the org.
+        var code = CodeWithoutComments(File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "Casazen.Infrastructure", "Services", "ApprovalQueueService.cs")));
+
+        Assert.Contains("ApprovalAlertDelivery", code, StringComparison.Ordinal);
+        Assert.Empty(NoticesIn(code));
+        Assert.DoesNotContain("OrgMembers", code, StringComparison.Ordinal);
     }
 
     // ─── helpers ───

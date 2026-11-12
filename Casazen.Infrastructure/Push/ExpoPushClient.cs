@@ -47,6 +47,14 @@ public sealed class ExpoPushMessage
     [JsonPropertyName("channelId")]
     public string ChannelId { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The category of notification the app registered, with its action buttons (E05/F04: <c>draft-ready</c>, Approve and Edit); left out of the request
+    /// when the push has none, so every other push is the message it always was.
+    /// </summary>
+    [JsonPropertyName("categoryId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CategoryId { get; set; }
+
     [JsonPropertyName("data")]
     public Dictionary<string, string> Data { get; set; } = new();
 }

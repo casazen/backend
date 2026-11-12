@@ -337,6 +337,9 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         return Build($"/app/short-rent/messages/{threadKey}");
     }
 
+    /// <summary>Host console: the approval queue (route <c>/app/short-rent/approval-queue</c>, E05/F04, NF-68), where the host reads, edits, approves or rejects an item.</summary>
+    public string HostApprovalQueue() => Build("/app/short-rent/approval-queue");
+
     /// <summary>
     /// Host console: the page of one property in the area of its rental mode (routes <c>/app/short-rent/properties/:id</c> for
     /// <see cref="Core.Entities.Enums.RentalMode.Short"/>, <c>/app/long-rent/properties/:id</c> for

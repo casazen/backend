@@ -633,6 +633,24 @@
   <data name="Push_OtaMessageUnassigned_Body" xml:space="preserve">
     <value>A guest wrote to you on {0}.</value>
   </data>
+  <data name="Push_ApprovalDraft_Title" xml:space="preserve">
+    <value>Draft ready</value>
+  </data>
+  <data name="Push_ApprovalDraft_Body" xml:space="preserve">
+    <value>A draft reply is waiting for your approval.</value>
+  </data>
+  <data name="Push_ApprovalDraftProperty_Body" xml:space="preserve">
+    <value>{0}: a draft reply is waiting for your approval.</value>
+  </data>
+  <data name="Push_ApprovalItem_Title" xml:space="preserve">
+    <value>To approve</value>
+  </data>
+  <data name="Push_ApprovalItem_Body" xml:space="preserve">
+    <value>Something is waiting for your approval.</value>
+  </data>
+  <data name="Push_ApprovalItemProperty_Body" xml:space="preserve">
+    <value>{0}: something is waiting for your approval.</value>
+  </data>
   <data name="Push_GuestCheckInCompleted_Title" xml:space="preserve">
     <value>Online check-in completed</value>
   </data>
@@ -1739,6 +1757,27 @@
   </data>
   <data name="HostMessageReceived_Why" xml:space="preserve">
     <value>You receive this email because you chose to be told about new messages from guests. So as not to fill your inbox, we send at most one every 10 minutes per conversation. You can change your choice in the notification preferences of your profile.</value>
+  </data>
+  <data name="HostApprovalToDecide_Subject" xml:space="preserve">
+    <value>Waiting for your approval in CasaZen</value>
+  </data>
+  <data name="HostApprovalToDecide_Body" xml:space="preserve">
+    <value>Something is waiting for your approval.</value>
+  </data>
+  <data name="HostApprovalToDecide_BodyProperty" xml:space="preserve">
+    <value>Something for &lt;strong&gt;{0}&lt;/strong&gt; is waiting for your approval.</value>
+  </data>
+  <data name="HostApprovalToDecide_How" xml:space="preserve">
+    <value>Open it in CasaZen to read it, edit it if needed, and approve or reject it. To protect the guests' data, the text is not in this email.</value>
+  </data>
+  <data name="HostApprovalToDecide_Cta" xml:space="preserve">
+    <value>Open the approvals</value>
+  </data>
+  <data name="HostApprovalToDecide_LinkFallback" xml:space="preserve">
+    <value>If the button does not work, copy this link into your browser:</value>
+  </data>
+  <data name="HostApprovalToDecide_Why" xml:space="preserve">
+    <value>You receive this email because you chose to be told when a draft or an item is waiting for your approval. We send one for each item. You can change your choice in the notification preferences of your profile.</value>
   </data>
   <data name="HostContact_Subject" xml:space="preserve">
     <value>New message from your booking site</value>

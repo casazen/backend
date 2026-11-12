@@ -38,6 +38,33 @@ public interface ICampaignService
     Task SubmitForApprovalAsync(Guid campaignId, Guid orgId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Approves a campaign that waits for the decision of the approval queue (E05/F04/US01/T02, NF-68): <c>PendingApproval</c> becomes <c>Approved</c>, with the
+    /// subject and the body the host edited in the queue when it edited them (<paramref name="subject"/> and <paramref name="body"/> both, or neither). It is
+    /// the one place that sets <c>Approved</c> (<see cref="ScheduleAsync"/> needs it). A time that was asked for and has passed while the campaign waited is
+    /// dropped (<c>ScheduledAt</c> is <c>null</c> in the answer: approved, to be scheduled again by the host). Repeating it is safe: a campaign already
+    /// <c>Approved</c> or <c>Scheduled</c> is returned as it is, with no edit applied, so a retry after a failed scheduling finds the work done.
+    /// 422 <c>campaign_not_found</c>; 409 <c>campaign_not_pending_approval</c> for a draft or a campaign already sent.
+    /// </summary>
+    /// <param name="campaignId">Campaign ID.</param>
+    /// <param name="orgId">Organization ID for tenant verification.</param>
+    /// <param name="subject">The edited subject line, or <c>null</c> to keep the campaign's.</param>
+    /// <param name="body">The edited body, or <c>null</c> to keep the campaign's.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The campaign as it is after the approval.</returns>
+    Task<Campaign> MarkApprovedAsync(
+        Guid campaignId,
+        Guid orgId,
+        string? subject,
+        string? body,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns a campaign whose approval was rejected to a draft (E05/F04/US01/T02): <c>PendingApproval</c> becomes <c>Draft</c>, so the host can change it and
+    /// submit it again. Repeating it is safe, and a campaign in any other state (already a draft, approved, scheduled, sent, or gone) is left as it is.
+    /// </summary>
+    Task ReturnToDraftAsync(Guid campaignId, Guid orgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Schedules an approved campaign for future send (AC-NF24-6).
     /// Enqueues a Hangfire job for the scheduled time.
     /// </summary>

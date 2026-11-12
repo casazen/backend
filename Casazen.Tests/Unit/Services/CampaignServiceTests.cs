@@ -441,6 +441,24 @@ public class CampaignServiceTests
             var backgroundJobClient = Mock.Of<IBackgroundJobClient>();
             var timeProvider = TimeProvider.System;
 
+            // The queue creates the item of the approval (E05/F04): here a double that answers with one, so the workflow of the campaign itself is what is tested.
+            var queue = new Mock<IApprovalQueueService>();
+            queue
+                .Setup(q => q.SubmitForApprovalAsync(
+                    orgId,
+                    ApprovalItemTypes.Campaign,
+                    It.IsAny<Guid>(),
+                    It.IsAny<string>(),
+                    It.IsAny<bool>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<Guid?>(),
+                    ApprovalOriginActions.ApproveCampaign,
+                    It.IsAny<decimal?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ApprovalQueueItem { OrgId = orgId, ItemType = ApprovalItemTypes.Campaign });
+
             var service = new CampaignService(
                 context,
                 conditionEvaluator,
@@ -450,7 +468,8 @@ public class CampaignServiceTests
                 backgroundJobClient,
                 ModuleOn(),
                 timeProvider,
-                logger);
+                logger,
+                queue.Object);
 
             // Act: Create draft
             var campaign = await service.CreateDraftAsync(
@@ -468,10 +487,24 @@ public class CampaignServiceTests
             var campaignAfterSubmit = await context.Campaigns.FindAsync(campaign.Id);
             Assert.NotNull(campaignAfterSubmit);
             Assert.Equal(CampaignStatus.PendingApproval, campaignAfterSubmit.Status);
+            queue.Verify(
+                q => q.SubmitForApprovalAsync(
+                    orgId,
+                    ApprovalItemTypes.Campaign,
+                    campaign.Id,
+                    "Test subject\n\n<p>Test body</p>",
+                    false,
+                    It.IsAny<string?>(),
+                    It.IsAny<Guid?>(),
+                    ApprovalOriginActions.ApproveCampaign,
+                    It.IsAny<decimal?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()),
+                Times.Once);
 
-            // Simulate approval (manually update status for this test)
-            campaignAfterSubmit.Status = CampaignStatus.Approved;
-            await context.SaveChangesAsync();
+            // Approval: the one place that sets Approved is the approval of the queue (E05/F04); before it nothing in production code did.
+            await service.MarkApprovedAsync(campaign.Id, orgId, null, null);
 
             // Act: Schedule
             var scheduledTime = DateTime.UtcNow.AddDays(1);

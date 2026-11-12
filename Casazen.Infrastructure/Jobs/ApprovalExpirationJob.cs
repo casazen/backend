@@ -1,4 +1,7 @@
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
@@ -8,13 +11,15 @@ namespace Casazen.Infrastructure.Jobs;
 
 /// <summary>
 /// Daily job to expire approval queue items older than 7 days (NF-06, AC-NF06-5).
-/// Moves items from Pending to Expired status.
+/// Moves items from Pending to Expired status, and (E05/F04/US01/T02) closes the "To do" raised for each: an item nobody can decide any more leaves the queue, and a "To do"
+/// that leads to an item that is not there is worse than none.
 /// </summary>
 [DisableConcurrentExecution(timeoutInSeconds: 600)]
 public class ApprovalExpirationJob(
     AppDbContext db,
     TimeProvider timeProvider,
-    ILogger<ApprovalExpirationJob> logger)
+    ILogger<ApprovalExpirationJob> logger,
+    IInternalActivityService? activities = null)
 {
     public const int MaxAttempts = 3;
     public const string RecurringJobId = "approval-expiration";
@@ -38,6 +43,23 @@ public class ApprovalExpirationJob(
         {
             logger.LogInformation("No approval queue items to expire");
             return;
+        }
+
+        // The "To do" first, before the status: a close that fails stops the job with the items still pending, so the retry (or the next day) finds them again, and closing is
+        // idempotent. The other way round, an item already expired would never be looked at again.
+        if (activities is not null)
+        {
+            foreach (var activityId in expiredItems.Where(i => i.ActivityId is not null).Select(i => i.ActivityId!.Value))
+            {
+                try
+                {
+                    await activities.CloseAsync(activityId, InternalActivity.ClosedBySystem, cancellationToken);
+                }
+                catch (NotFoundException)
+                {
+                    logger.LogInformation("The To do {ActivityId} of an expired approval item was not there any more: nothing to close", activityId);
+                }
+            }
         }
 
         foreach (var item in expiredItems)
