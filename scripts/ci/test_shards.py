@@ -50,8 +50,9 @@ def class_of(display_name):
 
 
 def read_list(path):
-    """Classes of `dotnet test --list-tests` output, with their number of test cases."""
+    """Classes of `dotnet test --list-tests` output, with their number of test cases, and the names it could not place."""
     counts = {}
+    unplaced = []
     with open(path, encoding='utf-8', errors='replace') as handle:
         for raw in handle:
             line = raw.rstrip('\r\n')
@@ -60,7 +61,9 @@ def read_list(path):
                 cls = class_of(line.strip())
                 if cls:
                     counts[cls] = counts.get(cls, 0) + 1
-    return counts
+                else:
+                    unplaced.append(line.strip())
+    return counts, unplaced
 
 
 def read_weights(path):
@@ -81,9 +84,16 @@ def read_weights(path):
 
 
 def cmd_plan(args):
-    counts = read_list(args.list)
+    counts, unplaced = read_list(args.list)
     if not counts:
         print('::error::No test found in %s: the discovery output is empty or has an unexpected format.' % args.list)
+        return 1
+    if unplaced:
+        # A test whose listed name has no class in it (e.g. a custom DisplayName without a dot) could not be put in any
+        # shard and would silently never run: refuse to plan rather than lose it.
+        print('::error::%d discovered tests have a name the planner cannot place in a class, e.g. %s. '
+              'Give them the default display name (or teach scripts/ci/test_shards.py) so that no test falls between shards.'
+              % (len(unplaced), '; '.join(unplaced[:3])))
         return 1
     weights, defaults = read_weights(args.weights)
     estimated = {cls: weights.get(cls, defaults[kind_of(cls)] * n) for cls, n in counts.items()}

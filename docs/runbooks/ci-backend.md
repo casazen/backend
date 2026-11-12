@@ -178,7 +178,9 @@ A run of `CI/CD Pipeline` takes about as long as `Build` plus its slowest `Test 
   `postgres:16` service (in one job a PR run took 13-19 minutes, 10-12 of them tests). The shards are a partition of the classes that
   `dotnet test --list-tests` discovers in the built assembly (`scripts/ci/test_shards.py plan`), balanced with the measured seconds
   per class in `scripts/ci/test-class-weights.tsv`. The plan is built from the very discovery the shards run on, so no test can fall
-  between shards, and each shard fails when a class planned for it has no result (`scripts/ci/test_shards.py verify`). A class that
+  between shards, and each shard fails when a class planned for it has no result (`scripts/ci/test_shards.py verify`); the plan step
+  itself fails when a discovered test has a name without a class (a custom `DisplayName` without a dot, say), because such a test
+  could not be given to any shard. A class that
   is not in the weights file (a new one) is placed with an average cost and still runs: the weights only decide how balanced the
   shards are. Refresh them when one shard drifts away from the others (compare the durations of the six `Test shard` jobs):
   `gh run download <run-id> --pattern 'test-results-*' --dir trx`, then
