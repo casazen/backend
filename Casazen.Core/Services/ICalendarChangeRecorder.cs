@@ -23,6 +23,13 @@ namespace Casazen.Core.Services;
 public interface ICalendarChangeRecorder
 {
     /// <summary>
+    /// Where a property books, as the recorder reads it, without staging or recording anything: a caller that holds a lock or an open transaction asks first, outside
+    /// them (the lookup may call the channel manager, and takes as long as it takes), and hands the answer to <see cref="RecordAsync"/>. A channel manager that cannot be
+    /// asked is not an error: the property is read as on it (<see cref="CalendarSendOutcome.Send"/>), and the push asks again.
+    /// </summary>
+    Task<CalendarSendOutcome> ResolveAsync(Guid propertyId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Adds the process and its chunks to the unit of work.
     /// </summary>
     /// <param name="kind">What the change is.</param>
@@ -31,6 +38,10 @@ public interface ICalendarChangeRecorder
     /// <param name="summaryJson">What was asked, as a JSON object of fields, actions and values, never a name or a guest; <c>null</c> for none.</param>
     /// <param name="cancellationToken">Cancels the lookups.</param>
     /// <param name="processId">The id of the process, when the caller needs it to be the same on every delivery (the event of a publication); a new one when <c>null</c>.</param>
+    /// <param name="resolved">
+    /// Where the properties book, when the caller already asked (<see cref="ResolveAsync"/>, before its lock or transaction): a property named here is not looked up
+    /// again. A property that is not named is looked up here.
+    /// </param>
     /// <exception cref="ArgumentException">No window, a window that ends before it starts, an invalid summary, or properties of more than one org.</exception>
     /// <exception cref="Exceptions.NotFoundException">A property does not exist for the caller (another org's, or deleted).</exception>
     Task<CalendarChangeRecord> RecordAsync(
@@ -39,5 +50,19 @@ public interface ICalendarChangeRecorder
         string? userId,
         string? summaryJson,
         CancellationToken cancellationToken = default,
-        Guid? processId = null);
+        Guid? processId = null,
+        IReadOnlyDictionary<Guid, CalendarSendOutcome>? resolved = null);
+}
+
+/// <summary>What the lookup of where a property books says about sending its change (<see cref="ICalendarChangeRecorder.ResolveAsync"/>).</summary>
+public enum CalendarSendOutcome
+{
+    /// <summary>No chunk: the property is not on the channel manager (not connected, a mapping that is not confirmed, or the connector off).</summary>
+    NotMirrored = 0,
+
+    /// <summary>Chunks to send.</summary>
+    Send = 1,
+
+    /// <summary>Chunks that failed at once: the mapping is confirmed and the room of it is not chosen.</summary>
+    RoomNotChosen = 2,
 }

@@ -493,7 +493,9 @@ claimed. A change that is wholly `Confirmed` is asked once more ten minutes late
 its chunks); a change whose properties cannot be told is shown to an org-wide scope only. The state of a property is derived from its chunks (a property with none is `Skipped`:
 the change stays in CasaZen). *Writing* (`ICalendarChangeService`): `preview` stages and saves nothing; `apply` stages the process and its chunks, then the rules of every
 property, and saves them with one `SaveChangesAsync`, so a property that fails validation fails the whole request. Taken nights are counted, not skipped. The estimate of the quota
-is an estimate (decision D7: 15 room-days a unit).
+is an estimate (decision D7: 15 room-days a unit). Whether a property is on the channel manager is asked outside any lock: the manual block asks (`ICalendarChangeRecorder.ResolveAsync`)
+before its transaction and the lock of the dates and hands the answer to the recorder, and the preview asks within the budget of the calendar (3 seconds for all its properties, then
+the rest are read as on the channel manager, as a lookup that fails is).
 
 **The state and the history of one booking (SR-05a, SR-D17).** `Booking` keeps three more times, all nullable and never backfilled:
 `ConfirmedAt` (a payment that settled, the host's confirmation or acceptance, or a booking confirmed from the start: entered by the

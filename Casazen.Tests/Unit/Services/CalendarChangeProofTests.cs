@@ -103,6 +103,35 @@ public class CalendarChangeProofTests
     }
 
     /// <summary>
+    /// Where the property books (a lookup that may call the channel manager and take 30 seconds) is asked before the transaction and the lock of the dates of the property: no booking
+    /// waits for it. The answer goes to the recorder, which does not ask again, and the process is recorded as before.
+    /// </summary>
+    [Fact]
+    public async Task ManualBlock_AsksWhereThePropertyBooks_BeforeTheTransactionAndTheLockOfTheDates_AndOnlyOnce()
+    {
+        var h = new Blocks();
+        var order = new List<string>();
+        h.Targets
+            .Setup(t => t.LookupAsync(h.PropertyId, It.IsAny<CancellationToken>()))
+            .Callback<Guid, CancellationToken>((_, _) => order.Add("lookup"))
+            .ReturnsAsync(OctorateTargetLookup.Of(new OctorateBookingTarget("ACC1", "956528")));
+        // The first thing the creation does before it opens the transaction and takes the lock of the dates.
+        h.Expiry
+            .Setup(e => e.ExpireOverlappingHoldsAsync(It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, DateTime, DateTime, CancellationToken>((_, _, _, _) => order.Add("before the transaction"));
+        var start = Today.AddDays(10).ToDateTime(TimeOnly.MinValue);
+        var end = Today.AddDays(13).ToDateTime(TimeOnly.MinValue);
+
+        await h.Service().CreateAsync(new ManualBlockRequest(h.PropertyId, start, end, CalendarBlockReason.Other, null));
+
+        Assert.Equal(["lookup", "before the transaction"], order);
+        h.Targets.Verify(t => t.LookupAsync(h.PropertyId, It.IsAny<CancellationToken>()), Times.Once);
+        var process = await h.NewDb().CalendarChangeProcesses.AsNoTracking().SingleAsync();
+        Assert.Equal((CalendarChangeKind.Block, CalendarChangeState.Queued), (process.Kind, process.State));
+        h.VerifyRuns(Times.Once());
+    }
+
+    /// <summary>
     /// PROOF TEST: permission rule. A caller limited to some properties, and a caller of another org, never see or touch a change that is not wholly theirs: the list and the detail
     /// leave out a change of another org, one that touches a property the caller does not reach (alone, or with one it does), one that only names such a property in its summary
     /// (nothing was sent for it) and one that names no property at all; the whole org sees what is its own and never another org's. The retry of such a change is a 404 and sends
@@ -324,6 +353,29 @@ public class CalendarChangeProofTests
         Assert.Equal(0, await h.NewDb().CalendarChangeProcesses.CountAsync());
         Assert.Empty(h.Db.ChangeTracker.Entries<CalendarChangeProcess>());
         Assert.DoesNotContain(h.Db.ChangeTracker.Entries<PropertyDayRule>(), entry => entry.State != EntityState.Unchanged);
+    }
+
+    [Fact]
+    public async Task CalendarChangePreview_AsksTheChannelManagerWithinABudget_AndReadsWhatIsNotAskedInTimeAsMirrored()
+    {
+        var h = new Change();
+        var ids = Enumerable.Range(0, 3).Select(i => h.AddProperty($"Casa {i}")).ToList();
+        // A channel manager that does not answer: the lookup waits for its token, which the budget of the preview cancels.
+        h.Targets
+            .Setup(t => t.LookupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns<Guid, CancellationToken>(async (_, token) =>
+            {
+                await Task.Delay(Timeout.Infinite, token);
+                return OctorateTargetLookup.NotMirrored;
+            });
+
+        var preview = await h.Service(TimeSpan.FromMilliseconds(100)).PreviewAsync(Scope(), Request(ids, new DayRulePatch(Price: FieldPatch<decimal>.Set(150m))));
+
+        // Nobody waits for the rest: the first lookup is cancelled by the budget, the other properties are not asked and read as mirrored, the preview is never refused.
+        Assert.Equal(3, preview.Properties.Count);
+        Assert.All(preview.Properties, p => Assert.True(p.Mirrored));
+        Assert.Empty(preview.Warnings);
+        h.Targets.Verify(t => t.LookupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -572,6 +624,8 @@ public class CalendarChangeProofTests
 
         public Mock<IBackgroundJobClient> Jobs { get; } = new();
 
+        public Mock<ICheckoutHoldExpiryService> Expiry { get; } = new();
+
         public CalendarBlockService Service()
         {
             var recorder = new CalendarChangeRecorder(
@@ -582,7 +636,7 @@ public class CalendarChangeProofTests
                 new FixedTimeProvider(Now),
                 NullLogger<CalendarChangeRecorder>.Instance);
             return new CalendarBlockService(
-                Db, Mock.Of<ICheckoutHoldExpiryService>(), NullLogger<CalendarBlockService>.Instance, new FixedTimeProvider(Now), recorder, Jobs.Object);
+                Db, Expiry.Object, NullLogger<CalendarBlockService>.Instance, new FixedTimeProvider(Now), recorder, Jobs.Object);
         }
 
         public void VerifyRuns(Times times) => Jobs.Verify(j => j.Create(It.Is<Job>(job => IsRun(job)), It.IsAny<IState>()), times);
@@ -621,7 +675,7 @@ public class CalendarChangeProofTests
             return property.Id;
         }
 
-        public CalendarChangeService Service()
+        public CalendarChangeService Service(TimeSpan? lookupBudget = null)
         {
             var clock = new FixedTimeProvider(Now);
             var configuration = new ConfigurationBuilder().Build();
@@ -629,7 +683,7 @@ public class CalendarChangeProofTests
             var rules = new PropertyDayRuleService(Db, Targets.Object, Flags.Object, configuration, NullLogger<PropertyDayRuleService>.Instance, clock);
             var recorder = new CalendarChangeRecorder(Db, Targets.Object, Flags.Object, options, clock, NullLogger<CalendarChangeRecorder>.Instance);
             return new CalendarChangeService(
-                Db, rules, recorder, Targets.Object, Flags.Object, options, configuration, NullLogger<CalendarChangeService>.Instance, clock, Jobs.Object);
+                Db, rules, recorder, Targets.Object, Flags.Object, options, configuration, NullLogger<CalendarChangeService>.Instance, clock, Jobs.Object, lookupBudget);
         }
 
         public void VerifyRuns(Times times) => Jobs.Verify(j => j.Create(It.Is<Job>(job => IsRun(job)), It.IsAny<IState>()), times);

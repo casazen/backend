@@ -46,11 +46,15 @@ public sealed class CalendarChangeService(
     IConfiguration configuration,
     ILogger<CalendarChangeService> logger,
     TimeProvider? timeProvider = null,
-    IBackgroundJobClient? jobs = null) : ICalendarChangeService
+    IBackgroundJobClient? jobs = null,
+    TimeSpan? lookupBudget = null) : ICalendarChangeService
 {
     private static readonly IReadOnlyDictionary<DateOnly, decimal> NoPrices = new Dictionary<DateOnly, decimal>();
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
+    /// <summary>The longest the lookups of the channel manager of one preview take, all its properties together (the budget of the calendar: <see cref="PropertyDayRuleService.MirroredBudget"/>).</summary>
+    private readonly TimeSpan _budget = lookupBudget ?? PropertyDayRuleService.MirroredBudget;
 
     private sealed record PropertyRow(Guid Id, string Name, string Timezone, decimal NightlyRate, decimal WeekendSurchargePercent, int? MinNights);
 
@@ -80,6 +84,11 @@ public sealed class CalendarChangeService(
 
         var rows = new List<CalendarChangePreviewProperty>(properties.Count);
         var warnings = new List<CalendarChangeWarning>();
+
+        // Whether a property is on the channel manager is advice, asked within a budget as the calendar does: up to fifty lookups in a row never make a preview wait for a
+        // channel manager that is slow or down. What is not asked in time is read as the property being on it, as a lookup that fails is: the preview is never refused.
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(_budget);
         foreach (var property in properties)
         {
             var today = DayRuleRules.TodayOf(property.Timezone, now);
@@ -95,7 +104,7 @@ public sealed class CalendarChangeService(
                 new OctorateCalendarProperty(property.NightlyRate, property.WeekendSurchargePercent, property.MinNights),
                 takenNights);
 
-            var reach = await ReachOfAsync(property.Id, cancellationToken);
+            var reach = await ReachOfAsync(property.Id, budget.Token, cancellationToken);
             if (reach == Reach.NotMirrored)
                 warnings.Add(new CalendarChangeWarning(CalendarPushErrorCodes.PropertyNotMirrored, property.Id));
             else if (reach == Reach.RoomNotChosen)
@@ -288,20 +297,32 @@ public sealed class CalendarChangeService(
     /// Whether the property books into the channel manager, for the preview: advice only. The connector off, or a property that is not connected or whose mapping is not
     /// confirmed, is not mirrored; a channel manager that cannot be asked is read as the property being on it (only a confirmed mapping asks it) and never refuses the preview.
     /// </summary>
-    private async Task<Reach> ReachOfAsync(Guid propertyId, CancellationToken ct)
+    private async Task<Reach> ReachOfAsync(Guid propertyId, CancellationToken budget, CancellationToken ct)
     {
         if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
             return Reach.NotMirrored;
 
+        // The budget of the preview is spent: nothing more is asked, the property is read as on the channel manager.
+        ct.ThrowIfCancellationRequested();
+        if (budget.IsCancellationRequested)
+            return Reach.Mirrored;
+
         try
         {
-            var lookup = await targets.LookupAsync(propertyId, ct);
+            var lookup = await targets.LookupAsync(propertyId, budget);
             return lookup.Gap switch
             {
                 OctorateTargetGap.None => Reach.Mirrored,
                 OctorateTargetGap.RoomNotChosen => Reach.RoomNotChosen,
                 _ => Reach.NotMirrored,
             };
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            logger.LogWarning(
+                "The channel manager lookups of the preview took more than {Seconds} seconds: the rest are not asked and the properties are taken as mirrored",
+                _budget.TotalSeconds);
+            return Reach.Mirrored;
         }
         catch (OctorateException ex)
         {

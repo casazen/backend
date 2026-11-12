@@ -80,6 +80,10 @@ public sealed class CalendarBlockService(
                 MessageKey = ManualBlockErrorCodes.PropertyNotFoundMessageKey,
             };
 
+        // E08/F05/US02/T02: where the property books is asked here, before the transaction and the dates lock. The lookup may call the channel manager and takes as long as it
+        // takes: no booking of the property waits for it. The answer goes to the recorder below, which does not ask again.
+        var resolved = changeRecorder is null ? (CalendarSendOutcome?)null : await changeRecorder.ResolveAsync(request.PropertyId, cancellationToken);
+
         await checkoutHoldExpiry.ExpireOverlappingHoldsAsync(request.PropertyId, start, end, cancellationToken);
 
         await using var transaction = db.Database.IsNpgsql() && db.Database.CurrentTransaction is null
@@ -113,7 +117,7 @@ public sealed class CalendarBlockService(
 
         // E08/F05/US02/T02 (NF-78): the change that tells the channel manager the nights are closed is recorded in this unit of work, under this lock, so the block
         // and its process exist together or not at all. It comes before the block is staged: the lookup of where the property books may save the unit of work.
-        var change = await RecordChangeAsync(request.PropertyId, start, end, "created", request.Reason, cancellationToken);
+        var change = await RecordChangeAsync(request.PropertyId, start, end, "created", request.Reason, resolved, cancellationToken);
 
         var block = new CalendarBlock
         {
@@ -156,7 +160,7 @@ public sealed class CalendarBlockService(
             throw new DomainRuleException(ManualBlockErrorCodes.HeldByModeChange, ManualBlockErrorCodes.HeldByModeChangeMessageKey);
 
         // E08/F05/US02/T02 (NF-78): the nights are open again on the channel manager: the change is recorded in the same save as the removal.
-        var change = await RecordChangeAsync(block.PropertyId, block.StartUtc.Date, block.EndUtc.Date, "removed", block.ManualReason, cancellationToken);
+        var change = await RecordChangeAsync(block.PropertyId, block.StartUtc.Date, block.EndUtc.Date, "removed", block.ManualReason, null, cancellationToken);
 
         db.CalendarBlocks.Remove(block);
         try
@@ -185,6 +189,7 @@ public sealed class CalendarBlockService(
         DateTime end,
         string action,
         CalendarBlockReason? reason,
+        CalendarSendOutcome? resolved,
         CancellationToken cancellationToken)
     {
         if (changeRecorder is null)
@@ -196,7 +201,8 @@ public sealed class CalendarBlockService(
             [window],
             null,
             JsonSerializer.Serialize(new { action, reason = reason?.ToString() }),
-            cancellationToken);
+            cancellationToken,
+            resolved: resolved is { } known ? new Dictionary<Guid, CalendarSendOutcome> { [propertyId] = known } : null);
     }
 
     /// <summary>

@@ -35,26 +35,14 @@ public sealed class CalendarChangeRecorder(
     TimeProvider timeProvider,
     ILogger<CalendarChangeRecorder> logger) : ICalendarChangeRecorder
 {
-    /// <summary>What the lookup of a property says about sending its change.</summary>
-    private enum Outcome
-    {
-        /// <summary>No chunk: the property is not on the channel manager.</summary>
-        NotMirrored,
-
-        /// <summary>Chunks to send.</summary>
-        Send,
-
-        /// <summary>Chunks that failed at once: the room of the mapping is not chosen.</summary>
-        RoomNotChosen,
-    }
-
     public async Task<CalendarChangeRecord> RecordAsync(
         CalendarChangeKind kind,
         IReadOnlyCollection<CalendarWindow> windows,
         string? userId,
         string? summaryJson,
         CancellationToken cancellationToken = default,
-        Guid? processId = null)
+        Guid? processId = null,
+        IReadOnlyDictionary<Guid, CalendarSendOutcome>? resolved = null)
     {
         ArgumentNullException.ThrowIfNull(windows);
         if (windows.Count == 0)
@@ -102,22 +90,27 @@ public sealed class CalendarChangeRecorder(
                 planned.Add(new CalendarWindow(window.PropertyId, cut.From, cut.To));
         }
 
-        // Every lookup before anything is added: one that stores the only room of a mapping saves the unit of work (see the remarks of the interface).
-        var outcomes = new Dictionary<Guid, Outcome>();
+        // Every lookup before anything is added: one that stores the only room of a mapping saves the unit of work (see the remarks of the interface). A property the
+        // caller already asked about (before its lock or its transaction) is not asked again.
+        var outcomes = new Dictionary<Guid, CalendarSendOutcome>();
         foreach (var propertyId in planned.Select(w => w.PropertyId).Distinct())
-            outcomes[propertyId] = await OutcomeOfAsync(propertyId, cancellationToken);
+        {
+            outcomes[propertyId] = resolved is not null && resolved.TryGetValue(propertyId, out var known)
+                ? known
+                : await ResolveAsync(propertyId, cancellationToken);
+        }
 
         var id = processId ?? Guid.NewGuid();
         var chunks = new List<CalendarChangeChunk>();
         foreach (var window in planned)
         {
             var outcome = outcomes[window.PropertyId];
-            if (outcome == Outcome.NotMirrored)
+            if (outcome == CalendarSendOutcome.NotMirrored)
                 continue;
 
             foreach (var range in CalendarChunkPlanner.Split(window.From, window.To, settings.MaxDays))
             {
-                var failed = outcome == Outcome.RoomNotChosen;
+                var failed = outcome == CalendarSendOutcome.RoomNotChosen;
                 chunks.Add(new CalendarChangeChunk
                 {
                     OrgId = orgId,
@@ -169,20 +162,20 @@ public sealed class CalendarChangeRecorder(
         return new CalendarChangeRecord(process, chunks);
     }
 
-    private async Task<Outcome> OutcomeOfAsync(Guid propertyId, CancellationToken cancellationToken)
+    public async Task<CalendarSendOutcome> ResolveAsync(Guid propertyId, CancellationToken cancellationToken = default)
     {
         // The connector off asks nothing, as everything else of the connector: no property is on the channel manager.
         if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
-            return Outcome.NotMirrored;
+            return CalendarSendOutcome.NotMirrored;
 
         try
         {
             var lookup = await targets.LookupAsync(propertyId, cancellationToken);
             return lookup.Gap switch
             {
-                OctorateTargetGap.None => Outcome.Send,
-                OctorateTargetGap.RoomNotChosen => Outcome.RoomNotChosen,
-                _ => Outcome.NotMirrored,
+                OctorateTargetGap.None => CalendarSendOutcome.Send,
+                OctorateTargetGap.RoomNotChosen => CalendarSendOutcome.RoomNotChosen,
+                _ => CalendarSendOutcome.NotMirrored,
             };
         }
         catch (OctorateException ex)
@@ -193,13 +186,13 @@ public sealed class CalendarChangeRecorder(
                 propertyId,
                 ex.Code,
                 ex.OctorateStatusCode);
-            return Outcome.Send;
+            return CalendarSendOutcome.Send;
         }
         catch (ArgumentException ex)
         {
             // An id of the mapping the client refuses to put in an address: nothing can be sent for this property.
             logger.LogWarning(ex, "The channel manager cannot be asked about property {PropertyId}: its change is not sent", propertyId);
-            return Outcome.NotMirrored;
+            return CalendarSendOutcome.NotMirrored;
         }
     }
 
