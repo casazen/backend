@@ -24,7 +24,7 @@ concurrency:
 
 env:
   # Number of test shards. Keep it equal to the length of the `matrix.shard` list of the job `test` (checked there).
-  TEST_SHARDS: '5'
+  TEST_SHARDS: '6'
   DOTNET_CLI_TELEMETRY_OPTOUT: '1'
   DOTNET_NOLOGO: '1'
 
@@ -97,7 +97,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5]
+        shard: [1, 2, 3, 4, 5, 6]
 
     # Throw-away service container: the password below is not a secret.
     services:
@@ -190,7 +190,7 @@ jobs:
   build-and-test:
     name: Build & Test
     needs: [build, test]
-    if: ${{ always() }}
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
 

@@ -181,13 +181,19 @@ def cmd_verify(args):
 
 
 def cmd_weights(args):
+    # A class appears in one TRX per run (the shard that ran it): with the TRX files of several runs the weight is the mean,
+    # which smooths the run-to-run noise (runner speed, which classes ran at the same time).
     seconds_by_class = {}
     tests_by_class = {}
+    runs_by_class = {}
     for path in args.trx:
         per_class, _, seconds = read_trx(path)
         for cls, n in per_class.items():
             tests_by_class[cls] = tests_by_class.get(cls, 0) + n
             seconds_by_class[cls] = seconds_by_class.get(cls, 0.0) + seconds[cls]
+            runs_by_class[cls] = runs_by_class.get(cls, 0) + 1
+    seconds_by_class = {cls: s / runs_by_class[cls] for cls, s in seconds_by_class.items()}
+    tests_by_class = {cls: n / runs_by_class[cls] for cls, n in tests_by_class.items()}
     heavy = {cls: s for cls, s in seconds_by_class.items() if s >= MIN_WEIGHT_TO_LIST}
     out = sys.stdout
     out.write('# Seconds of test time per class of Casazen.Tests, measured in CI (sum of the test durations of the class).\n')
