@@ -466,12 +466,19 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("ActivityId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime?>("ApprovedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ApprovedByUserId")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
+
+                    b.Property<decimal?>("ConfidenceScore")
+                        .HasPrecision(4, 3)
+                        .HasColumnType("numeric(4,3)");
 
                     b.Property<string>("ContentText")
                         .IsRequired()
@@ -483,6 +490,16 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("EditedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EditedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("EditedContentText")
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
@@ -501,10 +518,41 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("OriginAction")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("OriginActionError")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime?>("OriginActionExecutedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("OriginActionStatus")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("SituationCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
+                    b.Property<string>("ThreadKey")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "Status");
 
                     b.ToTable("ApprovalQueueItems");
                 });
@@ -11270,6 +11318,11 @@ namespace Casazen.Infrastructure.Migrations
                         new
                         {
                             RoleId = 1,
+                            PermissionKey = "approval.decide"
+                        },
+                        new
+                        {
+                            RoleId = 1,
                             PermissionKey = "verification.decision"
                         },
                         new
@@ -11476,6 +11529,11 @@ namespace Casazen.Infrastructure.Migrations
                         {
                             RoleId = 7,
                             PermissionKey = "alloggiati.submit"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "approval.decide"
                         },
                         new
                         {

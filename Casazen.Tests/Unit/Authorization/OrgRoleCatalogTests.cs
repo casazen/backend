@@ -200,6 +200,7 @@ public class OrgRoleCatalogTests
     [InlineData("servicerequest.write")]
     [InlineData("guest.manage")]
     [InlineData("alloggiati.submit")]
+    [InlineData("approval.decide")]
     public void SeededRoles_FinerPermissionsOfAm03_ThePropertyManagerKeepsEverythingItDid(string permission) =>
         Assert.Contains(permission, PermissionsOf("short-rent", "property_manager"));
 
@@ -212,7 +213,7 @@ public class OrgRoleCatalogTests
             ["booking.read", "guest.read", "guest.write", "property.read", "servicerequest.write"],
             collaborator.Order(StringComparer.Ordinal).ToArray());
         // The carve-outs are exactly what keeps the collaborator out of the broad permissions.
-        foreach (var broad in new[] { "property.write", "booking.write", "payment.read", "payment.write", "guest.manage", "alloggiati.submit", "ota.write" })
+        foreach (var broad in new[] { "property.write", "booking.write", "payment.read", "payment.write", "guest.manage", "alloggiati.submit", "ota.write", "approval.decide" })
             Assert.DoesNotContain(broad, collaborator);
     }
 
@@ -228,6 +229,7 @@ public class OrgRoleCatalogTests
         Assert.DoesNotContain("servicerequest.write", permissions);
         Assert.DoesNotContain("guest.manage", permissions);
         Assert.DoesNotContain("alloggiati.submit", permissions);
+        Assert.DoesNotContain("approval.decide", permissions);
     }
 
     [Fact]

@@ -1780,6 +1780,12 @@ public class AppDbContext(
             .HasIndex(e => e.ExportToken)
             .IsUnique();
 
+        // ─── The approval queue (NF-06, E05/F04, NF-68) ─────────────────────────────────────────────────────
+        // The list of an org reads its pending items (and the expiry job the pending ones past their time). The columns of the action, of the edit and of the
+        // rejection are plain nullable columns (an existing row keeps working: OriginActionStatus 0 is NotRequired); the words are encrypted by EncryptedColumns.
+        modelBuilder.Entity<ApprovalQueueItem>()
+            .HasIndex(i => new { i.OrgId, i.Status });
+
         modelBuilder.Entity<AppContextEntity>().HasData(
             new AppContextEntity { Key = "short-rent", DisplayName = "Affitti brevi" },
             new AppContextEntity { Key = "long-rent", DisplayName = "Affitti lungo termine" },
@@ -1805,6 +1811,8 @@ public class AppDbContext(
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.ServiceRequestWrite },
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.GuestManage },
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.AlloggiatiSubmit },
+            // E05/F04/US01/T01: the owner decides the items of the approval queue (AddApprovalDecisionAndOriginAction); the property manager's role follows the catalog.
+            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.ApprovalDecide },
             // E03/F04/US02/T01: the owner decides the identity verifications of its guests (AddIdentityVerificationFields).
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.VerificationDecision },
             new RolePermission { RoleId = 2, PermissionKey = "property.read" },

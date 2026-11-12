@@ -132,6 +132,14 @@ public static class CasazenPolicies
     public const string VerificationDecision = ShortRent + HostPermissions.VerificationDecision;
 
     /// <summary>
+    /// Decide the items of the approval queue (E05/F04/US01/T01, NF-68): list them, edit a draft, approve it and reject it. Owner, administrators and
+    /// property managers; not the collaborator, who held the broad <see cref="PropertyWrite"/> that guarded the queue before. Short-rent context. The
+    /// permission is <see cref="HostPermissions.ApprovalDecide"/>; which items of the queue the caller reaches (the property of an item) is decided
+    /// by its <c>HostScope</c>, in the service.
+    /// </summary>
+    public const string ApprovalDecide = ShortRent + HostPermissions.ApprovalDecide;
+
+    /// <summary>
     /// Read a property's long-term side that is not a lease: the long-rent service requests (D2, SU-07). Long-rent
     /// context only, so a short-rent <c>property.read</c> never reaches it; the row is checked with
     /// <see cref="LongRentPropertyOperations"/>.
@@ -225,6 +233,7 @@ public static class CasazenPolicies
         OtaRead, OtaWrite,
         ServiceRequestWrite, GuestManage, AlloggiatiSubmit,
         VerificationDecision,
+        ApprovalDecide,
         LongRentPropertyRead, LongRentPropertyWrite,
         LeaseRead, LeaseCreate, LeaseSign, LeaseRegister,
         OrgMembersManage, OrgActivityRead,

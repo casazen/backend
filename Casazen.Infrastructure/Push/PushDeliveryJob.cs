@@ -407,6 +407,12 @@ public sealed class PushDeliveryJob(
         if (push.ServiceRequestId is Guid serviceRequestId)
             message.Data["serviceRequestId"] = serviceRequestId.ToString();
 
+        // E05/F04: the alert of an item waiting for approval names the item (the app opens it, and its buttons act on it) and the category with the buttons.
+        if (push.ApprovalItemId is Guid approvalItemId)
+            message.Data["approvalItemId"] = approvalItemId.ToString();
+        if (!string.IsNullOrWhiteSpace(push.CategoryId))
+            message.CategoryId = push.CategoryId;
+
         return message;
     }
 }
