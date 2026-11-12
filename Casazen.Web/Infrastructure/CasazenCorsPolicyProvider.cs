@@ -1,6 +1,7 @@
 using Casazen.Web.Configuration;
 using Casazen.Web.Controllers;
 using Microsoft.AspNetCore.Cors.Infrastructure;
+using Microsoft.Net.Http.Headers;
 
 namespace Casazen.Web.Infrastructure;
 
@@ -56,8 +57,9 @@ public sealed class CasazenCorsPolicyProvider(
             // X-SignalR-User-Agent: sent by the SignalR browser client on its negotiate request (the hubs only use it).
             .WithHeaders("Authorization", "Content-Type", "Accept", "X-Requested-With", "Idempotency-Key", "X-SignalR-User-Agent")
             // The header that says the list of the calendar changes of a collaborator limited to some properties may leave older changes out (E08/F05/US02): a browser reads
-            // a header of another origin only when the answer exposes it.
-            .WithExposedHeaders(CalendarChangesController.TruncatedHeader);
+            // a header of another origin only when the answer exposes it. Content-Disposition: the name of the file of a download (the CSV and Excel exports of the fiscal documents,
+            // E06/F03/US03/T01), which a page on another origin reads from the answer of its blob download.
+            .WithExposedHeaders(CalendarChangesController.TruncatedHeader, HeaderNames.ContentDisposition);
 
         // The SignalR client negotiates with credentials included by default: the hubs answer Access-Control-Allow-Credentials for the
         // allowed origins (echoed one by one, never "*"). The API itself stays without credentials: it uses no cookie.

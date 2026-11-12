@@ -1,5 +1,6 @@
 using System.Net;
 using Casazen.Web.Configuration;
+using Casazen.Web.Controllers;
 using Casazen.Web.Extensions;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Builder;
@@ -54,6 +55,24 @@ public class CorsPolicyTests
         Assert.Equal(origin, Assert.Single(response.Headers.GetValues("Access-Control-Allow-Origin")));
         Assert.Contains("authorization", response.Headers.GetValues("Access-Control-Allow-Headers").Single(), StringComparison.OrdinalIgnoreCase);
         Assert.False(response.Headers.Contains("Access-Control-Allow-Credentials"));
+    }
+
+    [Fact]
+    public async Task Get_ConfiguredOrigin_ExposesTheNameOfADownloadAndTheTruncationHeader()
+    {
+        await using var app = await StartAsync(Environments.Production, new() { ["Cors:AllowedOrigins"] = WebApp });
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/ping");
+        request.Headers.Add("Origin", WebApp);
+        using var response = await app.GetTestClient().SendAsync(request);
+
+        // A browser reads a header of another origin only when the answer exposes it: the name of the file of the CSV and Excel exports of the fiscal documents
+        // (E06/F03/US03/T01) and the header that says the calendar changes of a collaborator were cut (E08/F05/US02).
+        var exposed = response.Headers.GetValues("Access-Control-Expose-Headers")
+            .SelectMany(value => value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            .ToList();
+        Assert.Contains("Content-Disposition", exposed, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(CalendarChangesController.TruncatedHeader, exposed, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
