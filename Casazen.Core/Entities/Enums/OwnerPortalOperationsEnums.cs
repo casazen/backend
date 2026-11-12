@@ -64,3 +64,67 @@ public enum OwnerPortalPermission
     /// <summary><c>inbox.use</c>: the conversations with the agency.</summary>
     InboxUse = 16,
 }
+
+/// <summary>What a document the agency shares with an owner is (E07/F07/US01/T02, AC-NF111-3). Stored as an integer; append-only.</summary>
+public enum OwnerDocumentType
+{
+    /// <summary>The management mandate.</summary>
+    Mandate = 1,
+
+    /// <summary>A contract (other than the mandate).</summary>
+    Contract = 2,
+
+    /// <summary>An insurance policy.</summary>
+    Insurance = 3,
+
+    /// <summary>A statement: also needs <c>accounting.read</c> for a delegated contact.</summary>
+    Statement = 4,
+
+    /// <summary>An invoice: also needs <c>accounting.read</c> for a delegated contact.</summary>
+    Invoice = 5,
+
+    /// <summary>Anything else, named by its title.</summary>
+    Other = 6,
+}
+
+/// <summary>Where a delegated contact of an owner stands (E07/F07/US01/T02, AC-NF111-4). Stored as an integer; append-only.</summary>
+public enum OwnerPortalContactStatus
+{
+    /// <summary>Invited: the link of the e-mail is not used yet. Grants nothing.</summary>
+    Invited = 1,
+
+    /// <summary>The contact accepted with its own account: it holds the permissions the owner gave it.</summary>
+    Active = 2,
+
+    /// <summary>Withdrawn by the owner or by the agency: nothing from the next request on. The row stays for the audit.</summary>
+    Revoked = 3,
+}
+
+/// <summary>What a conversation of the owner inbox is about (E07/F07/US01/T02, AC-NF111-5). Stored as an integer; append-only.</summary>
+public enum OwnerConversationTopic
+{
+    /// <summary>The relation with the agency, no item.</summary>
+    General = 1,
+
+    /// <summary>A property of the owner.</summary>
+    Property = 2,
+
+    /// <summary>An owner stay.</summary>
+    OwnerStay = 3,
+
+    /// <summary>A document the agency shared.</summary>
+    Document = 4,
+
+    /// <summary>A published version of a statement (E06).</summary>
+    StatementVersion = 5,
+}
+
+/// <summary>Who wrote a message of the owner inbox. Stored as an integer; append-only.</summary>
+public enum OwnerMessageSender
+{
+    /// <summary>A person of the agency.</summary>
+    Agency = 1,
+
+    /// <summary>The owner, or a contact it delegated with <c>inbox.use</c>.</summary>
+    Owner = 2,
+}

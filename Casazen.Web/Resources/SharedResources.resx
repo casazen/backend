@@ -6462,4 +6462,82 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="CalendarBlockHeldByOwnerStay" xml:space="preserve">
     <value>Questo blocco tiene le date di un soggiorno del proprietario: si toglie annullando il soggiorno.</value>
   </data>
+  <data name="OwnerFileTooLarge" xml:space="preserve">
+    <value>Il file supera i {0} MB.</value>
+  </data>
+  <data name="OwnerFileMissing" xml:space="preserve">
+    <value>Manca il file.</value>
+  </data>
+  <data name="OwnerFileTypeNotAllowed" xml:space="preserve">
+    <value>Sono accettati solo file PDF, JPEG o PNG.</value>
+  </data>
+  <data name="OwnerFileActiveContent" xml:space="preserve">
+    <value>Il PDF contiene script, azioni o file incorporati e non può essere condiviso: esportalo di nuovo come PDF semplice.</value>
+  </data>
+  <data name="OwnerDocumentNotFound" xml:space="preserve">
+    <value>Documento non trovato.</value>
+  </data>
+  <data name="OwnerDocumentInvalid" xml:space="preserve">
+    <value>Un dato del documento non è valido: {0}.</value>
+  </data>
+  <data name="OwnerDocumentOwnerNotFound" xml:space="preserve">
+    <value>Proprietario o immobile non trovato.</value>
+  </data>
+  <data name="OwnerContactNotFound" xml:space="preserve">
+    <value>Contatto non trovato.</value>
+  </data>
+  <data name="OwnerContactOwnerOnly" xml:space="preserve">
+    <value>Solo il proprietario può gestire i contatti.</value>
+  </data>
+  <data name="OwnerContactAgencyRequired" xml:space="preserve">
+    <value>Indica per quale agenzia invitare il contatto.</value>
+  </data>
+  <data name="OwnerContactInvalid" xml:space="preserve">
+    <value>Un dato del contatto non è valido: {0}.</value>
+  </data>
+  <data name="OwnerContactExists" xml:space="preserve">
+    <value>Questa persona è già tra i tuoi contatti.</value>
+  </data>
+  <data name="OwnerContactLimitReached" xml:space="preserve">
+    <value>Puoi avere al massimo {0} contatti.</value>
+  </data>
+  <data name="OwnerContactRevoked" xml:space="preserve">
+    <value>Il contatto è stato revocato.</value>
+  </data>
+  <data name="OwnerContactEmailNotQueued" xml:space="preserve">
+    <value>Non è stato possibile inviare l'email di invito: riprova più tardi.</value>
+  </data>
+  <data name="OwnerContactInvitationInvalid" xml:space="preserve">
+    <value>Invito non valido.</value>
+  </data>
+  <data name="OwnerContactInvitationExpired" xml:space="preserve">
+    <value>L'invito è scaduto: chiedi al proprietario di invitarti di nuovo.</value>
+  </data>
+  <data name="OwnerContactInvitationUsed" xml:space="preserve">
+    <value>L'invito è già stato accettato con un altro account.</value>
+  </data>
+  <data name="OwnerContactInvitationRevoked" xml:space="preserve">
+    <value>L'invito è stato ritirato.</value>
+  </data>
+  <data name="OwnerContactEmailNotVerified" xml:space="preserve">
+    <value>Verifica prima l'indirizzo email del tuo account.</value>
+  </data>
+  <data name="OwnerContactEmailMismatch" xml:space="preserve">
+    <value>L'invito è stato inviato a un altro indirizzo email.</value>
+  </data>
+  <data name="OwnerConversationNotFound" xml:space="preserve">
+    <value>Conversazione non trovata.</value>
+  </data>
+  <data name="OwnerConversationInvalid" xml:space="preserve">
+    <value>Un dato della conversazione non è valido: {0}.</value>
+  </data>
+  <data name="OwnerConversationReferenceNotFound" xml:space="preserve">
+    <value>L'elemento a cui si riferisce la conversazione non è stato trovato.</value>
+  </data>
+  <data name="OwnerMessageInvalid" xml:space="preserve">
+    <value>Scrivi un messaggio (al massimo {0} caratteri) o allega un file.</value>
+  </data>
+  <data name="OwnerAttachmentNotFound" xml:space="preserve">
+    <value>Allegato non trovato.</value>
+  </data>
 </root>

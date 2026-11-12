@@ -32,6 +32,10 @@ public class OwnerPortalOperationsRegistrationTests
             // The owner calendar, the owner stays and their background work (E07/F07/US01/T01).
             (typeof(IOwnerStayService), typeof(OwnerStayService), ServiceLifetime.Scoped),
             (typeof(OwnerPortalOperationsJob), typeof(OwnerPortalOperationsJob), ServiceLifetime.Scoped),
+
+            // The shared documents, the delegated contacts and the inbox (E07/F07/US01/T02).
+            (typeof(IOwnerFileScanner), typeof(OwnerFileContentScanner), ServiceLifetime.Singleton),
+            (typeof(IOwnerCollaborationService), typeof(OwnerCollaborationService), ServiceLifetime.Scoped),
         };
 
         Assert.Equal(expected, ours);

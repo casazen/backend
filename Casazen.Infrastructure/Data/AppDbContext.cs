@@ -398,9 +398,16 @@ public class AppDbContext(
     // The payouts to the owners, their append-only withholding evidence and the annual tax datasets (E06/F05/US02/T03, NF-110)
     public DbSet<OwnerPayout> OwnerPayouts { get; set; } = null!;
 
-    // The owner portal operations (E07/F07/US01, NF-111): the rules and the requests of the owner stays.
+    // The owner portal operations (E07/F07/US01, NF-111): the rules and the requests of the owner stays; the shared documents, their versions and
+    // downloads, the delegated contacts and the inbox.
     public DbSet<OwnerStayRule> OwnerStayRules { get; set; } = null!;
     public DbSet<OwnerStayRequest> OwnerStayRequests { get; set; } = null!;
+    public DbSet<OwnerDocument> OwnerDocuments { get; set; } = null!;
+    public DbSet<OwnerDocumentVersion> OwnerDocumentVersions { get; set; } = null!;
+    public DbSet<OwnerDocumentDownload> OwnerDocumentDownloads { get; set; } = null!;
+    public DbSet<OwnerPortalContact> OwnerPortalContacts { get; set; } = null!;
+    public DbSet<OwnerConversation> OwnerConversations { get; set; } = null!;
+    public DbSet<OwnerMessage> OwnerMessages { get; set; } = null!;
 
     public DbSet<TaxObligationEvidence> TaxObligationEvidence { get; set; } = null!;
     public DbSet<TaxReportingDataset> TaxReportingDatasets { get; set; } = null!;
@@ -2065,6 +2072,12 @@ public class AppDbContext(
         // The owner portal operations (E07/F07/US01, NF-111). The tenant query filter is applied below, to every ITenantOwned entity.
         modelBuilder.ApplyConfiguration(new OwnerStayRuleConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerStayRequestConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerDocumentConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerDocumentVersionConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerDocumentDownloadConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerPortalContactConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerConversationConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerMessageConfiguration());
         modelBuilder.ApplyConfiguration(new TaxObligationEvidenceConfiguration());
         modelBuilder.ApplyConfiguration(new TaxReportingDatasetConfiguration());
 

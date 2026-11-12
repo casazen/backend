@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261112215353_AddOwnerPortalOperations")]
+    [Migration("20261112224005_AddOwnerPortalOperations")]
     partial class AddOwnerPortalOperations
     {
         /// <inheritdoc />
@@ -7943,6 +7943,221 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerConversation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedByOwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime>("LastMessageAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("OwnerDocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("OwnerStatementVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("OwnerStayRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyOwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<int>("Topic")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyOwnerId");
+
+                    b.HasIndex("OrgId", "PropertyOwnerId", "LastMessageAt");
+
+                    b.ToTable("OwnerConversations");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyOwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RevokedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("PropertyOwnerId");
+
+                    b.HasIndex("OrgId", "PropertyOwnerId");
+
+                    b.ToTable("OwnerDocuments");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerDocumentDownload", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("DownloadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OwnerDocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OwnerDocumentVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("UserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerDocumentVersionId");
+
+                    b.HasIndex("OwnerDocumentId", "DownloadedAt");
+
+                    b.ToTable("OwnerDocumentDownloads", t =>
+                        {
+                            t.HasCheckConstraint("CK_OwnerDocumentDownloads_Who", "(\"OwnerUserId\" IS NULL) <> (\"UserId\" IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerDocumentVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateOnly?>("EffectiveFrom")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("ExpiresOn")
+                        .HasColumnType("date");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OwnerDocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ScanEngine")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UploadedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "ExpiresOn");
+
+                    b.HasIndex("OwnerDocumentId", "VersionNumber")
+                        .IsUnique();
+
+                    b.ToTable("OwnerDocumentVersions", t =>
+                        {
+                            t.HasCheckConstraint("CK_OwnerDocumentVersions_Dates", "\"EffectiveFrom\" IS NULL OR \"ExpiresOn\" IS NULL OR \"ExpiresOn\" >= \"EffectiveFrom\"");
+
+                            t.HasCheckConstraint("CK_OwnerDocumentVersions_Number", "\"VersionNumber\" >= 1");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OwnerExternalDocumentReference", b =>
                 {
                     b.Property<Guid>("Id")
@@ -8432,6 +8647,69 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("OwnerMandates");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AttachmentContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("AttachmentFileName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("AttachmentKey")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("AttachmentScanEngine")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("AttachmentSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<long?>("AttachmentSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Sender")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("SenderOwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SenderUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationId", "CreatedAt");
+
+                    b.ToTable("OwnerMessages", t =>
+                        {
+                            t.HasCheckConstraint("CK_OwnerMessages_Sender", "(\"SenderUserId\" IS NULL) <> (\"SenderOwnerUserId\" IS NULL)");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OwnerPayout", b =>
                 {
                     b.Property<Guid>("Id")
@@ -8530,6 +8808,89 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("OwnerPayouts", t =>
                         {
                             t.HasCheckConstraint("CK_OwnerPayouts_Amounts", "\"GrossAmount\" > 0 AND \"WithholdingAmount\" >= 0 AND \"NetAmount\" = \"GrossAmount\" - \"WithholdingAmount\"");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerPortalContact", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("InvitationExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("InvitedByOwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Permissions")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("PropertyOwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RevokedBy")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyOwnerId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("OwnerUserId", "Status");
+
+                    b.HasIndex("OrgId", "PropertyOwnerId", "Email")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OwnerPortalContacts_Owner_Email_InForce")
+                        .HasFilter("\"Status\" <> 3");
+
+                    b.ToTable("OwnerPortalContacts", t =>
+                        {
+                            t.HasCheckConstraint("CK_OwnerPortalContacts_Permissions", "\"Permissions\" > 0");
                         });
                 });
 
@@ -8945,6 +9306,9 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<bool>("InboxEmailOptOut")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTime?>("LastLoginAt")
                         .HasColumnType("timestamp with time zone");
@@ -18208,6 +18572,65 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerConversation", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.PropertyOwner", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyOwnerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerDocument", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Casazen.Core.Entities.PropertyOwner", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyOwnerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerDocumentDownload", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.OwnerDocument", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.OwnerDocumentVersion", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerDocumentVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerDocumentVersion", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.OwnerDocument", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OwnerExternalDocumentReference", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.OwnerStatementVersion", null)
@@ -18286,6 +18709,15 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("PropertyOwnership");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerMessage", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.OwnerConversation", null)
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OwnerPayout", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.OwnerStatementVersion", null)
@@ -18293,6 +18725,26 @@ namespace Casazen.Infrastructure.Migrations
                         .HasForeignKey("OwnerStatementVersionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.PropertyOwner", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyOwnerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerPortalContact", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.OwnerUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Casazen.Core.Entities.PropertyOwner", null)
                         .WithMany()

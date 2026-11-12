@@ -16,7 +16,11 @@ namespace Casazen.Infrastructure.Jobs;
 /// <para>It lives next to the other jobs because the services of this project enqueue it after their save is committed and cannot see the web project.
 /// No automatic retry of the run enqueued after an owner request: what could not be done is done by the recurring run.</para>
 /// </remarks>
-public class OwnerPortalOperationsJob(IOwnerStayService stays, IFeatureFlags featureFlags, ILogger<OwnerPortalOperationsJob> logger)
+public class OwnerPortalOperationsJob(
+    IOwnerStayService stays,
+    IOwnerCollaborationService collaboration,
+    IFeatureFlags featureFlags,
+    ILogger<OwnerPortalOperationsJob> logger)
 {
     public const string RecurringJobId = "owner-portal-operations";
 
@@ -47,6 +51,10 @@ public class OwnerPortalOperationsJob(IOwnerStayService stays, IFeatureFlags fea
             logger.LogInformation("Owner portal operations not run: Features:AgencyTier is off");
             return;
         }
+
+        // The expiry alerts of the shared documents first: a failure of the stays (which ends the run in error once every stay was tried) does not hold them.
+        var alerts = await collaboration.RaiseExpiryAlertsAsync(cancellationToken);
+        logger.LogInformation("Owner documents: {Raised} expiry To do raised, {Closed} closed", alerts.Raised, alerts.Closed);
 
         var stayRun = await stays.ReconcileAsync(cancellationToken);
         logger.LogInformation(

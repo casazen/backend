@@ -1103,6 +1103,46 @@ ended ownership or a missing one; 403 `owner_portal_permission_missing` for a pe
   «To do»: `OwnerStayToReview` (a request a person decides, raised once) and `OwnerStaySyncFailed`, action `ReviewOwnerStay`, entity `OwnerStay`.
 - **Agency scope.** A whole-org function, as the owner accounting: a collaborator «Solo alcuni» is refused (403) even with the permission.
 
+#### Owner portal operations: documents, delegated contacts, inbox (E07/F07/US01/T02, NF-111, ADR-011, ADR-012)
+
+Same flag, registration, access resolution and agency scope as the owner stays above. Permissions of the portal (AC-NF111-4): `calendar.read`,
+`stays.request`, `accounting.read`, `documents.read`, `inbox.use`; the owner holds all of them on its own ownerships, a **delegated contact** only the
+ones the owner gave it, each independent, on the ownerships in force of that owner profile.
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/owner-portal/documents` | OwnerPortal, `documents.read` and/or `accounting.read` | `{ documents, statements }`: the shared documents the caller may read (a `Statement` or `Invoice` also needs `accounting.read`; a document of a property needs a grant on it), each `{ id, type, title, propertyId?, expiryState (none, valid, expiring within 30 days, expired), expiresOn, versions: [{ id, versionNumber, fileName, contentType, sizeBytes, sha256, effectiveFrom, expiresOn, state (upcoming, current, superseded, expired), uploadedAt }] }`; and the **published statement versions of the owner accounting (E06), referenced where they are, never copied** (`accounting.read`) |
+| `GET` | `/api/owner-portal/documents/{id}/file?versionId=` | same | The file (the version in force by default). The download is written (`OwnerDocumentDownloads`, append-only) **before** the file is handed out; `Content-Disposition: attachment`, `nosniff`, `no-store` |
+| `GET` / `POST` | `/api/owner-portal/contacts` | OwnerPortal, **the owner only** (403 `owner_contact_owner_only` for a delegated contact) | List; invite `{ agencyId?, email, firstName, lastName, permissions: [...] }` → 201 `invited`, e-mail with a one-time link (7 days, SHA-256 of the token stored). 422 `owner_portal_permissions_empty` (an empty list is never «all»), `owner_portal_permission_unknown`, `owner_contact_invalid`, `owner_contact_agency_required` (several agencies), `owner_contact_limit_reached` (10), `owner_contact_email_not_queued` (the invitation is withdrawn); 409 `owner_contact_exists` |
+| `PUT` · `POST` | `/api/owner-portal/contacts/{id}/permissions` · `/revoke` | same | Change the permissions (at least one; 409 `owner_contact_revoked`), withdraw: **effective at the next request** of the contact (the access is resolved at every request) |
+| `POST` | `/api/owner-contacts/accept` | JWT (`Authenticated`, allow-listed like the owner invitation) | `{ token }` in the body. The e-mail of the account (token or Auth0) must be verified (403 `owner_contact_email_not_verified`) and the invited one (403 `owner_contact_email_mismatch`); 410 `owner_contact_invitation_invalid`, `_expired`, `_used`, `_revoked`. The account becomes an `OwnerUser` **of its own** (never the owner's login); the claims of the portal (own ownerships and delegations) are handed to Auth0 (`claimsRefresh`). A repeat answers the same |
+| `GET` / `POST` | `/api/owner-portal/conversations` | OwnerPortal, `inbox.use` | The conversations the caller may read; open one `{ agencyId?, topic: general / property / ownerStay / document / statementVersion, propertyId? \| ownerStayId? \| documentId? \| statementVersionId?, subject, body }` (exactly the reference the topic names, reached by the caller: 404 `owner_conversation_reference_not_found`) |
+| `GET` / `POST` | `/api/owner-portal/conversations/{id}/messages` | same | Messages oldest first; write one (multipart `body`, optional `file`). A conversation about a property or a stay needs `inbox.use` on that property, about a document the document readable, about a statement `accounting.read` |
+| `GET` | `/api/owner-portal/conversations/{id}/messages/{messageId}/attachment` | same | The file of a message |
+| `GET` / `PUT` | `/api/owner-portal/inbox/preferences` | OwnerPortal | `{ emailNotifications }` (`OwnerUsers.InboxEmailOptOut`) |
+| `GET` / `POST` | `/api/owner-collaboration/documents[?ownerId=]` | `agency.owner.view` / `agency.owner.manage`, whole org | List (with downloads); share (multipart `ownerId`, `propertyId`?, `type`, `title`, `effectiveFrom`?, `expiresOn`?, `file`). 404 `owner_document_owner_not_found`; 422 `owner_document_invalid` |
+| `POST` | `/api/owner-collaboration/documents/{id}/versions` · `/revoke` · `/restore` | `agency.owner.manage` | A new version (the earlier ones are immutable: `OwnerDocumentVersions` is append-only); withdraw (hidden from the next request) or share again |
+| `GET` | `/api/owner-collaboration/documents/{id}/downloads` · `/versions/{versionId}/file` | `agency.owner.view` | The download audit (version, when, who); the file (the agency's download is written too) |
+| `GET` · `POST` | `/api/owner-collaboration/contacts[?ownerId=]` · `/contacts/{id}/revoke` | view · manage | The contacts of the owners; the agency withdraws one |
+| `GET` / `POST` | `/api/owner-collaboration/conversations[?ownerId=]` · `/conversations/{id}/messages[/{messageId}/attachment]` | view · manage | The inbox of the agency: open `{ ownerId, topic, ... }` (the reference of that owner and org), read, write |
+
+- **Files.** At most 10 MB (413 `owner_file_too_large`), recognised from their bytes: PDF, JPEG, PNG only (422 `owner_file_type_not_allowed`);
+  a PDF with active content (`/JavaScript`, `/JS`, `/Launch`, `/GoToR`, `/GoToE`, embedded files, rich media, XFA, submit/import forms; names read
+  with their `#xx` escapes, also inside the compressed streams, at most 50 MB inflated) is refused (422 `owner_file_active_content`).
+  `OwnerFileContentScanner` (engine `casazen-content-rules-1`, recorded on every stored file) is the scan: **there is no antivirus engine in the
+  stack**; an engine is another `IOwnerFileScanner`. Only clean files are stored, in the private bucket, under `owner-documents/{org}/{document}/{version}.ext`
+  and `owner-messages/{org}/{conversation}/{message}.ext`; a save that fails removes the file again.
+- **Expiry alerts.** The recurring `owner-portal-operations` raises a «To do» `OwnerDocumentExpiring` (action `RenewOwnerDocument`, entity
+  `OwnerDocumentVersion`) once per version in force that lapses within 30 days (urgent when lapsed), and closes it when a new version is in force
+  beyond the window or the document is withdrawn.
+- **Notifications** (AC-NF111-5). The agency writes: an e-mail (`owner-inbox-message`) to the owners of the owner profile and its active contacts
+  with `inbox.use`, unless they opted out; an owner writes: one e-mail (`owner-inbox-message-to-agency`) to the contact address of the org. Both say
+  only that there is a message and link to the conversation (`/portale-proprietari/messaggi/{id}`, `/app/owners/messages/{id}`): **never its words,
+  an amount or a guest**. Messages and files are kept as written (`OwnerMessages` append-only).
+- **Audit.** `OwnerPortalChanged` with `part` `document` (`shared`, `versioned`, `revoked`, `restored`), `contact` (`invited`, `accepted`,
+  `permissionsChanged`, `revoked`) and `conversation` (`opened`); downloads in `OwnerDocumentDownloads`. Agency removal or an ownership that ends
+  closes the access of the owner and of its contacts at the next request, without deleting any of it.
+
 #### Guests & digital check-in
 
 | Method | Path | Auth | Description |

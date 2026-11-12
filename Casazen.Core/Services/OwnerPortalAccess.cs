@@ -35,6 +35,15 @@ public static class OwnerPortalParts
 
     /// <summary>A rule of the owner stays (<c>OwnerStayRule.Id</c>).</summary>
     public const string StayRule = "stayRule";
+
+    /// <summary>A document shared with an owner (<c>OwnerDocument.Id</c>).</summary>
+    public const string Document = "document";
+
+    /// <summary>A delegated contact of an owner (<c>OwnerPortalContact.Id</c>).</summary>
+    public const string Contact = "contact";
+
+    /// <summary>A conversation of the owner inbox (<c>OwnerConversation.Id</c>): its opening; the messages are the record of what was said.</summary>
+    public const string Conversation = "conversation";
 }
 
 /// <summary>What happened to an item of the owner portal operations, in the <c>status</c> detail of its lines of the activity log. A closed list of codes.</summary>
@@ -54,6 +63,14 @@ public static class OwnerPortalAuditStatuses
     public const string ReleaseFailed = "releaseFailed";
     public const string Saved = "saved";
     public const string Removed = "removed";
+    public const string Shared = "shared";
+    public const string Versioned = "versioned";
+    public const string Revoked = "revoked";
+    public const string Restored = "restored";
+    public const string Invited = "invited";
+    public const string Accepted = "accepted";
+    public const string PermissionsChanged = "permissionsChanged";
+    public const string Opened = "opened";
 }
 
 /// <summary>The codes of the permissions of the owner portal (AC-NF111-4), as the API speaks them.</summary>

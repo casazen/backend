@@ -125,4 +125,11 @@ public enum ActivityType
     /// again. About the owner stay, on its property, urgent; closes when the block (or its release) is acknowledged or the stay is cancelled.
     /// </summary>
     OwnerStaySyncFailed = 71,
+
+    /// <summary>
+    /// A document the agency shares with an owner lapses within 30 days, or has lapsed (E07/F07/US01/T02, AC-NF111-3: the expiry alert): an insurance or a
+    /// mandate to renew. About the version in force (entity type <c>OwnerDocumentVersion</c>), on the property of the document or of the org; raised once
+    /// per version, closed when a new version is in force beyond the window or the document is withdrawn.
+    /// </summary>
+    OwnerDocumentExpiring = 72,
 }

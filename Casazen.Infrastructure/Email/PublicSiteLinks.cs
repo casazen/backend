@@ -107,6 +107,23 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         return Build($"/portale-proprietari/invito?token={Uri.EscapeDataString(inviteToken)}");
     }
 
+    /// <summary>
+    /// Page of the web app where a contact an owner invited accepts the invitation (route <c>/portale-proprietari/contatto</c>, E07/F07/US01/T02): as the
+    /// owner invitation, the page keeps the token through the Auth0 sign-in and sends it once, in the body of <c>POST api/owner-contacts/accept</c>. Only the
+    /// secret token is in the link.
+    /// </summary>
+    public string OwnerContactAccept(string inviteToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(inviteToken);
+        return Build($"/portale-proprietari/contatto?token={Uri.EscapeDataString(inviteToken)}");
+    }
+
+    /// <summary>A conversation of the owner inbox in the owner portal (route <c>/portale-proprietari/messaggi/{id}</c>, E07/F07/US01/T02): the id only.</summary>
+    public string OwnerPortalConversation(Guid conversationId) => Build($"/portale-proprietari/messaggi/{conversationId:D}");
+
+    /// <summary>A conversation of the owner inbox in the console of the agency (route <c>/app/owners/messages/{id}</c>, E07/F07/US01/T02): the id only.</summary>
+    public string AgencyOwnerConversation(Guid conversationId) => Build($"/app/owners/messages/{conversationId:D}");
+
     /// <summary>The people page of the account (AM-02, route <c>/app/account/people</c>, built by AM-04): who works in the org and its invitations.</summary>
     public string AccountPeople() => Build("/app/account/people");
 

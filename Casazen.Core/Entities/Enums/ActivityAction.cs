@@ -84,4 +84,7 @@ public enum ActivityAction
     /// or to cancel. Leads to the owner stays of the console. About the owner stay. The numbers 40 to 49 are the owner portal operations (epic E07/F07).
     /// </summary>
     ReviewOwnerStay = 40,
+
+    /// <summary>A document shared with an owner lapses: the documents of the owner in the console, where a new version is uploaded. About the version in force.</summary>
+    RenewOwnerDocument = 41,
 }

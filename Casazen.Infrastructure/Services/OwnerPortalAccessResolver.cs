@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -27,6 +28,30 @@ public sealed class OwnerPortalAccessResolver(AppDbContext db, TimeProvider time
         var grants = own
             .Select(o => new OwnerPortalGrant(o.OrgId, o.PropertyOwnerId, o.PropertyId, o.OwnershipStart, o.OwnershipEnd, OwnerPortalPermissions.Everything, null))
             .ToList();
+
+        // E07/F07/US01/T02: the delegations the owners gave this account, active now, with the permissions given, on the ownerships in force of the owner
+        // that gave them. A withdrawn contact, an owner whose ownership ended or was removed: nothing, from this request on.
+        var delegations = await db.OwnerPortalContacts
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(c => c.OwnerUserId == ownerUserId && c.Status == OwnerPortalContactStatus.Active)
+            .Select(c => new { c.Id, c.OrgId, c.PropertyOwnerId, c.Permissions })
+            .ToListAsync(cancellationToken);
+        if (delegations.Count > 0)
+        {
+            var ownerIds = delegations.Select(d => d.PropertyOwnerId).Distinct().ToList();
+            var ofTheOwners = await InForce(db, now)
+                .Where(o => ownerIds.Contains(o.PropertyOwnerId))
+                .Select(o => new { o.OrgId, o.PropertyOwnerId, o.PropertyId, o.OwnershipStart, o.OwnershipEnd })
+                .ToListAsync(cancellationToken);
+            foreach (var delegation in delegations.Where(d => d.Permissions != OwnerPortalPermission.None))
+            {
+                grants.AddRange(ofTheOwners
+                    .Where(o => o.OrgId == delegation.OrgId && o.PropertyOwnerId == delegation.PropertyOwnerId)
+                    .Select(o => new OwnerPortalGrant(o.OrgId, o.PropertyOwnerId, o.PropertyId, o.OwnershipStart, o.OwnershipEnd, delegation.Permissions, delegation.Id)));
+            }
+        }
+
         return new OwnerPortalAccess(ownerUserId, grants);
     }
 
