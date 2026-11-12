@@ -1566,8 +1566,9 @@ reservation of the room of a property, found through the confirmed `OctorateList
   `IAssistantDraftService.ProcessInboundAsync` (`AssistantDraftService`): (a) a property, a writable conversation (OCT-04), the assistant on, an AI provider in effect; (b) a message at most
   `Assistant:MaxMessageAgeHours` old, the last of the guest and not answered yet; (c) the last eight messages minimized (`AssistantPromptBuilder.Minimize`: `PiiScrubber`, then `[guest]`, `[host]`,
   `[booking]`, `[code]`) and classified on the Economy tier (`AssistantClassification.Parse`: anything unreadable or out of range is `Other` with a match of 0), the situation resolved; escalate or a
-  forbidden topic is `Escalated` with a «Da fare» `MessageToReply`/`ReplyToMessage` about the conversation (urgency and deadline of `Assistant:Escalation`), an urgent message gets the same «Da fare» and
-  the alert `UrgentGuestMessage` through `HostMessageAlertDelivery` (a delivery key of its own); (d) the facts (`RetrieveAsync`) and the draft (the template filled in, else the model on the Standard tier;
+  forbidden topic is `Escalated` with a «Da fare» `MessageToReply`/`ReplyToMessage` about the conversation (urgency and deadline of `Assistant:Escalation`), the «Da fare» is one per conversation while it is open (a later message that is more urgent raises it with
+  `IInternalActivityService.RaiseUrgencyAsync`, a less urgent one never lowers it), and an urgent message also gets the alert `UrgentGuestMessage` through `HostMessageAlertDelivery` (a delivery key of
+  its own), done before the row of the log is written; (d) the facts (`RetrieveAsync`) and the draft (the template filled in, else the model on the Standard tier;
   the server fills the variables, `MessageTemplateRenderer.FillKnown`, and the signature); (e) `AssistantConfidence` (`round(situationMatch × factCoverage × ruleCompliance, 3)`, a proposal for the
   product owner); (f, g) `IAutoSendGate` (the default `NeverAutoSendGate` refuses with `auto_send_not_enabled`) and the draft in the approval queue (`MessageDraft`, `ItemId` = the inbound message), then
   the row of `AssistantDecisionLogs` (ids, codes and scores, never text; one per message, written again only for a draft a person asks for). A budget used up or a provider that fails is a decision
