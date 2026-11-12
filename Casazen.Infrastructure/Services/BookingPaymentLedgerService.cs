@@ -48,9 +48,18 @@ public sealed class BookingPaymentLedgerService(
             degraded = true;
 
         if (collections is { Payments: { Count: > 0 } read })
-            lines.AddRange(read.Select(p => CollectionLineOf(booking, p, documents.GetValueOrDefault(booking.Id))));
+        {
+            // A payment CasaZen recorded on the reservation (its transaction is the one stored on the payment) comes back in the reservation's payments: it is
+            // the line of the payment above, never a second one (the amount on Octorate is net of the tourist tax, so it cannot be matched by amount).
+            var mirrored = payments.Where(p => p.OctorateTransactionId is not null).Select(p => p.OctorateTransactionId!).ToHashSet(StringComparer.Ordinal);
+            lines.AddRange(read
+                .Where(p => p.Transaction is null || !mirrored.Contains(p.Transaction))
+                .Select(p => CollectionLineOf(booking, p, documents.GetValueOrDefault(booking.Id))));
+        }
         else
+        {
             lines.AddRange(OtaLinesOf(booking, documents.GetValueOrDefault(booking.Id)));
+        }
 
         return new PaymentLedgerBooking(
             booking.Id,
@@ -131,7 +140,8 @@ public sealed class BookingPaymentLedgerService(
                 p.ProviderFeeAmount,
                 p.ProviderNetAmount,
                 p.ProviderBalanceCurrency,
-                p.ProviderAvailableOn))
+                p.ProviderAvailableOn,
+                p.OctorateTransactionId))
             .ToListAsync(ct);
     }
 
@@ -179,14 +189,24 @@ public sealed class BookingPaymentLedgerService(
             .AsNoTracking()
             .Where(d => d.BookingId != null && bookingIds.Contains(d.BookingId.Value)
                         && d.Kind != DocumentKind.CreditNote && d.Status != FiscalDocumentStatus.Discarded)
-            .Select(d => new { BookingId = d.BookingId!.Value, d.Id, d.Number, d.Kind, d.Status, d.PaymentState, d.CreatedAt })
+            .Select(d => new { BookingId = d.BookingId!.Value, d.Id, d.Number, d.Kind, d.Status, d.PaymentState, d.CreatedAt, d.Source, d.Total })
             .ToListAsync(ct);
+
+        // The state of a document CasaZen issued is the current one (what was collected for the booking, net of the refunds), as the document API gives it: the
+        // state saved with the draft is not shown. A document Octorate issued keeps the state Octorate gave it.
+        var collected = await FiscalDocumentService.CollectedByBookingAsync(db, rows.Select(r => r.BookingId).Distinct().ToList(), ct);
         return rows
             .GroupBy(d => d.BookingId)
             .ToDictionary(
                 g => g.Key,
                 g => g.OrderBy(d => d.Status == FiscalDocumentStatus.Issued ? 0 : 1).ThenByDescending(d => d.CreatedAt).Select(d =>
-                    new PaymentLedgerDocument(d.Id, d.Number, d.Kind.ToString(), d.Status.ToString(), d.PaymentState.ToString())).First());
+                    new PaymentLedgerDocument(
+                        d.Id,
+                        d.Number,
+                        d.Kind.ToString(),
+                        d.Status.ToString(),
+                        (d.Source == FiscalDocumentSource.CasaZen ? FiscalDocumentService.PaymentStateOf(collected.GetValueOrDefault(d.BookingId), d.Total) : d.PaymentState)
+                        .ToString())).First());
     }
 
     /// <summary>The collections of the reservation from Octorate, under the org's scope; <c>Failed</c> when the read did not answer.</summary>
@@ -293,7 +313,8 @@ public sealed class BookingPaymentLedgerService(
         decimal? ProviderFee,
         decimal? ProviderNet,
         string? ProviderCurrency,
-        DateTime? ProviderAvailableOn);
+        DateTime? ProviderAvailableOn,
+        string? OctorateTransactionId);
 
     private sealed record BookingRow(
         Guid Id,

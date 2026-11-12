@@ -82,6 +82,7 @@ public static class FiscalDocumentErrors
     public const string ProfileIncomplete = DocumentIssuerErrorCodes.ProfileIncomplete;
     public const string IssuanceNotAvailable = DocumentIssuerErrorCodes.IssuanceNotAvailable;
     public const string InvoiceDataMissing = "document_invoice_data_missing";
+    public const string BookingNotActive = "booking_not_active";
     public const string AlreadyIssued = "document_already_issued";
     public const string NotDraft = "document_not_draft";
     public const string CreditAmountExceeds = "credit_amount_exceeds";

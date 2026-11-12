@@ -170,8 +170,13 @@ public sealed class FiscalDocumentService(
         return note;
     }
 
-    public async Task<FiscalDocument?> GetAsync(Guid documentId, CancellationToken ct = default) =>
-        await db.FiscalDocuments.AsNoTracking().Include(d => d.Lines).FirstOrDefaultAsync(d => d.Id == documentId, ct);
+    public async Task<FiscalDocument?> GetAsync(Guid documentId, CancellationToken ct = default)
+    {
+        var document = await db.FiscalDocuments.AsNoTracking().Include(d => d.Lines).FirstOrDefaultAsync(d => d.Id == documentId, ct);
+        if (document is not null)
+            await ApplyCurrentPaymentStateAsync(db, [document], ct);
+        return document;
+    }
 
     public async Task<FiscalDocumentPage> ListAsync(HostScope scope, FiscalDocumentCriteria criteria, int page, int pageSize, CancellationToken ct = default)
     {
@@ -214,6 +219,7 @@ public sealed class FiscalDocumentService(
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);
+        await ApplyCurrentPaymentStateAsync(db, items, ct);
         return new FiscalDocumentPage(items, total, page, pageSize);
     }
 
@@ -384,6 +390,21 @@ public sealed class FiscalDocumentService(
             : null;
 
         var number = await numbering.ReserveNextAsync(booking.OrgId, series, ct);
+
+        // What the document may be is decided again here, under the lock of the series (a credit note takes the series of its original, so the same lock):
+        // the checks before the transaction are quick refusals, but two parallel requests both pass them, and neither the original nor the booking changes to
+        // tell them apart. A refusal rolls the transaction back with the number (no gap).
+        if (credited is null)
+        {
+            await RequireNoOtherDocumentAsync(booking.Id, document.Id, ct);
+        }
+        else
+        {
+            var remaining = credited.Total - await CreditedSoFarAsync(credited.Id, ct);
+            if (document.Total <= 0m || document.Total > remaining)
+                throw new DomainRuleException(FiscalDocumentErrors.CreditAmountExceeds, "FiscalDocumentCreditAmountExceeds", remaining);
+        }
+
         document.Series = number.Series;
         document.SequenceNumber = number.Number;
         document.Number = number.Display;
@@ -489,6 +510,11 @@ public sealed class FiscalDocumentService(
         if (!FiscalDocumentRules.IsDirectSource(booking.Source))
             throw new DomainRuleException(FiscalDocumentErrors.BookingNotDirect, DocumentIssuerErrorCodes.MessageKeyOf(DocumentIssuerErrorCodes.BookingNotDirect));
 
+        // A booking that is not active (a request, a hold, a cancelled booking, a no-show) owes no document: no draft, no number, no lock of the issuer. «Active»
+        // is the one definition of the code (AlloggiatiStatusRules), never a list of its own.
+        if (!AlloggiatiStatusRules.ActiveBookingStatuses.Contains(booking.Status) || booking.NoShowAt is not null)
+            throw new DomainRuleException(FiscalDocumentErrors.BookingNotActive, "FiscalDocumentBookingNotActive");
+
         var decision = await issuers.ResolveIssuerAsync(booking.Id, ct);
         switch (decision.Kind)
         {
@@ -577,11 +603,41 @@ public sealed class FiscalDocumentService(
 
     private async Task<FiscalDocumentPaymentState> PaymentStateAsync(Guid bookingId, decimal total, CancellationToken ct)
     {
-        var collected = await db.Payments
+        var collected = await CollectedByBookingAsync(db, [bookingId], ct);
+        return PaymentStateOf(collected.GetValueOrDefault(bookingId), total);
+    }
+
+    /// <summary>The money collected for each booking: its completed and partially refunded payments, net of the refunds.</summary>
+    internal static async Task<Dictionary<Guid, decimal>> CollectedByBookingAsync(AppDbContext db, IReadOnlyCollection<Guid> bookingIds, CancellationToken ct)
+    {
+        if (bookingIds.Count == 0)
+            return [];
+
+        return await db.Payments
             .AsNoTracking()
-            .Where(p => p.BookingId == bookingId && (p.Status == PaymentStatus.Completed || p.Status == PaymentStatus.PartiallyRefunded))
-            .SumAsync(p => p.Amount - p.RefundedAmount, ct);
-        return collected >= total ? FiscalDocumentPaymentState.Paid : FiscalDocumentPaymentState.ToCollect;
+            .Where(p => bookingIds.Contains(p.BookingId) && (p.Status == PaymentStatus.Completed || p.Status == PaymentStatus.PartiallyRefunded))
+            .GroupBy(p => p.BookingId)
+            .Select(g => new { BookingId = g.Key, Collected = g.Sum(p => p.Amount - p.RefundedAmount) })
+            .ToDictionaryAsync(x => x.BookingId, x => x.Collected, ct);
+    }
+
+    /// <summary>A document is <c>Paid</c> when what was collected for its booking reaches its total, else <c>ToCollect</c>.</summary>
+    internal static FiscalDocumentPaymentState PaymentStateOf(decimal collected, decimal total) =>
+        collected >= total ? FiscalDocumentPaymentState.Paid : FiscalDocumentPaymentState.ToCollect;
+
+    /// <summary>
+    /// The payment state of the documents CasaZen issued is the current one, read from the payments, not the one of the day the draft was made (an
+    /// Octorate document keeps the state Octorate gave it). Applied on the rows read without tracking: nothing is saved.
+    /// </summary>
+    internal static async Task ApplyCurrentPaymentStateAsync(AppDbContext db, IReadOnlyCollection<FiscalDocument> documents, CancellationToken ct)
+    {
+        var own = documents.Where(d => d.Source == FiscalDocumentSource.CasaZen && d.Kind != DocumentKind.CreditNote && d.BookingId is not null).ToList();
+        if (own.Count == 0)
+            return;
+
+        var collected = await CollectedByBookingAsync(db, own.Select(d => d.BookingId!.Value).Distinct().ToList(), ct);
+        foreach (var document in own)
+            document.PaymentState = PaymentStateOf(collected.GetValueOrDefault(document.BookingId!.Value), document.Total);
     }
 
     // ---------------------------------------------------------------- reads
@@ -598,7 +654,7 @@ public sealed class FiscalDocumentService(
             .AsNoTracking()
             .Where(b => b.Id == id)
             .Select(b => new BookingFacts(
-                b.Id, b.OrgId, b.Source, b.BasePrice, b.CleaningFee, b.TouristTax, b.Property.Currency, b.CheckInDate, b.CheckOutDate))
+                b.Id, b.OrgId, b.Source, b.BasePrice, b.CleaningFee, b.TouristTax, b.Property.Currency, b.CheckInDate, b.CheckOutDate, b.Status, b.NoShowAt))
             .FirstOrDefaultAsync(ct)
             ?? throw new NotFoundException($"Booking {id} was not found") { Code = "booking_not_found", MessageKey = "BookingNotFound" };
     }
@@ -701,7 +757,9 @@ public sealed class FiscalDocumentService(
         decimal TouristTax,
         string? Currency,
         DateTime CheckIn,
-        DateTime CheckOut)
+        DateTime CheckOut,
+        BookingStatus Status,
+        DateTime? NoShowAt)
     {
         /// <summary>The nights of the stay (calendar days between check-in and check-out).</summary>
         public int Nights => Math.Max(0, (CheckOut.Date - CheckIn.Date).Days);

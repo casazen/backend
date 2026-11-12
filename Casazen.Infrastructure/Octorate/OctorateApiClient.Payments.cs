@@ -44,7 +44,7 @@ public sealed partial class OctorateApiClient
 
             var date = OctorateJson.DateOf(OctorateJson.Text(item, "date", "paymentDate"))
                 ?? (OctorateJson.Instant(item, "createTime", "created") is { } instant ? DateOnly.FromDateTime(instant) : null);
-            list.Add(new OctoratePayment(amount, date, OctorateJson.Text(item, "paymentMode", "mode", "type"), companyCollect));
+            list.Add(new OctoratePayment(amount, date, OctorateJson.Text(item, "paymentMode", "mode", "type"), companyCollect, OctorateJson.Text(item, "transaction")));
         }
 
         return list;

@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -125,6 +126,54 @@ public class FiscalDocumentServiceProofTests
         var credited = await db.FiscalDocuments.Where(d => d.CreditedDocumentId == original.Id).SumAsync(d => d.Total);
         Assert.Equal(original.Total, credited);
         await Assert.ThrowsAsync<DomainRuleException>(() => service.CreateCreditNoteAsync(original.Id, 0.01m, "TEST", confirm: true, null));
+    }
+
+    /// <summary>A booking that is not active owes no document: no draft, no number, no lock of the issuer (the one definition of an active booking).</summary>
+    [Theory]
+    [InlineData(BookingStatus.Pending, false)]
+    [InlineData(BookingStatus.Cancelled, false)]
+    [InlineData(BookingStatus.Confirmed, true)]
+    public async Task FiscalDocument_BookingNotActive_GetsNoDraftNoNumberNoLock_Test(BookingStatus status, bool noShow)
+    {
+        await using var db = NewDb();
+        var booking = await SeedAsync(db, BookingSource.Direct);
+        var stored = await db.Bookings.SingleAsync(b => b.Id == booking);
+        stored.Status = status;
+        stored.NoShowAt = noShow ? Now.UtcDateTime : null;
+        await db.SaveChangesAsync();
+
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => Service(db).CreateDraftAsync(booking, null));
+
+        Assert.Equal(FiscalDocumentErrors.BookingNotActive, refused.Code);
+        Assert.Empty(await db.FiscalDocuments.ToListAsync());
+        Assert.Empty(await db.FiscalNumberSequences.ToListAsync());
+        Assert.Empty(await db.BookingDocumentIssuers.ToListAsync());
+    }
+
+    /// <summary>The payment state of a document CasaZen issued is the current one, read from the payments, not the one of the day the draft was made.</summary>
+    [Fact]
+    public async Task FiscalDocument_PaymentState_IsTheCurrentOneWhenRead_Test()
+    {
+        await using var db = NewDb();
+        var booking = await SeedAsync(db, BookingSource.Direct);
+        var service = Service(db);
+        var issued = await service.IssueAsync((await service.CreateDraftAsync(booking, null)).Id, confirm: true);
+        Assert.Equal(FiscalDocumentPaymentState.ToCollect, (await service.GetAsync(issued.Id))!.PaymentState);
+
+        // The guest pays the whole total: the document is Paid for the API (the stored value is not what is shown).
+        var payment = new Payment { OrgId = OrgId, BookingId = booking, Amount = 362m, Status = PaymentStatus.Completed, ProcessedAt = Now.UtcDateTime };
+        db.Payments.Add(payment);
+        await db.SaveChangesAsync();
+        Assert.Equal(FiscalDocumentPaymentState.Paid, (await service.GetAsync(issued.Id))!.PaymentState);
+        var page = await service.ListAsync(new HostScope(OrgId), new FiscalDocumentCriteria(), 1, 20);
+        Assert.Equal(FiscalDocumentPaymentState.Paid, Assert.Single(page.Items).PaymentState);
+
+        // A partial refund: what is collected net of it no longer reaches the total.
+        payment.RefundedAmount = 100m;
+        payment.Status = PaymentStatus.PartiallyRefunded;
+        await db.SaveChangesAsync();
+        Assert.Equal(FiscalDocumentPaymentState.ToCollect, (await service.GetAsync(issued.Id))!.PaymentState);
+        Assert.Equal(FiscalDocumentPaymentState.ToCollect, Assert.Single((await service.ListAsync(new HostScope(OrgId), new FiscalDocumentCriteria(), 1, 20)).Items).PaymentState);
     }
 
     [Fact]

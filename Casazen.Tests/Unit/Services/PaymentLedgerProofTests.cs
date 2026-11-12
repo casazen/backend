@@ -111,6 +111,48 @@ public class PaymentLedgerProofTests
         Assert.False(none.Degraded);
     }
 
+    /// <summary>
+    /// A payment CasaZen recorded on the Octorate reservation comes back in the reservation's payments with its transaction: it is the line of the payment, not a
+    /// second one (the amount on Octorate is net of the tourist tax, so it is matched by transaction, never by amount). Only what the channel collected is added.
+    /// </summary>
+    [Fact]
+    public async Task PaymentLedger_PaymentMirroredOnOctorate_IsNotCountedTwice_Test()
+    {
+        await using var db = NewDb();
+        var (booking, property) = await SeedBookingAsync(db, "EUR", reservation: "R-11");
+        var card = Payment(booking, 450m, PaymentMethod.CreditCard, "pi_TEST_mirrored");
+        card.OctorateTransactionId = "pi_TEST_mirrored";
+        var cash = Payment(booking, 100m, PaymentMethod.CashOnArrival, null);
+        cash.OctorateTransactionId = "casazen-" + cash.Id.ToString("N");
+        db.Payments.AddRange(card, cash);
+        db.OctorateListingMappings.Add(new OctorateListingMapping
+        {
+            OrgId = OrgId,
+            ConnectionId = Guid.NewGuid(),
+            OctorateAccommodationId = "ACC-1",
+            OctorateProductId = "P-1",
+            PropertyId = property,
+            Status = OctorateMappingStatus.Confirmed,
+        });
+        await db.SaveChangesAsync();
+        var day = new DateOnly(2026, 11, 3);
+        var client = new Mock<IOctorateApiClient>();
+        client.Setup(c => c.GetReservationPaymentsAsync("ACC-1", "R-11", It.IsAny<CancellationToken>())).ReturnsAsync(new List<OctoratePayment>
+        {
+            new(420m, day, "CARD", "HOTEL", "pi_TEST_mirrored"),
+            new(100m, day, "CASH", "HOTEL", cash.OctorateTransactionId),
+            new(60m, day, "BANK", "COMPANY", "ota-9"),
+        });
+
+        var result = await Service(db, client.Object).GetForBookingAsync(new HostScope(OrgId), booking);
+
+        Assert.Equal(3, result!.Lines.Count);
+        Assert.Equal(610m, result.Lines.Sum(l => l.Gross));
+        var channel = Assert.Single(result.Lines, l => l.Kind == PaymentLedgerKind.Ota);
+        Assert.Equal(60m, channel.Gross);
+        Assert.Equal(PaymentLedgerKind.Card, Assert.Single(result.Lines, l => l.PaymentId == card.Id).Kind);
+    }
+
     private static BookingPaymentLedgerService Service(AppDbContext db, IOctorateApiClient? client = null)
     {
         var scope = new Mock<IOctorateOrgScope>();
