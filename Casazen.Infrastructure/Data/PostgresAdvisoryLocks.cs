@@ -428,6 +428,13 @@ internal static class PostgresAdvisoryLocks
         /// joins the debit the first saved. A failed debit is a new key only after that failed row is recorded.
         /// </summary>
         MaintenancePayment = 21_043,
+
+        /// <summary>
+        /// The counter of the fiscal numbers of one org and series (key: <c>{orgId:N}:{series}</c>, E06/F01/US02/T02, NF-83): taken in the transaction
+        /// that saves the document, so two issues never get the same number and a rolled-back one leaves no gap. The values 1_600 to 1_699 are the
+        /// fiscal documents and the agency financial chain (epic E06).
+        /// </summary>
+        FiscalNumbering = 1_601,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

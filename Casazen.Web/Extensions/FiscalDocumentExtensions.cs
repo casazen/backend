@@ -44,6 +44,9 @@ public static class FiscalDocumentExtensions
         // What Stripe kept and credited for a settled card payment, read by the job payment-provider-fees (E06/F04/US01/T02, NF-85).
         services.AddScoped<IPaymentProviderFeeService, PaymentProviderFeeService>();
 
+        // The gap-free numbers of the fiscal documents, per org and series, in the transaction that saves the document (E06/F01/US02/T02, NF-83).
+        services.AddScoped<IFiscalNumberingService, FiscalNumberingService>();
+
         return services;
     }
 }

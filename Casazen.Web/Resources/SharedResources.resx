@@ -5832,4 +5832,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="F24DocDisclaimer" xml:space="preserve">
     <value>Documento generato da CasaZen con i dati registrati. Il versamento si esegue con il proprio intermediario o con i servizi telematici dell'Agenzia delle Entrate: CasaZen non presenta il modello.</value>
   </data>
+  <data name="FiscalSeriesTooLong" xml:space="preserve">
+    <value>La serie dei documenti fiscali deve avere da 1 a {0} caratteri.</value>
+  </data>
 </root>
