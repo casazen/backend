@@ -49,6 +49,14 @@ public interface IFiscalDocumentService
     /// <summary>One page of the documents of the scope (newest first), narrowed in SQL to the properties the scope reaches.</summary>
     Task<FiscalDocumentPage> ListAsync(HostScope scope, FiscalDocumentCriteria criteria, int page, int pageSize, CancellationToken ct = default);
 
+    /// <summary>
+    /// The documents of the scope for a file (FIS-07, NF-87, E06/F03/US03/T01), newest first and at most <paramref name="limit"/> of them: the same
+    /// narrowing in SQL as <see cref="ListAsync"/> (the scope, then <paramref name="criteria"/>), the payment state the current one, and only the
+    /// documents that were issued, whatever <see cref="FiscalDocumentCriteria.Status"/> says: a draft has no number and no date, and a discarded one
+    /// is not a document. The XML and the lines are not read.
+    /// </summary>
+    Task<IReadOnlyList<FiscalDocumentExportRow>> ListForExportAsync(HostScope scope, FiscalDocumentCriteria criteria, int limit, CancellationToken ct = default);
+
     /// <summary>The FatturaPA XML of an issued CasaZen invoice or credit note.</summary>
     Task<string> GetXmlAsync(Guid documentId, CancellationToken ct = default);
 
@@ -72,6 +80,28 @@ public sealed record FiscalDocumentPage(IReadOnlyList<FiscalDocument> Items, int
     public const int DefaultPageSize = 20;
     public const int MaxPageSize = 100;
 }
+
+/// <summary>
+/// One row of the list of the documents as a file has it (E06/F03/US03/T01): what the document stores (amounts as stored, in <see cref="Currency"/>,
+/// the day of the issue a Europe/Rome calendar day) with the code of its booking and the name of its property when it has a booking, and the payment
+/// state the current one. Only the name of the recipient is carried, never its fiscal code, VAT number or address.
+/// </summary>
+public sealed record FiscalDocumentExportRow(
+    Guid Id,
+    FiscalDocumentKind Kind,
+    string? Number,
+    DateOnly? IssueDate,
+    string? BookingCode,
+    string? PropertyName,
+    string? RecipientName,
+    decimal TaxableBase,
+    decimal VatAmount,
+    decimal StampDuty,
+    decimal Total,
+    string Currency,
+    FiscalDocumentPaymentState PaymentState,
+    string SdiStatus,
+    FiscalDocumentSource Source);
 
 /// <summary>The stable codes of the errors of the fiscal documents, with the keys of their messages in <c>SharedResources</c>.</summary>
 public static class FiscalDocumentErrors
