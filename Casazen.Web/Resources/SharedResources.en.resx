@@ -6039,4 +6039,43 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="PaymentLedgerDegraded" xml:space="preserve">
     <value>The collections of the channel manager were not read: the amounts stored at the import are shown.</value>
   </data>
+  <data name="OwnerPolicyInvalid" xml:space="preserve">
+    <value>A value of the accounting rule is invalid or missing.</value>
+  </data>
+  <data name="OwnerPolicyVersionExists" xml:space="preserve">
+    <value>This version of the rule already exists: a change is a new version.</value>
+  </data>
+  <data name="OwnerPolicyAlreadyApproved" xml:space="preserve">
+    <value>The rule is already approved and can no longer change: create a new version.</value>
+  </data>
+  <data name="OwnerPolicyNotFound" xml:space="preserve">
+    <value>Accounting rule not found.</value>
+  </data>
+  <data name="OwnerFiscalProfileInvalid" xml:space="preserve">
+    <value>A value of the owner's fiscal profile is not valid.</value>
+  </data>
+  <data name="OwnerFiscalProfileOverlap" xml:space="preserve">
+    <value>A fiscal profile already starts on this date or later: profiles do not overlap.</value>
+  </data>
+  <data name="OwnerFiscalProfileMissing" xml:space="preserve">
+    <value>The owner has no fiscal profile in force on this date.</value>
+  </data>
+  <data name="OwnerFiscalProfileIncomplete" xml:space="preserve">
+    <value>The owner's fiscal profile is incomplete.</value>
+  </data>
+  <data name="OwnerFiscalPolicyMissing" xml:space="preserve">
+    <value>The owner's fiscal profile names no accounting rule.</value>
+  </data>
+  <data name="OwnerFiscalPolicyNotApproved" xml:space="preserve">
+    <value>The owner's accounting rule is not approved by the accountant: financial operations are blocked.</value>
+  </data>
+  <data name="OwnerFiscalPolicyNotEffective" xml:space="preserve">
+    <value>The owner's accounting rule is not in force on this date.</value>
+  </data>
+  <data name="OwnerFiscalPolicyJurisdictionMismatch" xml:space="preserve">
+    <value>The accounting rule is not of the owner's tax jurisdiction.</value>
+  </data>
+  <data name="OwnerNotFound" xml:space="preserve">
+    <value>Owner not found.</value>
+  </data>
 </root>

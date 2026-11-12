@@ -381,6 +381,10 @@ public class AppDbContext(
     public DbSet<FiscalDocumentLine> FiscalDocumentLines { get; set; } = null!;
     public DbSet<FiscalNumberSequence> FiscalNumberSequences { get; set; } = null!;
 
+    // The owner accounting of the agencies: the approved rule sets and the effective-dated fiscal profiles of the owners (NF-109, NF-110, E06/F05/US02/T01)
+    public DbSet<OwnerAccountingPolicy> OwnerAccountingPolicies { get; set; } = null!;
+    public DbSet<OwnerFiscalProfile> OwnerFiscalProfiles { get; set; } = null!;
+
     // The check-in guests and the states of a stay sent to Octorate (NF-41, NF-45, E03/F01/US01/T03): ids, hashes and codes, no personal data
     public DbSet<StayGuestOctorateLink> StayGuestOctorateLinks { get; set; } = null!;
     public DbSet<OctorateStayStateSync> OctorateStayStateSyncs { get; set; } = null!;
@@ -1980,6 +1984,10 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new FiscalDocumentConfiguration());
         modelBuilder.ApplyConfiguration(new FiscalDocumentLineConfiguration());
         modelBuilder.ApplyConfiguration(new FiscalNumberSequenceConfiguration());
+
+        // The owner accounting (NF-109, NF-110, E06/F05/US02): the rule sets of the agency and the effective-dated fiscal profiles of the owners.
+        modelBuilder.ApplyConfiguration(new OwnerAccountingPolicyConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerFiscalProfileConfiguration());
 
         // A payment is recorded on its Octorate reservation once (E08/F01/US01/T01, AC-NF74-4): its transaction is unique in the org. Only
         // the payments recorded there are in the index.

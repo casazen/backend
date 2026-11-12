@@ -39,6 +39,13 @@ public static class AgencyPermissions
     /// <summary>The agency's trusted suppliers.</summary>
     public const string SupplierManage = "agency.supplier.manage";
 
+    /// <summary>
+    /// The fiscal profiles of the owners in full and their changes, the rule sets of the owner accounting and their approval, the payouts and the tax
+    /// evidence (E06/F05/US02, NF-109, NF-110, ADR-012): the elevated finance permission. Without it the profiles are answered masked.
+    /// </summary>
+    public const string OwnerFinancialManage = "agency.owner.financial.manage";
+
+
     /// <summary>Every agency permission.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -46,5 +53,6 @@ public static class AgencyPermissions
         StatementView, StatementManage,
         InvoiceManage, WithholdingManage, WireManage,
         ActivityManage, SupplierManage,
+        OwnerFinancialManage,
     ];
 }

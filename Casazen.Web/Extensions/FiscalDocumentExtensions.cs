@@ -63,6 +63,9 @@ public static class FiscalDocumentExtensions
         // The payment ledger of a booking and of a period: card, manual and channel payments with the document of the booking (E06/F04/US01/T03, NF-85).
         services.AddScoped<IBookingPaymentLedgerService, BookingPaymentLedgerService>();
 
+        // The owner accounting of the agencies (E06/F05/US02): the approved rule sets and the effective-dated fiscal profiles of the owners (T01).
+        services.AddScoped<IOwnerFiscalProfileService, OwnerFiscalProfileService>();
+
         return services;
     }
 }

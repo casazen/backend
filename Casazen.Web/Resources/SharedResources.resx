@@ -6039,4 +6039,43 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="PaymentLedgerDegraded" xml:space="preserve">
     <value>Gli incassi del gestionale non sono stati letti: sono mostrati gli importi registrati all'importazione.</value>
   </data>
+  <data name="OwnerPolicyInvalid" xml:space="preserve">
+    <value>Un dato della regola contabile non è valido o manca.</value>
+  </data>
+  <data name="OwnerPolicyVersionExists" xml:space="preserve">
+    <value>Esiste già questa versione della regola: una modifica è una versione nuova.</value>
+  </data>
+  <data name="OwnerPolicyAlreadyApproved" xml:space="preserve">
+    <value>La regola è già approvata e non si modifica più: crea una versione nuova.</value>
+  </data>
+  <data name="OwnerPolicyNotFound" xml:space="preserve">
+    <value>Regola contabile non trovata.</value>
+  </data>
+  <data name="OwnerFiscalProfileInvalid" xml:space="preserve">
+    <value>Un dato del profilo fiscale del proprietario non è valido.</value>
+  </data>
+  <data name="OwnerFiscalProfileOverlap" xml:space="preserve">
+    <value>Esiste già un profilo fiscale che inizia in questa data o dopo: i profili non si sovrappongono.</value>
+  </data>
+  <data name="OwnerFiscalProfileMissing" xml:space="preserve">
+    <value>Il proprietario non ha un profilo fiscale valido in questa data.</value>
+  </data>
+  <data name="OwnerFiscalProfileIncomplete" xml:space="preserve">
+    <value>Il profilo fiscale del proprietario è incompleto.</value>
+  </data>
+  <data name="OwnerFiscalPolicyMissing" xml:space="preserve">
+    <value>Il profilo fiscale del proprietario non indica una regola contabile.</value>
+  </data>
+  <data name="OwnerFiscalPolicyNotApproved" xml:space="preserve">
+    <value>La regola contabile del proprietario non è approvata dal commercialista: le operazioni finanziarie sono bloccate.</value>
+  </data>
+  <data name="OwnerFiscalPolicyNotEffective" xml:space="preserve">
+    <value>La regola contabile del proprietario non è in vigore in questa data.</value>
+  </data>
+  <data name="OwnerFiscalPolicyJurisdictionMismatch" xml:space="preserve">
+    <value>La regola contabile non è della giurisdizione fiscale del proprietario.</value>
+  </data>
+  <data name="OwnerNotFound" xml:space="preserve">
+    <value>Proprietario non trovato.</value>
+  </data>
 </root>

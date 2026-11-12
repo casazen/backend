@@ -1418,6 +1418,7 @@ unchanged. The matrix is `OrgRoleCatalog.AgencyPermissionsOf` (the keys: `Agency
 | `agency.wire.manage` | `api/wire-transfers` | Yes | Yes | No | No | No |
 | `agency.activity.manage` | `api/internal-activities` | Yes | Yes | No | No | No |
 | `agency.supplier.manage` | `api/trusted-suppliers` | Yes | Yes | No | No | No |
+| `agency.owner.financial.manage` | `api/owners/{id}/fiscal-profiles` (full values, changes), `api/owner-accounting/policies` (create, approve), `api/owner-accounting/payouts`, the tax filing states (E06/F05/US02) | Yes | Yes | No | No | No |
 
 - **Statements and withholding** were behind `agency.owner.view`, which the property manager holds: they now have their own policies
   (`AgencyStatementView` on the controller, `AgencyStatementManage` on the three writes; `AgencyWithholdingManage`).

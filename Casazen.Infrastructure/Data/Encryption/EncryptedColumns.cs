@@ -134,6 +134,13 @@ public static class EncryptedColumns
     public const string FiscalDocumentPurpose = "Casazen.FiscalDocument";
 
     /// <summary>
+    /// Purpose of the fiscal profiles of the owners (ADR-012, NF-109, E06/F05/US02/T01): the legal name, the legal address, the fiscal code, the VAT number,
+    /// the foreign tax id and the bank account of <see cref="OwnerFiscalProfile"/>. Read in full only with <c>agency.owner.financial.manage</c>; never
+    /// searched. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string OwnerFiscalProfilePurpose = "Casazen.OwnerFiscalProfile";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -284,6 +291,15 @@ public static class EncryptedColumns
             nameof(FiscalDocument.RecipientSdiCode),
             nameof(FiscalDocument.RecipientPec),
             nameof(FiscalDocument.FatturaPaXml)),
+        // ADR-012, NF-109: the identifiers, the address and the bank account of the fiscal profile of an owner (E06/F05/US02/T01).
+        new EncryptedEntity<OwnerFiscalProfile>(
+            OwnerFiscalProfilePurpose,
+            nameof(OwnerFiscalProfile.LegalName),
+            nameof(OwnerFiscalProfile.LegalAddress),
+            nameof(OwnerFiscalProfile.FiscalCode),
+            nameof(OwnerFiscalProfile.VatNumber),
+            nameof(OwnerFiscalProfile.ForeignTaxId),
+            nameof(OwnerFiscalProfile.BankAccountReference)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

@@ -7244,6 +7244,182 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("OutboxEvents");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerAccountingPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ApprovedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ApprovedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("Jurisdiction")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ParametersJson")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("character varying(8000)");
+
+                    b.Property<string>("RuleCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("SourceSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("SourceUrl")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateOnly>("ValidFrom")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("ValidTo")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "Jurisdiction");
+
+                    b.HasIndex("OrgId", "RuleCode", "Version")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OwnerAccountingPolicies_OrgId_RuleCode_Version");
+
+                    b.ToTable("OwnerAccountingPolicies", t =>
+                        {
+                            t.HasCheckConstraint("CK_OwnerAccountingPolicies_Validity", "\"ValidTo\" IS NULL OR \"ValidTo\" >= \"ValidFrom\"");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerFiscalProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AccountingPolicyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BankAccountReference")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("EntityKind")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ExpenseCommissionModel")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("FiscalCode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ForeignTaxId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LegalAddress")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LegalName")
+                        .HasColumnType("text");
+
+                    b.Property<DateOnly?>("MandateFrom")
+                        .HasColumnType("date");
+
+                    b.Property<string>("MandateRole")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateOnly?>("MandateTo")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyOwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RevenueRecognitionRule")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("SettlementCurrency")
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<string>("TaxJurisdiction")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<string>("TaxResidenceCountry")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<DateOnly>("ValidFrom")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("ValidTo")
+                        .HasColumnType("date");
+
+                    b.Property<string>("VatNumber")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WorkingCapitalRule")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountingPolicyId");
+
+                    b.HasIndex("PropertyOwnerId");
+
+                    b.HasIndex("OrgId", "PropertyOwnerId", "ValidFrom")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OwnerFiscalProfiles_OrgId_PropertyOwnerId_ValidFrom");
+
+                    b.ToTable("OwnerFiscalProfiles", t =>
+                        {
+                            t.HasCheckConstraint("CK_OwnerFiscalProfiles_Validity", "\"ValidTo\" IS NULL OR \"ValidTo\" >= \"ValidFrom\"");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OwnerInvitation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -16296,6 +16472,20 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OwnerFiscalProfile", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.OwnerAccountingPolicy", null)
+                        .WithMany()
+                        .HasForeignKey("AccountingPolicyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Casazen.Core.Entities.PropertyOwner", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyOwnerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OwnerInvitation", b =>

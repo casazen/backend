@@ -60,6 +60,13 @@ public class EncryptedColumnsTests
                 "OtaIntegration.ApiSecret:Casazen.OtaIntegration.Secrets",
                 // ADR-032-R3: the words of the conversations of the guests with the channels, copied from the channel manager.
                 "OtaMessage.Text:Casazen.Message.Content",
+                // ADR-012, NF-109: the identifiers, the address and the bank account of the fiscal profile of an owner (E06/F05/US02/T01).
+                "OwnerFiscalProfile.BankAccountReference:Casazen.OwnerFiscalProfile",
+                "OwnerFiscalProfile.FiscalCode:Casazen.OwnerFiscalProfile",
+                "OwnerFiscalProfile.ForeignTaxId:Casazen.OwnerFiscalProfile",
+                "OwnerFiscalProfile.LegalAddress:Casazen.OwnerFiscalProfile",
+                "OwnerFiscalProfile.LegalName:Casazen.OwnerFiscalProfile",
+                "OwnerFiscalProfile.VatNumber:Casazen.OwnerFiscalProfile",
                 "Party.ContactPhone:Casazen.LeaseParty",
                 "Party.Residence:Casazen.LeaseParty",
                 "PlatformAiSettings.ApiKey:Casazen.PlatformAiSettings",
