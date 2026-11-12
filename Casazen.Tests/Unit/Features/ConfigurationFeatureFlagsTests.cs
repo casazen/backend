@@ -95,6 +95,8 @@ public class ConfigurationFeatureFlagsTests
                 "ComplianceTrafficLight",
                 // E05/F02/US02/T02: the translation of a message by CasaZen's AI (the text of a guest goes to the provider), off until the product owner decides the transfer.
                 "MessageTranslationAi",
+                // E06/F03/US02/T01: the import of the documents Octorate issued, off until the documents list is proven on a structure with the invoice module.
+                "OctorateDocumentImport",
                 // E05/F05/US01/T01: the assistant that answers the guests' messages (knowledge base, rules, situations, drafts), off until the privacy notice and the processing agreement exist.
                 "MessageAssistant",
             },

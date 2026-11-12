@@ -559,6 +559,13 @@ internal sealed class ScriptedDeferredChargeStripe : IStripeService
             _intents.Values.Where(pi => pi.CustomerId == customerId).Select(Copy).ToList());
     }
 
+    // E06/F04/US01/T02: the deferred charge never reads the provider fees; the scripted Stripe has no balance transaction.
+    public Task<StripeBalanceTransactionInfo?> GetChargeBalanceTransactionAsync(
+        string paymentIntentId,
+        string? connectedAccountId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<StripeBalanceTransactionInfo?>(null);
+
     public Task<PaymentIntent> CancelPaymentIntentAsync(
         string paymentIntentId,
         string? connectedAccountId,

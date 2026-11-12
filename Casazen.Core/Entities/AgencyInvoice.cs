@@ -106,4 +106,20 @@ public class AgencyInvoice : ITenantOwned
 
     /// <summary>When this invoice was last updated (UTC). Updated on recalculation or status change.</summary>
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// What CasaZen can say of the compliance of this historical record (E06/F01/US02/T05): <see cref="AgencyInvoiceCompliance.LegacyUnverified"/> for
+    /// every invoice the retired generator made (no verifiable delivery or schema evidence is stored); never relabelled as compliant.
+    /// </summary>
+    [MaxLength(AgencyInvoiceCompliance.MaxLength)]
+    public string ComplianceStatus { get; set; } = AgencyInvoiceCompliance.LegacyUnverified;
+}
+
+/// <summary>The compliance codes of the historical agency invoices (E06/F01/US02/T05).</summary>
+public static class AgencyInvoiceCompliance
+{
+    public const int MaxLength = 32;
+
+    /// <summary>Made by the retired internal generator, without independently verifiable delivery or schema evidence.</summary>
+    public const string LegacyUnverified = "legacy_unverified";
 }

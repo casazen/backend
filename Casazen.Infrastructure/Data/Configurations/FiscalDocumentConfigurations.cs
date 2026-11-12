@@ -45,3 +45,61 @@ internal sealed class BookingDocumentIssuerConfiguration : IEntityTypeConfigurat
         entity.HasIndex(i => i.BookingId).IsUnique().HasDatabaseName(BookingDocumentIssuer.BookingIndexName);
     }
 }
+
+/// <summary>
+/// The fiscal documents (NF-83, NF-84, E06/F01/US02/T01). Kept ten years (ADR-033-R7): the booking, the credited and the replaced document are
+/// <b>restrict</b> foreign keys, so neither the removal of a booking nor anything else can delete a document by cascade. The database refuses two
+/// documents with the same number in one org and series and two imported rows of one Octorate document, and accepts only the known SDI states.
+/// The recipient columns and the XML get their converter from <c>EncryptedColumns</c> (no length); <c>xmin</c> is the concurrency token.
+/// </summary>
+internal sealed class FiscalDocumentConfiguration : IEntityTypeConfiguration<FiscalDocument>
+{
+    public void Configure(EntityTypeBuilder<FiscalDocument> entity)
+    {
+        entity.HasOne<Booking>().WithMany().HasForeignKey(d => d.BookingId).OnDelete(DeleteBehavior.Restrict);
+        entity.HasOne<FiscalDocument>().WithMany().HasForeignKey(d => d.CreditedDocumentId).OnDelete(DeleteBehavior.Restrict);
+        entity.HasOne<FiscalDocument>().WithMany().HasForeignKey(d => d.ReplacesDocumentId).OnDelete(DeleteBehavior.Restrict);
+        entity.HasMany(d => d.Lines).WithOne().HasForeignKey(l => l.DocumentId).OnDelete(DeleteBehavior.Cascade);
+
+        entity.HasIndex(d => new { d.OrgId, d.Series, d.SequenceNumber })
+            .IsUnique()
+            .HasFilter("\"SequenceNumber\" IS NOT NULL")
+            .HasDatabaseName(FiscalDocument.SeriesNumberIndexName);
+        entity.HasIndex(d => new { d.OrgId, d.BookingId });
+        entity.HasIndex(d => new { d.OrgId, d.OctorateDocumentId })
+            .IsUnique()
+            .HasFilter("\"OctorateDocumentId\" IS NOT NULL")
+            .HasDatabaseName(FiscalDocument.OctorateDocumentIndexName);
+        entity.HasIndex(d => new { d.OrgId, d.IssueDate });
+        entity.HasIndex(d => d.CreditedDocumentId);
+        entity.HasIndex(d => d.ReplacesDocumentId);
+
+        entity.Property(d => d.RowVersion).IsRowVersion();
+        entity.ToTable(table =>
+        {
+            table.HasCheckConstraint(
+                "CK_FiscalDocuments_SdiStatus",
+                "\"SdiStatus\" IN (" + string.Join(", ", FiscalDocumentSdiStatuses.All.Select(s => $"'{s}'")) + ")");
+            table.HasCheckConstraint("CK_FiscalDocuments_SequenceNumber", "\"SequenceNumber\" IS NULL OR \"SequenceNumber\" > 0");
+        });
+    }
+}
+
+/// <summary>The lines of a fiscal document: one number per line within the document (<see cref="FiscalDocumentLine.DocumentLineIndexName"/>).</summary>
+internal sealed class FiscalDocumentLineConfiguration : IEntityTypeConfiguration<FiscalDocumentLine>
+{
+    public void Configure(EntityTypeBuilder<FiscalDocumentLine> entity)
+    {
+        entity.HasIndex(l => new { l.DocumentId, l.LineNumber }).IsUnique().HasDatabaseName(FiscalDocumentLine.DocumentLineIndexName);
+    }
+}
+
+/// <summary>The counter of the fiscal numbers: one row per org and series (<see cref="FiscalNumberSequence.OrgSeriesIndexName"/>).</summary>
+internal sealed class FiscalNumberSequenceConfiguration : IEntityTypeConfiguration<FiscalNumberSequence>
+{
+    public void Configure(EntityTypeBuilder<FiscalNumberSequence> entity)
+    {
+        entity.HasIndex(s => new { s.OrgId, s.Series }).IsUnique().HasDatabaseName(FiscalNumberSequence.OrgSeriesIndexName);
+        entity.ToTable(table => table.HasCheckConstraint("CK_FiscalNumberSequences_LastNumber", "\"LastNumber\" >= 0"));
+    }
+}

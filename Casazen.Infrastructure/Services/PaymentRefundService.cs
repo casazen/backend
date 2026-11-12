@@ -413,7 +413,14 @@ public sealed class PaymentRefundService(
     /// The connected account of the payment's intent: the stored one, else the org's current account; null for a
     /// PaymentIntent of the platform account (<see cref="Payment.StripeIntentOnPlatform"/>, no <c>Stripe-Account</c>).
     /// </summary>
-    internal async Task<string?> ResolveAccountAsync(Payment payment, CancellationToken cancellationToken)
+    internal Task<string?> ResolveAccountAsync(Payment payment, CancellationToken cancellationToken) =>
+        ResolveStripeAccountAsync(db, payment, cancellationToken);
+
+    /// <summary>
+    /// The one rule that chooses the <c>Stripe-Account</c> of a payment's intent (refunds, and the read of its balance transaction, E06/F04/US01/T02):
+    /// none for an intent on the platform, the stored connected account of a direct charge, else the org's current account.
+    /// </summary>
+    internal static async Task<string?> ResolveStripeAccountAsync(AppDbContext db, Payment payment, CancellationToken cancellationToken)
     {
         if (payment.StripeIntentOnPlatform)
             return null;
@@ -430,7 +437,8 @@ public sealed class PaymentRefundService(
 
     internal static long ToCents(decimal amount) => (long)Math.Round(amount * 100m, MidpointRounding.AwayFromZero);
 
-    private static decimal FromCents(long cents) => Math.Round(cents / 100m, 2);
+    /// <summary>The amount of <paramref name="cents"/> minor units (both currencies of a stay have two decimals, <c>StayCurrency</c>).</summary>
+    internal static decimal FromCents(long cents) => Math.Round(cents / 100m, 2);
 
     internal static StripeRefundSnapshot ToSnapshot(Refund refund) => new(
         refund.Id,
