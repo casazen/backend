@@ -3,6 +3,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Jobs;
@@ -36,7 +37,7 @@ public class CalendarChangeRunnerTests
         var b1 = await h.SeedAsync(OrgB, CalendarChangeState.Sending, due: -20, CalendarChunkState.Accepted, CalendarChunkState.Pending);
         var a2 = await h.SeedAsync(OrgA, CalendarChangeState.Queued, due: -10, CalendarChunkState.Pending);
         await h.SeedAsync(OrgA, CalendarChangeState.Queued, due: 5, CalendarChunkState.Pending);
-        await h.SeedAsync(OrgA, CalendarChangeState.Confirmed, due: -10, CalendarChunkState.Confirmed);
+        await h.SeedAsync(OrgA, CalendarChangeState.Failed, due: -10, CalendarChunkState.Failed);
         await h.SeedAsync(OrgA, CalendarChangeState.Queued, due: null, CalendarChunkState.Pending);
         var ran = new List<Guid>();
         h.Push.Setup(p => p.RunAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).Callback<Guid, CancellationToken>((id, _) => ran.Add(id)).Returns(Task.CompletedTask);
@@ -109,7 +110,7 @@ public class CalendarChangeRunnerTests
         var id = await h.SeedAsync(OrgA, CalendarChangeState.Sent, due: 0, CalendarChunkState.Accepted, startedMinutesAgo: 1);
         h.Client
             .Setup(c => c.GetCalendarProcessAsync("100", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OctorateCalendarProcess("100", "PROCESSED", [new OctorateCalendarProcessDate(null, "SENT"), new OctorateCalendarProcessDate(null, "SENT")]));
+            .ReturnsAsync(new OctorateCalendarProcess("100", Runner.Success, [new OctorateCalendarProcessDate(null, Runner.Success), new OctorateCalendarProcessDate(null, Runner.Success)]));
 
         await h.Service().RunDueAsync();
 
@@ -117,8 +118,69 @@ public class CalendarChangeRunnerTests
         Assert.Equal(CalendarChunkState.Confirmed, Assert.Single(chunks).State);
         Assert.Equal(CalendarChangeState.Confirmed, process.State);
         Assert.Equal(Now.UtcDateTime, process.FinishedAt);
-        Assert.Null(process.NextAttemptAt);
+        // Asked once more later (below), never again after that.
+        Assert.Equal(Now.UtcDateTime + CalendarPushRules.ConfirmedRecheckAfter, process.NextAttemptAt);
         Assert.Null(process.ErrorCode);
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule. A status that is unknown, interim (<c>PROCESSING</c>) or absent never confirms a chunk, and with no status of success configured (the default: none is
+    /// documented) even a process that says it is done confirms nothing: the chunk stays «accepted by the channel manager».
+    /// </summary>
+    [Theory]
+    [InlineData("PROCESSING", Runner.Success, Runner.Success)]
+    [InlineData(Runner.Success, "SOMETHING_UNKNOWN", Runner.Success)]
+    [InlineData(null, Runner.Success, Runner.Success)]
+    [InlineData(Runner.Success, null, Runner.Success)]
+    [InlineData(Runner.Success, Runner.Success, "")]
+    public async Task Follow_AnUnknownInterimOrAbsentStatus_NeverConfirmsTheChunk_AndNoSuccessStatusConfiguredConfirmsNothing_Test(string? process, string? date, string configured)
+    {
+        var h = new Runner(successStatuses: configured);
+        var id = await h.SeedAsync(OrgA, CalendarChangeState.Sent, due: 0, CalendarChunkState.Accepted, startedMinutesAgo: 1);
+        h.Client
+            .Setup(c => c.GetCalendarProcessAsync("100", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctorateCalendarProcess("100", process, [new OctorateCalendarProcessDate(null, date)]));
+
+        await h.Service().RunDueAsync();
+
+        var (after, chunks) = await h.ReadAsync(id);
+        Assert.Equal(CalendarChunkState.Accepted, Assert.Single(chunks).State);
+        Assert.Equal(CalendarChangeState.Sent, after.State);
+        Assert.Null(after.FinishedAt);
+    }
+
+    /// <summary>
+    /// A process that is wholly confirmed is asked once more ten minutes later: an error the endpoint shows after the confirmation fails the chunk and is not left out of sight
+    /// (and nothing is asked in between, nor again after the second look).
+    /// </summary>
+    [Fact]
+    public async Task Follow_AnErrorThatShowsUpAfterTheConfirmation_FailsTheChunk_AndIsNotLeftOutOfSight()
+    {
+        var h = new Runner();
+        var id = await h.SeedAsync(OrgA, CalendarChangeState.Sent, due: 0, CalendarChunkState.Accepted, startedMinutesAgo: 1);
+        h.Client
+            .SetupSequence(c => c.GetCalendarProcessAsync("100", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctorateCalendarProcess("100", Runner.Success, [new OctorateCalendarProcessDate(null, Runner.Success)]))
+            .ReturnsAsync(new OctorateCalendarProcess("100", Runner.Success, [new OctorateCalendarProcessDate(null, "ERROR")]));
+
+        await h.Service().RunDueAsync();
+
+        var (confirmed, confirmedChunks) = await h.ReadAsync(id);
+        Assert.Equal((CalendarChangeState.Confirmed, CalendarChunkState.Confirmed), (confirmed.State, Assert.Single(confirmedChunks).State));
+        Assert.Equal(Now.UtcDateTime + CalendarPushRules.ConfirmedRecheckAfter, confirmed.NextAttemptAt);
+
+        // Not due yet: nothing is asked.
+        await h.Service().RunDueAsync();
+        h.Client.Verify(c => c.GetCalendarProcessAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+
+        // Due: the second look finds the error.
+        await h.Service(Now.AddMinutes(11)).RunDueAsync();
+
+        var (after, chunks) = await h.ReadAsync(id);
+        var chunk = Assert.Single(chunks);
+        Assert.Equal((CalendarChunkState.Failed, "octorate_channel_error"), (chunk.State, chunk.ErrorCode));
+        Assert.Equal((CalendarChangeState.Failed, "octorate_channel_error"), (after.State, after.ErrorCode));
+        Assert.Null(after.NextAttemptAt);
     }
 
     [Fact]
@@ -128,7 +190,7 @@ public class CalendarChangeRunnerTests
         var id = await h.SeedAsync(OrgA, CalendarChangeState.Sent, due: 0, CalendarChunkState.Accepted, startedMinutesAgo: 1);
         h.Client
             .Setup(c => c.GetCalendarProcessAsync("100", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OctorateCalendarProcess("100", "PROCESSED", [new OctorateCalendarProcessDate(null, "SENT"), new OctorateCalendarProcessDate(null, "ERROR")]));
+            .ReturnsAsync(new OctorateCalendarProcess("100", Runner.Success, [new OctorateCalendarProcessDate(null, Runner.Success), new OctorateCalendarProcessDate(null, "ERROR")]));
 
         await h.Service().RunDueAsync();
 
@@ -199,13 +261,13 @@ public class CalendarChangeRunnerTests
         var failing = await h.SeedAsync(OrgB, CalendarChangeState.Sent, due: 0, CalendarChunkState.Accepted, startedMinutesAgo: 1, processIds: "200,201+");
         h.Client
             .Setup(c => c.GetCalendarProcessAsync(It.IsIn("100", "101"), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OctorateCalendarProcess("100", "PROCESSED", [new OctorateCalendarProcessDate(null, "SENT")]));
+            .ReturnsAsync(new OctorateCalendarProcess("100", Runner.Success, [new OctorateCalendarProcessDate(null, Runner.Success)]));
         h.Client
             .Setup(c => c.GetCalendarProcessAsync("200", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OctorateCalendarProcess("200", "PROCESSED", [new OctorateCalendarProcessDate(null, "ERROR")]));
+            .ReturnsAsync(new OctorateCalendarProcess("200", Runner.Success, [new OctorateCalendarProcessDate(null, "ERROR")]));
         h.Client
             .Setup(c => c.GetCalendarProcessAsync("201", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OctorateCalendarProcess("201", "PROCESSED", [new OctorateCalendarProcessDate(null, "SENT")]));
+            .ReturnsAsync(new OctorateCalendarProcess("201", Runner.Success, [new OctorateCalendarProcessDate(null, Runner.Success)]));
 
         await h.Service().RunDueAsync();
 
@@ -258,12 +320,20 @@ public class CalendarChangeRunnerTests
 
     private sealed class Runner
     {
+        /// <summary>
+        /// The status of success of these tests. No status of success is documented (the Postman examples are NEW, NOT_PROCESSED and ERROR): this one stands for whatever the sandbox
+        /// shows and <c>Octorate:Calendar:ProcessSuccessStatuses</c> lists.
+        /// </summary>
+        public const string Success = "SUCCESS_UNDER_TEST";
+
         private readonly string _database = $"calendar-runner-{Guid.NewGuid():N}";
         private readonly bool _connector;
+        private readonly string _successStatuses;
 
-        public Runner(bool connector = true)
+        public Runner(bool connector = true, string successStatuses = Success)
         {
             _connector = connector;
+            _successStatuses = successStatuses;
             Db = NewDb();
             // Unless a test says otherwise the channel manager is still working on every process it is asked about.
             Client
@@ -282,7 +352,7 @@ public class CalendarChangeRunnerTests
         public AppDbContext NewDb() =>
             new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options, NullTenantContext.Instance);
 
-        public CalendarChangeRunner Service()
+        public CalendarChangeRunner Service(DateTimeOffset? at = null)
         {
             var flags = new Mock<IFeatureFlags>();
             flags.Setup(f => f.IsEnabled(FeatureFlags.OctorateConnector)).Returns(_connector);
@@ -292,7 +362,8 @@ public class CalendarChangeRunnerTests
                 Client.Object,
                 new OctorateOrgScope(NullTenantContext.Instance),
                 flags.Object,
-                new FixedTimeProvider(Now),
+                Microsoft.Extensions.Options.Options.Create(new OctorateCalendarOptions { ProcessSuccessStatuses = _successStatuses }),
+                new FixedTimeProvider(at ?? Now),
                 NullLogger<CalendarChangeRunner>.Instance,
                 Jobs.Object);
         }

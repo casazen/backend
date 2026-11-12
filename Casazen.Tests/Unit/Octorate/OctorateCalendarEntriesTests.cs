@@ -295,17 +295,58 @@ public class OctorateCalendarEntriesTests
         Assert.InRange(ids.Count, 1, 39);
     }
 
+    // No status of success is documented (the Postman examples are NEW, NOT_PROCESSED and ERROR): the tests name one of their own, SUCCESS_UNDER_TEST, which stands for whatever the
+    // sandbox shows and the configuration lists (Octorate:Calendar:ProcessSuccessStatuses).
+    private static readonly IReadOnlySet<string> Success = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "SUCCESS_UNDER_TEST" };
+
+    private static readonly IReadOnlySet<string> NoSuccess = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// PROOF: data rule. A process is confirmed only when it and every one of its dates show a status the configuration lists as a success; <c>ERROR</c> is an error wherever it is;
+    /// <c>NEW</c>, <c>NOT_PROCESSED</c>, no date, and any status that is not listed (unknown, an interim one) leave it unconfirmed.
+    /// </summary>
     [Theory]
     [InlineData("NEW", new[] { "NOT_PROCESSED" }, CalendarProcessVerdict.Pending)]
-    [InlineData("PROCESSED", new[] { "OK", "NOT_PROCESSED" }, CalendarProcessVerdict.Pending)]
-    [InlineData("PROCESSED", new[] { "OK", "ERROR" }, CalendarProcessVerdict.Error)]
+    [InlineData("SUCCESS_UNDER_TEST", new[] { "SUCCESS_UNDER_TEST", "NOT_PROCESSED" }, CalendarProcessVerdict.Pending)]
+    [InlineData("SUCCESS_UNDER_TEST", new[] { "SUCCESS_UNDER_TEST", "ERROR" }, CalendarProcessVerdict.Error)]
     [InlineData("ERROR", new string[0], CalendarProcessVerdict.Error)]
-    [InlineData("PROCESSED", new string[0], CalendarProcessVerdict.Pending)]
-    [InlineData("PROCESSED", new[] { "OK", "SENT" }, CalendarProcessVerdict.Confirmed)]
-    public void Verdict_ConfirmsOnlyWhatTheProcessSaysWasProcessed(string status, string[] dates, CalendarProcessVerdict expected)
+    [InlineData("SUCCESS_UNDER_TEST", new string[0], CalendarProcessVerdict.Pending)]
+    [InlineData("SUCCESS_UNDER_TEST", new[] { "SUCCESS_UNDER_TEST", "success_under_test" }, CalendarProcessVerdict.Confirmed)]
+    [InlineData("PROCESSING", new[] { "SUCCESS_UNDER_TEST" }, CalendarProcessVerdict.Pending)]
+    [InlineData("SUCCESS_UNDER_TEST", new[] { "SUCCESS_UNDER_TEST", "PROCESSING" }, CalendarProcessVerdict.Pending)]
+    [InlineData("SUCCESS_UNDER_TEST", new[] { "SUCCESS_UNDER_TEST", "SOMETHING_UNKNOWN" }, CalendarProcessVerdict.Pending)]
+    public void Verdict_ConfirmsOnlyWhatTheConfigurationNamesAsASuccess_OfTheProcessAndOfEveryDate(string status, string[] dates, CalendarProcessVerdict expected)
     {
         var process = new OctorateCalendarProcess("1", status, [.. dates.Select(s => new OctorateCalendarProcessDate(null, s))]);
 
-        Assert.Equal(expected, CalendarPushRules.VerdictOf(process));
+        Assert.Equal(expected, CalendarPushRules.VerdictOf(process, Success));
+    }
+
+    [Fact]
+    public void Verdict_AnAbsentStatus_NeverConfirms_AndWithNoSuccessStatusConfiguredNothingIsEverConfirmed()
+    {
+        var dated = new OctorateCalendarProcessDate(null, "SUCCESS_UNDER_TEST");
+        var withoutStatus = new OctorateCalendarProcessDate(null, null);
+
+        // The process shows no status, or a date shows none: not a success.
+        Assert.Equal(CalendarProcessVerdict.Pending, CalendarPushRules.VerdictOf(new OctorateCalendarProcess("1", null, [dated]), Success));
+        Assert.Equal(CalendarProcessVerdict.Pending, CalendarPushRules.VerdictOf(new OctorateCalendarProcess("1", "SUCCESS_UNDER_TEST", [dated, withoutStatus]), Success));
+        Assert.Equal(CalendarProcessVerdict.Pending, CalendarPushRules.VerdictOf(new OctorateCalendarProcess("1", "SUCCESS_UNDER_TEST", [withoutStatus]), Success));
+
+        // Nothing listed as a success (the default): even a process that says it is done confirms nothing.
+        var done = new OctorateCalendarProcess("1", "SUCCESS_UNDER_TEST", [dated]);
+        Assert.Equal(CalendarProcessVerdict.Pending, CalendarPushRules.VerdictOf(done, NoSuccess));
+        Assert.Equal(CalendarProcessVerdict.Pending, CalendarPushRules.VerdictOf(done, new OctorateCalendarOptions().SuccessStatuses));
+        Assert.Equal(CalendarProcessVerdict.Error, CalendarPushRules.VerdictOf(new OctorateCalendarProcess("1", "NEW", [new OctorateCalendarProcessDate(null, "ERROR")]), NoSuccess));
+    }
+
+    [Fact]
+    public void TheSuccessStatuses_AreTheCommaSeparatedListOfTheConfiguration_TrimmedAndWithoutRegardToCase()
+    {
+        var options = new OctorateCalendarOptions { ProcessSuccessStatuses = " Done , OK;; " };
+
+        Assert.Equal(["Done", "OK"], options.SuccessStatuses.Order().ToList());
+        Assert.Contains("DONE", options.SuccessStatuses);
+        Assert.Empty(new OctorateCalendarOptions { ProcessSuccessStatuses = "  " }.SuccessStatuses);
     }
 }

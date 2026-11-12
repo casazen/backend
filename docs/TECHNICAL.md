@@ -482,8 +482,10 @@ a booking, a hold or a block of a channel holds is left alone. Adjacent nights w
 run (`GetConfigurationAsync`); a chunk whose estimate (`ceil(room-days / RoomDaysPerQuotaUnit)`) would take `QuotaStatus` past `QuotaLimit - QuotaReserve` waits five minutes
 with `octorate_quota_low` on the change, never a failure. The state of the change is derived from its chunks (`CalendarPushRules.Derive`): `Applied`, `Queued`, `Sending`, `Sent`
 (every chunk accepted by the channel manager), `Confirmed`, `PartiallySent`, `Failed`; it never says published. A chunk is `Confirmed` only when
-`GET /rest/v1/calendar/process/{id}` (documented only in Postman, D7) says every date was processed; `NEW` and `NOT_PROCESSED` leave it accepted, `ERROR` fails it
-`octorate_channel_error`, and where the endpoint is not available it stays accepted and nothing is claimed.
+`GET /rest/v1/calendar/process/{id}` (documented only in Postman, D7, with no status of success) shows, for the process and for every date, a status listed in
+`Octorate:Calendar:ProcessSuccessStatuses` (empty until the sandbox shows them: nothing is confirmed; an unknown, absent or interim status such as `PROCESSING` confirms
+nothing); `NEW` and `NOT_PROCESSED` leave it accepted, `ERROR` fails it `octorate_channel_error`, and where the endpoint is not available it stays accepted and nothing is
+claimed. A change that is wholly `Confirmed` is asked once more ten minutes later, so an `ERROR` the endpoint shows afterwards fails the chunk and is not left out of sight.
 
 *Reading* (`ICalendarChangeQueries`): a change is shown only to a caller that reaches **every** property it touches (`InScope`, in SQL; the property ids are in its summary and
 its chunks); a change whose properties cannot be told is shown to an org-wide scope only. The state of a property is derived from its chunks (a property with none is `Skipped`:

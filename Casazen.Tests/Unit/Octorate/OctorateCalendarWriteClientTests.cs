@@ -141,7 +141,7 @@ public class OctorateCalendarWriteClientTests
             [(new DateOnly(2026, 12, 4), "NOT_PROCESSED"), (new DateOnly(2026, 12, 5), "ERROR")],
             process.Dates.Select(d => (d.Date!.Value, d.Status!)));
         Assert.EndsWith("/rest/v1/calendar/process/12345678", Assert.Single(h.Requests).Uri.AbsolutePath);
-        Assert.Equal(CalendarProcessVerdict.Error, CalendarPushRules.VerdictOf(process));
+        Assert.Equal(CalendarProcessVerdict.Error, CalendarPushRules.VerdictOf(process, new HashSet<string>()));
     }
 
     [Fact]

@@ -2,12 +2,14 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Jobs;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Octorate;
 
@@ -21,7 +23,9 @@ namespace Casazen.Infrastructure.Octorate;
 /// and <see cref="PerOrgBatch"/> for each org, one org at a time: the quota of an org is the org's, so one that is nearly used makes its own processes wait and holds
 /// no other org back. One process that fails does not stop the others; the failures are raised together at the end, so the job shows red.</item>
 /// <item><b>Confirmed only when the process says so.</b> <c>GET /rest/v1/calendar/process/{id}</c> (documented only in Postman, D7): <c>NEW</c> and <c>NOT_PROCESSED</c> leave the
-/// chunk accepted, every date processed confirms it, <c>ERROR</c> fails it with <c>octorate_channel_error</c>. A 404 or any answer that is a refusal means the endpoint is not
+/// chunk accepted, <c>ERROR</c> fails it with <c>octorate_channel_error</c>, and it is confirmed only when the process and every date show a status of
+/// <c>Octorate:Calendar:ProcessSuccessStatuses</c> (none is documented, so it is empty until the sandbox shows them: nothing is confirmed; an unknown, absent or interim status
+/// confirms nothing); a process that is wholly confirmed is asked once more ten minutes later, so an error that shows up after the confirmation stays visible. A 404 or any answer that is a refusal means the endpoint is not
 /// there for this process: the chunk stays accepted, nothing is claimed and it is not asked again. A chunk whose ids were not all kept is never confirmed (only failed
 /// by an error it shows). The chunks are followed for <see cref="CalendarPushRules.ConfirmationWindow"/> after the first call.</item>
 /// <item><b>Logs</b> carry ids, counts and codes.</item>
@@ -33,6 +37,7 @@ public sealed class CalendarChangeRunner(
     IOctorateApiClient client,
     IOctorateOrgScope orgScope,
     IFeatureFlags featureFlags,
+    IOptions<OctorateCalendarOptions> options,
     TimeProvider timeProvider,
     ILogger<CalendarChangeRunner> logger,
     IBackgroundJobClient? jobs = null) : ICalendarChangeRunner
@@ -56,7 +61,8 @@ public sealed class CalendarChangeRunner(
             .Where(p => (p.State == CalendarChangeState.Queued
                          || p.State == CalendarChangeState.Sending
                          || p.State == CalendarChangeState.Sent
-                         || p.State == CalendarChangeState.PartiallySent)
+                         || p.State == CalendarChangeState.PartiallySent
+                         || p.State == CalendarChangeState.Confirmed)
                         && p.NextAttemptAt != null
                         && p.NextAttemptAt <= now)
             .OrderBy(p => p.NextAttemptAt)
@@ -137,14 +143,18 @@ public sealed class CalendarChangeRunner(
 
         var orgId = process.OrgId;
         var chunks = await db.CalendarChangeChunks.Where(c => c.ProcessId == processId && c.OrgId == orgId).ToListAsync(ct);
-        var accepted = chunks.Where(c => c.State == CalendarChunkState.Accepted).ToList();
+        // A process that is wholly confirmed is asked once more, after ConfirmedRecheckAfter: an error that shows up after the confirmation (the endpoint says so) is not left out of sight.
+        var recheck = process.State == CalendarChangeState.Confirmed;
+        var accepted = chunks.Where(c => c.State == CalendarChunkState.Accepted || (recheck && c.State == CalendarChunkState.Confirmed)).ToList();
         if (accepted.Count == 0)
             return;
 
+        var successStatuses = options.Value.SuccessStatuses;
         var stop = false;
         var transient = false;
         var quotaWait = false;
         var changed = false;
+        var confirmedNow = false;
         using (orgScope.Use(orgId))
         {
             foreach (var chunk in accepted)
@@ -158,7 +168,7 @@ public sealed class CalendarChangeRunner(
                 {
                     try
                     {
-                        verdicts.Add(CalendarPushRules.VerdictOf(await client.GetCalendarProcessAsync(id, ct)));
+                        verdicts.Add(CalendarPushRules.VerdictOf(await client.GetCalendarProcessAsync(id, ct), successStatuses));
                     }
                     catch (OctorateException ex) when (ex is OctorateRateLimitException or OctorateServerException)
                     {
@@ -189,11 +199,16 @@ public sealed class CalendarChangeRunner(
                     chunk.UpdatedAt = UtcNow;
                     changed = true;
                 }
-                else if (complete && ids.Count > 0 && verdicts.Count == ids.Count && verdicts.All(v => v == CalendarProcessVerdict.Confirmed))
+                else if (chunk.State == CalendarChunkState.Accepted
+                         && complete
+                         && ids.Count > 0
+                         && verdicts.Count == ids.Count
+                         && verdicts.All(v => v == CalendarProcessVerdict.Confirmed))
                 {
                     chunk.State = CalendarChunkState.Confirmed;
                     chunk.UpdatedAt = UtcNow;
                     changed = true;
+                    confirmedNow = true;
                 }
             }
         }
@@ -216,9 +231,13 @@ public sealed class CalendarChangeRunner(
         if (!states.Contains(CalendarChunkState.Pending))
         {
             var followed = now - (process.StartedAt ?? process.CreatedAt) < CalendarPushRules.ConfirmationWindow;
-            process.NextAttemptAt = states.Contains(CalendarChunkState.Accepted) && (transient || !stop) && followed
-                ? now + (quotaWait ? CalendarPushRules.QuotaRetryAfter : CalendarPushRules.ConfirmationEvery)
-                : null;
+            process.NextAttemptAt = states.Contains(CalendarChunkState.Accepted)
+                ? (transient || !stop) && followed
+                    ? now + (quotaWait ? CalendarPushRules.QuotaRetryAfter : CalendarPushRules.ConfirmationEvery)
+                    : null
+                : confirmedNow && process.State == CalendarChangeState.Confirmed
+                    ? now + CalendarPushRules.ConfirmedRecheckAfter
+                    : null;
         }
 
         await db.SaveChangesAsync(ct);

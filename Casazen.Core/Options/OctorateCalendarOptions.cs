@@ -45,6 +45,13 @@ public sealed class OctorateCalendarOptions
     /// <summary>How many days from today a publication of a listing sends (<see cref="DefaultHorizonDays"/> by default).</summary>
     public int HorizonDays { get; set; } = DefaultHorizonDays;
 
+    /// <summary>
+    /// The statuses a finished process of a bulk call shows, for the process and for each of its dates (<c>GET /rest/v1/calendar/process/{id}</c>, documented only in Postman,
+    /// decision D7: the examples are <c>NEW</c>, <c>NOT_PROCESSED</c> and <c>ERROR</c>, no status of success), separated by commas. Empty until the sandbox shows them: a chunk is then
+    /// never confirmed and stays «accepted by the channel manager». A status that is not listed here (unknown, absent, an interim one) never confirms a chunk.
+    /// </summary>
+    public string? ProcessSuccessStatuses { get; set; }
+
     /// <summary><see cref="MaxDaysPerCall"/>, or its default when it is not between 1 and 366.</summary>
     public int MaxDays => MaxDaysPerCall is >= 1 and <= 366 ? MaxDaysPerCall : DefaultMaxDaysPerCall;
 
@@ -59,6 +66,12 @@ public sealed class OctorateCalendarOptions
 
     /// <summary><see cref="NoMaxStay"/> when it is a positive number of nights; <c>null</c> when it is empty or not usable.</summary>
     public int? NoMaxStayNights => NoMaxStay is >= 1 ? NoMaxStay : null;
+
+    /// <summary>The statuses of <see cref="ProcessSuccessStatuses"/>, trimmed and compared without regard to case; empty when none is configured.</summary>
+    public IReadOnlySet<string> SuccessStatuses =>
+        (ProcessSuccessStatuses ?? string.Empty)
+            .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>What closes a night on the channel manager (<see cref="OctorateCalendarOptions.CloseNightsWith"/>).</summary>

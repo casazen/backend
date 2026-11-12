@@ -35,6 +35,9 @@ public static class CalendarPushRules
     /// <summary>How long after its acceptance a chunk is followed: past it the chunk stays accepted, worded «accepted by the channel manager», and is not asked again.</summary>
     public static TimeSpan ConfirmationWindow { get; } = TimeSpan.FromMinutes(30);
 
+    /// <summary>How long after a process was confirmed the channel manager is asked once more about it: an error that shows up after the confirmation stays visible.</summary>
+    public static TimeSpan ConfirmedRecheckAfter { get; } = TimeSpan.FromMinutes(10);
+
     /// <summary>Marks a list of process ids that did not fit the column of the chunk: the ids that fit are kept and the list ends with it.</summary>
     public const char TruncatedMarker = '+';
 
@@ -158,13 +161,16 @@ public static class CalendarPushRules
     }
 
     /// <summary>
-    /// What the process of a bulk call says (decision D7: the endpoint is documented only in Postman). <c>ERROR</c> anywhere is an error; <c>NEW</c> or
-    /// <c>NOT_PROCESSED</c> anywhere, or no date at all, is not finished; every date processed with none of them is confirmed. An unknown status is
-    /// read as processed only when the dates are there: nothing is confirmed without them.
+    /// What the process of a bulk call says (decision D7: the endpoint is documented only in Postman, with <c>NEW</c>, <c>NOT_PROCESSED</c> and <c>ERROR</c> as the only examples:
+    /// no status of success is documented). <c>ERROR</c> anywhere is an error; <c>NEW</c> or <c>NOT_PROCESSED</c> anywhere, or no date at all, is not finished. It is confirmed
+    /// only when the process and every one of its dates show a status that <paramref name="successStatuses"/> names (<c>Octorate:Calendar:ProcessSuccessStatuses</c>, empty until
+    /// the sandbox shows them): a status that is unknown, absent or an interim one (<c>PROCESSING</c>) is never read as a success, and with no success status configured nothing is
+    /// ever confirmed.
     /// </summary>
-    public static CalendarProcessVerdict VerdictOf(OctorateCalendarProcess process)
+    public static CalendarProcessVerdict VerdictOf(OctorateCalendarProcess process, IReadOnlySet<string> successStatuses)
     {
         ArgumentNullException.ThrowIfNull(process);
+        ArgumentNullException.ThrowIfNull(successStatuses);
 
         var statuses = process.Dates.Select(date => date.Status).Append(process.Status).ToList();
         if (statuses.Any(status => Is(status, "ERROR")))
@@ -173,8 +179,11 @@ public static class CalendarPushRules
         if (statuses.Any(status => Is(status, "NEW") || Is(status, "NOT_PROCESSED")) || process.Dates.Count == 0)
             return CalendarProcessVerdict.Pending;
 
-        return CalendarProcessVerdict.Confirmed;
+        return statuses.All(status => IsSuccess(status, successStatuses)) ? CalendarProcessVerdict.Confirmed : CalendarProcessVerdict.Pending;
     }
 
     private static bool Is(string? status, string expected) => string.Equals(status?.Trim(), expected, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSuccess(string? status, IReadOnlySet<string> successStatuses) =>
+        !string.IsNullOrWhiteSpace(status) && successStatuses.Contains(status.Trim());
 }

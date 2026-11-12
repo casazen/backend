@@ -35,8 +35,11 @@ public interface ICalendarChangeRunner
     /// Runs the processes that are due (<c>Queued</c>, <c>Sending</c>, <c>Sent</c> or <c>PartiallySent</c> with <c>NextAttemptAt</c> reached): the oldest first, a bounded batch,
     /// one org at a time, so the quota of one org never starves another. A process with chunks to send is sent (<see cref="ICalendarPushService.RunAsync"/>), then the
     /// state of the chunks the channel manager accepted is asked (<c>GET /rest/v1/calendar/process/{id}</c>): <c>NEW</c> and <c>NOT_PROCESSED</c> leave the chunk
-    /// accepted, every date processed confirms it, <c>ERROR</c> fails it with <c>octorate_channel_error</c>; an endpoint that is not available (404, an answer that
-    /// cannot be read) leaves it accepted and claims nothing (decision D7). Does nothing while the connector is off. Returns how many processes it ran.
+    /// accepted, <c>ERROR</c> fails it with <c>octorate_channel_error</c>, and it is confirmed only when the process and every date show a status of
+    /// <c>Octorate:Calendar:ProcessSuccessStatuses</c> (empty until the sandbox shows them: nothing is confirmed; an unknown, absent or interim status confirms nothing); a
+    /// process that is wholly confirmed is asked once more after ten minutes, so an error that shows up later is not left out of sight; an endpoint that is not available (404, an
+    /// answer that cannot be read) leaves it accepted and claims nothing (decision D7), and a quota that is used up waits five minutes. Does nothing while the connector is off.
+    /// Returns how many processes it ran.
     /// </summary>
     Task<int> RunDueAsync(CancellationToken cancellationToken = default);
 
