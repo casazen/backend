@@ -1,5 +1,6 @@
 using System.Data;
 using System.Globalization;
+using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -8,7 +9,9 @@ using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.Repositories;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
@@ -43,7 +46,9 @@ namespace Casazen.Infrastructure.Services;
 /// change, so a stay cannot arrive between the programming and the day), confirmed when it is applied, removed if the
 /// change is cancelled or fails. A change <b>to short stays</b> removes the block when it is applied.
 /// Written in the transaction of the change, not through <see cref="ICalendarBlockService"/> (its checks are the host's: a
-/// year at most, not in the past, no overlap).</item>
+/// year at most, not in the past, no overlap). The channel manager is told in the same save (E08/F05/US02, NF-78): a block that is
+/// written or removed records its <see cref="ICalendarChangeRecorder"/> change in the unit of work, run once after the commit, so a
+/// property that goes long-term does not stay sellable on the portals of the channel manager.</item>
 /// <item><b>Compliance.</b> A property back in short-stay mode is evaluated again by
 /// <see cref="IPropertyComplianceStatusService.ReevaluateAsync"/>: its status was frozen while it was long-term (PM-01) and
 /// its CIN, documents or checklist may no longer be complete. Done after the commit: a failure there is logged and the
@@ -63,7 +68,9 @@ public sealed class PropertyModeService(
     INotificationService notifications,
     IActivityLog activityLog,
     ILogger<PropertyModeService> logger,
-    TimeProvider? timeProvider = null) : IPropertyModeService
+    TimeProvider? timeProvider = null,
+    ICalendarChangeRecorder? changeRecorder = null,
+    IBackgroundJobClient? jobs = null) : IPropertyModeService
 {
     private const string RunLockKey = "property-mode-change";
 
@@ -109,6 +116,7 @@ public sealed class PropertyModeService(
         EnsureDefinedTarget(to);
 
         PropertyModeChange change;
+        CalendarChangeRecord? blockChange = null;
         await using (var transaction = await BeginLockedAsync(propertyId, cancellationToken))
         {
             // Inside the lock: every booking that was being saved has finished, the next one will find the change.
@@ -130,13 +138,15 @@ public sealed class PropertyModeService(
                 CreatedByUserId = userId,
                 CreatedAt = _clock.GetUtcNow().UtcDateTime,
             };
-            db.PropertyModeChanges.Add(change);
-
             // To long-term the calendar closes from the night before the change right now, so nothing new can take a night
             // that would still be in the way on the day (a checkout that morning). The site and the host are refused, the
-            // portals read the export. Back to short stays nothing closes.
+            // portals read the export, and the channel manager is told in the same save (E08/F05/US02: the change that closes
+            // the nights is recorded before anything else is staged, its lookup may save the unit of work). Back to short stays
+            // nothing closes.
             if (to == RentalMode.Long)
-                await CloseCalendarAsync(property.Id, property.OrgId, day, cancellationToken);
+                blockChange = await CloseCalendarAsync(property.Id, property.OrgId, day, cancellationToken);
+
+            db.PropertyModeChanges.Add(change);
 
             // Who programmed which change, in the save that writes it (AM-02c): the property is still in the mode it leaves.
             RecordMode(
@@ -161,6 +171,8 @@ public sealed class PropertyModeService(
                 await transaction.CommitAsync(cancellationToken);
         }
 
+        EnqueueRun(blockChange);
+
         logger.LogInformation(
             "Mode change {ChangeId} of property {PropertyId} programmed by user {UserId}: {From} to {To} on {EffectiveDate:yyyy-MM-dd}",
             change.Id, change.PropertyId, userId, change.FromMode, change.ToMode, change.EffectiveDate);
@@ -174,6 +186,7 @@ public sealed class PropertyModeService(
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
         PropertyModeChange change;
+        CalendarChangeRecord? blockChange = null;
         await using (var transaction = await BeginLockedAsync(propertyId, cancellationToken))
         {
             // Read inside the lock: the job may have applied or failed the change a moment ago.
@@ -190,14 +203,15 @@ public sealed class PropertyModeService(
                     PropertyModeErrorCodes.ChangeNotScheduled, PropertyModeErrorCodes.ChangeNotScheduledMessageKey);
             }
 
+            // The change to long-term had closed the calendar: the nights are free again, on the channel manager too. A change to short
+            // stays closed nothing, and the block of the property (it is long-term) stays where it is. The calendar change is recorded
+            // before the change is touched: its lookup may save the unit of work.
+            if (change.ToMode == RentalMode.Long)
+                blockChange = await ReopenCalendarAsync(propertyId, tell: true, cancellationToken);
+
             change.Status = PropertyModeChangeStatus.Cancelled;
             change.CancelledAt = _clock.GetUtcNow().UtcDateTime;
             change.CancelledByUserId = userId;
-
-            // The change to long-term had closed the calendar: the nights are free again. A change to short stays closed
-            // nothing, and the block of the property (it is long-term) stays where it is.
-            if (change.ToMode == RentalMode.Long)
-                await ReopenCalendarAsync(propertyId, cancellationToken);
 
             RecordMode(
                 OrgActivityType.PropertyModeChangeCancelled,
@@ -210,6 +224,8 @@ public sealed class PropertyModeService(
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
         }
+
+        EnqueueRun(blockChange);
 
         logger.LogInformation(
             "Mode change {ChangeId} of property {PropertyId} cancelled by user {UserId}", change.Id, change.PropertyId, userId);
@@ -297,6 +313,7 @@ public sealed class PropertyModeService(
 
         PropertyModeChange change;
         PropertyModeNotice? notice = null;
+        CalendarChangeRecord? blockChange = null;
         var reevaluate = false;
         var outcome = Outcome.NothingToDo;
         await using (var transaction = await BeginLockedAsync(propertyId.Value, cancellationToken))
@@ -315,7 +332,7 @@ public sealed class PropertyModeService(
                 Fail(change, PropertyModeErrorCodes.PropertyNotFound, now);
                 outcome = Outcome.Failed;
                 if (change.ToMode == RentalMode.Long)
-                    await ReopenCalendarAsync(change.PropertyId, cancellationToken);
+                    await ReopenCalendarAsync(change.PropertyId, tell: false, cancellationToken);
             }
             else if (property.RentalMode != change.FromMode)
             {
@@ -333,21 +350,25 @@ public sealed class PropertyModeService(
                 var blockers = PropertyModeRules.BlockersFor(candidates, today);
                 if (PropertyModeRules.FailureReasonOf(blockers) is { } reason)
                 {
+                    // The block of the programming is removed: the nights are open again on the channel manager too (recorded first: its lookup may
+                    // save the unit of work).
+                    if (change.ToMode == RentalMode.Long)
+                        blockChange = await ReopenCalendarAsync(property.Id, tell: true, cancellationToken);
+
                     Fail(change, reason, now);
                     notice = new PropertyModeNotice(
                         change.Id, PropertyModeNoticeKind.Failed, PropertyModeRules.EarliestDate(today, candidates));
                     outcome = Outcome.Failed;
-                    if (change.ToMode == RentalMode.Long)
-                        await ReopenCalendarAsync(property.Id, cancellationToken);
                 }
                 else
                 {
+                    // The calendar change that tells the channel manager (to long-term the nights close and stop selling on the portals, back to
+                    // short stays they open again) is recorded before the mode is written: its lookup may save the unit of work.
+                    blockChange = change.ToMode == RentalMode.Long
+                        ? await CloseCalendarAsync(property.Id, property.OrgId, change.EffectiveDate, cancellationToken)
+                        : await ReopenCalendarAsync(property.Id, tell: true, cancellationToken);
                     property.RentalMode = change.ToMode;
                     property.UpdatedAt = now;
-                    if (change.ToMode == RentalMode.Long)
-                        await CloseCalendarAsync(property.Id, property.OrgId, change.EffectiveDate, cancellationToken);
-                    else
-                        await ReopenCalendarAsync(property.Id, cancellationToken);
 
                     change.Status = PropertyModeChangeStatus.Applied;
                     change.AppliedAt = now;
@@ -379,6 +400,8 @@ public sealed class PropertyModeService(
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
         }
+
+        EnqueueRun(blockChange);
 
         if (outcome == Outcome.Applied)
         {
@@ -445,18 +468,31 @@ public sealed class PropertyModeService(
     /// take and still check out on the day of the change, which <see cref="PropertyModeRules.BlockersFor"/> treats as not
     /// free yet; occupancy is half-open, so a block that started on the day would leave that night open. Idempotent: an
     /// identical block is kept (the portals keep its event), any other block of that reason (a stale one) is removed.
-    /// Saved by the caller, in its transaction.
+    /// Saved by the caller, in its transaction. Returns the calendar change that tells the channel manager (E08/F05/US02, NF-78: the nights
+    /// stop selling there too), recorded in the same unit of work before anything is staged (<c>null</c> when nothing changes: an identical
+    /// block is kept, or no recorder is registered); the caller runs it once its save is committed.
     /// </summary>
-    private async Task CloseCalendarAsync(Guid propertyId, Guid orgId, DateTime effectiveDay, CancellationToken cancellationToken)
+    private async Task<CalendarChangeRecord?> CloseCalendarAsync(Guid propertyId, Guid orgId, DateTime effectiveDay, CancellationToken cancellationToken)
     {
         var day = AsDay(effectiveDay);
         var start = AsDay(PropertyModeRules.CalendarBlockStart(day));
         var end = AsDay(PropertyModeRules.CalendarBlockEnd(day));
         var held = await HeldBlocks(propertyId).ToListAsync(cancellationToken);
         var keep = held.FirstOrDefault(b => b.StartUtc.Date == start && b.EndUtc.Date == end);
-        db.CalendarBlocks.RemoveRange(held.Where(b => !ReferenceEquals(b, keep)));
+        var stale = held.Where(b => !ReferenceEquals(b, keep)).ToList();
+
+        // The nights that change: those of the block that is written and those of the stale ones that go.
+        var changed = stale.Select(b => (From: b.StartUtc.Date, To: b.EndUtc.Date)).ToList();
+        if (keep is null)
+            changed.Add((start, end));
+
+        var record = changed.Count == 0
+            ? null
+            : await RecordCalendarChangeAsync(propertyId, changed.Min(r => r.From), changed.Max(r => r.To), keep is null ? "created" : "removed", cancellationToken);
+
+        db.CalendarBlocks.RemoveRange(stale);
         if (keep is not null)
-            return;
+            return record;
 
         db.CalendarBlocks.Add(new CalendarBlock
         {
@@ -470,11 +506,68 @@ public sealed class PropertyModeService(
             ManualReason = CalendarBlockReason.ModeChange,
             Summary = null,
         });
+        return record;
     }
 
-    /// <summary>Removes the block of reason <see cref="CalendarBlockReason.ModeChange"/>: the nights are free again. Saved by the caller.</summary>
-    private async Task ReopenCalendarAsync(Guid propertyId, CancellationToken cancellationToken) =>
-        db.CalendarBlocks.RemoveRange(await HeldBlocks(propertyId).ToListAsync(cancellationToken));
+    /// <summary>
+    /// Removes the block of reason <see cref="CalendarBlockReason.ModeChange"/>: the nights are free again. Saved by the caller. With <paramref name="tell"/>
+    /// it returns the calendar change that opens the nights on the channel manager too, recorded in the same unit of work before anything is staged (<c>null</c>
+    /// when there is no block, no recorder, or the property is gone and there is nobody to tell); the caller runs it once its save is committed.
+    /// </summary>
+    private async Task<CalendarChangeRecord?> ReopenCalendarAsync(Guid propertyId, bool tell, CancellationToken cancellationToken)
+    {
+        var held = await HeldBlocks(propertyId).ToListAsync(cancellationToken);
+        var record = tell && held.Count > 0
+            ? await RecordCalendarChangeAsync(propertyId, held.Min(b => b.StartUtc.Date), held.Max(b => b.EndUtc.Date), "removed", cancellationToken)
+            : null;
+
+        db.CalendarBlocks.RemoveRange(held);
+        return record;
+    }
+
+    /// <summary>
+    /// The calendar change of the nights from <paramref name="from"/> (included) to <paramref name="toExclusive"/> (excluded) of a block of the mode change
+    /// (<see cref="CalendarChangeKind.Block"/>: the summary names the action and the reason, nothing else). The channel manager is told what the nights hold when the
+    /// process runs; a property that is not on it records an <c>Applied</c> process and nothing else.
+    /// </summary>
+    private async Task<CalendarChangeRecord?> RecordCalendarChangeAsync(
+        Guid propertyId,
+        DateTime from,
+        DateTime toExclusive,
+        string action,
+        CancellationToken cancellationToken)
+    {
+        if (changeRecorder is null)
+            return null;
+
+        var window = new CalendarWindow(propertyId, DateOnly.FromDateTime(from), DateOnly.FromDateTime(toExclusive).AddDays(-1));
+        return await changeRecorder.RecordAsync(
+            CalendarChangeKind.Block,
+            [window],
+            null,
+            JsonSerializer.Serialize(new { action, reason = nameof(CalendarBlockReason.ModeChange) }),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// After the commit, a calendar change that is <c>Queued</c> is enqueued once for an immediate run; the recurring job is the safety net, so a queue that cannot
+    /// take it is not a failure of the change of mode.
+    /// </summary>
+    private void EnqueueRun(CalendarChangeRecord? change)
+    {
+        if (change is not { NeedsRun: true } || jobs is null)
+            return;
+
+        var processId = change.ProcessId;
+        try
+        {
+            jobs.Enqueue<CalendarChangeProcessJob>(job => job.RunAsync(processId, CancellationToken.None));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Calendar change {ProcessId} could not be enqueued: the recurring job sends it", processId);
+        }
+    }
 
     private async Task ReevaluateComplianceAsync(Guid propertyId, CancellationToken cancellationToken)
     {

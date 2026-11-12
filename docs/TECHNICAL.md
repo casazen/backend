@@ -461,8 +461,9 @@ properties: the properties, the rules, the confirmed seasonal prices and the tak
 
 **Calendar changes (E08/F05/US02, NF-36, NF-78).** What the host changes in the calendar reaches the channel manager as a *change*: a `CalendarChangeProcess`
 (kind `DayRules`, `Block`, `Bulk` or `Publication`) and its `CalendarChangeChunk` rows, one per range of at most `Octorate:Calendar:MaxDaysPerCall` days of a
-property. `ICalendarChangeRecorder` adds them to the unit of work of whoever changes the calendar (the manual blocks, `CalendarChangeService`, the handler of the
-first publication) and never saves: a block and its change exist together or not at all. A property that books into the channel manager
+property. `ICalendarChangeRecorder` adds them to the unit of work of whoever changes the calendar (the manual blocks, the block of a change of rental mode
+(`PropertyModeService`: programming, cancelling, applying and failing a change to long-term, and the return to short stays, so a property that goes long-term does not stay
+sellable on the channels), `CalendarChangeService`, the handler of the first publication) and never saves: a block and its change exist together or not at all. A property that books into the channel manager
 (`IOctorateBookingTargets.LookupAsync`) gets chunks; one that is not connected, whose mapping is not confirmed, or with `Features:OctorateConnector` off gets none and
 its change stays in CasaZen (`Applied`); a confirmed mapping without a room chosen gets `Failed` chunks `octorate_room_not_chosen`. The days before today of the property
 are never sent. After the commit a `Queued` process is enqueued once (`CalendarChangeProcessJob.RunAsync`); the recurring job `calendar-change-process` (every minute, only
