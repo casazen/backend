@@ -441,6 +441,13 @@ internal static class PostgresAdvisoryLocks
         /// the close are taken one at a time, so two postings never post the same facts twice and a close never reads a month being posted.
         /// </summary>
         OwnerAccounting = 1_603,
+
+        /// <summary>
+        /// The push of one calendar change to the channel manager (key: process id, <c>processId.ToString("N")</c>, E08/F05/US02/T01, a session lock held for the whole
+        /// run): the immediate run enqueued after a change and the recurring job that picks up what is due never send the same chunk twice, because a run that finds
+        /// the lock taken leaves and the other one does the work. The values 20_800 to 20_899 are the booking operations of the calendar workspace (epic E08).
+        /// </summary>
+        CalendarChangeProcess = 20_851,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

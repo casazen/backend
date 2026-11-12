@@ -36,6 +36,20 @@ public sealed class OctorateConnectService(
 
     private OctorateEnvironment Environment => OctorateEnvironments.Of(hostEnvironment);
 
+    /// <summary>
+    /// What is left of the quota and whether that is <see cref="QuotaWarningShare"/> of the limit or less. <c>quotaStatus</c> counts the units USED (per node, in the window of
+    /// about five minutes: the sandbox runs S25, <c>docs/requirements/octorate-helix.md</c> §10.5, although the specification calls it «the calls left»), so what is left is the
+    /// limit less the units used, never below zero. Nothing is known, and no warning, when the limit is not a positive number or the count is missing or negative.
+    /// </summary>
+    public static (int? Remaining, bool Warning) QuotaLeftOf(int? limit, int? used)
+    {
+        if (limit is not > 0 || used is not >= 0)
+            return (null, false);
+
+        var left = Math.Max(0, limit.Value - used.Value);
+        return (left, left <= limit.Value * QuotaWarningShare);
+    }
+
     public async Task<string> StartAsync(Guid orgId, string userId, CancellationToken ct)
     {
         var settings = Settings();
@@ -110,7 +124,7 @@ public sealed class OctorateConnectService(
             return new OctorateConnectionState(OctorateConnectionStatus.Disconnected, environment, null, null, null, null, false);
 
         int? quotaLimit = null;
-        int? quotaRemaining = null;
+        int? quotaUsed = null;
         if (connection.Status == OctorateConnectionStatus.Connected)
         {
             try
@@ -119,7 +133,7 @@ public sealed class OctorateConnectService(
                 {
                     var configuration = await client.GetConfigurationAsync(ct);
                     quotaLimit = configuration.QuotaLimit;
-                    quotaRemaining = configuration.QuotaStatus;
+                    quotaUsed = configuration.QuotaStatus;
                 }
             }
             catch (OctorateException ex)
@@ -132,7 +146,7 @@ public sealed class OctorateConnectService(
             connection = await FindAsync(orgId, environment, ct) ?? connection;
         }
 
-        var warning = quotaLimit is > 0 && quotaRemaining is { } left && left <= quotaLimit.Value * QuotaWarningShare;
+        var (quotaRemaining, warning) = QuotaLeftOf(quotaLimit, quotaUsed);
         return new OctorateConnectionState(
             connection.Status,
             connection.Environment,

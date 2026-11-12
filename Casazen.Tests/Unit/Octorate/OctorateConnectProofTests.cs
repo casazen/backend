@@ -157,6 +157,10 @@ public class OctorateConnectProofTests
         Assert.Equal(OctorateConnectionStatus.Connected, Assert.IsType<OctorateConnectionResponse>(status).Status);
         Assert.True(handler.ExchangedTheCode);
 
+        // The status reads quotaStatus as the units USED (sandbox S25): 120 used of 180 leave 60, which is no warning.
+        var shown = Assert.IsType<OctorateConnectionResponse>(status);
+        Assert.Equal((180, 60, false), (shown.QuotaLimit, shown.QuotaRemaining, shown.QuotaWarning));
+
         // Nothing the endpoints answered carries a token, the code or the state.
         foreach (var answer in new[] { JsonSerializer.Serialize(complete, complete.GetType()), JsonSerializer.Serialize(status, status.GetType()) })
         {
@@ -173,6 +177,24 @@ public class OctorateConnectProofTests
                 Assert.DoesNotContain(secret, line, StringComparison.Ordinal);
         }
     }
+
+    [Theory]
+    [InlineData(180, 120, 60, false)]
+    [InlineData(180, 2, 178, false)]
+    [InlineData(180, 162, 18, true)]
+    [InlineData(180, 180, 0, true)]
+    [InlineData(180, 200, 0, true)]
+    public void QuotaLeftOf_ReadsTheStatusAsTheUnitsUsed_AndWarnsWhenAtMostATenthIsLeft(int limit, int used, int left, bool warning) =>
+        Assert.Equal(((int?)left, warning), OctorateConnectService.QuotaLeftOf(limit, used));
+
+    [Theory]
+    [InlineData(null, 5)]
+    [InlineData(0, 5)]
+    [InlineData(-1, 5)]
+    [InlineData(180, null)]
+    [InlineData(180, -1)]
+    public void QuotaLeftOf_KnowsNothingAndWarnsOfNothing_WhenTheLimitOrTheCountIsMissingOrOutOfRange(int? limit, int? used) =>
+        Assert.Equal(((int?)null, false), OctorateConnectService.QuotaLeftOf(limit, used));
 
     private static IHostEnvironment Host(string environmentName)
     {

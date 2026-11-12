@@ -331,6 +331,11 @@ Property record choices (PC-02):
 | `GET` | `/api/bookings/calendar` | Calendar view of one property (`?propertyId&startDate&endDate&timezone`); unchanged |
 | `GET` | `/api/calendar` | SR-02a: the calendar of all the host's properties in one read (below): `?from&to&propertyIds&timezone` |
 | `GET` | `/api/calendar/days` | short-rent property.read | E08/F05/US01/T02 (NF-36, NF-78): the price and the rules of every night of the properties the caller reaches (below): `?from&to&propertyIds`; `{ today, properties: [{ propertyId, timezone, currency, mirrored, days: [{ date, priceCents, priceSource, minNights, maxNights, closedToArrival, closedToDeparture, minAdvanceDays, maxAdvanceDays, hasRule, taken }] }] }` |
+| `GET` | `/api/calendar/changes` | short-rent property.read | E08/F05/US02/T02 (NF-36, NF-78): the changes of the calendar sent to the channel manager that the caller reaches (below): `?state&limit`, newest first, at most 50 (a caller limited to some properties reads the 500 newest changes of the org: when that did not fill its list the answer carries the header `X-Calendar-Changes-Truncated: true`, exposed by the CORS policy; an older change of its own is read by its id, and `state` narrows the read); `[{ id, kind, state, requestedAt, startedAt, finishedAt, propertyCount, dayCount, quotaUnitsEstimated, from, to, errorCode, errorMessage, nextAttemptAt, properties: [{ propertyId, state, errorCode, errorMessage, chunkCount, from, to }] }]` |
+| `GET` | `/api/calendar/changes/{id}` | short-rent property.read | One change, the same shape; 404 `calendar_change_not_found` for another org's, or one that touches a property the caller does not reach |
+| `POST` | `/api/calendar/changes/{id}/retry` | short-rent property.write | Sends again a change that failed or was partly sent (its failed chunks go back to pending, the change to `Queued`, a run is enqueued): 202 with the change; `property.write` on every property of the change (403), 404 as above, 409 `calendar_change_not_retryable` for any other state |
+| `POST` | `/api/calendar/changes/preview` | short-rent property.write | E08/F05/US02/T03 (NF-36, NF-78): what a change would do, and nothing else (below): `{ propertyIds, from, to, daysOfWeek, price, minNights, maxNights, closedToArrival, closedToDeparture, minAdvanceDays, maxAdvanceDays }`, each value `{ action: Keep \| Set \| Clear, value }`; answers per property `{ propertyId, name, mirrored, days, changedDays, unchangedDays, takenDays, skippedPastDays, samples, estimatedQuotaUnits }`, the totals and `warnings` |
+| `POST` | `/api/calendar/changes` | short-rent property.write | Applies the same body to every property, all or nothing: 201 with the change (`GET /api/calendar/changes/{id}`) and its `Location`; 403 for the whole request when one property cannot be written, 404 `property_not_found`, 422 `calendar_day_rule_nothing_to_change`, `calendar_day_rule_in_past` and the codes of the rules |
 | `POST` | `/api/bookings/{id}/check-in` | Perform check-in: records `ArrivedAt`, schedules the Alloggiati Web job (idempotent) |
 | `POST` | `/api/bookings/{id}/check-out` | Perform check-out |
 | `GET` | `/api/bookings/{id}/alloggiati-status` | Alloggiati Web status (same as `/api/alloggiati/{id}/status`) |
@@ -453,6 +458,47 @@ else `Property.MinNights`, else 1); `maxNights`, `minAdvanceDays`, `maxAdvanceDa
 manager cannot be asked or takes too long, it is false and the days are answered all the same; one read waits 3 seconds at most for all the properties, what the channel
 manager said about a property, a failure or a timeout included, is remembered for 60 seconds, and a property a spent wait left out is asked at the next read). One query per kind of data for all the
 properties: the properties, the rules, the confirmed seasonal prices and the taken nights.
+
+**Calendar changes (E08/F05/US02, NF-36, NF-78).** What the host changes in the calendar reaches the channel manager as a *change*: a `CalendarChangeProcess`
+(kind `DayRules`, `Block`, `Bulk` or `Publication`) and its `CalendarChangeChunk` rows, one per range of at most `Octorate:Calendar:MaxDaysPerCall` days of a
+property. `ICalendarChangeRecorder` adds them to the unit of work of whoever changes the calendar (the manual blocks, the block of a change of rental mode
+(`PropertyModeService`: programming, cancelling, applying and failing a change to long-term, and the return to short stays, so a property that goes long-term does not stay
+sellable on the channels), `CalendarChangeService`, the handler of the first publication) and never saves: a block and its change exist together or not at all. A property that books into the channel manager
+(`IOctorateBookingTargets.LookupAsync`) gets chunks; one that is not connected, whose mapping is not confirmed, or with `Features:OctorateConnector` off gets none and
+its change stays in CasaZen (`Applied`); a confirmed mapping without a room chosen gets `Failed` chunks `octorate_room_not_chosen`. The days before today of the property
+are never sent. After the commit a `Queued` process is enqueued once (`CalendarChangeProcessJob.RunAsync`); the recurring job `calendar-change-process` (every minute, only
+with the connector on) runs the due ones and follows what the channel manager accepted.
+
+*What is sent* (`OctorateCalendarEntries`, pure): for each night the price `StayPricing.NightPrice` with the prices the host set (to the cent the guest is quoted; a night
+with no price at all, a property with no base price («0 = none», as the listings imported from the channel manager are) and no price set for the night, sends no `price` and the
+channel manager keeps its own: 0 is never written), the
+minimum stay (the rule, else the property's, else 1), the maximum stay (the rule; with none `Octorate:Calendar:NoMaxStay` when configured, else left out), `closeToArrival`,
+`closeToDeparture` and `cutOffDays` (the minimum advance of the rule, 0 when none); the maximum advance has no field and is never sent. The nights a manual block (a mode
+change block included) closes carry `stopSells` true, or `availability` 0 with `CloseNightsWith = Availability`; any other night `stopSells` false (or `availability` 1); a night
+a booking, a hold or a block of a channel holds is left alone. Adjacent nights with equal values are one interval; each chunk is one `POST /rest/v1/calendar/bulk`.
+
+*What an answer means* (`CalendarPushService`): a process id is `Accepted`; success **without** a process id wrote nothing (a room with no license) and the chunk is `Failed`
+`octorate_room_not_licensed`, never accepted; process ids together with a non-empty `warnings` are a refusal as well (`octorate_request_rejected`: any warning is a chunk not
+taken whole, octorate-integration-facts.md); a rate limit, a 5xx or a timeout keeps the chunk `Pending` with a back-off of 1, 2, 4 and 8 minutes and fails it
+`octorate_unavailable` after the fifth attempt; a refusal of the access is `octorate_not_authorized`, another refusal `octorate_request_rejected`; the quota that Octorate says is used up (its 403 `ApiQuotaException`, OCT-13: a 403 that is not a refusal) is a wait, on the write, on the read of the quota and on the follow-up alike: the chunk stays `Pending` with no attempt used and the change waits five minutes with `octorate_quota_low`, never a failure and never `octorate_not_authorized`. The quota is read once for a
+run (`GetConfigurationAsync`); a chunk whose estimate (`ceil(room-days / RoomDaysPerQuotaUnit)`) would take `QuotaStatus` past `QuotaLimit - QuotaReserve` waits five minutes
+with `octorate_quota_low` on the change, never a failure. The state of the change is derived from its chunks (`CalendarPushRules.Derive`): `Applied`, `Queued`, `Sending`, `Sent`
+(every chunk accepted by the channel manager), `Confirmed`, `PartiallySent`, `Failed`; it never says published. A chunk is `Confirmed` only when
+`GET /rest/v1/calendar/process/{id}` (documented only in Postman, D7, with no status of success) shows, for the process and for every date, a status listed in
+`Octorate:Calendar:ProcessSuccessStatuses` (empty until the sandbox shows them: nothing is confirmed; an unknown, absent or interim status such as `PROCESSING` confirms
+nothing); `NEW` and `NOT_PROCESSED` leave it accepted, `ERROR` fails it `octorate_channel_error`, and where the endpoint is not available it stays accepted and nothing is
+claimed. A change that is wholly `Confirmed` is asked once more ten minutes later, so an `ERROR` the endpoint shows afterwards fails the chunk and is not left out of sight.
+A chunk is followed for 30 minutes after its own last call (not after the first call of the change: a chunk sent late, or sent again by a retry, has its own window); past it the
+chunk stays accepted and is not asked again. The follow-up reads at most 25 processes of the channel manager for an org in one pass (one unit of quota each, the quota read once) and never past `QuotaLimit - QuotaReserve`, as
+the push: what is not read stays accepted and is asked again five minutes later.
+
+*Reading* (`ICalendarChangeQueries`): a change is shown only to a caller that reaches **every** property it touches (`InScope`, in SQL; the property ids are in its summary and
+its chunks); a change whose properties cannot be told is shown to an org-wide scope only. The state of a property is derived from its chunks (a property with none is `Skipped`:
+the change stays in CasaZen). *Writing* (`ICalendarChangeService`): `preview` stages and saves nothing; `apply` stages the process and its chunks, then the rules of every
+property, and saves them with one `SaveChangesAsync`, so a property that fails validation fails the whole request. Taken nights are counted, not skipped. The estimate of the quota
+is an estimate (decision D7: 15 room-days a unit). Whether a property is on the channel manager is asked outside any lock: the manual block and the change of rental mode ask (`ICalendarChangeRecorder.ResolveAsync`)
+before their transaction and the lock of the dates and hand the answer to the recorder, and the preview asks within the budget of the calendar (3 seconds for all its properties, then
+the rest are read as on the channel manager, as a lookup that fails is).
 
 **The state and the history of one booking (SR-05a, SR-D17).** `Booking` keeps three more times, all nullable and never backfilled:
 `ConfirmedAt` (a payment that settled, the host's confirmation or acceptance, or a booking confirmed from the start: entered by the
@@ -1202,7 +1248,7 @@ answered with their own code (`octorate_not_connected` 409, `octorate_auth_faile
 
 | Method | Path | Policy | Description |
 |---|---|---|---|
-| `GET` | `/api/octorate/connection` | `OtaRead` | Where the org's connection stands: `status` (Connected, Disconnected, Error), `environment` (Test = sandbox, Production), `accountId`, `lastSyncedAt`, and while connected the quota Octorate reports (`quotaLimit`, `quotaRemaining`, `quotaWarning` at a tenth or less) |
+| `GET` | `/api/octorate/connection` | `OtaRead` | Where the org's connection stands: `status` (Connected, Disconnected, Error), `environment` (Test = sandbox, Production), `accountId`, `lastSyncedAt`, and while connected the quota Octorate reports (`quotaLimit`, `quotaRemaining` = the limit less the units `quotaStatus` counts as **used** (never below zero), `quotaWarning` when a tenth of the limit or less is left) |
 | `POST` | `/api/octorate/connect/start` | `OtaWrite`, whole-org scope | The Octorate consent address with `client_id`, `redirect_uri` (`Octorate:RedirectUri`) and a new single-use `state` bound to org, user and callback, valid `Octorate:StateLifetimeMinutes` (10); only its SHA-256 is stored. 403 `octorate_connection_needs_whole_org` for a collaborator limited to some properties |
 | `POST` | `/api/octorate/connect/complete` | `OtaWrite`, whole-org scope | Body `{ code, state }` of the callback: consumes the state (400 `octorate_state_invalid`, the same answer for a reused, expired or foreign state), exchanges the code server to server (502 `octorate_exchange_failed`), stores the tokens encrypted, checks the environment of the credentials (409 `octorate_wrong_environment`, the connection stays disconnected) and answers `{ status, environment, propertyCount }` |
 | `DELETE` | `/api/octorate/connection` | `OtaWrite`, whole-org scope | Disconnects the org (204): no call is made for it until it connects again; the access token is forgotten, the refresh token (given by Octorate only once) stays encrypted and unused for the reconnection; mappings and imported data are kept |
@@ -1790,6 +1836,66 @@ declaration.
 
 *The card.* A partner is the org's (`statusScope` `Org`): its card is Active when the org-level activation is, or when the property asked about has one (asked without a `propertyId`,
 when any property of the caller's scope has one). The Active tab lists an activation declared for a property with that property.
+
+##### Health of the active integrations (E09/F03/US01/T01, NF-57, MKT-04, OCT-14)
+
+What the host reads in the Active tab for each property and channel, tool or function of the license, and the sync that keeps it true (`IMarketplaceHealthService`). Behind
+`Features:OctorateConnector` (404 while it is off, before authentication). The read needs `OtaRead`; the org and the `HostScope` come from the caller's membership, never from the
+request. **A read never calls Octorate**: it answers from CasaZen's own rows and from the quota of the last sync, which is kept in memory (per API instance, not in a table: absent
+after a restart until the next sync, and `readAt` says when it was read; an older reading than three hours is not shown). Every answer is `private, no-store`.
+
+| Method | Path | Policy | Description |
+|---|---|---|---|
+| `GET` | `/api/marketplace/health?propertyId=&lang=` | `OtaRead` + `HostScope` | `{ items }`, one row for each activation of kind `Channel`, `Tool` or `LicensedFunction` that is not turned off (a partner has no connection to read), ordered by property name, then kind and name: `{ activationId, propertyId, propertyName, kind, code, name, status, isDeclared, lastSyncedAt, error, quota, changeRequestedAt }`. `status` is `Pending`, `Active`, `ToFix` (or `Requested`, a function that waits for the license); `name` is the portal's in the cache (its code when the cache has none) or the function's in `lang`. `error` is `{ code, message }` or `null`: `code` is the stable code kept on the row (`connection_disabled`, `connection_missing`, `connection_not_enabled`, `license_module_off`, `octorate_partner_failed`, `octorate_unavailable`) and `message` the plain-language text of the resource files in `lang` (`Marketplace.Error.<code>`, Italian and English, no brand; a code nobody listed gets `Marketplace.Error.generic`): **the text Octorate itself gives never reaches the answer**, the page or the log (ADR-023-R6). `quota` is `{ used, limit, warn, readAt }`, the same on every row and `null` until a sync read it: `used` is `quotaStatus` (the units used in the window of the quota), `limit` is `quotaLimit`, `warn` is true when `used` reached `Marketplace:Health:QuotaWarnPercent` (80 by default, a value outside 1 to 100 is read as 80) of `limit`. A caller limited to some properties reads the rows of those only; a row with no property (a function of the license written before the license was a property's) is the whole org's and is read by a caller who reaches the whole org only; with a `propertyId` only that property's rows. Another org's rows are never read. With the connector off the answer is empty. `lang` is `it` or `en`, the language of the request when absent. 403 `no_org_context`; 404 `marketplace_property_not_found` for a property that is not the org's or is outside the caller's scope |
+
+*The sync* (`marketplace-connection-sync`, every 30 minutes in UTC, [hangfire.md](runbooks/hangfire.md); `IMarketplaceHealthService.SyncAsync(orgId)`, org by org, the least recently
+synced first): it only reads Octorate and writes only CasaZen's own rows and the «To do» items, and only while `Features:OctorateConnector` is on and the org has a connected account in
+this environment (otherwise nothing is read or written). Each property is saved before the next one is read.
+
+- *The connections.* One `GET /rest/v1/connection?accommodation=` for each property that has a channel or a tool. An activation that has a connection id is matched to its connection by id
+  and portal. `ENABLED` keeps an Active activation Active and makes any other Active (verified, `isDeclared` false) **only when its pulls are on too** (`updateCalendar` and
+  `pullReservations` both `true`: the activation wizard switches them on as the last step, after «mark connected» and the mapping, so `ENABLED` alone is an access given, not a finished
+  activation); with the pulls off a Pending row stays Pending and a row to fix keeps its problem and its open «To do» (only `lastSyncedAt` moves), and finishing the activation is the
+  wizard's (its step switches the pulls on, also for a row that is already Active with its pulls off; with the pulls on a second click changes nothing). `WAITING` Pending (importing, or
+  waiting for the access or the mapping), `DISABLED` To fix with `connection_disabled`; each reads `lastSyncedAt`, and a healthy connection clears the problem. A connection that is no longer listed makes it To fix with `connection_missing` (the id
+  is kept, so a connection that comes back is read again), except for a row written in the last ten minutes: the list may lag just after a create. **When the list shows none of the
+  connections CasaZen made for the property** (an empty list, or all of them gone together) **nothing is concluded from one pass**: it is logged as a warning with the code and counted
+  as skipped, the first pass only remembers the moment (`LastErrorAt`, which a row with no problem leaves empty; no error is shown and no «To do» is raised) and a second pass, at least
+  ten minutes and at most three hours later, that finds them still gone confirms it (a sight of the connection in between clears it). An answer that is not a list of connections
+  (an error that came with HTTP 200, a wrapper without its list, items none of which can be read: no `id`, no `channelId`) is a failure of the read (`octorate_unavailable`, logged
+  by code, counted, read again at the next run), never an empty list; a list that is really empty is one. **A status nobody knew changes nothing**
+  (not even `lastSyncedAt`) and is logged as a warning with the word, so a healthy connection is never marked broken by a word of Octorate's that CasaZen has not met; the vocabulary
+  (`ENABLED`, `WAITING`, `DISABLED`) is the one of the OpenAPI, the sandbox has no channel connected. A row with no connection id is left to the activation wizard. The log of the channel
+  (`lastPortalAcceptLog`) is never used to decide a status. A property with no confirmed listing is skipped.
+- *The license.* For a property that has a function row, `IMarketplaceLicensedFunctionService.ReconcileAsync` (one read of the accommodation).
+- *The quota.* One `GET /rest/v1/api/configuration` for each org and run. `quotaStatus` is read as the units **used** (the plan, S22 and S25: per node, in the window of about
+  five minutes; the specification calls it «the calls left», the sandbox shows otherwise). The connection status of the connect wizard (`OctorateConnectService`, `GET /api/octorate/connection`)
+  reads it the same way, and its `quotaRemaining` is the limit less the units used. The warning is advisory only.
+- *The «To do».* An activation that is To fix and has no item gets one with `IInternalActivityService.CreateAsync`: type `IntegrationError`, action `ResumeWizard`, entity type
+  `MarketplaceActivation` and the id of the activation as the entity id, the property, urgency High for a channel (bookings stop arriving) and Medium for a tool or a function, the code of the
+  problem as the reason (no name, no person); its id is kept in `TodoActivityId`. The call is idempotent, so there is never a second item while one is open. When the activation is no longer
+  To fix the item is closed by the system and the id cleared, so the next problem is a new item; an item the host closed by hand while the problem stays is not raised again at every run. The
+  client maps `ResumeWizard` with the entity type `MarketplaceActivation` to the activation wizard at the failing step (the To do action map of the activity center, ADR-026-R6).
+- *Stops cleanly.* The first `OctorateRateLimitException` ends the run (`SyncAsync` raises it, the job stops): what was done is saved, the «To do» items of that property are brought in line,
+  and the rest is left to the next run, which starts with the orgs and properties synced the longest ago, so a stopped run is continued and not repeated. Any other failure of Octorate for a
+  property is logged with the property and the code (never a message or a body), counted, and the next property goes on; a refusal of the org's own token ends the org's run. No retry by
+  Hangfire: the next run is 30 minutes away.
+
+##### Change and deactivation (E09/F03/US01/T02, NF-58, MKT-05)
+
+The settings of a channel or a tool, the preview and the confirmed deactivation of an activation, and the change request of a function of the license (`IMarketplaceChangeService`). Policy
+`OtaWrite` for all four; the org and the `HostScope` come from the caller's membership, never from the request. An activation of another org, one of a property outside the scope, one of a
+property that was deleted, **a row with no property for a caller limited to some properties** (a partner declared for the whole org) and one that does not exist are the same 404
+`marketplace_activation_not_found`. The controller is not behind `Features:OctorateConnector` as a whole (the partners never depend on Octorate): the settings change, which is a channel's
+or a tool's, is gated (404 before authentication); the other three decide by the kind of the row, and a channel, a tool or a function of the license answers the same 404 while the flag is
+off. Every answer is `private, no-store`. `{ activation }` below is `{ activationId, kind, code, propertyId, status, changeRequestedAt }`.
+
+| Method | Path | Policy | Description |
+|---|---|---|---|
+| `PATCH` | `/api/marketplace/activations/{id}` | `OtaWrite` + `HostScope`, behind `Features:OctorateConnector` | Body `{ hotelId?, username?, password? }`: the settings of a channel or a tool. Only what the portal asks for in the cache (`requiresHotelId`, `requiresPassword`) is used, trimmed; the rest is dropped. `PATCH /rest/v1/connection/{acc}/{connection}` with the members that are set (`UpdatedAt` is set). **The login details are passed through: no column, no draft, no log line and no answer holds them.** `{ activation }`. 404 `marketplace_activation_not_found`; 409 `marketplace_octorate_not_connected`, `marketplace_connection_missing` (the activation has no connection, or Octorate no longer has it: start it again); 422 `marketplace_change_not_supported` (a partner, a function of the license, a row that was turned off, or a portal that asks for neither the identifier nor the login details), `marketplace_settings_required` (nothing that the portal asks for was given, also with no body: an empty change is never «everything»), `marketplace_property_not_linked`. A failure of Octorate is raised as it is (502 `octorate_unavailable`, `octorate_partner_failed`, ...) and changes nothing |
+| `GET` | `/api/marketplace/activations/{id}/deactivation-preview?lang=` | `OtaWrite` + `HostScope` | `{ activationId, kind, code, name, effects, requiresConfirmation, guided }`: `effects` are plain sentences from the resource files (`Marketplace.Deactivate.<Kind>.Effect<n>`, Italian and English) with the name put in: of a channel, «new bookings of the channel no longer arrive in CasaZen; CasaZen stops updating availability and prices there; the listing stays published until the host closes it on the channel»; `requiresConfirmation` is always true; `guided` is true for a partner (turned off on its own site) and for a function of the license (asked of the channel manager). It reads only: nothing is asked of Octorate and nothing is written |
+| `POST` | `/api/marketplace/activations/{id}/deactivate` | `OtaWrite` + `HostScope` | Body `{ confirmed }`. **`confirmed` must be true**: otherwise 422 `marketplace_confirmation_required` before anything is read, no connection is deleted and no row changes (also with no body). A channel or a tool: `DELETE /rest/v1/connection/{acc}/{connection}` of the connection CasaZen made (a row with no connection id has nothing to delete, and none is looked for), a connection Octorate no longer has is already what was asked, then the row becomes `Deactivated`, kept as history without its connection id and without its problem, and its open «To do» item is closed by the person. A partner: `IMarketplacePartnerActivationService.UndeclareAsync` once the host says it turned the partner off on the partner's site (no connector needed). A function of the license is never deactivated by CasaZen: 422 `marketplace_change_not_supported`, the host asks for a change. Idempotent: a row that is already `Deactivated` is answered as it is. `{ activation }`. 404 `marketplace_activation_not_found`; 409 `marketplace_octorate_not_connected` (a channel or a tool needs the connection to Octorate to delete its own); 422 `marketplace_confirmation_required`, `marketplace_change_not_supported`, `marketplace_property_not_linked`. A failure of Octorate is raised as it is and changes nothing, so the host can try again |
+| `POST` | `/api/marketplace/activations/{id}/change-request` | `OtaWrite` + `HostScope` | Body `{ note? }` (at most 500 characters: 422 `marketplace_change_note_invalid`, checked before the row is read). For a function of the license: `changeRequestedAt` is set and the status stays, so the card says «change requested on» until the reconciliation of the license shows a different state (it clears the request). One request is open at a time: 409 `marketplace_change_already_requested`. CasaZen asks Octorate nothing and never writes the license; the note is the host's own words and is not kept (no column, no log: the request is the date). `{ activation }`. 404 `marketplace_activation_not_found`; 422 `marketplace_change_not_supported` (not a function of the license, or one that was turned off) |
 
 #### Compliance / legal
 

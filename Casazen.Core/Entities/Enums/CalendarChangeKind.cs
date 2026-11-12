@@ -14,4 +14,7 @@ public enum CalendarChangeKind
 
     /// <summary>The same change applied to several properties at once, through the guided layer. Stored as 3.</summary>
     Bulk = 3,
+
+    /// <summary>The first publication of a listing: the prices, the availability and the restrictions of the whole horizon of the property, sent once. Stored as 4.</summary>
+    Publication = 4,
 }

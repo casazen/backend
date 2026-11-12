@@ -786,6 +786,42 @@
   <data name="CalendarDayRuleNothingToChange" xml:space="preserve">
     <value>Scegli almeno un valore da modificare e almeno un giorno.</value>
   </data>
+  <data name="CalendarChangeNoProperties" xml:space="preserve">
+    <value>Scegli almeno un immobile.</value>
+  </data>
+  <data name="CalendarChangeNotFound" xml:space="preserve">
+    <value>Modifica non trovata.</value>
+  </data>
+  <data name="CalendarChangeNotRetryable" xml:space="preserve">
+    <value>Solo una modifica non inviata, o inviata solo in parte, può essere inviata di nuovo.</value>
+  </data>
+  <data name="CalendarChangeWarningPropertyNotMirrored" xml:space="preserve">
+    <value>Questo immobile non è collegato al channel manager: la modifica resta solo in CasaZen.</value>
+  </data>
+  <data name="CalendarChangeWarningRoomNotChosen" xml:space="preserve">
+    <value>La camera di questo immobile sul channel manager non è scelta: la modifica è salvata in CasaZen ma non viene inviata finché non la scegli.</value>
+  </data>
+  <data name="CalendarPushChannelError" xml:space="preserve">
+    <value>Il channel manager ha accettato la modifica ma ha segnalato un errore nell'invio ai canali. Riprova.</value>
+  </data>
+  <data name="CalendarPushNotAuthorized" xml:space="preserve">
+    <value>Il channel manager ha rifiutato l'accesso di CasaZen: collega di nuovo l'account e riprova.</value>
+  </data>
+  <data name="CalendarPushQuotaLow" xml:space="preserve">
+    <value>Il limite di richieste al channel manager è quasi esaurito: l'invio riprende tra pochi minuti.</value>
+  </data>
+  <data name="CalendarPushRejected" xml:space="preserve">
+    <value>Il channel manager ha rifiutato la modifica. Controlla i dati dell'immobile e riprova.</value>
+  </data>
+  <data name="CalendarPushRoomNotChosen" xml:space="preserve">
+    <value>Scegli la camera del channel manager per questo immobile: finché non è scelta, nulla viene inviato.</value>
+  </data>
+  <data name="CalendarPushRoomNotLicensed" xml:space="preserve">
+    <value>Il channel manager non ha registrato la modifica: la camera non risulta attiva sul suo servizio. Controlla il piano e riprova.</value>
+  </data>
+  <data name="CalendarPushUnavailable" xml:space="preserve">
+    <value>Il channel manager non ha risposto dopo diversi tentativi: la modifica è salvata in CasaZen ma non è stata ancora inviata. Riprova.</value>
+  </data>
   <data name="CalendarInvalidRequest" xml:space="preserve">
     <value>Le date o gli immobili richiesti non sono validi: controlla le date (da 2000 a 2100) e gli identificativi degli immobili.</value>
   </data>
@@ -5045,6 +5081,69 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.rateChecker" xml:space="preserve">
     <value>Controlla che i tuoi prezzi siano allineati su tutti i canali e segnala le differenze.</value>
+  </data>
+  <data name="MarketplaceConfirmationRequired" xml:space="preserve">
+    <value>Per disattivare devi confermare in modo esplicito: non è stato cambiato nulla.</value>
+  </data>
+  <data name="MarketplaceChangeNotSupported" xml:space="preserve">
+    <value>Questa modifica non è possibile per questo tipo di attivazione: usa la procedura guidata della scheda.</value>
+  </data>
+  <data name="MarketplaceChangeAlreadyRequested" xml:space="preserve">
+    <value>Hai già chiesto questa modifica: aspetta che risulti nella licenza della struttura.</value>
+  </data>
+  <data name="MarketplaceSettingsRequired" xml:space="preserve">
+    <value>Indica cosa vuoi cambiare: l'identificativo della struttura sul canale oppure i dati di accesso.</value>
+  </data>
+  <data name="MarketplaceChangeNoteTooLong" xml:space="preserve">
+    <value>La nota è troppo lunga: al massimo 500 caratteri.</value>
+  </data>
+  <data name="Marketplace.Error.connection_disabled" xml:space="preserve">
+    <value>Il collegamento è spento sul channel manager: riaccendilo dal suo pannello, poi torna qui.</value>
+  </data>
+  <data name="Marketplace.Error.connection_missing" xml:space="preserve">
+    <value>Il collegamento non risulta più sul channel manager (potrebbe essere stato rimosso): ricomincia l'attivazione del canale.</value>
+  </data>
+  <data name="Marketplace.Error.connection_not_enabled" xml:space="preserve">
+    <value>Il channel manager non mostra ancora il collegamento come funzionante: controlla l'accesso al canale e riprova.</value>
+  </data>
+  <data name="Marketplace.Error.license_module_off" xml:space="preserve">
+    <value>Questa funzione non risulta più nella licenza della struttura: chiedila di nuovo al tuo channel manager.</value>
+  </data>
+  <data name="Marketplace.Error.octorate_partner_failed" xml:space="preserve">
+    <value>Il canale non ha accettato la richiesta (accesso non valido o canale non raggiungibile): controlla i dati di accesso e riprova più tardi.</value>
+  </data>
+  <data name="Marketplace.Error.octorate_unavailable" xml:space="preserve">
+    <value>Il channel manager non ha risposto in questo momento: riprova ad attivare il canale tra poco.</value>
+  </data>
+  <data name="Marketplace.Error.generic" xml:space="preserve">
+    <value>C'è un problema con questo collegamento: controllalo dal pannello del channel manager.</value>
+  </data>
+  <data name="Marketplace.Deactivate.Channel.Effect1" xml:space="preserve">
+    <value>Le nuove prenotazioni di {0} non arriveranno più in CasaZen.</value>
+  </data>
+  <data name="Marketplace.Deactivate.Channel.Effect2" xml:space="preserve">
+    <value>CasaZen smette di aggiornare disponibilità e prezzi su {0}: quello che il canale mostra resta com'è finché non lo cambi tu.</value>
+  </data>
+  <data name="Marketplace.Deactivate.Channel.Effect3" xml:space="preserve">
+    <value>Il tuo annuncio su {0} resta pubblicato finché non lo chiudi tu sul canale.</value>
+  </data>
+  <data name="Marketplace.Deactivate.Tool.Effect1" xml:space="preserve">
+    <value>Lo strumento {0} smette di ricevere i dati da CasaZen.</value>
+  </data>
+  <data name="Marketplace.Deactivate.Tool.Effect2" xml:space="preserve">
+    <value>Quello che hai già impostato nello strumento resta com'è finché non lo cambi tu.</value>
+  </data>
+  <data name="Marketplace.Deactivate.LicensedFunction.Effect1" xml:space="preserve">
+    <value>CasaZen non può spegnere la funzione {0}: fa parte della licenza del tuo channel manager.</value>
+  </data>
+  <data name="Marketplace.Deactivate.LicensedFunction.Effect2" xml:space="preserve">
+    <value>Prepariamo una richiesta di modifica per il tuo channel manager: la funzione resta attiva finché la modifica non risulta nella licenza.</value>
+  </data>
+  <data name="Marketplace.Deactivate.Partner.Effect1" xml:space="preserve">
+    <value>{0} si disattiva sul suo sito, non in CasaZen: disattivalo lì.</value>
+  </data>
+  <data name="Marketplace.Deactivate.Partner.Effect2" xml:space="preserve">
+    <value>Quando confermi qui di averlo fatto, CasaZen smette di mostrare {0} come attivo; sul sito di {0} non cambia nulla.</value>
   </data>
   <data name="TouristTaxNotCalculable" xml:space="preserve">
     <value>L'imposta di soggiorno di questo soggiorno non si può ancora calcolare: mancano la tariffa, l'età di un ospite, la categoria o il prezzo per notte.</value>
