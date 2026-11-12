@@ -685,6 +685,8 @@ property is not found; any other failure is a 500.
 | `GET` | `/api/reports/performance` | short-rent payment.read | NF-96. Occupancy, revenue, **ADR and RevPAR** of the Home for the whole scope, per property or per channel, and next to the same calendar days one year earlier: `{ title, basis, currency, groupBy, period, comparePeriod, rows, total }`, a row `{ key, propertyId, label, figures, previousYear, revenueDeltaPercent, occupancyDeltaPoints, adrDeltaPercent, revParDeltaPercent, revenueShare }`, `figures { occupiedNights, availableNights, closedNights, occupancyRate, revenue, revenueCents, stayCount, revenueNights, adr, adrCents, revPar, revParCents }`. Extra query: `groupBy` `none` (default, the total only), `property`, `channel`; `compare` `none` (default) or `previousYear` |
 | `GET` | `/api/reports/trend` | short-rent payment.read | NF-96. The same figures for each week or month: `{ title, basis, currency, groupBy, unit, period, comparePeriod, buckets, series }`, a bucket `{ label, from, to, previousYearFrom, previousYearTo }`, a line `{ key, propertyId, label, points, previousYear }` (`points` and `previousYear` have one entry for each bucket, the second `null` where there was nothing to compare with). Extra query: the two above and `bucket` `auto` (default), `week`, `month` |
 | `GET` | `/api/reports/by-owner` | `agency.statement.view` + short-rent payment.read | NF-96. The performance of an agency's properties cut by property owner: `{ title, basis, currency, period, rows, unassigned, total }`, a row `{ ownerId, displayName, propertyCount, figures, revenueShare }` (the anonymized label for an anonymized owner), `figures` and `total` the weighted `{ revenue, revenueCents, occupiedNights, availableNights, closedNights, occupancyRate, stayCount, revenueNights, adr, adrCents, revPar, revParCents }`. Only `from`, `to` and `format` (`json` or `csv`) |
+| `GET` | `/api/reports/collections` | short-rent payment.read | NF-97. The money collected by cash, by date, payment method and channel, with the credits: see "Money reports" below |
+| `GET` | `/api/reports/balances-to-collect` | short-rent payment.read | NF-97. The stays that still have something to collect, with no guest data: see "Money reports" below |
 
 All of them take `from` and `to` (`yyyy-MM-dd`, Europe/Rome days, both included; years 2000 to 2100) and `format` (`json`, the default, or
 `csv`); all but `by-owner` also an optional `propertyId`. Errors: 400 `report_invalid_period` (a day missing, `to` before `from`, a year out of range), 400
@@ -762,6 +764,55 @@ and `trend` compare, and only with the same days one year earlier.
   and a `Totale` row (the trend: a row for each bucket of each line). The columns of the year before and of the differences are there
   only when the report compared. File names: `casazen-prestazioni-per-immobile-competenza-20261001-20261031.csv`,
   `casazen-andamento-competenza-...`.
+
+#### Money reports: collections and balances (NF-97, E07/F03/US02/T01)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/reports/collections` | short-rent payment.read | The money that came in between `from` and `to`, by cash: `{ title, basis, period, total, byDate, byMethod, byChannel, credits }`. `total { amount, amountCents, paymentCount }` is the Home's "incassato" for the same days; `byDate` a bucket `{ unit, label, from, to, amount, amountCents, paymentCount }` for every day (period of up to 92 days) or month (longer), the days without payments at zero; `byMethod` a row `{ method, amount, amountCents, paymentCount, share }`; `byChannel` a row `{ source, amount, amountCents, paymentCount, share }`; `credits { stripe { available, payouts, cardPaymentCount, paymentsWithoutFigures }, channels { available, reportedBy, rows, staysWithoutNet } }`. Query: `from`, `to`, `propertyId`, `format` (`json`, `csv`) |
+| `GET` | `/api/reports/balances-to-collect` | short-rent payment.read | The stays that still have something to collect, as of today: `{ title, basis, asOf, rows, totals }`, a row `{ bookingId, bookingCode, propertyId, propertyName, source, checkIn, checkOut, currency, total, totalCents, collected, collectedCents, toCollect, toCollectCents, overdue, basis }`, a total `{ currency, amount, amountCents, stayCount }` for each currency. Query: `propertyId`, `format` (`json`, `csv`). No guest name or contact anywhere |
+
+`CollectionsReportsController` (`api/reports`, class policy `payment.read`, `HostScope` in SQL) over `IHostCollectionsReportService`
+(`HostCollectionsReportService`, three queries for the collections and two for the balances whatever the number of payments or stays). The words of the
+request are checked as in the other reports (`report_invalid_period`, `report_period_too_long`, `report_invalid_format`, 404 for a `propertyId` the caller does
+not reach, 403 without an org); `balances-to-collect` takes no period.
+
+- **Collected is the Home's "incassato".** A payment counts when `PaymentCashRules.CollectedBetween` says so (completed or partly refunded, on the Europe/Rome day
+  of `ProcessedAt ?? CreatedAt`), for what it brings (`PaymentCashRules.Collected`: the amount minus what was refunded); a failed, canceled, open or fully refunded
+  payment never counts. `total` is the sum rounded once, with the count of the payments, exactly as `GET /api/dashboard/kpis` gives it for the same days, and every
+  cut adds up to it. The report reads the payments of the scope the Home reads; a stay across the period boundary does not matter, the day the money came in does.
+  `basis` is `cash`, the CSV carries the same words in its title rows.
+- **Three cuts.** `byDate`: one bucket for each day up to 92 days (the limit of the trends) and for each calendar month beyond, the first and the last cut at the
+  edges of the period; `byMethod`: `Payment.Method`; `byChannel`: `Booking.Source` of the payment's booking. Each row has the amount, the payment count and its
+  `share` of the total (0 to 1, four decimals; null, never 0, when the total is 0). Rows by amount, the largest first. Amounts are euros as the Home counts them
+  (no conversion between currencies, like the Home); a CHF house is added as it is.
+- **Credits are what was stored, nothing else.** `credits.stripe` reads the fee, net and credit day the capture of the provider figures stored on the card
+  payments (`Payment.Provider*`, E06/F04/US01/T02) and captures nothing: a payout row `{ arrivalDate, currency, amount, amountCents, paymentCount, status }` groups
+  the payments that share the day the provider reported (`ProviderAvailableOn`, a UTC date) and the currency; `amount` is the net the provider credited, `status`
+  `Credited` when the day has come and `Expected` after. **The provider's own payout id is not stored**, so a row is the day's credits, not a bank payout, and a
+  refund is not netted (the capture reads the charge only). `available` is false when no payment has stored figures to show: the page says "not available", never
+  zero; `cardPaymentCount` and `paymentsWithoutFigures` count the card payments collected in the period and those whose figures were not stored (yet), so a total
+  that is partly unknown is never presented as complete. `credits.channels` is the `OtaNetAmount` of the confirmed stays arriving in the period whose channel
+  collected the money (`OtaCompanyCollect` true), per channel and currency, **reported by the channel manager** (`reportedBy`), with no date (the import carries
+  none) and never a bank credit; stays with no reported net are counted in `staysWithoutNet`; `available` false until Octorate documents a net field.
+- **Balances.** A stay counts when it is not cancelled and does not hold its dates through an expired checkout hold (`CheckoutHolds.OccupiesDates`) and its amount
+  due is above what was collected. Whose money it is decides how: a stay whose money is CasaZen's (`HostCollectionsRules.HoldsCasaZenMoney`: not a channel, and not a
+  reservation of the channel manager) owes `Booking.TotalPrice` minus the payments collected for it (`PaymentCashRules.IsCollected`, `CollectedAmount`; `basis`
+  `Payments`); a stay whose money is the channel manager's (`HoldsChannelManagerMoney`, the one definition of `BookingAmountSourceRules`: a booking of a channel with
+  its reservation on Octorate, or a reservation of the booking engine of the agency that the import made) owes the stored `OtaBalanceAmount` (`basis`
+  `ChannelManager`), and **nothing when the channel collects it (`OtaCompanyCollect` true) or when no balance was reported**: a balance is never worked out from the
+  price (ADR-033-R2). A stay of a channel without a reservation (an iCal stay) is the channel's own record and is never a row; a Direct booking CasaZen sent to
+  Octorate (it has a row of the mirror) is CasaZen's. A row's `total` and `collected` are null for a channel reservation that gave no price or no paid amount (not
+  available). `overdue` is a check-out day before today in Europe/Rome; rows by check-in, then code. `totals` has one entry for each currency of the rows
+  (the amounts of two currencies are never added). **No guest data**: the queries do not read the guest, a test proves it from the SQL and from the shape of a row.
+- **The CSV** is written by `CsvWriter`. The collections file has the three cuts one under the other, each under its own title row with the days
+  (`Incassato per data, per cassa, dal 01/10/2026 al 31/10/2026`...), its header and a `Totale` row, and an empty row between them; the balances file the title with
+  the day (`Saldi da incassare, al 09/10/2026`), a row for each stay and a total for each currency; a figure not available is an empty cell. File names:
+  `casazen-incassato-per-cassa-20261001-20261031.csv`, `casazen-saldi-da-incassare-20261009.csv`. The credits are not in the file.
+- **Demo.** Scenario `report-collections`: Villa del Lago's stays gain cash, bank transfer and card payments (a card payment partly refunded on a cancelled stay, one
+  that failed), a direct stay paid in part and a stay of a channel with an overdue balance; the payments are rows marked as showcase data (`TestDataEntities.Payment`)
+  with TEST ids, nothing is sent to Stripe. The demo stays that have no payment of their own (the future ones and the old ones) are balances to collect, as the
+  data says.
 
 #### Tourist tax per guest (NF-46, ADR-037, E03/F01/US07)
 

@@ -1081,4 +1081,76 @@ public class DemoShowcaseTests
         Assert.Equal("InAttesa", example.Status);
         Assert.False(example.Paid);
     }
+
+    /// <summary>
+    /// E07/F03/US02/T01 (NF-97): the demo stays gain the payments the collections report shows: cash, a bank transfer and cards, a card payment partly refunded
+    /// and one that failed (never collected), a direct stay paid in part, and a stay of a channel with a balance still to collect whose check-out is past. Every
+    /// amount is to the cent, a card payment carries the commission and the net the provider would report, and nothing outruns the price of its stay.
+    /// </summary>
+    [Fact]
+    public void ReportCollections_TheDemoHasCashTransferAndCardPayments_APartlyPaidDirectStay_AndAChannelStayWithAnOverdueBalance_AllInvented()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.ReportCollections, DemoShowcaseCatalog.Scenarios);
+        Assert.Equal("Payment", TestDataEntities.Payment);
+        var houses = DemoShowcaseCatalog.Properties;
+        var stays = houses.SelectMany(h => h.Bookings.Select(b => (House: h, Booking: b))).ToList();
+        var ofTheScenario = stays.Where(s => s.Booking.Scenario == DemoShowcaseCatalog.Scenario.ReportCollections).ToList();
+        Assert.NotEmpty(ofTheScenario);
+        Assert.Equal(stays.Count, stays.Select(s => s.Booking.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(ofTheScenario, s => Assert.EndsWith("@example.com", s.Booking.Email, StringComparison.Ordinal));
+
+        // What a stay costs, as the showcase seeds it: the nights at the nightly rate and the cleaning, unless the host agreed a price.
+        static decimal TotalOf(DemoPropertyTemplate house, DemoBookingTemplate booking) =>
+            (booking.AgreedTotal ?? (house.NightlyRate * booking.Nights) + house.CleaningFee) + (booking.TouristTax ?? 0m);
+
+        var payments = stays.SelectMany(s => (s.Booking.Payments ?? []).Select(p => (s.House, s.Booking, Payment: p))).ToList();
+        Assert.NotEmpty(payments);
+        foreach (var (_, booking, payment) in payments)
+        {
+            Assert.True(payment.Amount > 0m && payment.Amount == decimal.Round(payment.Amount, 2), $"{booking.Key}: an amount to the cent above zero");
+            Assert.InRange(payment.RefundedAmount, 0m, payment.Amount);
+            Assert.True(payment.DaysAgo >= 0, $"{booking.Key}: a payment cannot come in the future");
+            Assert.True(
+                (payment.RefundedAmount > 0m) == (payment.Status is PaymentStatus.PartiallyRefunded or PaymentStatus.Refunded),
+                $"{booking.Key}: a refund and the status that says so go together");
+            if (payment.Card is { } card)
+            {
+                Assert.Equal(payment.Amount, card.Fee + card.Net);
+                Assert.True(card.Fee > 0m && card.Net > 0m);
+                Assert.True(payment.Status is PaymentStatus.Completed or PaymentStatus.PartiallyRefunded or PaymentStatus.Refunded, $"{booking.Key}: only a settled card payment has figures");
+            }
+
+            // The money of a stay is never more than what the stay costs, and a stay of a channel has none of CasaZen's.
+            Assert.False(FiscalCopy.IsOtaBookingSource(booking.Source), $"{booking.Key}: a portal collects the money of its stays itself");
+        }
+
+        foreach (var group in payments.GroupBy(p => p.Booking.Key))
+        {
+            var (house, booking, _) = group.First();
+            Assert.True(group.Sum(p => p.Payment.Amount) <= TotalOf(house, booking) + group.Sum(p => p.Payment.Status is PaymentStatus.Failed ? p.Payment.Amount : 0m), $"{booking.Key}: paid more than the stay costs");
+        }
+
+        // The three ways the host is paid, a card payment partly refunded and one that failed.
+        var methods = payments.Select(p => p.Payment.Method).Distinct().ToList();
+        Assert.Contains(PaymentMethod.CashOnArrival, methods);
+        Assert.Contains(PaymentMethod.BankTransfer, methods);
+        Assert.Contains(payments, p => p.Payment.Method == PaymentMethod.CreditCard && p.Payment.Card is not null && p.Payment.Status == PaymentStatus.Completed);
+        Assert.Contains(payments, p => p.Payment.Status == PaymentStatus.PartiallyRefunded);
+        Assert.Contains(payments, p => p.Payment.Status == PaymentStatus.Failed);
+
+        // A direct stay paid in part: something collected, something left, and a stay that is not over.
+        var partial = Assert.Single(ofTheScenario, s => s.Booking.Source == BookingSource.Direct && s.Booking.Status == BookingStatus.Confirmed);
+        var collected = (partial.Booking.Payments ?? []).Where(p => p.Status == PaymentStatus.Completed).Sum(p => p.Amount - p.RefundedAmount);
+        Assert.InRange(collected, 0.01m, TotalOf(partial.House, partial.Booking) - 0.01m);
+        Assert.True(partial.Booking.CheckInOffsetDays > 0);
+
+        // A stay of a channel with a balance the host collects, past its check-out: Octorate's balance and paid amount add up to the price of the stay.
+        var channel = Assert.Single(ofTheScenario, s => s.Booking.Ota is { Balance: > 0m });
+        var ota = channel.Booking.Ota!;
+        Assert.True(OtaChannelActionPolicy.IsChannelBooking(channel.Booking.Source, ota.ReservationId));
+        Assert.Contains("TEST", ota.ReservationId, StringComparison.Ordinal);
+        Assert.False(ota.CompanyCollect);
+        Assert.True(channel.Booking.CheckInOffsetDays + channel.Booking.Nights < 0, "The stay is over: the balance is overdue.");
+        Assert.Equal(TotalOf(channel.House, channel.Booking), ota.Paid + ota.Balance);
+    }
 }
