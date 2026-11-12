@@ -22,8 +22,10 @@ namespace Casazen.Infrastructure.Services;
 /// the sync sets is what the card shows.
 /// </summary>
 /// <remarks>
-/// <para><b>One row, one fact.</b> A connection that Octorate lists <c>ENABLED</c> makes the activation Active (verified), <c>WAITING</c> Pending, <c>DISABLED</c>
-/// To fix with <c>connection_disabled</c>. A connection the activation has an id for that Octorate no longer lists is To fix with <c>connection_missing</c>, unless the
+/// <para><b>One row, one fact.</b> A connection that Octorate lists <c>ENABLED</c> keeps an Active activation Active and makes any other Active (verified) only when its
+/// pulls are on too (<see cref="OctorateConnectionInfo.PullsAreOn"/>: the wizard switches them on as the last step of the activation, so «enabled» alone is an access
+/// given, not a finished activation; with the pulls off a Pending row stays Pending and a row to fix keeps its problem and its «To do»), <c>WAITING</c> makes it Pending,
+/// <c>DISABLED</c> To fix with <c>connection_disabled</c>. A connection the activation has an id for that Octorate no longer lists is To fix with <c>connection_missing</c>, unless the
 /// row was written in the last <see cref="NewConnectionGrace"/> (the list may lag just after a create): that is left for the next run. A status nobody knew changes
 /// nothing, not even <c>LastSyncedAt</c>, and is logged as a warning. A row with no connection id (a start whose answer was lost, or one a step freed) has nothing to
 /// compare and is left to the wizard, which finds or makes the connection when it starts again.</para>
@@ -415,7 +417,7 @@ public sealed class MarketplaceHealthService(
         switch (verdict.Health)
         {
             case MarketplaceConnectionHealth.Healthy:
-                return MarkHealthy(row, MarketplaceActivationStatus.Active, now);
+                return ApplyEnabled(row, connection, now);
 
             case MarketplaceConnectionHealth.Waiting:
                 return MarkHealthy(row, MarketplaceActivationStatus.Pending, now);
@@ -431,6 +433,22 @@ public sealed class MarketplaceHealthService(
                     row.Id, row.OrgId, Printable(connection.Status));
                 return false;
         }
+    }
+
+    /// <summary>
+    /// A connection Octorate lists <c>ENABLED</c> shows the access given, not the activation finished: the activation wizard writes Active only after «mark connected»
+    /// and once the pulls of the connection are on (D6, fail closed), and an Active row whose pulls are on is all it leaves alone. So an Active row stays Active, and a row
+    /// that is not Active becomes Active only when the connection is enabled <b>and</b> its pulls are on (<see cref="OctorateConnectionInfo.PullsAreOn"/>); an enabled
+    /// connection whose pulls are still off leaves the row as it is (a Pending row stays Pending, a row to fix keeps its problem and its open «To do») and only the
+    /// moment of the read is kept: finishing the activation, and switching the pulls on, is the wizard's.
+    /// </summary>
+    private static bool ApplyEnabled(MarketplaceActivation row, OctorateConnectionInfo connection, DateTime now)
+    {
+        if (row.Status == MarketplaceActivationStatus.Active || connection.PullsAreOn)
+            return MarkHealthy(row, MarketplaceActivationStatus.Active, now);
+
+        row.LastSyncedAt = now;
+        return false;
     }
 
     private static bool MarkHealthy(MarketplaceActivation row, MarketplaceActivationStatus status, DateTime now)

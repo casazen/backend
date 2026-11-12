@@ -282,6 +282,66 @@ public class MarketplaceHealthTests
     }
 
     [Fact]
+    public async Task SyncAsync_AnEnabledConnectionWithItsPullsOff_IsNotAFinishedActivation_AndOnlyTheWizardFinishesIt()
+    {
+        var w = await World.CreateAsync();
+        var pending = await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Channel, "142", MarketplaceActivationStatus.Pending, "7001");
+        var notEnabled = await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Channel, "274", MarketplaceActivationStatus.ToFix, "7002", error: "connection_not_enabled");
+        var failed = await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Tool, "300", MarketplaceActivationStatus.ToFix, "7003", error: "octorate_partner_failed");
+        var active = await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Channel, "235", MarketplaceActivationStatus.Active, "7004", verified: true);
+        var ready = await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Tool, "301", MarketplaceActivationStatus.ToFix, "7005", error: "connection_not_enabled");
+        w.Connections[World.AccA1] =
+        [
+            Conn("142", "7001", "ENABLED", pulls: false),
+            Conn("274", "7002", "ENABLED", pulls: false),
+            Conn("300", "7003", "ENABLED", pulls: false),
+            Conn("235", "7004", "ENABLED", pulls: false),
+            Conn("301", "7005", "ENABLED"),
+        ];
+
+        var first = await w.SyncAsync(w.OrgA);
+        var rows = (await w.RowsAsync(w.OrgA)).ToDictionary(r => r.Id);
+
+        // ENABLED shows the access given, not the activation finished (the wizard switches the pulls on): a row that is not Active stays as it is, with its problem, and
+        // is not proven; the read of the connection is kept; an Active row is never taken back.
+        Assert.Equal((MarketplaceActivationStatus.Pending, null), (rows[pending.Id].Status, rows[pending.Id].VerifiedAt));
+        Assert.Equal((MarketplaceActivationStatus.ToFix, "connection_not_enabled", null), (rows[notEnabled.Id].Status, rows[notEnabled.Id].LastErrorCode, rows[notEnabled.Id].VerifiedAt));
+        Assert.Equal((MarketplaceActivationStatus.ToFix, "octorate_partner_failed", null), (rows[failed.Id].Status, rows[failed.Id].LastErrorCode, rows[failed.Id].VerifiedAt));
+        Assert.Equal(w.Clock.Now, rows[notEnabled.Id].LastSyncedAt);
+        Assert.Equal(MarketplaceActivationStatus.Active, rows[active.Id].Status);
+
+        // With the pulls on as well the connection is a finished activation: Active and proven, its problem gone.
+        Assert.Equal((MarketplaceActivationStatus.Active, null), (rows[ready.Id].Status, rows[ready.Id].LastErrorCode));
+        Assert.Equal(w.Clock.Now, rows[ready.Id].VerifiedAt);
+        Assert.Equal(1, first.Updated);
+
+        // The rows that are to fix keep their «To do» open; the others have none.
+        var todos = await w.TodosAsync();
+        Assert.Equal(2, first.TodoRaised);
+        Assert.Equal(new[] { notEnabled.Id, failed.Id }.Order(), todos.Select(t => t.EntityId!.Value).Order());
+        Assert.All(todos, todo => Assert.Null(todo.CompletedAt));
+
+        // The next run reads the same: nothing is promoted, no second item, no item closed.
+        var second = await w.SyncAsync(w.OrgA);
+        Assert.Equal((0, 0, 0), (second.Updated, second.TodoRaised, second.TodoClosed));
+        Assert.All(await w.TodosAsync(), todo => Assert.Null(todo.CompletedAt));
+
+        // The pulls are on now (the wizard switched them on): the rows that were waiting for them are Active, and the items of the ones that were to fix are closed.
+        w.Connections[World.AccA1] =
+        [
+            Conn("142", "7001", "ENABLED"),
+            Conn("274", "7002", "ENABLED"),
+            Conn("300", "7003", "ENABLED"),
+            Conn("235", "7004", "ENABLED"),
+            Conn("301", "7005", "ENABLED"),
+        ];
+        var third = await w.SyncAsync(w.OrgA);
+        Assert.Equal(2, third.TodoClosed);
+        Assert.All(await w.RowsAsync(w.OrgA), row => Assert.Equal((MarketplaceActivationStatus.Active, null), (row.Status, row.LastErrorCode)));
+        Assert.All(await w.TodosAsync(), todo => Assert.Equal(InternalActivity.ClosedBySystem, todo.ClosedBy));
+    }
+
+    [Fact]
     public async Task SyncAsync_AConnectionTheListNoLongerHas_IsToFix_ButNotWithinTheGraceOfARowJustWritten()
     {
         var w = await World.CreateAsync();
@@ -669,7 +729,9 @@ public class MarketplaceHealthTests
 
     // ─── Helpers ──────────────────────────────────────────────────────────────────────────────────────────
 
-    private static OctorateConnectionInfo Conn(string portal, string id, string? status) => new(id, portal, status, null, null);
+    /// <summary>A connection as the channel manager lists it: with its pulls on, as the wizard leaves a finished activation, unless <paramref name="pulls"/> says they are off.</summary>
+    private static OctorateConnectionInfo Conn(string portal, string id, string? status, bool pulls = true) =>
+        new(id, portal, status, null, null, UpdateCalendar: pulls, PullReservations: pulls);
 
     private static IFeatureFlags Flags(bool on)
     {

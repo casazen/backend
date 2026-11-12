@@ -18,9 +18,11 @@ namespace Casazen.Core.Services;
 /// scope is the 404 of a property that does not exist (<c>marketplace_property_not_found</c>), the same for another org's. Another org's rows are never read.</para>
 /// <para><b>Words, not Octorate's words.</b> The error of a row is a stable code and a plain-language message from the resource files by code (Italian and
 /// English); the text Octorate itself gives (the log of the channel) never reaches the user, nor the log, nor the answer (ADR-023-R6).</para>
-/// <para><b>Only Octorate decides.</b> The sync turns a connection <c>ENABLED</c> into Active, <c>WAITING</c> into Pending and <c>DISABLED</c> into To fix
-/// (<c>connection_disabled</c>); a connection that is no longer listed is To fix too (<c>connection_missing</c>). A status nobody knew changes nothing and is
-/// logged as a warning, so a healthy connection is never marked broken by a word of Octorate's that CasaZen has not met.</para>
+/// <para><b>Only Octorate decides.</b> The sync keeps an Active activation Active while its connection is <c>ENABLED</c> and makes another one Active only when the
+/// connection is <c>ENABLED</c> and its pulls are on (<see cref="OctorateConnectionInfo.PullsAreOn"/>: the activation wizard switches them on last, so «enabled» is an access
+/// given, not a finished activation, and finishing it is the wizard's); it turns <c>WAITING</c> into Pending and <c>DISABLED</c> into To fix (<c>connection_disabled</c>); a
+/// connection that is no longer listed is To fix too (<c>connection_missing</c>). A status nobody knew changes nothing and is logged as a warning, so a healthy connection is
+/// never marked broken by a word of Octorate's that CasaZen has not met.</para>
 /// </remarks>
 public interface IMarketplaceHealthService
 {

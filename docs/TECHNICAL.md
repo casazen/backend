@@ -1756,8 +1756,11 @@ synced first): it only reads Octorate and writes only CasaZen's own rows and the
 this environment (otherwise nothing is read or written). Each property is saved before the next one is read.
 
 - *The connections.* One `GET /rest/v1/connection?accommodation=` for each property that has a channel or a tool. An activation that has a connection id is matched to its connection by id
-  and portal. `ENABLED` makes it Active (verified, `isDeclared` false), `WAITING` Pending (importing, or waiting for the access or the mapping), `DISABLED` To fix with
-  `connection_disabled`; each reads `lastSyncedAt`, and a healthy connection clears the problem. A connection that is no longer listed makes it To fix with `connection_missing` (the id
+  and portal. `ENABLED` keeps an Active activation Active and makes any other Active (verified, `isDeclared` false) **only when its pulls are on too** (`updateCalendar` and
+  `pullReservations` both `true`: the activation wizard switches them on as the last step, after «mark connected» and the mapping, so `ENABLED` alone is an access given, not a finished
+  activation); with the pulls off a Pending row stays Pending and a row to fix keeps its problem and its open «To do» (only `lastSyncedAt` moves), and finishing the activation is the
+  wizard's (its step switches the pulls on, also for a row that is already Active with its pulls off; with the pulls on a second click changes nothing). `WAITING` Pending (importing, or
+  waiting for the access or the mapping), `DISABLED` To fix with `connection_disabled`; each reads `lastSyncedAt`, and a healthy connection clears the problem. A connection that is no longer listed makes it To fix with `connection_missing` (the id
   is kept, so a connection that comes back is read again), except for a row written in the last ten minutes: the list may lag just after a create. **A status nobody knew changes nothing**
   (not even `lastSyncedAt`) and is logged as a warning with the word, so a healthy connection is never marked broken by a word of Octorate's that CasaZen has not met; the vocabulary
   (`ENABLED`, `WAITING`, `DISABLED`) is the one of the OpenAPI, the sandbox has no channel connected. A row with no connection id is left to the activation wizard. The log of the channel
