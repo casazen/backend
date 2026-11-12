@@ -115,6 +115,41 @@ public static partial class MessageTemplateRenderer
         return clean;
     }
 
+    /// <summary>
+    /// The text of <paramref name="body"/> with every variable that has a value replaced and <b>everything else between double braces taken out</b> (a variable the conversation has no
+    /// value for, a name that is no variable, a brace left alone), with the space before a punctuation mark that follows it; <paramref name="unfilled"/> names what was taken out
+    /// (<c>{{</c> for a brace). Normalized like a message, never refused: for a text the server did not write itself (the draft of the assistant, E05/F05/US02), which must never
+    /// reach a guest with a literal variable in it. The length is the caller's to check.
+    /// </summary>
+    public static string FillKnown(string body, MessageTemplateValues values, CultureInfo culture, out IReadOnlyList<string> unfilled)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        ArgumentNullException.ThrowIfNull(values);
+        ArgumentNullException.ThrowIfNull(culture);
+
+        var missing = new List<string>();
+        var text = Variable().Replace(body, match =>
+        {
+            var name = NameOf(match);
+            var value = Variables.Contains(name, StringComparer.Ordinal) ? ValueOf(name, values, culture) : null;
+            if (!string.IsNullOrWhiteSpace(value))
+                return value.Trim();
+
+            missing.Add(name);
+            return string.Empty;
+        });
+
+        if (text.Contains("{{", StringComparison.Ordinal) || text.Contains("}}", StringComparison.Ordinal))
+        {
+            missing.Add("{{");
+            text = text.Replace("{{", string.Empty, StringComparison.Ordinal).Replace("}}", string.Empty, StringComparison.Ordinal);
+        }
+
+        unfilled = missing;
+        text = SpaceBeforePunctuation().Replace(DoubleSpace().Replace(text, " "), "$1");
+        return GuestMessageRules.NormalizeText(text) ?? string.Empty;
+    }
+
     /// <summary>The value of a variable as it is written in the text; <c>null</c> when the conversation has none.</summary>
     private static string? ValueOf(string name, MessageTemplateValues values, CultureInfo culture) => name switch
     {
@@ -163,4 +198,12 @@ public static partial class MessageTemplateRenderer
     // {{ name }}: anything between the braces but a brace, so a name with a space or a sign is seen (and refused as unknown), not left in the text.
     [GeneratedRegex(@"\{\{(?<name>[^{}]*)\}\}", RegexOptions.CultureInvariant)]
     private static partial Regex Variable();
+
+    // Spaces or tabs before a punctuation mark, left where a variable was taken out («Ciao , grazie»).
+    [GeneratedRegex(@"[ \t]+([,.;:!?])", RegexOptions.CultureInvariant)]
+    private static partial Regex SpaceBeforePunctuation();
+
+    // Two or more spaces or tabs in a row on one line.
+    [GeneratedRegex(@"[ \t]{2,}", RegexOptions.CultureInvariant)]
+    private static partial Regex DoubleSpace();
 }

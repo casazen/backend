@@ -1,6 +1,7 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -26,6 +27,10 @@ namespace Casazen.Infrastructure.Services;
 /// person who reaches the property, with the quiet hours and at most one email per conversation every ten minutes; the guest's email has its own
 /// ten-minute slot, one conditional <c>UPDATE</c>, so two messages at the same moment queue one email. The message is saved before: a failed alert
 /// or email never loses a message.</para>
+/// <para><b>The assistant</b> (E05/F05/US02/T01): a message of the guest is recorded with its event <c>GuestMessageReceived</c> (source <c>Direct</c>, key
+/// <c>direct:{booking id}</c>) in the same save, so the assistant reads the conversations of the direct bookings as it reads the channels'; an answer of the host that a person wrote
+/// tells every <see cref="IThreadReplyObserver"/> (the «To do» of an escalated message is closed). Both are optional constructor parameters at the end, so the tests that build the
+/// service are untouched; an observer that fails is logged and never fails the answer.</para>
 /// </remarks>
 public sealed class GuestMessageService(
     AppDbContext db,
@@ -35,7 +40,9 @@ public sealed class GuestMessageService(
     IInAppNotificationService inAppNotifications,
     IInAppNotificationPublisher notificationPublisher,
     ILogger<GuestMessageService> logger,
-    TimeProvider? timeProvider = null) : IGuestMessageService
+    TimeProvider? timeProvider = null,
+    IDomainEventRecorder? events = null,
+    IEnumerable<IThreadReplyObserver>? replyObservers = null) : IGuestMessageService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -70,7 +77,13 @@ public sealed class GuestMessageService(
         var stored = GuestMessageRules.Redact(clean, out var redacted);
 
         var threadId = await EnsureThreadAsync(booking, now, cancellationToken);
-        var (message, replayed) = await WriteAsync(threadId, booking.OrgId, GuestMessageSender.Guest, stored, key, null, now, cancellationToken);
+        var received = new GuestMessageReceivedPayload(
+            MessageThreadKey.ForDirect(booking.Id).ToString(),
+            GuestMessageReceivedPayload.DirectSource,
+            booking.PropertyId,
+            booking.Id,
+            GuestMessageReceivedPayload.DirectSource);
+        var (message, replayed) = await WriteAsync(threadId, booking.OrgId, GuestMessageSender.Guest, stored, key, null, now, received, cancellationToken);
         if (replayed)
             return new SentGuestMessage(message, redacted, true);
 
@@ -140,9 +153,12 @@ public sealed class GuestMessageService(
 
         var (clean, key) = Validate(text, idempotencyKey);
         var threadId = await EnsureThreadAsync(booking, now, cancellationToken);
-        var (message, replayed) = await WriteAsync(threadId, booking.OrgId, GuestMessageSender.Host, clean, key, userId, now, cancellationToken);
+        var (message, replayed) = await WriteAsync(threadId, booking.OrgId, GuestMessageSender.Host, clean, key, userId, now, null, cancellationToken);
         if (replayed)
+        {
+            await TellReplyObserversAsync(booking.OrgId, bookingId, userId);
             return new SentGuestMessage(message, false, true);
+        }
 
         // Answering is reading: whatever the guest wrote up to now is no longer «unread».
         await db.GuestThreads
@@ -157,7 +173,30 @@ public sealed class GuestMessageService(
         logger.LogInformation("Host message {MessageId} written in thread {ThreadId} of booking {BookingId}", message.Id, threadId, bookingId);
         await ClearNotificationsAsync(bookingId, userId, cancellationToken);
         await NotifyGuestAsync(booking, threadId, now, cancellationToken);
+        await TellReplyObserversAsync(booking.OrgId, bookingId, userId);
         return new SentGuestMessage(message, false, false);
+    }
+
+    /// <summary>
+    /// Tells every <see cref="IThreadReplyObserver"/> that a person answered the conversation of the booking (an answer with no user is not a person's: the assistant's own send closes
+    /// nothing). After the message is saved: an observer that fails is logged and never fails the answer.
+    /// </summary>
+    private async Task TellReplyObserversAsync(Guid orgId, Guid bookingId, string? userId)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+            return;
+
+        foreach (var observer in replyObservers ?? [])
+        {
+            try
+            {
+                await observer.OnHostReplyAsync(orgId, MessageThreadKey.ForDirect(bookingId), CancellationToken.None);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(ex, "An observer of the replies ({Observer}) failed on the conversation of booking {BookingId}", observer.GetType().Name, bookingId);
+            }
+        }
     }
 
     public async Task<HostThreadView> MarkReadAsync(Guid bookingId, string? userId, CancellationToken cancellationToken = default)
@@ -344,7 +383,10 @@ public sealed class GuestMessageService(
             .Select(t => (Guid?)t.Id)
             .FirstOrDefaultAsync(cancellationToken);
 
-    /// <summary>Writes the message, or finds the one the same key wrote before (a retried send): <c>Replayed</c> is then true.</summary>
+    /// <summary>
+    /// Writes the message, or finds the one the same key wrote before (a retried send): <c>Replayed</c> is then true. <paramref name="received"/> is the event of a message of the guest,
+    /// recorded in the same save as the message (one per message: its key is the message), or <c>null</c>.
+    /// </summary>
     private async Task<(GuestThreadMessage Message, bool Replayed)> WriteAsync(
         Guid threadId,
         Guid orgId,
@@ -353,6 +395,7 @@ public sealed class GuestMessageService(
         string key,
         string? userId,
         DateTime now,
+        GuestMessageReceivedPayload? received,
         CancellationToken cancellationToken)
     {
         var earlier = await FindByKeyAsync(threadId, key, cancellationToken);
@@ -371,6 +414,9 @@ public sealed class GuestMessageService(
             AuthorUserId = userId,
         };
         db.GuestMessages.Add(message);
+        if (received is not null)
+            events?.Record(DomainEventType.GuestMessageReceived, message.Id, received, $"direct-msg:{message.Id:N}", orgId);
+
         try
         {
             await db.SaveChangesAsync(cancellationToken);

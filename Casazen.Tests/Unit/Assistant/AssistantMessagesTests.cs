@@ -19,9 +19,11 @@ public partial class AssistantMessagesTests
         "Casazen.Infrastructure/Services/AssistantRulesService.cs",
         "Casazen.Infrastructure/Services/AssistantKnowledgeService.cs",
         "Casazen.Infrastructure/Services/AssistantSituationService.cs",
+        "Casazen.Infrastructure/Services/AssistantDraftService.cs",
         "Casazen.Web/Controllers/AssistantKnowledgeController.cs",
         "Casazen.Web/Controllers/AssistantRulesController.cs",
         "Casazen.Web/Controllers/AssistantSituationsController.cs",
+        "Casazen.Web/Controllers/AssistantDraftsController.cs",
     ];
 
     [Fact]
@@ -41,7 +43,7 @@ public partial class AssistantMessagesTests
                  {
                      "AssistantRulesInvalid", "AssistantThresholdInvalid", "AssistantEntryInvalid", "AssistantEntryNotFound", "AssistantModeNotAllowed",
                      "AssistantTemplateInvalid", "AssistantSituationNotFound", "AssistantSituationInvalid", "AssistantConcurrentChange", "PropertyNotFound",
-                     "NoOrganizationContext",
+                     "NoOrganizationContext", "AssistantNoGuestMessage", "AssistantSimulationInvalid",
                  })
         {
             Assert.Contains(expected, keys);

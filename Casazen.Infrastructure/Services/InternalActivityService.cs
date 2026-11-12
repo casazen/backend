@@ -221,6 +221,43 @@ public class InternalActivityService(
         return activity.Id;
     }
 
+    public async Task<bool> RaiseUrgencyAsync(Guid activityId, ActivityUrgency urgency, DateTime? deadline, string? reason, CancellationToken ct)
+    {
+        if (!Enum.IsDefined(urgency))
+            throw new ArgumentException("The urgency of a To do must be a declared member.", nameof(urgency));
+
+        var cleanReason = Bounded(OneLine(reason), TodoLimits.ReasonMaxLength, nameof(reason));
+        var activity = await context.InternalActivities
+            .FirstOrDefaultAsync(a => a.Id == activityId && a.Action != null && a.CompletedAt == null, ct);
+        if (activity is null)
+            return false;
+
+        // Never lowered, never later: a less urgent thing that happens afterwards leaves the item as it is.
+        var raised = (activity.Urgency ?? ActivityUrgency.Low) < urgency;
+        var sooner = deadline is { } due && (activity.Deadline is null || due < activity.Deadline);
+        if (!raised && !sooner)
+            return false;
+
+        if (raised)
+        {
+            activity.Urgency = urgency;
+            if (cleanReason is not null)
+                activity.Reason = cleanReason;
+        }
+
+        if (sooner)
+        {
+            activity.Deadline = deadline;
+            activity.ScheduledAt = deadline!.Value;
+        }
+
+        await context.SaveChangesAsync(ct);
+        logger.LogInformation(
+            "Raised To do {ActivityId} ({ActivityType}) of org {OrgId}: urgency {Urgency}, due {Deadline:O}",
+            activity.Id, activity.ActivityType, activity.OrgId, activity.Urgency, activity.Deadline);
+        return true;
+    }
+
     public async Task CloseAsync(Guid activityId, string closedBy, CancellationToken ct)
     {
         var closer = ClosedByOf(closedBy);

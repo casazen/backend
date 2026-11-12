@@ -466,6 +466,27 @@ public class MessageReceivedNotifierTests : IDisposable
         Assert.Contains(_push.Queued, p => p.Audience.UserId == Owner);
     }
 
+    [Fact]
+    public async Task Deliver_TheUrgentAlertOfAMessageAlreadyAlerted_IsAPushAndANotificationOfItsOwn_WithTheRouteOfTheConversation()
+    {
+        // E05/F05/US02/T01: under the key of the new message the urgent alert would find what that message already had, and tell nobody.
+        var world = await SeedAsync();
+
+        await Delivery().DeliverAsync(
+            new HostMessageAlert(world.OrgId, HostMessageSource.Ota, NotificationEventType.NewGuestMessage, world.OnA.Thread.Id, world.OnA.Message.Id, Noon),
+            CancellationToken.None);
+        await Delivery().DeliverAsync(
+            new HostMessageAlert(world.OrgId, HostMessageSource.Ota, NotificationEventType.UrgentGuestMessage, world.OnA.Thread.Id, world.OnA.Message.Id, Noon),
+            CancellationToken.None);
+
+        var toOwner = _push.Queued.Where(p => p.Audience.UserId == Owner).ToList();
+        Assert.Equal(
+            [PushDeliveryKeys.OtaMessage(world.OnA.Message.Id, Owner), PushDeliveryKeys.UrgentGuestMessage(world.OnA.Message.Id, Owner)],
+            toOwner.Select(p => p.DeliveryKey));
+        Assert.All(toOwner, p => Assert.Equal(PushRoutes.MessageThread($"ota:{world.OnA.Thread.Id:D}"), p.Payload.Route));
+        Assert.Equal(2, await _db.InAppNotifications.CountAsync(n => n.UserId == Owner));
+    }
+
     // ─── What the handler ignores ───
 
     [Fact]

@@ -6393,4 +6393,10 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="AssistantSituationInvalid" xml:space="preserve">
     <value>L’argomento da cui l’assistente ricava la risposta non è valido.</value>
   </data>
+  <data name="AssistantNoGuestMessage" xml:space="preserve">
+    <value>In questa conversazione l’ospite non ha ancora scritto nulla: non c’è un messaggio a cui preparare una risposta.</value>
+  </data>
+  <data name="AssistantSimulationInvalid" xml:space="preserve">
+    <value>Scrivi un messaggio di prova da 1 a 2000 caratteri; la lingua, se la indichi, è un codice di due lettere.</value>
+  </data>
 </root>

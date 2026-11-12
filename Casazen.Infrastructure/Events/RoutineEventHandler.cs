@@ -48,8 +48,17 @@ public sealed class RoutineEventHandler(IRoutineService routineService, ILogger<
             return;
         }
 
+        // A message of the guest area of a direct booking is recorded for the assistant (E05/F05/US02/T01): the routines start on the messages of a channel only, as they always have.
+        if (domainEvent.Type == DomainEventType.GuestMessageReceived && IsDirectMessage(payload))
+            return;
+
         await routineService.TriggerAsync(domainEvent.OrgId, routineEventType, ExecutionKeyOf(domainEvent), payload, ct);
     }
+
+    /// <summary>The payload of a message says it comes from the guest area of a direct booking (<see cref="GuestMessageReceivedPayload.DirectSource"/>).</summary>
+    private static bool IsDirectMessage(Dictionary<string, object?> payload) =>
+        payload.FirstOrDefault(member => string.Equals(member.Key, "source", StringComparison.OrdinalIgnoreCase)).Value is JsonElement { ValueKind: JsonValueKind.String } source
+        && string.Equals(source.GetString(), GuestMessageReceivedPayload.DirectSource, StringComparison.Ordinal);
 
     private async Task HandleTimeTriggerAsync(DomainEvent domainEvent, CancellationToken ct)
     {
