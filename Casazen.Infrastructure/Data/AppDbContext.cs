@@ -385,6 +385,13 @@ public class AppDbContext(
     public DbSet<OwnerAccountingPolicy> OwnerAccountingPolicies { get; set; } = null!;
     public DbSet<OwnerFiscalProfile> OwnerFiscalProfiles { get; set; } = null!;
 
+    // The owner ledger and the month-end close (NF-110, E06/F05/US02/T02): the append-only lines, the statement versions, the months, the charges and the exchange rates
+    public DbSet<OwnerLedgerEntry> OwnerLedgerEntries { get; set; } = null!;
+    public DbSet<OwnerStatementVersion> OwnerStatementVersions { get; set; } = null!;
+    public DbSet<OwnerClosePeriod> OwnerClosePeriods { get; set; } = null!;
+    public DbSet<OwnerCharge> OwnerCharges { get; set; } = null!;
+    public DbSet<OwnerFxRate> OwnerFxRates { get; set; } = null!;
+
     // The check-in guests and the states of a stay sent to Octorate (NF-41, NF-45, E03/F01/US01/T03): ids, hashes and codes, no personal data
     public DbSet<StayGuestOctorateLink> StayGuestOctorateLinks { get; set; } = null!;
     public DbSet<OctorateStayStateSync> OctorateStayStateSyncs { get; set; } = null!;
@@ -465,6 +472,20 @@ public class AppDbContext(
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, DataProtectionModelCacheKeyFactory>();
+
+    /// <summary>Refuses a change of the evidence before anything is written (<see cref="AppendOnlyGuard"/>, E06/F05/US02/T02).</summary>
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        AppendOnlyGuard.Check(ChangeTracker);
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    /// <inheritdoc cref="SaveChanges(bool)"/>
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        AppendOnlyGuard.Check(ChangeTracker);
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -1988,6 +2009,11 @@ public class AppDbContext(
         // The owner accounting (NF-109, NF-110, E06/F05/US02): the rule sets of the agency and the effective-dated fiscal profiles of the owners.
         modelBuilder.ApplyConfiguration(new OwnerAccountingPolicyConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerFiscalProfileConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerLedgerEntryConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerStatementVersionConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerClosePeriodConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerChargeConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerFxRateConfiguration());
 
         // A payment is recorded on its Octorate reservation once (E08/F01/US01/T01, AC-NF74-4): its transaction is unique in the org. Only
         // the payments recorded there are in the index.

@@ -45,6 +45,9 @@ public static class AgencyPermissions
     /// </summary>
     public const string OwnerFinancialManage = "agency.owner.financial.manage";
 
+    /// <summary>Publish an approved owner statement version (E06/F05/US02/T02): distinct from approving it, so the two can be held by different people.</summary>
+    public const string StatementPublish = "agency.statement.publish";
+
 
     /// <summary>Every agency permission.</summary>
     public static IReadOnlyList<string> All { get; } =
@@ -53,6 +56,6 @@ public static class AgencyPermissions
         StatementView, StatementManage,
         InvoiceManage, WithholdingManage, WireManage,
         ActivityManage, SupplierManage,
-        OwnerFinancialManage,
+        OwnerFinancialManage, StatementPublish,
     ];
 }

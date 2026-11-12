@@ -186,6 +186,9 @@ public static class CasazenPolicies
     /// <summary>Full fiscal profiles of the owners, the rule sets and their approval, payouts and tax evidence (agency B2B, E06/F05/US02).</summary>
     public const string AgencyOwnerFinancialManage = Agency + AgencyPermissions.OwnerFinancialManage;
 
+    /// <summary>Publish an approved owner statement version (agency B2B, E06/F05/US02/T02).</summary>
+    public const string AgencyStatementPublish = Agency + AgencyPermissions.StatementPublish;
+
 
     /// <summary>
     /// Owner portal access (ADR-011): checks JWT claim context=owner_portal and resolves OwnerUserId.
@@ -241,6 +244,7 @@ public static class CasazenPolicies
         AgencyActivityManage,
         AgencySupplierManage,
         AgencyOwnerFinancialManage,
+        AgencyStatementPublish,
     ];
 
     /// <summary>The agency permission an agency policy requires: <c>RequireAgencyTier:agency.wire.manage</c> needs <c>agency.wire.manage</c>.</summary>

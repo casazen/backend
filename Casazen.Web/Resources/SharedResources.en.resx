@@ -6078,4 +6078,70 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OwnerNotFound" xml:space="preserve">
     <value>Owner not found.</value>
   </data>
+  <data name="OwnerPeriodInvalid" xml:space="preserve">
+    <value>The period is not valid: give a year between 2000 and 2100 and a month between 1 and 12.</value>
+  </data>
+  <data name="OwnerPeriodClosed" xml:space="preserve">
+    <value>This owner's month is closed and does not change any more.</value>
+  </data>
+  <data name="OwnerPeriodDirty" xml:space="preserve">
+    <value>The ledger of the month changed after the last statement version: generate a new version.</value>
+  </data>
+  <data name="OwnerLedgerImmutable" xml:space="preserve">
+    <value>Posted lines and published statements never change: post a reversal and a new line.</value>
+  </data>
+  <data name="OwnerLedgerEntryNotFound" xml:space="preserve">
+    <value>Ledger line not found.</value>
+  </data>
+  <data name="OwnerLedgerEntryAlreadyReversed" xml:space="preserve">
+    <value>This ledger line was already reversed.</value>
+  </data>
+  <data name="OwnerCorrectionInvalid" xml:space="preserve">
+    <value>The correction is not valid: check the field named.</value>
+  </data>
+  <data name="OwnerStatementVersionNotFound" xml:space="preserve">
+    <value>Statement version not found.</value>
+  </data>
+  <data name="OwnerStatementUnchanged" xml:space="preserve">
+    <value>Nothing changed after the last approved version: no new version is needed.</value>
+  </data>
+  <data name="OwnerStatementFlagged" xml:space="preserve">
+    <value>The version has blocking issues: resolve them and generate a new version before approving it.</value>
+  </data>
+  <data name="OwnerStatementNotDraft" xml:space="preserve">
+    <value>Only a draft version can be approved.</value>
+  </data>
+  <data name="OwnerStatementNotApproved" xml:space="preserve">
+    <value>The statement must be approved first.</value>
+  </data>
+  <data name="OwnerStatementNotPublished" xml:space="preserve">
+    <value>This statement version was not published.</value>
+  </data>
+  <data name="OwnerCloseUnreconciled" xml:space="preserve">
+    <value>The approved balance does not match the paid transfers or is negative: resolve the difference or give the reason for the waiver.</value>
+  </data>
+  <data name="OwnerCloseWaiverForbidden" xml:space="preserve">
+    <value>Only who manages the owners' finances can close the month with a waiver.</value>
+  </data>
+  <data name="OwnerLegalHoldReasonRequired" xml:space="preserve">
+    <value>Give the reason for the legal hold.</value>
+  </data>
+  <data name="OwnerChargeInvalid" xml:space="preserve">
+    <value>The charge is not valid: check the field named.</value>
+  </data>
+  <data name="OwnerChargeDuplicate" xml:space="preserve">
+    <value>The same charge already exists for this property.</value>
+  </data>
+  <data name="OwnerChargeNotFound" xml:space="preserve">
+    <value>Charge not found.</value>
+  </data>
+  <data name="OwnerChargeNotPending" xml:space="preserve">
+    <value>The charge is not in a state that allows it.</value>
+  </data>
+  <data name="OwnerFxRateInvalid" xml:space="preserve">
+    <value>The exchange rate is not valid: check the field named.</value>
+  </data>
+  <data name="OwnerFxRateExists" xml:space="preserve">
+    <value>There is already a rate for these currencies on this day.</value>
+  </data>
 </root>

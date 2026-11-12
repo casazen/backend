@@ -66,6 +66,9 @@ public static class FiscalDocumentExtensions
         // The owner accounting of the agencies (E06/F05/US02): the approved rule sets and the effective-dated fiscal profiles of the owners (T01).
         services.AddScoped<IOwnerFiscalProfileService, OwnerFiscalProfileService>();
 
+        // The owner ledger, the statement versions and the month-end close (E06/F05/US02/T02, NF-110).
+        services.AddScoped<IOwnerAccountingService, OwnerAccountingService>();
+
         return services;
     }
 }

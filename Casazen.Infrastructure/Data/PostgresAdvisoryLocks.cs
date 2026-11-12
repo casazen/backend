@@ -435,6 +435,12 @@ internal static class PostgresAdvisoryLocks
         /// fiscal documents and the agency financial chain (epic E06).
         /// </summary>
         FiscalNumbering = 1_601,
+
+        /// <summary>
+        /// The owner accounting of one org (key: <c>{orgId:N}</c>, E06/F05/US02/T02, NF-110): the posting of a month, the generation of a version and
+        /// the close are taken one at a time, so two postings never post the same facts twice and a close never reads a month being posted.
+        /// </summary>
+        OwnerAccounting = 1_603,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

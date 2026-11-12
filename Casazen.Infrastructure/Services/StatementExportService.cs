@@ -4,6 +4,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -79,10 +80,35 @@ public sealed class StatementExportService(
         return new StatementExportFile(pdfRenderer.Render(F24Documents.Pdf(record, orgName, texts, language)), PdfContentType, name);
     }
 
-    /// <summary>What the files print besides the statement: nothing is stored for it yet, so the statement prints that there is none.</summary>
-    private static Task<StatementExportData> EvidenceOfAsync(OwnerStatement statement, CancellationToken ct)
+    /// <summary>
+    /// What the files print besides the statement, as stored: the number of the owner's current statement version of the month once approved or
+    /// published (E06/F05/US02/T02), and the wire transfers that paid the statement with their state. Nothing is computed here.
+    /// </summary>
+    private async Task<StatementExportData> EvidenceOfAsync(OwnerStatement statement, CancellationToken ct)
     {
-        ct.ThrowIfCancellationRequested();
-        return Task.FromResult(new StatementExportData(statement, null, [], []));
+        var version = await db.OwnerStatementVersions
+            .AsNoTracking()
+            .Where(v => v.OrgId == statement.OrgId && v.PropertyOwnerId == statement.PropertyOwnerId && v.PeriodYear == statement.Year
+                && v.PeriodMonth == statement.Month
+                && (v.Status == OwnerStatementVersionStatus.Approved || v.Status == OwnerStatementVersionStatus.Published))
+            .OrderByDescending(v => v.VersionNumber)
+            .Select(v => (int?)v.VersionNumber)
+            .FirstOrDefaultAsync(ct);
+
+        var wires = await db.WireBatchStatements
+            .AsNoTracking()
+            .Where(w => w.OrgId == statement.OrgId && w.OwnerStatementId == statement.Id)
+            .Select(w => new { w.WireBatchId, w.WireBatch.Status, w.WireBatch.PaidAt })
+            .ToListAsync(ct);
+        var payouts = wires
+            .OrderBy(w => w.PaidAt)
+            .Select(w => new StatementPayoutEvidence(
+                "WB-" + w.WireBatchId.ToString("N")[..8].ToUpperInvariant(),
+                w.PaidAt is { } paidAt ? RomeCalendar.DateInRome(paidAt) : null,
+                statement.NetPayable,
+                "wire_" + w.Status.ToString().ToLowerInvariant()))
+            .ToList();
+
+        return new StatementExportData(statement, version, payouts, []);
     }
 }

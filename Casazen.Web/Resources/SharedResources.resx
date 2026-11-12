@@ -6078,4 +6078,70 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerNotFound" xml:space="preserve">
     <value>Proprietario non trovato.</value>
   </data>
+  <data name="OwnerPeriodInvalid" xml:space="preserve">
+    <value>Il periodo non è valido: indica un anno tra 2000 e 2100 e un mese tra 1 e 12.</value>
+  </data>
+  <data name="OwnerPeriodClosed" xml:space="preserve">
+    <value>Il mese di questo proprietario è chiuso e non cambia più.</value>
+  </data>
+  <data name="OwnerPeriodDirty" xml:space="preserve">
+    <value>Il registro del mese è cambiato dopo l'ultima versione del rendiconto: genera una nuova versione.</value>
+  </data>
+  <data name="OwnerLedgerImmutable" xml:space="preserve">
+    <value>Le righe registrate e i rendiconti pubblicati non si modificano: registra uno storno e una nuova riga.</value>
+  </data>
+  <data name="OwnerLedgerEntryNotFound" xml:space="preserve">
+    <value>Riga del registro non trovata.</value>
+  </data>
+  <data name="OwnerLedgerEntryAlreadyReversed" xml:space="preserve">
+    <value>Questa riga del registro è già stata stornata.</value>
+  </data>
+  <data name="OwnerCorrectionInvalid" xml:space="preserve">
+    <value>La rettifica non è valida: controlla il campo indicato.</value>
+  </data>
+  <data name="OwnerStatementVersionNotFound" xml:space="preserve">
+    <value>Versione del rendiconto non trovata.</value>
+  </data>
+  <data name="OwnerStatementUnchanged" xml:space="preserve">
+    <value>Nulla è cambiato dopo l'ultima versione approvata: non serve una nuova versione.</value>
+  </data>
+  <data name="OwnerStatementFlagged" xml:space="preserve">
+    <value>La versione ha problemi bloccanti: risolvili e genera una nuova versione prima di approvarla.</value>
+  </data>
+  <data name="OwnerStatementNotDraft" xml:space="preserve">
+    <value>Si approva solo una versione in bozza.</value>
+  </data>
+  <data name="OwnerStatementNotApproved" xml:space="preserve">
+    <value>Il rendiconto deve prima essere approvato.</value>
+  </data>
+  <data name="OwnerStatementNotPublished" xml:space="preserve">
+    <value>Questa versione del rendiconto non è stata pubblicata.</value>
+  </data>
+  <data name="OwnerCloseUnreconciled" xml:space="preserve">
+    <value>Il saldo approvato non corrisponde ai bonifici pagati o è negativo: risolvi la differenza o indica il motivo della deroga.</value>
+  </data>
+  <data name="OwnerCloseWaiverForbidden" xml:space="preserve">
+    <value>Solo chi gestisce le finanze dei proprietari può chiudere il mese con una deroga.</value>
+  </data>
+  <data name="OwnerLegalHoldReasonRequired" xml:space="preserve">
+    <value>Indica il motivo del blocco legale.</value>
+  </data>
+  <data name="OwnerChargeInvalid" xml:space="preserve">
+    <value>L'addebito non è valido: controlla il campo indicato.</value>
+  </data>
+  <data name="OwnerChargeDuplicate" xml:space="preserve">
+    <value>Esiste già lo stesso addebito per questo immobile.</value>
+  </data>
+  <data name="OwnerChargeNotFound" xml:space="preserve">
+    <value>Addebito non trovato.</value>
+  </data>
+  <data name="OwnerChargeNotPending" xml:space="preserve">
+    <value>L'addebito non è in uno stato che lo permette.</value>
+  </data>
+  <data name="OwnerFxRateInvalid" xml:space="preserve">
+    <value>Il cambio non è valido: controlla il campo indicato.</value>
+  </data>
+  <data name="OwnerFxRateExists" xml:space="preserve">
+    <value>Esiste già un cambio per queste valute in questo giorno.</value>
+  </data>
 </root>

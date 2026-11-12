@@ -89,7 +89,7 @@ public sealed class StatementService(AppDbContext db) : IStatementService
             PropertyId = propertyId,
             Month = month,
             Year = year,
-            Currency = "EUR",
+            Currency = StayCurrency.ForProperty(property),
             Status = StatementStatus.Draft,
             OwnershipPercent = ownership.SharePercent,
             CreatedAt = DateTime.UtcNow,

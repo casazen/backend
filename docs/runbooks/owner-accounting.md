@@ -36,3 +36,39 @@ append-only owner ledger, the statement versions and the month-end close (T02), 
 Record each in the rule set (`sourceUrl`, `sourceSha256`) before approving it: the FatturaPA documentation and schema (`docs/runbooks/fiscal-documents.md`),
 the guidance of the Agenzia delle Entrate on the withholding of short lets (art. 4 D.L. 50/2017 and the provisions in force), the ESTV guidance on VAT and
 accounting for Swiss owners, and the retention law that applies (Italy at least ten years; Swiss immovable-property evidence can require twenty).
+
+## Owner ledger and month-end close (E06/F05/US02/T02)
+
+- **Ledger** (`OwnerLedgerEntry`, append-only): every line has a stable idempotency key (source, type, owner and amounts), its source (payment, booking,
+  charge, wire batch, manual) and document, the service, recognition and payment dates, the property, the effective ownership and share, the original
+  and the statement currency with the rate, its source and date, the tax code and the rule version (`{ruleCode}@{version}`), and a signed amount
+  (positive = owed to the owner). `AppDbContext` refuses to save a change or a removal of a line (409 `owner_ledger_immutable`); a correction is a
+  reversal (`ReversesEntryId`, at most one per line) plus a replacement line.
+- **Posting** (`POST api/owner-accounting/periods/{y}/{m}/post`, `agency.statement.manage`): idempotent. Sources: the completed payments (net of refunds;
+  the share in force on the payment day; recognized on the payment day, or on the check-out for a profile whose recognition rule is `stay`), the mandate
+  commission on that share, the channel commission of an active booking whose payments are gross (`OtaCommissionIncludedInPayments`, with its first
+  payment), the approved charges (`OwnerCharge`, one-time or monthly, to one owner or split by the shares), the wires marked paid. The shares are split
+  in the source currency, rounded half to even, the last owner (by id) taking the remainder; then converted with the agency's rate (`OwnerFxRate`,
+  `api/owner-accounting/fx-rates`, the rate of the day or of the 7 days before; CasaZen fetches none). Changed facts reverse the old line and post the new
+  one; a closed month of an owner is left as it is.
+- **Versions** (`OwnerStatementVersion`): `POST …/periods/{y}/{m}/owners/{id}/versions` cuts the ledger now and stores the totals by type, the opening and
+  closing balance and the SHA-256 of the lines; `Flagged` with a blocking readiness issue, else `Draft`; the version before becomes `Superseded`. A line
+  posted after the cut-off marks the month dirty (`OwnerClosePeriod.IsDirty`): no approval, publication or close until a new version. Approval
+  (`…/versions/{id}/approve`, `agency.statement.manage`) and publication (`…/publish`, `agency.statement.publish`) are distinct permissions; publication
+  stores the JSON of the version and of its lines with its SHA-256 (`…/published`), kept after it is superseded. `GET …/versions/{id}` drills down to the
+  lines and their sources.
+- **Readiness** (`GET …/periods/{y}/{m}/readiness`): org issues `ownership_missing`, `ownership_share_gap`, `source_amount_missing`; owner issues from the
+  fiscal profile (`owner_fiscal_*`), `fx_missing`, `unposted_source`, `duplicate_entry`, `currency_mixed`, `statement_missing`, `statement_not_approved`,
+  `ledger_statement_imbalance`, `negative_balance`, `period_dirty`.
+- **Close** (`POST …/owners/{id}/close`): on the last version, approved or published, the approved closing balance against the wires marked paid for the
+  owner's statements of the month (same currency). A difference or a negative balance blocks (422 `owner_close_unreconciled` with `due`, `paid`,
+  `difference`) unless `waiverReason` is given by a caller with `agency.owner.financial.manage` (otherwise 403 `owner_close_waiver_forbidden`); the
+  waiver, its author and time stay on the month. A closed month is never posted or versioned again; its corrections go into a later month.
+- **Retention and legal hold**: at the close the month keeps its jurisdiction, years (the larger of the rule set's `retentionYears` and the floor: Italy
+  10, Switzerland 20, others 10) and `RetainUntil` (31 December of the close year plus the years). `…/legal-hold` (`agency.owner.financial.manage`,
+  with a reason) stops the expiry (`OwnerRetention.MayPurge`). No job deletes anything yet. `GET …/evidence` exports the month: the close, every version
+  with its published file, the lines and their charges.
+- **Corrections** (`POST api/owner-accounting/corrections`, `agency.owner.financial.manage`): a signed manual line with its reason; `replacesEntryId`
+  reverses an earlier manual line first. A line of a source is corrected by fixing the source and posting again.
+- **Scope**: the endpoints need an org-wide reach; a collaborator restricted to some properties gets 403 even with the permission.
+- **Not yet**: the import of the outgoing bank movements (a wire marked paid is the evidence of the transfer), the payouts of T03 in the reconciliation.
