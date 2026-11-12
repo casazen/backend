@@ -253,54 +253,49 @@ public sealed partial class OwnerCollaborationService
     private async Task<ConversationTarget> OwnerTargetAsync(OwnerPortalAccess access, StartOwnerConversation command, CancellationToken cancellationToken)
     {
         RequireOnlyTheReferenceOf(command);
-        switch (command.Topic)
+        if (command.Topic == OwnerConversationTopic.General)
         {
-            case OwnerConversationTopic.General:
-            {
-                var profiles = access.With(OwnerPortalPermission.InboxUse).Select(g => (g.OrgId, g.PropertyOwnerId)).Distinct().ToList();
-                var candidates = command.AgencyId is { } agency ? profiles.Where(p => p.OrgId == agency).ToList() : profiles;
-                if (candidates.Count != 1)
-                    throw ConversationInvalid("agencyId");
-                return new ConversationTarget(candidates[0].OrgId, candidates[0].PropertyOwnerId, command.Topic, null, null, null, null);
-            }
-
-            case OwnerConversationTopic.Property:
-            {
-                var grant = access.On(command.PropertyId!.Value, OwnerPortalPermission.InboxUse).FirstOrDefault() ?? throw ReferenceNotFound();
-                return new ConversationTarget(grant.OrgId, grant.PropertyOwnerId, command.Topic, grant.PropertyId, null, null, null);
-            }
-
-            case OwnerConversationTopic.OwnerStay:
-            {
-                var stay = await db.OwnerStayRequests.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking()
-                    .FirstOrDefaultAsync(s => s.Id == command.OwnerStayId, cancellationToken);
-                if (stay is null || !access.On(stay.PropertyId, OwnerPortalPermission.InboxUse).Any(g => g.OrgId == stay.OrgId && g.PropertyOwnerId == stay.PropertyOwnerId))
-                    throw ReferenceNotFound();
-                return new ConversationTarget(stay.OrgId, stay.PropertyOwnerId, command.Topic, stay.PropertyId, stay.Id, null, null);
-            }
-
-            case OwnerConversationTopic.Document:
-            {
-                var document = await Documents().AsNoTracking().FirstOrDefaultAsync(d => d.Id == command.DocumentId && d.RevokedAt == null, cancellationToken);
-                if (document is null || !CanRead(access, document) || !access.Covers(document.OrgId, document.PropertyOwnerId, OwnerPortalPermission.InboxUse))
-                    throw ReferenceNotFound();
-                return new ConversationTarget(document.OrgId, document.PropertyOwnerId, command.Topic, document.PropertyId, null, document.Id, null);
-            }
-
-            default:
-            {
-                var version = await db.OwnerStatementVersions.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking()
-                    .FirstOrDefaultAsync(v => v.Id == command.StatementVersionId && v.PublishedAt != null, cancellationToken);
-                if (version is null
-                    || !access.Covers(version.OrgId, version.PropertyOwnerId, OwnerPortalPermission.AccountingRead)
-                    || !access.Covers(version.OrgId, version.PropertyOwnerId, OwnerPortalPermission.InboxUse))
-                {
-                    throw ReferenceNotFound();
-                }
-
-                return new ConversationTarget(version.OrgId, version.PropertyOwnerId, command.Topic, null, null, null, version.Id);
-            }
+            var profiles = access.With(OwnerPortalPermission.InboxUse).Select(g => (g.OrgId, g.PropertyOwnerId)).Distinct().ToList();
+            var candidates = command.AgencyId is { } agency ? profiles.Where(p => p.OrgId == agency).ToList() : profiles;
+            if (candidates.Count != 1)
+                throw ConversationInvalid("agencyId");
+            return new ConversationTarget(candidates[0].OrgId, candidates[0].PropertyOwnerId, command.Topic, null, null, null, null);
         }
+
+        if (command.Topic == OwnerConversationTopic.Property)
+        {
+            var grant = access.On(command.PropertyId!.Value, OwnerPortalPermission.InboxUse).FirstOrDefault() ?? throw ReferenceNotFound();
+            return new ConversationTarget(grant.OrgId, grant.PropertyOwnerId, command.Topic, grant.PropertyId, null, null, null);
+        }
+
+        if (command.Topic == OwnerConversationTopic.OwnerStay)
+        {
+            var stay = await db.OwnerStayRequests.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == command.OwnerStayId, cancellationToken);
+            if (stay is null || !access.On(stay.PropertyId, OwnerPortalPermission.InboxUse).Any(g => g.OrgId == stay.OrgId && g.PropertyOwnerId == stay.PropertyOwnerId))
+                throw ReferenceNotFound();
+            return new ConversationTarget(stay.OrgId, stay.PropertyOwnerId, command.Topic, stay.PropertyId, stay.Id, null, null);
+        }
+
+        if (command.Topic == OwnerConversationTopic.Document)
+        {
+            var document = await Documents().AsNoTracking().FirstOrDefaultAsync(d => d.Id == command.DocumentId && d.RevokedAt == null, cancellationToken);
+            if (document is null || !CanRead(access, document) || !access.Covers(document.OrgId, document.PropertyOwnerId, OwnerPortalPermission.InboxUse))
+                throw ReferenceNotFound();
+            return new ConversationTarget(document.OrgId, document.PropertyOwnerId, command.Topic, document.PropertyId, null, document.Id, null);
+        }
+
+        // A statement version (the only topic left once the reference was checked).
+        var version = await db.OwnerStatementVersions.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking()
+            .FirstOrDefaultAsync(v => v.Id == command.StatementVersionId && v.PublishedAt != null, cancellationToken);
+        if (version is null
+            || !access.Covers(version.OrgId, version.PropertyOwnerId, OwnerPortalPermission.AccountingRead)
+            || !access.Covers(version.OrgId, version.PropertyOwnerId, OwnerPortalPermission.InboxUse))
+        {
+            throw ReferenceNotFound();
+        }
+
+        return new ConversationTarget(version.OrgId, version.PropertyOwnerId, command.Topic, null, null, null, version.Id);
     }
 
     /// <summary>The same for the agency: the owner profile is of the org, and the reference is of that owner profile and org.</summary>
