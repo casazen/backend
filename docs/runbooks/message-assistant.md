@@ -132,18 +132,23 @@ thread it manages, whether or not CasaZen's own assistant is on** (AC-NF67-6: ve
    (`ota-thread:{thread}:{last message}:on:{yyyyMMddHHmm}`, `MessageSyncService.SyncedEventKey`), so each pass that finds it on tells the guard: a person
    who switches the assistant on again in Octorate, or a call that failed, is found within the 10 minutes of the reconciliation and the call is made
    again. The webhook and the pass of the same ten minutes are one event. A flag that reads off or is not said keeps the key it had (once for each
-   newest message), so an assistant that is off costs nothing.
+   newest message), so an assistant that is off costs nothing; for the flag that is not said a call that failed is retried by the dispatcher (item 5).
 4. **Only what CasaZen manages.** A thread with no property (its listing has no confirmed mapping) and a thread whose property sits in a mapping nobody
    decided (`IChannelMappingService.IsWriteBlockedAsync`, the one definition every write to Octorate asks, OCT-04) are left as they are: CasaZen writes
    nothing to a channel for them, and the host's own setting on the channel manager is not ours to change. The thread gets its property at the first
    pass after the confirmation, and the next pass that reads the flag on switches it off.
-5. **When Octorate refuses.** One `Warning` line with the thread, the organization and the code, never a name or a word of the guest:
-   `octorate_unavailable` (5xx, no answer), `octorate_rate_limited`, `chat_not_licensed` (no `chat` module in the license), `octorate_not_connected`,
-   `octorate_not_found` (the thread is gone), `octorate_request_rejected`, `octorate_auth_failed`. **The event is not failed** (the sync and the other
-   consumers are not affected), the copy keeps the flag Octorate reported, and the next pass tries again. The pass leaves 5 calls of the organization's
-   bucket (100 a minute) to the people who use CasaZen: down to that reserve the guard sends nothing and says `octorate_rate_limited`. Anything that is
-   not a refusal of Octorate (the database after a call that was made) rises and the dispatcher delivers the event again, which the call, being
-   idempotent, survives.
+5. **When Octorate refuses, and who retries.** One `Warning` line with the thread, the organization and the code, never a name or a word of the guest, and
+   the copy keeps the flag Octorate reported. What a retry cannot change (`chat_not_licensed`, no `chat` module in the license; `octorate_not_connected`;
+   `octorate_not_found`, the thread is gone; `octorate_request_rejected`; `octorate_auth_failed`; `octorate_rate_limited` when Octorate says the quota of
+   the day is used up) does **not fail the event** (the sync and the other consumers are not affected): the next pass tries again, because while the flag
+   reads on it records a new event every ten minutes. What a retry can change (`octorate_unavailable`, a 5xx or no answer; `octorate_rate_limited`, the
+   bucket empty or a 429 after the waits) is logged the same way and then **rises**, as the handler of the chat notification does: the dispatcher delivers
+   the event again at each run (once a minute, five times at most, then it is dead-lettered), and the next pass is a second chance. Two cases have no
+   pass to rely on, which is why the dispatcher retries them: a thread nobody writes to any more (the import of a history: the pass of every 10 minutes
+   reads the last day, the deep pass the last two days) and a flag Octorate does not say (its key has no window). The pass leaves 5 calls of the
+   organization's bucket (100 a minute) to the people who use CasaZen: down to that reserve the guard sends nothing, says `octorate_rate_limited` at
+   `Information` level and rises, so the event of an import that drains the bucket is delivered again when the calls are back, not lost. Anything that is not
+   a refusal of Octorate (the database after a call that was made) rises as well, and the call, being idempotent, survives the redelivery.
 6. **The account-level message agent has no API.** Octorate also has an agent for the messages that is set for the whole account. The API has no
    operation to read or change it, so CasaZen cannot switch it off or verify it, and **does not pretend to**: **the host leaves it off** in Octorate,
    and the text of the connect wizard of the connector (E02/F01/US01/T04) asks for that. A thread answered by that agent is not seen by the guard.
@@ -163,5 +168,7 @@ verification is the first licensed property (the test property needs the `chat` 
 Octorate (nothing switches them back on); a revert of the change leaves the copy as it is.
 
 **Known limits.** A guest message may be answered by Octorate's assistant before CasaZen has read the thread for the first time (the webhook, then the
-event, then the dispatcher: seconds to a minute); and a person who switches it on again is found at the next pass, at most about 10 minutes later. The
-guard never switches Octorate's assistant ON: the call it makes always sets off.
+event, then the dispatcher: seconds to a minute); and a person who switches it on again is found at the next pass, at most about 10 minutes later. An
+event that the dispatcher could not deliver in five runs (Octorate down, or the calls of the organization down to the reserve for more than five minutes) is
+dead-lettered: the thread is told to the guard again by the next pass that reads it with the flag on, or by its next message. The guard never switches
+Octorate's assistant ON: the call it makes always sets off.

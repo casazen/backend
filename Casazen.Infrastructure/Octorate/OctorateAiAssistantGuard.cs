@@ -30,11 +30,15 @@ namespace Casazen.Infrastructure.Octorate;
 /// <item><b>Only what CasaZen manages.</b> A thread with no property (its listing has no confirmed mapping) and a property whose listing is not decided
 /// (<see cref="IChannelMappingService.IsWriteBlockedAsync"/>, the one definition every write to Octorate asks, OCT-04) are left as they are: CasaZen
 /// does not write to a channel for them, so nothing it says can double an answer, and the host's own setting on the channel manager is not ours to change.</item>
-/// <item><b>A refusal of Octorate never fails the event.</b> The calls of the org used up (the reserve of the pass is left to the people who use
-/// CasaZen, <see cref="MessageSyncService.RateReserve"/>), a license without the chat module, an organization that is not connected, a thread that is
-/// gone and any other typed error of Octorate end in one line of the log with the thread, the organization and the code, and the thread keeps the flag
-/// Octorate reported: the next pass tries again. Anything that is not an error of Octorate (the database after a call that was made) rises, and the
-/// dispatcher delivers the event again, which the call, being idempotent, survives.</item>
+/// <item><b>Who retries.</b> While the flag reads on, the next pass records a new event, so a refusal that no retry changes (a license without the chat
+/// module, an organization that is not connected, a thread that is gone, a request or a token Octorate refuses, the quota of the day used up) ends in one
+/// line of the log with the thread, the organization and the code, does not fail the event, and the thread keeps the flag Octorate reported: the next pass
+/// tries again. But a thread nobody writes to any more is read by no later pass (the pass of every 10 minutes reads the last day, the deep one the last two
+/// days), and a flag Octorate does not say has no window in the key of its event: for them the dispatcher is the only retry. So what a retry can change
+/// (the calls of the org down to the reserve of the pass, <see cref="MessageSyncService.RateReserve"/>, which the people who use CasaZen keep; the bucket
+/// empty or a 429 after the waits; a 5xx or no answer) is logged the same way and then rises, as <see cref="ChatMessageReceivedHandler"/> does: the
+/// dispatcher delivers the event again at each run, five times at most. Anything that is not an error of Octorate (the database after a call that was
+/// made) rises as well, and the call, being idempotent, survives the redelivery.</item>
 /// <item><b>The org is the event's</b> (ADR-022-R6): the handler runs under it, every read names it, and the call is made for it. The payload holds ids
 /// and the flag (ADR-022-R21); the ids of the call are those of the thread row of the org, never the payload's. <b>Privacy:</b> the logs carry ids and
 /// codes, never the name of the guest, a message or an address.</item>
@@ -52,7 +56,7 @@ public sealed class OctorateAiAssistantGuard(
     TimeProvider timeProvider,
     ILogger<OctorateAiAssistantGuard> logger) : IEventHandler<DomainEvent>
 {
-    /// <summary>The code in the log of a thread left alone because the calls of its organization are down to the reserve.</summary>
+    /// <summary>The code in the log of a thread whose call was not made because the calls of its organization are down to the reserve (the event is delivered again).</summary>
     public const string RateLimitedCode = "octorate_rate_limited";
 
     /// <summary>The code in the log of an event whose payload is not an <see cref="OtaThreadSyncedPayload"/>.</summary>
@@ -109,15 +113,17 @@ public sealed class OctorateAiAssistantGuard(
             return;
         }
 
-        // The pass leaves a few calls of the bucket to the people who use CasaZen, and the dispatcher serves every org within seconds: it does not wait.
+        // The pass leaves a few calls of the bucket to the people who use CasaZen, and the dispatcher serves every org within seconds: it does not wait. Nor does it
+        // consume the event: the call was not made, and a thread nobody writes to any more (the import of the history) is read by no later pass, so the
+        // redelivery of the dispatcher is the one retry it has, as for the notification of the chat (ChatMessageReceivedHandler).
         if (rateLimiter.AvailableCalls(orgId) <= MessageSyncService.RateReserve)
         {
-            logger.LogWarning(
-                "Thread {ThreadId} of org {OrgId}: the assistant of Octorate is not switched off, {Code}; the next pass tries again",
+            logger.LogInformation(
+                "Thread {ThreadId} of org {OrgId}: the assistant of Octorate is not switched off yet, {Code}; the event is delivered again",
                 thread.Id,
                 orgId,
                 RateLimitedCode);
-            return;
+            throw new OctorateRateLimitException(null);
         }
 
         try
@@ -128,13 +134,19 @@ public sealed class OctorateAiAssistantGuard(
         catch (OctorateException ex)
         {
             // The thread keeps the flag Octorate reported, so nothing in CasaZen says the assistant is off when it is not. The codes are Octorate's and
-            // ours (no body, no name); a refusal that no retry changes (not connected, no chat module) is found the same at the next pass.
+            // ours (no body, no name). What a retry can change rises after the line, so the dispatcher delivers the event again (the call is idempotent);
+            // a refusal that no retry changes (not connected, no chat module) is found the same at the next pass, which is its retry.
+            var again = CanBeRetried(ex);
             logger.LogWarning(
-                "Thread {ThreadId} of org {OrgId}: the assistant of Octorate is not switched off, {Code} (HTTP {StatusCode}); the next pass tries again",
+                "Thread {ThreadId} of org {OrgId}: the assistant of Octorate is not switched off, {Code} (HTTP {StatusCode}); {Retry}",
                 thread.Id,
                 orgId,
                 ex.Code,
-                ex.OctorateStatusCode);
+                ex.OctorateStatusCode,
+                again ? "the event is delivered again" : "the next pass tries again");
+            if (again)
+                throw;
+
             return;
         }
 
@@ -145,6 +157,14 @@ public sealed class OctorateAiAssistantGuard(
 
         logger.LogInformation("Thread {ThreadId} of org {OrgId}: the assistant of Octorate is switched off", thread.Id, orgId);
     }
+
+    /// <summary>
+    /// A refusal a retry can change: Octorate failed or did not answer, or the calls of the org ran out (the bucket, a 429 after the waits). The quota of the day
+    /// that Octorate says is used up (OCT-13) is not: a minute does not refill it, and the next pass is the wait. The refusals no retry changes (not connected, no
+    /// chat module, the thread gone, the request or the token refused) are logged and left to the next pass.
+    /// </summary>
+    private static bool CanBeRetried(OctorateException ex) =>
+        ex is OctorateServerException or OctorateRateLimitException { QuotaExhausted: false };
 
     /// <summary>What the pass read, or <c>null</c> when the payload is not that.</summary>
     private static OtaThreadSyncedPayload? PayloadOf(DomainEvent domainEvent)
