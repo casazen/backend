@@ -41,6 +41,9 @@ public static class FiscalDocumentExtensions
         // The PDF and CSV of an owner statement and the PDF of the F24 data, built from what is stored (E06/F01/US01/T02, NF-25).
         services.AddScoped<IStatementExportService, StatementExportService>();
 
+        // What Stripe kept and credited for a settled card payment, read by the job payment-provider-fees (E06/F04/US01/T02, NF-85).
+        services.AddScoped<IPaymentProviderFeeService, PaymentProviderFeeService>();
+
         return services;
     }
 }

@@ -290,6 +290,14 @@ public static class RecurringJobsRegistration
             "0 5 * * 1",  // every Monday at 05:00 UTC
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // E06/F04/US01/T02 (FIS-05, NF-85): what Stripe kept and credited for the settled card payments, every 15 minutes, 50 payments a run.
+        // Always registered: without a Stripe key the job reads nothing and counts no attempt.
+        recurringJobManager.AddOrUpdate<PaymentProviderFeeJob>(
+            PaymentProviderFeeJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            PaymentProviderFeeJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         // RS-6, RS-7, CO-12: daily check of the official ISTAT comuni file, the Alloggiati tables and the tourist-tax pages.
         recurringJobManager.AddOrUpdate<OfficialReferenceDataRefreshJob>(
             OfficialReferenceDataRefreshJob.RecurringJobId,
