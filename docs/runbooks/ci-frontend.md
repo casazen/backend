@@ -4,9 +4,10 @@ Workflows in `casazen/frontend/.github/workflows/` (task FD-01, audit defects A9
 
 | Workflow | Job (check name) | Trigger | Gate |
 |---|---|---|---|
-| `ci.yml` | `Lint, typecheck, unit tests, build` | PR and push to `develop` / `main` | **Required**: `npm ci`, `npm run lint` (0 errors), `npm run typecheck`, `npm run knip` (dead code), `npm test` (vitest), `npm run build` |
-| `e2e.yml` | `E2E L2 (demo)` | PR, push `develop` / `main`, nightly | Playwright L2 demo suite (`page.route` mocks), split in three parallel jobs `E2E L2 (demo) shard n/3` (`--shard`); `E2E L2 (demo)` fails unless all three pass |
-| `e2e.yml` | `E2E staging smoke + GJ` | push `develop`, nightly, manual | L3 against the Railway test API; skipped with a warning when `E2E_AUTH0_EMAIL` is not set |
+| `ci.yml` | `Lint, typecheck, unit tests, build` | PR and push to `develop` / `main` | **Required**: green only when the two kinds of job below are green (it keeps the name it always had) |
+| `ci.yml` | `Lint, typecheck, dead code, build` | PR and push to `develop` / `main` | `npm ci`, `npm run lint` (0 errors), `npm run typecheck`, `npm run knip` (dead code), `npm run build` |
+| `ci.yml` | `Unit tests (vitest) shard n/4` | PR and push to `develop` / `main` | `npm test -- --shard=n/4` (vitest gives every test file to exactly one shard, so the four shards run the whole suite) |
+| `e2e.yml` | `E2E L2 (demo) shard n/6` | PR, push `develop` / `main`, nightly | Playwright L2 demo suite (`page.route` mocks), split in six parallel jobs (`--shard=n/6`). Since 2026-11-09 there is no aggregate check `E2E L2 (demo)` and no `E2E staging smoke + GJ` job in `e2e.yml` (they were removed there); the shards are the checks |
 | `e2e-golden-journey.yml` | `GJ web suite` | PR, push `develop` / `main`, nightly | Golden Journey L2 demo shell checks (mocks); no `continue-on-error`, no placeholder jobs |
 | `e2e-golden-journey.yml` | `GJ L3 (UI, ephemeral stack)` | PR, push `develop` / `main`, nightly, manual | **The Golden Journey gate** (FN-03): admin, host, supplier (phone, F1-F2) and guest driven from the UI against a real backend + throw-away PostgreSQL + mock IdP/mail; Stripe test mode with the secrets, otherwise that variant is SKIPPED loudly. [golden-journey-l3.md](golden-journey-l3.md) |
 
@@ -47,7 +48,7 @@ The secrets are exposed as job-level `env` and the steps test `env.E2E_AUTH0_EMA
 
 ## 3. Verify
 
-1. Open a PR against `develop`: the checks list shows `Lint, typecheck, unit tests, build`, `E2E L2 (demo)` and `GJ web suite`, each with real jobs (not "0 jobs").
+1. Open a PR against `develop`: the checks list shows `Lint, typecheck, unit tests, build` (with `Lint, typecheck, dead code, build` and the `Unit tests (vitest) shard n/4` jobs it waits for), the `E2E L2 (demo) shard n/6` jobs, `GJ web suite` and `GJ L3 (UI, ephemeral stack)`, each with real jobs (not "0 jobs").
 2. Locally, the same commands as CI: `npm ci && npm run lint && npm run typecheck && npm test && npm run build`.
 3. Optional workflow syntax check: `pip install actionlint-py && actionlint .github/workflows/*.yml` (reports context errors such as `secrets` in a step `if:`).
 
@@ -60,7 +61,7 @@ Workflow `casazen/mobile/.github/workflows/ci.yml` (task FD-03, audit defects A9
 | Install | `npm ci` |
 | Typecheck | `npm run typecheck` (`tsc --noEmit`) |
 | Lint | `npm run lint` (`eslint .`, flat config `eslint-config-expo/flat`, which brings `eslint-plugin-react-hooks` 7, 0 errors) |
-| Unit tests | `npm test -- --ci` (jest, preset `jest-expo`) |
+| Unit tests | `npm test -- --ci --forceExit` (jest, preset `jest-expo`). The tests take about a minute; without `--forceExit` jest then stayed alive for 5 more minutes (a leaked 5-minute timer, "Jest did not exit one second after the test run has completed") before the step ended. To hunt the leak: `npx jest --detectOpenHandles` |
 | Bundle | `npx expo export --platform android --output-dir dist` and `--platform ios --output-dir dist-ios` (Metro + Hermes bytecode, no native build, no EAS account) |
 
 Make it required on `develop` and `main` as in section 1, with the check name above:

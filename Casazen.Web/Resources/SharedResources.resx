@@ -3944,6 +3944,21 @@
   <data name="ApprovalItemNotFound" xml:space="preserve">
     <value>Elemento da approvare non trovato</value>
   </data>
+  <data name="ApprovalItemNotPending" xml:space="preserve">
+    <value>L'elemento è già stato deciso oppure è scaduto</value>
+  </data>
+  <data name="ApprovalEditInvalid" xml:space="preserve">
+    <value>Il testo non è valido: non può essere vuoto, un messaggio non può superare i 2000 caratteri e una campagna deve avere l'oggetto su una riga, una riga vuota e poi il testo.</value>
+  </data>
+  <data name="ApprovalRejectionReasonRequired" xml:space="preserve">
+    <value>Indica il motivo del rifiuto, al massimo 500 caratteri.</value>
+  </data>
+  <data name="ApprovalOriginActionFailed" xml:space="preserve">
+    <value>L'azione collegata non è riuscita e l'elemento resta da approvare. Puoi modificare il testo e riprovare.</value>
+  </data>
+  <data name="Only campaigns waiting for approval can be approved" xml:space="preserve">
+    <value>Solo le campagne in attesa di approvazione possono essere approvate</value>
+  </data>
   <data name="OrgContextRequired" xml:space="preserve">
     <value>Contesto organizzazione richiesto</value>
   </data>

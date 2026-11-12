@@ -10,6 +10,7 @@ using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
+using Casazen.Infrastructure.Services.ApprovalActions;
 using Casazen.Tests.Unit.Email;
 using Casazen.Tests.Unit.Services;
 using Microsoft.Extensions.Configuration;
@@ -48,6 +49,16 @@ public class HostScopeNpgsqlTranslationTests
 
     // The service as the API builds it (SP-04 kit, over the database of the test): the listings below write no file.
     private static ServiceRequestService ServiceRequests(AppDbContext db) => new ServiceRequestTestKit(db).Service;
+
+    // The approval queue as the API builds it, with no action and no alert: the reads of the list and of one item are what is probed (the alert is not reached).
+    private static ApprovalQueueService ApprovalQueue(AppDbContext db) =>
+        new(
+            db,
+            Clock,
+            new ApprovalOriginActionRegistry(() => []),
+            new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, Clock),
+            null!,
+            NullLogger<ApprovalQueueService>.Instance);
 
     // The CRM profiles (E07/F01/US03): the read model, the list, the detail, and the decisions on the merges.
     private static CrmProfileReadService CrmRead(AppDbContext db) => CrmProfileApiWorld.ReadService(db, Clock);
@@ -126,6 +137,11 @@ public class HostScopeNpgsqlTranslationTests
         ["alloggiati-list"] = (db, scope) =>
             new AlloggiatiWebService(db, NullLogger<AlloggiatiWebService>.Instance, Clock).GetSummaryAsync(scope, null),
 
+        // The approval queue (E05/F04/US01/T02): the list, and the read of one item that the edit, the approval and the rejection all start with (the item of a property
+        // the scope reaches is one IN (SELECT ...) on the properties of the scope, in the same statement).
+        ["approval-queue-list"] = (db, scope) => ApprovalQueue(db).GetPendingAsync(scope),
+        ["approval-queue-item"] = (db, scope) => ApprovalQueue(db).EditAsync(scope, Guid.NewGuid(), "Un testo", "auth0|utente"),
+
         // The CRM profiles (E07/F01/US03): every order of the list, every filter and the three searches, the detail, the items of a page and
         // the merge proposals, for every kind of scope.
         ["crm-list-by-last-stay"] = (db, scope) => CrmList(db, scope, new CrmProfileFilter(Sort: CrmProfileSort.LastStay)),
@@ -164,6 +180,8 @@ public class HostScopeNpgsqlTranslationTests
         ["intervention-by-id"] = 1,
         ["cockpit"] = 6,
         ["alloggiati-list"] = 3,
+        ["approval-queue-list"] = 1,
+        ["approval-queue-item"] = 1,
 
         // The CRM: the count and the page behind it (the probe answers the count with one); a search by an exact e-mail address asks for the
         // contacts first, one by a phone number for the contacts and the profiles that carry the number.
