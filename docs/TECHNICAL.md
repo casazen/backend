@@ -2042,6 +2042,26 @@ later. *The emails* are add-only templates of `EmailTemplates.StayAlerts.cs` wit
 `IEmailQueue` on Hangfire, every dynamic value HTML-encoded; they name the property and the date and **never a guest** (a name, a document, a contact, a booking code); the
 button opens `/app/short-rent/compliance` (`PublicSiteLinks.HostCompliance`).
 
+**Monthly compliance summary (NF-52, CHK-12 point 6, E03/F02/US02/T02).** `ComplianceMonthlySummaryJob` (`compliance-monthly-summary`, `0 7 1 * *` in the time zone of
+Europe/Rome, always registered, `[DisableConcurrentExecution]`, it only calls the service) runs `IComplianceMonthlySummaryService.RunAsync(runDate)` with the Rome date of the
+clock. For every **active host organization that has a short-rent property and existed when the month ended** it asks the coverage report of the proof archive
+(`IComplianceArchiveService.GetCoverageReportAsync`, the whole organization's reach, the first to the last day of the **previous calendar month**, Europe/Rome through
+`RomeCalendar` on the injected `TimeProvider`), which is `IComplianceStatusService.EvaluateAsync(scope, window)` over `ComplianceLightRules` plus the no-shows: the stays
+are its Alloggiati rows that owe a communication (a no-show owes none and is not counted), the obligations are counted by state (`OfficialProof`,
+`ExternalVerificationRequired`, `Missing`, `NotApplicable`), and the month is **complete only when every applicable obligation is `OfficialProof`**: an item held only by
+the channel manager, or with no proof, is never collapsed into compliant (`ComplianceMonthSummary.From`). **Once per organization and month**: the row of
+`ComplianceMonthlySummaryLogs` (`OrgId`, `YearMonth` `yyyy-MM`, `Outcome` `AllCompliant` or `ItemsMissing`, `RecipientCount`; no personal data) is inserted first,
+inside a transaction, and committed after the emails were handed to the queue; the unique index `UIX_ComplianceMonthlySummaryLogs_OrgId_YearMonth` makes a second
+run, a retry or a concurrent run send nothing more (the run looks for the row first, and the loser of a race finds it). When no email could be queued (no provider, no
+address) the row is taken back and a later run tries again; a crash between the queue and the commit sends it again rather than losing it. An organization that cannot be
+processed (the report fails, the database) does not stop the others, but **the run ends with an error once every organization was tried**: Hangfire repeats the job (its
+default automatic retry) and the repeat sends only the organizations that have no row for the month yet. The recipients are the address of
+the organization and its administrators through `IComplianceAlertRecipientResolver` (`ForOrganizationAsync`), otherwise the address of the organization. The email
+(`EmailTemplates.ComplianceSummary`, Italian and English in `EmailTexts.resx` / `EmailTexts.en.resx`, in the language of the organization, `compliance-monthly-summary`) says
+«October 2026: stays N, all compliant», «no stays» or what is not settled: **counts, the names of the open actions and the link to `/app/short-rent/compliance`, never a guest
+name, a document, a contact, a booking code, or even a property**. With `Features:ComplianceTrafficLight` off the run does nothing (until the proofs can be archived every
+stay would be listed as missing). No new configuration key.
+
 #### Supplier marketplace
 
 | Method | Path | Auth | Description |
@@ -2721,6 +2741,8 @@ The migration is `AddOnboardingActivation`. The tables are not part of the demo 
 | `OrgInvitationMaintenanceJob` | Hourly at :10 UTC | AM-02: reminder of the third day, expiry and deletion of closed org invitations after 30 days (`docs/runbooks/org-team.md` § 15) |
 | `InAppNotificationJob` | On push queued (`IPushNotificationService`) | UI-12a: writes one in-app notification per user of the push's audience, once per event and user (`docs/runbooks/in-app-notifications.md`) |
 | `InAppNotificationRetentionJob` | Daily at 03:45 UTC | UI-12a: deletes the in-app notifications older than 90 days |
+| `StayAlertsJob` | Hourly (`0 * * * *` UTC) | CO-10: the Alloggiati Web stages and the check-out reminder of the stays, then (E03/F02/US02/T01, behind `Features:ComplianceTrafficLight`) the alerts about a period and the connection of a property; each stage once (`StayAlertStates`, `ComplianceAlertStates`); see «Alert stages» in the compliance section and `docs/runbooks/hangfire.md` § 9 |
+| `ComplianceMonthlySummaryJob` | `0 7 1 * *` Europe/Rome (the 1st of every month, 07:00) | E03/F02/US02/T02, NF-52: the compliance summary of the month that has just ended to every active short-rent organization, once per organization and month (`ComplianceMonthlySummaryLogs`); only with `Features:ComplianceTrafficLight` on; see «Monthly compliance summary» in the compliance section |
 | `StripeWebhookJob` | On Stripe event (enqueued) | Process Stripe webhook events asynchronously |
 
 ### Deployment

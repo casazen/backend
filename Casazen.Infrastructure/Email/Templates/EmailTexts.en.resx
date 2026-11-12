@@ -321,6 +321,63 @@
   <data name="CompliancePush_Connection_Body" xml:space="preserve">
     <value>{0}: automatic sending is not active and a guest is about to arrive.</value>
   </data>
+  <data name="ComplianceSummary_Subject_NoStays" xml:space="preserve">
+    <value>Compliance for {0}: no stays</value>
+  </data>
+  <data name="ComplianceSummary_Subject_AllCompliant" xml:space="preserve">
+    <value>Compliance for {0}: stays {1}, all compliant</value>
+  </data>
+  <data name="ComplianceSummary_Subject_Open" xml:space="preserve">
+    <value>Compliance for {0}: stays {1}, to fix {2}</value>
+  </data>
+  <data name="ComplianceSummary_Body_NoStays" xml:space="preserve">
+    <value>{0}: no stays this month, nothing to report.</value>
+  </data>
+  <data name="ComplianceSummary_Body_AllCompliant" xml:space="preserve">
+    <value>{0}: stays of the month &lt;strong&gt;{1}&lt;/strong&gt;. All compliant: every obligation has its proof archived in CasaZen.</value>
+  </data>
+  <data name="ComplianceSummary_Body_Open" xml:space="preserve">
+    <value>{0}: stays of the month &lt;strong&gt;{1}&lt;/strong&gt;. Not everything is compliant, here is what is missing.</value>
+  </data>
+  <data name="ComplianceSummary_Item_SendAlloggiati" xml:space="preserve">
+    <value>Alloggiati Web reports to send: {0}</value>
+  </data>
+  <data name="ComplianceSummary_Item_ResolveAlloggiatiFailure" xml:space="preserve">
+    <value>Alloggiati Web reports to correct: {0}</value>
+  </data>
+  <data name="ComplianceSummary_Item_UploadAlloggiatiReceipt" xml:space="preserve">
+    <value>Alloggiati Web receipts to upload: {0}</value>
+  </data>
+  <data name="ComplianceSummary_Item_SendAlloggiatiManually" xml:space="preserve">
+    <value>Alloggiati Web reports to send by hand: {0}</value>
+  </data>
+  <data name="ComplianceSummary_Item_UploadIstatProof" xml:space="preserve">
+    <value>ISTAT reports to prove: {0}</value>
+  </data>
+  <data name="ComplianceSummary_Item_DeclareTouristTax" xml:space="preserve">
+    <value>Tourist tax to declare and pay: {0}</value>
+  </data>
+  <data name="ComplianceSummary_Item_Other" xml:space="preserve">
+    <value>Other obligations to fix: {0}</value>
+  </data>
+  <data name="ComplianceSummary_ExternalVerification" xml:space="preserve">
+    <value>The obligations to verify are the ones the channel manager sends: CasaZen does not see their outcome and never takes them as done. Check it in its panel, starting from the Compliance page.</value>
+  </data>
+  <data name="ComplianceSummary_Totals" xml:space="preserve">
+    <value>In short, the obligations of the month:</value>
+  </data>
+  <data name="ComplianceSummary_State_OfficialProof" xml:space="preserve">
+    <value>With an archived proof: {0}</value>
+  </data>
+  <data name="ComplianceSummary_State_ExternalVerificationRequired" xml:space="preserve">
+    <value>To verify in the channel manager panel: {0}</value>
+  </data>
+  <data name="ComplianceSummary_State_Missing" xml:space="preserve">
+    <value>Without a proof: {0}</value>
+  </data>
+  <data name="ComplianceSummary_State_NotApplicable" xml:space="preserve">
+    <value>Not owed (the guests never came): {0}</value>
+  </data>
   <data name="GuestRefundConfirmed_Subject" xml:space="preserve">
     <value>Refund confirmed - {0}</value>
   </data>

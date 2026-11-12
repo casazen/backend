@@ -27,6 +27,8 @@ public class ComplianceAlertRegistrationTests
                      (typeof(IComplianceAlertFollowUp), typeof(ComplianceAlertFollowUp)),
                      (typeof(IComplianceAlertService), typeof(ComplianceAlertService)),
                      (typeof(IStayAlertService), typeof(StayAlertService)),
+                     (typeof(IComplianceMonthlySummaryService), typeof(ComplianceMonthlySummaryService)),
+                     (typeof(Casazen.Web.BackgroundJobs.ComplianceMonthlySummaryJob), typeof(Casazen.Web.BackgroundJobs.ComplianceMonthlySummaryJob)),
                  })
         {
             var descriptor = Assert.Single(services, d => d.ServiceType == service);

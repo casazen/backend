@@ -398,6 +398,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITouristTaxDeadlineSource, NoTouristTaxDeadlineSource>();
         services.AddScoped<IComplianceAlertFollowUp, ComplianceAlertFollowUp>();
         services.AddScoped<IComplianceAlertService, ComplianceAlertService>();
+        // The monthly compliance summary email of every active short-rent org (E03/F02/US02/T02, NF-52): the previous month through the coverage report of the
+        // archive, once per org and month (ComplianceMonthlySummaryLogs), to the address of the org and its administrators through the recipient port.
+        services.AddScoped<IComplianceMonthlySummaryService, ComplianceMonthlySummaryService>();
+        services.AddScoped<ComplianceMonthlySummaryJob>();
         // Approval queue for items requiring human decision before taking effect (NF-06)
         services.AddScoped<IApprovalQueueService, ApprovalQueueService>();
         // CIN deadline (CO-20, runbook cin-format.md): optional date, validated at startup; daily host alert.
