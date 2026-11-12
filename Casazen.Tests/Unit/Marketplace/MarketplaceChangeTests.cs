@@ -259,6 +259,35 @@ public class MarketplaceChangeTests
         Assert.Empty(w.Deleted);
         w.Client.Verify(c => c.ListConnectionsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         Assert.All(await w.RowsAsync(w.OrgA), row => Assert.Equal(MarketplaceActivationStatus.Deactivated, row.Status));
+
+        // The same row when the org is not connected to the channel manager in this environment, or the property has no confirmed listing: it has nothing to delete, so it
+        // needs neither, and it is turned off with its item of the «To do» closed by the person.
+        var disconnected = await World.CreateAsync(connected: false);
+        var noId = await disconnected.AddAsync(disconnected.PropertyA1, MarketplaceActivationKind.Channel, "142", MarketplaceActivationStatus.ToFix, error: "connection_missing");
+        var todoId = await disconnected.RaiseTodoAsync(noId);
+        await using (var db = disconnected.NewDb())
+            Assert.Equal(MarketplaceActivationStatus.Deactivated, (await disconnected.Service(db).DeactivateAsync(disconnected.OrgA, disconnected.OrgWide, noId.Id, confirmed: true, Host)).Status);
+
+        var closed = Assert.Single(await disconnected.TodosAsync());
+        Assert.Equal((todoId, InternalActivity.StatusCompleted, Host), (closed.Id, closed.Status, closed.ClosedBy));
+        var turnedOff = Assert.Single(await disconnected.RowsAsync(disconnected.OrgA));
+        Assert.Equal((MarketplaceActivationStatus.Deactivated, null, null), (turnedOff.Status, turnedOff.LastErrorCode, turnedOff.TodoActivityId));
+
+        var unlinked = await World.CreateAsync(linked: false);
+        var unlinkedNoId = await unlinked.AddAsync(unlinked.PropertyA1, MarketplaceActivationKind.Tool, "300", MarketplaceActivationStatus.Pending, error: "octorate_unavailable");
+        await using (var db = unlinked.NewDb())
+            Assert.Equal(MarketplaceActivationStatus.Deactivated, (await unlinked.Service(db).DeactivateAsync(unlinked.OrgA, unlinked.OrgWide, unlinkedNoId.Id, confirmed: true, Host)).Status);
+
+        Assert.Empty(disconnected.Deleted);
+        Assert.Empty(unlinked.Deleted);
+        disconnected.Client.Verify(c => c.DeleteConnectionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // A row WITH its connection id still needs both to delete it: the connection of an org that is not connected cannot be reached, and nothing changes.
+        var withId = await disconnected.AddAsync(disconnected.PropertyA2, MarketplaceActivationKind.Channel, "274", MarketplaceActivationStatus.Active, "7002", verified: true);
+        await using (var db = disconnected.NewDb())
+            Assert.Equal("marketplace_octorate_not_connected", (await Assert.ThrowsAsync<DomainConflictException>(() => disconnected.Service(db).DeactivateAsync(disconnected.OrgA, disconnected.OrgWide, withId.Id, confirmed: true, Host))).Code);
+
+        Assert.Equal(MarketplaceActivationStatus.Active, (await disconnected.RowsAsync(disconnected.OrgA)).Single(r => r.Id == withId.Id).Status);
     }
 
     [Fact]

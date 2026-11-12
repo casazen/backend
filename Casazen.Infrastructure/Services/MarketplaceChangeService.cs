@@ -209,11 +209,12 @@ public sealed class MarketplaceChangeService(
         if (activation.PropertyId is not { } propertyId)
             throw NotSupported();
 
-        var link = await RequireLinkAsync(orgId, propertyId, ct);
-
-        // Only the connection CasaZen knows it made is deleted, never one found by guessing: a row without its id has nothing to delete.
+        // Only the connection CasaZen knows it made is deleted, never one found by guessing: a row without its id has nothing to delete, so it needs neither the account of the
+        // org nor the listing of the property (the host can turn it off whatever state they are in), and its «To do» is closed with it.
         if (activation.OctorateConnectionId is { Length: > 0 } connectionId)
         {
+            // The connection is deleted on the accommodation of the property's confirmed listing, through the org's connected account.
+            var link = await RequireLinkAsync(orgId, propertyId, ct);
             try
             {
                 using (orgScope.Use(orgId))
