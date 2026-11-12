@@ -205,7 +205,7 @@
     <value>Alloggiati Web receipt missing - {0} ({1})</value>
   </data>
   <data name="ReceiptMissing_Body" xml:space="preserve">
-    <value>The Alloggiati Web report for the stay at &lt;strong&gt;{0}&lt;/strong&gt;, arriving on &lt;strong&gt;{1}&lt;/strong&gt;, is recorded as sent, but CasaZen does not hold its receipt yet.</value>
+    <value>The Alloggiati Web report for the stay at &lt;strong&gt;{0}&lt;/strong&gt;, arriving on &lt;strong&gt;{1}&lt;/strong&gt;, is recorded as sent or entrusted to the channel manager, but CasaZen does not hold its receipt yet.</value>
   </data>
   <data name="ReceiptMissing_Action" xml:space="preserve">
     <value>Download the receipt from the Alloggiati Web portal and upload it on the Compliance page of CasaZen: until it is there, the obligation does not show as compliant.</value>

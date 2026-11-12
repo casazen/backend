@@ -53,13 +53,17 @@ public class ComplianceAlertEmailTemplatesTests
     }
 
     [Fact]
-    public void ReceiptMissing_Italian_SaysTheCommunicationIsSentAndTheReceiptIsMissing()
+    public void ReceiptMissing_SaysTheCommunicationIsSentOrEntrusted_AndTheReceiptIsMissing_InBothLanguages()
     {
         var content = EmailTemplates.ReceiptMissing(EmailTemplates.DefaultCulture, "Villa Rosa", CheckIn);
+        var english = EmailTemplates.ReceiptMissing(CultureInfo.GetCultureInfo("en"), "Villa Rosa", CheckIn);
 
         Assert.Equal("Ricevuta Alloggiati Web mancante - Villa Rosa (05/11/2026)", content.Subject);
-        Assert.Contains("risulta inviata", content.HtmlBody);
+        // A stay only entrusted to the channel manager has no report: CasaZen does not know that it was sent, so the text never says only «sent».
+        Assert.Contains("risulta inviata o affidata al channel manager", content.HtmlBody);
         Assert.Contains("non c'è ancora la ricevuta", content.HtmlBody);
+        Assert.Contains("is recorded as sent or entrusted to the channel manager", english.HtmlBody);
+        Assert.Contains("does not hold its receipt yet", english.HtmlBody);
         Assert.DoesNotContain("href=", content.HtmlBody);
     }
 

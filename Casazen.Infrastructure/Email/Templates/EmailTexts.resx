@@ -205,7 +205,7 @@
     <value>Ricevuta Alloggiati Web mancante - {0} ({1})</value>
   </data>
   <data name="ReceiptMissing_Body" xml:space="preserve">
-    <value>La comunicazione Alloggiati Web per il soggiorno presso &lt;strong&gt;{0}&lt;/strong&gt;, con arrivo il &lt;strong&gt;{1}&lt;/strong&gt;, risulta inviata, ma in CasaZen non c'è ancora la ricevuta.</value>
+    <value>La comunicazione Alloggiati Web per il soggiorno presso &lt;strong&gt;{0}&lt;/strong&gt;, con arrivo il &lt;strong&gt;{1}&lt;/strong&gt;, risulta inviata o affidata al channel manager, ma in CasaZen non c'è ancora la ricevuta.</value>
   </data>
   <data name="ReceiptMissing_Action" xml:space="preserve">
     <value>Scarica la ricevuta dal portale Alloggiati Web e caricala nella pagina Adempimenti di CasaZen: finché manca, l'adempimento non risulta in regola.</value>
