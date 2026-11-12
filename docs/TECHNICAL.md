@@ -1721,6 +1721,42 @@ declaration.
 *The card.* A partner is the org's (`statusScope` `Org`): its card is Active when the org-level activation is, or when the property asked about has one (asked without a `propertyId`,
 when any property of the caller's scope has one). The Active tab lists an activation declared for a property with that property.
 
+##### Health of the active integrations (E09/F03/US01/T01, NF-57, MKT-04, OCT-14)
+
+What the host reads in the Active tab for each property and channel, tool or function of the license, and the sync that keeps it true (`IMarketplaceHealthService`). Behind
+`Features:OctorateConnector` (404 while it is off, before authentication). The read needs `OtaRead`; the org and the `HostScope` come from the caller's membership, never from the
+request. **A read never calls Octorate**: it answers from CasaZen's own rows and from the quota of the last sync, which is kept in memory (per API instance, not in a table: absent
+after a restart until the next sync, and `readAt` says when it was read; an older reading than three hours is not shown). Every answer is `private, no-store`.
+
+| Method | Path | Policy | Description |
+|---|---|---|---|
+| `GET` | `/api/marketplace/health?propertyId=&lang=` | `OtaRead` + `HostScope` | `{ items }`, one row for each activation of kind `Channel`, `Tool` or `LicensedFunction` that is not turned off (a partner has no connection to read), ordered by property name, then kind and name: `{ activationId, propertyId, propertyName, kind, code, name, status, isDeclared, lastSyncedAt, error, quota, changeRequestedAt }`. `status` is `Pending`, `Active`, `ToFix` (or `Requested`, a function that waits for the license); `name` is the portal's in the cache (its code when the cache has none) or the function's in `lang`. `error` is `{ code, message }` or `null`: `code` is the stable code kept on the row (`connection_disabled`, `connection_missing`, `connection_not_enabled`, `license_module_off`, `octorate_partner_failed`, `octorate_unavailable`) and `message` the plain-language text of the resource files in `lang` (`Marketplace.Error.<code>`, Italian and English, no brand; a code nobody listed gets `Marketplace.Error.generic`): **the text Octorate itself gives never reaches the answer**, the page or the log (ADR-023-R6). `quota` is `{ used, limit, warn, readAt }`, the same on every row and `null` until a sync read it: `used` is `quotaStatus` (the units used in the window of the quota), `limit` is `quotaLimit`, `warn` is true when `used` reached `Marketplace:Health:QuotaWarnPercent` (80 by default, a value outside 1 to 100 is read as 80) of `limit`. A caller limited to some properties reads the rows of those only; a row with no property (a function of the license written before the license was a property's) is the whole org's and is read by a caller who reaches the whole org only; with a `propertyId` only that property's rows. Another org's rows are never read. With the connector off the answer is empty. `lang` is `it` or `en`, the language of the request when absent. 403 `no_org_context`; 404 `marketplace_property_not_found` for a property that is not the org's or is outside the caller's scope |
+
+*The sync* (`marketplace-connection-sync`, every 30 minutes in UTC, [hangfire.md](runbooks/hangfire.md); `IMarketplaceHealthService.SyncAsync(orgId)`, org by org, the least recently
+synced first): it only reads Octorate and writes only CasaZen's own rows and the «To do» items, and only while `Features:OctorateConnector` is on and the org has a connected account in
+this environment (otherwise nothing is read or written). Each property is saved before the next one is read.
+
+- *The connections.* One `GET /rest/v1/connection?accommodation=` for each property that has a channel or a tool. An activation that has a connection id is matched to its connection by id
+  and portal. `ENABLED` makes it Active (verified, `isDeclared` false), `WAITING` Pending (importing, or waiting for the access or the mapping), `DISABLED` To fix with
+  `connection_disabled`; each reads `lastSyncedAt`, and a healthy connection clears the problem. A connection that is no longer listed makes it To fix with `connection_missing` (the id
+  is kept, so a connection that comes back is read again), except for a row written in the last ten minutes: the list may lag just after a create. **A status nobody knew changes nothing**
+  (not even `lastSyncedAt`) and is logged as a warning with the word, so a healthy connection is never marked broken by a word of Octorate's that CasaZen has not met; the vocabulary
+  (`ENABLED`, `WAITING`, `DISABLED`) is the one of the OpenAPI, the sandbox has no channel connected. A row with no connection id is left to the activation wizard. The log of the channel
+  (`lastPortalAcceptLog`) is never used to decide a status. A property with no confirmed listing is skipped.
+- *The license.* For a property that has a function row, `IMarketplaceLicensedFunctionService.ReconcileAsync` (one read of the accommodation).
+- *The quota.* One `GET /rest/v1/api/configuration` for each org and run. `quotaStatus` is read as the units **used** (the plan, S22 and S25); the older connection status of the
+  connect wizard (`OctorateConnectService`) reads the same member as what is left, which the sandbox report of 2026-11-04 calls «the remaining calls»: the two are to be settled with
+  Octorate, and the warning is advisory only.
+- *The «To do».* An activation that is To fix and has no item gets one with `IInternalActivityService.CreateAsync`: type `IntegrationError`, action `ResumeWizard`, entity type
+  `MarketplaceActivation` and the id of the activation as the entity id, the property, urgency High for a channel (bookings stop arriving) and Medium for a tool or a function, the code of the
+  problem as the reason (no name, no person); its id is kept in `TodoActivityId`. The call is idempotent, so there is never a second item while one is open. When the activation is no longer
+  To fix the item is closed by the system and the id cleared, so the next problem is a new item; an item the host closed by hand while the problem stays is not raised again at every run. The
+  client maps `ResumeWizard` with the entity type `MarketplaceActivation` to the activation wizard at the failing step (the To do action map of the activity center, ADR-026-R6).
+- *Stops cleanly.* The first `OctorateRateLimitException` ends the run (`SyncAsync` raises it, the job stops): what was done is saved, the «To do» items of that property are brought in line,
+  and the rest is left to the next run, which starts with the orgs and properties synced the longest ago, so a stopped run is continued and not repeated. Any other failure of Octorate for a
+  property is logged with the property and the code (never a message or a body), counted, and the next property goes on; a refusal of the org's own token ends the org's run. No retry by
+  Hangfire: the next run is 30 minutes away.
+
 #### Compliance / legal
 
 | Method | Path | Auth | Description |

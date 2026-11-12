@@ -1,3 +1,4 @@
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
@@ -39,6 +40,12 @@ public static class MarketplaceServiceCollectionExtensions
 
         // The hand-off of a partner activated on its own site: the brief the host takes there and the record that it did it (E09/F02/US03/T01). It calls no one.
         services.AddScoped<IMarketplacePartnerActivationService, MarketplacePartnerActivationService>();
+
+        // The health of the active integrations and its sync every 30 minutes (E09/F03/US01/T01). The quota warning is the one setting, Marketplace:Health:QuotaWarnPercent
+        // (80 by default, in code): no entry in appsettings.json. The job is scheduled only while the connector is on (RecurringJobsRegistration), and its class is always registered.
+        services.Configure<MarketplaceHealthOptions>(configuration.GetSection(MarketplaceHealthOptions.SectionName));
+        services.AddScoped<IMarketplaceHealthService, MarketplaceHealthService>();
+        services.AddScoped<MarketplaceConnectionSyncJob>();
 
         return services;
     }

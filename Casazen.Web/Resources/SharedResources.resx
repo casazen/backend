@@ -5037,6 +5037,27 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.rateChecker" xml:space="preserve">
     <value>Controlla che i tuoi prezzi siano allineati su tutti i canali e segnala le differenze.</value>
   </data>
+  <data name="Marketplace.Error.connection_disabled" xml:space="preserve">
+    <value>Il collegamento è spento sul channel manager: riaccendilo dal suo pannello, poi torna qui.</value>
+  </data>
+  <data name="Marketplace.Error.connection_missing" xml:space="preserve">
+    <value>Il collegamento non risulta più sul channel manager (potrebbe essere stato rimosso): ricomincia l'attivazione del canale.</value>
+  </data>
+  <data name="Marketplace.Error.connection_not_enabled" xml:space="preserve">
+    <value>Il channel manager non mostra ancora il collegamento come funzionante: controlla l'accesso al canale e riprova.</value>
+  </data>
+  <data name="Marketplace.Error.license_module_off" xml:space="preserve">
+    <value>Questa funzione non risulta più nella licenza della struttura: chiedila di nuovo al tuo channel manager.</value>
+  </data>
+  <data name="Marketplace.Error.octorate_partner_failed" xml:space="preserve">
+    <value>Il canale non ha accettato la richiesta (accesso non valido o canale non raggiungibile): controlla i dati di accesso e riprova più tardi.</value>
+  </data>
+  <data name="Marketplace.Error.octorate_unavailable" xml:space="preserve">
+    <value>Il channel manager non risponde in questo momento: riproveremo da soli, non devi fare nulla.</value>
+  </data>
+  <data name="Marketplace.Error.generic" xml:space="preserve">
+    <value>C'è un problema con questo collegamento: controllalo dal pannello del channel manager.</value>
+  </data>
   <data name="TouristTaxNotCalculable" xml:space="preserve">
     <value>L'imposta di soggiorno di questo soggiorno non si può ancora calcolare: mancano la tariffa, l'età di un ospite, la categoria o il prezzo per notte.</value>
   </data>

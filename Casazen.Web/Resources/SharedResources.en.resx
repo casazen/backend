@@ -5037,6 +5037,27 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.rateChecker" xml:space="preserve">
     <value>Checks that your prices are consistent on every channel and flags the differences.</value>
   </data>
+  <data name="Marketplace.Error.connection_disabled" xml:space="preserve">
+    <value>The connection is switched off on the channel manager: switch it back on from its panel, then come back here.</value>
+  </data>
+  <data name="Marketplace.Error.connection_missing" xml:space="preserve">
+    <value>The connection is no longer on the channel manager (it may have been removed): start the activation of the channel again.</value>
+  </data>
+  <data name="Marketplace.Error.connection_not_enabled" xml:space="preserve">
+    <value>The channel manager does not show the connection as working yet: check the access to the channel and try again.</value>
+  </data>
+  <data name="Marketplace.Error.license_module_off" xml:space="preserve">
+    <value>This function is no longer in the license of the property: ask your channel manager for it again.</value>
+  </data>
+  <data name="Marketplace.Error.octorate_partner_failed" xml:space="preserve">
+    <value>The channel did not accept the request (wrong login details or the channel is not reachable): check the login details and try again later.</value>
+  </data>
+  <data name="Marketplace.Error.octorate_unavailable" xml:space="preserve">
+    <value>The channel manager is not answering right now: we will try again by ourselves, you do not need to do anything.</value>
+  </data>
+  <data name="Marketplace.Error.generic" xml:space="preserve">
+    <value>There is a problem with this connection: check it from the channel manager's panel.</value>
+  </data>
   <data name="TouristTaxNotCalculable" xml:space="preserve">
     <value>The tourist tax of this stay cannot be calculated yet: the rate, the age of a guest, the category or the price per night is missing.</value>
   </data>

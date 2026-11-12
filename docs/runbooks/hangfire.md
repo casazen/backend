@@ -48,6 +48,7 @@ and production never block each other.
 | `seo-content-refresh` | 04:00 on day 1 | `SeoContentRefreshJob.ExecuteAsync` | 300 s |
 | `seo-event-retention` (SE-04: deletes SEO funnel events older than `Seo__Events__RetentionDays`, see [seo-funnel.md](seo-funnel.md)) | 03:30 | `SeoEventRetentionJob.ExecuteAsync` | 300 s |
 | `marketplace-portal-refresh` (E09/F01/US01/T02, NF-54: reads Octorate's portal catalog (`GET /rest/v1/meta/portals`, a partner-level call with the application's login) and brings the cache the marketplace reads in line with it, in one transaction; an error of Octorate or an answer with no known portal leaves the cache as it was, three retries; counts only in the log, never a portal name; only with `Features:OctorateConnector=true`, otherwise removed at startup) | 03:30 | `MarketplacePortalRefreshJob.ExecuteAsync` | 300 s |
+| `marketplace-connection-sync` (E09/F03/US01/T01, NF-57: reads the connections of every org that has a channel, a tool or a function of the license on (`GET /rest/v1/connection` of each property, the license of the properties that have a function, the quota of the application once for each org), brings the activations in line with them (Active, Pending or To fix; a status nobody knew changes nothing and is logged as a warning) and raises or closes their «To do» items; org by org, the least recently synced first, each property saved before the next is read; the first rate-limit error ends the run and the next run continues with the rest, any other failure is logged with its code only and the next property goes on; no retry by Hangfire; only with `Features:OctorateConnector=true`, otherwise removed at startup) | `*/30` | `MarketplaceConnectionSyncJob.ExecuteAsync` | 300 s |
 | `direct-booking-charge` | 06:00 | `DirectBookingChargeJob.ExecuteAsync` | 300 s |
 | `rent-collection` (LT-06: payment links of the rent installments coming due, payments in flight read again, see [§12](#12-rent-collection-lt-06)) | 07:00 | `RentCollectionJob.ExecuteAsync` (plus a PostgreSQL advisory lock per lease) | 300 s |
 | `checkout-hold-expiry` (BK-21 and BK-06, see [§7](#7-checkout-hold-expiry-bk-21)) | `*/5` | `CheckoutHoldExpiryJob.ExecuteAsync` (plus a row lock per hold) | 60 s |
@@ -283,8 +284,9 @@ before the first start with FD-11, or hand over the tables Hangfire created with
   -- Features:SupplierRequestBackups says), org-invitation-maintenance, org-activity-retention,
   -- service-payment-sync, service-payment-reminders, in-app-notification-retention (UI-12a), supplier-showcase-media-cleanup (SP-13b),
   -- property-mode-change (PM-02), lease-draft-retention (LR-12), lease-term-renewal (LR-14) and
-  -- lease-notice-reminder (LR-11c-a) and crm-profile-sync (E07/F01/US02/T03), is in both counts; marketplace-portal-refresh (E09/F01/US01/T02) is a sixth that appears
-  -- only with Features:OctorateConnector on, so add one to the first count when that flag is on too)
+  -- lease-notice-reminder (LR-11c-a) and crm-profile-sync (E07/F01/US02/T03), is in both counts; marketplace-portal-refresh (E09/F01/US01/T02) and
+  -- marketplace-connection-sync (E09/F03/US01/T01) are a sixth and a seventh that appear only with Features:OctorateConnector on, so add two to the first
+  -- count when that flag is on too)
   SELECT 'test' AS env, count(*) FROM hangfire_casazen_test.set WHERE key = 'recurring-jobs'
   UNION ALL
   SELECT 'prod', count(*) FROM hangfire_casazen_prod.set WHERE key = 'recurring-jobs';
