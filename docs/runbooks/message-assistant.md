@@ -55,7 +55,10 @@ fiscal codes (`PiiScrubber`) become `[email]`, `[tel]`, `[cf]`; the names of the
 become `[guest]` and `[host]`; the code of the booking and its references on the channel `[booking]`; any run of six or more digits
 `[code]`. The model never sees the name of the guest: it writes `{{guest_name}}`, the server fills it in. The provider scrubs every prompt
 once more. **Not recognized**: the names of anyone the conversation does not know, a street address, an IBAN written with spaces. A
-placeholder left in a draft lowers its compliance and is visible to the person who approves it.
+placeholder left in a draft lowers its compliance and is visible to the person who approves it. The facts are the host's own texts: what
+the host wrote in an entry of the knowledge base (a Wi-Fi password included; the facts read from the listing never carry it) goes to the
+provider, minimized like the rest, when its topic is the one of the situation. The simulator knows no name of a guest (the example is the
+host's own text): it takes out the contacts, the codes, the long numbers and the host's name.
 
 ## Endpoints (behind the flag, private answers)
 
