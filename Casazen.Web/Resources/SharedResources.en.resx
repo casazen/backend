@@ -5670,4 +5670,19 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="RentSepaNotAuthorized" xml:space="preserve">
     <value>Authorize the SEPA mandate before enabling automatic payment.</value>
   </data>
+  <data name="AssistantRulesInvalid" xml:space="preserve">
+    <value>The assistant rules are not valid: give at least one language of two lower-case letters, a signature of up to 300 characters, hours with a start different from the end (both or neither), and only topics or situations the assistant knows.</value>
+  </data>
+  <data name="AssistantThresholdInvalid" xml:space="preserve">
+    <value>The confidence threshold must be between 0.50 and 0.99, with at most three decimals.</value>
+  </data>
+  <data name="AssistantEntryInvalid" xml:space="preserve">
+    <value>Give a topic, a kind and a text of 1 to 1000 characters; a FAQ also needs its question (up to 200 characters) and the language, if you give one, is a two-letter lower-case code.</value>
+  </data>
+  <data name="AssistantEntryNotFound" xml:space="preserve">
+    <value>Entry not found.</value>
+  </data>
+  <data name="AssistantConcurrentChange" xml:space="preserve">
+    <value>Someone else changed the assistant’s instructions at the same moment. Reload and try again.</value>
+  </data>
 </root>
