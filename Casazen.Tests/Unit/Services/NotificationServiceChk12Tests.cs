@@ -1,6 +1,8 @@
+using System.Globalization;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
 using Casazen.Tests.Unit.Push;
@@ -81,8 +83,68 @@ public class NotificationServiceChk12Tests : IDisposable
         Assert.Equal(PushAudience.BookingHosts(booking.Id), push.Audience);
         Assert.Equal($"/bookings/{booking.Id}", push.Payload.Route);
 
-        // What the host reads: the property and the day, and nothing of the guest, in the email and in the push, in Italian and in English.
-        var texts = new[] { email.Content.Subject, email.Content.HtmlBody, push.Payload.Title, push.Payload.Body };
+        // What the host reads: the property and the day, and nothing of the guest, in the email and in the push. The service writes in the default culture
+        // (Italian); the English texts of the same templates, with the inputs the service gives them, are scanned by the next tests.
+        AssertNoGuestData(new[] { email.Content.Subject, email.Content.HtmlBody, push.Payload.Title, push.Payload.Body }, booking);
+        Assert.Contains("Villa Rosa", email.Content.Subject, StringComparison.Ordinal);
+        Assert.Contains("05/11/2026", email.Content.Subject, StringComparison.Ordinal);
+        Assert.Contains("Villa Rosa", push.Payload.Body, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(StayAlertKind.ReceiptMissing)]
+    [InlineData(StayAlertKind.ShortStayAtRisk)]
+    [InlineData(StayAlertKind.OverThirtyNights)]
+    public async Task ComplianceAlerts_StayAlertTextsNameNoGuestPersonalData_InEnglishToo_Test(StayAlertKind kind)
+    {
+        var (booking, _) = await SeedAsync();
+        var english = CultureInfo.GetCultureInfo("en");
+        var link = EmailTestHelpers.Links().HostBooking(booking.Id);
+
+        // The inputs NotificationService gives the templates: the property, the arrival day, the legal deadline of a short stay and the link; never the guest.
+        var email = kind switch
+        {
+            StayAlertKind.ReceiptMissing => EmailTemplates.ReceiptMissing(english, "Villa Rosa", booking.CheckInDate, link),
+            StayAlertKind.ShortStayAtRisk => EmailTemplates.ShortStayAtRisk(english, "Villa Rosa", booking.CheckInDate, new DateTime(2026, 11, 5, 19, 0, 0, DateTimeKind.Utc), link),
+            _ => EmailTemplates.OverThirtyNights(english, "Villa Rosa", booking.CheckInDate, link),
+        };
+        var push = EmailTemplates.StayAlertPush(english, kind, "Villa Rosa", booking.CheckInDate);
+
+        Assert.Contains("<html lang=\"en\">", email.HtmlBody, StringComparison.Ordinal);
+        AssertNoGuestData(new[] { email.Subject, email.HtmlBody, push.Title, push.Body }, booking);
+        Assert.Contains("Villa Rosa", email.Subject, StringComparison.Ordinal);
+        Assert.Contains("5 November 2026", email.Subject, StringComparison.Ordinal);
+        Assert.Contains("Villa Rosa", push.Body, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("it-IT")]
+    [InlineData("en")]
+    public async Task ComplianceAlerts_PeriodAndConnectionTextsNameNoGuestPersonalData_InBothLanguages_Test(string cultureName)
+    {
+        var (booking, propertyId) = await SeedAsync();
+        var culture = CultureInfo.GetCultureInfo(cultureName);
+        var link = EmailTestHelpers.Links().HostCompliance();
+        var period = new ComplianceAlert(
+            ComplianceAlertType.IstatPeriod, propertyId, ComplianceAlertKind.PeriodOverdue, "2026-10", new DateOnly(2026, 11, 10), ReminderNumber: 1, MaxReminders: 3);
+        var connection = new ComplianceAlert(ComplianceAlertType.ConnectionInactive, propertyId, ComplianceAlertKind.ConnectionInactive, ReminderNumber: 1, MaxReminders: 1);
+
+        var emails = new[]
+        {
+            EmailTemplates.CompliancePeriodAlert(culture, period, "Villa Rosa", link),
+            EmailTemplates.ComplianceConnectionAlert(culture, connection, "Villa Rosa", link),
+        };
+        var pushes = new[] { EmailTemplates.CompliancePush(culture, period, "Villa Rosa"), EmailTemplates.CompliancePush(culture, connection, "Villa Rosa") };
+
+        Assert.Contains($"<html lang=\"{culture.TwoLetterISOLanguageName}\">", emails[0].HtmlBody, StringComparison.Ordinal);
+        AssertNoGuestData(
+            emails.SelectMany(e => new[] { e.Subject, e.HtmlBody }).Concat(pushes.SelectMany(p => new[] { p.Title, p.Body })),
+            booking);
+        Assert.All(emails, e => Assert.Contains("Villa Rosa", e.Subject, StringComparison.Ordinal));
+    }
+
+    /// <summary>What the host reads names the property and the day and nothing of the guest: no name, no address, no booking code.</summary>
+    private static void AssertNoGuestData(IEnumerable<string> texts, Booking booking) =>
         Assert.All(texts, text =>
         {
             Assert.DoesNotContain(GuestFirstName, text, StringComparison.Ordinal);
@@ -90,10 +152,6 @@ public class NotificationServiceChk12Tests : IDisposable
             Assert.DoesNotContain(GuestEmail, text, StringComparison.Ordinal);
             Assert.DoesNotContain(booking.BookingCode, text, StringComparison.Ordinal);
         });
-        Assert.Contains("Villa Rosa", email.Content.Subject, StringComparison.Ordinal);
-        Assert.Contains("05/11/2026", email.Content.Subject, StringComparison.Ordinal);
-        Assert.Contains("Villa Rosa", push.Payload.Body, StringComparison.Ordinal);
-    }
 
     [Fact]
     public async Task SendStayAlertAsync_TheNewStagesUseTheirOwnPushKeyPerStage()

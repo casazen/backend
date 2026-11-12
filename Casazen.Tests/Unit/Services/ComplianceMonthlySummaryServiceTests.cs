@@ -299,10 +299,13 @@ public class ComplianceMonthlySummaryServiceTests : IDisposable
 
     // ─── Privacy ───
 
-    [Fact]
-    public async Task ComplianceMonthlySummary_NoGuestPersonalData_Test()
+    [Theory]
+    [InlineData("it")]
+    [InlineData("en")]
+    public async Task ComplianceMonthlySummary_NoGuestPersonalData_Test(string language)
     {
-        var orgId = await SeedOrgAsync();
+        // The same scan for the organization that writes in Italian and for the one that writes in English: the final text of each language.
+        var orgId = await SeedOrgAsync(language: language);
         // A month with stays of a guest with a name, an email, a phone and a document, whose booking codes the report knows and whose rows are open.
         var guest = new Guest
         {
@@ -333,6 +336,7 @@ public class ComplianceMonthlySummaryServiceTests : IDisposable
         await Service().RunAsync(FirstOfNovember, CancellationToken.None);
 
         var email = Assert.Single(_emails.Queued);
+        Assert.Contains($"<html lang=\"{language}\">", email.Content.HtmlBody, StringComparison.Ordinal);
         foreach (var text in new[] { email.Content.Subject, email.Content.HtmlBody })
         {
             Assert.DoesNotContain("Anna", text, StringComparison.Ordinal);
