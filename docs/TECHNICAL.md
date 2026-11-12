@@ -2004,6 +2004,44 @@ of `ActivityAction` is an error, not a quiet «none».
 A new action is added to the enum and to the clients together: until then the web app shows the item without a link,
 never a link to the dashboard.
 
+**Alert stages (NF-52, CHK-12, NF-48, E03/F02/US02/T01).** The hourly `stay-alerts` job (`StayAlertsJob`, cron `0 * * * *` UTC) runs `IStayAlertService` and,
+when that run was not skipped by its advisory lock, `IComplianceAlertService` (the alerts about a property that are not tied to one stay). Everything is
+**add-only**: `StayAlertType` gains `ReceiptMissing = 4`, `ShortStayAtRisk = 5` and `OverThirtyNights = 6` (the stored values 1 to 3 are unchanged, no migration),
+`StayAlertKind` the matching kinds, and the alerts about a period or the connection use the staged state row of `ComplianceAlertState`. **Each stage is sent at
+most once**, whatever the number of runs, retries or concurrent runs, by an atomic compare-and-set on its state row (`StayAlertService.ClaimAsync`,
+`ComplianceAlertService.ClaimAsync`); a stage that is due only because the job was down is dropped after its validity window (24 hours), never sent as a
+backlog. Every threshold is an option, a **proposal the product owner may change** (`docs/runbooks/deploy-checklist.md` § 2); the new stages and everything a stage
+leaves behind (the «To do» and the popup) run **only with `Features:ComplianceTrafficLight` on** (the module's flag): off, none of them sends, opens, closes or
+writes anything, and the old stay stages send exactly what they sent.
+
+| Alert | State row | When (Europe/Rome) | Options (default) |
+|---|---|---|---|
+| `ReceiptMissing` (a stay) | `StayAlertState` type 4, stage 1 | the communication was sent, entrusted to the channel manager or declared sent and **no receipt is archived**: the day after at the hour (the compliance status engine says `receipt_missing`: the rule is never copied; for an entrusted stay, which has no report, the day after its legal deadline) | `StayAlerts:ReceiptMissingHourLocal` (10) |
+| `ShortStayAtRisk` (a stay) | type 5, stage 1 | a stay of at most one night (the 6-hour term), property whose sender is the channel manager (`Features:OctorateConnector` on), guests **not entrusted** and not sent: from this many hours before the arrival (the registered one, or the start of the arrival day) until the legal deadline | `StayAlerts:ShortStayRiskHours` (6) |
+| `OverThirtyNights` (a stay) | type 6, stage 1 | a stay over 30 nights, same sender rule: one alert the day before the arrival at the hour | `StayAlerts:OverThirtyNightsHourLocal` (9) |
+| `IstatPeriod` (a property and a month) | `ComplianceAlertState`, reference `yyyy-MM` | stage 1 «deadline approaching» N days before the deadline day of the region; stage 2 «overdue» the morning after it (the status engine turns red the day after, so the alert never says overdue while the cockpit says open); then at most M reminders every K days; all at the hour. Only for a region whose deadline day is in `Compliance:IstatDeadlineDays` (a region «to define» has no item: nothing is guessed) and while nothing proves the month | `Compliance:PeriodWarningDays` (3), `MaxPeriodReminders` (3), `PeriodReminderDays` (3), `PeriodAlertHourLocal` (9) |
+| `TouristTaxPeriod` (a property and a month) | same | the same stages, **silent today**: no table holds the deadline day of a comune (the `MunicipalityComplianceConfig` of the old plan was never built) and a guessed day is never used. `ITouristTaxDeadlineSource` answers «not known» (`NoTouristTaxDeadlineSource`); where the day comes from is an open point of the plan, and only that class changes when it is decided | as the periods |
+| `ConnectionInactive` (a property) | `ComplianceAlertState`, reference `connection` | the channel manager is the sender, `IComplianceConnectionHealthService` reads its send as **inactive** and a stay arrives within N days: stage 1 at detection, stage 2 K days later, no more. A property not read in a run (the health service reads a few Octorate accounts per call) is neither alerted nor cleared; when a reading says the send is active again the state restarts, so a later incident is alerted again | `Compliance:ConnectionAlertDays` (7), `ConnectionReminderDays` (2) |
+
+*What a stage leaves behind* (`IComplianceAlertFollowUp`). Every stage that is sent, the old stay stages included, opens (or keeps open) the **"To do"** of its condition
+through `IInternalActivityService.CreateAsync` (idempotent per type, entity type and entity id while open): `CheckInPending` (data missing before the arrival; action
+`StartCheckIn`), `AlloggiatiDeadline` (the 24 hours from the arrival, a failed communication, a short stay or a stay over 30 nights to send by hand), `ReceiptToRetrieve`
+(the receipt is missing), `IstatDeadline` and `TouristTaxDeadline` (entity type `PropertyPeriod:yyyy-MM`) and `ReconnectChannelManager` (entity type `Property`), with the deadline,
+a reason that is a code of `ComplianceReasonCodes` and the action the compliance cockpit gives it (`ComplianceActivityFeeder.TodoOf`, the one mapping), so the item is the one
+the feed of the cockpit raises and no duplicate exists. It is closed by the event bus when the proof arrives (`ActivityAutoCloseHandler`) and by this job when it sees the
+condition cleared: the communication was sent or declared, the data are complete, the proof of the stay is archived, the period is green or owes nothing, the
+connection is active again, the stay owes nothing any more (cancelled, a request, a no-show). A legal deadline within 24 hours before or after now (Alloggiati, ISTAT) also
+raises a **popup alert** through `IAlertRouter` (ADR-025: `AlloggiatiDeadline` or `IstatDeadline` with the id of the booking or of the property, which the router never holds back
+for the quiet hours) for each person who reaches the property.
+
+*Who is told* is a port, `IComplianceAlertRecipientResolver`: the email goes to the address of the organization (as the stay alerts always did), the push to the hosts of the
+property (`PushAudience.PropertyHosts`), the popup to the people the resolver returns. Its default implementation asks `INotificationPreferenceService` for the event «legal
+deadline» (`HostNotificationAudience`: the person in charge while they still reach the property and the administrators; a collaborator «Solo alcuni» only for a property it was
+given, in the area of its mode; never a deactivated member), so the reach is decided in one place; the choices of each person (channels, quiet hours) replace today's delivery
+later. *The emails* are add-only templates of `EmailTemplates.StayAlerts.cs` with the Italian and English texts of `EmailTexts.resx` / `EmailTexts.en.resx`, queued through
+`IEmailQueue` on Hangfire, every dynamic value HTML-encoded; they name the property and the date and **never a guest** (a name, a document, a contact, a booking code); the
+button opens `/app/short-rent/compliance` (`PublicSiteLinks.HostCompliance`).
+
 #### Supplier marketplace
 
 | Method | Path | Auth | Description |

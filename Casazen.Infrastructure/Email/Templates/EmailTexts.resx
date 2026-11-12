@@ -201,6 +201,126 @@
   <data name="StayAlertPush_Failed_Body" xml:space="preserve">
     <value>{0}: controlla la comunicazione per l'arrivo del {1}.</value>
   </data>
+  <data name="ReceiptMissing_Subject" xml:space="preserve">
+    <value>Ricevuta Alloggiati Web mancante - {0} ({1})</value>
+  </data>
+  <data name="ReceiptMissing_Body" xml:space="preserve">
+    <value>La comunicazione Alloggiati Web per il soggiorno presso &lt;strong&gt;{0}&lt;/strong&gt;, con arrivo il &lt;strong&gt;{1}&lt;/strong&gt;, risulta inviata, ma in CasaZen non c'è ancora la ricevuta.</value>
+  </data>
+  <data name="ReceiptMissing_Action" xml:space="preserve">
+    <value>Scarica la ricevuta dal portale Alloggiati Web e caricala nella pagina Adempimenti di CasaZen: finché manca, l'adempimento non risulta in regola.</value>
+  </data>
+  <data name="ShortStayAtRisk_Subject" xml:space="preserve">
+    <value>Soggiorno breve: comunicazione Alloggiati Web entro 6 ore - {0} ({1})</value>
+  </data>
+  <data name="ShortStayAtRisk_Body" xml:space="preserve">
+    <value>Il soggiorno presso &lt;strong&gt;{0}&lt;/strong&gt;, con arrivo il &lt;strong&gt;{1}&lt;/strong&gt;, dura al massimo una notte: la comunicazione Alloggiati Web va inviata entro 6 ore dall'arrivo. Gli ospiti non risultano affidati al channel manager, che invia le comunicazioni una volta al giorno.</value>
+  </data>
+  <data name="ShortStayAtRisk_Action" xml:space="preserve">
+    <value>Invia la comunicazione sul portale Alloggiati Web appena l'ospite arriva, poi segnala l'invio nella scheda Alloggiati della prenotazione («Segna come inviato manualmente»).</value>
+  </data>
+  <data name="OverThirtyNights_Subject" xml:space="preserve">
+    <value>Soggiorno oltre 30 notti: comunicazione Alloggiati Web a mano - {0} ({1})</value>
+  </data>
+  <data name="OverThirtyNights_Body" xml:space="preserve">
+    <value>Il soggiorno presso &lt;strong&gt;{0}&lt;/strong&gt;, con arrivo il &lt;strong&gt;{1}&lt;/strong&gt;, supera 30 notti: il channel manager non lo invia in automatico e il portale Alloggiati Web accetta al massimo 30 giorni di soggiorno per scheda.</value>
+  </data>
+  <data name="OverThirtyNights_Action" xml:space="preserve">
+    <value>Il giorno dell'arrivo invia la comunicazione sul portale Alloggiati Web, poi segnala l'invio nella scheda Alloggiati della prenotazione («Segna come inviato manualmente»).</value>
+  </data>
+  <data name="StayAlertPush_ReceiptMissing_Title" xml:space="preserve">
+    <value>Ricevuta Alloggiati Web mancante</value>
+  </data>
+  <data name="StayAlertPush_ReceiptMissing_Body" xml:space="preserve">
+    <value>{0}: carica la ricevuta dell'arrivo del {1}.</value>
+  </data>
+  <data name="StayAlertPush_ShortStayAtRisk_Title" xml:space="preserve">
+    <value>Soggiorno breve da comunicare</value>
+  </data>
+  <data name="StayAlertPush_ShortStayAtRisk_Body" xml:space="preserve">
+    <value>{0}: invia la comunicazione entro 6 ore dall'arrivo del {1}.</value>
+  </data>
+  <data name="StayAlertPush_OverThirtyNights_Title" xml:space="preserve">
+    <value>Soggiorno oltre 30 notti</value>
+  </data>
+  <data name="StayAlertPush_OverThirtyNights_Body" xml:space="preserve">
+    <value>{0}: invia a mano la comunicazione per l'arrivo del {1}.</value>
+  </data>
+  <data name="ComplianceAlert_Cta" xml:space="preserve">
+    <value>Apri gli adempimenti</value>
+  </data>
+  <data name="ComplianceAlertIstat_Approaching_Subject" xml:space="preserve">
+    <value>ISTAT in scadenza - {0} ({1})</value>
+  </data>
+  <data name="ComplianceAlertIstat_Approaching_Body" xml:space="preserve">
+    <value>La comunicazione ISTAT di &lt;strong&gt;{1}&lt;/strong&gt; per &lt;strong&gt;{0}&lt;/strong&gt; non risulta ancora fatta: scade il &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ComplianceAlertIstat_Overdue_Subject" xml:space="preserve">
+    <value>ISTAT scaduta - {0} ({1})</value>
+  </data>
+  <data name="ComplianceAlertIstat_Overdue_Body" xml:space="preserve">
+    <value>Il termine per la comunicazione ISTAT di &lt;strong&gt;{1}&lt;/strong&gt; per &lt;strong&gt;{0}&lt;/strong&gt; era il &lt;strong&gt;{2}&lt;/strong&gt; e in CasaZen non c'è la prova che sia stata fatta.</value>
+  </data>
+  <data name="ComplianceAlertIstat_Action" xml:space="preserve">
+    <value>Se l'hai già fatta, carica la prova nella pagina Adempimenti di CasaZen; se la invia il channel manager, controlla l'esito nel suo pannello. Altrimenti falla il prima possibile.</value>
+  </data>
+  <data name="ComplianceAlertTouristTax_Approaching_Subject" xml:space="preserve">
+    <value>Imposta di soggiorno in scadenza - {0} ({1})</value>
+  </data>
+  <data name="ComplianceAlertTouristTax_Approaching_Body" xml:space="preserve">
+    <value>La dichiarazione e il pagamento dell'imposta di soggiorno di &lt;strong&gt;{1}&lt;/strong&gt; per &lt;strong&gt;{0}&lt;/strong&gt; non risultano ancora fatti: scadono il &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ComplianceAlertTouristTax_Overdue_Subject" xml:space="preserve">
+    <value>Imposta di soggiorno scaduta - {0} ({1})</value>
+  </data>
+  <data name="ComplianceAlertTouristTax_Overdue_Body" xml:space="preserve">
+    <value>Il termine per dichiarare e pagare l'imposta di soggiorno di &lt;strong&gt;{1}&lt;/strong&gt; per &lt;strong&gt;{0}&lt;/strong&gt; era il &lt;strong&gt;{2}&lt;/strong&gt; e in CasaZen non ci sono le ricevute della dichiarazione e del pagamento.</value>
+  </data>
+  <data name="ComplianceAlertTouristTax_Action" xml:space="preserve">
+    <value>Se li hai già fatti, carica le ricevute nella pagina Adempimenti di CasaZen; altrimenti dichiara e paga il prima possibile.</value>
+  </data>
+  <data name="ComplianceAlertConnection_Subject" xml:space="preserve">
+    <value>Invio automatico non attivo - {0}</value>
+  </data>
+  <data name="ComplianceAlertConnection_Body" xml:space="preserve">
+    <value>Il channel manager non risulta attivo per l'invio automatico delle comunicazioni Alloggiati Web e ISTAT di &lt;strong&gt;{0}&lt;/strong&gt;, e nei prossimi giorni arriva un ospite.</value>
+  </data>
+  <data name="ComplianceAlertConnection_Reminder" xml:space="preserve">
+    <value>Secondo e ultimo avviso: l'invio automatico non risulta ancora attivo.</value>
+  </data>
+  <data name="ComplianceAlertConnection_Action" xml:space="preserve">
+    <value>Attivalo o ricollegalo dal pannello del channel manager. Finché non è attivo, le comunicazioni vanno inviate a mano.</value>
+  </data>
+  <data name="CompliancePush_Istat_Approaching_Title" xml:space="preserve">
+    <value>ISTAT in scadenza</value>
+  </data>
+  <data name="CompliancePush_Istat_Approaching_Body" xml:space="preserve">
+    <value>{0}: comunicazione ISTAT di {1} da fare entro il {2}.</value>
+  </data>
+  <data name="CompliancePush_Istat_Overdue_Title" xml:space="preserve">
+    <value>ISTAT scaduta</value>
+  </data>
+  <data name="CompliancePush_Istat_Overdue_Body" xml:space="preserve">
+    <value>{0}: la comunicazione ISTAT di {1} non risulta fatta.</value>
+  </data>
+  <data name="CompliancePush_TouristTax_Approaching_Title" xml:space="preserve">
+    <value>Imposta di soggiorno in scadenza</value>
+  </data>
+  <data name="CompliancePush_TouristTax_Approaching_Body" xml:space="preserve">
+    <value>{0}: imposta di soggiorno di {1} da dichiarare e pagare entro il {2}.</value>
+  </data>
+  <data name="CompliancePush_TouristTax_Overdue_Title" xml:space="preserve">
+    <value>Imposta di soggiorno scaduta</value>
+  </data>
+  <data name="CompliancePush_TouristTax_Overdue_Body" xml:space="preserve">
+    <value>{0}: l'imposta di soggiorno di {1} non risulta pagata.</value>
+  </data>
+  <data name="CompliancePush_Connection_Title" xml:space="preserve">
+    <value>Invio automatico non attivo</value>
+  </data>
+  <data name="CompliancePush_Connection_Body" xml:space="preserve">
+    <value>{0}: l'invio automatico non è attivo e un ospite sta per arrivare.</value>
+  </data>
   <data name="GuestRefundConfirmed_Subject" xml:space="preserve">
     <value>Rimborso confermato - {0}</value>
   </data>

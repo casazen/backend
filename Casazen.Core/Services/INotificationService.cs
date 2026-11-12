@@ -15,6 +15,18 @@ public interface INotificationService
     Task SendStayAlertAsync(StayAlert alert, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Delivers an alert about a period or the connection of a property of the <c>stay-alerts</c> job (E03/F02/US02/T01, NF-52): an email to
+    /// <paramref name="emails"/> (the audience of <see cref="IComplianceAlertRecipientResolver"/>) and a push to the hosts of the property, both
+    /// queued on Hangfire (the push once per <paramref name="deliveryKey"/> and device, MO-04). The job decides when; this only renders and queues.
+    /// The text names the property and the period or the deadline day, never guest data. A property that is gone sends nothing.
+    /// </summary>
+    Task SendComplianceAlertAsync(
+        ComplianceAlert alert,
+        IReadOnlyCollection<string> emails,
+        string deliveryKey,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Delivers a CIN alert of the <c>cin-deadline-alert</c> job (CO-20) to an org: one email to its contact address,
     /// queued on Hangfire, listing its properties without a valid CIN. The job decides when; this only renders and
     /// delivers. False when the email was not queued (no contact address, provider not configured), with a log entry.

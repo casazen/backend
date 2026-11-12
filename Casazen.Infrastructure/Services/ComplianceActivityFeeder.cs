@@ -96,6 +96,14 @@ public sealed class ComplianceActivityFeeder(
     /// <summary>The cockpit actions that feed the To do list (every other action has its own producer).</summary>
     internal static IReadOnlyCollection<ComplianceCockpitAction> FedActions => Fed.Keys.ToList();
 
+    /// <summary>
+    /// The type and the action of the To do this feed raises for a cockpit action, <c>null</c> for an action that has its own producer: the one place of
+    /// the mapping. The alert stages of the <c>stay-alerts</c> job open the same item through it (E03/F02/US02/T01), so an item raised by either is the
+    /// one the other finds, with no duplicate.
+    /// </summary>
+    internal static (ActivityType Type, ActivityAction Action)? TodoOf(ComplianceCockpitAction action) =>
+        Fed.TryGetValue(action, out var mapping) ? (mapping.Type, mapping.Action) : null;
+
     /// <summary>The cockpit actions that do not feed the To do list here: the operational items, whose To do their own producers keep.</summary>
     internal static IReadOnlyCollection<ComplianceCockpitAction> NotFedActions { get; } =
     [

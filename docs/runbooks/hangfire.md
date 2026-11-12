@@ -36,7 +36,7 @@ and production never block each other.
 | `booking-pull-all` (only with `Features:OtaPartnerApi=true`, otherwise removed at startup) | `*/15` | `BookingPullJob.ExecuteAsync:<propertyId>` | 60 s |
 | `dynamic-pricing-adaptation` | 02:00 | `DynamicPricingJob` (shared with the per-property manual run) | 300 s |
 | `gdpr-data-retention` | 03:00 | `GdprDataRetentionJob.ExecuteAsync` | 300 s |
-| `stay-alerts` (CO-10, see [§9](#9-stay-alerts-co-10); replaces `alloggiati-deadline-alert` and `guest-checkin-reminder`, removed at startup) | hourly | `StayAlertsJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
+| `stay-alerts` (CO-10, see [§9](#9-stay-alerts-co-10); replaces `alloggiati-deadline-alert` and `guest-checkin-reminder`, removed at startup; after the stay alerts it runs the alerts about a period and the connection of CHK-12, E03/F02/US02/T01, behind `Features:ComplianceTrafficLight`) | hourly | `StayAlertsJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
 | `cin-deadline-alert` (CO-20: host alert about properties without a valid CIN, once per stage, see [cin-format.md](cin-format.md#cin-deadline-and-host-alerts-co-20)) | 08:00 | `CinDeadlineAlertJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
 | `property-mode-change` (PM-02: applies the scheduled changes of rental mode in the hour after midnight of Rome, idempotent; always registered; see [property-rental-mode.md §8.5](property-rental-mode.md#85-the-job-property-mode-change)) | hourly | `PropertyModeChangeJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run, and the dates lock of each property) | 300 s |
 | `lease-draft-retention` (LR-12, LR-D33: deletes the lease drafts nobody changed for `LongRentLease:DraftRetentionDays` days (180) with their parties and files, never one with a signed copy; idempotent, counts only in the log; always registered; see [long-rent-lease-draft.md §8](long-rent-lease-draft.md#8-the-abandoned-drafts-the-job-lease-draft-retention-decision-lr-d33)) | 03:50 | `LeaseDraftRetentionJob.ExecuteAsync` (plus a PostgreSQL session lock per run, and the row lock of each draft) | 300 s |
@@ -440,7 +440,9 @@ a communication not sent, **every hour**, from 24 hours before arrival to 8 days
 no transmission to the Questura yet (CO-11) every stay qualified: the provider's daily quota ran out and the guests'
 check-in links stopped going out. The check-out reminder was a push-only job scheduled only by the host check-in.
 
-**What runs now**: one recurring job, `stay-alerts`, hourly (`0 * * * *` UTC): `StayAlertsJob` → `StayAlertService`.
+**What runs now**: one recurring job, `stay-alerts`, hourly (`0 * * * *` UTC): `StayAlertsJob` → `StayAlertService`, then (when the stay alerts were not
+skipped by their lock) `ComplianceAlertService` (E03/F02/US02/T01, NF-52, CHK-12: the stages added to the same mechanism, only with `Features:ComplianceTrafficLight` on;
+their rules, options and what each stage leaves behind are in [TECHNICAL.md](../TECHNICAL.md) «Alert stages»).
 
 | Alert | When | To |
 |---|---|---|
@@ -451,8 +453,9 @@ check-in links stopped going out. The check-out reminder was a push-only job sch
   reads the booking as it is at each run: moved dates move the reminder, a cancellation or the check-out drops it.
   Nothing is scheduled per booking, so no stale job can fire on old dates.
 - **Once per stage**: table `StayAlertStates`, one row per booking and type (`Type` 1 Alloggiati deadline, 2 failed
-  communication, 3 check-out reminder; `ReferenceDate` = check-in or check-out date, `Stage`, `AlertCount`,
-  `LastAlertAt`). Before sending, the run moves the row forward with one conditional `UPDATE`; only the caller that moved
+  communication, 3 check-out reminder, and since E03/F02/US02/T01 4 receipt missing, 5 short stay at risk, 6 stay over 30
+  nights; `ReferenceDate` = check-in or check-out date, `Stage`, `AlertCount`, `LastAlertAt`); the alerts about a
+  period or the connection of a property have the same shape in `ComplianceAlertStates` (property, type, reference). Before sending, the run moves the row forward with one conditional `UPDATE`; only the caller that moved
   it sends. A retry, a manual trigger from the dashboard or a second server never sends a stage twice. When the booking's
   date changes, the sequence starts again for the new date. A delivery that fails after the claim is logged
   (`claimed but not delivered`) and not repeated: at most once. The email is queued on `EmailDeliveryJob` (5 attempts).
