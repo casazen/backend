@@ -14,7 +14,11 @@ namespace Casazen.Core.Assistant;
 /// <param name="Signature">The closing of the drafts; <c>null</c> = none.</param>
 /// <param name="HoursFrom">With <paramref name="HoursTo"/>: the hours (property clock, a window may cross midnight) in which it may send by itself; both <c>null</c> = at any time.</param>
 /// <param name="HoursTo">The end of the window of <paramref name="HoursFrom"/>.</param>
-/// <param name="AllowedTopics">The topics and situations it may answer; <b>empty = no restriction by this list</b> (the forbidden ones are still left out).</param>
+/// <param name="AllowedTopics">
+/// The topics and situations it may answer; <b>empty or missing = no restriction by this list</b> (the forbidden ones are still left out). Declared: it is the one place where an empty list in a
+/// request means «all» (the state of an organization that never saved its rules, which <c>GET</c> gives back); the gate of the later tasks must read it so, and «nothing allowed» would take an explicit
+/// flag, not an empty list.
+/// </param>
 /// <param name="ForbiddenTopics">The topics and situations it never answers: a message about one of them goes to a person.</param>
 /// <param name="ConfidenceThreshold">The score above which a draft may be sent by itself (PO-08: 0.85 to start).</param>
 /// <param name="InstructionVersion">The version of the instructions: it grows with every change that affects drafting, and the decision log keeps the one a draft was written with.</param>

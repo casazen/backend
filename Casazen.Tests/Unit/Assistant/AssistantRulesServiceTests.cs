@@ -125,6 +125,43 @@ public class AssistantRulesServiceTests
         Assert.Empty(await db.OrgAssistantRules.AsNoTracking().ToListAsync());
     }
 
+    /// <summary>
+    /// Declared: the one place where an empty list in a request means «all» (rule 2). <c>allowedTopics</c> empty or missing is <b>no restriction by the list</b>, the state of an organization that
+    /// never saved its rules (and what <c>GET</c> gives back): it is not a 422, it is not «nothing allowed» (that would take an explicit flag, a later task of the feature), it does not touch the
+    /// forbidden topics, and a property, which has no allowed list of its own, inherits it. The gate of US03 reads it so.
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_AnEmptyOrMissingListOfAllowedTopics_IsNoRestriction_TheDefaultItself_NeverNothingAllowed()
+    {
+        await using var db = AssistantTestKit.NewDb();
+        var property = await AssistantTestKit.AddPropertyAsync(db, Org);
+        var service = AssistantTestKit.Rules(db);
+        Assert.Empty((await service.GetAsync(Org)).AllowedTopics);
+
+        // Explicitly empty, and missing, over the defaults: accepted, stored as no restriction, and it is the default itself, so nothing changed and the version is still the first.
+        var explicitlyEmpty = await service.SaveAsync(Org, new AssistantRulesInput(null, null, null, null, null, null, [], [], null), User);
+        Assert.Empty(explicitlyEmpty.AllowedTopics);
+        Assert.Equal(1, explicitlyEmpty.InstructionVersion);
+        var missing = await service.SaveAsync(Org, new AssistantRulesInput(null, null, null, null, null, null, null, null, null), User);
+        Assert.Empty(missing.AllowedTopics);
+        Assert.Equal(1, missing.InstructionVersion);
+
+        // A list restricts, for the organization and, inherited, for its properties.
+        var restricted = await service.SaveAsync(Org, new AssistantRulesInput(null, null, null, null, null, null, ["Parking", "WiFi"], [], null), User);
+        Assert.Equal(["Parking", "WiFi"], restricted.AllowedTopics);
+        Assert.Equal(2, restricted.InstructionVersion);
+        Assert.Equal(["Parking", "WiFi"], (await service.ResolveEffectiveAsync(Org, property.Id)).AllowedTopics);
+
+        // The empty list is what lifts it: no restriction again (a change, so the version grows), never nothing allowed, and the forbidden topics keep their own say.
+        var lifted = await service.SaveAsync(Org, new AssistantRulesInput(null, null, null, null, null, null, [], ["Pets"], null), User);
+        Assert.Empty(lifted.AllowedTopics);
+        Assert.Equal(["Pets"], lifted.ForbiddenTopics);
+        Assert.Equal(3, lifted.InstructionVersion);
+        var inherited = await service.ResolveEffectiveAsync(Org, property.Id);
+        Assert.Empty(inherited.AllowedTopics);
+        Assert.Equal(["Pets"], inherited.ForbiddenTopics);
+    }
+
     [Theory]
     [InlineData("threshold", "assistant_threshold_invalid")]
     [InlineData("language", "assistant_rules_invalid")]
