@@ -61,6 +61,7 @@ jobs:
       # Discovery of the very assembly the shards run, then the split of its classes in TEST_SHARDS balanced lists.
       - name: Plan the test shards
         run: |
+          set -o pipefail
           mkdir -p ci-plan
           dotnet test Casazen.Tests/bin/Release/net10.0/Casazen.Tests.dll --list-tests > ci-plan/test-list.txt
           python3 scripts/ci/test_shards.py plan --list ci-plan/test-list.txt --weights scripts/ci/test-class-weights.tsv \
