@@ -1,8 +1,10 @@
 # Runbook: the assistant of the guests' messages (drafts)
 
-E05/F05/US02/T01 (NF-66, NF-67, PO-08, PO-09, ADR-032). Related: [`ai.md`](ai.md) (provider, budget, rate limits, subprocessors),
-[`feature-flags.md`](feature-flags.md) (`MessageAssistant`), [`guest-messages.md`](guest-messages.md) (the hub of the messages),
-[`deploy-checklist.md`](deploy-checklist.md) § 2 (`Features__MessageAssistant`, `Assistant__*`).
+E05/F05/US02/T01 and E05/F05/US03/T03 (NF-66, NF-67, PO-08, PO-09, OCT-11, ADR-032). Related: [`ai.md`](ai.md) (provider, budget, rate limits,
+subprocessors), [`feature-flags.md`](feature-flags.md) (`MessageAssistant`), [`guest-messages.md`](guest-messages.md) (the hub of the messages),
+[`octorate-webhooks.md`](octorate-webhooks.md) § 4c (the copy of the conversations), [`deploy-checklist.md`](deploy-checklist.md) § 2
+(`Features__MessageAssistant`, `Assistant__*`). The last section, «Octorate's own assistant kept off», is about the assistant of the channel
+manager, not CasaZen's, and runs whether or not CasaZen's is on.
 
 ## What it does
 
@@ -111,3 +113,55 @@ or are rejected by a person.
   like the alert of a new message (only a legal deadline overrides them, PO-10).
 - The routines (NF-26) do not start on the messages of the guest area of a direct booking: the event of a direct message is the assistant's.
 - `ruleCompliance` of a draft written from a template does not check its language (a template has none).
+
+## Octorate's own assistant kept off (E05/F05/US03/T03, OCT-11, D4, NF-67)
+
+Octorate has an assistant of its own for each chat thread (`aiAssistant` in the API, the flag `aiDriven`, the message attribute `AI_SKIP_DISABLE`).
+Left on, a guest would get an answer from it and another from CasaZen, which is the inbox of these threads. So **CasaZen keeps that assistant off on every
+thread it manages, whether or not CasaZen's own assistant is on** (AC-NF67-6: verified at every sync). It needs no flag and no configuration of its own.
+
+1. **What the pass reads.** Every pass of the copy of the conversations (the webhook, `ota-message-reconcile` every 10 minutes, the nightly deep pass)
+   reads the thread, stores `aiDriven` in `OtaMessageThreads.AiAssistantOn` (`null`: the thread does not say) and records `OtaThreadSynced` with it.
+2. **What the guard does.** `OctorateAiAssistantGuard`, a consumer of that event (registered in `AddMessageSync`, nothing while
+   `Features:OctorateConnector` is off), calls `PATCH /rest/v1/chat/{accommodation}/threads/{thread}/aiAssistant?enabled=false`
+   (`IOctorateApiClient.SetThreadAiAssistantAsync`) when the pass read the flag on **or did not read it** (a thread seen for the first time), and,
+   once Octorate accepted the call, stores `AiAssistantOn = false`. The call says the value it sets, it does not toggle: a repeat is safe. **One call
+   for each thread and pass, none for a thread that is off**: an event whose flag reads off, and a thread the copy already holds as off (an earlier
+   delivery of the same event, or a later pass), cost nothing.
+3. **Verified at every pass, not once.** While `aiDriven` reads on, the key of the event has the ten minutes of the pass in it
+   (`ota-thread:{thread}:{last message}:on:{yyyyMMddHHmm}`, `MessageSyncService.SyncedEventKey`), so each pass that finds it on tells the guard: a person
+   who switches the assistant on again in Octorate, or a call that failed, is found within the 10 minutes of the reconciliation and the call is made
+   again. The webhook and the pass of the same ten minutes are one event. A flag that reads off or is not said keeps the key it had (once for each
+   newest message), so an assistant that is off costs nothing.
+4. **Only what CasaZen manages.** A thread with no property (its listing has no confirmed mapping) and a thread whose property sits in a mapping nobody
+   decided (`IChannelMappingService.IsWriteBlockedAsync`, the one definition every write to Octorate asks, OCT-04) are left as they are: CasaZen writes
+   nothing to a channel for them, and the host's own setting on the channel manager is not ours to change. The thread gets its property at the first
+   pass after the confirmation, and the next pass that reads the flag on switches it off.
+5. **When Octorate refuses.** One `Warning` line with the thread, the organization and the code, never a name or a word of the guest:
+   `octorate_unavailable` (5xx, no answer), `octorate_rate_limited`, `chat_not_licensed` (no `chat` module in the license), `octorate_not_connected`,
+   `octorate_not_found` (the thread is gone), `octorate_request_rejected`, `octorate_auth_failed`. **The event is not failed** (the sync and the other
+   consumers are not affected), the copy keeps the flag Octorate reported, and the next pass tries again. The pass leaves 5 calls of the organization's
+   bucket (100 a minute) to the people who use CasaZen: down to that reserve the guard sends nothing and says `octorate_rate_limited`. Anything that is
+   not a refusal of Octorate (the database after a call that was made) rises and the dispatcher delivers the event again, which the call, being
+   idempotent, survives.
+6. **The account-level message agent has no API.** Octorate also has an agent for the messages that is set for the whole account. The API has no
+   operation to read or change it, so CasaZen cannot switch it off or verify it, and **does not pretend to**: **the host leaves it off** in Octorate,
+   and the text of the connect wizard of the connector (E02/F01/US01/T04) asks for that. A thread answered by that agent is not seen by the guard.
+
+**Documented, not proven.** The sandbox has no `chat` module in its license (`octorate-integration-facts.md`: every chat operation answers 403), so the
+call has not been seen answered by Octorate: the way the value travels (the query parameter `enabled`) follows the operations of the same API that set a
+state (`?status=` of the check-in), and `OctorateApiClient.AiAssistantPath` is the one place to change if Octorate wants another. The first real
+verification is the first licensed property (the test property needs the `chat` module):
+
+- After the first pass the thread must read `aiDriven: false` in Octorate and `AiAssistantOn = false` in `OtaMessageThreads`; the log has «the
+  assistant of Octorate is switched off» with the thread id.
+- `octorate_request_rejected` (400, 405, 415) at every pass: the shape of the call is not the one Octorate wants.
+- The guard says «switched off» for the same thread at every pass: Octorate accepts the call and ignores it (the flag reads on again at the next
+  pass). Octorate's assistant is then not kept off, and the shape of the call has to be fixed.
+
+**Rollback.** No migration, no table, no configuration. `Features:OctorateConnector` off stops the guard; the threads already switched off stay off in
+Octorate (nothing switches them back on); a revert of the change leaves the copy as it is.
+
+**Known limits.** A guest message may be answered by Octorate's assistant before CasaZen has read the thread for the first time (the webhook, then the
+event, then the dispatcher: seconds to a minute); and a person who switches it on again is found at the next pass, at most about 10 minutes later. The
+guard never switches Octorate's assistant ON: the call it makes always sets off.

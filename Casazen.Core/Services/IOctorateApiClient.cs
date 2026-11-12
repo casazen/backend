@@ -301,6 +301,19 @@ public interface IOctorateApiClient
     Task<string> TranslateChatMessageAsync(string accommodationId, string threadId, string messageId, string language, CancellationToken ct);
 
     /// <summary>
+    /// Switches the assistant of Octorate itself on or off for ONE chat thread (<c>PATCH /rest/v1/chat/{property}/threads/{thread}/aiAssistant</c>,
+    /// E05/F05/US03/T03, OCT-11, D4). CasaZen is the inbox of the conversations of the channels, and a guest must never get two answers, so the guard
+    /// that keeps it off (<c>OctorateAiAssistantGuard</c>) calls this with <c>enabled = false</c> on every thread CasaZen manages; what Octorate holds is
+    /// read back at the next pass (<see cref="OctorateChatThread.AiDriven"/>). The operation states the value it sets, it does not toggle, so a repeat
+    /// changes nothing and is safe; an answer 304 («not modified») is done. Same typed errors, token and bucket as the other chat calls: a license
+    /// without the <c>chat</c> module is <c>OctorateAuthException</c> with the code <c>chat_not_licensed</c>. <b>Documented, not proven:</b> the sandbox
+    /// has no chat license, so the way the value travels (the query parameter <c>enabled</c>) follows the operations of the same API that set a state
+    /// (<c>?status=</c> of the check-in) and has not been seen answered by Octorate; the first real verification is the first licensed property. The
+    /// account-level message agent of Octorate has no operation in the API at all: it is a setting of the account and this method does not touch it.
+    /// </summary>
+    Task SetThreadAiAssistantAsync(string accommodationId, string threadId, bool enabled, CancellationToken ct);
+
+    /// <summary>
     /// The catalog of portals and tools Octorate offers (<c>GET /rest/v1/meta/portals</c>, E09/F01/US01/T02). A partner-level call: it acts
     /// for the application and carries no property data, so it needs no org in <see cref="IOctorateOrgScope"/>, uses the partner token
     /// (<see cref="IOctorateTokenService.GetPartnerAccessTokenAsync"/>) and takes its call from the rate-limit bucket <c>platform</c>, not an

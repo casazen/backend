@@ -36,8 +36,9 @@ namespace Casazen.Infrastructure.Octorate;
 /// <item><b>Events (ADR-022-R1).</b> In the same unit of work as the data: <c>GuestMessageReceived</c> for each new inbound message sent within the
 /// last 48 hours (the import of a history must not notify, nor start a routine, for conversations that ended long ago), key
 /// <c>ota-msg:{message id}</c>; <c>OtaThreadSynced</c> for each synced thread with the flag of Octorate's assistant, key
-/// <c>ota-thread:{thread}:{last message}:{flag}</c> (the flag is in the key so a change of it, with no new message, is a new event). A key already
-/// taken is never recorded again.</item>
+/// <c>ota-thread:{thread}:{last message}:{flag}</c> (the flag is in the key so a change of it, with no new message, is a new event; while the flag reads
+/// <c>on</c> the ten minutes of the pass are in it too, <see cref="SyncedEventKey"/>, so the guard of Octorate's assistant hears of it at every pass). A key
+/// already taken is never recorded again.</item>
 /// <item><b>Failures.</b> A listing whose pass fails keeps the code of the failure (<see cref="OtaMessageSyncState.LastError"/>); the exception
 /// then reaches the caller, so an event is delivered again. The license without the <c>chat</c> module is the state
 /// <see cref="OtaMessageSyncErrorCodes.ChatNotLicensed"/>: it does not stop the other listings, and the listing is probed again after an hour. A
@@ -91,6 +92,9 @@ public sealed class MessageSyncService(
 
     /// <summary>The pages of the thread list a deep pass reads at most, for one listing.</summary>
     internal const int MaxDeepPages = 100;
+
+    /// <summary>The minutes between two passes of the reconciliation (<c>ota-message-reconcile</c> runs every ten): the window of the key of <c>OtaThreadSynced</c> while the assistant of Octorate is on.</summary>
+    internal const int PassWindowMinutes = 10;
 
     private const string ThreadKeyPrefix = "ota:";
 
@@ -682,7 +686,7 @@ public sealed class MessageSyncService(
 
         // The instant to the millisecond, as Octorate gives it: what the database hands back is the same key (it keeps microseconds).
         var lastMessage = thread.LastMessageAt.ToUniversalTime().ToString("yyyyMMddHHmmssfff", CultureInfo.InvariantCulture);
-        var syncedKey = $"ota-thread:{thread.Id:N}:{lastMessage}:{AiMark(thread.AiAssistantOn)}";
+        var syncedKey = SyncedEventKey(thread.Id, lastMessage, thread.AiAssistantOn, now);
         if (!await IsEventKeyTakenAsync(orgId, syncedKey, ct))
         {
             recorder.Record(
@@ -955,6 +959,27 @@ public sealed class MessageSyncService(
         false => "off",
         null => "unknown",
     };
+
+    /// <summary>
+    /// The dedup key of <c>OtaThreadSynced</c> for a thread that was just read: the thread, its newest message and the flag of Octorate's assistant, so a
+    /// change of the flag with no new message is a new event. <b>While the flag reads on, the ten minutes of the reconciliation (<see cref="PassWindowOf"/>) are in the
+    /// key as well</b>: the guard that keeps that assistant off (E05/F05/US03/T03, AC-NF67-6) has to hear of it at every pass, and the key without the window
+    /// would be taken for ever by the first event. A person who switches the assistant on again after the guard switched it off, and a call of the guard that
+    /// failed, change neither the newest message nor the flag the key already had; the next pass must tell the guard all the same, once for each window
+    /// (the notification of the webhook and the pass of the same ten minutes are one event). A flag that is off or not said keeps the key it had.
+    /// </summary>
+    internal static string SyncedEventKey(Guid threadId, string lastMessage, bool? aiAssistantOn, DateTime nowUtc)
+    {
+        var key = $"ota-thread:{threadId:N}:{lastMessage}:{AiMark(aiAssistantOn)}";
+        return aiAssistantOn == true ? $"{key}:{PassWindowOf(nowUtc)}" : key;
+    }
+
+    /// <summary>The ten minutes of the reconciliation (<c>ota-message-reconcile</c>, OCT-09) an instant (UTC) falls in, as a stamp: <c>202611061500</c> for 15:03.</summary>
+    internal static string PassWindowOf(DateTime nowUtc)
+    {
+        var start = new DateTime(nowUtc.Year, nowUtc.Month, nowUtc.Day, nowUtc.Hour, nowUtc.Minute - (nowUtc.Minute % PassWindowMinutes), 0, DateTimeKind.Utc);
+        return start.ToString("yyyyMMddHHmm", CultureInfo.InvariantCulture);
+    }
 
     private static IEnumerable<string> ThreadIdsOf(IEnumerable<OctorateChatMessage> messages) =>
         messages
