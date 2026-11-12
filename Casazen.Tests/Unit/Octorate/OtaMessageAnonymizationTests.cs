@@ -460,7 +460,7 @@ public class OtaMessageAnonymizationTests
 
         // A draft that still waited cannot be decided any more; the decisions already taken stay as they were taken.
         Assert.Equal(ApprovalStatus.Expired, items[waiting.Id].Status);
-        Assert.Equal((ApprovalStatus.Approved, "auth0|host", Now.AddDays(-1)), (items[sent.Id].Status, items[sent.Id].ApprovedByUserId, items[sent.Id].ApprovedAt));
+        Assert.Equal((ApprovalStatus.Approved, "auth0|host", (DateTime?)Now.AddDays(-1)), (items[sent.Id].Status, items[sent.Id].ApprovedByUserId, items[sent.Id].ApprovedAt));
         Assert.Equal(ApprovalStatus.Rejected, items[refused.Id].Status);
 
         // Nobody else's words are touched: the other guest's conversation and the item of the org.

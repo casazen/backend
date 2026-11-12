@@ -264,7 +264,7 @@ public class ApprovalExpirationAndPrivacyTests : IDisposable
         _rig.Clock.Advance(TimeSpan.FromDays(23));
         var late = await RunTheJobAsync();
         Assert.Equal((string.Empty, (string?)null, (string?)null), (late[approved.Id].ContentText, late[approved.Id].EditedContentText, late[approved.Id].RejectionReason));
-        Assert.Equal((ApprovalStatus.Approved, ApprovalQueueRig.Owner, ApprovalQueueRig.Noon), (late[approved.Id].Status, late[approved.Id].ApprovedByUserId, late[approved.Id].ApprovedAt));
+        Assert.Equal((ApprovalStatus.Approved, ApprovalQueueRig.Owner, (DateTime?)ApprovalQueueRig.Noon), (late[approved.Id].Status, late[approved.Id].ApprovedByUserId, late[approved.Id].ApprovedAt));
         Assert.Equal((ApprovalOriginActionStatus.Executed, ApprovalOriginActions.SendGuestMessage), (late[approved.Id].OriginActionStatus, late[approved.Id].OriginAction));
         Assert.Equal((string.Empty, (string?)null), (late[rejected.Id].ContentText, late[rejected.Id].RejectionReason));
         Assert.Equal((ApprovalStatus.Rejected, ApprovalQueueRig.Manager), (late[rejected.Id].Status, late[rejected.Id].ApprovedByUserId));
