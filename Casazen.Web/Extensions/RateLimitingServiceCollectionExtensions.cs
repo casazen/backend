@@ -75,6 +75,10 @@ public static class RateLimitingServiceCollectionExtensions
         // The import of a bank statement on the rents: per signed-in person, each call reads a file of up to 8 MB.
         new(RateLimitPolicies.RentBankImport, 30, TimeSpan.FromMinutes(10), PartitionByUser: true),
 
+        // The import of the per-property data of an agency from a CSV or Excel file (E10/F02/US01/T02): per signed-in person, each call parses a file
+        // of up to 2 MB and, without dryRun, writes up to a thousand rows.
+        new(RateLimitPolicies.OnboardingBulkImport, 30, TimeSpan.FromMinutes(10), PartitionByUser: true),
+
         // The autosave of the showcase editor (SP-13a): per signed-in person as well, since the editor saves at every pause in typing.
         new(RateLimitPolicies.SupplierShowcaseSave, 120, OneMinute, PartitionByUser: true),
 

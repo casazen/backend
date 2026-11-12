@@ -214,6 +214,8 @@ public sealed class InAppNotificationJob(
                 return await PropertyHostsAsync(notification.AudienceId, cancellationToken);
             case PushAudienceKind.SupplierOrg:
                 return await SupplierUsersAsync(notification.AudienceId, cancellationToken);
+            case PushAudienceKind.VerificationOperators:
+                return await VerificationOperatorsAsync(notification.AudienceId, cancellationToken);
             default:
                 // A new kind of audience the push knows and this job does not: nothing to retry, the log says which.
                 logger.LogError(
@@ -265,6 +267,31 @@ public sealed class InAppNotificationJob(
     /// property, and the org's administrators, active and not deactivated (<see cref="HostNotificationAudience"/>), the same query
     /// the delivery job joins to the devices.
     /// </summary>
+    /// <summary>
+    /// The users who decide the identity verification of the booking's guest (E03/F04/US02/T03): <c>verification.decision</c> and the property
+    /// in reach (<see cref="VerificationOperatorAudience"/>), the same people the push job reads the devices of.
+    /// </summary>
+    private async Task<Recipients> VerificationOperatorsAsync(Guid bookingId, CancellationToken cancellationToken)
+    {
+        // IgnoreQueryFilters: background job without a tenant; the recipients are limited to the booking's org.
+        var booking = await db.Bookings
+            .AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(b => b.Id == bookingId)
+            .Select(b => new { b.OrgId, b.PropertyId, b.Property.OwnerId })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (booking is null)
+        {
+            logger.LogWarning("In-app notification to the verification operators of booking {BookingId} skipped: booking not found", bookingId);
+            return Recipients.None;
+        }
+
+        var users = await VerificationOperatorAudience.UsersToTell(db, booking.OrgId, booking.PropertyId, booking.OwnerId)
+            .Select(u => u.Id)
+            .ToListAsync(cancellationToken);
+        return new Recipients(booking.OrgId, users.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList());
+    }
+
     private async Task<Recipients> HostsAsync(
         Guid orgId,
         Guid propertyId,

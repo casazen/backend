@@ -111,3 +111,30 @@ Sum of shares for a property MUST equal 100.00 (validation).
 - Float precision: shares stored as decimal(5,2), sum validation must be exact
 
 **CI cost:** +5s for encryption and GDPR proof tests
+
+## Amendment 2026-11 (E10/F02/US02/T01): the registry facts of an owner
+
+The owner import (NF-109, ONB-06) needs a place for the facts an agency knows about an owner before any accounting policy exists. They are columns of
+`PropertyOwner`, all nullable (an owner of before the import has none):
+
+| Column | Meaning | Stored |
+|---|---|---|
+| `ExternalKey` | the code the agency gives the owner; the first thing the import matches on | clear, filtered unique index `UIX_PropertyOwners_OrgId_ExternalKey` (`OrgId`, `ExternalKey`) where the key is set |
+| `LegalName`, `EntityKind` (`NaturalPerson` 1, `LegalEntity` 2) | the name on the fiscal documents and the kind of the subject; `FirstName`/`LastName` stay the display name of the older screens | clear |
+| `TaxResidenceCountry`, `BillingCountry`, `SettlementCurrency` | ISO 3166-1 alpha-2 and ISO 4217 | clear |
+| `BillingStreet`, `BillingCivic`, `BillingPostalCode`, `BillingCity`, `BillingProvince` | the structured billing address | clear (like the e-mail and the phone) |
+| `VatNumber`, `Bic` | VAT number and bank identifier | **encrypted** with `Casazen.PropertyOwner.Financial`, with `FiscalCode` and `Iban` (ADR-012-R1) |
+
+- **Matching never uses a hash column.** The fiscal code and the VAT number are decrypted for the owners of one org (hundreds, not millions) and
+  compared normalized in memory; no keyed index of identifiers exists, so there is no new secret and no second copy of an identifier. An e-mail address
+  never identifies an owner (two owners may share one).
+- **Nothing is overwritten.** The import fills an empty field and reports a different value as a conflict; the IBAN, the BIC, the fiscal code, the VAT
+  number and the e-mail included.
+- **`TaxRegime` is not inferred.** A new owner keeps the default; the regime and the withholding applicable to it are configured and approved by the
+  accountant (NF-110), never concluded from the kind or the country here.
+- **This is not the fiscal profile of E06/F05/US02/T01.** That task adds the effective-dated `OwnerFiscalProfile` and the approved rule sets; these
+  columns are the registry facts the readiness checks (`registry`, `fiscalProfile`, `payment`) and the import fills, and the profile may take them over.
+- The ownership period is also the mandate period of the agency (ADR-011: the end of the mandate ends the ownership). A stored `OwnerMandate` must stay
+  inside the period of its ownership; the import refuses a row that would leave it outside.
+- Log and answer rules of ADR-012-R2 hold for the new columns: the readiness answers codes and field names, the import answers codes and ids, the
+  activity log gets counts and a hash of the file.

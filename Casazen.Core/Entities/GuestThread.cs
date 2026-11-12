@@ -57,7 +57,11 @@ public class GuestThread : ITenantOwned
     /// </summary>
     public DateTime? HostReadAt { get; set; }
 
-    /// <summary>When the last email to the host about a message of the guest was queued: at most one every ten minutes per thread.</summary>
+    /// <summary>
+    /// <b>Retired (NF-65): no longer written.</b> It was the slot of the one email every ten minutes that went to the org's contact address. The
+    /// alert to the hosts goes to each person's own address and has a slot for each person and conversation (<see cref="NotificationEmailSlot"/>);
+    /// the column stays, without data lost, until a cleanup migration drops it.
+    /// </summary>
     public DateTime? HostNotifiedAt { get; set; }
 
     /// <summary>When the last email to the guest about an answer of the host was queued: at most one every ten minutes per thread.</summary>

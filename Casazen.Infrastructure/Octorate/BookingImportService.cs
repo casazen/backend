@@ -38,6 +38,9 @@ namespace Casazen.Infrastructure.Octorate;
 /// reservation, and a booking CasaZen cancelled is not brought back by it. The OTA figures are never derived: see <see cref="BookingStateMapper"/>.
 /// A price Octorate does not give is not written (never replaced by a zero), and a reservation that does not state the currency of the property
 /// brings no amount at all: the figures the booking held stay.</item>
+/// <item><b>Who collects (E08/F03/US03/T02, NF-77).</b> A booking of a channel (an OTA source) gets <see cref="Booking.OtaCompanyCollect"/> from the
+/// <c>companyCollect</c> of the reservation and <see cref="Booking.OtaCommissionIncludedInPayments"/> from the portal catalog the marketplace caches,
+/// both <c>null</c> when they are not said, on create and on every newer version; any other booking never gets them.</item>
 /// <item><b>Rate limit.</b> The single reads wait for the bucket of the org to refill (at most <see cref="MaxRateWait"/>); a run that cannot go on
 /// stops, is reported <see cref="ImportOutcome.Incomplete"/> and does not move the checkpoint of the listing.</item>
 /// <item><b>Privacy.</b> The logs carry ids, counts and the type of an error, never a name, a note, an amount or a body.</item>
@@ -382,8 +385,12 @@ public sealed class BookingImportService(
         var amounts = mapper.ToOtaAmounts(reservation, target.Currency);
         var todayRome = timeProvider.TodayInRome();
 
+        // Who collects (E08/F03/US03/T02, NF-77): a booking of a channel has it, any other (the host's own, CasaZen's, the agency's booking engine) never.
+        var channelBooking = FiscalCopy.IsOtaBookingSource(source) && booking?.Source != BookingSource.Manual;
+        var collection = channelBooking ? await CollectionOfAsync(reservation, ct) : OtaCollection.None;
+
         if (booking is null)
-            return await CreateAsync(target, reservation, remote, (arrival, departure), (source, label), (guests, adults, children), prices, amounts, todayRome, now, ct);
+            return await CreateAsync(target, reservation, remote, (arrival, departure), (source, label), (guests, adults, children), prices, amounts, collection, todayRome, now, ct);
 
         var owned = await IsOwnedByCasaZenAsync(booking, ct);
         var status = mapper.ToBookingStatus(remote, booking.Status, owned);
@@ -411,11 +418,17 @@ public sealed class BookingImportService(
         var note = Clip(reservation.Notes, 1000);
         var noteChanged = booking.SpecialRequests.Length == 0 && note.Length > 0;
 
+        // The two flags of NF-77 are read as the figures are, but they are not money and not an event: a booking CasaZen owns keeps them as well, and
+        // a change of them alone is saved without a modification of the booking being announced.
+        var collectionChanged = channelBooking
+                                && (booking.OtaCompanyCollect != collection.CompanyCollect
+                                    || booking.OtaCommissionIncludedInPayments != collection.CommissionIncludedInPayments);
+
         // What the version applied is remembered even when nothing else changes, so the same version is not read twice.
         if (reservation.UpdatedAt is { } updatedAt)
             booking.OctorateUpdatedAt = updatedAt;
 
-        if (!(statusChanged || propertyChanged || datesChanged || guestsChanged || moneyChanged || originChanged || noteChanged))
+        if (!(statusChanged || propertyChanged || datesChanged || guestsChanged || moneyChanged || originChanged || noteChanged || collectionChanged))
         {
             await db.SaveChangesAsync(ct);
             return Applied.Skipped;
@@ -453,6 +466,9 @@ public sealed class BookingImportService(
 
         if (moneyChanged)
             ApplyMoney(booking, prices, amounts);
+
+        if (collectionChanged)
+            ApplyCollection(booking, collection);
 
         if (originChanged)
         {
@@ -513,6 +529,7 @@ public sealed class BookingImportService(
         (int Guests, int Adults, int Children) people,
         StayPrices prices,
         OtaAmounts amounts,
+        OtaCollection collection,
         DateTime todayRome,
         DateTime now,
         CancellationToken ct)
@@ -541,6 +558,7 @@ public sealed class BookingImportService(
             UpdatedAt = now,
         };
         ApplyMoney(booking, prices, amounts);
+        ApplyCollection(booking, collection);
         db.Bookings.Add(booking);
 
         // The booker is the first line of the Alloggiati communication; the other guests are asked for at the check-in.
@@ -600,6 +618,37 @@ public sealed class BookingImportService(
         booking.OtaNetAmount = amounts.Net;
         booking.OtaPaidAmount = amounts.Paid;
         booking.OtaBalanceAmount = amounts.Balance;
+    }
+
+    /// <summary>
+    /// Writes the two collection flags of a booking of a channel (E08/F03/US03/T02, NF-77), as read: <c>null</c> is their way to say that Octorate (or the
+    /// catalog of the portals) does not say. Only the import writes them: no endpoint does, and the change of a booking (<c>PUT /api/bookings/{id}</c>)
+    /// writes dates, guests and notes only (ADR-033-R3).
+    /// </summary>
+    private static void ApplyCollection(Booking booking, OtaCollection collection)
+    {
+        booking.OtaCompanyCollect = collection.CompanyCollect;
+        booking.OtaCommissionIncludedInPayments = collection.CommissionIncludedInPayments;
+    }
+
+    /// <summary>
+    /// The flags of a reservation of a channel: who collects comes from the reservation (<c>companyCollect</c>); whether the commission is already taken
+    /// out of the payments is the portal's, read from the cache of the portal catalog the marketplace keeps (platform data, no org, never a call to
+    /// Octorate while a booking is applied). A portal the catalog does not hold says nothing: <c>null</c>.
+    /// </summary>
+    private async Task<OtaCollection> CollectionOfAsync(OctorateReservation reservation, CancellationToken ct)
+    {
+        bool? commissionIncluded = null;
+        if (reservation.ChannelId is { Length: > 0 } channelId)
+        {
+            commissionIncluded = await db.MarketplacePortals
+                .AsNoTracking()
+                .Where(p => p.PortalCode == channelId)
+                .Select(p => (bool?)p.CommissionIncludedInPayments)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        return mapper.ToOtaCollection(reservation with { CommissionIncludedInPayments = commissionIncluded });
     }
 
     /// <summary>A figure Octorate gave and that differs from the one held; a figure it did not give changes nothing.</summary>

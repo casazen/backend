@@ -468,6 +468,7 @@ public class HostTodayInterventionsTests
         await using var _ = world.Db;
         // A property still to activate (the lowest priority), and a backlog of jobs to pay (the sixth) longer than the list.
         var toActivate = HostScopeScenario.NewProperty(world.OrgId, "auth0|titolare-sr03b", "Masseria");
+        toActivate.CinCode = "IT058091C27G5FFZDZ";
         world.Db.Properties.Add(toActivate);
         world.Db.ServiceRequests.AddRange(
             Enumerable.Range(0, 25).Select(i => Request(world, world.Trullo, ServiceRequestStatus.Completato)));

@@ -208,7 +208,9 @@ public class BookingsControllerOtaAmountsTests
             ICalTestServices.PropertySync(db, Mock.Of<ISafeExternalHttpClient>(), configuration),
             Mock.Of<IOtaStayService>(),
             Mock.Of<ILogger<BookingsController>>(),
-            Options.Create(new BookingsOptions { DefaultPageSize = 10 }))
+            Options.Create(new BookingsOptions { DefaultPageSize = 10 }),
+            Mock.Of<IBookingOctorateSyncReader>(),
+            OtaChannelActionPolicy.Closed)
         {
             ControllerContext = new ControllerContext
             {

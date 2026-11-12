@@ -51,6 +51,18 @@ public class PublicCheckInContextResponse
     public string? MarketingConsentVersion { get; set; }
 
     /// <summary>
+    /// The answer to «Ti serve la fattura?» is already <c>yes</c> (E06/F02/US01/T03, FIS-01): the form starts with the question answered. Absent once
+    /// the check-in is completed. The invoice data itself is write-only from this page: the link is anonymous, so the stored fiscal code, VAT number,
+    /// address and PEC are never returned, only this flag and <see cref="HasInvoiceData"/>.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? InvoiceRequested { get; set; }
+
+    /// <summary>The booking already has the data of an invoice recipient (the host entered it, or Octorate had it); never its content. Absent once the check-in is completed.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? HasInvoiceData { get; set; }
+
+    /// <summary>
     /// Statistical fields the region of the property requires (<c>TourismType</c>, <c>TravelWay</c>, <c>EducationLevel</c>): the page asks
     /// only these (data minimization). Empty when the comune is unknown or the region requires none.
     /// </summary>
@@ -67,6 +79,88 @@ public class PublicCheckInContextResponse
     /// <summary>The languages the guest can choose: <c>it</c>, <c>en</c>, <c>de</c>, <c>fr</c>, <c>es</c>. Sent with an open session only.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? SupportedLanguages { get; set; }
+
+    /// <summary>
+    /// The property keeps no identity document (canton Ticino, ADR-013-R6): the page shows «Il documento non sarà archiviato» (ADR-013-R15) and
+    /// the selfie step sends the photo of the document again. Sent with an open session while <c>Features:CheckInIdentityVerification</c> is on.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? DocumentNotArchived { get; set; }
+
+    /// <summary>Where the identity verification stands (E03/F04/US02/T04); sent with an open session while the flag is on.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PublicIdentityVerificationStateDto? IdentityVerification { get; set; }
+}
+
+/// <summary>
+/// Where the identity verification of the session stands (E03/F04/US02/T04): <c>step</c> is <c>consent</c>, <c>document</c>, <c>selfie</c>,
+/// <c>done</c> or <c>operator</c>; <c>result</c> the last one (<c>ok</c>, <c>retry</c>, <c>operator</c>) or null; only the guest at
+/// <c>verifyingGuestPosition</c> (the one who leaves the document) is asked for a selfie; <c>operatorPathOpen</c> is always true.
+/// </summary>
+public sealed class PublicIdentityVerificationStateDto
+{
+    public string Step { get; set; } = string.Empty;
+    public string? Result { get; set; }
+    public bool BiometricOffered { get; set; }
+    public bool ConsentRecorded { get; set; }
+    public bool ConsentRefused { get; set; }
+    public bool DocumentChecked { get; set; }
+    public int AttemptsRemaining { get; set; }
+    public bool OperatorRequested { get; set; }
+    public bool OperatorPathOpen { get; set; }
+    public bool DocumentNotArchived { get; set; }
+    public int VerifyingGuestPosition { get; set; }
+
+    public static PublicIdentityVerificationStateDto From(IdentityVerificationState state) => new()
+    {
+        Step = state.Step,
+        Result = state.Result,
+        BiometricOffered = state.BiometricOffered,
+        ConsentRecorded = state.ConsentRecorded,
+        ConsentRefused = state.ConsentRefused,
+        DocumentChecked = state.DocumentChecked,
+        AttemptsRemaining = state.AttemptsRemaining,
+        OperatorRequested = state.OperatorRequested,
+        OperatorPathOpen = state.OperatorPathOpen,
+        DocumentNotArchived = state.DocumentNotArchived,
+        VerifyingGuestPosition = state.VerifyingGuestPosition,
+    };
+}
+
+/// <summary>
+/// The guest's answer to the biometric consent (<c>POST api/public/checkin/{token}/biometric-consent</c>, ADR-013-R9): explicit, separate from the
+/// privacy notice, refusable. <c>consentGiven</c> is required; with true, <c>consentVersion</c> (the version of the text shown) is too.
+/// </summary>
+public sealed class BiometricConsentRequest
+{
+    public bool? ConsentGiven { get; set; }
+
+    /// <summary>At most <see cref="BiometricConsentRules.VersionMaxLength"/> characters (400 <c>biometric_consent_version_required</c> otherwise).</summary>
+    public string? ConsentVersion { get; set; }
+}
+
+/// <summary>
+/// What the answer to the consent did: <c>result</c> is <c>consent_recorded</c> (go on with the document) or <c>operator</c> (refused, not
+/// offered to this guest or organization, or already with a person); <c>operatorPathOpen</c> is always true.
+/// </summary>
+public sealed class BiometricConsentResponse
+{
+    /// <summary>The result of a recorded consent.</summary>
+    public const string RecordedResult = "consent_recorded";
+
+    public bool ConsentRecorded { get; set; }
+    public string Result { get; set; } = string.Empty;
+    public bool BiometricOffered { get; set; }
+    public bool OperatorPathOpen { get; set; } = true;
+    public PublicIdentityVerificationStateDto State { get; set; } = new();
+}
+
+/// <summary>The guest asked for a person (<c>POST api/public/checkin/{token}/request-operator</c>): the operators are alerted.</summary>
+public sealed class OperatorRequestResponse
+{
+    public string Result { get; set; } = string.Empty;
+    public bool OperatorPathOpen { get; set; } = true;
+    public PublicIdentityVerificationStateDto State { get; set; } = new();
 }
 
 /// <summary>The language the guest chooses on the check-in page (<c>PUT api/public/checkin/{token}/language</c>).</summary>
@@ -237,6 +331,89 @@ public class PublicCheckInSubmitRequest
     /// lowercase.
     /// </summary>
     public string? MarketingEmail { get; set; }
+
+    /// <summary>
+    /// The optional answer to «Ti serve la fattura?» (E06/F02/US01/T03, FIS-01): a request without this block, or with <c>needInvoice</c> false,
+    /// changes nothing and never blocks the check-in. With <c>needInvoice</c> true the data typed in it is saved as the invoice data of the booking
+    /// (source CheckIn, never over what the host wrote); a data that is not valid answers 422 with the field and saves nothing, so the guest
+    /// corrects and sends again.
+    /// </summary>
+    public PublicCheckInInvoiceDto? Invoice { get; set; }
+}
+
+/// <summary>
+/// The «Ti serve la fattura?» block of the check-in (E06/F02/US01/T03, FIS-01). Everything but <see cref="NeedInvoice"/> is optional and
+/// write-only: nothing of it is ever returned by the public page. The formats are checked by the invoice data service (fiscal code through
+/// <c>ItalianFiscalCode</c>, VAT number with its check digit when Italian, recipient code, PEC); a blank text is a field the guest left empty.
+/// </summary>
+public class PublicCheckInInvoiceDto
+{
+    /// <summary>The guest ticked «I need an invoice». False: the rest of the block is ignored.</summary>
+    public bool NeedInvoice { get; set; }
+
+    /// <summary><c>Guest</c> or <c>Company</c>.</summary>
+    public string? RecipientKind { get; set; }
+
+    public string? Name { get; set; }
+
+    public string? FiscalCode { get; set; }
+
+    public string? VatNumber { get; set; }
+
+    public string? AddressStreet { get; set; }
+
+    public string? AddressCivic { get; set; }
+
+    public string? PostalCode { get; set; }
+
+    public string? City { get; set; }
+
+    public string? Province { get; set; }
+
+    public string? CountryCode { get; set; }
+
+    public string? SdiRecipientCode { get; set; }
+
+    public string? Pec { get; set; }
+
+    /// <summary>
+    /// The block as the service reads it. A «no» (<see cref="NeedInvoice"/> false) is nothing: the rest of the block is not even read, so whatever it
+    /// holds never blocks the check-in. A text that is blank is a field left empty (not sent), so the guest can never clear what the host wrote.
+    /// With a «yes», a kind of recipient that is neither <c>Guest</c> nor <c>Company</c> is 422 <c>invoice_data_field_invalid</c> on <c>recipientKind</c>.
+    /// </summary>
+    public GuestCheckInInvoice ToInput()
+    {
+        if (!NeedInvoice)
+            return new GuestCheckInInvoice { NeedInvoice = false };
+
+        if (!InvoiceDataFormats.TryParseRecipientKind(RecipientKind, out var kind))
+        {
+            throw InvoiceDataErrorCodes.ToException(
+                [new InvoiceDataFailure(InvoiceDataErrorCodes.FieldInvalid, InvoiceDataFields.RecipientKind)]);
+        }
+
+        return new GuestCheckInInvoice
+        {
+            NeedInvoice = NeedInvoice,
+            Data = new SaveInvoiceDataCommand
+            {
+                RecipientKind = kind,
+                Name = Typed(Name),
+                FiscalCode = Typed(FiscalCode),
+                VatNumber = Typed(VatNumber),
+                AddressStreet = Typed(AddressStreet),
+                AddressCivic = Typed(AddressCivic),
+                PostalCode = Typed(PostalCode),
+                City = Typed(City),
+                Province = Typed(Province),
+                CountryCode = Typed(CountryCode),
+                SdiRecipientCode = Typed(SdiRecipientCode),
+                Pec = Typed(Pec),
+            },
+        };
+    }
+
+    private static string? Typed(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 }
 
 /// <summary>
@@ -476,6 +653,21 @@ public class DocumentUploadResponse
 
     /// <summary>True if manual review is suggested (low confidence or invalid check digits).</summary>
     public bool RequiresManualReview { get; set; }
+
+    /// <summary>
+    /// The capture can be compared (E03/F04/US02/T04): the MRZ was read and the agent found nothing to change. False with
+    /// <see cref="GuidanceCodes"/> saying what to change.
+    /// </summary>
+    public bool Acceptable { get; set; }
+
+    /// <summary>What to change in the photo (<c>show_whole_document</c>, <c>avoid_glare</c>, <c>hold_still</c>, <c>more_light</c>, ...): codes the page translates.</summary>
+    public IReadOnlyList<string> GuidanceCodes { get; set; } = [];
+
+    /// <summary>The photo was kept encrypted for the comparison with the selfie (never in Ticino, never before the biometric consent).</summary>
+    public bool DocumentStored { get; set; }
+
+    /// <summary>The property keeps no document (Ticino): the selfie step sends the photo of the document again.</summary>
+    public bool DocumentNotArchived { get; set; }
 }
 
 /// <summary>
@@ -498,21 +690,39 @@ public class ExtractedDocumentFields
 /// <summary>
 /// Response from selfie upload endpoint with biometric verification outcome (NF-11, ADR-013).
 /// NEVER includes image data or embeddings per ADR-013-R2 (immediate deletion guarantee).
+/// E03/F04/US02/T04: <c>{ result: ok | retry | operator, guidanceCodes, attemptsRemaining, operatorPathOpen, lockCode? }</c>; the lock code only
+/// on <c>ok</c> (and only when the property has one).
 /// </summary>
 public class SelfieUploadResponse
 {
-    /// <summary>Biometric verification outcome: Accept, Escalate, or Reject (ADR-013-R4).</summary>
-    public string Outcome { get; set; } = string.Empty;
+    /// <summary><c>ok</c> (passed), <c>retry</c> (take the selfie, or the document, again) or <c>operator</c> (a person verifies).</summary>
+    public string Result { get; set; } = string.Empty;
 
-    /// <summary>Number of attempts made in this session (max 3 per ADR-013-R5).</summary>
-    public int Attempts { get; set; }
+    /// <summary>What to change for a retry (<c>use_live_camera</c>, <c>retake_selfie</c>, <c>move_closer</c>, ...): codes the page translates.</summary>
+    public IReadOnlyList<string> GuidanceCodes { get; set; } = [];
 
-    /// <summary>Maximum attempts allowed.</summary>
-    public int MaxAttempts { get; set; }
+    /// <summary>Attempts left before the operator takes over.</summary>
+    public int AttemptsRemaining { get; set; }
 
-    /// <summary>True if max attempts reached and session auto-escalated to operator queue (ADR-013-R5).</summary>
-    public bool AutoEscalated { get; set; }
+    /// <summary>The guest can always ask for a person (GDPR art. 22).</summary>
+    public bool OperatorPathOpen { get; set; } = true;
 
-    /// <summary>Message key for localized feedback to the guest.</summary>
-    public string? MessageKey { get; set; }
+    /// <summary>The lock code of the property, only on <c>ok</c>; it is e-mailed to the guest at the same time.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LockCode { get; set; }
+}
+
+/// <summary>Answer of <c>POST /api/public/checkin/{token}/read-document</c>. The photo itself is never returned.</summary>
+public class CheckInDocumentReadResponse
+{
+    public bool Read { get; set; }
+    public string? Reason { get; set; }
+    public CheckInDocumentFields? Guest { get; set; }
+
+    public static CheckInDocumentReadResponse From(CheckInDocumentRead read) => new()
+    {
+        Read = read.Read,
+        Reason = read.Reason,
+        Guest = read.Fields,
+    };
 }

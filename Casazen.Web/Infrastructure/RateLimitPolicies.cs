@@ -162,6 +162,14 @@ public static class RateLimitPolicies
     public const string RentBankImport = "RentBankImport";
 
     /// <summary>
+    /// The import of the data that changes per property from a CSV or an Excel file (<c>POST api/onboarding/bulk/import</c>, E10/F02/US01/T02):
+    /// partitioned by <b>person</b>, since each call unzips and parses a file of up to 2 MB (20 MB once unzipped) and, without <c>dryRun</c>, writes
+    /// up to a thousand rows. An agency checks a file, corrects it and imports it: thirty calls in ten minutes leave room for that and no more than a
+    /// script could waste.
+    /// </summary>
+    public const string OnboardingBulkImport = "OnboardingBulkImport";
+
+    /// <summary>
     /// The autosave of the showcase editor (<c>PATCH api/supplier/showcase/content</c>, SP-13a). A policy of a signed-in endpoint, like
     /// <see cref="GlobalSearch"/>: it is partitioned by <b>person</b>, not by IP, because the editor saves at every pause in typing and the
     /// people of one office share an address. The body is small and bounded; the limit keeps a script from rewriting a draft in a loop.

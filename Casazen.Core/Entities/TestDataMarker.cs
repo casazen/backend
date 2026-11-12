@@ -140,8 +140,111 @@ public static class TestDataEntities
     public const string MarketingConsent = "MarketingConsentRecord";
 
     /// <summary>
+    /// Who an invoice of a showcase stay is made out to (<see cref="BookingInvoiceData"/>, E06/F02/US01, NF-81): written with the booking at the
+    /// reset, invented and marked TEST. It goes with its booking (the table cascades), so the reset deletes it with the stay; a real row has no
+    /// marker and is never touched.
+    /// </summary>
+    public const string BookingInvoiceData = "BookingInvoiceData";
+
+    /// <summary>
+    /// The profile of the issuer of the documents of the demo org (<see cref="OrgFiscalIssuerProfile"/>, E06/F02/US02, NF-82): written at the
+    /// reset only when the org has no profile of its own, and deleted by the next reset with its marker. A real profile has no marker and is
+    /// never touched.
+    /// </summary>
+    public const string FiscalIssuerProfile = "OrgFiscalIssuerProfile";
+
+    /// <summary>
     /// The welcome link of a showcase house (<see cref="PropertyWelcomeLink"/>, E07/F04/US01/T03, NF-90): the QR code of the demo house, with a fixed
     /// test token. It follows its house (cascade) and the reset deletes its marker with the other showcase markers.
     /// </summary>
     public const string WelcomeLink = "PropertyWelcomeLink";
+
+    /// <summary>
+    /// A conversation of a channel (<see cref="OtaMessageThread"/>, E05/F02/US01/T01) that the showcase wrote for the hub of messages: invented guests
+    /// and words that say TEST, no Octorate behind them. It points at the demo house and stay by id with a foreign key that lets go (SET NULL), so the
+    /// reset deletes it by its marker before it deletes the houses, or it would stay behind as an unassigned conversation; its messages go with it.
+    /// </summary>
+    public const string OtaMessageThread = "OtaMessageThread";
+
+    /// <summary>The conversation with the guest of a demo stay (<see cref="GuestThread"/>, E05/F02/US01/T01); it goes with its booking at the reset, which also drops its marker.</summary>
+    public const string GuestThread = "GuestThread";
+
+    /// <summary>
+    /// A message template of the demo host (<see cref="Entities.MessageTemplate"/>, E05/F02/US02/T02): invented words that say TEST. It points at no house and no
+    /// stay, so the reset deletes it by its marker, together with the marker; a template the host wrote has no marker and is never touched.
+    /// </summary>
+    public const string MessageTemplate = "MessageTemplate";
+
+    /// <summary>
+    /// The mirror of a showcase booking on the channel manager (<see cref="Entities.OctorateBookingSync"/>, E08/F03/US03/T02, NF-74): the state of the last operation of
+    /// an invented reservation, nothing is sent. It goes with its booking (cascade) and the reset deletes its marker with the other showcase markers.
+    /// </summary>
+    public const string OctorateBookingSync = "OctorateBookingSync";
+
+    /// <summary>
+    /// The price and the rules of one night of a showcase house (<see cref="Entities.PropertyDayRule"/>, E08/F05/US01/T01, NF-36): the nights of the demo house
+    /// that have their own price, a minimum stay or a closed arrival. The rows go with their house (cascade) and the reset deletes their markers
+    /// with the other showcase markers; a rule the host wrote has no marker and is never touched.
+    /// </summary>
+    public const string PropertyDayRule = "PropertyDayRule";
+
+    /// <summary>
+    /// Who sends the police and ISTAT communications of a showcase house (<see cref="Entities.PropertyComplianceSender"/>, E03/F02/US01/T03, NF-52):
+    /// the choice the demo host stored, so the traffic light reads the stay of that house as entrusted to the channel manager. It follows its house
+    /// (cascade) and the reset deletes its marker with the other showcase markers; a real choice has no marker and is never touched.
+    /// </summary>
+    public const string PropertyComplianceSender = "PropertyComplianceSender";
+
+    /// <summary>
+    /// A guest of a showcase stay as sent to Octorate (<see cref="Entities.StayGuestOctorateLink"/>, E03/F02/US01/T03, NF-52): the row that says the
+    /// channel manager holds the guest for good, invented like the rest and never sent anywhere. It goes with its booking (cascade).
+    /// </summary>
+    public const string StayGuestOctorateLink = "StayGuestOctorateLink";
+
+    /// <summary>
+    /// The receipt of the Alloggiati communication that the demo host uploaded (<see cref="Entities.ManualComplianceProof"/>, E03/F02/US01/T03,
+    /// NF-52), with its invented one-page PDF in the private bucket. The row follows its house (cascade) and the reset removes the file; a real proof
+    /// has no marker and is never touched.
+    /// </summary>
+    public const string ManualComplianceProof = "ManualComplianceProof";
+
+    /// <summary>
+    /// A line of the log of what was sent to the authorities for a showcase stay (<see cref="Entities.ComplianceSendLogEntry"/>, E03/F02/US03/T01, NF-47):
+    /// the one the channel manager's send of the guests, or the host's declaration, would have written. Invented like the rest and sent nowhere. It
+    /// follows its house (cascade); a real line has no marker and is never touched.
+    /// </summary>
+    public const string ComplianceSendLogEntry = "ComplianceSendLogEntry";
+
+    // E10/F01/US01/T04: the tables of the activation of CasaZen with Octorate. The reset deletes only the rows of these tables that carry a showcase
+    // marker of the org (before its houses), so a real row has no marker and is never touched.
+
+    /// <summary>The host's intent on a part of the activation plan (<see cref="Entities.OnboardingPartState"/>): the deferred part of the demo.</summary>
+    public const string OnboardingPartState = "OnboardingPartState";
+
+    /// <summary>A flow activated on a property (<see cref="Entities.PropertyFlowActivation"/>); it also goes with its property.</summary>
+    public const string PropertyFlowActivation = "PropertyFlowActivation";
+
+    /// <summary>A step done in the Octorate panel (<see cref="Entities.OnboardingPanelStep"/>).</summary>
+    public const string OnboardingPanelStep = "OnboardingPanelStep";
+
+    /// <summary>A «Do it for me» request (<see cref="Entities.OnboardingAssistRequest"/>).</summary>
+    public const string OnboardingAssistRequest = "OnboardingAssistRequest";
+
+    /// <summary>A member of the pilot of the activation (<see cref="Entities.OnboardingPilotMember"/>).</summary>
+    public const string OnboardingPilotMember = "OnboardingPilotMember";
+
+    /// <summary>The onboarding data of a property (<see cref="Entities.PropertyOnboardingData"/>).</summary>
+    public const string PropertyOnboardingData = "PropertyOnboardingData";
+
+    /// <summary>
+    /// The test connection of the demo org to Octorate (<see cref="Entities.OctorateConnection"/>, no token): written only when the org has no
+    /// connection of its own in the environment, deleted by the next reset. A real connection has no marker and is never touched.
+    /// </summary>
+    public const string OctorateConnection = "OctorateConnection";
+
+    /// <summary>A confirmed test mapping of a demo house to an invented listing (<see cref="Entities.OctorateListingMapping"/>), on the test connection.</summary>
+    public const string OctorateListingMapping = "OctorateListingMapping";
+
+    /// <summary>A "To do" of the demo host (<see cref="Entities.InternalActivity"/>): the reminder of the deferred part. No property: deleted by its marker.</summary>
+    public const string Todo = "InternalActivity";
 }

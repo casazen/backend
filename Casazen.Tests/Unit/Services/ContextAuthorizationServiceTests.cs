@@ -149,6 +149,24 @@ public class ContextAuthorizationServiceTests
     }
 
     [Fact]
+    public async Task HasPermissionOrThrowAsync_AnErrorReadingTheMemberships_IsThrown_WhileHasPermissionAsyncAnswersNo()
+    {
+        // NF-65: the code that decides from the event bus or a job who is told something must not take a passing error for «no» (the person
+        // would be missed for good): the variant throws, so the event is delivered again. The policies of the requests keep failing closed.
+        await using var db = CreateDbContext();
+        await SeedOnboardedUserAsync(db, "auth0|passing-error");
+        var service = CreateService(db, BuildHttpContext("auth0|passing-error", []));
+        Assert.True(await service.HasPermissionOrThrowAsync("auth0|passing-error", "short-rent", "booking.read"));
+
+        // The store reads through this context: from now on every read fails.
+        await db.DisposeAsync();
+        var otherService = CreateService(db, BuildHttpContext("auth0|passing-error", []));
+
+        Assert.False(await otherService.HasPermissionAsync("auth0|passing-error", "short-rent", "booking.read"));
+        await Assert.ThrowsAnyAsync<Exception>(() => otherService.HasPermissionOrThrowAsync("auth0|passing-error", "short-rent", "booking.read"));
+    }
+
+    [Fact]
     public async Task GetUserContextsAsync_MergesJwtSupplier_WhenDbHasHostMembership()
     {
         await using var db = CreateDbContext();

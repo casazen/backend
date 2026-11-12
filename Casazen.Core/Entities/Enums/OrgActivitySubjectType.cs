@@ -21,4 +21,10 @@ public enum OrgActivitySubjectType
 
     /// <summary>A supplier: the id is the supplier's org (<c>Org.Id</c>).</summary>
     Supplier = 5,
+
+    /// <summary>A booking: the id is <c>Booking.Id</c> (the contact of its guest was read, E05/F02/US02/T01).</summary>
+    Booking = 6,
+
+    /// <summary>An invitation of a property owner to the owner portal: the id is <c>OwnerInvitation.Id</c> (E10/F02/US02).</summary>
+    OwnerInvitation = 7,
 }

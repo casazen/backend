@@ -46,4 +46,37 @@ public enum DomainEventType
     /// message, an alert) runs a second time.
     /// </summary>
     OctorateSyncRequested = 20,
+
+    /// <summary>
+    /// The invoice data of a booking was saved (E06/F02/US01/T02, FIS-01): by the host, by the guest at the check-in or by the import of the channel
+    /// manager. About the booking (<c>EntityId</c>), with the payload <c>InvoiceDataSavedPayload</c> (the booking and the source, nothing personal). The
+    /// consumer that writes the data to Octorate (E06/F02/US01/T04) reads the data from the booking, in its own org. Starts no routine.
+    /// </summary>
+    InvoiceDataSaved = 21,
+
+    /// <summary>
+    /// A property was accepted by the channel manager for the first time (E02/F03/US01/T02): its structure and content are on Octorate. About the
+    /// property (<c>EntityId</c>), recorded once; E08/F05/US02/T02 consumes it to send the calendar, the prices and the restrictions. The number
+    /// leaves room for the values other tasks of the same wave append after 20.
+    /// </summary>
+    ListingPublished = 30,
+
+    /// <summary>
+    /// A thread of an OTA conversation was read from the channel manager (E05/F01/US01/T02): about the thread (<c>EntityId</c>), with the payload
+    /// <c>OtaThreadSyncedPayload</c> (ids and the flag of Octorate's own assistant for the thread). Starts no routine; the guard of E05/F05
+    /// consumes it to keep that assistant off (OCT-11). The numbers 50 to 59 are the messages hub (epic E05): the tasks of the waves run in parallel
+    /// and each picked a number of its own, so that two of them never pick the same one.
+    /// </summary>
+    OtaThreadSynced = 50,
+
+    /// <summary>
+    /// An org administrator activated a flow on a property after the server verified its prerequisites (E10/F01/US01/T04, NF-104, NF-106):
+    /// about the property (<c>EntityId</c>), with the payload <c>OnboardingFlowEventPayload</c> (the property, the flow, the activation row). Recorded
+    /// in the same unit of work as the activation row. Starts no routine; nothing consumes it yet. The numbers 100 to 109 are the activation of
+    /// CasaZen with Octorate (epic E10), so that the tasks of the waves that run in parallel never pick the same number.
+    /// </summary>
+    OnboardingFlowActivated = 100,
+
+    /// <summary>An org administrator deactivated a flow on a property (E10/F01/US01/T04): about the property, with the same payload.</summary>
+    OnboardingFlowDeactivated = 101,
 }

@@ -87,12 +87,57 @@ public static class OrgActivityDetailKeys
     /// <summary>The random id of a handoff, returned to the client and kept with the line so the two can be matched (E03/F05/US01/T01).</summary>
     public const string Handoff = "handoff";
 
+    /// <summary>
+    /// What a read of the contact of a guest was for: a code of the closed list <see cref="ContactReadPurposes"/> (E05/F02/US02/T01). It is not called
+    /// «reason» because a free text must have no key to sit under; the value is always one of the codes of the list.
+    /// </summary>
+    public const string Purpose = "purpose";
+
+    /// <summary>The code of the part of the activation plan a «Do it for me» request is about (<c>compliance</c>, <c>channels</c>...): a code of a closed list (E10/F01/US03/T01).</summary>
+    public const string Part = "part";
+
+    /// <summary>
+    /// What a «Do it for me» request asked help with (<c>panelPolice</c>, <c>panelIstat</c>, <c>panelChannelAccess</c>, <c>part</c>): a code of the closed list
+    /// <c>OnboardingAssistContexts</c>, never a text (E10/F01/US03/T01).
+    /// </summary>
+    public const string Context = "context";
+
+    /// <summary>
+    /// Where a «Do it for me» request stands after the event (<c>requested</c>, <c>inProgress</c>, <c>done</c>, <c>cancelled</c>), a code (E10/F01/US03/T01); or
+    /// what happened to an invitation of a property owner (<c>sent</c>, <c>resent</c>, <c>accepted</c>, <c>revoked</c>, E10/F02/US02).
+    /// </summary>
+    public const string Status = "status";
+
+    /// <summary>How many rows an owner file had (a count, E10/F02/US02).</summary>
+    public const string Rows = "rows";
+
+    /// <summary>How many of the rows of an owner file changed something (a count, E10/F02/US02).</summary>
+    public const string Applied = "applied";
+
+    /// <summary>
+    /// The first 32 characters (lower case hex) of the fingerprint of an owner file: a hash of the org and of the normalized content, which says
+    /// nothing of what the file holds and lets two lines of the log be matched to the same file (E10/F02/US02).
+    /// </summary>
+    public const string Fingerprint = "fingerprint";
+
     public static IReadOnlyList<string> All { get; } =
     [
         Role, FromRole, ToRole, Scope, Granted, Revoked, Released, FromTier, ToTier, Source, RequestedArea, FromMode, ToMode, EffectiveOn,
         FromAreas, ToAreas, Reminders, FromSender, ToSender, DelegationVersion,
         Topic, Booking, Period, Handoff,
+        Part, Context, Status,
+        Purpose,
+        Rows, Applied, Fingerprint,
     ];
+}
+
+/// <summary>The purposes a read of the contact of a guest can have (the <c>purpose</c> detail of <see cref="OrgActivityType.ContactInfoRead"/>): a closed list of codes.</summary>
+public static class ContactReadPurposes
+{
+    /// <summary>The host writes to the guest of a booking that has no conversation, by e-mail (E05/F02/US02/T01).</summary>
+    public const string MessageToGuest = "message_to_guest";
+
+    public static IReadOnlyList<string> All { get; } = [MessageToGuest];
 }
 
 /// <summary>Who or what changed the plan of an org (the <c>source</c> detail of <see cref="OrgActivityType.PlanChanged"/>).</summary>
@@ -208,6 +253,23 @@ public static partial class OrgActivityCatalog
         // topic, the opaque handoff id and, when the request had them, the booking id and the period. Never a guest, never an outcome.
         new(OrgActivityType.OctorateComplianceHandoffStarted, OrgActivityArea.ShortRent, OrgActivitySubjectType.Property,
             [OrgActivityDetailKeys.Topic, OrgActivityDetailKeys.Handoff, OrgActivityDetailKeys.Booking, OrgActivityDetailKeys.Period]),
+
+        // «Do it for me» (E10/F01/US03/T01, NF-15): a host asks CasaZen support to do a part or a panel step, and every staff action on the request.
+        // The line says which part, which context and where the request stands: never the draft, a note, a credential or a person.
+        new(OrgActivityType.OnboardingAssistRequested, OrgActivityArea.Account, OrgActivitySubjectType.Org,
+            [OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Context, OrgActivityDetailKeys.Status]),
+        new(OrgActivityType.OnboardingAssistUpdated, OrgActivityArea.Account, OrgActivitySubjectType.Org,
+            [OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Context, OrgActivityDetailKeys.Status]),
+
+        // The read of the contact of the guest of one booking, to write to it (E05/F02/US02/T01): Octorate records every read, so CasaZen records who
+        // asked and what for (the booking is the subject, the person is the actor). Never the address, the number or a word of the message.
+        new(OrgActivityType.ContactInfoRead, OrgActivityArea.ShortRent, OrgActivitySubjectType.Booking, [OrgActivityDetailKeys.Purpose]),
+
+        // The owner portfolio of an agency (E10/F02/US02): an owner file that changed something, and every change of an owner invitation
+        // (ADR-011-R11). Counts, a hash and a status code: never a name, an address, an identifier or a link.
+        new(OrgActivityType.OwnerImportApplied, OrgActivityArea.Account, OrgActivitySubjectType.Org,
+            [OrgActivityDetailKeys.Rows, OrgActivityDetailKeys.Applied, OrgActivityDetailKeys.Fingerprint]),
+        new(OrgActivityType.OwnerInvitationChanged, OrgActivityArea.Account, OrgActivitySubjectType.OwnerInvitation, [OrgActivityDetailKeys.Status]),
     ];
 
     /// <summary>Every event the log can record, in the order of the runbook.</summary>

@@ -113,6 +113,20 @@ public static class EncryptedColumns
     public const string GuestContactPurpose = "Casazen.GuestContact";
 
     /// <summary>
+    /// Purpose of the invoice data of a booking (FIS-01, NF-81, E06/F02/US01/T01): the name, the fiscal code, the VAT number, the address and the PEC
+    /// of <see cref="BookingInvoiceData"/>, who an invoice is made out to. Personal data of a guest or of a company's contact; nothing is searched in
+    /// it. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string BookingInvoiceDataPurpose = "Casazen.BookingInvoiceData";
+
+    /// <summary>
+    /// Purpose of the words of the OTA conversations (ADR-032-R3, E05/F01/US01/T01): <see cref="OtaMessage.Text"/>, free text a guest or a
+    /// host wrote on a channel, copied from the channel manager. Read by the hosts who reach the property of the thread and by nobody else,
+    /// never searched, never logged. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string OtaMessageTextPurpose = "Casazen.Message.Content";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -157,11 +171,14 @@ public static class EncryptedColumns
             nameof(PropertyQuesturaCredentials.Username),
             nameof(PropertyQuesturaCredentials.Password),
             nameof(PropertyQuesturaCredentials.WsKey)),
-        // ADR-012: property owner financial data (IBAN and fiscal code).
+        // ADR-012: property owner financial data (IBAN and fiscal code) and, since the owner import (E10/F02/US02/T01), the VAT number and the BIC
+        // of the owner profile: the same purpose, never shared with the guests' or the channels'.
         new EncryptedEntity<PropertyOwner>(
             PropertyOwnerEncryptionPurpose.Purpose,
             nameof(PropertyOwner.Iban),
-            nameof(PropertyOwner.FiscalCode)),
+            nameof(PropertyOwner.FiscalCode),
+            nameof(PropertyOwner.VatNumber),
+            nameof(PropertyOwner.Bic)),
         // SP-10: the private customers of the suppliers and the booking that waits for their e-mail check.
         new EncryptedEntity<ServiceCustomer>(
             ServiceCustomerPurpose,
@@ -198,7 +215,8 @@ public static class EncryptedColumns
             nameof(LeaseContract.DraftData)),
         new EncryptedEntity<Party>(
             LeasePartyPurpose,
-            nameof(Party.Residence)),
+            nameof(Party.Residence),
+            nameof(Party.ContactPhone)),
         // TR: the need of a transitory lease and its documentation.
         new EncryptedEntity<LeaseContract>(
             LeaseTransitoryNeedPurpose,
@@ -227,6 +245,23 @@ public static class EncryptedColumns
             GuestContactPurpose,
             nameof(GuestContact.Value),
             nameof(GuestContact.DisplayName)),
+        // NF-81: who an invoice of a booking is made out to (E06/F02/US01/T01); the code of the SDI and the province are not personal data.
+        new EncryptedEntity<BookingInvoiceData>(
+            BookingInvoiceDataPurpose,
+            nameof(BookingInvoiceData.Name),
+            nameof(BookingInvoiceData.FiscalCode),
+            nameof(BookingInvoiceData.VatNumber),
+            nameof(BookingInvoiceData.AddressStreet),
+            nameof(BookingInvoiceData.AddressCivic),
+            nameof(BookingInvoiceData.PostalCode),
+            nameof(BookingInvoiceData.City),
+            nameof(BookingInvoiceData.Pec),
+            // E06/F02/US01/T04: the hash of the billing data last written to Octorate is a hash of the personal data above.
+            nameof(BookingInvoiceData.OctorateBillingHash)),
+        // ADR-032-R3: the words of the OTA conversations of the guests (E05/F01/US01/T01).
+        new EncryptedEntity<OtaMessage>(
+            OtaMessageTextPurpose,
+            nameof(OtaMessage.Text)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

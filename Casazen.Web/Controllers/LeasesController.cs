@@ -149,6 +149,19 @@ public class LeasesController(
         return File(document.Content, "application/pdf", document.FileName);
     }
 
+    /// <summary>Deletes a document of this lease and its file. 404 when the document is not on this lease.</summary>
+    [HttpDelete("{id:guid}/documents/{documentId:guid}")]
+    [Authorize(Policy = CasazenPolicies.LeaseCreate)]
+    public async Task<IActionResult> DeleteDocument(Guid id, Guid documentId,
+        [FromServices] ILeaseDocumentService documents, CancellationToken ct)
+    {
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Create);
+        if (denied is not null) return denied;
+        if (!await documents.DeleteAsync(id, documentId, ct))
+            return NotFound();
+        return NoContent();
+    }
+
     /// <summary>
     /// What the receipt of a registration says (CF-DOCS-REAL): the PDF the person uploaded as a document of kind <c>Registration</c>, read
     /// in process (no OCR), with the code, the date, the office, the figures and the town the Agenzia delle Entrate wrote, and the codes of what
@@ -190,7 +203,7 @@ public class LeasesController(
                 dto.EndDate,
                 dto.MonthlyRent,
                 dto.Parties.Select(p => new CreatePartyRequest(
-                    p.Role, p.FirstName, p.LastName, p.FiscalCode, p.Citizenship, p.ContactEmail)),
+                    p.Role, p.FirstName, p.LastName, p.FiscalCode, p.Citizenship, p.ContactEmail, p.ContactPhone)),
                 dto.CanoneConcordato?.ToCharacteristics())
             {
                 ContractType = dto.ContractType,
@@ -481,6 +494,37 @@ public class LeasesController(
         {
             return ApeProblem(ex);
         }
+    }
+
+    /// <summary>
+    /// Stripe Checkout for the Openapi filing fee. Available for every supported lease type, including canone concordato.
+    /// The amount is the Openapi listed service price plus CasaZen's fixed service fee. 409
+    /// <c>openapi_registration_unpaid</c> is the filing itself when this has not been paid;
+    /// <c>openapi_registration_already_paid</c> when it has.
+    /// </summary>
+    [HttpPost("{id:guid}/registration/checkout")]
+    [FeatureGate(FeatureFlags.RliProvider)]
+    [Authorize(Policy = CasazenPolicies.LeaseRegister)]
+    public async Task<IActionResult> CreateOpenapiRegistrationCheckout(
+        Guid id,
+        [FromServices] IOpenapiRegistrationCheckoutService checkout,
+        CancellationToken cancellationToken)
+    {
+        if (GetOwnerId() is null) return Unauthorized();
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Register);
+        if (denied is not null)
+            return denied;
+
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, "org_not_found", "NoOrganizationAssigned");
+
+        var result = await checkout.CreateCheckoutSessionAsync(id, orgId.Value, GetOwnerId()!, cancellationToken);
+        return Ok(new Casazen.Web.Dtos.ConcordatoFacile.CheckoutResponse
+        {
+            SessionId = result.SessionId,
+            SessionUrl = result.SessionUrl,
+        });
     }
 
     /// <summary>
@@ -880,7 +924,8 @@ public record CreatePartyDto(
     [param: Required, MaxLength(100), MinLength(1)] string LastName,
     [param: Required, MaxLength(16), MinLength(1)] string FiscalCode,
     [param: Required, MaxLength(2), MinLength(2), RegularExpression("^[A-Za-z]{2}$", ErrorMessage = "LeasePartyCitizenshipInvalid")] string Citizenship,
-    [param: Required, EmailAddress] string ContactEmail);
+    [param: Required, EmailAddress] string ContactEmail,
+    [param: MaxLength(32), InternationalPhone] string? ContactPhone = null);
 
 /// <summary>Stipula date of a lease already signed (calendar date, not after today).</summary>
 public record DeclareStipulaDto([param: Required] DateTime? StipulaDate);

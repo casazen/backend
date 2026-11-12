@@ -61,6 +61,18 @@ public class SharedPropertyPolicyTests
         "HostInvitationsController.List",
         "HostInvitationsController.Resend",
         "HostInvitationsController.Revoke",
+        // E10/F01/US01/T03 (NF-104): the plan of the activation and its path are read with property.read in either context, as the brief
+        // decides. They answer codes and counts only, over the short-rent properties the caller reaches, and are behind
+        // Features:OctorateOnboarding.
+        "OnboardingPlanController.GetPath",
+        "OnboardingPlanController.GetPlan",
+        // NF-99 (E07/F03/US03): the document archive. The door is the read of the property core in either context, so a landlord with only the
+        // long-term area reaches the documents of its properties and the files of its leases; each type of document is then opened by the
+        // permission of its own area (DocumentArchiveAccessResolver), and the receipts of the tourist tax (payment.read) stay closed to it.
+        "DocumentArchiveController.Download",
+        "DocumentArchiveController.Export",
+        "DocumentArchiveController.GetTypes",
+        "DocumentArchiveController.List",
     ];
 
     [Fact]

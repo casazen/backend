@@ -14,6 +14,7 @@ namespace Casazen.Core.Services;
 /// <item><c>guest-documents/{orgId}/{guestId}/{file}</c> — private bucket</item>
 /// <item><c>orgs/{orgId}/branding/{logo|hero}/{file}</c> — public bucket (BK-12)</item>
 /// <item><c>service-requests/{requestId}/photos/{file}</c> — private bucket (photos of a supplier's work, SP-04)</item>
+/// <item><c>orgs/{orgId}/leases/{leaseId}/maintenance/{requestId}/{file}</c> — private bucket (photos of a tenant maintenance request)</item>
 /// <item><c>tourist-tax/{orgId}/{remittanceId}/{file}</c> — private bucket (the receipt of a tourist tax payment, NF-100)</item>
 /// </list>
 /// Private keys are what the database stores for private files (<c>PropertyDocument.StorageUrl</c>,
@@ -23,6 +24,10 @@ public static partial class StorageKeys
 {
     public static string LeaseAttachment(Guid orgId, Guid leaseId, string fileName) =>
         $"orgs/{orgId}/leases/{leaseId}/documents/{fileName}";
+
+    /// <summary>A photo the tenant attached to a maintenance request (private bucket).</summary>
+    public static string MaintenancePhoto(Guid orgId, Guid leaseId, Guid requestId, string fileName) =>
+        EnsureValid($"orgs/{orgId}/leases/{leaseId}/maintenance/{requestId}/{fileName}");
 
     public static string PropertyPhoto(Guid propertyId, string fileName) =>
         $"properties/{propertyId}/photos/{fileName}";
@@ -88,6 +93,13 @@ public static partial class StorageKeys
     /// </summary>
     public static string TouristTaxReceipt(Guid orgId, Guid remittanceId, string fileName) =>
         $"tourist-tax/{orgId}/{remittanceId}/{fileName}";
+
+    /// <summary>
+    /// The file of a proof the host uploaded for the compliance traffic light (private bucket, E03/F02/US01, NF-47, NF-52): the receipt of an Alloggiati,
+    /// ISTAT or tourist tax communication. Never reached by a public URL. <paramref name="fileName"/> is made by the server, never the one the host sent.
+    /// </summary>
+    public static string ManualComplianceProof(Guid orgId, Guid proofId, string fileName) =>
+        $"compliance-proofs/{orgId}/{proofId}/{fileName}";
 
     /// <summary>A new random file name that keeps only the (lower-cased) extension of the upload.</summary>
     public static string NewFileName(string? originalFileName) =>

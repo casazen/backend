@@ -309,6 +309,12 @@ internal static class PostgresAdvisoryLocks
         ConcordatoFacileCheckout = 1_209,
 
         /// <summary>
+        /// The Openapi filing-fee checkout of one lease (key: lease id). Two clicks open one
+        /// Stripe session. Same lock shape as <see cref="ConcordatoFacileCheckout"/>.
+        /// </summary>
+        OpenapiLeaseRegistrationCheckout = 1_212,
+
+        /// <summary>
         /// The privacy acceptance of one lease for the ConcordatoFacile form (key: lease id, <c>leaseId.ToString("N")</c>): two requests at
         /// the same time write one event, not two (CF-BE).
         /// </summary>
@@ -337,6 +343,14 @@ internal static class PostgresAdvisoryLocks
         /// refused for dates another booking holds.
         /// </summary>
         OctorateReservation = 20_121,
+
+        /// <summary>
+        /// One thread of an OTA conversation in one org (key: org id and Octorate thread id, <c>orgId.ToString("N") + ":" + threadId</c>,
+        /// E05/F01/US01/T02): the webhook handler, the reconciliations and the import apply a thread one at a time, so it is one row and a
+        /// message delivered by two of them at once is stored, and its event recorded, once. The values 20_500 to 20_599 are the messages hub
+        /// (epic E05).
+        /// </summary>
+        OtaMessageThread = 20_511,
 
         /// <summary>
         /// The mirror of one CasaZen booking on Octorate (key: booking id, <c>bookingId.ToString("N")</c>, E08/F01/US01/T03): the create and the
@@ -377,6 +391,43 @@ internal static class PostgresAdvisoryLocks
         /// is never lost to a merge that moves the tags of the profile at the same moment. Held for the whole change, which is saved in one go.
         /// </summary>
         CrmProfileMerge = 20_613,
+
+        /// <summary>
+        /// One guided panel step of the Octorate activation (key: <c>step:{id:N}</c>, E10/F01/US03/T01) or one «Do it for me» request
+        /// (key: <c>assist:{id:N}</c>): the verification of a step is run by one request at a time (a session lock, held across the call to
+        /// Octorate: a holder that finds it taken returns the stored state), and a staff update of a request reads it, changes it and saves it
+        /// as one unit (a transaction lock), so two people never close the same request in two ways. The values 21_000 to 21_099 are the
+        /// activation (epic E10).
+        /// </summary>
+        OnboardingPanelAssist = 21_011,
+
+        /// <summary>
+        /// The owner portfolio of one org (key: <c>orgId.ToString("N")</c>, E10/F02/US02): the write of the owner import (the owners and the
+        /// ownership periods of the properties it names) and every change of the invitations of the owners (the confirm of a batch, a resend, a
+        /// revoke), one at a time. Two imports of the same file never create the same owner twice, and two confirms of the same preview never
+        /// send two invitations to the same owner: the second waits and then finds what the first wrote. Held until the commit.
+        /// </summary>
+        OwnerOnboarding = 21_041,
+
+        /// <summary>
+        /// The start of the activation of one channel or tool for one property (key: <c>orgId.ToString("N")</c> + ":" + <c>propertyId.ToString("N")</c> + ":" + portal
+        /// code, E09/F02/US01/T02): two clicks, or two instances, never create two connections on the channel manager for the same property and portal,
+        /// because the second waits and then finds the activation of the first. Held until the commit, the calls to the channel manager included, as the
+        /// checkout of a service is. The values 20_900 to 20_999 are the marketplace (epic E09).
+        /// </summary>
+        MarketplaceChannelActivation = 20_931,
+
+        /// <summary>
+        /// One condominium (key: condominium id): preventivo, consuntivo, rates and the prior-year balance are decided
+        /// one request at a time, so two confirms cannot issue two plans or two balances.
+        /// </summary>
+        Condominium = 21_042,
+
+        /// <summary>
+        /// The euro debit of one tenant maintenance request (key: request id). Two pays wait, then the second
+        /// joins the debit the first saved. A failed debit is a new key only after that failed row is recorded.
+        /// </summary>
+        MaintenancePayment = 21_043,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

@@ -3,6 +3,7 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Events;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -15,6 +16,7 @@ using Casazen.Tests.Unit.Push;
 using Casazen.Tests.Unit.Services;
 using Casazen.Web.Extensions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -405,7 +407,8 @@ public class BookingEventConsumersTests : IAsyncLifetime
             .ToList();
         // In the order of registration: the three of E08/F06 (cleaning «To do», special request «To do», channel alert), then the ones
         // that write to Octorate: the booking created on confirmation (E08/F01/US01/T03), the payment recorded once paid (T04) and the
-        // cancellation pushed after the local one (E08/F02/US02/T02).
+        // cancellation pushed after the local one (E08/F02/US02/T02), the edit pushed after the local one (E08/F02/US01/T02), then the one that
+        // raises the «To do» of a booking from the channel manager on taken nights (E08/F01/US02/T02).
         Assert.Equal(
             [
                 typeof(BookingCleaningActivityHandler),
@@ -414,8 +417,81 @@ public class BookingEventConsumersTests : IAsyncLifetime
                 typeof(OctorateBookingCreateHandler),
                 typeof(OctoratePaymentHandler),
                 typeof(OctorateBookingCancelHandler),
+                typeof(OctorateBookingUpdateHandler),
+                typeof(BookingOverlapHandler),
             ],
             handlers);
+    }
+
+    [Fact]
+    public void AddCasazenBookingOperations_RegistersTheAvailabilityOfTheChannelManager()
+    {
+        var services = new ServiceCollection();
+
+        services.AddCasazenBookingOperations();
+
+        // BookingService needs it to write a booking (E08/F01/US02/T01, NF-80): the check that no booking takes nights the channel manager
+        // refuses is the service's, and the container cannot build the service without this registration.
+        var descriptor = Assert.Single(services, d => d.ServiceType == typeof(IChannelManagerAvailability));
+        Assert.Equal(typeof(ChannelManagerAvailabilityService), descriptor.ImplementationType);
+        Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
+    }
+
+    [Fact]
+    public void AddCasazenBookingOperations_RegistersTheReaderOfTheMirrorOnOctorate()
+    {
+        var services = new ServiceCollection();
+
+        services.AddCasazenBookingOperations();
+
+        // BookingsController takes it as a constructor parameter (E08/F03/US03/T02): without this registration the container cannot build the controller
+        // and no booking list or booking page answers. Scoped, as the context it reads through.
+        var descriptor = Assert.Single(services, d => d.ServiceType == typeof(IBookingOctorateSyncReader));
+        Assert.Equal(typeof(BookingOctorateSyncReader), descriptor.ImplementationType);
+        Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
+    }
+
+    [Fact]
+    public void AddCasazenBookingOperations_RegistersTheDayRulesService()
+    {
+        var services = new ServiceCollection();
+
+        services.AddCasazenBookingOperations();
+
+        // The quote and the checkout (BookingService), the public calendar and the search of the booking site judge a stay with the rules of its
+        // nights (E08/F05/US01, NF-36). They take this service as a required constructor parameter, so the container cannot build them without
+        // this registration and none of them can go on without the rules in silence.
+        var descriptor = Assert.Single(services, d => d.ServiceType == typeof(IPropertyDayRuleService));
+        Assert.Equal(typeof(PropertyDayRuleService), descriptor.ImplementationType);
+        Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
+        foreach (var consumer in new[] { typeof(BookingService), typeof(PublicCalendarService), typeof(PublicSiteSearchService) })
+        {
+            var parameter = Assert.Single(
+                Assert.Single(consumer.GetConstructors()).GetParameters(),
+                p => p.ParameterType == typeof(IPropertyDayRuleService));
+            Assert.False(parameter.IsOptional, $"{consumer.Name} takes the day rules as an optional parameter: a lost registration would switch them off.");
+        }
+    }
+
+    [Fact]
+    public void AddCasazenBookingOperations_RegistersThePolicyOfTheChannelsAsASingletonThatReadsTheConfiguration()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { [$"{OctorateChannelActionsOptions.SectionName}:Airbnb:CanCancel"] = "true" })
+            .Build());
+
+        services.AddCasazenBookingOperations();
+
+        // BookingsController and BookingLifecycleController take it as a constructor parameter (E08/F03/US03/T02): the changeOptions of every booking answer
+        // are the configured policy's, not a closed one by default. One instance for the process, built from Octorate:ChannelActions.
+        var descriptor = Assert.Single(services, d => d.ServiceType == typeof(OtaChannelActionPolicy));
+        Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
+        using var provider = services.BuildServiceProvider();
+        var policy = provider.GetRequiredService<OtaChannelActionPolicy>();
+        Assert.Same(policy, provider.GetRequiredService<OtaChannelActionPolicy>());
+        Assert.True(policy.For(BookingSource.Airbnb).CanCancel);
+        Assert.False(policy.For(BookingSource.BookingCom).CanCancel);
     }
 
     [Fact]
@@ -427,6 +503,11 @@ public class BookingEventConsumersTests : IAsyncLifetime
         // What E04 closed before is still closed.
         Assert.Contains(ActivityType.CheckInPending, ActivityAutoCloseHandler.Rules[DomainEventType.CheckInCompleted]);
         Assert.Contains(ActivityType.CheckOutPending, ActivityAutoCloseHandler.Rules[DomainEventType.CheckOutCompleted]);
+        // E03/F04/US02: the identity verification of a stay that was cancelled or is over has nobody to wait for; the guest completing the form
+        // does not settle it (an operator may still have to decide).
+        Assert.Contains(ActivityType.IdentityVerification, ActivityAutoCloseHandler.Rules[DomainEventType.BookingCancelled]);
+        Assert.Contains(ActivityType.IdentityVerification, ActivityAutoCloseHandler.Rules[DomainEventType.CheckOutCompleted]);
+        Assert.DoesNotContain(ActivityType.IdentityVerification, ActivityAutoCloseHandler.Rules[DomainEventType.CheckInCompleted]);
     }
 
     // --- Helpers ------------------------------------------------------------------------------------------------------------------

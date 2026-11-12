@@ -10,8 +10,10 @@ using Casazen.Core.Services;
 using Casazen.Core.SiteProfile;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Octorate;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -38,7 +40,8 @@ public class DemoEnvironmentService(
     TimeProvider clock,
     IServiceScopeFactory scopeFactory,
     ICrmContactIndex contactIndex,
-    IFeatureFlags featureFlags) : IDemoEnvironmentService
+    IFeatureFlags featureFlags,
+    IHostEnvironment hostEnvironment) : IDemoEnvironmentService
 {
     private const string Tenant = AppDbContext.TenantQueryFilter;
 
@@ -134,7 +137,11 @@ public class DemoEnvironmentService(
         await RemoveShowcaseTouristTaxRemittancesAsync(orgId, cancellationToken);
         await RemoveShowcaseMarketplaceAsync(orgId, cancellationToken);
         await RemoveShowcaseTouristTaxRulesAsync(orgId, cancellationToken);
+        await RemoveShowcaseMessageThreadsAsync(orgId, cancellationToken);
+        await RemoveShowcaseMessageTemplatesAsync(orgId, cancellationToken);
         await RemoveShowcaseCrmAsync(orgId, cancellationToken);
+        await RemoveShowcaseFiscalIssuerProfilesAsync(orgId, cancellationToken);
+        await RemoveShowcaseOnboardingAsync(orgId, cancellationToken);
         var removed = await RemoveShowcaseAsync(orgId, cancellationToken);
         await RemoveShowcaseHostInvitesAsync(orgId, cancellationToken);
         var unpublished = removeUnpublished ? await RemoveUnpublishedAsync(orgId, cancellationToken) : 0;
@@ -149,9 +156,21 @@ public class DemoEnvironmentService(
         // NF-88, NF-89: the CRM profiles, contacts and proposed merges of the showcase guests come from the bookings just created.
         await SeedCrmProfilesAsync(orgId, cancellationToken);
 
+        // NF-61, NF-64: the conversations of the hub of messages are about the houses and stays just created, so they come after them.
+        foreach (var thread in DemoShowcaseCatalog.MessageThreads)
+            await CreateMessageThreadAsync(orgId, ownerId, thread, cancellationToken);
+
+        // E05/F02/US02/T02: the message templates of the demo host point at no house or stay, so they can come anywhere after the removal above.
+        foreach (var messageTemplate in DemoShowcaseCatalog.HostMessageTemplates)
+            await CreateHostMessageTemplateAsync(orgId, messageTemplate, cancellationToken);
+
         // NF-90: the welcome link (the QR code) of the demo house, which the houses just created make possible.
         foreach (var welcomeLink in DemoShowcaseCatalog.WelcomeLinks)
             await CreateWelcomeLinkAsync(orgId, ownerId, welcomeLink, cancellationToken);
+
+        // E10/F01/US01/T04: the activation with Octorate of the demo org names houses just created, so it comes after them.
+        foreach (var activation in DemoShowcaseCatalog.OnboardingActivations)
+            await CreateOnboardingActivationAsync(orgId, ownerId, activation, cancellationToken);
 
         foreach (var invite in DemoShowcaseCatalog.HostInvites)
             await CreateHostInviteAsync(orgId, ownerId, invite, cancellationToken);
@@ -162,6 +181,10 @@ public class DemoEnvironmentService(
         // NF-100: the tourist tax payments of the demo host name the comune of a house just created, so they come after the houses.
         foreach (var remittance in DemoShowcaseCatalog.TouristTaxRemittances)
             await CreateTouristTaxRemittanceAsync(orgId, ownerId, remittance, cancellationToken);
+
+        // FIS-02, NF-82: the profile of the issuer of the demo org (one for each org, skipped when the org has its own).
+        foreach (var profile in DemoShowcaseCatalog.FiscalIssuerProfiles)
+            await CreateFiscalIssuerProfileAsync(orgId, ownerId, profile, cancellationToken);
 
         // NF-08: the popup alerts of the demo host point at the stays and houses just created, so they come last.
         foreach (var alert in DemoShowcaseCatalog.PopupAlerts)
@@ -177,6 +200,8 @@ public class DemoEnvironmentService(
         // NF-46: the channel rule of the invented comune of the demo (platform data, created only when missing).
         foreach (var rule in DemoShowcaseCatalog.TouristTaxChannelRules)
             await CreateTouristTaxChannelRuleAsync(orgId, rule, cancellationToken);
+
+        await ApplyShowcaseBankLinkAsync(orgId, cancellationToken);
 
         settings.LastResetAt = UtcNow();
         settings.LastResetBy = actorUserId;
@@ -205,6 +230,11 @@ public class DemoEnvironmentService(
             .Where(d => propertyIds.Contains(d.PropertyId))
             .Select(d => d.StorageUrl)
             .ToListAsync(cancellationToken);
+        // NF-52: the files of the receipts uploaded for these houses go too (their rows cascade with the houses).
+        files.AddRange(await db.ManualComplianceProofs.IgnoreQueryFilters([Tenant])
+            .Where(p => p.OrgId == orgId && propertyIds.Contains(p.PropertyId))
+            .Select(p => p.FileKey)
+            .ToListAsync(cancellationToken));
         var guestIds = await Markers()
             .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.Guest)
             .Select(m => m.EntityId)
@@ -412,6 +442,58 @@ public class DemoEnvironmentService(
         await MarkAsync(orgId, TestDataEntities.PopupAlert, alert.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
+    /// <summary>Deletes the profile of the issuer the showcase wrote for the org, found by its marker (FIS-02). A real profile has no marker and is never touched.</summary>
+    private async Task RemoveShowcaseFiscalIssuerProfilesAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var profileIds = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.FiscalIssuerProfile)
+            .Select(m => m.EntityId)
+            .ToListAsync(cancellationToken);
+        if (profileIds.Count == 0)
+            return;
+
+        await db.OrgFiscalIssuerProfiles.IgnoreQueryFilters([Tenant]).Where(p => p.OrgId == orgId && profileIds.Contains(p.Id)).ExecuteDeleteAsync(cancellationToken);
+        await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.FiscalIssuerProfile)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The profile of the issuer of the demo org, complete and invented (FIS-02, NF-82). There is one for each org: it is skipped, with a line in the
+    /// log, when the org already has one (a real one, which the showcase never touches or replaces).
+    /// </summary>
+    private async Task CreateFiscalIssuerProfileAsync(
+        Guid orgId, string ownerId, DemoFiscalIssuerProfileTemplate template, CancellationToken cancellationToken)
+    {
+        if (await db.OrgFiscalIssuerProfiles.IgnoreQueryFilters([Tenant]).AnyAsync(p => p.OrgId == orgId, cancellationToken))
+        {
+            logger.LogInformation("Demo issuer profile {Key} skipped: org {OrgId} already has a profile of its own", template.Key, orgId);
+            return;
+        }
+
+        var now = UtcNow();
+        var profile = new OrgFiscalIssuerProfile
+        {
+            OrgId = orgId,
+            IssuerMode = template.Mode,
+            DocumentRegime = template.Regime,
+            LegalName = template.LegalName,
+            AddressStreet = template.AddressStreet,
+            AddressCivic = template.AddressCivic,
+            PostalCode = template.PostalCode,
+            City = template.City,
+            Province = template.Province,
+            CountryCode = OrgFiscalIssuerProfile.DefaultCountryCode,
+            FatturaPaRegimeCode = template.FatturaPaRegimeCode,
+            ConfirmedAt = now.AddDays(template.ConfirmedOffsetDays),
+            UpdatedAt = now,
+            UpdatedByUserId = ownerId,
+        };
+        db.OrgFiscalIssuerProfiles.Add(profile);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.FiscalIssuerProfile, profile.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+    }
+
     /// <summary>
     /// Deletes the tourist tax payments the showcase wrote for the org and their invented receipts, found by their markers (NF-100). A real
     /// payment has no marker and is never touched; the files are removed after the rows, and one that cannot be is only logged.
@@ -457,7 +539,8 @@ public class DemoEnvironmentService(
     /// not created. The same rules as a payment recorded through the service: an amount above zero, a period that is not backwards, a day that is
     /// not after today in Europe/Rome (the template says so, and <c>DemoShowcaseTests</c> checks it).
     /// </summary>
-    private async Task CreateTouristTaxRemittanceAsync(
+    /// <remarks>Internal so that a test can seed the payment of one house of the catalog (<c>DemoDocumentArchiveSeedTests</c>).</remarks>
+    internal async Task CreateTouristTaxRemittanceAsync(
         Guid orgId, string ownerId, DemoTouristTaxRemittanceTemplate template, CancellationToken cancellationToken)
     {
         var propertyId = await Markers()
@@ -731,6 +814,195 @@ public class DemoEnvironmentService(
     }
 
     /// <summary>
+    /// Deletes the conversations of the channels the showcase wrote for the org, found by their markers (E05/F02/US01/T01): a conversation points at
+    /// its house and its stay with a foreign key that lets go (SET NULL), so left to the removal of the houses it would stay behind as an unassigned
+    /// conversation; its messages go with it (cascade). The conversations with the guests of the direct stays go with their bookings (cascade), and
+    /// their markers with the other showcase markers. Runs before the showcase houses go: it finds its rows by the markers they drop.
+    /// </summary>
+    internal async Task RemoveShowcaseMessageThreadsAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var threadIds = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.OtaMessageThread)
+            .Select(m => m.EntityId)
+            .ToListAsync(cancellationToken);
+        if (threadIds.Count == 0)
+            return;
+
+        await db.OtaMessageThreads.IgnoreQueryFilters([Tenant])
+            .Where(t => t.OrgId == orgId && threadIds.Contains(t.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+        await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.OtaMessageThread)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// One conversation of the hub of messages of the showcase (E05/F02/US01/T01): the conversation with the guest of a direct stay, or a conversation
+    /// of a channel, written as the real flows leave them (the counters of the thread agree with its messages: the last message, the unread ones, the
+    /// time the host read up to). Invented words that say TEST, no channel manager behind them. Skipped, with a log, when the house or the stay it names
+    /// was not created.
+    /// </summary>
+    internal async Task CreateMessageThreadAsync(
+        Guid orgId, string ownerId, DemoMessageThreadTemplate template, CancellationToken cancellationToken)
+    {
+        var propertyId = await ShowcaseIdAsync(orgId, TestDataEntities.Property, template.PropertyKey, cancellationToken);
+        var bookingId = template.BookingKey is null
+            ? null
+            : await ShowcaseIdAsync(orgId, TestDataEntities.Booking, template.BookingKey, cancellationToken);
+        if (propertyId is null || (template.BookingKey is not null && bookingId is null) || template.Messages.Count == 0)
+        {
+            logger.LogWarning(
+                "Demo conversation {Key} of org {OrgId} was skipped: the house or the stay it names was not created", template.Key, orgId);
+            return;
+        }
+
+        var now = UtcNow();
+        var messages = template.Messages
+            .OrderByDescending(m => m.MinutesAgo)
+            .Select(m => (Message: m, At: now.AddMinutes(-m.MinutesAgo)))
+            .ToList();
+        var last = messages[^1];
+
+        if (template.Kind == DemoMessageThreadKind.Direct)
+        {
+            var thread = new GuestThread
+            {
+                OrgId = orgId,
+                PropertyId = propertyId.Value,
+                BookingId = bookingId!.Value,
+                CreatedAt = messages[0].At,
+                LastMessageAt = last.At,
+                LastGuestMessageAt = messages.Where(m => m.Message.FromGuest).Select(m => (DateTime?)m.At).Max(),
+                LastHostMessageAt = messages.Where(m => !m.Message.FromGuest).Select(m => (DateTime?)m.At).Max(),
+                HostReadAt = messages.Where(m => m.Message.FromGuest && m.Message.Read).Select(m => (DateTime?)m.At).Max(),
+            };
+            db.GuestThreads.Add(thread);
+            foreach (var (message, at) in messages)
+            {
+                db.GuestMessages.Add(new GuestMessage
+                {
+                    OrgId = orgId,
+                    ThreadId = thread.Id,
+                    Sender = message.FromGuest ? GuestMessageSender.Guest : GuestMessageSender.Host,
+                    Text = message.Text,
+                    CreatedAt = at,
+                    AuthorUserId = message.FromGuest ? null : ownerId,
+                });
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+            await MarkAsync(orgId, TestDataEntities.GuestThread, thread.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+            return;
+        }
+
+        var otaThread = new OtaMessageThread
+        {
+            OrgId = orgId,
+            PropertyId = propertyId,
+            BookingId = bookingId,
+            OctorateThreadId = $"TEST-{template.Key}",
+            OctorateAccommodationId = "TEST-accommodation",
+            ChannelSource = template.Channel ?? OtaChannel.Airbnb,
+            Kind = bookingId is null ? OtaThreadKind.Request : OtaThreadKind.Reservation,
+            GuestDisplayName = template.GuestName,
+            LastMessageAt = last.At,
+            LastMessageDirection = last.Message.FromGuest ? OtaMessageDirection.Inbound : OtaMessageDirection.Outbound,
+            UnreadCount = messages.Count(m => m.Message.FromGuest && !m.Message.Read),
+            DefaultProcessor = "CHANNEL",
+            AiAssistantOn = false,
+            CreatedAt = messages[0].At,
+            UpdatedAt = now,
+        };
+        db.OtaMessageThreads.Add(otaThread);
+        for (var index = 0; index < messages.Count; index++)
+        {
+            var (message, at) = messages[index];
+            db.OtaMessages.Add(new OtaMessage
+            {
+                OrgId = orgId,
+                ThreadId = otaThread.Id,
+                OctorateMessageId = $"TEST-{template.Key}-{index + 1}",
+                Direction = message.FromGuest ? OtaMessageDirection.Inbound : OtaMessageDirection.Outbound,
+                SenderName = message.FromGuest ? template.GuestName ?? string.Empty : "Host (TEST)",
+                Text = message.Text,
+                SentAt = at,
+                ReadAt = message.FromGuest && message.Read ? at.AddMinutes(1) : null,
+                DeliveryState = OtaMessageDeliveryState.Sent,
+                Origin = message.FromGuest ? MessageOrigin.Guest : MessageOrigin.Person,
+                CreatedAt = at,
+            });
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.OtaMessageThread, otaThread.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+    }
+
+    /// <summary>
+    /// Deletes the message templates the showcase wrote for the org, found by their markers (E05/F02/US02/T02), and the markers: a template points at
+    /// no house and no stay, so the removal of the houses would leave it behind. A template the host wrote has no marker and is never touched.
+    /// Runs before the showcase houses go: that removal drops every showcase marker of the org.
+    /// </summary>
+    internal async Task RemoveShowcaseMessageTemplatesAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var markers = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.MessageTemplate)
+            .ToListAsync(cancellationToken);
+        if (markers.Count == 0)
+            return;
+
+        var templateIds = markers.Select(m => m.EntityId).ToList();
+        var templates = await db.MessageTemplates.IgnoreQueryFilters([Tenant])
+            .Where(t => t.OrgId == orgId && templateIds.Contains(t.Id))
+            .ToListAsync(cancellationToken);
+        db.MessageTemplates.RemoveRange(templates);
+        db.TestDataMarkers.RemoveRange(markers);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// One message template of the demo host (E05/F02/US02/T02): invented words that say TEST, with the variables a real template may use. A host
+    /// may already have a template with the same name and language (they are unique for each org): then the showcase one is skipped, with a line in
+    /// the log, and the host's is never touched or marked.
+    /// </summary>
+    internal async Task CreateHostMessageTemplateAsync(Guid orgId, DemoHostMessageTemplate template, CancellationToken cancellationToken)
+    {
+        if (await db.MessageTemplates.IgnoreQueryFilters([Tenant])
+                .AnyAsync(t => t.OrgId == orgId && t.Name == template.Name && t.Language == template.Language, cancellationToken))
+        {
+            logger.LogInformation("Demo message template {Key} skipped: org {OrgId} already has one with that name and language", template.Key, orgId);
+            return;
+        }
+
+        var now = UtcNow();
+        var row = new MessageTemplate
+        {
+            OrgId = orgId,
+            Name = template.Name,
+            Language = template.Language,
+            Body = template.Body,
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        db.MessageTemplates.Add(row);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.MessageTemplate, row.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+    }
+
+    /// <summary>The id of the showcase row of <paramref name="entityType"/> that came from the template <paramref name="templateKey"/>, or <c>null</c> when there is none.</summary>
+    private async Task<Guid?> ShowcaseIdAsync(Guid orgId, string entityType, string templateKey, CancellationToken cancellationToken)
+    {
+        var id = await Markers()
+            .Where(m => m.OrgId == orgId
+                && m.Origin == TestDataOrigins.Showcase
+                && m.EntityType == entityType
+                && m.TemplateKey == templateKey)
+            .Select(m => m.EntityId)
+            .FirstOrDefaultAsync(cancellationToken);
+        return id == Guid.Empty ? null : id;
+    }
+
+    /// <summary>
     /// Deletes the CRM profiles the showcase wrote for the org, found by their markers (E07/F01/US02/T03): the contacts and the proposed merges
     /// follow their profile (cascade). The guests of the showcase are deleted afterwards by <see cref="RemoveShowcaseAsync"/>; a guest that is not
     /// one of them (a real one the sync linked to a showcase profile) is let go of the profile first. A profile of a real guest has no marker and
@@ -761,6 +1033,291 @@ public class DemoEnvironmentService(
                     || m.EntityType == TestDataEntities.GuestConsent
                     || m.EntityType == TestDataEntities.MarketingConsent))
             .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Deletes the rows of the activation with Octorate the showcase wrote for the org (E10/F01/US01/T04), found by their markers, the dependent
+    /// ones first: the "To do" of the deferred part, the rows of the onboarding tables, the test mappings, then the test connection they hang on.
+    /// A real row has no marker and is never touched. Runs before the showcase properties go: it finds its rows by the markers they drop.
+    /// </summary>
+    /// <remarks>
+    /// A marker says what the showcase wrote, not what the row has become. A real consent reuses the one connection of the org and the
+    /// environment (its tokens are written into the marked row), and a deferral or an exit of the host writes into the one row of the part. So the
+    /// test connection, the mappings on it and the deferred part go only while they are still the invented ones (<see cref="InventedConnectionsAsync"/>,
+    /// <see cref="InventedPartStatesAsync"/>); a row the host made its own only loses its marker and stays, with its mappings and its "To do". A
+    /// mapping that is not marked is deleted only with an invented connection (the foreign key is restrictive and no real mapping can be on it).
+    /// </remarks>
+    internal async Task RemoveShowcaseOnboardingAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        string[] types =
+        [
+            TestDataEntities.Todo,
+            TestDataEntities.OnboardingPartState,
+            TestDataEntities.PropertyFlowActivation,
+            TestDataEntities.OnboardingPanelStep,
+            TestDataEntities.OnboardingAssistRequest,
+            TestDataEntities.OnboardingPilotMember,
+            TestDataEntities.PropertyOnboardingData,
+            TestDataEntities.OctorateListingMapping,
+            TestDataEntities.OctorateConnection,
+        ];
+        var marked = (await Markers()
+                .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && types.Contains(m.EntityType))
+                .Select(m => new { m.EntityType, m.EntityId })
+                .ToListAsync(cancellationToken))
+            .ToLookup(m => m.EntityType, m => m.EntityId);
+        if (marked.Count == 0)
+            return;
+
+        List<Guid> Ids(string type) => [.. marked[type]];
+        var todos = Ids(TestDataEntities.Todo);
+        var partStates = Ids(TestDataEntities.OnboardingPartState);
+        var activations = Ids(TestDataEntities.PropertyFlowActivation);
+        var panelSteps = Ids(TestDataEntities.OnboardingPanelStep);
+        var assists = Ids(TestDataEntities.OnboardingAssistRequest);
+        var pilots = Ids(TestDataEntities.OnboardingPilotMember);
+        var propertyData = Ids(TestDataEntities.PropertyOnboardingData);
+        var mappings = Ids(TestDataEntities.OctorateListingMapping);
+        var connections = Ids(TestDataEntities.OctorateConnection);
+
+        // What is still the invented one (the others only lose their marker below).
+        var inventedConnections = await InventedConnectionsAsync(orgId, connections, cancellationToken);
+        var inventedPartStates = await InventedPartStatesAsync(orgId, partStates, todos, cancellationToken);
+        var inventedAccommodations = DemoShowcaseCatalog.OnboardingActivations
+            .SelectMany(activation => activation.Properties)
+            .Select(house => house.AccommodationId)
+            .OfType<string>()
+            .ToList();
+
+        await db.InternalActivities.IgnoreQueryFilters([Tenant])
+            .Where(a => a.OrgId == orgId && todos.Contains(a.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+
+        // The "To do" the sync raised about the test connection (a job of the connector marked it lost): about a row that goes now.
+        await db.InternalActivities.IgnoreQueryFilters([Tenant])
+            .Where(a => a.OrgId == orgId
+                && a.EntityType == OnboardingActivationCodes.ConnectionTodoEntityType
+                && a.EntityId != null
+                && inventedConnections.Contains(a.EntityId.Value))
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.OnboardingPartStates.IgnoreQueryFilters([Tenant])
+            .Where(s => s.OrgId == orgId && inventedPartStates.Contains(s.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.PropertyFlowActivations.IgnoreQueryFilters([Tenant])
+            .Where(a => a.OrgId == orgId && activations.Contains(a.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.OnboardingPanelSteps.IgnoreQueryFilters([Tenant])
+            .Where(s => s.OrgId == orgId && panelSteps.Contains(s.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.OnboardingAssistRequests.IgnoreQueryFilters([Tenant])
+            .Where(r => r.OrgId == orgId && assists.Contains(r.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.OnboardingPilotMembers.IgnoreQueryFilters([Tenant])
+            .Where(p => p.OrgId == orgId && pilots.Contains(p.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.PropertyOnboardingData.IgnoreQueryFilters([Tenant])
+            .Where(d => d.OrgId == orgId && propertyData.Contains(d.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+        // Whatever hangs on an invented connection goes with it (the foreign keys are restrictive): its mappings, marked or not (no real one can
+        // be on it), and the cursor a job of the OTA conversations may have written before it found no token. The marked mappings of a connection
+        // the host took over go only while they still name an invented accommodation: the real ones stay.
+        await db.OctorateListingMappings.IgnoreQueryFilters([Tenant])
+            .Where(m => m.OrgId == orgId
+                && (inventedConnections.Contains(m.ConnectionId)
+                    || (mappings.Contains(m.Id) && inventedAccommodations.Contains(m.OctorateAccommodationId))))
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.OtaMessageSyncStates.IgnoreQueryFilters([Tenant])
+            .Where(s => s.OrgId == orgId && inventedConnections.Contains(s.ConnectionId))
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.OctorateConnections.IgnoreQueryFilters([Tenant])
+            .Where(c => c.OrgId == orgId && inventedConnections.Contains(c.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+
+        // Every marker goes, those of the rows the host made its own too: from now on they are real rows.
+        await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && types.Contains(m.EntityType))
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The marked connections that are still the invented ones: the account of the template and no token at all. A consent overwrites the account
+    /// of the connection it completes and stores its tokens, so a connection with a token (even one left by a consent that failed halfway) or
+    /// with another account is the host's.
+    /// </summary>
+    private async Task<List<Guid>> InventedConnectionsAsync(Guid orgId, List<Guid> connections, CancellationToken cancellationToken)
+    {
+        if (connections.Count == 0)
+            return [];
+
+        var accounts = DemoShowcaseCatalog.OnboardingActivations.Select(activation => activation.AccountId).ToList();
+        return await db.OctorateConnections.IgnoreQueryFilters([Tenant])
+            .Where(c => c.OrgId == orgId
+                && connections.Contains(c.Id)
+                && c.OctorateAccountId != null
+                && accounts.Contains(c.OctorateAccountId)
+                && c.EncryptedRefreshToken == null
+                && c.EncryptedAccessToken == null)
+            .Select(c => c.Id)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The marked part states that are still the invented ones: the part is tied to the "To do" the showcase raised for it, or it holds no intent at
+    /// all (resumed: the same as no row). A deferral or an exit of the host replaces the "To do" of the row, so the row is then the host's and its
+    /// new "To do" (which has no marker) must not be left pointing at a row that is gone.
+    /// </summary>
+    private async Task<List<Guid>> InventedPartStatesAsync(Guid orgId, List<Guid> partStates, List<Guid> todos, CancellationToken cancellationToken)
+    {
+        if (partStates.Count == 0)
+            return [];
+
+        var rows = await db.OnboardingPartStates.IgnoreQueryFilters([Tenant])
+            .Where(s => s.OrgId == orgId && partStates.Contains(s.Id))
+            .Select(s => new { s.Id, s.ActivityId, s.Status, s.DeferredAt, s.RemindAt })
+            .ToListAsync(cancellationToken);
+        return
+        [
+            .. rows
+                .Where(s => s.ActivityId is { } activityId
+                    ? todos.Contains(activityId)
+                    : s.Status == OnboardingPartStatus.Open && s.DeferredAt is null && s.RemindAt is null)
+                .Select(s => s.Id),
+        ];
+    }
+
+    /// <summary>
+    /// The activation with Octorate of the demo org (E10/F01/US01/T04, NF-104, NF-106): a connected test connection of this environment with no
+    /// token (nothing can be called with it; a job of the connector that tries finds no token and marks it lost, which the next reset undoes unless
+    /// a real consent took the row over: <see cref="RemoveShowcaseOnboardingAsync"/> then keeps it, with its tokens and mappings), the
+    /// confirmed listings of the houses that have one on it (no product: the booking and calendar jobs never read them), the flows activated on
+    /// them, and the deferred part of the plan with its "To do" (codes and ids only, as the plan raises it). The connection and the mappings are
+    /// skipped when the org has a connection of its own in the environment (a real one is never touched nor mixed with invented listings); the
+    /// deferred part is skipped when the org has its own state for that part. Every row is marked as showcase data.
+    /// </summary>
+    internal async Task CreateOnboardingActivationAsync(
+        Guid orgId, string ownerId, DemoOnboardingActivationTemplate template, CancellationToken cancellationToken)
+    {
+        var keys = template.Properties.Select(p => p.PropertyKey).ToList();
+        var houses = await Markers()
+            .Where(m => m.OrgId == orgId
+                && m.Origin == TestDataOrigins.Showcase
+                && m.EntityType == TestDataEntities.Property
+                && m.TemplateKey != null
+                && keys.Contains(m.TemplateKey))
+            .ToDictionaryAsync(m => m.TemplateKey!, m => m.EntityId, cancellationToken);
+        var now = UtcNow();
+        var rows = new List<(string EntityType, Guid Id, string Key)>();
+
+        var environment = OctorateEnvironments.Of(hostEnvironment);
+        var hasOwnConnection = await db.OctorateConnections.IgnoreQueryFilters([Tenant])
+            .AnyAsync(c => c.OrgId == orgId && c.Environment == environment, cancellationToken);
+        if (hasOwnConnection)
+        {
+            logger.LogInformation(
+                "Demo Octorate connection of org {OrgId} was skipped: the org has a connection of its own in this environment", orgId);
+        }
+        else
+        {
+            var connection = new OctorateConnection
+            {
+                OrgId = orgId,
+                Environment = environment,
+                OctorateAccountId = template.AccountId,
+                Status = OctorateConnectionStatus.Connected,
+                LastSyncedAt = now,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            db.OctorateConnections.Add(connection);
+            rows.Add((TestDataEntities.OctorateConnection, connection.Id, template.Key));
+
+            foreach (var house in template.Properties.Where(p => p.AccommodationId is not null))
+            {
+                if (!houses.TryGetValue(house.PropertyKey, out var propertyId))
+                    continue;
+
+                var mapping = new OctorateListingMapping
+                {
+                    OrgId = orgId,
+                    ConnectionId = connection.Id,
+                    OctorateAccommodationId = house.AccommodationId!,
+                    SnapshotName = DemoShowcaseCatalog.Properties.FirstOrDefault(p => p.Key == house.PropertyKey)?.Name,
+                    PropertyId = propertyId,
+                    Status = OctorateMappingStatus.Confirmed,
+                    MatchScore = 100,
+                    ConfirmedByUserId = ownerId,
+                    ConfirmedAt = now,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                };
+                db.OctorateListingMappings.Add(mapping);
+                rows.Add((TestDataEntities.OctorateListingMapping, mapping.Id, $"{template.Key}/{house.PropertyKey}"));
+            }
+        }
+
+        foreach (var house in template.Properties)
+        {
+            if (!houses.TryGetValue(house.PropertyKey, out var propertyId))
+                continue;
+
+            foreach (var flow in house.ActivatedFlows.Distinct())
+            {
+                var activation = new PropertyFlowActivation
+                {
+                    OrgId = orgId,
+                    PropertyId = propertyId,
+                    Flow = flow,
+                    ActivatedAt = now,
+                    ActivatedByUserId = ownerId,
+                };
+                db.PropertyFlowActivations.Add(activation);
+                rows.Add((TestDataEntities.PropertyFlowActivation, activation.Id, $"{template.Key}/{house.PropertyKey}/{flow}"));
+            }
+        }
+
+        var partTaken = await db.OnboardingPartStates.IgnoreQueryFilters([Tenant])
+            .AnyAsync(s => s.OrgId == orgId && s.PartKey == template.DeferredPart, cancellationToken);
+        if (partTaken)
+        {
+            logger.LogInformation("Demo deferred part {Part} of org {OrgId} was skipped: the org has its own state for it", template.DeferredPart, orgId);
+        }
+        else
+        {
+            var remindAt = now.AddDays(template.RemindInDays);
+            var part = new OnboardingPartState
+            {
+                OrgId = orgId,
+                PartKey = template.DeferredPart,
+                Status = OnboardingPartStatus.Deferred,
+                DeferredAt = now,
+                RemindAt = remindAt,
+                UpdatedAt = now,
+                UpdatedByUserId = ownerId,
+            };
+            var todo = new InternalActivity
+            {
+                OrgId = orgId,
+                ActivityType = nameof(ActivityType.WizardResume),
+                Action = ActivityAction.ResumeWizard,
+                EntityType = OnboardingPlanCodes.TodoEntityType,
+                EntityId = part.Id,
+                Urgency = ActivityUrgency.Medium,
+                Deadline = remindAt,
+                Reason = OnboardingPlanCodes.ReasonDeferred,
+                Status = InternalActivity.StatusPending,
+                ScheduledAt = remindAt,
+                CreatedAt = now,
+            };
+            part.ActivityId = todo.Id;
+            db.OnboardingPartStates.Add(part);
+            db.InternalActivities.Add(todo);
+            rows.Add((TestDataEntities.OnboardingPartState, part.Id, $"{template.Key}/{template.DeferredPart}"));
+            rows.Add((TestDataEntities.Todo, todo.Id, $"{template.Key}/{template.DeferredPart}"));
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        foreach (var (entityType, id, key) in rows)
+            await MarkAsync(orgId, entityType, id, TestDataOrigins.Showcase, key, cancellationToken);
     }
 
     /// <summary>
@@ -908,7 +1465,9 @@ public class DemoEnvironmentService(
         return pending.Count;
     }
 
-    private async Task CreateShowcasePropertyAsync(
+    /// <summary>One house of the showcase with what its template says: its details, its listing rows, its documents and its stays.</summary>
+    /// <remarks>Internal so that a test can seed one house of the catalog without the rest of the showcase (<c>DemoDocumentArchiveSeedTests</c>).</remarks>
+    internal async Task CreateShowcasePropertyAsync(
         Guid orgId, string ownerId, DemoPropertyTemplate template, CancellationToken cancellationToken)
     {
         var place = await ResolvePlaceAsync(template.Place, cancellationToken);
@@ -1045,6 +1604,31 @@ public class DemoEnvironmentService(
             listingRows.Add((TestDataEntities.PropertyStayDiscount, tier.Id, template.Key + "/discount-" + demoDiscount.MinNights));
         }
 
+        // NF-36: the price and the rules of single nights of the house (invented). Like the rows above they go with their property (cascade) at the
+        // next reset and carry a marker of their own; the nights are counted from the day of the reset, on the calendar of the property.
+        var firstNight = DayRuleRules.TodayOf(property.Timezone, clock.GetUtcNow());
+        foreach (var demoRule in template.DayRules ?? [])
+        {
+            var rule = new PropertyDayRule
+            {
+                OrgId = orgId,
+                PropertyId = property.Id,
+                StayDate = firstNight.AddDays(demoRule.OffsetDays),
+                Price = demoRule.Price,
+                MinNights = demoRule.MinNights,
+                MaxNights = demoRule.MaxNights,
+                ClosedToArrival = demoRule.ClosedToArrival,
+                ClosedToDeparture = demoRule.ClosedToDeparture,
+                MinAdvanceDays = demoRule.MinAdvanceDays,
+                MaxAdvanceDays = demoRule.MaxAdvanceDays,
+                CreatedAt = now,
+                UpdatedAt = now,
+                UpdatedByUserId = ownerId,
+            };
+            db.PropertyDayRules.Add(rule);
+            listingRows.Add((TestDataEntities.PropertyDayRule, rule.Id, template.Key + "/day-rule-" + demoRule.OffsetDays));
+        }
+
         await db.SaveChangesAsync(cancellationToken);
         foreach (var (entityType, id, key) in listingRows)
             await MarkAsync(orgId, entityType, id, TestDataOrigins.Showcase, key, cancellationToken);
@@ -1071,6 +1655,10 @@ public class DemoEnvironmentService(
             await MarkAsync(orgId, TestDataEntities.OrgTouristTaxRate, rate.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
         }
 
+        // NF-52: who sends the police and ISTAT communications of the house (the stays below are read by the traffic light with it).
+        if (template.ComplianceSender is { } complianceSender)
+            await CreateComplianceSenderAsync(orgId, ownerId, property, complianceSender, template.Key, cancellationToken);
+
         if (template.Publish || template.Mode == RentalMode.Long)
         {
             var used = await UsedCinsAsync(orgId, cancellationToken);
@@ -1086,7 +1674,9 @@ public class DemoEnvironmentService(
             await CreateBookingAsync(orgId, property, booking, today, cancellationToken);
     }
 
-    private async Task CreateBookingAsync(
+    /// <summary>One stay of a showcase house: its booker, the booking, the registered guests and what the compliance traffic light finds on it.</summary>
+    /// <remarks>Internal so that a test can seed one stay of the catalog without the rest of the house (<c>DemoComplianceTrafficLightSeedTests</c>).</remarks>
+    internal async Task CreateBookingAsync(
         Guid orgId, Property property, DemoBookingTemplate template, DateOnly today, CancellationToken cancellationToken)
     {
         var guest = new Guest
@@ -1118,6 +1708,17 @@ public class DemoEnvironmentService(
         var madeAt = DateTime.SpecifyKind(checkIn.AddDays(-30), DateTimeKind.Utc);
         if (madeAt > UtcNow())
             madeAt = UtcNow();
+
+        // NF-52: the guests of a checked-in stay entrusted to the channel manager arrived three hours before the reset (never before the start of the
+        // check-in day): the legal term of the Alloggiati communication runs from the arrival, so the stay reads «awaiting the receipt» at whatever
+        // time of the day the showcase is reset.
+        DateTime? arrivedAt = null;
+        if (template.Compliance is { GuestsEntrusted: true } && template.Status == BookingStatus.CheckedIn)
+        {
+            var threeHoursAgo = UtcNow().AddHours(-3);
+            var startOfCheckInDay = DateTime.SpecifyKind(checkIn, DateTimeKind.Utc);
+            arrivedAt = threeHoursAgo < startOfCheckInDay ? startOfCheckInDay : threeHoursAgo;
+        }
 
         // A stay with registered guests declares as many (NF-40: the check-in wizard compares the two); the others keep two adults.
         var registered = template.Guests ?? [];
@@ -1156,17 +1757,33 @@ public class DemoEnvironmentService(
             NoShowAt = template.NoShow && template.Status == BookingStatus.Confirmed
                 ? DateTime.SpecifyKind(checkIn.AddHours(20), DateTimeKind.Utc)
                 : null,
+            ArrivedAt = arrivedAt,
+            // E08/F03/US03/T02 (NF-74, NF-77): the reservation of the stay on the channel manager, with the amounts and the flags the import would have
+            // stored (invented, like the rest: nothing is sent to Octorate).
+            OctorateReservationId = template.Ota?.ReservationId,
+            OctorateUpdatedAt = template.Ota is null ? null : madeAt,
+            OtaCommission = template.Ota?.Commission,
+            OtaNetAmount = template.Ota?.Net,
+            OtaPaidAmount = template.Ota?.Paid,
+            OtaBalanceAmount = template.Ota?.Balance,
+            OtaCompanyCollect = template.Ota?.CompanyCollect,
+            OtaCommissionIncludedInPayments = template.Ota?.CommissionIncludedInPayments,
         };
         db.Bookings.Add(booking);
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.Booking, booking.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
         await CreateCrmConsentsAsync(orgId, guest.Id, booking.Id, template, madeAt, cancellationToken);
+        if (template.Ota?.Sync is { } mirror)
+            await CreateOctorateSyncAsync(orgId, property, booking, mirror, madeAt, template.Key, cancellationToken);
+        if (template.InvoiceData is { } invoiceData)
+            await CreateInvoiceDataAsync(orgId, booking.Id, invoiceData, template.Key, madeAt, cancellationToken);
 
         // NF-40, NF-46: the registered guests of the stay, with complete data of the right shape (they go with the booking at the next reset).
+        List<StayGuest> rows = [];
         if (template.Guests is { Count: > 0 } guests)
         {
             var arrival = DateOnly.FromDateTime(checkIn);
-            var rows = guests.Select((demo, position) => DemoStayGuest(booking, property.OwnerId, demo, position, arrival)).ToList();
+            rows = guests.Select((demo, position) => DemoStayGuest(booking, property.OwnerId, demo, position, arrival)).ToList();
             db.StayGuests.AddRange(rows);
             await db.SaveChangesAsync(cancellationToken);
             for (var position = 0; position < rows.Count; position++)
@@ -1175,6 +1792,237 @@ public class DemoEnvironmentService(
                     orgId, TestDataEntities.StayGuest, rows[position].Id, TestDataOrigins.Showcase, $"{template.Key}/{position}", cancellationToken);
             }
         }
+
+        // NF-52: what the compliance traffic light finds on the stay (guests entrusted to the channel manager, a receipt the host uploaded).
+        if (template.Compliance is { } complianceTemplate)
+            await CreateComplianceStateAsync(orgId, property.OwnerId, property, booking, rows, complianceTemplate, template.Key, cancellationToken);
+    }
+
+    /// <summary>
+    /// Who sends the police and ISTAT communications of a showcase house (E03/F02/US01/T03, NF-52): the choice the demo host stored, the same for both
+    /// communications (ADR-029-R5), with the host's word that it saw «Activated» in the Octorate panel when the template says so. Written the way the
+    /// sender store writes it (both senders equal, who and when), and gone with its house at the next reset (the table cascades); marked like the rest.
+    /// </summary>
+    internal async Task CreateComplianceSenderAsync(
+        Guid orgId,
+        string ownerId,
+        Property property,
+        DemoComplianceSenderTemplate template,
+        string templateKey,
+        CancellationToken cancellationToken)
+    {
+        var now = UtcNow();
+        var sender = new PropertyComplianceSender
+        {
+            OrgId = orgId,
+            PropertyId = property.Id,
+            AlloggiatiSender = template.Sender,
+            IstatSender = template.Sender,
+            LastChangedAt = now.AddDays(-3),
+            LastChangedByUserId = ownerId,
+            ActivationDeclaredAt = template.ActivationDeclared ? now.AddDays(-2) : null,
+            ActivationDeclaredByUserId = template.ActivationDeclared ? ownerId : null,
+            CreatedAt = now.AddDays(-3),
+        };
+        db.PropertyComplianceSenders.Add(sender);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.PropertyComplianceSender, sender.Id, TestDataOrigins.Showcase, templateKey, cancellationToken);
+    }
+
+    /// <summary>
+    /// What the compliance traffic light finds on a showcase stay (E03/F02/US01/T03, NF-52). Guests entrusted: one <see cref="StayGuestOctorateLink"/>
+    /// for each registered guest, accepted by Octorate for good (not as a draft) two hours before the reset, as the channel manager holds a guest it
+    /// sends for; the stay then reads yellow while the receipt is awaited. Receipt archived: a <see cref="ManualComplianceProof"/> of the Alloggiati
+    /// communication of the arrival day, with an invented one-page PDF (it says it is test data) in the private bucket; the stay then reads green.
+    /// Nothing is sent to Octorate or to the police. The rows go with the stay and the house at the next reset (the tables cascade) and are marked like
+    /// the rest; the reset removes the file.
+    /// </summary>
+    private async Task CreateComplianceStateAsync(
+        Guid orgId,
+        string ownerId,
+        Property property,
+        Booking booking,
+        IReadOnlyList<StayGuest> guests,
+        DemoComplianceTemplate template,
+        string templateKey,
+        CancellationToken cancellationToken)
+    {
+        var now = UtcNow();
+        if (template.GuestsEntrusted)
+        {
+            var links = guests
+                .Select(guest => new StayGuestOctorateLink
+                {
+                    OrgId = orgId,
+                    BookingId = booking.Id,
+                    Position = guest.Position,
+                    OctorateGuestId = $"TEST-OCT-G-{booking.Id:N}-{guest.Position}",
+                    PayloadHash = DemoPayloadHash(booking.Id, guest.Position),
+                    SentAsDraft = false,
+                    Status = OctorateSyncStatus.Sent,
+                    Attempts = 1,
+                    SentAt = now.AddHours(-2),
+                    UpdatedAt = now.AddHours(-2),
+                })
+                .ToList();
+            db.StayGuestOctorateLinks.AddRange(links);
+            await db.SaveChangesAsync(cancellationToken);
+            for (var position = 0; position < links.Count; position++)
+            {
+                await MarkAsync(
+                    orgId, TestDataEntities.StayGuestOctorateLink, links[position].Id, TestDataOrigins.Showcase, $"{templateKey}/{position}", cancellationToken);
+            }
+
+            // NF-47: and the line of the log of what was sent that the send of the guests to the channel manager writes (the page of the stay shows it).
+            await AddSendLogLineAsync(orgId, property, booking, ComplianceSender.ChannelManager, now.AddHours(-2), null, templateKey, cancellationToken);
+        }
+
+        if (template.ReceiptArchived)
+        {
+            var proofId = Guid.NewGuid();
+            var pdf = DemoDocumentPdf.Create(
+                "RICEVUTA ALLOGGIATI WEB DI TEST",
+                DemoDocumentPdf.Marker + " CasaZen. Nessun valore fuori dall'ambiente di test.");
+            var key = StorageKeys.ManualComplianceProof(orgId, proofId, "ricevuta-di-test.pdf");
+            await using (var stream = new MemoryStream(pdf))
+                await storage.PutAsync(StorageBucket.Private, key, stream, "application/pdf", cancellationToken);
+
+            var proof = new ManualComplianceProof
+            {
+                Id = proofId,
+                OrgId = orgId,
+                PropertyId = property.Id,
+                Kind = ManualProofKind.AlloggiatiReceipt,
+                Day = RomeCalendar.DateInRome(booking.CheckInDate),
+                FileKey = key,
+                ContentType = "application/pdf",
+                UploadedByUserId = ownerId,
+                UploadedAt = now.AddHours(-1),
+            };
+            db.ManualComplianceProofs.Add(proof);
+            await db.SaveChangesAsync(cancellationToken);
+            await MarkAsync(orgId, TestDataEntities.ManualComplianceProof, proof.Id, TestDataOrigins.Showcase, templateKey, cancellationToken);
+
+            // NF-47: the host sent the communication on the portal on the arrival day and declared it: the line of the log of what was sent, by the owner.
+            await AddSendLogLineAsync(
+                orgId, property, booking, ComplianceSender.Manual, DateTime.SpecifyKind(proof.Day.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc), ownerId, templateKey, cancellationToken);
+        }
+    }
+
+    /// <summary>One line of the log of what was sent for a showcase stay (E03/F02/US03/T01, NF-47): no guest data, no reference, marked like the rest.</summary>
+    private async Task AddSendLogLineAsync(
+        Guid orgId,
+        Property property,
+        Booking booking,
+        ComplianceSender sender,
+        DateTime sentAt,
+        string? byUserId,
+        string templateKey,
+        CancellationToken cancellationToken)
+    {
+        var line = new ComplianceSendLogEntry
+        {
+            OrgId = orgId,
+            PropertyId = property.Id,
+            BookingId = booking.Id,
+            Kind = ComplianceSendKind.AlloggiatiGuests,
+            Sender = sender,
+            SentAt = sentAt,
+            ByUserId = byUserId,
+        };
+        db.ComplianceSendLogEntries.Add(line);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.ComplianceSendLogEntry, line.Id, TestDataOrigins.Showcase, templateKey, cancellationToken);
+    }
+
+    /// <summary>
+    /// The hash of what the showcase says it sent to Octorate for a guest: SHA-256 (hex, lower case, 64 characters) of an invented text, as the
+    /// column wants. No personal data goes into it.
+    /// </summary>
+    private static string DemoPayloadHash(Guid bookingId, int position) =>
+        Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes($"TEST|demo-guest|{bookingId:N}|{position}")));
+
+    /// <summary>
+    /// The mirror of a showcase booking on Octorate (E08/F03/US03/T02, NF-74): the row the push would have left for the invented reservation, in the
+    /// state the template says. A synced one was confirmed when the booking was made, and so was the create that precedes a refused change; a
+    /// conflict keeps the stay Octorate holds (the booking's own with the arrival moved), so the booking page shows both versions. It goes with its
+    /// booking at the next reset (cascade) and is marked like the rest.
+    /// </summary>
+    private async Task CreateOctorateSyncAsync(
+        Guid orgId,
+        Property property,
+        Booking booking,
+        DemoOctorateSyncTemplate template,
+        DateTime madeAt,
+        string templateKey,
+        CancellationToken cancellationToken)
+    {
+        // The create is the first operation: a later one (a change that was refused) follows a reservation Octorate had already confirmed.
+        var confirmed = template.State == OctorateSyncState.Synced || template.LastOperation != OctorateSyncOperation.Create;
+        var sync = new OctorateBookingSync
+        {
+            OrgId = orgId,
+            BookingId = booking.Id,
+            PropertyId = property.Id,
+            State = template.State,
+            LastOperation = template.LastOperation,
+            Attempts = 1,
+            LastAttemptAt = madeAt,
+            LastSyncedAt = confirmed ? madeAt : null,
+            ErrorCode = template.ErrorCode,
+            OctorateUpdateTime = confirmed ? madeAt : null,
+            OctorateVersionJson = template.State == OctorateSyncState.Conflict ? ConflictVersionJson(booking, template) : null,
+            CreatedAt = madeAt,
+            UpdatedAt = madeAt,
+        };
+        db.OctorateBookingSyncs.Add(sync);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.OctorateBookingSync, sync.Id, TestDataOrigins.Showcase, templateKey, cancellationToken);
+    }
+
+    /// <summary>The stay Octorate holds in a showcase conflict, in the stored form: the booking's own, the arrival and the departure moved by the same days.</summary>
+    private static string ConflictVersionJson(Booking booking, DemoOctorateSyncTemplate template)
+    {
+        var shift = template.VersionCheckInShiftDays ?? 0;
+        return new OctorateVersionSnapshot(
+            DateOnly.FromDateTime(booking.CheckInDate).AddDays(shift),
+            DateOnly.FromDateTime(booking.CheckOutDate).AddDays(shift),
+            template.VersionGuests ?? booking.NumberOfGuests).ToJson();
+    }
+
+    /// <summary>
+    /// Who the invoice of a showcase stay is made out to (NF-81): the guest's «yes» of the online check-in and the data of the recipient, in the
+    /// row the real flows write (encrypted by the context). It goes with its booking when the reset deletes it (the table cascades).
+    /// </summary>
+    private async Task CreateInvoiceDataAsync(
+        Guid orgId, Guid bookingId, DemoInvoiceData template, string templateKey, DateTime madeAt, CancellationToken cancellationToken)
+    {
+        var row = new BookingInvoiceData
+        {
+            OrgId = orgId,
+            BookingId = bookingId,
+            InvoiceRequested = true,
+            InvoiceRequestedAt = madeAt,
+            RecipientKind = template.Kind,
+            Name = template.Name,
+            FiscalCode = template.FiscalCode,
+            VatNumber = template.VatNumber,
+            AddressStreet = template.AddressStreet,
+            AddressCivic = template.AddressCivic,
+            PostalCode = template.PostalCode,
+            City = template.City,
+            Province = template.Province,
+            CountryCode = BookingInvoiceData.DefaultCountryCode,
+            SdiRecipientCode = template.SdiRecipientCode,
+            Pec = template.Pec,
+            Source = template.Source,
+            CreatedAt = madeAt,
+            UpdatedAt = madeAt,
+        };
+        db.BookingInvoiceData.Add(row);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.BookingInvoiceData, row.Id, TestDataOrigins.Showcase, templateKey, cancellationToken);
     }
 
     /// <summary>
@@ -1595,6 +2443,19 @@ public class DemoEnvironmentService(
         while (await Properties(orgId).AnyAsync(p => p.Slug == candidate, cancellationToken))
             candidate = $"{slug}-{suffix++}";
         return candidate;
+    }
+
+    /// <summary>
+    /// The demo landlord can show a linked bank without a raw account number. A link the org already stored is left as it is.
+    /// </summary>
+    private async Task ApplyShowcaseBankLinkAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var org = await db.Orgs.SingleOrDefaultAsync(o => o.Id == orgId, cancellationToken);
+        if (org is null || !string.IsNullOrWhiteSpace(org.FinancialConnectionsAccountId))
+            return;
+
+        org.FinancialConnectionsAccountId = DemoShowcaseCatalog.BankLinkAccountId;
+        org.UpdatedAt = UtcNow();
     }
 
     private async Task RequireOrgAsync(Guid orgId, CancellationToken cancellationToken)

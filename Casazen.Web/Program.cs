@@ -94,6 +94,8 @@ builder.Services.AddScoped<IWireTransferService, WireTransferService>();
 builder.Services.AddScoped<IWithholdingService, WithholdingService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
 builder.Services.AddCasazenEmail(builder.Configuration, builder.Environment);
+// Fiscal documents of epic E06 (NF-81, NF-82): the invoice data of a booking and the issuer of the documents; every task of the epic registers in AddCasazenFiscalDocuments.
+builder.Services.AddCasazenFiscalDocuments(builder.Configuration);
 // Push notifications queued on Hangfire, sent to Expo in batches, receipts read later: MO-04.
 builder.Services.AddCasazenPush(builder.Configuration);
 // Object storage (Supabase Storage via S3; filesystem only in Development/Testing): FD-07.
@@ -143,6 +145,18 @@ builder.Services.AddCasazenBookingOperations();
 
 // Octorate connector (epic E02, ADR-023): its services, clients, handlers and jobs, all registered in AddCasazenOctorate.
 builder.Services.AddCasazenOctorate(builder.Configuration);
+
+// The copy of the OTA conversations read from the channel manager (epic E05, feature F01, NF-62, NF-64): the sync service, its webhook handler,
+// the reconciliation jobs and the retention of the copy, all registered in AddMessageSync.
+builder.Services.AddMessageSync();
+
+// The hub of messages (epic E05, feature F02, NF-61, NF-64): one list and one thread model over the conversations of the channels and the direct
+// ones, and the proxy of the attachments, all registered in AddMessagesHub (the next tasks of the feature add theirs there).
+builder.Services.AddMessagesHub();
+
+// Who is told what and how (epic E05, feature F03, NF-65): the notification preferences of the host users with their single decision point, and the alerts
+// of the new messages of the guests that already use it, all registered in AddNotificationPreferences.
+builder.Services.AddNotificationPreferences();
 
 // Marketplace (epic E09, NF-54 to NF-59): the catalog of channels, tools, license functions and partners; every task of the epic registers in AddCasazenMarketplace.
 builder.Services.AddCasazenMarketplace(builder.Configuration);

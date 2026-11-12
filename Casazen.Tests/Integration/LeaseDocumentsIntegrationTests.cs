@@ -59,6 +59,16 @@ public class LeaseDocumentsIntegrationTests(LeaseFlowWebApplicationFactory facto
         using var outsider = factory.CreateAuthenticatedClient(other, "LongTermLandlord");
         Assert.Equal(HttpStatusCode.NotFound, (await outsider.GetAsync($"/api/leases/{leaseId}/documents")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await outsider.GetAsync($"/api/leases/{leaseId}/documents/{documentId}/download")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await outsider.DeleteAsync($"/api/leases/{leaseId}/documents/{documentId}")).StatusCode);
+        var deleted = await client.DeleteAsync($"/api/leases/{leaseId}/documents/{documentId}");
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/leases/{leaseId}/documents/{documentId}/download")).StatusCode);
+        Assert.Empty((await client.GetFromJsonAsync<JsonElement>($"/api/leases/{leaseId}/documents")).EnumerateArray());
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.False(await db.LeaseDocuments.AnyAsync(d => d.Id == documentId));
+        }
         var detail = await client.GetFromJsonAsync<JsonElement>($"/api/leases/{leaseId}");
         Assert.Equal("Draft", detail.GetProperty("status").GetString());
     }

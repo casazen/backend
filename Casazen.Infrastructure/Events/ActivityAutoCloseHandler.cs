@@ -20,6 +20,9 @@ namespace Casazen.Infrastructure.Events;
 /// (<see cref="InternalActivity.BookingEntityType"/>, <see cref="DomainEvent.EntityId"/> = the booking id, ADR-022), of a type
 /// the event satisfies. An event without a rule closes nothing. A task that raises a new kind of item adds the event that
 /// closes it here.</item>
+/// <item><b>Not by an event</b>: the "To do" that no event settles are closed by their own job, not here: the ones of the activation with
+/// Octorate (a flow to complete, a lost connection, a part put off or left half way) by the hourly <c>onboarding-flow-todo-sync</c>, when the
+/// condition they stand for clears (E10/F01/US01/T04); the plan's resume closes the one of its part at once.</item>
 /// <item><b>Once</b>: only open items are read, and closing an item already closed changes nothing, so a redelivered event
 /// (at least once, ADR-022-R7) closes nothing more.</item>
 /// <item>The org is the event's (ADR-022-R6): the bus runs the handler under it, and the query names it too.</item>
@@ -38,8 +41,9 @@ public sealed class ActivityAutoCloseHandler(
     internal static readonly IReadOnlyDictionary<DomainEventType, ActivityType[]> Rules = new Dictionary<DomainEventType, ActivityType[]>
     {
         [DomainEventType.CheckInCompleted] = [ActivityType.CheckInPending, ActivityType.BookingSpecialRequest],
-        [DomainEventType.CheckOutCompleted] = [ActivityType.CheckOutPending],
-        [DomainEventType.BookingCancelled] = [ActivityType.BookingSpecialRequest],
+        // E03/F04/US02: the identity verification of a stay that was cancelled or is over has nobody to wait for (the queue does not list it).
+        [DomainEventType.CheckOutCompleted] = [ActivityType.CheckOutPending, ActivityType.IdentityVerification],
+        [DomainEventType.BookingCancelled] = [ActivityType.BookingSpecialRequest, ActivityType.IdentityVerification],
         [DomainEventType.PropertyReadyDeclared] = [ActivityType.CleaningDue],
         [DomainEventType.AlloggiatiReceiptArrived] = [ActivityType.AlloggiatiDeadline, ActivityType.ReceiptToRetrieve],
     };

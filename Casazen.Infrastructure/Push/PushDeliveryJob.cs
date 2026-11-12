@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -233,6 +234,8 @@ public sealed class PushDeliveryJob(
             PushAudienceKind.BookingHosts => await BookingHostDevicesAsync(audience.Id, cancellationToken),
             PushAudienceKind.PropertyHosts => await PropertyHostDevicesAsync(audience.Id, cancellationToken),
             PushAudienceKind.SupplierOrg => await SupplierDevicesAsync(audience.Id, cancellationToken),
+            PushAudienceKind.VerificationOperators => await VerificationOperatorDevicesAsync(audience.Id, cancellationToken),
+            PushAudienceKind.User => await UserDevicesAsync(audience.Id, audience.UserId, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(audience), audience.Kind, "Unknown push audience."),
         };
 
@@ -262,6 +265,66 @@ public sealed class PushDeliveryJob(
         }
 
         return await HostDevicesAsync(booking.OrgId, booking.PropertyId, booking.ResponsibleUserId, booking.OwnerId, cancellationToken);
+    }
+
+    /// <summary>
+    /// The devices of the users who decide the identity verification of the booking's guest (E03/F04/US02/T03): they hold
+    /// <c>verification.decision</c> and reach the property (<see cref="VerificationOperatorAudience"/>), registered in that org.
+    /// </summary>
+    private async Task<List<DeviceRegistration>> VerificationOperatorDevicesAsync(Guid bookingId, CancellationToken cancellationToken)
+    {
+        // IgnoreQueryFilters: background job without a tenant; the recipients are limited to the booking's org.
+        var booking = await db.Bookings
+            .AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(b => b.Id == bookingId)
+            .Select(b => new { b.OrgId, b.PropertyId, b.Property.OwnerId })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (booking is null)
+        {
+            logger.LogWarning("Push to the verification operators of booking {BookingId} skipped: booking not found", bookingId);
+            return [];
+        }
+
+        return await db.DeviceRegistrations
+            .AsNoTracking()
+            .Join(
+                VerificationOperatorAudience.UsersToTell(db, booking.OrgId, booking.PropertyId, booking.OwnerId),
+                device => device.UserId,
+                user => user.Id,
+                (device, user) => device)
+            .Where(device => device.OrgId == booking.OrgId)
+            .OrderBy(d => d.CreatedAt)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The devices of one user of a host org (NF-65): the person <c>INotificationPreferenceService</c> selected for the event. Who may hear
+    /// about it was decided there; here the person must still be an active account and an active member of the org, and only the devices it
+    /// registered in that org are read.
+    /// </summary>
+    private async Task<List<DeviceRegistration>> UserDevicesAsync(Guid orgId, string? userId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            logger.LogWarning("Push to one user of org {OrgId} skipped: the audience names no user", orgId);
+            return [];
+        }
+
+        return await db.DeviceRegistrations
+            .AsNoTracking()
+            .Join(
+                db.Users.AsNoTracking()
+                    .Where(u => u.Id == userId
+                                && u.OrgId == orgId
+                                && u.IsActive
+                                && !db.OrgMembers.IgnoreQueryFilters().Any(m => m.UserId == u.Id && m.Status == OrgMemberStatus.Deactivated)),
+                device => device.UserId,
+                user => user.Id,
+                (device, user) => device)
+            .Where(device => device.OrgId == orgId)
+            .OrderBy(d => d.CreatedAt)
+            .ToListAsync(cancellationToken);
     }
 
     private async Task<List<DeviceRegistration>> PropertyHostDevicesAsync(Guid propertyId, CancellationToken cancellationToken)

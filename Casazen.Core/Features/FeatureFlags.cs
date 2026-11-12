@@ -165,6 +165,52 @@ public static class FeatureFlags
     /// </summary>
     public const string OctorateOnboarding = "OctorateOnboarding";
 
+    /// <summary>
+    /// E06/F02/US02/T02 (NF-82, FIS-02, PO-05): the issuance of fiscal documents by CasaZen, <b>off by default</b> until the accountant has approved the
+    /// rules of the documents (<c>FiscalDocuments</c> options) and the issuance (epic E06/F01) is delivered. It gates only two things: the issuance
+    /// itself, and the choice of the mode «CasaZen issues, direct bookings only» of the issuer setting (<c>PUT api/fiscal/documents/settings</c> answers
+    /// 422 <c>document_issuance_not_available</c> for it while the flag is off; a booking cannot be locked to CasaZen as its issuer either). Not behind
+    /// it: reading and saving the setting for the other two modes (Octorate, the accountant), the invoice data of a booking and the reading of the
+    /// documents Octorate issued. It needs no variable to start. This task owns the flag: the other tasks of epic E06 only read it.
+    /// </summary>
+    public const string FiscalDocumentIssuance = "FiscalDocumentIssuance";
+
+    /// <summary>
+    /// E06/F02/US01/T04 (NF-81, NF-82, FIS-01, FIS-02): the sync of the billing data with Octorate, <b>off by default</b> until the customer (address
+    /// book) endpoints are proven in the Octorate sandbox and CasaZen's outbound IPs are whitelisted (Octorate refuses the guests' sensitive data
+    /// before that). It gates two handlers and nothing else: the pre-fill of the invoice data of a booking imported from Octorate (<c>BookingCreated</c>)
+    /// and the write of the billing data saved in CasaZen to Octorate, only where Octorate is the issuer (<c>InvoiceDataSaved</c>). Both also need
+    /// <c>Features:OctorateConnector</c>. It needs no variable to start. This task owns the flag: the other tasks of epic E06 only read it.
+    /// </summary>
+    public const string OctorateBillingSync = "OctorateBillingSync";
+
+    /// <summary>
+    /// E03/F02/US01/T03 (NF-52, CHK-12): the compliance traffic light of the cockpit, <b>off by default</b> until the proofs it asks for can be
+    /// archived. It gates <c>GET api/compliance/summary</c> and the two other readers of the same summary (the Home of the day,
+    /// <c>GET api/dashboard/today</c>, and «Gestisci con AI»). Off, the summary is exactly what it was before: the items carry no light, reason or
+    /// evidence, the five new sections (<c>identityPending</c>, <c>receiptsToUpload</c>, <c>manualSendsRequired</c>, <c>connectionsToFix</c>,
+    /// <c>periodItems</c>) are empty, the section of the stays to send by hand lists every stay as before, the status is not even evaluated and the
+    /// feed of the red and yellow items into the «Da fare» list (<c>ComplianceActivityFeeder</c>) writes nothing. On, every item says whether the host
+    /// is compliant and the «Da fare» list is kept in step with the cockpit. Why it is off: nothing in the application archives the proofs that turn
+    /// an item green yet (the receipts and tax proofs of <c>ManualComplianceProof</c>, the receipt a report points to), so on, every stay of the last 90
+    /// days would get a red To do nobody can close. Also behind it (E03/F02/US03/T01): the coverage report of the proof archive (<c>GET api/compliance/report</c> and
+    /// <c>report/export</c>, 404 while off) and the coverage CSV of the ZIP of the proofs. Not behind it: <c>GET api/properties/{propertyId}/compliance/connection-health</c>,
+    /// which writes nothing, and the archive of the proofs itself (list, download, export, upload, the log of a stay). It needs no variable to start. This task owns the flag: the other tasks of epic E03 only read it.
+    /// </summary>
+    public const string ComplianceTrafficLight = "ComplianceTrafficLight";
+
+    /// <summary>
+    /// E05/F02/US02/T02 (NF-63, AI-06, FD-21): the translation of a message by CasaZen's AI, <b>off by default</b>. What a guest wrote is personal data,
+    /// and the AI provider is an external sub-processor (DeepSeek, with its seat and its archives in China, the basis of the transfer being a decision
+    /// of the product owner: <c>docs/runbooks/ai.md</c>). Off, <c>POST api/messages/translate</c> never asks the AI provider anything, not even for the text
+    /// the host is writing: it asks the channel manager to translate the message it holds (the id of its message, no word of CasaZen's leaves) and,
+    /// when that cannot be done either, answers 422 <c>translation_unavailable</c>. The endpoint itself, the templates and the reply are not behind it.
+    /// On, the text goes to the provider after the scrub of <c>MessageTranslationPrompt</c> (e-mail addresses, phone numbers, fiscal codes and the names of
+    /// the conversation; documents and addresses of a person are not recognized). It needs no variable to start; it works only with an AI provider in
+    /// effect (<c>Ai__Provider</c> and <c>Ai__ApiKey</c>). Turn it on only after the product owner has decided the transfer.
+    /// </summary>
+    public const string MessageTranslationAi = "MessageTranslationAi";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -183,5 +229,9 @@ public static class FeatureFlags
         OctorateConnector,
         CrmMarketing,
         OctorateOnboarding,
+        FiscalDocumentIssuance,
+        OctorateBillingSync,
+        ComplianceTrafficLight,
+        MessageTranslationAi,
     ];
 }

@@ -28,6 +28,9 @@ public static class RecurringJobsRegistration
         // E02/F02: the jobs of the Octorate connector (bookings and calendar), only while the connector is on.
         ConfigureOctorateJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateConnector));
 
+        // E10/F01/US01/T04: the "To do" of the flows to complete and of a lost connection, only while the activation with Octorate is on.
+        ConfigureOnboardingJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateOnboarding));
+
         // ADR-022-R8: the time triggers of the stays ("2 days before check-in") are written to the outbox every
         // Routine:EvaluationIntervalMinutes (default 5), whatever the flags say; an org without a time routine gets nothing.
         recurringJobManager.AddOrUpdate<TimeEventEmitterJob>(
@@ -310,7 +313,8 @@ public static class RecurringJobsRegistration
     /// <item>the reconciliation of the bookings every six hours (E02/F02/US01/T02, ADR-031-R8);</item>
     /// <item>the sync of the calendar every 15 minutes (E02/F02/US01/T03, ADR-002-R2, NF-36), next to the iCal sync of the feeds
     /// (<c>property-ical-sync</c>), which stays registered as it is;</item>
-    /// <item>the retry of the check-in writes (guests and states of the stay) every 15 minutes (E03/F01/US01/T03).</item>
+    /// <item>the retry of the check-in writes (guests and states of the stay) every 15 minutes (E03/F01/US01/T03);</item>
+    /// <item>the pass over the OTA conversations every 10 minutes and the deep pass at 02:30 UTC (epic E05, E05/F01/US01/T03, ADR-032, OCT-09).</item>
     /// </list>
     /// </summary>
     private static void ConfigureOctorateJobs(IRecurringJobManager recurringJobManager, bool enabled)
@@ -321,6 +325,11 @@ public static class RecurringJobsRegistration
             recurringJobManager.RemoveIfExists(OctorateBookingSyncJob.RecurringJobId);
             recurringJobManager.RemoveIfExists(CalendarSyncJob.RecurringJobId);
             recurringJobManager.RemoveIfExists(OctorateCheckInRetryJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(OtaMessageReconcileJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(OtaMessageDeepReconcileJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(ListingStatusSyncJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(ListingChannelHealthJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(ListingOutsideChangeJob.RecurringJobId);
             return;
         }
 
@@ -346,6 +355,59 @@ public static class RecurringJobsRegistration
             CalendarSyncJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             CalendarSyncJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // E05/F01/US01/T03 (NF-62, OCT-09): the copy of the OTA conversations, kept up to date by the webhook and recovered by these two passes.
+        recurringJobManager.AddOrUpdate<OtaMessageReconcileJob>(
+            OtaMessageReconcileJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OtaMessageReconcileJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<OtaMessageDeepReconcileJob>(
+            OtaMessageDeepReconcileJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OtaMessageDeepReconcileJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // E02/F03/US01/T07: the follow-up of the publications of the listings (every 15 minutes), the channels that went silent (daily) and the
+        // changes made on Octorate outside CasaZen (hourly). None of them writes to Octorate but the sending of the photos a run left unsent and the removal of a photo that left the gallery.
+        recurringJobManager.AddOrUpdate<ListingStatusSyncJob>(
+            ListingStatusSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ListingStatusSyncJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<ListingChannelHealthJob>(
+            ListingChannelHealthJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ListingChannelHealthJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<ListingOutsideChangeJob>(
+            ListingOutsideChangeJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ListingOutsideChangeJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The "To do" sync of the activation of CasaZen with Octorate (E10/F01/US01/T04, NF-106, NF-108): only with
+    /// <see cref="FeatureFlags.OctorateOnboarding"/> on, hourly at minute 20 UTC. With the flag off no "To do" of a flow is raised or closed and the
+    /// schedule of an earlier deploy is removed (<c>RemoveIfExists</c>).
+    /// </summary>
+    private static void ConfigureOnboardingJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(OnboardingFlowTodoSyncJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<OnboardingFlowTodoSyncJob>(
+            OnboardingFlowTodoSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OnboardingFlowTodoSyncJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

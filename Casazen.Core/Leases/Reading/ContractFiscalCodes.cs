@@ -6,14 +6,15 @@ using Casazen.Core.Regulatory;
 namespace Casazen.Core.Leases.Reading;
 
 /// <summary>A fiscal code found in the text of a contract: the valid code, where it starts and how long it was written.</summary>
-/// <param name="Repaired">The check character failed as printed; one character the OCR confuses with another was put right.</param>
+/// <param name="Repaired">The code failed as printed; one character the OCR confuses with another was put right, or one it added was taken out.</param>
 public readonly record struct FoundFiscalCode(string Code, int Index, int Length, bool Repaired);
 
 /// <summary>
 /// Finds the fiscal codes of the people in the text of a contract (NL-DOCS) and tells whether a name goes with one. A code counts only
 /// if it passes <see cref="ItalianFiscalCode"/> (structure, month, day and check character): a string of sixteen letters and digits that
 /// is anything else is not a person. An OCR that read a <c>0</c> as an <c>O</c> (or the other way round) in a place where only the
-/// other can be is put right when exactly one correction makes the check character pass. Pure, no I/O.
+/// other can be is put right when exactly one correction makes the check character pass; so is a code the OCR wrote with one character too
+/// many (seventeen), when taking out one character leaves exactly one valid code. Pure, no I/O.
 /// </summary>
 public static partial class ContractFiscalCodes
 {
@@ -31,6 +32,10 @@ public static partial class ContractFiscalCodes
 
     [GeneratedRegex(@"(?<![A-Za-z0-9])[A-Za-z0-9]{16}(?![A-Za-z0-9])", Options, 2000)]
     private static partial Regex Token();
+
+    // A scan can put one character too many in a code (a stray letter before, inside or after it): seventeen, with nothing alphanumeric around.
+    [GeneratedRegex(@"(?<![A-Za-z0-9])[A-Za-z0-9]{17}(?![A-Za-z0-9])", Options, 2000)]
+    private static partial Regex TokenWithOneTooMany();
 
     // After its label, where an OCR may have put a space inside the code.
     [GeneratedRegex(
@@ -58,8 +63,38 @@ public static partial class ContractFiscalCodes
                 found.Add(new FoundFiscalCode(repaired, index, length, true));
         }
 
-        foreach (Match match in Token().Matches(text))
-            Consider(match.Value, match.Index, match.Length);
+        // A code with one character too many counts only if exactly one code results from taking one character out and it passes every check:
+        // a stray letter put there by the OCR leaves the person's code, anything else of seventeen characters is not a person.
+        void ConsiderWithOneTooMany(string raw, int index, int length)
+        {
+            var printed = new string(raw.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
+            if (printed.Length != 17)
+                return;
+
+            var candidates = new HashSet<string>(StringComparer.Ordinal);
+            for (var i = 0; i < printed.Length; i++)
+            {
+                var candidate = printed.Remove(i, 1);
+                if (ItalianFiscalCode.IsValidPersonCode(candidate))
+                    candidates.Add(candidate);
+            }
+
+            if (candidates.Count == 1 && candidates.First() is var code && found.All(f => f.Code != code))
+                found.Add(new FoundFiscalCode(code, index, length, true));
+        }
+
+        // The sixteen-character tokens and the seventeen-character ones in the order of the text, so a person's code counts where it first appears.
+        var tokens = Token().Matches(text).Select(m => (m.Index, m.Length, m.Value, OneTooMany: false))
+            .Concat(TokenWithOneTooMany().Matches(text).Select(m => (m.Index, m.Length, m.Value, OneTooMany: true)))
+            .OrderBy(t => t.Index);
+        foreach (var token in tokens)
+        {
+            if (token.OneTooMany)
+                ConsiderWithOneTooMany(token.Value, token.Index, token.Length);
+            else
+                Consider(token.Value, token.Index, token.Length);
+        }
+
         foreach (Match match in Labelled().Matches(text))
             Consider(match.Groups["code"].Value, match.Groups["code"].Index, match.Groups["code"].Length);
 

@@ -77,4 +77,39 @@ public enum ActivityType
     /// too). About the booking, urgent: the host checks the booking and the calendars of the channels before a second guest arrives.
     /// </summary>
     BookingOverlap = 22,
+
+    /// <summary>
+    /// A change the host made to a booking could not be written to the channel manager because the reservation was changed there meanwhile
+    /// (E08/F02/US01/T02, NF-75): Octorate answered 409. About the booking, with both versions readable in the booking answer: the host chooses
+    /// to keep CasaZen's (the retry with <c>overwrite=true</c>) or to take Octorate's (editing the booking to match). Closes when the mirror is
+    /// <c>Synced</c> again.
+    /// </summary>
+    BookingSyncConflict = 23,
+
+    /// <summary>
+    /// The content of a listing was changed on the channel manager after CasaZen's last push (E02/F03/US01/T07, NF-27): the host chooses between
+    /// keeping the CasaZen version (republished over it) and taking the descriptions Octorate holds. About the property on one channel, so the item
+    /// is one for each property and channel; it closes when the choice is made. The number leaves room for the values other tasks append after 22.
+    /// </summary>
+    ListingChangedOutside = 30,
+
+    /// <summary>
+    /// The identity of the guest of a stay waits for an operator (E03/F04/US02/T03, CHK-11): the agent asked for a review, the attempts are used,
+    /// the guest refused the biometric consent or asked for a person, or the check could not run. About the booking, urgent, leading to its
+    /// verification (<see cref="ActivityAction.VerifyIdentity"/>); closed by the operator's decision.
+    /// </summary>
+    IdentityVerification = 40,
+
+    /// <summary>
+    /// The tourist tax of a closed month is not declared and paid with its receipts archived (E03/F02/US01/T03, NF-52). About the property and the
+    /// month (the entity type names the month, <c>PropertyPeriod:yyyy-MM</c>); closes when both receipts are archived. The numbers 50 and 51 keep
+    /// clear of the values the tasks that run in parallel append after 30.
+    /// </summary>
+    TouristTaxDeadline = 50,
+
+    /// <summary>
+    /// The tourist tax rate of a property's comune is not known (E03/F02/US01/T03, NF-52): never taken as zero, the host enters it. About the
+    /// property; closes when a rate is known.
+    /// </summary>
+    MunicipalityTaxRateMissing = 51,
 }

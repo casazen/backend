@@ -433,8 +433,9 @@ public class StayGuestService(
     }
 
     /// <summary>
-    /// A place or citizenship: the name, or a code of the record's shape that (once the table is imported) exists in it.
-    /// A known code replaces the name with the official description.
+    /// A place or citizenship. Once its table is imported, a value that was typed must be one entry of that table
+    /// (the code, or the only matching name; a citizenship adjective matches its country). An optional place
+    /// (<paramref name="required"/> false) may stay empty.
     /// </summary>
     private static void ValidatePlace(
         int index,
@@ -448,24 +449,29 @@ public class StayGuestService(
         Action<AlloggiatiCodeEntry> useEntry,
         bool required = true)
     {
-        if (code is not null)
+        if (code is not null && !tables.Any(table => AlloggiatiRecordRules.IsValidCodeShape(table, code)))
         {
-            if (!tables.Any(table => AlloggiatiRecordRules.IsValidCodeShape(table, code)))
+            errors.Add(Error(index, codeField, CheckInValidationKeys.CodeInvalid));
+            return;
+        }
+
+        if ((code is not null || !string.IsNullOrEmpty(name)) && tables.Any(codeBook.IsLoaded))
+        {
+            var lookup = ItalianCitizenshipNames.OfficialNormalizedKey(name) ?? name;
+            var resolved = codeBook.Resolve(tables, code, lookup);
+            if (resolved.Status == CodeResolutionStatus.Resolved)
             {
-                errors.Add(Error(index, codeField, CheckInValidationKeys.CodeInvalid));
-                return;
+                var entry = tables.Select(table => codeBook.FindCode(table, resolved.Code)).FirstOrDefault(e => e is not null);
+                if (entry is not null)
+                {
+                    useEntry(entry);
+                    return;
+                }
             }
 
-            var entry = tables.Select(table => codeBook.FindCode(table, code)).FirstOrDefault(e => e is not null);
-            if (entry is not null)
+            if (resolved.Status is CodeResolutionStatus.NotFound or CodeResolutionStatus.Ambiguous)
             {
-                useEntry(entry);
-                return;
-            }
-
-            if (tables.Any(codeBook.IsLoaded))
-            {
-                errors.Add(Error(index, codeField, CheckInValidationKeys.CodeUnknown));
+                errors.Add(Error(index, code is null ? nameField : codeField, CheckInValidationKeys.CodeUnknown));
                 return;
             }
         }

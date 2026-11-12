@@ -88,6 +88,7 @@ internal static class LeaseDraftProjection
         Citizenship = party.Citizenship,
         Residence = party.Residence,
         ContactEmail = string.IsNullOrEmpty(party.ContactEmail) ? null : party.ContactEmail,
+        ContactPhone = party.ContactPhone,
         DocumentsVerifiedOn = party.DocumentsVerifiedOn?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
     };
 
@@ -136,6 +137,7 @@ internal static class LeaseDraftProjection
                     FiscalCode = ItalianFiscalCode.Normalize(entry.FiscalCode),
                     Citizenship = citizenship,
                     ContactEmail = LeaseDraftRules.Clean(entry.ContactEmail) ?? string.Empty,
+                    ContactPhone = LeaseDraftRules.Clean(entry.ContactPhone) is { } phone ? LeaseDraftRules.NormalizePhone(phone) : null,
                     Residence = LeaseDraftRules.Clean(entry.Residence),
                     DocumentsVerifiedOn = LeaseDraftRules.HasInvalidDocumentsDate(entry, today) ? null : LeaseDraftRules.ParseDate(entry.DocumentsVerifiedOn),
                     // Not an EU citizen (the 27 member states): the Questura communication applies (LT-07).
@@ -163,6 +165,7 @@ internal static class LeaseDraftProjection
             && e.FiscalCode == d.FiscalCode
             && e.Citizenship == d.Citizenship
             && e.ContactEmail == d.ContactEmail
+            && e.ContactPhone == d.ContactPhone
             && e.Residence == d.Residence
             && e.DocumentsVerifiedOn == d.DocumentsVerifiedOn
             && e.IsExtraEU == d.IsExtraEU);

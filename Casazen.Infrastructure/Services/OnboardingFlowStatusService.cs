@@ -111,17 +111,52 @@ public sealed class OnboardingFlowStatusService(
         return new FlowPropertyPage([.. matching.Skip(skipped).Take(pageSize)], matching.Count, page, pageSize);
     }
 
+    public async Task<IReadOnlyList<FlowPropertyStatus>> GetStatusesAsync(
+        HostScope scope,
+        IReadOnlyCollection<Guid>? propertyIds,
+        IReadOnlyCollection<OnboardingFlow> flows,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(flows);
+        if (flows.Any(flow => !Enum.IsDefined(flow)))
+            throw new ArgumentOutOfRangeException(nameof(flows), "Not an onboarding flow.");
+
+        var wanted = flows.Distinct().ToList();
+        List<Guid>? ids = null;
+        if (propertyIds is not null)
+        {
+            ids = [.. propertyIds.Distinct()];
+            if (ids.Count == 0)
+                return [];
+        }
+
+        if (wanted.Count == 0)
+            return [];
+
+        var statuses = new List<FlowPropertyStatus>();
+        foreach (var batch in (await ReachableFacts(scope, search: null, ids).ToListAsync(ct)).Chunk(EvaluationBatchSize))
+            statuses.AddRange(await EvaluateAsync(scope.OrgId, batch, wanted, ct));
+
+        // EvaluateAsync gives the statuses flow by flow: back to property by property, in the order of the list.
+        var order = statuses.Select(status => status.PropertyId).Distinct().Select((id, index) => (id, index)).ToDictionary(x => x.id, x => x.index);
+        return [.. statuses.OrderBy(status => order[status.PropertyId]).ThenBy(status => wanted.IndexOf(status.Flow))];
+    }
+
     /// <summary>
     /// The properties of <paramref name="scope"/>, narrowed in SQL (AM-03): the org of the caller first, then what the caller reaches, by
-    /// name (the id as the tie-break). The soft-delete and tenant filters of the context apply underneath. The projection names what the
-    /// rules read; no photo, description or code is selected.
+    /// name (the id as the tie-break), and to <paramref name="ids"/> when given. The soft-delete and tenant filters of the context apply
+    /// underneath. The projection names what the rules read; no photo, description or code is selected.
     /// </summary>
-    private IQueryable<FlowPropertyFacts> ReachableFacts(HostScope scope, string? search)
+    private IQueryable<FlowPropertyFacts> ReachableFacts(HostScope scope, string? search, IReadOnlyCollection<Guid>? ids = null)
     {
         var properties = db.Properties
             .AsNoTracking()
             .Where(p => p.OrgId == scope.OrgId)
             .InScope(scope);
+
+        if (ids is not null)
+            properties = properties.Where(p => ids.Contains(p.Id));
 
         var term = search?.Trim().ToLowerInvariant();
         if (!string.IsNullOrEmpty(term))

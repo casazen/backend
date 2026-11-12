@@ -12,8 +12,10 @@ public enum BookingEditLock
     Started,
 
     /// <summary>
-    /// The booking comes from the booking site or from a channel, with its price, payment and check-in link agreed there: a booking
-    /// that is already paid is not edited, it is cancelled or made again (SR-D5, <see cref="BookingErrorCodes.SourceLocked"/>).
+    /// The booking comes from a channel, or from the booking site and is still a request waiting (a checkout hold being paid, a "pay at the
+    /// property" request the host has not accepted): its price, payment and check-in link are agreed there and are not edited
+    /// (<see cref="BookingErrorCodes.SourceLocked"/>). A confirmed booking of the booking site is edited, with its money settled
+    /// (E08/F02/US01/T01, NF-75), and replaces SR-D5 for it.
     /// </summary>
     SourceLocked,
 }
@@ -33,9 +35,10 @@ public readonly record struct BookingEditability(bool Allowed, BookingEditLock? 
 /// <summary>
 /// Whether the host may change the dates and the guests of a booking (SR-05a): the one rule of <c>PUT /api/bookings/{id}</c>
 /// (<c>HostBookingService</c>) and of the <c>canEdit</c> every booking answer carries, so the booking sheet and the calendar
-/// never guess it. Only a booking entered by the host (<see cref="BookingSource.Manual"/>) whose stay has not begun and that is not
-/// cancelled can be changed. When more than one reason holds, the first of this order is the one given: cancelled, started, source.
-/// The notes of a booking that is not cancelled can always be changed.
+/// never guess it. Only a booking entered by the host (<see cref="BookingSource.Manual"/>) or a confirmed one of the booking site
+/// (<see cref="BookingSource.Direct"/>, E08/F02/US01/T01) whose stay has not begun and that is not cancelled can be changed. When more than
+/// one reason holds, the first of this order is the one given: cancelled, started, source. The notes of a booking that is not cancelled can
+/// always be changed.
 /// </summary>
 public static class BookingEditRules
 {
@@ -48,7 +51,11 @@ public static class BookingEditRules
         if (status is BookingStatus.CheckedIn or BookingStatus.CheckedOut)
             return BookingEditability.LockedBy(BookingEditLock.Started);
 
-        return source == BookingSource.Manual
+        // Entered by the host: open. From the booking site: open once confirmed, with the price worked out again and the money settled on Stripe
+        // (E08/F02/US01/T01, NF-75); a hold still being paid or a "pay at the property" request waiting for the host is not a booking yet. The
+        // sources of a channel stay locked here: their rules are the channel's (E08/F02/US02/T01).
+        var open = source == BookingSource.Manual || (source == BookingSource.Direct && status == BookingStatus.Confirmed);
+        return open
             ? BookingEditability.Open
             : BookingEditability.LockedBy(BookingEditLock.SourceLocked);
     }

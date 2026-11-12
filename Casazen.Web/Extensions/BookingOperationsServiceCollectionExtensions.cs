@@ -45,6 +45,25 @@ public static class BookingOperationsServiceCollectionExtensions
         services.AddSingleton(provider => new OtaChannelActionPolicy(provider.GetRequiredService<IOptions<OctorateChannelActionsOptions>>().Value));
         services.AddScoped<IOtaBookingCancellationService, OtaBookingCancellationService>();
         services.AddScoped<IEventHandler<DomainEvent>, OctorateBookingCancelHandler>();
+
+        // E08/F02/US01/T02 (NF-75, ADR-022-R4, R5): the edit of a booking CasaZen holds is written to its reservation after the local one; a conflict
+        // on Octorate is kept with both versions and never overwritten silently.
+        services.AddScoped<IEventHandler<DomainEvent>, OctorateBookingUpdateHandler>();
+
+        // E08/F01/US02/T01 (NF-74, NF-80): whether the channel manager can take a stay, asked before a booking of CasaZen is written and when the
+        // host looks at the dates (the public calendar and availability never ask it).
+        services.AddScoped<IChannelManagerAvailability, ChannelManagerAvailabilityService>();
+
+        // E08/F01/US02/T02 (NF-80): a booking that arrives from the channel manager on taken nights raises an urgent To do and an alert, and the
+        // item closes by itself when the nights are free again.
+        services.AddScoped<IEventHandler<DomainEvent>, BookingOverlapHandler>();
+
+        // E08/F03/US03/T02 (NF-74, NF-77): the state of the mirror of a booking, read for the booking answer (a read only, no push).
+        services.AddScoped<IBookingOctorateSyncReader, BookingOctorateSyncReader>();
+
+        // E08/F05/US01/T02 (NF-36, NF-78): the price and the rules of the nights of a property. The store of the rules and the read of every day of
+        // the calendar; the quote, the checkout, the public calendar and the search of the booking site read the rules through it (T03, T04).
+        services.AddScoped<IPropertyDayRuleService, PropertyDayRuleService>();
         return services;
     }
 }

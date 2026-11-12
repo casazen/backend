@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -101,6 +102,7 @@ internal static class OctorateReservationReader
             FirstName = OctorateJson.Text(item, "firstName") ?? OctorateJson.Text(firstGuest, "firstName"),
             LastName = OctorateJson.Text(item, "lastName") ?? OctorateJson.Text(firstGuest, "lastName"),
             GuestId = GuestIdOf(item, firstGuest),
+            InvoiceHolderId = InvoiceHolderIdOf(item),
             GuestEmailAvailable = OctorateJson.Bool(firstGuest, "emailAvailable"),
             GuestPhoneAvailable = OctorateJson.Bool(firstGuest, "phoneAvailable"),
             GuestEmail = EmailOf(OctorateJson.Text(item, "email", "guestEmail") ?? OctorateJson.Text(firstGuest, "email")),
@@ -113,6 +115,7 @@ internal static class OctorateReservationReader
             TouristTax = OctorateJson.Decimal(item, "touristTax"),
             TotalPaid = OctorateJson.Decimal(item, "totalPaid"),
             PaymentStatus = OctorateJson.Text(item, "paymentStatus"),
+            CompanyCollect = CompanyCollectOf(OctorateJson.Text(item, "companyCollect")),
             PriceBreakdown = PriceBreakdownOf(item),
             PaymentTransactions = PaymentTransactionsOf(item),
         };
@@ -126,6 +129,23 @@ internal static class OctorateReservationReader
     {
         var id = OctorateJson.Text(item, "guestId") ?? OctorateJson.Text(firstGuest, "id", "guestId");
         return id is { Length: <= OctorateReservation.GuestIdMaxLength } ? id : null;
+    }
+
+    /// <summary>
+    /// The id of the customer record that holds the invoice of the reservation (E06/F02/US01/T04): the <c>invoiceHolderId</c> of the reservation
+    /// itself, read like <see cref="GuestIdOf"/> reads a guest id, and nothing else. Never the <c>id</c> of a guest of the stay: that is another
+    /// table, and billing data written to a record picked by it could land on another customer. A whole number above zero (the OpenAPI says
+    /// <c>int64</c>); <c>null</c> for anything else, for zero, and for one longer than a call accepts.
+    /// </summary>
+    private static string? InvoiceHolderIdOf(JsonElement item)
+    {
+        var id = OctorateJson.Text(item, "invoiceHolderId");
+        if (id is null || id.Length > OctorateReservation.GuestIdMaxLength)
+            return null;
+
+        return long.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out var number) && number > 0
+            ? number.ToString(CultureInfo.InvariantCulture)
+            : null;
     }
 
     /// <summary>The <c>transaction</c> of each payment of the single read (<c>payments[].transaction</c>, <c>ApiReservationPaymentDTO</c>); never an amount or a card.</summary>
@@ -149,6 +169,18 @@ internal static class OctorateReservationReader
         "WAITING" => OctorateBookingStatus.Waiting,
         "CONFIRMED" => OctorateBookingStatus.Confirmed,
         "CANCELLED" or "CANCELED" => OctorateBookingStatus.Cancelled,
+        _ => null,
+    };
+
+    /// <summary>
+    /// The <c>companyCollect</c> Octorate wrote, in upper case (the OpenAPI spells one value <c>HOTEl</c>): one of <c>COMPANY</c>, <c>HOTEL</c>, <c>NONE</c>.
+    /// <c>null</c> for no value and for a word that is none of the three, so something CasaZen does not understand is never taken for an answer.
+    /// </summary>
+    internal static string? CompanyCollectOf(string? text) => text?.Trim().ToUpperInvariant() switch
+    {
+        OctorateReservation.CompanyCollectCompany => OctorateReservation.CompanyCollectCompany,
+        OctorateReservation.CompanyCollectHotel => OctorateReservation.CompanyCollectHotel,
+        "NONE" => "NONE",
         _ => null,
     };
 

@@ -675,6 +675,15 @@
   <data name="LeasePartyCitizenshipInvalid" xml:space="preserve">
     <value>Citizenship must be the 2-letter ISO country code (for example IT, DE, US).</value>
   </data>
+  <data name="OpenapiRegistrationUnpaid" xml:space="preserve">
+    <value>The registration fee has to be paid before the contract is filed. Nothing was sent.</value>
+  </data>
+  <data name="OpenapiRegistrationAlreadyPaid" xml:space="preserve">
+    <value>The registration fee for this contract is already paid.</value>
+  </data>
+  <data name="OpenapiRegistrationConcordato" xml:space="preserve">
+    <value>A canone concordato contract is not filed on this path.</value>
+  </data>
   <data name="RliProviderUnavailable" xml:space="preserve">
     <value>RLI filing through a provider is not available. Register the contract on the official channel of the Agenzia delle Entrate and enter the registration number, date and receipt here.</value>
   </data>
@@ -755,6 +764,27 @@
   </data>
   <data name="CalendarTooManyProperties" xml:space="preserve">
     <value>You can ask for at most {0} properties at a time.</value>
+  </data>
+  <data name="CalendarDayRuleInvalidPrice" xml:space="preserve">
+    <value>The price of a night must be between {0} and {1}, with at most two decimals.</value>
+  </data>
+  <data name="CalendarDayRuleInvalidStay" xml:space="preserve">
+    <value>A stay must be between {0} and {1} nights, and the maximum cannot be below the minimum.</value>
+  </data>
+  <data name="CalendarDayRuleInvalidAdvance" xml:space="preserve">
+    <value>The booking advance must be between {0} and {1} days, and the maximum cannot be below the minimum.</value>
+  </data>
+  <data name="CalendarDayRuleRangeInvalid" xml:space="preserve">
+    <value>The last day of the range cannot be before the first.</value>
+  </data>
+  <data name="CalendarDayRuleRangeTooLong" xml:space="preserve">
+    <value>A change can cover at most {0} days: choose a shorter range.</value>
+  </data>
+  <data name="CalendarDayRuleInPast" xml:space="preserve">
+    <value>The days you chose are already over: choose days from today onwards.</value>
+  </data>
+  <data name="CalendarDayRuleNothingToChange" xml:space="preserve">
+    <value>Choose at least one value to change and at least one day.</value>
   </data>
   <data name="CalendarInvalidRequest" xml:space="preserve">
     <value>The dates or the properties asked for are not valid: check the dates (from 2000 to 2100) and the property ids.</value>
@@ -1315,6 +1345,21 @@
   <data name="DirectBookingMinNightsNotMet" xml:space="preserve">
     <value>The minimum stay for this property is {0} nights.</value>
   </data>
+  <data name="DirectBookingArrivalClosed" xml:space="preserve">
+    <value>Arrivals are not possible on this date: choose another arrival day.</value>
+  </data>
+  <data name="DirectBookingDepartureClosed" xml:space="preserve">
+    <value>Departures are not possible on this date: choose another departure day.</value>
+  </data>
+  <data name="DirectBookingMaxNightsExceeded" xml:space="preserve">
+    <value>The maximum stay for this arrival is {0} nights.</value>
+  </data>
+  <data name="DirectBookingAdvanceTooShort" xml:space="preserve">
+    <value>This date must be booked at least {0} days ahead.</value>
+  </data>
+  <data name="DirectBookingAdvanceTooLong" xml:space="preserve">
+    <value>This date can be booked at most {0} days ahead.</value>
+  </data>
   <data name="DirectBookingMarketingConsentUnavailable" xml:space="preserve">
     <value>Consent to receive offers is not available right now: try again without selecting it.</value>
   </data>
@@ -1378,14 +1423,35 @@
   <data name="CheckInBiometricMinorExcluded" xml:space="preserve">
     <value>Biometric verification is not available for minors.</value>
   </data>
+  <data name="CheckInBiometricConsentAnswerRequired" xml:space="preserve">
+    <value>Say whether you consent to the biometric verification.</value>
+  </data>
+  <data name="CheckInBiometricConsentVersionRequired" xml:space="preserve">
+    <value>The version of the biometric consent text is missing (50 characters at most).</value>
+  </data>
+  <data name="CheckInBiometricConsentRequired" xml:space="preserve">
+    <value>Before the selfie we need your consent to the biometric verification. You can also ask a person to verify you.</value>
+  </data>
+  <data name="CheckInDocumentCheckRequired" xml:space="preserve">
+    <value>Take a photo of your identity document before the selfie.</value>
+  </data>
+  <data name="CheckInDocumentPhotoMismatch" xml:space="preserve">
+    <value>The photo of the document is not the one read before: take a photo of the same document again.</value>
+  </data>
   <data name="CheckInProvinceInvalid" xml:space="preserve">
-    <value>Enter the two-letter province code (e.g. RM).</value>
+    <value>This is not an Italian province code (e.g. RM).</value>
   </data>
   <data name="CheckInCodeInvalid" xml:space="preserve">
     <value>This code is not valid for Alloggiati Web.</value>
   </data>
   <data name="CheckInCodeUnknown" xml:space="preserve">
-    <value>This code is not in the official Alloggiati table: pick it from the list.</value>
+    <value>This value is not in the official table: pick it from the list.</value>
+  </data>
+  <data name="CheckInDocumentMissing" xml:space="preserve">
+    <value>Upload a photo of the document.</value>
+  </data>
+  <data name="CheckInDocumentRejected" xml:space="preserve">
+    <value>The photo is not valid: use a JPG, PNG or WebP up to 5 MB.</value>
   </data>
   <data name="CheckInDocumentNumberInvalid" xml:space="preserve">
     <value>The document number may contain only letters and digits, at most {0}.</value>
@@ -1499,7 +1565,7 @@
     <value>The stay has already started or ended: dates and guests can no longer be changed.</value>
   </data>
   <data name="BookingUpdateSourceLocked" xml:space="preserve">
-    <value>Dates and guests can be changed only on bookings you entered: this one comes from the booking site or a channel, with its price and payment already set. You can edit the notes.</value>
+    <value>Dates and guests can be changed on bookings you entered and on confirmed bookings of the booking site: this one is a request still waiting, or comes from a channel, with its price and payment already set. You can edit the notes.</value>
   </data>
   <data name="BookingCheckInInPast" xml:space="preserve">
     <value>The check-in cannot be moved to a day already past.</value>
@@ -2098,6 +2164,21 @@
   <data name="PopupAlertRemindAtRequired" xml:space="preserve">
     <value>Say when you want to be reminded again (date and time).</value>
   </data>
+  <data name="NotificationLegalChannelRequired" xml:space="preserve">
+    <value>Legal deadlines cannot be left without a channel: keep at least one channel on for legal deadlines.</value>
+  </data>
+  <data name="NotificationChannelUnavailable" xml:space="preserve">
+    <value>This channel is not available yet: choose between phone notification, email and the counter.</value>
+  </data>
+  <data name="NotificationPreferencesEmpty" xml:space="preserve">
+    <value>There is nothing to save: give the quiet hours or the channels of at least one kind of alert.</value>
+  </data>
+  <data name="NotificationEventDuplicated" xml:space="preserve">
+    <value>The same kind of alert appears more than once: give it only once.</value>
+  </data>
+  <data name="NotificationEventInvalid" xml:space="preserve">
+    <value>A kind of alert in the list is empty: give the kind and the channels of each one.</value>
+  </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Invalid period: use period=Month with month as YYYY-MM, period=Last30Days or period=Next30Days.</value>
   </data>
@@ -2147,7 +2228,7 @@
     <value>Invalid view: use one of the names all, toConfirm, upcoming, inProgress, completed or cancelled.</value>
   </data>
   <data name="BookingListInvalidChannel" xml:space="preserve">
-    <value>Invalid channel: use the names Direct, Manual, Airbnb, BookingCom or Other, repeated or separated by commas.</value>
+    <value>Invalid channel: use the names Direct, Manual, Airbnb, BookingCom, Expedia, Vrbo, TripAdvisor, Agoda or Other (every other source), repeated or separated by commas.</value>
   </data>
   <data name="BookingListInvalidCheckInStatus" xml:space="preserve">
     <value>Invalid check-in status: use the names NotSent, Sent, InProgress, Completed or Expired, repeated or separated by commas.</value>
@@ -2250,6 +2331,9 @@
   </data>
   <data name="LeasePartyFiscalCodeDuplicate" xml:space="preserve">
     <value>The same fiscal code is given for more than one party of the lease.</value>
+  </data>
+  <data name="LeasePartyPhoneInvalid" xml:space="preserve">
+    <value>The phone number of a party is not valid: it needs the international prefix and 8 to 15 digits, not starting with zero.</value>
   </data>
   <data name="PropertyAddressTaken" xml:space="preserve">
     <value>An active property of your organization already has this address. If it is another apartment in the same building, enter the unit or staircase.</value>
@@ -2746,6 +2830,12 @@
   <data name="RentAmountInvalid" xml:space="preserve">
     <value>The installment amount must be greater than zero, with at most two decimals.</value>
   </data>
+  <data name="RentCondominiumTermsInvalid" xml:space="preserve">
+    <value>The condominium terms are not valid: a fixed advance needs an amount and a cadence, the dates must be in order and the confidence between 0 and 1.</value>
+  </data>
+  <data name="RentCondominiumSourceNotFound" xml:space="preserve">
+    <value>The document given does not belong to this lease.</value>
+  </data>
   <data name="RentCadenceLocked" xml:space="preserve">
     <value>The cadence cannot change: some installments are paid or have a payment in progress.</value>
   </data>
@@ -2766,6 +2856,30 @@
   </data>
   <data name="RentOnlinePaymentsUnavailable" xml:space="preserve">
     <value>To request online payments, connect a Stripe account enabled for charges (Settings > Payments).</value>
+  </data>
+  <data name="BankLinkAccountIdInvalid" xml:space="preserve">
+    <value>The linked account id is not valid. CasaZen stores the Stripe account id, not the IBAN.</value>
+  </data>
+  <data name="BankLinkNotLinked" xml:space="preserve">
+    <value>No bank account is linked. The manual bank transfer is still available.</value>
+  </data>
+  <data name="BankLinkAccountHolderMismatch" xml:space="preserve">
+    <value>The linked account does not belong to this Stripe customer.</value>
+  </data>
+  <data name="BankLinkDebitUnavailable" xml:space="preserve">
+    <value>The SEPA debit of this linked account did not start. The manual bank transfer is still available.</value>
+  </data>
+  <data name="BankLinkAmountInvalid" xml:space="preserve">
+    <value>The payment amount is not valid.</value>
+  </data>
+  <data name="BankLinkCurrencyInvalid" xml:space="preserve">
+    <value>The payment currency is not valid.</value>
+  </data>
+  <data name="BankLinkInstallmentMismatch" xml:space="preserve">
+    <value>The installment does not belong to the given lease.</value>
+  </data>
+  <data name="BankLinkIdempotencyKeyInvalid" xml:space="preserve">
+    <value>The idempotency key is not valid.</value>
   </data>
   <data name="RentNoTenantEmail" xml:space="preserve">
     <value>No tenant has an email address to send the payment request to.</value>
@@ -2790,6 +2904,9 @@
   </data>
   <data name="RentReminderNotSent" xml:space="preserve">
     <value>The reminder was not sent: the email service is not available. Try again later.</value>
+  </data>
+  <data name="RentWhatsAppReminderNotSent" xml:space="preserve">
+    <value>The WhatsApp reminder was not sent: check the tenant's number and the WhatsApp Business configuration.</value>
   </data>
   <data name="RentReminderNoteTooLong" xml:space="preserve">
     <value>The note can have at most 300 characters.</value>
@@ -3682,6 +3799,57 @@
   <data name="IdempotencyKeyInvalid" xml:space="preserve">
     <value>The request has no valid send key (Idempotency-Key header, 8 to 64 letters, digits or dashes).</value>
   </data>
+  <data name="ThreadKeyInvalid" xml:space="preserve">
+    <value>The conversation key is not valid.</value>
+  </data>
+  <data name="MessageThreadNotFound" xml:space="preserve">
+    <value>Conversation not found.</value>
+  </data>
+  <data name="MessageNotFound" xml:space="preserve">
+    <value>Message not found.</value>
+  </data>
+  <data name="AttachmentUnavailable" xml:space="preserve">
+    <value>The attachment is no longer available.</value>
+  </data>
+  <data name="MessageMappingNotConfirmed" xml:space="preserve">
+    <value>This conversation is not linked to a confirmed property: until you confirm the link of the listing in the channel manager you cannot answer from CasaZen.</value>
+  </data>
+  <data name="MessageChannelRuleViolation" xml:space="preserve">
+    <value>Before the booking the channel does not allow links, email addresses or phone numbers: remove them from the message.</value>
+  </data>
+  <data name="MessageContactInfoUnavailable" xml:space="preserve">
+    <value>The contact details of the guest cannot be read: the channel manager does not release them (it needs the registered CasaZen server addresses and a dedicated permission) or the guest has none. Write to the guest on the channel they booked from.</value>
+  </data>
+  <data name="MessageNoContactChannel" xml:space="preserve">
+    <value>There is no way to write to this guest from CasaZen: the channel they booked on does not let you start a conversation.</value>
+  </data>
+  <data name="OctorateChatNotSendable" xml:space="preserve">
+    <value>This conversation cannot be written to from CasaZen: the channel manager does not say who writes or the identifier of the conversation on the channel. Answer on the channel.</value>
+  </data>
+  <data name="MessageTemplateVariableUnknown" xml:space="preserve">
+    <value>The template uses “{0}”, which is not a valid variable. The valid ones are guest_name, property_name, booking_code, check_in_date, check_out_date, check_in_time, check_out_time and host_name, written between double curly braces.</value>
+  </data>
+  <data name="MessageTemplateVariableMissing" xml:space="preserve">
+    <value>This conversation has no value for “{0}”: choose another template or complete the text by hand.</value>
+  </data>
+  <data name="MessageTemplateNotFound" xml:space="preserve">
+    <value>Template not found.</value>
+  </data>
+  <data name="MessageTemplateInvalid" xml:space="preserve">
+    <value>A template needs a name (up to 100 characters), one of the available languages and a text (up to 2000 characters).</value>
+  </data>
+  <data name="MessageTemplateExists" xml:space="preserve">
+    <value>A template with this name and language already exists.</value>
+  </data>
+  <data name="MessageTranslationUnavailable" xml:space="preserve">
+    <value>Translation is not available right now: neither the CasaZen translator nor the channel manager’s can translate this text.</value>
+  </data>
+  <data name="MessageTranslationLanguageInvalid" xml:space="preserve">
+    <value>The language of the translation is not one of the available ones.</value>
+  </data>
+  <data name="MessageTranslationInputInvalid" xml:space="preserve">
+    <value>Give a message to translate or a text, not both and not neither.</value>
+  </data>
   <data name="LeaseDocumentInvalid" xml:space="preserve"><value>Upload a valid PDF up to 20 MB.</value></data>
   <data name="ApeIncomplete" xml:space="preserve">
     <value>Missing or unreadable certificate data: {0}. Add all pages or replace unclear photos.</value>
@@ -3823,6 +3991,9 @@
   </data>
   <data name="VerificationReasonRequired" xml:space="preserve">
     <value>A rejection reason is required</value>
+  </data>
+  <data name="VerificationMetricsPeriodInvalid" xml:space="preserve">
+    <value>The period is not valid: the start date must come before the end date and the period cannot be longer than 366 days.</value>
   </data>
   <data name="BatchAlreadyDownloadedOrPaid" xml:space="preserve">
     <value>The batch has already been downloaded or paid</value>
@@ -4283,6 +4454,12 @@
   <data name="OctorateRequestRejected" xml:space="preserve">
     <value>The channel manager refused the request.</value>
   </data>
+  <data name="OctoratePartnerFailed" xml:space="preserve">
+    <value>The channel or tool you are connecting did not accept the request: the problem is not on CasaZen's side. Check your login details and try again later.</value>
+  </data>
+  <data name="OctorateChatNotLicensed" xml:space="preserve">
+    <value>Chat is not available for this property in the channel manager (usually the chat module is not included in the license): guest messages cannot be read.</value>
+  </data>
   <data name="OctorateWebhookNotConfigured" xml:space="preserve">
     <value>The channel manager webhook is not configured on this environment.</value>
   </data>
@@ -4309,6 +4486,72 @@
   </data>
   <data name="OctoratePropertyNotFound" xml:space="preserve">
     <value>Property not found.</value>
+  </data>
+  <data name="OctoratePropertyExists" xml:space="preserve">
+    <value>The property is already linked to a listing on the channel manager.</value>
+  </data>
+  <data name="OctorateMappingUnconfirmed" xml:space="preserve">
+    <value>First confirm or reject the match between this property and a listing already on the channel manager, then try again.</value>
+  </data>
+  <data name="OctoratePropertyInvalid" xml:space="preserve">
+    <value>The property data is not enough to create it on the channel manager: complete the fields shown.</value>
+  </data>
+  <data name="OctorateNetworkUnknown" xml:space="preserve">
+    <value>The channel manager does not recognize the network of your account: connect the account again from the channel settings.</value>
+  </data>
+  <data name="OctorateOwnerEmailNotConfigured" xml:space="preserve">
+    <value>Creating the property on the channel manager is not active yet because the service address is missing: contact support.</value>
+  </data>
+  <data name="ListingChannelsRequired" xml:space="preserve">
+    <value>Choose at least one channel to publish to.</value>
+  </data>
+  <data name="ListingChannelUnknown" xml:space="preserve">
+    <value>One of the chosen channels does not receive content from CasaZen.</value>
+  </data>
+  <data name="ListingContentIncomplete" xml:space="preserve">
+    <value>To publish you need the title and the description in Italian and in English.</value>
+  </data>
+  <data name="ListingModifiedOutside" xml:space="preserve">
+    <value>The listing was changed outside CasaZen on one of the chosen channels: choose whether to keep the CasaZen version or take the one on the channel manager.</value>
+  </data>
+  <data name="ListingChannelNotFound" xml:space="preserve">
+    <value>Channel not found for this property.</value>
+  </data>
+  <data name="ListingChannelErrorCinMissing" xml:space="preserve">
+    <value>This channel needs a valid CIN: enter it in the property details.</value>
+  </data>
+  <data name="ListingChannelErrorPhotosBelowMinimum" xml:space="preserve">
+    <value>This channel needs at least {0} photos: add them in the photos step.</value>
+  </data>
+  <data name="ListingChannelErrorContentRejected" xml:space="preserve">
+    <value>The channel manager refused part of the content: check the listing data and try again.</value>
+  </data>
+  <data name="ListingChannelErrorChannelRefused" xml:space="preserve">
+    <value>The channel did not accept the content: fix what is shown and publish again.</value>
+  </data>
+  <data name="ListingChannelErrorChannelPushFailed" xml:space="preserve">
+    <value>Sending the content to the channel did not work: try again shortly.</value>
+  </data>
+  <data name="ListingChannelErrorChannelNotConnected" xml:space="preserve">
+    <value>The property is not connected to this channel: connect it from the channel settings.</value>
+  </data>
+  <data name="ListingChannelErrorRoomRequired" xml:space="preserve">
+    <value>Choose the room of the listing on the channel manager before publishing.</value>
+  </data>
+  <data name="ListingChannelErrorGeneric" xml:space="preserve">
+    <value>Something did not work with this channel: check the details and try again.</value>
+  </data>
+  <data name="OutsideChangeNotFound" xml:space="preserve">
+    <value>This channel has no outside change to resolve.</value>
+  </data>
+  <data name="OutsideChangeTakeNotSupported" xml:space="preserve">
+    <value>Only the descriptions of the channel manager can be taken: for the other data that changed, keep the CasaZen version.</value>
+  </data>
+  <data name="OutsideChangeTextTooLong" xml:space="preserve">
+    <value>A text on the channel manager is longer than CasaZen can accept: keep the CasaZen version or shorten it on the channel manager.</value>
+  </data>
+  <data name="OutsideChangeChoiceInvalid" xml:space="preserve">
+    <value>Choose whether to keep the CasaZen version or take the one on the channel manager.</value>
   </data>
   <data name="OctorateMappingPropertyTaken" xml:space="preserve">
     <value>This property is already linked to another channel manager listing.</value>
@@ -4514,6 +4757,48 @@
   <data name="MarketplaceEntryNotFound" xml:space="preserve">
     <value>Marketplace entry not found.</value>
   </data>
+  <data name="MarketplaceOctorateNotConnected" xml:space="preserve">
+    <value>The connection to the channel manager is not active: connect it from the channel settings, then try again.</value>
+  </data>
+  <data name="MarketplacePropertyNotLinked" xml:space="preserve">
+    <value>This property is not matched to a channel manager listing yet: confirm the match, then try again.</value>
+  </data>
+  <data name="MarketplacePortalUnknown" xml:space="preserve">
+    <value>Channel or tool not found.</value>
+  </data>
+  <data name="MarketplacePortalNotCreatable" xml:space="preserve">
+    <value>This channel or tool cannot be connected from CasaZen: the channel manager only handles it from its own panel.</value>
+  </data>
+  <data name="MarketplaceCredentialsRequired" xml:space="preserve">
+    <value>Some details needed to connect the channel are missing (property identifier on the channel, username or password): complete them and try again.</value>
+  </data>
+  <data name="MarketplaceCredentialsTooLong" xml:space="preserve">
+    <value>One of the channel login details is too long.</value>
+  </data>
+  <data name="MarketplaceConnectionExists" xml:space="preserve">
+    <value>This property is already connected to this channel on the channel manager: check the existing connection instead of creating another one.</value>
+  </data>
+  <data name="MarketplaceActivationKindRequired" xml:space="preserve">
+    <value>Say whether it is a sales channel or a connected tool.</value>
+  </data>
+  <data name="MarketplaceActivationNotFound" xml:space="preserve">
+    <value>Activation not found among those you can access.</value>
+  </data>
+  <data name="MarketplaceConnectionMissing" xml:space="preserve">
+    <value>The connection is no longer on the channel manager: start the activation of the channel again.</value>
+  </data>
+  <data name="MarketplacePanelAccessPending" xml:space="preserve">
+    <value>Before you continue, give access to the channel from the channel manager's panel, then come back here.</value>
+  </data>
+  <data name="MarketplaceMappingRequired" xml:space="preserve">
+    <value>Choose at least one channel room to match with your unit.</value>
+  </data>
+  <data name="MarketplaceMappingInvalid" xml:space="preserve">
+    <value>One of the chosen rooms is not among those of the channel or of the property.</value>
+  </data>
+  <data name="MarketplaceD6OperationUnverified" xml:space="preserve">
+    <value>This step is not available for this channel yet: the channel manager's operation has not been checked on a real property yet. Complete it from the channel manager's panel.</value>
+  </data>
   <data name="Marketplace.Channel.Benefit" xml:space="preserve">
     <value>Get the bookings from {0} in CasaZen.</value>
   </data>
@@ -4603,6 +4888,21 @@
   </data>
   <data name="Marketplace.Detail.Requirement.licenseRequest" xml:space="preserve">
     <value>A request to your channel manager: the function is active once it appears in your license.</value>
+  </data>
+  <data name="MarketplaceFunctionAlreadyActive" xml:space="preserve">
+    <value>This function is already on in the license of the property: there is nothing to ask for.</value>
+  </data>
+  <data name="MarketplaceFunctionUnknown" xml:space="preserve">
+    <value>Channel manager function not found.</value>
+  </data>
+  <data name="Marketplace.Function.RequestGuidance" xml:space="preserve">
+    <value>Hello, I would like to switch on the “{0}” function for my property “{1}”. Could you add it to the license of the property and confirm when it is done? Thank you.</value>
+  </data>
+  <data name="MarketplaceDeclaredDateInvalid" xml:space="preserve">
+    <value>Enter the day you completed the activation: it cannot be a date in the future.</value>
+  </data>
+  <data name="MarketplacePartnerNeedsWholeOrg" xml:space="preserve">
+    <value>This activation covers the whole organization: you can declare it only if you have access to all the properties. Otherwise choose a property you have access to.</value>
   </data>
   <data name="Marketplace.Detail.Channel.WhatItDoes" xml:space="preserve">
     <value>CasaZen receives the bookings from {0} and keeps availability and prices in line.</value>
@@ -4794,6 +5094,102 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OnboardingFlowStateUnknown" xml:space="preserve">
     <value>Unknown flow state.</value>
   </data>
+  <data name="OnboardingPartUnknown" xml:space="preserve">
+    <value>This part of the activation plan does not exist.</value>
+  </data>
+  <data name="OnboardingPartPrerequisite" xml:space="preserve">
+    <value>The parts after this one need it: it cannot be put off, complete it first.</value>
+  </data>
+  <data name="OnboardingPartNotOpen" xml:space="preserve">
+    <value>This part is already complete or not available: there is nothing to put off.</value>
+  </data>
+  <data name="OnboardingRemindAtInvalid" xml:space="preserve">
+    <value>Choose a reminder in the future, within {0} days.</value>
+  </data>
+  <data name="OnboardingPropertyIdsEmpty" xml:space="preserve">
+    <value>Choose at least one property.</value>
+  </data>
+  <data name="OnboardingPropertyIdsTooMany" xml:space="preserve">
+    <value>You can choose at most {0} properties at a time.</value>
+  </data>
+  <data name="OnboardingTestBookingNotFound" xml:space="preserve">
+    <value>This property has no booking imported from Octorate to run the final test on.</value>
+  </data>
+  <data name="OnboardingSelectionInvalid" xml:space="preserve">
+    <value>The selection of properties is not valid: choose all the properties, a list of properties or at least one criterion of the filter.</value>
+  </data>
+  <data name="OnboardingSelectionTooLarge" xml:space="preserve">
+    <value>The selection holds too many properties: at most {0} at a time. Narrow the filter.</value>
+  </data>
+  <data name="OnboardingChoiceInvalid" xml:space="preserve">
+    <value>The choice to apply is not valid.</value>
+  </data>
+  <data name="OnboardingPilotGroupTooLarge" xml:space="preserve">
+    <value>The pilot group can have at most {0} properties.</value>
+  </data>
+  <data name="OnboardingPilotGroupNotActive" xml:space="preserve">
+    <value>Before the other properties are activated, the pilot group must be active in every flow you chose.</value>
+  </data>
+  <data name="OnboardingPilotGroupEmpty" xml:space="preserve">
+    <value>The pilot group has not been chosen yet.</value>
+  </data>
+  <data name="OnboardingCohortInvalid" xml:space="preserve">
+    <value>The group to activate is not valid: choose the pilot group or the other properties.</value>
+  </data>
+  <data name="OnboardingFlowsEmpty" xml:space="preserve">
+    <value>Choose at least one flow to activate.</value>
+  </data>
+  <data name="OnboardingImportFileMissing" xml:space="preserve">
+    <value>Choose the CSV or Excel file to import.</value>
+  </data>
+  <data name="OnboardingImportFileTypeUnsupported" xml:space="preserve">
+    <value>The file must be a CSV (.csv) or an Excel file (.xlsx).</value>
+  </data>
+  <data name="OnboardingImportFileTooLarge" xml:space="preserve">
+    <value>The file is too large: at most {0} MB.</value>
+  </data>
+  <data name="OnboardingImportTooManyRows" xml:space="preserve">
+    <value>The file has too many rows: at most {0} at a time.</value>
+  </data>
+  <data name="OnboardingImportFileUnreadable" xml:space="preserve">
+    <value>We cannot read the file: check that it is a valid CSV or Excel (.xlsx) file.</value>
+  </data>
+  <data name="OnboardingImportFileEmpty" xml:space="preserve">
+    <value>The file has no rows to import under the header.</value>
+  </data>
+  <data name="OnboardingImportColumnsUnrecognized" xml:space="preserve">
+    <value>The header has no column for the property (propertyId or cinCode), or no column with data to import.</value>
+  </data>
+  <data name="OwnerInvitationEmailNotQueued" xml:space="preserve">
+    <value>We could not queue the invitation e-mail: the invitation was withdrawn. Check the owner's address and try again.</value>
+  </data>
+  <data name="OwnerImportColumnsUnrecognized" xml:space="preserve">
+    <value>The header has no column that identifies the owner (ownerId, ownerKey, fiscalCode or vatNumber): an e-mail address alone is not enough.</value>
+  </data>
+  <data name="OwnerInvitationEmailNotVerified" xml:space="preserve">
+    <value>The e-mail of your account is not verified: verify it and try again.</value>
+  </data>
+  <data name="OwnerInvitationNotFound" xml:space="preserve">
+    <value>Invitation not found.</value>
+  </data>
+  <data name="OwnerInvitationNotLive" xml:space="preserve">
+    <value>The invitation is no longer in progress: there is nothing to revoke.</value>
+  </data>
+  <data name="OwnerInvitationNothingToSend" xml:space="preserve">
+    <value>No owner to invite: check the exclusions of the preview.</value>
+  </data>
+  <data name="OwnerInvitationPreviewRequired" xml:space="preserve">
+    <value>The confirmation needs the preview: its fingerprint is missing.</value>
+  </data>
+  <data name="OwnerInvitationPreviewStale" xml:space="preserve">
+    <value>The preview is no longer valid: the owners' data has changed. Preview again and confirm again.</value>
+  </data>
+  <data name="OwnerInvitationSelectionEmpty" xml:space="preserve">
+    <value>Choose at least one owner to invite.</value>
+  </data>
+  <data name="OwnerInvitationSharedOutsideReach" xml:space="preserve">
+    <value>This owner also holds shares of properties you have no access to: the link opens the whole portfolio, so it is sent by someone who reaches all of them.</value>
+  </data>
   <data name="ContactIdMissing" xml:space="preserve">
     <value>The contact identifier is required.</value>
   </data>
@@ -4890,6 +5286,45 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OctorateSyncLinkedElsewhere" xml:space="preserve">
     <value>The booking exists in the channel manager, but CasaZen already links it to another booking: check whether it is a duplicate.</value>
   </data>
+  <data name="InvoiceDataFiscalCodeInvalid" xml:space="preserve">
+    <value>The fiscal code is not valid: check it and try again.</value>
+  </data>
+  <data name="InvoiceDataVatNumberInvalid" xml:space="preserve">
+    <value>The VAT number is not valid: an Italian one has 11 digits, with the prefix IT in front, and the last one is a check digit.</value>
+  </data>
+  <data name="InvoiceDataRecipientCodeInvalid" xml:space="preserve">
+    <value>The recipient code is not valid: it is 7 upper case letters or digits.</value>
+  </data>
+  <data name="InvoiceDataPecInvalid" xml:space="preserve">
+    <value>The PEC is not a valid e-mail address.</value>
+  </data>
+  <data name="InvoiceDataRecipientRequired" xml:space="preserve">
+    <value>The invoice needs the fiscal code or the VAT number of whoever receives it.</value>
+  </data>
+  <data name="InvoiceDataFieldInvalid" xml:space="preserve">
+    <value>A field of the invoice data is not valid or is too long: check it and try again.</value>
+  </data>
+  <data name="DocumentIssuanceNotAvailable" xml:space="preserve">
+    <value>Issuing documents with CasaZen is not available yet: choose another way.</value>
+  </data>
+  <data name="IssuerProfileIncomplete" xml:space="preserve">
+    <value>Some data of the issuer is missing to issue with CasaZen: complete it and try again.</value>
+  </data>
+  <data name="DocumentBookingNotDirect" xml:space="preserve">
+    <value>CasaZen does not issue documents for bookings that come from a portal, only for direct ones.</value>
+  </data>
+  <data name="DocumentIssuerConflict" xml:space="preserve">
+    <value>The documents of this booking belong to another issuer already: a booking has only one issuer.</value>
+  </data>
+  <data name="DocumentRuleNotConfigured" xml:space="preserve">
+    <value>The document rules for your regime have not been approved yet: nothing can be issued until they are.</value>
+  </data>
+  <data name="IssuerFieldInvalid" xml:space="preserve">
+    <value>A field of the issuer data is not valid or is too long: check it and try again.</value>
+  </data>
+  <data name="FiscalSettingsNeedWholeOrg" xml:space="preserve">
+    <value>Only someone who manages every property of the organization can change who issues the documents.</value>
+  </data>
   <data name="OctorateSyncNotMirrored" xml:space="preserve">
     <value>The property is not linked to the channel manager right now (the connection was lost or the mapping is still to be confirmed): the cancellation was not sent. Reconnect or confirm the mapping, then try again.</value>
   </data>
@@ -4934,5 +5369,290 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="OtaChannelCancelGuidanceAgoda" xml:space="preserve">
     <value>To cancel this Agoda booking, ask the guest to cancel it on Agoda.</value>
+  </data>
+  <data name="ArchiveTypeForbidden" xml:space="preserve">
+    <value>You do not have access to this type of document.</value>
+  </data>
+  <data name="ArchiveDocumentNotFound" xml:space="preserve">
+    <value>Document not found.</value>
+  </data>
+  <data name="ArchiveDocumentHasNoFile" xml:space="preserve">
+    <value>This document has no file to download.</value>
+  </data>
+  <data name="ArchiveExportTooLarge" xml:space="preserve">
+    <value>Too many documents for one archive: {0} were found, and an export holds at most {1} documents and {2} MB (a document whose size is not known counts as {3} MB). Narrow the period or pick a document type or a property.</value>
+  </data>
+  <data name="ArchiveInvalidType" xml:space="preserve">
+    <value>Invalid document type.</value>
+  </data>
+  <data name="ArchiveInvalidPeriod" xml:space="preserve">
+    <value>Invalid period: give the days as YYYY-MM-DD, with the first not after the last.</value>
+  </data>
+  <data name="ArchiveInvalidPage" xml:space="preserve">
+    <value>Invalid page: pages start at 1 and hold from 1 to {0} documents.</value>
+  </data>
+  <data name="BookingSettlementFailed" xml:space="preserve">
+    <value>The payment of the price difference did not go through: the booking was not changed. You can try again, the same refund is never made twice.</value>
+  </data>
+  <data name="BookingEditPaymentInProgress" xml:space="preserve">
+    <value>A payment of this booking is still being processed, or is waiting for the guest to complete it: wait until it is settled before changing dates or guests.</value>
+  </data>
+  <data name="BookingEditPaymentPermissionRequired" xml:space="preserve">
+    <value>This change moves money (a refund, a charge to the saved card or a payment link): you need the permission to handle the payments of the property. The booking was not changed.</value>
+  </data>
+  <data name="BookingTouristTaxUnavailable" xml:space="preserve">
+    <value>The tourist tax cannot be worked out for the new dates: the price would drop by the tax the guest already paid and the refund would go out by itself. The booking was not changed: choose other dates or ask for support.</value>
+  </data>
+  <data name="PanelStepKindInvalid" xml:space="preserve">
+    <value>This kind of guided step does not exist.</value>
+  </data>
+  <data name="PanelStepChannelInvalid" xml:space="preserve">
+    <value>The channel code is not valid: it is needed for a channel access, and only for that.</value>
+  </data>
+  <data name="PanelStepResumeInvalid" xml:space="preserve">
+    <value>The point to resume from is not valid.</value>
+  </data>
+  <data name="PanelStepNotFound" xml:space="preserve">
+    <value>This guided step does not exist.</value>
+  </data>
+  <data name="PanelStepVerificationRequired" xml:space="preserve">
+    <value>CasaZen must first try to verify the step: confirm only if it cannot.</value>
+  </data>
+  <data name="PanelStepNotValid" xml:space="preserve">
+    <value>The step is not valid: do it again in the channel manager panel.</value>
+  </data>
+  <data name="PanelStepAssistOpen" xml:space="preserve">
+    <value>CasaZen support is already handling this step.</value>
+  </data>
+  <data name="PanelStepCallbackUnsupported" xml:space="preserve">
+    <value>This step has no automatic return from the panel.</value>
+  </data>
+  <data name="PanelStepStateInvalid" xml:space="preserve">
+    <value>The return from the panel is not valid or has expired: start the step again.</value>
+  </data>
+  <data name="OnboardingNeedsWholeOrg" xml:space="preserve">
+    <value>This applies to the whole organization: access to all the properties is needed.</value>
+  </data>
+  <data name="AssistRequestAlreadyOpen" xml:space="preserve">
+    <value>A help request is already open for this part and property.</value>
+  </data>
+  <data name="AssistRequestNotFound" xml:space="preserve">
+    <value>This help request does not exist.</value>
+  </data>
+  <data name="AssistRequestClosed" xml:space="preserve">
+    <value>This request is already closed.</value>
+  </data>
+  <data name="AssistContextInvalid" xml:space="preserve">
+    <value>The kind of help asked for is not valid for this part.</value>
+  </data>
+  <data name="AssistStatusInvalid" xml:space="preserve">
+    <value>The status is not valid: use inProgress, done or cancelled.</value>
+  </data>
+  <data name="AssistNoteInvalid" xml:space="preserve">
+    <value>The note can have at most 500 characters and cannot contain e-mail addresses.</value>
+  </data>
+  <data name="AssistStepAlreadyDone" xml:space="preserve">
+    <value>This step is already done: there is nothing to ask support.</value>
+  </data>
+  <data name="ComplianceProofNotFound" xml:space="preserve">
+    <value>Proof not found among those of your organization.</value>
+  </data>
+  <data name="ComplianceBookingNotFound" xml:space="preserve">
+    <value>Stay not found among those of your organization.</value>
+  </data>
+  <data name="ComplianceProofFileInvalid" xml:space="preserve">
+    <value>The proof has no file, or the file is empty.</value>
+  </data>
+  <data name="ComplianceProofTypeUnsupported" xml:space="preserve">
+    <value>The file must be a PDF, a JPEG photo or a PNG image.</value>
+  </data>
+  <data name="ComplianceProofTooLarge" xml:space="preserve">
+    <value>The file is too large: the limit is {0} MB.</value>
+  </data>
+  <data name="ComplianceProofDayInvalid" xml:space="preserve">
+    <value>The day of the proof is not valid: it cannot be in the future or before 2000.</value>
+  </data>
+  <data name="ComplianceProofKindInvalid" xml:space="preserve">
+    <value>The kind of proof is not valid: use AlloggiatiReceipt, IstatProof, TouristTaxDeclaration or TouristTaxPayment.</value>
+  </data>
+  <data name="ComplianceExportTooLarge" xml:space="preserve">
+    <value>The proofs of the period are too many for a single export: choose a shorter period or a single property.</value>
+  </data>
+  <data name="ComplianceProofPropertyRequired" xml:space="preserve">
+    <value>Say which property the proof is about.</value>
+  </data>
+  <data name="ComplianceProofKindRequired" xml:space="preserve">
+    <value>Say what the file proves.</value>
+  </data>
+  <data name="ComplianceProofDayRequired" xml:space="preserve">
+    <value>Say the day the proof is about (YYYY-MM-DD).</value>
+  </data>
+  <data name="ComplianceReportInvalidFormat" xml:space="preserve">
+    <value>Invalid format: use pdf or csv.</value>
+  </data>
+  <data name="OnboardingPartNotReopenable" xml:space="preserve">
+    <value>This part is not available: there is no step to reopen.</value>
+  </data>
+  <data name="CondominiumNotFound" xml:space="preserve">
+    <value>Condominium not found.</value>
+  </data>
+  <data name="CondominiumPropertyNotFound" xml:space="preserve">
+    <value>Property not found.</value>
+  </data>
+  <data name="CondominiumPeriodNotFound" xml:space="preserve">
+    <value>Fiscal year not found.</value>
+  </data>
+  <data name="CondominiumPeriodInvalid" xml:space="preserve">
+    <value>That fiscal year is not valid. Use 2024/2025, or a single year when the year starts in January.</value>
+  </data>
+  <data name="CondominiumPeriodOverlap" xml:space="preserve">
+    <value>This period overlaps a year that is still open, or the property is already linked.</value>
+  </data>
+  <data name="CondominiumStatementInvalid" xml:space="preserve">
+    <value>The budget or final statement is not valid: check the amounts, the name and the starting month.</value>
+  </data>
+  <data name="CondominiumInstallmentNotFound" xml:space="preserve">
+    <value>Condominium installment not found.</value>
+  </data>
+  <data name="CondominiumPaymentInvalid" xml:space="preserve">
+    <value>That payment is not valid.</value>
+  </data>
+  <data name="CondominiumPaymentDuplicate" xml:space="preserve">
+    <value>This movement was already recorded.</value>
+  </data>
+  <data name="CondominiumPriorBalanceInvalid" xml:space="preserve">
+    <value>The prior-year balance is not valid. A refund applies only to a credit.</value>
+  </data>
+  <data name="CondominiumStatementFileUnsupported" xml:space="preserve">
+    <value>The file is not a condo-statement-v1 report. Administrator PDFs are not read on their own.</value>
+  </data>
+  <data name="CondominiumStatementFileInvalid" xml:space="preserve">
+    <value>The statement file is incomplete ({0}).</value>
+  </data>
+  <data name="CondominiumPeriodClosed" xml:space="preserve">
+    <value>This fiscal year is closed.</value>
+  </data>
+  <data name="CondominiumNeedsWholeOrg" xml:space="preserve">
+    <value>A condominium that is not linked to a property belongs to the whole organization: access to all the properties is needed.</value>
+  </data>
+  <data name="CondominiumFinalNotConfirmed" xml:space="preserve">
+    <value>The final statement of this year is not confirmed.</value>
+  </data>
+  <data name="TenantSettlementNotFound" xml:space="preserve">
+    <value>Settlement not found.</value>
+  </data>
+  <data name="TenantSettlementLeaseNotFound" xml:space="preserve">
+    <value>Lease not found.</value>
+  </data>
+  <data name="TenantSettlementInvalid" xml:space="preserve">
+    <value>The settlement is not valid: check the destination, the rule and the amounts.</value>
+  </data>
+  <data name="TenantSettlementNotConfirmed" xml:space="preserve">
+    <value>Confirm the settlement before posting it.</value>
+  </data>
+  <data name="TenantSettlementNoOpenInstallment" xml:space="preserve">
+    <value>There is no installment still to issue. Choose a separate installment, a refund or a carry-forward.</value>
+  </data>
+  <data name="TenantSettlementNoSchedule" xml:space="preserve">
+    <value>The lease has no rent plan to post the settlement on.</value>
+  </data>
+  <data name="TenantSettlementRefundNotCredit" xml:space="preserve">
+    <value>A refund is only for a credit of the tenant.</value>
+  </data>
+  <data name="TenantSettlementCreditExceedsInstallment" xml:space="preserve">
+    <value>The credit is larger than the next installment. Choose a refund, a carry-forward or a separate installment.</value>
+  </data>
+  <data name="TenantExpenseProposalInvalid" xml:space="preserve">
+    <value>Give the contractual advance, or last year's final statement and the new year's budget, or an amount that is settled at the final statement.</value>
+  </data>
+  <data name="CondominiumImportInvalid" xml:space="preserve">
+    <value>The snapshot is not a valid condo-export-v1 file.</value>
+  </data>
+  <data name="CondominiumImportNotFound" xml:space="preserve">
+    <value>Import not found.</value>
+  </data>
+  <data name="CondominiumImportMismatch" xml:space="preserve">
+    <value>Year {0} does not match to the cent ({1}). The row stays in staging and the balances are unchanged.</value>
+  </data>
+  <data name="CondominiumStatementUnreadable" xml:space="preserve">
+    <value>The PDF does not show the fiscal year and the amount. The same statement can still be entered by hand.</value>
+  </data>
+  <data name="CondominiumStatementProposalNotFound" xml:space="preserve">
+    <value>Proposal not found.</value>
+  </data>
+  <data name="MaintenanceTitleInvalid" xml:space="preserve">
+    <value>The title is required and cannot be longer than 120 characters.</value>
+  </data>
+  <data name="MaintenanceDescriptionInvalid" xml:space="preserve">
+    <value>The description is required and cannot be longer than 4000 characters.</value>
+  </data>
+  <data name="MaintenanceUrgencyInvalid" xml:space="preserve">
+    <value>Urgency must be Normal, High or Emergency.</value>
+  </data>
+  <data name="MaintenancePhotoInvalid" xml:space="preserve">
+    <value>The photo must be a JPEG, a PNG or a WebP.</value>
+  </data>
+  <data name="MaintenancePhotoTooLarge" xml:space="preserve">
+    <value>Each photo can be at most 5 MB.</value>
+  </data>
+  <data name="MaintenanceTooManyPhotos" xml:space="preserve">
+    <value>At most 5 photos can be attached.</value>
+  </data>
+  <data name="MaintenanceDecisionInvalid" xml:space="preserve">
+    <value>The decision must be Approved or Rejected.</value>
+  </data>
+  <data name="MaintenanceReasonRequired" xml:space="preserve">
+    <value>A rejection needs a short reason.</value>
+  </data>
+  <data name="MaintenanceReasonInvalid" xml:space="preserve">
+    <value>The reason cannot be longer than 500 characters.</value>
+  </data>
+  <data name="MaintenanceNotPayable" xml:space="preserve">
+    <value>A request that is still waiting or was rejected cannot be paid.</value>
+  </data>
+  <data name="MaintenanceAlreadyDecided" xml:space="preserve">
+    <value>This request already has a decision.</value>
+  </data>
+  <data name="MaintenanceRequestNotFound" xml:space="preserve">
+    <value>Maintenance request not found.</value>
+  </data>
+  <data name="MaintenanceForbidden" xml:space="preserve">
+    <value>You cannot act on this maintenance request.</value>
+  </data>
+  <data name="MaintenanceNotTenant" xml:space="preserve">
+    <value>Only the tenant of the lease can open the request.</value>
+  </data>
+  <data name="MaintenanceEmailNotVerified" xml:space="preserve">
+    <value>A verified email equal to the tenant's is required.</value>
+  </data>
+  <data name="MaintenanceAmountMismatch" xml:space="preserve">
+    <value>The amount must be the one stored when the request was approved.</value>
+  </data>
+  <data name="MaintenancePhotoNotFound" xml:space="preserve">
+    <value>Photo not found.</value>
+  </data>
+  <data name="TenantEmailNotVerified" xml:space="preserve">
+    <value>A verified Auth0 email matching the one on the lease is required.</value>
+  </data>
+  <data name="TenantDeclarationInvalid" xml:space="preserve">
+    <value>Enter a positive amount and the transfer date.</value>
+  </data>
+  <data name="MaintenanceInvalid" xml:space="preserve">
+    <value>Enter the maintenance request description and urgency.</value>
+  </data>
+  <data name="RentSepaUnavailable" xml:space="preserve">
+    <value>SEPA payment is unavailable for this lease.</value>
+  </data>
+  <data name="RentSepaOtherHolder" xml:space="preserve">
+    <value>The SEPA mandate belongs to another tenant.</value>
+  </data>
+  <data name="RentSepaAccountChanged" xml:space="preserve">
+    <value>The landlord's account has changed. A new SEPA mandate must be authorized.</value>
+  </data>
+  <data name="RentSepaMonthlyRequired" xml:space="preserve">
+    <value>Automatic SEPA payment requires a monthly schedule.</value>
+  </data>
+  <data name="RentSepaNotAuthorized" xml:space="preserve">
+    <value>Authorize the SEPA mandate before enabling automatic payment.</value>
   </data>
 </root>

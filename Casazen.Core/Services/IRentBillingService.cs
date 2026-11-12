@@ -26,6 +26,51 @@ public sealed record ConfigureRentScheduleRequest(
 /// <summary>An installment declared paid by the landlord outside CasaZen (bank transfer, cash…).</summary>
 public sealed record MarkRentPaidOfflineRequest(DateOnly PaidOn, string? Note);
 
+/// <summary>One part of an installment. <c>Amount</c> is in euros; the installment's <c>Amount</c> is the sum of these.</summary>
+public sealed record RentLedgerComponentView(
+    Guid Id,
+    RentLedgerComponentKind Kind,
+    decimal Amount,
+    DateOnly CompetenceStart,
+    DateOnly CompetenceEnd,
+    Guid? TenantSettlementId,
+    Guid? SourceId,
+    string? Description);
+
+/// <summary>
+/// Condominium terms confirmed (or stored) for the lease. <c>Confirmed</c> is set once a person accepts the values;
+/// only a confirmed fixed amount is added to the rent plan.
+/// </summary>
+public sealed record LeaseCondominiumTermsView(
+    Guid Id,
+    CondominiumAdvanceMode AdvanceMode,
+    decimal? AdvanceAmount,
+    RentCadence? Cadence,
+    bool SettlementRequired,
+    string? ProrationRule,
+    DateOnly? EffectiveFrom,
+    DateOnly? EffectiveTo,
+    Guid? SourceDocumentId,
+    decimal? ExtractionConfidence,
+    DateTime? ConfirmedAt,
+    string? ConfirmedByUserId);
+
+/// <summary>
+/// What the landlord confirms for the condominium clause of a lease: the advance, whether a settlement is required, and
+/// where the values came from. Saving confirms them (<c>ConfirmedAt</c>). A fixed contractual advance is then part of
+/// the rent plan and wins over a budget.
+/// </summary>
+public sealed record ConfirmLeaseCondominiumTermsRequest(
+    CondominiumAdvanceMode AdvanceMode,
+    decimal? AdvanceAmount,
+    RentCadence? Cadence,
+    bool SettlementRequired,
+    string? ProrationRule,
+    DateOnly? EffectiveFrom,
+    DateOnly? EffectiveTo,
+    Guid? SourceDocumentId,
+    decimal? ExtractionConfidence);
+
 /// <summary>One installment as the landlord sees it. <c>IsOverdue</c>: not paid and past its due date (Europe/Rome).</summary>
 public sealed record RentInstallmentView(
     Guid Id,
@@ -41,7 +86,10 @@ public sealed record RentInstallmentView(
     string? OfflinePaymentNote,
     DateTime? PaymentRequestedAt,
     string? FailureCode,
-    DateTime? LastFailedAt);
+    DateTime? LastFailedAt,
+    decimal AmountPaid,
+    decimal AmountOutstanding,
+    IReadOnlyList<RentLedgerComponentView> Components);
 
 /// <summary>
 /// The rent schedule of a lease, null while the landlord has not set it up. <c>TrackFrom</c>: the day the rents are tracked from
@@ -72,7 +120,8 @@ public sealed record RentLedgerView(
     bool HasTenantEmail,
     RentScheduleView? Schedule,
     IReadOnlyList<RentInstallmentView> Installments,
-    RentPeriod? PartialFinalPeriod);
+    RentPeriod? PartialFinalPeriod,
+    LeaseCondominiumTermsView? CondominiumTerms);
 
 /// <summary>
 /// A reminder the landlord sent for an installment (LR-01, B1): when, how many times so far, to how many tenants, whether the
@@ -86,6 +135,9 @@ public sealed record RentReminderResult(
     int RecipientCount,
     bool IncludesPaymentLink,
     DateTime NextReminderAllowedAt);
+
+/// <summary>A WhatsApp reminder accepted by the provider.</summary>
+public sealed record RentWhatsAppReminderResult(Guid InstallmentId, DateTime SentAt, int RecipientCount, DateTime NextReminderAllowedAt);
 
 /// <summary>Where an installment stands for the tenant on the public payment page.</summary>
 public enum PublicRentPaymentState
@@ -113,7 +165,12 @@ public sealed record PublicRentPayment(
     decimal Amount,
     string Currency,
     PublicRentPaymentState State,
-    bool LastPaymentFailed);
+    bool LastPaymentFailed)
+{
+    public IReadOnlyList<RentLedgerComponentView> Components { get; init; } = [];
+    public decimal TransactionFee { get; init; } = Casazen.Core.Leases.TenantSepaAuthorization.TransactionFee;
+    public decimal TotalAmount => Amount + TransactionFee;
+}
 
 /// <summary>The PaymentIntent the tenant confirms with the Stripe Payment Element, on the landlord's connected account.</summary>
 public sealed record PublicRentPaymentSession(
@@ -176,6 +233,19 @@ public interface IRentBillingService
 
     Task<RentLedgerView> DisableScheduleAsync(Guid leaseId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Stores the condominium terms of the lease and confirms them. An active plan whose installment is still the rent,
+    /// still the rent plus the advance already confirmed, or already the new rent plus advance, takes the new total (the
+    /// rent alone when the clause charges nothing). A different amount is left as the landlord set it. 422
+    /// <c>rent_condominium_terms_invalid</c> when the values cannot be charged, <c>rent_condominium_source_not_found</c>
+    /// when the source document is not one of this lease.
+    /// </summary>
+    Task<RentLedgerView> ConfirmCondominiumTermsAsync(
+        Guid leaseId,
+        ConfirmLeaseCondominiumTermsRequest request,
+        string userId,
+        CancellationToken cancellationToken = default);
+
     Task<RentInstallmentView> MarkPaidOfflineAsync(
         Guid leaseId,
         Guid installmentId,
@@ -199,6 +269,14 @@ public interface IRentBillingService
     Task<RentReminderResult> SendReminderAsync(
         Guid leaseId, Guid installmentId, string? note, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Sends the approved rent-reminder template through WhatsApp Business to every tenant with a phone (an email is not
+    /// required). Meta is called after the lease lock is released. The reminder is kept when at least one message is
+    /// accepted and taken back when none is.
+    /// </summary>
+    Task<RentWhatsAppReminderResult> SendWhatsAppReminderAsync(
+        Guid leaseId, Guid installmentId, string? note, CancellationToken cancellationToken = default);
+
     /// <summary>Anonymous: the installment of a payment link; 404 <c>rent_payment_link_invalid</c> for a wrong id or token.</summary>
     Task<PublicRentPayment> GetPublicPaymentAsync(Guid installmentId, string token, CancellationToken cancellationToken = default);
 
@@ -211,6 +289,13 @@ public interface IRentBillingService
     /// <see cref="CompleteAsync"/> once the event is committed.
     /// </summary>
     Task<RentPaymentNotice?> ApplyPaymentIntentEventAsync(RentPaymentIntentEvent paymentEvent, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Applies a platform PaymentIntent that debits a linked bank account (<c>metadata.kind = bank-link-payment</c>).
+    /// The installment is paid only when the event is <c>payment_intent.succeeded</c> and the PaymentIntent is the
+    /// current one. A missing connected account is expected: the charge is not a card on the Connect account.
+    /// </summary>
+    Task<RentPaymentNotice?> ApplyLinkedBankPaymentAsync(RentPaymentIntentEvent paymentEvent, CancellationToken cancellationToken = default);
 
     /// <summary>Queues the emails of a committed change; a failure is logged and never undoes the change.</summary>
     Task CompleteAsync(RentPaymentNotice notice, CancellationToken cancellationToken = default);
@@ -257,4 +342,6 @@ public static class RentBillingErrorCodes
     public const string PaymentLinkInvalid = "rent_payment_link_invalid";
     public const string LeaseOutsidePlan = "rent_lease_dates_invalid";
     public const string TrackFromInvalid = "rent_track_from_invalid";
+    public const string CondominiumTermsInvalid = "rent_condominium_terms_invalid";
+    public const string CondominiumSourceNotFound = "rent_condominium_source_not_found";
 }

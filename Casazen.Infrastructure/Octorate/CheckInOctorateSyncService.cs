@@ -8,9 +8,11 @@ using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Octorate;
@@ -72,7 +74,8 @@ public sealed class CheckInOctorateSyncService(
     IHostEnvironment hostEnvironment,
     IOptions<OctorateOptions> options,
     ILogger<CheckInOctorateSyncService> logger,
-    TimeProvider? timeProvider = null) : ICheckInOctorateSyncService
+    TimeProvider? timeProvider = null,
+    IComplianceSendLog? complianceSendLog = null) : ICheckInOctorateSyncService
 {
     /// <summary>The reason code of a "To do" raised for a check-in that keeps failing.</summary>
     public const string TodoReason = "octorate_checkin_failed";
@@ -89,6 +92,10 @@ public sealed class CheckInOctorateSyncService(
     public const string ReasonBookingNotActive = "booking_not_active";
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
+    // The log of what was sent (NF-47): the one the container gives, or, built by hand without it, one on the same context.
+    private readonly IComplianceSendLog sendLog =
+        complianceSendLog ?? new ComplianceSendLog(db, NullLogger<ComplianceSendLog>.Instance);
 
     /// <summary>The attempts of a payload or a state before a "To do" is raised (1 to 20; default 5).</summary>
     public int MaxAttempts => Math.Clamp(options.Value.CheckInMaxAttempts, 1, 20);
@@ -223,6 +230,27 @@ public sealed class CheckInOctorateSyncService(
             (0, _) => OctorateCheckInSendState.Failed,
             _ => OctorateCheckInSendState.PartlyFailed,
         };
+
+        // The log of what was sent (E03/F02/US03/T01, NF-47): one line per send that handed guests to the channel manager for good (not as a draft:
+        // Octorate transmits those to the police) with nothing failing. A failed or partly failed send writes none, a send that only removed a guest
+        // or found everything unchanged sent nothing, and a draft was not sent. The line has no guest and no reference (Octorate gives no receipt).
+        if (!draft
+            && state == OctorateCheckInSendState.Sent
+            && results.Any(r => r.Outcome is OctorateGuestSendOutcome.Created or OctorateGuestSendOutcome.Updated))
+        {
+            await sendLog.RecordAsync(
+                new ComplianceSendLogEntry
+                {
+                    OrgId = booking.OrgId,
+                    PropertyId = booking.PropertyId,
+                    BookingId = booking.Id,
+                    Kind = ComplianceSendKind.AlloggiatiGuests,
+                    Sender = ComplianceSender.ChannelManager,
+                    SentAt = UtcNow(),
+                },
+                cancellationToken);
+        }
+
         logger.LogInformation(
             "Check-in guests of booking {BookingId} sent to Octorate: {State}, {Sent} accepted, {Failed} failed, draft {Draft}",
             booking.Id, state, successes, failures, draft);

@@ -36,7 +36,8 @@ public class BookingLifecycleController(
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
     IStringLocalizer<SharedResources> localizer,
-    ILogger<BookingLifecycleController> logger) : ControllerBase
+    ILogger<BookingLifecycleController> logger,
+    OtaChannelActionPolicy channelPolicy) : ControllerBase
 {
     /// <summary>
     /// Price of a stay the host is entering or changing (manual booking): lodging, cleaning and the tourist tax of the
@@ -74,16 +75,22 @@ public class BookingLifecycleController(
     /// <summary>
     /// Changes dates, guests (minors and their ages included) and notes of a booking. Replaces the old PUT that bound the
     /// EF entity (A2-07): any other field of the body, such as status or prices, is ignored. Dates and guests change only
-    /// for bookings entered by the host, before the check-in; the price is computed again (tourist tax included) and new
-    /// dates that overlap another booking or a calendar block answer 409 <c>booking_dates_unavailable</c>.
+    /// for bookings entered by the host and confirmed ones of the booking site, before the check-in; the price is computed again
+    /// (tourist tax included) and new dates that overlap another booking or a calendar block answer 409 <c>booking_dates_unavailable</c>.
+    /// For a booking of the booking site the money follows the price (E08/F02/US01/T01, NF-75): the answer is the booking and a
+    /// <c>settlement</c> block (<c>action</c>: refund, chargeSavedCard, paymentLink, none; <c>state</c>). When Stripe refuses the refund
+    /// or the charge nothing is saved: 422 <c>booking_settlement_failed</c>. <c>POST /api/bookings/{id}/edit-quote</c> says it beforehand. An edit
+    /// whose money moves (a refund, the saved card charged, a payment link) also needs <c>payment.write</c> on the property, like the cancellation
+    /// and the payment endpoints: 403 <c>booking_edit_payment_permission_required</c> otherwise, before anything is done; the edits that move no money
+    /// need <c>booking.write</c> only.
     /// </summary>
     [HttpPut("{id:guid}")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
-    [ProducesResponseType(typeof(BookingResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(UpdateBookingResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
-    public async Task<ActionResult<BookingResponseDto>> Update(
+    public async Task<ActionResult<UpdateBookingResponse>> Update(
         Guid id,
         [FromBody] UpdateBookingRequest request,
         CancellationToken cancellationToken)
@@ -94,19 +101,68 @@ public class BookingLifecycleController(
         if (!await CanWriteAsync(id, cancellationToken))
             return BookingNotFound();
 
-        var updated = await hostBookings.UpdateAsync(
-            new HostBookingUpdate(
-                id,
-                request.CheckInDate!.Value,
-                request.CheckOutDate!.Value,
-                request.NumberOfGuests,
-                request.NumberOfChildren,
-                request.ChildrenAges,
-                request.SpecialRequests,
-                new OtaAmountsInput(request.OtaCommission, request.OtaNetAmount, request.OtaPaidAmount, request.OtaBalanceAmount)),
-            cancellationToken);
-        return Ok(BookingMapper.ToResponse(updated));
+        // Money moves (a refund, the saved card charged, a payment link) only for who may handle it, as the cancellation and the payment endpoints:
+        // payment.write on the property. The plan is worked out before anything is done; the service checks the plan it really makes again under
+        // the lock of the booking, so a plan that changed meanwhile never moves money without the permission.
+        var update = ToUpdate(id, request);
+        var canMoveMoney = await CanAccessAsync(id, PaymentOperations.Write, cancellationToken, logDenial: false);
+        if (!canMoveMoney)
+        {
+            var plan = await hostBookings.QuoteEditAsync(update, cancellationToken);
+            if (plan.Action != BookingSettlementAction.None)
+                return EditPaymentPermissionMissing();
+        }
+
+        var result = await hostBookings.UpdateAsync(update with { CanMoveMoney = canMoveMoney }, cancellationToken);
+        var response = BookingMapper.Fill(new UpdateBookingResponse(), result.Booking, DateTime.UtcNow, channelPolicy);
+        response.Settlement = BookingEditSettlementDto.From(result.Settlement);
+        return Ok(response);
     }
+
+    /// <summary>
+    /// What <c>PUT /api/bookings/{id}</c> would do with the same body, worked out and not done (E08/F02/US01/T01, NF-75): the new total, what the guest
+    /// has paid, the difference and the action on it (<c>refund</c>, <c>chargeSavedCard</c>, <c>paymentLink</c>, <c>none</c>), so the host reads it
+    /// before confirming. The same checks and errors as the edit; nothing is saved or sent to Stripe. <c>booking.write</c> on the property of the
+    /// booking (404 for a booking of another org or out of the caller's reach) and, because it shows what the guest paid and what the money comes to,
+    /// <c>payment.read</c> (403 <c>booking_edit_payment_permission_required</c>), as the quote of the cancellation.
+    /// </summary>
+    [HttpPost("{id:guid}/edit-quote")]
+    [Authorize(Policy = CasazenPolicies.BookingWrite)]
+    [ProducesResponseType(typeof(BookingEditQuoteDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<BookingEditQuoteDto>> QuoteEdit(
+        Guid id,
+        [FromBody] UpdateBookingRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+
+        if (!await CanWriteAsync(id, cancellationToken))
+            return BookingNotFound();
+
+        // The quote says what the guest has paid and what the money of the edit comes to: money, so payment.read on the property as the quote of
+        // the cancellation (BookingCancellationController.GetQuote).
+        if (!await CanAccessAsync(id, PaymentOperations.Read, cancellationToken))
+            return EditPaymentPermissionMissing();
+
+        var quote = await hostBookings.QuoteEditAsync(ToUpdate(id, request), cancellationToken);
+        return Ok(BookingEditQuoteDto.From(quote));
+    }
+
+    private HostBookingUpdate ToUpdate(Guid id, UpdateBookingRequest request) =>
+        new(
+            id,
+            request.CheckInDate!.Value,
+            request.CheckOutDate!.Value,
+            request.NumberOfGuests,
+            request.NumberOfChildren,
+            request.ChildrenAges,
+            request.SpecialRequests,
+            new OtaAmountsInput(request.OtaCommission, request.OtaNetAmount, request.OtaPaidAmount, request.OtaBalanceAmount),
+            User.GetUserId());
 
     /// <summary>
     /// "Registra arrivo": the host records that the guest arrived. A confirmed booking becomes checked in from its
@@ -128,7 +184,7 @@ public class BookingLifecycleController(
             return BookingNotFound();
 
         var arrival = await stayLifecycle.RegisterArrivalAsync(id, cancellationToken);
-        var response = BookingMapper.Fill(new ArrivalRegisteredResponse(), arrival.Booking, DateTime.UtcNow);
+        var response = BookingMapper.Fill(new ArrivalRegisteredResponse(), arrival.Booking, DateTime.UtcNow, channelPolicy);
         response.GuestDataComplete = arrival.GuestDataComplete;
         return Ok(response);
     }
@@ -157,7 +213,7 @@ public class BookingLifecycleController(
             id,
             new StayCheckOut(request?.RegisterArrival ?? false),
             cancellationToken);
-        return Ok(BookingMapper.ToResponse(checkedOut));
+        return Ok(BookingMapper.ToResponse(checkedOut, channelPolicy));
     }
 
     /// <summary>
@@ -426,7 +482,8 @@ public class BookingLifecycleController(
     private async Task<bool> CanAccessAsync(
         Guid bookingId,
         HostOperationRequirement operation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool logDenial = true)
     {
         var booking = await bookingService.GetBookingAsync(bookingId);
         if (booking is null)
@@ -439,11 +496,20 @@ public class BookingLifecycleController(
         if (await authorizationService.IsAuthorizedAsync(User, property with { OrgId = booking.OrgId }, operation))
             return true;
 
-        logger.LogWarning(
-            "User {UserId} denied {Permission} on booking {BookingId}", User.GetUserId(), operation.PermissionKey, bookingId);
+        // A denial that only asks "may this caller also move money?" is not an event (the edit goes on without money): no warning for it.
+        if (logDenial)
+        {
+            logger.LogWarning(
+                "User {UserId} denied {Permission} on booking {BookingId}", User.GetUserId(), operation.PermissionKey, bookingId);
+        }
+
         return false;
     }
 
     private ObjectResult BookingNotFound() =>
         this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "BookingNotFound");
+
+    /// <summary>403: the edit would move money (or shows it) and the caller has no <c>payment.write</c> (<c>payment.read</c> for the quote).</summary>
+    private ObjectResult EditPaymentPermissionMissing() =>
+        this.ApiProblem(StatusCodes.Status403Forbidden, BookingErrorCodes.EditPaymentPermissionRequired, "BookingEditPaymentPermissionRequired");
 }

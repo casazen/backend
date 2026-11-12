@@ -53,6 +53,9 @@ public class Party
     [EmailAddress]
     public string ContactEmail { get; set; } = string.Empty;
 
+    /// <summary>Optional international phone number used for direct communications such as WhatsApp. Encrypted at rest.</summary>
+    public string? ContactPhone { get; set; }
+
     public bool IsExtraEU { get; set; }
 
     /// <summary>

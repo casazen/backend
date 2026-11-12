@@ -70,10 +70,10 @@ public enum MarketplaceCardStatus
 /// <summary>Whether the status of a card is the org's or a property's.</summary>
 public enum MarketplaceStatusScope
 {
-    /// <summary>The org as a whole (a partner, a licensed function, or a channel asked about without a property).</summary>
+    /// <summary>The org as a whole (a partner, or a channel, a tool or a licensed function asked about without a property).</summary>
     Org = 1,
 
-    /// <summary>One property (a channel or a tool asked about with a property).</summary>
+    /// <summary>One property (a channel, a tool or a licensed function asked about with a property).</summary>
     Property = 2,
 }
 
@@ -139,7 +139,9 @@ public sealed record MarketplaceIntegrationProperty(Guid Id, string Name);
 /// <summary>
 /// One activation of the Active tab. <see cref="Name"/> is the name of the portal or of the partner, and the code of the module for a licensed
 /// function (the web layer writes its name in the language of the request). <see cref="IsDeclared"/>: the host declared it and Octorate did
-/// not prove it.
+/// not prove it. <see cref="DeclaredAt"/> is the day the host gave when it declared it (for a partner, midnight UTC of that day: show its date) and
+/// <see cref="VerifiedAt"/> is when a connection or the license first showed it (E09/F02/US03/T01): the Active tab reads them from the row, so
+/// «declared by you on …» and «verified» survive a reload; either is <c>null</c> when the row has no such fact.
 /// </summary>
 public sealed record MarketplaceIntegration(
     MarketplaceActivationKind Kind,
@@ -148,7 +150,9 @@ public sealed record MarketplaceIntegration(
     MarketplaceIntegrationProperty? Property,
     MarketplaceCardStatus Status,
     bool IsDeclared,
-    DateTime? LastSyncedAt);
+    DateTime? LastSyncedAt,
+    DateTime? DeclaredAt = null,
+    DateTime? VerifiedAt = null);
 
 /// <summary>The answer of <see cref="IMarketplaceCatalogService.GetActiveAsync"/>: the integrations and the suppliers used, together.</summary>
 public sealed record MarketplaceActive(IReadOnlyList<MarketplaceIntegration> Integrations, IReadOnlyList<HostUsedSupplier> Providers);

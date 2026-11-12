@@ -69,6 +69,23 @@ public sealed record OctoratePoliceAccount
 }
 
 /// <summary>
+/// What CasaZen could read of the police account of one accommodation to verify the guided step of the police connection
+/// (<c>IOctorateApiClient.GetPoliceAccountStatusAsync</c>, E10/F01/US03/T01, D17, D31). <see cref="Readable"/> is true only when Octorate
+/// exposed <c>valid</c>; it is false, and the other members are <c>null</c>, when the field is absent (an accommodation created through the
+/// API has no police account: S25), when the read was refused or when Octorate does not know the accommodation. A caller never reads a
+/// refusal as «not valid»: not readable is «CasaZen cannot tell».
+/// </summary>
+/// <param name="Readable">True when <c>valid</c> was read.</param>
+/// <param name="Valid">Whether the connection to the police portal is valid; <c>null</c> when not readable.</param>
+/// <param name="Autorun">Whether Octorate sends the daily communication; <c>null</c> when not exposed.</param>
+/// <param name="LastCron">When Octorate's daily job last ran (UTC); <c>null</c> when not exposed.</param>
+public sealed record OctoratePoliceAccountStatus(bool Readable, bool? Valid, bool? Autorun, DateTime? LastCron)
+{
+    /// <summary>The status of an account CasaZen could not read.</summary>
+    public static OctoratePoliceAccountStatus NotReadable { get; } = new(false, null, null, null);
+}
+
+/// <summary>
 /// A product of an accommodation (<c>GET /rest/v3/roomrates/{acc}</c>): a room (unit), or a rate derived from one
 /// (<see cref="DerivedFromId"/>, Octorate's <c>derivedRule.parent</c>). The rooms, beds and guests the matcher and the import use.
 /// </summary>
@@ -367,6 +384,15 @@ public sealed record OctorateReservation
     public string? GuestId { get; init; }
 
     /// <summary>
+    /// The id of the customer record of the address book that holds the invoice of the reservation (<c>invoiceHolderId</c> of
+    /// <c>ApiReservationRespDTO</c>, E06/F02/US01/T04): the key of the billing data (<see cref="IOctorateApiClient.GetBookerBillingDataAsync"/>). It is
+    /// <b>not</b> <see cref="GuestId"/>: the guests of a stay are another table than the address book, and a record picked by their id could be another
+    /// customer's. <c>null</c> when the reservation names none, which is the usual case (the sandbox leaves the address book empty after a check-in).
+    /// The name is the OpenAPI's; the sandbox has not shown a reservation that carries one.
+    /// </summary>
+    public string? InvoiceHolderId { get; init; }
+
+    /// <summary>
     /// Octorate holds an e-mail address for the first guest (<c>emailAvailable</c>): a flag, the address itself is not in the answer. <c>null</c>
     /// when the answer does not say.
     /// </summary>
@@ -398,6 +424,26 @@ public sealed record OctorateReservation
 
     /// <summary><c>UNPAID</c>, <c>PARTIALLY_PAID</c>, <c>PAID_DEPOSIT</c> or <c>PAID</c>.</summary>
     public string? PaymentStatus { get; init; }
+
+    /// <summary>The value of <see cref="CompanyCollect"/> when the channel (the company) collects the payment.</summary>
+    public const string CompanyCollectCompany = "COMPANY";
+
+    /// <summary>The value of <see cref="CompanyCollect"/> when the host (the hotel) collects the payment.</summary>
+    public const string CompanyCollectHotel = "HOTEL";
+
+    /// <summary>
+    /// Who collects the payment (<c>companyCollect</c>, E08/F03/US03/T02, NF-77), upper case: <see cref="CompanyCollectCompany"/>, <see cref="CompanyCollectHotel"/>
+    /// or <c>NONE</c> (the OpenAPI writes <c>NONE|COMPANY|HOTEl</c>). <c>null</c> when the answer carries none, which is what the sandbox samples do, and for
+    /// a word that is none of the three: it is never guessed.
+    /// </summary>
+    public string? CompanyCollect { get; init; }
+
+    /// <summary>
+    /// Whether the portal pays the host net of its commission (E08/F03/US03/T02, NF-77). It is <b>not</b> a member of the reservation: it is the
+    /// <c>commissionIncludedInPayments</c> flag of the portal catalog (<c>GET /rest/v1/meta/portals</c>, <see cref="OctoratePortal.CommissionIncludedInPayments"/>),
+    /// which the import reads from the cache of the marketplace and sets here before it maps the reservation. The reader of an answer leaves it <c>null</c>.
+    /// </summary>
+    public bool? CommissionIncludedInPayments { get; init; }
 
     /// <summary>The price breakdown (single read only).</summary>
     public IReadOnlyList<OctoratePriceComponent> PriceBreakdown { get; init; } = [];

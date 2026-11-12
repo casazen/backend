@@ -43,6 +43,14 @@ public sealed record BookingEventPayload(
     DateOnly CheckIn,
     DateOnly CheckOut)
 {
+    /// <summary>
+    /// Only on <c>OctorateSyncRequested</c> (E08/F02/US01/T02): the host chose to write CasaZen's version of a booking over the one that changed on
+    /// Octorate («keep mine», <c>POST /api/bookings/{id}/octorate-sync/retry?overwrite=true</c>). A flag, not data; left out of the JSON when false,
+    /// so the other events keep their shape.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Overwrite { get; init; }
+
     /// <summary>The payload of an event about <paramref name="booking"/> as it is now, made by <paramref name="origin"/>.</summary>
     public static BookingEventPayload Of(Booking booking, BookingEventOrigin origin)
     {

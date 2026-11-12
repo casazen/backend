@@ -29,7 +29,8 @@ public class AlloggiatiWebService(
     ILogger<AlloggiatiWebService> logger,
     TimeProvider? timeProvider = null,
     IStayGuestService? stayGuestService = null,
-    IAlloggiatiCodeTableService? codeTableService = null) : IAlloggiatiWebService
+    IAlloggiatiCodeTableService? codeTableService = null,
+    IComplianceSendLog? complianceSendLog = null) : IAlloggiatiWebService
 {
     /// <summary>Error code of a sent date before the check-in date.</summary>
     public const string ManualDateBeforeArrivalCode = "alloggiati_manual_date_before_arrival";
@@ -63,6 +64,9 @@ public class AlloggiatiWebService(
     private readonly IStayGuestService _stayGuests = stayGuestService
         ?? new StayGuestService(context, codeTableService ?? new AlloggiatiCodeTableService(context, NullLogger<AlloggiatiCodeTableService>.Instance), timeProvider);
 
+    // The log of what was sent (NF-47): the one the container gives, or, built by hand without it, one on the same context.
+    private readonly IComplianceSendLog _sendLog = complianceSendLog ?? new ComplianceSendLog(context, NullLogger<ComplianceSendLog>.Instance);
+
     public async Task<bool> IsStayDataCompleteAsync(Guid bookingId)
     {
         var booking = await context.Bookings.AsNoTracking().Include(b => b.Guest).FirstOrDefaultAsync(b => b.Id == bookingId);
@@ -86,6 +90,7 @@ public class AlloggiatiWebService(
             .Include(b => b.Property)
             // A no-show (NF-45) has nothing to send: it leaves the list of the communications.
             .Where(b => b.OrgId == scope.OrgId && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
+            .Where(OpenableStayRules.CanShow)
             .InScope(scope);
 
         if (propertyId.HasValue)
@@ -106,6 +111,13 @@ public class AlloggiatiWebService(
         var now = UtcNow();
         var today = _clock.TodayInRome();
         return bookings
+            .Where(booking => OpenableStayRules.CanCompleteStay(
+                booking.Property?.Name,
+                booking.Guest?.FirstName,
+                booking.Guest?.LastName,
+                AlloggiatiRecordRules.IsDataComplete(guests[booking.Id]),
+                booking.CheckOutDate,
+                today))
             .Select(booking =>
             {
                 var report = SlotReport(reports[booking.Id].ToList(), booking.GuestId);
@@ -342,7 +354,7 @@ public class AlloggiatiWebService(
         return AlloggiatiProcessOutcome.MarkedForManualSubmission;
     }
 
-    public async Task<AlloggiatiStatusInfo> MarkSentManuallyAsync(Guid bookingId, DateTime sentOn)
+    public async Task<AlloggiatiStatusInfo> MarkSentManuallyAsync(Guid bookingId, DateTime sentOn, string? byUserId = null)
     {
         var booking = await LoadBookingAsync(bookingId, tracking: true);
         var sentDate = sentOn.Date;
@@ -375,7 +387,20 @@ public class AlloggiatiWebService(
         report.ReportedAt = sentDate;
         report.ErrorMessage = null;
         report.UpdatedAt = now;
-        await context.SaveChangesAsync();
+
+        // The declaration and its line in the log of what was sent (NF-47, AC-NF47-2) are one save: the log saves the report with it, so the
+        // stay is never declared sent without the line, nor the line written for a declaration that did not go through. When is the day the host
+        // says it sent the communication, as for the report (a calendar day of Rome, midnight UTC); who is the person who declared it.
+        await _sendLog.RecordAsync(new ComplianceSendLogEntry
+        {
+            OrgId = booking.OrgId,
+            PropertyId = booking.PropertyId,
+            BookingId = bookingId,
+            Kind = ComplianceSendKind.AlloggiatiGuests,
+            Sender = ComplianceSender.Manual,
+            SentAt = DateTime.SpecifyKind(sentDate, DateTimeKind.Utc),
+            ByUserId = string.IsNullOrWhiteSpace(byUserId) ? null : byUserId,
+        });
 
         logger.LogInformation("Alloggiati report of booking {BookingId} declared sent manually by the host", bookingId);
         return BuildStatusInfo(booking, report, await IsDataCompleteAsync(booking));

@@ -31,6 +31,8 @@ public class BookingService(
     ICheckoutHoldExpiryService checkoutHoldExpiry,
     OnSiteRequestNotifier onSiteNotifier,
     IPricingAdapterService pricingAdapterService,
+    IChannelManagerAvailability channelManager,
+    IPropertyDayRuleService dayRules,
     TimeProvider? timeProvider = null,
     IStayDiscountService? stayDiscountService = null,
     IDomainEventRecorder? domainEvents = null,
@@ -90,6 +92,9 @@ public class BookingService(
                 booking.PropertyId, booking.CheckInDate, booking.CheckOutDate);
             throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
         }
+
+        // E08/F01/US02/T01 (NF-80): the channel manager is asked too, before anything is written (it may save the room of the mapping).
+        await EnsureChannelManagerAcceptsAsync(booking.OrgId, booking.PropertyId, booking.CheckInDate, booking.CheckOutDate, booking.NumberOfGuests);
 
         // The guest snapshot is written only once the dates are known to be free, and removed again if a concurrent
         // booking takes them before the insert (the repository re-checks under the property lock).
@@ -161,7 +166,7 @@ public class BookingService(
         }
 
         var totalGuests = input.NumberOfAdults + input.NumberOfChildren;
-        var (checkIn, checkOut) = ValidateStay(property, input.CheckInDate, input.CheckOutDate, totalGuests);
+        var (checkIn, checkOut) = await ValidateStayAsync(property, input.CheckInDate, input.CheckOutDate, totalGuests);
 
         // A3-06: a "pay at the property" request holds its dates with no guarantee: its length is capped.
         if (input.PaymentOption == PaymentOption.OnSite)
@@ -261,6 +266,10 @@ public class BookingService(
             throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
         }
 
+        // E08/F01/US02/T01 (NF-80): the channel manager is asked too, before the hold is written and its event recorded (the lookup may save
+        // the room of the mapping, which must not carry the pending rows of the checkout with it).
+        await EnsureChannelManagerAcceptsAsync(property.OrgId, input.PropertyId, checkIn, checkOut, totalGuests);
+
         Booking createdBooking;
         try
         {
@@ -358,8 +367,8 @@ public class BookingService(
 
         var property = await GetBookablePropertyAsync(input.PropertyId);
 
-        var (checkIn, checkOut) = ValidateStay(
-            property, input.CheckInDate, input.CheckOutDate, input.NumberOfAdults + input.NumberOfChildren);
+        var (checkIn, checkOut) = await ValidateStayAsync(
+            property, input.CheckInDate, input.CheckOutDate, input.NumberOfAdults + input.NumberOfChildren, cancellationToken);
 
         return await PriceStayAsync(
             property, checkIn, checkOut, input.NumberOfAdults, input.NumberOfChildren, input.ChildrenAges,
@@ -416,16 +425,22 @@ public class BookingService(
     }
 
     /// <summary>
-    /// Guests within the capacity and a stay of 1 to <see cref="TouristTaxCalculator.MaxNights"/> nights, not shorter than
-    /// the minimum stay of the property (DB-03, 422 <see cref="DirectBookingErrorCodes.MinNightsNotMet"/>). The minimum is a
-    /// rule of the guests' quote and checkout, the two callers of this method: the host's own prices and bookings
-    /// (<see cref="PriceHostStayAsync"/>, manual bookings) do not go through it, a stay entered by hand can be shorter.
+    /// Guests within the capacity, a stay of 1 to <see cref="TouristTaxCalculator.MaxNights"/> nights, and the rules of its nights
+    /// (E08/F05/US01/T03, NF-36): <see cref="DayRuleStayChecks.FirstViolation"/> reads the rule of the arrival night (closed arrival, minimum
+    /// stay, maximum stay, minimum and maximum advance) and of the day of the departure (closed departure), and the minimum stay of the
+    /// property (DB-03) when the arrival night has none: 422 <see cref="DirectBookingErrorCodes.MinNightsNotMet"/>,
+    /// <see cref="DirectBookingErrorCodes.ArrivalClosed"/>, <see cref="DirectBookingErrorCodes.DepartureClosed"/>,
+    /// <see cref="DirectBookingErrorCodes.MaxNightsExceeded"/>, <see cref="DirectBookingErrorCodes.AdvanceTooShort"/> or
+    /// <see cref="DirectBookingErrorCodes.AdvanceTooLong"/>. «Today» of the advance is the date in the time zone of the property. These rules are
+    /// those of the guests' quote and checkout, the two callers of this method: the host's own prices and bookings (<see cref="PriceHostStayAsync"/>,
+    /// manual bookings) do not go through it, a stay entered by hand can break them.
     /// </summary>
-    private static (DateTime CheckIn, DateTime CheckOut) ValidateStay(
+    private async Task<(DateTime CheckIn, DateTime CheckOut)> ValidateStayAsync(
         Property property,
         DateTime checkInDate,
         DateTime checkOutDate,
-        int totalGuests)
+        int totalGuests,
+        CancellationToken cancellationToken = default)
     {
         if (totalGuests > property.MaxGuests)
         {
@@ -439,9 +454,19 @@ public class BookingService(
             throw new DomainRuleException(DirectBookingErrorCodes.InvalidStay, "DirectBookingInvalidStay");
         }
 
-        if (property.MinNights is { } minNights && (checkOut - checkIn).Days < minNights)
+        // The nights are the calendar dates the stay is stored with; the rules are read once for the arrival and the departure day.
+        var arrival = RomeCalendar.DateInRome(checkIn);
+        var departure = RomeCalendar.DateInRome(checkOut);
+        var rules = DayRuleStayChecks.NoRules;
+        if ((await dayRules.GetRulesForSiteAsync([property.Id], arrival, departure.AddDays(1), cancellationToken)).TryGetValue(property.Id, out var ofProperty))
         {
-            throw new DomainRuleException(DirectBookingErrorCodes.MinNightsNotMet, "DirectBookingMinNightsNotMet", minNights);
+            rules = ofProperty;
+        }
+
+        var today = DayRuleRules.TodayOf(property.Timezone, _clock.GetUtcNow());
+        if (DayRuleStayChecks.FirstViolation(arrival, departure, today, property.MinNights, rules) is { } violation)
+        {
+            throw DayRuleStayChecks.ToException(violation);
         }
 
         return (checkIn, checkOut);
@@ -708,6 +733,34 @@ public class BookingService(
     }
 
     private int GetPendingDirectTtlMinutes() => CheckoutHolds.GetTtlMinutes(configuration);
+
+    /// <summary>
+    /// The second half of the final check on the dates (E08/F01/US02/T01, NF-74, NF-80): the channel manager is asked besides CasaZen's own
+    /// occupancy, and an Octorate that answers "not available" refuses the booking with the same 409 as a night CasaZen has taken
+    /// (<see cref="BookingErrorCodes.DatesUnavailable"/>, the same text: the guest is not told about the channel manager). A property that is
+    /// not mirrored, an Octorate that cannot be asked (timeout, 429, 5xx, a room not chosen) or the connector being off never refuses: the create
+    /// push of the booking (E08/F01/US01/T03) reports a conflict if Octorate refuses later. Called before anything of the booking is written or
+    /// recorded, because the lookup of the target may save the room of the mapping.
+    /// </summary>
+    private async Task EnsureChannelManagerAcceptsAsync(Guid orgId, Guid propertyId, DateTime checkIn, DateTime checkOut, int guests)
+    {
+        var answer = await channelManager.CheckAsync(
+            propertyId,
+            orgId,
+            DateOnly.FromDateTime(checkIn),
+            DateOnly.FromDateTime(checkOut),
+            Math.Max(1, guests),
+            CancellationToken.None);
+        if (!answer.IsNotAvailable)
+            return;
+
+        logger.LogInformation(
+            "Booking rejected: property {PropertyId} is not available on the channel manager from {CheckIn:yyyy-MM-dd} to {CheckOut:yyyy-MM-dd}",
+            propertyId,
+            checkIn,
+            checkOut);
+        throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
+    }
 
     /// <summary>
     /// Removes a checkout whose payment could not be started (BK-18). Best effort: when the removal fails too, the attempt

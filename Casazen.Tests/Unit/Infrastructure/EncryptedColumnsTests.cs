@@ -17,6 +17,17 @@ public class EncryptedColumnsTests
         Assert.Equal(
             new[]
             {
+                // NF-81: who an invoice of a booking is made out to (name, fiscal code, VAT number, address, PEC) and, with it, the hash of what was
+                // last written to Octorate (E06/F02/US01/T04).
+                "BookingInvoiceData.AddressCivic:Casazen.BookingInvoiceData",
+                "BookingInvoiceData.AddressStreet:Casazen.BookingInvoiceData",
+                "BookingInvoiceData.City:Casazen.BookingInvoiceData",
+                "BookingInvoiceData.FiscalCode:Casazen.BookingInvoiceData",
+                "BookingInvoiceData.Name:Casazen.BookingInvoiceData",
+                "BookingInvoiceData.OctorateBillingHash:Casazen.BookingInvoiceData",
+                "BookingInvoiceData.Pec:Casazen.BookingInvoiceData",
+                "BookingInvoiceData.PostalCode:Casazen.BookingInvoiceData",
+                "BookingInvoiceData.VatNumber:Casazen.BookingInvoiceData",
                 "DocumentImage.BackImageUrl:Casazen.DocumentImage",
                 "DocumentImage.FrontImageUrl:Casazen.DocumentImage",
                 "Guest.DocumentIssuingCountry:Casazen.Guest.Document",
@@ -34,14 +45,19 @@ public class EncryptedColumnsTests
                 "OctorateConnection.EncryptedRefreshToken:Casazen.Octorate.OAuth",
                 "OtaIntegration.ApiKey:Casazen.OtaIntegration.Secrets",
                 "OtaIntegration.ApiSecret:Casazen.OtaIntegration.Secrets",
+                // ADR-032-R3: the words of the conversations of the guests with the channels, copied from the channel manager.
+                "OtaMessage.Text:Casazen.Message.Content",
+                "Party.ContactPhone:Casazen.LeaseParty",
                 "Party.Residence:Casazen.LeaseParty",
                 "PlatformAiSettings.ApiKey:Casazen.PlatformAiSettings",
                 // NF-13: encrypted property access codes (gate, lockbox, smart lock PIN).
                 "PropertyAccessCode.EncryptedCode:Casazen.PropertyAccessCode",
                 "PropertyICalFeed.ImportUrl:Casazen.PropertyICalFeed.ImportUrl",
-                // ADR-012: property owner financial data (IBAN and fiscal code).
+                // ADR-012: property owner financial data (IBAN and fiscal code), and the BIC and the VAT number of the owner profile (E10/F02/US02/T01).
+                "PropertyOwner.Bic:Casazen.PropertyOwner.Financial",
                 "PropertyOwner.FiscalCode:Casazen.PropertyOwner.Financial",
                 "PropertyOwner.Iban:Casazen.PropertyOwner.Financial",
+                "PropertyOwner.VatNumber:Casazen.PropertyOwner.Financial",
                 "PropertyQuesturaCredentials.Password:Casazen.PropertyQuesturaCredentials",
                 "PropertyQuesturaCredentials.Username:Casazen.PropertyQuesturaCredentials",
                 "PropertyQuesturaCredentials.WsKey:Casazen.PropertyQuesturaCredentials",

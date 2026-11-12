@@ -268,12 +268,16 @@ public class AlloggiatiCodeEntryDto
     public string Description { get; set; } = string.Empty;
     public string? Province { get; set; }
 
+    /// <summary>Citizenship adjective (Italiano). Null for a place and for a country without one.</summary>
+    public string? CitizenshipLabel { get; set; }
+
     public static AlloggiatiCodeEntryDto From(AlloggiatiCodeEntryInfo info) => new()
     {
         Table = info.Table,
         Code = info.Code,
         Description = info.Description,
         Province = info.Province,
+        CitizenshipLabel = info.CitizenshipLabel,
     };
 }
 

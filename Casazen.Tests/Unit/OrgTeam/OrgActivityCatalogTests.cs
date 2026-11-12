@@ -46,6 +46,11 @@ public class OrgActivityCatalogTests
     [InlineData(OrgActivityType.AlloggiatiDelegationGranted, 81)]
     [InlineData(OrgActivityType.AlloggiatiDelegationRevoked, 82)]
     [InlineData(OrgActivityType.OctorateComplianceHandoffStarted, 100)]
+    [InlineData(OrgActivityType.OnboardingAssistRequested, 110)]
+    [InlineData(OrgActivityType.OnboardingAssistUpdated, 111)]
+    [InlineData(OrgActivityType.ContactInfoRead, 120)]
+    [InlineData(OrgActivityType.OwnerImportApplied, 130)]
+    [InlineData(OrgActivityType.OwnerInvitationChanged, 140)]
     public void Type_TheIntegerOfEveryEvent_IsPinned(OrgActivityType type, int value)
     {
         // The value is what the database holds: reordering or reusing it would rewrite history.
@@ -55,7 +60,7 @@ public class OrgActivityCatalogTests
     [Fact]
     public void Type_EveryEventOfTheEnum_IsPinnedAbove()
     {
-        Assert.Equal(26, Enum.GetValues<OrgActivityType>().Length);
+        Assert.Equal(31, Enum.GetValues<OrgActivityType>().Length);
     }
 
     [Fact]
@@ -65,22 +70,24 @@ public class OrgActivityCatalogTests
         Assert.Equal(
             ["Account", "ShortRent", "LongRent", "Supplier"],
             Enum.GetValues<OrgActivityArea>().Select(a => a.ToString()));
-        Assert.Equal([1, 2, 3, 4, 5], Enum.GetValues<OrgActivitySubjectType>().Select(s => (int)s));
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7], Enum.GetValues<OrgActivitySubjectType>().Select(s => (int)s));
         Assert.Equal(
-            ["Member", "Invitation", "Org", "Property", "Supplier"],
+            ["Member", "Invitation", "Org", "Property", "Supplier", "Booking", "OwnerInvitation"],
             Enum.GetValues<OrgActivitySubjectType>().Select(s => s.ToString()));
     }
 
     [Fact]
-    public void Catalog_DescribesEveryEventOnce_AndTheCatalogStaysUnderThirtyEvents()
+    public void Catalog_DescribesEveryEventOnce_AndTheCatalogStaysUnderThirtyTwoEvents()
     {
         var described = OrgActivityCatalog.All.Select(e => e.Type).ToList();
 
         Assert.Equal(Enum.GetValues<OrgActivityType>().Order(), described.Order());
         Assert.Equal(described.Count, described.Distinct().Count());
-        // AM-D18: the catalog is closed and grows one row at a time. The cap was twenty-five events; the Octorate plan adds four more
-        // (the compliance handoff and the sender and delegation of E03/F01/US05), so it is thirty until the PO decides otherwise.
-        Assert.InRange(described.Count, 1, 30);
+        // AM-D18: the catalog is closed and grows one row at a time. The cap was twenty-five events; the Octorate plan adds six more
+        // (the compliance handoff, the sender and delegation of E03/F01/US05 and the two of «Do it for me» of E10/F01/US03), so it is
+        // thirty until the PO decides otherwise; the owner portfolio of an agency (E10/F02/US02: the import and the invitations, ADR-011-R11) adds two
+        // more, thirty-two, which the PO is asked to confirm (docs/runbooks/org-team.md section 30).
+        Assert.InRange(described.Count, 1, 32);
     }
 
     [Fact]
@@ -196,8 +203,41 @@ public class OrgActivityCatalogTests
             "fiscal", "slug", "token", "password", "reason", "description",
         ];
 
-        Assert.All(OrgActivityDetailKeys.All, key =>
+        // `context` (E10/F01/US03/T01) holds the "text" of "con-text" and nothing else: it is the code of a closed list
+        // (OnboardingAssistContexts: panelPolice, panelIstat, panelChannelAccess, part), checked by the test below.
+        string[] reviewed = [OrgActivityDetailKeys.Context];
+
+        Assert.All(OrgActivityDetailKeys.All.Except(reviewed), key =>
             Assert.DoesNotContain(forbidden, fragment => key.Contains(fragment, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Fact]
+    public void DetailKeys_TheContextOfAnAssistRequest_IsACodeOfTheClosedList_NeverAText()
+    {
+        // The three keys of the events of «Do it for me»: the part, the context and the status, each a short code.
+        foreach (var type in new[] { OrgActivityType.OnboardingAssistRequested, OrgActivityType.OnboardingAssistUpdated })
+        {
+            var info = OrgActivityCatalog.Describe(type);
+            Assert.Equal((OrgActivityArea.Account, OrgActivitySubjectType.Org, false), (info.DefaultArea, info.SubjectType, info.Reserved));
+            Assert.Equal(
+                new[] { OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Context, OrgActivityDetailKeys.Status }.Order(),
+                info.DetailKeys.Order());
+        }
+
+        foreach (var context in new[]
+                 {
+                     OnboardingAssistContexts.PanelPolice, OnboardingAssistContexts.PanelIstat,
+                     OnboardingAssistContexts.PanelChannelAccess, OnboardingAssistContexts.Part,
+                 })
+        {
+            Assert.True(OrgActivityCatalog.IsSafeDetailValue(context), context);
+        }
+
+        // A free text under the key is refused like under any other.
+        Assert.Throws<ArgumentException>(() => OrgActivityCatalog.Validate(OrgActivity.Of(
+            Org, OrgActivityType.OnboardingAssistUpdated, "auth0|staff", Org.ToString(), (OrgActivityDetailKeys.Context, "mario@example.com"))));
+        Assert.Throws<ArgumentException>(() => OrgActivityCatalog.Validate(OrgActivity.Of(
+            Org, OrgActivityType.OnboardingAssistUpdated, "auth0|staff", Org.ToString(), ("note", "done"))));
     }
 
     [Fact]

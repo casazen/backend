@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-06.6";
+    public const string Version = "2026-11-07.1";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -50,12 +50,30 @@ public static class DemoShowcaseCatalog
     /// </summary>
     public const string CrmWelcomeToken = "TEST-benvenuto-villa-lago-demo-01";
 
+    /// <summary>
+    /// Invented Financial Connections id stored on the demo org (<see cref="Scenario.LandlordBankLink"/>). It contains
+    /// TEST and is not a bank number. A real link replaces it; the reset does not overwrite one that is already set.
+    /// </summary>
+    public const string BankLinkAccountId = "fca_TEST_showcase_landlord";
+
     public static class Scenario
     {
         public const string PublishedLombardia = "short-stay-published-lombardia";
         public const string PublishedLazio = "short-stay-published-lazio";
         public const string ActivationPending = "short-stay-activation-pending";
         public const string LongStayCadastral = "long-stay-cadastral";
+
+        /// <summary>
+        /// The demo landlord has an optional Financial Connections account id (invented, marked TEST). The manual bank
+        /// transfer of a rent due is still the fallback: the id is not an IBAN.
+        /// </summary>
+        public const string LandlordBankLink = "landlord-bank-link";
+
+        /// <summary>
+        /// A tenant maintenance request on the long-rent demo house: waiting, not paid, marked TEST.
+        /// Approval is a decision; the euro debit is a separate step. Not written as a row.
+        /// </summary>
+        public const string TenantMaintenanceRequest = "tenant-maintenance-request";
         public const string BookingUpcoming = "booking-upcoming";
         public const string BookingPast = "booking-past";
         public const string BookingManualLight = "booking-manual-light";
@@ -70,6 +88,7 @@ public static class DemoShowcaseCatalog
         public const string AgencyPropertiesCrossRegion = "agency-properties-cross-region";
         public const string OwnerShares = "owner-shares";
         public const string OwnerMandate = "owner-mandate";
+        public const string OwnerOnboarding = "owner-onboarding";
         public const string StaffCollaborator = "staff-collaborator";
         public const string TrustedSupplier = "trusted-supplier";
         public const string BookingOtaIcal = "booking-ota-ical";
@@ -77,6 +96,12 @@ public static class DemoShowcaseCatalog
         public const string CheckInBiometricPassed = "checkin-biometric-passed";
         public const string CheckInOperatorVerified = "checkin-operator-verified";
         public const string CheckInRejected = "checkin-rejected";
+
+        /// <summary>
+        /// E03/F04/US02/T04: a stay whose identity verification passed online, by the agent, before the arrival: the consent recorded with its
+        /// version, only the head of group verified, the lock code released on the check-in page and by e-mail. Test data, no real person.
+        /// </summary>
+        public const string CheckInIdentityVerified = "checkin-identity-verified";
         public const string AlloggiatiSentReceiptPending = "alloggiati-sent-receipt-pending";
         public const string AlloggiatiRegistered = "alloggiati-registered";
         public const string StatementPublished = "statement-published";
@@ -99,12 +124,39 @@ public static class DemoShowcaseCatalog
         public const string TouristTaxPerGuest = "tourist-tax-per-guest";
         public const string TouristTaxChannelCollected = "tourist-tax-channel-collected";
 
+        /// <summary>
+        /// The hub of messages (E05/F02/US01/T01, NF-61, NF-64): the conversations of the guests in one list. Three invented conversations, all saying
+        /// TEST: one with the guest of a direct stay waiting for an answer, one of Airbnb about a booking, and a request of Booking.com with no booking
+        /// yet. They are rows of the hub only: nothing is read from, or sent to, a channel manager.
+        /// </summary>
+        public const string MessageHub = "message-hub";
+
+        /// <summary>
+        /// The templates of the host for the messages to the guests (E05/F02/US02/T02, NF-63): three invented templates, all saying TEST, in Italian and
+        /// in English, that use the variables of a stay (guest, house, code, dates and times, host) so the host can try them in the hub and in the new message.
+        /// </summary>
+        public const string MessageTemplates = "message-templates";
+
         // NF-40, NF-45 (E03/F01/US01/T04): the host wizard "Guest check-in" in the four states of a stay, and a stay with data to complete.
         public const string CheckInWizardExpected = "checkin-wizard-expected";
         public const string CheckInWizardArrived = "checkin-wizard-arrived";
         public const string CheckInWizardDeparted = "checkin-wizard-departed";
         public const string CheckInWizardNoShow = "checkin-wizard-no-show";
         public const string CheckInWizardIncomplete = "checkin-wizard-incomplete";
+
+        /// <summary>
+        /// Who an invoice of a booking is made out to (E06/F02/US01, FIS-01, NF-81): a finished direct stay for which the guest asked for an invoice
+        /// at the online check-in and the host completed the data of the company. Written for the booking at reset, marked as showcase data
+        /// (<c>TestDataEntities.BookingInvoiceData</c>) and gone with the booking.
+        /// </summary>
+        public const string InvoiceData = "invoice-data";
+
+        /// <summary>
+        /// Who issues the documents of the demo organization (E06/F02/US02, FIS-02, NF-82): a complete profile of the issuer, with the choice «the
+        /// accountant takes care of the documents» (no flag and no connection needed), written at reset when the org has no profile of its own and
+        /// deleted by the next reset (<c>TestDataEntities.FiscalIssuerProfile</c>). A real profile has no marker and is never touched.
+        /// </summary>
+        public const string FiscalIssuerProfile = "fiscal-issuer-profile";
 
         /// <summary>
         /// The CRM profiles built from the bookings (E07/F01/US02, NF-88, NF-89): a returning guest with a past and an upcoming stay at two houses, a
@@ -120,6 +172,84 @@ public static class DemoShowcaseCatalog
         /// welcome page can be opened after every reset.
         /// </summary>
         public const string CrmWelcomeLink = "crm-welcome-link";
+
+        /// <summary>
+        /// The money and the state of a booking that has a reservation on the channel manager (E08/F03/US03/T02, NF-74, NF-77): two bookings of a
+        /// channel as the import leaves them (one with the amounts, who collects and whether the commission is taken out of the payments, one with only
+        /// what Octorate gives today and the rest «not available»), a booking of the booking site whose mirror is synced, and a booking the host entered
+        /// whose change Octorate refused (a conflict, with the dates and guests Octorate holds). The reservations, the amounts and the mirrors are
+        /// invented and marked as showcase data; nothing is sent to Octorate.
+        /// </summary>
+        public const string BookingOtaAmounts = "booking-ota-amounts";
+
+        /// <summary>
+        /// The activation of CasaZen with Octorate (E10/F01/US01/T04, NF-104, NF-106): the demo org has a connected test connection (no token), three
+        /// short-rent houses in different states of the bookings flow (active, all prerequisites met but not activated, listing not confirmed) and one
+        /// part of the plan deferred with its "To do". Rows marked with the onboarding constants of <c>TestDataEntities</c>.
+        /// </summary>
+        public const string OnboardingActivation = "onboarding-activation";
+
+        /// <summary>
+        /// The price and the rules of single nights of a house (E08/F05/US01/T02, NF-36): the lake villa has a price of its own on some nights of a
+        /// weekend a few weeks ahead, a longer minimum stay, a night closed to arrival, a day closed to departure, and a shorter maximum stay with a
+        /// minimum advance. Invented rows of the house, marked as showcase data (<c>TestDataEntities.PropertyDayRule</c>); nothing is sent to a channel manager.
+        /// </summary>
+        public const string CalendarDayRules = "calendar-day-rules";
+
+        /// <summary>
+        /// The compliance traffic light on two stays (E03/F02/US01/T03, NF-52): a stay whose guests the host entrusted to the channel manager (yellow: the
+        /// channel manager sends them and only the host can upload the receipt, which is awaited; it needs <c>Features:OctorateConnector</c> on, otherwise
+        /// the same stay reads as one the host sends by hand) and a finished stay for which the host uploaded the receipt of the Alloggiati communication
+        /// (green: an archived proof, an invented one-page PDF). Invented; nothing is sent to Octorate or to the police.
+        /// </summary>
+        public const string ComplianceTrafficLight = "compliance-traffic-light";
+
+        /// <summary>
+        /// The document archive (NF-99, E07/F03/US03): no row of its own, because the archive is a read model over the tables the showcase already fills.
+        /// Appartamento Brera carries the scenario: the TEST certificates the compliance fill writes for a published house (real PDF bytes,
+        /// <c>TestDataEntities.PropertyDocument</c>) and the invented receipt of its tourist tax payment (<see cref="TouristTaxPaid"/>) are the
+        /// documents the host sees under Documents. The showcase has no lease (its reset refuses to run when a showcase house has one), so no lease
+        /// document is shown.
+        /// </summary>
+        public const string DocumentArchive = "document-archive";
+
+        /// <summary>
+        /// The rent installment shows its parts (CondoLedger phase 1): rent € 900, condominium advance € 150, total € 1.050,
+        /// for twelve months. The showcase has no lease — its reset refuses to run when a showcase house has one — so this
+        /// template is the example the domain posts, not a row of <c>RentLedgerEntries</c>.
+        /// </summary>
+        public const string RentLedgerComponents = "rent-ledger-components";
+
+        /// <summary>
+        /// The owner's condominium year (CondoLedger phase 2): Casa A, June fiscal year, ordinary and extraordinary kept apart,
+        /// prior-year balance on its own, installments left as issued. Template only: the showcase reset still refuses a lease
+        /// on a showcase house, and these rows are not written.
+        /// </summary>
+        public const string CondominiumCore = "condominium-core";
+
+        /// <summary>
+        /// The tenant settlement after a confirmed consuntivo (CondoLedger phase 3): recoverable € 1,920, advances posted
+        /// € 1,800, debit € 120. Template only: the showcase reset still refuses a lease on a showcase house.
+        /// </summary>
+        public const string TenantCondominiumSettlement = "tenant-condominium-settlement";
+
+        /// <summary>
+        /// The contract wizard's condominium expense when no year is loaded: previous consuntivo € 1,800 and new
+        /// preventivo € 1,920 become twelve advances of € 160. Template only.
+        /// </summary>
+        public const string TenantExpenseProposal = "tenant-expense-proposal";
+
+        /// <summary>
+        /// Historical CondoLedger copy (condo-export-v1): Casa A 2024/2025 matches to the cent and stays a template.
+        /// A house without a verified property is not written into the book.
+        /// </summary>
+        public const string CondominiumHistoricalImport = "condominium-historical-import";
+
+        /// <summary>
+        /// A free-form administrator preventivo: the reader proposes esercizio 2024/2025, quota ordinaria € 490,30
+        /// and straordinarie € 600. It does not post, and it does not read millesimi, payments or the rate plan.
+        /// </summary>
+        public const string AdministratorStatementPdf = "administrator-statement-pdf";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -129,6 +259,8 @@ public static class DemoShowcaseCatalog
         Scenario.PublishedLazio,
         Scenario.ActivationPending,
         Scenario.LongStayCadastral,
+        Scenario.LandlordBankLink,
+        Scenario.TenantMaintenanceRequest,
         Scenario.BookingUpcoming,
         Scenario.BookingPast,
         Scenario.BookingManualLight,
@@ -143,6 +275,7 @@ public static class DemoShowcaseCatalog
         Scenario.AgencyPropertiesCrossRegion,
         Scenario.OwnerShares,
         Scenario.OwnerMandate,
+        Scenario.OwnerOnboarding,
         Scenario.StaffCollaborator,
         Scenario.TrustedSupplier,
         Scenario.BookingOtaIcal,
@@ -150,6 +283,7 @@ public static class DemoShowcaseCatalog
         Scenario.CheckInBiometricPassed,
         Scenario.CheckInOperatorVerified,
         Scenario.CheckInRejected,
+        Scenario.CheckInIdentityVerified,
         Scenario.AlloggiatiSentReceiptPending,
         Scenario.AlloggiatiRegistered,
         Scenario.StatementPublished,
@@ -171,13 +305,28 @@ public static class DemoShowcaseCatalog
         Scenario.MarketplaceActivationDeclared,
         Scenario.TouristTaxPerGuest,
         Scenario.TouristTaxChannelCollected,
+        Scenario.MessageHub,
+        Scenario.MessageTemplates,
         Scenario.CheckInWizardExpected,
         Scenario.CheckInWizardArrived,
         Scenario.CheckInWizardDeparted,
         Scenario.CheckInWizardNoShow,
         Scenario.CheckInWizardIncomplete,
         Scenario.CrmProfiles,
+        Scenario.InvoiceData,
+        Scenario.FiscalIssuerProfile,
         Scenario.CrmWelcomeLink,
+        Scenario.BookingOtaAmounts,
+        Scenario.OnboardingActivation,
+        Scenario.CalendarDayRules,
+        Scenario.ComplianceTrafficLight,
+        Scenario.DocumentArchive,
+        Scenario.RentLedgerComponents,
+        Scenario.CondominiumCore,
+        Scenario.TenantCondominiumSettlement,
+        Scenario.TenantExpenseProposal,
+        Scenario.CondominiumHistoricalImport,
+        Scenario.AdministratorStatementPdf,
     ];
 
     /// <summary>
@@ -192,19 +341,99 @@ public static class DemoShowcaseCatalog
     ];
 
     /// <summary>
+    /// The fixed contractual advance the rent ledger posts (CondoLedger phase 1): twelve months of rent € 900 plus condominium
+    /// advance € 150, total € 1.050. Not written as a lease: the showcase reset refuses a lease on a showcase house.
+    /// </summary>
+    /// <summary>
+    /// One request the demo tenant would open: a leaking tap, normal urgency, still waiting. Not written as a row,
+    /// and it does not start a payment. The title says TEST.
+    /// </summary>
+    public static IReadOnlyList<DemoLeaseMaintenanceTemplate> LeaseMaintenanceExamples { get; } =
+    [
+        new(
+            "rubinetto-test",
+            "TEST perdita dal rubinetto",
+            "Il rubinetto del bagno perde. Dimostrazione, nessuna spesa.",
+            "Normal",
+            "InAttesa",
+            Scenario.TenantMaintenanceRequest),
+    ];
+
+    public static IReadOnlyList<DemoRentLedgerComponentTemplate> RentLedgerComponentExamples { get; } =
+    [
+        new("canone-900-acconto-150", 900m, 150m, 12, Scenario.RentLedgerComponents),
+    ];
+
+    /// <summary>
+    /// Casa A from CondoLedger: fiscal year from June, consuntivo 490.30, paid 412.80, balance 77.50 carried forward.
+    /// Extraordinary stays a separate amount. Not written as rows.
+    /// </summary>
+    public static IReadOnlyList<DemoCondominiumCoreTemplate> CondominiumCoreExamples { get; } =
+    [
+        new("casa-a-2024", 6, 490.30m, 0m, 490.30m, 412.80m, 0m, 77.50m, Scenario.CondominiumCore),
+    ];
+
+    /// <summary>
+    /// The tenant's consuntivo: recoverable final € 1,920, advances already posted € 1,800, debit € 120.
+    /// Not written as a lease.
+    /// </summary>
+    public static IReadOnlyList<DemoTenantSettlementTemplate> TenantCondominiumSettlementExamples { get; } =
+    [
+        new("consuntivo-1920-acconti-1800", 1920m, 0m, 1800m, 120m, Scenario.TenantCondominiumSettlement),
+    ];
+
+    /// <summary>
+    /// Nothing is loaded yet: the wizard takes last year's final and this year's budget and proposes the advance.
+    /// Not written as a lease, and it does not start a payment.
+    /// </summary>
+    public static IReadOnlyList<DemoTenantExpenseProposalTemplate> TenantExpenseProposalExamples { get; } =
+    [
+        new("preventivo-1920", 1800m, 1920m, 12, 160m, Scenario.TenantExpenseProposal),
+    ];
+
+    /// <summary>
+    /// Casa A 2024/2025 from the condo-export-v1 sample: ordinary, extraordinary, final, prior, payments,
+    /// the resulting balance, and the installment count and total, to the cent. Not written as rows.
+    /// </summary>
+    public static IReadOnlyList<DemoCondominiumImportTemplate> CondominiumHistoricalImportExamples { get; } =
+    [
+        new("casa-a-2024", 490.30m, 0m, 490.30m, 0m, 412.80m, 77.50m, 12, 490.30m, Scenario.CondominiumHistoricalImport),
+    ];
+
+    /// <summary>
+    /// The sentence a free-form administrator PDF can be read for. The extraordinary amount is proposed and not charged
+    /// until a person accepts it. Not written as a file.
+    /// </summary>
+    public static IReadOnlyList<DemoAdministratorStatementTemplate> AdministratorStatementPdfExamples { get; } =
+    [
+        new(
+            "preventivo-casa-a",
+            "Preventivo\nEsercizio 2024/2025\nQuota ordinaria 490,30\nSpese straordinarie 600,00",
+            "2024/2025",
+            490.30m,
+            600m,
+            Scenario.AdministratorStatementPdf),
+    ];
+
+    /// <summary>
     /// Property owners of the agency demo (ADR-012): multiple owners with fiscal code and IBAN to exercise the
     /// encryption, ownership shares, mandates with commission rates, the list endpoint with masked IBAN, and the financial read endpoint.
     /// </summary>
     public static IReadOnlyList<DemoPropertyOwnerTemplate> PropertyOwners { get; } =
     [
         new("mario-rossi", "Mario", "Rossi", "proprietario.demo@example.com", "+39 333 1234567",
-            "RSSMRA70A01H501X", "IT60X0542811101000000123456", OwnerTaxRegime.Private, 100m, 15m, Scenario.PropertyOwnerAgency),
+            "RSSMRA70A01H501S", "IT60X0542811101000000123456", OwnerTaxRegime.Private, 100m, 15m, Scenario.PropertyOwnerAgency,
+            OwnerEntityKind.NaturalPerson, "IT", "EUR"),
         new("giulia-bianchi", "Giulia", "Bianchi", "giulia.proprietario@example.com", "+39 334 9876543",
-            "BNCGLI75C42F205Z", "IT28W8000000292100645211151", OwnerTaxRegime.Private, 50m, 12m, Scenario.OwnerShares),
+            "BNCGLI75C42F205R", "IT41W8000000292100645211151", OwnerTaxRegime.Private, 50m, 12m, Scenario.OwnerShares),
         new("luca-verdi", "Luca", "Verdi", "luca.proprietario@example.com", "+39 335 1122334",
-            "VRDLCU80D15F205A", "IT10J0200805017000105432100", OwnerTaxRegime.Private, 50m, 12m, Scenario.OwnerShares),
+            "VRDLCU80D15F205D", "IT35J0200805017000105432100", OwnerTaxRegime.Private, 50m, 12m, Scenario.OwnerShares),
         new("anna-ferrari", "Anna", "Ferrari", "anna.proprietario@example.com", "+39 336 5544332",
-            "FRRNNA85E50H501B", "IT07X0300203280284975071923", OwnerTaxRegime.VatHolder, 100m, 18m, Scenario.OwnerMandate),
+            "FRRNNA85E50H501A", "IT07X0300203280284975071923", OwnerTaxRegime.VatHolder, 100m, 18m, Scenario.OwnerMandate),
+        // E10/F02/US02: an owner of the portfolio import with the registry only (no kind, no residence, no currency, no ownership): the readiness of
+        // the owner accounting lists what is missing, and the portal invitation waits for an ownership.
+        new("paolo-gialli", "Paolo", "Gialli", "paolo.proprietario@example.com", null,
+            "RSSMRA80A01H501U", "IT76Q0542811101000000654321", OwnerTaxRegime.Private, 100m, 15m, Scenario.OwnerOnboarding),
     ];
 
     /// <summary>
@@ -270,7 +499,7 @@ public static class DemoShowcaseCatalog
             NightlyRate: 180m,
             CleaningFee: 40m,
             Cadastral: null,
-            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast, Scenario.BookingManualLight, Scenario.PropertyWizardFields, Scenario.PropertySiteProfile, Scenario.ListingChannelStates, Scenario.PropertyRoomsAndDiscounts],
+            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast, Scenario.BookingManualLight, Scenario.PropertyWizardFields, Scenario.PropertySiteProfile, Scenario.ListingChannelStates, Scenario.PropertyRoomsAndDiscounts, Scenario.CalendarDayRules],
             Profile: new DemoPropertyProfile(
                 AccommodationType.HouseOrVilla, 5, 140, "Villa sul lago con giardino (demo)",
                 new TimeOnly(15, 0), new TimeOnly(10, 0), SmokingPolicy.No, PetsPolicy.OnRequest, PartiesPolicy.No,
@@ -337,6 +566,16 @@ public static class DemoShowcaseCatalog
             [
                 new(7, 10m),
                 new(28, 20m),
+            ],
+            // NF-36: the price and the rules of single nights a few weeks ahead, after the stays of the demo: a weekend at a price of its own with a
+            // longer minimum stay, a night closed to arrival, a day closed to departure, and a short maximum stay booked at least two days ahead.
+            DayRules:
+            [
+                new(50, Price: 260m, MinNights: 3),
+                new(51, Price: 260m, MinNights: 3),
+                new(52, ClosedToArrival: true),
+                new(55, MaxNights: 5, MinAdvanceDays: 2),
+                new(58, ClosedToDeparture: true),
             ],
             Bookings:
             [
@@ -443,7 +682,7 @@ public static class DemoShowcaseCatalog
             NightlyRate: 140m,
             CleaningFee: 30m,
             Cadastral: null,
-            Scenarios: [Scenario.PublishedLombardia, Scenario.TouristTaxPaid],
+            Scenarios: [Scenario.PublishedLombardia, Scenario.TouristTaxPaid, Scenario.DocumentArchive],
             Profile: new DemoPropertyProfile(
                 AccommodationType.Apartment, 2, 55, null,
                 new TimeOnly(14, 0), new TimeOnly(11, 0), SmokingPolicy.OutdoorsOnly, PetsPolicy.No, PartiesPolicy.No,
@@ -456,6 +695,33 @@ public static class DemoShowcaseCatalog
                 new("tassa-versata", "Irene", "Valli", "ospite.demo.tassa-1@example.com", -75, 3, BookingStatus.CheckedOut, Scenario.TouristTaxPaid, BookingSource.Direct, TouristTax: 18.00m),
                 new("tassa-da-versare", "Omar", "Haddad", "ospite.demo.tassa-2@example.com", -50, 2, BookingStatus.CheckedOut, Scenario.TouristTaxPaid, BookingSource.Direct, TouristTax: 12.00m),
                 new("tassa-senza-importo", "Katja", "Novak", "ospite.demo.tassa-3@example.com", -30, 2, BookingStatus.CheckedOut, Scenario.TouristTaxPaid, BookingSource.Airbnb),
+                // NF-81 (Scenario.InvoiceData): a finished direct stay, paid at the property, for which the guest asked for an invoice at the online
+                // check-in and the host completed the data of the company. Invented like the rest: a VAT number with a valid check digit, an
+                // address at example.com, TEST in the name.
+                new(
+                    "fattura-azienda",
+                    "Luca",
+                    "Ferri",
+                    "ospite.demo.fattura@example.com",
+                    -12,
+                    2,
+                    BookingStatus.CheckedOut,
+                    Scenario.InvoiceData,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite,
+                    InvoiceData: new DemoInvoiceData(
+                        InvoiceRecipientKind.Company,
+                        "Demo Viaggi S.r.l. (TEST)",
+                        "12345678903",
+                        "IT12345678903",
+                        "Via Brera",
+                        "18",
+                        "20121",
+                        "Milano",
+                        "MI",
+                        "ABC1234",
+                        "fatture.demo@pec.example.com",
+                        InvoiceDataSource.Host)),
             ]),
         new(
             Key: "casa-trastevere",
@@ -528,6 +794,62 @@ public static class DemoShowcaseCatalog
                     BookingSource.Direct,
                     PaymentOption: PaymentOption.OnSite,
                     Phone: "+39 333 0000555"),
+                // NF-77, NF-74 (Scenario.BookingOtaAmounts): a booking of Airbnb as the import leaves it, with all the amounts of the channel and the
+                // flags (the channel collects, and the portal pays net of its commission): the amounts section reads in full. Octorate gives net and
+                // balance only when a documented field has them, so the sparse one at Attico Firenze shows how a missing figure reads.
+                new(
+                    "ota-airbnb-importata",
+                    "Lena",
+                    "Vogel",
+                    "ospite.demo.ota-1@example.com",
+                    14,
+                    3,
+                    BookingStatus.Confirmed,
+                    Scenario.BookingOtaAmounts,
+                    BookingSource.Airbnb,
+                    Ota: new DemoOtaTemplate(
+                        "TEST-OCT-7001",
+                        Commission: 61.80m,
+                        Net: 453.20m,
+                        Paid: 515.00m,
+                        Balance: 0.00m,
+                        CompanyCollect: true,
+                        CommissionIncludedInPayments: true)),
+                // A booking of the booking site that CasaZen sent to Octorate: its mirror is synced, the money is the booking site's.
+                new(
+                    "ota-sincronizzata",
+                    "Paul",
+                    "Dupont",
+                    "ospite.demo.ota-3@example.com",
+                    20,
+                    2,
+                    BookingStatus.Confirmed,
+                    Scenario.BookingOtaAmounts,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite,
+                    Ota: new DemoOtaTemplate(
+                        "TEST-OCT-7003",
+                        Sync: new DemoOctorateSyncTemplate(OctorateSyncState.Synced, OctorateSyncOperation.Create))),
+                // A booking the host entered, whose change Octorate refused because the reservation changed there: a conflict, with the stay Octorate
+                // holds (one day later, one guest fewer) so the host sees both versions before they choose.
+                new(
+                    "ota-conflitto",
+                    "Irene",
+                    "Sala",
+                    "ospite.demo.ota-4@example.com",
+                    24,
+                    2,
+                    BookingStatus.Confirmed,
+                    Scenario.BookingOtaAmounts,
+                    BookingSource.Manual,
+                    Ota: new DemoOtaTemplate(
+                        "TEST-OCT-7004",
+                        Sync: new DemoOctorateSyncTemplate(
+                            OctorateSyncState.Conflict,
+                            OctorateSyncOperation.Update,
+                            Services.OctorateSyncErrorCodes.ReservationChanged,
+                            VersionCheckInShiftDays: 1,
+                            VersionGuests: 1))),
             ]),
         new(
             Key: "bilocale-navigli",
@@ -542,7 +864,7 @@ public static class DemoShowcaseCatalog
             NightlyRate: 0m,
             CleaningFee: 0m,
             Cadastral: new DemoCadastral("12", "345", "6", "A/2", 450m),
-            Scenarios: [Scenario.LongStayCadastral],
+            Scenarios: [Scenario.LongStayCadastral, Scenario.LandlordBankLink, Scenario.TenantMaintenanceRequest],
             Bookings: []),
         new(
             Key: DraftKey,
@@ -594,6 +916,19 @@ public static class DemoShowcaseCatalog
                     BookingStatus.Confirmed,
                     Scenario.CrmProfiles,
                     BookingSource.BookingCom),
+                // NF-77 (Scenario.BookingOtaAmounts): a booking of Booking.com with only what Octorate gives today, the amount paid. The commission, the
+                // net and the balance are «not available», who collects is not said, and Booking.com invoices its commission apart.
+                new(
+                    "ota-booking-sparsa",
+                    "Marta",
+                    "Kowalska",
+                    "ospite.demo.ota-2@example.com",
+                    30,
+                    2,
+                    BookingStatus.Confirmed,
+                    Scenario.BookingOtaAmounts,
+                    BookingSource.BookingCom,
+                    Ota: new DemoOtaTemplate("TEST-OCT-7002", Paid: 100.00m, CommissionIncludedInPayments: false)),
             ]),
         new(
             Key: "loft-torino",
@@ -699,6 +1034,21 @@ public static class DemoShowcaseCatalog
                     BookingSource.Direct,
                     PaymentOption: PaymentOption.OnSite,
                     Phone: CrmSharedPhone),
+                // NF-52 (Scenario.ComplianceTrafficLight): a finished stay for which the host uploaded the receipt of the Alloggiati communication of the
+                // arrival day (an invented one-page PDF): the proof is archived, so the stay reads green.
+                new(
+                    "semaforo-ricevuta",
+                    "Hana",
+                    "Sato",
+                    "ospite.demo.semaforo-2@example.com",
+                    -10,
+                    2,
+                    BookingStatus.CheckedOut,
+                    Scenario.ComplianceTrafficLight,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite,
+                    Guests: [new("Hana", "Sato", StayGuestType.SingleGuest, 34)],
+                    Compliance: new DemoComplianceTemplate(ReceiptArchived: true)),
             ]),
         new(
             Key: "villa-amalfi",
@@ -733,7 +1083,30 @@ public static class DemoShowcaseCatalog
                     BookingSource.Direct,
                     PaymentOption: PaymentOption.OnSite,
                     CheckInMarketingConsent: true),
-            ]),
+                // NF-52 (Scenario.ComplianceTrafficLight): the guests of this stay are entrusted to the channel manager, which sends them to the police;
+                // the receipt is awaited, so the stay reads yellow. The guests arrived a few hours before the reset (the template sets the arrival), so the
+                // legal term is open at whatever time of the day the showcase is reset.
+                new(
+                    "semaforo-affidato",
+                    "Greta",
+                    "Lindqvist",
+                    "ospite.demo.semaforo-1@example.com",
+                    0,
+                    3,
+                    BookingStatus.CheckedIn,
+                    Scenario.ComplianceTrafficLight,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite,
+                    Guests:
+                    [
+                        new("Greta", "Lindqvist", StayGuestType.HeadOfFamily, 39),
+                        new("Olof", "Lindqvist", StayGuestType.FamilyMember, 41),
+                    ],
+                    Compliance: new DemoComplianceTemplate(GuestsEntrusted: true)),
+            ],
+            // NF-52: the host chose the channel manager as the sender of the police and ISTAT communications of this house and said it saw «Activated» in
+            // the Octorate panel, so the connection reads as declared and the yellow stay above is the only item to look at.
+            ComplianceSender: new DemoComplianceSenderTemplate(ComplianceSenderType.ChannelManager)),
         // NF-46, ADR-037-R3: a house in an invented comune (ISTAT 999990, a code no real comune has, so the demo channel rule below touches
         // no stay of a real comune). The comune has no official rate: the demo host declared one (with an invented source), and an Airbnb stay
         // there is collected by the channel, so the host has nothing to collect while the amounts per guest are kept.
@@ -774,6 +1147,56 @@ public static class DemoShowcaseCatalog
                 MaxNights: 5,
                 MinimumAge: 14,
                 SourceNote: "Delibera di prova del comune (TEST): importo inventato per la dimostrazione.")),
+
+        // E10/F01/US01/T04 (Scenario.OnboardingActivation): three short-rent houses of the activation with Octorate, left unpublished (the
+        // activation is about the channel manager, not the booking site). OnboardingActivations below says which listing is confirmed on the test
+        // connection and which flow is activated: the bookings flow is active on the first, ready to activate on the second, and waits for the
+        // listing to be confirmed on the third.
+        new(
+            Key: "attivazione-attiva",
+            Name: "Casa Attiva (demo)",
+            Place: new DemoPlace("Como", "013075", "LOM", "22100", "Via Volta 10"),
+            Description: "Casa di dimostrazione dell'attivazione con Octorate: il flusso delle prenotazioni è attivo. Tutto è segnato come test.",
+            Mode: RentalMode.Short,
+            Publish: false,
+            Bedrooms: 1,
+            Bathrooms: 1,
+            MaxGuests: 2,
+            NightlyRate: 110m,
+            CleaningFee: 25m,
+            Cadastral: null,
+            Scenarios: [Scenario.OnboardingActivation],
+            Bookings: []),
+        new(
+            Key: "attivazione-da-attivare",
+            Name: "Casa da attivare (demo)",
+            Place: new DemoPlace("Milano", "015146", "LOM", "20121", "Via Solferino 7"),
+            Description: "Casa di dimostrazione dell'attivazione con Octorate: tutto pronto, il flusso delle prenotazioni è da attivare. Tutto è segnato come test.",
+            Mode: RentalMode.Short,
+            Publish: false,
+            Bedrooms: 1,
+            Bathrooms: 1,
+            MaxGuests: 3,
+            NightlyRate: 120m,
+            CleaningFee: 25m,
+            Cadastral: null,
+            Scenarios: [Scenario.OnboardingActivation],
+            Bookings: []),
+        new(
+            Key: "attivazione-da-collegare",
+            Name: "Casa da collegare (demo)",
+            Place: new DemoPlace("Roma", "058091", "LAZ", "00186", "Via del Governo Vecchio 3"),
+            Description: "Casa di dimostrazione dell'attivazione con Octorate: l'annuncio non è ancora confermato sul channel manager. Tutto è segnato come test.",
+            Mode: RentalMode.Short,
+            Publish: false,
+            Bedrooms: 1,
+            Bathrooms: 1,
+            MaxGuests: 2,
+            NightlyRate: 100m,
+            CleaningFee: 20m,
+            Cadastral: null,
+            Scenarios: [Scenario.OnboardingActivation],
+            Bookings: []),
     ];
 
     /// <summary>
@@ -804,6 +1227,22 @@ public static class DemoShowcaseCatalog
         new("biometric-passed", "attico-firenze", "airbnb-ical", "Completed", BiometricOutcome.Accept, true, false, Scenario.CheckInBiometricPassed),
         new("operator-verified", "villa-amalfi", "booking-com-ical", "Completed", BiometricOutcome.Escalate, true, true, Scenario.CheckInOperatorVerified),
         new("rejected", "loft-torino", "rejected-guest", "Rejected", BiometricOutcome.Reject, false, false, Scenario.CheckInRejected),
+
+        // E03/F04/US02/T04: the online flow passed by the agent for the head of group of the expected stay (the member skips the step); the
+        // lock code went to the check-in page and to the guest's e-mail. The consent version is a test value.
+        new(
+            "identity-verified",
+            "casa-trastevere",
+            "checkin-atteso",
+            "Completed",
+            BiometricOutcome.Accept,
+            true,
+            false,
+            Scenario.CheckInIdentityVerified,
+            Method: VerificationMethod.Biometric,
+            ConsentVersion: "TEST-biometric-consent-v1",
+            LockCodeChannels: [Services.AccessCodeReleaseChannels.CheckInScreen, Services.AccessCodeReleaseChannels.Email],
+            VerifiedGuestPosition: 0),
     ];
 
     /// <summary>
@@ -957,6 +1396,106 @@ public static class DemoShowcaseCatalog
     ];
 
     /// <summary>
+    /// The conversations of the hub of messages (E05/F02/US01/T01, NF-61, NF-64), written for the org at reset next to the stays they are about:
+    /// the guest of a direct stay of the villa who asks to arrive early and has had no answer (a conversation to answer, one message unread); a guest
+    /// of Airbnb about the stay at Casa Borgo di Prova, who got an answer and wrote again (a conversation of a channel, linked to its booking); and a
+    /// request of Booking.com for the villa, with no booking yet. Everything in them is invented and says TEST; the conversations of the channels are
+    /// rows of the copy that the sync would write (<c>OtaMessageThread</c>, <c>OtaMessage</c>), with no connection to a channel manager behind them.
+    /// Marked as showcase data (<c>TestDataEntities.OtaMessageThread</c>, <c>GuestThread</c>), deleted by the next reset.
+    /// </summary>
+    public static IReadOnlyList<DemoMessageThreadTemplate> MessageThreads { get; } =
+    [
+        new(
+            "diretta-arrivo-anticipato",
+            DemoMessageThreadKind.Direct,
+            "villa-lago",
+            "tassa-per-ospite",
+            null,
+            null,
+            [
+                new(true, 190, "Buongiorno (TEST): possiamo arrivare un’ora prima del check-in? Grazie."),
+            ],
+            Scenario.MessageHub),
+        new(
+            "airbnb-prenotazione",
+            DemoMessageThreadKind.OtaReservation,
+            "casa-borgo-prova",
+            "canale-riscuote",
+            OtaChannel.Airbnb,
+            "Jonas B. (TEST)",
+            [
+                new(true, 2900, "Hello (TEST)! Is there a parking space near the house?", Read: true),
+                new(false, 2800, "Hello Jonas (TEST), yes: there is free parking right in front of the house."),
+                new(true, 75, "Perfect, thank you (TEST)! What time can we check in?"),
+            ],
+            Scenario.MessageHub),
+        new(
+            "booking-richiesta",
+            DemoMessageThreadKind.OtaRequest,
+            "villa-lago",
+            null,
+            OtaChannel.Booking,
+            "Marta R. (TEST)",
+            [
+                new(true, 1500, "Buonasera (TEST): la villa è libera dal 3 al 10 agosto? Siamo in quattro."),
+            ],
+            Scenario.MessageHub),
+    ];
+
+    /// <summary>
+    /// The message templates of the demo host (E05/F02/US02/T02, NF-63), written for the org at reset: a welcome in Italian, the same welcome in
+    /// English, and a reminder of the departure. Together they use the eight variables a template may have (guest, house, booking code, the dates and the
+    /// times of the stay, the host), so a client can try them on a conversation of the hub and in the new message. Invented and saying TEST, they point
+    /// at no house and no stay; a template the host already has with the same name and language is left alone. Marked as showcase data
+    /// (<c>TestDataEntities.MessageTemplate</c>), deleted by the next reset.
+    /// </summary>
+    public static IReadOnlyList<DemoHostMessageTemplate> HostMessageTemplates { get; } =
+    [
+        new(
+            "benvenuto-it",
+            "Benvenuto (TEST)",
+            "it",
+            "Buongiorno {{guest_name}}, benvenuto a {{property_name}}! L'arrivo è previsto il {{check_in_date}} dalle {{check_in_time}}. Per qualsiasi dubbio scrivimi pure qui. A presto, {{host_name}} (TEST)",
+            Scenario.MessageTemplates),
+        new(
+            "welcome-en",
+            "Welcome (TEST)",
+            "en",
+            "Hello {{guest_name}}, welcome to {{property_name}}! We expect you on {{check_in_date}} from {{check_in_time}}. If you have any question just write to me here. See you soon, {{host_name}} (TEST)",
+            Scenario.MessageTemplates),
+        new(
+            "partenza-it",
+            "Promemoria partenza (TEST)",
+            "it",
+            "Ciao {{guest_name}}, un promemoria per la partenza da {{property_name}}: prenotazione {{booking_code}}, check-out il {{check_out_date}} entro le {{check_out_time}}. Grazie e buon viaggio! (TEST)",
+            Scenario.MessageTemplates),
+    ];
+
+    /// <summary>
+    /// The profile of the issuer of the documents of the demo organization (E06/F02/US02, FIS-02, NF-82): complete, so the wizard «Come emetti i
+    /// documenti?» opens on an answered setting and the settings page has data to show. Invented like the rest (TEST in the name, a plausible address
+    /// in Milano), with the choice «the accountant takes care of the documents»: it needs neither the flag of the issuance nor an Octorate connection.
+    /// Written for the org at reset only when the org has no profile (there is one per org, and a real one is never touched), marked as showcase data
+    /// (<c>TestDataEntities.FiscalIssuerProfile</c>) and deleted by the next reset.
+    /// </summary>
+    public static IReadOnlyList<DemoFiscalIssuerProfileTemplate> FiscalIssuerProfiles { get; } =
+    [
+        new(
+            "emittente-demo",
+            DocumentIssuerMode.Accountant,
+            DocumentRegime.VatOrdinary,
+            "Casa Demo S.r.l. (TEST)",
+            "Via Brera",
+            "18",
+            "20121",
+            "Milano",
+            "MI",
+            "RF01",
+            -5,
+            Scenario.FiscalIssuerProfile),
+    ];
+
+    /// <summary>
     /// The channel rules of the tourist tax (NF-46, ADR-037-R3): platform data like every rule, so the showcase writes only the one of the
     /// invented comune of <c>casa-borgo-prova</c> (ISTAT 999990, which no real comune has: no real stay is ever touched), with an example source
     /// and a note that says it is test data. Created only when no rule exists for the channel and the comune, deleted by the reset of the org
@@ -983,7 +1522,66 @@ public static class DemoShowcaseCatalog
     [
         new("benvenuto-villa-lago", "villa-lago", CrmWelcomeToken, Scenario.CrmWelcomeLink),
     ];
+
+    /// <summary>
+    /// The activation of CasaZen with Octorate of the demo org (E10/F01/US01/T04): a connected test connection (an account that says TEST and no
+    /// token: nothing can be called with it, and a job of the connector that tries finds no token and marks it lost), the confirmed listings of two
+    /// houses on it, the bookings flow activated on the first, and one part of the plan deferred with its "To do". Written at reset only when the
+    /// org has no connection of its own in the environment (the houses and the deferred part are written anyway), marked with the onboarding
+    /// constants of <c>TestDataEntities</c> and deleted by the next reset.
+    /// </summary>
+    public static IReadOnlyList<DemoOnboardingActivationTemplate> OnboardingActivations { get; } =
+    [
+        new(
+            Key: "attivazione-octorate",
+            AccountId: "TEST-DEMO-OCTORATE",
+            Properties:
+            [
+                new("attivazione-attiva", "TEST-ACC-ATTIVA", [OnboardingFlow.Bookings]),
+                new("attivazione-da-attivare", "TEST-ACC-DA-ATTIVARE", []),
+                new("attivazione-da-collegare", null, []),
+            ],
+            DeferredPart: OnboardingPartKey.Listings,
+            RemindInDays: 3,
+            Scenario: Scenario.OnboardingActivation),
+    ];
 }
+
+/// <summary>
+/// The activation with Octorate of the demo org (E10/F01/US01/T04): the test connection, the houses with their confirmed listing and activated
+/// flows, and the deferred part of the plan with the days to its reminder.
+/// </summary>
+public sealed record DemoOnboardingActivationTemplate(
+    string Key,
+    string AccountId,
+    IReadOnlyList<DemoOnboardingPropertyTemplate> Properties,
+    OnboardingPartKey DeferredPart,
+    int RemindInDays,
+    string Scenario);
+
+/// <summary>
+/// A demo house of the activation: the invented Octorate accommodation its listing is confirmed to (<c>null</c>: not confirmed) and the flows
+/// activated on it.
+/// </summary>
+public sealed record DemoOnboardingPropertyTemplate(string PropertyKey, string? AccommodationId, IReadOnlyList<OnboardingFlow> ActivatedFlows);
+
+/// <summary>
+/// The profile of the issuer of the documents of the demo organization (FIS-02): the answers of the wizard «Come emetti i documenti?», invented.
+/// <paramref name="ConfirmedOffsetDays"/> is when the wizard was completed, in days from the reset (negative: in the past).
+/// </summary>
+public sealed record DemoFiscalIssuerProfileTemplate(
+    string Key,
+    DocumentIssuerMode Mode,
+    DocumentRegime Regime,
+    string LegalName,
+    string AddressStreet,
+    string AddressCivic,
+    string PostalCode,
+    string City,
+    string Province,
+    string FatturaPaRegimeCode,
+    int ConfirmedOffsetDays,
+    string Scenario);
 
 public sealed record DemoPlace(string City, string IstatCode, string RegionCode, string PostalCode, string Address);
 
@@ -1013,7 +1611,93 @@ public sealed record DemoBookingTemplate(
     bool NoShow = false,
     string? Phone = null,
     bool SoftOptInNotice = false,
-    bool CheckInMarketingConsent = false);
+    bool CheckInMarketingConsent = false,
+    DemoOtaTemplate? Ota = null,
+    DemoInvoiceData? InvoiceData = null,
+    DemoComplianceTemplate? Compliance = null);
+
+/// <summary>
+/// What the compliance traffic light finds on a demo stay (E03/F02/US01/T03, NF-52): invented like the rest of the demo, nothing is sent to Octorate or
+/// to the police. The registered guests of the stay (<see cref="DemoBookingTemplate.Guests"/>) are the ones it works on.
+/// </summary>
+/// <param name="GuestsEntrusted">
+/// Every registered guest is on Octorate for good (a <c>StayGuestOctorateLink</c> accepted two hours before the reset), as the channel manager holds
+/// them when the house is sent by it: the stay reads yellow while the receipt is awaited. The booking must be checked in; its arrival is set a few hours
+/// before the reset, so the legal term is open whatever time the showcase is reset.
+/// </param>
+/// <param name="ReceiptArchived">
+/// The host uploaded the receipt of the Alloggiati communication of the arrival day (a <c>ManualComplianceProof</c> with an invented one-page PDF in the
+/// private bucket): the proof is archived, so the stay reads green.
+/// </param>
+public sealed record DemoComplianceTemplate(bool GuestsEntrusted = false, bool ReceiptArchived = false);
+
+/// <summary>
+/// Who sends the police and ISTAT communications of a demo house (a row of <c>PropertyComplianceSender</c>, E03/F02/US01/T03, NF-52): the stored choice,
+/// the same for both (ISTAT follows Alloggiati, ADR-029-R5).
+/// </summary>
+/// <param name="Sender">Who sends.</param>
+/// <param name="ActivationDeclared">
+/// The host said it saw «Activated» in the Octorate panel (its word, never a verification), so the connection of the channel manager does not read as
+/// «to verify» beside the stay the showcase wants to show.
+/// </param>
+public sealed record DemoComplianceSenderTemplate(ComplianceSenderType Sender, bool ActivationDeclared = true);
+
+/// <summary>
+/// The reservation of a demo stay on the channel manager (E08/F03/US03/T02, NF-74, NF-77): invented like the rest of the demo, nothing is sent to
+/// Octorate. The booking carries the reservation id (<c>TEST-OCT-…</c>, unique in the org) and, for a booking of a channel, the amounts and the flags the
+/// import would have stored; a booking CasaZen holds has no amount, and its mirror is <paramref name="Sync"/>. A figure left out is «not available».
+/// </summary>
+/// <param name="ReservationId">The id of the reservation on Octorate; it says TEST and is at most 50 characters.</param>
+/// <param name="Commission">What the channel kept.</param>
+/// <param name="Net">What the host receives.</param>
+/// <param name="Paid">What the guest paid.</param>
+/// <param name="Balance">What is still to pay.</param>
+/// <param name="CompanyCollect">Who collects: <c>true</c> the channel, <c>false</c> the host, <c>null</c> not said.</param>
+/// <param name="CommissionIncludedInPayments">Whether the portal pays the host net of its commission; <c>null</c> not known.</param>
+/// <param name="Sync">The mirror of the booking on Octorate (a row of <c>OctorateBookingSync</c>); <c>null</c> for a booking that has none.</param>
+public sealed record DemoOtaTemplate(
+    string ReservationId,
+    decimal? Commission = null,
+    decimal? Net = null,
+    decimal? Paid = null,
+    decimal? Balance = null,
+    bool? CompanyCollect = null,
+    bool? CommissionIncludedInPayments = null,
+    DemoOctorateSyncTemplate? Sync = null);
+
+/// <summary>
+/// The mirror of a demo booking on Octorate: the state of the last operation sent. For a conflict, the stay Octorate holds is the booking's own with the
+/// arrival moved by <paramref name="VersionCheckInShiftDays"/> days (the departure with it) and <paramref name="VersionGuests"/> guests.
+/// </summary>
+/// <param name="State">Where the mirror stands.</param>
+/// <param name="LastOperation">The last operation sent.</param>
+/// <param name="ErrorCode">A code of <c>OctorateSyncErrorCodes</c> when the operation failed or was refused.</param>
+/// <param name="VersionCheckInShiftDays">Days between the arrival of the booking and the one Octorate holds (a conflict only).</param>
+/// <param name="VersionGuests">The guests Octorate holds (a conflict only).</param>
+public sealed record DemoOctorateSyncTemplate(
+    OctorateSyncState State,
+    OctorateSyncOperation LastOperation,
+    string? ErrorCode = null,
+    int? VersionCheckInShiftDays = null,
+    int? VersionGuests = null);
+
+/// <summary>
+/// Who an invoice of a demo stay is made out to (NF-81): the invoice data written for the booking at reset, the guest's «yes» at the check-in included.
+/// Invented: a VAT number with a valid check digit, an address and a PEC at example.com, TEST in the name.
+/// </summary>
+public sealed record DemoInvoiceData(
+    InvoiceRecipientKind Kind,
+    string Name,
+    string? FiscalCode,
+    string? VatNumber,
+    string AddressStreet,
+    string AddressCivic,
+    string PostalCode,
+    string City,
+    string Province,
+    string? SdiRecipientCode,
+    string? Pec,
+    InvoiceDataSource Source);
 
 /// <summary>
 /// A registered guest of a demo stay (NF-40, NF-46): invented like the rest of the demo, with complete Alloggiati data of the right shape (an
@@ -1035,6 +1719,86 @@ public sealed record DemoStayGuestTemplate(
     string? TaxExemptionCode = null,
     bool DocumentExpired = false,
     bool BirthPlaceMissing = false);
+
+/// <summary>
+/// A tenant maintenance request of the showcase. <see cref="Paid"/> stays false: opening and approving do not pay it.
+/// Not written as a row.
+/// </summary>
+public sealed record DemoLeaseMaintenanceTemplate(
+    string Key,
+    string Title,
+    string Description,
+    string Urgency,
+    string Status,
+    string Scenario,
+    bool Paid = false);
+
+/// <summary>
+/// One rent line of the showcase example: <see cref="Rent"/> plus <see cref="CondominiumAdvance"/> for
+/// <see cref="Months"/> months. The total of each month is their sum.
+/// </summary>
+public sealed record DemoRentLedgerComponentTemplate(
+    string Key,
+    decimal Rent,
+    decimal CondominiumAdvance,
+    int Months,
+    string Scenario);
+
+/// <summary>The tenant settlement the showcase calculates: recoverable final + prior balance − advances already posted.</summary>
+public sealed record DemoTenantSettlementTemplate(
+    string Key,
+    decimal RecoverableFinal,
+    decimal PriorBalance,
+    decimal AdvancesPosted,
+    decimal ExpectedSettlement,
+    string Scenario);
+
+/// <summary>
+/// The wizard proposal when the property has no condominium year yet: the advance is the new preventivo split into
+/// <see cref="Installments"/>, and <see cref="PreviousConsuntivo"/> is kept for the settlement.
+/// </summary>
+public sealed record DemoAdministratorStatementTemplate(
+    string Key,
+    string Text,
+    string Label,
+    decimal Ordinary,
+    decimal Extraordinary,
+    string Scenario);
+
+public sealed record DemoCondominiumImportTemplate(
+    string Key,
+    decimal Ordinary,
+    decimal Extraordinary,
+    decimal FinalAmount,
+    decimal Prior,
+    decimal Payments,
+    decimal ExpectedSettlement,
+    int InstallmentCount,
+    decimal InstallmentTotal,
+    string Scenario);
+
+public sealed record DemoTenantExpenseProposalTemplate(
+    string Key,
+    decimal PreviousConsuntivo,
+    decimal Preventivo,
+    int Installments,
+    decimal ExpectedInstallment,
+    string Scenario);
+
+/// <summary>
+/// One CondoLedger year in the showcase: ordinary and extraordinary stay apart, and the settlement is
+/// consuntivo + extraordinary + prior − paid.
+/// </summary>
+public sealed record DemoCondominiumCoreTemplate(
+    string Key,
+    int FiscalStartMonth,
+    decimal Ordinary,
+    decimal Extraordinary,
+    decimal FinalAmount,
+    decimal Paid,
+    decimal Prior,
+    decimal ExpectedSettlement,
+    string Scenario);
 
 /// <summary>
 /// The rate the demo host declared for the comune of a demo house with no official one (NF-46, AC-NF46-6): a fixed amount per person per night,
@@ -1080,7 +1844,9 @@ public sealed record DemoPropertyTemplate(
     IReadOnlyList<DemoChannelState>? ChannelStates = null,
     IReadOnlyList<DemoRoom>? Rooms = null,
     IReadOnlyList<DemoStayDiscount>? StayDiscounts = null,
-    DemoDeclaredTouristTaxRate? DeclaredTouristTaxRate = null);
+    DemoDeclaredTouristTaxRate? DeclaredTouristTaxRate = null,
+    DemoComplianceSenderTemplate? ComplianceSender = null,
+    IReadOnlyList<DemoDayRule>? DayRules = null);
 
 /// <summary>
 /// A room of a demo property with its beds (NF-34): invented like the rest of the demo. The counters of the property (<c>Bedrooms</c>, <c>Beds</c>)
@@ -1090,6 +1856,21 @@ public sealed record DemoRoom(PropertyRoomType Type, IReadOnlyList<RoomBed> Beds
 
 /// <summary>A length-of-stay discount of a demo property (NF-35): from <paramref name="MinNights"/> nights, <paramref name="PercentOff"/> percent less on the lodging.</summary>
 public sealed record DemoStayDiscount(int MinNights, decimal PercentOff);
+
+/// <summary>
+/// The price and the rules of one night of a demo property (E08/F05/US01/T02, NF-36): the night that starts <paramref name="OffsetDays"/> days after the
+/// day of the reset, with the values a host could set from the calendar (invented, and inside the bounds the rules of the service apply: the showcase
+/// test checks them with the same function). A value left out is unset.
+/// </summary>
+public sealed record DemoDayRule(
+    int OffsetDays,
+    decimal? Price = null,
+    int? MinNights = null,
+    int? MaxNights = null,
+    bool ClosedToArrival = false,
+    bool ClosedToDeparture = false,
+    int? MinAdvanceDays = null,
+    int? MaxAdvanceDays = null);
 
 /// <summary>
 /// The state of a demo property on one channel of the channel manager (NF-27, NF-38): invented like the rest of the demo. It exists so the list
@@ -1152,7 +1933,8 @@ public sealed record DemoHostInviteTemplate(
 
 /// <summary>
 /// A property owner of the agency demo (ADR-012): fiscal code and IBAN are test data, encrypted at rest.
-/// Includes ownership share percentage and mandate commission rate.
+/// Includes ownership share percentage and mandate commission rate; the kind, the residence and the currency are the registry facts the
+/// owner readiness asks (E10/F02/US02): an owner without them shows what is still to complete.
 /// </summary>
 public sealed record DemoPropertyOwnerTemplate(
     string Key,
@@ -1165,7 +1947,10 @@ public sealed record DemoPropertyOwnerTemplate(
     OwnerTaxRegime TaxRegime,
     decimal OwnershipSharePercent,
     decimal CommissionRate,
-    string Scenario);
+    string Scenario,
+    OwnerEntityKind? EntityKind = null,
+    string? TaxResidenceCountry = null,
+    string? SettlementCurrency = null);
 
 /// <summary>
 /// The share of a demo property an owner holds (ADR-012-R4): <paramref name="SharePercent"/> of <paramref name="PropertyKey"/>, from the
@@ -1239,7 +2024,11 @@ public sealed record DemoCheckInTemplate(
     BiometricOutcome? BiometricOutcome,
     bool HasConsent,
     bool OperatorVerified,
-    string Scenario);
+    string Scenario,
+    VerificationMethod Method = VerificationMethod.Biometric,
+    string? ConsentVersion = null,
+    IReadOnlyList<string>? LockCodeChannels = null,
+    int VerifiedGuestPosition = 0);
 
 /// <summary>An alloggiati report demo: demonstrates report states including SentReceiptPending with fake receipt.</summary>
 public sealed record DemoAlloggiatiTemplate(
@@ -1302,6 +2091,55 @@ public sealed record DemoRoutineTemplate(
     RoutineActionType ActionType,
     bool IsTestMode,
     string Scenario);
+
+/// <summary>Which of the two sources of the hub of messages a demo conversation is kept in, and what it is about.</summary>
+public enum DemoMessageThreadKind
+{
+    /// <summary>The conversation with the guest of a direct stay (<c>GuestThread</c>).</summary>
+    Direct = 0,
+
+    /// <summary>A conversation of a channel about a booking (<c>OtaMessageThread</c> of kind Reservation, linked to the booking).</summary>
+    OtaReservation = 1,
+
+    /// <summary>A conversation of a channel with no booking yet (<c>OtaMessageThread</c> of kind Request).</summary>
+    OtaRequest = 2,
+}
+
+/// <summary>
+/// A conversation of the hub of messages (E05/F02/US01/T01, NF-61, NF-64): invented like the rest of the demo, written for the org at reset next
+/// to the stay it is about and marked as showcase data (<c>TestDataEntities.OtaMessageThread</c> or <c>GuestThread</c>), so the next reset deletes it.
+/// </summary>
+/// <param name="Key">Stable key of the conversation inside the template.</param>
+/// <param name="Kind">Where it is kept and what it is about.</param>
+/// <param name="PropertyKey">The demo property (<see cref="DemoPropertyTemplate.Key"/>) it belongs to.</param>
+/// <param name="BookingKey">The demo stay (<see cref="DemoBookingTemplate.Key"/>) of that property it is about; <c>null</c> for a request.</param>
+/// <param name="Channel">The channel of a conversation of a channel; <c>null</c> for a direct one.</param>
+/// <param name="GuestName">The name the channel gives for the guest of a conversation of a channel (it says TEST); <c>null</c> for a direct one, which takes the guest of the stay.</param>
+/// <param name="Messages">The messages, in the order they were written.</param>
+/// <param name="Scenario">The scenario it exercises.</param>
+public sealed record DemoMessageThreadTemplate(
+    string Key,
+    DemoMessageThreadKind Kind,
+    string PropertyKey,
+    string? BookingKey,
+    OtaChannel? Channel,
+    string? GuestName,
+    IReadOnlyList<DemoMessageTemplate> Messages,
+    string Scenario);
+
+/// <summary>A message of a demo conversation: who wrote it, how long before the reset, what it says (it says TEST) and whether the host read it.</summary>
+public sealed record DemoMessageTemplate(bool FromGuest, int MinutesAgo, string Text, bool Read = false);
+
+/// <summary>
+/// A message template of the demo host (E05/F02/US02/T02, NF-63): invented like the rest of the demo, written for the org at reset and marked as
+/// showcase data (<c>TestDataEntities.MessageTemplate</c>), so the next reset deletes it. The body uses the variables a real template may use.
+/// </summary>
+/// <param name="Key">Stable key of the template inside the catalog.</param>
+/// <param name="Name">The name the host sees (it says TEST).</param>
+/// <param name="Language">The language of the body, <c>it</c> or <c>en</c>.</param>
+/// <param name="Body">The text, with its variables between double braces.</param>
+/// <param name="Scenario">The scenario it exercises.</param>
+public sealed record DemoHostMessageTemplate(string Key, string Name, string Language, string Body, string Scenario);
 
 /// <summary>
 /// A popup alert of the demo host (NF-08, ADR-025): invented like the rest of the demo, written for the owner of the org at reset and

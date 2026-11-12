@@ -256,7 +256,8 @@ public class AlloggiatiController(
         if (denied is not null)
             return denied;
 
-        var status = await alloggiatiWebService.MarkSentManuallyAsync(bookingId, request.SentOn!.Value);
+        // The person who declares it goes in the log of what was sent (NF-47): the token's subject, never a field of the body.
+        var status = await alloggiatiWebService.MarkSentManuallyAsync(bookingId, request.SentOn!.Value, User.GetUserId());
         logger.LogInformation("Alloggiati communication of booking {BookingId} declared sent manually", bookingId);
         return Ok(AlloggiatiStatusDto.From(status));
     }

@@ -13,9 +13,12 @@ namespace Casazen.Infrastructure.Services;
 /// <see cref="IBookingService.PriceHostStayAsync"/> (nightly rates and weekend surcharge, cleaning, tourist tax of the comune), the
 /// price is resolved by <see cref="ManualBookingRules.PriceOf"/> and the booking is written by
 /// <see cref="IBookingService.CreateManualBookingAsync"/>, whose last check on the dates runs under the lock of the property, in the
-/// transaction that inserts it: two bookings entered together on the same dates cannot both succeed. A booking that completes a
-/// portal's block goes through <see cref="IOtaStayService.ConvertBlockAsync"/>, under the lock of the property's feeds, with the same
-/// final check. The minimum stay is a rule of the guests' checkout, not of the host who enters a booking: it is only reported.
+/// transaction that inserts it: two bookings entered together on the same dates cannot both succeed. Before it writes anything,
+/// that method also asks the channel manager (E08/F01/US02/T01, <see cref="IChannelManagerAvailability"/>): Octorate answering "not
+/// available" is the same 409 as a night CasaZen has taken, and an Octorate that cannot be asked never refuses. A booking that completes
+/// a portal's block goes through <see cref="IOtaStayService.ConvertBlockAsync"/>, under the lock of the property's feeds, with the same
+/// final check on CasaZen's calendar and without asking the channel manager: the reservation being completed is what Octorate would answer
+/// with. The minimum stay is a rule of the guests' checkout, not of the host who enters a booking: it is only reported.
 /// No email, no push and no payment is started here, except the payment link the host asks for (E08/F01/US01/T05): the arrangement is
 /// stored on the booking, and with <see cref="HostPaymentArrangement.PaymentLink"/> the link is made by <see cref="IBookingPaymentLinkService"/>
 /// once the booking is written (what can stop it, a Stripe account not ready or nothing to pay, is checked before anything is written). The

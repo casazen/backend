@@ -59,6 +59,13 @@ public static class CasazenPolicies
     /// </summary>
     public const string GuestAccount = "GuestAccount";
 
+    /// <summary>
+    /// Long-rent tenant self-service area: a signed-in account with a subject. The endpoint resolves the account's
+    /// verified Auth0 email and grants access only when it matches a non-anonymized tenant party of the requested lease.
+    /// A tenant is deliberately not made a member of the landlord's organization.
+    /// </summary>
+    public const string TenantAccount = "TenantAccount";
+
     private const string ShortRent = "RequireContext:short-rent:";
     private const string LongRent = "RequireContext:long-rent:";
 
@@ -119,9 +126,10 @@ public static class CasazenPolicies
 
     /// <summary>
     /// Decide on manual biometric verification (NF-12, ADR-013): approve or reject guest check-in after biometric
-    /// escalation. Owner, admins, and property managers only (NOT staff per D-08). Short-rent context.
+    /// escalation. Owner, admins, and property managers only (NOT staff per D-08). Short-rent context. The permission is
+    /// <see cref="HostPermissions.VerificationDecision"/>, seeded since E03/F04/US02/T01.
     /// </summary>
-    public const string VerificationDecision = ShortRent + "verification.decision";
+    public const string VerificationDecision = ShortRent + HostPermissions.VerificationDecision;
 
     /// <summary>
     /// Read a property's long-term side that is not a lease: the long-rent service requests (D2, SU-07). Long-rent

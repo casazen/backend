@@ -114,9 +114,10 @@ public static partial class LeaseContractTextParser
 
     // ---- the role --------------------------------------------------------------------------------------------------------
 
-    // "(di seguito, il Locatore)", "denominato \"Conduttore\"", "in qualita di locatore": after the code.
+    // "(di seguito, il Locatore)", "denominato \"Conduttore\"", "nel seguito Conduttrice", "in qualita di locatore": after the code.
+    // The words between the formula and the role can name both parties ("per brevità, denominati congiuntamente i").
     [GeneratedRegex(
-        @"\b(?:di\s+seguito|d'ora\s+in\s+poi|in\s+seguito|qui\s+di\s+seguito|denominat[oaie]|detto|detta|chiamat[oa]|in\s+qualit[\u00e0a]\s+di|quale|come)\b[^()]{0,40}?\b(?<role>" + RolePattern + @")\b",
+        @"\b(?:di\s+seguito|nel\s+seguito|d'ora\s+in\s+poi|d'ora\s+innanzi|in\s+seguito|qui\s+di\s+seguito|denominat[oaie]|detto|detta|chiamat[oa]|in\s+qualit[\u00e0a]\s+di|quale|come)\b[^()]{0,80}?\b(?<role>" + RolePattern + @")\b",
         Options,
         Timeout)]
     private static partial Regex RoleDefinition();
@@ -313,7 +314,62 @@ public static partial class LeaseContractTextParser
         return (null, 0);
     }
 
+    // The four characters at positions 12-15 of an Italian fiscal code identify the place of birth. Italian comuni use
+    // a cadastral code (for example H501 for Rome); foreign states use a code beginning with Z. When the contract also
+    // states that the person was born in that introduction, an Italian place is enough to prefill Italian citizenship as
+    // a value for the user to check. A foreign birthplace is deliberately not turned into citizenship: birthplace and
+    // citizenship need not coincide, and the Z code alone cannot prove the person's nationality.
+    [GeneratedRegex(@"\bnat[oa]\s+(?:a|in)\b", Options, Timeout)]
+    private static partial Regex BirthPlaceLabel();
+
+    private static (string? Value, int Confidence) InferCitizenshipFromBirthPlace(
+        string flat, int start, int end, string fiscalCode)
+    {
+        if (start >= end || fiscalCode.Length != 16 || fiscalCode[11] == 'Z'
+            || !BirthPlaceLabel().IsMatch(flat[start..end]))
+        {
+            return (null, 0);
+        }
+
+        return ("IT", AcceptedConfidence);
+    }
+
     // ---- all together ----------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// How many characters may lie between the fiscal code of a person with no role of its own and the introduction of the next person, whose
+    /// «di seguito congiuntamente conduttore» then says the role for both: the identity document of the first (a passport or an identity
+    /// card with its number, the office that issued it and two dates) fits in it. No role word may be in between.
+    /// </summary>
+    private const int SharedRoleReach = 200;
+
+    /// <summary>How far after a fiscal code the role formula may stand: a passport or an identity card sits between the code and «di seguito».</summary>
+    private const int RoleWindow = 800;
+
+    /// <summary>Residence and citizenship stay in the introduction itself, not in the articles that follow the last person.</summary>
+    private const int DetailWindow = 260;
+
+    /// <summary>How far a following person may be and still be the same side of the contract («e il Sig. …» after a conduttore).</summary>
+    private const int ContinuationReach = 500;
+
+    // "e il", "ed la", "nonché il" at the end of what separates two people: the next one continues the same side.
+    [GeneratedRegex(@"\b(?:e|ed|nonch[eé]|unitamente(?:\s+a)?|altres[iì])(?:\s+(?:il|la|lo|i|gli|le))?\s*$", Options, Timeout)]
+    private static partial Regex JoinedToThePrevious();
+
+    // A new side of the contract, or someone who signs but does not rent: not another tenant or landlord.
+    [GeneratedRegex(@"\b(?:dall'altra\s+parte|d'altra\s+parte|fideiussor\w*|garant[ei]|testimon[ei])\b", Options, Timeout)]
+    private static partial Regex NotACoParty();
+
+    private static bool NamesAnotherRole(string text, PartyRole role)
+    {
+        foreach (Match match in Regex.Matches(text, RolePattern, Options))
+        {
+            if (RoleOf(match.Value) != role)
+                return true;
+        }
+
+        return false;
+    }
 
     private static IReadOnlyList<ReadParty> ReadParties(string flat)
     {
@@ -329,20 +385,23 @@ public static partial class LeaseContractTextParser
             previousEnd = code.Index + code.Length;
         }
 
-        // What each person's introduction covers: from where it starts to where the next one does, and a few lines after the code at most.
-        var windowEnds = new int[intros.Count];
+        // The role may follow an identity document. The address and the citizenship stay in the introduction, before the next person.
+        var detailEnds = new int[intros.Count];
+        var roleEnds = new int[intros.Count];
         for (var i = 0; i < intros.Count; i++)
         {
             var codeEnd = intros[i].Code.Index + intros[i].Code.Length;
             var next = i + 1 < intros.Count ? intros[i + 1].Start : flat.Length;
-            windowEnds[i] = Math.Max(codeEnd, Math.Min(next, codeEnd + 260));
+            detailEnds[i] = Math.Max(codeEnd, Math.Min(next, codeEnd + DetailWindow));
+            roleEnds[i] = Math.Max(codeEnd, Math.Min(next, codeEnd + RoleWindow));
         }
 
         var roles = new RoleEvidence[intros.Count];
         for (var i = 0; i < intros.Count; i++)
-            roles[i] = ResolveRole(flat, intros[i], windowEnds[i]);
+            roles[i] = ResolveRole(flat, intros[i], roleEnds[i]);
 
         // "Mario Rossi (...) e Anna Rossi (...), di seguito congiuntamente Locatori": the first has no role of its own, the next says it for both.
+        // What lies between the two is the first one's identity document (number, issuer, dates), which can run to a hundred characters or more.
         for (var i = 0; i + 1 < intros.Count; i++)
         {
             if (roles[i].Role is not null || roles[i + 1].Role is not { } shared || !roles[i + 1].Plural)
@@ -350,8 +409,31 @@ public static partial class LeaseContractTextParser
 
             var codeEnd = intros[i].Code.Index + intros[i].Code.Length;
             var between = intros[i + 1].Start > codeEnd ? flat[codeEnd..intros[i + 1].Start] : string.Empty;
-            if (between.Length <= 60 && !Regex.IsMatch(between, RolePattern, Options))
+            if (between.Length <= SharedRoleReach && !Regex.IsMatch(between, RolePattern, Options))
                 roles[i] = new RoleEvidence(shared, 85, true);
+        }
+
+        // "di seguito Conduttrice, e il Sig. Paolo Bianchi, C.F. …": the second person has no formula of their own.
+        // They are the same side when the text joins them, and not when a new side or a guarantor is named.
+        for (var i = 0; i + 1 < intros.Count; i++)
+        {
+            if (roles[i].Role is not { } role || roles[i + 1].Role is not null)
+                continue;
+
+            var codeEnd = intros[i].Code.Index + intros[i].Code.Length;
+            var nextStart = intros[i + 1].Start;
+            if (nextStart <= codeEnd)
+                continue;
+
+            var between = flat[codeEnd..nextStart];
+            var preface = nextStart < intros[i + 1].Code.Index ? flat[nextStart..intros[i + 1].Code.Index] : string.Empty;
+            if (between.Length > ContinuationReach || NotACoParty().IsMatch(between) || NotACoParty().IsMatch(preface))
+                continue;
+            // The formula of the person just read ("di seguito Conduttrice") sits in between: the same role does not start a new side.
+            if (!JoinedToThePrevious().IsMatch(between) || NamesAnotherRole(between, role) || NamesAnotherRole(preface, role))
+                continue;
+
+            roles[i + 1] = new RoleEvidence(role, 85, roles[i].Plural);
         }
 
         var parties = new List<ReadParty>();
@@ -362,8 +444,11 @@ public static partial class LeaseContractTextParser
 
             var intro = intros[i];
             var (first, last, nameConfidence) = AssignName(intro.NameWords, intro.Code.Code);
-            var (residence, residenceConfidence) = ReadResidence(flat, intro.Start, windowEnds[i], intro.Code.Index);
-            var (citizenship, citizenshipConfidence) = ReadCitizenship(flat, intro.Start, windowEnds[i]);
+            var (residence, residenceConfidence) = ReadResidence(flat, intro.Start, detailEnds[i], intro.Code.Index);
+            var (citizenship, citizenshipConfidence) = ReadCitizenship(flat, intro.Start, detailEnds[i]);
+            if (citizenship is null)
+                (citizenship, citizenshipConfidence) = InferCitizenshipFromBirthPlace(
+                    flat, intro.Start, detailEnds[i], intro.Code.Code);
 
             parties.Add(new ReadParty
             {

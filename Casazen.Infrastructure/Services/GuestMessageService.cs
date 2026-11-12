@@ -1,5 +1,6 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -19,15 +20,18 @@ namespace Casazen.Infrastructure.Services;
 /// controller authorized the booking, and the list also names the org of the scope. Every query of a thread names the booking or the org
 /// as well, so the tenant filter is a second wall.</para>
 /// <para><b>The text of a message is never in a log</b>: only ids and counters. It is never in an email either.</para>
-/// <para><b>The two emails</b> (<see cref="NotifyHostAsync"/>, <see cref="NotifyGuestAsync"/>) leave from the call that wrote the
-/// message and from nowhere else; the claim of the ten-minute slot is one conditional <c>UPDATE</c>, so two messages at the same
-/// moment queue one email. The message is saved before: a failed email never loses a message.</para>
+/// <para><b>The alert to the hosts</b> (<see cref="AlertHostsAsync"/>) and <b>the email to the guest</b> (<see cref="NotifyGuestAsync"/>) leave from
+/// the call that wrote the message and from nowhere else. The hosts are alerted through the decision point of the preferences
+/// (<see cref="HostMessageAlertDelivery"/>, NF-65): who is told, and through which of the counter, the push and the email, is the choice of each
+/// person who reaches the property, with the quiet hours and at most one email per conversation every ten minutes; the guest's email has its own
+/// ten-minute slot, one conditional <c>UPDATE</c>, so two messages at the same moment queue one email. The message is saved before: a failed alert
+/// or email never loses a message.</para>
 /// </remarks>
 public sealed class GuestMessageService(
     AppDbContext db,
     IEmailQueue emailQueue,
     PublicSiteLinks links,
-    IPushNotificationService pushNotifications,
+    HostMessageAlertDelivery hostAlerts,
     IInAppNotificationService inAppNotifications,
     IInAppNotificationPublisher notificationPublisher,
     ILogger<GuestMessageService> logger,
@@ -79,8 +83,7 @@ public sealed class GuestMessageService(
                 cancellationToken);
 
         logger.LogInformation("Guest message {MessageId} written in thread {ThreadId} of booking {BookingId}", message.Id, threadId, booking.Id);
-        PushToHosts(booking, message.Id);
-        await NotifyHostAsync(booking, threadId, now, cancellationToken);
+        await AlertHostsAsync(booking, threadId, message.Id, now, cancellationToken);
         return new SentGuestMessage(message, redacted, false);
     }
 
@@ -184,11 +187,8 @@ public sealed class GuestMessageService(
 
         var threads = db.GuestThreads
             .AsNoTracking()
-            .Where(t => t.OrgId == scope.OrgId
-                && t.Booking.Source == BookingSource.Direct
-                && (t.Booking.Status == BookingStatus.Confirmed
-                    || t.Booking.Status == BookingStatus.CheckedIn
-                    || t.Booking.Status == BookingStatus.CheckedOut))
+            .Where(t => t.OrgId == scope.OrgId)
+            .Where(GuestMessageRules.IsThreadOfADirectBooking)
             .InScope(scope);
         if (propertyId is { } id)
             threads = threads.Where(t => t.PropertyId == id);
@@ -267,13 +267,8 @@ public sealed class GuestMessageService(
         // Same threads as the list (direct, confirmed, in the caller's scope), only the open ones, only those with something unread.
         var rows = await db.GuestThreads
             .AsNoTracking()
-            .Where(t => t.OrgId == scope.OrgId
-                && t.LastGuestMessageAt != null
-                && t.Booking.Source == BookingSource.Direct
-                && (t.Booking.Status == BookingStatus.Confirmed
-                    || t.Booking.Status == BookingStatus.CheckedIn
-                    || t.Booking.Status == BookingStatus.CheckedOut)
-                && t.Booking.CheckOutDate >= openFrom)
+            .Where(t => t.OrgId == scope.OrgId && t.LastGuestMessageAt != null && t.Booking.CheckOutDate >= openFrom)
+            .Where(GuestMessageRules.IsThreadOfADirectBooking)
             .InScope(scope)
             .Select(t => new
             {
@@ -401,24 +396,23 @@ public sealed class GuestMessageService(
             .FirstOrDefaultAsync(cancellationToken);
 
     /// <summary>
-    /// The push (and, through the decorator, the in-app notification) to the hosts of the booking: one for every message of the guest,
-    /// unlike the email, which is throttled. The text names the property only, never the guest or the message. Best effort after the
-    /// message is saved: whatever goes wrong here is logged and never fails the send.
+    /// The alert to the hosts of the booking, through the decision point of the preferences (NF-65): the people who reach the property and chose
+    /// it get the counter, a push for every message of the guest (unlike the email, which is throttled) and an email to their own address at most
+    /// once every ten minutes. The texts name the property only, never the guest's words. After the message is saved, whatever goes wrong here
+    /// never fails the send: somebody who could not be alerted is alerted by a job that delivers the alert again
+    /// (<see cref="HostMessageAlertDelivery.DeliverOrRetryAsync"/>), and only a failure to queue that job is logged and lost.
     /// </summary>
-    private void PushToHosts(Booking booking, Guid messageId)
+    private async Task AlertHostsAsync(Booking booking, Guid threadId, Guid messageId, DateTime now, CancellationToken cancellationToken)
     {
         try
         {
-            var push = EmailTemplates.GuestMessagePush(EmailTemplates.DefaultCulture, booking.Property.Name);
-            pushNotifications.Enqueue(
-                PushDeliveryKeys.GuestMessage(messageId),
-                PushAudience.BookingHosts(booking.Id),
-                new PushNotificationPayload(
-                    push.Title, push.Body, PushTypes.GuestMessage, booking.Id, PushRoutes.BookingMessages(booking.Id)));
+            await hostAlerts.DeliverOrRetryAsync(
+                new HostMessageAlert(booking.OrgId, HostMessageSource.Direct, NotificationEventType.NewGuestMessage, threadId, messageId, now),
+                cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogError(ex, "Push about message {MessageId} of booking {BookingId} could not be prepared", messageId, booking.Id);
+            logger.LogError(ex, "The alert to the hosts about message {MessageId} of booking {BookingId} could not be prepared", messageId, booking.Id);
         }
     }
 
@@ -443,43 +437,7 @@ public sealed class GuestMessageService(
         }
     }
 
-    /// <summary>
-    /// The email to the host: «the guest wrote», without the text, at most one every ten minutes per thread. Best effort after the
-    /// message is saved: whatever goes wrong here is logged and never fails the send.
-    /// </summary>
-    private async Task NotifyHostAsync(Booking booking, Guid threadId, DateTime now, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var cutoff = now.AddMinutes(-GuestMessageRules.NotifyIntervalMinutes);
-            var claimed = await db.GuestThreads
-                .Where(t => t.Id == threadId && (t.HostNotifiedAt == null || t.HostNotifiedAt <= cutoff))
-                .ExecuteUpdateAsync(set => set.SetProperty(t => t.HostNotifiedAt, now), cancellationToken);
-            if (claimed == 0)
-                return;
-
-            var content = EmailTemplates.GuestMessageToHost(
-                EmailTemplates.DefaultCulture,
-                $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim(),
-                booking.Property.Name,
-                booking.CheckInDate,
-                booking.CheckOutDate,
-                links.IsConfigured ? links.HostBookingMessages(booking.Id) : null);
-            if (!emailQueue.Enqueue(booking.Org.ContactEmail, content, EmailTemplates.Names.GuestMessageToHost))
-            {
-                // Not queued (no address, provider off): give the slot back, so the next message tries again.
-                await db.GuestThreads
-                    .Where(t => t.Id == threadId && t.HostNotifiedAt == now)
-                    .ExecuteUpdateAsync(set => set.SetProperty(t => t.HostNotifiedAt, (DateTime?)null), cancellationToken);
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogWarning(ex, "The email to the host about thread {ThreadId} could not be prepared", threadId);
-        }
-    }
-
-    /// <summary>The email to the guest: «the host answered», without the text, at most one every ten minutes per thread. Best effort, like the host's.</summary>
+    /// <summary>The email to the guest: «the host answered», without the text, at most one every ten minutes per thread. Best effort, like the alert to the hosts.</summary>
     private async Task NotifyGuestAsync(Booking booking, Guid threadId, DateTime now, CancellationToken cancellationToken)
     {
         try

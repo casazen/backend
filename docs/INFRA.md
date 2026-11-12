@@ -417,10 +417,11 @@ App__ApiBaseUrl=[https://<railway host of this environment>]
 Hangfire__DashboardEnabled=false
 # Hangfire schema of THIS environment (production: hangfire_casazen_prod) — never shared, see docs/runbooks/hangfire.md
 Hangfire__Schema=hangfire_casazen_test
-# CORS — REQUIRED: the web app origin(s) of THIS environment, no default in code (docs/runbooks/cors-security-headers.md)
+# CORS — the web app origin(s) of THIS environment besides the frontend Vercel project, which the API allows itself
+# (https://casazen.vercel.app and casazen-*-lucalamalfa91s-projects.vercel.app; docs/runbooks/cors-security-headers.md)
 Cors__AllowedOrigins=[https://<web app host of this environment>]
-# Optional, test environment only: regex for the Vercel previews of our own project (empty = no preview allowed)
-Cors__VercelPreviewPattern=[e.g. casazen-app-git-[a-z0-9-]+-<team-slug>]
+# Optional, test environment only: regex for previews of another Vercel project (the casazen project is already allowed)
+Cors__VercelPreviewPattern=[e.g. casazen-(git-[a-z0-9-]+|[a-z0-9]{9})-lucalamalfa91s-projects]
 # AI provider — OPTIONAL, default Stub (no external call; the SEO pages then stay "contenuto non generato" drafts,
 # docs/runbooks/seo-domain.md section 7). Before enabling DeepSeek read docs/runbooks/ai.md:
 # it becomes a subprocessor (legal details to fill in), every call is capped by the platform AI budget.
@@ -445,7 +446,7 @@ DataProtection__CertificatePassword=[pfx password]
 
 `App__PublicSiteBaseUrl` is the **single source of the public domain** (SE-02, decision D3): the base of **every link in emails** (supplier invite `/register?inviteToken=…` on the web app, see [`runbooks/suppliers.md`](runbooks/suppliers.md); supplier inbox; guest check-in `/checkin/{token}`), of the `canonicalUrl` of the SEO pages, of every URL of the sitemap (`GET /api/public/sitemap.xml`, served on the web app domain as `/sitemap.xml`) and the origin CORS always allows. There is no fallback domain in code and no value in `appsettings.json`. Use the web app URL of the matching environment; `Seo__PublicBaseUrl` is accepted only as an alias of the same value (different values stop the startup). Public domain, robots.txt, sitemap and Google Search Console: [`runbooks/seo-domain.md`](runbooks/seo-domain.md). Email setup, sender domain verification (SPF/DKIM) and send test: [`docs/runbooks/email.md`](runbooks/email.md).
 
-CORS accepts the origin of `App__PublicSiteBaseUrl`, the exact origins of `Cors__AllowedOrigins` and, when `Cors__VercelPreviewPattern` is set, the Vercel previews of our own project; never any `*.vercel.app`, never with credentials. Security headers (HSTS, `frame-ancestors`) and the web app CSP: [`runbooks/cors-security-headers.md`](runbooks/cors-security-headers.md).
+CORS accepts the origin of `App__PublicSiteBaseUrl`, the exact origins of `Cors__AllowedOrigins`, the Vercel project `casazen` (team `lucalamalfa91s-projects`, including `https://casazen.vercel.app`; branch and deployment hosts on the test API only) and, when `Cors__VercelPreviewPattern` is set, other previews of our own project; never any `*.vercel.app`, never with credentials. Security headers (HSTS, `frame-ancestors`) and the web app CSP: [`runbooks/cors-security-headers.md`](runbooks/cors-security-headers.md).
 
 Client IP behind the Railway edge and per-IP rate limits: `ForwardedHeaders__KnownNetworks`, `ForwardedHeaders__ForwardLimit` and `RateLimiting__{Policy}__PermitLimit` (optional, safe defaults). Check the proxy chain of each environment as described in [`runbooks/proxy-ip.md`](runbooks/proxy-ip.md). Never set `ASPNETCORE_FORWARDEDHEADERS_ENABLED`.
 

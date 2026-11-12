@@ -1,6 +1,7 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -61,8 +62,25 @@ public class AccessCodeService : IAccessCodeService
             propertyId, userId);
     }
 
-    public async Task<string?> GetAccessCodeAsync(Guid bookingId, string userId, CancellationToken ct = default)
+    public async Task<string?> GetAccessCodeAsync(Guid bookingId, string userId, HostScope scope, CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(scope);
+
+        // The booking is one the caller reaches (AM-03): the org first, then the properties it was given. The same rule as the status of the
+        // codes (ReachableProperties): a booking of another property of the org is as absent as one that does not exist.
+        var reaches = await _db.Bookings
+            .AsNoTracking()
+            .Where(b => b.OrgId == scope.OrgId && b.Id == bookingId)
+            .InScope(scope)
+            .AnyAsync(ct);
+        if (!reaches)
+        {
+            _logger.LogWarning(
+                "Access code request denied for booking {BookingId} by user {UserId}: the booking is outside the caller scope",
+                bookingId, userId);
+            return null;
+        }
+
         // Check verification passed before allowing access
         if (!await IsVerificationPassedAsync(bookingId, ct))
         {
@@ -96,6 +114,10 @@ public class AccessCodeService : IAccessCodeService
 
     public async Task<string?> ReleaseToGuestAsync(Guid bookingId, string channel, CancellationToken ct = default)
     {
+        // E03/F04/US02: the log records how the code left, so the channel is one of the known ones (never a free text).
+        if (!AccessCodeReleaseChannels.All.Contains(channel, StringComparer.Ordinal))
+            throw new ArgumentException($"Unknown release channel '{channel}'.", nameof(channel));
+
         // Check verification passed before releasing (AC-NF13-3, AC-NF13-6)
         if (!await IsVerificationPassedAsync(bookingId, ct))
         {
@@ -111,6 +133,16 @@ public class AccessCodeService : IAccessCodeService
 
         if (booking == null)
             return null;
+
+        // E03/F04/US02: a code opens the door of a stay still to come or in progress. The one definition of an active stay
+        // (AlloggiatiStatusRules: no request, hold, cancelled stay or no-show), and not one already over.
+        if (!AlloggiatiStatusRules.IsDue(booking) || booking.Status == BookingStatus.CheckedOut)
+        {
+            _logger.LogWarning(
+                "Access code release denied for booking {BookingId}: the stay is not active ({Status})",
+                bookingId, booking.Status);
+            return null;
+        }
 
         var accessCode = await _db.Set<PropertyAccessCode>()
             .FirstOrDefaultAsync(ac => ac.PropertyId == booking.PropertyId, ct);
@@ -195,21 +227,19 @@ public class AccessCodeService : IAccessCodeService
                     .Max(ac => (DateTime?)ac.UpdatedAt)));
 
     /// <summary>
-    /// Checks if the booking's guest has passed biometric verification or operator verification.
+    /// The verification gate of both reads of the code (AC-NF13-6, AC-NF50-4, AC-NF24-4, E03/F04/US02): the latest
+    /// <see cref="BiometricVerificationLog"/> of the booking is an <see cref="BiometricOutcome.Accept"/>, written by the agent or by an operator's
+    /// approval. Since E03/F04/US02/T03 an operator's rejection writes a row too (<see cref="VerificationMethod.Operator"/>, <c>Reject</c>): who
+    /// decided does not open the gate, only an accepted outcome does. Internal so a test proves the gate.
     /// </summary>
-    private async Task<bool> IsVerificationPassedAsync(Guid bookingId, CancellationToken ct)
+    internal async Task<bool> IsVerificationPassedAsync(Guid bookingId, CancellationToken ct)
     {
         var verificationLog = await _db.BiometricVerificationLogs
             .Where(v => v.BookingId == bookingId)
             .OrderByDescending(v => v.CreatedAt)
             .FirstOrDefaultAsync(ct);
 
-        if (verificationLog == null)
-            return false;
-
-        // Accept if outcome is Accept OR if operator manually verified (AC-NF13-6)
-        return verificationLog.Outcome == BiometricOutcome.Accept
-            || verificationLog.OperatorUserId != null;
+        return verificationLog is { Outcome: BiometricOutcome.Accept };
     }
 }
 

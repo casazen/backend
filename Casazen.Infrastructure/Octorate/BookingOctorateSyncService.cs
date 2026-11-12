@@ -55,6 +55,12 @@ public sealed class BookingOctorateSyncService(
     /// <summary>Key of the reason of the "To do" of dates taken on the channel manager, in <c>EmailTexts</c> (Italian and English).</summary>
     internal const string DatesTakenReasonKey = "TodoReason_OctorateDatesTaken";
 
+    /// <summary>Key of the reason of the «To do» of a reservation changed on the channel manager (E08/F02/US01/T02), in <c>EmailTexts</c> (Italian and English).</summary>
+    internal const string ConflictReasonKey = "TodoReason_BookingSyncConflict";
+
+    /// <summary>Reads the stay days of a reservation as Octorate writes them (instants in UTC) in the local day of the stay.</summary>
+    private static readonly BookingStateMapper StayMapper = new();
+
     private DateTime UtcNow => timeProvider.GetUtcNow().UtcDateTime;
 
     public async Task<OctorateSyncState?> PushCreateAsync(Guid bookingId, CancellationToken ct)
@@ -465,6 +471,375 @@ public sealed class BookingOctorateSyncService(
         };
     }
 
+    public async Task<OctorateSyncState?> PushUpdateAsync(Guid bookingId, bool askedAgain, bool overwrite, CancellationToken ct)
+    {
+        var booking = await ReadBookingAsync(bookingId, ct);
+        if (booking is null)
+        {
+            logger.LogWarning("Octorate update of booking {BookingId}: the booking is not found, nothing is sent", bookingId);
+            return null;
+        }
+
+        // A booking of a channel is the channel's, and one that is not confirmed or in the house (or whose stay is over) is not one CasaZen mirrors.
+        if (!IsMirrorable(booking.Source, booking.Status, booking.CheckOutDate))
+            return null;
+
+        var row = await db.OctorateBookingSyncs
+            .AsNoTracking()
+            .Where(s => s.BookingId == bookingId)
+            .Select(s => new { s.State, s.LastOperation })
+            .FirstOrDefaultAsync(ct);
+
+        // The reservation is not on Octorate yet. The create under way, or on its way (the confirmation still waits in the outbox), writes the booking as
+        // it is now: this event is delivered again after it, never consumed with no effect (events arrive out of order, ADR-022). A create that failed, or a
+        // property that is not mirrored, has nothing to update: the create, when it succeeds, sends the current data.
+        if (booking.OctorateReservationId is null)
+        {
+            if (row?.State == OctorateSyncState.Pending
+                || (row is null
+                    && await CreateIsComingAsync(booking.OrgId, bookingId, ct)
+                    && await targets.AccommodationOfAsync(booking.PropertyId, ct) is not null))
+            {
+                throw new OctorateSyncPendingException(bookingId);
+            }
+
+            return null;
+        }
+
+        // A reservation that came from Octorate has no row of ours: CasaZen writes nothing on it. The host's «ask again» is for a row whose last
+        // operation is a change; the other rows are the business of the create and of the cancellation.
+        if (row is null || (askedAgain && row.LastOperation != OctorateSyncOperation.Update))
+            return null;
+
+        await using var hold = await PostgresAdvisoryLocks.TryAcquireSessionLockAsync(
+                db, PostgresAdvisoryLocks.Scope.OctorateBookingSync, bookingId.ToString("N"), ct)
+            ?? throw new OctorateSyncBusyException(bookingId);
+
+        // Read again under the lock, from what is committed: a create may have finished, the booking may have been cancelled meanwhile.
+        var orgId = booking.OrgId;
+        booking = await ReadBookingAsync(bookingId, ct);
+        var sync = await db.OctorateBookingSyncs.FirstOrDefaultAsync(s => s.BookingId == bookingId && s.OrgId == orgId, ct);
+        if (booking is null || sync is null || booking.OctorateReservationId is not { } reservationId
+            || !IsMirrorable(booking.Source, booking.Status, booking.CheckOutDate))
+        {
+            return null;
+        }
+
+        OctorateTargetLookup lookup;
+        try
+        {
+            lookup = await targets.LookupAsync(booking.PropertyId, ct);
+        }
+        catch (OctorateException ex)
+        {
+            // The rooms of the accommodation are read on Octorate: a failed read leaves a visible row, never a change with no trace.
+            var retry = ex is OctorateServerException or OctorateRateLimitException;
+            await RecordUpdateAsync(booking, sync, OctorateSyncState.Failed, retry ? OctorateSyncErrorCodes.Unavailable : OctorateSyncErrorCodes.Rejected, ct);
+            logger.LogWarning(
+                "Octorate update of booking {BookingId}: the target could not be read ({Code}, HTTP {Status})", bookingId, ex.Code, ex.OctorateStatusCode);
+            if (retry)
+                throw;
+
+            return OctorateSyncState.Failed;
+        }
+
+        // Not mirrored now (the connection was lost or is in error, a mapping still to decide or write-blocked): nothing is ever written to Octorate.
+        // The reservation exists there, so the change is not consumed with no trace: the row says it was not sent and the host asks again once the
+        // connection or the mapping is back (the retry runs this again).
+        if (lookup.Gap == OctorateTargetGap.NotMirrored)
+        {
+            logger.LogWarning(
+                "Octorate update of booking {BookingId} of org {OrgId}: its property is not mirrored now, nothing is sent; the host asks again", bookingId, booking.OrgId);
+            return await RecordUpdateAsync(booking, sync, OctorateSyncState.Failed, OctorateSyncErrorCodes.NotMirrored, ct);
+        }
+
+        if (lookup.Target is not { } target)
+            return await RecordUpdateAsync(booking, sync, OctorateSyncState.Failed, OctorateSyncErrorCodes.RoomNotChosen, ct);
+
+        // The version the change is based on. A conflict is only ever settled by a person who has seen both versions, in one of two ways. «Keep mine»
+        // (overwrite) is based on the version Octorate held when the conflict was found, so it writes over exactly that one. «Take theirs» is the
+        // booking aligned to that version (the stay and the guests the row kept): there is nothing to write, the version is adopted. Any other change
+        // after the conflict (the notes, a price, another stay) and a plain retry are based on the version CasaZen last saw: they conflict again,
+        // nothing is written and the «To do» stays open. The edit never overwrites Octorate by itself.
+        var conflict = sync.State == OctorateSyncState.Conflict;
+        if (conflict && !overwrite && MatchesTheirVersion(booking, sync))
+            return await AdoptTheirVersionAsync(booking, sync, ct);
+
+        var seen = conflict && overwrite;
+        var basedOn = (seen ? sync.OctorateUpdateTime : null) ?? booking.OctorateUpdatedAt ?? sync.OctorateUpdateTime;
+
+        // The row of a payment that was not recorded on the reservation (the create left it Failed, PaymentsNotRecorded): the change does not hide it.
+        // The payments are tried again once the change is written, and the row goes back to Failed if one still cannot be recorded.
+        var carriesPaymentFailure = sync.State == OctorateSyncState.Failed && sync.LastOperation == OctorateSyncOperation.Payment;
+
+        // The attempt is committed before the call, so a process that stops during it leaves the trace.
+        sync = await MarkUpdatePendingAsync(booking, sync, ct);
+
+        OctorateReservation reservation;
+        using (orgScope.Use(booking.OrgId))
+        {
+            try
+            {
+                reservation = await client.UpdateReservationAsync(target, reservationId, UpdateOf(booking, basedOn), ct);
+            }
+            catch (OctorateConflictException)
+            {
+                // Octorate holds another version: nothing is written over it. Both versions are kept and the host chooses.
+                return await UpdateConflictAsync(booking, sync, target, reservationId, ct);
+            }
+            catch (OctorateException ex) when (ex is OctorateServerException or OctorateRateLimitException)
+            {
+                // No answer, a 429 or a 5xx: the change may or may not have reached Octorate. It is idempotent (the same values are written), so the
+                // event is delivered again.
+                await RecordUpdateAsync(booking, sync, OctorateSyncState.Failed, OctorateSyncErrorCodes.Unavailable, ct);
+                logger.LogWarning(
+                    "Octorate update of booking {BookingId}: no answer ({Code}, HTTP {Status}); the event is delivered again", bookingId, ex.Code, ex.OctorateStatusCode);
+                throw;
+            }
+            catch (OctorateException ex)
+            {
+                await RecordUpdateAsync(booking, sync, OctorateSyncState.Failed, OctorateSyncErrorCodes.Rejected, ct);
+                logger.LogWarning(
+                    "Octorate update of booking {BookingId}: refused by Octorate ({Code}, HTTP {Status}), not retried", bookingId, ex.Code, ex.OctorateStatusCode);
+                return OctorateSyncState.Failed;
+            }
+            catch (ArgumentException ex)
+            {
+                // A change Octorate could not take (no night, no guest): refused, not retried.
+                await RecordUpdateAsync(booking, sync, OctorateSyncState.Failed, OctorateSyncErrorCodes.Rejected, ct);
+                logger.LogWarning(ex, "Octorate update of booking {BookingId}: the change cannot be written, not sent", bookingId);
+                return OctorateSyncState.Failed;
+            }
+        }
+
+        await RecordUpdateSyncedAsync(booking, sync, reservation, ct);
+        logger.LogInformation(
+            "Octorate update of booking {BookingId} of org {OrgId}: reservation {ReservationId} changed (attempt {Attempt})",
+            bookingId,
+            booking.OrgId,
+            reservationId,
+            sync.Attempts);
+
+        // The payments that were not recorded: tried now, under the same lock. All recorded: the row stays Synced. One still not: the row is Failed
+        // again with PaymentsNotRecorded (the host sees it and can ask again) and a failure the outbox must deliver again goes up.
+        return carriesPaymentFailure
+            ? await CatchUpPaymentsAsync(booking.OrgId, bookingId, target.AccommodationId, reservationId, ct)
+            : OctorateSyncState.Synced;
+    }
+
+    /// <summary>
+    /// «Take theirs»: the booking holds the stay and the guests the row kept of the version Octorate held when the conflict was found (and the time of
+    /// that version). Nothing to write: they are the same on both sides.
+    /// </summary>
+    private static bool MatchesTheirVersion(BookingFacts booking, OctorateBookingSync sync)
+    {
+        if (sync.OctorateUpdateTime is null || OctorateVersionSnapshot.Parse(sync.OctorateVersionJson) is not { } theirs)
+            return false;
+
+        // All three are known and the same: a version that did not say its dates or its guests is not one a booking can be said to match.
+        return theirs.CheckIn is { } checkIn
+               && theirs.CheckOut is { } checkOut
+               && theirs.Guests is { } guests
+               && checkIn == RomeCalendar.DateInRome(booking.CheckInDate)
+               && checkOut == RomeCalendar.DateInRome(booking.CheckOutDate)
+               && guests == Math.Max(1, booking.Guests);
+    }
+
+    /// <summary>
+    /// The host aligned the booking to Octorate's version («take theirs»): that version is the one CasaZen holds now (its time on the booking), the
+    /// conflict is over and its «To do» closed. Nothing is sent to Octorate.
+    /// </summary>
+    private async Task<OctorateSyncState> AdoptTheirVersionAsync(BookingFacts booking, OctorateBookingSync sync, CancellationToken ct)
+    {
+        var now = UtcNow;
+        var tracked = await db.Bookings.FirstAsync(b => b.Id == booking.Id && b.OrgId == booking.OrgId, ct);
+        tracked.OctorateUpdatedAt = sync.OctorateUpdateTime ?? tracked.OctorateUpdatedAt;
+
+        sync.State = OctorateSyncState.Synced;
+        sync.LastOperation = OctorateSyncOperation.Update;
+        sync.ErrorCode = null;
+        sync.OctorateVersionJson = null;
+        sync.LastSyncedAt = now;
+        sync.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+
+        await CloseConflictTodosAsync(booking, ct);
+        logger.LogInformation(
+            "Octorate update of booking {BookingId} of org {OrgId}: the booking holds the version Octorate has, adopted with nothing written",
+            booking.Id,
+            booking.OrgId);
+        return OctorateSyncState.Synced;
+    }
+
+    /// <summary>
+    /// Octorate refused the change because the reservation holds another version: it is read again, the dates and the guests Octorate holds are kept on the
+    /// row (<see cref="OctorateBookingSync.OctorateVersionJson"/>) with its <c>updateTime</c>, the state is <c>Conflict</c> and the host gets a «To do» on the
+    /// booking. Neither version is lost, and nothing is sent again by itself.
+    /// </summary>
+    private async Task<OctorateSyncState> UpdateConflictAsync(
+        BookingFacts booking,
+        OctorateBookingSync sync,
+        OctorateBookingTarget target,
+        string reservationId,
+        CancellationToken ct)
+    {
+        Exception? readFailure = null;
+        try
+        {
+            var theirs = await client.GetReservationAsync(target, reservationId, ct);
+            sync.OctorateVersionJson = SnapshotOf(theirs)?.ToJson();
+            sync.OctorateUpdateTime = theirs.UpdatedAt ?? sync.OctorateUpdateTime;
+        }
+        catch (OctorateException ex)
+        {
+            // The conflict is real and is recorded all the same; the version could not be read now. A 429 or a 5xx goes up after the record, so the event is
+            // delivered again and reads it then; any other refusal leaves the conflict without Octorate's version.
+            readFailure = ex;
+        }
+
+        var now = UtcNow;
+        sync.State = OctorateSyncState.Conflict;
+        sync.LastOperation = OctorateSyncOperation.Update;
+        sync.ErrorCode = OctorateSyncErrorCodes.ReservationChanged;
+        sync.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+        logger.LogWarning("Octorate update of booking {BookingId}: the reservation was changed on Octorate, nothing is overwritten", booking.Id);
+
+        // One «To do» on the booking: a second attempt finds the open item instead of raising another (CreateAsync is idempotent).
+        try
+        {
+            await activities.CreateAsync(
+                new CreateTodoRequest
+                {
+                    Type = ActivityType.BookingSyncConflict,
+                    Action = ActivityAction.ReviewBooking,
+                    EntityType = InternalActivity.BookingEntityType,
+                    EntityId = booking.Id,
+                    Urgency = ActivityUrgency.High,
+                    PropertyId = booking.PropertyId,
+                    Reason = await BookingTodoItems.ReasonAsync(db, booking.OrgId, ConflictReasonKey, ct),
+                },
+                ct);
+        }
+        catch (NotFoundException)
+        {
+            logger.LogInformation("Octorate update of booking {BookingId}: its property is gone, no To do", booking.Id);
+        }
+
+        if (readFailure is OctorateServerException or OctorateRateLimitException)
+            ExceptionDispatchInfo.Capture(readFailure).Throw();
+
+        if (readFailure is not null)
+        {
+            logger.LogWarning(
+                "Octorate update of booking {BookingId}: the version Octorate holds could not be read ({Error})", booking.Id, readFailure.GetType().Name);
+        }
+
+        return OctorateSyncState.Conflict;
+    }
+
+    /// <summary>The change reached Octorate: the new <c>updateTime</c> on the booking and on the row, the conflict (if any) over, its «To do» closed.</summary>
+    private async Task RecordUpdateSyncedAsync(BookingFacts booking, OctorateBookingSync sync, OctorateReservation reservation, CancellationToken ct)
+    {
+        var now = UtcNow;
+        var tracked = await db.Bookings.FirstAsync(b => b.Id == booking.Id && b.OrgId == booking.OrgId, ct);
+        tracked.OctorateUpdatedAt = reservation.UpdatedAt ?? tracked.OctorateUpdatedAt;
+
+        sync.State = OctorateSyncState.Synced;
+        sync.LastOperation = OctorateSyncOperation.Update;
+        sync.ErrorCode = null;
+        sync.OctorateUpdateTime = reservation.UpdatedAt ?? sync.OctorateUpdateTime;
+        sync.OctorateVersionJson = null;
+        sync.LastSyncedAt = now;
+        sync.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+
+        await CloseConflictTodosAsync(booking, ct);
+    }
+
+    /// <summary>The open «To do» of a conflict about the booking, closed by the system: both versions are the same again.</summary>
+    private async Task CloseConflictTodosAsync(BookingFacts booking, CancellationToken ct)
+    {
+        var typeName = nameof(ActivityType.BookingSyncConflict);
+        var open = await db.InternalActivities
+            .AsNoTracking()
+            .Where(a => a.OrgId == booking.OrgId
+                        && a.Action != null
+                        && a.CompletedAt == null
+                        && a.ActivityType == typeName
+                        && a.EntityType == InternalActivity.BookingEntityType
+                        && a.EntityId == booking.Id)
+            .Select(a => a.Id)
+            .ToListAsync(ct);
+        foreach (var id in open)
+        {
+            try
+            {
+                await activities.CloseAsync(id, InternalActivity.ClosedBySystem, ct);
+            }
+            catch (NotFoundException)
+            {
+                logger.LogInformation("Octorate update of booking {BookingId}: the To do {ActivityId} is gone", booking.Id, id);
+            }
+        }
+    }
+
+    private async Task<OctorateBookingSync> MarkUpdatePendingAsync(BookingFacts booking, OctorateBookingSync sync, CancellationToken ct)
+    {
+        var now = UtcNow;
+        sync.State = OctorateSyncState.Pending;
+        sync.LastOperation = OctorateSyncOperation.Update;
+        sync.PropertyId = booking.PropertyId;
+        sync.Attempts++;
+        sync.LastAttemptAt = now;
+        sync.ErrorCode = null;
+        sync.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+        return sync;
+    }
+
+    private async Task<OctorateSyncState> RecordUpdateAsync(
+        BookingFacts booking,
+        OctorateBookingSync sync,
+        OctorateSyncState state,
+        string errorCode,
+        CancellationToken ct)
+    {
+        sync.State = state;
+        sync.LastOperation = OctorateSyncOperation.Update;
+        sync.PropertyId = booking.PropertyId;
+        sync.ErrorCode = errorCode;
+        sync.UpdatedAt = UtcNow;
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation("Octorate update of booking {BookingId}: {State} ({Code})", booking.Id, state, errorCode);
+        return state;
+    }
+
+    /// <summary>What an edit writes to the reservation: the stay, the guests, the price of the stay without tourist tax (as the create sends it) and the notes.</summary>
+    private static OctorateReservationUpdate UpdateOf(BookingFacts booking, DateTime? basedOn)
+    {
+        var guests = Math.Max(1, booking.Guests);
+        return new OctorateReservationUpdate
+        {
+            CheckIn = RomeCalendar.DateInRome(booking.CheckInDate),
+            CheckOut = RomeCalendar.DateInRome(booking.CheckOutDate),
+            Guests = guests,
+            Children = Math.Clamp(booking.Children, 0, guests - 1),
+            RoomGross = booking.BasePrice,
+            Notes = booking.Notes,
+            BasedOnUpdateTime = basedOn,
+        };
+    }
+
+    /// <summary>The dates and the guests of the reservation as Octorate holds it, in the form the booking answer shows; <c>null</c> when none could be read.</summary>
+    private static OctorateVersionSnapshot? SnapshotOf(OctorateReservation reservation)
+    {
+        var checkIn = StayMapper.ToStayDate(reservation.CheckIn, null) is { } arrival ? DateOnly.FromDateTime(arrival) : (DateOnly?)null;
+        var checkOut = StayMapper.ToStayDate(reservation.CheckOut, null) is { } departure ? DateOnly.FromDateTime(departure) : (DateOnly?)null;
+        int? guests = reservation.TotalGuests is >= 1 ? reservation.TotalGuests : null;
+        return checkIn is null && checkOut is null && guests is null ? null : new OctorateVersionSnapshot(checkIn, checkOut, guests);
+    }
+
     public async Task<OctorateSyncState> RequeueAsync(Guid bookingId, bool overwrite, CancellationToken ct)
     {
         // Through the tenant filter of the caller: a booking of another org is not found (404).
@@ -472,7 +847,7 @@ public sealed class BookingOctorateSyncService(
             ?? throw new NotFoundException("Booking not found") { Code = "booking_not_found", MessageKey = "BookingNotFound" };
 
         var sync = await db.OctorateBookingSyncs.FirstOrDefaultAsync(s => s.BookingId == bookingId && s.OrgId == booking.OrgId, ct);
-        if (sync is null || sync.State is not (OctorateSyncState.Failed or OctorateSyncState.Conflict))
+        if (sync is null || !OctorateBookingSync.IsRetryable(sync.State))
         {
             throw new DomainConflictException(
                 OctorateSyncErrorCodes.NotRetryable, OctorateSyncErrorCodes.MessageKeys[OctorateSyncErrorCodes.NotRetryable]);
@@ -484,10 +859,11 @@ public sealed class BookingOctorateSyncService(
         var now = UtcNow;
 
         // Its own event, not a second BookingConfirmed: only the push runs again, no routine and no other consumer of the confirmation.
+        // «Keep mine» travels with it: the handler of the change writes CasaZen's version over the one Octorate held when the conflict was found.
         recorder.Record(
             DomainEventType.OctorateSyncRequested,
             booking.Id,
-            BookingEventPayload.Of(booking, BookingEventOrigin.System),
+            BookingEventPayload.Of(booking, BookingEventOrigin.System) with { Overwrite = overwrite },
             $"octorate-sync-retry:{booking.Id:N}:{now:O}",
             booking.OrgId);
         await db.SaveChangesAsync(ct);
@@ -520,7 +896,10 @@ public sealed class BookingOctorateSyncService(
                 b.BasePrice,
                 b.Guest.FirstName,
                 b.Guest.LastName,
-                b.Guest.Gender))
+                b.Guest.Gender,
+                b.UpdatedAt,
+                b.OctorateUpdatedAt,
+                b.SpecialRequests))
             .FirstOrDefaultAsync(ct);
 
     private async Task<OctorateSyncState?> StateOfAsync(Guid bookingId, CancellationToken ct) =>
@@ -846,7 +1225,10 @@ public sealed class BookingOctorateSyncService(
         decimal BasePrice,
         string FirstName,
         string LastName,
-        Gender? Gender);
+        Gender? Gender,
+        DateTime UpdatedAt,
+        DateTime? OctorateUpdatedAt,
+        string? Notes);
 }
 
 /// <summary>
