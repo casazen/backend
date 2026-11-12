@@ -302,6 +302,44 @@ public class CalendarChangeRunnerTests
         Assert.Equal(CalendarChunkState.Accepted, (await h.ReadAsync(over)).Chunks.Single().State);
     }
 
+    /// <summary>
+    /// The window of the follow-up is the chunk's own: it starts at the last call of that chunk, not at the first call of the process. A chunk sent late (a quota that made a bulk
+    /// wait, a retry the host asked for hours after the first call) is followed even though the process started two hours ago; one whose own window is over is not asked
+    /// any more and stays accepted; and a process with nothing left to follow is not due again.
+    /// </summary>
+    [Fact]
+    public async Task Follow_TheWindowIsTheChunksOwn_ALateChunkOfAnOldProcessIsFollowed_AndAnOldChunkIsNot_Test()
+    {
+        var h = new Runner();
+        // The process started two hours ago; its first chunk was sent 45 minutes ago, its second one a minute ago.
+        var late = await h.SeedAsync(
+            OrgA,
+            CalendarChangeState.Sent,
+            due: 0,
+            CalendarChunkState.Accepted,
+            startedMinutesAgo: 120,
+            more: [CalendarChunkState.Accepted],
+            lastCallMinutesAgo: [45, 1]);
+
+        await h.Service().RunDueAsync();
+
+        // Only the chunk of the open window is asked (once), and the process is followed again in two minutes, for as long as that window is open.
+        h.Client.Verify(c => c.GetCalendarProcessAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        var (process, chunks) = await h.ReadAsync(late);
+        Assert.All(chunks, c => Assert.Equal(CalendarChunkState.Accepted, c.State));
+        Assert.Equal(Now.UtcDateTime + CalendarPushRules.ConfirmationEvery, process.NextAttemptAt);
+
+        // A process whose chunks are all past their own window is not asked and is not due again.
+        var old = await h.SeedAsync(OrgB, CalendarChangeState.Sent, due: 0, CalendarChunkState.Accepted, startedMinutesAgo: 120, lastCallMinutesAgo: [45]);
+
+        await h.Service().RunDueAsync();
+
+        var (oldProcess, oldChunks) = await h.ReadAsync(old);
+        Assert.Equal(CalendarChunkState.Accepted, Assert.Single(oldChunks).State);
+        Assert.Null(oldProcess.NextAttemptAt);
+        h.Client.Verify(c => c.GetCalendarProcessAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     [Fact]
     public async Task Follow_AChunkWhoseProcessIdsWereNotAllKept_IsNeverConfirmed_ButAnErrorOfAKeptOneFailsIt()
     {
@@ -434,7 +472,8 @@ public class CalendarChangeRunnerTests
             CalendarChunkState first,
             int startedMinutesAgo,
             string processIds = "100",
-            CalendarChunkState[]? more = null)
+            CalendarChunkState[]? more = null,
+            int?[]? lastCallMinutesAgo = null)
         {
             var propertyId = Guid.NewGuid();
             var process = new CalendarChangeProcess
@@ -465,6 +504,7 @@ public class CalendarChangeRunnerTests
                     OctorateProcessId = all[i] is CalendarChunkState.Accepted or CalendarChunkState.Confirmed ? processIds : null,
                     ErrorCode = all[i] == CalendarChunkState.Failed ? "octorate_unavailable" : null,
                     Attempts = all[i] == CalendarChunkState.Failed ? 5 : 1,
+                    LastAttemptAt = lastCallMinutesAgo is { } calls && i < calls.Length && calls[i] is { } ago ? Now.UtcDateTime.AddMinutes(-ago) : null,
                 });
             }
 

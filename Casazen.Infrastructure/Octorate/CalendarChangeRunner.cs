@@ -187,9 +187,26 @@ public sealed class CalendarChangeRunner(
         var chunks = await db.CalendarChangeChunks.Where(c => c.ProcessId == processId && c.OrgId == orgId).ToListAsync(ct);
         // A process that is wholly confirmed is asked once more, after ConfirmedRecheckAfter: an error that shows up after the confirmation (the endpoint says so) is not left out of sight.
         var recheck = process.State == CalendarChangeState.Confirmed;
-        var accepted = chunks.Where(c => c.State == CalendarChunkState.Accepted || (recheck && c.State == CalendarChunkState.Confirmed)).ToList();
+
+        // Each chunk is followed for ConfirmationWindow after ITS own last call (the first call of the process for a chunk that has none), not after the first call of the
+        // process: a chunk sent late (a quota that made the process wait, a retry hours after the first call) has its own window, and a chunk whose window is over is not asked
+        // any more: it stays accepted by the channel manager.
+        var now = UtcNow;
+        bool InWindow(CalendarChangeChunk c) => now - (c.LastAttemptAt ?? process.StartedAt ?? process.CreatedAt) < CalendarPushRules.ConfirmationWindow;
+        var accepted = chunks
+            .Where(c => (c.State == CalendarChunkState.Accepted && InWindow(c)) || (recheck && c.State == CalendarChunkState.Confirmed))
+            .ToList();
         if (accepted.Count == 0)
+        {
+            // Accepted chunks whose window is over, and nothing else to send: the process is not due again for them.
+            if (chunks.Any(c => c.State == CalendarChunkState.Accepted) && !chunks.Any(c => c.State == CalendarChunkState.Pending))
+            {
+                process.NextAttemptAt = null;
+                await db.SaveChangesAsync(ct);
+            }
+
             return;
+        }
 
         var successStatuses = options.Value.SuccessStatuses;
         var stop = false;
@@ -267,7 +284,6 @@ public sealed class CalendarChangeRunner(
         }
 
         var states = chunks.Select(c => c.State).ToList();
-        var now = UtcNow;
         process.State = CalendarPushRules.Derive(states);
         process.FinishedAt = CalendarPushRules.IsSettled(states) ? process.FinishedAt ?? now : null;
         if (process.State is CalendarChangeState.Failed or CalendarChangeState.PartiallySent)
@@ -283,7 +299,7 @@ public sealed class CalendarChangeRunner(
         // endpoint is not there, and then the chunks stay accepted without being asked.
         if (!states.Contains(CalendarChunkState.Pending))
         {
-            var followed = now - (process.StartedAt ?? process.CreatedAt) < CalendarPushRules.ConfirmationWindow;
+            var followed = chunks.Any(c => c.State == CalendarChunkState.Accepted && InWindow(c));
             process.NextAttemptAt = states.Contains(CalendarChunkState.Accepted)
                 ? (transient || !stop) && followed
                     ? now + (quotaWait ? CalendarPushRules.QuotaRetryAfter : CalendarPushRules.ConfirmationEvery)
