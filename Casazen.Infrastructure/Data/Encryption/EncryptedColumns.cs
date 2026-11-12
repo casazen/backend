@@ -141,6 +141,15 @@ public static class EncryptedColumns
     public const string OwnerFiscalProfilePurpose = "Casazen.OwnerFiscalProfile";
 
     /// <summary>
+    /// Purpose of the free text a host writes for the assistant (NF-66, PO-09, E05/F05/US01/T01): <see cref="PropertyKnowledgeEntry.Text"/> (a fact, a rule or the answer
+    /// of a FAQ), <see cref="AssistantLesson.ProposedText"/> (what the assistant proposes to learn from a correction) and
+    /// <see cref="AssistantSituationSetting.ResponseTemplate"/> (the text of an answer with its variables). Any of them can hold a Wi-Fi password, a code or a note
+    /// about a person. Its own purpose, apart from the words of the conversations: it is read by the hosts who reach the property it is about, and by the draft
+    /// pipeline, and never searched or logged. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string AssistantContentPurpose = "Casazen.Assistant.Content";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -307,6 +316,17 @@ public static class EncryptedColumns
             OtaMessageTextPurpose,
             nameof(ApprovalQueueItem.ContentText),
             nameof(ApprovalQueueItem.EditedContentText)),
+        // NF-66, PO-09: the free text a host writes for the assistant (the knowledge base, the lessons, the response templates of the situations): a Wi-Fi password or a
+        // note of the host can be in it (E05/F05/US01/T01). The decision log keeps no text at all.
+        new EncryptedEntity<PropertyKnowledgeEntry>(
+            AssistantContentPurpose,
+            nameof(PropertyKnowledgeEntry.Text)),
+        new EncryptedEntity<AssistantLesson>(
+            AssistantContentPurpose,
+            nameof(AssistantLesson.ProposedText)),
+        new EncryptedEntity<AssistantSituationSetting>(
+            AssistantContentPurpose,
+            nameof(AssistantSituationSetting.ResponseTemplate)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

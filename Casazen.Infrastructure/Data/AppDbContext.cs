@@ -436,6 +436,17 @@ public class AppDbContext(
     public DbSet<OtaMessageSyncState> OtaMessageSyncStates { get; set; } = null!;
     public DbSet<MessageTemplate> MessageTemplates { get; set; } = null!;
 
+    // The assistant that answers the guests' messages (E05/F05/US01/T01, NF-66, NF-67): the knowledge base of a property and of an organization (the free text
+    // encrypted), the rules of the organization and the exceptions of a property, what it does in each situation, the lessons it proposes, the log of what it
+    // decided for each message (ids and codes only) and the changes of trust level it proposes
+    public DbSet<PropertyKnowledgeEntry> PropertyKnowledgeEntries { get; set; } = null!;
+    public DbSet<OrgAssistantRules> OrgAssistantRules { get; set; } = null!;
+    public DbSet<PropertyAssistantSettings> PropertyAssistantSettings { get; set; } = null!;
+    public DbSet<AssistantSituationSetting> AssistantSituationSettings { get; set; } = null!;
+    public DbSet<AssistantLesson> AssistantLessons { get; set; } = null!;
+    public DbSet<AssistantDecisionLog> AssistantDecisionLogs { get; set; } = null!;
+    public DbSet<AssistantTrustProposal> AssistantTrustProposals { get; set; } = null!;
+
     // The tourist tax a host paid to a comune and the receipt of the payment: the «paid» half of the summary per comune (NF-100, REP-05)
     public DbSet<TouristTaxRemittance> TouristTaxRemittances { get; set; } = null!;
 
@@ -1912,6 +1923,19 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new OtaMessageConfiguration());
         modelBuilder.ApplyConfiguration(new OtaMessageSyncStateConfiguration());
         modelBuilder.ApplyConfiguration(new MessageTemplateConfiguration());
+
+        // ─── The AI assistant (E05/F05/US01/T01, NF-66, NF-67, ADR-032) ───────────────
+        // The free text of a host (the entries of the knowledge base, the lessons, the response templates) is encrypted by EncryptedColumns; the decision log holds ids
+        // and codes, never text. One rules row per organization, one exceptions row per property, one situation row per organization (or property) and situation,
+        // and one decision per incoming message (unique indexes). The rows of a property go with it (cascade) but for the decision log, which stays when its property is
+        // removed (SET NULL: it is the audit of what was sent to a guest); every OrgId foreign key restricts.
+        modelBuilder.ApplyConfiguration(new PropertyKnowledgeEntryConfiguration());
+        modelBuilder.ApplyConfiguration(new OrgAssistantRulesConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyAssistantSettingsConfiguration());
+        modelBuilder.ApplyConfiguration(new AssistantSituationSettingConfiguration());
+        modelBuilder.ApplyConfiguration(new AssistantLessonConfiguration());
+        modelBuilder.ApplyConfiguration(new AssistantDecisionLogConfiguration());
+        modelBuilder.ApplyConfiguration(new AssistantTrustProposalConfiguration());
 
         // ─── Automation routines (NF-26, ADR-022) ────────────────────────────────
         // Unique constraint on (RoutineId, EventId) ensures idempotence: a routine executes at most once per event (ADR-022-R7).

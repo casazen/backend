@@ -220,6 +220,17 @@ public static class FeatureFlags
     /// </summary>
     public const string OctorateDocumentImport = "OctorateDocumentImport";
 
+    /// <summary>
+    /// E05/F05/US01/T01 (NF-66, NF-67, PO-08, PO-09): the assistant that answers guests' messages, <b>off by default</b>. What a guest wrote is personal data
+    /// and the AI provider is an external sub-processor: the flag stays off until the privacy notice, the processing agreement and the <c>Ai:Subprocessor</c>
+    /// details of PO-09 exist. Off, every endpoint of the assistant (<c>api/assistant/*</c>: the knowledge base, the rules, the situations and, with the later
+    /// tasks of the feature, the drafts and the lessons) answers 404 before authentication, and the assistant processes no message. The frontend reads the key
+    /// <c>messageAssistant</c> from <c>GET api/public/features</c>. This task owns the flag: the other tasks of feature E05/F05 only read it. It needs no
+    /// variable to start: nothing in the application is configured by it. Even with the flag on, no organization is served until it turns its own switch
+    /// on (<c>OrgAssistantRules.Enabled</c>, off by default).
+    /// </summary>
+    public const string MessageAssistant = "MessageAssistant";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -243,5 +254,6 @@ public static class FeatureFlags
         ComplianceTrafficLight,
         MessageTranslationAi,
         OctorateDocumentImport,
+        MessageAssistant,
     ];
 }
