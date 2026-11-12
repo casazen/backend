@@ -47,6 +47,9 @@ public static class MarketplaceServiceCollectionExtensions
         services.AddScoped<IMarketplaceHealthService, MarketplaceHealthService>();
         services.AddScoped<MarketplaceConnectionSyncJob>();
 
+        // The change of the settings of an activation, its confirmed deactivation and the change request of a function of the license (E09/F03/US01/T02).
+        services.AddScoped<IMarketplaceChangeService, MarketplaceChangeService>();
+
         return services;
     }
 }
