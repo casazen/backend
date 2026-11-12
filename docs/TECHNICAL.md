@@ -1151,7 +1151,7 @@ answered with their own code (`octorate_not_connected` 409, `octorate_auth_faile
 
 | Method | Path | Policy | Description |
 |---|---|---|---|
-| `GET` | `/api/octorate/connection` | `OtaRead` | Where the org's connection stands: `status` (Connected, Disconnected, Error), `environment` (Test = sandbox, Production), `accountId`, `lastSyncedAt`, and while connected the quota Octorate reports (`quotaLimit`, `quotaRemaining`, `quotaWarning` at a tenth or less) |
+| `GET` | `/api/octorate/connection` | `OtaRead` | Where the org's connection stands: `status` (Connected, Disconnected, Error), `environment` (Test = sandbox, Production), `accountId`, `lastSyncedAt`, and while connected the quota Octorate reports (`quotaLimit`, `quotaRemaining` = the limit less the units `quotaStatus` counts as **used** (never below zero), `quotaWarning` when a tenth of the limit or less is left) |
 | `POST` | `/api/octorate/connect/start` | `OtaWrite`, whole-org scope | The Octorate consent address with `client_id`, `redirect_uri` (`Octorate:RedirectUri`) and a new single-use `state` bound to org, user and callback, valid `Octorate:StateLifetimeMinutes` (10); only its SHA-256 is stored. 403 `octorate_connection_needs_whole_org` for a collaborator limited to some properties |
 | `POST` | `/api/octorate/connect/complete` | `OtaWrite`, whole-org scope | Body `{ code, state }` of the callback: consumes the state (400 `octorate_state_invalid`, the same answer for a reused, expired or foreign state), exchanges the code server to server (502 `octorate_exchange_failed`), stores the tokens encrypted, checks the environment of the credentials (409 `octorate_wrong_environment`, the connection stays disconnected) and answers `{ status, environment, propertyCount }` |
 | `DELETE` | `/api/octorate/connection` | `OtaWrite`, whole-org scope | Disconnects the org (204): no call is made for it until it connects again; the access token is forgotten, the refresh token (given by Octorate only once) stays encrypted and unused for the reconnection; mappings and imported data are kept |
@@ -1771,9 +1771,9 @@ this environment (otherwise nothing is read or written). Each property is saved 
   (`ENABLED`, `WAITING`, `DISABLED`) is the one of the OpenAPI, the sandbox has no channel connected. A row with no connection id is left to the activation wizard. The log of the channel
   (`lastPortalAcceptLog`) is never used to decide a status. A property with no confirmed listing is skipped.
 - *The license.* For a property that has a function row, `IMarketplaceLicensedFunctionService.ReconcileAsync` (one read of the accommodation).
-- *The quota.* One `GET /rest/v1/api/configuration` for each org and run. `quotaStatus` is read as the units **used** (the plan, S22 and S25); the older connection status of the
-  connect wizard (`OctorateConnectService`) reads the same member as what is left, which the sandbox report of 2026-11-04 calls «the remaining calls»: the two are to be settled with
-  Octorate, and the warning is advisory only.
+- *The quota.* One `GET /rest/v1/api/configuration` for each org and run. `quotaStatus` is read as the units **used** (the plan, S22 and S25: per node, in the window of about
+  five minutes; the specification calls it «the calls left», the sandbox shows otherwise). The connection status of the connect wizard (`OctorateConnectService`, `GET /api/octorate/connection`)
+  reads it the same way, and its `quotaRemaining` is the limit less the units used. The warning is advisory only.
 - *The «To do».* An activation that is To fix and has no item gets one with `IInternalActivityService.CreateAsync`: type `IntegrationError`, action `ResumeWizard`, entity type
   `MarketplaceActivation` and the id of the activation as the entity id, the property, urgency High for a channel (bookings stop arriving) and Medium for a tool or a function, the code of the
   problem as the reason (no name, no person); its id is kept in `TodoActivityId`. The call is idempotent, so there is never a second item while one is open. When the activation is no longer

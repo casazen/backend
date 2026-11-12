@@ -8,7 +8,10 @@ namespace Casazen.Core.Services;
 /// </summary>
 /// <param name="Environment">Which environment the credentials belong to: <c>SANDBOX</c> or <c>PRODUCTION</c>.</param>
 /// <param name="QuotaLimit">The quota of calls of the application (it depends on the category Octorate assigned).</param>
-/// <param name="QuotaStatus">What is left of the quota as Octorate counts it (not a simple countdown, seen in the sandbox).</param>
+/// <param name="QuotaStatus">
+/// The units of the quota USED as Octorate counts them, per node, in the window of about five minutes (sandbox S25, <c>docs/requirements/octorate-helix.md</c> §10.5; the
+/// specification calls it «the calls left», which the sandbox contradicts). What is left is <paramref name="QuotaLimit"/> less this, never the other way round.
+/// </param>
 /// <param name="Category">The application category Octorate assigned (read-only for CasaZen), empty when none.</param>
 public sealed record OctorateConfiguration(string? Environment, int? QuotaLimit, int? QuotaStatus, string? Category);
 

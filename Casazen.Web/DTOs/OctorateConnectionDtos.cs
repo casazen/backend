@@ -12,7 +12,7 @@ namespace Casazen.Web.DTOs;
 /// <param name="AccountId">Which Octorate account or network the consent covers, for display, when known.</param>
 /// <param name="LastSyncedAt">When CasaZen last read the org's account (UTC).</param>
 /// <param name="QuotaLimit">The quota of calls Octorate reports, while connected and when it answered.</param>
-/// <param name="QuotaRemaining">What Octorate reports as left of the quota.</param>
+/// <param name="QuotaRemaining">What is left of the quota: the limit less the units Octorate reports as used, never below zero.</param>
 /// <param name="QuotaWarning">True when what is left is a tenth of the quota or less.</param>
 public sealed record OctorateConnectionResponse(
     OctorateConnectionStatus Status,
