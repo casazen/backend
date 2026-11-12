@@ -7,7 +7,7 @@ namespace Casazen.Web.DTOs.Assistant;
 /// A situation with its effective value (<c>api/assistant/situations</c>, <c>api/assistant/properties/{propertyId}/situations</c>, E05/F05/US01/T03): the stable <c>code</c> (the key of the
 /// label the client shows), the <c>mode</c> (<c>Escalate</c>, <c>Draft</c>, <c>Automatic</c>, <c>AutomaticWithExceptions</c>), the <c>allowedModes</c> (only escalate and draft for a
 /// sensitive situation), whether there is a <c>template</c> for the answer (the text itself only for the caller who may edit it) or a <c>source</c> topic of the knowledge base, <c>modeSince</c> (the
-/// start of the trust period, <c>null</c> for a situation nobody configured) and where the value comes from (<c>origin</c>: <c>default</c>, <c>organization</c>, <c>property</c>).
+/// start of the trust period, <c>null</c> for a situation nobody configured: an unknown start, not eligible for the automatic modes) and where the value comes from (<c>origin</c>: <c>default</c>, <c>organization</c>, <c>property</c>).
 /// </summary>
 public sealed class EffectiveSituationDto
 {
@@ -26,6 +26,11 @@ public sealed class EffectiveSituationDto
     public string? Template { get; init; }
 
     public KnowledgeTopic? Source { get; init; }
+
+    /// <summary>
+    /// The start of the trust period (PO-08). <c>null</c> for a situation nobody configured: the start is unknown, and an unknown start is never an elapsed period, so such a situation is not
+    /// eligible for the automatic modes (fail-closed); the first save of its row gives it a start.
+    /// </summary>
     public DateTime? ModeSince { get; init; }
     public string Origin { get; init; } = string.Empty;
 

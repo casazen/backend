@@ -34,4 +34,13 @@ public static class AssistantModeRules
 
     /// <summary>True for the two modes in which the assistant may send by itself.</summary>
     public static bool IsAutomatic(AssistantMode mode) => mode is AssistantMode.Automatic or AssistantMode.AutomaticWithExceptions;
+
+    /// <summary>
+    /// True when the trust period of a situation (PO-08) that began at <paramref name="modeSince"/> has run for at least <paramref name="period"/> at <paramref name="nowUtc"/>.
+    /// <b>An unknown start is never an elapsed period</b> (fail-closed): <c>ModeSince</c> is <c>null</c> for a situation nobody saved, which has no row and so no start (it is in its default
+    /// draft), and such a situation is not eligible for the automatic modes, nor for a proposal to move to them, until a start exists. The gate and the proposals of the later tasks ask this,
+    /// and never read a <c>null</c> as «long enough».
+    /// </summary>
+    public static bool TrustPeriodElapsed(DateTime? modeSince, DateTime nowUtc, TimeSpan period) =>
+        modeSince is { } start && nowUtc - start >= period;
 }

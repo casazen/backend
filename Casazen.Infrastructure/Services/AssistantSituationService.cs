@@ -192,7 +192,8 @@ public sealed class AssistantSituationService(
 
     /// <summary>
     /// The effective value of a situation: the row of the property over the row of the organization over the default of the catalog. A row is whole, so what the winner does not say
-    /// (a template, a source) is not taken from the one below; the mode is clamped by the rule of the modes.
+    /// (a template, a source) is not taken from the one below; the mode is clamped by the rule of the modes. <c>ModeSince</c> is the winner's: <c>null</c> when there is no row (the default),
+    /// an unknown start of the trust period, which is never an elapsed one (<see cref="AssistantModeRules.TrustPeriodElapsed"/>): fail-closed.
     /// </summary>
     private static EffectiveSituation Merge(AssistantSituationInfo info, IReadOnlyCollection<AssistantSituationSetting> rows)
     {

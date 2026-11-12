@@ -142,6 +142,24 @@ public class AssistantModeRulesTests
     }
 
     [Fact]
+    public void TrustPeriodElapsed_AnUnknownStartIsNeverAnElapsedPeriod_FailClosed()
+    {
+        var now = new DateTime(2026, 11, 12, 10, 0, 0, DateTimeKind.Utc);
+        var fortnight = TimeSpan.FromDays(14);
+
+        // No start (a situation nobody saved has no row): never elapsed, whatever the period and however late it is asked.
+        Assert.False(AssistantModeRules.TrustPeriodElapsed(null, now, fortnight));
+        Assert.False(AssistantModeRules.TrustPeriodElapsed(null, now.AddYears(50), fortnight));
+        Assert.False(AssistantModeRules.TrustPeriodElapsed(null, now, TimeSpan.Zero));
+
+        // A known start: elapsed from the moment the period is full and not before, and never for a start that is still to come.
+        Assert.False(AssistantModeRules.TrustPeriodElapsed(now.AddDays(-14).AddTicks(1), now, fortnight));
+        Assert.True(AssistantModeRules.TrustPeriodElapsed(now.AddDays(-14), now, fortnight));
+        Assert.True(AssistantModeRules.TrustPeriodElapsed(now.AddDays(-30), now, fortnight));
+        Assert.False(AssistantModeRules.TrustPeriodElapsed(now.AddDays(1), now, fortnight));
+    }
+
+    [Fact]
     public void IsAutomatic_IsTheTwoModesThatSendByThemselves()
     {
         Assert.True(AssistantModeRules.IsAutomatic(AssistantMode.Automatic));

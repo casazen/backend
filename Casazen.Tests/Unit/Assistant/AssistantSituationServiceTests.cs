@@ -67,6 +67,44 @@ public class AssistantSituationServiceTests
         Assert.Equal(new ResolvedSituation(AssistantMode.Draft, null, null, null), thanks);
     }
 
+    /// <summary>
+    /// T03 AC4, the part that has no row: a situation nobody saved has no start of its trust period (<c>ModeSince</c> null), and an unknown start is never an elapsed one (fail-closed): it is in the
+    /// default draft, never automatic, and not eligible however late it is asked. Its first save gives it a start, and only then can the period run; one saved row gives none to the others.
+    /// </summary>
+    [Fact]
+    public async Task ModeSince_NullIsAnUnknownStart_ASituationNobodySavedIsNeverAutomaticNorTrusted_ItsFirstSaveGivesItOne()
+    {
+        await using var db = AssistantTestKit.NewDb();
+        var property = await AssistantTestKit.AddPropertyAsync(db, Org);
+        var service = AssistantTestKit.Situations(db);
+        var farLater = AssistantTestKit.Now.UtcDateTime.AddYears(5);
+        var fortnight = TimeSpan.FromDays(14);
+
+        foreach (var info in AssistantSituationCatalog.All)
+        {
+            foreach (var propertyId in new Guid?[] { null, property.Id })
+            {
+                var resolved = await service.ResolveAsync(Org, propertyId, info.Situation);
+
+                Assert.Null(resolved.ModeSince);
+                Assert.False(AssistantModeRules.IsAutomatic(resolved.Mode));
+                Assert.False(AssistantModeRules.TrustPeriodElapsed(resolved.ModeSince, farLater, fortnight));
+            }
+        }
+
+        Assert.All(await service.ListEffectiveAsync(Org, property.Id), s => Assert.False(AssistantModeRules.TrustPeriodElapsed(s.ModeSince, farLater, fortnight)));
+
+        // The first save gives the situation a start: 13 days in is not the fortnight, 14 are.
+        await service.SaveAsync(Org, null, AssistantSituation.Parking, AssistantMode.Draft, null, null, User);
+        var saved = await service.ResolveAsync(Org, property.Id, AssistantSituation.Parking);
+        Assert.Equal(AssistantTestKit.Now.UtcDateTime, saved.ModeSince);
+        Assert.False(AssistantModeRules.TrustPeriodElapsed(saved.ModeSince, AssistantTestKit.Now.UtcDateTime.AddDays(13), fortnight));
+        Assert.True(AssistantModeRules.TrustPeriodElapsed(saved.ModeSince, AssistantTestKit.Now.UtcDateTime.AddDays(14), fortnight));
+
+        // The others stay unknown: a saved row gives no start to the other situations.
+        Assert.Null((await service.ResolveAsync(Org, property.Id, AssistantSituation.WiFi)).ModeSince);
+    }
+
     // ─── the organization's row ───
 
     [Fact]

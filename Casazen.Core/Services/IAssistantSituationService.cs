@@ -48,8 +48,9 @@ public interface IAssistantSituationService
 
     /// <summary>
     /// <b>For the draft pipeline and the gate.</b> The value of one situation for a property (the same merge as <see cref="ListEffectiveAsync"/>): the mode (clamped by the rule of the
-    /// modes), the template in clear, the source topic (the situation's own when the row gives none) and the start of the trust period (<c>null</c> for a situation nobody configured).
-    /// Reads only; the template goes to the pipeline and nowhere else.
+    /// modes), the template in clear, the source topic (the situation's own when the row gives none) and the start of the trust period (<c>null</c> for a situation nobody configured: the start
+    /// is unknown and <b>an unknown start is never an elapsed trust period</b>, so such a situation is not eligible for the automatic modes, fail-closed: ask
+    /// <see cref="AssistantModeRules.TrustPeriodElapsed"/>, never read the <c>null</c> as «long enough»). Reads only; the template goes to the pipeline and nowhere else.
     /// </summary>
     Task<ResolvedSituation> ResolveAsync(Guid orgId, Guid? propertyId, AssistantSituation situation, CancellationToken ct = default);
 }
@@ -69,7 +70,10 @@ public enum AssistantSettingOrigin
 /// <param name="HasTemplate">There is a text for the answer; the text itself is <paramref name="Template"/>, which the web layer gives only to the caller who may edit.</param>
 /// <param name="Template">The text of the answer, with <c>{{variables}}</c>, in clear; <c>null</c> when there is none.</param>
 /// <param name="Source">The topic of the knowledge base the answer comes from when there is no template.</param>
-/// <param name="ModeSince">The start of the current trust period; <c>null</c> for a situation nobody configured.</param>
+/// <param name="ModeSince">
+/// The start of the current trust period; <c>null</c> for a situation nobody configured (no row, so no start): <b>an unknown start, never an elapsed period</b>, so such a situation is not
+/// eligible for the automatic modes (fail-closed, <see cref="AssistantModeRules.TrustPeriodElapsed"/>).
+/// </param>
 /// <param name="Origin">Where the value comes from.</param>
 /// <param name="SensitiveCategories">The categories the situation carries by nature.</param>
 /// <param name="AllowedModes">The modes the situation may be set to.</param>
@@ -89,5 +93,8 @@ public sealed record EffectiveSituation(
 /// <param name="Mode">What the assistant does (already clamped by the rule of the modes).</param>
 /// <param name="Template">The text of the answer, in clear; <c>null</c> when the answer is written from the <paramref name="Source"/>.</param>
 /// <param name="Source">The topic of the knowledge base the answer comes from.</param>
-/// <param name="ModeSince">The start of the current trust period; <c>null</c> for a situation nobody configured.</param>
+/// <param name="ModeSince">
+/// The start of the current trust period; <c>null</c> for a situation nobody configured (no row, so no start): <b>an unknown start, never an elapsed period</b>, so such a situation is not
+/// eligible for the automatic modes (fail-closed, <see cref="AssistantModeRules.TrustPeriodElapsed"/>).
+/// </param>
 public sealed record ResolvedSituation(AssistantMode Mode, string? Template, KnowledgeTopic? Source, DateTime? ModeSince);
