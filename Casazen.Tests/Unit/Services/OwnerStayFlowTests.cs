@@ -191,6 +191,31 @@ public class OwnerStayFlowTests
     }
 
     [Fact]
+    public async Task OwnerStay_TheToDoOfARefusedBlockClosesWhenTheStayIsOver_AndTheStaysOfADeletedPropertyAreLeftAlone()
+    {
+        var w = await World.CreateAsync();
+        var service = w.Service();
+        await service.SaveRuleAsync(w.OrgId, new OwnerStayRuleInput(w.PropertyA, null, null, 0, null, 1, null, false, null, null, null), Agent);
+        var access = await w.AccessAsync(w.UserA);
+        var stay = await service.RequestAsync(access, new OwnerStayRequestCommand(w.PropertyA, Today.AddDays(30), Today.AddDays(33)));
+        await service.ProcessAsync(stay.Id);
+        await w.SetProcessAsync(stay.Id, CalendarChangeState.Failed, "octorate_unavailable");
+        Assert.Equal(1, (await service.ReconcileAsync()).TodosRaised);
+
+        // The dates pass with the block still refused: nothing is left to fix, the «To do» is closed and not raised again.
+        await w.MoveStayAsync(stay.Id, Today.AddDays(-5), Today.AddDays(-2));
+        var over = await service.ReconcileAsync();
+        Assert.Equal((0, 1), (over.TodosRaised, over.TodosClosed));
+        Assert.False(await w.Db.InternalActivities.AnyAsync(a => a.EntityId == stay.Id && a.CompletedAt == null));
+
+        // The property is deleted with a request waiting: the request is left as it is and the run does not fail.
+        var waiting = await service.RequestAsync(access, new OwnerStayRequestCommand(w.PropertyA, Today.AddDays(40), Today.AddDays(42)));
+        await w.DeletePropertyAsync(w.PropertyA);
+        Assert.Equal(new OwnerStayReconcileResult(0, 0, 0, 0, 0), await service.ReconcileAsync());
+        Assert.Equal(OwnerStayStatus.Requested, (await w.Db.OwnerStayRequests.AsNoTracking().SingleAsync(s => s.Id == waiting.Id)).Status);
+    }
+
+    [Fact]
     public void OwnerStayRules_TheNightsOfAStayCountInTheirOwnYear_AndTheAllowanceIsPerYear()
     {
         var nights = OwnerStayRules.NightsByYear(new DateOnly(2026, 12, 29), new DateOnly(2027, 1, 3));
@@ -270,6 +295,26 @@ public class OwnerStayFlowTests
             var process = await db.CalendarChangeProcesses.SingleAsync(p => p.Id == processId);
             process.State = state;
             process.ErrorCode = errorCode;
+            await db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
+
+        public async Task MoveStayAsync(Guid stayId, DateOnly start, DateOnly end)
+        {
+            await using var db = NewDb();
+            var stay = await db.OwnerStayRequests.SingleAsync(s => s.Id == stayId);
+            stay.StartDate = start;
+            stay.EndDate = end;
+            await db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
+
+        public async Task DeletePropertyAsync(Guid propertyId)
+        {
+            await using var db = NewDb();
+            var property = await db.Properties.SingleAsync(p => p.Id == propertyId);
+            property.IsDeleted = true;
+            property.DeletedAt = Now.UtcDateTime;
             await db.SaveChangesAsync();
             Db.ChangeTracker.Clear();
         }

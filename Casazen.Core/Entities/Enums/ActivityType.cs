@@ -129,7 +129,7 @@ public enum ActivityType
 
     /// <summary>
     /// The channel manager refused the block of an owner stay, or its release (E07/F07/US01/T01): the stay is not confirmed until the block is sent
-    /// again. About the owner stay, on its property, urgent; closes when the block (or its release) is acknowledged or the stay is cancelled.
+    /// again. About the owner stay, on its property, urgent; closes when the block (or its release) is acknowledged, the stay is cancelled or it is over.
     /// </summary>
     OwnerStaySyncFailed = 71,
 
