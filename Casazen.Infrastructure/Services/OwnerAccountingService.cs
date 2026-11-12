@@ -97,10 +97,14 @@ public sealed partial class OwnerAccountingService(
         if (tx is not null)
             await tx.CommitAsync(ct);
 
+        // The issues of an owner whose month is closed are not the poster's business (nothing is posted for them), but a source that came after the close is told.
+        var issues = plan.Issues
+            .Where(i => i.OwnerId is not { } owner || !plan.ClosedOwners.Contains(owner) || i.Code == OwnerReadinessCodes.LateSourceAfterClose)
+            .ToList();
         logger.LogInformation(
             "Owner ledger {Year}-{Month} of org {OrgId} posted by {UserId}: {Posted} posted, {Reversed} reversed, {Unchanged} unchanged, {Issues} issues",
-            year, month, orgId, userId, posted, reversed, unchanged, plan.Issues.Count);
-        return new OwnerPostingResult(year, month, posted, reversed, unchanged, plan.Issues);
+            year, month, orgId, userId, posted, reversed, unchanged, issues.Count);
+        return new OwnerPostingResult(year, month, posted, reversed, unchanged, issues);
     }
 
     public async Task<OwnerCloseReadiness> GetReadinessAsync(Guid orgId, int year, int month, CancellationToken ct = default)
