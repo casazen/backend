@@ -69,6 +69,15 @@ public sealed class OwnerPayoutService(
         var withheld = decision.Amount ?? 0m;
         Require(withheld <= command.GrossAmount, "grossAmount");
 
+        // The withholding is declared on an F24 in euro: an amount decided in another currency is not guessed into one.
+        if (decision.Decision == TaxDecision.Applicable && !string.Equals(currency, "EUR", StringComparison.Ordinal))
+        {
+            throw new DomainRuleException(OwnerPayoutErrors.TaxApplicabilityUnresolved, "TaxApplicabilityUnresolved")
+            {
+                Extensions = new Dictionary<string, object?> { ["field"] = "currency" },
+            };
+        }
+
         var now = time.GetUtcNow().UtcDateTime;
         var stays = command.StayIds is { Count: > 0 } ids ? JsonSerializer.Serialize(ids.Distinct().ToList(), Json) : null;
         var payout = new OwnerPayout
@@ -145,17 +154,27 @@ public sealed class OwnerPayoutService(
 
         var now = time.GetUtcNow().UtcDateTime;
         var today = time.TodayInRomeAsDateOnly();
+        // The ledger lines are reversed in their month while it is open, else in the month of today: which must be open too (a closed month is never posted).
+        var lines = await db.OwnerLedgerEntries.AsNoTracking()
+            .Where(e => e.OrgId == orgId && e.SourceType == OwnerLedgerSourceType.OwnerPayout && e.SourceId == payout.Id && e.ReversesEntryId == null)
+            .ToListAsync(ct);
+        var closedLines = new HashSet<Guid>();
+        foreach (var line in lines)
+        {
+            if (await IsClosedAsync(orgId, line.PropertyOwnerId, line.PeriodYear, line.PeriodMonth, ct))
+                closedLines.Add(line.Id);
+        }
+
+        if (closedLines.Count > 0 && await IsClosedAsync(orgId, payout.PropertyOwnerId, today.Year, today.Month, ct))
+            throw new DomainConflictException(OwnerAccountingErrors.PeriodClosed, "OwnerPeriodClosed");
+
         var evidence = await EvidenceOfAsync(payout.Id, ct);
         foreach (var decision in evidence.Where(e => e.ReversesEvidenceId is null && evidence.All(r => r.ReversesEvidenceId != e.Id)))
             db.TaxObligationEvidence.Add(ReversalOf(decision, today, now, userId));
 
-        // The ledger lines are reversed in their month while it is open, else in the month of today.
-        var lines = await db.OwnerLedgerEntries.AsNoTracking()
-            .Where(e => e.OrgId == orgId && e.SourceType == OwnerLedgerSourceType.OwnerPayout && e.SourceId == payout.Id && e.ReversesEntryId == null)
-            .ToListAsync(ct);
         foreach (var line in lines)
         {
-            var closed = await IsClosedAsync(orgId, line.PropertyOwnerId, line.PeriodYear, line.PeriodMonth, ct);
+            var closed = closedLines.Contains(line.Id);
             var reversal = OwnerAccountingService.ReversalOf(line, closed ? today : null, now, userId, why);
             db.OwnerLedgerEntries.Add(reversal);
             await MarkDirtyAsync(orgId, line.PropertyOwnerId, reversal.PeriodYear, reversal.PeriodMonth, now, ct);
@@ -276,10 +295,22 @@ public sealed class OwnerPayoutService(
         return new TaxReconciliation(year, evidence.Sum(e => e.Amount ?? 0m), f24s.Sum(f => f.TotalAmount), annual?.TotalWithheld, months);
     }
 
+    /// <summary>The jurisdiction of the withholding the F24 and the Certificazione Unica are filed for: Italy (<c>IT</c>, or a region of it, <c>IT-…</c>).</summary>
+    internal const string FiledJurisdiction = "IT";
+
+    /// <summary>
+    /// The applicable evidence the Italian forms are built from: the decisions of an Italian rule and their reversals, never the evidence of a Swiss or any
+    /// other jurisdiction whatever its parameters say (AC-NF110-7).
+    /// </summary>
+    internal static IQueryable<TaxObligationEvidence> F24EvidenceQuery(AppDbContext db, Guid orgId) =>
+        db.TaxObligationEvidence.AsNoTracking()
+            .Where(e => e.OrgId == orgId && e.Decision == TaxDecision.Applicable
+                && (e.Jurisdiction == FiledJurisdiction || e.Jurisdiction.StartsWith(FiledJurisdiction + "-")));
+
     /// <summary>The applicable evidence (decisions and their reversals) of the year, or of one month of it.</summary>
     internal async Task<List<TaxObligationEvidence>> ApplicableAsync(Guid orgId, int year, int? month, CancellationToken ct) =>
-        await db.TaxObligationEvidence.AsNoTracking()
-            .Where(e => e.OrgId == orgId && e.Decision == TaxDecision.Applicable && e.PeriodYear == year && (month == null || e.PeriodMonth == month))
+        await F24EvidenceQuery(db, orgId)
+            .Where(e => e.PeriodYear == year && (month == null || e.PeriodMonth == month))
             .OrderBy(e => e.CreatedAt)
             .ThenBy(e => e.Id)
             .ToListAsync(ct);

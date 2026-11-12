@@ -2,6 +2,7 @@ using System.Globalization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,26 +15,29 @@ public sealed partial class OwnerAccountingService
     {
         var plan = new Plan();
 
-        // The completed payments that may be recognized in the month: paid in it, or paid before the end of it for a stay that checks out in it.
+        // The collected payments that may be recognized in the month: paid in it, or paid before the end of it for a stay that checks out in it. A refund moves
+        // a payment to PartiallyRefunded or Refunded (PaymentRefundService.RecomputePaymentAsync), so every collected state is read and the revenue is the net
+        // of the refunds: a partial refund lowers the line (reversal + replacement), a full one leaves nothing to share.
         var payments = await db.Payments.AsNoTracking()
-            .Where(p => p.OrgId == orgId && p.Status == PaymentStatus.Completed && p.ProcessedAt != null && p.ProcessedAt < period.EndUtc
+            .Where(p => p.OrgId == orgId && CollectedStatuses.Contains(p.Status) && p.ProcessedAt != null && p.ProcessedAt < period.EndUtc
                 && (p.ProcessedAt >= period.StartUtc || (p.Booking.CheckOutDate >= period.StartUtc && p.Booking.CheckOutDate < period.EndUtc)))
             .Select(p => new PaymentSource(
                 p.Id, p.BookingId, p.Booking.PropertyId, p.Amount, p.Amount - p.RefundedAmount, p.ProcessedAt!.Value,
                 p.Booking.CheckInDate, p.Booking.CheckOutDate, p.Booking.Property.Currency))
             .ToListAsync(ct);
 
-        // The channel commission of an active booking whose payments are gross, with the first completed payment of the booking.
+        // The channel commission of an active booking whose payments are gross, with the first payment of the booking that still holds money. «Active» is the one
+        // definition of the code (a status that owes the police communication and no no-show: AlloggiatiStatusRules), never a list of its own.
         var bookingIds = payments.Select(p => p.BookingId).Distinct().ToList();
         var channelFees = (await db.Bookings.AsNoTracking()
                 .Where(b => bookingIds.Contains(b.Id) && b.OtaCommission > 0m && b.OtaCommissionIncludedInPayments == true
-                    && (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn || b.Status == BookingStatus.CheckedOut))
+                    && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
                 .Select(b => new
                 {
                     b.Id,
                     Amount = b.OtaCommission!.Value,
                     FirstPaymentId = b.Payments
-                        .Where(p => p.Status == PaymentStatus.Completed && p.ProcessedAt != null)
+                        .Where(p => (p.Status == PaymentStatus.Completed || p.Status == PaymentStatus.PartiallyRefunded) && p.ProcessedAt != null)
                         .OrderBy(p => p.ProcessedAt)
                         .ThenBy(p => p.Id)
                         .Select(p => p.Id)
@@ -47,18 +51,24 @@ public sealed partial class OwnerAccountingService
                 && (c.EffectiveTo == null || c.EffectiveTo >= period.First))
             .ToListAsync(ct);
 
-        var wires = await db.WireBatchStatements.AsNoTracking()
+        // The wires marked paid. A month an owner settled with a confirmed payout is settled by that payout (it carries the tax decision and posts its own lines):
+        // the wires of the same statement month are not posted, so one transfer is never debited twice (OwnerPayoutService, E06/F05/US02/T03).
+        var wireSources = await db.WireBatchStatements.AsNoTracking()
             .Where(w => w.OrgId == orgId && w.WireBatch.Status == WireBatchStatus.Paid && w.WireBatch.PaidAt >= period.StartUtc
                 && w.WireBatch.PaidAt < period.EndUtc && w.OwnerStatement.NetPayable > 0m)
             .Select(w => new WireSource(
                 w.Id, w.WireBatchId, w.WireBatch.PaidAt!.Value, w.WireBatch.Currency, w.OwnerStatement.PropertyOwnerId, w.OwnerStatement.PropertyId,
-                w.OwnerStatement.NetPayable))
+                w.OwnerStatement.NetPayable, w.OwnerStatement.Year, w.OwnerStatement.Month))
             .ToListAsync(ct);
+        var settledByPayout = wireSources.Count == 0 ? new HashSet<(Guid, int, int)>() : await PayoutSettledMonthsAsync(orgId, ct);
+        var wires = wireSources.Where(w => !settledByPayout.Contains((w.OwnerId, w.StatementYear, w.StatementMonth))).ToList();
 
         var propertyIds = payments.Select(p => p.PropertyId).Concat(charges.Select(c => c.PropertyId)).Distinct().ToList();
         var ownerships = await db.PropertyOwnerships.AsNoTracking()
             .Where(o => o.OrgId == orgId && propertyIds.Contains(o.PropertyId))
             .ToListAsync(ct);
+        foreach (var group in ownerships.GroupBy(o => o.PropertyOwnerId))
+            plan.OwnerProperties[group.Key] = group.Select(o => o.PropertyId).ToHashSet();
         var ownershipIds = ownerships.Select(o => o.Id).ToList();
         var mandates = await db.OwnerMandates.AsNoTracking()
             .Where(m => ownershipIds.Contains(m.PropertyOwnershipId))
@@ -101,8 +111,6 @@ public sealed partial class OwnerAccountingService
             for (var i = 0; i < shares.Count; i++)
             {
                 var share = shares[i];
-                if (plan.ClosedOwners.Contains(share.OwnerId))
-                    continue;
                 var context = await ContextAsync(orgId, share.OwnerId, period, plan, contexts, ct);
                 var checkOut = DateOnly.FromDateTime(payment.CheckOut);
                 var recognized = context.StayRecognition && checkOut > paidOn ? checkOut : paidOn;
@@ -149,8 +157,6 @@ public sealed partial class OwnerAccountingService
             var split = Split(charge.Amount, shares);
             for (var i = 0; i < shares.Count; i++)
             {
-                if (plan.ClosedOwners.Contains(shares[i].OwnerId))
-                    continue;
                 var context = await ContextAsync(orgId, shares[i].OwnerId, period, plan, contexts, ct);
                 var source = new Source(
                     charge.Kind == OwnerChargeKind.Expense ? OwnerLedgerEntryType.OwnerExpense : OwnerLedgerEntryType.OwnerCharge,
@@ -163,8 +169,6 @@ public sealed partial class OwnerAccountingService
 
         foreach (var wire in wires)
         {
-            if (plan.ClosedOwners.Contains(wire.OwnerId))
-                continue;
             var day = DateOnly.FromDateTime(wire.PaidAt);
             var context = await ContextAsync(orgId, wire.OwnerId, period, plan, contexts, ct);
             var source = new Source(
@@ -173,7 +177,40 @@ public sealed partial class OwnerAccountingService
             builder.Add(source, new Share(wire.OwnerId, null, 100m), -wire.Amount, context);
         }
 
+        await AddLateSourceIssuesAsync(orgId, period, plan, ct);
         return plan;
+    }
+
+    /// <summary>
+    /// A closed month of an owner is never posted again, but a source that arrives or changes after the close must not vanish: the lines the sources say
+    /// the month should hold, and the ledger does not hold, are a <see cref="OwnerReadinessCodes.LateSourceAfterClose"/> issue (not blocking: the close
+    /// stays; a correction in a later month fixes the owner's account).
+    /// </summary>
+    private async Task AddLateSourceIssuesAsync(Guid orgId, Period period, Plan plan, CancellationToken ct)
+    {
+        if (plan.ClosedOwners.Count == 0)
+            return;
+
+        var liveKeys = (await LiveEntriesAsync(orgId, period, ct))
+            .Where(e => plan.ClosedOwners.Contains(e.PropertyOwnerId))
+            .Select(e => BaseKey(e.IdempotencyKey))
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var late in plan.Entries.Where(e => plan.ClosedOwners.Contains(e.PropertyOwnerId) && !liveKeys.Contains(e.IdempotencyKey)))
+            plan.Issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.LateSourceAfterClose, late.PropertyOwnerId, late.PropertyId, late.SourceId, Blocking: false));
+    }
+
+    /// <summary>
+    /// The (owner, year, month) of the statements settled by a confirmed payout: the payout is the record of the payment to the owner for that month, so a
+    /// wire of the same month's statements is neither posted nor counted at the close.
+    /// </summary>
+    private async Task<HashSet<(Guid, int, int)>> PayoutSettledMonthsAsync(Guid orgId, CancellationToken ct)
+    {
+        var rows = await db.OwnerPayouts.AsNoTracking()
+            .Where(p => p.OrgId == orgId && p.Status == OwnerPayoutStatus.Confirmed)
+            .Join(db.OwnerStatementVersions, p => p.OwnerStatementVersionId, v => v.Id, (p, v) => new { p.PropertyOwnerId, v.PeriodYear, v.PeriodMonth })
+            .Distinct()
+            .ToListAsync(ct);
+        return rows.Select(r => (r.PropertyOwnerId, r.PeriodYear, r.PeriodMonth)).ToHashSet();
     }
 
     /// <summary>
@@ -288,11 +325,18 @@ public sealed partial class OwnerAccountingService
 
     private sealed class Plan
     {
+        /// <summary>The lines the sources say the month holds, those of the closed owners included (they are only compared, never posted).</summary>
         public List<OwnerLedgerEntry> Entries { get; } = [];
 
         public List<OwnerReadinessIssue> Issues { get; } = [];
 
         public HashSet<Guid> ClosedOwners { get; } = [];
+
+        /// <summary>The properties each owner has (or had, or will have) an ownership of: an issue of a property without an owner concerns all of them.</summary>
+        public Dictionary<Guid, HashSet<Guid>> OwnerProperties { get; } = [];
+
+        /// <summary>The lines that may be posted: those of the owners whose month is still open.</summary>
+        public IEnumerable<OwnerLedgerEntry> OpenEntries => Entries.Where(e => !ClosedOwners.Contains(e.PropertyOwnerId));
     }
 
     /// <summary>Builds the planned lines: the conversion to the statement currency and the key of the facts.</summary>
@@ -319,9 +363,11 @@ public sealed partial class OwnerAccountingService
                 SourceId = source.SourceId,
                 SourceReference = source.Reference,
                 AttachmentReference = source.Attachment,
+                // A line computed without a rule (the owner's profile or rule set cannot be resolved yet) has its own key: once the owner can be resolved the
+                // key changes, so the line is reversed and replaced by one that carries the rule version (AC-NF110-1), never left without it.
                 IdempotencyKey = string.Create(
                     CultureInfo.InvariantCulture,
-                    $"{source.Group}:{(int)source.Type}:{share.OwnerId:N}:{Cents(original)}:{statementCurrency}:{Cents(amount)}"),
+                    $"{source.Group}:{(int)source.Type}:{share.OwnerId:N}:{Cents(original)}:{statementCurrency}:{Cents(amount)}{(context.RuleVersion is null ? NoRuleKeySuffix : string.Empty)}"),
                 ServiceDate = source.ServiceDate,
                 RecognitionDate = source.RecognitionDate,
                 PaymentDate = source.PaymentDate,
@@ -378,5 +424,14 @@ public sealed partial class OwnerAccountingService
         DateTime CheckOut,
         string? Currency);
 
-    private sealed record WireSource(Guid Id, Guid WireBatchId, DateTime PaidAt, string? Currency, Guid OwnerId, Guid PropertyId, decimal Amount);
+    private sealed record WireSource(
+        Guid Id,
+        Guid WireBatchId,
+        DateTime PaidAt,
+        string? Currency,
+        Guid OwnerId,
+        Guid PropertyId,
+        decimal Amount,
+        int StatementYear,
+        int StatementMonth);
 }

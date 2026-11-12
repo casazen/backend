@@ -51,10 +51,12 @@ public interface IOwnerAccountingService
     Task<OwnerStatementVersion> PublishVersionAsync(Guid orgId, Guid versionId, string? userId, CancellationToken ct = default);
 
     /// <summary>
-    /// Closes the owner's month on its last version, approved or published, reconciled to the paid wires of the month's statements. A difference or a
-    /// negative balance needs <see cref="OwnerCloseCommand.WaiverReason"/> and <paramref name="mayWaive"/> (<c>agency.owner.financial.manage</c>): 422
-    /// <c>owner_close_unreconciled</c> without a reason, 403 <c>owner_close_waiver_forbidden</c> without the permission. 422
-    /// <c>owner_statement_not_approved</c>; 409 <c>owner_period_dirty</c> or <c>owner_period_closed</c>.
+    /// Closes the owner's month once it is over, on its last version, approved or published, reconciled to the confirmed payouts of the month (or, when it has
+    /// none, the paid wires of its statements). The readiness is read again: a blocking issue (a source not posted, a gap of the shares, a rate missing) is 422
+    /// <c>owner_close_not_ready</c> with the <c>issues</c>. A difference or a negative balance needs <see cref="OwnerCloseCommand.WaiverReason"/> and
+    /// <paramref name="mayWaive"/> (<c>agency.owner.financial.manage</c>): 422 <c>owner_close_unreconciled</c> without a reason, 403
+    /// <c>owner_close_waiver_forbidden</c> without the permission. 422 <c>owner_statement_not_approved</c>; 409 <c>owner_period_dirty</c>,
+    /// <c>owner_period_closed</c> or <c>owner_period_not_ended</c> (the month is not over).
     /// </summary>
     Task<OwnerClosePeriod> CloseAsync(Guid orgId, Guid ownerId, int year, int month, OwnerCloseCommand command, bool mayWaive, string? userId, CancellationToken ct = default);
 
@@ -248,6 +250,8 @@ public static class OwnerAccountingErrors
     public const string VersionNotApproved = "owner_statement_not_approved";
     public const string VersionNotPublished = "owner_statement_not_published";
     public const string CloseUnreconciled = "owner_close_unreconciled";
+    public const string CloseNotReady = "owner_close_not_ready";
+    public const string PeriodNotEnded = "owner_period_not_ended";
     public const string CloseWaiverForbidden = "owner_close_waiver_forbidden";
     public const string LegalHoldReasonRequired = "owner_legal_hold_reason_required";
     public const string ChargeInvalid = "owner_charge_invalid";
@@ -279,6 +283,9 @@ public static class OwnerReadinessCodes
     public const string StatementMissing = "statement_missing";
     public const string StatementNotApproved = "statement_not_approved";
     public const string NegativeBalance = "negative_balance";
+
+    /// <summary>A source of a closed month that the ledger does not hold (it arrived or changed after the close): told, never posted (not blocking).</summary>
+    public const string LateSourceAfterClose = "late_source_after_close";
 }
 
 /// <summary>

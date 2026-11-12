@@ -33,10 +33,16 @@ public sealed partial class OwnerAccountingService(
     /// <summary>The recognition rule of a profile that recognizes the revenue on the check-out (any other: on the payment day).</summary>
     public const string StayRecognitionRule = "stay";
 
+    /// <summary>The end of the key of a line computed without a rule version.</summary>
+    internal const string NoRuleKeySuffix = ":norule";
+
     private static readonly OwnerLedgerSourceType[] PostedSources =
     [
         OwnerLedgerSourceType.Payment, OwnerLedgerSourceType.Booking, OwnerLedgerSourceType.OwnerCharge, OwnerLedgerSourceType.WireBatch,
     ];
+
+    /// <summary>The states of a payment that collected money: a refund moves it to <c>PartiallyRefunded</c> or <c>Refunded</c> (the revenue is the net).</summary>
+    private static readonly PaymentStatus[] CollectedStatuses = [PaymentStatus.Completed, PaymentStatus.PartiallyRefunded, PaymentStatus.Refunded];
 
     public async Task<OwnerPostingResult> PostPeriodAsync(Guid orgId, int year, int month, string? userId, CancellationToken ct = default)
     {
@@ -62,7 +68,7 @@ public sealed partial class OwnerAccountingService(
 
         var touched = new HashSet<Guid>();
         int posted = 0, reversed = 0, unchanged = 0;
-        foreach (var entry in plan.Entries)
+        foreach (var entry in plan.OpenEntries)
         {
             if (liveKeys.Contains(entry.IdempotencyKey) || liveElsewhere.Contains(entry.IdempotencyKey))
             {
@@ -117,9 +123,18 @@ public sealed partial class OwnerAccountingService(
             .Concat(versions.Select(v => v.PropertyOwnerId))
             .Concat(rows.Select(r => r.PropertyOwnerId))
             .Concat(plan.Issues.Where(i => i.OwnerId is not null).Select(i => i.OwnerId!.Value))
+            .Concat(OwnersOfPropertiesWithIssues(plan))
             .Distinct()
             .OrderBy(id => id)
             .ToList();
+
+        // What the earlier months say now, against the balance a version carried in: a line posted there after its cut-off makes the version stale.
+        var openings = (await db.OwnerLedgerEntries.AsNoTracking()
+                .Where(e => e.OrgId == orgId && (e.PeriodYear < year || (e.PeriodYear == year && e.PeriodMonth < month)))
+                .GroupBy(e => e.PropertyOwnerId)
+                .Select(g => new { Owner = g.Key, Sum = g.Sum(e => e.Amount) })
+                .ToListAsync(ct))
+            .ToDictionary(x => x.Owner, x => x.Sum);
 
         var result = new List<OwnerPeriodReadiness>();
         foreach (var owner in owners)
@@ -130,7 +145,9 @@ public sealed partial class OwnerAccountingService(
             List<OwnerReadinessIssue> issues;
             if (status == OwnerClosePeriodStatus.Closed)
             {
+                // The month is closed and stays so: what the sources say after the close is told, never posted.
                 issues = [new OwnerReadinessIssue(OwnerReadinessCodes.PeriodClosed, owner, Blocking: false)];
+                issues.AddRange(plan.Issues.Where(i => i.OwnerId == owner && i.Code == OwnerReadinessCodes.LateSourceAfterClose));
             }
             else
             {
@@ -144,7 +161,7 @@ public sealed partial class OwnerAccountingService(
                     if (latest.Status is OwnerStatementVersionStatus.Draft or OwnerStatementVersionStatus.Flagged)
                         issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.StatementNotApproved, owner, SourceId: latest.Id));
                     var atCutoff = all.Where(e => e.PropertyOwnerId == owner && e.PostedAt <= latest.CutoffAt);
-                    if (!string.Equals(Hash(atCutoff), latest.EntriesSha256, StringComparison.Ordinal))
+                    if (!string.Equals(Hash(atCutoff), latest.EntriesSha256, StringComparison.Ordinal) || openings.GetValueOrDefault(owner) != latest.OpeningBalance)
                         issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.LedgerStatementImbalance, owner, SourceId: latest.Id));
                     if (latest.ClosingBalance < 0m)
                         issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.NegativeBalance, owner, SourceId: latest.Id));
@@ -167,6 +184,16 @@ public sealed partial class OwnerAccountingService(
     private static List<OwnerReadinessIssue> LedgerIssues(Plan plan, IReadOnlyList<OwnerLedgerEntry> live, Guid owner)
     {
         var issues = plan.Issues.Where(i => i.OwnerId == owner).ToList();
+
+        // The issues of a property (a share gap, no owner on the day, a payment without an amount) have no owner of their own: they hold back the statement of
+        // every owner of that property, since a source left out of the ledger is a line missing from their accounts (and a line already posted is reversed).
+        if (plan.OwnerProperties.TryGetValue(owner, out var properties))
+        {
+            issues.AddRange(plan.Issues
+                .Where(i => i.OwnerId is null && i.PropertyId is { } property && properties.Contains(property))
+                .Select(i => i with { OwnerId = owner }));
+        }
+
         var ownLive = live.Where(e => e.PropertyOwnerId == owner).ToList();
         var liveKeys = ownLive.Select(e => BaseKey(e.IdempotencyKey)).ToHashSet(StringComparer.Ordinal);
         var plannedKeys = plan.Entries.Where(e => e.PropertyOwnerId == owner).Select(e => e.IdempotencyKey).ToHashSet(StringComparer.Ordinal);
@@ -182,6 +209,15 @@ public sealed partial class OwnerAccountingService(
         if (ownLive.Select(e => e.StatementCurrency).Distinct(StringComparer.Ordinal).Count() > 1)
             issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.CurrencyMixed, owner));
         return issues;
+    }
+
+    /// <summary>The owners of the properties that have an issue without an owner (the ones <see cref="LedgerIssues"/> holds back).</summary>
+    private static IEnumerable<Guid> OwnersOfPropertiesWithIssues(Plan plan)
+    {
+        var properties = plan.Issues.Where(i => i.OwnerId is null && i.PropertyId is not null).Select(i => i.PropertyId!.Value).ToHashSet();
+        return properties.Count == 0
+            ? []
+            : plan.OwnerProperties.Where(o => o.Value.Overlaps(properties)).Select(o => o.Key);
     }
 
     /// <summary>The lines of the month that count: neither reversals nor reversed.</summary>

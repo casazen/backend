@@ -6081,6 +6081,9 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="FiscalDocumentAlreadyIssued" xml:space="preserve">
     <value>This booking already has an issued document: issuing another one needs a full credit note first.</value>
   </data>
+  <data name="FiscalDocumentBookingNotActive" xml:space="preserve">
+    <value>The booking is not active (a request, cancelled or a no-show): no fiscal document is issued for it.</value>
+  </data>
   <data name="FiscalDocumentCreditAmountExceeds" xml:space="preserve">
     <value>The amount of the credit note must be positive and not exceed what is left to credit ({0}).</value>
   </data>
@@ -6232,7 +6235,13 @@ Once active, the function works on the data the channel manager already holds.</
     <value>This statement version was not published.</value>
   </data>
   <data name="OwnerCloseUnreconciled" xml:space="preserve">
-    <value>The approved balance does not match the paid transfers or is negative: resolve the difference or give the reason for the waiver.</value>
+    <value>The approved balance does not match the recorded payments (confirmed payouts or paid transfers) or is negative: resolve the difference or give the reason for the waiver.</value>
+  </data>
+  <data name="OwnerCloseNotReady" xml:space="preserve">
+    <value>The month is not ready to close: some sources are not in the ledger or some data is missing. Post the sources, generate a new version and approve it.</value>
+  </data>
+  <data name="OwnerPeriodNotEnded" xml:space="preserve">
+    <value>The month is not over yet: it can be closed from the day after its last day.</value>
   </data>
   <data name="OwnerCloseWaiverForbidden" xml:space="preserve">
     <value>Only who manages the owners' finances can close the month with a waiver.</value>

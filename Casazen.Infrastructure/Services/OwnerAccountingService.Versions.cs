@@ -6,6 +6,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -41,14 +42,17 @@ public sealed partial class OwnerAccountingService
             .ToListAsync(ct);
         var ofMonth = entries.Where(e => e.PeriodYear == year && e.PeriodMonth == month).ToList();
         var hash = Hash(ofMonth);
+
+        // The opening balance is what the earlier months say now: a correction posted in an earlier month changes it, and a version cut before it is no longer
+        // the picture of the ledger even though the lines of its own month are the same.
+        var opening = entries.Where(e => new Period(e.PeriodYear, e.PeriodMonth).IsBefore(year, month)).Sum(e => e.Amount);
         if (previous is { Status: OwnerStatementVersionStatus.Approved or OwnerStatementVersionStatus.Published } && !row.IsDirty
-            && string.Equals(previous.EntriesSha256, hash, StringComparison.Ordinal))
+            && string.Equals(previous.EntriesSha256, hash, StringComparison.Ordinal) && previous.OpeningBalance == opening)
             throw new DomainConflictException(OwnerAccountingErrors.VersionUnchanged, "OwnerStatementUnchanged");
 
         var plan = await PlanAsync(orgId, period, ct);
         var live = await LiveEntriesAsync(orgId, period, ct);
         var issues = LedgerIssues(plan, live, ownerId);
-        var opening = entries.Where(e => new Period(e.PeriodYear, e.PeriodMonth).IsBefore(year, month)).Sum(e => e.Amount);
         var closing = opening + ofMonth.Sum(e => e.Amount);
         if (closing < 0m)
             issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.NegativeBalance, ownerId, Blocking: false));
@@ -166,6 +170,11 @@ public sealed partial class OwnerAccountingService
         ArgumentNullException.ThrowIfNull(command);
         var period = Period.Of(year, month);
         await EnsureOwnerAsync(orgId, ownerId, ct);
+
+        // A month is closed once it is over: closing it earlier would leave every payment and charge that comes after the close out of the owner's account.
+        if (period.Last >= time.TodayInRomeAsDateOnly())
+            throw new DomainConflictException(OwnerAccountingErrors.PeriodNotEnded, "OwnerPeriodNotEnded");
+
         await using var tx = await LockAsync(orgId, ct);
         var now = time.GetUtcNow().UtcDateTime;
 
@@ -184,20 +193,40 @@ public sealed partial class OwnerAccountingService
             throw new DomainRuleException(OwnerAccountingErrors.VersionNotApproved, "OwnerStatementNotApproved");
         await EnsureCleanAsync(version, ct);
 
-        // The approved closing balance against what settled it, in the currency of the version: the paid wires of the month's statements and the confirmed
-        // payouts of its versions (their gross: the net transferred plus the withholding kept, E06/F05/US02/T03).
-        var paid = await db.WireBatchStatements.AsNoTracking()
-            .Where(w => w.OrgId == orgId && w.WireBatch.Status == WireBatchStatus.Paid && w.WireBatch.Currency == version.Currency
-                && w.OwnerStatement.PropertyOwnerId == ownerId && w.OwnerStatement.Year == year && w.OwnerStatement.Month == month)
-            .SumAsync(w => w.OwnerStatement.NetPayable, ct);
+        // Nothing the sources say may be missing from the ledger: a payment that came after the cut-off and was never posted, a gap of the shares, an exchange rate
+        // that is missing, an owner whose profile cannot be used. The readiness the version was generated with is read again now.
+        var plan = await PlanAsync(orgId, period, ct);
+        var blocking = LedgerIssues(plan, await LiveEntriesAsync(orgId, period, ct), ownerId)
+            .Where(i => i.Blocking)
+            .Select(i => i.Code)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        if (blocking.Count > 0)
+        {
+            throw new DomainRuleException(OwnerAccountingErrors.CloseNotReady, "OwnerCloseNotReady")
+            {
+                Extensions = new Dictionary<string, object?> { ["issues"] = blocking },
+            };
+        }
+
+        // The approved closing balance against what settled it, in the currency of the version: the confirmed payouts of the month's versions (their gross: the
+        // net transferred plus the withholding kept, E06/F05/US02/T03) or, when the month has none, the wires marked paid for the month's statements. A month
+        // settled with payouts is settled by them (PlanAsync leaves its wires out), so one transfer is counted once.
         var versionIds = await db.OwnerStatementVersions.AsNoTracking()
             .Where(v => v.OrgId == orgId && v.PropertyOwnerId == ownerId && v.PeriodYear == year && v.PeriodMonth == month)
             .Select(v => v.Id)
             .ToListAsync(ct);
-        paid += await db.OwnerPayouts.AsNoTracking()
-            .Where(p => p.OrgId == orgId && p.PropertyOwnerId == ownerId && p.Status == OwnerPayoutStatus.Confirmed && p.Currency == version.Currency
-                && versionIds.Contains(p.OwnerStatementVersionId))
-            .SumAsync(p => p.GrossAmount, ct);
+        var payouts = await db.OwnerPayouts.AsNoTracking()
+            .Where(p => p.OrgId == orgId && p.PropertyOwnerId == ownerId && p.Status == OwnerPayoutStatus.Confirmed && versionIds.Contains(p.OwnerStatementVersionId))
+            .Select(p => new { p.Currency, p.GrossAmount })
+            .ToListAsync(ct);
+        var paid = payouts.Count > 0
+            ? payouts.Where(p => p.Currency == version.Currency).Sum(p => p.GrossAmount)
+            : await db.WireBatchStatements.AsNoTracking()
+                .Where(w => w.OrgId == orgId && w.WireBatch.Status == WireBatchStatus.Paid && w.WireBatch.Currency == version.Currency
+                    && w.OwnerStatement.PropertyOwnerId == ownerId && w.OwnerStatement.Year == year && w.OwnerStatement.Month == month)
+                .SumAsync(w => w.OwnerStatement.NetPayable, ct);
         var due = version.ClosingBalance;
         var difference = due - paid;
         if (difference != 0m || due < 0m)
@@ -317,6 +346,14 @@ public sealed partial class OwnerAccountingService
             throw new DomainConflictException(OwnerAccountingErrors.PeriodDirty, "OwnerPeriodDirty");
         if (!string.Equals(Hash(await EntriesOfAsync(version, ct)), version.EntriesSha256, StringComparison.Ordinal))
             throw new DomainConflictException(OwnerAccountingErrors.LedgerImmutable, "OwnerLedgerImmutable");
+
+        // The balance carried in from the earlier months is part of the picture: a line posted there after the cut-off makes this version stale too.
+        var opening = await db.OwnerLedgerEntries.AsNoTracking()
+            .Where(e => e.OrgId == version.OrgId && e.PropertyOwnerId == version.PropertyOwnerId
+                && (e.PeriodYear < version.PeriodYear || (e.PeriodYear == version.PeriodYear && e.PeriodMonth < version.PeriodMonth)))
+            .SumAsync(e => e.Amount, ct);
+        if (opening != version.OpeningBalance)
+            throw new DomainConflictException(OwnerAccountingErrors.PeriodDirty, "OwnerPeriodDirty");
     }
 
     private static decimal SumOf(IEnumerable<OwnerLedgerEntry> entries, params OwnerLedgerEntryType[] types) =>

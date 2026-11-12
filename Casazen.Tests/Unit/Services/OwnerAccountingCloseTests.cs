@@ -51,10 +51,9 @@ public class OwnerAccountingCloseTests
         await Assert.ThrowsAsync<DomainConflictException>(() => world.Db.SaveChangesAsync());
         world.Db.ChangeTracker.Clear();
 
-        // The source changes (a partial refund): the old lines stay as they were, a reversal and a replacement are posted.
-        var tracked = await world.Db.Payments.SingleAsync(p => p.Id == payment);
-        tracked.RefundedAmount = 30m;
-        await world.Db.SaveChangesAsync();
+        // The source changes (a partial refund, which leaves the payment PartiallyRefunded as PaymentRefundService does): the old lines stay as they were, a
+        // reversal and a replacement are posted.
+        await world.RefundAsync(payment, 30m);
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         var corrected = await world.Service.PostPeriodAsync(OrgId, 2026, 10, "auth0|admin");
         Assert.Equal((2, 2), (corrected.Posted, corrected.Reversed));
@@ -166,6 +165,14 @@ public class OwnerAccountingCloseTests
         await world.PaymentAsync(property, 40m, new DateTime(2026, 10, 25, 9, 0, 0, DateTimeKind.Utc));
         var after = await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
         Assert.Equal(0, after.Posted);
+
+        // ... but what arrived after the close does not vanish: it is told as a late source, which does not block anything.
+        var late = after.Issues.Where(i => i.Code == OwnerReadinessCodes.LateSourceAfterClose).ToList();
+        Assert.Equal(2, late.Count);
+        Assert.All(late, i => Assert.Equal((owner, false), (i.OwnerId, i.Blocking)));
+        var readinessAfter = await world.Service.GetReadinessAsync(OrgId, 2026, 10);
+        Assert.Contains(readinessAfter.Owners.Single(o => o.OwnerId == owner).Issues, i => i.Code == OwnerReadinessCodes.LateSourceAfterClose);
+        Assert.True(readinessAfter.Owners.Single(o => o.OwnerId == owner).Ready);
         var reopen = await Assert.ThrowsAsync<DomainConflictException>(() => world.Service.GenerateVersionAsync(OrgId, owner, 2026, 10, null));
         Assert.Equal(OwnerAccountingErrors.PeriodClosed, reopen.Code);
 
@@ -239,6 +246,164 @@ public class OwnerAccountingCloseTests
     }
 
     /// <summary>
+    /// A refund moves the payment to PartiallyRefunded or Refunded: the revenue of the owner is the net of the refunds (never nothing for a partial refund,
+    /// never the gross for a full one).
+    /// </summary>
+    [Fact]
+    public async Task OwnerLedger_RefundedPaymentsKeepTheNetRevenue_Test()
+    {
+        var world = await World.CreateAsync();
+        var owner = await world.OwnerAsync("IT", "EUR");
+        var property = await world.PropertyAsync("EUR", (owner, 100m, new DateTime(2026, 1, 1)));
+        await world.MandateAsync(property, owner, 20m);
+        var payment = await world.PaymentAsync(property, 100m, new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc));
+        await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
+
+        // A retained penalty: 30 refunded, 70 kept. The payment is PartiallyRefunded, and the owner keeps the net 70 less its commission 14.
+        await world.RefundAsync(payment, 30m);
+        Assert.Equal(PaymentStatus.PartiallyRefunded, (await world.Db.Payments.AsNoTracking().SingleAsync()).Status);
+        world.Clock.Advance(TimeSpan.FromMinutes(5));
+        var partial = await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
+        Assert.Equal((2, 2), (partial.Posted, partial.Reversed));
+        var live = await world.Db.OwnerLedgerEntries.AsNoTracking().ToListAsync();
+        Assert.Equal(56m, live.Sum(e => e.Amount));
+        Assert.Equal(70m, live.Single(e => e.EntryType == OwnerLedgerEntryType.BookingRevenue && e.ReversesEntryId is null && e.Amount > 0m && e.SourceAmount == 70m).Amount);
+
+        // Refunded in full: nothing is left to share, and the lines of the month are reversed.
+        await world.RefundAsync(payment, 100m);
+        Assert.Equal(PaymentStatus.Refunded, (await world.Db.Payments.AsNoTracking().SingleAsync()).Status);
+        world.Clock.Advance(TimeSpan.FromMinutes(5));
+        var full = await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
+        Assert.Equal((0, 2), (full.Posted, full.Reversed));
+        Assert.Equal(0m, (await world.Db.OwnerLedgerEntries.AsNoTracking().ToListAsync()).Sum(e => e.Amount));
+    }
+
+    /// <summary>The channel commission is charged for an active booking only: the one definition (no pending, cancelled or no-show booking).</summary>
+    [Fact]
+    public async Task OwnerLedger_ChannelFeeOnlyForActiveBookings_Test()
+    {
+        var world = await World.CreateAsync();
+        var owner = await world.OwnerAsync("IT", "EUR");
+        var property = await world.PropertyAsync("EUR", (owner, 100m, new DateTime(2026, 1, 1)));
+        await world.PaymentAsync(property, 100m, new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc), otaCommission: 15m);
+        await world.PaymentAsync(property, 100m, new DateTime(2026, 10, 12, 9, 0, 0, DateTimeKind.Utc), otaCommission: 15m, noShow: true);
+
+        await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
+
+        var fees = (await world.Db.OwnerLedgerEntries.AsNoTracking().ToListAsync()).Where(e => e.EntryType == OwnerLedgerEntryType.ChannelFee).ToList();
+        Assert.Equal(-15m, Assert.Single(fees).Amount);
+    }
+
+    /// <summary>
+    /// The issues of a property (a gap of the shares) hold back the statement of every owner of the property and the close of its month: a payment left out of
+    /// the ledger is a line missing from their accounts, never a clean statement.
+    /// </summary>
+    [Fact]
+    public async Task OwnerReadiness_ShareGapHoldsBackTheOwnersOfTheProperty_Test()
+    {
+        var world = await World.CreateAsync();
+        var owner = await world.OwnerAsync("IT", "EUR");
+        var other = await world.OwnerAsync("IT", "EUR");
+        var property = await world.PropertyAsync("EUR", (owner, 60m, new DateTime(2026, 1, 1)), (other, 30m, new DateTime(2026, 1, 1)));
+        await world.PaymentAsync(property, 100m, new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc));
+
+        var posted = await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
+        Assert.Equal(0, posted.Posted);
+        Assert.Contains(posted.Issues, i => i.Code == OwnerReadinessCodes.OwnershipShareGap);
+
+        world.Clock.Advance(TimeSpan.FromMinutes(1));
+        var version = await world.Service.GenerateVersionAsync(OrgId, owner, 2026, 10, null);
+        Assert.Equal(OwnerStatementVersionStatus.Flagged, version.Status);
+        Assert.Contains(OwnerReadinessCodes.OwnershipShareGap, version.IssuesJson!, StringComparison.Ordinal);
+        var readiness = await world.Service.GetReadinessAsync(OrgId, 2026, 10);
+        Assert.False(readiness.Owners.Single(o => o.OwnerId == owner).Ready);
+        Assert.False(readiness.Owners.Single(o => o.OwnerId == other).Ready);
+        var flagged = await Assert.ThrowsAsync<DomainRuleException>(() => world.Service.ApproveVersionAsync(OrgId, version.Id, null));
+        Assert.Equal(OwnerAccountingErrors.VersionFlagged, flagged.Code);
+    }
+
+    /// <summary>A month is closed once it is over, and only while the readiness it was approved with still holds.</summary>
+    [Fact]
+    public async Task OwnerClose_RefusesAMonthNotOverAndASourceNotPosted_Test()
+    {
+        var world = await World.CreateAsync();
+        var owner = await world.OwnerAsync("IT", "EUR");
+        var property = await world.PropertyAsync("EUR", (owner, 100m, new DateTime(2026, 1, 1)));
+        await world.PaymentAsync(property, 100m, new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc));
+        await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
+        world.Clock.Advance(TimeSpan.FromMinutes(1));
+        var version = await world.Service.GenerateVersionAsync(OrgId, owner, 2026, 10, null);
+        await world.Service.ApproveVersionAsync(OrgId, version.Id, null);
+
+        // A payment of the month that came after the cut-off and was never posted: the ledger is not dirty, but the month is not ready.
+        world.Clock.Advance(TimeSpan.FromMinutes(1));
+        await world.PaymentAsync(property, 40m, new DateTime(2026, 10, 25, 9, 0, 0, DateTimeKind.Utc));
+        var notReady = await Assert.ThrowsAsync<DomainRuleException>(
+            () => world.Service.CloseAsync(OrgId, owner, 2026, 10, new OwnerCloseCommand { WaiverReason = "TEST" }, mayWaive: true, null));
+        Assert.Equal(OwnerAccountingErrors.CloseNotReady, notReady.Code);
+        Assert.Contains(OwnerReadinessCodes.UnpostedSource, (IEnumerable<string>)notReady.Extensions["issues"]!);
+
+        // The current month is not over: it is not closed, whatever its state.
+        var early = await Assert.ThrowsAsync<DomainConflictException>(
+            () => world.Service.CloseAsync(OrgId, owner, 2026, 11, new OwnerCloseCommand(), mayWaive: true, null));
+        Assert.Equal(OwnerAccountingErrors.PeriodNotEnded, early.Code);
+    }
+
+    /// <summary>A line computed while the owner could not be resolved has no rule version: once the owner can be resolved it is reversed and replaced.</summary>
+    [Fact]
+    public async Task OwnerLedger_LineWithoutRuleIsReplacedOnceTheOwnerCanBeResolved_Test()
+    {
+        var world = await World.CreateAsync();
+        var owner = await world.NewOwnerAsync();
+        var property = await world.PropertyAsync("EUR", (owner, 100m, new DateTime(2026, 1, 1)));
+        await world.PaymentAsync(property, 100m, new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc));
+
+        var first = await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
+        Assert.Equal(1, first.Posted);
+        Assert.Contains(first.Issues, i => i.OwnerId == owner && i.Code == OwnerFiscalErrors.ProfileMissing);
+        Assert.Null((await world.Db.OwnerLedgerEntries.AsNoTracking().SingleAsync()).RuleVersion);
+
+        await world.GiveProfileAsync(owner, "IT", "EUR");
+        world.Clock.Advance(TimeSpan.FromMinutes(5));
+        var second = await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
+        Assert.Equal((1, 1), (second.Posted, second.Reversed));
+        var lines = await world.Db.OwnerLedgerEntries.AsNoTracking().ToListAsync();
+        Assert.Equal(100m, lines.Sum(e => e.Amount));
+        Assert.Equal("TEST-IT@1", Assert.Single(lines, e => e.ReversesEntryId is null && e.RuleVersion is not null).RuleVersion);
+    }
+
+    /// <summary>The balance carried in from an earlier month is part of a version: a line posted there after the cut-off makes the later version stale.</summary>
+    [Fact]
+    public async Task OwnerStatement_EarlierMonthChangeMakesTheLaterVersionStale_Test()
+    {
+        var world = await World.CreateAsync();
+        var owner = await world.OwnerAsync("IT", "EUR");
+        var property = await world.PropertyAsync("EUR", (owner, 100m, new DateTime(2026, 1, 1)));
+        await world.PaymentAsync(property, 100m, new DateTime(2026, 9, 10, 9, 0, 0, DateTimeKind.Utc));
+        await world.PaymentAsync(property, 50m, new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc));
+        await world.Service.PostPeriodAsync(OrgId, 2026, 9, null);
+        await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
+        world.Clock.Advance(TimeSpan.FromMinutes(1));
+        var october = await world.Service.GenerateVersionAsync(OrgId, owner, 2026, 10, null);
+        Assert.Equal((100m, 150m), (october.OpeningBalance, october.ClosingBalance));
+        await world.Service.ApproveVersionAsync(OrgId, october.Id, null);
+
+        // A correction of September, posted after the cut-off of October: the lines of October are the same, its opening balance is not.
+        world.Clock.Advance(TimeSpan.FromMinutes(1));
+        await world.Service.PostCorrectionAsync(
+            OrgId, new OwnerCorrectionCommand { OwnerId = owner, Amount = -10m, Currency = "EUR", Date = new DateOnly(2026, 9, 20), Description = "TEST rettifica" }, null);
+        var stale = await Assert.ThrowsAsync<DomainConflictException>(() => world.Service.PublishVersionAsync(OrgId, october.Id, null));
+        Assert.Equal(OwnerAccountingErrors.PeriodDirty, stale.Code);
+        var readiness = await world.Service.GetReadinessAsync(OrgId, 2026, 10);
+        Assert.Contains(readiness.Owners.Single(o => o.OwnerId == owner).Issues, i => i.Code == OwnerReadinessCodes.LedgerStatementImbalance);
+
+        // A new version carries the new balance.
+        world.Clock.Advance(TimeSpan.FromMinutes(1));
+        var next = await world.Service.GenerateVersionAsync(OrgId, owner, 2026, 10, null);
+        Assert.Equal((2, 90m, 140m), (next.VersionNumber, next.OpeningBalance, next.ClosingBalance));
+    }
+
+    /// <summary>
     /// The permission rules of the owner accounting (E06/F05/US02, E06/F01/US02/T05): approval and publication are distinct permissions; the waiver of a
     /// close, the legal hold, the charge approvals, the rates, the corrections, the external invoice links, the payouts and the filing states need the
     /// elevated finance permission, which only the owner and the administrators of the agency hold (as the publication).
@@ -300,10 +465,23 @@ public class OwnerAccountingCloseTests
         /// <summary>An owner with a complete profile from January and the approved rule set of its jurisdiction.</summary>
         public async Task<Guid> OwnerAsync(string jurisdiction, string currency)
         {
-            var owner = new PropertyOwner { OrgId = OrgId, FirstName = "TEST", LastName = jurisdiction, Email = $"{Guid.NewGuid():N}@example.com" };
+            var owner = await NewOwnerAsync(jurisdiction);
+            await GiveProfileAsync(owner, jurisdiction, currency);
+            return owner;
+        }
+
+        /// <summary>An owner with no fiscal profile yet: the financial operations cannot resolve it.</summary>
+        public async Task<Guid> NewOwnerAsync(string lastName = "IT")
+        {
+            var owner = new PropertyOwner { OrgId = OrgId, FirstName = "TEST", LastName = lastName, Email = $"{Guid.NewGuid():N}@example.com" };
             Db.PropertyOwners.Add(owner);
             await Db.SaveChangesAsync();
+            return owner.Id;
+        }
 
+        /// <summary>The profile from January and the approved rule set of the jurisdiction (created once).</summary>
+        public async Task GiveProfileAsync(Guid ownerId, string jurisdiction, string currency)
+        {
             var policies = await Fiscal.ListPoliciesAsync(OrgId);
             var policy = policies.FirstOrDefault(p => p.Jurisdiction == jurisdiction);
             if (policy is null)
@@ -321,7 +499,7 @@ public class OwnerAccountingCloseTests
                 await Fiscal.ApprovePolicyAsync(OrgId, policy.Id, "TEST Commercialista", null);
             }
 
-            await Fiscal.SaveProfileAsync(OrgId, owner.Id, new OwnerFiscalProfileCommand
+            await Fiscal.SaveProfileAsync(OrgId, ownerId, new OwnerFiscalProfileCommand
             {
                 ValidFrom = new DateOnly(2026, 1, 1),
                 EntityKind = OwnerEntityKind.NaturalPerson,
@@ -335,7 +513,6 @@ public class OwnerAccountingCloseTests
                 TaxJurisdiction = jurisdiction,
                 AccountingPolicyId = policy.Id,
             }, null);
-            return owner.Id;
         }
 
         public async Task<Guid> PropertyAsync(string currency, params (Guid Owner, decimal Share, DateTime From)[] owners)
@@ -369,7 +546,7 @@ public class OwnerAccountingCloseTests
             await Db.SaveChangesAsync();
         }
 
-        public async Task<Guid> PaymentAsync(Guid property, decimal amount, DateTime paidAt)
+        public async Task<Guid> PaymentAsync(Guid property, decimal amount, DateTime paidAt, decimal? otaCommission = null, bool noShow = false)
         {
             var guest = new Guest { OrgId = OrgId, FirstName = "Test", LastName = "Guest", Email = $"{Guid.NewGuid():N}@example.com" };
             var booking = new Booking
@@ -381,6 +558,9 @@ public class OwnerAccountingCloseTests
                 CheckOutDate = paidAt.Date.AddDays(2),
                 NumberOfGuests = 2,
                 Status = BookingStatus.Confirmed,
+                OtaCommission = otaCommission,
+                OtaCommissionIncludedInPayments = otaCommission is null ? null : true,
+                NoShowAt = noShow ? paidAt : null,
             };
             var payment = new Payment
             {
@@ -397,6 +577,19 @@ public class OwnerAccountingCloseTests
             Db.Payments.Add(payment);
             await Db.SaveChangesAsync();
             return payment.Id;
+        }
+
+        /// <summary>
+        /// A refund of the payment as <c>PaymentRefundService.RecomputePaymentAsync</c> leaves it: the refunded amount and the state that follows (a refund of
+        /// the whole amount is Refunded, a smaller one PartiallyRefunded).
+        /// </summary>
+        public async Task RefundAsync(Guid paymentId, decimal refunded)
+        {
+            var payment = await Db.Payments.SingleAsync(p => p.Id == paymentId);
+            payment.RefundedAmount = refunded;
+            payment.Status = refunded >= payment.Amount ? PaymentStatus.Refunded : PaymentStatus.PartiallyRefunded;
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
         }
 
         /// <summary>A legacy statement of October for the owner paid by a wire batch marked paid.</summary>

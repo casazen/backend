@@ -21,24 +21,43 @@ public sealed class WithholdingService(AppDbContext db, TimeProvider time) : IWi
         int year,
         CancellationToken cancellationToken = default)
     {
-        var evidence = await db.TaxObligationEvidence.AsNoTracking()
-            .Where(e => e.OrgId == orgId && e.Decision == TaxDecision.Applicable && e.PeriodYear == year && e.PeriodMonth == month)
+        // One at a time per org (the lock of the owner accounting): two requests for the same month never make two records, and a record is rebuilt from the
+        // evidence as it is when the lock is held.
+        await using var tx = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db, cancellationToken, (PostgresAdvisoryLocks.Scope.OwnerAccounting, orgId.ToString("N")));
+
+        // Only the obligations of the Italian withholding are filed on an F24 (the evidence of a Swiss or any other jurisdiction never is), in euro.
+        var evidence = await OwnerPayoutService.F24EvidenceQuery(db, orgId)
+            .Where(e => e.PeriodYear == year && e.PeriodMonth == month)
             .ToListAsync(cancellationToken);
-        if (evidence.Count == 0)
+        var existing = await db.F24Records
+            .FirstOrDefaultAsync(f => f.OrgId == orgId && f.ReferenceMonth == month && f.ReferenceYear == year, cancellationToken);
+        if (existing is not null && existing.FilingState != TaxFilingState.Generated)
+            throw new DomainConflictException(OwnerPayoutErrors.FileAlreadyFiled, "TaxFileAlreadyFiled");
+
+        // A month whose obligations net to nothing (a payout and its reversal, or only a reversal) has nothing to file: never a zero or negative F24, and a
+        // record only generated is dropped.
+        var total = evidence.Sum(e => e.Amount ?? 0m);
+        if (evidence.Count == 0 || total <= 0m)
+        {
+            if (existing is not null)
+            {
+                db.F24Records.Remove(existing);
+                await db.SaveChangesAsync(cancellationToken);
+                if (tx is not null)
+                    await tx.CommitAsync(cancellationToken);
+            }
+
             throw new DomainRuleException(OwnerPayoutErrors.NoObligations, "TaxNoObligations");
+        }
 
         // One F24 section per tax code: evidence of the month under different codes is not merged.
         var codes = evidence.Select(e => e.TaxCode).Distinct(StringComparer.Ordinal).ToList();
         if (codes.Count != 1 || string.IsNullOrWhiteSpace(codes[0]))
             throw new DomainRuleException(OwnerPayoutErrors.F24TaxCodeMixed, "F24TaxCodeMixed");
 
-        var existing = await db.F24Records
-            .FirstOrDefaultAsync(f => f.OrgId == orgId && f.ReferenceMonth == month && f.ReferenceYear == year, cancellationToken);
-        if (existing is not null && existing.FilingState != TaxFilingState.Generated)
-            throw new DomainConflictException(OwnerPayoutErrors.FileAlreadyFiled, "TaxFileAlreadyFiled");
-
         var record = existing ?? new F24Record { OrgId = orgId, ReferenceMonth = month, ReferenceYear = year, CreatedAt = time.GetUtcNow().UtcDateTime };
-        record.TotalAmount = evidence.Sum(e => e.Amount ?? 0m);
+        record.TotalAmount = total;
         record.TaxCode = codes[0]!;
         var versions = string.Join(", ", evidence.Select(e => e.RuleCode + "@" + e.RuleVersion).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
         record.RuleVersion = versions.Length <= 200 ? versions : versions[..200];
@@ -47,6 +66,8 @@ public sealed class WithholdingService(AppDbContext db, TimeProvider time) : IWi
             db.F24Records.Add(record);
 
         await db.SaveChangesAsync(cancellationToken);
+        if (tx is not null)
+            await tx.CommitAsync(cancellationToken);
         return record;
     }
 

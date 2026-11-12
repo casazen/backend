@@ -6081,6 +6081,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocumentAlreadyIssued" xml:space="preserve">
     <value>Per questa prenotazione esiste già un documento emesso: per emetterne un altro serve prima una nota di credito totale.</value>
   </data>
+  <data name="FiscalDocumentBookingNotActive" xml:space="preserve">
+    <value>La prenotazione non è attiva (richiesta, annullata o no-show): non si emette un documento fiscale per questa prenotazione.</value>
+  </data>
   <data name="FiscalDocumentCreditAmountExceeds" xml:space="preserve">
     <value>L'importo della nota di credito deve essere positivo e non superare il residuo da stornare ({0}).</value>
   </data>
@@ -6232,7 +6235,13 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>Questa versione del rendiconto non è stata pubblicata.</value>
   </data>
   <data name="OwnerCloseUnreconciled" xml:space="preserve">
-    <value>Il saldo approvato non corrisponde ai bonifici pagati o è negativo: risolvi la differenza o indica il motivo della deroga.</value>
+    <value>Il saldo approvato non corrisponde ai pagamenti registrati (payout confermati o bonifici pagati) o è negativo: risolvi la differenza o indica il motivo della deroga.</value>
+  </data>
+  <data name="OwnerCloseNotReady" xml:space="preserve">
+    <value>Il mese non è pronto per la chiusura: ci sono fonti non registrate nel libro mastro o dati mancanti. Registra le fonti, genera una nuova versione e approvala.</value>
+  </data>
+  <data name="OwnerPeriodNotEnded" xml:space="preserve">
+    <value>Il mese non è ancora finito: si chiude dal giorno dopo l'ultimo giorno del mese.</value>
   </data>
   <data name="OwnerCloseWaiverForbidden" xml:space="preserve">
     <value>Solo chi gestisce le finanze dei proprietari può chiudere il mese con una deroga.</value>

@@ -163,6 +163,111 @@ public class OwnerPayoutTaxTests
         Assert.Equal((210m, 210m, 210m), (reconciliation.ObligationsTotal, reconciliation.F24Total, reconciliation.AnnualTotal!.Value));
     }
 
+    /// <summary>
+    /// The Italian forms are built from the evidence of an Italian rule only, in euro, and never for a month whose obligations net to nothing: a Swiss rule that
+    /// withholds (whatever its parameters say) is no F24 or CU, a payout reversed in its month leaves no zero F24, and a payout in another currency is not guessed.
+    /// </summary>
+    [Fact]
+    public async Task OwnerPayout_ItalianFormsNeverFileAnotherJurisdictionOrANothingMonth_Test()
+    {
+        var world = await PayoutWorld.CreateAsync();
+
+        // A Swiss rule set that asks a withholding is still a Swiss decision: no F24, no annual data.
+        var swiss = await world.OwnerAsync("CH", "EUR", ItalianRule("1", 21m));
+        var swissVersion = await world.ApprovedVersionAsync(swiss, 1000m);
+        var swissPayout = await world.Payouts.ConfirmPayoutAsync(OrgId, Payout(swiss, swissVersion, "k-ch"), null);
+        Assert.Equal(("CH", TaxDecision.Applicable), (Assert.Single(swissPayout.Evidence).Jurisdiction, swissPayout.Evidence[0].Decision));
+        Assert.Equal(OwnerPayoutErrors.NoObligations, (await Assert.ThrowsAsync<DomainRuleException>(() => world.Withholding.GenerateF24Async(OrgId, 11, 2026))).Code);
+        Assert.Equal(OwnerPayoutErrors.NoObligations, (await Assert.ThrowsAsync<DomainRuleException>(() => world.Payouts.GenerateAnnualDatasetAsync(OrgId, 2026, null))).Code);
+
+        // An Italian payout makes the F24 of its month; reversed in that month, its obligations net to nothing and the generated record goes with them.
+        var italian = await world.OwnerAsync("IT", "EUR", ItalianRule("1", 21m));
+        var italianVersion = await world.ApprovedVersionAsync(italian, 1000m);
+        var payout = await world.Payouts.ConfirmPayoutAsync(OrgId, Payout(italian, italianVersion, "k-it"), null);
+        Assert.Equal(210m, (await world.Withholding.GenerateF24Async(OrgId, 11, 2026)).TotalAmount);
+        await world.Payouts.ReversePayoutAsync(OrgId, payout.Payout.Id, "TEST bonifico respinto", null);
+        Assert.Equal(OwnerPayoutErrors.NoObligations, (await Assert.ThrowsAsync<DomainRuleException>(() => world.Withholding.GenerateF24Async(OrgId, 11, 2026))).Code);
+        Assert.Empty(await world.Db.F24Records.ToListAsync());
+
+        // The withholding is declared in euro: a payout in another currency that the rule makes applicable is not guessed into one.
+        var franc = await world.OwnerAsync("IT", "CHF", ItalianRule("1", 21m));
+        world.Db.OwnerFxRates.Add(new OwnerFxRate
+        {
+            OrgId = OrgId,
+            BaseCurrency = "EUR",
+            QuoteCurrency = "CHF",
+            RateDate = new DateOnly(2026, 10, 10),
+            Rate = 0.95m,
+            Source = "TEST BCE",
+        });
+        await world.Db.SaveChangesAsync();
+        var francVersion = await world.ApprovedVersionAsync(franc, 1000m);
+        var noEuro = await Assert.ThrowsAsync<DomainRuleException>(() => world.Payouts.ConfirmPayoutAsync(OrgId, Payout(franc, francVersion, "k-chf") with { Currency = "CHF" }, null));
+        Assert.Equal((OwnerPayoutErrors.TaxApplicabilityUnresolved, "currency"), (noEuro.Code, noEuro.Extensions["field"]));
+    }
+
+    /// <summary>
+    /// A transfer is recorded once: a month an owner settled with a confirmed payout is settled by it, so the wire of the same statements is neither posted nor
+    /// counted by the close (the payout is the record that carries the tax decision), and nothing is debited twice.
+    /// </summary>
+    [Fact]
+    public async Task OwnerPayout_SettlesTheMonthAndItsWireIsNeitherPostedNorCountedTwice_Test()
+    {
+        var world = await PayoutWorld.CreateAsync();
+        var owner = await world.OwnerAsync("IT", "EUR", ItalianRule("1", 21m));
+        var version = await world.ApprovedVersionAsync(owner, 1000m);
+        var property = (await world.Db.Properties.SingleAsync()).Id;
+
+        // The October statement was paid by a wire marked paid on 3 November: the ledger of November holds its line.
+        await world.PaidWireAsync(owner, property, 1000m);
+        await world.Accounting.PostPeriodAsync(OrgId, 2026, 11, null);
+        Assert.Equal(-1000m, await world.Db.OwnerLedgerEntries.Where(e => e.SourceType == OwnerLedgerSourceType.WireBatch).SumAsync(e => e.Amount));
+
+        // The payout recorded for the same money settles the month: the wire line is reversed, and the account is debited once.
+        await world.Payouts.ConfirmPayoutAsync(OrgId, Payout(owner, version, "k-wire", 1000m) with { AgencyCollected = false }, null);
+        world.Clock.Advance(TimeSpan.FromMinutes(1));
+        var posted = await world.Accounting.PostPeriodAsync(OrgId, 2026, 11, null);
+        Assert.Equal(1, posted.Reversed);
+        var november = await world.Db.OwnerLedgerEntries.AsNoTracking().Where(e => e.PeriodMonth == 11).ToListAsync();
+        Assert.Equal(-1000m, november.Sum(e => e.Amount));
+        Assert.Equal(0m, november.Where(e => e.SourceType == OwnerLedgerSourceType.WireBatch).Sum(e => e.Amount));
+
+        // The close counts the payout once: due 1000, paid 1000.
+        var closed = await world.Accounting.CloseAsync(OrgId, owner, 2026, 10, new OwnerCloseCommand(), mayWaive: false, null);
+        Assert.Equal((1000m, 1000m, 0m), (closed.DueAmount!.Value, closed.PaidAmount!.Value, closed.Difference!.Value));
+    }
+
+    /// <summary>A reversal never posts into a closed month: the payout stays confirmed and nothing is written.</summary>
+    [Fact]
+    public async Task OwnerPayout_ReversalIsRefusedWhenTheMonthItWouldPostIntoIsClosed_Test()
+    {
+        var world = await PayoutWorld.CreateAsync();
+        var owner = await world.OwnerAsync("IT", "EUR", ItalianRule("1", 21m));
+        var version = await world.ApprovedVersionAsync(owner, 1000m);
+        var payout = await world.Payouts.ConfirmPayoutAsync(OrgId, Payout(owner, version, "k-closed"), null);
+
+        // The month of the payment (5 November) and the month of today (12 November) are the same, and it is closed.
+        var now = world.Clock.GetUtcNow().UtcDateTime;
+        world.Db.OwnerClosePeriods.Add(new OwnerClosePeriod
+        {
+            OrgId = OrgId,
+            PropertyOwnerId = owner,
+            PeriodYear = 2026,
+            PeriodMonth = 11,
+            Status = OwnerClosePeriodStatus.Closed,
+            CreatedAt = now,
+            UpdatedAt = now,
+        });
+        await world.Db.SaveChangesAsync();
+
+        var refused = await Assert.ThrowsAsync<DomainConflictException>(() => world.Payouts.ReversePayoutAsync(OrgId, payout.Payout.Id, "TEST", null));
+        Assert.Equal(OwnerAccountingErrors.PeriodClosed, refused.Code);
+        world.Db.ChangeTracker.Clear();
+        Assert.Equal(OwnerPayoutStatus.Confirmed, (await world.Db.OwnerPayouts.SingleAsync()).Status);
+        Assert.Single(await world.Db.TaxObligationEvidence.ToListAsync());
+        Assert.Equal(2, await world.Db.OwnerLedgerEntries.CountAsync(e => e.SourceType == OwnerLedgerSourceType.OwnerPayout));
+    }
+
     private static OwnerAccountingRuleParameters ItalianRule(string version, decimal rate) => new()
     {
         WithholdingApplies = true,
@@ -252,10 +357,45 @@ public class OwnerPayoutTaxTests
             var owner = new PropertyOwner { OrgId = OrgId, FirstName = "TEST", LastName = jurisdiction, Email = $"{Guid.NewGuid():N}@example.com" };
             Db.PropertyOwners.Add(owner);
             await Db.SaveChangesAsync();
-            var policy = await Fiscal.CreatePolicyAsync(OrgId, Policy(jurisdiction, "1", parameters, new DateOnly(2026, 1, 1), validTo), null);
-            await Fiscal.ApprovePolicyAsync(OrgId, policy.Id, "TEST Commercialista", null);
+            var policy = (await Fiscal.ListPoliciesAsync(OrgId)).FirstOrDefault(p => p.RuleCode == "TEST-" + jurisdiction && p.Version == "1");
+            if (policy is null)
+            {
+                policy = await Fiscal.CreatePolicyAsync(OrgId, Policy(jurisdiction, "1", parameters, new DateOnly(2026, 1, 1), validTo), null);
+                await Fiscal.ApprovePolicyAsync(OrgId, policy.Id, "TEST Commercialista", null);
+            }
+
             await Fiscal.SaveProfileAsync(OrgId, owner.Id, Profile(jurisdiction, currency, policy.Id, new DateOnly(2026, 1, 1)), null);
             return owner.Id;
+        }
+
+        /// <summary>A legacy statement of October for the owner paid by a wire batch marked paid on 3 November.</summary>
+        public async Task PaidWireAsync(Guid owner, Guid property, decimal amount)
+        {
+            var statement = new OwnerStatement
+            {
+                OrgId = OrgId,
+                PropertyOwnerId = owner,
+                PropertyId = property,
+                Month = 10,
+                Year = 2026,
+                Currency = "EUR",
+                Status = StatementStatus.Published,
+                NetPayable = amount,
+            };
+            var batch = new WireBatch
+            {
+                OrgId = OrgId,
+                Currency = "EUR",
+                DebitAccount = "IT60X0542811101000000654321",
+                TotalAmount = amount,
+                TransferCount = 1,
+                Status = WireBatchStatus.Paid,
+                PaidAt = new DateTime(2026, 11, 3, 9, 0, 0, DateTimeKind.Utc),
+            };
+            Db.OwnerStatements.Add(statement);
+            Db.WireBatches.Add(batch);
+            Db.WireBatchStatements.Add(new WireBatchStatement { OrgId = OrgId, WireBatchId = batch.Id, OwnerStatementId = statement.Id });
+            await Db.SaveChangesAsync();
         }
 
         /// <summary>The approved October version of an owner with one property of its own and one payment.</summary>
