@@ -213,4 +213,10 @@ public static class RateLimitPolicies
     /// guest page uses <see cref="PublicBookingLookup"/>.
     /// </summary>
     public const string PublicMarketingConsent = "PublicMarketingConsent";
+
+    /// <summary>
+    /// The simulator of the assistant (<c>POST api/assistant/simulate</c>, E05/F05/US02/T01): each call asks the AI provider twice and spends the budget of the platform, so it is
+    /// partitioned by <b>person</b> and bounded at 20 an hour, on top of the per-user and per-org limits of the AI endpoints.
+    /// </summary>
+    public const string AssistantSimulate = "AssistantSimulate";
 }

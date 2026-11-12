@@ -114,6 +114,13 @@ public enum ActivityType
     MunicipalityTaxRateMissing = 51,
 
     /// <summary>
+    /// A message of a guest the assistant passed to a person (E05/F05/US02/T01, NF-67): its situation is set to escalate, it touches a forbidden topic, or it is urgent. About the
+    /// conversation (<c>OtaMessageThread</c> and its id, or <c>Booking</c> and the id of a direct booking), with the urgency and a deadline of <c>Assistant:Escalation</c>, leading to
+    /// the answer (<see cref="ActivityAction.ReplyToMessage"/>); closed when a person answers the conversation. The number keeps clear of the values the tasks that run in parallel append.
+    /// </summary>
+    MessageToReply = 60,
+
+    /// <summary>
     /// An owner asked for a stay in its property and a person of the agency decides (E07/F07/US01/T01, NF-111): the rule asks for an approval, or the
     /// automatic approval found the dates taken. About the owner stay (entity type <c>OwnerStay</c>), on its property; closes when the stay is approved,
     /// rejected or withdrawn. The numbers from 70 keep clear of the values the tasks that run in parallel append after 51 and 60.

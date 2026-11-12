@@ -95,6 +95,9 @@ public static class RateLimitingServiceCollectionExtensions
         // The anonymous marketing consent calls (E07/F04/US01): the confirmation link, the welcome page and the guest page. Per client IP;
         // each can queue an e-mail to an address somebody typed.
         new(RateLimitPolicies.PublicMarketingConsent, 60, TimeSpan.FromMinutes(10)),
+
+        // The simulator of the assistant (E05/F05/US02/T01): two calls to the AI provider each, per signed-in person, 20 an hour.
+        new(RateLimitPolicies.AssistantSimulate, 20, TimeSpan.FromHours(1), PartitionByUser: true),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)

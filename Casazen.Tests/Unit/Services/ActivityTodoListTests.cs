@@ -148,6 +148,32 @@ public class ActivityTodoListTests : IAsyncLifetime
         Assert.NotEqual(item, await service.CreateAsync(CheckIn(_world.Granted.Id, bookingId), Ct));
     }
 
+    /// <summary>
+    /// E05/F05/US02/T01: an open item is raised by something more urgent or sooner (the urgency and the reason of the more urgent cause, the deadline), never lowered nor moved
+    /// later, and a closed or unknown item is left alone; asking twice changes nothing the second time.
+    /// </summary>
+    [Fact]
+    public async Task RaiseUrgency_RaisesAnOpenItem_NeverLowersItNorMovesItsDeadlineLater_AndLeavesAClosedOrUnknownOneAlone()
+    {
+        var service = Service();
+        var now = HostScopeScenario.Now.UtcDateTime;
+        var item = await service.CreateAsync(CheckIn(_world.Granted.Id, Guid.NewGuid()) with { Urgency = ActivityUrgency.Medium, Reason = "first" }, Ct);
+
+        Assert.False(await service.RaiseUrgencyAsync(item, ActivityUrgency.Low, now.AddDays(2), "later", Ct));
+        Assert.True(await service.RaiseUrgencyAsync(item, ActivityUrgency.High, now.AddHours(1), "second", Ct));
+        Assert.False(await service.RaiseUrgencyAsync(item, ActivityUrgency.High, now.AddHours(1), "second", Ct));
+        Assert.False(await service.RaiseUrgencyAsync(item, ActivityUrgency.Medium, now.AddDays(1), "third", Ct));
+
+        _db.ChangeTracker.Clear();
+        var raised = await _db.InternalActivities.AsNoTracking().SingleAsync(a => a.Id == item);
+        Assert.Equal((ActivityUrgency.High, now.AddHours(1), now.AddHours(1), "second"), (raised.Urgency, raised.Deadline, raised.ScheduledAt, raised.Reason));
+
+        await service.CloseAsync(item, InternalActivity.ClosedBySystem, Ct);
+        Assert.False(await service.RaiseUrgencyAsync(item, ActivityUrgency.High, now, "fourth", Ct));
+        Assert.False(await service.RaiseUrgencyAsync(Guid.NewGuid(), ActivityUrgency.High, now, null, Ct));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.RaiseUrgencyAsync(item, (ActivityUrgency)99, null, null, Ct));
+    }
+
     private InternalActivityService Service() => new(_db, NullLogger<InternalActivityService>.Instance, _clock);
 
     private static CreateTodoRequest CheckIn(Guid propertyId, Guid bookingId) => new()

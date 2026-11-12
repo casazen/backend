@@ -81,6 +81,21 @@ public class RoutineEventHandlerTests
     }
 
     [Fact]
+    public async Task HandleAsync_AMessageOfTheGuestAreaOfADirectBooking_StartsNoRoutine_AMessageOfAChannelStillDoes()
+    {
+        // E05/F05/US02/T01: the message of a direct booking is recorded for the assistant; the routines start on the messages of a channel only, as they always have.
+        var routine = await SeedRoutineAsync(OrgA, RoutineEventType.GuestMessageReceived);
+        var direct = Event(OrgA, DomainEventType.GuestMessageReceived, $$"""{"threadKey":"direct:{{Guid.NewGuid()}}","source":"Direct","channel":"Direct"}""");
+        var ota = Event(OrgA, DomainEventType.GuestMessageReceived, $$"""{"threadKey":"ota:{{Guid.NewGuid()}}","source":"Ota","channel":"Airbnb"}""");
+
+        await HandleAsync(direct);
+        Assert.Empty(await ExecutionsAsync());
+
+        await HandleAsync(ota);
+        Assert.Equal(routine.Id, Assert.Single(await ExecutionsAsync()).RoutineId);
+    }
+
+    [Fact]
     public async Task HandleAsync_FailingRoutine_IsRecordedOnItsExecution_AndTheEventDoesNotFail()
     {
         var broken = await SeedRoutineAsync(OrgA, RoutineEventType.PaymentFailed, actionsJson: "not a list of actions");

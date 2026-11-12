@@ -1,4 +1,8 @@
+using Casazen.Core.Events;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Events;
+using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.Services;
 
 namespace Casazen.Web.Extensions;
@@ -23,6 +27,15 @@ public static class MessageAssistantServiceCollectionExtensions
         // E05/F05/US01/T03 (NF-66, NF-67): what the assistant does in each situation (mode, template, source, the start of the trust period) for the organization and as the
         // exceptions of a property; it grows the version of the instructions through IAssistantRulesService.
         services.AddScoped<IAssistantSituationService, AssistantSituationService>();
+
+        // E05/F05/US02/T01 (NF-67): the pipeline of the drafts (section Assistant), the gate that never sends by itself until E05/F05/US03 registers the real one, the observer that
+        // closes the «To do» of an escalated message when a person answers its conversation, the handler of the messages of the guests and its job (both behind the flag).
+        services.AddOptions<AssistantOptions>().BindConfiguration(AssistantOptions.SectionName);
+        services.AddScoped<IAssistantDraftService, AssistantDraftService>();
+        services.AddScoped<IAutoSendGate, NeverAutoSendGate>();
+        services.AddScoped<IThreadReplyObserver, AssistantEscalationCloser>();
+        services.AddScoped<IEventHandler<DomainEvent>, AssistantMessageHandler>();
+        services.AddScoped<AssistantDraftJob>();
 
         return services;
     }
