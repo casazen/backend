@@ -430,6 +430,19 @@ internal static class PostgresAdvisoryLocks
         MaintenancePayment = 21_043,
 
         /// <summary>
+        /// The counter of the fiscal numbers of one org and series (key: <c>{orgId:N}:{series}</c>, E06/F01/US02/T02, NF-83): taken in the transaction
+        /// that saves the document, so two issues never get the same number and a rolled-back one leaves no gap. The values 1_600 to 1_699 are the
+        /// fiscal documents and the agency financial chain (epic E06).
+        /// </summary>
+        FiscalNumbering = 1_601,
+
+        /// <summary>
+        /// The owner accounting of one org (key: <c>{orgId:N}</c>, E06/F05/US02/T02, NF-110): the posting of a month, the generation of a version and
+        /// the close are taken one at a time, so two postings never post the same facts twice and a close never reads a month being posted.
+        /// </summary>
+        OwnerAccounting = 1_603,
+
+        /// <summary>
         /// The push of one calendar change to the channel manager (key: process id, <c>processId.ToString("N")</c>, E08/F05/US02/T01, a session lock held for the whole
         /// run): the immediate run enqueued after a change and the recurring job that picks up what is due never send the same chunk twice, because a run that finds
         /// the lock taken leaves and the other one does the work. The values 20_800 to 20_899 are the booking operations of the calendar workspace (epic E08).

@@ -1166,4 +1166,11 @@ internal sealed class FakeStripeService : IStripeService
         string connectedAccountId,
         CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<PaymentIntent>>([]);
+
+    // E06/F04/US01/T02: the checkout never reads the provider fees; the fake has no balance transaction.
+    public Task<StripeBalanceTransactionInfo?> GetChargeBalanceTransactionAsync(
+        string paymentIntentId,
+        string? connectedAccountId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<StripeBalanceTransactionInfo?>(null);
 }

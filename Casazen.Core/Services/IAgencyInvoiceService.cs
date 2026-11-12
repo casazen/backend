@@ -10,28 +10,16 @@ namespace Casazen.Core.Services;
 public sealed record InvoiceGenerationResult(AgencyInvoice Invoice, string? Warning = null);
 
 /// <summary>
-/// FatturaPA invoice generation service for agencies (ADR-019).
-/// Generates invoices from monthly owner statements, validates against AdE XSD schema,
-/// and produces XML/PDF for manual or automatic SDI submission.
+/// The agency-to-owner invoices of the retired internal generator (ADR-019 amended, E06/F01/US02/T05): no new invoice is made; the stored ones stay
+/// readable (their XML and courtesy copy) and are marked <c>legacy_unverified</c>.
 /// </summary>
 public interface IAgencyInvoiceService
 {
     /// <summary>
-    /// Generates a FatturaPA invoice from a monthly owner statement (ADR-019-R2).
-    /// Validates single supplier per invoice (ADR-019-R5), assigns sequential invoice number
-    /// with no gaps (ADR-019-R4), calculates VAT and stamp duty, generates and validates XML
-    /// against official AdE schema (ADR-019-R6).
+    /// Retired: CasaZen issues no agency-to-owner invoice, fiscal number or FatturaPA XML (AC-NF110-6). Always 410 <c>owner_invoice_issuance_removed</c>;
+    /// the agency links the invoice of its external fiscal system to the statement version instead.
     /// </summary>
-    /// <param name="statementId">ID of the approved statement to invoice.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Invoice generation result with the created invoice and optional warning.</returns>
-    /// <exception cref="DomainRuleException">
-    /// 422 invoice_multiple_suppliers: statement lines reference multiple property owners (ADR-019-R5).
-    /// 422 structured_address_required: agency org missing required structured address fields (ADR-019-R9).
-    /// 422 statement_not_found: statement does not exist or not in caller's org.
-    /// 422 statement_not_approved: statement status is not Approved (only approved statements can be invoiced).
-    /// 422 invoice_already_exists: an invoice for this statement already exists.
-    /// </exception>
+    /// <exception cref="Casazen.Core.Exceptions.DomainGoneException">Always.</exception>
     Task<InvoiceGenerationResult> GenerateInvoiceAsync(Guid statementId, CancellationToken cancellationToken = default);
 
     /// <summary>

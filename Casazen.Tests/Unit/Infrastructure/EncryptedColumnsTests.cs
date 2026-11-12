@@ -37,6 +37,19 @@ public class EncryptedColumnsTests
                 "BookingInvoiceData.VatNumber:Casazen.BookingInvoiceData",
                 "DocumentImage.BackImageUrl:Casazen.DocumentImage",
                 "DocumentImage.FrontImageUrl:Casazen.DocumentImage",
+                // NF-83: the recipient snapshot of a fiscal document and its FatturaPA XML (E06/F01/US02/T01).
+                "FiscalDocument.FatturaPaXml:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientAddressCivic:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientAddressStreet:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientCity:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientCountryCode:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientFiscalCode:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientName:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientPec:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientPostalCode:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientProvince:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientSdiCode:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientVatNumber:Casazen.FiscalDocument",
                 "Guest.DocumentIssuingCountry:Casazen.Guest.Document",
                 "Guest.DocumentNumber:Casazen.Guest.Document",
                 // NF-89: the value (e-mail address or phone number) and the display name of a CRM contact.
@@ -54,6 +67,13 @@ public class EncryptedColumnsTests
                 "OtaIntegration.ApiSecret:Casazen.OtaIntegration.Secrets",
                 // ADR-032-R3: the words of the conversations of the guests with the channels, copied from the channel manager.
                 "OtaMessage.Text:Casazen.Message.Content",
+                // ADR-012, NF-109: the identifiers, the address and the bank account of the fiscal profile of an owner (E06/F05/US02/T01).
+                "OwnerFiscalProfile.BankAccountReference:Casazen.OwnerFiscalProfile",
+                "OwnerFiscalProfile.FiscalCode:Casazen.OwnerFiscalProfile",
+                "OwnerFiscalProfile.ForeignTaxId:Casazen.OwnerFiscalProfile",
+                "OwnerFiscalProfile.LegalAddress:Casazen.OwnerFiscalProfile",
+                "OwnerFiscalProfile.LegalName:Casazen.OwnerFiscalProfile",
+                "OwnerFiscalProfile.VatNumber:Casazen.OwnerFiscalProfile",
                 "Party.ContactPhone:Casazen.LeaseParty",
                 "Party.Residence:Casazen.LeaseParty",
                 "PlatformAiSettings.ApiKey:Casazen.PlatformAiSettings",

@@ -978,6 +978,57 @@ caller sees and may not use is 403. The accountant reads and cannot write; the c
   the structure and **no live VAT fallback**: the kind, the rate and the nature codes are empty until the accountant approves them, and
   `IDocumentIssuerService.RequireRuleAsync` answers 422 `document_rule_not_configured` for a rule that is not complete.
 
+#### Fiscal documents of the bookings (FIS-03, FIS-04, NF-83, NF-84, E06/F01/US01, E06/F01/US02, E06/F03/US02)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/fiscal/documents?bookingId=&propertyId=&from=&to=&kind=&status=&source=&page=&pageSize=` | short-rent `payment.read`; `bookingId`/`propertyId` authorized like their payments (404 otherwise) | One page of the documents of the organization (CasaZen and Octorate), newest first, `{ items, totalCount, page, pageSize }` (at most 100), narrowed **in SQL** to the caller's scope: a caller who reaches some properties gets only the documents of their bookings, never one without a booking. Every item carries stable codes (`source`, `kind`, `status`, `paymentState`, `sdiStatus`), the stored amounts in `currency`, the recipient snapshot and the lines |
+| `GET` | `/api/fiscal/documents/{id}` | `payment.read`; the booking of the document authorized like its payments, a document without a booking only for the whole org | One document with its lines; 404 `fiscal_document_not_found` for another org's document or one the caller cannot reach |
+| `POST` | `/api/fiscal/documents` | `payment.write` + `Features:FiscalDocumentIssuance` (404 while off) | `{ bookingId }`: the draft of a direct booking (or the one it has, made again) from its stored price: lodging (`BasePrice - CleaningFee`), cleaning, the tourist tax without VAT (nature of the rule), VAT separated by `FiscalDocumentTotals`, currency of the property, no number. 422 `document_booking_not_direct`, `document_invoice_data_missing` (with `fields`), `document_rule_not_configured`, `issuer_profile_incomplete`, `document_issuance_not_available`; 409 `document_issuer_conflict`, `document_already_issued` |
+| `POST` | `/api/fiscal/documents/{id}/refresh` | the above | The draft made again from the current data. 422 `document_not_draft`, `document_read_only` |
+| `POST` | `/api/fiscal/documents/{id}/issue` | the above | `{ confirm: true }` (else 422 `document_confirmation_required`): in one READ COMMITTED transaction the gap-free number (`{series}/{n}`), the FatturaPA XML validated against the official schema (invoices; 422 `fatturapa_xml_invalid`, `fatturapa_schema_unavailable`), the lock of the booking to CasaZen, `sdiStatus` `to_send` (`not_applicable` for a receipt), the issue date (Rome) and the event `FiscalDocumentIssued` in the same unit of work. An issued document never changes |
+| `POST` | `/api/fiscal/documents/{id}/credit-note` | the above | `{ amount?, reason, confirm }`: a credit note issued at once in the same series, the whole document by default, never above what is left to credit (422 `credit_amount_exceeds`), `document_not_creditable`, `document_read_only`; event `FiscalDocumentCreditNoteIssued` |
+| `DELETE` | `/api/fiscal/documents/{id}` | the above | The draft discarded (no number consumed). 422 `document_not_draft`, `document_read_only` |
+| `GET` | `/api/fiscal/documents/{id}/xml` | `payment.read` as for the detail | The FatturaPA XML of an issued CasaZen invoice or credit note; 404 `fiscal_document_xml_unavailable` otherwise |
+| `GET` | `/api/fiscal/documents/{id}/pdf` | `payment.read` as for the detail | The PDF of a CasaZen document (`FiscalDocumentPdfs`) in the language of the request; 422 `document_read_only` for a document of Octorate (its PDF is `octorate-pdf`) |
+| `GET` | `/api/fiscal/documents/{id}/octorate-pdf` | short-rent `payment.read`; the booking of the document authorized like its payments, a document without a booking only for a scope over the whole org; behind `Features:OctorateConnector` **and** `Features:OctorateDocumentImport` (404 while either is off) | The PDF of a document Octorate issued, proxied through CasaZen (never an Octorate address). 404 `fiscal_document_not_found` for another org's document, one not imported from Octorate or one the caller cannot reach; 404 `octorate_pdf_unavailable` when Octorate holds no PDF of it or cannot be read for it (logged with ids only) |
+
+- **Import of the documents Octorate issued (E06/F03/US02/T01).** `IOctorateDocumentImportService` reads, every 30 minutes (job
+  `octorate-document-import`), the documents of the mapped accommodations of every org whose issuer is Octorate with a connected connection
+  (`GET /rest/v2/invoice/{codice}`, documented in the OpenAPI, **never seen with content**: the sandbox has no invoice module), upserts them by (org,
+  Octorate id) as `Source = Octorate`, `Status = Issued` (read-only in CasaZen), links the booking of the same org by `OctorateReservationId` and maps
+  `fiscalInvoiceGroup` to the SDI state (`unknown` when Octorate gives none). It locks the booking to Octorate as its issuer; when CasaZen issued for it
+  the imported document is stored anyway with an urgent "To do" `two_issuers_detected`. A rejected SDI state (`sdi_rejected_octorate`) and an amount to
+  collect (`to_collect`) are "To do" items (action `ReviewFiscalDocument`) that close by themselves when a later import shows the state changed. A
+  refused or failing call is logged with ids only and read again at the next run.
+
+#### Payment ledger (FIS-05, NF-85, ADR-033-R2, E06/F04/US01/T03)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/payment-ledger/bookings/{bookingId}` | short-rent `payment.read`; the booking authorized like `GET /api/payments?bookingId=` (404 otherwise) | `{ bookingId, bookingCode, channel, currency, lines, degraded }`: the card, manual and channel lines of the booking. A booking with an Octorate reservation reads its individual collections from Octorate (`payments` of the single read, behind `Features:OctorateConnector`); when the read fails the stored OTA amounts are answered with `degraded: true`, never an error. A payment CasaZen recorded on the reservation comes back in the reservation's collections with its `transaction` (the one stored on the payment): it is the line of the payment, never a second one (matched by transaction, not by amount: Octorate holds it net of the tourist tax) |
+| `GET` | `/api/payment-ledger?propertyId=&bookingId=&from=&to=&page=&pageSize=` | the above; `propertyId`/`bookingId` authorized like their payments | One page of the lines of a period (newest first, at most 100 a page; at most 5,000 rows of each source per period), narrowed **in SQL** to the caller's scope. 400 `payment_ledger_invalid_range` |
+
+- **A line** is `{ kind (Card|BankTransfer|Cash|Ota|Other), bookingId, bookingCode, paymentId?, date, gross, providerFee?, net?, providerCurrency?,
+  creditDate?, currency, state (Paid|ToCollect|Refunded|PartiallyRefunded|Failed|Canceled), collectedBy (Host|Channel|Platform|Unknown), document? }`:
+  a card line carries the fee, the net and the credit date captured by `payment-provider-fees` (none until captured, never a guess); a channel line comes
+  from the stored OTA amounts (`OtaPaidAmount` paid, a positive `OtaBalanceAmount` to collect, commission and net only when stored) and a booking with
+  none of them gets no channel line; `document` is the fiscal document of the booking (id, number, kind, status, payment state). Amounts in the currency
+  of the property.
+
+#### Owner statements and withholding exports (agency, ADR-017, ADR-018, NF-25, E06/F01/US01/T02)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/statements/{id}/pdf` | `agency.statement.view` | The statement as a PDF (`IStatementExportService`, `StatementDocuments`): the label «Rendiconto gestionale - non è una fattura», owner, property, period, version, status, share, the lines (type, booking code or label, gross, commission, expenses, withholding), the totals, the **ledger totals of the current version** (opening and closing balance, the totals by type and the SHA-256 of its lines, in the currency of the ledger), the payouts and the stored withholding evidence with its rule version, every amount of the statement in `OwnerStatement.Currency`. Only an `Approved` or `Published` statement (422 `statement_not_exportable`); another org's statement is 404 `statement_not_found`. Nothing is calculated or saved |
+| `GET` | `/api/statements/{id}/csv` | `agency.statement.view` | The same content as a CSV for a spreadsheet set to Italian (`CsvWriter`: UTF-8 with BOM, `;`, decimal comma): the header lines, one row per line with its description and cash year, then the totals, the payouts and the withholding evidence |
+| `GET` | `/api/withholding/f24/pdf?month=&year=` | `agency.withholding.manage` | The stored F24 data of the month as a PDF (`F24Documents`): tax code, period, amount, due date and payment as the record holds them, with the label that it is not the filed form. It never generates the record: 404 `f24_not_found` for a month without one (`GET /api/withholding/f24` generates it) |
+
+- **Exports never create withholding.** Generating, recalculating, approving and exporting a statement never calls `CalculateWithholdingAsync`: the
+  files print the withholding stored for an authorized payout with its rule version (E06/F05/US02/T03), or say that there is none.
+- **Labels from the resource files.** `IDocumentTexts` (`ResxDocumentTexts` over `SharedResources`) gives the labels in the language of the request
+  (`it` or `en`); the export code never writes a currency or a euro sign.
+
 #### Owner portal (ADR-011, NF-96)
 
 Policy `OwnerPortal` on the class (JWT claim `context=owner_portal` and a valid `owner_id`; never a host role); 401 without a valid owner
@@ -2747,6 +2798,8 @@ The migration is `AddOnboardingActivation`. The tables are not part of the demo 
 | `InAppNotificationJob` | On push queued (`IPushNotificationService`) | UI-12a: writes one in-app notification per user of the push's audience, once per event and user (`docs/runbooks/in-app-notifications.md`) |
 | `InAppNotificationRetentionJob` | Daily at 03:45 UTC | UI-12a: deletes the in-app notifications older than 90 days |
 | `StripeWebhookJob` | On Stripe event (enqueued) | Process Stripe webhook events asynchronously |
+| `OctorateDocumentImportJob` (`octorate-document-import`) | Every 30 minutes, never two runs at once; only with `Features:OctorateConnector` and `Features:OctorateDocumentImport` on (removed otherwise) | E06/F03/US02/T01 (FIS-04, NF-84): one import per org whose issuer is Octorate with a connected connection, from the last change of its imported documents minus two days (the first time: 400 days); an org that fails does not stop the others |
+| `PaymentProviderFeeJob` (`payment-provider-fees`) | Every 15 minutes, never two runs at once | E06/F04/US01/T02 (FIS-05, NF-85): for the settled card payments (completed or refunded) settled more than 10 minutes ago without provider figures and with fewer than 5 attempts, 50 a run, reads the balance transaction of the charge (`latest_charge.balance_transaction`, on the connected account of a direct charge, without it for an intent on the platform) and stores `ProviderFeeAmount`, `ProviderNetAmount`, `ProviderBalanceCurrency`, `ProviderBalanceTransactionId`, `ProviderAvailableOn`, `ProviderFeeFetchedAt`. Idempotent, never changes `Amount`, `RefundedAmount` or `Status`; a miss or a Stripe error counts an attempt (`ProviderFeeFetchAttempts`, at most 5, then one log line with the payment id). Without `Stripe__SecretKey` it reads nothing and counts no attempt |
 
 ### Deployment
 - **Containerisation**: `Dockerfile` at repo root. Local API uses PostgreSQL/Supabase per `docs/INFRA.md`. Hosting in revisione: Railway è stato cancellato dal PO (2026-10-02), vedi `docs/runbooks/free-hosting-analysis.md` (task HOSTING).

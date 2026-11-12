@@ -121,6 +121,8 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.TenantExpenseProposalExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.CondominiumHistoricalImportExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.AdministratorStatementPdfExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.FiscalDocumentExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.PaymentLedgerExamples.Select(example => example.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -995,6 +997,48 @@ public class DemoShowcaseTests
             new DateOnly(2024, 6, 1), CondominiumInstallmentCadence.Monthly, example.Ordinary, example.Extraordinary, example.Prior);
         Assert.Equal(example.InstallmentCount, rows.Count);
         Assert.Equal(example.InstallmentTotal, rows.Sum(row => row.Total));
+    }
+
+    /// <summary>
+    /// E06/F01/US01/T01: the demo has a draft (no number) and an issued receipt (with its number) of a direct stay, for a TEST recipient, each with the
+    /// tourist tax inside its total, in a currency of a stay.
+    /// </summary>
+    [Fact]
+    public void FiscalDocumentsDirect_HasADraftWithoutNumber_AndAnIssuedDocumentWithIt_ForATestRecipient()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.FiscalDocumentsDirect, DemoShowcaseCatalog.Scenarios);
+        var examples = DemoShowcaseCatalog.FiscalDocumentExamples;
+
+        var draft = Assert.Single(examples, e => e.Status == nameof(FiscalDocumentStatus.Draft));
+        Assert.Null(draft.Number);
+        var issued = Assert.Single(examples, e => e.Status == nameof(FiscalDocumentStatus.Issued));
+        Assert.Matches("^[0-9]{4}/[0-9]+$", issued.Number!);
+        Assert.All(examples, e =>
+        {
+            Assert.StartsWith("TEST", e.RecipientName, StringComparison.Ordinal);
+            Assert.True(e.TouristTax > 0m && e.TouristTax < e.Total);
+            Assert.True(StayCurrency.IsSupported(e.Currency));
+        });
+        Assert.Equal("FiscalDocument", TestDataEntities.FiscalDocument);
+    }
+
+    /// <summary>
+    /// E06/F04/US01/T03: the demo ledger has a card line whose fee and net add up to its gross, a cash line and a line of a channel, the last two without
+    /// a provider figure (never a guess), every code one the API answers.
+    /// </summary>
+    [Fact]
+    public void PaymentLedger_HasACardLineWithFeeAndNet_ACashLine_AndAChannelLineWithoutGuesses()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.PaymentLedger, DemoShowcaseCatalog.Scenarios);
+        var lines = DemoShowcaseCatalog.PaymentLedgerExamples;
+
+        var card = Assert.Single(lines, l => l.Kind == nameof(PaymentLedgerKind.Card));
+        Assert.Equal(card.Gross, card.ProviderFee + card.Net);
+        Assert.Single(lines, l => l.Kind == nameof(PaymentLedgerKind.Cash) && l.ProviderFee is null && l.Net is null);
+        var channel = Assert.Single(lines, l => l.Kind == nameof(PaymentLedgerKind.Ota));
+        Assert.Null(channel.ProviderFee);
+        Assert.Equal(nameof(PaymentLedgerCollector.Channel), channel.CollectedBy);
+        Assert.All(lines, l => Assert.True(Enum.TryParse<PaymentLedgerCollector>(l.CollectedBy, out _)));
     }
 
     [Fact]
