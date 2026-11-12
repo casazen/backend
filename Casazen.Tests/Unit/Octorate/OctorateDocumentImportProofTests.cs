@@ -129,6 +129,40 @@ public class OctorateDocumentImportProofTests
         Assert.Empty(await db.FiscalDocuments.IgnoreQueryFilters().ToListAsync());
     }
 
+    /// <summary>
+    /// Each structure is read from its own last import: one that fails keeps its date, so the others succeeding never move it, and the documents it changed
+    /// meanwhile are not left out (the window is not the date of the whole org).
+    /// </summary>
+    [Fact]
+    public async Task Import_EachStructureIsReadFromItsOwnLastImport_AFailingOneKeepsItsDate_Test()
+    {
+        await using var db = NewDb();
+        await SeedOrgAsync(db, OrgA, "ACC-A", "R-100");
+        await AddStructureAsync(db, OrgA, "ACC-B", "R-200");
+        var clock = new FakeTimeProvider(Now);
+
+        // The first read of both structures; each document stores the accommodation it was read from.
+        var first = Client(("ACC-A", [Document("D-A", "R-100")]), ("ACC-B", [Document("D-B", "R-200")]));
+        await Service(db, first.Object, clock: clock).ImportAsync(OrgA, since: null);
+        var stored = await db.FiscalDocuments.IgnoreQueryFilters().AsNoTracking().ToListAsync();
+        Assert.Equal("ACC-A", stored.Single(d => d.OctorateDocumentId == "D-A").OctorateAccommodationId);
+        Assert.Equal("ACC-B", stored.Single(d => d.OctorateDocumentId == "D-B").OctorateAccommodationId);
+
+        // Ten days later B fails while A answers: A moves on, B keeps its date.
+        clock.Advance(TimeSpan.FromDays(10));
+        var second = new Mock<IOctorateApiClient>();
+        second.Setup(c => c.GetDocumentsAsync("ACC-A", It.IsAny<DateTime>(), It.IsAny<CancellationToken>())).ReturnsAsync([Document("D-A", "R-100")]);
+        second.Setup(c => c.GetDocumentsAsync("ACC-B", It.IsAny<DateTime>(), It.IsAny<CancellationToken>())).ThrowsAsync(new OctorateServerException(500));
+        Assert.Equal(1, (await Service(db, second.Object, clock: clock).ImportAsync(OrgA, since: null)).FailedReads);
+
+        // The next run asks B from its own last import (less the overlap), not from the date A moved to.
+        clock.Advance(TimeSpan.FromDays(1));
+        var third = Client(("ACC-A", [Document("D-A", "R-100")]), ("ACC-B", [Document("D-B", "R-200")]));
+        await Service(db, third.Object, clock: clock).ImportAsync(OrgA, since: null);
+        third.Verify(c => c.GetDocumentsAsync("ACC-B", Now.UtcDateTime - OctorateDocumentImport.Overlap, It.IsAny<CancellationToken>()), Times.Once);
+        third.Verify(c => c.GetDocumentsAsync("ACC-A", Now.UtcDateTime.AddDays(10) - OctorateDocumentImport.Overlap, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     [Theory]
     [InlineData("SDI_REJECTED", FiscalDocumentSdiStatuses.Rejected)]
     [InlineData("REJECTED_BEFORE", FiscalDocumentSdiStatuses.Rejected)]
@@ -208,7 +242,8 @@ public class OctorateDocumentImportProofTests
         IOctorateApiClient client,
         IDocumentIssuerService? issuers = null,
         IInternalActivityService? activities = null,
-        IFeatureFlags? flags = null)
+        IFeatureFlags? flags = null,
+        FakeTimeProvider? clock = null)
     {
         var scope = new Mock<IOctorateOrgScope>();
         scope.Setup(s => s.Use(It.IsAny<Guid>())).Returns(Mock.Of<IDisposable>());
@@ -222,8 +257,40 @@ public class OctorateDocumentImportProofTests
             activities ?? Activities().Object,
             flags ?? new TestFeatureFlags(FeatureFlags.OctorateConnector, FeatureFlags.OctorateDocumentImport),
             environment.Object,
-            new FakeTimeProvider(Now),
+            clock ?? new FakeTimeProvider(Now),
             NullLogger<OctorateDocumentImportService>.Instance);
+    }
+
+    /// <summary>A second structure of an org that is already connected: its mapping, its property and a booking of one reservation.</summary>
+    private static async Task AddStructureAsync(AppDbContext db, Guid orgId, string accommodation, string reservation)
+    {
+        var connection = await db.OctorateConnections.IgnoreQueryFilters().FirstAsync(c => c.OrgId == orgId);
+        var property = new Property { OrgId = orgId, OwnerId = "owner", Name = "TEST Casa 2", Address = "Via 2", City = "Roma", Currency = "EUR" };
+        var guest = new Guest { OrgId = orgId, FirstName = "Test", LastName = "Guest", Email = $"{Guid.NewGuid():N}@example.com" };
+        db.OctorateListingMappings.Add(new OctorateListingMapping
+        {
+            OrgId = orgId,
+            ConnectionId = connection.Id,
+            OctorateAccommodationId = accommodation,
+            OctorateProductId = "P-2",
+            PropertyId = property.Id,
+            Status = OctorateMappingStatus.Confirmed,
+        });
+        db.Properties.Add(property);
+        db.Guests.Add(guest);
+        db.Bookings.Add(new Booking
+        {
+            OrgId = orgId,
+            PropertyId = property.Id,
+            GuestId = guest.Id,
+            CheckInDate = new DateTime(2026, 10, 20),
+            CheckOutDate = new DateTime(2026, 10, 23),
+            NumberOfGuests = 2,
+            Status = BookingStatus.CheckedOut,
+            Source = BookingSource.BookingCom,
+            OctorateReservationId = reservation,
+        });
+        await db.SaveChangesAsync();
     }
 
     private static string? _name;

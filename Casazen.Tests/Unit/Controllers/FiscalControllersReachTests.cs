@@ -111,6 +111,27 @@ public class FiscalControllersReachTests
         octorate.VerifyNoOtherCalls();
     }
 
+    /// <summary>A document without a booking (an imported one whose reservation CasaZen does not hold) is served from the accommodation it was read from.</summary>
+    [Fact]
+    public async Task OctorateDocuments_DocumentWithoutABooking_IsServedFromItsOwnAccommodation_Test()
+    {
+        await using var db = new AppDbContext(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OctorateDocumentsOwn_{Guid.NewGuid()}").Options,
+            new ReachTenant(),
+            new EphemeralDataProtectionProvider());
+        var own = Imported(OrgId, "D-own");
+        own.OctorateAccommodationId = "ACC-9";
+        db.FiscalDocuments.Add(own);
+        await db.SaveChangesAsync();
+        var octorate = new Mock<IOctorateApiClient>();
+        octorate.Setup(c => c.GetDocumentPdfAsync("ACC-9", "D-own", It.IsAny<CancellationToken>())).ReturnsAsync(new MemoryStream([1, 2, 3]));
+
+        var served = await OctorateController(db, octorate.Object, new HostScope(OrgId)).GetOctoratePdf(own.Id);
+
+        Assert.IsType<FileStreamResult>(served);
+        octorate.Verify(c => c.GetDocumentPdfAsync("ACC-9", "D-own", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private static OctorateDocumentsController OctorateController(AppDbContext db, IOctorateApiClient octorate, HostScope scope) => new(
         db,
         octorate,

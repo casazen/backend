@@ -17,16 +17,17 @@ namespace Casazen.Core.Services;
 public interface IOctorateDocumentImportService
 {
     /// <summary>
-    /// Reads the documents of every mapped accommodation of the org changed after <paramref name="since"/> (the last import, else the last
-    /// <see cref="OctorateDocumentImport.FirstReadDays"/> days) and upserts them by (org, Octorate id). A call Octorate refuses is logged with ids only
-    /// and counted; the next run reads it again.
+    /// Reads the documents of every mapped accommodation of the org changed after the last import of that accommodation (else the last
+    /// <see cref="OctorateDocumentImport.FirstReadDays"/> days), or after <paramref name="since"/> for all of them when a caller gives one, and upserts them
+    /// by (org, Octorate id), each with the accommodation it was read from. A call Octorate refuses is logged with ids only and counted; the date of that
+    /// accommodation does not move, so the next run reads it again from where it stopped whatever the other accommodations did.
     /// </summary>
     Task<OctorateDocumentImportResult> ImportAsync(Guid orgId, DateTime? since, CancellationToken ct = default);
 
     /// <summary>The orgs an import runs for: the issuer is Octorate and the connection of this environment is connected.</summary>
     Task<IReadOnlyList<Guid>> OrgsToImportAsync(CancellationToken ct = default);
 
-    /// <summary>When the org's imported documents last changed, the start of the next read (with an overlap); <c>null</c> before the first import.</summary>
+    /// <summary>When the org's imported documents last changed (informational: every accommodation is read from its own last import); <c>null</c> before the first.</summary>
     Task<DateTime?> LastImportedAtAsync(Guid orgId, CancellationToken ct = default);
 }
 

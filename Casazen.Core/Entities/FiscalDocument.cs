@@ -52,6 +52,7 @@ public class FiscalDocument : ITenantOwned
     public const int SdiErrorCodeMaxLength = 20;
     public const int SdiErrorDetailMaxLength = 500;
     public const int OctorateDocumentIdMaxLength = 100;
+    public const int OctorateAccommodationIdMaxLength = 100;
     public const int OctorateReservationIdMaxLength = 50;
     public const int CreatedByUserIdMaxLength = 255;
 
@@ -160,6 +161,15 @@ public class FiscalDocument : ITenantOwned
 
     /// <summary>The FatturaPA XML of a CasaZen document, validated before it was stored. <b>Encrypted at rest.</b></summary>
     public string? FatturaPaXml { get; set; }
+
+    /// <summary>
+    /// The accommodation of Octorate an imported document was read from (the import reads one accommodation at a time): where its PDF is asked, also for a
+    /// document that belongs to no booking, and the date of the next read of that accommodation (<c>MAX(UpdatedAt)</c>), so a structure that failed is read
+    /// again from where it stopped whatever the others did. <c>null</c> for a document of CasaZen and for one imported before this column existed (the next
+    /// read fills it).
+    /// </summary>
+    [MaxLength(OctorateAccommodationIdMaxLength)]
+    public string? OctorateAccommodationId { get; set; }
 
     /// <summary>The id of an imported document on Octorate (unique within the org: <see cref="OctorateDocumentIndexName"/>).</summary>
     [MaxLength(OctorateDocumentIdMaxLength)]

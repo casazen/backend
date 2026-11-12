@@ -51,6 +51,7 @@ namespace Casazen.Infrastructure.Migrations
                     SdiErrorDetail = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     SdiStatusUpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     FatturaPaXml = table.Column<string>(type: "text", nullable: true),
+                    OctorateAccommodationId = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
                     OctorateDocumentId = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
                     OctorateReservationId = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
                     OctoratePdfAvailable = table.Column<bool>(type: "boolean", nullable: false),

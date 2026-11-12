@@ -71,7 +71,7 @@ public sealed class OctorateDocumentImportService(
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        var from = (since ?? now.AddDays(-OctorateDocumentImport.FirstReadDays)) - OctorateDocumentImport.Overlap;
+        var firstRead = now.AddDays(-OctorateDocumentImport.FirstReadDays);
         var mapped = (await OctorateBookingRuns.ListMappedPropertiesAsync(db, OctorateEnvironments.Of(hostEnvironment), ct))
             .Where(m => m.OrgId == orgId)
             .ToList();
@@ -87,6 +87,9 @@ public sealed class OctorateDocumentImportService(
         {
             foreach (var accommodation in mapped.GroupBy(m => m.AccommodationId))
             {
+                // Each accommodation is read from its own last import (with the overlap), or from the explicit date a caller gave for all of them: a structure
+                // whose read failed keeps its date, so the others succeeding never move it (a failing structure is read again from where it stopped).
+                var from = (since ?? await LastImportedAtAsync(orgId, accommodation.Key, ct) ?? firstRead) - OctorateDocumentImport.Overlap;
                 OctorateFiscalDocument[] documents;
                 try
                 {
@@ -106,7 +109,7 @@ public sealed class OctorateDocumentImportService(
                 var currency = accommodation.Select(m => currencies.GetValueOrDefault(m.PropertyId)).FirstOrDefault(c => c is not null);
                 foreach (var document in documents)
                 {
-                    var outcome = await UpsertAsync(orgId, document, currency, now, ct);
+                    var outcome = await UpsertAsync(orgId, document, currency, accommodation.Key, now, ct);
                     switch (outcome)
                     {
                         case Outcome.Created: created++; break;
@@ -128,7 +131,21 @@ public sealed class OctorateDocumentImportService(
     private bool Enabled =>
         featureFlags.IsEnabled(FeatureFlags.OctorateConnector) && featureFlags.IsEnabled(FeatureFlags.OctorateDocumentImport);
 
-    private async Task<Outcome> UpsertAsync(Guid orgId, OctorateFiscalDocument document, string? propertyCurrency, DateTime now, CancellationToken ct)
+    /// <summary>The last time a document of this accommodation was imported (<c>null</c> when none was: the accommodation is read from the first-read window).</summary>
+    private async Task<DateTime?> LastImportedAtAsync(Guid orgId, string accommodationId, CancellationToken ct) =>
+        await db.FiscalDocuments
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(d => d.OrgId == orgId && d.Source == FiscalDocumentSource.Octorate && d.OctorateAccommodationId == accommodationId)
+            .MaxAsync(d => (DateTime?)d.UpdatedAt, ct);
+
+    private async Task<Outcome> UpsertAsync(
+        Guid orgId,
+        OctorateFiscalDocument document,
+        string? propertyCurrency,
+        string accommodationId,
+        DateTime now,
+        CancellationToken ct)
     {
         if (KindOf(document.Type) is not { } kind || document.DocumentId.Length > FiscalDocument.OctorateDocumentIdMaxLength)
             return Outcome.Skipped;
@@ -170,6 +187,7 @@ public sealed class OctorateDocumentImportService(
             row.SdiStatusUpdatedAt = now;
         row.SdiStatus = sdi;
         row.OctorateReservationId = reservation;
+        row.OctorateAccommodationId = Truncate(accommodationId, FiscalDocument.OctorateAccommodationIdMaxLength);
         row.OctoratePdfAvailable = document.PdfAvailable;
         row.BookingId = booking?.Id;
         row.RecipientName = Truncate(document.RecipientName, FiscalDocument.RecipientNameMaxLength);

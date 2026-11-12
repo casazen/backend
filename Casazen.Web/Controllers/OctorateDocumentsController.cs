@@ -51,12 +51,15 @@ public class OctorateDocumentsController(
         var document = await db.FiscalDocuments
             .AsNoTracking()
             .Where(d => d.Id == id && d.OrgId == orgId.Value && d.Source == FiscalDocumentSource.Octorate)
-            .Select(d => new { d.Id, d.BookingId, d.OctorateDocumentId, d.OctoratePdfAvailable, d.Number })
+            .Select(d => new { d.Id, d.BookingId, d.OctorateDocumentId, d.OctorateAccommodationId, d.OctoratePdfAvailable, d.Number })
             .FirstOrDefaultAsync(ct);
         if (document is null || !await CanReadAsync(document.BookingId, scope, ct))
             return this.ApiProblem(StatusCodes.Status404NotFound, OctorateDocumentErrors.DocumentNotFound, "FiscalDocumentNotFound");
 
-        var accommodation = document.BookingId is { } bookingId ? await AccommodationOfAsync(orgId.Value, bookingId, ct) : null;
+        // The accommodation the import read the document from; for a document imported before it was stored, the one of its booking's property.
+        var accommodation = !string.IsNullOrWhiteSpace(document.OctorateAccommodationId)
+            ? document.OctorateAccommodationId
+            : document.BookingId is { } bookingId ? await AccommodationOfAsync(orgId.Value, bookingId, ct) : null;
         if (!document.OctoratePdfAvailable || accommodation is null || string.IsNullOrWhiteSpace(document.OctorateDocumentId))
             return this.ApiProblem(StatusCodes.Status404NotFound, OctorateDocumentErrors.PdfUnavailable, "OctoratePdfUnavailable");
 

@@ -2966,6 +2966,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<string>("OctorateAccommodationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("OctorateDocumentId")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
