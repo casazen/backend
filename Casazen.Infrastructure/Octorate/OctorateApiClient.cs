@@ -1260,11 +1260,17 @@ public sealed partial class OctorateApiClient(
         404 => new OctorateNotFoundException(),
         409 => new OctorateConflictException(),
         429 => new OctorateRateLimitException(status),
+        // A quota that is used up is a 403 of its own type (OCT-13): not a refusal of the access, a wait.
+        403 when IsQuotaExhausted(errorType, body) => new OctorateRateLimitException(status, quotaExhausted: true),
         401 or 403 when IsWrongEnvironment(errorType, body) => new OctorateWrongEnvironmentException(status),
         401 or 403 => OctorateAuthException.Refused(status),
         >= 500 => new OctorateServerException(status),
         _ => new OctorateRequestRejectedException(status),
     };
+
+    private static bool IsQuotaExhausted(string? errorType, string body) =>
+        string.Equals(errorType, OctorateRateLimitException.QuotaErrorType, StringComparison.OrdinalIgnoreCase)
+        || body.Contains(OctorateRateLimitException.QuotaErrorType, StringComparison.OrdinalIgnoreCase);
 
     private static bool IsWrongEnvironment(string? errorType, string body) =>
         string.Equals(errorType, OctorateWrongEnvironmentException.OctorateErrorType, StringComparison.OrdinalIgnoreCase)

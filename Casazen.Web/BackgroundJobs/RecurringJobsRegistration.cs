@@ -333,6 +333,7 @@ public static class RecurringJobsRegistration
             recurringJobManager.RemoveIfExists(ListingStatusSyncJob.RecurringJobId);
             recurringJobManager.RemoveIfExists(ListingChannelHealthJob.RecurringJobId);
             recurringJobManager.RemoveIfExists(ListingOutsideChangeJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(CalendarChangeProcessJob.RecurringJobId);
             return;
         }
 
@@ -391,6 +392,14 @@ public static class RecurringJobsRegistration
             ListingOutsideChangeJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             ListingOutsideChangeJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // E08/F05/US02/T02 (NF-36, NF-78): the changes of the calendar that are due (a postponement for quota, a back-off, a retry) are sent, and what the channel manager
+        // accepted is followed until it confirms it, every minute; the run enqueued right after a change is the fast path and this is the safety net.
+        recurringJobManager.AddOrUpdate<CalendarChangeProcessJob>(
+            CalendarChangeProcessJob.RecurringJobId,
+            job => job.RunDueAsync(CancellationToken.None),
+            CalendarChangeProcessJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

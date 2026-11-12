@@ -786,6 +786,42 @@
   <data name="CalendarDayRuleNothingToChange" xml:space="preserve">
     <value>Choose at least one value to change and at least one day.</value>
   </data>
+  <data name="CalendarChangeNoProperties" xml:space="preserve">
+    <value>Choose at least one property.</value>
+  </data>
+  <data name="CalendarChangeNotFound" xml:space="preserve">
+    <value>Change not found.</value>
+  </data>
+  <data name="CalendarChangeNotRetryable" xml:space="preserve">
+    <value>Only a change that was not sent, or was sent in part, can be sent again.</value>
+  </data>
+  <data name="CalendarChangeWarningPropertyNotMirrored" xml:space="preserve">
+    <value>This property is not connected to the channel manager: the change stays in CasaZen only.</value>
+  </data>
+  <data name="CalendarChangeWarningRoomNotChosen" xml:space="preserve">
+    <value>The room of this property on the channel manager is not chosen: the change is saved in CasaZen but is not sent until you choose it.</value>
+  </data>
+  <data name="CalendarPushChannelError" xml:space="preserve">
+    <value>The channel manager accepted the change but reported an error while sending it to the channels. Try again.</value>
+  </data>
+  <data name="CalendarPushNotAuthorized" xml:space="preserve">
+    <value>The channel manager refused CasaZen's access: connect the account again and try again.</value>
+  </data>
+  <data name="CalendarPushQuotaLow" xml:space="preserve">
+    <value>The limit of requests to the channel manager is nearly used: sending resumes in a few minutes.</value>
+  </data>
+  <data name="CalendarPushRejected" xml:space="preserve">
+    <value>The channel manager refused the change. Check the details of the property and try again.</value>
+  </data>
+  <data name="CalendarPushRoomNotChosen" xml:space="preserve">
+    <value>Choose the room of the channel manager for this property: nothing is sent until it is chosen.</value>
+  </data>
+  <data name="CalendarPushRoomNotLicensed" xml:space="preserve">
+    <value>The channel manager did not record the change: the room is not active on its service. Check the plan and try again.</value>
+  </data>
+  <data name="CalendarPushUnavailable" xml:space="preserve">
+    <value>The channel manager did not answer after several attempts: the change is saved in CasaZen but has not been sent yet. Try again.</value>
+  </data>
   <data name="CalendarInvalidRequest" xml:space="preserve">
     <value>The dates or the properties asked for are not valid: check the dates (from 2000 to 2100) and the property ids.</value>
   </data>

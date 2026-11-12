@@ -1,10 +1,12 @@
 using System.Reflection;
 using Casazen.Core.Events;
 using Casazen.Core.Features;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.Octorate;
+using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Configuration;
 using Casazen.Web.Extensions;
@@ -34,6 +36,7 @@ public class OctorateJobsRegistrationTests
         ListingOutsideChangeJob.RecurringJobId,
         OctorateCheckInRetryJob.RecurringJobId,
         MarketplaceConnectionSyncJob.RecurringJobId,
+        CalendarChangeProcessJob.RecurringJobId,
     ];
 
     [Fact]
@@ -160,6 +163,69 @@ public class OctorateJobsRegistrationTests
         // The retry of the check-in writes runs every 15 minutes too (E03/F01/US01/T03).
         Assert.Equal("*/15 * * * *", OctorateCheckInRetryJob.Cron);
         Assert.Equal(JobLockTimeouts.FrequentSeconds, OctorateCheckInRetryJob.LockTimeoutSeconds);
+
+        // The calendar changes run every minute (E08/F05/US02/T02) and wait as the other frequent jobs do.
+        Assert.Equal(JobLockTimeouts.FrequentSeconds, CalendarChangeProcessJob.LockTimeoutSeconds);
+    }
+
+    [Fact]
+    public void Configure_OctorateConnectorOn_SchedulesTheCalendarChangesEveryMinute_AndTheRunAfterAChangeIsNotRetriedByHangfire()
+    {
+        var (manager, jobs) = Manager();
+
+        RecurringJobsRegistration.Configure(manager.Object, Flags(octorateConnector: true));
+
+        // E08/F05/US02/T02 (NF-36, NF-78): the due changes are sent and the accepted ones followed every minute, only while the connector is on.
+        Assert.Equal("calendar-change-process", CalendarChangeProcessJob.RecurringJobId);
+        var due = jobs[CalendarChangeProcessJob.RecurringJobId];
+        Assert.Equal("* * * * *", due.Cron);
+        Assert.Equal(TimeZoneInfo.Utc, due.Options.TimeZone);
+        Assert.Equal(nameof(CalendarChangeProcessJob.RunDueAsync), due.Job.Method.Name);
+        manager.Verify(m => m.RemoveIfExists(CalendarChangeProcessJob.RecurringJobId), Times.Never);
+
+        // The run enqueued right after a change locks the process it runs and is not retried by Hangfire: the schedule of the process decides.
+        var run = typeof(CalendarChangeProcessJob).GetMethod(nameof(CalendarChangeProcessJob.RunAsync))!;
+        Assert.Contains("{0}", run.GetCustomAttribute<DisableConcurrentExecutionAttribute>()!.Resource);
+        Assert.Equal(0, run.GetCustomAttribute<AutomaticRetryAttribute>()!.Attempts);
+    }
+
+    [Fact]
+    public void TheCalendarPush_IsRegisteredOnTheContainer_WithItsOptions_AndItsHandlerOfTheFirstPublication()
+    {
+        var services = new ServiceCollection();
+
+        services.AddCasazenBookingOperations();
+
+        // The recorder is optional for the manual blocks and the change service, so a lost registration would switch the push off in silence: it is pinned here.
+        foreach (var (service, implementation) in new (Type, Type)[]
+                 {
+                     (typeof(ICalendarChangeRecorder), typeof(CalendarChangeRecorder)),
+                     (typeof(ICalendarPushService), typeof(CalendarPushService)),
+                     (typeof(ICalendarChangeRunner), typeof(CalendarChangeRunner)),
+                     (typeof(ICalendarChangeQueries), typeof(CalendarChangeQueries)),
+                     (typeof(ICalendarChangeService), typeof(CalendarChangeService)),
+                 })
+        {
+            var descriptor = Assert.Single(services, d => d.ServiceType == service);
+            Assert.Equal(implementation, descriptor.ImplementationType);
+            Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
+        }
+
+        Assert.Contains(services, d => d.ServiceType == typeof(CalendarChangeProcessJob) && d.Lifetime == ServiceLifetime.Scoped);
+
+        // The handler of the first publication is the one consumer of ListingPublished (typed: the plain consumers are not affected).
+        var publication = Assert.Single(services, d => d.ServiceType == typeof(IEventHandler<ListingPublishedEvent>));
+        Assert.Equal(typeof(ListingPublishedCalendarHandler), publication.ImplementationType);
+
+        // The section of the options is the one the checklist documents, and its defaults are the decided ones.
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { [$"{OctorateCalendarOptions.SectionName}:MaxDaysPerCall"] = "31" })
+            .Build();
+        services.AddSingleton<IConfiguration>(configuration);
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<OctorateCalendarOptions>>().Value;
+        Assert.Equal((31, 15, 20, 365, OctorateCloseNightsWith.StopSells), (options.MaxDays, options.RoomDaysPerUnit, options.Reserve, options.Horizon, options.CloseNightsWith));
+        Assert.Null(options.NoMaxStayNights);
     }
 
     [Fact]
