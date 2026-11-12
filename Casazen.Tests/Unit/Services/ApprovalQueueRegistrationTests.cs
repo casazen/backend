@@ -57,6 +57,7 @@ public class ApprovalQueueRegistrationTests
         services.AddLogging();
         services.AddScoped(_ => Mock.Of<IMessageReplyService>());
         services.AddScoped(_ => Mock.Of<ICampaignService>());
+        services.AddScoped(_ => Mock.Of<Casazen.Core.Features.IFeatureFlags>());
         using var provider = services.BuildServiceProvider(validateScopes: true);
         using var scope = provider.CreateScope();
 
@@ -82,6 +83,7 @@ public class ApprovalQueueRegistrationTests
         services.AddApprovalQueueActions();
         services.AddLogging();
         services.AddScoped(_ => Mock.Of<IMessageReplyService>());
+        services.AddScoped(_ => Mock.Of<Casazen.Core.Features.IFeatureFlags>());
         services.AddScoped<ICampaignService, CampaignThatNeedsTheQueue>();
         services.AddScoped<IApprovalQueueService, QueueThatNeedsTheRegistry>();
         using var provider = services.BuildServiceProvider(validateScopes: true);

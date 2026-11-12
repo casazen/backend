@@ -28,6 +28,8 @@ public class CampaignApprovalFlowTests : IDisposable
 {
     private readonly ApprovalQueueRig _rig = new();
     private readonly Mock<IBackgroundJobClient> _hangfire = new();
+    private readonly TestFeatureFlags _flags = new(FeatureFlags.CrmMarketing);
+    private ApprovalOriginActionRegistry _registry = null!;
     private Guid _segmentId;
 
     public void Dispose() => _rig.Dispose();
@@ -47,8 +49,8 @@ public class CampaignApprovalFlowTests : IDisposable
 
         // The campaign service needs the queue, and the action of the queue needs the campaign service: the registry asks for the action when it is first used.
         CampaignService? campaigns = null;
-        var registry = new ApprovalOriginActionRegistry(() => [new CampaignApprovalAction(campaigns!, NullLogger<CampaignApprovalAction>.Instance)]);
-        var queue = _rig.Service(registry);
+        _registry = new ApprovalOriginActionRegistry(() => [new CampaignApprovalAction(campaigns!, _flags, NullLogger<CampaignApprovalAction>.Instance)]);
+        var queue = _rig.Service(_registry);
         campaigns = new CampaignService(
             _rig.Db,
             new ConditionEvaluator(NullLogger<ConditionEvaluator>.Instance),
@@ -64,7 +66,7 @@ public class CampaignApprovalFlowTests : IDisposable
                 TimeProvider.System,
                 CrmTestIndex.Create()),
             _hangfire.Object,
-            new TestFeatureFlags(FeatureFlags.CrmMarketing),
+            _flags,
             _rig.Clock,
             NullLogger<CampaignService>.Instance,
             queue);
@@ -107,6 +109,38 @@ public class CampaignApprovalFlowTests : IDisposable
         await campaigns.ScheduleAsync(draft.Id, at, _rig.OrgId);
         var scheduled = await _rig.Db.Campaigns.AsNoTracking().SingleAsync();
         Assert.Equal((CampaignStatus.Scheduled, at), (scheduled.Status, scheduled.ScheduledAt));
+    }
+
+    /// <summary>
+    /// Module rule: the campaigns are closed with <c>Features:CrmMarketing</c> (the endpoints answer 404), and the queue is another door to them: with the module off an approval
+    /// does not approve or schedule a campaign. It fails with its code and the item stays pending (409, <c>originActionError</c>); with the module on again the same item is approved.
+    /// </summary>
+    [Fact]
+    public async Task ApprovingACampaign_WithTheModuleOff_FailsWithItsCode_AndTheItemStaysPending()
+    {
+        var (campaigns, queue) = await BuildAsync();
+        var draft = await campaigns.CreateDraftAsync(_rig.OrgId, _segmentId, "Oggetto", "<p>Testo</p>", false);
+        (await _rig.Db.Campaigns.SingleAsync()).ScheduledAt = ApprovalQueueRig.Noon.AddDays(2);
+        await _rig.Db.SaveChangesAsync();
+        await campaigns.SubmitForApprovalAsync(draft.Id, _rig.OrgId);
+        var item = await _rig.Db.ApprovalQueueItems.AsNoTracking().SingleAsync();
+        _flags.Set(FeatureFlags.CrmMarketing, false);
+
+        var failure = await Assert.ThrowsAsync<DomainConflictException>(() => queue.ApproveAsync(_rig.OrgWide, item.Id, ApprovalQueueRig.Owner));
+
+        Assert.Equal("approval_origin_action_failed", failure.Code);
+        Assert.Equal("crm_marketing_disabled", failure.Extensions["originActionError"]);
+        Assert.Equal(CampaignApprovalAction.ModuleOffCode, failure.Extensions["originActionError"]);
+        var stored = await _rig.Db.ApprovalQueueItems.AsNoTracking().SingleAsync();
+        Assert.Equal((ApprovalStatus.Pending, ApprovalOriginActionStatus.Failed, "crm_marketing_disabled"), (stored.Status, stored.OriginActionStatus, stored.OriginActionError));
+        Assert.Equal(CampaignStatus.PendingApproval, (await _rig.Db.Campaigns.AsNoTracking().SingleAsync()).Status);
+        _hangfire.Verify(j => j.Create(It.IsAny<Hangfire.Common.Job>(), It.IsAny<Hangfire.States.IState>()), Times.Never);
+
+        _flags.Set(FeatureFlags.CrmMarketing, true);
+        var decision = await queue.ApproveAsync(_rig.OrgWide, item.Id, ApprovalQueueRig.Owner);
+
+        Assert.Equal("Scheduled", decision.ActionState);
+        Assert.Equal(CampaignStatus.Scheduled, (await _rig.Db.Campaigns.AsNoTracking().SingleAsync()).Status);
     }
 
     [Fact]

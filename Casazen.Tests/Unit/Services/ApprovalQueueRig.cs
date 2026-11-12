@@ -57,6 +57,9 @@ internal sealed class ApprovalQueueRig : IDisposable
 
     public Mock<ICampaignService> Campaigns { get; } = new();
 
+    /// <summary>The module of the campaigns is on (<c>Features:CrmMarketing</c>); a test switches it off with <c>Flags.Set</c>.</summary>
+    public TestFeatureFlags Flags { get; } = new(Casazen.Core.Features.FeatureFlags.CrmMarketing);
+
     /// <summary>What the Hangfire client was asked to create.</summary>
     public List<(Job Job, IState State)> Created { get; } = [];
 
@@ -203,7 +206,7 @@ internal sealed class ApprovalQueueRig : IDisposable
         new(() =>
         [
             new MessageDraftApprovalAction(Replies.Object, NullLogger<MessageDraftApprovalAction>.Instance),
-            new CampaignApprovalAction(Campaigns.Object, NullLogger<CampaignApprovalAction>.Instance),
+            new CampaignApprovalAction(Campaigns.Object, Flags, NullLogger<CampaignApprovalAction>.Instance),
         ]);
 
     public ApprovalQueueService Service(IApprovalOriginActionRegistry? registry = null) =>

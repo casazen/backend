@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Microsoft.Extensions.Logging;
 
@@ -19,12 +20,20 @@ namespace Casazen.Infrastructure.Services.ApprovalActions;
 /// scheduled and leaves it, so a retry after a scheduling that failed schedules and does not approve twice.</item>
 /// <item><b>The time.</b> A campaign with no time is approved and waits for the host to schedule it (<c>Approved</c>); one whose time passed while it waited is approved
 /// and not scheduled, for the host to pick another (the service drops the time).</item>
+/// <item><b>The module.</b> With <c>Features:CrmMarketing</c> off nothing is approved or scheduled: the approval fails with <see cref="ModuleOffCode"/> and the item waits (a rejection and the
+/// expiry still return the campaign to a draft: they only undo).</item>
 /// <item><b>Sending is not here.</b> The send of the e-mails is the job of the schedule (<c>CampaignSendJob</c>), behind <c>Features:CrmMarketing</c>: approving only lets
 /// the campaign be scheduled and never sends one.</item>
 /// </list>
 /// </remarks>
-public sealed class CampaignApprovalAction(ICampaignService campaigns, ILogger<CampaignApprovalAction> logger) : IApprovalOriginAction
+public sealed class CampaignApprovalAction(ICampaignService campaigns, IFeatureFlags featureFlags, ILogger<CampaignApprovalAction> logger) : IApprovalOriginAction
 {
+    /// <summary>
+    /// The code of an approval refused because the module of the campaigns is closed (<c>Features:CrmMarketing</c> is off): the item stays pending and is approved when the module is
+    /// on again.
+    /// </summary>
+    public const string ModuleOffCode = "crm_marketing_disabled";
+
     /// <summary>The state of the answer for a campaign that was approved and scheduled.</summary>
     public const string ScheduledState = "Scheduled";
 
@@ -39,6 +48,16 @@ public sealed class CampaignApprovalAction(ICampaignService campaigns, ILogger<C
     {
         ArgumentNullException.ThrowIfNull(item);
         ArgumentException.ThrowIfNullOrWhiteSpace(finalText);
+
+        // The campaigns are behind Features:CrmMarketing (their endpoints answer 404 while it is off): the queue is another door to the same campaigns, so it does not approve or
+        // schedule one while the module is closed. The item stays pending with the code and the decision is taken when the module is on.
+        if (!featureFlags.IsEnabled(FeatureFlags.CrmMarketing))
+        {
+            logger.LogWarning(
+                "Approval item {ItemId} of org {OrgId}: campaign {CampaignId} not approved, Features:CrmMarketing is off",
+                item.Id, item.OrgId, item.ItemId);
+            return ApprovalActionResult.Failed(ModuleOffCode);
+        }
 
         string? subject = null;
         string? body = null;
