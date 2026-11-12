@@ -6144,4 +6144,19 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerFxRateExists" xml:space="preserve">
     <value>Esiste già un cambio per queste valute in questo giorno.</value>
   </data>
+  <data name="OwnerInvoiceIssuanceRemoved" xml:space="preserve">
+    <value>CasaZen non emette più fatture dell'agenzia ai proprietari: collega al rendiconto la fattura emessa dal tuo sistema fiscale.</value>
+  </data>
+  <data name="OwnerExternalDocumentInvalid" xml:space="preserve">
+    <value>Il collegamento alla fattura esterna non è valido: controlla il campo indicato.</value>
+  </data>
+  <data name="OwnerExternalDocumentDuplicate" xml:space="preserve">
+    <value>Questa fattura esterna è già collegata a questa versione del rendiconto.</value>
+  </data>
+  <data name="OwnerExternalDocumentNotFound" xml:space="preserve">
+    <value>Collegamento alla fattura esterna non trovato.</value>
+  </data>
+  <data name="OwnerExternalDocumentRemoved" xml:space="preserve">
+    <value>Il collegamento è stato rimosso e non cambia più.</value>
+  </data>
 </root>

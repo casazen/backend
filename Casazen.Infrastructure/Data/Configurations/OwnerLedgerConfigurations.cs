@@ -73,6 +73,23 @@ internal sealed class OwnerChargeConfiguration : IEntityTypeConfiguration<OwnerC
     }
 }
 
+/// <summary>
+/// The links to the invoices of the external fiscal systems (E06/F01/US02/T05): the version and the owner restrict; one live link per version, provider
+/// and external id.
+/// </summary>
+internal sealed class OwnerExternalDocumentReferenceConfiguration : IEntityTypeConfiguration<OwnerExternalDocumentReference>
+{
+    public void Configure(EntityTypeBuilder<OwnerExternalDocumentReference> entity)
+    {
+        entity.HasOne<OwnerStatementVersion>().WithMany().HasForeignKey(r => r.OwnerStatementVersionId).OnDelete(DeleteBehavior.Restrict);
+        entity.HasOne<PropertyOwner>().WithMany().HasForeignKey(r => r.PropertyOwnerId).OnDelete(DeleteBehavior.Restrict);
+        entity.HasIndex(r => new { r.OrgId, r.OwnerStatementVersionId, r.Provider, r.ExternalId }).IsUnique()
+            .HasFilter("\"RemovedAt\" IS NULL")
+            .HasDatabaseName("UIX_OwnerExternalDocumentReferences_Live");
+        entity.HasIndex(r => new { r.OrgId, r.PropertyOwnerId });
+    }
+}
+
 /// <summary>The exchange rates of the owner accounting (E06/F05/US02/T02): one per org, pair and day, positive.</summary>
 internal sealed class OwnerFxRateConfiguration : IEntityTypeConfiguration<OwnerFxRate>
 {

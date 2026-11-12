@@ -154,3 +154,22 @@ Per D-13, Swiss agency (Org.Country = "CH"):
 - Tax regime values require legal review
 
 **CI cost:** +10s for XSD validation and numbering proof tests
+
+## Amendment 2026-11 (E06/F01/US02/T05): no agency-to-owner invoice in CasaZen
+
+**Status of the owner-invoice decision: superseded.** CasaZen owner accounting produces a rendiconto (a non-fiscal, versioned management report of the
+owner ledger) and the payment statement, not an agency-to-owner tax invoice. The guest fiscal issuance of the direct bookings (FiscalDocuments,
+E06/F01/US01) is unchanged.
+
+- **Retired generator.** `AgencyInvoiceService.GenerateInvoiceAsync` and `POST api/agency-invoices/generate` answer 410
+  `owner_invoice_issuance_removed`. No agency-to-owner invoice, fiscal number or FatturaPA XML is created any more (AC-NF110-6). R4 (numbering) and
+  R6 (XML) no longer apply to owners.
+- **History.** The stored invoices are not deleted: their XML and courtesy copy stay readable, and every one is marked
+  `ComplianceStatus = legacy_unverified` (no independently verifiable delivery or schema evidence is stored); none is relabelled as compliant.
+- **External documents.** When the agency invoices its fee, its own external fiscal or accounting system issues the invoice. CasaZen links it to the
+  statement version (`OwnerExternalDocumentReference`: provider, immutable external id, number and date, an https link and the SHA-256 of the issued
+  file, `entered` or `verified`, author and time). The link has no amount, VAT, numbering or submission state of CasaZen and changes nothing of the
+  statement; only `agency.owner.financial.manage` adds, verifies or removes it; a removal keeps the row with its reason; the owners read it in the
+  portal only once the statement is published.
+- **Rendiconto.** The statement files print «Rendiconto gestionale - non è una fattura», the version, the period, the totals, the payouts and the
+  withholding evidence; they carry no fiscal series or number.

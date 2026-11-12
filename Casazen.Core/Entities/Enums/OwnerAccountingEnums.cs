@@ -99,6 +99,16 @@ public enum OwnerChargeRecurrence
     Monthly = 2,
 }
 
+/// <summary>How far CasaZen checked a link to an externally issued invoice (E06/F01/US02/T05). Stored as its number.</summary>
+public enum OwnerExternalDocumentStatus
+{
+    /// <summary>Entered by the agency.</summary>
+    Entered = 1,
+
+    /// <summary>Confirmed by a person with the finance permission against the external system.</summary>
+    Verified = 2,
+}
+
 /// <summary>The approval of a charge (E06/F05/US02/T02). Stored as its number.</summary>
 public enum OwnerChargeStatus
 {

@@ -87,6 +87,48 @@ public interface IOwnerAccountingService
     /// 409 <c>owner_ledger_entry_already_reversed</c>; 404 <c>owner_ledger_entry_not_found</c>.
     /// </summary>
     Task<OwnerLedgerEntry> PostCorrectionAsync(Guid orgId, OwnerCorrectionCommand command, string? userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Links an approved or published version to the invoice the agency's external system issued (E06/F01/US02/T05): the link has no amount, VAT, number
+    /// or submission state of CasaZen and changes nothing of the version. 422 <c>owner_external_document_invalid</c> (with the <c>field</c>),
+    /// <c>owner_statement_not_approved</c>; 409 <c>owner_external_document_duplicate</c>.
+    /// </summary>
+    Task<OwnerExternalDocumentReference> AddExternalDocumentAsync(
+        Guid orgId,
+        Guid versionId,
+        OwnerExternalDocumentCommand command,
+        string? userId,
+        CancellationToken ct = default);
+
+    /// <summary>Records that a person with the finance permission checked the link against the external system. 409 <c>owner_external_document_removed</c>.</summary>
+    Task<OwnerExternalDocumentReference> VerifyExternalDocumentAsync(Guid orgId, Guid referenceId, string? userId, CancellationToken ct = default);
+
+    /// <summary>Removes a mistaken link with its reason: the row, its author and time stay. 409 <c>owner_external_document_removed</c>.</summary>
+    Task<OwnerExternalDocumentReference> RemoveExternalDocumentAsync(Guid orgId, Guid referenceId, string? reason, string? userId, CancellationToken ct = default);
+
+    /// <summary>The links of a version, the removed ones included.</summary>
+    Task<IReadOnlyList<OwnerExternalDocumentReference>> ListExternalDocumentsAsync(Guid orgId, Guid versionId, CancellationToken ct = default);
+
+    /// <summary>The links an owner of the portal may read: of its own published versions, not removed.</summary>
+    Task<IReadOnlyList<OwnerExternalDocumentReference>> ListPublishedExternalDocumentsForOwnerUserAsync(Guid ownerUserId, CancellationToken ct = default);
+}
+
+/// <summary>A link to an invoice issued by the agency's external fiscal or accounting system.</summary>
+public sealed record OwnerExternalDocumentCommand
+{
+    public string? Provider { get; init; }
+
+    public string? ExternalId { get; init; }
+
+    public string? ExternalNumber { get; init; }
+
+    public DateOnly ExternalDate { get; init; }
+
+    /// <summary>Where the issued document is (https), optional.</summary>
+    public string? DocumentUrl { get; init; }
+
+    /// <summary>The SHA-256 (hex) of the issued document, optional.</summary>
+    public string? DocumentSha256 { get; init; }
 }
 
 /// <summary>An issue of the month-end readiness: a stable code, what it is about, and whether it blocks the approval and the close.</summary>
@@ -214,6 +256,11 @@ public static class OwnerAccountingErrors
     public const string ChargeNotPending = "owner_charge_not_pending";
     public const string FxRateInvalid = "owner_fx_rate_invalid";
     public const string FxRateExists = "owner_fx_rate_exists";
+    public const string ExternalDocumentInvalid = "owner_external_document_invalid";
+    public const string ExternalDocumentDuplicate = "owner_external_document_duplicate";
+    public const string ExternalDocumentNotFound = "owner_external_document_not_found";
+    public const string ExternalDocumentRemoved = "owner_external_document_removed";
+    public const string OwnerInvoiceIssuanceRemoved = "owner_invoice_issuance_removed";
 }
 
 /// <summary>The codes of the month-end readiness issues (besides the codes of the fiscal profile, <c>owner_fiscal_*</c>).</summary>

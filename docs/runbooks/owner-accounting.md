@@ -72,3 +72,13 @@ accounting for Swiss owners, and the retention law that applies (Italy at least 
   reverses an earlier manual line first. A line of a source is corrected by fixing the source and posting again.
 - **Scope**: the endpoints need an org-wide reach; a collaborator restricted to some properties gets 403 even with the permission.
 - **Not yet**: the import of the outgoing bank movements (a wire marked paid is the evidence of the transfer), the payouts of T03 in the reconciliation.
+
+## External invoice references (E06/F01/US02/T05)
+
+- **No owner invoice in CasaZen.** `POST api/agency-invoices/generate` answers 410 `owner_invoice_issuance_removed`; the stored agency invoices stay
+  readable (`…/xml`, `…/pdf`) and carry `ComplianceStatus = legacy_unverified` (ADR-019 amended).
+- **Link** (`OwnerExternalDocumentReference`): `POST api/owner-accounting/versions/{id}/external-documents` (`agency.owner.financial.manage`) on an
+  approved or published version, with `provider`, `externalId`, `externalNumber`, `externalDate`, optional `documentUrl` (https) and `documentSha256`.
+  `…/external-documents/{id}/verify` records the check against the external system, `…/remove` (with `reason`) removes a mistaken link: the row stays.
+  The link's facts never change (409 `owner_ledger_immutable`) and it never changes the statement.
+- **Owners** read the links of their published versions in `GET api/owner-portal/external-documents`; never a removed one, never before publication.

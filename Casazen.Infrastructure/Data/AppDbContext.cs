@@ -392,6 +392,9 @@ public class AppDbContext(
     public DbSet<OwnerCharge> OwnerCharges { get; set; } = null!;
     public DbSet<OwnerFxRate> OwnerFxRates { get; set; } = null!;
 
+    // The links from the owner statement versions to the invoices of the agency's external fiscal system (E06/F01/US02/T05): ids, numbers, hashes
+    public DbSet<OwnerExternalDocumentReference> OwnerExternalDocumentReferences { get; set; } = null!;
+
     // The check-in guests and the states of a stay sent to Octorate (NF-41, NF-45, E03/F01/US01/T03): ids, hashes and codes, no personal data
     public DbSet<StayGuestOctorateLink> StayGuestOctorateLinks { get; set; } = null!;
     public DbSet<OctorateStayStateSync> OctorateStayStateSyncs { get; set; } = null!;
@@ -2014,6 +2017,11 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new OwnerClosePeriodConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerChargeConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerFxRateConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerExternalDocumentReferenceConfiguration());
+
+        // The invoices of the retired agency-to-owner generator stay readable and are never called compliant (E06/F01/US02/T05): the rows that exist
+        // when the column is added get the legacy code.
+        modelBuilder.Entity<AgencyInvoice>().Property(i => i.ComplianceStatus).HasDefaultValue(AgencyInvoiceCompliance.LegacyUnverified);
 
         // A payment is recorded on its Octorate reservation once (E08/F01/US01/T01, AC-NF74-4): its transaction is unique in the org. Only
         // the payments recorded there are in the index.

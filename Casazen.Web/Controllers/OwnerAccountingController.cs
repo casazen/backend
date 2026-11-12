@@ -281,6 +281,65 @@ public class OwnerAccountingController(
         return StatusCode(StatusCodes.Status201Created, OwnerLedgerEntryDto.From(entry));
     }
 
+    /// <summary>The links of a version to the invoices of the agency's external fiscal system, the removed ones included (E06/F01/US02/T05).</summary>
+    [HttpGet("versions/{versionId:guid}/external-documents")]
+    [ProducesResponseType(typeof(List<OwnerExternalDocumentDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<List<OwnerExternalDocumentDto>>> ExternalDocuments(Guid versionId)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        var references = await accounting.ListExternalDocumentsAsync(orgId, versionId, HttpContext.RequestAborted);
+        return Ok(references.Select(OwnerExternalDocumentDto.From).ToList());
+    }
+
+    /// <summary>
+    /// Links an approved or published version to the invoice the agency's external system issued: CasaZen keeps the link, never an amount, a number or a
+    /// submission state of its own. 422 <c>owner_external_document_invalid</c> (with the <c>field</c>), <c>owner_statement_not_approved</c>; 409
+    /// <c>owner_external_document_duplicate</c>.
+    /// </summary>
+    [HttpPost("versions/{versionId:guid}/external-documents")]
+    [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
+    [ProducesResponseType(typeof(OwnerExternalDocumentDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<OwnerExternalDocumentDto>> AddExternalDocument(Guid versionId, [FromBody] OwnerExternalDocumentCommand command)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        var reference = await accounting.AddExternalDocumentAsync(orgId, versionId, command, User.GetUserId(), HttpContext.RequestAborted);
+        return CreatedAtAction(nameof(ExternalDocuments), new { versionId }, OwnerExternalDocumentDto.From(reference));
+    }
+
+    /// <summary>Records that the link was checked against the external system. 409 <c>owner_external_document_removed</c>.</summary>
+    [HttpPost("external-documents/{referenceId:guid}/verify")]
+    [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
+    [ProducesResponseType(typeof(OwnerExternalDocumentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<OwnerExternalDocumentDto>> VerifyExternalDocument(Guid referenceId)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        return Ok(OwnerExternalDocumentDto.From(await accounting.VerifyExternalDocumentAsync(orgId, referenceId, User.GetUserId(), HttpContext.RequestAborted)));
+    }
+
+    /// <summary>Removes a mistaken link with its reason (<c>{ reason }</c>): the link stays as evidence. 409 <c>owner_external_document_removed</c>.</summary>
+    [HttpPost("external-documents/{referenceId:guid}/remove")]
+    [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
+    [ProducesResponseType(typeof(OwnerExternalDocumentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<OwnerExternalDocumentDto>> RemoveExternalDocument(Guid referenceId, [FromBody] OwnerExternalDocumentRemoval request)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        var reference = await accounting.RemoveExternalDocumentAsync(orgId, referenceId, request.Reason, User.GetUserId(), HttpContext.RequestAborted);
+        return Ok(OwnerExternalDocumentDto.From(reference));
+    }
+
     /// <summary>The caller's org, only when its reach is the whole org (the owner accounting spans the properties of the owners).</summary>
     private async Task<Guid?> OrgAsync()
     {
@@ -291,6 +350,34 @@ public class OwnerAccountingController(
         var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct);
         return scope is { IsOrgWide: true } ? orgId : null;
     }
+}
+
+/// <summary>The removal of a mistaken link to an external invoice, with its reason.</summary>
+public sealed record OwnerExternalDocumentRemoval(string? Reason);
+
+/// <summary>A link of a version to an invoice issued by the agency's external fiscal system, with its audit facts.</summary>
+public sealed record OwnerExternalDocumentDto(
+    Guid Id,
+    Guid StatementVersionId,
+    Guid OwnerId,
+    string Provider,
+    string ExternalId,
+    string ExternalNumber,
+    DateOnly ExternalDate,
+    string? DocumentUrl,
+    string? DocumentSha256,
+    OwnerExternalDocumentStatus Status,
+    DateTime? VerifiedAt,
+    string? VerifiedByUserId,
+    DateTime? RemovedAt,
+    string? RemovedByUserId,
+    string? RemovalReason,
+    DateTime CreatedAt,
+    string? CreatedByUserId)
+{
+    public static OwnerExternalDocumentDto From(OwnerExternalDocumentReference r) => new(
+        r.Id, r.OwnerStatementVersionId, r.PropertyOwnerId, r.Provider, r.ExternalId, r.ExternalNumber, r.ExternalDate, r.DocumentUrl, r.DocumentSha256,
+        r.Status, r.VerifiedAt, r.VerifiedByUserId, r.RemovedAt, r.RemovedByUserId, r.RemovalReason, r.CreatedAt, r.CreatedByUserId);
 }
 
 /// <summary>The legal hold of a month: set with its reason, or lifted.</summary>

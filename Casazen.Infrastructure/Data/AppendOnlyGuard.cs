@@ -10,7 +10,8 @@ namespace Casazen.Infrastructure.Data;
 /// <summary>
 /// What <see cref="AppDbContext"/> refuses to save (E06/F05/US02/T02, AC-NF110-1, AC-NF110-2): a change or a removal of a row that is evidence
 /// (<see cref="IAppendOnlyRecord"/>, the owner ledger lines), the removal of a statement version, and any change of a published version other than its
-/// move to superseded (or of a superseded one at all). The save throws 409 <c>owner_ledger_immutable</c> before anything is written.
+/// move to superseded (or of a superseded one at all), and the removal or a change of the facts of a link to an external invoice (E06/F01/US02/T05).
+/// The save throws 409 <c>owner_ledger_immutable</c> before anything is written.
 /// </summary>
 internal static class AppendOnlyGuard
 {
@@ -19,6 +20,16 @@ internal static class AppendOnlyGuard
         nameof(OwnerStatementVersion.Status),
         nameof(OwnerStatementVersion.SupersededByVersionId),
         nameof(OwnerStatementVersion.SupersededAt),
+    ];
+
+    private static readonly HashSet<string> ExternalReferenceProperties =
+    [
+        nameof(OwnerExternalDocumentReference.Status),
+        nameof(OwnerExternalDocumentReference.VerifiedAt),
+        nameof(OwnerExternalDocumentReference.VerifiedByUserId),
+        nameof(OwnerExternalDocumentReference.RemovedAt),
+        nameof(OwnerExternalDocumentReference.RemovedByUserId),
+        nameof(OwnerExternalDocumentReference.RemovalReason),
     ];
 
     public static void Check(ChangeTracker tracker)
@@ -32,6 +43,11 @@ internal static class AppendOnlyGuard
                 throw Immutable();
 
             if (entry.Entity is OwnerStatementVersion version && !MayChange(entry, version))
+                throw Immutable();
+
+            // A link to an external invoice is never deleted and its facts never change: only its verification and its removal are recorded.
+            if (entry.Entity is OwnerExternalDocumentReference
+                && (entry.State == EntityState.Deleted || entry.Properties.Any(p => p.IsModified && !ExternalReferenceProperties.Contains(p.Metadata.Name))))
                 throw Immutable();
         }
     }
