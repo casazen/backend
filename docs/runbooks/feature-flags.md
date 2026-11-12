@@ -63,7 +63,9 @@ function that sends what a guest wrote to the provider. It is off until the prod
 Task E05/F05/US01/T01 (AI assistant, NF-66, NF-67, PO-08, PO-09) adds `MessageAssistant`: the assistant that answers the guests' messages (the knowledge base of each
 property, the rules of the organization, the situations it recognizes and, with the later tasks of the feature, the drafts, the lessons and the auto-send gate).
 It is off until the privacy notice, the processing agreement and the sub-processor details of PO-09 exist; even with it on each organization has its own switch,
-off by default (the other tasks of feature E05/F05 only read the flag).
+off by default (the other tasks of feature E05/F05 only read the flag). Since E05/F05/US02/T01 it also gates the drafts: off, no message of a guest is queued for the
+assistant (a job queued before does nothing) and `POST api/assistant/threads/{threadKey}/draft` and `POST api/assistant/simulate` answer 404; on, every draft goes to
+the approval queue and nothing is sent by itself until the gate of E05/F05/US03 ([`message-assistant.md`](message-assistant.md)).
 
 The functions of the redesign wave that had a flag of their own (the new interface, the org team and its activity log, the scheduled
 change of the rental mode, the in-app notifications, the global search) are always on: they have no flag any more, and a

@@ -168,6 +168,19 @@ public static class PushDeliveryKeys
     }
 
     /// <summary>
+    /// A message of a guest the assistant judged urgent (E05/F05/US02/T01, NF-67), to one host user: one per message and user, and not the key of the alert of the new message
+    /// (<see cref="OtaMessage"/>, <see cref="GuestMessage"/>), which the same person had already: the urgent alert is one more push and one more notification. A user id too long for the
+    /// 200 characters of a key is replaced by its SHA-256.
+    /// </summary>
+    public static string UrgentGuestMessage(Guid messageId, string userId)
+    {
+        var key = $"urgent-msg:{messageId:N}:{userId}";
+        return key.Length <= 200
+            ? key
+            : $"urgent-msg:{messageId:N}:{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(userId)))}";
+    }
+
+    /// <summary>
     /// An item of the approval queue waits for a decision (E05/F04/US01/T02, NF-68), to one host user who may decide: one per alert and user, so an alert
     /// delivered again is one push and one notification. <paramref name="raisedAtUtc"/> is the instant the alert was raised (whole seconds): an item that
     /// goes back to pending with a new text is alerted again, with a key of its own. The key is also the delivery key of the in-app notification. A user id

@@ -22,6 +22,8 @@ namespace Casazen.Infrastructure.Services;
 /// <see cref="ApprovalQueueRules.UnexpectedErrorCode"/> and let through.</item>
 /// <item><b>Reach.</b> Every item is read in the org of the scope and through <see cref="ApprovalQueueScope.InScope"/>: an item of a property the caller does not reach is a 404.</item>
 /// <item><b>Nothing of the text in a log</b>: ids, the type and a number of characters.</item>
+/// <item><b>The observers of the decisions</b> (<see cref="IApprovalDecisionObserver"/>, E05/F05/US02/T01: the lessons and the trust measure of the assistant) are told after every
+/// approval, rejection and edit, once it is saved; one that fails is logged and never undoes the decision. A second approval of an item already approved tells nobody again.</item>
 /// </list>
 /// </remarks>
 public class ApprovalQueueService(
@@ -30,7 +32,8 @@ public class ApprovalQueueService(
     IApprovalOriginActionRegistry actions,
     IInternalActivityService activities,
     ApprovalAlertDelivery alerts,
-    ILogger<ApprovalQueueService> logger) : IApprovalQueueService
+    ILogger<ApprovalQueueService> logger,
+    IEnumerable<IApprovalDecisionObserver>? observers = null) : IApprovalQueueService
 {
     private const int ExpirationDays = ApprovalQueueRules.ExpirationDays;
     private const int ContentVersionMaxLength = 100;
@@ -201,6 +204,7 @@ public class ApprovalQueueService(
             edited.Length,
             item.EditedContentText is null ? "back to the original" : "edited");
 
+        await TellObserversAsync(new ApprovalDecision(item, null, ApprovalDecisionKind.Edited, userId));
         return item;
     }
 
@@ -293,7 +297,9 @@ public class ApprovalQueueService(
             finalText.Length);
 
         await CloseTodoAsync(item, userId, CancellationToken.None);
-        return new ApprovalDecision(item, actionState);
+        var decision = new ApprovalDecision(item, actionState, ApprovalDecisionKind.Approved, userId);
+        await TellObserversAsync(decision);
+        return decision;
     }
 
     /// <inheritdoc/>
@@ -335,6 +341,7 @@ public class ApprovalQueueService(
 
         // The rejection is saved: its "To do" is closed whatever happens to the request (as for an approval). One that could not be closed is found by the daily job of the queue.
         await CloseTodoAsync(item, userId, CancellationToken.None);
+        await TellObserversAsync(new ApprovalDecision(item, null, ApprovalDecisionKind.Rejected, userId));
         return item;
     }
 
@@ -444,6 +451,31 @@ public class ApprovalQueueService(
         item.OriginActionStatus = ApprovalOriginActionStatus.Failed;
         item.OriginActionError = code.Length <= ApprovalQueueItem.OriginActionErrorMaxLength ? code : code[..ApprovalQueueItem.OriginActionErrorMaxLength];
         await db.SaveChangesAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Tells every <see cref="IApprovalDecisionObserver"/> about a decision that is saved, whatever happens to the request. One that fails is logged (the item, the org, the kind of
+    /// decision and the type of the error) and the next one is still told: the decision stands.
+    /// </summary>
+    private async Task TellObserversAsync(ApprovalDecision decision)
+    {
+        foreach (var observer in observers ?? [])
+        {
+            try
+            {
+                await observer.OnDecidedAsync(decision, CancellationToken.None);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(
+                    ex,
+                    "An observer of the decisions ({Observer}) failed on item {QueueItemId} of org {OrgId} ({Kind}): the decision stands",
+                    observer.GetType().Name,
+                    decision.Item.Id,
+                    decision.Item.OrgId,
+                    decision.Kind);
+            }
+        }
     }
 
     /// <summary>

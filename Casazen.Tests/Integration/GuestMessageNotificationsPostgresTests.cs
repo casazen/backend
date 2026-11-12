@@ -1,9 +1,12 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
+using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.Services;
@@ -323,13 +326,60 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         Assert.Single(await service.ListUnreadForHostAsync(new HostScope(world.OrgId)));
     }
 
+    // ─── The assistant (E05/F05/US02/T01) ───
+
+    [PostgresFact]
+    public async Task SendAsGuest_RecordsTheEventOfTheMessageForTheAssistant_InTheSameSave_AndAReplayRecordsNoSecond()
+    {
+        var world = await SeedAsync();
+
+        GuestMessageReceivedPayload? payload;
+        Guid messageId;
+        await using (var db = NewDb())
+        {
+            var booking = await db.Bookings.Include(b => b.Property).Include(b => b.Org).Include(b => b.Guest).SingleAsync(b => b.Id == world.BookingId);
+            var sent = await Service(db, new DomainEventRecorder(db, NullTenantContext.Instance, _clock)).SendAsGuestAsync(booking, Secret, "key-assistant-1");
+            await Service(db, new DomainEventRecorder(db, NullTenantContext.Instance, _clock)).SendAsGuestAsync(booking, Secret, "key-assistant-1");
+            messageId = sent.Message.Id;
+        }
+
+        await using (var read = NewDb())
+        {
+            var outbox = Assert.Single(await read.OutboxEvents.AsNoTracking().Where(e => e.EventType == DomainEventType.GuestMessageReceived).ToListAsync());
+            Assert.Equal((world.OrgId, messageId, $"direct-msg:{messageId:N}"), (outbox.OrgId, outbox.EntityId, outbox.DedupKey));
+            payload = System.Text.Json.JsonSerializer.Deserialize<GuestMessageReceivedPayload>(outbox.PayloadJson);
+            Assert.DoesNotContain(Secret, outbox.PayloadJson, StringComparison.Ordinal);
+            Assert.DoesNotContain(GuestName, outbox.PayloadJson, StringComparison.Ordinal);
+        }
+
+        Assert.NotNull(payload);
+        Assert.Equal(MessageThreadKey.ForDirect(world.BookingId).ToString(), payload.ThreadKey);
+        Assert.Equal(GuestMessageReceivedPayload.DirectSource, payload.Source);
+        Assert.Equal(world.PropertyId, payload.PropertyId);
+        Assert.Equal(world.BookingId, payload.BookingId);
+    }
+
+    [PostgresFact]
+    public async Task ReplyAsHost_ByAPerson_TellsTheObserversOfTheReplies_AnAnswerWithNoUserDoesNot()
+    {
+        var world = await SeedAsync();
+        var observer = new Mock<IThreadReplyObserver>();
+
+        await using (var db = NewDb())
+            await Service(db, replyObservers: [observer.Object]).ReplyAsHostAsync(world.BookingId, "Risposta", "key-host-0001", HostUser);
+        await using (var db = NewDb())
+            await Service(db, replyObservers: [observer.Object]).ReplyAsHostAsync(world.BookingId, "Automatica", "key-host-0002", null);
+
+        observer.Verify(o => o.OnHostReplyAsync(world.OrgId, MessageThreadKey.ForDirect(world.BookingId), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     // ─── Helpers ───
 
     private sealed record World(Guid OrgId, Guid BookingId, Guid PropertyId, string HostEmail);
 
     private AppDbContext NewDb() => _database!.CreateContext();
 
-    private GuestMessageService Service(AppDbContext db)
+    private GuestMessageService Service(AppDbContext db, IDomainEventRecorder? events = null, IEnumerable<IThreadReplyObserver>? replyObservers = null)
     {
         var links = new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = "https://public.example.test/" }));
         var delivery = new HostMessageAlertDelivery(
@@ -349,7 +399,9 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
             new InAppNotificationService(db, _clock, NullLogger<InAppNotificationService>.Instance),
             _publisher.Object,
             NullLogger<GuestMessageService>.Instance,
-            _clock);
+            _clock,
+            events,
+            replyObservers);
     }
 
     private async Task<World> SeedAsync(bool collaboratorInChargeWithoutAccess = false)

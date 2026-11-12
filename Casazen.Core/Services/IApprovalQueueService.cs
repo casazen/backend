@@ -132,6 +132,12 @@ public interface IApprovalQueueService
 /// <summary>
 /// The outcome of <see cref="IApprovalQueueService.ApproveAsync"/>: the item as it is now and, for the action that ran, how far it went
 /// (<see cref="ApprovalActionResult.State"/>: <c>Sent</c>, <c>Created</c>, <c>WaitingAuthorization</c> or <c>ManualVerify</c> for a message, <c>Scheduled</c> or
-/// <c>Approved</c> for a campaign). <paramref name="ActionState"/> is <c>null</c> for a pure decision and for an item that was already approved.
+/// <c>Approved</c> for a campaign). <paramref name="ActionState"/> is <c>null</c> for a pure decision and for an item that was already approved. The same record tells the
+/// <see cref="IApprovalDecisionObserver"/> about every decision (E05/F05/US02/T01): <paramref name="Kind"/> (an approval, a rejection, an edit) and the person who decided
+/// (<paramref name="UserId"/>).
 /// </summary>
-public sealed record ApprovalDecision(ApprovalQueueItem Item, string? ActionState);
+public sealed record ApprovalDecision(
+    ApprovalQueueItem Item,
+    string? ActionState,
+    ApprovalDecisionKind Kind = ApprovalDecisionKind.Approved,
+    string? UserId = null);

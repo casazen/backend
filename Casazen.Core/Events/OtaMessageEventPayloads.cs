@@ -21,6 +21,12 @@ public sealed record GuestMessageReceivedPayload(
 {
     /// <summary>The <see cref="Source"/> of a message that comes from a channel through the channel manager.</summary>
     public const string OtaSource = "Ota";
+
+    /// <summary>
+    /// The <see cref="Source"/> of a message the guest of a direct booking wrote in the guest area (E05/F05/US02/T01): the key is <c>direct:{booking id}</c>, the channel <c>Direct</c>.
+    /// The assistant reads it; the alert to the hosts and the routines do not (the guest area alerts by itself, and the routines start on the messages of a channel only).
+    /// </summary>
+    public const string DirectSource = "Direct";
 }
 
 /// <summary>
