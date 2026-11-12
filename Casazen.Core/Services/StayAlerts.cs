@@ -22,6 +22,17 @@ public enum StayAlertKind
 
     /// <summary>Check-out day: complete the check-out.</summary>
     CheckoutReminder,
+
+    // E03/F02/US02/T01 (NF-52, CHK-12): the kinds below are appended, never renumbered.
+
+    /// <summary>The communication was sent, entrusted to the channel manager or declared sent, and no receipt is archived the day after.</summary>
+    ReceiptMissing,
+
+    /// <summary>A stay of at most one night (the 6-hour term) that is not entrusted to the channel manager arrives within a few hours.</summary>
+    ShortStayAtRisk,
+
+    /// <summary>A stay over 30 nights, which the channel manager does not send by itself, arrives tomorrow.</summary>
+    OverThirtyNights,
 }
 
 /// <summary>One alert to deliver for a booking.</summary>
@@ -84,6 +95,18 @@ public static class StayAlertSchedule
     public static readonly TimeSpan LastStageValidity = TimeSpan.FromHours(24);
 
     /// <summary>
+    /// The only stage of <see cref="StayAlertType.ReceiptMissing"/>, <see cref="StayAlertType.ShortStayAtRisk"/> and
+    /// <see cref="StayAlertType.OverThirtyNights"/> (E03/F02/US02/T01): each is sent once for a check-in date.
+    /// </summary>
+    public const int SingleStage = 1;
+
+    /// <summary>
+    /// How long the single stage of the receipt and of the over-30-nights alerts stays due after its time: a stage that is due only because the
+    /// job was down is dropped after it, never sent late as a backlog.
+    /// </summary>
+    public static readonly TimeSpan SingleStageValidity = TimeSpan.FromHours(24);
+
+    /// <summary>
     /// Highest Alloggiati deadline stage due at <paramref name="nowUtc"/> for a stay whose communication is not sent,
     /// or null when none is due yet or the last stage is more than <see cref="LastStageValidity"/> old.
     /// </summary>
@@ -133,6 +156,97 @@ public static class StayAlertSchedule
 
         return null;
     }
+
+    /// <summary>
+    /// The «receipt missing» stage (E03/F02/US02/T01, CHK-12): the communication was sent, entrusted to the channel manager or declared sent at
+    /// <paramref name="communicatedAtUtc"/> and no receipt is archived (the caller says so: the compliance status engine decides it, never a
+    /// copy of its rule). Due the day after the communication (Europe/Rome) at <see cref="StayAlertOptions.ReceiptMissingHourLocal"/>, and
+    /// dropped <see cref="SingleStageValidity"/> later: a job that was down never sends it as a backlog. For an entrusted stay the caller passes
+    /// the legal deadline as the instant of the communication, so the stage is due the day after the deadline.
+    /// </summary>
+    public static StayAlertStep? DueReceiptMissingStep(
+        Booking booking,
+        DateTime communicatedAtUtc,
+        StayAlertOptions options,
+        DateTime nowUtc)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var communicatedOn = RomeCalendar.TodayAt(new DateTimeOffset(AsUtc(communicatedAtUtc)));
+        var dueAt = RomeAt(communicatedOn.AddDays(1), options.ReceiptMissingHourLocal);
+        return IsDueOnce(nowUtc, dueAt)
+            ? SingleStageStep(booking, StayAlertType.ReceiptMissing, StayAlertKind.ReceiptMissing, deadlineUtc: null, shortStay: false)
+            : null;
+    }
+
+    /// <summary>
+    /// The «short stay at risk» stage (E03/F02/US02/T01, CHK-12): a stay of at most one night has the 6-hour term, and the daily run of the
+    /// channel manager does not cover it unless its guests were entrusted before the arrival. When the stay is not
+    /// <paramref name="entrusted"/> it is due from <see cref="StayAlertOptions.ShortStayRiskHours"/> before the arrival (the registered one, or
+    /// the start of the arrival day) until the legal deadline, which the overdue stage takes over: after it, nothing.
+    /// </summary>
+    public static StayAlertStep? DueShortStayRiskStep(
+        Booking booking,
+        bool entrusted,
+        StayAlertOptions options,
+        DateTime nowUtc)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (entrusted || !AlloggiatiTerms.IsShortStay(booking.CheckInDate, booking.CheckOutDate))
+            return null;
+
+        var riskFrom = AlloggiatiTerms.ArrivalInstantUtc(booking.ArrivedAt, booking.CheckInDate)
+            .AddHours(-Math.Max(0, options.ShortStayRiskHours));
+        var deadline = AlloggiatiTerms.DeadlineUtc(booking);
+        return nowUtc >= riskFrom && nowUtc < deadline
+            ? SingleStageStep(
+                booking,
+                StayAlertType.ShortStayAtRisk,
+                StayAlertKind.ShortStayAtRisk,
+                booking.ArrivedAt is null ? null : deadline,
+                shortStay: true)
+            : null;
+    }
+
+    /// <summary>
+    /// The «over 30 nights» stage (E03/F02/US02/T01, CHK-12): the portal takes at most <see cref="AlloggiatiTerms.MaxStayDaysPerSchedina"/> days
+    /// on one record and the channel manager does not send a longer stay by itself. One alert the day before the arrival at
+    /// <see cref="StayAlertOptions.OverThirtyNightsHourLocal"/> (Europe/Rome), dropped <see cref="SingleStageValidity"/> later.
+    /// </summary>
+    public static StayAlertStep? DueOverThirtyNightsStep(Booking booking, StayAlertOptions options, DateTime nowUtc)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (AlloggiatiTerms.StayDays(booking.CheckInDate, booking.CheckOutDate) <= AlloggiatiTerms.MaxStayDaysPerSchedina)
+            return null;
+
+        var dueAt = RomeAt(booking.CheckInDate.Date.AddDays(-1), options.OverThirtyNightsHourLocal);
+        return IsDueOnce(nowUtc, dueAt)
+            ? SingleStageStep(
+                booking,
+                StayAlertType.OverThirtyNights,
+                StayAlertKind.OverThirtyNights,
+                booking.ArrivedAt is null ? null : AlloggiatiTerms.DeadlineUtc(booking),
+                shortStay: false)
+            : null;
+    }
+
+    private static StayAlertStep SingleStageStep(Booking booking, StayAlertType type, StayAlertKind kind, DateTime? deadlineUtc, bool shortStay) =>
+        new(type, booking.CheckInDate.Date, SingleStage, new StayAlert(booking.Id, kind, deadlineUtc, shortStay));
+
+    /// <summary>From <paramref name="dueAt"/> until <see cref="SingleStageValidity"/> later.</summary>
+    private static bool IsDueOnce(DateTime nowUtc, DateTime dueAt) => nowUtc >= dueAt && nowUtc < dueAt + SingleStageValidity;
+
+    private static DateTime AsUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Local => value.ToUniversalTime(),
+        DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+        _ => value,
+    };
 
     /// <summary>
     /// The deadline the alerts use: the legal one when the arrival is registered, otherwise the end of the arrival day

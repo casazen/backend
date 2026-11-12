@@ -57,6 +57,17 @@ public class NotificationService(
             StayAlertKind.CheckoutReminder => (
                 EmailTemplates.Names.CheckoutReminder,
                 EmailTemplates.CheckoutReminder(culture, guestName, propertyName, booking.CheckOutDate, bookingUrl)),
+
+            // E03/F02/US02/T01 (CHK-12): the new stages name the property and the day, never the guest.
+            StayAlertKind.ReceiptMissing => (
+                EmailTemplates.Names.ReceiptMissing,
+                EmailTemplates.ReceiptMissing(culture, propertyName, booking.CheckInDate, bookingUrl)),
+            StayAlertKind.ShortStayAtRisk => (
+                EmailTemplates.Names.ShortStayAtRisk,
+                EmailTemplates.ShortStayAtRisk(culture, propertyName, booking.CheckInDate, alert.DeadlineUtc, bookingUrl)),
+            StayAlertKind.OverThirtyNights => (
+                EmailTemplates.Names.OverThirtyNights,
+                EmailTemplates.OverThirtyNights(culture, propertyName, booking.CheckInDate, bookingUrl)),
             _ => throw new ArgumentOutOfRangeException(nameof(alert), alert.Kind, "Unknown stay alert"),
         };
 
@@ -92,6 +103,63 @@ public class NotificationService(
                 alert.Kind,
                 booking.Id,
                 booking.OrgId);
+        }
+    }
+
+    public async Task SendComplianceAlertAsync(
+        ComplianceAlert alert,
+        IReadOnlyCollection<string> emails,
+        string deliveryKey,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(alert);
+        ArgumentNullException.ThrowIfNull(emails);
+        ArgumentException.ThrowIfNullOrWhiteSpace(deliveryKey);
+
+        // Background job: no tenant filter; the property id comes from the job's own query.
+        var property = await db.Properties
+            .AsNoTracking()
+            .Where(p => p.Id == alert.PropertyId)
+            .Select(p => new { p.Name, p.OrgId })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (property is null)
+        {
+            logger.LogWarning("Compliance alert {Type} skipped because property {PropertyId} was not found", alert.Type, alert.PropertyId);
+            return;
+        }
+
+        var culture = EmailTemplates.DefaultCulture;
+        // Validated at startup outside Development/Testing (FD-13); without it the email has no button.
+        var complianceUrl = links.IsConfigured ? links.HostCompliance() : null;
+        var (template, email) = alert.Type == Casazen.Core.Entities.ComplianceAlertType.ConnectionInactive
+            ? (EmailTemplates.Names.ComplianceConnectionAlert, EmailTemplates.ComplianceConnectionAlert(culture, alert, property.Name, complianceUrl))
+            : (EmailTemplates.Names.CompliancePeriodAlert, EmailTemplates.CompliancePeriodAlert(culture, alert, property.Name, complianceUrl));
+
+        // Delivered by EmailDeliveryJob (retries on transient provider errors); a missing address or provider is logged by the queue.
+        foreach (var address in emails.Where(a => !string.IsNullOrWhiteSpace(a)).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (!emailQueue.Enqueue(address, email, template))
+            {
+                logger.LogWarning(
+                    "Compliance alert {Type} email of property {PropertyId} not queued (org {OrgId})",
+                    alert.Type,
+                    alert.PropertyId,
+                    property.OrgId);
+            }
+        }
+
+        // Queued on PushDeliveryJob (MO-04): the key of the stage makes a retried job send it once per device.
+        var push = EmailTemplates.CompliancePush(culture, alert, property.Name);
+        if (!pushNotifications.Enqueue(
+                deliveryKey,
+                PushAudience.PropertyHosts(alert.PropertyId),
+                new PushNotificationPayload(push.Title, push.Body, PushTypes.ForComplianceAlert(alert.Type), null, PushRoutes.Properties)))
+        {
+            logger.LogWarning(
+                "Compliance alert {Type} push of property {PropertyId} not queued (org {OrgId})",
+                alert.Type,
+                alert.PropertyId,
+                property.OrgId);
         }
     }
 

@@ -139,6 +139,14 @@ public static class RecurringJobsRegistration
             Cron.Hourly,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // E03/F02/US02/T02 (NF-52, CHK-12): the monthly compliance summary of every active short-rent org, on the first of the month at 07:00 Europe/Rome.
+        // Always registered: the service reads Features:ComplianceTrafficLight at each run and sends nothing while it is off.
+        recurringJobManager.AddOrUpdate<ComplianceMonthlySummaryJob>(
+            ComplianceMonthlySummaryJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            ComplianceMonthlySummaryJob.Cron,
+            new RecurringJobOptions { TimeZone = RomeCalendar.TimeZone });
+
         // CO-20: daily CIN alert, after the nightly compliance check of CO-06.
         recurringJobManager.AddOrUpdate<CinDeadlineAlertJob>(
             CinDeadlineAlertJob.RecurringJobId,

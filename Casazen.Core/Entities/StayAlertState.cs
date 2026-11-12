@@ -61,4 +61,24 @@ public enum StayAlertType
 
     /// <summary>Check-out day reminder to the host: one stage.</summary>
     CheckoutReminder = 3,
+
+    // E03/F02/US02/T01 (NF-52, CHK-12): the values below are appended, never renumbered; the rows already stored keep their meaning.
+
+    /// <summary>
+    /// The communication was sent, entrusted to the channel manager or declared sent, and no receipt is archived the day after (at
+    /// <c>StayAlerts:ReceiptMissingHourLocal</c>): one stage.
+    /// </summary>
+    ReceiptMissing = 4,
+
+    /// <summary>
+    /// A stay of at most one night (the 6-hour term) that is not entrusted to the channel manager, when the arrival is within
+    /// <c>StayAlerts:ShortStayRiskHours</c>: one stage.
+    /// </summary>
+    ShortStayAtRisk = 5,
+
+    /// <summary>
+    /// A stay over 30 nights, which the channel manager does not send by itself: one alert the day before the arrival, at
+    /// <c>StayAlerts:OverThirtyNightsHourLocal</c>.
+    /// </summary>
+    OverThirtyNights = 6,
 }

@@ -355,6 +355,12 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     public string HostCinCompliance() => Build("/app/short-rent/compliance/cin");
 
     /// <summary>
+    /// Host console: the compliance page «am I compliant?» of the short-rent area (route <c>/app/short-rent/compliance</c>, E03/F02/US02, NF-52): the
+    /// alerts about a period and the monthly summary lead to it, where the open items and the guided hand-off to the channel manager are.
+    /// </summary>
+    public string HostCompliance() => Build("/app/short-rent/compliance");
+
+    /// <summary>
     /// Plan page of the host console (route <c>/app/short-rent/settings/plan</c> of the web app): the default page Stripe
     /// Checkout and the billing portal return to (PL-11, A1-31) when the client names no page.
     /// </summary>
