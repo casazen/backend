@@ -185,6 +185,7 @@ public class OctorateJobsRegistrationTests
                      (typeof(ICalendarPushService), typeof(CalendarPushService)),
                      (typeof(ICalendarChangeRunner), typeof(CalendarChangeRunner)),
                      (typeof(ICalendarChangeQueries), typeof(CalendarChangeQueries)),
+                     (typeof(ICalendarChangeService), typeof(CalendarChangeService)),
                  })
         {
             var descriptor = Assert.Single(services, d => d.ServiceType == service);

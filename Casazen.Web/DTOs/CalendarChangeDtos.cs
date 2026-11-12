@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
@@ -119,6 +121,259 @@ public sealed class CalendarChangePropertyDto
             ChunkCount = property.ChunkCount,
             From = property.From,
             To = property.To,
+        };
+    }
+}
+
+/// <summary>What to do to one value of the rules of the nights: <c>Keep</c> it (the default), <c>Set</c> it to <c>value</c>, or <c>Clear</c> it.</summary>
+/// <typeparam name="T">The type of the value: a price, a number of nights or days, a flag.</typeparam>
+public sealed class FieldPatchDto<T>
+    where T : struct
+{
+    /// <summary><c>Keep</c>, <c>Set</c> or <c>Clear</c>.</summary>
+    public FieldPatchKind Action { get; init; } = FieldPatchKind.Keep;
+
+    /// <summary>The value to set; required with <c>Set</c>, ignored otherwise.</summary>
+    public T? Value { get; init; }
+
+    /// <summary>The patch; <c>false</c> for a <c>Set</c> without a value.</summary>
+    public bool TryToPatch(out FieldPatch<T> patch)
+    {
+        switch (Action)
+        {
+            case FieldPatchKind.Set when Value is { } value:
+                patch = FieldPatch<T>.Set(value);
+                return true;
+            case FieldPatchKind.Set:
+                patch = FieldPatch<T>.Keep;
+                return false;
+            case FieldPatchKind.Clear:
+                patch = FieldPatch<T>.Clear;
+                return true;
+            default:
+                patch = FieldPatch<T>.Keep;
+                return true;
+        }
+    }
+}
+
+/// <summary>
+/// The body of <c>POST /api/calendar/changes/preview</c> and <c>POST /api/calendar/changes</c> (E08/F05/US02/T03): one to fifty properties, a period of at most 366 days
+/// (both days included), optionally only some weekdays, and a <c>{ action, value }</c> for each value of the rules of the nights. A value nobody mentions is kept.
+/// </summary>
+public sealed class CalendarChangeRequestDto
+{
+    [Required]
+    public List<Guid>? PropertyIds { get; init; }
+
+    [Required]
+    public DateOnly? From { get; init; }
+
+    [Required]
+    public DateOnly? To { get; init; }
+
+    /// <summary>Only the nights of these weekdays; absent for every day. An empty list is refused, never read as «all».</summary>
+    public List<DayOfWeek>? DaysOfWeek { get; init; }
+
+    public FieldPatchDto<decimal>? Price { get; init; }
+
+    public FieldPatchDto<int>? MinNights { get; init; }
+
+    public FieldPatchDto<int>? MaxNights { get; init; }
+
+    public FieldPatchDto<bool>? ClosedToArrival { get; init; }
+
+    public FieldPatchDto<bool>? ClosedToDeparture { get; init; }
+
+    public FieldPatchDto<int>? MinAdvanceDays { get; init; }
+
+    public FieldPatchDto<int>? MaxAdvanceDays { get; init; }
+
+    /// <summary>The request of the service; <c>false</c> when a <c>Set</c> has no value.</summary>
+    public bool TryToRequest([NotNullWhen(true)] out CalendarChangeRequest? request)
+    {
+        request = null;
+        if (!TryPatch(Price, out var price)
+            || !TryPatch(MinNights, out var minNights)
+            || !TryPatch(MaxNights, out var maxNights)
+            || !TryPatch(ClosedToArrival, out var closedToArrival)
+            || !TryPatch(ClosedToDeparture, out var closedToDeparture)
+            || !TryPatch(MinAdvanceDays, out var minAdvanceDays)
+            || !TryPatch(MaxAdvanceDays, out var maxAdvanceDays))
+        {
+            return false;
+        }
+
+        request = new CalendarChangeRequest(
+            PropertyIds ?? [],
+            From!.Value,
+            To!.Value,
+            DaysOfWeek is null ? null : new HashSet<DayOfWeek>(DaysOfWeek),
+            new DayRulePatch(price, minNights, maxNights, closedToArrival, closedToDeparture, minAdvanceDays, maxAdvanceDays));
+        return true;
+    }
+
+    private static bool TryPatch<T>(FieldPatchDto<T>? dto, out FieldPatch<T> patch)
+        where T : struct
+    {
+        if (dto is null)
+        {
+            patch = FieldPatch<T>.Keep;
+            return true;
+        }
+
+        return dto.TryToPatch(out patch);
+    }
+}
+
+/// <summary>What a night holds: the price a guest is quoted and the rules in force (the same members as a day of <c>GET /api/calendar/days</c>).</summary>
+public sealed class CalendarChangeValuesDto
+{
+    public long PriceCents { get; init; }
+
+    public int MinNights { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? MaxNights { get; init; }
+
+    public bool ClosedToArrival { get; init; }
+
+    public bool ClosedToDeparture { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? MinAdvanceDays { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? MaxAdvanceDays { get; init; }
+
+    public static CalendarChangeValuesDto From(CalendarChangeValues values)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+
+        return new CalendarChangeValuesDto
+        {
+            PriceCents = values.PriceCents,
+            MinNights = values.MinNights,
+            MaxNights = values.MaxNights,
+            ClosedToArrival = values.ClosedToArrival,
+            ClosedToDeparture = values.ClosedToDeparture,
+            MinAdvanceDays = values.MinAdvanceDays,
+            MaxAdvanceDays = values.MaxAdvanceDays,
+        };
+    }
+}
+
+/// <summary>A night the change would change, with its values before and after.</summary>
+public sealed class CalendarChangeSampleDto
+{
+    public DateOnly Date { get; init; }
+
+    public CalendarChangeValuesDto Before { get; init; } = new();
+
+    public CalendarChangeValuesDto After { get; init; } = new();
+}
+
+/// <summary>What the change would do to one property.</summary>
+public sealed class CalendarChangePreviewPropertyDto
+{
+    public Guid PropertyId { get; init; }
+
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>The property books into the channel manager: the change would be sent there.</summary>
+    public bool Mirrored { get; init; }
+
+    public int Days { get; init; }
+
+    public int ChangedDays { get; init; }
+
+    public int UnchangedDays { get; init; }
+
+    /// <summary>Nights taken by a booking, a hold, a request or a block, counted and not skipped: a rule on a booked night changes nothing for that booking.</summary>
+    public int TakenDays { get; init; }
+
+    public int SkippedPastDays { get; init; }
+
+    /// <summary>The first five changed nights with their values before and after.</summary>
+    public IReadOnlyList<CalendarChangeSampleDto> Samples { get; init; } = [];
+
+    /// <summary>An estimate of the units of quota of the channel manager the change would use.</summary>
+    public int EstimatedQuotaUnits { get; init; }
+}
+
+/// <summary>Something to know before applying: a stable code, the property and the sentence in the language of the caller.</summary>
+public sealed class CalendarChangeWarningDto
+{
+    /// <summary><c>property_not_mirrored</c> (the change stays in CasaZen) or <c>room_not_chosen</c> (nothing is sent until the room is chosen).</summary>
+    public string Code { get; init; } = string.Empty;
+
+    public Guid PropertyId { get; init; }
+
+    public string Message { get; init; } = string.Empty;
+}
+
+/// <summary>The answer of <c>POST /api/calendar/changes/preview</c>: nothing was changed, and the quota is an estimate.</summary>
+public sealed class CalendarChangePreviewDto
+{
+    public IReadOnlyList<CalendarChangePreviewPropertyDto> Properties { get; init; } = [];
+
+    public int Days { get; init; }
+
+    public int ChangedDays { get; init; }
+
+    public int UnchangedDays { get; init; }
+
+    public int TakenDays { get; init; }
+
+    public int SkippedPastDays { get; init; }
+
+    public int EstimatedQuotaUnits { get; init; }
+
+    public IReadOnlyList<CalendarChangeWarningDto> Warnings { get; init; } = [];
+
+    public static CalendarChangePreviewDto Of(CalendarChangePreview preview, IStringLocalizer localizer)
+    {
+        ArgumentNullException.ThrowIfNull(preview);
+        ArgumentNullException.ThrowIfNull(localizer);
+
+        return new CalendarChangePreviewDto
+        {
+            Properties = preview.Properties
+                .Select(p => new CalendarChangePreviewPropertyDto
+                {
+                    PropertyId = p.PropertyId,
+                    Name = p.Name,
+                    Mirrored = p.Mirrored,
+                    Days = p.Days,
+                    ChangedDays = p.ChangedDays,
+                    UnchangedDays = p.UnchangedDays,
+                    TakenDays = p.TakenDays,
+                    SkippedPastDays = p.SkippedPastDays,
+                    Samples = p.Samples
+                        .Select(s => new CalendarChangeSampleDto
+                        {
+                            Date = s.Date,
+                            Before = CalendarChangeValuesDto.From(s.Before),
+                            After = CalendarChangeValuesDto.From(s.After),
+                        })
+                        .ToList(),
+                    EstimatedQuotaUnits = p.EstimatedQuotaUnits,
+                })
+                .ToList(),
+            Days = preview.Days,
+            ChangedDays = preview.ChangedDays,
+            UnchangedDays = preview.UnchangedDays,
+            TakenDays = preview.TakenDays,
+            SkippedPastDays = preview.SkippedPastDays,
+            EstimatedQuotaUnits = preview.EstimatedQuotaUnits,
+            Warnings = preview.Warnings
+                .Select(w => new CalendarChangeWarningDto
+                {
+                    Code = w.Code,
+                    PropertyId = w.PropertyId,
+                    Message = CalendarChangeDto.MessageOf(w.Code, localizer) ?? w.Code,
+                })
+                .ToList(),
         };
     }
 }

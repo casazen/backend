@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Options;
@@ -22,6 +23,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -32,9 +34,9 @@ using PropertyEntity = Casazen.Core.Entities.Property;
 namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
-/// E08/F05/US02/T02 (NF-36, NF-78): a manual block and its change are saved together (<see cref="CalendarBlockService"/>) and the changes are read and sent again only by who
-/// reaches every property of them (<see cref="CalendarChangeQueries"/>, <see cref="CalendarChangesController"/>). The two proof tests are the data and permission rules of the
-/// brief. EF InMemory, the channel manager mocked.
+/// E08/F05/US02/T02 and T03 (NF-36, NF-78): a manual block and its change are saved together (<see cref="CalendarBlockService"/>), the changes are read and sent again only by who
+/// reaches every property of them (<see cref="CalendarChangeQueries"/>, <see cref="CalendarChangesController"/>), and a change of price and rules is previewed without a trace and
+/// applied all or nothing (<see cref="CalendarChangeService"/>). The four proof tests are the data and permission rules of the briefs. EF InMemory, the channel manager mocked.
 /// </summary>
 public class CalendarChangeProofTests
 {
@@ -181,7 +183,250 @@ public class CalendarChangeProofTests
         runner.Verify(r => r.RetryAsync(own.Process.Id, It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    // --- T03: preview and apply --------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// PROOF TEST: permission rule. A request that names one property the caller may not write answers 403 for the whole request (preview and apply alike), before anything runs: the
+    /// service is never called, so no rule and no process is saved for the others; a property of another org is a 404 <c>property_not_found</c>. And one that the caller does not
+    /// reach is not found by the service either: nothing is saved for the property it does reach.
+    /// </summary>
+    [Fact]
+    public async Task CalendarChangeApply_PropertyOutsideReach_RefusesWholeRequest_Test()
+    {
+        await using var db = HostScopeScenario.NewInMemoryDb();
+        var world = await HostScopeScenario.SeedAsync(db);
+        var service = new Mock<ICalendarChangeService>();
+        var controller = Controller(db, new Mock<ICalendarChangeRunner>(), world.OrgWide, world, deniedProperty: world.Hidden.Id, service.Object);
+
+        Assert.IsType<ForbidResult>((await controller.Apply(Body([world.Granted.Id, world.Hidden.Id]), CancellationToken.None)).Result);
+        Assert.IsType<ForbidResult>((await controller.Preview(Body([world.Granted.Id, world.Hidden.Id]), CancellationToken.None)).Result);
+
+        // A property of another org is not there for the caller.
+        var foreign = await controller.Apply(Body([world.Granted.Id, world.OtherOrgProperty.Id]), CancellationToken.None);
+        var problem = Assert.IsType<ObjectResult>(foreign.Result);
+        Assert.Equal(StatusCodes.Status404NotFound, problem.StatusCode);
+        Assert.Equal("property_not_found", ((ProblemDetails)problem.Value!).Extensions["code"]);
+        service.Verify(s => s.ApplyAsync(It.IsAny<HostScope>(), It.IsAny<CalendarChangeRequest>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        service.Verify(s => s.PreviewAsync(It.IsAny<HostScope>(), It.IsAny<CalendarChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // The shape of the request is refused before a property is looked up: no property, too many, a weekday set with no day, a patch with nothing in it.
+        foreach (var refused in new[]
+                 {
+                     Body([]),
+                     Body(Enumerable.Range(0, 51).Select(_ => Guid.NewGuid()).ToList()),
+                     Body([world.Granted.Id], daysOfWeek: []),
+                     Body([world.Granted.Id], withPrice: false),
+                 })
+        {
+            await Assert.ThrowsAsync<DomainRuleException>(() => controller.Apply(refused, CancellationToken.None));
+        }
+
+        // And the service itself: for the collaborator the hidden property does not exist, the whole request fails, and the property it may reach gets nothing either.
+        var h = new Change(db);
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => h.Service().ApplyAsync(world.Restricted, Request([world.Granted.Id, world.Hidden.Id], new DayRulePatch(Price: FieldPatch<decimal>.Set(150m))), "auth0|collaborator"));
+        Assert.Equal(0, await db.PropertyDayRules.CountAsync());
+        Assert.Equal(0, await db.CalendarChangeProcesses.CountAsync());
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule. The rules, the process and its chunks are saved together or not at all. A property that fails validation after another one was staged fails the whole
+    /// request (the rules of the first are not saved, and no process); a save that fails leaves neither rule nor process; and a change that works saves the rules of every property, one
+    /// process of kind <c>Bulk</c> and its chunks in the same save, and enqueues one run after it.
+    /// </summary>
+    [Fact]
+    public async Task CalendarChangeApply_RulesAndProcessAreOneTransaction_Test()
+    {
+        var h = new Change();
+        var first = h.AddProperty("Casa Uno");
+        var second = h.AddProperty("Casa Due");
+        var night = Today.AddDays(1);
+        // The second property has a rule with a minimum stay of five nights: a maximum of three is not valid there, after it was fine for the first.
+        h.Db.PropertyDayRules.Add(new PropertyDayRule { OrgId = Change.Org, PropertyId = second, StayDate = night, MinNights = 5 });
+        await h.Db.SaveChangesAsync();
+        h.Db.ChangeTracker.Clear();
+        var request = Request([first, second], new DayRulePatch(MaxNights: FieldPatch<int>.Set(3)), night, night);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => h.Service().ApplyAsync(Scope(), request, "auth0|host"));
+
+        Assert.Equal("calendar_day_rule_invalid_stay", ex.Code);
+        var check = h.NewDb();
+        Assert.Equal(1, await check.PropertyDayRules.CountAsync());
+        Assert.Equal(0, await check.CalendarChangeProcesses.CountAsync());
+        Assert.Equal(0, await check.CalendarChangeChunks.CountAsync());
+        h.VerifyRuns(Times.Never());
+
+        // A save that fails after everything was staged: neither the rules nor the process.
+        var failing = new Change(failingSave: true);
+        var only = failing.AddProperty("Casa Tre");
+        await Assert.ThrowsAsync<DbUpdateException>(
+            () => failing.Service().ApplyAsync(Scope(), Request([only], new DayRulePatch(Price: FieldPatch<decimal>.Set(150m))), "auth0|host"));
+        var none = failing.NewDb();
+        Assert.Equal(0, await none.PropertyDayRules.CountAsync());
+        Assert.Equal(0, await none.CalendarChangeProcesses.CountAsync());
+        failing.VerifyRuns(Times.Never());
+
+        // What works is saved in one go: the rules of both, one Bulk process, its chunks, one run.
+        var done = await h.Service().ApplyAsync(Scope(), Request([first, second], new DayRulePatch(Price: FieldPatch<decimal>.Set(150m)), night, night.AddDays(1)), "auth0|host");
+
+        var saved = h.NewDb();
+        Assert.Equal((CalendarChangeState.Queued, 4, 0, 0), (done.State, done.ChangedDays, done.UnchangedDays, done.SkippedPastDays));
+        Assert.Equal(4, await saved.PropertyDayRules.CountAsync(r => r.Price == 150m));
+        var process = await saved.CalendarChangeProcesses.AsNoTracking().SingleAsync();
+        Assert.Equal((done.ProcessId, CalendarChangeKind.Bulk, "auth0|host", 2), (process.Id, process.Kind, process.RequestedByUserId, process.PropertyCount));
+        Assert.Equal(2, await saved.CalendarChangeChunks.CountAsync(c => c.ProcessId == process.Id && c.State == CalendarChunkState.Pending));
+        h.VerifyRuns(Times.Once());
+    }
+
+    [Fact]
+    public async Task CalendarChangePreview_SaysWhatWouldChange_AndChangesNothing()
+    {
+        var h = new Change();
+        var mirrored = h.AddProperty("Casa Collegata");
+        var local = h.AddProperty("Casa Solo CasaZen");
+        h.Targets.Setup(t => t.LookupAsync(local, It.IsAny<CancellationToken>())).ReturnsAsync(OctorateTargetLookup.NotMirrored);
+        // A night with the price already, a booking that takes two of the nights, and the days before today of the property.
+        h.Db.PropertyDayRules.Add(new PropertyDayRule { OrgId = Change.Org, PropertyId = mirrored, StayDate = Today.AddDays(2), Price = 150m });
+        var guest = new Guest { OrgId = Change.Org, FirstName = "Anna", LastName = "Prova", Email = $"{Guid.NewGuid():N}@example.com" };
+        h.Db.Guests.Add(guest);
+        h.Db.Bookings.Add(new Booking
+        {
+            OrgId = Change.Org,
+            PropertyId = mirrored,
+            GuestId = guest.Id,
+            CheckInDate = Today.AddDays(3).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            CheckOutDate = Today.AddDays(5).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            NumberOfGuests = 2,
+            Status = BookingStatus.Confirmed,
+            Source = BookingSource.Manual,
+        });
+        await h.Db.SaveChangesAsync();
+        h.Db.ChangeTracker.Clear();
+        var request = Request([mirrored, local], new DayRulePatch(Price: FieldPatch<decimal>.Set(150m)), Today.AddDays(-2), Today.AddDays(5));
+
+        var preview = await h.Service().PreviewAsync(Scope(), request);
+
+        // 8 nights selected: 2 are over, 1 already has the price, 5 change (two of them taken by the booking, counted and not skipped).
+        var one = preview.Properties.Single(p => p.PropertyId == mirrored);
+        Assert.Equal((8, 5, 1, 2, 2, true), (one.Days, one.ChangedDays, one.UnchangedDays, one.TakenDays, one.SkippedPastDays, one.Mirrored));
+        Assert.Equal(1, one.EstimatedQuotaUnits);
+        Assert.Equal(5, one.Samples.Count);
+        var sample = one.Samples[0];
+        Assert.Equal(Today, sample.Date);
+        Assert.Equal((10_000L, 15_000L), (sample.Before.PriceCents, sample.After.PriceCents));
+        var notSent = preview.Properties.Single(p => p.PropertyId == local);
+        Assert.Equal((false, 0), (notSent.Mirrored, notSent.EstimatedQuotaUnits));
+        Assert.Equal([new CalendarChangeWarning("property_not_mirrored", local)], preview.Warnings);
+        Assert.Equal((16, 11, 1, 2, 4, 1), (preview.Days, preview.ChangedDays, preview.UnchangedDays, preview.TakenDays, preview.SkippedPastDays, preview.EstimatedQuotaUnits));
+
+        // Nothing was staged or saved: no new rule, no process.
+        Assert.Equal(1, await h.NewDb().PropertyDayRules.CountAsync());
+        Assert.Equal(0, await h.NewDb().CalendarChangeProcesses.CountAsync());
+        Assert.Empty(h.Db.ChangeTracker.Entries<CalendarChangeProcess>());
+        Assert.DoesNotContain(h.Db.ChangeTracker.Entries<PropertyDayRule>(), entry => entry.State != EntityState.Unchanged);
+    }
+
+    [Fact]
+    public async Task CalendarChange_AChangeThatChangesNothing_OrIsWhollyInThePast_IsRefusedWithAStableCode_AndSavesNothing()
+    {
+        var h = new Change();
+        var property = h.AddProperty("Casa Uno");
+        h.Db.PropertyDayRules.Add(new PropertyDayRule { OrgId = Change.Org, PropertyId = property, StayDate = Today.AddDays(1), Price = 150m });
+        await h.Db.SaveChangesAsync();
+        h.Db.ChangeTracker.Clear();
+        var minimum = new DayRulePatch(MinNights: FieldPatch<int>.Set(2));
+
+        var same = await Assert.ThrowsAsync<DomainRuleException>(
+            () => h.Service().ApplyAsync(Scope(), Request([property], new DayRulePatch(Price: FieldPatch<decimal>.Set(150m)), Today.AddDays(1), Today.AddDays(1)), null));
+        var empty = await Assert.ThrowsAsync<DomainRuleException>(
+            () => h.Service().ApplyAsync(Scope(), Request([property], new DayRulePatch(), Today, Today.AddDays(1)), null));
+        var weekdays = await Assert.ThrowsAsync<DomainRuleException>(
+            () => h.Service().ApplyAsync(Scope(), Request([property], minimum, weekdays: new HashSet<DayOfWeek>()), null));
+        var past = await Assert.ThrowsAsync<DomainRuleException>(
+            () => h.Service().ApplyAsync(Scope(), Request([property], minimum, Today.AddDays(-5), Today.AddDays(-1)), null));
+        var previewPast = await Assert.ThrowsAsync<DomainRuleException>(
+            () => h.Service().PreviewAsync(Scope(), Request([property], minimum, Today.AddDays(-5), Today.AddDays(-1))));
+
+        Assert.Equal(
+            ["calendar_day_rule_nothing_to_change", "calendar_day_rule_nothing_to_change", "calendar_day_rule_nothing_to_change", "calendar_day_rule_in_past", "calendar_day_rule_in_past"],
+            new[] { same.Code, empty.Code, weekdays.Code, past.Code, previewPast.Code });
+        Assert.Equal(1, await h.NewDb().PropertyDayRules.CountAsync());
+        Assert.Equal(0, await h.NewDb().CalendarChangeProcesses.CountAsync());
+        h.VerifyRuns(Times.Never());
+    }
+
+    [Fact]
+    public async Task CalendarChange_AChangeToAPropertyThatIsNotOnTheChannelManager_IsAppliedInCasaZen_AndSendsNothing()
+    {
+        var h = new Change();
+        var property = h.AddProperty("Casa Solo CasaZen");
+        h.Targets.Setup(t => t.LookupAsync(property, It.IsAny<CancellationToken>())).ReturnsAsync(OctorateTargetLookup.NotMirrored);
+
+        var done = await h.Service().ApplyAsync(Scope(), Request([property], new DayRulePatch(ClosedToArrival: FieldPatch<bool>.Set(true))), null);
+
+        var saved = h.NewDb();
+        Assert.Equal((CalendarChangeState.Applied, 2), (done.State, done.ChangedDays));
+        Assert.Equal(2, await saved.PropertyDayRules.CountAsync(r => r.ClosedToArrival));
+        var process = await saved.CalendarChangeProcesses.AsNoTracking().SingleAsync();
+        Assert.Equal((CalendarChangeKind.DayRules, CalendarChangeState.Applied), (process.Kind, process.State));
+        Assert.Equal(0, await saved.CalendarChangeChunks.CountAsync());
+        h.VerifyRuns(Times.Never());
+    }
+
+    [Fact]
+    public void TheRequestOfTheBody_CarriesKeepSetAndClear_AndASetWithoutAValueIsNotARequest()
+    {
+        var body = new CalendarChangeRequestDto
+        {
+            PropertyIds = [Guid.NewGuid()],
+            From = Today,
+            To = Today.AddDays(6),
+            DaysOfWeek = [DayOfWeek.Friday, DayOfWeek.Saturday],
+            Price = new FieldPatchDto<decimal> { Action = FieldPatchKind.Set, Value = 120.5m },
+            MaxNights = new FieldPatchDto<int> { Action = FieldPatchKind.Clear },
+            ClosedToArrival = new FieldPatchDto<bool> { Action = FieldPatchKind.Set, Value = true },
+        };
+
+        Assert.True(body.TryToRequest(out var request));
+        Assert.Equal(new HashSet<DayOfWeek> { DayOfWeek.Friday, DayOfWeek.Saturday }, request!.DaysOfWeek);
+        Assert.Equal((FieldPatchKind.Set, 120.5m), (request.Patch.Price.Kind, request.Patch.Price.Value));
+        Assert.Equal(FieldPatchKind.Clear, request.Patch.MaxNights.Kind);
+        Assert.Equal(FieldPatchKind.Keep, request.Patch.MinNights.Kind);
+        Assert.True(request.Patch.ClosedToArrival.Value);
+
+        var noValue = new CalendarChangeRequestDto
+        {
+            PropertyIds = [Guid.NewGuid()],
+            From = Today,
+            To = Today,
+            Price = new FieldPatchDto<decimal> { Action = FieldPatchKind.Set },
+        };
+        Assert.False(noValue.TryToRequest(out _));
+    }
+
     // --- Helpers -----------------------------------------------------------------------------------------------------------------
+
+    private static HostScope Scope() => new(Change.Org);
+
+    private static CalendarChangeRequest Request(
+        IReadOnlyList<Guid> properties,
+        DayRulePatch patch,
+        DateOnly? from = null,
+        DateOnly? to = null,
+        IReadOnlySet<DayOfWeek>? weekdays = null)
+    {
+        return new CalendarChangeRequest(properties, from ?? Today.AddDays(1), to ?? Today.AddDays(2), weekdays, patch);
+    }
+
+    /// <summary>The body of a request: a price of 150 to set (unless <paramref name="withPrice"/> says the patch has nothing in it).</summary>
+    private static CalendarChangeRequestDto Body(List<Guid> properties, List<DayOfWeek>? daysOfWeek = null, bool withPrice = true) => new()
+    {
+        PropertyIds = properties,
+        From = Today.AddDays(1),
+        To = Today.AddDays(2),
+        DaysOfWeek = daysOfWeek,
+        Price = withPrice ? new FieldPatchDto<decimal> { Action = FieldPatchKind.Set, Value = 150m } : null,
+    };
 
     /// <summary>A change of one or several properties with its chunks (none when <paramref name="chunkState"/> is <c>null</c>: the change stayed in CasaZen).</summary>
     private static (CalendarChangeProcess Process, List<CalendarChangeChunk> Chunks) ProcessOf(
@@ -223,7 +468,8 @@ public class CalendarChangeProofTests
         Mock<ICalendarChangeRunner> runner,
         HostScope scope,
         HostScopeWorld world,
-        Guid? deniedProperty)
+        Guid? deniedProperty,
+        ICalendarChangeService? changes = null)
     {
         var orgContext = new Mock<IOrgContextResolver>();
         orgContext.Setup(o => o.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(world.OrgId);
@@ -242,6 +488,7 @@ public class CalendarChangeProofTests
         var provider = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider();
         return new CalendarChangesController(
             new CalendarChangeQueries(db),
+            changes ?? Mock.Of<ICalendarChangeService>(),
             runner.Object,
             orgContext.Object,
             scopes.Object,
@@ -302,7 +549,7 @@ public class CalendarChangeProofTests
         public Blocks(bool failingSave = false)
             : base($"calendar-blocks-{Guid.NewGuid():N}", failingSave)
         {
-            var property = HostScopeScenario.NewProperty(OrgId, "auth0|owner", "Casa del Lago");
+            var property = HostScopeScenario.NewProperty(Change.Org, "auth0|owner", "Casa del Lago");
             using (var seed = NewDb())
             {
                 seed.Properties.Add(property);
@@ -336,6 +583,53 @@ public class CalendarChangeProofTests
                 NullLogger<CalendarChangeRecorder>.Instance);
             return new CalendarBlockService(
                 Db, Mock.Of<ICheckoutHoldExpiryService>(), NullLogger<CalendarBlockService>.Instance, new FixedTimeProvider(Now), recorder, Jobs.Object);
+        }
+
+        public void VerifyRuns(Times times) => Jobs.Verify(j => j.Create(It.Is<Job>(job => IsRun(job)), It.IsAny<IState>()), times);
+    }
+
+    /// <summary>The change service over the real rules of the nights and the real recorder, on one org.</summary>
+    private sealed class Change : Database
+    {
+        public static readonly Guid Org = OrgId;
+
+        public Change(AppDbContext? existing = null, bool failingSave = false)
+            : base($"calendar-change-{Guid.NewGuid():N}", failingSave)
+        {
+            Db = existing ?? Work();
+            Flags.Setup(f => f.IsEnabled(FeatureFlags.OctorateConnector)).Returns(true);
+            Targets
+                .Setup(t => t.LookupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(OctorateTargetLookup.Of(new OctorateBookingTarget("ACC1", "956528")));
+        }
+
+        public AppDbContext Db { get; }
+
+        public Mock<IOctorateBookingTargets> Targets { get; } = new();
+
+        public Mock<IFeatureFlags> Flags { get; } = new();
+
+        public Mock<IBackgroundJobClient> Jobs { get; } = new();
+
+        /// <summary>A property of the org, stored through a context that saves (the one under test may be set to fail its saves).</summary>
+        public Guid AddProperty(string name)
+        {
+            var property = HostScopeScenario.NewProperty(Org, "auth0|owner", name);
+            using var seed = NewDb();
+            seed.Properties.Add(property);
+            seed.SaveChanges();
+            return property.Id;
+        }
+
+        public CalendarChangeService Service()
+        {
+            var clock = new FixedTimeProvider(Now);
+            var configuration = new ConfigurationBuilder().Build();
+            var options = Microsoft.Extensions.Options.Options.Create(new OctorateCalendarOptions());
+            var rules = new PropertyDayRuleService(Db, Targets.Object, Flags.Object, configuration, NullLogger<PropertyDayRuleService>.Instance, clock);
+            var recorder = new CalendarChangeRecorder(Db, Targets.Object, Flags.Object, options, clock, NullLogger<CalendarChangeRecorder>.Instance);
+            return new CalendarChangeService(
+                Db, rules, recorder, Targets.Object, Flags.Object, options, configuration, NullLogger<CalendarChangeService>.Instance, clock, Jobs.Object);
         }
 
         public void VerifyRuns(Times times) => Jobs.Verify(j => j.Create(It.Is<Job>(job => IsRun(job)), It.IsAny<IState>()), times);

@@ -12,8 +12,8 @@ using Microsoft.Extensions.Localization;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// The changes of the calendar sent to the channel manager (E08/F05/US02/T02, NF-36, NF-78): read them with their state and the stable code of each property,
-/// send again one that failed or was partly sent. A change is a process
+/// The changes of the calendar sent to the channel manager (E08/F05/US02/T02, T03, NF-36, NF-78): read them with their state and the stable code of each property,
+/// send again one that failed or was partly sent, and preview and apply a change of price and rules for one or many properties, all or nothing. A change is a process
 /// whose state is derived from its chunks and never says «published»: sent is «accepted by the channel manager». Behind no feature flag: a property that is not on the
 /// channel manager gets a change that stays in CasaZen (<c>Applied</c>), and nothing is sent while the connector is off.
 /// </summary>
@@ -28,6 +28,7 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.PropertyRead)]
 public class CalendarChangesController(
     ICalendarChangeQueries queries,
+    ICalendarChangeService changes,
     ICalendarChangeRunner runner,
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver,
@@ -101,7 +102,80 @@ public class CalendarChangesController(
         return updated is null ? ChangeNotFound() : Accepted(CalendarChangeDto.Of(updated, localizer));
     }
 
+    /// <summary>
+    /// What a change would do, and nothing else: per property how many days change, stay as they are, are taken or over, the first five changed days with their values before and
+    /// after, whether the property is on the channel manager and the quota it would use (an estimate), with warnings (<c>property_not_mirrored</c>, <c>room_not_chosen</c>).
+    /// The body is <see cref="CalendarChangeRequestDto"/>. 403 when one property cannot be written (nothing is read), 404 <c>property_not_found</c>, 422 with the stable code of
+    /// what is refused (<c>calendar_day_rule_*</c>, <c>calendar_too_many_properties</c>, <c>calendar_change_no_properties</c>).
+    /// </summary>
+    [HttpPost("preview")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(CalendarChangePreviewDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<CalendarChangePreviewDto>> Preview([FromBody] CalendarChangeRequestDto body, CancellationToken cancellationToken)
+    {
+        var prepared = await PrepareAsync(body, cancellationToken);
+        if (prepared.Error is not null)
+            return prepared.Error;
+
+        var preview = await changes.PreviewAsync(prepared.Scope!, prepared.Request!, cancellationToken);
+        return Ok(CalendarChangePreviewDto.Of(preview, localizer));
+    }
+
+    /// <summary>
+    /// Applies the change to every property, all or nothing: the rules, the process and its chunks are saved in one transaction. 201 with the process (the shape of
+    /// <c>GET /api/calendar/changes/{id}</c>) and its <c>Location</c>: <c>Queued</c> for a property that is on the channel manager (it is sent at once), <c>Applied</c> when
+    /// the change stays in CasaZen. 403 when one property cannot be written (nothing is saved), 404 <c>property_not_found</c>, 422 <c>calendar_day_rule_nothing_to_change</c>
+    /// (a change that changes nothing), <c>calendar_day_rule_in_past</c> (a range that is over) and the other codes of the preview.
+    /// </summary>
+    [HttpPost]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(CalendarChangeDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<CalendarChangeDto>> Apply([FromBody] CalendarChangeRequestDto body, CancellationToken cancellationToken)
+    {
+        var prepared = await PrepareAsync(body, cancellationToken);
+        if (prepared.Error is not null)
+            return prepared.Error;
+
+        var scope = prepared.Scope!;
+        var result = await changes.ApplyAsync(scope, prepared.Request!, User.GetUserId(), cancellationToken);
+        logger.LogInformation(
+            "Calendar change {ProcessId} applied by user {UserId}: {Properties} properties", result.ProcessId, User.GetUserId(), prepared.Request!.PropertyIds.Count);
+
+        var view = await queries.GetAsync(scope, result.ProcessId, cancellationToken)
+            ?? throw new InvalidOperationException($"The calendar change {result.ProcessId} just recorded cannot be read back.");
+        return Created($"/api/calendar/changes/{result.ProcessId}", CalendarChangeDto.Of(view, localizer));
+    }
+
     // --- Helpers -----------------------------------------------------------------------------------------------------------------
+
+    private sealed record Prepared(HostScope? Scope, CalendarChangeRequest? Request, ActionResult? Error);
+
+    /// <summary>
+    /// The scope and the request of a preview or an application, or the answer to give instead: 400 for a body that cannot be a request, 403 for a caller with no reach, then
+    /// what the request must look like (422, before anything is read), then the write right on every property (403 for the whole request, 404 for a property that is not found).
+    /// </summary>
+    private async Task<Prepared> PrepareAsync(CalendarChangeRequestDto body, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid || !body.TryToRequest(out var request))
+            return new Prepared(null, null, this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.BadRequest, "CalendarInvalidRequest"));
+
+        if (await ScopeAsync(cancellationToken) is not { } scope)
+            return new Prepared(null, null, this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden"));
+
+        // The rules of the shape of the request first (a count of properties, the days, the weekdays, a patch that names a value): a request that cannot be applied
+        // is refused before a property is looked up one by one.
+        var ids = CalendarChangeRules.EnsureValid(request);
+        var denied = await AuthorizeWriteAsync(ids, cancellationToken);
+        return denied is not null ? new Prepared(null, null, denied) : new Prepared(scope, request, null);
+    }
 
     /// <summary>
     /// Authorizes <c>property.write</c> on every property before anything runs, as <see cref="ManualBlocksController"/> does for one: 404 <c>property_not_found</c> for a
