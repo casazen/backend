@@ -376,6 +376,11 @@ public class AppDbContext(
     public DbSet<OrgFiscalIssuerProfile> OrgFiscalIssuerProfiles { get; set; } = null!;
     public DbSet<BookingDocumentIssuer> BookingDocumentIssuers { get; set; } = null!;
 
+    // The fiscal documents issued by CasaZen or imported from Octorate, their lines and the counters of their numbers (NF-83, NF-84, E06/F01/US02/T01)
+    public DbSet<FiscalDocument> FiscalDocuments { get; set; } = null!;
+    public DbSet<FiscalDocumentLine> FiscalDocumentLines { get; set; } = null!;
+    public DbSet<FiscalNumberSequence> FiscalNumberSequences { get; set; } = null!;
+
     // The check-in guests and the states of a stay sent to Octorate (NF-41, NF-45, E03/F01/US01/T03): ids, hashes and codes, no personal data
     public DbSet<StayGuestOctorateLink> StayGuestOctorateLinks { get; set; } = null!;
     public DbSet<OctorateStayStateSync> OctorateStayStateSyncs { get; set; } = null!;
@@ -1968,6 +1973,13 @@ public class AppDbContext(
         // the database itself refuses a second one of either (FIS-02, NF-82).
         modelBuilder.ApplyConfiguration(new OrgFiscalIssuerProfileConfiguration());
         modelBuilder.ApplyConfiguration(new BookingDocumentIssuerConfiguration());
+
+        // The fiscal documents (NF-83, NF-84, E06/F01/US02/T01): issued by CasaZen or imported from Octorate, kept ten years (no cascade from the
+        // booking, the guest or another document reaches them), numbered without duplicates per org and series, an Octorate document imported once;
+        // their lines (cascade with the document) and the counter of the numbers (one row per org and series).
+        modelBuilder.ApplyConfiguration(new FiscalDocumentConfiguration());
+        modelBuilder.ApplyConfiguration(new FiscalDocumentLineConfiguration());
+        modelBuilder.ApplyConfiguration(new FiscalNumberSequenceConfiguration());
 
         // A payment is recorded on its Octorate reservation once (E08/F01/US01/T01, AC-NF74-4): its transaction is unique in the org. Only
         // the payments recorded there are in the index.

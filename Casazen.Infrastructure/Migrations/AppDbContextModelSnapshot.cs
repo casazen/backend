@@ -2926,6 +2926,277 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("F24Records");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.FiscalDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid?>("CreditedDocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<string>("FatturaPaXml")
+                        .HasColumnType("text");
+
+                    b.Property<DateOnly?>("IssueDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Number")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("OctorateDocumentId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<bool>("OctoratePdfAvailable")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("OctorateReservationId")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("PaymentState")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RecipientAddressCivic")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RecipientAddressStreet")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RecipientCity")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RecipientCountryCode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RecipientFiscalCode")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("RecipientKind")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RecipientName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RecipientPec")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RecipientPostalCode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RecipientProvince")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RecipientSdiCode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RecipientVatNumber")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ReplacesDocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("SdiErrorCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("SdiErrorDetail")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("SdiStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("SdiStatusUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SdiTransmissionId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int?>("SequenceNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Series")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("StampDuty")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("TaxableBase")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("Total")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("VatAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("VatNatureCode")
+                        .HasMaxLength(4)
+                        .HasColumnType("character varying(4)");
+
+                    b.Property<decimal?>("VatRatePercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
+
+                    b.HasIndex("CreditedDocumentId");
+
+                    b.HasIndex("ReplacesDocumentId");
+
+                    b.HasIndex("OrgId", "BookingId");
+
+                    b.HasIndex("OrgId", "IssueDate");
+
+                    b.HasIndex("OrgId", "OctorateDocumentId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_FiscalDocuments_OrgId_OctorateDocumentId")
+                        .HasFilter("\"OctorateDocumentId\" IS NOT NULL");
+
+                    b.HasIndex("OrgId", "Series", "SequenceNumber")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_FiscalDocuments_OrgId_Series_SequenceNumber")
+                        .HasFilter("\"SequenceNumber\" IS NOT NULL");
+
+                    b.ToTable("FiscalDocuments", t =>
+                        {
+                            t.HasCheckConstraint("CK_FiscalDocuments_SdiStatus", "\"SdiStatus\" IN ('not_applicable', 'to_send', 'submitted', 'delivered', 'rejected', 'manual_declared', 'unknown')");
+
+                            t.HasCheckConstraint("CK_FiscalDocuments_SequenceNumber", "\"SequenceNumber\" IS NULL OR \"SequenceNumber\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.FiscalDocumentLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("LineNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<decimal>("TotalPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("VatNatureCode")
+                        .HasMaxLength(4)
+                        .HasColumnType("character varying(4)");
+
+                    b.Property<decimal>("VatRatePercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId", "LineNumber")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_FiscalDocumentLines_DocumentId_LineNumber");
+
+                    b.ToTable("FiscalDocumentLines");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.FiscalNumberSequence", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("LastNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Series")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "Series")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_FiscalNumberSequences_OrgId_Series");
+
+                    b.ToTable("FiscalNumberSequences", t =>
+                        {
+                            t.HasCheckConstraint("CK_FiscalNumberSequences_LastNumber", "\"LastNumber\" >= 0");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.Guest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -15133,6 +15404,33 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Org");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.FiscalDocument", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Booking", null)
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Casazen.Core.Entities.FiscalDocument", null)
+                        .WithMany()
+                        .HasForeignKey("CreditedDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Casazen.Core.Entities.FiscalDocument", null)
+                        .WithMany()
+                        .HasForeignKey("ReplacesDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.FiscalDocumentLine", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.FiscalDocument", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.Guest", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.GuestCrmProfile", "CrmProfile")
@@ -17589,6 +17887,11 @@ namespace Casazen.Infrastructure.Migrations
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.CondominiumStatement", b =>
+                {
+                    b.Navigation("Lines");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.FiscalDocument", b =>
                 {
                     b.Navigation("Lines");
                 });

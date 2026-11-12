@@ -127,6 +127,13 @@ public static class EncryptedColumns
     public const string OtaMessageTextPurpose = "Casazen.Message.Content";
 
     /// <summary>
+    /// Purpose of the fiscal documents (NF-83, E06/F01/US02/T01): the recipient snapshot of <see cref="FiscalDocument"/> (name, fiscal code, VAT
+    /// number, address, recipient code, PEC) and its FatturaPA XML, which repeats them. Kept ten years for the legal retention; nothing is searched in
+    /// them. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string FiscalDocumentPurpose = "Casazen.FiscalDocument";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -262,6 +269,21 @@ public static class EncryptedColumns
         new EncryptedEntity<OtaMessage>(
             OtaMessageTextPurpose,
             nameof(OtaMessage.Text)),
+        // NF-83: the recipient snapshot of a fiscal document and its XML (E06/F01/US02/T01).
+        new EncryptedEntity<FiscalDocument>(
+            FiscalDocumentPurpose,
+            nameof(FiscalDocument.RecipientName),
+            nameof(FiscalDocument.RecipientFiscalCode),
+            nameof(FiscalDocument.RecipientVatNumber),
+            nameof(FiscalDocument.RecipientAddressStreet),
+            nameof(FiscalDocument.RecipientAddressCivic),
+            nameof(FiscalDocument.RecipientPostalCode),
+            nameof(FiscalDocument.RecipientCity),
+            nameof(FiscalDocument.RecipientProvince),
+            nameof(FiscalDocument.RecipientCountryCode),
+            nameof(FiscalDocument.RecipientSdiCode),
+            nameof(FiscalDocument.RecipientPec),
+            nameof(FiscalDocument.FatturaPaXml)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>
