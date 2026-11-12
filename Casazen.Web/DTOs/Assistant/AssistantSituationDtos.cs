@@ -19,7 +19,10 @@ public sealed class EffectiveSituationDto
     public bool IsSensitive { get; init; }
     public bool HasTemplate { get; init; }
 
-    /// <summary>The text of the answer: only for a caller who may edit it, <c>null</c> for everybody else (use <see cref="HasTemplate"/>).</summary>
+    /// <summary>
+    /// The text of the answer: only for a caller who may edit it (a row of the organization: the organization's administrators, on its list and on a property's; the exception of a
+    /// property: whoever may write that property), <c>null</c> for everybody else (use <see cref="HasTemplate"/>).
+    /// </summary>
     public string? Template { get; init; }
 
     public KnowledgeTopic? Source { get; init; }

@@ -19,8 +19,9 @@ namespace Casazen.Web.Controllers;
 /// (<see cref="CasazenPolicies.OrgBillingAdmin"/>). The exceptions of a property are read with <see cref="CasazenPolicies.PropertyRead"/> and saved or removed with
 /// <see cref="CasazenPolicies.PropertyWrite"/>, <b>and the row-level check of the property</b> (<see cref="PropertyOperations"/>, the check of the mapping of the listings): a property of
 /// another organization, or one that a collaborator «Solo alcuni» was not given, answers 404 like one that does not exist.</para>
-/// <para><b>The templates</b> are the host's own text and are shown only to the caller who may edit them: the administrators of the organization for its situations, a caller who may write
-/// the property for the situations of that property. Everyone else reads <c>hasTemplate</c>. Every answer is private and not cached.</para>
+/// <para><b>The templates</b> are the host's own text and are shown only to the caller who may edit them: the administrators of the organization for the rows of the organization (on its own
+/// list and on the list of a property, where such a row is the value a property inherits), a caller who may write the property for the exception of that property. Everyone else, a caller
+/// who has just <c>property.write</c> on the property included, reads <c>hasTemplate</c> for a row of the organization. Every answer is private and not cached.</para>
 /// <para><b>The rule of the modes.</b> A sensitive situation, and <c>Other</c>, is saved as escalate or draft only: 422 <c>assistant_mode_not_allowed</c>, whoever asks.</para>
 /// </remarks>
 [ApiController]
@@ -95,9 +96,12 @@ public sealed class AssistantSituationsController(
         if (!await AssistantAccess.CanUsePropertyAsync(propertyService, authorizationService, User, caller.OrgId, propertyId, PropertyOperations.Read))
             return PropertyNotFound();
 
+        // The text of the property's own exception is for whoever may write the property; the text of a row of the organization is for the organization's administrators only, as on the
+        // organization's own list: a caller who has just property.write here reads that such a row has a template (hasTemplate), not what it says.
         var canEdit = await AssistantAccess.CanUsePropertyAsync(propertyService, authorizationService, User, caller.OrgId, propertyId, PropertyOperations.Write);
+        var canReadOrganizationTemplates = canEdit && (await authorizationService.AuthorizeAsync(User, CasazenPolicies.OrgBillingAdmin)).Succeeded;
         var items = await situations.ListEffectiveAsync(caller.OrgId, propertyId, cancellationToken);
-        return Ok(items.Select(item => EffectiveSituationDto.From(item, canEdit)).ToList());
+        return Ok(items.Select(item => EffectiveSituationDto.From(item, item.Origin == AssistantSettingOrigin.Organization ? canReadOrganizationTemplates : canEdit)).ToList());
     }
 
     /// <summary>Saves the exception of a property for a situation: a whole row, which replaces the organization's value for this property.</summary>

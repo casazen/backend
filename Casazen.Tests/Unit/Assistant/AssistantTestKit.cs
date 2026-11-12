@@ -9,6 +9,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Authorization;
 using Casazen.Tests.Unit.Services;
+using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
@@ -139,9 +140,13 @@ internal static class AssistantTestKit
             new UserAuthorizationSnapshot(Exists: true, IsActive: true, Role: UserRole.None, SupplierOrgId: null, Memberships: [], OrgId: world.OrgId, OrgMember: member));
     }
 
-    /// <summary>A real <see cref="IAuthorizationService"/> with the real resource handler: org and reach are the production ones, the permissions are granted unless <paramref name="hasPermission"/> says no.</summary>
+    /// <summary>
+    /// A real <see cref="IAuthorizationService"/> with the real resource handler: org and reach are the production ones, the permissions are granted unless <paramref name="hasPermission"/>
+    /// says no. <paramref name="administrator"/> is also the answer of the policy of the organization's administrators (<see cref="CasazenPolicies.OrgBillingAdmin"/>), which the harness
+    /// does not register: the collaborator «Solo alcuni» is not one, the owner is.
+    /// </summary>
     public static IAuthorizationService Authorization(HostScopeWorld world, bool administrator = false, Func<string, string, bool>? hasPermission = null) =>
-        HostAuthorizationTestHarness.Create(world.OrgId, hasPermission, ScopeOf(world, administrator));
+        new OrganizationAdministratorAuthorization(HostAuthorizationTestHarness.Create(world.OrgId, hasPermission, ScopeOf(world, administrator)), administrator);
 
     public static ClaimsPrincipal Collaborator(HostScopeWorld world) => HostAuthorizationTestHarness.User(world.CollaboratorId);
 
@@ -172,6 +177,18 @@ internal static class AssistantTestKit
             RequestServices = new ServiceCollection().AddSingleton<IStringLocalizer<SharedResources>>(new KeyLocalizer()).BuildServiceProvider(),
         },
     };
+
+    /// <summary>The service of the harness for the checks of a row and for the policies it knows, and a fixed answer for the policy of the organization's administrators.</summary>
+    private sealed class OrganizationAdministratorAuthorization(IAuthorizationService inner, bool administrator) : IAuthorizationService
+    {
+        public Task<AuthorizationResult> AuthorizeAsync(ClaimsPrincipal user, object? resource, IEnumerable<IAuthorizationRequirement> requirements) =>
+            inner.AuthorizeAsync(user, resource, requirements);
+
+        public Task<AuthorizationResult> AuthorizeAsync(ClaimsPrincipal user, object? resource, string policyName) =>
+            policyName == CasazenPolicies.OrgBillingAdmin
+                ? Task.FromResult(administrator ? AuthorizationResult.Success() : AuthorizationResult.Failed())
+                : inner.AuthorizeAsync(user, resource, policyName);
+    }
 
     private sealed class KeyLocalizer : IStringLocalizer<SharedResources>
     {

@@ -128,21 +128,36 @@ public class AssistantSituationsControllerTests
             Assert.False(list.Single(s => s.Situation == AssistantSituation.Pets).HasTemplate);
         }
 
-        // A property's situations: the caller who may write the property reads the text, the one who may only read it does not.
-        foreach (var (canWrite, shown) in new[] { (true, true), (false, false) })
+        // A property's situations. The text of the exception of the property is read by whoever may write the property; the text of a row of the organization (what the property inherits)
+        // only by the administrators of the organization, as on the organization's own list: a caller who has just property.write reads that the row has a template, not what it says.
+        var callers = new[]
         {
-            var authorization = AssistantTestKit.Authorization(world, administrator: true, hasPermission: (_, permission) => canWrite || permission != "property.write");
+            (Principal: AssistantTestKit.Collaborator(world), Administrator: false, CanWrite: true, ReadsTheException: true, ReadsTheOrganizationsRow: false),
+            (Principal: AssistantTestKit.Administrator(world), Administrator: true, CanWrite: true, ReadsTheException: true, ReadsTheOrganizationsRow: true),
+            (Principal: AssistantTestKit.Collaborator(world), Administrator: false, CanWrite: false, ReadsTheException: false, ReadsTheOrganizationsRow: false),
+            (Principal: AssistantTestKit.Administrator(world), Administrator: true, CanWrite: false, ReadsTheException: false, ReadsTheOrganizationsRow: false),
+        };
+        foreach (var caller in callers)
+        {
+            var authorization = AssistantTestKit.Authorization(world, caller.Administrator, (_, permission) => caller.CanWrite || permission != "property.write");
             var controller = new AssistantSituationsController(service, AssistantTestKit.Properties(db), AssistantTestKit.Org(world.OrgId), authorization)
             {
-                ControllerContext = AssistantTestKit.ContextOf(AssistantTestKit.Administrator(world)),
+                ControllerContext = AssistantTestKit.ContextOf(caller.Principal),
             };
 
             var list = Assert.IsAssignableFrom<IReadOnlyList<EffectiveSituationDto>>(Assert.IsType<OkObjectResult>((await controller.ListForProperty(world.Granted.Id, CancellationToken.None)).Result).Value);
 
+            // The exception of the property.
             var wifi = list.Single(s => s.Situation == AssistantSituation.WiFi);
+            Assert.Equal("property", wifi.Origin);
             Assert.True(wifi.HasTemplate);
-            Assert.Equal(shown ? "La password è nel cassetto." : null, wifi.Template);
-            Assert.Equal(shown ? "Il parcheggio è gratuito, codice cancello nel messaggio." : null, list.Single(s => s.Situation == AssistantSituation.Parking).Template);
+            Assert.Equal(caller.ReadsTheException ? "La password è nel cassetto." : null, wifi.Template);
+
+            // The row of the organization: the same text that the organization's list hides from everybody but its administrators.
+            var parking = list.Single(s => s.Situation == AssistantSituation.Parking);
+            Assert.Equal("organization", parking.Origin);
+            Assert.True(parking.HasTemplate);
+            Assert.Equal(caller.ReadsTheOrganizationsRow ? "Il parcheggio è gratuito, codice cancello nel messaggio." : null, parking.Template);
         }
     }
 
