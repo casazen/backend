@@ -262,6 +262,13 @@ public static class EncryptedColumns
         new EncryptedEntity<OtaMessage>(
             OtaMessageTextPurpose,
             nameof(OtaMessage.Text)),
+        // ADR-032-R3: the text of an item of the approval queue is the text of a message to a guest (or of a mailing) before it is sent, and the one the host
+        // edited: the same purpose as the words of the conversations, so a draft is never in clear where the message it becomes is not (E05/F04/US01/T01).
+        // The reason of a rejection is the host's own note, a column of its own with a length, and stays in clear.
+        new EncryptedEntity<ApprovalQueueItem>(
+            OtaMessageTextPurpose,
+            nameof(ApprovalQueueItem.ContentText),
+            nameof(ApprovalQueueItem.EditedContentText)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

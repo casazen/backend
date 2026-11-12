@@ -3908,6 +3908,21 @@
   <data name="ApprovalItemNotFound" xml:space="preserve">
     <value>Approval item not found</value>
   </data>
+  <data name="ApprovalItemNotPending" xml:space="preserve">
+    <value>The item has already been decided or has expired</value>
+  </data>
+  <data name="ApprovalEditInvalid" xml:space="preserve">
+    <value>The text is not valid: it cannot be empty, a message cannot be longer than 2000 characters, and a campaign needs its subject on one line, a blank line and then the body.</value>
+  </data>
+  <data name="ApprovalRejectionReasonRequired" xml:space="preserve">
+    <value>Give the reason for the rejection, at most 500 characters.</value>
+  </data>
+  <data name="ApprovalOriginActionFailed" xml:space="preserve">
+    <value>The linked action failed and the item is still waiting for approval. You can edit the text and try again.</value>
+  </data>
+  <data name="Only campaigns waiting for approval can be approved" xml:space="preserve">
+    <value>Only campaigns waiting for approval can be approved.</value>
+  </data>
   <data name="OrgContextRequired" xml:space="preserve">
     <value>Organization context required</value>
   </data>

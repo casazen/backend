@@ -158,6 +158,10 @@ builder.Services.AddMessagesHub();
 // of the new messages of the guests that already use it, all registered in AddNotificationPreferences.
 builder.Services.AddNotificationPreferences();
 
+// The approval queue that executes (epic E05, feature F04, NF-68): the registry of the actions an approval runs, the actions of the queue itself (the draft of a message, the
+// campaign) and the alert of a new item, all registered in AddApprovalQueueActions. The assistant, the replies to reviews and epic E07 register the actions of their own item types.
+builder.Services.AddApprovalQueueActions();
+
 // Marketplace (epic E09, NF-54 to NF-59): the catalog of channels, tools, license functions and partners; every task of the epic registers in AddCasazenMarketplace.
 builder.Services.AddCasazenMarketplace(builder.Configuration);
 

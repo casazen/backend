@@ -402,6 +402,44 @@ public class PushDeliveryJobTests : IDisposable
         });
     }
 
+    /// <summary>
+    /// E05/F04/US01/T02 (NF-68): the push about an item of the approval queue carries <c>data.approvalItemId</c> and the <c>categoryId</c> of the app (<c>draft-ready</c>: its Approve and
+    /// Edit buttons); every other push carries neither, and its message is the one it always was (no <c>categoryId</c> member at all, not a null).
+    /// </summary>
+    [Fact]
+    public async Task SendAsync_AnApprovalPush_CarriesTheItemAndTheCategory_AnyOtherPushNeither()
+    {
+        var world = await SeedWorldAsync();
+        var itemId = Guid.NewGuid();
+        var approval = QueuedPush.From(
+            PushAudience.User(world.OrgId, "auth0|owner-a"),
+            new PushNotificationPayload(
+                "Bozza pronta",
+                "Una bozza di risposta aspetta la tua approvazione.",
+                PushTypes.ApprovalQueueItem,
+                null,
+                PushRoutes.Approvals(),
+                ApprovalItemId: itemId,
+                CategoryId: ApprovalQueueRules.PushCategory));
+
+        await Job().SendAsync("key-approval", approval, CancellationToken.None);
+        await Job().SendAsync("key-other", Push(PushAudience.User(world.OrgId, "auth0|owner-a")), CancellationToken.None);
+
+        var (withItem, withoutItem) = (_expo.Messages[0], _expo.Messages[1]);
+        Assert.Equal(itemId.ToString(), withItem.Data["approvalItemId"]);
+        Assert.Equal("draft-ready", withItem.CategoryId);
+        Assert.Equal(PushTypes.ApprovalQueueItem, withItem.Data["type"]);
+        Assert.Equal(PushRoutes.Approvals(), withItem.Data["route"]);
+        Assert.False(withoutItem.Data.ContainsKey("approvalItemId"));
+        Assert.Null(withoutItem.CategoryId);
+
+        // On the wire: the category is a member of the message when there is one, and left out when there is none.
+        var json = System.Text.Json.JsonSerializer.Serialize(new[] { withItem, withoutItem }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(json, "\"categoryId\""));
+        Assert.Contains("\"categoryId\":\"draft-ready\"", json, StringComparison.Ordinal);
+        Assert.Contains($"\"approvalItemId\":\"{itemId}\"", json, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void SendAsync_Attributes_RetryAndOneRunPerKeyAtATime()
     {

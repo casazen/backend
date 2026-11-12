@@ -403,6 +403,75 @@ public class OtaMessageAnonymizationTests
         Assert.Equal(new OtaMessageRetentionResult(false, 0, 0), second);
     }
 
+    /// <summary>
+    /// PROOF TEST: privacy rule (E05/F04/US01, gdpr.md § 14). The approval queue keeps a second copy of the words of the draft replies to a guest: the erasure of the guest empties the text, the
+    /// host's edit and the reason of a rejection of the items of its conversations (an OTA thread of its bookings and the direct conversation of a booking), an item that still waited is
+    /// closed as expired, and what the decision was stays; the items of another guest's conversation and an item of the org are not touched; a second erasure changes nothing.
+    /// </summary>
+    [Fact]
+    public async Task GuestErasure_EmptiesTheApprovalQueueItemsOfItsConversations_Test()
+    {
+        await using var db = NewDb($"approval-erasure-{Guid.NewGuid():N}");
+        var orgId = Guid.NewGuid();
+        var erased = new Guest { OrgId = orgId, FirstName = "Giulietta", LastName = "Verdi", Email = "giulietta@example.com" };
+        var other = new Guest { OrgId = orgId, FirstName = "Anna", LastName = "Neri", Email = "anna@example.com" };
+        var propertyId = Guid.NewGuid();
+        var erasedBooking = NewBooking(orgId, propertyId, erased.Id, "R-1");
+        var otherBooking = NewBooking(orgId, propertyId, other.Id, "R-2");
+        var mine = NewThread(orgId, erasedBooking.Id, "1", "Giulietta Verdi");
+        var theirs = NewThread(orgId, otherBooking.Id, "2", "Anna Neri");
+        db.Guests.AddRange(erased, other);
+        db.Bookings.AddRange(erasedBooking, otherBooking);
+        db.OtaMessageThreads.AddRange(mine, theirs);
+
+        ApprovalQueueItem Item(string? threadKey, ApprovalStatus status, string text, string? edited = null, string? reason = null) => new()
+        {
+            OrgId = orgId,
+            ItemType = threadKey is null ? ApprovalItemTypes.Campaign : ApprovalItemTypes.MessageDraft,
+            ItemId = Guid.NewGuid(),
+            ContentText = text,
+            EditedContentText = edited,
+            RejectionReason = reason,
+            Status = status,
+            ApprovedByUserId = status == ApprovalStatus.Pending ? null : "auth0|host",
+            ApprovedAt = status == ApprovalStatus.Pending ? null : Now.AddDays(-1),
+            ThreadKey = threadKey,
+            CreatedAt = Now.AddDays(-2),
+            ExpiresAt = Now.AddDays(5),
+        };
+
+        var waiting = Item(MessageThreadKey.ForOta(mine.Id).ToString(), ApprovalStatus.Pending, "Gentile Giulietta, la camera e pronta", "Gentile Giulietta Verdi");
+        var sent = Item(MessageThreadKey.ForDirect(erasedBooking.Id).ToString(), ApprovalStatus.Approved, "Giulietta, il suo IBAN IT60X0542811101000000123456", "Giulietta, a sabato");
+        var refused = Item(MessageThreadKey.ForOta(mine.Id).ToString(), ApprovalStatus.Rejected, "Una bozza per Giulietta", reason: "Troppo confidenziale con la signora Verdi");
+        var theirItem = Item(MessageThreadKey.ForOta(theirs.Id).ToString(), ApprovalStatus.Pending, "Gentile Anna, la camera e pronta");
+        var ofTheOrg = Item(null, ApprovalStatus.Pending, "Oggetto\n\nTesto di una campagna");
+        db.ApprovalQueueItems.AddRange(waiting, sent, refused, theirItem, ofTheOrg);
+        await db.SaveChangesAsync();
+        var eraser = new GuestDataEraser(db, Mock.Of<IFileStorage>(), NullLogger<GuestDataEraser>.Instance);
+
+        var outcome = await eraser.AnonymizeAsync(erased, Now, CancellationToken.None);
+        await db.SaveChangesAsync();
+
+        Assert.True(outcome.Changed);
+        db.ChangeTracker.Clear();
+        var items = await db.ApprovalQueueItems.AsNoTracking().ToDictionaryAsync(i => i.Id);
+        foreach (var gone in new[] { waiting, sent, refused })
+            Assert.Equal((string.Empty, (string?)null, (string?)null), (items[gone.Id].ContentText, items[gone.Id].EditedContentText, items[gone.Id].RejectionReason));
+
+        // A draft that still waited cannot be decided any more; the decisions already taken stay as they were taken.
+        Assert.Equal(ApprovalStatus.Expired, items[waiting.Id].Status);
+        Assert.Equal((ApprovalStatus.Approved, "auth0|host", (DateTime?)Now.AddDays(-1)), (items[sent.Id].Status, items[sent.Id].ApprovedByUserId, items[sent.Id].ApprovedAt));
+        Assert.Equal(ApprovalStatus.Rejected, items[refused.Id].Status);
+
+        // Nobody else's words are touched: the other guest's conversation and the item of the org.
+        Assert.Equal((ApprovalStatus.Pending, "Gentile Anna, la camera e pronta"), (items[theirItem.Id].Status, items[theirItem.Id].ContentText));
+        Assert.Equal((ApprovalStatus.Pending, "Oggetto\n\nTesto di una campagna"), (items[ofTheOrg.Id].Status, items[ofTheOrg.Id].ContentText));
+
+        // Idempotent: nothing is left to remove.
+        var again = await eraser.AnonymizeAsync(await db.Guests.SingleAsync(g => g.Id == erased.Id), Now.AddDays(1), CancellationToken.None);
+        Assert.False(again.Changed);
+    }
+
     /// <summary>A guest with a booking of the property of the harness for the reservation, erased (anonymized and deleted, as the erasure leaves it) or not.</summary>
     private static async Task<Booking> SeedBookingAsync(MessageSyncHarness h, string reservationId, bool erased)
     {
