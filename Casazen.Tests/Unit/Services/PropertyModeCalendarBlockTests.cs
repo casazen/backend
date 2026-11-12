@@ -221,6 +221,27 @@ public class PropertyModeCalendarBlockTests : IDisposable
         toldForth.VerifyRuns(Times.Once());
     }
 
+    /// <summary>
+    /// Where the property books (a lookup that may call the channel manager) is asked once for each operation, before the transaction and the dates lock of the change of mode and
+    /// before anything is staged: nothing of the unit of work is changed yet when the channel manager is asked, and the recorder does not ask again.
+    /// </summary>
+    [Fact]
+    public async Task TheChannelManagerIsAskedOnce_BeforeTheTransactionAndBeforeAnythingIsStaged()
+    {
+        var property = await _h.SeedPropertyAsync();
+        var told = new ToldChannelManager(_h, property.Id);
+        var changedWhenAsked = new List<int>();
+        told.Targets
+            .Setup(t => t.LookupAsync(property.Id, It.IsAny<CancellationToken>()))
+            .Callback<Guid, CancellationToken>((_, _) => changedWhenAsked.Add(_h.Db.ChangeTracker.Entries().Count(e => e.State != EntityState.Unchanged)))
+            .ReturnsAsync(OctorateTargetLookup.Of(new OctorateBookingTarget("ACC1", "956528")));
+
+        var scheduled = await told.Service.ScheduleAsync(property.Id, RentalMode.Long, Day(20), UserId);
+        await told.Service.CancelAsync(property.Id, scheduled.Id, UserId);
+
+        Assert.Equal([0, 0], changedWhenAsked);
+    }
+
     [Fact]
     public async Task APropertyThatIsNotOnTheChannelManager_RecordsAnAppliedChange_AndNothingIsRun()
     {
@@ -246,15 +267,14 @@ public class PropertyModeCalendarBlockTests : IDisposable
         public ToldChannelManager(PropertyModeHarness harness, Guid propertyId, bool mirrored = true)
         {
             _harness = harness;
-            var targets = new Mock<IOctorateBookingTargets>();
-            targets
+            Targets
                 .Setup(t => t.LookupAsync(propertyId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(mirrored ? OctorateTargetLookup.Of(new OctorateBookingTarget("ACC1", "956528")) : OctorateTargetLookup.NotMirrored);
             var flags = new Mock<IFeatureFlags>();
             flags.Setup(f => f.IsEnabled(FeatureFlags.OctorateConnector)).Returns(true);
             var recorder = new CalendarChangeRecorder(
                 harness.Db,
-                targets.Object,
+                Targets.Object,
                 flags.Object,
                 Microsoft.Extensions.Options.Options.Create(new OctorateCalendarOptions()),
                 harness.Clock,
@@ -263,6 +283,8 @@ public class PropertyModeCalendarBlockTests : IDisposable
         }
 
         public PropertyModeService Service { get; }
+
+        public Mock<IOctorateBookingTargets> Targets { get; } = new();
 
         public Mock<IBackgroundJobClient> Jobs { get; } = new();
 
