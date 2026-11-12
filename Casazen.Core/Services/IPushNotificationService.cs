@@ -199,6 +199,15 @@ public static class PushDeliveryKeys
         $"stay-alert:{bookingId:N}:{kind}:{referenceDate:yyyyMMdd}:{reminderNumber}";
 
     /// <summary>
+    /// One stage of an alert about a period or the connection of a property (E03/F02/US02/T01): the kind, the reference (the month, or
+    /// <c>connection</c>), the stage and the instant the stage was claimed. The connection is alerted again for a new incident after the first one
+    /// cleared, with the same kind, reference and stage, so the instant of the claim (whole minutes) tells the incidents apart; a retry of the push
+    /// job keeps the key it was queued with.
+    /// </summary>
+    public static string ComplianceAlert(Guid propertyId, Casazen.Core.Entities.ComplianceAlertType type, string referenceKey, int stage, DateTime raisedAtUtc) =>
+        $"compliance-alert:{propertyId:N}:{type}:{referenceKey}:{stage}:{raisedAtUtc:yyyyMMddHHmm}";
+
+    /// <summary>
     /// An OTA stay "da verificare" (CO-21): the reason and, for <c>BlockDatesChanged</c>, the channel's dates, so a host
     /// already pushed for the same unresolved dates is not pushed again, while dates that changed once more start a new key.
     /// </summary>
@@ -312,6 +321,14 @@ public static class PushTypes
     public const string AlloggiatiFailed = "alloggiati-failed";
     public const string CheckoutReminder = "checkout-reminder";
 
+    // E03/F02/US02/T01 (NF-52, CHK-12): the new stay stages and the alerts about a period and the connection of a property.
+    public const string ReceiptMissing = "receipt-missing";
+    public const string ShortStayAtRisk = "short-stay-at-risk";
+    public const string OverThirtyNights = "over-thirty-nights";
+    public const string IstatDeadline = "istat-deadline";
+    public const string TouristTaxDeadline = "tourist-tax-deadline";
+    public const string ConnectionInactive = "connection-inactive";
+
     /// <summary>An OTA stay created from an iCal block is "da verificare" (CO-21): the app opens the booking from the route.</summary>
     public const string OtaStayReview = "ota-stay-review";
 
@@ -340,6 +357,18 @@ public static class PushTypes
         StayAlertKind.AlloggiatiOverdue => AlloggiatiOverdue,
         StayAlertKind.AlloggiatiFailed => AlloggiatiFailed,
         StayAlertKind.CheckoutReminder => CheckoutReminder,
+        StayAlertKind.ReceiptMissing => ReceiptMissing,
+        StayAlertKind.ShortStayAtRisk => ShortStayAtRisk,
+        StayAlertKind.OverThirtyNights => OverThirtyNights,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "No push type for this alert."),
+    };
+
+    /// <summary>Type of the push of an alert about a period or the connection of a property (E03/F02/US02/T01).</summary>
+    public static string ForComplianceAlert(Casazen.Core.Entities.ComplianceAlertType type) => type switch
+    {
+        Casazen.Core.Entities.ComplianceAlertType.IstatPeriod => IstatDeadline,
+        Casazen.Core.Entities.ComplianceAlertType.TouristTaxPeriod => TouristTaxDeadline,
+        Casazen.Core.Entities.ComplianceAlertType.ConnectionInactive => ConnectionInactive,
+        _ => throw new ArgumentOutOfRangeException(nameof(type), type, "No push type for this alert."),
     };
 }

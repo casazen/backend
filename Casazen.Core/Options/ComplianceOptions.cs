@@ -50,6 +50,32 @@ public class ComplianceOptions
 
     /// <summary>The archive of the proofs, its uploads, downloads and exports (<c>Compliance:Archive</c>, E03/F02/US03/T01).</summary>
     public ComplianceArchiveOptions Archive { get; set; } = new();
+
+    // E03/F02/US02/T01 (NF-52, CHK-12): the thresholds of the alerts about a period and about the connection. Proposals the product owner may
+    // change; the alerts run only with Features:ComplianceTrafficLight on, and the defaults are documented in docs/TECHNICAL.md.
+
+    /// <summary>
+    /// How many days before the deadline day of an ISTAT (or tourist tax) period the host is told it is approaching (stage 1), when nothing proves it
+    /// was met. Default 3.
+    /// </summary>
+    public int PeriodWarningDays { get; set; } = 3;
+
+    /// <summary>How many reminders follow the «overdue» alert of a period (stage 2). 0 disables them. Default 3.</summary>
+    public int MaxPeriodReminders { get; set; } = 3;
+
+    /// <summary>Days between the reminders of an overdue period (at least 1). Default 3.</summary>
+    public int PeriodReminderDays { get; set; } = 3;
+
+    /// <summary>Hour (Europe/Rome) at which the alerts of a period are sent. Default 9.</summary>
+    public int PeriodAlertHourLocal { get; set; } = 9;
+
+    /// <summary>
+    /// The police send of the channel manager of a property that is not active is alerted when a stay arrives within this many days. Default 7.
+    /// </summary>
+    public int ConnectionAlertDays { get; set; } = 7;
+
+    /// <summary>Days after the first alert about an inactive connection at which the second and last one is sent (at least 1). Default 2.</summary>
+    public int ConnectionReminderDays { get; set; } = 2;
 }
 
 /// <summary>Section <c>Compliance:StatusCheck</c> (CO-06).</summary>

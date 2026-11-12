@@ -30,6 +30,27 @@ public class StayAlertOptions
     /// <summary>Hour (Europe/Rome) of the daily overdue reminders. Default 9.</summary>
     public int OverdueReminderHourLocal { get; set; } = 9;
 
+    // E03/F02/US02/T01 (NF-52, CHK-12): the thresholds of the new stay stages. Proposals the product owner may change; they run only with
+    // Features:ComplianceTrafficLight on, and are documented in docs/TECHNICAL.md.
+
+    /// <summary>
+    /// Hour (Europe/Rome) of the day after the communication was sent, entrusted to the channel manager or declared sent at which the host is
+    /// told that no receipt is archived (<c>ReceiptMissing</c>). Default 10.
+    /// </summary>
+    public int ReceiptMissingHourLocal { get; set; } = 10;
+
+    /// <summary>
+    /// A stay of at most one night has the 6-hour term (<c>ShortStayAtRisk</c>): when it is not entrusted to the channel manager, the host is
+    /// told when the arrival is within this many hours. Default 6.
+    /// </summary>
+    public int ShortStayRiskHours { get; set; } = 6;
+
+    /// <summary>
+    /// Hour (Europe/Rome) of the day before the arrival at which the host is told that a stay over 30 nights is not sent by the channel manager
+    /// (<c>OverThirtyNights</c>). Default 9.
+    /// </summary>
+    public int OverThirtyNightsHourLocal { get; set; } = 9;
+
     /// <summary>
     /// Maximum Alloggiati deadline messages for one stay: guest data missing, deadline approaching, overdue and the
     /// daily reminders.

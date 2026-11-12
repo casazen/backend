@@ -201,6 +201,183 @@
   <data name="StayAlertPush_Failed_Body" xml:space="preserve">
     <value>{0}: check the report for the arrival on {1}.</value>
   </data>
+  <data name="ReceiptMissing_Subject" xml:space="preserve">
+    <value>Alloggiati Web receipt missing - {0} ({1})</value>
+  </data>
+  <data name="ReceiptMissing_Body" xml:space="preserve">
+    <value>The Alloggiati Web report for the stay at &lt;strong&gt;{0}&lt;/strong&gt;, arriving on &lt;strong&gt;{1}&lt;/strong&gt;, is recorded as sent or entrusted to the channel manager, but CasaZen does not hold its receipt yet.</value>
+  </data>
+  <data name="ReceiptMissing_Action" xml:space="preserve">
+    <value>Download the receipt from the Alloggiati Web portal and upload it on the Compliance page of CasaZen: until it is there, the obligation does not show as compliant.</value>
+  </data>
+  <data name="ShortStayAtRisk_Subject" xml:space="preserve">
+    <value>Short stay: Alloggiati Web report due within 6 hours - {0} ({1})</value>
+  </data>
+  <data name="ShortStayAtRisk_Body" xml:space="preserve">
+    <value>The stay at &lt;strong&gt;{0}&lt;/strong&gt;, arriving on &lt;strong&gt;{1}&lt;/strong&gt;, lasts one night at most: its Alloggiati Web report is due within 6 hours of the arrival. The guests are not entrusted to the channel manager, which sends the reports once a day.</value>
+  </data>
+  <data name="ShortStayAtRisk_Action" xml:space="preserve">
+    <value>Send the report on the Alloggiati Web portal as soon as the guest arrives, then record it in the Alloggiati tab of the booking («Mark as sent manually»).</value>
+  </data>
+  <data name="OverThirtyNights_Subject" xml:space="preserve">
+    <value>Stay over 30 nights: Alloggiati Web report to send by hand - {0} ({1})</value>
+  </data>
+  <data name="OverThirtyNights_Body" xml:space="preserve">
+    <value>The stay at &lt;strong&gt;{0}&lt;/strong&gt;, arriving on &lt;strong&gt;{1}&lt;/strong&gt;, is longer than 30 nights: the channel manager does not send it by itself and the Alloggiati Web portal accepts at most 30 days of stay on one record.</value>
+  </data>
+  <data name="OverThirtyNights_Action" xml:space="preserve">
+    <value>On the day of the arrival send the report on the Alloggiati Web portal, then record it in the Alloggiati tab of the booking («Mark as sent manually»).</value>
+  </data>
+  <data name="StayAlertPush_ReceiptMissing_Title" xml:space="preserve">
+    <value>Alloggiati Web receipt missing</value>
+  </data>
+  <data name="StayAlertPush_ReceiptMissing_Body" xml:space="preserve">
+    <value>{0}: upload the receipt for the arrival on {1}.</value>
+  </data>
+  <data name="StayAlertPush_ShortStayAtRisk_Title" xml:space="preserve">
+    <value>Short stay to report</value>
+  </data>
+  <data name="StayAlertPush_ShortStayAtRisk_Body" xml:space="preserve">
+    <value>{0}: send the report within 6 hours of the arrival on {1}.</value>
+  </data>
+  <data name="StayAlertPush_OverThirtyNights_Title" xml:space="preserve">
+    <value>Stay over 30 nights</value>
+  </data>
+  <data name="StayAlertPush_OverThirtyNights_Body" xml:space="preserve">
+    <value>{0}: send the report by hand for the arrival on {1}.</value>
+  </data>
+  <data name="ComplianceAlert_Cta" xml:space="preserve">
+    <value>Open the compliance page</value>
+  </data>
+  <data name="ComplianceAlertIstat_Approaching_Subject" xml:space="preserve">
+    <value>ISTAT report due - {0} ({1})</value>
+  </data>
+  <data name="ComplianceAlertIstat_Approaching_Body" xml:space="preserve">
+    <value>The ISTAT report of &lt;strong&gt;{1}&lt;/strong&gt; for &lt;strong&gt;{0}&lt;/strong&gt; is not recorded as done yet: it is due on &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ComplianceAlertIstat_Overdue_Subject" xml:space="preserve">
+    <value>ISTAT report overdue - {0} ({1})</value>
+  </data>
+  <data name="ComplianceAlertIstat_Overdue_Body" xml:space="preserve">
+    <value>The deadline of the ISTAT report of &lt;strong&gt;{1}&lt;/strong&gt; for &lt;strong&gt;{0}&lt;/strong&gt; was &lt;strong&gt;{2}&lt;/strong&gt; and CasaZen holds no proof that it was done.</value>
+  </data>
+  <data name="ComplianceAlertIstat_Action" xml:space="preserve">
+    <value>If you already sent it, upload the proof on the Compliance page of CasaZen; if the channel manager sends it, check the outcome in its panel. Otherwise send it as soon as possible.</value>
+  </data>
+  <data name="ComplianceAlertTouristTax_Approaching_Subject" xml:space="preserve">
+    <value>Tourist tax due - {0} ({1})</value>
+  </data>
+  <data name="ComplianceAlertTouristTax_Approaching_Body" xml:space="preserve">
+    <value>The tourist tax declaration and payment of &lt;strong&gt;{1}&lt;/strong&gt; for &lt;strong&gt;{0}&lt;/strong&gt; are not recorded as done yet: they are due on &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ComplianceAlertTouristTax_Overdue_Subject" xml:space="preserve">
+    <value>Tourist tax overdue - {0} ({1})</value>
+  </data>
+  <data name="ComplianceAlertTouristTax_Overdue_Body" xml:space="preserve">
+    <value>The deadline to declare and pay the tourist tax of &lt;strong&gt;{1}&lt;/strong&gt; for &lt;strong&gt;{0}&lt;/strong&gt; was &lt;strong&gt;{2}&lt;/strong&gt; and CasaZen holds no receipts of the declaration and the payment.</value>
+  </data>
+  <data name="ComplianceAlertTouristTax_Action" xml:space="preserve">
+    <value>If you already did, upload the receipts on the Compliance page of CasaZen; otherwise declare and pay as soon as possible.</value>
+  </data>
+  <data name="ComplianceAlertConnection_Subject" xml:space="preserve">
+    <value>Automatic sending not active - {0}</value>
+  </data>
+  <data name="ComplianceAlertConnection_Body" xml:space="preserve">
+    <value>The channel manager is not active for the automatic sending of the Alloggiati Web and ISTAT reports of &lt;strong&gt;{0}&lt;/strong&gt;, and a guest arrives in the coming days.</value>
+  </data>
+  <data name="ComplianceAlertConnection_Reminder" xml:space="preserve">
+    <value>Second and last notice: automatic sending is still not active.</value>
+  </data>
+  <data name="ComplianceAlertConnection_Action" xml:space="preserve">
+    <value>Activate or reconnect it from the channel manager panel. Until it is active, the reports have to be sent by hand.</value>
+  </data>
+  <data name="CompliancePush_Istat_Approaching_Title" xml:space="preserve">
+    <value>ISTAT report due</value>
+  </data>
+  <data name="CompliancePush_Istat_Approaching_Body" xml:space="preserve">
+    <value>{0}: ISTAT report of {1} due by {2}.</value>
+  </data>
+  <data name="CompliancePush_Istat_Overdue_Title" xml:space="preserve">
+    <value>ISTAT report overdue</value>
+  </data>
+  <data name="CompliancePush_Istat_Overdue_Body" xml:space="preserve">
+    <value>{0}: the ISTAT report of {1} is not recorded as done.</value>
+  </data>
+  <data name="CompliancePush_TouristTax_Approaching_Title" xml:space="preserve">
+    <value>Tourist tax due</value>
+  </data>
+  <data name="CompliancePush_TouristTax_Approaching_Body" xml:space="preserve">
+    <value>{0}: tourist tax of {1} to declare and pay by {2}.</value>
+  </data>
+  <data name="CompliancePush_TouristTax_Overdue_Title" xml:space="preserve">
+    <value>Tourist tax overdue</value>
+  </data>
+  <data name="CompliancePush_TouristTax_Overdue_Body" xml:space="preserve">
+    <value>{0}: the tourist tax of {1} is not recorded as paid.</value>
+  </data>
+  <data name="CompliancePush_Connection_Title" xml:space="preserve">
+    <value>Automatic sending not active</value>
+  </data>
+  <data name="CompliancePush_Connection_Body" xml:space="preserve">
+    <value>{0}: automatic sending is not active and a guest is about to arrive.</value>
+  </data>
+  <data name="ComplianceSummary_Subject_NoStays" xml:space="preserve">
+    <value>Compliance for {0}: no stays</value>
+  </data>
+  <data name="ComplianceSummary_Subject_AllCompliant" xml:space="preserve">
+    <value>Compliance for {0}: stays {1}, all compliant</value>
+  </data>
+  <data name="ComplianceSummary_Subject_Open" xml:space="preserve">
+    <value>Compliance for {0}: stays {1}, to fix {2}</value>
+  </data>
+  <data name="ComplianceSummary_Body_NoStays" xml:space="preserve">
+    <value>{0}: no stays this month, nothing to report.</value>
+  </data>
+  <data name="ComplianceSummary_Body_AllCompliant" xml:space="preserve">
+    <value>{0}: stays of the month &lt;strong&gt;{1}&lt;/strong&gt;. All compliant: every obligation has its proof archived in CasaZen.</value>
+  </data>
+  <data name="ComplianceSummary_Body_Open" xml:space="preserve">
+    <value>{0}: stays of the month &lt;strong&gt;{1}&lt;/strong&gt;. Not everything is compliant, here is what is missing.</value>
+  </data>
+  <data name="ComplianceSummary_Item_SendAlloggiati" xml:space="preserve">
+    <value>Alloggiati Web reports to send: {0}</value>
+  </data>
+  <data name="ComplianceSummary_Item_ResolveAlloggiatiFailure" xml:space="preserve">
+    <value>Alloggiati Web reports to correct: {0}</value>
+  </data>
+  <data name="ComplianceSummary_Item_UploadAlloggiatiReceipt" xml:space="preserve">
+    <value>Alloggiati Web receipts to upload: {0}</value>
+  </data>
+  <data name="ComplianceSummary_Item_SendAlloggiatiManually" xml:space="preserve">
+    <value>Alloggiati Web reports to send by hand: {0}</value>
+  </data>
+  <data name="ComplianceSummary_Item_UploadIstatProof" xml:space="preserve">
+    <value>ISTAT reports to prove: {0}</value>
+  </data>
+  <data name="ComplianceSummary_Item_DeclareTouristTax" xml:space="preserve">
+    <value>Tourist tax to declare and pay: {0}</value>
+  </data>
+  <data name="ComplianceSummary_Item_Other" xml:space="preserve">
+    <value>Other obligations to fix: {0}</value>
+  </data>
+  <data name="ComplianceSummary_ExternalVerification" xml:space="preserve">
+    <value>The obligations to verify are the ones the channel manager sends: CasaZen does not see their outcome and never takes them as done. Check it in its panel, starting from the Compliance page.</value>
+  </data>
+  <data name="ComplianceSummary_Totals" xml:space="preserve">
+    <value>In short, the obligations of the month:</value>
+  </data>
+  <data name="ComplianceSummary_State_OfficialProof" xml:space="preserve">
+    <value>With an archived proof: {0}</value>
+  </data>
+  <data name="ComplianceSummary_State_ExternalVerificationRequired" xml:space="preserve">
+    <value>To verify in the channel manager panel: {0}</value>
+  </data>
+  <data name="ComplianceSummary_State_Missing" xml:space="preserve">
+    <value>Without a proof: {0}</value>
+  </data>
+  <data name="ComplianceSummary_State_NotApplicable" xml:space="preserve">
+    <value>Not owed (the guests never came): {0}</value>
+  </data>
   <data name="GuestRefundConfirmed_Subject" xml:space="preserve">
     <value>Refund confirmed - {0}</value>
   </data>
