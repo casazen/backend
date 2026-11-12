@@ -76,6 +76,9 @@ public static class RecurringJobsRegistration
         // E09/F01/US01/T02 (ADR-023): the cache of the portal catalog of the marketplace is refreshed every day, only while the Octorate connector is on.
         ConfigureMarketplacePortalRefresh(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateConnector));
 
+        // E09/F03/US01/T01 (ADR-023, NF-57): the health of the active integrations is read from Octorate every 30 minutes, only while the Octorate connector is on.
+        ConfigureMarketplaceConnectionSync(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateConnector));
+
         // SP-BKP: the groups of backup suppliers are followed whatever the flag SupplierRequestBackups says (it only gates their creation): a
         // group that exists has its windows, and turning the flag off must not leave its requests hanging. With no group a run finds nothing.
         recurringJobManager.AddOrUpdate<ServiceRequestGroupJob>(
@@ -457,6 +460,26 @@ public static class RecurringJobsRegistration
             MarketplacePortalRefreshJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             MarketplacePortalRefreshJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The sync of the connections of the active integrations (E09/F03/US01/T01, NF-57): every 30 minutes, only with <see cref="FeatureFlags.OctorateConnector"/> on. It reads
+    /// Octorate (the connections, the license, the quota) and writes only CasaZen's own rows and the «To do» items. With the flag off nothing calls Octorate, and the schedule of an
+    /// earlier deploy is removed.
+    /// </summary>
+    private static void ConfigureMarketplaceConnectionSync(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(MarketplaceConnectionSyncJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<MarketplaceConnectionSyncJob>(
+            MarketplaceConnectionSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            MarketplaceConnectionSyncJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

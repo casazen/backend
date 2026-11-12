@@ -35,6 +35,7 @@ public class OctorateJobsRegistrationTests
         ListingChannelHealthJob.RecurringJobId,
         ListingOutsideChangeJob.RecurringJobId,
         OctorateCheckInRetryJob.RecurringJobId,
+        MarketplaceConnectionSyncJob.RecurringJobId,
         CalendarChangeProcessJob.RecurringJobId,
     ];
 
@@ -89,6 +90,23 @@ public class OctorateJobsRegistrationTests
         Assert.Equal(calendar.Cron, ical.Cron);
         Assert.Equal(15, PropertyICalSchedule.SyncEveryMinutes);
         Assert.Contains("ical-supplier-sync", jobs.Keys);
+    }
+
+    [Fact]
+    public void Configure_OctorateConnectorOn_SchedulesTheMarketplaceConnectionSyncEveryThirtyMinutes()
+    {
+        var (manager, jobs) = Manager();
+
+        RecurringJobsRegistration.Configure(manager.Object, Flags(octorateConnector: true));
+
+        // E09/F03/US01/T01: the health of the active integrations is read every 30 minutes, UTC, and the lock waits like the other jobs of its kind.
+        Assert.Equal("marketplace-connection-sync", MarketplaceConnectionSyncJob.RecurringJobId);
+        var sync = jobs[MarketplaceConnectionSyncJob.RecurringJobId];
+        Assert.Equal("*/30 * * * *", sync.Cron);
+        Assert.Equal(TimeZoneInfo.Utc, sync.Options.TimeZone);
+        Assert.Equal(nameof(MarketplaceConnectionSyncJob.ExecuteAsync), sync.Job.Method.Name);
+        Assert.Equal(JobLockTimeouts.DefaultSeconds, sync.Job.Method.GetCustomAttribute<DisableConcurrentExecutionAttribute>()!.TimeoutSec);
+        manager.Verify(m => m.RemoveIfExists(MarketplaceConnectionSyncJob.RecurringJobId), Times.Never);
     }
 
     [Fact]

@@ -46,15 +46,41 @@ public sealed partial class OctorateApiClient
     public async Task<OctorateConnectionInfo[]> ListConnectionsAsync(string accommodationCode, CancellationToken ct)
     {
         var accommodation = CheckedAccommodationId(accommodationCode);
-        using var document = await GetConnectionJsonAsync(
-            $"/rest/v1/connection?accommodation={Uri.EscapeDataString(accommodation)}&fields={Uri.EscapeDataString(ConnectionInfoFields)}",
-            "connections-list",
-            ct);
-        var root = document.RootElement;
-        IEnumerable<JsonElement> items = root.ValueKind == JsonValueKind.Object && !root.TryGetProperty("data", out _)
-            ? new[] { root }
-            : Items(root);
+        var path = $"/rest/v1/connection?accommodation={Uri.EscapeDataString(accommodation)}&fields={Uri.EscapeDataString(ConnectionInfoFields)}";
+        var answer = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get, Address(path)), "connections-list", ct, mapError: PartnerFailureOf);
+        using var document = ParseJson(answer);
+
+        // An answer that is not a list of connections (an error that came with HTTP 200, a wrapper without its list, items none of which can be read) is not an empty
+        // list: it is a failure, never a success, so that no connection is taken for gone because of a shape nobody has met. A list that is empty is one.
+        var items = ConnectionItemsOf(document.RootElement) ?? throw new OctorateServerException(answer.StatusCode);
+        if (items.Count > 0 && items.All(item => ReadConnectionInfo(item, null) is null))
+            throw new OctorateServerException(answer.StatusCode);
+
         return [.. items.Select(item => ReadConnectionInfo(item, accommodation)).OfType<OctorateConnectionInfo>()];
+    }
+
+    /// <summary>
+    /// The items of an answer of <c>connection</c>: a bare list, the <c>data</c> list of a wrapper, or the one connection an answer is (or the <c>data</c> object of a
+    /// wrapper). <c>null</c> for anything else (a string, a number, a wrapper whose <c>data</c> is neither a list nor an object). An object with no <c>data</c> is the
+    /// connection itself, so an error object that came with HTTP 200 reaches the caller as an item that is not a connection, which it then refuses.
+    /// </summary>
+    private static List<JsonElement>? ConnectionItemsOf(JsonElement root)
+    {
+        if (root.ValueKind == JsonValueKind.Array)
+            return [.. root.EnumerateArray()];
+
+        if (root.ValueKind != JsonValueKind.Object)
+            return null;
+
+        if (!root.TryGetProperty("data", out var data))
+            return [root];
+
+        return data.ValueKind switch
+        {
+            JsonValueKind.Array => [.. data.EnumerateArray()],
+            JsonValueKind.Object => [data],
+            _ => null,
+        };
     }
 
     public async Task<OctorateConnectionInfo> CreateConnectionAsync(string accommodationCode, OctorateConnectionCreate request, CancellationToken ct)

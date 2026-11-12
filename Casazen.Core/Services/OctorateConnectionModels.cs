@@ -49,6 +49,13 @@ public sealed record OctorateConnectionInfo(
     /// waiting, disabled or silent is not an access given.
     /// </summary>
     public bool PanelAccessDone => UserLogged == true || IsConnected;
+
+    /// <summary>
+    /// The pulls of the connection are on: Octorate sends calendar, prices and availability to the channel and pulls its reservations (both reported
+    /// <c>true</c>; a member Octorate does not say is not «on»). A connection is created with both off and the activation wizard switches them on after
+    /// «mark connected», once a room is mapped (D6): <c>ENABLED</c> shows the access given, the pulls show the activation finished.
+    /// </summary>
+    public bool PullsAreOn => UpdateCalendar == true && PullReservations == true;
 }
 
 /// <summary>
