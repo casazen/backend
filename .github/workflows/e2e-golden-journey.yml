@@ -23,7 +23,9 @@ concurrency:
 jobs:
   gj-l3:
     name: Golden Journey L3
-    runs-on: ubuntu-latest
+    # Pinned to 24.04: `ubuntu-latest` is now 26.04 and `npx playwright install chromium` stops there with
+    # "Playwright does not support chromium on ubuntu26.04-x64" (the frontend workflows are pinned the same way).
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     # Throw-away service container: the password below is not a secret.
     services:
