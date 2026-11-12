@@ -11,8 +11,10 @@ namespace Casazen.Core.Assistant;
 /// <c>assistant_threshold_invalid</c> (the confidence threshold).
 /// </summary>
 /// <remarks>
-/// <b>An empty list is never «all».</b> The languages are at least one; a list of topics has to name topics the assistant knows, and the lists that may be empty mean
-/// what they say (no allowed list = no restriction by it, no forbidden list = nothing forbidden), never «every topic».
+/// <b>No empty list widens a reach.</b> No endpoint of the assistant takes a list of properties or ids, so there is no «empty = every property». The languages are at least one (an
+/// empty list is 422, never «every language»). The lists of topics are optional filters that have to name topics the assistant knows: no allowed list is the state of an organization
+/// that never saved its rules (no restriction by it), an empty forbidden list forbids nothing, and neither lets a sensitive situation go automatic (the rule of the modes,
+/// <see cref="AssistantModeRules"/>, does not read them).
 /// </remarks>
 public static partial class AssistantRulesValidator
 {
