@@ -41,7 +41,8 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
     /// Full anonymization of <paramref name="guest"/>: every personal field, its document scan, the guests of its stays,
     /// the IP and note of its consent events, the marketing e-mail and IP of its per-channel marketing consents (the consent
     /// ends), the special requests of its bookings, the name shown on its reviews (DB-12a: the
-    /// mark and the text stay, anonymous); the words and the names of the copy of its conversations with the channels (E05/F01/US01/T03, ADR-032-R13);
+    /// mark and the text stay, anonymous); the words and the names of the copy of its conversations with the channels (E05/F01/US01/T03, ADR-032-R13) and the words of the
+    /// items of the approval queue about those conversations (<see cref="ClearApprovalItemsOfGuestAsync"/>, E05/F04/US01);
     /// open check-in links of its bookings expire; and what the CRM holds of the guest
     /// (<see cref="EraseCrmDataAsync"/>), in the same unit of work. <see cref="GuestErasureOutcome.Changed"/> is false when there was nothing left to remove (idempotent).
     /// </summary>
@@ -64,11 +65,12 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         await ExpireOpenCheckInLinksAsync(guest.Id, now, cancellationToken);
         var threads = await DeleteMessageThreadsAsync(guest.Id, cancellationToken);
         var otaThreads = (await AnonymizeOtaThreadsOfGuestAsync(guest.Id, now, cancellationToken)).Threads;
+        var approvalItems = await ClearApprovalItemsOfGuestAsync(guest.Id, cancellationToken);
         var crm = await EraseCrmDataAsync(guest, now, cancellationToken);
 
         var changed = Fingerprint(guest) != before
             || filesDeleted > 0 || stayGuests > 0 || taxReasons > 0 || consentEvidence > 0 || marketingConsents > 0
-            || specialRequests > 0 || reviews > 0 || threads > 0 || otaThreads > 0 || crm.Changed
+            || specialRequests > 0 || reviews > 0 || threads > 0 || otaThreads > 0 || approvalItems > 0 || crm.Changed
             || guest.DataAnonymizedDate is null;
         guest.AlloggiatiDataErasedAt ??= now;
         guest.DataAnonymizedDate ??= now;
@@ -702,6 +704,55 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         }
 
         return lost;
+    }
+
+    /// <summary>
+    /// The items of the approval queue about the conversations of the guest (E05/F04/US01, NF-68): the draft of a reply to the guest, the host's edit of it and the reason of a rejection
+    /// are the words of a message to the guest and may name them (the queue keeps them as the conversations do, ADR-032-R3), so they leave with the guest: the texts are emptied and an
+    /// item that still waited is closed as expired, because nobody can decide a draft whose guest is gone (its "To do" is closed by the daily job of the queue). The decision, its author and
+    /// its time stay. The items are found by the key of the conversation: <c>ota:{thread}</c> for the OTA threads of the guest's bookings, <c>direct:{booking}</c> for the bookings themselves.
+    /// A conversation with no booking (an inquiry) has no guest record to be erased with: the retention of the queue empties its items. Stages the changes without saving; returns the
+    /// items that changed (a second run finds none).
+    /// </summary>
+    private async Task<int> ClearApprovalItemsOfGuestAsync(Guid guestId, CancellationToken cancellationToken)
+    {
+        var otaThreads = await db.OtaMessageThreads
+            .Where(t => t.BookingId != null && db.Bookings.Any(b => b.Id == t.BookingId && b.GuestId == guestId))
+            .Select(t => t.Id)
+            .ToListAsync(cancellationToken);
+        var bookings = await db.Bookings
+            .Where(b => b.GuestId == guestId)
+            .Select(b => b.Id)
+            .ToListAsync(cancellationToken);
+
+        var keys = otaThreads.Select(id => MessageThreadKey.ForOta(id).ToString())
+            .Concat(bookings.Select(id => MessageThreadKey.ForDirect(id).ToString()))
+            .ToList();
+        if (keys.Count == 0)
+            return 0;
+
+        var items = await db.ApprovalQueueItems
+            .Where(i => i.ThreadKey != null && keys.Contains(i.ThreadKey))
+            .ToListAsync(cancellationToken);
+
+        var changed = 0;
+        foreach (var item in items)
+        {
+            var holdsWords = item.ContentText.Length > 0 || item.EditedContentText is not null || item.RejectionReason is not null;
+            var waits = item.Status == ApprovalStatus.Pending;
+            if (!holdsWords && !waits)
+                continue;
+
+            item.ContentText = string.Empty;
+            item.EditedContentText = null;
+            item.RejectionReason = null;
+            if (waits)
+                item.Status = ApprovalStatus.Expired;
+
+            changed++;
+        }
+
+        return changed;
     }
 
     /// <summary>An open check-in link would let someone enter personal data again for an anonymized guest.</summary>

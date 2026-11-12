@@ -1422,7 +1422,7 @@ reservation of the room of a property, found through the confirmed `OctorateList
   (`host-approval-to-decide`, once for each alert and person, the slot is a `NotificationEmailSlot`) each person chose, with the quiet hours held back by `ApprovalAlertJob`, and
   raises ONE "To do" (`MessageToApprove`, `ApproveAiDraft`, entity `ApprovalQueueItem`, deadline the expiry) that the decision or `ApprovalExpirationJob` closes. A failure is logged and
   handed to the job, never undone and never swallowed; the same item submitted again while it waits is the one returned. No text, name or address is in a push, an e-mail, a
-  notification or a log. `ICampaignService.MarkApprovedAsync` is the one place that sets `CampaignStatus.Approved`, and `CampaignService.SubmitForApprovalAsync` creates its item through the queue.
+  notification or a log. `ICampaignService.MarkApprovedAsync` is the one place that sets `CampaignStatus.Approved`, and `CampaignService.SubmitForApprovalAsync` creates its item through the queue. The words of an item (its text, the host's edit and the reason of a rejection) do not stay for ever: `ApprovalExpirationJob` empties them 30 days after the item was decided or expired (`ApprovalQueueRules.TextRetentionDays`, a constant) and `GuestDataEraser` empties those of the conversations of an erased guest at once (`docs/runbooks/gdpr.md` § 14).
 
 **CasaZen's bookings on the connector (E08/F01/US01, ADR-031, NF-74, D9, D13).** A booking confirmed in CasaZen (host wizard, phone entry, booking
 site) on a property whose mapping is confirmed is created on Octorate once, by `OctorateBookingCreateHandler` (consumer of `BookingConfirmed`, behind

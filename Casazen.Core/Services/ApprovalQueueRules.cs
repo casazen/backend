@@ -45,6 +45,14 @@ public static class ApprovalQueueRules
     /// <summary>Days an item waits for a decision before the daily job expires it.</summary>
     public const int ExpirationDays = 7;
 
+    /// <summary>
+    /// Days the words of an item (its text, the host's edit of it and the reason of a rejection) are kept after the item was decided or expired: then the daily job empties them
+    /// (<c>ApprovalExpirationJob</c>); the decision, its author, its time and the action stay. A documented constant and not a setting: the queue is working data, short-lived by
+    /// design (an item waits seven days), and the message it carries is a copy of the one of the conversations, whose own retention is <c>Gdpr:Retention:AlloggiatiData</c> (docs/runbooks/gdpr.md § 14).
+    /// The erasure of a guest empties the items of its conversations at once, with no wait.
+    /// </summary>
+    public const int TextRetentionDays = 30;
+
     /// <summary>The push category the app registers (with its Approve and Edit buttons) for the alert of an item waiting for approval (the <c>categoryId</c> of the push).</summary>
     public const string PushCategory = "draft-ready";
 
