@@ -4,6 +4,11 @@ name: CI/CD Pipeline
 # Deploy verification after a green push is verify-railway-deploy.yml (not this suite).
 # The former `echo`-only e2e-golden-journey.yml was removed (FD-02, A9-24); the real end-to-end gate (UI, ephemeral stack)
 # is now e2e-golden-journey.yml (FN-03, docs/runbooks/golden-journey-l3.md). Runbook: docs/runbooks/ci-backend.md.
+#
+# Shape (CI speed-up): the solution is compiled ONCE (job `build`), then the ~19,000 tests run in TEST_SHARDS parallel jobs
+# (job `test`) on that build's output, and the check `Build & Test` is the job that waits for both. Every test still runs:
+# the shards are a partition of the very list `dotnet test --list-tests` discovers in the built assembly (see
+# scripts/ci/test_shards.py), and each shard checks it ran its whole share.
 
 on:
   push:
@@ -17,30 +22,19 @@ concurrency:
   group: ci-cd-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: true
 
+env:
+  # Number of test shards. Keep it equal to the length of the `matrix.shard` list of the job `test` (checked there).
+  TEST_SHARDS: '6'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+
 jobs:
+  # Restore (NuGet audit), vulnerable-packages gate, compile, discover the tests and plan the shards.
   build:
-    name: Build & Test
-    runs-on: ubuntu-latest
-
-    # Integration tests run on real PostgreSQL (FD-04): each WebApplicationFactory creates its own
-    # it_<guid> database on this service, a copy of a template migrated once per run, and drops it afterwards.
-    # Throw-away service container: the password below is not a secret.
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-    env:
-      TEST_POSTGRES_CONNECTION: Host=localhost;Port=5432;Username=postgres;Password=postgres;Include Error Detail=true
+    name: Build
+    # Pinned: `ubuntu-latest` is moving to 26.04, which Playwright does not support (see e2e-golden-journey.yml).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -64,17 +58,159 @@ jobs:
       - name: Build
         run: dotnet build --configuration Release --no-restore
 
-      - name: Install local document OCR tools
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-ita tesseract-ocr-eng poppler-utils
+      # Discovery of the very assembly the shards run, then the split of its classes in TEST_SHARDS balanced lists.
+      - name: Plan the test shards
+        run: |
+          set -o pipefail
+          mkdir -p ci-plan
+          dotnet test Casazen.Tests/bin/Release/net10.0/Casazen.Tests.dll --list-tests > ci-plan/test-list.txt
+          python3 scripts/ci/test_shards.py plan --list ci-plan/test-list.txt --weights scripts/ci/test-class-weights.tsv \
+            --shards "$TEST_SHARDS" --out ci-plan | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The shards run this output (no second compile). Fast compression: the files are mostly assemblies.
+      - name: Upload the test build
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-build
+          path: Casazen.Tests/bin/Release/net10.0
+          compression-level: 1
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Upload the shard plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-plan
+          path: |
+            ci-plan/shard-*.filter
+            ci-plan/shard-*.classes
+            ci-plan/plan.txt
+          retention-days: 1
+          if-no-files-found: error
+
+  # One job per shard. Integration tests run on real PostgreSQL (FD-04): each WebApplicationFactory creates its own
+  # it_<guid> database on this job's service, a copy of a template migrated once per run, and drops it afterwards.
+  test:
+    name: Test shard ${{ matrix.shard }}/${{ strategy.job-total }}
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+
+    # Throw-away service container: the password below is not a secret.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_POSTGRES_CONNECTION: Host=localhost;Port=5432;Username=postgres;Password=postgres;Include Error Detail=true
+
+    steps:
+      # Local document OCR tools (tesseract + poppler): first step, installed in the background while the checkout, the
+      # .NET setup and the download of the build output run; "Wait for the OCR tools" below joins it.
+      - name: Install local document OCR tools (background)
+        run: |
+          (sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends tesseract-ocr tesseract-ocr-ita tesseract-ocr-eng poppler-utils) > "$RUNNER_TEMP/ocr-install.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/ocr-install.pid"
+
+      # The source tree is needed at the same path as in the build job: the tests read the content root of Casazen.Web
+      # and the seed files from it.
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Download the test build
+        uses: actions/download-artifact@v4
+        with:
+          name: test-build
+          path: Casazen.Tests/bin/Release/net10.0
+
+      - name: Download the shard plan
+        uses: actions/download-artifact@v4
+        with:
+          name: test-plan
+          path: ci-plan
+
+      - name: Wait for the OCR tools
+        run: |
+          while kill -0 "$(cat "$RUNNER_TEMP/ocr-install.pid")" 2>/dev/null; do sleep 1; done
+          if ! command -v tesseract >/dev/null || ! command -v pdftoppm >/dev/null; then
+            cat "$RUNNER_TEMP/ocr-install.log"
+            echo "::error::tesseract / poppler were not installed"
+            exit 1
+          fi
+
+      - name: Shard plan matches the matrix
+        run: |
+          planned="$(sed -n 's/^shards=//p' ci-plan/plan.txt)"
+          if [ "$planned" != "${{ strategy.job-total }}" ] || [ "$planned" != "$TEST_SHARDS" ]; then
+            echo "::error::The plan has $planned shards, the matrix ${{ strategy.job-total }}, TEST_SHARDS=$TEST_SHARDS: keep the three equal."
+            exit 1
+          fi
 
       - name: Test
         run: |
-          dotnet test --configuration Release --no-build --verbosity minimal --maxcpucount
+          dotnet test Casazen.Tests/bin/Release/net10.0/Casazen.Tests.dll \
+            --filter "$(cat ci-plan/shard-${{ matrix.shard }}.filter)" \
+            --logger "console;verbosity=minimal" \
+            --logger "trx;LogFileName=shard-${{ matrix.shard }}.trx" \
+            --results-directory TestResults
 
-  # Its own job, in parallel with Build & Test: it needs neither the build nor PostgreSQL.
+      # Fails when a class planned for this shard has no result: a filter that selected nothing must never pass silently.
+      - name: Every planned class ran
+        if: ${{ success() }}
+        run: python3 scripts/ci/test_shards.py verify --plan ci-plan --shard ${{ matrix.shard }} --trx TestResults/shard-${{ matrix.shard }}.trx
+
+      - name: Upload the results (to refresh scripts/ci/test-class-weights.tsv)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.shard }}
+          path: TestResults/*.trx
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # The required check. It keeps the name the delivery tooling and the runbooks know: green only when the build and every
+  # shard are green (a skipped or cancelled job is not a pass).
+  build-and-test:
+    name: Build & Test
+    needs: [build, test]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Build and every test shard passed
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+        run: |
+          echo "Build: $BUILD_RESULT; test shards: $TEST_RESULT"
+          if [ "$BUILD_RESULT" != "success" ] || [ "$TEST_RESULT" != "success" ]; then
+            echo "::error::Build & Test failed: build $BUILD_RESULT, test shards $TEST_RESULT"
+            exit 1
+          fi
+
+  # Its own job, in parallel with the build: it needs neither the build output nor PostgreSQL.
   format:
     name: Format
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
