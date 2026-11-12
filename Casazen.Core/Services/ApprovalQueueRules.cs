@@ -71,6 +71,9 @@ public static class ApprovalQueueRules
     /// <summary>The item is not there, is of another org or is out of the reach of the caller (404).</summary>
     public const string NotFoundCode = "approval_item_not_found";
 
+    /// <summary>The reason handed to the rejection hook of a type when an item expires and no person rejected it (<c>ApprovalExpirationJob</c>): a campaign goes back to a draft all the same.</summary>
+    public const string ExpiredReason = "expired";
+
     /// <summary>The code of a failed action that raised something unexpected: the item stays pending and the error is the server's, in its log.</summary>
     public const string UnexpectedErrorCode = "origin_action_error";
 

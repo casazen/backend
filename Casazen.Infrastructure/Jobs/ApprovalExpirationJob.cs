@@ -12,7 +12,7 @@ namespace Casazen.Infrastructure.Jobs;
 /// <summary>
 /// Daily job to expire approval queue items older than 7 days (NF-06, AC-NF06-5).
 /// Moves items from Pending to Expired status, and (E05/F04/US01/T02) closes the "To do" raised for each: an item nobody can decide any more leaves the queue, and a "To do"
-/// that leads to an item that is not there is worse than none. It also empties the words of the items that were decided or expired a while ago
+/// that leads to an item that is not there is worse than none, and runs the rejection hook of its type (a campaign goes back to a draft). It also empties the words of the items that were decided or expired a while ago
 /// (<see cref="ApprovalQueueRules.TextRetentionDays"/>): the text of a message to a guest, the host's edit of it and the reason of a rejection do not stay for ever.
 /// </summary>
 [DisableConcurrentExecution(timeoutInSeconds: 600)]
@@ -20,7 +20,8 @@ public class ApprovalExpirationJob(
     AppDbContext db,
     TimeProvider timeProvider,
     ILogger<ApprovalExpirationJob> logger,
-    IInternalActivityService? activities = null)
+    IInternalActivityService? activities = null,
+    IApprovalOriginActionRegistry? actions = null)
 {
     public const int MaxAttempts = 3;
     public const string RecurringJobId = "approval-expiration";
@@ -50,6 +51,18 @@ public class ApprovalExpirationJob(
         {
             logger.LogInformation("No approval queue items to expire");
             return;
+        }
+
+        // What the item was about goes back as a rejection leaves it, before the status changes: a campaign that waited for a decision nobody took is a draft again, which the host can
+        // submit again (nothing else gets it out of PendingApproval). The hook of a type is safe to repeat, so one that fails stops the job with the items still pending and the retry
+        // (or the next day) runs it again.
+        if (actions is not null)
+        {
+            foreach (var item in expiredItems)
+            {
+                if (actions.Find(item.ItemType) is { } action)
+                    await action.OnRejectedAsync(item, ApprovalQueueRules.ExpiredReason, InternalActivity.ClosedBySystem, cancellationToken);
+            }
         }
 
         // The "To do" first, before the status: a close that fails stops the job with the items still pending, so the retry (or the next day) finds them again, and closing is

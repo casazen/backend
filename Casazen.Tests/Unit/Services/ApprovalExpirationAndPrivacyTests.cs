@@ -148,6 +148,40 @@ public class ApprovalExpirationAndPrivacyTests : IDisposable
         Assert.Equal("Oggetto\n\n<p>Testo</p>", converter.ConvertFromProvider("Oggetto\n\n<p>Testo</p>"));
     }
 
+    // ─── The hook of the type at expiry ───
+
+    /// <summary>
+    /// An item that expires releases what it held back through the rejection hook of its type, before its status changes (a campaign goes back to a draft; a message needs nothing). A hook
+    /// that fails is not swallowed: the job stops with the items still pending, and the retry finds them again and runs the hook once more.
+    /// </summary>
+    [Fact]
+    public async Task Expiry_RunsTheRejectionHookOfTheType_BeforeTheStatusChanges_AndAFailureStopsTheJob()
+    {
+        await _rig.SeedAsync();
+        var service = _rig.Service();
+        var campaignId = Guid.NewGuid();
+        var campaign = await service.SubmitForApprovalAsync(
+            _rig.OrgId, ApprovalItemTypes.Campaign, campaignId, ApprovalQueueRules.CampaignTextOf("Oggetto", "<p>Testo</p>"), isAiGenerated: false);
+        var draft = await _rig.SubmitDraftAsync(service, _rig.PropertyA);
+        _rig.Clock.Advance(TimeSpan.FromDays(8));
+        _rig.Campaigns
+            .SetupSequence(c => c.ReturnToDraftAsync(campaignId, _rig.OrgId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("the database went away"))
+            .Returns(Task.CompletedTask);
+        Task Run() => new ApprovalExpirationJob(_rig.Db, _rig.Clock, NullLogger<ApprovalExpirationJob>.Instance, _rig.Activities(), _rig.Registry()).ProcessExpirationsAsync();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(Run);
+
+        Assert.All(await _rig.Db.ApprovalQueueItems.AsNoTracking().ToListAsync(), i => Assert.Equal(ApprovalStatus.Pending, i.Status));
+
+        await Run();
+
+        var items = await _rig.Db.ApprovalQueueItems.AsNoTracking().ToDictionaryAsync(i => i.Id);
+        Assert.Equal((ApprovalStatus.Expired, ApprovalStatus.Expired), (items[campaign.Id].Status, items[draft.Id].Status));
+        _rig.Campaigns.Verify(c => c.ReturnToDraftAsync(campaignId, _rig.OrgId, It.IsAny<CancellationToken>()), Times.Exactly(2));
+        _rig.Campaigns.VerifyNoOtherCalls();
+    }
+
     // ─── Retention of the words (gdpr.md § 14) ───
 
     /// <summary>

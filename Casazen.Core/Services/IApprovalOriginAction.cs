@@ -37,7 +37,8 @@ public interface IApprovalOriginAction
     Task<ApprovalActionResult> ExecuteAsync(ApprovalQueueItem item, string finalText, string userId, CancellationToken ct);
 
     /// <summary>
-    /// What a rejection does to what the item was about (a campaign goes back to a draft); nothing for a message. Idempotent: the service calls it
+    /// What a rejection does to what the item was about (a campaign goes back to a draft); nothing for a message. Also what an expiry does: the daily job calls it with the reason
+    /// <see cref="ApprovalQueueRules.ExpiredReason"/> for an item nobody decided, so what the item held back is released. Idempotent: the service calls it
     /// before the item becomes <c>Rejected</c>, and a call that is repeated after a failure finds the work done.
     /// </summary>
     Task OnRejectedAsync(ApprovalQueueItem item, string reason, string userId, CancellationToken ct);

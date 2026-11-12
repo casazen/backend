@@ -299,4 +299,29 @@ public class CampaignApprovalFlowTests : IDisposable
         await campaigns.ReturnToDraftAsync(draft.Id, _rig.OrgId);
         Assert.Equal(CampaignStatus.Sent, (await _rig.Db.Campaigns.AsNoTracking().SingleAsync()).Status);
     }
+
+    /// <summary>
+    /// A decision nobody took is not a way to strand a campaign: when its item expires the campaign goes back to a draft, as a rejection leaves it, so the host can submit it again (nothing
+    /// else gets a campaign out of <c>PendingApproval</c>), and the "To do" of the item is closed.
+    /// </summary>
+    [Fact]
+    public async Task ACampaignWhoseItemExpired_IsADraftAgain_ThatCanBeSubmittedAgain()
+    {
+        var (campaigns, _) = await BuildAsync();
+        var draft = await campaigns.CreateDraftAsync(_rig.OrgId, _segmentId, "Oggetto", "<p>Testo</p>", false);
+        await campaigns.SubmitForApprovalAsync(draft.Id, _rig.OrgId);
+        _rig.Clock.Advance(TimeSpan.FromDays(8));
+
+        await new ApprovalExpirationJob(_rig.Db, _rig.Clock, NullLogger<ApprovalExpirationJob>.Instance, _rig.Activities(), _registry).ProcessExpirationsAsync();
+
+        Assert.Equal(ApprovalStatus.Expired, (await _rig.Db.ApprovalQueueItems.AsNoTracking().SingleAsync()).Status);
+        Assert.Equal(CampaignStatus.Draft, (await _rig.Db.Campaigns.AsNoTracking().SingleAsync()).Status);
+        Assert.NotNull((await _rig.Db.InternalActivities.AsNoTracking().SingleAsync()).CompletedAt);
+
+        await campaigns.SubmitForApprovalAsync(draft.Id, _rig.OrgId);
+
+        var items = await _rig.Db.ApprovalQueueItems.AsNoTracking().OrderBy(i => i.CreatedAt).ToListAsync();
+        Assert.Equal([ApprovalStatus.Expired, ApprovalStatus.Pending], items.Select(i => i.Status));
+        Assert.Equal(CampaignStatus.PendingApproval, (await _rig.Db.Campaigns.AsNoTracking().SingleAsync()).Status);
+    }
 }
