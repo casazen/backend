@@ -169,7 +169,8 @@ public static class FiscalDocumentPdfs
             yield return texts.Get("FiscalDocPdfFiscalCode", language, document.RecipientFiscalCode);
     }
 
-    private static string KindLabel(DocumentKind kind, IDocumentTexts texts, string language) => kind switch
+    /// <summary>The word of the kind of a document (invoice, receipt, credit note, proforma): also the one of the list exported to CSV and Excel.</summary>
+    internal static string KindLabel(DocumentKind kind, IDocumentTexts texts, string language) => kind switch
     {
         DocumentKind.Receipt => texts.Get("FiscalDocPdfKindReceipt", language),
         DocumentKind.CreditNote => texts.Get("FiscalDocPdfKindCreditNote", language),

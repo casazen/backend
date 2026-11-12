@@ -11,9 +11,11 @@ namespace Casazen.Core.Utilities;
 /// about; a cell with the separator, a quote or a line break is quoted with the quotes doubled.
 /// </summary>
 /// <remarks>
-/// A cell is a <see cref="string"/> (text, always guarded), a <see cref="decimal"/> (an amount, to two places), an integer or
-/// <c>null</c> (empty). A number is written by the writer and never as text, so a negative amount is a number and not a formula.
-/// The fiscal reports write through it too (<c>FiscalReportDocuments</c>), without a limit of rows: their output is the same as before.
+/// A cell is a <see cref="string"/> (text, always guarded), a <see cref="decimal"/> (an amount, to two places), an integer, a
+/// <see cref="DateOnly"/> (a calendar day, written as <c>yyyy-MM-dd</c>) or <c>null</c> (empty). A number is written by the writer and
+/// never as text, so a negative amount is a number and not a formula. The fiscal reports write through it too
+/// (<c>FiscalReportDocuments</c>), without a limit of rows: their output is the same as before. <see cref="XlsxWriter"/> takes the same
+/// cells and the same rule for the text that a spreadsheet would run (<see cref="StartsLikeAFormula"/>).
 /// </remarks>
 public static class CsvWriter
 {
@@ -50,29 +52,40 @@ public static class CsvWriter
         return [.. Encoding.UTF8.GetPreamble(), .. Encoding.UTF8.GetBytes(text.ToString())];
     }
 
-    /// <summary>One cell as it is written: text guarded, a number in Italian, <c>null</c> empty.</summary>
+    /// <summary>One cell as it is written: text guarded, a number in Italian, a day as <c>yyyy-MM-dd</c>, <c>null</c> empty.</summary>
     public static string Cell(object? value) => value switch
     {
         null => string.Empty,
         string text => Text(text),
         decimal amount => amount.ToString("0.00", Italian),
         int or long or short or byte => Convert.ToString(value, CultureInfo.InvariantCulture)!,
+        DateOnly day => day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
         _ => Text(Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty),
     };
 
     /// <summary>
     /// A text cell: quoted when it holds the separator, a quote or a line break, and with a leading apostrophe when a spreadsheet
-    /// would read it as a formula (<c>= + - @</c>, a tab or a CR first), a property name for example.
+    /// would read it as a formula (<see cref="StartsLikeAFormula"/>), a property name for example.
     /// </summary>
     public static string Text(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
 
-        var text = value;
-        if (text.Length > 0 && text[0] is '=' or '+' or '-' or '@' or '\t' or '\r')
-            text = "'" + text;
+        var text = StartsLikeAFormula(value) ? "'" + value : value;
         return text.IndexOfAny([Separator, '"', '\n', '\r']) >= 0
             ? "\"" + text.Replace("\"", "\"\"", StringComparison.Ordinal) + "\""
             : text;
+    }
+
+    /// <summary>
+    /// True when a spreadsheet would run <paramref name="text"/> as a formula or a command if it were read as a cell: it starts with
+    /// <c>=</c>, <c>+</c>, <c>-</c> or <c>@</c>, a tab or a CR. The one rule of every file the host downloads: <see cref="Text"/> answers it
+    /// with a leading apostrophe, <see cref="XlsxWriter"/> by writing the cell as text, never as a formula.
+    /// </summary>
+    public static bool StartsLikeAFormula(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        return text.Length > 0 && text[0] is '=' or '+' or '-' or '@' or '\t' or '\r';
     }
 }
