@@ -59,6 +59,43 @@ public class OctorateConnectionOperationsTests
         Assert.Equal(new DateTime(2026, 11, 4, 9, 30, 0, DateTimeKind.Utc), waiting.LastUpdate);
     }
 
+    [Theory]
+    [InlineData("""{ "error": "invalid request", "type": "ApiException" }""")]
+    [InlineData("{}")]
+    [InlineData("""{ "data": "x" }""")]
+    [InlineData("\"nothing\"")]
+    [InlineData("""[ { "channelId": 142, "accommodationId": 585492, "status": "ENABLED" } ]""")]
+    [InlineData("""[ { "id": 7001, "accommodationId": 585492, "status": "ENABLED" } ]""")]
+    [InlineData("""{ "data": [ { "status": "ENABLED" }, { "foo": 1 } ] }""")]
+    public async Task ListConnectionsAsync_AnAnswerThatIsNotAListOfConnections_IsAFailureOfTheRead_NeverAnEmptyList(string body)
+    {
+        // An error that came with HTTP 200, a wrapper without its list, items none of which can be read: not an empty list, so no connection is taken for gone because of it.
+        var h = new OctorateConnectionClientHarness();
+        h.Answer(HttpStatusCode.OK, body);
+
+        using (h.Scope.Use(OrgA))
+        {
+            var failure = await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.ListConnectionsAsync(Acc, CancellationToken.None));
+            Assert.Equal(("octorate_unavailable", 200), (failure.Code, failure.OctorateStatusCode));
+        }
+    }
+
+    [Theory]
+    [InlineData("[]", 0)]
+    [InlineData("""{ "data": [], "page": { "number": 0 } }""", 0)]
+    [InlineData("""[ { "id": 7003, "channelId": 142, "accommodationId": 999999, "status": "ENABLED" } ]""", 0)]
+    [InlineData("""{ "id": 7001, "channelId": 142, "accommodationId": 585492, "status": "ENABLED" }""", 1)]
+    [InlineData("""{ "data": { "id": 7001, "channelId": 142, "status": "ENABLED" } }""", 1)]
+    [InlineData("""{ "data": [ { "id": 7001, "channelId": 142, "status": "ENABLED" }, { "status": "ENABLED" } ] }""", 1)]
+    public async Task ListConnectionsAsync_AListThatCanBeRead_IsReturned_AlsoWhenItIsEmptyOrHoldsAnItemThatIsNotAConnection(string body, int expected)
+    {
+        var h = new OctorateConnectionClientHarness();
+        h.Answer(HttpStatusCode.OK, body);
+
+        using (h.Scope.Use(OrgA))
+            Assert.Equal(expected, (await h.Client.ListConnectionsAsync(Acc, CancellationToken.None)).Length);
+    }
+
     [Fact]
     public async Task CreateConnectionAsync_SendsThePortalTheAccessDataAndAConnectionThatReadsAndWritesNothingYet()
     {

@@ -348,13 +348,15 @@ public class MarketplaceHealthTests
         var gone = await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Channel, "142", MarketplaceActivationStatus.Active, "7001", verified: true);
         var recent = await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Channel, "274", MarketplaceActivationStatus.Pending, "7002", age: TimeSpan.FromMinutes(2));
         var freed = await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Tool, "300", MarketplaceActivationStatus.ToFix, error: "connection_missing");
+        await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Channel, "235", MarketplaceActivationStatus.Active, "7004", verified: true);
+        w.Connections[World.AccA1] = [Conn("235", "7004", "ENABLED")];
         var recentBefore = Describe(recent);
 
         var result = await w.SyncAsync(w.OrgA);
         Assert.Equal(1, result.Updated);
         var rows = (await w.RowsAsync(w.OrgA)).ToDictionary(r => r.Id);
 
-        // Not listed and not new: To fix, and the id is kept so that a connection that comes back is read again.
+        // The list shows another connection of the property, so it is readable and this one is gone. Not listed and not new: To fix, and the id is kept so that a connection that comes back is read again.
         Assert.Equal((MarketplaceActivationStatus.ToFix, "connection_missing", "7001"), (rows[gone.Id].Status, rows[gone.Id].LastErrorCode, rows[gone.Id].OctorateConnectionId));
 
         // The list may lag just after a create: a row written two minutes ago is left for the next run.
@@ -367,10 +369,84 @@ public class MarketplaceHealthTests
         Assert.NotNull(rows[freed.Id].TodoActivityId);
 
         // The connection comes back (the list was behind): the activation is read again and recovers.
-        w.Connections[World.AccA1] = [Conn("142", "7001", "ENABLED")];
+        w.Connections[World.AccA1] = [Conn("142", "7001", "ENABLED"), Conn("235", "7004", "ENABLED")];
         await w.SyncAsync(w.OrgA);
         var back = (await w.RowsAsync(w.OrgA)).Single(r => r.Id == gone.Id);
         Assert.Equal((MarketplaceActivationStatus.Active, null), (back.Status, back.LastErrorCode));
+    }
+
+    [Fact]
+    public async Task SyncAsync_AListThatShowsNoneOfTheConnections_ConcludesNothingFromOnePass_AndOnlyASecondPassConfirmsIt()
+    {
+        var w = await World.CreateAsync();
+        var channel = await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Channel, "142", MarketplaceActivationStatus.Active, "7001", verified: true);
+        var tool = await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Tool, "300", MarketplaceActivationStatus.Active, "7003", verified: true);
+        await w.AddAsync(w.PropertyA2, MarketplaceActivationKind.Channel, "274", MarketplaceActivationStatus.Active, "7002", verified: true);
+        w.Connections[World.AccA2] = [Conn("274", "7002", "ENABLED")];
+
+        // The list of the first property is empty (what an answer of a shape nobody has met, read as empty, would give), and with it every connection of CasaZen is gone at
+        // once: the first pass concludes nothing. No problem is shown, no «To do» is raised for any host, the property is skipped and the log says it by its code.
+        var first = await w.SyncAsync(w.OrgA);
+        Assert.Equal((0, 1, 0), (first.Updated, first.Skipped, first.TodoRaised));
+        var rows = (await w.RowsAsync(w.OrgA)).ToDictionary(r => r.Id);
+        Assert.Equal((MarketplaceActivationStatus.Active, null), (rows[channel.Id].Status, rows[channel.Id].LastErrorCode));
+        Assert.Equal((MarketplaceActivationStatus.Active, null), (rows[tool.Id].Status, rows[tool.Id].LastErrorCode));
+        Assert.Equal(w.Clock.Now, rows[channel.Id].LastErrorAt);
+        Assert.Equal(channel.LastSyncedAt, rows[channel.Id].LastSyncedAt);
+        Assert.Empty(await w.TodosAsync());
+        await using (var db = w.NewDb())
+            Assert.All((await w.Service(db).GetHealthAsync(w.OrgA, w.OrgWide, null)).Items, item => Assert.Null(item.Error));
+
+        Assert.Contains(w.Logs.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("none of the 2 connections", StringComparison.Ordinal) && e.Message.Contains("connection_missing", StringComparison.Ordinal));
+
+        // Seen again in between: the moment is gone with the sight, so a later gap is a first pass again and still concludes nothing.
+        w.Clock.Set(w.Clock.Now.AddMinutes(30));
+        w.Connections[World.AccA1] = [Conn("142", "7001", "ENABLED"), Conn("300", "7003", "ENABLED")];
+        await w.SyncAsync(w.OrgA);
+        Assert.All(await w.RowsAsync(w.OrgA), row => Assert.Null(row.LastErrorAt));
+        w.Clock.Set(w.Clock.Now.AddMinutes(30));
+        w.Connections.Remove(World.AccA1);
+        var again = await w.SyncAsync(w.OrgA);
+        Assert.Equal((0, 0), (again.Updated, again.TodoRaised));
+        Assert.All((await w.RowsAsync(w.OrgA)).Where(r => r.PropertyId == w.PropertyA1), row => Assert.Equal((MarketplaceActivationStatus.Active, null), (row.Status, row.LastErrorCode)));
+
+        // A second pass, half an hour later, that finds them still gone confirms it: both are to fix, each with its «To do» (High for the channel, Medium for the tool).
+        w.Clock.Set(w.Clock.Now.AddMinutes(30));
+        var second = await w.SyncAsync(w.OrgA);
+        Assert.Equal((2, 2), (second.Updated, second.TodoRaised));
+        rows = (await w.RowsAsync(w.OrgA)).ToDictionary(r => r.Id);
+        Assert.Equal((MarketplaceActivationStatus.ToFix, "connection_missing", "7001"), (rows[channel.Id].Status, rows[channel.Id].LastErrorCode, rows[channel.Id].OctorateConnectionId));
+        Assert.Equal((MarketplaceActivationStatus.ToFix, "connection_missing"), (rows[tool.Id].Status, rows[tool.Id].LastErrorCode));
+        var todos = await w.TodosAsync();
+        Assert.Equal(ActivityUrgency.High, Assert.Single(todos, t => t.EntityId == channel.Id).Urgency);
+        Assert.Equal(ActivityUrgency.Medium, Assert.Single(todos, t => t.EntityId == tool.Id).Urgency);
+    }
+
+    [Fact]
+    public async Task SyncAsync_AFirstPassThatIsTooOld_IsAFirstPassAgain_AndAnAnswerThatCannotBeReadChangesNothing()
+    {
+        var w = await World.CreateAsync();
+        var channel = await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Channel, "142", MarketplaceActivationStatus.Active, "7001", verified: true);
+
+        // The first pass is remembered; the next one comes after the window (the runs in between were skipped): it is a first pass again, not a confirmation.
+        await w.SyncAsync(w.OrgA);
+        var remembered = (await w.RowsAsync(w.OrgA)).Single().LastErrorAt;
+        Assert.Equal(w.Clock.Now, remembered);
+        w.Clock.Set(w.Clock.Now + MarketplaceHealthService.MissConfirmationWindow + TimeSpan.FromMinutes(1));
+        var late = await w.SyncAsync(w.OrgA);
+        Assert.Equal((0, 0), (late.Updated, late.TodoRaised));
+        var row = Assert.Single(await w.RowsAsync(w.OrgA));
+        Assert.Equal((MarketplaceActivationStatus.Active, null, w.Clock.Now), (row.Status, row.LastErrorCode, row.LastErrorAt));
+
+        // An answer the client cannot read is not an empty list: the read fails with its code, the property is counted as failed and left as it is, nothing is concluded.
+        w.Clock.Set(w.Clock.Now.AddMinutes(30));
+        w.ListFailures[World.AccA1] = new OctorateServerException(200);
+        var unreadable = await w.SyncAsync(w.OrgA);
+        Assert.Equal((0, 1, 0, 0), (unreadable.Updated, unreadable.Failed, unreadable.Properties, unreadable.TodoRaised));
+        row = Assert.Single(await w.RowsAsync(w.OrgA));
+        Assert.Equal((MarketplaceActivationStatus.Active, null, channel.LastSyncedAt), (row.Status, row.LastErrorCode, row.LastSyncedAt));
+        Assert.Empty(await w.TodosAsync());
+        Assert.Contains(w.Logs.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("octorate_unavailable", StringComparison.Ordinal));
     }
 
     // ─── The sync: the «To do» items ──────────────────────────────────────────────────────────────────────

@@ -26,7 +26,9 @@ namespace Casazen.Infrastructure.Services;
 /// pulls are on too (<see cref="OctorateConnectionInfo.PullsAreOn"/>: the wizard switches them on as the last step of the activation, so «enabled» alone is an access
 /// given, not a finished activation; with the pulls off a Pending row stays Pending and a row to fix keeps its problem and its «To do»), <c>WAITING</c> makes it Pending,
 /// <c>DISABLED</c> To fix with <c>connection_disabled</c>. A connection the activation has an id for that Octorate no longer lists is To fix with <c>connection_missing</c>, unless the
-/// row was written in the last <see cref="NewConnectionGrace"/> (the list may lag just after a create): that is left for the next run. A status nobody knew changes
+/// row was written in the last <see cref="NewConnectionGrace"/> (the list may lag just after a create): that is left for the next run. When the list shows none of the
+/// connections of the property (empty, or all gone at once) the first pass concludes nothing and a second one confirms it (<see cref="MissConfirmationWindow"/>); an answer
+/// of Octorate that is not a list of connections is a failure of the read, never an empty list (the client refuses it). A status nobody knew changes
 /// nothing, not even <c>LastSyncedAt</c>, and is logged as a warning. A row with no connection id (a start whose answer was lost, or one a step freed) has nothing to
 /// compare and is left to the wizard, which finds or makes the connection when it starts again.</para>
 /// <para><b>The «To do».</b> An activation that is To fix and has no item gets one (idempotent: an item that is open for it is the one, so there is never a second);
@@ -61,6 +63,12 @@ public sealed class MarketplaceHealthService(
     /// raise a problem for a connection that was made a minute ago.
     /// </summary>
     public static readonly TimeSpan NewConnectionGrace = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// How long a first pass that found every connection of CasaZen missing from the list waits for a second one to confirm it: a run is every 30 minutes, so a few runs
+    /// may be skipped (a rate limit, a failure of that property) and the second pass still counts; a first pass older than this is a first pass again.
+    /// </summary>
+    public static readonly TimeSpan MissConfirmationWindow = TimeSpan.FromHours(3);
 
     /// <summary>How long the quota of a sync is kept in memory (the sync runs every 30 minutes): an older reading is not shown.</summary>
     private static readonly TimeSpan QuotaLifetime = TimeSpan.FromHours(3);
@@ -370,14 +378,30 @@ public sealed class MarketplaceHealthService(
 
         run.Properties++;
         var now = Now();
+        var matches = rows
+            .Select(row => (
+                Row: row,
+                Connection: listed.FirstOrDefault(
+                    c => string.Equals(c.ConnectionId, row.OctorateConnectionId, StringComparison.Ordinal)
+                         && string.Equals(c.PortalCode, row.TargetCode, StringComparison.Ordinal))))
+            .ToList();
+
+        // None of the connections CasaZen made is in the list: that says more about the list (empty, late, a shape nobody has met that was read as empty) than about the
+        // connections, so one pass concludes nothing from it (see ApplyMissing).
+        var noneListed = matches.All(match => match.Connection is null);
         var updated = 0;
-        foreach (var row in rows)
+        foreach (var (row, connection) in matches)
         {
-            var connection = listed.FirstOrDefault(
-                c => string.Equals(c.ConnectionId, row.OctorateConnectionId, StringComparison.Ordinal)
-                     && string.Equals(c.PortalCode, row.TargetCode, StringComparison.Ordinal));
-            if (Apply(row, connection, now, run))
+            if (Apply(row, connection, noneListed, now, run))
                 updated++;
+        }
+
+        if (noneListed && updated == 0 && matches.Any(match => now - match.Row.UpdatedAt >= NewConnectionGrace))
+        {
+            run.Skipped++;
+            logger.LogWarning(
+                "Marketplace sync of property {PropertyId} of org {OrgId}: the list shows none of the {Count} connections of CasaZen ({Error}), nothing is concluded from one pass: a second pass that finds them gone confirms it",
+                propertyId, orgId, rows.Count, MarketplaceHealthErrorCodes.ConnectionMissing);
         }
 
         try
@@ -398,20 +422,10 @@ public sealed class MarketplaceHealthService(
     /// <summary>
     /// Brings one row in line with its connection (or with its absence). <c>true</c> when its status or its problem changed. The rows are not saved here.
     /// </summary>
-    private bool Apply(MarketplaceActivation row, OctorateConnectionInfo? connection, DateTime now, RunCounts run)
+    private bool Apply(MarketplaceActivation row, OctorateConnectionInfo? connection, bool noneListed, DateTime now, RunCounts run)
     {
         if (connection is null)
-        {
-            if (now - row.UpdatedAt < NewConnectionGrace)
-            {
-                logger.LogInformation(
-                    "Marketplace activation {ActivationId} of org {OrgId}: its connection is not listed yet, written {Minutes} minutes ago: left for the next run",
-                    row.Id, row.OrgId, (int)(now - row.UpdatedAt).TotalMinutes);
-                return false;
-            }
-
-            return MarkToFix(row, MarketplaceHealthErrorCodes.ConnectionMissing, now);
-        }
+            return ApplyMissing(row, noneListed, now);
 
         var verdict = MarketplaceHealthRules.Classify(connection.Status);
         switch (verdict.Health)
@@ -436,6 +450,40 @@ public sealed class MarketplaceHealthService(
     }
 
     /// <summary>
+    /// A connection the activation has an id for that the list does not show. A row written in the last <see cref="NewConnectionGrace"/> is left for the next run (the list may
+    /// lag just after a create). When the list shows other connections of CasaZen for the property, it is readable and this one is gone: To fix with <c>connection_missing</c>
+    /// at once. When it shows none of them (<paramref name="noneListed"/>: an empty list, or every connection of the property gone together) nothing is concluded from one
+    /// pass: the first only remembers it (the moment in <c>LastErrorAt</c>, which a row with no problem leaves empty and the next sight of its connection clears with the
+    /// rest of the problem, so no error is shown and no «To do» is raised), and a pass that finds them still gone, a run later and within
+    /// <see cref="MissConfirmationWindow"/>, confirms it. A row that is already to fix, or has a problem of its own, keeps it.
+    /// </summary>
+    private bool ApplyMissing(MarketplaceActivation row, bool noneListed, DateTime now)
+    {
+        if (now - row.UpdatedAt < NewConnectionGrace)
+        {
+            logger.LogInformation(
+                "Marketplace activation {ActivationId} of org {OrgId}: its connection is not listed yet, written {Minutes} minutes ago: left for the next run",
+                row.Id, row.OrgId, (int)(now - row.UpdatedAt).TotalMinutes);
+            return false;
+        }
+
+        if (!noneListed)
+            return MarkToFix(row, MarketplaceHealthErrorCodes.ConnectionMissing, now);
+
+        if (row.Status == MarketplaceActivationStatus.ToFix || row.LastErrorCode is not null)
+            return false;
+
+        if (row.LastErrorAt is { } firstMiss && now - firstMiss >= NewConnectionGrace && now - firstMiss <= MissConfirmationWindow)
+            return MarkToFix(row, MarketplaceHealthErrorCodes.ConnectionMissing, now);
+
+        // The first pass (or one so long after the first that it is a first again): remembered, nothing concluded.
+        if (row.LastErrorAt is null || now - row.LastErrorAt.Value > MissConfirmationWindow)
+            row.LastErrorAt = now;
+
+        return false;
+    }
+
+    /// <summary>
     /// A connection Octorate lists <c>ENABLED</c> shows the access given, not the activation finished: the activation wizard writes Active only after «mark connected»
     /// and once the pulls of the connection are on (D6, fail closed), and an Active row whose pulls are on is all it leaves alone. So an Active row stays Active, and a row
     /// that is not Active becomes Active only when the connection is enabled <b>and</b> its pulls are on (<see cref="OctorateConnectionInfo.PullsAreOn"/>); an enabled
@@ -453,7 +501,8 @@ public sealed class MarketplaceHealthService(
 
     private static bool MarkHealthy(MarketplaceActivation row, MarketplaceActivationStatus status, DateTime now)
     {
-        var changed = row.Status != status || row.LastErrorCode is not null || row.LastErrorAt is not null;
+        // The moment alone (the first pass of a connection that was missing, see ApplyMissing) is not a problem: clearing it changes nothing the host sees.
+        var changed = row.Status != status || row.LastErrorCode is not null;
         row.Status = status;
         row.LastErrorCode = null;
         row.LastErrorAt = null;

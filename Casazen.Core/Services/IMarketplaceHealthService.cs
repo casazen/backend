@@ -21,8 +21,9 @@ namespace Casazen.Core.Services;
 /// <para><b>Only Octorate decides.</b> The sync keeps an Active activation Active while its connection is <c>ENABLED</c> and makes another one Active only when the
 /// connection is <c>ENABLED</c> and its pulls are on (<see cref="OctorateConnectionInfo.PullsAreOn"/>: the activation wizard switches them on last, so «enabled» is an access
 /// given, not a finished activation, and finishing it is the wizard's); it turns <c>WAITING</c> into Pending and <c>DISABLED</c> into To fix (<c>connection_disabled</c>); a
-/// connection that is no longer listed is To fix too (<c>connection_missing</c>). A status nobody knew changes nothing and is logged as a warning, so a healthy connection is
-/// never marked broken by a word of Octorate's that CasaZen has not met.</para>
+/// connection that is no longer listed is To fix too (<c>connection_missing</c>), but when the list shows none of the connections of CasaZen for a property (empty, or all gone
+/// together) one pass concludes nothing and a second one confirms it, and an answer that is not a list of connections is a failure of the read, not an empty list. A status
+/// nobody knew changes nothing and is logged as a warning, so a healthy connection is never marked broken by a word of Octorate's that CasaZen has not met.</para>
 /// </remarks>
 public interface IMarketplaceHealthService
 {

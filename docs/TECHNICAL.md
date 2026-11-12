@@ -1761,7 +1761,12 @@ this environment (otherwise nothing is read or written). Each property is saved 
   activation); with the pulls off a Pending row stays Pending and a row to fix keeps its problem and its open «To do» (only `lastSyncedAt` moves), and finishing the activation is the
   wizard's (its step switches the pulls on, also for a row that is already Active with its pulls off; with the pulls on a second click changes nothing). `WAITING` Pending (importing, or
   waiting for the access or the mapping), `DISABLED` To fix with `connection_disabled`; each reads `lastSyncedAt`, and a healthy connection clears the problem. A connection that is no longer listed makes it To fix with `connection_missing` (the id
-  is kept, so a connection that comes back is read again), except for a row written in the last ten minutes: the list may lag just after a create. **A status nobody knew changes nothing**
+  is kept, so a connection that comes back is read again), except for a row written in the last ten minutes: the list may lag just after a create. **When the list shows none of the
+  connections CasaZen made for the property** (an empty list, or all of them gone together) **nothing is concluded from one pass**: it is logged as a warning with the code and counted
+  as skipped, the first pass only remembers the moment (`LastErrorAt`, which a row with no problem leaves empty; no error is shown and no «To do» is raised) and a second pass, at least
+  ten minutes and at most three hours later, that finds them still gone confirms it (a sight of the connection in between clears it). An answer that is not a list of connections
+  (an error that came with HTTP 200, a wrapper without its list, items none of which can be read: no `id`, no `channelId`) is a failure of the read (`octorate_unavailable`, logged
+  by code, counted, read again at the next run), never an empty list; a list that is really empty is one. **A status nobody knew changes nothing**
   (not even `lastSyncedAt`) and is logged as a warning with the word, so a healthy connection is never marked broken by a word of Octorate's that CasaZen has not met; the vocabulary
   (`ENABLED`, `WAITING`, `DISABLED`) is the one of the OpenAPI, the sandbox has no channel connected. A row with no connection id is left to the activation wizard. The log of the channel
   (`lastPortalAcceptLog`) is never used to decide a status. A property with no confirmed listing is skipped.
