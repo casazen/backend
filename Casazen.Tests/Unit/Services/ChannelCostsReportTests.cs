@@ -207,7 +207,7 @@ public class ChannelCostsReportTests
             w.Db.Payments.Add(Pay(cash, 100m, PaymentStatus.Completed, PaymentMethod.CashOnArrival, At(10, 13, 9)));
             // A fee in francs cannot be added to a stay in euros.
             w.Db.Payments.Add(CardPay(Direct(100m, Day(10, 16)), 100m, At(9, 22, 9), 2.00m, 98m, At(9, 24, 0), "CHF"));
-            // A card payment that failed never settled: it has no fee and costs nothing.
+            // A card payment that failed and nothing else: nothing was collected, so the cost of the stay is not known (it is not a free stay).
             w.Db.Payments.Add(CardPay(Direct(100m, Day(10, 19)), 100m, At(9, 22, 9), null, null, null, status: PaymentStatus.Failed));
             // Not a stay: a cancelled booking.
             Direct(900m, Day(10, 22), BookingStatus.Cancelled);
@@ -215,10 +215,10 @@ public class ChannelCostsReportTests
 
         var report = await Costs(world.Db).GetChannelCostsAsync(new HostScope(world.OrgId), OctoberQuery);
 
-        // Seven stays (1 000 gross); four have a known cost: 4.75 + 5.50 + 0 + 0 = 10.25 on the 700 of gross that is theirs; three do not and are counted apart.
+        // Seven stays (1 000 gross); three have a known cost: 4.75 + 5.50 + 0 (the cash) = 10.25 on the 600 of gross that is theirs; four do not and are counted apart.
         var direct = RowOf(report, BookingSource.Direct);
         Assert.Equal(
-            (7, 1000m, 10.25m, 689.75m, 0.0146m, 3, ChannelCostKind.PaymentFee),
+            (7, 1000m, 10.25m, 589.75m, 0.0171m, 4, ChannelCostKind.PaymentFee),
             (direct.StayCount, direct.Gross, direct.Commission, direct.Net, direct.CostRate, direct.StaysWithoutCommission, direct.Kind));
         Assert.Null(direct.CommissionMode);
     }
@@ -266,6 +266,57 @@ public class ChannelCostsReportTests
         Assert.Equal((500m, 33.25m, 466.75m, 0, 2), (direct.Gross, direct.Commission, direct.Net, direct.StaysWithoutCommission, direct.StayCount));
         // Nobody is the most expensive at zero, and the direct row (6,65 %) is the dearest here.
         Assert.Equal(new[] { BookingSource.Direct }, report.Rows.Where(r => r.MostExpensive).Select(r => r.Source!.Value));
+    }
+
+    [Fact]
+    public async Task ChannelCosts_ADirectStayNotPaidYet_IsNotAFreeStay_AndTheRateStandsOnTheStaysThatReportedACost_Test()
+    {
+        var world = await SeedAsync(w =>
+        {
+            // One stay paid by card with its fee stored (4,75 on 300) and one nobody paid yet (300): the second is not a free stay.
+            var paid = Add(w, BookingSource.Direct, Day(10, 1), Day(10, 4), 300m);
+            w.Db.Payments.Add(CardPay(paid, 300m, At(9, 20, 9), 4.75m, 295.25m, At(9, 22, 0)));
+            Add(w, BookingSource.Direct, Day(10, 10), Day(10, 13), 300m);
+        });
+
+        var report = await Costs(world.Db).GetChannelCostsAsync(new HostScope(world.OrgId), OctoberQuery);
+
+        // The rate is the fee over the gross of the stay that has one (4,75 / 300 = 1,58 %), not over both (0,79 %, which would make the unpaid stay a free one); the stay is counted apart.
+        var direct = RowOf(report, BookingSource.Direct);
+        Assert.Equal((600m, 4.75m, 295.25m, 0.0158m, 2, 1), (direct.Gross, direct.Commission, direct.Net, direct.CostRate, direct.StayCount, direct.StaysWithoutCommission));
+    }
+
+    [Fact]
+    public async Task ChannelCosts_ADirectStayIsFreeOnlyWhenWhatItCollectedCameWithoutACard()
+    {
+        var world = await SeedAsync(w =>
+        {
+            Booking Direct(int day) => Add(w, BookingSource.Direct, Day(10, day), Day(10, day + 1), 100m);
+
+            // Not known: nobody paid, a card payment still on its way, a card payment on its way next to a settled one, a card saved for a charge that is still to come.
+            Direct(1);
+            w.Db.Payments.Add(CardPay(Direct(3), 100m, At(10, 2, 9), null, null, null, status: PaymentStatus.Processing));
+            var twoCards = Direct(5);
+            w.Db.Payments.AddRange(
+                CardPay(twoCards, 50m, At(10, 2, 9), 1m, 49m, At(10, 4, 0)),
+                CardPay(twoCards, 50m, At(10, 3, 9), null, null, null, status: PaymentStatus.Processing));
+            var deferred = Direct(7);
+            deferred.PaymentOption = PaymentOption.OnCancellationDeadline;
+            deferred.StripeSetupIntentId = "seti_demo";
+
+            // Known: a failed card attempt and then the cash (a failed attempt costs nothing), and a card payment settled with its fee.
+            var afterAFailure = Direct(9);
+            w.Db.Payments.AddRange(
+                CardPay(afterAFailure, 100m, At(10, 2, 9), null, null, null, status: PaymentStatus.Failed),
+                Pay(afterAFailure, 100m, PaymentStatus.Completed, PaymentMethod.CashOnArrival, At(10, 9, 9)));
+            w.Db.Payments.Add(CardPay(Direct(11), 100m, At(10, 2, 9), 2.50m, 97.50m, At(10, 4, 0)));
+        });
+
+        var report = await Costs(world.Db).GetChannelCostsAsync(new HostScope(world.OrgId), OctoberQuery);
+
+        // Six stays (600 gross): two have a known cost (0 and 2,50, on the 200 that is theirs), four are counted apart.
+        var direct = RowOf(report, BookingSource.Direct);
+        Assert.Equal((600m, 2.50m, 197.50m, 0.0125m, 6, 4), (direct.Gross, direct.Commission, direct.Net, direct.CostRate, direct.StayCount, direct.StaysWithoutCommission));
     }
 
     // ---------------------------------------------------------------- the modes, the stays, the reach

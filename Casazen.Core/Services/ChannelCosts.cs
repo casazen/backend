@@ -74,7 +74,7 @@ public sealed record ChannelCostsReport(HostDashboardPeriod Period, IReadOnlyLis
 /// <param name="BasePrice">Lodging plus cleaning, tourist tax excluded (<see cref="Booking.BasePrice"/>).</param>
 /// <param name="CheckIn">Check-in date, midnight UTC of the stay date.</param>
 /// <param name="CheckOut">Check-out date, midnight UTC of the stay date.</param>
-/// <param name="Cost">What the stay costs the host in all, as reported; null when nobody reported it (never zero). Zero only where no one charges.</param>
+/// <param name="Cost">What the stay costs the host in all, as reported; null when nobody reported it (never zero). Zero only where no one charges, or where what a direct stay collected came without a card.</param>
 /// <param name="ReportedNet">The net amount the channel manager reported for the stay, if any.</param>
 public sealed record ChannelCostStay(
     BookingSource Source,

@@ -823,7 +823,9 @@ not reach, 403 without an org); `balances-to-collect` takes no period.
   gave none (the sandbox and the OpenAPI show the commission only as an optional `COMMISSION` line of the price breakdown: until a real channel fills it, most stays
   have none); for a stay of a channel without a reservation (an iCal stay) null (none was ever reported); for a direct stay the sum of the `ProviderFeeAmount` of its
   settled card payments (`PaymentProviderFeeService.SettledStatuses`, with a Stripe PaymentIntent), **null as soon as one of them has no stored fee, or one in another
-  currency than the stay's, and 0 when it has no card payment** (cash and bank transfer have no fee); for a stay the host entered or a local one 0 (nobody charges the
+  currency than the stay's, while a card payment is still on its way (Pending, Processing), while the card saved for a deferred charge was not charged yet, and when
+  nothing was collected at all (not paid yet, or a failed attempt only), and 0 only when what it collected came without a card** (cash and bank transfer have no fee,
+  but only money that came in says so: a stay nobody paid is not a free stay and is counted apart, and the rate of the row does not count it); for a stay the host entered or a local one 0 (nobody charges the
   host). Nothing is derived from another figure. `kind` says which it is: `ChannelCommission`, `PaymentFee` (the Stripe fees of the direct stays, a line of their own
   that says "not available" when `commission` is null) or `NoCost`.
 - **The figures of a row.** Each stay's share is pro rata per night in the period, as the revenue is (`StayKpiRules.RevenueInPeriod`), summed unrounded and rounded to the
