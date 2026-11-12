@@ -5655,4 +5655,19 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="MaintenanceInvalid" xml:space="preserve">
     <value>Indica descrizione e urgenza della richiesta di manutenzione.</value>
   </data>
+  <data name="RentSepaUnavailable" xml:space="preserve">
+    <value>Il pagamento SEPA non è disponibile per questo contratto.</value>
+  </data>
+  <data name="RentSepaOtherHolder" xml:space="preserve">
+    <value>Il mandato SEPA è associato a un altro conduttore.</value>
+  </data>
+  <data name="RentSepaAccountChanged" xml:space="preserve">
+    <value>Il conto del locatore è cambiato. È necessario autorizzare un nuovo mandato SEPA.</value>
+  </data>
+  <data name="RentSepaMonthlyRequired" xml:space="preserve">
+    <value>Il pagamento automatico SEPA richiede una scadenza mensile.</value>
+  </data>
+  <data name="RentSepaNotAuthorized" xml:space="preserve">
+    <value>Autorizza il mandato SEPA prima di attivare il pagamento automatico.</value>
+  </data>
 </root>

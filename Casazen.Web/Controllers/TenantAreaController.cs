@@ -21,7 +21,7 @@ namespace Casazen.Web.Controllers;
 [Route("api/tenant-area")]
 [Authorize(Policy = CasazenPolicies.TenantAccount)]
 [PrivateAnswer]
-public sealed class TenantAreaController(
+public sealed partial class TenantAreaController(
     AppDbContext db,
     IAccountEmailResolver accountEmails,
     ILeaseMaintenanceService maintenance,

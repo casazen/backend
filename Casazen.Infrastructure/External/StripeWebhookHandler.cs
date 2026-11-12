@@ -119,6 +119,27 @@ public class StripeWebhookHandler(
         {
             switch (stripeEvent.Type)
             {
+                case "mandate.updated" when source == WebhookSource.Platform && string.IsNullOrWhiteSpace(stripeEvent.Account)
+                    && stripeEvent.Data.Object is Mandate { Status: "inactive" }:
+                    var mandate = (Mandate)stripeEvent.Data.Object;
+                    var affected = await dbContext.RentSchedules.Where(s => s.MandateReference == mandate.Id).ToListAsync();
+                    foreach (var schedule in affected.OrderBy(s => s.LeaseContractId))
+                    {
+                        await PostgresAdvisoryLocks.BeginLockedTransactionAsync(dbContext, CancellationToken.None,
+                            (PostgresAdvisoryLocks.Scope.RentLease, schedule.LeaseContractId.ToString("N")));
+                        await dbContext.Entry(schedule).ReloadAsync();
+                        if (schedule.MandateReference != mandate.Id) continue;
+                        schedule.SepaAutomaticEnabled = false;
+                        schedule.SepaAutomaticFrom = null;
+                        schedule.SepaAuthorizedAt = null;
+                        schedule.SepaPaymentMethodId = null;
+                        schedule.SepaSetupIntentId = null;
+                        schedule.SepaCustomerId = null;
+                        schedule.MandateReference = null;
+                        schedule.SepaSetupGeneration++;
+                    }
+                    await dbContext.SaveChangesAsync();
+                    break;
                 case "payment_intent.succeeded" when IsDeferredCharge(stripeEvent.Data.Object as PaymentIntent):
                 case "payment_intent.processing" when IsDeferredCharge(stripeEvent.Data.Object as PaymentIntent):
                 case "payment_intent.payment_failed" when IsDeferredCharge(stripeEvent.Data.Object as PaymentIntent):

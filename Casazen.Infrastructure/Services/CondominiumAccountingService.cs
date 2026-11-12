@@ -183,6 +183,10 @@ public sealed class CondominiumAccountingService(
         }
 
         await db.SaveChangesAsync(cancellationToken);
+        var propertyIds = await db.CondominiumUnits.Where(u => u.CondominiumId == condominium.Id).Select(u => u.PropertyId).ToListAsync(cancellationToken);
+        var leaseIds = await db.LeaseContracts.Where(l => l.OrgId == scope.OrgId && propertyIds.Contains(l.PropertyId)).Select(l => l.Id).ToListAsync(cancellationToken);
+        foreach (var leaseId in leaseIds.Order())
+            await BudgetRentAdvanceUpdater.RefreshAsync(db, leaseId, cancellationToken);
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
         var installments = await LoadInstallmentsAsync(period.Id, cancellationToken);

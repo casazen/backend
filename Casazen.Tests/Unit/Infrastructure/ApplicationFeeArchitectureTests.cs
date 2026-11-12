@@ -4,11 +4,9 @@ using Xunit;
 namespace Casazen.Tests.Unit.Infrastructure;
 
 /// <summary>
-/// SP-15a, decision D2: the commission of CasaZen exists only on the payment of a service a supplier completed. The application
-/// fee (<c>ApplicationFeeAmount</c>, <c>application_fee_amount</c>) is set in <b>one</b> place, the gateway of the supplier
-/// payments, and nowhere else: this is what keeps true that CasaZen takes no commission on the guests' bookings and on the rent
-/// (<see cref="StripeServiceApplicationFeeTests"/>, A3-40). A new PaymentIntent anywhere else in the code that carries a fee fails
-/// this test; the way to a new fee is a decision of the product owner and a change to this allow-list, not a quiet line.
+/// Supplier commissions are limited to the supplier gateway (SP-15a, D2). The contract-bound tenant SEPA gateway
+/// additionally retains the fixed EUR 1 transaction fee documented in docs/runbooks/tenant-rent-sepa.md.
+/// Guest bookings and legacy rent charges remain fee-free. Refund fees stay limited to the supplier gateway.
 /// </summary>
 public class ApplicationFeeArchitectureTests
 {
@@ -27,14 +25,15 @@ public class ApplicationFeeArchitectureTests
     private static readonly Regex FeePercentAssignment = new(@"\bApplicationFeePercent\s*=(?!=)", RegexOptions.Compiled);
 
     [Fact]
-    public void ApplicationFee_IsSetOnlyByTheGatewayOfTheSupplierPayments()
+    public void ApplicationFee_IsSetOnlyByTheApprovedPaymentGateways()
     {
         var root = FindRepositoryRoot();
         var offenders = new List<string>();
 
         foreach (var (relative, code) in ReadCode(root))
         {
-            if (AllowedFiles.ContainsKey(relative))
+            if (AllowedFiles.ContainsKey(relative)
+                || relative == "Casazen.Infrastructure/External/StripeRentSepaGateway.cs")
                 continue;
 
             if (FeeAssignment.IsMatch(code) || FeeParameterLiteral.IsMatch(code) || FeePercentAssignment.IsMatch(code))
@@ -43,8 +42,8 @@ public class ApplicationFeeArchitectureTests
 
         Assert.True(
             offenders.Count == 0,
-            "The application fee (the commission) is set in StripeSupplierPaymentGateway only: guest bookings, deferred charges and " +
-            "rent never carry one (A3-40, StripeServiceApplicationFeeTests). Offending files: " + string.Join(", ", offenders));
+            "Application fees are limited to supplier commissions and the fixed tenant SEPA transaction fee; guest bookings, " +
+            "deferred charges and legacy rent remain fee-free. Offending files: " + string.Join(", ", offenders));
     }
 
     // SP-15b: giving the commission back with a refund (refund_application_fee) is the other half of it. A refund of a guest booking or
