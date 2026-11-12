@@ -5835,4 +5835,13 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalSeriesTooLong" xml:space="preserve">
     <value>La serie dei documenti fiscali deve avere da 1 a {0} caratteri.</value>
   </data>
+  <data name="FatturaPaXmlInvalid" xml:space="preserve">
+    <value>Il documento elettronico non è valido secondo lo schema ufficiale FatturaPA: {0} errori (righe e posizioni dei primi: {1}). Nessun documento è stato salvato.</value>
+  </data>
+  <data name="FatturaPaSchemaUnavailable" xml:space="preserve">
+    <value>Lo schema ufficiale FatturaPA non è installato: il documento elettronico non può essere convalidato e non viene prodotto.</value>
+  </data>
+  <data name="FiscalDocumentAmountsInvalid" xml:space="preserve">
+    <value>Gli importi non permettono di preparare il documento fiscale (importi negativi, nulla da fatturare o aliquota non valida).</value>
+  </data>
 </root>

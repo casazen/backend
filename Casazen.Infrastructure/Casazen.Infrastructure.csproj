@@ -49,6 +49,15 @@
     <InternalsVisibleTo Include="Casazen.Tests" />
   </ItemGroup>
 
+  <!--
+    The official FatturaPA schema and the XML signature schema it imports (E06/F01/US02/T03, ADR-019-R6): the files the Agenzia delle Entrate
+    publishes, committed unchanged in Fiscal\Schemas with their source and SHA-256 in docs/runbooks/fiscal-documents.md, compiled into the assembly
+    (FatturaPaSchemaProvider). A build without them validates nothing and issues no electronic invoice (fatturapa_schema_unavailable).
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Fiscal\Schemas\*.xsd" LogicalName="Casazen.Infrastructure.Fiscal.Schemas.%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <!-- Fonts of the generated PDFs (LT-09): compiled into the assembly, never read from the host. -->
   <ItemGroup>
     <EmbeddedResource Include="Documents\Fonts\DejaVuSans.ttf" LogicalName="Casazen.Infrastructure.Documents.Fonts.DejaVuSans.ttf" />

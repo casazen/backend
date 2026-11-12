@@ -47,6 +47,11 @@ public static class FiscalDocumentExtensions
         // The gap-free numbers of the fiscal documents, per org and series, in the transaction that saves the document (E06/F01/US02/T02, NF-83).
         services.AddScoped<IFiscalNumberingService, FiscalNumberingService>();
 
+        // The FatturaPA XML of a guest document, validated against the official schema embedded in the build (E06/F01/US02/T03, NF-83, NF-87):
+        // the schema set is loaded once; without the files nothing is produced (fatturapa_schema_unavailable).
+        services.AddSingleton<FatturaPaSchemaProvider>();
+        services.AddSingleton<IFatturaPaXmlBuilder, FatturaPaXmlBuilder>();
+
         return services;
     }
 }
