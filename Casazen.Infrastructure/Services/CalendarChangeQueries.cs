@@ -31,7 +31,7 @@ public sealed class CalendarChangeQueries(AppDbContext db) : ICalendarChangeQuer
 
     private sealed record ChunkRow(Guid ProcessId, Guid PropertyId, CalendarChunkState State, string? ErrorCode, DateOnly From, DateOnly To);
 
-    public async Task<IReadOnlyList<CalendarChangeView>> ListAsync(
+    public async Task<CalendarChangeList> ListAsync(
         HostScope scope,
         CalendarChangeListQuery query,
         CancellationToken cancellationToken = default)
@@ -50,6 +50,7 @@ public sealed class CalendarChangeQueries(AppDbContext db) : ICalendarChangeQuer
         var size = scope.IsOrgWide ? limit : PageSize;
         var pages = scope.IsOrgWide ? 1 : MaxPages;
         var result = new List<CalendarChangeView>();
+        var truncated = false;
         for (var page = 0; page < pages && result.Count < limit; page++)
         {
             var rows = await ordered.Skip(page * size).Take(size).ToListAsync(cancellationToken);
@@ -59,9 +60,14 @@ public sealed class CalendarChangeQueries(AppDbContext db) : ICalendarChangeQuer
             result.AddRange(await VisibleViewsAsync(scope, rows, cancellationToken));
             if (rows.Count < size)
                 break;
+
+            // The last page the bound allows was full and the caller still has not what it asked for: older changes of its own may follow, and are not in the list. Said, never
+            // silent.
+            if (page == pages - 1 && result.Count < limit)
+                truncated = true;
         }
 
-        return result.Take(limit).ToList();
+        return new CalendarChangeList(result.Take(limit).ToList(), truncated);
     }
 
     public async Task<CalendarChangeView?> GetAsync(HostScope scope, Guid id, CancellationToken cancellationToken = default)

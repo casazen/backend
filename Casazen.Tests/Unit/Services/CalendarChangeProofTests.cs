@@ -160,7 +160,7 @@ public class CalendarChangeProofTests
         var queries = new CalendarChangeQueries(db);
 
         // The collaborator «Solo alcuni»: only what is wholly of its properties.
-        var restricted = await queries.ListAsync(world.Restricted, new CalendarChangeListQuery());
+        var restricted = (await queries.ListAsync(world.Restricted, new CalendarChangeListQuery())).Items;
         Assert.Equal([own.Process.Id], restricted.Select(v => v.Id));
         foreach (var hidden in new[] { hiddenOnly.Process.Id, mixed.Process.Id, summaryOnly.Process.Id, nameless.Id, foreign.Process.Id })
             Assert.Null(await queries.GetAsync(world.Restricted, hidden));
@@ -171,7 +171,7 @@ public class CalendarChangeProofTests
             visible!.Properties.Select(p => (p.PropertyId, p.State, p.ErrorCode)));
 
         // The whole org: its own changes, never another org's.
-        var orgWide = await queries.ListAsync(world.OrgWide, new CalendarChangeListQuery());
+        var orgWide = (await queries.ListAsync(world.OrgWide, new CalendarChangeListQuery())).Items;
         Assert.Equal(
             new[] { own.Process.Id, hiddenOnly.Process.Id, mixed.Process.Id, summaryOnly.Process.Id, nameless.Id }.Order(),
             orgWide.Select(v => v.Id).Order());
@@ -179,13 +179,13 @@ public class CalendarChangeProofTests
         Assert.Equal(CalendarChangePropertyState.Skipped, Assert.Single((await queries.GetAsync(world.OrgWide, summaryOnly.Process.Id))!.Properties).State);
 
         // The other org reads its own and nothing of this one.
-        var theirs = await queries.ListAsync(new HostScope(world.OtherOrgId), new CalendarChangeListQuery());
+        var theirs = (await queries.ListAsync(new HostScope(world.OtherOrgId), new CalendarChangeListQuery())).Items;
         Assert.Equal([foreign.Process.Id], theirs.Select(v => v.Id));
         Assert.Null(await queries.GetAsync(new HostScope(world.OtherOrgId), own.Process.Id));
 
         // The state narrows the list, the limit bounds it.
-        Assert.Empty(await queries.ListAsync(world.OrgWide, new CalendarChangeListQuery(CalendarChangeState.Sent)));
-        Assert.Single(await queries.ListAsync(world.OrgWide, new CalendarChangeListQuery(CalendarChangeState.Applied, 1)));
+        Assert.Empty((await queries.ListAsync(world.OrgWide, new CalendarChangeListQuery(CalendarChangeState.Sent))).Items);
+        Assert.Single((await queries.ListAsync(world.OrgWide, new CalendarChangeListQuery(CalendarChangeState.Applied, 1))).Items);
 
         // The retry: a change the caller does not reach is a 404 and nothing is sent.
         var runner = new Mock<ICalendarChangeRunner>();
@@ -212,7 +212,53 @@ public class CalendarChangeProofTests
         runner.Verify(r => r.RetryAsync(own.Process.Id, It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    // --- T03: preview and apply --------------------------------------------------------------------------------------------------
+    /// <summary>
+    /// PROOF TEST: data rule. A caller limited to some properties reads the 500 newest changes of the org and keeps those wholly its own. With more than 500 newer changes of
+    /// properties it was not given, its older change is not in the list: the answer says so (<c>Truncated</c>, and the header of the controller), never silently. The whole org is never
+    /// told so, a state narrows the read to what the caller wants (its failed change is found), and the detail of the change is always there.
+    /// </summary>
+    [Fact]
+    public async Task CalendarChanges_ARestrictedCaller_IsToldWhenMoreThanFiveHundredNewerChangesOfOthersLeaveItsOwnOut_Test()
+    {
+        await using var db = HostScopeScenario.NewInMemoryDb();
+        var world = await HostScopeScenario.SeedAsync(db);
+        var own = ProcessOf(world.OrgId, [world.Granted.Id], CalendarChangeState.Failed, CalendarChunkState.Failed);
+        own.Process.CreatedAt = Now.UtcDateTime.AddDays(-2);
+        db.CalendarChangeProcesses.Add(own.Process);
+        db.CalendarChangeChunks.AddRange(own.Chunks);
+        for (var i = 0; i < 520; i++)
+        {
+            var other = ProcessOf(world.OrgId, [world.Hidden.Id], CalendarChangeState.Applied, chunkState: null);
+            other.Process.CreatedAt = Now.UtcDateTime.AddMinutes(-i);
+            db.CalendarChangeProcesses.Add(other.Process);
+        }
+
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var queries = new CalendarChangeQueries(db);
+
+        var restricted = await queries.ListAsync(world.Restricted, new CalendarChangeListQuery());
+        Assert.Empty(restricted.Items);
+        Assert.True(restricted.Truncated);
+
+        // The whole org reads its page and is never told so; the state narrows the read to the failed change of the caller, which is found.
+        var orgWide = await queries.ListAsync(world.OrgWide, new CalendarChangeListQuery());
+        Assert.Equal((CalendarChangeListQuery.MaxLimit, false), (orgWide.Items.Count, orgWide.Truncated));
+        var failed = await queries.ListAsync(world.Restricted, new CalendarChangeListQuery(CalendarChangeState.Failed));
+        Assert.Equal([own.Process.Id], failed.Items.Select(v => v.Id));
+        Assert.False(failed.Truncated);
+        Assert.NotNull(await queries.GetAsync(world.Restricted, own.Process.Id));
+
+        // The answer of the controller carries the header; one with nothing left out does not.
+        var controller = Controller(db, new Mock<ICalendarChangeRunner>(), world.Restricted, world, deniedProperty: null);
+        Assert.IsType<OkObjectResult>((await controller.List(null, null, CancellationToken.None)).Result);
+        Assert.Equal("true", controller.Response.Headers[CalendarChangesController.TruncatedHeader].ToString());
+        var narrowed = Controller(db, new Mock<ICalendarChangeRunner>(), world.Restricted, world, deniedProperty: null);
+        Assert.IsType<OkObjectResult>((await narrowed.List(CalendarChangeState.Failed, null, CancellationToken.None)).Result);
+        Assert.False(narrowed.Response.Headers.ContainsKey(CalendarChangesController.TruncatedHeader));
+    }
+
+    // --- T03: preview and apply--------------------------------------------------------------------------------------------------
 
     /// <summary>
     /// PROOF TEST: permission rule. A request that names one property the caller may not write answers 403 for the whole request (preview and apply alike), before anything runs: the

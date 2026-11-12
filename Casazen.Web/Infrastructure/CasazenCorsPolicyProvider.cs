@@ -1,4 +1,5 @@
 using Casazen.Web.Configuration;
+using Casazen.Web.Controllers;
 using Microsoft.AspNetCore.Cors.Infrastructure;
 
 namespace Casazen.Web.Infrastructure;
@@ -53,7 +54,10 @@ public sealed class CasazenCorsPolicyProvider(
             .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
             // Idempotency-Key: the key of a payment the host records (SR-06b); without it the browser's preflight refuses the call.
             // X-SignalR-User-Agent: sent by the SignalR browser client on its negotiate request (the hubs only use it).
-            .WithHeaders("Authorization", "Content-Type", "Accept", "X-Requested-With", "Idempotency-Key", "X-SignalR-User-Agent");
+            .WithHeaders("Authorization", "Content-Type", "Accept", "X-Requested-With", "Idempotency-Key", "X-SignalR-User-Agent")
+            // The header that says the list of the calendar changes of a collaborator limited to some properties may leave older changes out (E08/F05/US02): a browser reads
+            // a header of another origin only when the answer exposes it.
+            .WithExposedHeaders(CalendarChangesController.TruncatedHeader);
 
         // The SignalR client negotiates with credentials included by default: the hubs answer Access-Control-Allow-Credentials for the
         // allowed origins (echoed one by one, never "*"). The API itself stays without credentials: it uses no cookie.

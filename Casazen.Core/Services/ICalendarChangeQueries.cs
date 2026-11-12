@@ -14,13 +14,23 @@ public interface ICalendarChangeQueries
     /// <summary>
     /// The processes of the org of <paramref name="scope"/> the caller reaches, newest first, at most <see cref="CalendarChangeListQuery.MaxLimit"/>,
     /// narrowed by the state when the query asks for one. A caller limited to some properties never gets a process of another property, and a process that
-    /// names no property it can tell is not shown to it.
+    /// names no property it can tell is not shown to it. For such a caller the processes are read in pages of the newest of the org and kept when every property
+    /// of them is reached, up to a bound: when the bound is reached before the caller has what it asked for, <see cref="CalendarChangeList.Truncated"/> says that
+    /// older changes of its own may not be in the list (the detail of a change is always there).
     /// </summary>
-    Task<IReadOnlyList<CalendarChangeView>> ListAsync(HostScope scope, CalendarChangeListQuery query, CancellationToken cancellationToken = default);
+    Task<CalendarChangeList> ListAsync(HostScope scope, CalendarChangeListQuery query, CancellationToken cancellationToken = default);
 
     /// <summary>The process of the org of <paramref name="scope"/> with this id, or <c>null</c> when it is not there, is another org's or touches a property the caller does not reach.</summary>
     Task<CalendarChangeView?> GetAsync(HostScope scope, Guid id, CancellationToken cancellationToken = default);
 }
+
+/// <summary>The changes a caller reaches, newest first, and whether the read stopped at its bound before it had them all.</summary>
+/// <param name="Items">The changes.</param>
+/// <param name="Truncated">
+/// The caller reaches only some properties and the newest changes of the org that were read did not hold what it asked for: older changes of its own may be left out
+/// (read the detail of a change by its id, or narrow the list by state). Always <c>false</c> for a caller that reaches the whole org.
+/// </param>
+public sealed record CalendarChangeList(IReadOnlyList<CalendarChangeView> Items, bool Truncated);
 
 /// <summary>What a list of changes is narrowed by.</summary>
 /// <param name="State">Only the processes in this state; <c>null</c> for every state.</param>

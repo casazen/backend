@@ -37,9 +37,14 @@ public class CalendarChangesController(
     IStringLocalizer<SharedResources> localizer,
     ILogger<CalendarChangesController> logger) : ControllerBase
 {
+    /// <summary>The header that says the list of a caller limited to some properties may leave out older changes of its own (<c>true</c>); absent otherwise.</summary>
+    public const string TruncatedHeader = "X-Calendar-Changes-Truncated";
+
     /// <summary>
     /// The changes of the caller's org it reaches, newest first, at most 50, optionally only those in a <c>state</c> (<c>Applied</c>, <c>Queued</c>, <c>Sending</c>,
-    /// <c>Sent</c>, <c>Confirmed</c>, <c>PartiallySent</c>, <c>Failed</c>). Each is <see cref="CalendarChangeDto"/>.
+    /// <c>Sent</c>, <c>Confirmed</c>, <c>PartiallySent</c>, <c>Failed</c>). Each is <see cref="CalendarChangeDto"/>. A caller that reaches only some properties reads the 500
+    /// newest changes of the org: when that was not enough to fill its list, the answer carries <see cref="TruncatedHeader"/> <c>true</c> (an older change of its own is still
+    /// read by its id, and a <c>state</c> narrows the read).
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<CalendarChangeDto>), StatusCodes.Status200OK)]
@@ -53,8 +58,14 @@ public class CalendarChangesController(
         if (await ScopeAsync(cancellationToken) is not { } scope)
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
-        var views = await queries.ListAsync(scope, new CalendarChangeListQuery(state, limit ?? CalendarChangeListQuery.MaxLimit), cancellationToken);
-        return Ok(views.Select(view => CalendarChangeDto.Of(view, localizer)).ToList());
+        var list = await queries.ListAsync(scope, new CalendarChangeListQuery(state, limit ?? CalendarChangeListQuery.MaxLimit), cancellationToken);
+
+        // A caller that reaches only some properties reads the newest changes of the org up to a bound: when the bound was reached before its list was full, older changes of its
+        // own may be left out, and the answer says so (the body stays the list; the header is exposed to the browser by the CORS policy).
+        if (list.Truncated)
+            Response.Headers[TruncatedHeader] = "true";
+
+        return Ok(list.Items.Select(view => CalendarChangeDto.Of(view, localizer)).ToList());
     }
 
     /// <summary>One change with the state of each property. 404 <c>calendar_change_not_found</c> for another org's, or one of a property the caller does not reach.</summary>
