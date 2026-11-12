@@ -333,7 +333,8 @@ public class ApprovalQueueService(
             now,
             cleanReason.Length);
 
-        await CloseTodoAsync(item, userId, cancellationToken);
+        // The rejection is saved: its "To do" is closed whatever happens to the request (as for an approval). One that could not be closed is found by the daily job of the queue.
+        await CloseTodoAsync(item, userId, CancellationToken.None);
         return item;
     }
 

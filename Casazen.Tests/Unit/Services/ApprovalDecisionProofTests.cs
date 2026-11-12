@@ -401,6 +401,35 @@ public class ApprovalDecisionProofTests : IDisposable
         Assert.All(todos, a => Assert.NotNull(a.CompletedAt));
     }
 
+    /// <summary>
+    /// The rejection is saved, and its "To do" is closed whatever happens to the request, as for an approval: the close gets no token of the request (a cut request would otherwise leave a
+    /// rejected item with an open "To do" that nothing closes). One that could not be closed is found by the daily job (<c>ApprovalExpirationAndPrivacyTests</c>).
+    /// </summary>
+    [Fact]
+    public async Task Rejection_ClosesTheTodoOfTheItem_WithNoDependenceOnTheTokenOfTheRequest()
+    {
+        await _rig.SeedAsync();
+        var closeTokens = new List<CancellationToken>();
+        var activities = new Mock<IInternalActivityService>();
+        activities
+            .Setup(a => a.CloseAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, string, CancellationToken>((_, _, token) => closeTokens.Add(token))
+            .Returns(Task.CompletedTask);
+        var service = new Casazen.Infrastructure.Services.ApprovalQueueService(
+            _rig.Db,
+            _rig.Clock,
+            _rig.Registry(),
+            activities.Object,
+            _rig.Alerts(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<Casazen.Infrastructure.Services.ApprovalQueueService>.Instance);
+        var item = await _rig.SubmitDraftAsync(service, _rig.PropertyA);
+        using var request = new CancellationTokenSource();
+
+        await service.RejectAsync(_rig.OrgWide, item.Id, ApprovalQueueRig.Owner, "No", request.Token);
+
+        Assert.Equal([CancellationToken.None], closeTokens);
+    }
+
     // ─── Reach (AC-NF68-5, AM-03) ───
 
     /// <summary>

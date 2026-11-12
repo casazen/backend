@@ -36,7 +36,47 @@ public class ApprovalExpirationJob(
         var now = timeProvider.GetUtcNow().UtcDateTime;
 
         await ExpirePendingItemsAsync(now, cancellationToken);
+        await CloseTheTodosOfDecidedItemsAsync(cancellationToken);
         await EmptyTheWordsOfOldItemsAsync(now, cancellationToken);
+    }
+
+    /// <summary>
+    /// Closes the open "To do" of the items that are not pending any more. A decision saves the item first and closes its "To do" after, so a close that failed (or a request that was cut
+    /// before it, or a rejection of before the close was made safe) leaves a "To do" that leads to an item that is not in the queue; the erasure of a guest closes the items that waited
+    /// by changing their status and leaves the same. Found by what the "To do" is (the action <c>ApproveAiDraft</c> on an <c>ApprovalQueueItem</c> that is not pending), not by a mark on
+    /// the item, so a run that finds nothing costs one query and a second run finds nothing. Closing is idempotent; a close that fails stops the job and the retry finds the rest.
+    /// </summary>
+    private async Task CloseTheTodosOfDecidedItemsAsync(CancellationToken cancellationToken)
+    {
+        if (activities is null)
+            return;
+
+        // The items as a query of their own: a collection expression cannot be in an expression tree, so the filter is ignored outside the predicate.
+        var items = db.ApprovalQueueItems.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]);
+        var stale = await db.InternalActivities
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(a => a.Action == ActivityAction.ApproveAiDraft
+                        && a.EntityType == Casazen.Infrastructure.Services.ApprovalAlertDelivery.TodoEntityType
+                        && a.CompletedAt == null
+                        && items.Any(i => i.Id == a.EntityId && i.Status != ApprovalStatus.Pending))
+            .Select(a => a.Id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var activityId in stale)
+        {
+            try
+            {
+                await activities.CloseAsync(activityId, InternalActivity.ClosedBySystem, cancellationToken);
+            }
+            catch (NotFoundException)
+            {
+                logger.LogInformation("The To do {ActivityId} of a decided approval item was not there any more: nothing to close", activityId);
+            }
+        }
+
+        if (stale.Count > 0)
+            logger.LogInformation("Closed {Count} To do of approval queue items that were already decided or expired", stale.Count);
     }
 
     private async Task ExpirePendingItemsAsync(DateTime now, CancellationToken cancellationToken)

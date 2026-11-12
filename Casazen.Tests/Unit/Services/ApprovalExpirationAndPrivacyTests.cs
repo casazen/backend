@@ -148,6 +148,52 @@ public class ApprovalExpirationAndPrivacyTests : IDisposable
         Assert.Equal("Oggetto\n\n<p>Testo</p>", converter.ConvertFromProvider("Oggetto\n\n<p>Testo</p>"));
     }
 
+    /// <summary>
+    /// A "To do" that leads to an item that is not in the queue is worse than none: the daily job closes the open "To do" of the items that were decided (the close of a decision was lost) or
+    /// expired by the erasure of a guest, and leaves the one of an item that still waits; a second run finds nothing.
+    /// </summary>
+    [Fact]
+    public async Task Expiry_ClosesTheTodoOfAnItemAlreadyDecided_WhoseCloseWasLost_AndLeavesTheOneOfAnItemThatWaits()
+    {
+        await _rig.SeedAsync();
+        var service = _rig.Service();
+        var rejected = await _rig.SubmitDraftAsync(service, _rig.PropertyA);
+        var approved = await _rig.SubmitDraftAsync(service, _rig.PropertyA);
+        var erased = await _rig.SubmitDraftAsync(service, _rig.PropertyA);
+        var waiting = await _rig.SubmitDraftAsync(service, _rig.PropertyA);
+        await service.RejectAsync(_rig.OrgWide, rejected.Id, ApprovalQueueRig.Owner, "No");
+        await service.ApproveAsync(_rig.OrgWide, approved.Id, ApprovalQueueRig.Owner);
+        (await _rig.Db.ApprovalQueueItems.SingleAsync(i => i.Id == erased.Id)).Status = ApprovalStatus.Expired;
+
+        // The decisions were saved and the close of their "To do" was lost: they are open again.
+        foreach (var activity in await _rig.Db.InternalActivities.Where(a => a.EntityId != waiting.Id).ToListAsync())
+        {
+            activity.CompletedAt = null;
+            activity.ClosedBy = null;
+            activity.Status = InternalActivity.StatusPending;
+        }
+
+        await _rig.Db.SaveChangesAsync();
+        Assert.All(await _rig.Db.InternalActivities.AsNoTracking().ToListAsync(), a => Assert.Null(a.CompletedAt));
+
+        await new ApprovalExpirationJob(_rig.Db, _rig.Clock, NullLogger<ApprovalExpirationJob>.Instance, _rig.Activities()).ProcessExpirationsAsync();
+
+        var todos = await _rig.Db.InternalActivities.AsNoTracking().ToDictionaryAsync(a => a.EntityId!.Value);
+        foreach (var decided in new[] { rejected.Id, approved.Id, erased.Id })
+        {
+            Assert.NotNull(todos[decided].CompletedAt);
+            Assert.Equal(InternalActivity.ClosedBySystem, todos[decided].ClosedBy);
+        }
+
+        Assert.Null(todos[waiting.Id].CompletedAt);
+
+        // A second run finds nothing to close.
+        var closedAt = todos[rejected.Id].CompletedAt;
+        _rig.Clock.Advance(TimeSpan.FromHours(1));
+        await new ApprovalExpirationJob(_rig.Db, _rig.Clock, NullLogger<ApprovalExpirationJob>.Instance, _rig.Activities()).ProcessExpirationsAsync();
+        Assert.Equal(closedAt, (await _rig.Db.InternalActivities.AsNoTracking().SingleAsync(a => a.EntityId == rejected.Id)).CompletedAt);
+    }
+
     // ─── The hook of the type at expiry ───
 
     /// <summary>
