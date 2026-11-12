@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Casazen.Core.Utilities;
 using Xunit;
@@ -27,5 +28,40 @@ public class CsvWriterTests
 
         Assert.Equal(Encoding.UTF8.GetPreamble(), file[..3]);
         Assert.Equal(expectedCell + ";12,50;-3\r\n", Encoding.UTF8.GetString(file, 3, file.Length - 3));
+    }
+
+    /// <summary>E06/F03/US03/T01: a calendar day is <c>yyyy-MM-dd</c> whatever the culture of the server (a date format with a time would throw at run time).</summary>
+    [Fact]
+    public void Write_ACalendarDay_IsWrittenAsAnIsoDay_WhateverTheCultureOfTheServer()
+    {
+        var culture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("ar-SA");
+            var file = CsvWriter.Write([new object?[] { new DateOnly(2026, 11, 2), null, "x" }]);
+
+            Assert.Equal("2026-11-02;;x\r\n", Encoding.UTF8.GetString(file, 3, file.Length - 3));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culture;
+        }
+    }
+
+    /// <summary>The one rule of what a spreadsheet would run, shared by the CSV (a leading apostrophe) and the Excel file (a text cell).</summary>
+    [Theory]
+    [InlineData("=1+1", true)]
+    [InlineData("+39 333", true)]
+    [InlineData("-2", true)]
+    [InlineData("@SUM(A1)", true)]
+    [InlineData("\tcmd", true)]
+    [InlineData("\rcmd", true)]
+    [InlineData("1+1", false)]
+    [InlineData("Casa =1", false)]
+    [InlineData("", false)]
+    public void StartsLikeAFormula_IsTheRuleOfEveryFileTheHostDownloads(string text, bool expected)
+    {
+        Assert.Equal(expected, CsvWriter.StartsLikeAFormula(text));
+        Assert.Equal(expected, CsvWriter.Text(text).StartsWith('\'') || CsvWriter.Text(text).StartsWith("\"'", StringComparison.Ordinal));
     }
 }

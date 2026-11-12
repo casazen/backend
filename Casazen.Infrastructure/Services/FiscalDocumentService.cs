@@ -185,6 +185,74 @@ public sealed class FiscalDocumentService(
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, FiscalDocumentPage.MaxPageSize);
 
+        var query = Matching(scope, criteria);
+        var total = await query.CountAsync(ct);
+        var items = await InListOrder(query)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+        await ApplyCurrentPaymentStateAsync(db, items, ct);
+        return new FiscalDocumentPage(items, total, page, pageSize);
+    }
+
+    public async Task<IReadOnlyList<FiscalDocumentExportRow>> ListForExportAsync(HostScope scope, FiscalDocumentCriteria criteria, int limit, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(criteria);
+        limit = Math.Max(1, limit);
+
+        // The same scope and filters as the list, and only the documents that were issued. The columns the file has and no more: the XML of an invoice is
+        // the heavy part of a document and is never read here.
+        var documents = await InListOrder(Matching(scope, criteria with { Status = FiscalDocumentStatus.Issued }))
+            .Take(limit)
+            .Select(d => new ExportSource(
+                d.Id, d.BookingId, d.Kind, d.Number, d.IssueDate, d.RecipientName, d.TaxableBase, d.VatAmount, d.StampDuty, d.Total, d.Currency, d.PaymentState, d.SdiStatus, d.Source))
+            .ToListAsync(ct);
+        if (documents.Count == 0)
+            return [];
+
+        var bookingIds = documents.Where(d => d.BookingId != null).Select(d => d.BookingId!.Value).Distinct().ToList();
+        var bookings = await db.Bookings
+            .AsNoTracking()
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
+            .Where(b => b.OrgId == scope.OrgId && bookingIds.Contains(b.Id))
+            .Select(b => new { b.Id, b.BookingCode, PropertyName = b.Property.Name })
+            .ToDictionaryAsync(b => b.Id, ct);
+        var collected = await CollectedByBookingAsync(
+            db,
+            documents.Where(d => IsPaymentStateReadFromPayments(d.Source, d.Kind, d.BookingId)).Select(d => d.BookingId!.Value).Distinct().ToList(),
+            ct);
+
+        return documents
+            .Select(d =>
+            {
+                var booking = d.BookingId is { } id && bookings.TryGetValue(id, out var found) ? found : null;
+                return new FiscalDocumentExportRow(
+                    d.Id,
+                    d.Kind,
+                    d.Number,
+                    d.IssueDate,
+                    booking?.BookingCode,
+                    booking?.PropertyName,
+                    d.RecipientName,
+                    d.TaxableBase,
+                    d.VatAmount,
+                    d.StampDuty,
+                    d.Total,
+                    d.Currency,
+                    IsPaymentStateReadFromPayments(d.Source, d.Kind, d.BookingId) ? PaymentStateOf(collected.GetValueOrDefault(d.BookingId!.Value), d.Total) : d.PaymentState,
+                    d.SdiStatus,
+                    d.Source);
+            })
+            .ToList();
+    }
+
+    /// <summary>The earliest day the list starts from: no document was created before it, and the start of a day long before it cannot be told in UTC from Europe/Rome.</summary>
+    private static readonly DateOnly FirstDayOfTheList = new(1900, 1, 1);
+
+    /// <summary>The documents of the scope that the criteria keep, narrowed in SQL: the one query behind the list and the export.</summary>
+    private IQueryable<FiscalDocument> Matching(HostScope scope, FiscalDocumentCriteria criteria)
+    {
         var query = db.FiscalDocuments.AsNoTracking().Where(d => d.OrgId == scope.OrgId);
         var bookings = db.Bookings.IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]).Where(b => b.OrgId == scope.OrgId).InScope(scope);
         if (!scope.IsOrgWide)
@@ -201,7 +269,9 @@ public sealed class FiscalDocumentService(
             query = query.Where(d => d.Source == source);
         if (criteria.From is { } from)
         {
-            var start = RomeCalendar.StartOfDayUtc(from);
+            // The start of 0001-01-01 in Rome falls before the first instant a DateTime holds, so RomeCalendar throws for it (a 500 on from=0001-01-01): a day before
+            // FirstDayOfTheList starts the list where no document is older anyway. The issue day is still compared with the day that was asked for.
+            var start = RomeCalendar.StartOfDayUtc(from < FirstDayOfTheList ? FirstDayOfTheList : from);
             query = query.Where(d => d.IssueDate != null ? d.IssueDate >= from : d.CreatedAt >= start);
         }
 
@@ -211,17 +281,28 @@ public sealed class FiscalDocumentService(
             query = query.Where(d => d.IssueDate != null ? d.IssueDate <= to : d.CreatedAt < end);
         }
 
-        var total = await query.CountAsync(ct);
-        var items = await query
-            .OrderByDescending(d => d.IssueDate)
-            .ThenByDescending(d => d.CreatedAt)
-            .ThenBy(d => d.Id)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync(ct);
-        await ApplyCurrentPaymentStateAsync(db, items, ct);
-        return new FiscalDocumentPage(items, total, page, pageSize);
+        return query;
     }
+
+    private static IOrderedQueryable<FiscalDocument> InListOrder(IQueryable<FiscalDocument> query) =>
+        query.OrderByDescending(d => d.IssueDate).ThenByDescending(d => d.CreatedAt).ThenBy(d => d.Id);
+
+    /// <summary>What the export reads of a document: its columns, without the XML, the lines and the rest of the recipient.</summary>
+    private sealed record ExportSource(
+        Guid Id,
+        Guid? BookingId,
+        DocumentKind Kind,
+        string? Number,
+        DateOnly? IssueDate,
+        string? RecipientName,
+        decimal TaxableBase,
+        decimal VatAmount,
+        decimal StampDuty,
+        decimal Total,
+        string Currency,
+        FiscalDocumentPaymentState PaymentState,
+        string SdiStatus,
+        FiscalDocumentSource Source);
 
     public async Task<string> GetXmlAsync(Guid documentId, CancellationToken ct = default)
     {
@@ -631,7 +712,7 @@ public sealed class FiscalDocumentService(
     /// </summary>
     internal static async Task ApplyCurrentPaymentStateAsync(AppDbContext db, IReadOnlyCollection<FiscalDocument> documents, CancellationToken ct)
     {
-        var own = documents.Where(d => d.Source == FiscalDocumentSource.CasaZen && d.Kind != DocumentKind.CreditNote && d.BookingId is not null).ToList();
+        var own = documents.Where(d => IsPaymentStateReadFromPayments(d.Source, d.Kind, d.BookingId)).ToList();
         if (own.Count == 0)
             return;
 
@@ -639,6 +720,13 @@ public sealed class FiscalDocumentService(
         foreach (var document in own)
             document.PaymentState = PaymentStateOf(collected.GetValueOrDefault(document.BookingId!.Value), document.Total);
     }
+
+    /// <summary>
+    /// Whether the payment state of a document is read from the payments of its booking: the documents CasaZen issued for a booking, except a credit note
+    /// (which credits money and is not collected). Any other document keeps the state it was given. The one rule of the list, the detail and the export.
+    /// </summary>
+    internal static bool IsPaymentStateReadFromPayments(FiscalDocumentSource source, DocumentKind kind, Guid? bookingId) =>
+        source == FiscalDocumentSource.CasaZen && kind != DocumentKind.CreditNote && bookingId is not null;
 
     // ---------------------------------------------------------------- reads
 

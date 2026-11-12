@@ -6138,6 +6138,93 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocLineCredit" xml:space="preserve">
     <value>Storno del documento {0}: {1}</value>
   </data>
+  <data name="FiscalExportSheetName" xml:space="preserve">
+    <value>Documenti</value>
+  </data>
+  <data name="FiscalExportColKind" xml:space="preserve">
+    <value>Tipo</value>
+  </data>
+  <data name="FiscalExportColNumber" xml:space="preserve">
+    <value>Numero</value>
+  </data>
+  <data name="FiscalExportColIssueDate" xml:space="preserve">
+    <value>Data di emissione</value>
+  </data>
+  <data name="FiscalExportColBookingCode" xml:space="preserve">
+    <value>Codice prenotazione</value>
+  </data>
+  <data name="FiscalExportColProperty" xml:space="preserve">
+    <value>Immobile</value>
+  </data>
+  <data name="FiscalExportColRecipient" xml:space="preserve">
+    <value>Destinatario</value>
+  </data>
+  <data name="FiscalExportColTaxableBase" xml:space="preserve">
+    <value>Imponibile</value>
+  </data>
+  <data name="FiscalExportColVat" xml:space="preserve">
+    <value>IVA</value>
+  </data>
+  <data name="FiscalExportColStampDuty" xml:space="preserve">
+    <value>Imposta di bollo</value>
+  </data>
+  <data name="FiscalExportColTotal" xml:space="preserve">
+    <value>Totale</value>
+  </data>
+  <data name="FiscalExportColCurrency" xml:space="preserve">
+    <value>Valuta</value>
+  </data>
+  <data name="FiscalExportColPaymentState" xml:space="preserve">
+    <value>Stato del pagamento</value>
+  </data>
+  <data name="FiscalExportColSdiState" xml:space="preserve">
+    <value>Stato SDI</value>
+  </data>
+  <data name="FiscalExportColSource" xml:space="preserve">
+    <value>Origine</value>
+  </data>
+  <data name="FiscalExportPaymentPaid" xml:space="preserve">
+    <value>Pagato</value>
+  </data>
+  <data name="FiscalExportPaymentToCollect" xml:space="preserve">
+    <value>Da incassare</value>
+  </data>
+  <data name="FiscalExportPaymentUnknown" xml:space="preserve">
+    <value>Non indicato</value>
+  </data>
+  <data name="FiscalExportSdiNotApplicable" xml:space="preserve">
+    <value>Non applicabile</value>
+  </data>
+  <data name="FiscalExportSdiToSend" xml:space="preserve">
+    <value>Da inviare</value>
+  </data>
+  <data name="FiscalExportSdiSubmitted" xml:space="preserve">
+    <value>Inviata</value>
+  </data>
+  <data name="FiscalExportSdiDelivered" xml:space="preserve">
+    <value>Consegnata</value>
+  </data>
+  <data name="FiscalExportSdiRejected" xml:space="preserve">
+    <value>Scartata</value>
+  </data>
+  <data name="FiscalExportSdiManualDeclared" xml:space="preserve">
+    <value>Inviata fuori da CasaZen</value>
+  </data>
+  <data name="FiscalExportSdiUnknown" xml:space="preserve">
+    <value>Non indicato</value>
+  </data>
+  <data name="FiscalExportSourceCasaZen" xml:space="preserve">
+    <value>Emesso da CasaZen</value>
+  </data>
+  <data name="FiscalExportSourceChannelManager" xml:space="preserve">
+    <value>Emesso dal tuo channel manager</value>
+  </data>
+  <data name="FiscalExportInvalidFormat" xml:space="preserve">
+    <value>Formato non valido: scegli csv oppure xlsx (format).</value>
+  </data>
+  <data name="FiscalExportInvalidRange" xml:space="preserve">
+    <value>Intervallo non valido: indica giorni tra il 2000 e il 2100, con la data di inizio (from) non dopo quella di fine (to).</value>
+  </data>
   <data name="PaymentLedgerKindCard" xml:space="preserve">
     <value>Carta</value>
   </data>
