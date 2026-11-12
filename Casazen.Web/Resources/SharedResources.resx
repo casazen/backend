@@ -5083,7 +5083,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>Il canale non ha accettato la richiesta (accesso non valido o canale non raggiungibile): controlla i dati di accesso e riprova più tardi.</value>
   </data>
   <data name="Marketplace.Error.octorate_unavailable" xml:space="preserve">
-    <value>Il channel manager non risponde in questo momento: riproveremo da soli, non devi fare nulla.</value>
+    <value>Il channel manager non ha risposto in questo momento: riprova ad attivare il canale tra poco.</value>
   </data>
   <data name="Marketplace.Error.generic" xml:space="preserve">
     <value>C'è un problema con questo collegamento: controllalo dal pannello del channel manager.</value>

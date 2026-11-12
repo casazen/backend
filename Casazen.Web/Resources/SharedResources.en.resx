@@ -5083,7 +5083,7 @@ Once active, the function works on the data the channel manager already holds.</
     <value>The channel did not accept the request (wrong login details or the channel is not reachable): check the login details and try again later.</value>
   </data>
   <data name="Marketplace.Error.octorate_unavailable" xml:space="preserve">
-    <value>The channel manager is not answering right now: we will try again by ourselves, you do not need to do anything.</value>
+    <value>The channel manager did not answer just now: try to activate the channel again in a few minutes.</value>
   </data>
   <data name="Marketplace.Error.generic" xml:space="preserve">
     <value>There is a problem with this connection: check it from the channel manager's panel.</value>
