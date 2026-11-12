@@ -36,6 +36,22 @@ public sealed class AssistantPromptBuilderTests
     }
 
     [Fact]
+    public void Minimize_FoldsAccentsAndTypographicApostrophes_SoANameWrittenAnotherWayIsTakenOutToo()
+    {
+        // «José», «D'Angelo» and «Zoë Müller» as the booking has them (the characters are written as escapes: an editor must not normalize them).
+        var names = new AssistantPromptNames(["Jos\u00E9", "D'Angelo", "Zo\u00EB M\u00FCller"], [], []);
+
+        // «Jose» for «José», «JOSÉ», the apostrophe of a phone («D’Angelo»), capitals, and a name of two words written without their accents; a longer word is left alone.
+        Assert.Equal(
+            "Sono [guest] [guest], scrivete a [guest]; con me c'\u00E8 [guest] [guest]. Il sig. [guest]. Joseph resta.",
+            AssistantPromptBuilder.Minimize("Sono Jose D\u2019Angelo, scrivete a JOS\u00C9; con me c'\u00E8 Zoe Muller. Il sig. D\u2019ANGELO. Joseph resta.", names, PiiScrubber.Scrub));
+
+        // A name stored with the typographic apostrophe is found written with the plain one, and an accent written as a letter and a mark (e + U+0301) goes with its letter.
+        Assert.Equal("[guest] e [guest]", AssistantPromptBuilder.Minimize("D'Angelo e D\u2019Angelo", new AssistantPromptNames(["D\u2019Angelo"], [], []), PiiScrubber.Scrub));
+        Assert.Equal("[guest] arriva", AssistantPromptBuilder.Minimize("Jose\u0301 arriva", names, PiiScrubber.Scrub));
+    }
+
+    [Fact]
     public void Minimize_NothingToTakeOut_IsTheTextAsItIs_AndAnEmptyTextIsEmpty()
     {
         Assert.Equal("Il check-in è alle 15.", AssistantPromptBuilder.Minimize("Il check-in è alle 15.", AssistantPromptNames.None, PiiScrubber.Scrub));

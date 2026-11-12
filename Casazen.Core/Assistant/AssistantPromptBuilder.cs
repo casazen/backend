@@ -35,7 +35,7 @@ public sealed record AssistantDraftAnswer(string Draft, string? Language, bool M
 /// </summary>
 /// <remarks>
 /// <para><b>What the provider may read (PO-09).</b> <see cref="Minimize"/> takes out of a text, in this order, the e-mail addresses, phone numbers and fiscal codes (the scrubber of
-/// the platform, <c>PiiScrubber.Scrub</c>, handed in by the caller: this project cannot reference the infrastructure), the known names of the guest and of the host (whole words, in
+/// the platform, <c>PiiScrubber.Scrub</c>, handed in by the caller: this project cannot reference the infrastructure), the known names of the guest and of the host (whole words, accents and typographic apostrophes folded, in
 /// any case) as <see cref="GuestPlaceholder"/> and <see cref="HostPlaceholder"/>, the codes of the booking as <see cref="BookingPlaceholder"/>, and any run of six or more digits as
 /// <see cref="CodePlaceholder"/>. The messages of the conversation and the facts of the knowledge base go through it before they are put in a prompt; the provider scrubs every
 /// prompt once more. <b>Not recognized</b>: the names of anyone the conversation does not know, a street address, an IBAN written with spaces.</para>
@@ -128,15 +128,16 @@ public static partial class AssistantPromptBuilder
 
     /// <summary>
     /// The names of <paramref name="names"/> replaced by <paramref name="placeholder"/>: a word of a name of at least <see cref="MinNamePartLength"/> letters by itself, a name that has a
-    /// shorter word as a whole (its words in order, any space between them); the particles and the initials alone are never a name. Whole words only, in any case, and never a
-    /// word that touches a square bracket (the placeholders already there).
+    /// shorter word as a whole (its words in order, any space between them); the particles and the initials alone are never a name. Whole words only, in any case, with the accents and
+    /// the typographic apostrophes folded on both sides (<see cref="Fold"/>: «José» is found as «Jose», «D’Angelo» as «D'Angelo»), and never a word that touches a square bracket
+    /// (the placeholders already there).
     /// </summary>
     private static string ReplaceNames(string text, IReadOnlyList<string?> names, string placeholder)
     {
         var fragments = new List<(string Literal, string Pattern)>();
         foreach (var name in names.Where(name => !string.IsNullOrWhiteSpace(name)))
         {
-            var parts = name!
+            var parts = Fold(name!).Text
                 .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Select(word => word.Trim(',', '.', ';', ':', '(', ')', '"', '\''))
                 .Where(word => word.Length >= 2 && !NameParticles.Contains(word))
@@ -161,8 +162,73 @@ public static partial class AssistantPromptBuilder
         var pattern = new Regex(
             @"(?<![\p{L}\p{N}\[])(?:" + string.Join('|', alternatives) + @")(?![\p{L}\p{N}\]])",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        return pattern.Replace(text, placeholder);
+
+        // The match is looked for in the folded text (the names are folded the same way), and what it matched is taken out of the original text.
+        var (folded, origin) = Fold(text);
+        var matches = pattern.Matches(folded);
+        if (matches.Count == 0)
+            return text;
+
+        var result = new StringBuilder(text.Length);
+        var copied = 0;
+        foreach (Match match in matches)
+        {
+            var start = origin[match.Index];
+            var end = origin[match.Index + match.Length - 1] + 1;
+            while (end < text.Length && IsCombiningMark(text[end]))
+                end++;
+
+            if (start < copied)
+                continue;
+
+            result.Append(text, copied, start - copied).Append(placeholder);
+            copied = end;
+        }
+
+        return result.Append(text, copied, text.Length - copied).ToString();
     }
+
+    /// <summary>
+    /// <paramref name="text"/> as a name is compared: the typographic apostrophes (<c>’</c> <c>‘</c> <c>ʼ</c> <c>′</c>) as the plain one and every letter without its accent marks (<c>é</c> as <c>e</c>), so
+    /// «D’Angelo» written with the apostrophe of a phone and «Jose» for «José» are still the name the conversation knows. <c>Origin[i]</c> is the index in <paramref name="text"/> of the
+    /// character the folded character <c>i</c> comes from: a match in the folded text is taken out of the original one. A mark that stands alone in the text is dropped from the folded one.
+    /// </summary>
+    private static (string Text, int[] Origin) Fold(string text)
+    {
+        var folded = new StringBuilder(text.Length);
+        var origin = new List<int>(text.Length);
+        for (var i = 0; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (c is '’' or '‘' or 'ʼ' or '′')
+            {
+                folded.Append('\'');
+                origin.Add(i);
+                continue;
+            }
+
+            if (char.IsSurrogate(c) || c < 'À')
+            {
+                folded.Append(c);
+                origin.Add(i);
+                continue;
+            }
+
+            foreach (var part in c.ToString().Normalize(NormalizationForm.FormD))
+            {
+                if (CharUnicodeInfo.GetUnicodeCategory(part) == UnicodeCategory.NonSpacingMark)
+                    continue;
+
+                folded.Append(part);
+                origin.Add(i);
+            }
+        }
+
+        return (folded.ToString(), origin.ToArray());
+    }
+
+    /// <summary>A mark that goes with the letter before it (the accent of a letter written as two characters).</summary>
+    private static bool IsCombiningMark(char c) => CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.NonSpacingMark;
 
     /// <summary>
     /// The codes of the booking replaced by <see cref="BookingPlaceholder"/>, in any case, whole words only. A code of CasaZen is matched with or without the dash it is shown with
