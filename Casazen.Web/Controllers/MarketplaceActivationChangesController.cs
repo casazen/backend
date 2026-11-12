@@ -7,6 +7,7 @@ using Casazen.Web.DTOs;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace Casazen.Web.Controllers;
 
@@ -52,7 +53,7 @@ public sealed class MarketplaceActivationChangesController(
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<MarketplaceActivationChangeDto>> UpdateSettings(
-        Guid id, [FromBody] UpdateMarketplaceSettingsRequest? request, CancellationToken cancellationToken)
+        Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] UpdateMarketplaceSettingsRequest? request, CancellationToken cancellationToken)
     {
         if (await CallerAsync(cancellationToken) is not { } caller)
             return NoOrg();
@@ -115,7 +116,7 @@ public sealed class MarketplaceActivationChangesController(
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<MarketplaceActivationChangeDto>> Deactivate(
-        Guid id, [FromBody] DeactivateMarketplaceActivationRequest? request, CancellationToken cancellationToken)
+        Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] DeactivateMarketplaceActivationRequest? request, CancellationToken cancellationToken)
     {
         if (await CallerAsync(cancellationToken) is not { } caller)
             return NoOrg();
@@ -145,7 +146,7 @@ public sealed class MarketplaceActivationChangesController(
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<MarketplaceActivationChangeDto>> RequestChange(
-        Guid id, [FromBody] MarketplaceFunctionChangeRequest? request, CancellationToken cancellationToken)
+        Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] MarketplaceFunctionChangeRequest? request, CancellationToken cancellationToken)
     {
         if (await CallerAsync(cancellationToken) is not { } caller)
             return NoOrg();

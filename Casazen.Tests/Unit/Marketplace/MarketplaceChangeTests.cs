@@ -1,5 +1,7 @@
+using System.Net;
 using System.Reflection;
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
@@ -19,9 +21,12 @@ using Casazen.Web.Extensions;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -712,6 +717,82 @@ public class MarketplaceChangeTests
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task TheEndpoints_ThroughTheHttpPipeline_ReachTheServiceWithNoBodyAndWithALongNote_SoItsRulesAnswerAndNotTheFramework()
+    {
+        var orgId = Guid.NewGuid();
+        var id = Guid.NewGuid();
+        var scope = new HostScope(orgId);
+        var outcome = new MarketplaceActivationOutcome(id, MarketplaceActivationKind.LicensedFunction, "chat", Guid.NewGuid(), MarketplaceActivationStatus.Active, null);
+        var changes = new Mock<IMarketplaceChangeService>();
+        changes
+            .Setup(c => c.DeactivateAsync(orgId, scope, id, It.IsAny<bool>(), Host, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(outcome);
+        changes
+            .Setup(c => c.UpdateSettingsAsync(orgId, scope, id, It.IsAny<MarketplaceSettingsChange>(), Host, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(outcome);
+        changes
+            .Setup(c => c.RequestFunctionChangeAsync(orgId, scope, id, It.IsAny<string?>(), Host, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(outcome);
+        var orgs = new Mock<IOrgContextResolver>();
+        orgs.Setup(o => o.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(orgId);
+        var scopes = new Mock<IHostScopeResolver>();
+        scopes.Setup(s => s.ResolveAsync(Host, It.IsAny<IReadOnlySet<string>>(), orgId, It.IsAny<CancellationToken>())).ReturnsAsync(scope);
+
+        // The controller alone behind the real MVC pipeline (model binding, validation, the filters of an API controller) on an in-memory server, called as a browser would.
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
+        builder.WebHost.UseTestServer();
+        builder.Services.AddSingleton(changes.Object);
+        builder.Services.AddSingleton(orgs.Object);
+        builder.Services.AddSingleton(scopes.Object);
+        builder.Services.AddAuthentication();
+        builder.Services.AddAuthorization(options => options.AddPolicy(CasazenPolicies.OtaWrite, policy => policy.RequireAuthenticatedUser()));
+        builder.Services.AddControllers().ConfigureApplicationPartManager(manager =>
+        {
+            manager.ApplicationParts.Clear();
+            manager.ApplicationParts.Add(new ControllerPart(typeof(MarketplaceActivationChangesController)));
+        });
+
+        await using var app = builder.Build();
+        app.Use((context, next) =>
+        {
+            context.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", Host)], "test"));
+            return next(context);
+        });
+        app.UseRouting();
+        app.UseAuthorization();
+        app.MapControllers();
+        await app.StartAsync();
+        using var client = app.GetTestClient();
+        var activation = $"/api/marketplace/activations/{id}";
+
+        // No body at all, and an empty one that says it is JSON: the service is reached with «not confirmed» and with a change that names nothing (its 422 rules answer, not a
+        // 400 or a 415 of the framework before the action).
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync($"{activation}/deactivate", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync($"{activation}/deactivate", new StringContent(string.Empty, Encoding.UTF8, "application/json"))).StatusCode);
+        changes.Verify(c => c.DeactivateAsync(orgId, scope, id, false, Host, It.IsAny<CancellationToken>()), Times.Exactly(2));
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync($"{activation}/deactivate", new StringContent("""{ "confirmed": true }""", Encoding.UTF8, "application/json"))).StatusCode);
+        changes.Verify(c => c.DeactivateAsync(orgId, scope, id, true, Host, It.IsAny<CancellationToken>()), Times.Once);
+
+        Assert.Equal(HttpStatusCode.OK, (await client.PatchAsync(activation, null)).StatusCode);
+        changes.Verify(c => c.UpdateSettingsAsync(orgId, scope, id, new MarketplaceSettingsChange(null, null, null), Host, It.IsAny<CancellationToken>()), Times.Once);
+
+        // The note is optional, and one longer than the limit is the rule of the service (422 marketplace_change_note_invalid), not a 400 of the model validation before it.
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync($"{activation}/change-request", null)).StatusCode);
+        changes.Verify(c => c.RequestFunctionChangeAsync(orgId, scope, id, null, Host, It.IsAny<CancellationToken>()), Times.Once);
+        var longNote = new string('x', MarketplaceChangeLimits.MaxNoteLength + 1);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync($"{activation}/change-request", new StringContent($$"""{ "note": "{{longNote}}" }""", Encoding.UTF8, "application/json"))).StatusCode);
+        changes.Verify(c => c.RequestFunctionChangeAsync(orgId, scope, id, longNote, Host, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>One controller as the only part of the application, so that the pipeline under test is the one of that controller and nothing else of the API starts.</summary>
+    private sealed class ControllerPart(Type controller) : Microsoft.AspNetCore.Mvc.ApplicationParts.ApplicationPart, Microsoft.AspNetCore.Mvc.ApplicationParts.IApplicationPartTypeProvider
+    {
+        public override string Name => controller.FullName!;
+
+        public IEnumerable<TypeInfo> Types => [controller.GetTypeInfo()];
+    }
 
     private static void AssertNoSecret(string text)
     {

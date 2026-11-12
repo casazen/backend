@@ -46,8 +46,10 @@ public sealed class DeactivateMarketplaceActivationRequest
 /// </summary>
 public sealed class MarketplaceFunctionChangeRequest
 {
-    /// <summary>The host's note for the request.</summary>
-    [MaxLength(MarketplaceChangeLimits.MaxNoteLength, ErrorMessage = "MarketplaceChangeNoteTooLong")]
+    /// <summary>
+    /// The host's note for the request. No length attribute on purpose: a note longer than <see cref="MarketplaceChangeLimits.MaxNoteLength"/> is the rule of the service
+    /// (422 <c>marketplace_change_note_invalid</c>, checked before the row is read), not a 400 <c>validation_error</c> of the model validation, which would answer before it.
+    /// </summary>
     public string? Note { get; set; }
 }
 
