@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using Casazen.Core.Entities;
 using Casazen.Core.Utilities;
 
@@ -87,20 +89,27 @@ public static class ApprovalQueueRules
     public const string SendAttemptsExhaustedCode = "approval_send_attempts_exhausted";
 
     /// <summary>
-    /// The key a message sends with (<c>IMessageReplyService.ReplyAsync</c>): one per item, so a second approval of the same item (a double click, two
-    /// hosts, a retry after a timeout) reaches the guest once. It follows the rule of <see cref="GuestMessageRules.NormalizeIdempotencyKey"/>: only
-    /// letters, digits, dashes and underscores (a colon would be refused as <c>idempotency_key_invalid</c>), 8 to 64 characters.
+    /// The key a message sends with (<c>IMessageReplyService.ReplyAsync</c>): one per item and text, so a second approval of the same item (a double click, two
+    /// hosts, a retry after a timeout) reaches the guest once, and a text the host approves later (the item went back to pending with a new one, or it was edited after a
+    /// refusal) is not taken for the message that went before: the service of the replies replays the message of a key it already knows, whatever text it is given now. It
+    /// follows the rule of <see cref="GuestMessageRules.NormalizeIdempotencyKey"/>: only letters, digits, dashes and underscores (a colon would be refused as
+    /// <c>idempotency_key_invalid</c>), 8 to 64 characters (at most 57 here).
     /// </summary>
     /// <param name="itemId">The item of the queue.</param>
+    /// <param name="finalText">The text that is sent (the edited one when there is one): the first eight hexadecimal digits of its SHA-256 are part of the key.</param>
     /// <param name="attempt">
-    /// 1 for the first send (<c>approval-{id}</c>). A message the channel manager <b>refused</b> did not go out, but the same key would replay that refusal
-    /// for ever: the action sends again with the key of the next attempt (<c>approval-{id}-2</c>, ...), which only happens after a refusal, never after a send
+    /// 1 for the first send (<c>approval-{id}-{hash}</c>). A message the channel manager <b>refused</b> did not go out, but the same key would replay that refusal
+    /// for ever: the action sends again with the key of the next attempt (<c>approval-{id}-{hash}-2</c>, ...), which only happens after a refusal, never after a send
     /// whose outcome is not known (that one is the same message, checked on the channel).
     /// </param>
-    public static string SendKeyOf(Guid itemId, int attempt = 1)
+    public static string SendKeyOf(Guid itemId, string finalText, int attempt = 1)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(finalText);
         ArgumentOutOfRangeException.ThrowIfLessThan(attempt, 1);
-        return attempt == 1 ? $"approval-{itemId:D}" : $"approval-{itemId:D}-{attempt}";
+
+        var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(finalText)).AsSpan(0, 4));
+        var key = $"approval-{itemId:D}-{hash}";
+        return attempt == 1 ? key : $"{key}-{attempt}";
     }
 
     /// <summary>

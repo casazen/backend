@@ -15,7 +15,8 @@ namespace Casazen.Infrastructure.Services.ApprovalActions;
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
-/// <item><b>Once.</b> The key of the send is the item's (<see cref="ApprovalQueueRules.SendKeyOf"/>), so a second approval (a double click, two hosts, a retry after a
+/// <item><b>Once.</b> The key of the send is the item's and the text's (<see cref="ApprovalQueueRules.SendKeyOf"/>: the item and a hash of the text that goes out, so an item that went
+/// back to pending with a new text sends the new text and does not replay the first message), so a second approval of the same text (a double click, two hosts, a retry after a
 /// timeout) finds the message already there and sends nothing. A send whose outcome is not known (<c>ManualVerify</c>) counts as done: it is the same message, checked on
 /// the channel and never sent again. A message the channel <b>refused</b> (<c>Error</c>) did not go out, but the same key would replay the refusal for ever, so the
 /// retry of such an item sends with the key of the next attempt, up to <see cref="ApprovalQueueRules.MaxSendAttempts"/>.</item>
@@ -51,7 +52,7 @@ public sealed class MessageDraftApprovalAction(IMessageReplyService replies, ILo
         {
             for (var attempt = 1; attempt <= ApprovalQueueRules.MaxSendAttempts; attempt++)
             {
-                var result = await replies.ReplyAsync(scope, key, finalText, ApprovalQueueRules.SendKeyOf(item.Id, attempt), userId, origin, ruleCode, ct);
+                var result = await replies.ReplyAsync(scope, key, finalText, ApprovalQueueRules.SendKeyOf(item.Id, finalText, attempt), userId, origin, ruleCode, ct);
 
                 // The same key found a message of this item that the channel refused: it did not go out, and the next key sends it again.
                 if (result is { Replayed: true, State: OtaMessageDeliveryState.Error })

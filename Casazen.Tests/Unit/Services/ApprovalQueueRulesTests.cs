@@ -64,17 +64,25 @@ public class ApprovalQueueRulesTests
     {
         var id = Guid.Parse("3f2504e0-4f89-41d3-9a0c-0305e82c3301");
 
-        var first = ApprovalQueueRules.SendKeyOf(id);
-        var second = ApprovalQueueRules.SendKeyOf(id, 2);
-        var last = ApprovalQueueRules.SendKeyOf(id, ApprovalQueueRules.MaxSendAttempts);
+        const string text = "Buongiorno, il check-in e dalle 15:00";
+        var first = ApprovalQueueRules.SendKeyOf(id, text);
+        var second = ApprovalQueueRules.SendKeyOf(id, text, 2);
+        var last = ApprovalQueueRules.SendKeyOf(id, text, ApprovalQueueRules.MaxSendAttempts);
 
-        Assert.Equal("approval-3f2504e0-4f89-41d3-9a0c-0305e82c3301", first);
-        Assert.Equal("approval-3f2504e0-4f89-41d3-9a0c-0305e82c3301-2", second);
+        // The item and the first eight hexadecimal digits of the SHA-256 of the text that goes out.
+        Assert.Equal("approval-3f2504e0-4f89-41d3-9a0c-0305e82c3301-8fa90ebc", first);
+        Assert.Equal("approval-3f2504e0-4f89-41d3-9a0c-0305e82c3301-8fa90ebc-2", second);
+        Assert.InRange(last.Length, 8, 64);
+        // The same text is the same key (a double click reaches the guest once); another text is another key (a message that was approved later is not the one that went before).
+        Assert.Equal(first, ApprovalQueueRules.SendKeyOf(id, text));
+        Assert.NotEqual(first, ApprovalQueueRules.SendKeyOf(id, text + "!"));
+        Assert.NotEqual(first, ApprovalQueueRules.SendKeyOf(Guid.NewGuid(), text));
         // The rule of the key of a send: letters, digits, dashes, 8 to 64 characters. The colon of the brief would be refused (idempotency_key_invalid).
         Assert.All(new[] { first, second, last }, key => Assert.Equal(key, GuestMessageRules.NormalizeIdempotencyKey(key)));
         Assert.Null(GuestMessageRules.NormalizeIdempotencyKey($"approval:{id:D}"));
         Assert.Equal(3, new[] { first, second, last }.Distinct().Count());
-        Assert.Throws<ArgumentOutOfRangeException>(() => ApprovalQueueRules.SendKeyOf(id, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => ApprovalQueueRules.SendKeyOf(id, text, 0));
+        Assert.Throws<ArgumentException>(() => ApprovalQueueRules.SendKeyOf(id, " "));
     }
 
     [Fact]

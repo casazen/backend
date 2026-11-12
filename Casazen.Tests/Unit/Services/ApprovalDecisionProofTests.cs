@@ -36,7 +36,7 @@ public class ApprovalDecisionProofTests : IDisposable
         var second = await service.ApproveAsync(_rig.OrgWide, item.Id, ApprovalQueueRig.Manager);
 
         var sent = Assert.Single(_rig.Sent);
-        Assert.Equal($"approval-{item.Id:D}", sent.IdempotencyKey);
+        Assert.Equal(ApprovalQueueRules.SendKeyOf(item.Id, ApprovalQueueRig.DraftText), sent.IdempotencyKey);
         Assert.NotNull(GuestMessageRules.NormalizeIdempotencyKey(sent.IdempotencyKey));
         Assert.Equal(nameof(OtaMessageDeliveryState.Sent), first.ActionState);
         Assert.Null(second.ActionState);
@@ -125,7 +125,7 @@ public class ApprovalDecisionProofTests : IDisposable
         await _rig.SeedAsync();
         var service = _rig.Service();
         var item = await _rig.SubmitDraftAsync(service, _rig.PropertyA);
-        _rig.RefuseKey($"approval-{item.Id:D}");
+        _rig.RefuseKey(ApprovalQueueRules.SendKeyOf(item.Id, ApprovalQueueRig.DraftText));
 
         var failure = await Assert.ThrowsAsync<DomainConflictException>(() => service.ApproveAsync(_rig.OrgWide, item.Id, ApprovalQueueRig.Owner));
 
@@ -138,18 +138,62 @@ public class ApprovalDecisionProofTests : IDisposable
         Assert.Null(pending.ApprovedAt);
         Assert.Null(await _rig.Db.InternalActivities.AsNoTracking().Where(a => a.EntityId == item.Id).Select(a => a.CompletedAt).SingleAsync());
 
-        // The host edits and tries again: the refusal of the first key is replayed, so the message goes with the next key, once, as the person's.
+        // The host edits and tries again: the key follows the text, so the corrected message is not taken for the refused one and goes out, once, as the person's.
         await service.EditAsync(_rig.OrgWide, item.Id, "Un testo corretto", ApprovalQueueRig.Owner);
         var retried = await service.ApproveAsync(_rig.OrgWide, item.Id, ApprovalQueueRig.Owner);
         await service.ApproveAsync(_rig.OrgWide, item.Id, ApprovalQueueRig.Owner);
 
         Assert.Equal(nameof(OtaMessageDeliveryState.Sent), retried.ActionState);
         Assert.Equal(
-            [$"approval-{item.Id:D}", $"approval-{item.Id:D}", $"approval-{item.Id:D}-2"],
+            [ApprovalQueueRules.SendKeyOf(item.Id, ApprovalQueueRig.DraftText), ApprovalQueueRules.SendKeyOf(item.Id, "Un testo corretto")],
             _rig.Sent.Select(s => s.IdempotencyKey));
-        Assert.Equal(["Un testo corretto", "Un testo corretto"], _rig.Sent.Skip(1).Select(s => s.Text));
+        Assert.Equal([ApprovalQueueRig.DraftText, "Un testo corretto"], _rig.Sent.Select(s => s.Text));
+        Assert.Equal(MessageOrigin.Person, _rig.Sent[1].Origin);
         var done = await _rig.Db.ApprovalQueueItems.AsNoTracking().SingleAsync(i => i.Id == item.Id);
         Assert.Equal((ApprovalStatus.Approved, ApprovalOriginActionStatus.Executed, (string?)null), (done.Status, done.OriginActionStatus, done.OriginActionError));
+    }
+
+    /// <summary>The host retries with the same text after a refusal of the channel: the refusal of the first key is replayed, so the message goes with the next attempt's key, once.</summary>
+    [Fact]
+    public async Task Approval_ARetryWithNoEditAfterARefusal_SendsWithTheNextKey()
+    {
+        await _rig.SeedAsync();
+        var service = _rig.Service();
+        var item = await _rig.SubmitDraftAsync(service, _rig.PropertyA);
+        var first = ApprovalQueueRules.SendKeyOf(item.Id, ApprovalQueueRig.DraftText);
+        _rig.RefuseKey(first);
+
+        await Assert.ThrowsAsync<DomainConflictException>(() => service.ApproveAsync(_rig.OrgWide, item.Id, ApprovalQueueRig.Owner));
+        var retried = await service.ApproveAsync(_rig.OrgWide, item.Id, ApprovalQueueRig.Owner);
+
+        Assert.Equal(nameof(OtaMessageDeliveryState.Sent), retried.ActionState);
+        Assert.Equal([first, first, ApprovalQueueRules.SendKeyOf(item.Id, ApprovalQueueRig.DraftText, 2)], _rig.Sent.Select(s => s.IdempotencyKey));
+    }
+
+    /// <summary>
+    /// Data rule (the text that is approved is the text that is sent): an item that was approved and sent, then went back to pending with a new text, sends the new text when it is approved
+    /// again. The service of the replies replays the message of a key it already knows whatever text it is given, so a key of the item alone would have answered Sent and sent nothing.
+    /// </summary>
+    [Fact]
+    public async Task Approval_AfterAReturnToPending_SendsTheNewText_AndDoesNotReplayTheFirstMessage_Test()
+    {
+        await _rig.SeedAsync();
+        var service = _rig.Service();
+        var draftId = Guid.NewGuid();
+        var item = await service.SubmitForApprovalAsync(
+            _rig.OrgId, ApprovalItemTypes.MessageDraft, draftId, ApprovalQueueRig.DraftText, true, propertyId: _rig.PropertyA.Id, threadKey: ApprovalQueueRig.OtaKey());
+        await service.ApproveAsync(_rig.OrgWide, item.Id, ApprovalQueueRig.Owner);
+        _rig.Clock.Advance(TimeSpan.FromMinutes(5));
+
+        var returned = await service.ReturnToPendingIfChangedAsync(ApprovalItemTypes.MessageDraft, draftId, "Il testo nuovo del messaggio");
+        var again = await service.ApproveAsync(_rig.OrgWide, item.Id, ApprovalQueueRig.Owner);
+
+        Assert.True(returned);
+        Assert.Equal(nameof(OtaMessageDeliveryState.Sent), again.ActionState);
+        Assert.Equal([ApprovalQueueRig.DraftText, "Il testo nuovo del messaggio"], _rig.Sent.Select(s => s.Text));
+        Assert.Equal(
+            [ApprovalQueueRules.SendKeyOf(item.Id, ApprovalQueueRig.DraftText), ApprovalQueueRules.SendKeyOf(item.Id, "Il testo nuovo del messaggio")],
+            _rig.Sent.Select(s => s.IdempotencyKey));
     }
 
     [Fact]
