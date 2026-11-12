@@ -5844,4 +5844,109 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocumentAmountsInvalid" xml:space="preserve">
     <value>Gli importi non permettono di preparare il documento fiscale (importi negativi, nulla da fatturare o aliquota non valida).</value>
   </data>
+  <data name="FiscalDocPdfTitle" xml:space="preserve">
+    <value>{0} n. {1}</value>
+  </data>
+  <data name="FiscalDocPdfTitleDraft" xml:space="preserve">
+    <value>{0} (bozza)</value>
+  </data>
+  <data name="FiscalDocPdfDraftWatermark" xml:space="preserve">
+    <value>BOZZA</value>
+  </data>
+  <data name="FiscalDocPdfKindInvoice" xml:space="preserve">
+    <value>Fattura</value>
+  </data>
+  <data name="FiscalDocPdfKindReceipt" xml:space="preserve">
+    <value>Ricevuta</value>
+  </data>
+  <data name="FiscalDocPdfKindCreditNote" xml:space="preserve">
+    <value>Nota di credito</value>
+  </data>
+  <data name="FiscalDocPdfKindProforma" xml:space="preserve">
+    <value>Fattura proforma</value>
+  </data>
+  <data name="FiscalDocPdfIssueDate" xml:space="preserve">
+    <value>Data del documento: {0}</value>
+  </data>
+  <data name="FiscalDocPdfCredits" xml:space="preserve">
+    <value>Storna il documento {0} del {1}</value>
+  </data>
+  <data name="FiscalDocPdfIssuer" xml:space="preserve">
+    <value>Emittente</value>
+  </data>
+  <data name="FiscalDocPdfRecipient" xml:space="preserve">
+    <value>Destinatario</value>
+  </data>
+  <data name="FiscalDocPdfVatNumber" xml:space="preserve">
+    <value>Partita IVA: {0}</value>
+  </data>
+  <data name="FiscalDocPdfFiscalCode" xml:space="preserve">
+    <value>Codice fiscale: {0}</value>
+  </data>
+  <data name="FiscalDocPdfLinesHeading" xml:space="preserve">
+    <value>Dettaglio</value>
+  </data>
+  <data name="FiscalDocPdfColLine" xml:space="preserve">
+    <value>N.</value>
+  </data>
+  <data name="FiscalDocPdfColDescription" xml:space="preserve">
+    <value>Descrizione</value>
+  </data>
+  <data name="FiscalDocPdfColQuantity" xml:space="preserve">
+    <value>Quantità</value>
+  </data>
+  <data name="FiscalDocPdfColUnitPrice" xml:space="preserve">
+    <value>Prezzo unitario ({0})</value>
+  </data>
+  <data name="FiscalDocPdfColTotal" xml:space="preserve">
+    <value>Importo ({0})</value>
+  </data>
+  <data name="FiscalDocPdfColVat" xml:space="preserve">
+    <value>IVA</value>
+  </data>
+  <data name="FiscalDocPdfSummaryHeading" xml:space="preserve">
+    <value>Riepilogo IVA</value>
+  </data>
+  <data name="FiscalDocPdfColRate" xml:space="preserve">
+    <value>Aliquota o natura</value>
+  </data>
+  <data name="FiscalDocPdfColTaxable" xml:space="preserve">
+    <value>Imponibile ({0})</value>
+  </data>
+  <data name="FiscalDocPdfColTax" xml:space="preserve">
+    <value>Imposta ({0})</value>
+  </data>
+  <data name="FiscalDocPdfColItem" xml:space="preserve">
+    <value>Voce</value>
+  </data>
+  <data name="FiscalDocPdfColAmount" xml:space="preserve">
+    <value>Importo ({0})</value>
+  </data>
+  <data name="FiscalDocPdfTaxableBase" xml:space="preserve">
+    <value>Totale imponibile</value>
+  </data>
+  <data name="FiscalDocPdfVatAmount" xml:space="preserve">
+    <value>Totale IVA</value>
+  </data>
+  <data name="FiscalDocPdfStampDuty" xml:space="preserve">
+    <value>Imposta di bollo</value>
+  </data>
+  <data name="FiscalDocPdfTotal" xml:space="preserve">
+    <value>Totale documento</value>
+  </data>
+  <data name="FiscalDocPdfPayment" xml:space="preserve">
+    <value>Pagamento: {0}</value>
+  </data>
+  <data name="FiscalDocPdfPaymentPaid" xml:space="preserve">
+    <value>pagato</value>
+  </data>
+  <data name="FiscalDocPdfPaymentToCollect" xml:space="preserve">
+    <value>da incassare</value>
+  </data>
+  <data name="FiscalDocPdfPaymentUnknown" xml:space="preserve">
+    <value>non indicato</value>
+  </data>
+  <data name="FiscalDocPdfCourtesyCopy" xml:space="preserve">
+    <value>Copia di cortesia della fattura elettronica: il documento valido ai fini fiscali è il file XML trasmesso al Sistema di Interscambio.</value>
+  </data>
 </root>

@@ -5844,4 +5844,109 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="FiscalDocumentAmountsInvalid" xml:space="preserve">
     <value>The amounts cannot make the fiscal document (negative amounts, nothing to bill or an invalid rate).</value>
   </data>
+  <data name="FiscalDocPdfTitle" xml:space="preserve">
+    <value>{0} no. {1}</value>
+  </data>
+  <data name="FiscalDocPdfTitleDraft" xml:space="preserve">
+    <value>{0} (draft)</value>
+  </data>
+  <data name="FiscalDocPdfDraftWatermark" xml:space="preserve">
+    <value>DRAFT</value>
+  </data>
+  <data name="FiscalDocPdfKindInvoice" xml:space="preserve">
+    <value>Invoice</value>
+  </data>
+  <data name="FiscalDocPdfKindReceipt" xml:space="preserve">
+    <value>Receipt</value>
+  </data>
+  <data name="FiscalDocPdfKindCreditNote" xml:space="preserve">
+    <value>Credit note</value>
+  </data>
+  <data name="FiscalDocPdfKindProforma" xml:space="preserve">
+    <value>Pro forma invoice</value>
+  </data>
+  <data name="FiscalDocPdfIssueDate" xml:space="preserve">
+    <value>Document date: {0}</value>
+  </data>
+  <data name="FiscalDocPdfCredits" xml:space="preserve">
+    <value>Credits document {0} of {1}</value>
+  </data>
+  <data name="FiscalDocPdfIssuer" xml:space="preserve">
+    <value>Issuer</value>
+  </data>
+  <data name="FiscalDocPdfRecipient" xml:space="preserve">
+    <value>Recipient</value>
+  </data>
+  <data name="FiscalDocPdfVatNumber" xml:space="preserve">
+    <value>VAT number: {0}</value>
+  </data>
+  <data name="FiscalDocPdfFiscalCode" xml:space="preserve">
+    <value>Tax code: {0}</value>
+  </data>
+  <data name="FiscalDocPdfLinesHeading" xml:space="preserve">
+    <value>Details</value>
+  </data>
+  <data name="FiscalDocPdfColLine" xml:space="preserve">
+    <value>No.</value>
+  </data>
+  <data name="FiscalDocPdfColDescription" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="FiscalDocPdfColQuantity" xml:space="preserve">
+    <value>Quantity</value>
+  </data>
+  <data name="FiscalDocPdfColUnitPrice" xml:space="preserve">
+    <value>Unit price ({0})</value>
+  </data>
+  <data name="FiscalDocPdfColTotal" xml:space="preserve">
+    <value>Amount ({0})</value>
+  </data>
+  <data name="FiscalDocPdfColVat" xml:space="preserve">
+    <value>VAT</value>
+  </data>
+  <data name="FiscalDocPdfSummaryHeading" xml:space="preserve">
+    <value>VAT summary</value>
+  </data>
+  <data name="FiscalDocPdfColRate" xml:space="preserve">
+    <value>Rate or nature</value>
+  </data>
+  <data name="FiscalDocPdfColTaxable" xml:space="preserve">
+    <value>Taxable amount ({0})</value>
+  </data>
+  <data name="FiscalDocPdfColTax" xml:space="preserve">
+    <value>Tax ({0})</value>
+  </data>
+  <data name="FiscalDocPdfColItem" xml:space="preserve">
+    <value>Item</value>
+  </data>
+  <data name="FiscalDocPdfColAmount" xml:space="preserve">
+    <value>Amount ({0})</value>
+  </data>
+  <data name="FiscalDocPdfTaxableBase" xml:space="preserve">
+    <value>Total taxable amount</value>
+  </data>
+  <data name="FiscalDocPdfVatAmount" xml:space="preserve">
+    <value>Total VAT</value>
+  </data>
+  <data name="FiscalDocPdfStampDuty" xml:space="preserve">
+    <value>Stamp duty</value>
+  </data>
+  <data name="FiscalDocPdfTotal" xml:space="preserve">
+    <value>Document total</value>
+  </data>
+  <data name="FiscalDocPdfPayment" xml:space="preserve">
+    <value>Payment: {0}</value>
+  </data>
+  <data name="FiscalDocPdfPaymentPaid" xml:space="preserve">
+    <value>paid</value>
+  </data>
+  <data name="FiscalDocPdfPaymentToCollect" xml:space="preserve">
+    <value>to collect</value>
+  </data>
+  <data name="FiscalDocPdfPaymentUnknown" xml:space="preserve">
+    <value>not stated</value>
+  </data>
+  <data name="FiscalDocPdfCourtesyCopy" xml:space="preserve">
+    <value>Courtesy copy of the electronic invoice: the document valid for tax purposes is the XML file sent to the Exchange System.</value>
+  </data>
 </root>
