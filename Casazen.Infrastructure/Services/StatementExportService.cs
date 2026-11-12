@@ -1,0 +1,88 @@
+using System.Globalization;
+using Casazen.Core.Documents;
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
+using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+
+namespace Casazen.Infrastructure.Services;
+
+/// <inheritdoc cref="IStatementExportService"/>
+/// <remarks>
+/// Read-only: the statement, its evidence and the F24 are read with <c>AsNoTracking</c> and nothing is saved, so an export can never create a
+/// withholding or change a total (AC-NF110: statement operations never create withholding). The logs carry ids and formats only.
+/// </remarks>
+public sealed class StatementExportService(
+    AppDbContext db,
+    IPdfDocumentRenderer pdfRenderer,
+    IDocumentTexts texts,
+    ILogger<StatementExportService> logger) : IStatementExportService
+{
+    private const string PdfContentType = "application/pdf";
+    private const string CsvContentType = "text/csv; charset=utf-8";
+
+    public async Task<StatementExportFile> ExportStatementAsync(
+        Guid statementId,
+        Guid orgId,
+        StatementExportFormat format,
+        string language,
+        CancellationToken ct = default)
+    {
+        var statement = await db.OwnerStatements
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(s => s.PropertyOwner)
+            .Include(s => s.Property)
+            .Include(s => s.Lines)
+                .ThenInclude(l => l.Booking)
+            .FirstOrDefaultAsync(s => s.Id == statementId && s.OrgId == orgId, ct)
+            ?? throw new NotFoundException($"Statement {statementId} was not found")
+            {
+                Code = StatementExportErrors.StatementNotFound,
+                MessageKey = "StatementNotFound",
+            };
+
+        if (statement.Status is not (StatementStatus.Approved or StatementStatus.Published))
+            throw new DomainRuleException(StatementExportErrors.StatementNotExportable, "StatementNotExportable");
+
+        var data = await EvidenceOfAsync(statement, ct);
+        var name = $"rendiconto-{statement.Year.ToString(CultureInfo.InvariantCulture)}-{statement.Month.ToString("00", CultureInfo.InvariantCulture)}-{statement.Id:N}";
+        logger.LogInformation("Statement {StatementId} exported as {Format}", statement.Id, format);
+
+        return format == StatementExportFormat.Csv
+            ? new StatementExportFile(StatementDocuments.Csv(data, texts, language), CsvContentType, name + ".csv")
+            : new StatementExportFile(pdfRenderer.Render(StatementDocuments.Pdf(data, texts, language)), PdfContentType, name + ".pdf");
+    }
+
+    public async Task<StatementExportFile> ExportF24Async(Guid orgId, int month, int year, string language, CancellationToken ct = default)
+    {
+        var record = await db.F24Records
+            .AsNoTracking()
+            .FirstOrDefaultAsync(f => f.OrgId == orgId && f.ReferenceMonth == month && f.ReferenceYear == year, ct)
+            ?? throw new NotFoundException($"F24 {year}-{month} was not found")
+            {
+                Code = StatementExportErrors.F24NotFound,
+                MessageKey = "F24NotFound",
+            };
+
+        var orgName = await db.Orgs
+            .AsNoTracking()
+            .Where(o => o.Id == orgId)
+            .Select(o => o.Name)
+            .FirstOrDefaultAsync(ct) ?? string.Empty;
+
+        logger.LogInformation("F24 {F24Id} exported as PDF", record.Id);
+        var name = $"f24-{year.ToString(CultureInfo.InvariantCulture)}-{month.ToString("00", CultureInfo.InvariantCulture)}.pdf";
+        return new StatementExportFile(pdfRenderer.Render(F24Documents.Pdf(record, orgName, texts, language)), PdfContentType, name);
+    }
+
+    /// <summary>What the files print besides the statement: nothing is stored for it yet, so the statement prints that there is none.</summary>
+    private static Task<StatementExportData> EvidenceOfAsync(OwnerStatement statement, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        return Task.FromResult(new StatementExportData(statement, null, [], []));
+    }
+}

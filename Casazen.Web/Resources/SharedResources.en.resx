@@ -3935,12 +3935,6 @@
   <data name="StatementNotDraft" xml:space="preserve">
     <value>The statement is not in Draft status</value>
   </data>
-  <data name="StatementCsvExportNotImplemented" xml:space="preserve">
-    <value>CSV export for statements not yet available</value>
-  </data>
-  <data name="StatementPdfExportNotImplemented" xml:space="preserve">
-    <value>PDF export for statements not yet available</value>
-  </data>
   <data name="StatementNotFound" xml:space="preserve">
     <value>Statement not found or does not belong to your organization</value>
   </data>
@@ -5654,5 +5648,188 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="RentSepaNotAuthorized" xml:space="preserve">
     <value>Authorize the SEPA mandate before enabling automatic payment.</value>
+  </data>
+  <data name="StatementNotExportable" xml:space="preserve">
+    <value>Only an approved or published statement can be exported.</value>
+  </data>
+  <data name="StatementDocNonFiscal" xml:space="preserve">
+    <value>Management statement - not an invoice</value>
+  </data>
+  <data name="StatementDocTitle" xml:space="preserve">
+    <value>Owner statement {0}</value>
+  </data>
+  <data name="StatementDocOwner" xml:space="preserve">
+    <value>Owner: {0}</value>
+  </data>
+  <data name="StatementDocProperty" xml:space="preserve">
+    <value>Property: {0}</value>
+  </data>
+  <data name="StatementDocPeriod" xml:space="preserve">
+    <value>Period: {0}</value>
+  </data>
+  <data name="StatementDocVersion" xml:space="preserve">
+    <value>Statement version: {0}</value>
+  </data>
+  <data name="StatementDocStatus" xml:space="preserve">
+    <value>Status: {0}</value>
+  </data>
+  <data name="StatementDocStatusDraft" xml:space="preserve">
+    <value>Draft</value>
+  </data>
+  <data name="StatementDocStatusApproved" xml:space="preserve">
+    <value>Approved</value>
+  </data>
+  <data name="StatementDocStatusPublished" xml:space="preserve">
+    <value>Published</value>
+  </data>
+  <data name="StatementDocShare" xml:space="preserve">
+    <value>Ownership share: {0}%</value>
+  </data>
+  <data name="StatementDocCurrency" xml:space="preserve">
+    <value>Amounts in {0}, as stored on the statement.</value>
+  </data>
+  <data name="StatementDocLinesHeading" xml:space="preserve">
+    <value>Lines of the period</value>
+  </data>
+  <data name="StatementDocNoLines" xml:space="preserve">
+    <value>No lines in the period.</value>
+  </data>
+  <data name="StatementDocColType" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="StatementDocColReference" xml:space="preserve">
+    <value>Reference</value>
+  </data>
+  <data name="StatementDocColDescription" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="StatementDocColCashYear" xml:space="preserve">
+    <value>Cash year</value>
+  </data>
+  <data name="StatementDocColGross" xml:space="preserve">
+    <value>Gross ({0})</value>
+  </data>
+  <data name="StatementDocColCommission" xml:space="preserve">
+    <value>Commission ({0})</value>
+  </data>
+  <data name="StatementDocColExpenses" xml:space="preserve">
+    <value>Expenses ({0})</value>
+  </data>
+  <data name="StatementDocColWithholding" xml:space="preserve">
+    <value>Withholding ({0})</value>
+  </data>
+  <data name="StatementDocColItem" xml:space="preserve">
+    <value>Item</value>
+  </data>
+  <data name="StatementDocColAmount" xml:space="preserve">
+    <value>Amount ({0})</value>
+  </data>
+  <data name="StatementDocColPayout" xml:space="preserve">
+    <value>Payment to the owner</value>
+  </data>
+  <data name="StatementDocColDate" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="StatementDocColState" xml:space="preserve">
+    <value>Payment status</value>
+  </data>
+  <data name="StatementDocColRule" xml:space="preserve">
+    <value>Rule and version</value>
+  </data>
+  <data name="StatementDocColDecision" xml:space="preserve">
+    <value>Decision</value>
+  </data>
+  <data name="StatementDocColBase" xml:space="preserve">
+    <value>Taxable base ({0})</value>
+  </data>
+  <data name="StatementDocLineBooking" xml:space="preserve">
+    <value>Booking</value>
+  </data>
+  <data name="StatementDocLineOtaRevenue" xml:space="preserve">
+    <value>Channel revenue</value>
+  </data>
+  <data name="StatementDocLineExpense" xml:space="preserve">
+    <value>Expense</value>
+  </data>
+  <data name="StatementDocLineAdjustment" xml:space="preserve">
+    <value>Adjustment</value>
+  </data>
+  <data name="StatementDocTotalsHeading" xml:space="preserve">
+    <value>Totals</value>
+  </data>
+  <data name="StatementDocTotalRevenue" xml:space="preserve">
+    <value>Gross revenue</value>
+  </data>
+  <data name="StatementDocTotalCommission" xml:space="preserve">
+    <value>Agency commission</value>
+  </data>
+  <data name="StatementDocTotalExpenses" xml:space="preserve">
+    <value>Expenses charged</value>
+  </data>
+  <data name="StatementDocTotalWithholding" xml:space="preserve">
+    <value>Withholding recorded</value>
+  </data>
+  <data name="StatementDocNetPayable" xml:space="preserve">
+    <value>Net payable to the owner</value>
+  </data>
+  <data name="StatementDocPayoutsHeading" xml:space="preserve">
+    <value>Payments to the owner</value>
+  </data>
+  <data name="StatementDocPayoutsNone" xml:space="preserve">
+    <value>No payment recorded for this statement.</value>
+  </data>
+  <data name="StatementDocWithholdingHeading" xml:space="preserve">
+    <value>Withholding tax recorded</value>
+  </data>
+  <data name="StatementDocWithholdingNone" xml:space="preserve">
+    <value>No withholding recorded. The statement does not calculate withholding: it arises only from an authorized payment to the owner, under the approved rule in force.</value>
+  </data>
+  <data name="StatementDocDecisionApplicable" xml:space="preserve">
+    <value>Withholding due</value>
+  </data>
+  <data name="StatementDocDecisionNotApplicable" xml:space="preserve">
+    <value>Withholding not due</value>
+  </data>
+  <data name="StatementDocFootnote" xml:space="preserve">
+    <value>Amounts as stored, with no recalculation. The statement has no fiscal number or series and produces no FatturaPA XML: any invoice is issued by the agency's external fiscal system.</value>
+  </data>
+  <data name="F24DocTitle" xml:space="preserve">
+    <value>F24 form data {0}</value>
+  </data>
+  <data name="F24DocNotFiled" xml:space="preserve">
+    <value>Data to fill in the F24 form: this is not the filed payment form.</value>
+  </data>
+  <data name="F24DocOrg" xml:space="preserve">
+    <value>Withholding agent: {0}</value>
+  </data>
+  <data name="F24DocPeriod" xml:space="preserve">
+    <value>Reference period: {0}</value>
+  </data>
+  <data name="F24DocSectionErario" xml:space="preserve">
+    <value>Treasury section</value>
+  </data>
+  <data name="F24DocTaxCode" xml:space="preserve">
+    <value>Tax code</value>
+  </data>
+  <data name="F24DocColMonth" xml:space="preserve">
+    <value>Reference month</value>
+  </data>
+  <data name="F24DocColYear" xml:space="preserve">
+    <value>Reference year</value>
+  </data>
+  <data name="F24DocAmount" xml:space="preserve">
+    <value>Amount due (euro)</value>
+  </data>
+  <data name="F24DocDueDate" xml:space="preserve">
+    <value>Due date: {0}</value>
+  </data>
+  <data name="F24DocPaidAt" xml:space="preserve">
+    <value>Paid on {0}</value>
+  </data>
+  <data name="F24DocNotPaid" xml:space="preserve">
+    <value>Payment not recorded yet.</value>
+  </data>
+  <data name="F24DocDisclaimer" xml:space="preserve">
+    <value>Document generated by CasaZen from the stored data. The payment is made through your intermediary or the online services of the Italian Revenue Agency: CasaZen does not file the form.</value>
   </data>
 </root>

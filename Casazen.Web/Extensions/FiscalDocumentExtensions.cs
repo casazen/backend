@@ -1,8 +1,10 @@
+using Casazen.Core.Documents;
 using Casazen.Core.Events;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.Resources;
 
 namespace Casazen.Web.Extensions;
 
@@ -32,6 +34,12 @@ public static class FiscalDocumentExtensions
         // Octorate is the issuer (InvoiceDataSaved). Run by the outbox dispatcher, so neither can fail an import or a host's save.
         services.AddScoped<IEventHandler<DomainEvent>, InvoiceDataFromOctorateHandler>();
         services.AddScoped<IEventHandler<DomainEvent>, OctorateBillingWriteBackHandler>();
+
+        // The labels of the generated documents, read from SharedResources in the language the caller names (E06/F01/US01/T02).
+        services.AddSingleton<IDocumentTexts, ResxDocumentTexts>();
+
+        // The PDF and CSV of an owner statement and the PDF of the F24 data, built from what is stored (E06/F01/US01/T02, NF-25).
+        services.AddScoped<IStatementExportService, StatementExportService>();
 
         return services;
     }

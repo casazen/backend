@@ -3935,12 +3935,6 @@
   <data name="StatementNotDraft" xml:space="preserve">
     <value>Il rendiconto non è nello stato Bozza</value>
   </data>
-  <data name="StatementCsvExportNotImplemented" xml:space="preserve">
-    <value>Esportazione CSV dei rendiconti non ancora disponibile</value>
-  </data>
-  <data name="StatementPdfExportNotImplemented" xml:space="preserve">
-    <value>Esportazione PDF dei rendiconti non ancora disponibile</value>
-  </data>
   <data name="StatementNotFound" xml:space="preserve">
     <value>Rendiconto non trovato o non appartiene alla tua organizzazione</value>
   </data>
@@ -5654,5 +5648,188 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="RentSepaNotAuthorized" xml:space="preserve">
     <value>Autorizza il mandato SEPA prima di attivare il pagamento automatico.</value>
+  </data>
+  <data name="StatementNotExportable" xml:space="preserve">
+    <value>Si può esportare solo un rendiconto approvato o pubblicato.</value>
+  </data>
+  <data name="StatementDocNonFiscal" xml:space="preserve">
+    <value>Rendiconto gestionale - non è una fattura</value>
+  </data>
+  <data name="StatementDocTitle" xml:space="preserve">
+    <value>Rendiconto del proprietario {0}</value>
+  </data>
+  <data name="StatementDocOwner" xml:space="preserve">
+    <value>Proprietario: {0}</value>
+  </data>
+  <data name="StatementDocProperty" xml:space="preserve">
+    <value>Immobile: {0}</value>
+  </data>
+  <data name="StatementDocPeriod" xml:space="preserve">
+    <value>Periodo: {0}</value>
+  </data>
+  <data name="StatementDocVersion" xml:space="preserve">
+    <value>Versione del rendiconto: {0}</value>
+  </data>
+  <data name="StatementDocStatus" xml:space="preserve">
+    <value>Stato: {0}</value>
+  </data>
+  <data name="StatementDocStatusDraft" xml:space="preserve">
+    <value>Bozza</value>
+  </data>
+  <data name="StatementDocStatusApproved" xml:space="preserve">
+    <value>Approvato</value>
+  </data>
+  <data name="StatementDocStatusPublished" xml:space="preserve">
+    <value>Pubblicato</value>
+  </data>
+  <data name="StatementDocShare" xml:space="preserve">
+    <value>Quota di proprietà: {0}%</value>
+  </data>
+  <data name="StatementDocCurrency" xml:space="preserve">
+    <value>Importi in {0}, come registrati sul rendiconto.</value>
+  </data>
+  <data name="StatementDocLinesHeading" xml:space="preserve">
+    <value>Movimenti del periodo</value>
+  </data>
+  <data name="StatementDocNoLines" xml:space="preserve">
+    <value>Nessun movimento nel periodo.</value>
+  </data>
+  <data name="StatementDocColType" xml:space="preserve">
+    <value>Tipo</value>
+  </data>
+  <data name="StatementDocColReference" xml:space="preserve">
+    <value>Riferimento</value>
+  </data>
+  <data name="StatementDocColDescription" xml:space="preserve">
+    <value>Descrizione</value>
+  </data>
+  <data name="StatementDocColCashYear" xml:space="preserve">
+    <value>Anno di incasso</value>
+  </data>
+  <data name="StatementDocColGross" xml:space="preserve">
+    <value>Lordo ({0})</value>
+  </data>
+  <data name="StatementDocColCommission" xml:space="preserve">
+    <value>Commissione ({0})</value>
+  </data>
+  <data name="StatementDocColExpenses" xml:space="preserve">
+    <value>Spese ({0})</value>
+  </data>
+  <data name="StatementDocColWithholding" xml:space="preserve">
+    <value>Ritenuta ({0})</value>
+  </data>
+  <data name="StatementDocColItem" xml:space="preserve">
+    <value>Voce</value>
+  </data>
+  <data name="StatementDocColAmount" xml:space="preserve">
+    <value>Importo ({0})</value>
+  </data>
+  <data name="StatementDocColPayout" xml:space="preserve">
+    <value>Pagamento al proprietario</value>
+  </data>
+  <data name="StatementDocColDate" xml:space="preserve">
+    <value>Data</value>
+  </data>
+  <data name="StatementDocColState" xml:space="preserve">
+    <value>Stato del pagamento</value>
+  </data>
+  <data name="StatementDocColRule" xml:space="preserve">
+    <value>Regola e versione</value>
+  </data>
+  <data name="StatementDocColDecision" xml:space="preserve">
+    <value>Esito</value>
+  </data>
+  <data name="StatementDocColBase" xml:space="preserve">
+    <value>Imponibile ({0})</value>
+  </data>
+  <data name="StatementDocLineBooking" xml:space="preserve">
+    <value>Prenotazione</value>
+  </data>
+  <data name="StatementDocLineOtaRevenue" xml:space="preserve">
+    <value>Incasso del canale</value>
+  </data>
+  <data name="StatementDocLineExpense" xml:space="preserve">
+    <value>Spesa</value>
+  </data>
+  <data name="StatementDocLineAdjustment" xml:space="preserve">
+    <value>Rettifica</value>
+  </data>
+  <data name="StatementDocTotalsHeading" xml:space="preserve">
+    <value>Totali</value>
+  </data>
+  <data name="StatementDocTotalRevenue" xml:space="preserve">
+    <value>Ricavi lordi</value>
+  </data>
+  <data name="StatementDocTotalCommission" xml:space="preserve">
+    <value>Commissioni dell'agenzia</value>
+  </data>
+  <data name="StatementDocTotalExpenses" xml:space="preserve">
+    <value>Spese addebitate</value>
+  </data>
+  <data name="StatementDocTotalWithholding" xml:space="preserve">
+    <value>Ritenute registrate</value>
+  </data>
+  <data name="StatementDocNetPayable" xml:space="preserve">
+    <value>Netto dovuto al proprietario</value>
+  </data>
+  <data name="StatementDocPayoutsHeading" xml:space="preserve">
+    <value>Pagamenti al proprietario</value>
+  </data>
+  <data name="StatementDocPayoutsNone" xml:space="preserve">
+    <value>Nessun pagamento registrato per questo rendiconto.</value>
+  </data>
+  <data name="StatementDocWithholdingHeading" xml:space="preserve">
+    <value>Ritenute d'acconto registrate</value>
+  </data>
+  <data name="StatementDocWithholdingNone" xml:space="preserve">
+    <value>Nessuna ritenuta registrata. Il rendiconto non calcola ritenute: una ritenuta nasce solo da un pagamento al proprietario autorizzato, con la regola approvata in vigore.</value>
+  </data>
+  <data name="StatementDocDecisionApplicable" xml:space="preserve">
+    <value>Ritenuta dovuta</value>
+  </data>
+  <data name="StatementDocDecisionNotApplicable" xml:space="preserve">
+    <value>Ritenuta non dovuta</value>
+  </data>
+  <data name="StatementDocFootnote" xml:space="preserve">
+    <value>Importi come registrati, senza ricalcoli. Il rendiconto non ha numero né serie fiscale e non produce XML FatturaPA: un'eventuale fattura è emessa dal sistema fiscale esterno dell'agenzia.</value>
+  </data>
+  <data name="F24DocTitle" xml:space="preserve">
+    <value>Dati per il modello F24 {0}</value>
+  </data>
+  <data name="F24DocNotFiled" xml:space="preserve">
+    <value>Dati per compilare il modello F24: non è la delega presentata.</value>
+  </data>
+  <data name="F24DocOrg" xml:space="preserve">
+    <value>Sostituto d'imposta: {0}</value>
+  </data>
+  <data name="F24DocPeriod" xml:space="preserve">
+    <value>Periodo di riferimento: {0}</value>
+  </data>
+  <data name="F24DocSectionErario" xml:space="preserve">
+    <value>Sezione Erario</value>
+  </data>
+  <data name="F24DocTaxCode" xml:space="preserve">
+    <value>Codice tributo</value>
+  </data>
+  <data name="F24DocColMonth" xml:space="preserve">
+    <value>Mese di riferimento</value>
+  </data>
+  <data name="F24DocColYear" xml:space="preserve">
+    <value>Anno di riferimento</value>
+  </data>
+  <data name="F24DocAmount" xml:space="preserve">
+    <value>Importo a debito (euro)</value>
+  </data>
+  <data name="F24DocDueDate" xml:space="preserve">
+    <value>Scadenza: {0}</value>
+  </data>
+  <data name="F24DocPaidAt" xml:space="preserve">
+    <value>Versato il {0}</value>
+  </data>
+  <data name="F24DocNotPaid" xml:space="preserve">
+    <value>Versamento non ancora registrato.</value>
+  </data>
+  <data name="F24DocDisclaimer" xml:space="preserve">
+    <value>Documento generato da CasaZen con i dati registrati. Il versamento si esegue con il proprio intermediario o con i servizi telematici dell'Agenzia delle Entrate: CasaZen non presenta il modello.</value>
   </data>
 </root>

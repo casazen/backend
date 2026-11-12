@@ -1,3 +1,4 @@
+using Casazen.Core.Documents;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Web.Authorization;
@@ -21,6 +22,7 @@ namespace Casazen.Web.Controllers;
 public class WithholdingController(
     AppDbContext db,
     IWithholdingService withholdingService,
+    IStatementExportService statementExport,
     IOrgContextResolver orgContextResolver,
     ILogger<WithholdingController> logger) : ControllerBase
 {
@@ -117,6 +119,28 @@ public class WithholdingController(
         };
 
         return Ok(dto);
+    }
+
+    /// <summary>
+    /// The stored F24 data of the month as a PDF (NF-25, E06/F01/US01/T02): tax code, period, amount, due date and payment as the record holds them,
+    /// with the label that it is the data to fill the form with and not the form that was filed. Same policy and organization scope as
+    /// <see cref="GetF24"/>, but it never generates the record: a month without one is 404 <c>f24_not_found</c>.
+    /// </summary>
+    /// <param name="month">Reference month (1-12).</param>
+    /// <param name="year">Reference year (e.g., 2026).</param>
+    [HttpGet("f24/pdf")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> GetF24Pdf([FromQuery] int month, [FromQuery] int year)
+    {
+        logger.LogInformation("Exporting the F24 of {Year}-{Month} as PDF", year, month);
+
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null)
+            return Forbid();
+
+        var file = await statementExport.ExportF24Async(orgId.Value, month, year, DocumentLanguages.Current, HttpContext.RequestAborted);
+        return File(file.Content, file.ContentType, file.FileName);
     }
 
     /// <summary>

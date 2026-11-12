@@ -932,6 +932,19 @@ caller sees and may not use is 403. The accountant reads and cannot write; the c
   the structure and **no live VAT fallback**: the kind, the rate and the nature codes are empty until the accountant approves them, and
   `IDocumentIssuerService.RequireRuleAsync` answers 422 `document_rule_not_configured` for a rule that is not complete.
 
+#### Owner statements and withholding exports (agency, ADR-017, ADR-018, NF-25, E06/F01/US01/T02)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/statements/{id}/pdf` | `agency.statement.view` | The statement as a PDF (`IStatementExportService`, `StatementDocuments`): the label «Rendiconto gestionale - non è una fattura», owner, property, period, version, status, share, the lines (type, booking code or label, gross, commission, expenses, withholding), the totals, the payouts and the stored withholding evidence with its rule version, every amount in `OwnerStatement.Currency`. Only an `Approved` or `Published` statement (422 `statement_not_exportable`); another org's statement is 404 `statement_not_found`. Nothing is calculated or saved |
+| `GET` | `/api/statements/{id}/csv` | `agency.statement.view` | The same content as a CSV for a spreadsheet set to Italian (`CsvWriter`: UTF-8 with BOM, `;`, decimal comma): the header lines, one row per line with its description and cash year, then the totals, the payouts and the withholding evidence |
+| `GET` | `/api/withholding/f24/pdf?month=&year=` | `agency.withholding.manage` | The stored F24 data of the month as a PDF (`F24Documents`): tax code, period, amount, due date and payment as the record holds them, with the label that it is not the filed form. It never generates the record: 404 `f24_not_found` for a month without one (`GET /api/withholding/f24` generates it) |
+
+- **Exports never create withholding.** Generating, recalculating, approving and exporting a statement never calls `CalculateWithholdingAsync`: the
+  files print the withholding stored for an authorized payout with its rule version (E06/F05/US02/T03), or say that there is none.
+- **Labels from the resource files.** `IDocumentTexts` (`ResxDocumentTexts` over `SharedResources`) gives the labels in the language of the request
+  (`it` or `en`); the export code never writes a currency or a euro sign.
+
 #### Owner portal (ADR-011, NF-96)
 
 Policy `OwnerPortal` on the class (JWT claim `context=owner_portal` and a valid `owner_id`; never a host role); 401 without a valid owner
