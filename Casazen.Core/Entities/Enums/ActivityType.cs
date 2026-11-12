@@ -112,4 +112,11 @@ public enum ActivityType
     /// property; closes when a rate is known.
     /// </summary>
     MunicipalityTaxRateMissing = 51,
+
+    /// <summary>
+    /// A message of a guest the assistant passed to a person (E05/F05/US02/T01, NF-67): its situation is set to escalate, it touches a forbidden topic, or it is urgent. About the
+    /// conversation (<c>OtaMessageThread</c> and its id, or <c>Booking</c> and the id of a direct booking), with the urgency and a deadline of <c>Assistant:Escalation</c>, leading to
+    /// the answer (<see cref="ActivityAction.ReplyToMessage"/>); closed when a person answers the conversation. The number keeps clear of the values the tasks that run in parallel append.
+    /// </summary>
+    MessageToReply = 60,
 }

@@ -46,6 +46,24 @@ public static partial class MessageChannelRules
     public static bool ContainsContactDetails(string? text) =>
         !string.IsNullOrEmpty(text) && (EmailAddress().IsMatch(text) || Link().IsMatch(text) || PhoneNumber().IsMatch(text));
 
+    /// <summary>
+    /// The e-mail addresses, links and phone numbers <paramref name="text"/> holds, as they are written, each once: what <see cref="ContainsContactDetails"/> looks for. The assistant's
+    /// confidence (E05/F05/US02) checks that each of them is one of the facts of the property.
+    /// </summary>
+    public static IReadOnlyList<string> ContactDetailsIn(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return [];
+
+        return EmailAddress().Matches(text)
+            .Concat(Link().Matches(text))
+            .Concat(PhoneNumber().Matches(text))
+            .Select(match => match.Value.Trim())
+            .Where(value => value.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     // something@something.tld, with a space allowed around the sign.
     [GeneratedRegex(@"[A-Za-z0-9._%+\-]+[ ]?@[ ]?[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}", RegexOptions.CultureInvariant)]
     private static partial Regex EmailAddress();

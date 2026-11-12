@@ -41,6 +41,9 @@ namespace Casazen.Infrastructure.Services;
 /// key and can queue a second e-mail. The contact is read only after the checks of the booking, once, and its address goes to the queue of the e-mails
 /// (the Hangfire job holds it until the job expires, 24 hours by default) and to nothing of ours: no answer, no log, no row of the database of CasaZen.</item>
 /// <item><b>Logs</b> carry ids, states and codes: never a word of a message, a name, an address or a number.</item>
+/// <item><b>A person answered</b> (E05/F05/US02/T01): after a reply to a conversation of a channel that went out (or that the channel manager holds), written or approved by a person
+/// (a user id is given), every <see cref="IThreadReplyObserver"/> is told, so the «To do» of the messages the assistant escalated in it is closed. The direct conversation tells them from
+/// <see cref="IGuestMessageService.ReplyAsHostAsync"/>. An observer that fails is logged and never fails the reply.</item>
 /// </list>
 /// </remarks>
 public sealed class MessageReplyService(
@@ -55,7 +58,8 @@ public sealed class MessageReplyService(
     IActivityLog activityLog,
     IMemoryCache cache,
     ILogger<MessageReplyService> logger,
-    TimeProvider? timeProvider = null) : IMessageReplyService
+    TimeProvider? timeProvider = null,
+    IEnumerable<IThreadReplyObserver>? replyObservers = null) : IMessageReplyService
 {
     /// <summary>Stable code of the 409 of a conversation whose listing has no decided mapping.</summary>
     public const string MappingNotConfirmedCode = "mapping_not_confirmed";
@@ -223,7 +227,10 @@ public sealed class MessageReplyService(
         // The row is written before the call, under the lock of the conversation; a second send with the same key finds it and sends nothing.
         var (row, replayed) = await WriteBeforeSendingAsync(thread, clean!, idempotency, userId, origin, ruleCode, ct);
         if (replayed)
+        {
+            await TellReplyObserversAsync(thread.OrgId, key, row.DeliveryState, userId);
             return ResultOf(key, row, replayed: true, errorCode: null);
+        }
 
         OctorateChatSendResult sent;
         try
@@ -283,7 +290,33 @@ public sealed class MessageReplyService(
         logger.LogInformation(
             "OTA message {MessageId} of thread {ThreadId} (org {OrgId}) handed to the channel manager: {State}",
             row.Id, thread.Id, thread.OrgId, row.DeliveryState);
+        await TellReplyObserversAsync(thread.OrgId, key, row.DeliveryState, userId);
         return ResultOf(key, row, replayed: false, errorCode: row.DeliveryState == OtaMessageDeliveryState.Error ? ChannelReportedErrorCode : null);
+    }
+
+    /// <summary>
+    /// Tells every <see cref="IThreadReplyObserver"/> that a person answered the conversation: only for a message that went out or that the channel manager holds (a refused one, or one
+    /// whose outcome is not known, is not an answer yet) and that a person wrote or approved (an automatic send of the assistant has no user). An observer that fails is logged.
+    /// </summary>
+    private async Task TellReplyObserversAsync(Guid orgId, MessageThreadKey key, OtaMessageDeliveryState state, string? userId)
+    {
+        if (string.IsNullOrWhiteSpace(userId)
+            || state is not (OtaMessageDeliveryState.Created or OtaMessageDeliveryState.WaitingAuthorization or OtaMessageDeliveryState.Sent))
+        {
+            return;
+        }
+
+        foreach (var observer in replyObservers ?? [])
+        {
+            try
+            {
+                await observer.OnHostReplyAsync(orgId, key, CancellationToken.None);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(ex, "An observer of the replies ({Observer}) failed on conversation {ThreadKey} of org {OrgId}", observer.GetType().Name, key.ToString(), orgId);
+            }
+        }
     }
 
     /// <summary>
