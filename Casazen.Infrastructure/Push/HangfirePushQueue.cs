@@ -30,6 +30,12 @@ public sealed class QueuedPush
 
     public Guid? ServiceRequestId { get; set; }
 
+    /// <summary>The item of the approval queue the push is about (<c>data.approvalItemId</c>); <c>null</c> for the others (and for a job queued before it existed).</summary>
+    public Guid? ApprovalItemId { get; set; }
+
+    /// <summary>The category of notification the app registered (<c>categoryId</c>); <c>null</c> for the others (and for a job queued before it existed).</summary>
+    public string? CategoryId { get; set; }
+
     public PushAudience ToAudience() => new(AudienceKind, AudienceId, AudienceUserId);
 
     public static QueuedPush From(PushAudience audience, PushNotificationPayload payload) => new()
@@ -43,6 +49,8 @@ public sealed class QueuedPush
         Route = payload.Route,
         BookingId = payload.BookingId,
         ServiceRequestId = payload.ServiceRequestId,
+        ApprovalItemId = payload.ApprovalItemId,
+        CategoryId = payload.CategoryId,
     };
 }
 

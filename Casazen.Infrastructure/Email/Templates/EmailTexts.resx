@@ -633,6 +633,24 @@
   <data name="Push_OtaMessageUnassigned_Body" xml:space="preserve">
     <value>Un ospite ti ha scritto su {0}.</value>
   </data>
+  <data name="Push_ApprovalDraft_Title" xml:space="preserve">
+    <value>Bozza pronta</value>
+  </data>
+  <data name="Push_ApprovalDraft_Body" xml:space="preserve">
+    <value>Una bozza di risposta aspetta la tua approvazione.</value>
+  </data>
+  <data name="Push_ApprovalDraftProperty_Body" xml:space="preserve">
+    <value>{0}: una bozza di risposta aspetta la tua approvazione.</value>
+  </data>
+  <data name="Push_ApprovalItem_Title" xml:space="preserve">
+    <value>Da approvare</value>
+  </data>
+  <data name="Push_ApprovalItem_Body" xml:space="preserve">
+    <value>Un contenuto aspetta la tua approvazione.</value>
+  </data>
+  <data name="Push_ApprovalItemProperty_Body" xml:space="preserve">
+    <value>{0}: un contenuto aspetta la tua approvazione.</value>
+  </data>
   <data name="Push_GuestCheckInCompleted_Title" xml:space="preserve">
     <value>Check-in online completato</value>
   </data>
@@ -1739,6 +1757,27 @@
   </data>
   <data name="HostMessageReceived_Why" xml:space="preserve">
     <value>Ricevi questa email perché hai scelto di essere avvisato dei nuovi messaggi degli ospiti. Per non riempirti la posta, ne inviamo al massimo una ogni 10 minuti per conversazione. Puoi cambiare la scelta nelle preferenze di notifica del tuo profilo.</value>
+  </data>
+  <data name="HostApprovalToDecide_Subject" xml:space="preserve">
+    <value>Da approvare in CasaZen</value>
+  </data>
+  <data name="HostApprovalToDecide_Body" xml:space="preserve">
+    <value>Un contenuto aspetta la tua approvazione.</value>
+  </data>
+  <data name="HostApprovalToDecide_BodyProperty" xml:space="preserve">
+    <value>Un contenuto per &lt;strong&gt;{0}&lt;/strong&gt; aspetta la tua approvazione.</value>
+  </data>
+  <data name="HostApprovalToDecide_How" xml:space="preserve">
+    <value>Aprilo in CasaZen per leggerlo, correggerlo se serve e approvarlo o rifiutarlo. Per proteggere i dati degli ospiti, il testo non è in questa email.</value>
+  </data>
+  <data name="HostApprovalToDecide_Cta" xml:space="preserve">
+    <value>Apri le approvazioni</value>
+  </data>
+  <data name="HostApprovalToDecide_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="HostApprovalToDecide_Why" xml:space="preserve">
+    <value>Ricevi questa email perché hai scelto di essere avvisato quando una bozza o un contenuto aspetta la tua approvazione. Ne inviamo una per ogni contenuto. Puoi cambiare la scelta nelle preferenze di notifica del tuo profilo.</value>
   </data>
   <data name="HostContact_Subject" xml:space="preserve">
     <value>Nuovo messaggio dal tuo sito di prenotazione</value>

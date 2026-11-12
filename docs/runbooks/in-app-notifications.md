@@ -60,6 +60,7 @@ and write what is still missing (at most three rounds, then Hangfire retries). R
 | `new-booking`, `ota-stay-review` | hosts of the booking | booking |
 | `guest-message` | the hosts the notification preferences select for a message of the guest of a direct booking (the person in charge and the administrators who reach the property and hold `booking.read`, who chose the counter: the default; written by `HostMessageAlertDelivery`, NF-65, § 10) | booking |
 | `ota-message` | the same, for a message of a guest on a channel (OTA); an unmapped conversation goes to the administrators | thread |
+| `approval-queue-item` | an item of the approval queue waits for a decision (E05/F04, NF-68): the people the preferences select for `AiDraftToApprove` who hold `approval.decide` and reach the property (the administrators for an item with none), who chose the counter: the default; written by `ApprovalAlertDelivery`, once for each alert and person. The push is `approval-queue-item` too, with the route of the conversation for a draft of a message or `/approvals`, `data.approvalItemId` and the category `draft-ready` | approval queue item |
 | `guest-checkin-completed` | hosts of the booking (the guest completed the online check-in, § 10) | booking |
 | `guest-data-missing`, `alloggiati-deadline`, `alloggiati-overdue`, `alloggiati-failed`, `checkout-reminder` | hosts of the booking | booking |
 | `service-request-taken`, `-started`, `-completed`, `-rejected`, `-time-proposed` | hosts of the property | service request |
