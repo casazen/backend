@@ -237,6 +237,55 @@ public class CalendarChangeRunnerTests
         h.Client.Verify(c => c.GetCalendarProcessAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>
+    /// The follow-up reads at most <see cref="CalendarChangeRunner.MaxReadsPerPass"/> processes of the channel manager for an org in one pass, all its change processes together (a bulk
+    /// of fifty properties has hundreds of accepted chunks): the quota of the org is read once, the rest waits, accepted, and is asked again after the wait of a quota.
+    /// </summary>
+    [Fact]
+    public async Task Follow_ReadsAtMostTheBudgetOfAPassForAnOrg_TheQuotaIsReadOnce_AndWhatIsLeftWaitsAccepted_Test()
+    {
+        var h = new Runner();
+        var first = await h.SeedAsync(OrgA, CalendarChangeState.Sent, due: -10, Enumerable.Repeat(CalendarChunkState.Accepted, 20).ToArray());
+        var second = await h.SeedAsync(OrgA, CalendarChangeState.Sent, due: -5, Enumerable.Repeat(CalendarChunkState.Accepted, 20).ToArray());
+
+        await h.Service().RunDueAsync();
+
+        // 20 reads for the first, the 5 that are left for the second.
+        h.Client.Verify(c => c.GetCalendarProcessAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(CalendarChangeRunner.MaxReadsPerPass));
+        h.Client.Verify(c => c.GetConfigurationAsync(It.IsAny<CancellationToken>()), Times.Once);
+        var (firstProcess, firstChunks) = await h.ReadAsync(first);
+        var (secondProcess, secondChunks) = await h.ReadAsync(second);
+        Assert.All(firstChunks.Concat(secondChunks), c => Assert.Equal(CalendarChunkState.Accepted, c.State));
+        Assert.Equal(Now.UtcDateTime + CalendarPushRules.ConfirmationEvery, firstProcess.NextAttemptAt);
+        Assert.Equal(Now.UtcDateTime + CalendarPushRules.QuotaRetryAfter, secondProcess.NextAttemptAt);
+    }
+
+    /// <summary>
+    /// The follow-up stops at the quota of the channel manager less the reserve of the push (<c>QuotaReserve</c>, 20): with 164 and 140 used it reads 4, with 150 used none (the
+    /// reserve is not its to take); a quota that cannot be read leaves nothing to read. What is not read stays accepted and is asked again after five minutes.
+    /// </summary>
+    [Theory]
+    [InlineData(140, 4)]
+    [InlineData(150, 0)]
+    [InlineData(-1, 0)]
+    public async Task Follow_StopsAtTheQuotaLessTheReserveOfThePush_Test(int used, int reads)
+    {
+        var h = new Runner();
+        if (used >= 0)
+            h.Client.Setup(c => c.GetConfigurationAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new OctorateConfiguration("SANDBOX", 164, used, null));
+        else
+            h.Client.Setup(c => c.GetConfigurationAsync(It.IsAny<CancellationToken>())).ThrowsAsync(new OctorateServerException(503));
+
+        var id = await h.SeedAsync(OrgA, CalendarChangeState.Sent, due: 0, Enumerable.Repeat(CalendarChunkState.Accepted, 10).ToArray());
+
+        await h.Service().RunDueAsync();
+
+        h.Client.Verify(c => c.GetCalendarProcessAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(reads));
+        var (process, chunks) = await h.ReadAsync(id);
+        Assert.All(chunks, c => Assert.Equal(CalendarChunkState.Accepted, c.State));
+        Assert.Equal(Now.UtcDateTime + CalendarPushRules.QuotaRetryAfter, process.NextAttemptAt);
+    }
+
     [Fact]
     public async Task Follow_ARefusalToAnswerNow_IsAskedAgainLater_ButOnlyWhileTheWindowOfTheConfirmationIsOpen()
     {

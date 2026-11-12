@@ -488,6 +488,8 @@ with `octorate_quota_low` on the change, never a failure. The state of the chang
 `Octorate:Calendar:ProcessSuccessStatuses` (empty until the sandbox shows them: nothing is confirmed; an unknown, absent or interim status such as `PROCESSING` confirms
 nothing); `NEW` and `NOT_PROCESSED` leave it accepted, `ERROR` fails it `octorate_channel_error`, and where the endpoint is not available it stays accepted and nothing is
 claimed. A change that is wholly `Confirmed` is asked once more ten minutes later, so an `ERROR` the endpoint shows afterwards fails the chunk and is not left out of sight.
+The follow-up reads at most 25 processes of the channel manager for an org in one pass (one unit of quota each, the quota read once) and never past `QuotaLimit - QuotaReserve`, as
+the push: what is not read stays accepted and is asked again five minutes later.
 
 *Reading* (`ICalendarChangeQueries`): a change is shown only to a caller that reaches **every** property it touches (`InScope`, in SQL; the property ids are in its summary and
 its chunks); a change whose properties cannot be told is shown to an org-wide scope only. The state of a property is derived from its chunks (a property with none is `Skipped`:

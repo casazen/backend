@@ -48,7 +48,24 @@ public sealed class CalendarChangeRunner(
     /// <summary>The most processes of one org one run takes: the rest wait for the next run.</summary>
     public const int PerOrgBatch = 10;
 
+    /// <summary>
+    /// The most reads of the state of a process (<c>GET /rest/v1/calendar/process/{id}</c>, one unit of quota each) one run makes for an org, all its processes together: the
+    /// follow-up never takes the quota the push and the other calls of the org need. What is not read waits for the next pass.
+    /// </summary>
+    public const int MaxReadsPerPass = 25;
+
     private DateTime UtcNow => timeProvider.GetUtcNow().UtcDateTime;
+
+    /// <summary>
+    /// What one run may still read for one org: at most <see cref="MaxReadsPerPass"/>, and never past the quota of the channel manager less the reserve of the push
+    /// (<c>Octorate:Calendar:QuotaReserve</c>), read once for the pass.
+    /// </summary>
+    private sealed class FollowBudget
+    {
+        public int Remaining { get; set; } = MaxReadsPerPass;
+
+        public bool QuotaRead { get; set; }
+    }
 
     public async Task<int> RunDueAsync(CancellationToken cancellationToken = default)
     {
@@ -75,13 +92,15 @@ public sealed class CalendarChangeRunner(
         var failures = new List<Exception>();
         foreach (var org in due.GroupBy(p => p.OrgId))
         {
+            // The reads of the follow-up of one org in this pass share one budget: the quota is the org's.
+            var budget = new FollowBudget();
             foreach (var item in org.Take(PerOrgBatch))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
                     await push.RunAsync(item.Id, cancellationToken);
-                    await FollowAsync(item.Id, cancellationToken);
+                    await FollowAsync(item.Id, budget, cancellationToken);
                     ran++;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -134,8 +153,31 @@ public sealed class CalendarChangeRunner(
         return process.State;
     }
 
+    /// <summary>
+    /// Reads the quota of the channel manager once for the org in this pass and lets the follow-up read only what is left of it less the reserve of the push. A quota that cannot
+    /// be read now leaves nothing to read: the chunks stay accepted and are asked again later.
+    /// </summary>
+    private async Task LimitToQuotaAsync(FollowBudget budget, CancellationToken ct)
+    {
+        if (budget.QuotaRead)
+            return;
+
+        budget.QuotaRead = true;
+        try
+        {
+            var quota = await client.GetConfigurationAsync(ct);
+            if (quota is { QuotaLimit: { } limit, QuotaStatus: { } used })
+                budget.Remaining = Math.Min(budget.Remaining, Math.Max(0, limit - options.Value.Reserve - used));
+        }
+        catch (OctorateException ex)
+        {
+            budget.Remaining = 0;
+            logger.LogInformation("The quota of the channel manager cannot be read now ({Code}): the follow-up of the calendar changes waits", ex.Code);
+        }
+    }
+
     /// <summary>Asks the channel manager how the chunks it accepted are doing and records what it says (and only that).</summary>
-    private async Task FollowAsync(Guid processId, CancellationToken ct)
+    private async Task FollowAsync(Guid processId, FollowBudget budget, CancellationToken ct)
     {
         var process = await db.CalendarChangeProcesses.FirstOrDefaultAsync(p => p.Id == processId, ct);
         if (process is null)
@@ -157,6 +199,7 @@ public sealed class CalendarChangeRunner(
         var confirmedNow = false;
         using (orgScope.Use(orgId))
         {
+            await LimitToQuotaAsync(budget, ct);
             foreach (var chunk in accepted)
             {
                 if (stop)
@@ -166,6 +209,16 @@ public sealed class CalendarChangeRunner(
                 var verdicts = new List<CalendarProcessVerdict>();
                 foreach (var id in ids)
                 {
+                    // The reads of this pass are used up, or the quota is at its reserve: what is left waits, accepted, as the push waits for a quota.
+                    if (budget.Remaining <= 0)
+                    {
+                        transient = true;
+                        stop = true;
+                        quotaWait = true;
+                        break;
+                    }
+
+                    budget.Remaining--;
                     try
                     {
                         verdicts.Add(CalendarPushRules.VerdictOf(await client.GetCalendarProcessAsync(id, ct), successStatuses));
