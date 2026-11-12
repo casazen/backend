@@ -440,7 +440,9 @@ public sealed class MarketplaceHealthService(
                 return MarkToFix(row, verdict.ErrorCode!, now);
 
             default:
-                // A word CasaZen has not met: nothing is concluded from it, not even the moment of the read.
+                // A word CasaZen has not met: nothing is concluded from it, not even the moment of the read (the connection is listed, so a first pass that found it missing is
+                // forgotten all the same).
+                ForgetMiss(row);
                 run.Unrecognised++;
                 logger.LogWarning(
                     "Marketplace activation {ActivationId} of org {OrgId}: the connection has a status CasaZen does not know ({Status}), left as it is",
@@ -495,8 +497,16 @@ public sealed class MarketplaceHealthService(
         if (row.Status == MarketplaceActivationStatus.Active || connection.PullsAreOn)
             return MarkHealthy(row, MarketplaceActivationStatus.Active, now);
 
+        ForgetMiss(row);
         row.LastSyncedAt = now;
         return false;
+    }
+
+    /// <summary>The connection was listed: a first pass that found it missing is forgotten, so a later gap is a first pass again. A row with a problem keeps the moment of it.</summary>
+    private static void ForgetMiss(MarketplaceActivation row)
+    {
+        if (row.LastErrorCode is null)
+            row.LastErrorAt = null;
     }
 
     private static bool MarkHealthy(MarketplaceActivation row, MarketplaceActivationStatus status, DateTime now)

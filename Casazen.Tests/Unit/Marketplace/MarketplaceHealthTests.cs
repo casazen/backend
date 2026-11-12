@@ -423,6 +423,33 @@ public class MarketplaceHealthTests
     }
 
     [Fact]
+    public async Task SyncAsync_ASightOfTheConnectionAfterAFirstPass_ForgetsIt_EvenWhenTheRowIsNotPromoted()
+    {
+        var w = await World.CreateAsync();
+        var pending = await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Channel, "142", MarketplaceActivationStatus.Pending, "7001");
+        var unknown = await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Tool, "300", MarketplaceActivationStatus.Pending, "7003");
+
+        // The list is empty: the first pass of both is remembered.
+        await w.SyncAsync(w.OrgA);
+        Assert.All(await w.RowsAsync(w.OrgA), row => Assert.Equal(w.Clock.Now, row.LastErrorAt));
+
+        // Both are listed, one enabled with its pulls still off (it stays Pending), one with a word nobody knew (it stays as it is): the sight forgets the first pass.
+        w.Clock.Set(w.Clock.Now.AddMinutes(30));
+        w.Connections[World.AccA1] = [Conn("142", "7001", "ENABLED", pulls: false), Conn("300", "7003", "SUSPENDED")];
+        await w.SyncAsync(w.OrgA);
+        var rows = (await w.RowsAsync(w.OrgA)).ToDictionary(r => r.Id);
+        Assert.Equal((MarketplaceActivationStatus.Pending, null), (rows[pending.Id].Status, rows[pending.Id].LastErrorAt));
+        Assert.Equal((MarketplaceActivationStatus.Pending, null), (rows[unknown.Id].Status, rows[unknown.Id].LastErrorAt));
+
+        // Gone again half an hour later: a first pass again, not the confirmation of the one before the sight.
+        w.Clock.Set(w.Clock.Now.AddMinutes(30));
+        w.Connections.Remove(World.AccA1);
+        var gone = await w.SyncAsync(w.OrgA);
+        Assert.Equal((0, 0), (gone.Updated, gone.TodoRaised));
+        Assert.All(await w.RowsAsync(w.OrgA), row => Assert.Equal((MarketplaceActivationStatus.Pending, null, w.Clock.Now), (row.Status, row.LastErrorCode, row.LastErrorAt)));
+    }
+
+    [Fact]
     public async Task SyncAsync_AFirstPassThatIsTooOld_IsAFirstPassAgain_AndAnAnswerThatCannotBeReadChangesNothing()
     {
         var w = await World.CreateAsync();
