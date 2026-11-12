@@ -63,6 +63,8 @@ and write what is still missing (at most three rounds, then Hangfire retries). R
 | `approval-queue-item` | an item of the approval queue waits for a decision (E05/F04, NF-68): the people the preferences select for `AiDraftToApprove` who hold `approval.decide` and reach the property (the administrators for an item with none), who chose the counter: the default; written by `ApprovalAlertDelivery`, once for each alert and person. The push is `approval-queue-item` too, with the route of the conversation for a draft of a message or `/approvals`, `data.approvalItemId` and the category `draft-ready` | approval queue item |
 | `guest-checkin-completed` | hosts of the booking (the guest completed the online check-in, § 10) | booking |
 | `guest-data-missing`, `alloggiati-deadline`, `alloggiati-overdue`, `alloggiati-failed`, `checkout-reminder` | hosts of the booking | booking |
+| `receipt-missing`, `short-stay-at-risk`, `over-thirty-nights` | hosts of the booking (the stages of CHK-12 of the hourly `stay-alerts` job, E03/F02/US02/T01: the receipt that is missing the day after the communication, a short stay not entrusted to the channel manager, a stay over 30 nights; only with `Features__ComplianceTrafficLight` on) | booking |
+| `istat-deadline`, `tourist-tax-deadline`, `connection-inactive` | hosts of the property (the alerts about an ISTAT or tourist tax period and about the connection to the channel manager, same job and flag; `PushAudience.PropertyHosts`) | none: the alert is about a property and a month, so `entityId` is empty |
 | `service-request-taken`, `-started`, `-completed`, `-rejected`, `-time-proposed` | hosts of the property | service request |
 | `service-request-cancelled` | the other party: the hosts of the property when the supplier cancels, the supplier org when the host or the customer of its showcase cancels; both when nobody answered in time | service request |
 | `service-request-created`, `-paid`, `-reminder`, `-proposal-accepted`, `-proposal-rejected`, `-rescheduled` | the supplier org | service request |
@@ -171,7 +173,8 @@ route of the same screen (the links the e-mails use are built in `PublicSiteLink
 
 | `type` | `entityId` is | Mobile route (`data.route`) | Web route |
 |---|---|---|---|
-| `new-booking`, `ota-stay-review`, `guest-data-missing`, `alloggiati-deadline`, `alloggiati-overdue`, `alloggiati-failed` | booking | `/bookings/{bookingId}` | `/app/short-rent/bookings/{bookingId}` |
+| `new-booking`, `ota-stay-review`, `guest-data-missing`, `alloggiati-deadline`, `alloggiati-overdue`, `alloggiati-failed`, `receipt-missing`, `short-stay-at-risk`, `over-thirty-nights` | booking | `/bookings/{bookingId}` | `/app/short-rent/bookings/{bookingId}` |
+| `istat-deadline`, `tourist-tax-deadline`, `connection-inactive` | none (a property and a month, not an entity) | `/properties` | none: no entity to open; the e-mail of the same alert leads to `/app/short-rent/compliance` |
 | `checkout-reminder` | booking | `/bookings/{bookingId}/checkout` | `/app/short-rent/bookings/{bookingId}` |
 | `guest-message` | booking | `/bookings/{bookingId}/messages` | `/app/short-rent/bookings/{bookingId}?tab=messages` |
 | `guest-checkin-completed` | booking | `/bookings/{bookingId}` | `/app/short-rent/bookings/{bookingId}?tab=guest` |

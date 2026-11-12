@@ -188,14 +188,15 @@ Audit defects A6-05 (registration never succeeded), A6-06 (device id shared by p
 
 | Push (`data.type`) | To | `route` |
 |---|---|---|
-| Booking alerts: `guest-data-missing`, `alloggiati-deadline`, `alloggiati-overdue`, `alloggiati-failed` (CO-10) | hosts of the property | `/bookings/{bookingId}` |
+| Booking alerts: `guest-data-missing`, `alloggiati-deadline`, `alloggiati-overdue`, `alloggiati-failed` (CO-10), and the stages of CHK-12 `receipt-missing`, `short-stay-at-risk`, `over-thirty-nights` (E03/F02/US02/T01, only with `Features__ComplianceTrafficLight` on) | hosts of the property | `/bookings/{bookingId}` |
+| Alerts about an ISTAT or tourist tax period and about the connection to the channel manager: `istat-deadline`, `tourist-tax-deadline`, `connection-inactive` (E03/F02/US02/T01, same flag) | hosts of the property | `/properties`, no `bookingId` (a property and a month, not a stay) |
 | New booking confirmed without the host (payment, saved card): `new-booking` (MO-04) | hosts of the property | `/bookings/{bookingId}` |
 | Supplier decision on a request tied to a stay: `service-request-taken`, `service-request-completed`, `service-request-rejected` (the rejection since MO-04) | hosts of the property | `/bookings/{bookingId}` |
 | Same, request **without** a stay (long-rent, or short-rent created before SU-07) | hosts of the property | `/properties` (the app has no service request screen; `/service-requests/{id}` used to open nothing) |
 | Every push about a service request to the supplier org: `service-request-created` (MO-04), the answer of a customer of the showcase, a payment received | users of the supplier org | `/supplier/requests/{serviceRequestId}`, no `bookingId` (the stay is the host's); the supplier area of the app opens the request. An app version without that area opens on its usual screen |
 | Check-out reminder: `checkout-reminder` | hosts of the property | `/bookings/{bookingId}/checkout` |
 
-"Hosts of the property": its owner and the Admin / PropertyManager users of its org, active, on phones registered in that org. "Users of the supplier org": active users linked to it (`User.SupplierOrgId`, or members of the supplier org), on every phone they registered. Pushes of a service request also carry `serviceRequestId` in `data`. Titles and texts are specific to each type, Italian and English in `EmailTexts.resx` / `EmailTexts.en.resx` (`Push_*`, `StayAlertPush_*`); they show the property, category and dates, never a guest name or the supplier's rejection reason (that one is in the host email).
+"Hosts of the property": its owner and the Admin / PropertyManager users of its org, active, on phones registered in that org. "Users of the supplier org": active users linked to it (`User.SupplierOrgId`, or members of the supplier org), on every phone they registered. Pushes of a service request also carry `serviceRequestId` in `data`. Titles and texts are specific to each type, Italian and English in `EmailTexts.resx` / `EmailTexts.en.resx` (`Push_*`, `StayAlertPush_*`, `CompliancePush_*`); they show the property, category and dates, never a guest name or the supplier's rejection reason (that one is in the host email).
 
 An unknown route falls back to `bookingId` when the push has one, otherwise the app just opens.
 
