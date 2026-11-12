@@ -93,23 +93,33 @@ public class ApprovalQueueService(
             propertyId = null;
         }
 
-        // The same item delivered again (an event of the outbox, a retry): the one that waits is the one that is returned, and its alerts are made again (idempotent).
-        var waiting = await db.ApprovalQueueItems
-            .Where(i => i.OrgId == orgId && i.ItemType == itemType && i.ItemId == itemId && i.Status == ApprovalStatus.Pending)
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+
+        // The same item delivered again (an event of the outbox, a retry): the one that waits is the one that is returned, and its alerts are made again (idempotent). So is one that the
+        // host approved in the last days: an event delivered again after the decision must not put a second item in the queue, whose approval would send the same message again. A rejected
+        // or an expired item is not a duplicate: a campaign sent back to a draft is submitted again, with the same text, as a decision of its own.
+        var since = now.AddDays(-ApprovalQueueRules.ResubmitWindowDays);
+        var known = await db.ApprovalQueueItems
+            .Where(i => i.OrgId == orgId && i.ItemType == itemType && i.ItemId == itemId
+                        && (i.Status == ApprovalStatus.Pending || (i.Status == ApprovalStatus.Approved && i.ApprovedAt >= since)))
             .ToListAsync(cancellationToken);
-        if (waiting.FirstOrDefault(i => string.Equals(i.ContentText, contentText, StringComparison.Ordinal)) is { } existing)
+        if (known.FirstOrDefault(i => string.Equals(i.ContentText, contentText, StringComparison.Ordinal)) is { } existing)
         {
             logger.LogInformation(
-                "Item {ItemId} of type {ItemType} was already waiting for approval in org {OrgId} (queue item {QueueItemId}): nothing is created again",
+                "Item {ItemId} of type {ItemType} was already {State} in org {OrgId} (queue item {QueueItemId}): nothing is created again",
                 itemId,
                 itemType,
+                existing.Status == ApprovalStatus.Pending ? "waiting for approval" : "approved",
                 orgId,
                 existing.Id);
-            await alerts.RaiseOrRetryAsync(new ApprovalAlert(orgId, existing.Id, existing.CreatedAt), cancellationToken);
+
+            // Only an item that still waits is alerted again: nobody is told about one that was decided.
+            if (existing.Status == ApprovalStatus.Pending)
+                await alerts.RaiseOrRetryAsync(new ApprovalAlert(orgId, existing.Id, existing.CreatedAt), cancellationToken);
+
             return existing;
         }
 
-        var now = timeProvider.GetUtcNow().UtcDateTime;
         var expiresAt = now.AddDays(ExpirationDays);
 
         var item = new ApprovalQueueItem

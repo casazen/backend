@@ -48,6 +48,12 @@ public static class ApprovalQueueRules
     public const int ExpirationDays = 7;
 
     /// <summary>
+    /// Days after an item was approved during which the same item (type, id and text) submitted again is that item and not a new one: an event of the outbox delivered again after the
+    /// host decided must not put a second item in the queue, whose approval would send the same message again. The same as <see cref="ExpirationDays"/>.
+    /// </summary>
+    public const int ResubmitWindowDays = 7;
+
+    /// <summary>
     /// Days the words of an item (its text, the host's edit of it and the reason of a rejection) are kept after the item was decided or expired: then the daily job empties them
     /// (<c>ApprovalExpirationJob</c>); the decision, its author, its time and the action stay. A documented constant and not a setting: the queue is working data, short-lived by
     /// design (an item waits seven days), and the message it carries is a copy of the one of the conversations, whose own retention is <c>Gdpr:Retention:AlloggiatiData</c> (docs/runbooks/gdpr.md § 14).

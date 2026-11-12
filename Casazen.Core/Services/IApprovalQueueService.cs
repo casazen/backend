@@ -25,8 +25,8 @@ public interface IApprovalQueueService
     /// <c>MessageToApprove</c>, action <c>ApproveAiDraft</c>, closed when the item is decided or expires) and alerts the users who hold
     /// <c>approval.decide</c> and reach the property, through their notification preferences (<c>AiDraftToApprove</c>): the bell, the push (the route is the
     /// conversation for a draft of a message, <see cref="PushRoutes.Approvals"/> for every other item; the category <c>draft-ready</c> and the field
-    /// <c>approvalItemId</c>) and the e-mail they chose, with the quiet hours applied. An item already waiting with the same org, type, id and text is the one
-    /// that is returned (nothing is created twice when an event is delivered again) and its alerts are made again, which does no harm: they are idempotent.
+    /// <c>approvalItemId</c>) and the e-mail they chose, with the quiet hours applied. An item already waiting, or approved in the last <see cref="ApprovalQueueRules.ResubmitWindowDays"/> days, with the same org, type, id and text is the one
+    /// that is returned (nothing is created twice when an event is delivered again, even after the host decided) and, while it waits, its alerts are made again, which does no harm: they are idempotent.
     /// A failure of the "To do" or of an alert is logged and handed to a job that tries again; it never undoes the item.
     /// </summary>
     /// <param name="orgId">Organization that owns the item.</param>

@@ -221,4 +221,60 @@ public class ApprovalQueueSubmitTests : IDisposable
         Assert.Equal([first.Id, second.Id, third.Id], pending.Select(i => i.Id));
         Assert.All(pending, i => Assert.Equal(ApprovalStatus.Pending, i.Status));
     }
+
+    // ─── The same item delivered again after the decision ───
+
+    /// <summary>
+    /// Data rule (no duplicate message): an event delivered again after the host approved the draft does not put a second item in the queue, whose approval would send the same message again.
+    /// The approved item is the one that comes back, nobody is alerted a second time, and once the window is over the same text is a new submission.
+    /// </summary>
+    [Fact]
+    public async Task Submit_TheSameDraftAgainAfterItWasApproved_ReturnsTheApprovedItem_AndCreatesNothing_Test()
+    {
+        await _rig.SeedAsync();
+        var service = _rig.Service();
+        var draftId = Guid.NewGuid();
+        var thread = ApprovalQueueRig.OtaKey();
+        Task<ApprovalQueueItem> Submit() => service.SubmitForApprovalAsync(
+            _rig.OrgId, ApprovalItemTypes.MessageDraft, draftId, ApprovalQueueRig.DraftText, true, propertyId: _rig.PropertyA.Id, threadKey: thread);
+        var first = await Submit();
+        await service.ApproveAsync(_rig.OrgWide, first.Id, ApprovalQueueRig.Owner);
+        var pushes = _rig.Push.Queued.Count;
+        _rig.Clock.Advance(TimeSpan.FromMinutes(10));
+
+        var again = await Submit();
+
+        Assert.Equal((first.Id, ApprovalStatus.Approved), (again.Id, again.Status));
+        Assert.Equal(1, await _rig.Db.ApprovalQueueItems.CountAsync());
+        Assert.Empty(await service.GetPendingAsync(_rig.OrgWide));
+        Assert.Equal(pushes, _rig.Push.Queued.Count);
+        Assert.Single(_rig.Sent);
+
+        // Another text of the same draft is another submission; so is the same text once the window is over.
+        var other = await service.SubmitForApprovalAsync(
+            _rig.OrgId, ApprovalItemTypes.MessageDraft, draftId, "Un altro testo", true, propertyId: _rig.PropertyA.Id, threadKey: thread);
+        Assert.NotEqual(first.Id, other.Id);
+        _rig.Clock.Advance(TimeSpan.FromDays(ApprovalQueueRules.ResubmitWindowDays));
+        var late = await Submit();
+        Assert.NotEqual(first.Id, late.Id);
+        Assert.Equal(ApprovalStatus.Pending, late.Status);
+    }
+
+    /// <summary>A rejected item is not a duplicate: a campaign sent back to a draft is submitted again with the same text, and the host decides again.</summary>
+    [Fact]
+    public async Task Submit_TheSameItemAgainAfterItWasRejected_IsADecisionOfItsOwn()
+    {
+        await _rig.SeedAsync();
+        var service = _rig.Service();
+        var campaignId = Guid.NewGuid();
+        var text = ApprovalQueueRules.CampaignTextOf("Oggetto", "<p>Testo</p>");
+        var first = await service.SubmitForApprovalAsync(_rig.OrgId, ApprovalItemTypes.Campaign, campaignId, text, isAiGenerated: false);
+        await service.RejectAsync(_rig.OrgWide, first.Id, ApprovalQueueRig.Owner, "Troppo promozionale");
+        _rig.Clock.Advance(TimeSpan.FromMinutes(10));
+
+        var again = await service.SubmitForApprovalAsync(_rig.OrgId, ApprovalItemTypes.Campaign, campaignId, text, isAiGenerated: false);
+
+        Assert.NotEqual(first.Id, again.Id);
+        Assert.Equal(ApprovalStatus.Pending, again.Status);
+    }
 }
