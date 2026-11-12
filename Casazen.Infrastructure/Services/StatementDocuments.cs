@@ -73,6 +73,19 @@ public static class StatementDocuments
             ],
             Totals(statement, texts, language).Select(t => Row(t.Label, DocumentLanguages.Money(t.Amount, language))).ToList()));
 
+        // The ledger the current version was cut from, as stored on it: the statement is a versioned ledger output, and its totals are the ledger's.
+        if (data.Ledger is { } ledger)
+        {
+            blocks.Add(new PdfHeading(texts.Get("StatementDocLedgerHeading", language, ledger.VersionNumber, ledger.Currency)));
+            blocks.Add(new PdfTable(
+                [
+                    new PdfTableColumn(texts.Get("StatementDocColItem", language), 2.4),
+                    Amount(texts.Get("StatementDocColAmount", language, ledger.Currency)),
+                ],
+                LedgerTotals(ledger, texts, language).Select(t => Row(t.Label, DocumentLanguages.Money(t.Amount, language))).ToList()));
+            blocks.Add(new PdfParagraph(texts.Get("StatementDocLedgerHash", language, ledger.EntriesSha256)));
+        }
+
         blocks.Add(new PdfHeading(texts.Get("StatementDocPayoutsHeading", language)));
         if (data.Payouts.Count == 0)
         {
@@ -162,6 +175,14 @@ public static class StatementDocuments
         foreach (var (label, amount) in Totals(statement, texts, language))
             rows.Add(Cells(label, null, null, null, amount));
 
+        if (data.Ledger is { } ledger)
+        {
+            rows.Add(Cells(texts.Get("StatementDocLedgerHeading", language, ledger.VersionNumber, ledger.Currency)));
+            foreach (var (label, amount) in LedgerTotals(ledger, texts, language))
+                rows.Add(Cells(label, null, null, null, amount));
+            rows.Add(Cells(texts.Get("StatementDocLedgerHash", language, ledger.EntriesSha256)));
+        }
+
         foreach (var payout in data.Payouts)
         {
             rows.Add(Cells(
@@ -209,6 +230,19 @@ public static class StatementDocuments
         yield return (texts.Get("StatementDocTotalExpenses", language), statement.Expenses);
         yield return (texts.Get("StatementDocTotalWithholding", language), statement.WithholdingTax);
         yield return (texts.Get("StatementDocNetPayable", language), statement.NetPayable);
+    }
+
+    /// <summary>The totals of the ledger version as stored, in the currency of the ledger.</summary>
+    private static IEnumerable<(string Label, decimal Amount)> LedgerTotals(StatementVersionTotals ledger, IDocumentTexts texts, string language)
+    {
+        yield return (texts.Get("StatementDocLedgerOpening", language), ledger.OpeningBalance);
+        yield return (texts.Get("StatementDocLedgerRevenue", language), ledger.Revenue);
+        yield return (texts.Get("StatementDocLedgerChannelFees", language), ledger.ChannelFees);
+        yield return (texts.Get("StatementDocLedgerCommission", language), ledger.Commission);
+        yield return (texts.Get("StatementDocLedgerCharges", language), ledger.Charges);
+        yield return (texts.Get("StatementDocLedgerPayments", language), ledger.Payments);
+        yield return (texts.Get("StatementDocLedgerCorrections", language), ledger.Corrections);
+        yield return (texts.Get("StatementDocLedgerClosing", language), ledger.ClosingBalance);
     }
 
     private static IEnumerable<StatementLine> OrderedLines(OwnerStatement statement) =>

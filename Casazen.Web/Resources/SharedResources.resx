@@ -5886,6 +5886,36 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="StatementDocNetPayable" xml:space="preserve">
     <value>Netto dovuto al proprietario</value>
   </data>
+  <data name="StatementDocLedgerHeading" xml:space="preserve">
+    <value>Libro mastro del proprietario, versione {0} ({1})</value>
+  </data>
+  <data name="StatementDocLedgerOpening" xml:space="preserve">
+    <value>Saldo di apertura</value>
+  </data>
+  <data name="StatementDocLedgerRevenue" xml:space="preserve">
+    <value>Ricavi</value>
+  </data>
+  <data name="StatementDocLedgerChannelFees" xml:space="preserve">
+    <value>Commissioni del canale</value>
+  </data>
+  <data name="StatementDocLedgerCommission" xml:space="preserve">
+    <value>Commissione dell'agenzia</value>
+  </data>
+  <data name="StatementDocLedgerCharges" xml:space="preserve">
+    <value>Addebiti e spese</value>
+  </data>
+  <data name="StatementDocLedgerPayments" xml:space="preserve">
+    <value>Pagamenti al proprietario</value>
+  </data>
+  <data name="StatementDocLedgerCorrections" xml:space="preserve">
+    <value>Rettifiche</value>
+  </data>
+  <data name="StatementDocLedgerClosing" xml:space="preserve">
+    <value>Saldo di chiusura</value>
+  </data>
+  <data name="StatementDocLedgerHash" xml:space="preserve">
+    <value>SHA-256 delle righe del libro mastro: {0}</value>
+  </data>
   <data name="StatementDocPayoutsHeading" xml:space="preserve">
     <value>Pagamenti al proprietario</value>
   </data>

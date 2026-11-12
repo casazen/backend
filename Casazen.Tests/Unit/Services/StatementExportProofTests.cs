@@ -96,6 +96,51 @@ public class StatementExportProofTests
         Assert.Contains("non è una fattura", text, StringComparison.Ordinal);
     }
 
+    /// <summary>The statement is a versioned ledger output: the files carry the version, the ledger totals as stored on it and the hash of its lines.</summary>
+    [Fact]
+    public async Task StatementExport_PrintsTheLedgerTotalsOfTheCurrentVersion_Test()
+    {
+        await using var db = NewDb();
+        var (propertyId, ownerId) = await SeedOwnerWithPaidBookingAsync(db);
+        var statements = new StatementService(db);
+        var statement = await statements.GenerateStatementAsync(ownerId, propertyId, 10, 2026);
+        await statements.ApproveStatementAsync(statement.Id);
+        db.OwnerStatementVersions.Add(new OwnerStatementVersion
+        {
+            OrgId = OrgId,
+            PropertyOwnerId = ownerId,
+            PeriodYear = 2026,
+            PeriodMonth = 10,
+            VersionNumber = 3,
+            Status = OwnerStatementVersionStatus.Approved,
+            Currency = "CHF",
+            CutoffAt = new DateTime(2026, 11, 2, 9, 0, 0, DateTimeKind.Utc),
+            OpeningBalance = 100.25m,
+            Revenue = 900.35m,
+            ChannelFees = -20.15m,
+            Commission = -90.05m,
+            Charges = -15.45m,
+            Payments = -400.55m,
+            Corrections = 0m,
+            ClosingBalance = 475.65m,
+            EntryCount = 6,
+            EntriesSha256 = new string('a', 64),
+            CreatedAt = new DateTime(2026, 11, 2, 9, 0, 0, DateTimeKind.Utc),
+        });
+        await db.SaveChangesAsync();
+        var export = Service(db);
+
+        var csv = Encoding.UTF8.GetString((await export.ExportStatementAsync(statement.Id, OrgId, StatementExportFormat.Csv, "it")).Content);
+        var pdf = await export.ExportStatementAsync(statement.Id, OrgId, StatementExportFormat.Pdf, "en");
+
+        Assert.Contains("versione 3 (CHF)", csv, StringComparison.Ordinal);
+        Assert.Contains("100,25", csv, StringComparison.Ordinal);
+        Assert.Contains("900,35", csv, StringComparison.Ordinal);
+        Assert.Contains("475,65", csv, StringComparison.Ordinal);
+        Assert.Contains(new string('a', 64), csv, StringComparison.Ordinal);
+        Assert.StartsWith("%PDF", Encoding.ASCII.GetString(pdf.Content, 0, 4));
+    }
+
     [Fact]
     public async Task StatementExport_DraftIsRefused_AndAnotherOrgsStatementIsNotFound()
     {

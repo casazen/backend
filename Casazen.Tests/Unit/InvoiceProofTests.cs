@@ -67,6 +67,7 @@ public class InvoiceProofTests
             Total = 122m,
             Status = InvoiceStatus.ToBeIssuedManually,
             FatturapaXml = Xml,
+            CreatedAt = new DateTime(2026, 9, 30, 8, 0, 0, DateTimeKind.Utc),
         };
         world.Db.AgencyInvoices.Add(legacy);
         await world.Db.SaveChangesAsync();
@@ -79,6 +80,7 @@ public class InvoiceProofTests
         Assert.Equal(Xml, await service.GetInvoiceXmlAsync(legacy.Id));
         var copy = Encoding.UTF8.GetString(await service.GetInvoicePdfAsync(legacy.Id));
         Assert.Contains("A7", copy, StringComparison.Ordinal);
+        Assert.Contains("Date: 2026-09-30", copy, StringComparison.Ordinal);
         Assert.Contains(AgencyInvoiceCompliance.LegacyUnverified, copy, StringComparison.Ordinal);
         var stored = await world.Db.AgencyInvoices.AsNoTracking().SingleAsync();
         Assert.Equal((AgencyInvoiceCompliance.LegacyUnverified, 122m, "7"), (stored.ComplianceStatus, stored.Total, stored.InvoiceNumber));

@@ -92,8 +92,12 @@ public sealed class StatementExportService(
                 && v.PeriodMonth == statement.Month
                 && (v.Status == OwnerStatementVersionStatus.Approved || v.Status == OwnerStatementVersionStatus.Published))
             .OrderByDescending(v => v.VersionNumber)
-            .Select(v => (int?)v.VersionNumber)
             .FirstOrDefaultAsync(ct);
+        var ledger = version is null
+            ? null
+            : new StatementVersionTotals(
+                version.VersionNumber, version.Currency, version.OpeningBalance, version.Revenue, version.ChannelFees, version.Commission, version.Charges,
+                version.Payments, version.Corrections, version.ClosingBalance, version.EntriesSha256);
 
         var wires = await db.WireBatchStatements
             .AsNoTracking()
@@ -138,6 +142,6 @@ public sealed class StatementExportService(
                 e.Amount ?? 0m))
             .ToList();
 
-        return new StatementExportData(statement, version, payouts, withholdings);
+        return new StatementExportData(statement, version?.VersionNumber, payouts, withholdings, ledger);
     }
 }

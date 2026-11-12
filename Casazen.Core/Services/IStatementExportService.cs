@@ -53,11 +53,30 @@ public sealed record StatementExportFile(byte[] Content, string ContentType, str
 /// <param name="VersionNumber">The version of the statement the file is (<c>null</c> while the statement has no version).</param>
 /// <param name="Payouts">The payments to the owner linked to the statement.</param>
 /// <param name="Withholdings">The withholding evidence stored for those payments, with its rule version.</param>
+/// <param name="Ledger">The ledger totals of that version (E06/F01/US02/T05: the statement is a versioned ledger output); <c>null</c> without one.</param>
 public sealed record StatementExportData(
     OwnerStatement Statement,
     int? VersionNumber,
     IReadOnlyList<StatementPayoutEvidence> Payouts,
-    IReadOnlyList<StatementWithholdingEvidence> Withholdings);
+    IReadOnlyList<StatementWithholdingEvidence> Withholdings,
+    StatementVersionTotals? Ledger = null);
+
+/// <summary>
+/// The totals of the owner ledger the current version of the statement was cut from, as stored on it: the opening and closing balance, the totals by type and
+/// the SHA-256 of the lines. They are in the settlement currency of the owner, which can differ from the currency of the statement of one property.
+/// </summary>
+public sealed record StatementVersionTotals(
+    int VersionNumber,
+    string Currency,
+    decimal OpeningBalance,
+    decimal Revenue,
+    decimal ChannelFees,
+    decimal Commission,
+    decimal Charges,
+    decimal Payments,
+    decimal Corrections,
+    decimal ClosingBalance,
+    string EntriesSha256);
 
 /// <summary>A payment to the owner as a statement prints it.</summary>
 /// <param name="Reference">The stable reference of the payout.</param>

@@ -163,6 +163,20 @@ public class OwnerPayoutTaxTests
         Assert.Equal((210m, 210m, 210m), (reconciliation.ObligationsTotal, reconciliation.F24Total, reconciliation.AnnualTotal!.Value));
     }
 
+    /// <summary>The F24 of a month is due on the 16th of the next month, and on 16 January of the next year for December (ADR-018-R8).</summary>
+    [Fact]
+    public async Task OwnerPayout_F24IsDueOnThe16thOfTheNextMonth_Test()
+    {
+        var world = await PayoutWorld.CreateAsync();
+        var owner = await world.OwnerAsync("IT", "EUR", ItalianRule("1", 21m));
+        var version = await world.ApprovedVersionAsync(owner, 1000m);
+        await world.Payouts.ConfirmPayoutAsync(OrgId, Payout(owner, version, "k-nov"), null);
+        await world.Payouts.ConfirmPayoutAsync(OrgId, Payout(owner, version, "k-dec") with { PaidOn = new DateOnly(2026, 12, 20) }, null);
+
+        Assert.Equal(new DateTime(2026, 12, 16, 0, 0, 0, DateTimeKind.Utc), (await world.Withholding.GenerateF24Async(OrgId, 11, 2026)).DueDate);
+        Assert.Equal(new DateTime(2027, 1, 16, 0, 0, 0, DateTimeKind.Utc), (await world.Withholding.GenerateF24Async(OrgId, 12, 2026)).DueDate);
+    }
+
     /// <summary>
     /// The Italian forms are built from the evidence of an Italian rule only, in euro, and never for a month whose obligations net to nothing: a Swiss rule that
     /// withholds (whatever its parameters say) is no F24 or CU, a payout reversed in its month leaves no zero F24, and a payout in another currency is not guessed.

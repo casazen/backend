@@ -49,7 +49,15 @@ are read with the DTD prohibited and no resolver (`XsdValidator`): no external e
 - Stamp duty: due when the amounts without VAT exceed `FiscalDocuments:StampDutyThreshold` (77.47), of `FiscalDocuments:StampDutyAmount` (2.00);
   added to the total only with `FiscalDocuments:StampDutyChargedToRecipient` (off by default).
 - Credit notes: the amount (the whole document by default) is spread over the lines of the credited document in proportion; never more than the
-  document minus what was already credited.
+  document minus what was already credited. The cap (and «one document per booking» for an invoice or a receipt) is checked once before the transaction
+  (a quick refusal) and **again inside it, right after the number is reserved**, under the lock of the series (a credit note takes the series of its
+  original, so the same lock): two requests at the same moment never both pass (`FiscalDocumentCreditPostgresTests`).
+- A document is issued only for an **active** booking (the one definition of the code, `AlloggiatiStatusRules`: a status that owes the police communication
+  and no no-show): a request, a hold, a cancelled booking or a no-show gets no draft, no number and no lock of the issuer (422 `booking_not_active`). A
+  credit note of an issued document is not refused for the state of its booking (it is what is done after a cancellation).
+- The payment state (`Paid` / `ToCollect`) of a document CasaZen issued is the **current** one, computed when it is read (the completed and partially
+  refunded payments of the booking, net of the refunds, against the total) by the document API and by the payment ledger; the value stored with the draft is
+  only a starting point. A document Octorate issued keeps the state Octorate gave it.
 - The rule of a regime (`FiscalDocuments:Rules`): kind of document, VAT rate, nature codes, `TD01`/`TD04`, `RF01`/`RF19`, series pattern. Nothing is
   issued with a rule the accountant did not approve (`document_rule_not_configured`).
 

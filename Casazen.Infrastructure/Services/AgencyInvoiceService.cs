@@ -65,7 +65,8 @@ public sealed class AgencyInvoiceService(AppDbContext db) : IAgencyInvoiceServic
 
 
     /// <summary>
-    /// The courtesy copy of a historical invoice as it was stored (a text rendering), with its compliance code (<c>legacy_unverified</c>).
+    /// The courtesy copy of a historical invoice as it was stored (a text rendering): the date is the one it was made on, never the day it is downloaded (a
+    /// historical fiscal document is not dated again), with its compliance code (<c>legacy_unverified</c>).
     /// </summary>
     private static byte[] GenerateInvoicePdf(AgencyInvoice invoice)
     {
@@ -75,7 +76,7 @@ public sealed class AgencyInvoiceService(AppDbContext db) : IAgencyInvoiceServic
 ================
 
 Invoice Number: {invoice.Series}{invoice.InvoiceNumber}
-Date: {DateTime.UtcNow:yyyy-MM-dd}
+Date: {invoice.CreatedAt:yyyy-MM-dd}
 Period: {invoice.Month:D2}/{invoice.Year}
 
 From: {invoice.Org.Name}
