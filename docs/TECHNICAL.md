@@ -1423,6 +1423,21 @@ reservation of the room of a property, found through the confirmed `OctorateList
   raises ONE "To do" (`MessageToApprove`, `ApproveAiDraft`, entity `ApprovalQueueItem`, deadline the expiry) that the decision or `ApprovalExpirationJob` closes. A failure is logged and
   handed to the job, never undone and never swallowed; the same item (type, id and text) submitted again while it waits, or within seven days of its approval, is the one returned, so an event delivered again after the decision does not queue a second message to send (a rejected or expired item is not a duplicate). No text, name or address is in a push, an e-mail, a
   notification or a log. `ICampaignService.MarkApprovedAsync` is the one place that sets `CampaignStatus.Approved`, and `CampaignService.SubmitForApprovalAsync` creates its item through the queue. The words of an item (its text, the host's edit and the reason of a rejection) do not stay for ever: `ApprovalExpirationJob` empties them 30 days after the item was decided or expired (`ApprovalQueueRules.TextRetentionDays`, a constant) and `GuestDataEraser` empties those of the conversations of an erased guest at once (`docs/runbooks/gdpr.md` § 14).
+- *The AI assistant: its tables and its flag (E05/F05/US01/T01, ADR-032, NF-66, NF-67, PO-08, PO-09).* Everything is behind `Features:MessageAssistant`, **off by default** (the key
+  `messageAssistant` of `GET /api/public/features`; `docs/runbooks/feature-flags.md`). Migration `AddMessageAssistant` creates seven tenant tables (`ITenantOwned`, every `OrgId` foreign
+  key restricts, the rows of a property go with it): `PropertyKnowledgeEntries` (an entry of the knowledge base of a property, or of the organization with `PropertyId` null: topic, kind, source,
+  the question of a FAQ, the text, a language or none, the lesson it came from, active or not; index `(OrgId, PropertyId, Topic)`), `OrgAssistantRules` (one row per organization, unique
+  `(OrgId)`: the switch, the tone, the languages and the topic lists as `text[]`, the signature, the hours, the confidence threshold `numeric(4,3)` 0.850 by default, and
+  `InstructionVersion`, which starts at 1, grows with every change that affects drafting and is the concurrency token of the row), `PropertyAssistantSettings` (the exceptions of a property, unique
+  `(OrgId, PropertyId)`, a null field means «as the organization»), `AssistantSituationSettings` (what the assistant does in a situation: mode, response template, source topic and
+  `ModeSince`, the start of the trust period; two partial unique indexes, `(OrgId, Situation)` where there is no property and `(OrgId, PropertyId, Situation)` where there is one),
+  `AssistantLessons` (a fact or a rule proposed from a correction, which enters the knowledge base only when a person approves it, index `(OrgId, Status)`), `AssistantDecisionLogs` (one row per
+  incoming message, unique on `InboundMessageId`: situation, urgency, score and its three components, decision, model, model version, instruction version, sources as jsonb, the draft, the
+  message sent, the "To do" and the approver; **ids and codes only, never text**) and `AssistantTrustProposals` (a change of trust level that CasaZen proposes and a person decides, index
+  `(OrgId, Status)`). The free text of a host (`PropertyKnowledgeEntry.Text`, `AssistantLesson.ProposedText`, `AssistantSituationSetting.ResponseTemplate`) is encrypted at rest with the purpose
+  `Casazen.Assistant.Content` (`EncryptedColumns`, `docs/runbooks/encryption.md`), so those columns have no length: the lengths of 1,000, 500 and 1,000 characters are the services' rule.
+  `GuestMessages` gained `Origin` (`MessageOrigin`: the guest, a person, the assistant; the migration set `Person` on the messages of the host and the column defaults to the guest) and
+  `RuleCode`, so every message of a direct conversation says who wrote it and by which rule, as an OTA message does.
 
 **CasaZen's bookings on the connector (E08/F01/US01, ADR-031, NF-74, D9, D13).** A booking confirmed in CasaZen (host wizard, phone entry, booking
 site) on a property whose mapping is confirmed is created on Octorate once, by `OctorateBookingCreateHandler` (consumer of `BookingConfirmed`, behind

@@ -884,6 +884,7 @@ public class DemoEnvironmentService(
                     OrgId = orgId,
                     ThreadId = thread.Id,
                     Sender = message.FromGuest ? GuestMessageSender.Guest : GuestMessageSender.Host,
+                    Origin = message.FromGuest ? MessageOrigin.Guest : MessageOrigin.Person,
                     Text = message.Text,
                     CreatedAt = at,
                     AuthorUserId = message.FromGuest ? null : ownerId,
