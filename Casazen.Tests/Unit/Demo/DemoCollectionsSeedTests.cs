@@ -117,6 +117,49 @@ public class DemoCollectionsSeedTests
         Assert.Empty(await world.Db.Payments.ToListAsync());
     }
 
+    [Fact]
+    public async Task ReportChannelCosts_TheSeededStays_ShowTwoChannelsAStripeFeeAndAStayWithoutACommission_CountedApart()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 6, 10, 0, 0, TimeSpan.Zero));
+        var world = await SeedAsync(clock);
+        var today = RomeToday(clock);
+        var modes = new Dictionary<BookingSource, ChannelCommissionMode>
+        {
+            [BookingSource.Airbnb] = ChannelCommissionMode.DeductedFromPayout,
+            [BookingSource.BookingCom] = ChannelCommissionMode.InvoicedSeparately,
+        };
+
+        var report = await new ChannelCostsReportService(world.Db, new Modes(modes))
+            .GetChannelCostsAsync(new HostScope(world.Org.Id), new HostReportQuery(today.AddDays(-40), today.AddDays(-1)));
+
+        // The channels, as the channel manager reported them and the portals settle them: Airbnb 12 % deducted from the payout, Booking.com 15 % invoiced apart.
+        var airbnb = report.Rows.Single(r => r.Source == BookingSource.Airbnb);
+        Assert.Equal((1, 580m, 69.60m, 510.40m, 0.12m, 0), (airbnb.StayCount, airbnb.Gross, airbnb.Commission, airbnb.Net, airbnb.CostRate, airbnb.StaysWithoutCommission));
+        Assert.Equal(ChannelCommissionMode.DeductedFromPayout, airbnb.CommissionMode);
+
+        // The Booking.com stay of the collections scenario has no commission reported: it is counted apart, and the rate stands on the stay that has one.
+        var booking = report.Rows.Single(r => r.Source == BookingSource.BookingCom);
+        Assert.Equal((2, 1160m, 87.00m, 493.00m, 0.15m, 1), (booking.StayCount, booking.Gross, booking.Commission, booking.Net, booking.CostRate, booking.StaysWithoutCommission));
+        Assert.Equal(ChannelCommissionMode.InvoicedSeparately, booking.CommissionMode);
+        Assert.True(booking.MostExpensive);
+
+        // The booking site: the fees its card payments stored (400 and 580 of gross), the stays that are not charged by anyone cost nothing.
+        var direct = report.Rows.Single(r => r.Source == BookingSource.Direct);
+        Assert.Equal((2, 980m, 15.20m, 964.80m, 0.0155m, 0), (direct.StayCount, direct.Gross, direct.Commission, direct.Net, direct.CostRate, direct.StaysWithoutCommission));
+        Assert.Equal(ChannelCostKind.PaymentFee, direct.Kind);
+        Assert.Equal(ChannelCostKind.NoCost, report.Rows.Single(r => r.Source == BookingSource.Manual).Kind);
+        Assert.Equal(ChannelCostKind.NoCost, report.Rows.Single(r => r.Source == BookingSource.Local).Kind);
+
+        // The Home's revenue of the same days, and the costs that are known.
+        Assert.Equal((3980m, 171.80m, 3228.20m, 0.0505m, 1), (report.Total.Gross, report.Total.Commission, report.Total.Net, report.Total.CostRate, report.Total.StaysWithoutCommission));
+    }
+
+    private sealed class Modes(Dictionary<BookingSource, ChannelCommissionMode> modes) : IChannelCommissionSettingsProvider
+    {
+        public Task<IReadOnlyDictionary<BookingSource, ChannelCommissionMode>> GetModesAsync(Guid orgId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<BookingSource, ChannelCommissionMode>>(modes);
+    }
+
     // What the template leaves to collect on a stay, worked out from the template alone (the rule of the report, written again to check it).
     private static decimal? ExpectedToCollect(DemoPropertyTemplate house, DemoBookingTemplate booking)
     {

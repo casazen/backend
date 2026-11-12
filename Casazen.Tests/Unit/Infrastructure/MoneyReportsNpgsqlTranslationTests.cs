@@ -1,9 +1,13 @@
+using System.Data;
 using Casazen.Core.Authorization;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Services;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
@@ -27,6 +31,13 @@ public class MoneyReportsNpgsqlTranslationTests
 
     private static HostCollectionsReportService Collections(AppDbContext db) => new(db, new ConfigurationBuilder().Build(), MoneyReportsKit.Clock);
 
+    private static ChannelCommissionSettingsProvider Settings(AppDbContext db)
+    {
+        var host = new Mock<IHostEnvironment>();
+        host.SetupGet(h => h.EnvironmentName).Returns("Staging");
+        return new ChannelCommissionSettingsProvider(db, new BookingStateMapper(), host.Object);
+    }
+
     private static readonly HostReportQuery October = new(new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31));
 
     /// <summary>Every call, by the name the failure reports.</summary>
@@ -36,6 +47,7 @@ public class MoneyReportsNpgsqlTranslationTests
         ["collections-long-period"] = (db, scope) =>
             Collections(db).GetCollectionsAsync(scope, new HostReportQuery(new DateOnly(2025, 1, 1), new DateOnly(2026, 12, 31))),
         ["balances-to-collect"] = (db, scope) => Collections(db).GetBalancesToCollectAsync(scope, new HostBalancesQuery()),
+        ["channel-costs"] = (db, scope) => new ChannelCostsReportService(db, Settings(db)).GetChannelCostsAsync(scope, October),
     };
 
     /// <summary>How many statements each call sends at least (all of them are reached when nothing was swallowed early).</summary>
@@ -46,6 +58,8 @@ public class MoneyReportsNpgsqlTranslationTests
         ["collections-long-period"] = 3,
         // The stays of CasaZen's money, the stays of the channel manager's: two whatever the number of stays.
         ["balances-to-collect"] = 2,
+        // The stays, the card payments of the direct stays, and the connection of the org (not connected here, so the portals are not read: see below).
+        ["channel-costs"] = 3,
     };
 
     public static TheoryData<string, string> EveryCallWithEveryScope()
@@ -81,7 +95,7 @@ public class MoneyReportsNpgsqlTranslationTests
     }
 
     [Fact]
-    public async Task TheScopeIsPartOfEveryStatement_OneExistsOnTheGrants_NeverAListOfIds()
+    public async Task TheScopeIsPartOfEveryStatementThatReadsBookingsOrPayments_OneExistsOnTheGrants_NeverAListOfIds()
     {
         foreach (var call in Calls.Keys)
         {
@@ -91,7 +105,9 @@ public class MoneyReportsNpgsqlTranslationTests
             await NpgsqlTranslationProbe.AssertTranslatesAsync(() => Calls[call](db, ScopeOf("collaborator")));
 
             Assert.True(statements.Count >= MinimumStatements[call], $"{call}: the statements were not all reached.");
-            foreach (var sql in statements)
+            var money = statements.Where(sql => sql.Contains("\"Bookings\"", StringComparison.Ordinal) || sql.Contains("\"Payments\"", StringComparison.Ordinal)).ToList();
+            Assert.NotEmpty(money);
+            foreach (var sql in money)
             {
                 Assert.Contains("PropertyMemberAccesses", sql, StringComparison.Ordinal);
                 Assert.Contains("EXISTS", sql, StringComparison.Ordinal);
@@ -100,16 +116,45 @@ public class MoneyReportsNpgsqlTranslationTests
     }
 
     [Fact]
-    public async Task TheBalances_NeverTouchTheGuests_AndAddTheCollectedPaymentsInSql()
+    public async Task TheMoneyReports_NeverTouchTheGuests_AndTheBalancesAddTheCollectedPaymentsInSql()
+    {
+        foreach (var call in new[] { "balances-to-collect", "collections", "channel-costs" })
+        {
+            var statements = new List<string>();
+            await using var db = NpgsqlTranslationProbe.NewContext(statements);
+
+            await NpgsqlTranslationProbe.AssertTranslatesAsync(() => Calls[call](db, ScopeOf("whole-org")));
+
+            // A money report carries no guest: no statement of it reads the table of the guests, so no name or contact can reach a row.
+            Assert.All(statements, sql => Assert.DoesNotContain("\"Guests\"", sql, StringComparison.Ordinal));
+            if (call == "balances-to-collect")
+            {
+                // What a stay has collected is added up by the database, not read payment by payment.
+                Assert.Contains(statements, sql => sql.Contains("SUM(", StringComparison.OrdinalIgnoreCase) && sql.Contains("\"Payments\"", StringComparison.Ordinal));
+            }
+        }
+    }
+
+    [Fact]
+    public async Task TheSettingsOfThePortals_AreReadFromTheCache_WhenTheOrgIsConnected_AndTranslateToSql()
     {
         var statements = new List<string>();
-        await using var db = NpgsqlTranslationProbe.NewContext(statements);
+        await using var db = NpgsqlTranslationProbe.NewContext(
+            statements,
+            rows: sql => sql.Contains("\"OctorateConnections\"", StringComparison.Ordinal) ? Connected() : null);
 
-        await NpgsqlTranslationProbe.AssertTranslatesAsync(() => Calls["balances-to-collect"](db, ScopeOf("whole-org")));
+        await NpgsqlTranslationProbe.AssertTranslatesAsync(() => Settings(db).GetModesAsync(OrgId));
 
-        // A money report carries no guest: no statement of it reads the table of the guests, so no name or contact can reach a row.
-        Assert.All(statements, sql => Assert.DoesNotContain("\"Guests\"", sql, StringComparison.Ordinal));
-        // What a stay has collected is added up by the database, not read payment by payment.
-        Assert.Contains(statements, sql => sql.Contains("SUM(", StringComparison.OrdinalIgnoreCase) && sql.Contains("\"Payments\"", StringComparison.Ordinal));
+        // The connection of the org, then the portals of the catalog cache: platform data (no org), nothing asked of Octorate.
+        Assert.Equal(2, statements.Count);
+        Assert.Contains("\"MarketplacePortals\"", statements[1], StringComparison.Ordinal);
+    }
+
+    private static DataTable Connected()
+    {
+        var table = new DataTable();
+        table.Columns.Add("value", typeof(bool));
+        table.Rows.Add(true);
+        return table;
     }
 }

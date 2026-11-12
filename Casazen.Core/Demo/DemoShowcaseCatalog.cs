@@ -273,6 +273,15 @@ public static class DemoShowcaseCatalog
         /// (<c>TestDataEntities.Payment</c>); nothing is sent to Stripe or to a channel.
         /// </summary>
         public const string ReportCollections = "report-collections";
+
+        /// <summary>
+        /// The channel costs report (E07/F03/US02/T02, NF-98): Villa del Lago has finished stays of two channels with the commission and the net the channel manager
+        /// reports, one whose portal pays the host net of its commission (Airbnb: deducted from the payout, collected by the channel) and one that invoices its commission
+        /// apart (Booking.com, collected by the host), and a direct stay paid by card with the fee the provider reported. The Booking.com stay of the collections
+        /// scenario has no commission reported, so the report counts it apart and never takes it as free. Invented amounts, TEST reservations; nothing is sent to
+        /// Octorate or Stripe.
+        /// </summary>
+        public const string ReportChannelCosts = "report-channel-costs";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -353,6 +362,7 @@ public static class DemoShowcaseCatalog
         Scenario.FiscalDocumentsDirect,
         Scenario.PaymentLedger,
         Scenario.ReportCollections,
+        Scenario.ReportChannelCosts,
     ];
 
     /// <summary>
@@ -729,6 +739,58 @@ public static class DemoShowcaseCatalog
                     Phone: "+39 333 0000555",
                     // NF-97: paid by bank transfer, two days before the arrival.
                     Payments: [new(PaymentMethod.BankTransfer, 580m, 72)]),
+                // NF-98 (Scenario.ReportChannelCosts), in the nights before the stays of the collections. A booking of Airbnb as the import leaves it: the
+                // channel collected the money and its portal pays the host net, so the commission is deducted from the payout.
+                new(
+                    "costi-airbnb",
+                    "Katharina",
+                    "Brandt",
+                    "ospite.demo.costi-1@example.com",
+                    -28,
+                    3,
+                    BookingStatus.CheckedOut,
+                    Scenario.ReportChannelCosts,
+                    BookingSource.Airbnb,
+                    Ota: new DemoOtaTemplate(
+                        "TEST-OCT-7201",
+                        Commission: 69.60m,
+                        Net: 510.40m,
+                        Paid: 580.00m,
+                        Balance: 0.00m,
+                        CompanyCollect: true,
+                        CommissionIncludedInPayments: true)),
+                // A booking of Booking.com the host collected itself, whose commission the channel invoices apart: it costs more than the first, and its net is what is left
+                // once the invoice is paid.
+                new(
+                    "costi-booking",
+                    "Luca",
+                    "Moretti",
+                    "ospite.demo.costi-2@example.com",
+                    -25,
+                    3,
+                    BookingStatus.CheckedOut,
+                    Scenario.ReportChannelCosts,
+                    BookingSource.BookingCom,
+                    Ota: new DemoOtaTemplate(
+                        "TEST-OCT-7202",
+                        Commission: 87.00m,
+                        Net: 493.00m,
+                        Paid: 580.00m,
+                        Balance: 0.00m,
+                        CompanyCollect: false,
+                        CommissionIncludedInPayments: false)),
+                // A direct stay paid by card with the fee the provider reported (1,5 % and 0,25): the cost of the booking site is the fees of its payments.
+                new(
+                    "costi-diretta",
+                    "Ines",
+                    "Duarte",
+                    "ospite.demo.costi-3@example.com",
+                    -22,
+                    2,
+                    BookingStatus.CheckedOut,
+                    Scenario.ReportChannelCosts,
+                    BookingSource.Direct,
+                    Payments: [new(PaymentMethod.CreditCard, 400m, 30, Card: new DemoPaymentProviderTemplate(6.25m, 393.75m))]),
                 // NF-97 (Scenario.ReportCollections), in the nights between the stays above. A direct stay paid by card, as the booking site takes it: the
                 // provider's commission and net are the figures its capture stores.
                 new(

@@ -1153,4 +1153,53 @@ public class DemoShowcaseTests
         Assert.True(channel.Booking.CheckInOffsetDays + channel.Booking.Nights < 0, "The stay is over: the balance is overdue.");
         Assert.Equal(TotalOf(channel.House, channel.Booking), ota.Paid + ota.Balance);
     }
+
+    /// <summary>
+    /// E07/F03/US02/T02 (NF-98): the demo has finished stays of two channels with the commission and the net the channel manager reports (one whose portal pays the
+    /// host net of its commission, one that invoices it apart) and a direct stay paid by card with the fee the provider reported. The amounts are coherent: what the host
+    /// receives is what the guest paid less the commission, and a card fee and its net add up to the payment.
+    /// </summary>
+    [Fact]
+    public void ReportChannelCosts_TheDemoHasTwoChannelsWithCommissionAndNet_OneDeductedOneInvoiced_AndADirectStayWithAStoredStripeFee_AllInvented()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.ReportChannelCosts, DemoShowcaseCatalog.Scenarios);
+        var stays = DemoShowcaseCatalog.Properties
+            .SelectMany(h => h.Bookings.Select(b => (House: h, Booking: b)))
+            .Where(s => s.Booking.Scenario == DemoShowcaseCatalog.Scenario.ReportChannelCosts)
+            .ToList();
+        Assert.Equal(stays.Count, stays.Select(s => s.Booking.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(stays, s => Assert.EndsWith("@example.com", s.Booking.Email, StringComparison.Ordinal));
+        Assert.All(stays, s => Assert.Equal(BookingStatus.CheckedOut, s.Booking.Status));
+        Assert.All(stays, s => Assert.True(s.Booking.CheckInOffsetDays + s.Booking.Nights < 0, $"{s.Booking.Key}: a finished stay"));
+
+        // The two channels: the reservation says TEST and is a reservation of a channel, the commission is a share of what was paid, and the net is what is left.
+        var channels = stays.Where(s => s.Booking.Ota is not null).ToList();
+        Assert.Equal(2, channels.Count);
+        Assert.Equal(channels.Count, channels.Select(s => s.Booking.Ota!.ReservationId).Distinct(StringComparer.Ordinal).Count());
+        foreach (var (_, booking) in channels)
+        {
+            var ota = booking.Ota!;
+            Assert.Contains("TEST", ota.ReservationId, StringComparison.Ordinal);
+            Assert.True(OtaChannelActionPolicy.IsChannelBooking(booking.Source, ota.ReservationId));
+            Assert.True(ota.Commission > 0m && ota.Net > 0m && ota.Paid > 0m);
+            Assert.Equal(ota.Paid - ota.Commission, ota.Net);
+            Assert.InRange(ota.Commission!.Value / ota.Paid!.Value, 0.05m, 0.25m);
+            Assert.Equal(0m, ota.Balance);
+        }
+
+        // One portal pays the host net (the channel collects), the other invoices its commission apart (the host collects).
+        var deducted = Assert.Single(channels, s => s.Booking.Ota!.CommissionIncludedInPayments == true);
+        Assert.True(deducted.Booking.Ota!.CompanyCollect);
+        var invoiced = Assert.Single(channels, s => s.Booking.Ota!.CommissionIncludedInPayments == false);
+        Assert.False(invoiced.Booking.Ota!.CompanyCollect);
+        Assert.NotEqual(deducted.Booking.Source, invoiced.Booking.Source);
+
+        // A direct stay paid by card, with the fee the provider reported (the capture's figures, coherent with the amount).
+        var direct = Assert.Single(stays, s => s.Booking.Source == BookingSource.Direct);
+        var payment = Assert.Single(direct.Booking.Payments!);
+        Assert.Equal(PaymentMethod.CreditCard, payment.Method);
+        var card = Assert.IsType<DemoPaymentProviderTemplate>(payment.Card);
+        Assert.Equal(payment.Amount, card.Fee + card.Net);
+        Assert.True(card.Fee > 0m && card.Fee < payment.Amount * 0.05m);
+    }
 }

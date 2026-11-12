@@ -687,6 +687,7 @@ property is not found; any other failure is a 500.
 | `GET` | `/api/reports/by-owner` | `agency.statement.view` + short-rent payment.read | NF-96. The performance of an agency's properties cut by property owner: `{ title, basis, currency, period, rows, unassigned, total }`, a row `{ ownerId, displayName, propertyCount, figures, revenueShare }` (the anonymized label for an anonymized owner), `figures` and `total` the weighted `{ revenue, revenueCents, occupiedNights, availableNights, closedNights, occupancyRate, stayCount, revenueNights, adr, adrCents, revPar, revParCents }`. Only `from`, `to` and `format` (`json` or `csv`) |
 | `GET` | `/api/reports/collections` | short-rent payment.read | NF-97. The money collected by cash, by date, payment method and channel, with the credits: see "Money reports" below |
 | `GET` | `/api/reports/balances-to-collect` | short-rent payment.read | NF-97. The stays that still have something to collect, with no guest data: see "Money reports" below |
+| `GET` | `/api/reports/channel-costs` | short-rent payment.read | NF-98. Gross, commission and net of each channel, the processing fees of the direct stays and how each channel settles its commission: see "Money reports" below |
 
 All of them take `from` and `to` (`yyyy-MM-dd`, Europe/Rome days, both included; years 2000 to 2100) and `format` (`json`, the default, or
 `csv`); all but `by-owner` also an optional `propertyId`. Errors: 400 `report_invalid_period` (a day missing, `to` before `from`, a year out of range), 400
@@ -765,12 +766,13 @@ and `trend` compare, and only with the same days one year earlier.
   only when the report compared. File names: `casazen-prestazioni-per-immobile-competenza-20261001-20261031.csv`,
   `casazen-andamento-competenza-...`.
 
-#### Money reports: collections and balances (NF-97, E07/F03/US02/T01)
+#### Money reports: collections, balances and channel costs (NF-97, NF-98, E07/F03/US02)
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/reports/collections` | short-rent payment.read | The money that came in between `from` and `to`, by cash: `{ title, basis, period, total, byDate, byMethod, byChannel, credits }`. `total { amount, amountCents, paymentCount }` is the Home's "incassato" for the same days; `byDate` a bucket `{ unit, label, from, to, amount, amountCents, paymentCount }` for every day (period of up to 92 days) or month (longer), the days without payments at zero; `byMethod` a row `{ method, amount, amountCents, paymentCount, share }`; `byChannel` a row `{ source, amount, amountCents, paymentCount, share }`; `credits { stripe { available, payouts, cardPaymentCount, paymentsWithoutFigures }, channels { available, reportedBy, rows, staysWithoutNet } }`. Query: `from`, `to`, `propertyId`, `format` (`json`, `csv`) |
 | `GET` | `/api/reports/balances-to-collect` | short-rent payment.read | The stays that still have something to collect, as of today: `{ title, basis, asOf, rows, totals }`, a row `{ bookingId, bookingCode, propertyId, propertyName, source, checkIn, checkOut, currency, total, totalCents, collected, collectedCents, toCollect, toCollectCents, overdue, basis }`, a total `{ currency, amount, amountCents, stayCount }` for each currency. Query: `propertyId`, `format` (`json`, `csv`). No guest name or contact anywhere |
+| `GET` | `/api/reports/channel-costs` | short-rent payment.read | NF-98. What each channel costs, by accrual: `{ title, basis, period, rows, total }`, a row `{ source, kind, stayCount, gross, grossCents, commission, commissionCents, net, netCents, costRate, commissionMode, staysWithoutCommission, mostExpensive }` ordered by `costRate`, the highest first; `total` the same shape with a null `source`, `kind` and `commissionMode`. `commission`, `net` and `costRate` are **null (not available), never 0**, when no stay reported a cost. Query: `from`, `to`, `propertyId`, `format` (`json`, `csv`) |
 
 `CollectionsReportsController` (`api/reports`, class policy `payment.read`, `HostScope` in SQL) over `IHostCollectionsReportService`
 (`HostCollectionsReportService`, three queries for the collections and two for the balances whatever the number of payments or stays). The words of the
@@ -809,10 +811,42 @@ not reach, 403 without an org); `balances-to-collect` takes no period.
   (`Incassato per data, per cassa, dal 01/10/2026 al 31/10/2026`...), its header and a `Totale` row, and an empty row between them; the balances file the title with
   the day (`Saldi da incassare, al 09/10/2026`), a row for each stay and a total for each currency; a figure not available is an empty cell. File names:
   `casazen-incassato-per-cassa-20261001-20261031.csv`, `casazen-saldi-da-incassare-20261009.csv`. The credits are not in the file.
+- **Channel costs (`GET /api/reports/channel-costs`, NF-98).** `ChannelCostsReportsController` (`api/reports/channel-costs`, class policy `payment.read`,
+  `HostScope` in SQL, the period checks and codes of the other reports) over `IChannelCostsReportService` (`ChannelCostsReportService`: the stays, the card
+  payments of the direct stays and the portal settings, a few statements whatever the number of stays). **By accrual** (`basis` `accrual`): the stays are exactly the
+  ones of `bookings-by-channel` (confirmed, with a night in the period: `StayKpiRules.IsConfirmedStay`, `PropertyOccupancy.BookingTakesNightIn`), so the `gross` of a
+  row is that report's revenue for the channel and `total.gross` the Home's revenue of the same days. One row for each channel with a stay, ordered by `costRate`
+  (highest first, the rows without a rate last, then the larger gross); `mostExpensive` marks the first one and never a rate of zero. "How much each channel costs"
+  is written by the client from `costRate` and `commission`.
+- **What a stay costs, as reported** (`ChannelCostRules`, pure). `Cost` of a stay: for a stay whose money is the channel manager's (`HoldsChannelManagerMoney`: a
+  booking of a channel with its reservation, or a reservation of the booking engine of the agency) the `Booking.OtaCommission` the import stored, null when Octorate
+  gave none (the sandbox and the OpenAPI show the commission only as an optional `COMMISSION` line of the price breakdown: until a real channel fills it, most stays
+  have none); for a stay of a channel without a reservation (an iCal stay) null (none was ever reported); for a direct stay the sum of the `ProviderFeeAmount` of its
+  settled card payments (`PaymentProviderFeeService.SettledStatuses`, with a Stripe PaymentIntent), **null as soon as one of them has no stored fee, or one in another
+  currency than the stay's, and 0 when it has no card payment** (cash and bank transfer have no fee); for a stay the host entered or a local one 0 (nobody charges the
+  host). Nothing is derived from another figure. `kind` says which it is: `ChannelCommission`, `PaymentFee` (the Stripe fees of the direct stays, a line of their own
+  that says "not available" when `commission` is null) or `NoCost`.
+- **The figures of a row.** Each stay's share is pro rata per night in the period, as the revenue is (`StayKpiRules.RevenueInPeriod`), summed unrounded and rounded to the
+  cent on the total. `commission` = the sum of the costs of the stays that report one, null when none does; `net` = for the stays whose cost is known or whose net the
+  channel reported, the reported `OtaNetAmount` (it wins) or else gross minus cost, null when there is none; `costRate` = `commission` over the gross of the stays that
+  report it (not over the whole channel: a stay without a commission is **not taken as free**, it would understate the rate), to four decimals, null without one;
+  `staysWithoutCommission` counts the stays whose cost was not reported, apart. So `gross - commission` equals `net` only when every stay reported a cost. `total`
+  is worked out over all the stays at once (the gross is the Home's, which can differ by a cent from the sum of the rounded rows).
+- **How the commission is settled (`commissionMode`).** `ChannelCommissionSettingsProvider` (`Casazen.Infrastructure/Octorate`) reads the cached portals of the
+  marketplace (`MarketplacePortals`, E09/F01/US01/T02: CasaZen's own database, nothing is asked of Octorate) and maps a portal to a channel with the very mapping
+  the booking import uses (`BookingStateMapper.ToSource`: the portal code is the channel id, then its name). `commissionIncludedInPayments` true (and the invoiced flag
+  not true) is `DeductedFromPayout` (the channel pays the host net), `commissionsInvoiced` true (and not included) is `InvoicedSeparately` (the host pays the channel
+  afterwards); a flag that is false or absent claims nothing, two that disagree are `Unknown`, and so is a channel without a portal in the cache, a portal that maps to
+  no channel of its own (`OtherChannel`), one the catalog no longer lists, and every channel of an org that is not connected to Octorate in this environment (the report
+  still works from the stored amounts). `commissionMode` is null for a row that is not a channel.
+- **The CSV** (`ChannelCostsReportDocuments`): the title `Costi dei canali, per competenza, dal 01/10/2026 al 31/10/2026`, the header, a row for each channel and a
+  `Totale` row; the cost, the net and the rate are empty cells where nobody reported a cost. File name `casazen-costi-dei-canali-competenza-20261001-20261031.csv`.
 - **Demo.** Scenario `report-collections`: Villa del Lago's stays gain cash, bank transfer and card payments (a card payment partly refunded on a cancelled stay, one
   that failed), a direct stay paid in part and a stay of a channel with an overdue balance; the payments are rows marked as showcase data (`TestDataEntities.Payment`)
   with TEST ids, nothing is sent to Stripe. The demo stays that have no payment of their own (the future ones and the old ones) are balances to collect, as the
-  data says.
+  data says. Scenario `report-channel-costs`: finished stays of Airbnb (12 %, deducted from the payout) and Booking.com (15 %, invoiced apart) with the commission and net
+  the channel manager reports, and a direct stay paid by card with its stored fee; the Booking.com stay of the collections scenario has no commission reported, so the
+  report counts it apart.
 
 #### Tourist tax per guest (NF-46, ADR-037, E03/F01/US07)
 
