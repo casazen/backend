@@ -6159,4 +6159,58 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OwnerExternalDocumentRemoved" xml:space="preserve">
     <value>The link was removed and does not change any more.</value>
   </data>
+  <data name="TaxApplicabilityUnresolved" xml:space="preserve">
+    <value>A fact needed to decide the withholding is missing: complete the field named.</value>
+  </data>
+  <data name="OwnerPayoutInvalid" xml:space="preserve">
+    <value>The payout to the owner is not valid: check the field named.</value>
+  </data>
+  <data name="OwnerPayoutKeyReused" xml:space="preserve">
+    <value>This key was already used for a different payout.</value>
+  </data>
+  <data name="OwnerPayoutNotFound" xml:space="preserve">
+    <value>Owner payout not found.</value>
+  </data>
+  <data name="OwnerPayoutReversed" xml:space="preserve">
+    <value>The payout was already reversed.</value>
+  </data>
+  <data name="TaxNoObligations" xml:space="preserve">
+    <value>There is no applicable withholding in this period.</value>
+  </data>
+  <data name="F24TaxCodeMixed" xml:space="preserve">
+    <value>The withholdings of the period have different tax codes: separate F24s are needed.</value>
+  </data>
+  <data name="TaxFileAlreadyFiled" xml:space="preserve">
+    <value>The file was already reviewed or submitted and is not generated again.</value>
+  </data>
+  <data name="TaxFilingTransitionInvalid" xml:space="preserve">
+    <value>This change of state is not allowed.</value>
+  </data>
+  <data name="TaxFilingReferenceRequired" xml:space="preserve">
+    <value>Give the reference required: handoff, receipt or rejection reason.</value>
+  </data>
+  <data name="TaxDatasetNotFound" xml:space="preserve">
+    <value>Annual data not found.</value>
+  </data>
+  <data name="F24DocFilingState" xml:space="preserve">
+    <value>State: {0}</value>
+  </data>
+  <data name="F24DocReceipt" xml:space="preserve">
+    <value>Receipt: {0}</value>
+  </data>
+  <data name="TaxFilingStateGenerated" xml:space="preserve">
+    <value>generated, not submitted</value>
+  </data>
+  <data name="TaxFilingStateReviewed" xml:space="preserve">
+    <value>reviewed, not submitted</value>
+  </data>
+  <data name="TaxFilingStateSubmitted" xml:space="preserve">
+    <value>handed off for submission</value>
+  </data>
+  <data name="TaxFilingStateAccepted" xml:space="preserve">
+    <value>accepted</value>
+  </data>
+  <data name="TaxFilingStateRejected" xml:space="preserve">
+    <value>rejected</value>
+  </data>
 </root>

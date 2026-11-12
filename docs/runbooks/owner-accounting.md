@@ -82,3 +82,29 @@ accounting for Swiss owners, and the retention law that applies (Italy at least 
   `…/external-documents/{id}/verify` records the check against the external system, `…/remove` (with `reason`) removes a mistaken link: the row stays.
   The link's facts never change (409 `owner_ledger_immutable`) and it never changes the statement.
 - **Owners** read the links of their published versions in `GET api/owner-portal/external-documents`; never a removed one, never before publication.
+
+## Payouts and tax evidence (E06/F05/US02/T03)
+
+- **Only a payout decides a withholding.** No statement operation (posting, version, approval, publication, export) creates withholding any more: the
+  statement-based calculation and the 21% and `1919` literals are gone (ADR-018 amended). `POST api/owner-accounting/payouts`
+  (`agency.owner.financial.manage`) confirms a payout of an approved or published version with its facts: `idempotencyKey`, `grossAmount` (what is
+  settled, before the withholding), `currency` (the version's), `paidOn`, `agencyCollected`, `qualifyingShortLet`, `components` (gross by code) and
+  `stayIds`.
+- **Decision** (`OwnerWithholdingRules.Decide`, on the approved rule in force on `paidOn`): a rule without withholding (a Swiss rule) is
+  `not_applicable` / `rule_without_withholding`; otherwise a fact the rule needs that is unknown is 422 `tax_applicability_unresolved` with the `field`
+  (`agencyCollected`, `qualifyingShortLet`, `components.{code}`, `withholdingRatePercent`, `withholdingTaxCode`, `rounding`, `grossBaseComponents`);
+  no collection or intervention is `no_collection_or_intervention`, no qualifying short let `not_qualifying_short_let`; else `applicable`: the base is
+  the sum of the components the rule names, the amount `round(base × rate / 100)` with the rule's rounding, the tax code the rule's.
+- **Evidence** (`TaxObligationEvidence`, append-only): decision, reason, jurisdiction, rule code and version, base, rate, rounding, amount and tax code
+  (both `null` when not applicable: never a zero obligation), payment day and month, stays, facts, payout and statement version. A retry with the same
+  key answers the same payout (no second decision); the same key with other facts is 409 `owner_payout_key_reused`. `…/payouts/{id}/reverse` (with
+  `reason`) adds the opposite evidence row (in the month of the reversal) and reverses the ledger lines.
+- **Ledger**: a payout posts, in the month of `paidOn`, the net paid (`OwnerPayment`) and the withholding kept (`Withholding`), together the gross that
+  settles what was owed; the close counts the confirmed payouts of the month's versions as paid, next to the paid wires.
+- **F24** (`api/withholding/f24`, `…/f24/generate`): built from the applicable evidence of the month (and its reversals), with the tax code and the rule
+  versions of that evidence; 422 `tax_no_obligations` without any, `f24_tax_code_mixed` with more codes. **Annual data** (`api/withholding/annual/{year}`):
+  the Certificazione Unica data per owner. Both start `generated`, are regenerated only while generated (else 409 `tax_file_already_filed`) and move
+  `reviewed` → `submitted` (only with the `handoffReference` of a controlled manual handoff) → `accepted` (with the `receiptReference`) or `rejected`
+  (with the `reason`) through `…/filing-state` (`agency.owner.financial.manage`). Nothing is ever sent by CasaZen. `api/withholding/reconciliation/{year}`
+  compares the obligations of each month with its F24 and the year with the annual data. The F24 PDF prints the filing state and the receipt.
+- **Existing rows**: the F24 records created before get the state `generated`; the old `WithholdingLog` rows stay as history, nothing writes them.

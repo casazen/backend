@@ -109,6 +109,35 @@ public sealed class StatementExportService(
                 "wire_" + w.Status.ToString().ToLowerInvariant()))
             .ToList();
 
-        return new StatementExportData(statement, version, payouts, []);
+        var versionIds = await db.OwnerStatementVersions
+            .AsNoTracking()
+            .Where(v => v.OrgId == statement.OrgId && v.PropertyOwnerId == statement.PropertyOwnerId && v.PeriodYear == statement.Year
+                && v.PeriodMonth == statement.Month)
+            .Select(v => v.Id)
+            .ToListAsync(ct);
+        var ownerPayouts = await db.OwnerPayouts
+            .AsNoTracking()
+            .Where(p => p.OrgId == statement.OrgId && versionIds.Contains(p.OwnerStatementVersionId))
+            .OrderBy(p => p.PaidOn)
+            .ToListAsync(ct);
+        var payoutIds = ownerPayouts.Select(p => p.Id).ToList();
+        var decisions = await db.TaxObligationEvidence
+            .AsNoTracking()
+            .Where(e => e.OrgId == statement.OrgId && payoutIds.Contains(e.OwnerPayoutId))
+            .OrderBy(e => e.CreatedAt)
+            .ToListAsync(ct);
+        string ReferenceOf(OwnerPayout p) => p.Reference ?? "PO-" + p.Id.ToString("N")[..8].ToUpperInvariant();
+        payouts.AddRange(ownerPayouts.Select(p => new StatementPayoutEvidence(ReferenceOf(p), p.PaidOn, p.NetAmount, "payout_" + p.Status.ToString().ToLowerInvariant())));
+        var withholdings = decisions
+            .Select(e => new StatementWithholdingEvidence(
+                ReferenceOf(ownerPayouts.First(p => p.Id == e.OwnerPayoutId)),
+                e.RuleCode,
+                e.RuleVersion,
+                e.Decision == TaxDecision.Applicable ? OwnerWithholdingRules.Applicable : "not_applicable",
+                e.GrossBase ?? 0m,
+                e.Amount ?? 0m))
+            .ToList();
+
+        return new StatementExportData(statement, version, payouts, withholdings);
     }
 }

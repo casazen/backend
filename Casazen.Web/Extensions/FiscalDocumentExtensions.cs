@@ -69,6 +69,9 @@ public static class FiscalDocumentExtensions
         // The owner ledger, the statement versions and the month-end close (E06/F05/US02/T02, NF-110).
         services.AddScoped<IOwnerAccountingService, OwnerAccountingService>();
 
+        // The payouts to the owners with their withholding evidence, the annual tax data and the filing states (E06/F05/US02/T03).
+        services.AddScoped<IOwnerPayoutService, OwnerPayoutService>();
+
         return services;
     }
 }

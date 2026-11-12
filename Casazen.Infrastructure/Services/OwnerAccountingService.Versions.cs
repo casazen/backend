@@ -184,11 +184,20 @@ public sealed partial class OwnerAccountingService
             throw new DomainRuleException(OwnerAccountingErrors.VersionNotApproved, "OwnerStatementNotApproved");
         await EnsureCleanAsync(version, ct);
 
-        // The approved closing balance against what the paid wires of the month's statements transferred, in the currency of the version.
+        // The approved closing balance against what settled it, in the currency of the version: the paid wires of the month's statements and the confirmed
+        // payouts of its versions (their gross: the net transferred plus the withholding kept, E06/F05/US02/T03).
         var paid = await db.WireBatchStatements.AsNoTracking()
             .Where(w => w.OrgId == orgId && w.WireBatch.Status == WireBatchStatus.Paid && w.WireBatch.Currency == version.Currency
                 && w.OwnerStatement.PropertyOwnerId == ownerId && w.OwnerStatement.Year == year && w.OwnerStatement.Month == month)
             .SumAsync(w => w.OwnerStatement.NetPayable, ct);
+        var versionIds = await db.OwnerStatementVersions.AsNoTracking()
+            .Where(v => v.OrgId == orgId && v.PropertyOwnerId == ownerId && v.PeriodYear == year && v.PeriodMonth == month)
+            .Select(v => v.Id)
+            .ToListAsync(ct);
+        paid += await db.OwnerPayouts.AsNoTracking()
+            .Where(p => p.OrgId == orgId && p.PropertyOwnerId == ownerId && p.Status == OwnerPayoutStatus.Confirmed && p.Currency == version.Currency
+                && versionIds.Contains(p.OwnerStatementVersionId))
+            .SumAsync(p => p.GrossAmount, ct);
         var due = version.ClosingBalance;
         var difference = due - paid;
         if (difference != 0m || due < 0m)

@@ -29,6 +29,9 @@ public enum OwnerLedgerEntryType
 
     /// <summary>A manual correction with its reason, posted after the reversal of the entry it replaces.</summary>
     Correction = 8,
+
+    /// <summary>The withholding kept from a payout for the tax authority (debit: it settles what is owed, E06/F05/US02/T03).</summary>
+    Withholding = 9,
 }
 
 /// <summary>Where a line of the owner ledger comes from (E06/F05/US02/T02). Stored as its number: never renumber.</summary>
@@ -48,6 +51,9 @@ public enum OwnerLedgerSourceType
 
     /// <summary>A manual correction.</summary>
     Manual = 5,
+
+    /// <summary>A confirmed payout to the owner (E06/F05/US02/T03).</summary>
+    OwnerPayout = 6,
 }
 
 /// <summary>The life of a version of an owner statement (E06/F05/US02/T02, AC-NF110-2). Stored as its number: never renumber.</summary>
@@ -97,6 +103,39 @@ public enum OwnerChargeRecurrence
 
     /// <summary>Every month from its first day to its last.</summary>
     Monthly = 2,
+}
+
+/// <summary>The life of a payout to an owner (E06/F05/US02/T03). Stored as its number.</summary>
+public enum OwnerPayoutStatus
+{
+    /// <summary>Paid, with its withholding decision.</summary>
+    Confirmed = 1,
+
+    /// <summary>Reversed: kept with its evidence, the opposite lines posted.</summary>
+    Reversed = 2,
+}
+
+/// <summary>The withholding decision of a payout (E06/F05/US02/T03). Stored as its number.</summary>
+public enum TaxDecision
+{
+    /// <summary>The approved rule asks a withholding: the evidence has its base, rate, amount and tax code.</summary>
+    Applicable = 1,
+
+    /// <summary>The approved rule asks none for these facts: the evidence says why, with no amount.</summary>
+    NotApplicable = 2,
+}
+
+/// <summary>
+/// Where a tax file is (an F24, an annual report, E06/F05/US02/T03): generated and reviewed are never filed; submitted only through a controlled manual
+/// handoff; accepted with the receipt, or rejected. Stored as its number.
+/// </summary>
+public enum TaxFilingState
+{
+    Generated = 1,
+    Reviewed = 2,
+    Submitted = 3,
+    Accepted = 4,
+    Rejected = 5,
 }
 
 /// <summary>How far CasaZen checked a link to an externally issued invoice (E06/F01/US02/T05). Stored as its number.</summary>

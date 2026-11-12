@@ -90,6 +90,49 @@ internal sealed class OwnerExternalDocumentReferenceConfiguration : IEntityTypeC
     }
 }
 
+/// <summary>The payouts to the owners (E06/F05/US02/T03): one per org and key, the owner and the version restrict.</summary>
+internal sealed class OwnerPayoutConfiguration : IEntityTypeConfiguration<OwnerPayout>
+{
+    public void Configure(EntityTypeBuilder<OwnerPayout> entity)
+    {
+        entity.HasOne<PropertyOwner>().WithMany().HasForeignKey(p => p.PropertyOwnerId).OnDelete(DeleteBehavior.Restrict);
+        entity.HasOne<OwnerStatementVersion>().WithMany().HasForeignKey(p => p.OwnerStatementVersionId).OnDelete(DeleteBehavior.Restrict);
+        entity.HasIndex(p => new { p.OrgId, p.IdempotencyKey }).IsUnique().HasDatabaseName(OwnerPayout.IdempotencyIndexName);
+        entity.HasIndex(p => new { p.OrgId, p.PropertyOwnerId, p.OwnerStatementVersionId });
+        entity.Property(p => p.RowVersion).IsRowVersion();
+        entity.ToTable(table => table.HasCheckConstraint(
+            "CK_OwnerPayouts_Amounts", "\"GrossAmount\" > 0 AND \"WithholdingAmount\" >= 0 AND \"NetAmount\" = \"GrossAmount\" - \"WithholdingAmount\""));
+    }
+}
+
+/// <summary>The withholding evidence (E06/F05/US02/T03): append-only, one decision per payout, a decision reversed at most once.</summary>
+internal sealed class TaxObligationEvidenceConfiguration : IEntityTypeConfiguration<TaxObligationEvidence>
+{
+    public void Configure(EntityTypeBuilder<TaxObligationEvidence> entity)
+    {
+        entity.HasOne<OwnerPayout>().WithMany().HasForeignKey(e => e.OwnerPayoutId).OnDelete(DeleteBehavior.Restrict);
+        entity.HasOne<PropertyOwner>().WithMany().HasForeignKey(e => e.PropertyOwnerId).OnDelete(DeleteBehavior.Restrict);
+        entity.HasOne<OwnerStatementVersion>().WithMany().HasForeignKey(e => e.OwnerStatementVersionId).OnDelete(DeleteBehavior.Restrict);
+        entity.HasOne<TaxObligationEvidence>().WithMany().HasForeignKey(e => e.ReversesEvidenceId).OnDelete(DeleteBehavior.Restrict);
+        entity.HasIndex(e => new { e.OrgId, e.IdempotencyKey }).IsUnique().HasDatabaseName(TaxObligationEvidence.IdempotencyIndexName);
+        entity.HasIndex(e => e.ReversesEvidenceId).IsUnique().HasFilter("\"ReversesEvidenceId\" IS NOT NULL")
+            .HasDatabaseName(TaxObligationEvidence.ReversalIndexName);
+        entity.HasIndex(e => new { e.OrgId, e.PeriodYear, e.PeriodMonth });
+        entity.ToTable(table => table.HasCheckConstraint(
+            "CK_TaxObligationEvidence_Decision", "(\"Decision\" = 1 AND \"Amount\" IS NOT NULL) OR (\"Decision\" = 2 AND \"Amount\" IS NULL)"));
+    }
+}
+
+/// <summary>The annual tax datasets (E06/F05/US02/T03): one per org, kind and year.</summary>
+internal sealed class TaxReportingDatasetConfiguration : IEntityTypeConfiguration<TaxReportingDataset>
+{
+    public void Configure(EntityTypeBuilder<TaxReportingDataset> entity)
+    {
+        entity.HasIndex(d => new { d.OrgId, d.Kind, d.Year }).IsUnique().HasDatabaseName(TaxReportingDataset.KindYearIndexName);
+        entity.Property(d => d.RowVersion).IsRowVersion();
+    }
+}
+
 /// <summary>The exchange rates of the owner accounting (E06/F05/US02/T02): one per org, pair and day, positive.</summary>
 internal sealed class OwnerFxRateConfiguration : IEntityTypeConfiguration<OwnerFxRate>
 {

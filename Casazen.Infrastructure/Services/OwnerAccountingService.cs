@@ -285,6 +285,10 @@ public sealed partial class OwnerAccountingService(
         PostedByUserId = userId,
     };
 
+    /// <summary>The reversal of a line in its own month, or in the month of <paramref name="into"/> (the payouts, E06/F05/US02/T03).</summary>
+    internal static OwnerLedgerEntry ReversalOf(OwnerLedgerEntry original, DateOnly? into, DateTime now, string? userId, string? description) =>
+        Reversal(original, into is { } day ? Period.Of(day) : null, now, userId, description);
+
     /// <summary>SHA-256 (hex) of the ids and amounts of the lines, by posting time then id: the proof a version is made of these lines.</summary>
     internal static string Hash(IEnumerable<OwnerLedgerEntry> entries)
     {

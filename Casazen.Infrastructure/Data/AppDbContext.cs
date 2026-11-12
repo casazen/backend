@@ -395,6 +395,11 @@ public class AppDbContext(
     // The links from the owner statement versions to the invoices of the agency's external fiscal system (E06/F01/US02/T05): ids, numbers, hashes
     public DbSet<OwnerExternalDocumentReference> OwnerExternalDocumentReferences { get; set; } = null!;
 
+    // The payouts to the owners, their append-only withholding evidence and the annual tax datasets (E06/F05/US02/T03, NF-110)
+    public DbSet<OwnerPayout> OwnerPayouts { get; set; } = null!;
+    public DbSet<TaxObligationEvidence> TaxObligationEvidence { get; set; } = null!;
+    public DbSet<TaxReportingDataset> TaxReportingDatasets { get; set; } = null!;
+
     // The check-in guests and the states of a stay sent to Octorate (NF-41, NF-45, E03/F01/US01/T03): ids, hashes and codes, no personal data
     public DbSet<StayGuestOctorateLink> StayGuestOctorateLinks { get; set; } = null!;
     public DbSet<OctorateStayStateSync> OctorateStayStateSyncs { get; set; } = null!;
@@ -2018,6 +2023,9 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new OwnerChargeConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerFxRateConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerExternalDocumentReferenceConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerPayoutConfiguration());
+        modelBuilder.ApplyConfiguration(new TaxObligationEvidenceConfiguration());
+        modelBuilder.ApplyConfiguration(new TaxReportingDatasetConfiguration());
 
         // The invoices of the retired agency-to-owner generator stay readable and are never called compliant (E06/F01/US02/T05): the rows that exist
         // when the column is added get the legacy code.

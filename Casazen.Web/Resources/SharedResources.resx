@@ -6159,4 +6159,58 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerExternalDocumentRemoved" xml:space="preserve">
     <value>Il collegamento è stato rimosso e non cambia più.</value>
   </data>
+  <data name="TaxApplicabilityUnresolved" xml:space="preserve">
+    <value>Manca un fatto necessario per decidere la ritenuta: completa il campo indicato.</value>
+  </data>
+  <data name="OwnerPayoutInvalid" xml:space="preserve">
+    <value>Il pagamento al proprietario non è valido: controlla il campo indicato.</value>
+  </data>
+  <data name="OwnerPayoutKeyReused" xml:space="preserve">
+    <value>Questa chiave è già stata usata per un pagamento diverso.</value>
+  </data>
+  <data name="OwnerPayoutNotFound" xml:space="preserve">
+    <value>Pagamento al proprietario non trovato.</value>
+  </data>
+  <data name="OwnerPayoutReversed" xml:space="preserve">
+    <value>Il pagamento è già stato stornato.</value>
+  </data>
+  <data name="TaxNoObligations" xml:space="preserve">
+    <value>Non ci sono ritenute applicabili in questo periodo.</value>
+  </data>
+  <data name="F24TaxCodeMixed" xml:space="preserve">
+    <value>Le ritenute del periodo hanno codici tributo diversi: servono F24 separati.</value>
+  </data>
+  <data name="TaxFileAlreadyFiled" xml:space="preserve">
+    <value>Il file è già stato verificato o trasmesso e non si rigenera.</value>
+  </data>
+  <data name="TaxFilingTransitionInvalid" xml:space="preserve">
+    <value>Questo passaggio di stato non è permesso.</value>
+  </data>
+  <data name="TaxFilingReferenceRequired" xml:space="preserve">
+    <value>Indica il riferimento richiesto: consegna, ricevuta o motivo dello scarto.</value>
+  </data>
+  <data name="TaxDatasetNotFound" xml:space="preserve">
+    <value>Dati annuali non trovati.</value>
+  </data>
+  <data name="F24DocFilingState" xml:space="preserve">
+    <value>Stato: {0}</value>
+  </data>
+  <data name="F24DocReceipt" xml:space="preserve">
+    <value>Ricevuta: {0}</value>
+  </data>
+  <data name="TaxFilingStateGenerated" xml:space="preserve">
+    <value>generato, non trasmesso</value>
+  </data>
+  <data name="TaxFilingStateReviewed" xml:space="preserve">
+    <value>verificato, non trasmesso</value>
+  </data>
+  <data name="TaxFilingStateSubmitted" xml:space="preserve">
+    <value>consegnato per la trasmissione</value>
+  </data>
+  <data name="TaxFilingStateAccepted" xml:space="preserve">
+    <value>accettato</value>
+  </data>
+  <data name="TaxFilingStateRejected" xml:space="preserve">
+    <value>scartato</value>
+  </data>
 </root>
