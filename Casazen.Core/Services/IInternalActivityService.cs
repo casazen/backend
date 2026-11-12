@@ -109,6 +109,15 @@ public interface IInternalActivityService
     Task<Guid> CreateAsync(CreateTodoRequest request, CancellationToken ct);
 
     /// <summary>
+    /// Raises an open "To do" (E05/F05/US02/T01): its urgency becomes <paramref name="urgency"/> when that is higher than the one it has (never lower), and its deadline becomes
+    /// <paramref name="deadline"/> when that is earlier than the one it has (or it has none); when the urgency was raised, <paramref name="reason"/> (the code of the more urgent
+    /// cause) replaces the reason of the item. How a producer whose item is one per entity while it is open (<see cref="CreateAsync"/> returns the open one and changes nothing)
+    /// keeps that item as urgent as the most urgent thing that happened since it was raised. Returns <c>true</c> when the item changed; <c>false</c> for an item that is already
+    /// as urgent and as soon, one closed meanwhile, and an id that is not an open "To do" of the org. Idempotent.
+    /// </summary>
+    Task<bool> RaiseUrgencyAsync(Guid activityId, ActivityUrgency urgency, DateTime? deadline, string? reason, CancellationToken ct);
+
+    /// <summary>
     /// Closes a "To do" item: <see cref="InternalActivity.Status"/> "Completed", <see cref="InternalActivity.CompletedAt"/> now
     /// and <see cref="InternalActivity.ClosedBy"/> = <paramref name="closedBy"/> (<see cref="InternalActivity.ClosedBySystem"/>
     /// or the id of the user). Idempotent: an item already closed stays as it was closed the first time. The closed row is kept

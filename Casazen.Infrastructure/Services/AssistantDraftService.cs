@@ -28,8 +28,9 @@ namespace Casazen.Infrastructure.Services;
 /// inbound message), then its row of the log is written with the id of the item, so a row never points to nothing; a run that stopped in between is run again by Hangfire, finds the item of
 /// the message in the queue and does not queue a second one.</item>
 /// <item><b>The «To do».</b> A message whose situation is set to escalate, that touches a forbidden topic (or one the rules do not allow), or that is urgent raises one «To do» per
-/// conversation (<see cref="ActivityType.MessageToReply"/>, idempotent while it is open) with the urgency and a deadline of <c>Assistant:Escalation</c>; an urgent message also alerts the
-/// people who reach the property (<see cref="NotificationEventType.UrgentGuestMessage"/>, through <see cref="HostMessageAlertDelivery"/>). The first two get no draft; an urgent message does.</item>
+/// conversation (<see cref="ActivityType.MessageToReply"/>, one while it is open; a later message that is more urgent raises it, never lowers it) with the urgency and a deadline of
+/// <c>Assistant:Escalation</c>; an urgent message also alerts the people who reach the property (<see cref="NotificationEventType.UrgentGuestMessage"/>, through
+/// <see cref="HostMessageAlertDelivery"/>), before the row of the log is written. The first two get no draft; an urgent message does.</item>
 /// <item><b>Logs</b> carry ids, codes, the decision and the score: never a word of the guest, of a fact or of a draft.</item>
 /// </list>
 /// </remarks>
@@ -141,6 +142,12 @@ public sealed class AssistantDraftService(
         if (composed.Escalation is not null || classification.Urgency == AssistantUrgency.Urgent)
             activityId = await RaiseTodoAsync(orgId, propertyId, thread, classification.Urgency, composed.Info!.Code, ct);
 
+        // (h) An urgent message is alerted when it arrives (a person who asks for a draft is looking at it already), and BEFORE the row of the log is written: the row is what makes a run that
+        // is repeated return at once, so an alert that came after it would be lost for ever by a job that stops in between. The alert is idempotent (its keys are the message and the person),
+        // so a run repeated before the row exists tells nobody twice; one that cannot even be handed to the job of the alerts fails the run, which Hangfire repeats.
+        if (classification.Urgency == AssistantUrgency.Urgent && !options.Requested)
+            await AlertUrgentAsync(orgId, thread, message, ct);
+
         var row = NewRow(run, propertyId, effective.InstructionVersion, model, version, activityId);
         row.Situation = classification.Situation;
         row.Urgency = classification.Urgency;
@@ -165,10 +172,6 @@ public sealed class AssistantDraftService(
         {
             outcome = await DecideAsync(run, row, thread, composed, effective, ct);
         }
-
-        // (h) An urgent message is alerted once, when it arrives (a person who asks for a draft is looking at it already).
-        if (classification.Urgency == AssistantUrgency.Urgent && !options.Requested)
-            await AlertUrgentAsync(orgId, thread, message, ct);
 
         logger.LogInformation(
             "Assistant on message {MessageId} of conversation {ThreadKey} (org {OrgId}): {Decision} {Reason}, situation {Situation}, score {Score}",
@@ -654,39 +657,40 @@ public sealed class AssistantDraftService(
 
     // ─── (h) and the «To do» ───
 
-    private async Task<Guid> RaiseTodoAsync(Guid orgId, Guid propertyId, ThreadState thread, AssistantUrgency urgency, string situationCode, CancellationToken ct) =>
-        await activities.CreateAsync(
-            new CreateTodoRequest
-            {
-                Type = ActivityType.MessageToReply,
-                Action = ActivityAction.ReplyToMessage,
-                EntityType = thread.Source == HostMessageSource.Ota ? ThreadEntityType : InternalActivity.BookingEntityType,
-                EntityId = thread.Key.Id,
-                Urgency = urgency is AssistantUrgency.Urgent or AssistantUrgency.High ? ActivityUrgency.High : ActivityUrgency.Medium,
-                PropertyId = propertyId,
-                OrgId = orgId,
-                Deadline = Now() + _options.Escalation.DeadlineAfter(urgency),
-                Reason = situationCode,
-            },
-            ct);
+    /// <summary>
+    /// The «To do» of the conversation. There is one while it is open (<see cref="IInternalActivityService.CreateAsync"/> returns the open one and changes nothing), so a message that
+    /// is more urgent than the one that opened it, or due sooner, raises it (<see cref="IInternalActivityService.RaiseUrgencyAsync"/>): an urgent message that follows an escalated
+    /// one is High and due in an hour, never left as Medium and due the day after. A message that is less urgent never lowers it.
+    /// </summary>
+    private async Task<Guid> RaiseTodoAsync(Guid orgId, Guid propertyId, ThreadState thread, AssistantUrgency urgency, string situationCode, CancellationToken ct)
+    {
+        var request = new CreateTodoRequest
+        {
+            Type = ActivityType.MessageToReply,
+            Action = ActivityAction.ReplyToMessage,
+            EntityType = thread.Source == HostMessageSource.Ota ? ThreadEntityType : InternalActivity.BookingEntityType,
+            EntityId = thread.Key.Id,
+            Urgency = urgency is AssistantUrgency.Urgent or AssistantUrgency.High ? ActivityUrgency.High : ActivityUrgency.Medium,
+            PropertyId = propertyId,
+            OrgId = orgId,
+            Deadline = Now() + _options.Escalation.DeadlineAfter(urgency),
+            Reason = situationCode,
+        };
+
+        var activityId = await activities.CreateAsync(request, ct);
+        await activities.RaiseUrgencyAsync(activityId, request.Urgency, request.Deadline, request.Reason, ct);
+        return activityId;
+    }
 
     /// <summary>
     /// The alert of an urgent message to the people who reach the property, through their preferences (<see cref="NotificationEventType.UrgentGuestMessage"/>): no text, the route of the
-    /// conversation. A failure is handed to the job of the alerts and never undoes the decision.
+    /// conversation. A person who could not be alerted is handed to the job of the alerts (retried by Hangfire); a failure that cannot even be handed to it is <b>not swallowed</b>: it fails
+    /// the run, which the job repeats (the row of the log is not written yet, and the alert is idempotent).
     /// </summary>
-    private async Task AlertUrgentAsync(Guid orgId, ThreadState thread, InboundMessage message, CancellationToken ct)
-    {
-        try
-        {
-            await hostAlerts.DeliverOrRetryAsync(
-                new HostMessageAlert(orgId, thread.Source, NotificationEventType.UrgentGuestMessage, thread.RowId, message.Id, message.At),
-                ct);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogError(ex, "The alert of an urgent message {MessageId} of org {OrgId} could not be handed to its job", message.Id, orgId);
-        }
-    }
+    private Task AlertUrgentAsync(Guid orgId, ThreadState thread, InboundMessage message, CancellationToken ct) =>
+        hostAlerts.DeliverOrRetryAsync(
+            new HostMessageAlert(orgId, thread.Source, NotificationEventType.UrgentGuestMessage, thread.RowId, message.Id, message.At),
+            ct);
 
     // ─── The log ───
 

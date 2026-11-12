@@ -30,9 +30,13 @@ The chain:
    (`IAssistantSituationService.ResolveAsync`). A situation in mode `Escalate` (`mode_escalate`), a forbidden topic (`forbidden_topic`) or a
    topic outside a non-empty list of allowed ones (`topic_not_allowed`) ends in **`Escalated`**: a «Da fare» `MessageToReply` with the action
    `ReplyToMessage`, about the conversation (`OtaMessageThread` and its id, or `Booking` and the id of a direct booking), with the urgency
-   (urgent and high: `High`; normal: `Medium`) and a deadline of `Assistant:Escalation`; no draft. **An urgent message** raises the same «Da
+   (urgent and high: `High`; normal: `Medium`) and a deadline of `Assistant:Escalation`; no draft. There is **one «Da fare» per conversation
+   while it is open**: a later message that is more urgent (or due sooner) raises it (`IInternalActivityService.RaiseUrgencyAsync`: urgency
+   and reason of the more urgent cause, earlier deadline), and a less urgent one never lowers it. **An urgent message** raises the same «Da
    fare», alerts the people who reach the property (`UrgentGuestMessage`, through their preferences, with the route of the conversation and
-   no text) and still gets its draft.
+   no text) and still gets its draft. The alert is done **before** the row of the log is written (its keys are the message and the person,
+   so a run repeated before the row exists tells nobody twice); a person who cannot be alerted is handed to the job of the alerts, and an
+   alert that cannot even be handed to it fails the run, which Hangfire repeats.
 4. (d) The facts of the knowledge base (`RetrieveAsync`) for the topics of the situation; the draft is the template of the situation filled
    by `MessageTemplateRenderer` when every variable resolves, else the model writes it on the Standard tier from the facts. The server
    fills `{{guest_name}}` and the other variables and appends the signature.
@@ -52,7 +56,7 @@ A person who answers the conversation (the hub, the guest area, or the approval 
 
 Every text of a prompt (the messages and the facts) goes through `AssistantPromptBuilder.Minimize`: the e-mail addresses, phone numbers and
 fiscal codes (`PiiScrubber`) become `[email]`, `[tel]`, `[cf]`; the names of the guest (booking and channel) and of the host (`Org.HostName`)
-become `[guest]` and `[host]`; the code of the booking and its references on the channel `[booking]`; any run of six or more digits
+become `[guest]` and `[host]` (whole words, in any case, with the accents and the typographic apostrophes folded: «Jose» is found for «José», «D’Angelo» for «D'Angelo»); the code of the booking and its references on the channel `[booking]`; any run of six or more digits
 `[code]`. The model never sees the name of the guest: it writes `{{guest_name}}`, the server fills it in. The provider scrubs every prompt
 once more. **Not recognized**: the names of anyone the conversation does not know, a street address, an IBAN written with spaces. A
 placeholder left in a draft lowers its compliance and is visible to the person who approves it. The facts are the host's own texts: what
