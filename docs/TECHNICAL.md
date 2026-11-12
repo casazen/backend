@@ -468,7 +468,9 @@ its change stays in CasaZen (`Applied`); a confirmed mapping without a room chos
 are never sent. After the commit a `Queued` process is enqueued once (`CalendarChangeProcessJob.RunAsync`); the recurring job `calendar-change-process` (every minute, only
 with the connector on) runs the due ones and follows what the channel manager accepted.
 
-*What is sent* (`OctorateCalendarEntries`, pure): for each night the price `StayPricing.NightPrice` with the prices the host set (to the cent the guest is quoted), the
+*What is sent* (`OctorateCalendarEntries`, pure): for each night the price `StayPricing.NightPrice` with the prices the host set (to the cent the guest is quoted; a night
+with no price at all, a property with no base price («0 = none», as the listings imported from the channel manager are) and no price set for the night, sends no `price` and the
+channel manager keeps its own: 0 is never written), the
 minimum stay (the rule, else the property's, else 1), the maximum stay (the rule; with none `Octorate:Calendar:NoMaxStay` when configured, else left out), `closeToArrival`,
 `closeToDeparture` and `cutOffDays` (the minimum advance of the rule, 0 when none); the maximum advance has no field and is never sent. The nights a manual block (a mode
 change block included) closes carry `stopSells` true, or `availability` 0 with `CloseNightsWith = Availability`; any other night `stopSells` false (or `availability` 1); a night

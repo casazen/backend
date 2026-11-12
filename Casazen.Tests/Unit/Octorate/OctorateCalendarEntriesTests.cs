@@ -157,6 +157,31 @@ public class OctorateCalendarEntriesTests
         Assert.True(Assert.Single(both).Values.StopSells);
     }
 
+    /// <summary>
+    /// PROOF: money rule. A property with no base price (<c>0 = none</c>, what a listing imported from the channel manager has) and no price the host set for a night has no price
+    /// to quote: the night is sent with no <c>price</c> at all (the channel manager keeps its own), never with 0; a night the host priced keeps its price.
+    /// </summary>
+    [Fact]
+    public void Build_ANightWithNoPriceAtAll_SendsNoPrice_NeverZero_AndTheNightsTheHostPricedKeepTheirs()
+    {
+        var property = new OctorateCalendarProperty(0m, 0m, null);
+        var rules = new Dictionary<DateOnly, DayRuleValues> { [First.AddDays(2)] = new(Price: 90m) };
+        var prices = DayRulePricing.HostPrices(null, rules);
+
+        var entries = OctorateCalendarEntries.Build(property, Target, First, First.AddDays(4), rules, prices, None, None, new OctorateCalendarOptions());
+
+        Assert.Equal(
+            new decimal?[] { null, null, 90m, null, null },
+            Enumerable.Range(0, 5).Select(i => entries.Single(e => e.From <= First.AddDays(i) && First.AddDays(i) <= e.To).Values.Price));
+        Assert.DoesNotContain(entries, e => e.Values.Price == 0m);
+
+        // The closure of a block still goes out, with no price: nothing else is guessed.
+        var block = OctorateCalendarEntries.Build(
+            property, Target, First, First.AddDays(1), NoRules, NoPrices, new HashSet<DateOnly> { First }, None, new OctorateCalendarOptions());
+        Assert.Equal(new bool?[] { true, false }, block.Select(e => e.Values.StopSells));
+        Assert.All(block, e => Assert.Null(e.Values.Price));
+    }
+
     [Fact]
     public void Build_AnEmptyWindow_SendsNothing()
     {

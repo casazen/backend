@@ -16,7 +16,8 @@ public sealed record OctorateCalendarProperty(decimal NightlyRate, decimal Weeke
 /// <remarks>
 /// <list type="bullet">
 /// <item><b>Price.</b> <see cref="StayPricing.NightPrice"/>, the function the quote adds the nights of a stay up with, fed with the prices the host set for
-/// dates, so the channel manager holds the price a guest is quoted, to the cent.</item>
+/// dates, so the channel manager holds the price a guest is quoted, to the cent. A night whose price is not above 0 (the property has no base price: «0 = none», and
+/// the host set no price for the night) has no price to quote, so the field is left out and the channel manager keeps its own: 0 is never written.</item>
 /// <item><b>Stay.</b> The minimum stay is the rule, else the minimum of the property, else 1. The maximum is the rule; with none, the value of
 /// <c>Octorate:Calendar:NoMaxStay</c> when it is configured, else the field is left out. The maximum advance has no field on the channel manager and is
 /// never sent; the minimum advance is the <c>cutOffDays</c> of the night (0 when none).</item>
@@ -107,7 +108,9 @@ public static class OctorateCalendarEntries
 
         return new OctorateCalendarValues(
             Availability: availability,
-            Price: price,
+            // A night with no price at all (a property with no base price, «0 = none», as the listings imported from the channel manager are, and no price the host
+            // set for the night) sends none: the channel manager keeps the one it holds. A price of 0 is never written to the channels.
+            Price: price > 0m ? price : null,
             MinStay: DayRuleDefaults.MinNightsOf(rule, property.MinNights),
             MaxStay: rule?.MaxNights ?? options.NoMaxStayNights,
             StopSells: stopSells,

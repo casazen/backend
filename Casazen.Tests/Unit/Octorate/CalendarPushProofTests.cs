@@ -266,6 +266,65 @@ public class CalendarPushProofTests
         Assert.Equal([false, true, true, false], stopSells);
     }
 
+    /// <summary>
+    /// PROOF TEST: money rule. A property imported from the channel manager has no base price (<c>NightlyRate = 0</c>, «0 = none»): a manual block, the removal of the block and a
+    /// change of the rules that prices one night never write a price of 0 to the channels. The closed nights are closed (<c>stopSells</c>), the nights of the removal are open, the
+    /// night the host priced has its price, and every other night is sent with no price at all (the channel manager keeps its own).
+    /// </summary>
+    [Fact]
+    public async Task Run_APropertyWithNoBasePrice_NeverSendsAPriceOfZero_ForABlock_ItsRemoval_OrAChangeOfTheRules_Test()
+    {
+        var h = new Push();
+        var stored = await h.Db.Properties.SingleAsync(p => p.Id == h.PropertyId);
+        stored.NightlyRate = 0m;
+        stored.WeekendSurchargePercent = 0m;
+        await h.Db.SaveChangesAsync();
+        var sent = new List<OctorateCalendarUpdate>();
+        h.Client
+            .Setup(c => c.UpdateCalendarAsync(It.IsAny<IReadOnlyList<OctorateCalendarUpdate>>(), It.IsAny<CancellationToken>()))
+            .Callback<IReadOnlyList<OctorateCalendarUpdate>, CancellationToken>((updates, _) => sent.AddRange(updates))
+            .ReturnsAsync(new OctorateCalendarUpdateResult(["1"]));
+        OctorateCalendarUpdate Night(int day) => sent.Single(e => e.From <= Push.Today.AddDays(day) && Push.Today.AddDays(day) <= e.To);
+
+        // A manual block of three nights (days 1 to 3): closed, and no price.
+        h.Db.CalendarBlocks.Add(new CalendarBlock
+        {
+            PropertyId = h.PropertyId,
+            OrgId = Push.OrgId,
+            Source = CalendarBlockSource.Manual,
+            StartUtc = Utc(Push.Today.AddDays(1)),
+            EndUtc = Utc(Push.Today.AddDays(4)),
+            ManualReason = CalendarBlockReason.Other,
+        });
+        await h.Db.SaveChangesAsync();
+        var (blocked, _) = await h.SeedAsync(Push.Today.AddDays(1), Push.Today.AddDays(5));
+        await h.Service().RunAsync(blocked.Id);
+
+        Assert.Equal(new bool?[] { true, true, true, false, false }, Enumerable.Range(1, 5).Select(day => Night(day).Values.StopSells));
+        Assert.All(sent, e => Assert.Null(e.Values.Price));
+
+        // The block is removed: the nights open again, and still no price.
+        sent.Clear();
+        h.Db.CalendarBlocks.Remove(await h.Db.CalendarBlocks.SingleAsync());
+        await h.Db.SaveChangesAsync();
+        var (reopened, _) = await h.SeedAsync(Push.Today.AddDays(1), Push.Today.AddDays(5));
+        await h.Service().RunAsync(reopened.Id);
+
+        Assert.All(sent, e => Assert.Equal(((bool?)false, (decimal?)null), (e.Values.StopSells, e.Values.Price)));
+
+        // A change of the rules that prices one night: that night has its price, the others none.
+        sent.Clear();
+        IReadOnlyDictionary<DateOnly, decimal> priced = new Dictionary<DateOnly, decimal> { [Push.Today.AddDays(2)] = 90m };
+        h.Pricing
+            .Setup(p => p.GetAppliedNightlyPricesAsync(It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(priced);
+        var (changed, _) = await h.SeedAsync(Push.Today.AddDays(1), Push.Today.AddDays(5));
+        await h.Service().RunAsync(changed.Id);
+
+        Assert.Equal(new decimal?[] { null, 90m, null, null, null }, Enumerable.Range(1, 5).Select(day => Night(day).Values.Price));
+        Assert.DoesNotContain(sent, e => e.Values.Price == 0m);
+    }
+
     [Fact]
     public async Task Run_AQuotaThatIsNearlyUsed_PostponesTheChunk_WithoutFailingIt()
     {
