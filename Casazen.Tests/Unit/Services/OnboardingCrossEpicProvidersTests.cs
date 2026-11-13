@@ -516,6 +516,56 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The light read the part «Partners» asks of the catalog answers exactly what the Active tab says: for every status of an activation, declared or
+    /// not, on a property the caller reaches, on one it does not reach or on the whole org, and for the caller of each scope, <c>HasActiveIntegrationAsync</c>
+    /// is true when <c>GetActiveAsync</c> lists an integration that is active or declared, and false otherwise.
+    /// </summary>
+    [Fact]
+    public async Task Catalog_TheLightReadOfTheActiveIntegrations_AnswersWhatTheActiveTabSays()
+    {
+        var catalog = Catalog();
+        HostScope[] scopes = [_world.OrgWide, _world.Restricted];
+        Guid?[] places = [null, _world.Granted.Id, _world.Hidden.Id];
+        var answeredYes = 0;
+        var answeredNo = 0;
+
+        foreach (var status in Enum.GetValues<MarketplaceActivationStatus>())
+        {
+            foreach (var declared in new[] { false, true })
+            {
+                foreach (var place in places)
+                {
+                    foreach (var scope in scopes)
+                    {
+                        _db.MarketplaceActivations.RemoveRange(await _db.MarketplaceActivations.ToListAsync());
+                        var kind = place is null ? MarketplaceActivationKind.Partner : MarketplaceActivationKind.Tool;
+                        _db.MarketplaceActivations.Add(Activation(place, kind, status, declared));
+                        await _db.SaveChangesAsync();
+
+                        var tab = await catalog.GetActiveAsync(scope.OrgId, scope, null, Ct);
+                        var expected = tab.Integrations.Any(integration => integration.Status == MarketplaceCardStatus.Active || integration.IsDeclared);
+                        var light = await catalog.HasActiveIntegrationAsync(scope.OrgId, scope, Ct);
+
+                        Assert.True(expected == light, $"{status}, declared {declared}, place {place}, restricted {scope == _world.Restricted}: tab {expected}, light read {light}");
+                        if (expected)
+                            answeredYes++;
+                        else
+                            answeredNo++;
+                    }
+                }
+            }
+        }
+
+        // Both answers really happened (a matrix that answers only one way proves nothing), and the deactivated rows are not on the tab.
+        Assert.True(answeredYes > 0 && answeredNo > 0, $"{answeredYes} yes, {answeredNo} no");
+        _db.MarketplaceActivations.RemoveRange(await _db.MarketplaceActivations.ToListAsync());
+        _db.MarketplaceActivations.Add(Activation(null, MarketplaceActivationKind.Partner, MarketplaceActivationStatus.Deactivated, declared: true));
+        await _db.SaveChangesAsync();
+        Assert.False(await catalog.HasActiveIntegrationAsync(_world.OrgId, _world.OrgWide, Ct));
+        Assert.Empty((await catalog.GetActiveAsync(_world.OrgId, _world.OrgWide, null, Ct)).Integrations);
+    }
+
+    /// <summary>
     /// The plan shows the three parts from their facts instead of «not provided» (AC-NF104-9..11), and «Partners» is optional: no part requires it, so
     /// it never blocks another part nor the activation.
     /// </summary>

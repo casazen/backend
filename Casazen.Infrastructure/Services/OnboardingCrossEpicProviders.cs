@@ -321,12 +321,15 @@ public sealed class FiscalDocumentsPartEvaluator(AppDbContext db, IFeatureFlags 
 /// <summary>
 /// The part «Partners» (E10/F01/US04/T01, NF-104, E09): provided only while <see cref="FeatureFlags.OctorateConnector"/> is on, the flag of the
 /// marketplace endpoints that depend on Octorate (otherwise «not available»); done when at least one integration of the organization is active or
-/// declared, read through the catalog of the marketplace (<see cref="IMarketplaceCatalogService.GetActiveAsync"/>, the Active tab), never from its
-/// tables. The part is optional: no other part requires it (<see cref="OnboardingPartCatalog"/>), so it never blocks the activation.
+/// declared, read through the catalog of the marketplace (<see cref="IMarketplaceCatalogService.HasActiveIntegrationAsync"/>: the rows of the
+/// Active tab, in one query that reads nothing else of it), never from its tables. The part is optional: no other part requires it
+/// (<see cref="OnboardingPartCatalog"/>), so it never blocks the activation.
 /// </summary>
 /// <remarks>
 /// <b>Reach.</b> The catalog reads for the caller's scope: the integrations of the properties the caller reaches, and the organization-level ones only
-/// for a caller who reaches the whole org. The part says nothing more than the Active tab does. Nothing calls Octorate and nothing is written.
+/// for a caller who reaches the whole org. The part says nothing more than the Active tab does, and it does not load what the tab shows beyond that (the
+/// names, the properties, the suppliers the host used): the plan is read often and it asks only whether one integration is on or declared. Nothing
+/// calls Octorate and nothing is written.
 /// </remarks>
 public sealed class PartnersPartEvaluator(IFeatureFlags featureFlags, IMarketplaceCatalogService catalog) : IOnboardingPartEvaluator
 {
@@ -340,8 +343,7 @@ public sealed class PartnersPartEvaluator(IFeatureFlags featureFlags, IMarketpla
         if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
             return PartFacts.NotAvailable(OnboardingPartReasons.ConnectorOff);
 
-        var active = await catalog.GetActiveAsync(context.OrgId, context.Scope, null, ct);
-        var any = active.Integrations.Any(integration => integration.Status == MarketplaceCardStatus.Active || integration.IsDeclared);
+        var any = await catalog.HasActiveIntegrationAsync(context.OrgId, context.Scope, ct);
         return PartFacts.Counted(any ? 1 : 0, 1, OnboardingPartReasons.PartnerIntegrationMissing);
     }
 }
