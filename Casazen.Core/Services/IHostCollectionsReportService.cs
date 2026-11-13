@@ -20,7 +20,8 @@ public interface IHostCollectionsReportService
     Task<HostCollectionsReport> GetCollectionsAsync(HostScope scope, HostReportQuery query, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The stays that still have something to collect, as of today (Europe/Rome): not cancelled and not holding their dates through an expired checkout hold
+    /// The stays that still have something to collect, as of today (Europe/Rome): not cancelled, not ended before <see cref="HostCollectionsRules.BalancesSince"/> (24 months back)
+    /// and not holding their dates through an expired checkout hold
     /// (<see cref="CheckoutHolds.OccupiesDates"/>), whose amount due is above what was collected. A stay whose money is CasaZen's (<see cref="HostCollectionsRules.HoldsCasaZenMoney"/>)
     /// owes its total minus the payments collected for it; one whose money is the channel manager's, the balance stored from the reservation, and nothing when the
     /// channel collects it or the balance was never reported. No guest data in any row. Sorted by check-in.

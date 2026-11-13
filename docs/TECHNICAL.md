@@ -771,11 +771,12 @@ and `trend` compare, and only with the same days one year earlier.
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/reports/collections` | short-rent payment.read | The money that came in between `from` and `to`, by cash: `{ title, basis, period, total, byDate, byMethod, byChannel, credits }`. `total { amount, amountCents, paymentCount }` is the Home's "incassato" for the same days; `byDate` a bucket `{ unit, label, from, to, amount, amountCents, paymentCount }` for every day (period of up to 92 days) or month (longer), the days without payments at zero; `byMethod` a row `{ method, amount, amountCents, paymentCount, share }`; `byChannel` a row `{ source, amount, amountCents, paymentCount, share }`; `credits { stripe { available, payouts, cardPaymentCount, paymentsWithoutFigures }, channels { available, reportedBy, rows, staysWithoutNet } }`. Query: `from`, `to`, `propertyId`, `format` (`json`, `csv`) |
-| `GET` | `/api/reports/balances-to-collect` | short-rent payment.read | The stays that still have something to collect, as of today: `{ title, basis, asOf, rows, totals }`, a row `{ bookingId, bookingCode, propertyId, propertyName, source, checkIn, checkOut, currency, total, totalCents, collected, collectedCents, toCollect, toCollectCents, overdue, basis }`, a total `{ currency, amount, amountCents, stayCount }` for each currency. Query: `propertyId`, `format` (`json`, `csv`). No guest name or contact anywhere |
+| `GET` | `/api/reports/balances-to-collect` | short-rent payment.read | The stays that still have something to collect, as of today, for the stays that ended in the last 24 months or are still to come: `{ title, basis, asOf, since, rows, totals }`, a row `{ bookingId, bookingCode, propertyId, propertyName, source, checkIn, checkOut, currency, total, totalCents, collected, collectedCents, toCollect, toCollectCents, overdue, basis }`, a total `{ currency, amount, amountCents, stayCount }` for each currency. Query: `propertyId`, `format` (`json`, `csv`). No guest name or contact anywhere |
 | `GET` | `/api/reports/channel-costs` | short-rent payment.read | NF-98. What each channel costs, by accrual: `{ title, basis, period, rows, total }`, a row `{ source, kind, stayCount, gross, grossCents, commission, commissionCents, net, netCents, costRate, commissionMode, staysWithoutCommission, mostExpensive }` ordered by `costRate`, the highest first; `total` the same shape with a null `source`, `kind` and `commissionMode`. `commission`, `net` and `costRate` are **null (not available), never 0**, when no stay reported a cost. Query: `from`, `to`, `propertyId`, `format` (`json`, `csv`) |
 
 `CollectionsReportsController` (`api/reports`, class policy `payment.read`, `HostScope` in SQL) over `IHostCollectionsReportService`
-(`HostCollectionsReportService`, three queries for the collections and two for the balances whatever the number of payments or stays). The words of the
+(`HostCollectionsReportService`, three queries for the collections and two for the balances whatever the number of payments or stays; the payments of the period are read one
+at a time and added up as they come (`HostCollectionsSums`), never all held in memory). The words of the
 request are checked as in the other reports (`report_invalid_period`, `report_period_too_long`, `report_invalid_format`, 404 for a `propertyId` the caller does
 not reach, 403 without an org); `balances-to-collect` takes no period.
 
@@ -797,7 +798,9 @@ not reach, 403 without an org); `balances-to-collect` takes no period.
   that is partly unknown is never presented as complete. `credits.channels` is the `OtaNetAmount` of the confirmed stays arriving in the period whose channel
   collected the money (`OtaCompanyCollect` true), per channel and currency, **reported by the channel manager** (`reportedBy`), with no date (the import carries
   none) and never a bank credit; stays with no reported net are counted in `staysWithoutNet`; `available` false until Octorate documents a net field.
-- **Balances.** A stay counts when it is not cancelled and does not hold its dates through an expired checkout hold (`CheckoutHolds.OccupiesDates`) and its amount
+- **Balances.** A stay counts when it is not cancelled and does not hold its dates through an expired checkout hold (`CheckoutHolds.OccupiesDates`), has not ended before the
+  horizon of the report (`since`: 24 months before today, `HostCollectionsRules.BalancesSince`; its check-out day is `since` or later, so the list does not grow with the whole
+  history of the host and a stay nobody marked as paid is not overdue for ever) and its amount
   due is above what was collected. Whose money it is decides how: a stay whose money is CasaZen's (`HostCollectionsRules.HoldsCasaZenMoney`: not a channel, and not a
   reservation of the channel manager) owes `Booking.TotalPrice` minus the payments collected for it (`PaymentCashRules.IsCollected`, `CollectedAmount`; `basis`
   `Payments`); a stay whose money is the channel manager's (`HoldsChannelManagerMoney`, the one definition of `BookingAmountSourceRules`: a booking of a channel with

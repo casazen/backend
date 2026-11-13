@@ -280,6 +280,9 @@ public sealed class BalancesToCollectReportDto
     /// <summary>The day the balances are read (today in Europe/Rome): what <c>overdue</c> is judged on.</summary>
     public DateOnly AsOf { get; init; }
 
+    /// <summary>The first check-out day listed (24 months before <see cref="AsOf"/>): a stay that ended before it is out of the horizon of the report.</summary>
+    public DateOnly? Since { get; init; }
+
     /// <summary>The stays with an amount to collect, by check-in.</summary>
     public IReadOnlyList<BalanceRowDto> Rows { get; init; } = [];
 
@@ -290,6 +293,7 @@ public sealed class BalancesToCollectReportDto
     {
         Title = title,
         AsOf = report.AsOf,
+        Since = report.Since,
         Rows = report.Rows.Select(BalanceRowDto.From).ToList(),
         Totals = report.Totals.Select(BalanceTotalDto.From).ToList(),
     };

@@ -188,7 +188,8 @@ public sealed record HostBalanceTotal(string Currency, decimal Amount, int StayC
 /// <param name="AsOf">The day the balances are read (today in Europe/Rome): what "overdue" is judged on.</param>
 /// <param name="Rows">The stays with an amount to collect, by check-in then code.</param>
 /// <param name="Totals">What is to collect, one entry for each currency of the rows.</param>
-public sealed record HostBalancesToCollect(DateOnly AsOf, IReadOnlyList<HostBalanceRow> Rows, IReadOnlyList<HostBalanceTotal> Totals);
+/// <param name="Since">The first check-out day listed (<see cref="HostCollectionsRules.BalancesSince"/>): a stay that ended before it is not in the report.</param>
+public sealed record HostBalancesToCollect(DateOnly AsOf, IReadOnlyList<HostBalanceRow> Rows, IReadOnlyList<HostBalanceTotal> Totals, DateOnly? Since = null);
 
 // ---------------------------------------------------------------- the rules
 
@@ -261,41 +262,11 @@ public static class HostCollectionsRules
         ArgumentNullException.ThrowIfNull(period);
         ArgumentNullException.ThrowIfNull(payments);
 
-        var unit = UnitFor(period);
-        var empty = EmptyBucketsOf(period);
-        var indexOf = new Dictionary<string, int>(empty.Count, StringComparer.Ordinal);
-        for (var index = 0; index < empty.Count; index++)
-            indexOf[empty[index].Label] = index;
-
-        var amounts = new decimal[empty.Count];
-        var counts = new int[empty.Count];
+        var sums = new HostCollectionsSums(period);
         foreach (var payment in payments)
-        {
-            var label = LabelOf(RomeCalendar.DateInRome(payment.CollectedAt), unit);
-            if (!indexOf.TryGetValue(label, out var index))
-                throw new InvalidOperationException($"A payment collected on {label} is outside the period of the report.");
+            sums.Add(payment);
 
-            amounts[index] += payment.Collected;
-            counts[index]++;
-        }
-
-        var total = Money(payments.Sum(p => p.Collected));
-        var byDate = empty
-            .Select((bucket, index) => bucket with { Amount = Money(amounts[index]), PaymentCount = counts[index] })
-            .ToList();
-        var byMethod = payments
-            .GroupBy(p => p.Method)
-            .Select(g => new HostCollectionsMethodRow(g.Key, Money(g.Sum(p => p.Collected)), g.Count(), ShareOf(g.Sum(p => p.Collected), total)))
-            .OrderByDescending(r => r.Amount)
-            .ThenBy(r => r.Method)
-            .ToList();
-        var byChannel = payments
-            .GroupBy(p => p.Source)
-            .Select(g => new HostCollectionsChannelRow(g.Key, Money(g.Sum(p => p.Collected)), g.Count(), ShareOf(g.Sum(p => p.Collected), total)))
-            .OrderByDescending(r => r.Amount)
-            .ThenBy(r => r.Source)
-            .ToList();
-        return new HostCollectionsFigures(new HostDashboardCollected(total, payments.Count), byDate, byMethod, byChannel);
+        return sums.Figures();
     }
 
     /// <summary>
@@ -346,6 +317,15 @@ public static class HostCollectionsRules
     /// <summary>The check-out day is before today: the stay is over and something is still to collect.</summary>
     public static bool IsOverdue(DateOnly checkOut, DateOnly today) => checkOut < today;
 
+    /// <summary>How far back the balances to collect look, in calendar months: the horizon of every report (<see cref="HostReportRules.MaxMonths"/>).</summary>
+    public const int BalancesMonths = HostReportRules.MaxMonths;
+
+    /// <summary>
+    /// The first check-out day the balances to collect list: <see cref="BalancesMonths"/> months before <paramref name="today"/>. A stay that ended before it is out of the
+    /// horizon of the report, so the list does not grow with the whole history of the host (a stay never marked as paid stays overdue for ever).
+    /// </summary>
+    public static DateOnly BalancesSince(DateOnly today) => today.AddMonths(-BalancesMonths);
+
     /// <summary>What is still to collect of a stay CasaZen holds the money of: the total minus what was collected, never below zero.</summary>
     public static decimal ToCollect(decimal total, decimal collected) => Math.Max(0m, total - collected);
 
@@ -395,8 +375,83 @@ public static class HostCollectionsRules
     public static string LabelOf(DateOnly day, HostCollectionsBucketUnit unit) =>
         day.ToString(unit == HostCollectionsBucketUnit.Day ? "yyyy-MM-dd" : "yyyy-MM", CultureInfo.InvariantCulture);
 
-    private static decimal Money(decimal amount) => Math.Round(amount, 2, MidpointRounding.AwayFromZero);
+    internal static decimal Money(decimal amount) => Math.Round(amount, 2, MidpointRounding.AwayFromZero);
 
-    private static decimal? ShareOf(decimal part, decimal whole) =>
+    internal static decimal? ShareOf(decimal part, decimal whole) =>
         whole <= 0m ? null : Math.Round(part / whole, 4, MidpointRounding.AwayFromZero);
+}
+
+/// <summary>
+/// The money collected in a period, added up one payment at a time (<see cref="HostCollectionsRules.Summarize"/> is this over a list): the report never holds the
+/// payments of the period, only the sums of its cuts (a bucket for each day or month, each payment method, each channel), so a period with many payments needs the
+/// memory of one with a few.
+/// </summary>
+public sealed class HostCollectionsSums
+{
+    private readonly HostCollectionsBucketUnit _unit;
+    private readonly IReadOnlyList<HostCollectionsBucket> _empty;
+    private readonly Dictionary<string, int> _indexOf;
+    private readonly decimal[] _amounts;
+    private readonly int[] _counts;
+    private readonly Dictionary<PaymentMethod, (decimal Amount, int Count)> _methods = new();
+    private readonly Dictionary<BookingSource, (decimal Amount, int Count)> _channels = new();
+    private decimal _total;
+    private int _count;
+
+    public HostCollectionsSums(HostDashboardPeriod period)
+    {
+        ArgumentNullException.ThrowIfNull(period);
+
+        _unit = HostCollectionsRules.UnitFor(period);
+        _empty = HostCollectionsRules.EmptyBucketsOf(period);
+        _indexOf = new Dictionary<string, int>(_empty.Count, StringComparer.Ordinal);
+        for (var index = 0; index < _empty.Count; index++)
+            _indexOf[_empty[index].Label] = index;
+
+        _amounts = new decimal[_empty.Count];
+        _counts = new int[_empty.Count];
+    }
+
+    /// <summary>Adds a payment that came in on a day of the period: it counts for what it brings, on the Europe/Rome day it came in.</summary>
+    /// <exception cref="InvalidOperationException">The payment came in on a day the period does not have: the rows are not the ones of the period.</exception>
+    public void Add(HostCollectedPayment payment)
+    {
+        ArgumentNullException.ThrowIfNull(payment);
+
+        var label = HostCollectionsRules.LabelOf(RomeCalendar.DateInRome(payment.CollectedAt), _unit);
+        if (!_indexOf.TryGetValue(label, out var index))
+            throw new InvalidOperationException($"A payment collected on {label} is outside the period of the report.");
+
+        var collected = payment.Collected;
+        _amounts[index] += collected;
+        _counts[index]++;
+        _methods[payment.Method] = Plus(_methods.GetValueOrDefault(payment.Method), collected);
+        _channels[payment.Source] = Plus(_channels.GetValueOrDefault(payment.Source), collected);
+        _total += collected;
+        _count++;
+    }
+
+    /// <summary>The figures of what was added: the total is the sum rounded once with the count of the payments, and each cut adds up to it.</summary>
+    public HostCollectionsFigures Figures()
+    {
+        var total = HostCollectionsRules.Money(_total);
+        var byDate = _empty
+            .Select((bucket, index) => bucket with { Amount = HostCollectionsRules.Money(_amounts[index]), PaymentCount = _counts[index] })
+            .ToList();
+        var byMethod = _methods
+            .Select(m => new HostCollectionsMethodRow(
+                m.Key, HostCollectionsRules.Money(m.Value.Amount), m.Value.Count, HostCollectionsRules.ShareOf(m.Value.Amount, total)))
+            .OrderByDescending(r => r.Amount)
+            .ThenBy(r => r.Method)
+            .ToList();
+        var byChannel = _channels
+            .Select(c => new HostCollectionsChannelRow(
+                c.Key, HostCollectionsRules.Money(c.Value.Amount), c.Value.Count, HostCollectionsRules.ShareOf(c.Value.Amount, total)))
+            .OrderByDescending(r => r.Amount)
+            .ThenBy(r => r.Source)
+            .ToList();
+        return new HostCollectionsFigures(new HostDashboardCollected(total, _count), byDate, byMethod, byChannel);
+    }
+
+    private static (decimal Amount, int Count) Plus((decimal Amount, int Count) sum, decimal amount) => (sum.Amount + amount, sum.Count + 1);
 }

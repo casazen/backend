@@ -255,6 +255,38 @@ public class HostCollectionsReportTests
         Assert.Equal(new HostDashboardCollected(600m, 2), one.Total);
     }
 
+    [Fact]
+    public async Task Collections_WithThousandsOfPayments_AreAddedUpAsTheyCome_AndTheTotalStaysTheHomes()
+    {
+        const int count = 3000;
+        PaymentMethod[] methods = [PaymentMethod.CreditCard, PaymentMethod.BankTransfer, PaymentMethod.CashOnArrival];
+        static decimal AmountOf(int index) => 10m + (index % 7);
+        var world = await SeedAsync(w =>
+        {
+            var direct = Add(w, w.Trullo, BookingStatus.Confirmed, BookingSource.Direct, Day(10, 2), Day(10, 5), 900m);
+            var manual = Add(w, w.CasaBianca, BookingStatus.Confirmed, BookingSource.Manual, Day(10, 2), Day(10, 5), 900m);
+            for (var index = 0; index < count; index++)
+            {
+                w.Db.Payments.Add(Pay(
+                    index % 2 == 0 ? direct : manual, AmountOf(index), PaymentStatus.Completed, methods[index % 3], At(10, 1 + (index % 28), 9 + (index % 5))));
+            }
+        });
+        var scope = new HostScope(world.OrgId);
+        var expected = Enumerable.Range(0, count).Sum(AmountOf);
+
+        var report = await Reports(world.Db).GetCollectionsAsync(scope, new HostReportQuery(October, EndOfOctober));
+        var home = await Home(world.Db).GetKpisAsync(scope, new HostDashboardQuery(HostDashboardPeriodKind.Month, October, IncludeCollected: true));
+
+        // However many payments there are, the total is the Home's and every cut adds up to it.
+        Assert.Equal(new HostDashboardCollected(expected, count), report.Total);
+        Assert.Equal(home.Collected, report.Total);
+        Assert.Equal((expected, count), (report.ByDate.Sum(b => b.Amount), report.ByDate.Sum(b => b.PaymentCount)));
+        Assert.Equal((expected, count), (report.ByMethod.Sum(m => m.Amount), report.ByMethod.Sum(m => m.PaymentCount)));
+        Assert.Equal((expected, count), (report.ByChannel.Sum(c => c.Amount), report.ByChannel.Sum(c => c.PaymentCount)));
+        Assert.Equal(3, report.ByMethod.Count);
+        Assert.Equal(count / 2, report.ByChannel.Single(c => c.Source == BookingSource.Manual).PaymentCount);
+    }
+
     // ---------------------------------------------------------------- the credits
 
     [Fact]
@@ -476,6 +508,27 @@ public class HostCollectionsReportTests
         // What is to collect, in the one currency of the properties.
         var total = Assert.Single(report.Totals);
         Assert.Equal(("EUR", 240m + 300m + 250m + 500m + 100m + 120m + 45m + 70m, 8), (total.Currency, total.Amount, total.StayCount));
+    }
+
+    [Fact]
+    public async Task BalancesToCollect_AStayThatEndedBeforeTheHorizon_IsNotListed_AndTheTotalsAreOfWhatIsListed()
+    {
+        static DateTime Date(int year, int month, int day) => new(year, month, day, 0, 0, 0, DateTimeKind.Utc);
+        Dictionary<string, Booking> by = new();
+        var world = await SeedAsync(w =>
+        {
+            // The clock is 9 October 2026: the horizon is the check-out day 9 October 2024, included. A stay nobody ever marked as paid is not overdue for ever.
+            by["too-old"] = Add(w, w.Trullo, BookingStatus.CheckedOut, BookingSource.Manual, Date(2024, 10, 6), Date(2024, 10, 8), 100m);
+            by["first-day"] = Add(w, w.Trullo, BookingStatus.CheckedOut, BookingSource.Manual, Date(2024, 10, 7), Date(2024, 10, 9), 200m);
+            by["recent"] = Add(w, w.Trullo, BookingStatus.CheckedOut, BookingSource.Manual, Day(10, 1), Day(10, 4), 400m);
+        });
+
+        var report = await Reports(world.Db).GetBalancesToCollectAsync(new HostScope(world.OrgId), new HostBalancesQuery());
+
+        Assert.Equal(new DateOnly(2024, 10, 9), report.Since);
+        Assert.Equal(new[] { by["first-day"].Id, by["recent"].Id }.Order(), report.Rows.Select(r => r.BookingId).Order());
+        var total = Assert.Single(report.Totals);
+        Assert.Equal(("EUR", 600m, 2), (total.Currency, total.Amount, total.StayCount));
     }
 
     [Fact]

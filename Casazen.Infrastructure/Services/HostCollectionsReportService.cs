@@ -42,24 +42,36 @@ public sealed class HostCollectionsReportService(
         var period = HostReportRules.PeriodOf(query.From, query.To);
         await EnsurePropertyInScopeAsync(scope, query.PropertyId, cancellationToken);
 
-        // What came in on those days, by cash: the Home's rule, with only the columns the cuts and the credits need.
-        var collected = await PaymentsInScope(scope, query.PropertyId)
-            .Where(PaymentCashRules.CollectedBetween(period.From, period.To))
-            .Select(p => new CollectedRow(
-                p.ProcessedAt ?? p.CreatedAt,
-                p.Amount,
-                p.RefundedAmount,
-                p.Method,
-                p.Booking.Source,
-                p.StripePaymentIntentId != null,
-                p.ProviderNetAmount != null && p.ProviderAvailableOn != null))
-            .ToListAsync(cancellationToken);
-        var figures = HostCollectionsRules.Summarize(
-            period,
-            collected.Select(r => new HostCollectedPayment(r.CollectedAt, r.Amount, r.RefundedAmount, r.Method, r.Source)).ToList());
+        // What came in on those days, by cash: the Home's rule, with only the columns the cuts and the credits need. The payments are read one at a time and added up as
+        // they come, never all held: a period with many payments needs the memory of one with a few.
+        var sums = new HostCollectionsSums(period);
+        var cardPayments = 0;
+        var cardPaymentsWithoutFigures = 0;
+        await foreach (var row in PaymentsInScope(scope, query.PropertyId)
+                           .Where(PaymentCashRules.CollectedBetween(period.From, period.To))
+                           .Select(p => new CollectedRow(
+                               p.ProcessedAt ?? p.CreatedAt,
+                               p.Amount,
+                               p.RefundedAmount,
+                               p.Method,
+                               p.Booking.Source,
+                               p.StripePaymentIntentId != null,
+                               p.ProviderNetAmount != null && p.ProviderAvailableOn != null))
+                           .AsAsyncEnumerable()
+                           .WithCancellation(cancellationToken))
+        {
+            sums.Add(new HostCollectedPayment(row.CollectedAt, row.Amount, row.RefundedAmount, row.Method, row.Source));
+            if (!row.IsCard)
+                continue;
 
+            cardPayments++;
+            if (!row.HasFigures)
+                cardPaymentsWithoutFigures++;
+        }
+
+        var figures = sums.Figures();
         var credits = new HostCredits(
-            await GetStripeCreditsAsync(scope, query, collected, cancellationToken),
+            await GetStripeCreditsAsync(scope, query, cardPayments, cardPaymentsWithoutFigures, cancellationToken),
             await GetChannelCreditsAsync(scope, query, period, cancellationToken));
         return new HostCollectionsReport(period, figures.Total, figures.ByDate, figures.ByMethod, figures.ByChannel, credits);
     }
@@ -76,9 +88,14 @@ public sealed class HostCollectionsReportService(
         var now = _clock.GetUtcNow();
         var today = DateOnly.FromDateTime(RomeCalendar.TodayAt(now));
 
-        // The stays that hold their dates: not cancelled and not a checkout hold that expired (the one definition of the booking site).
+        // The stays that hold their dates: not cancelled and not a checkout hold that expired (the one definition of the booking site), and not ended before the horizon of
+        // the report (24 months, like every report): the list does not grow with the whole history of the host.
         var cutoff = CheckoutHolds.CutoffAt(now.UtcDateTime, CheckoutHolds.GetTtlMinutes(configuration));
-        var holding = BookingsInScope(scope, query.PropertyId).Where(CheckoutHolds.OccupiesDates(cutoff));
+        var since = HostCollectionsRules.BalancesSince(today);
+        var firstCheckOut = RomeCalendar.StartOfDayUtc(since);
+        var holding = BookingsInScope(scope, query.PropertyId)
+            .Where(CheckoutHolds.OccupiesDates(cutoff))
+            .Where(b => b.CheckOutDate >= firstCheckOut);
 
         // CasaZen's money: the total of the stay against what its payments collected (the Home's rule), added up in SQL. A portal collects the money of its
         // stays itself, so a stay of a channel is never here.
@@ -127,7 +144,7 @@ public sealed class HostCollectionsReportService(
             .ThenBy(r => r.BookingCode, StringComparer.Ordinal)
             .ThenBy(r => r.BookingId)
             .ToList();
-        return new HostBalancesToCollect(today, rows, HostCollectionsRules.TotalsOf(rows));
+        return new HostBalancesToCollect(today, rows, HostCollectionsRules.TotalsOf(rows), since);
     }
 
     // What the card provider credited on the days of the report, from the figures the capture stored on the payments (nothing is asked of Stripe here).
@@ -135,7 +152,8 @@ public sealed class HostCollectionsReportService(
     private async Task<HostStripeCredits> GetStripeCreditsAsync(
         HostScope scope,
         HostReportQuery query,
-        IReadOnlyList<CollectedRow> collected,
+        int cardPayments,
+        int cardPaymentsWithoutFigures,
         CancellationToken cancellationToken)
     {
         // The day of a credit is the date the provider reported (UTC), as the payment ledger shows it.
@@ -150,8 +168,8 @@ public sealed class HostCollectionsReportService(
         return HostCollectionsRules.StripeCreditsOf(
             settled.Select(r => new HostStripeSettlement(r.AvailableOn, r.Net, r.Currency)),
             _clock.TodayInRomeAsDateOnly(),
-            collected.Count(r => r.IsCard),
-            collected.Count(r => r.IsCard && !r.HasFigures));
+            cardPayments,
+            cardPaymentsWithoutFigures);
     }
 
     // What the channels collected for the stays that arrive in the period, as the channel manager reports it: the net of each stay the channel collected

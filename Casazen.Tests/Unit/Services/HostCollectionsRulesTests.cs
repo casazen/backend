@@ -161,6 +161,41 @@ public class HostCollectionsRulesTests
         Assert.Equal(new[] { ("CHF", 40m, 1), ("EUR", 120.30m, 2) }, totals.Select(t => (t.Currency, t.Amount, t.StayCount)).ToArray());
     }
 
+    [Theory]
+    [InlineData("2026-10-09", "2024-10-09")]
+    [InlineData("2028-02-29", "2026-02-28")]
+    public void BalancesSince_IsTwentyFourMonthsBack_LikeTheLongestReport(string today, string expected)
+    {
+        var since = HostCollectionsRules.BalancesSince(DateOnly.ParseExact(today, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
+
+        Assert.Equal(DateOnly.ParseExact(expected, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), since);
+        Assert.Equal(HostReportRules.MaxMonths, HostCollectionsRules.BalancesMonths);
+    }
+
+    [Fact]
+    public void Sums_AddedOneAtATime_AreTheFiguresOfTheWholeList_AndNeedNoList()
+    {
+        var period = Period(new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 3));
+        HostCollectedPayment[] payments =
+        [
+            Collected(new DateTime(2026, 10, 1, 9, 0, 0, DateTimeKind.Utc), 100m),
+            Collected(new DateTime(2026, 10, 2, 9, 0, 0, DateTimeKind.Utc), 60.50m, PaymentMethod.CashOnArrival, BookingSource.Manual),
+            Collected(new DateTime(2026, 10, 2, 11, 0, 0, DateTimeKind.Utc), 100m, refunded: 30m),
+        ];
+
+        var sums = new HostCollectionsSums(period);
+        foreach (var payment in payments)
+            sums.Add(payment);
+        var figures = sums.Figures();
+
+        // The sums say what the list says, and each cut adds up to the total.
+        Assert.Equal(HostCollectionsRules.Summarize(period, payments).Total, figures.Total);
+        Assert.Equal(new HostDashboardCollected(230.50m, 3), figures.Total);
+        Assert.Equal(new[] { 100m, 130.50m, 0m }, figures.ByDate.Select(b => b.Amount));
+        Assert.Equal(new[] { (PaymentMethod.CreditCard, 170m, 2), (PaymentMethod.CashOnArrival, 60.50m, 1) }, figures.ByMethod.Select(m => (m.Method, m.Amount, m.PaymentCount)));
+        Assert.Equal(figures.Total.Amount, figures.ByChannel.Sum(c => c.Amount));
+    }
+
     // ---------------------------------------------------------------- one definition, however it is asked
 
     private static Booking BookingOf(BookingSource source, string? reservation) => new() { Source = source, OctorateReservationId = reservation };

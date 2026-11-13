@@ -60,7 +60,7 @@ public class CollectionsReportsController(
     }
 
     /// <summary>
-    /// The stays that still have something to collect, as of today: not cancelled, not an expired checkout hold, with the amount due above what was collected;
+    /// The stays that still have something to collect, as of today: not cancelled, not an expired checkout hold, not ended more than 24 months ago, with the amount due above what was collected;
     /// the total for each currency. Never a guest name or contact.
     /// </summary>
     [HttpGet("balances-to-collect")]
