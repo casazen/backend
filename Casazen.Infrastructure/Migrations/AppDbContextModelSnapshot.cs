@@ -7979,8 +7979,7 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<string>("Subject")
                         .IsRequired()
-                        .HasMaxLength(160)
-                        .HasColumnType("character varying(160)");
+                        .HasColumnType("text");
 
                     b.Property<int>("Topic")
                         .HasColumnType("integer");
@@ -8655,8 +8654,7 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(100)");
 
                     b.Property<string>("AttachmentFileName")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                        .HasColumnType("text");
 
                     b.Property<string>("AttachmentKey")
                         .HasMaxLength(300)
@@ -8675,8 +8673,7 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<string>("Body")
                         .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
+                        .HasColumnType("text");
 
                     b.Property<Guid>("ConversationId")
                         .HasColumnType("uuid");
@@ -8822,13 +8819,16 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<string>("Email")
                         .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
+                        .HasColumnType("text");
+
+                    b.Property<string>("EmailHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("InvitationExpiresAt")
                         .HasColumnType("timestamp with time zone");
@@ -8838,8 +8838,7 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<string>("LastName")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasColumnType("text");
 
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
@@ -8880,7 +8879,7 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("OwnerUserId", "Status");
 
-                    b.HasIndex("OrgId", "PropertyOwnerId", "Email")
+                    b.HasIndex("OrgId", "PropertyOwnerId", "EmailHash")
                         .IsUnique()
                         .HasDatabaseName("UIX_OwnerPortalContacts_Owner_Email_InForce")
                         .HasFilter("\"Status\" <> 3");
