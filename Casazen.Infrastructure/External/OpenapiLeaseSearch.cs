@@ -48,8 +48,10 @@ public static class OpenapiLeaseSearch
             ["annualFee"] = lease.EndDate.AddDays(1) >= lease.StartDate.AddYears(1)
                 ? (lease.MonthlyRent * 12m).ToString("0.00", CultureInfo.InvariantCulture) : "",
             ["taxRegime"] = lease.TaxRegime switch { LeaseTaxRegime.CedolareSecca => "CEDOLARE", LeaseTaxRegime.Ordinario => "ORDINARIO", _ => "" },
-            ["town"] = p?.City ?? "", ["address"] = p?.Address ?? "",
-            ["cadastralSheet"] = p?.CadastralSheet ?? "", ["cadastralParcel"] = p?.CadastralParcel ?? "",
+            ["town"] = p?.City ?? "",
+            ["address"] = p?.Address ?? "",
+            ["cadastralSheet"] = p?.CadastralSheet ?? "",
+            ["cadastralParcel"] = p?.CadastralParcel ?? "",
             ["cadastralSub"] = p?.CadastralSubaltern ?? "",
             ["cadastralCategory"] = p?.CadastralCategory?.Replace("/", "").Replace(" ", "").ToUpperInvariant() ?? "",
             ["cadastralIncome"] = p?.CadastralIncome?.ToString("0.00", CultureInfo.InvariantCulture) ?? "",

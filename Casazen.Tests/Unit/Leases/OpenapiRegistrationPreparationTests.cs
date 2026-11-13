@@ -20,16 +20,34 @@ public class OpenapiRegistrationPreparationTests
     {
         Values = new()
         {
-            ["territorialOffice"] = "T9A", ["rentalContractType"] = "L1",
-            ["contractStartDate"] = "2027-01-01", ["contractEndDate"] = "2030-12-31",
-            ["contractPages"] = "8", ["contractCopies"] = "2", ["annualFee"] = "14400.00",
-            ["contractDate"] = "2026-12-15", ["province"] = "MI", ["town"] = "Milano", ["address"] = "Via Roma 1",
-            ["cadastralSheet"] = "10", ["cadastralParcel"] = "42", ["cadastralSub"] = "3",
-            ["cadastralIncome"] = "500.00", ["cadastralCategory"] = "A2", ["taxRegime"] = "CEDOLARE",
-            ["applicantName"] = "Mario Rossi", ["applicantPhone"] = "+393331234567", ["applicantEmail"] = "mario@example.com",
-            ["privateApplicantTaxCode"] = "RSSMRA80A01H501U", ["landlordName"] = "Mario Rossi", ["landlordTaxCode"] = "RSSMRA80A01H501U",
-            ["landlordPercentage"] = "100", ["conductorName"] = "Mario Rossi", ["conductorTaxCode"] = "RSSMRA80A01H501U",
-            ["feesPaymentGuarantees"] = "NO", ["penaltyClauses"] = "NO",
+            ["territorialOffice"] = "T9A",
+            ["rentalContractType"] = "L1",
+            ["contractStartDate"] = "2027-01-01",
+            ["contractEndDate"] = "2030-12-31",
+            ["contractPages"] = "8",
+            ["contractCopies"] = "2",
+            ["annualFee"] = "14400.00",
+            ["contractDate"] = "2026-12-15",
+            ["province"] = "MI",
+            ["town"] = "Milano",
+            ["address"] = "Via Roma 1",
+            ["cadastralSheet"] = "10",
+            ["cadastralParcel"] = "42",
+            ["cadastralSub"] = "3",
+            ["cadastralIncome"] = "500.00",
+            ["cadastralCategory"] = "A2",
+            ["taxRegime"] = "CEDOLARE",
+            ["applicantName"] = "Mario Rossi",
+            ["applicantPhone"] = "+393331234567",
+            ["applicantEmail"] = "mario@example.com",
+            ["privateApplicantTaxCode"] = "RSSMRA80A01H501U",
+            ["landlordName"] = "Mario Rossi",
+            ["landlordTaxCode"] = "RSSMRA80A01H501U",
+            ["landlordPercentage"] = "100",
+            ["conductorName"] = "Mario Rossi",
+            ["conductorTaxCode"] = "RSSMRA80A01H501U",
+            ["feesPaymentGuarantees"] = "NO",
+            ["penaltyClauses"] = "NO",
         },
         Documents = new() { ["landlordDocument"] = Guid.NewGuid(), ["conductorDocument"] = Guid.NewGuid() },
     };
@@ -229,9 +247,16 @@ public class OpenapiRegistrationPreparationTests
     {
         var data = CompleteData();
         var orgId = Guid.NewGuid();
-        var lease = new LeaseContract { Status = LeaseStatus.Signed, OrgId = orgId, SignedPdfStoragePath = "signed.pdf",
+        var lease = new LeaseContract
+        {
+            Status = LeaseStatus.Signed,
+            OrgId = orgId,
+            SignedPdfStoragePath = "signed.pdf",
             Property = new Property { OrgId = orgId, Address = "Via Roma 1", City = "Milano" },
-            StartDate = new DateTime(2027, 1, 1), EndDate = new DateTime(2030, 12, 31), MonthlyRent = 1200 };
+            StartDate = new DateTime(2027, 1, 1),
+            EndDate = new DateTime(2030, 12, 31),
+            MonthlyRent = 1200
+        };
         db.LeaseContracts.Add(lease);
         foreach (var id in data.Documents.Values)
             db.LeaseDocuments.Add(new LeaseDocument { Id = id, LeaseContractId = lease.Id, OrgId = lease.OrgId, StorageKey = "identity.pdf", Kind = LeaseDocumentKind.RegistrationIdentity });
