@@ -8,7 +8,7 @@ namespace Casazen.Infrastructure.Services;
 /// <summary>
 /// The official schemas of the wire files, loaded once from the resources embedded in this assembly (E06/F05/US01/T01, NF-25): the ISO 20022
 /// <c>pain.001.001.03</c> schema of the SEPA credit transfers (EUR, <c>Payments/Schemas/Sepa</c>) and the schema of the Swiss Payment Standards of the
-/// Swiss file (CHF, <c>Payments/Schemas/Swiss</c>), each one in its own cached <see cref="XmlSchemaSet"/>. The two have the same target namespace, so
+/// Swiss file (CHF, <c>Payments/Schemas/Swiss</c>), each one in its own cached <see cref="XmlSchemaSet"/>. The two are taken to have the same target namespace (not verified for the Swiss one, see the runbook), so
 /// they are never in the same set. The files are the ones their publishers give, with their source and SHA-256 in <c>docs/runbooks/wire-transfers.md</c>:
 /// a schema is never written or rebuilt here.
 /// </summary>
@@ -21,7 +21,7 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public static class Pain001SchemaProvider
 {
-    /// <summary>The target namespace of <c>pain.001.001.03</c>: the one of the SEPA schema and of the Swiss one, and of the files CasaZen writes.</summary>
+    /// <summary>The target namespace of <c>pain.001.001.03</c>: the one of the SEPA schema and of the files CasaZen writes (the Swiss schema is taken to have it too: unverified).</summary>
     public const string Namespace = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.03";
 
     /// <summary>The prefix of the logical names of the embedded SEPA schema (EUR).</summary>

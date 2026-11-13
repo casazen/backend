@@ -62,7 +62,7 @@
     The official schemas of the wire files (E06/F05/US01/T01, NF-25, ADR-017): the ISO 20022 pain.001.001.03 schema of the SEPA file (EUR) in
     Payments\Schemas\Sepa and the schema of the Swiss Payment Standards of the Swiss file (CHF) in Payments\Schemas\Swiss, the files their publishers give,
     committed unchanged with their source and SHA-256 in docs/runbooks/wire-transfers.md and compiled into the assembly (Pain001SchemaProvider). The two
-    schemas share one target namespace, hence two folders and two sets. A build without the schema of a currency validates nothing and produces no wire
+    schemas are taken to share one target namespace (unverified for the Swiss one), hence two folders and two sets. A build without the schema of a currency validates nothing and produces no wire
     file of that currency (wire_batch_schema_unavailable).
   -->
   <ItemGroup>

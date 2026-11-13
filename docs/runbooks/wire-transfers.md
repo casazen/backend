@@ -41,19 +41,22 @@ as written, not recomputed. The text of a schema error can quote a value of the 
 ## Official schemas (precondition of check 8)
 
 The schemas are **not** written or rebuilt by hand: they are the files their publishers give, committed unchanged and embedded in the assembly
-(`Casazen.Infrastructure.csproj`, logical names `Casazen.Infrastructure.Payments.Schemas.<Sepa|Swiss>.<file>`). The SEPA and the Swiss file share one target
-namespace (`urn:iso:std:iso:20022:tech:xsd:pain.001.001.03`), so each has its own folder and its own cached schema set.
+(`Casazen.Infrastructure.csproj`, logical names `Casazen.Infrastructure.Payments.Schemas.<Sepa|Swiss>.<file>`). Each currency has its own folder and its own
+cached schema set. CasaZen writes both files in the ISO namespace `urn:iso:std:iso:20022:tech:xsd:pain.001.001.03`; that the Swiss schema has the same target
+namespace is an **unverified premise** (the files were not available when this was written): see «CHF: adding the file may not be enough» below.
 
 | File | Folder | Source | SHA-256 |
 |---|---|---|---|
 | The ISO 20022 `pain.001.001.03` schema (Customer Credit Transfer Initiation), the base of the SEPA credit transfer (EUR) | `Casazen.Infrastructure/Payments/Schemas/Sepa/` | ISO 20022 registration authority, site iso20022.org, message definitions, payments initiation (`pain`) | to record when the file is added |
-| The XML schema of the Swiss Payment Standards for `pain.001.001.03` (CHF), published under the name `pain.001.001.03.ch.02.xsd` (confirm the name and the version on the publication) | `Casazen.Infrastructure/Payments/Schemas/Swiss/` | SIX Group, site six-group.com, Swiss Payment Standards, ISO 20022 customer-to-bank implementation guidelines | to record when the file is added |
+| The XML schema of the Swiss Payment Standards for `pain.001.001.03` (CHF), published under the name `pain.001.001.03.ch.02.xsd` (confirm the name, the version and the target namespace on the publication) | `Casazen.Infrastructure/Payments/Schemas/Swiss/` | SIX Group, site six-group.com, Swiss Payment Standards, ISO 20022 customer-to-bank implementation guidelines | to record when the file is added |
 
 **State of this build: the files are not in the repository yet.** They could not be taken from their publications while this change was written (no network
 access was allowed to the delivery, and a schema is never rebuilt from memory). Until they are added, `Pain001SchemaProvider.HasOfficialSchema(currency)` is
 false and **every wire batch of that currency answers 422 `wire_batch_schema_unavailable`: no file is produced without its validation and nothing is saved**.
 This is on purpose (a made-up success would put an unchecked payment file in the hands of the agency); it is the same rule as `fatturapa_schema_unavailable`
-for the electronic invoices (`fiscal-documents.md`).
+for the electronic invoices (`fiscal-documents.md`). Who is affected: the orgs on the agency plan. The wire page of the frontend is behind the flag `agencyTier` (off
+by default); the backend endpoints are **not** behind a feature flag (`WireTransferController` has no `FeatureGate`: only the agency plan and the permission), so the
+refusal applies to any org on the agency plan whatever the flag says.
 
 **Adding or updating a schema (operator):**
 
@@ -66,7 +69,16 @@ for the electronic invoices (`fiscal-documents.md`).
    fails with the reason (`Pain001SchemaProvider.LoadProblem`) when a file is embedded and does not compile.
 5. If the file CasaZen writes does not validate (the Swiss file is the likely one: it is written like the SEPA one, with the service level `URGP`), the generator is
    what has to change, not the schema: that is what the validation is for. Swiss banks have moved to newer versions of the Swiss Payment Standards: confirm with the
-   bank which version it accepts before relying on the Swiss file.
+   bank which version it accepts before relying on the Swiss file. When a file does not validate, the proof of step 4 fails with the code and the arguments of the
+   refusal and with the line, position and text of every error of the schema on the same file (written with invented data): correct the generator from that.
+
+**CHF: adding the file may not be enough.** The premise that the Swiss schema has the ISO target namespace was written without the file, and for the Swiss
+Payment Standards (`pain.001.001.03.ch.02.xsd`) the target namespace is probably another one (an address of the publisher). The loader accepts a set only when it
+has the namespace of the files CasaZen writes (`Pain001SchemaProvider.Namespace`), so a Swiss file with another namespace stays «unavailable»
+(`Pain001SchemaProvider.LoadProblem("CHF")` says «no schema has the target namespace …») and never lets a file pass without being validated. If it is so, the
+fix is a change of code and not only of files: the namespace per currency in `Pain001SchemaProvider` and `Pain001Checks`, and the Swiss generator
+(`WireTransferService.GenerateSwissPaymentXml`: namespace, service level `URGP`). **Keep the guard** that the set contains the namespace of the file written:
+without it `XsdValidator` only warns that it has no schema for the root element, and the file passes.
 
 The schema sets are compiled without a resolver (nothing is fetched), and the files are read with the DTD prohibited and no resolver (`XsdValidator`): **no
 external entity and no network connection** is ever opened by the validation (`WireFile_DtdAndExternalEntity_AreNeverRead_Test`).
