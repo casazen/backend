@@ -336,6 +336,149 @@ public partial class OwnerCollaborationTests
     }
 
     /// <summary>
+    /// PROOF TEST: privacy rule (AC-NF111-5). A conversation an owner opens can reference only what that owner holds: the property, the stay, the document or the
+    /// published statement of ANOTHER owner (or one that does not exist) is the same 404, nothing is stored, and the agency cannot tie a conversation of an owner
+    /// to the document of another owner either. What the owner holds opens.
+    /// </summary>
+    [Fact]
+    public async Task OwnerInbox_AConversationCannotReferenceWhatAnotherOwnerHolds_Test()
+    {
+        var w = await World.CreateAsync();
+        var service = w.Service();
+        var ownerA = await w.AccessAsync(w.UserA);
+        var ownerB = await w.AccessAsync(w.UserB);
+        var documentA = await service.ShareDocumentAsync(w.OrgId, new ShareOwnerDocument(w.OwnerA, null, OwnerDocumentType.Mandate, "Mandato A", null, null), Pdf("A"), Agent);
+        var documentB = await service.ShareDocumentAsync(w.OrgId, new ShareOwnerDocument(w.OwnerB, null, OwnerDocumentType.Mandate, "Mandato B", null, null), Pdf("B"), Agent);
+        var statementA = await w.SeedStatementAsync(w.OwnerA);
+        var statementB = await w.SeedStatementAsync(w.OwnerB);
+        var stayA = await w.Stays().RequestAsync(ownerA, new OwnerStayRequestCommand(w.PropertyA, Today.AddDays(10), Today.AddDays(12)));
+        var stayB = await w.Stays().RequestAsync(ownerB, new OwnerStayRequestCommand(w.PropertyB, Today.AddDays(10), Today.AddDays(12)));
+
+        static StartOwnerConversation About(OwnerConversationTopic topic, Guid? property = null, Guid? stay = null, Guid? document = null, Guid? statement = null) =>
+            new(null, null, topic, property, stay, document, statement, "Una domanda", "Il testo della domanda");
+
+        // What another owner holds, or nothing: the same 404, nothing stored.
+        foreach (var command in new[]
+                 {
+                     About(OwnerConversationTopic.Property, property: w.PropertyB),
+                     About(OwnerConversationTopic.Property, property: Guid.NewGuid()),
+                     About(OwnerConversationTopic.OwnerStay, stay: stayB.Id),
+                     About(OwnerConversationTopic.OwnerStay, stay: Guid.NewGuid()),
+                     About(OwnerConversationTopic.Document, document: documentB.Document.Id),
+                     About(OwnerConversationTopic.StatementVersion, statement: statementB),
+                 })
+        {
+            var refused = await Assert.ThrowsAsync<NotFoundException>(() => service.StartConversationByOwnerAsync(ownerA, command));
+            Assert.Equal(OwnerCollaborationErrors.ConversationReferenceNotFound, refused.Code);
+        }
+
+        Assert.Empty(await w.Db.OwnerConversations.ToListAsync());
+
+        // What the owner holds: opened, on its own owner profile.
+        foreach (var command in new[]
+                 {
+                     About(OwnerConversationTopic.General),
+                     About(OwnerConversationTopic.Property, property: w.PropertyA),
+                     About(OwnerConversationTopic.OwnerStay, stay: stayA.Id),
+                     About(OwnerConversationTopic.Document, document: documentA.Document.Id),
+                     About(OwnerConversationTopic.StatementVersion, statement: statementA),
+                 })
+        {
+            Assert.Equal(w.OwnerA, (await service.StartConversationByOwnerAsync(ownerA, command)).PropertyOwnerId);
+        }
+
+        // The agency ties a conversation of an owner to what that owner holds, in its own org: not to the document of another owner.
+        var crossed = await Assert.ThrowsAsync<NotFoundException>(() => service.StartConversationByAgencyAsync(
+            w.OrgId, new StartOwnerConversation(w.OwnerA, null, OwnerConversationTopic.Document, null, null, documentB.Document.Id, null, "Domanda", "Testo"), Agent));
+        Assert.Equal(OwnerCollaborationErrors.ConversationReferenceNotFound, crossed.Code);
+        await Assert.ThrowsAsync<NotFoundException>(() => service.StartConversationByAgencyAsync(
+            w.OtherOrgId, new StartOwnerConversation(w.OwnerA, null, OwnerConversationTopic.General, null, null, null, null, "Domanda", "Testo"), "auth0|altra-agenzia"));
+    }
+
+    /// <summary>
+    /// PROOF TEST: the file of a message is handed out only to who reads its conversation: the owner and the agency of that conversation do, another owner, another
+    /// agency and a contact without <c>inbox.use</c> do not, and a message asked through another conversation is not found.
+    /// </summary>
+    [Fact]
+    public async Task OwnerInbox_AnAttachmentIsDownloadedOnlyByWhoReadsItsConversation_Test()
+    {
+        var w = await World.CreateAsync();
+        var service = w.Service();
+        var ownerA = await w.AccessAsync(w.UserA);
+        var general = new StartOwnerConversation(null, null, OwnerConversationTopic.General, null, null, null, null, "Visura", "Ecco la visura");
+        var conversation = await service.StartConversationByOwnerAsync(ownerA, general);
+        var message = await service.PostMessageByOwnerAsync(ownerA, conversation.Id, "In allegato", new OwnerFileUpload("visura.pdf", Pdf("V").Content));
+        var elsewhere = await service.StartConversationByOwnerAsync(ownerA, general);
+
+        var file = await service.OpenAttachmentForOwnerAsync(ownerA, conversation.Id, message.Id);
+        await using (file.Content)
+            Assert.Equal(("application/pdf", "visura.pdf"), (file.ContentType, file.FileName));
+        var forAgency = await service.OpenAttachmentForAgencyAsync(w.OrgId, conversation.Id, message.Id);
+        await forAgency.Content.DisposeAsync();
+
+        await Assert.ThrowsAsync<NotFoundException>(() => service.OpenAttachmentForOwnerAsync(await w.AccessAsync(w.UserB), conversation.Id, message.Id));
+        await Assert.ThrowsAsync<NotFoundException>(() => service.OpenAttachmentForAgencyAsync(w.OtherOrgId, conversation.Id, message.Id));
+        Assert.Equal(
+            OwnerCollaborationErrors.AttachmentNotFound,
+            (await Assert.ThrowsAsync<NotFoundException>(() => service.OpenAttachmentForOwnerAsync(ownerA, elsewhere.Id, message.Id))).Code);
+
+        // A contact with the calendar only has no inbox: nothing, and the message the owner wrote is not in its reach.
+        await w.SeedActiveContactAsync(w.OwnerA, w.UserC, OwnerPortalPermission.CalendarRead);
+        var contact = await w.AccessAsync(w.UserC);
+        Assert.Equal(
+            OwnerPortalErrors.PermissionMissing,
+            (await Assert.ThrowsAsync<DomainForbiddenException>(() => service.OpenAttachmentForOwnerAsync(contact, conversation.Id, message.Id))).Code);
+    }
+
+    /// <summary>
+    /// PROOF TEST: <c>accounting.read</c> is a permission of its own (AC-NF111-4). Without it a contact does not read the published statements of the owner
+    /// accounting and does not open a document of type statement or invoice, nor a conversation about a statement; with it, and <c>documents.read</c>, it does; on
+    /// its own it reads the statements and none of the documents.
+    /// </summary>
+    [Fact]
+    public async Task OwnerContact_AccountingRead_GatesTheStatementsAndTheStatementAndInvoiceDocuments_Test()
+    {
+        var w = await World.CreateAsync();
+        var service = w.Service();
+        var owner = await w.AccessAsync(w.UserA);
+        ShareOwnerDocument Document(string title, OwnerDocumentType type) => new(w.OwnerA, null, type, title, null, null);
+        var mandate = await service.ShareDocumentAsync(w.OrgId, Document("Mandato", OwnerDocumentType.Mandate), Pdf("M"), Agent);
+        var statement = await service.ShareDocumentAsync(w.OrgId, Document("Estratto di settembre", OwnerDocumentType.Statement), Pdf("S"), Agent);
+        var invoice = await service.ShareDocumentAsync(w.OrgId, Document("Fattura 12/2026", OwnerDocumentType.Invoice), Pdf("I"), Agent);
+        var published = await w.SeedStatementAsync(w.OwnerA);
+        var contactId = await w.SeedActiveContactAsync(w.OwnerA, w.UserC, OwnerPortalPermission.DocumentsRead | OwnerPortalPermission.InboxUse);
+
+        async Task ExpectAsync(string[] titles, int statements)
+        {
+            var read = await service.ListDocumentsForOwnerAsync(await w.AccessAsync(w.UserC));
+            Assert.Equal(titles, read.Documents.Select(d => d.Title).Order().ToArray());
+            Assert.Equal(statements, read.Statements.Count);
+        }
+
+        // documents.read only: the mandate, not the statement and the invoice, no statements.
+        await ExpectAsync(["Mandato"], 0);
+        var contact = await w.AccessAsync(w.UserC);
+        await Assert.ThrowsAsync<NotFoundException>(() => service.OpenDocumentForOwnerAsync(contact, statement.Document.Id, null));
+        await Assert.ThrowsAsync<NotFoundException>(() => service.OpenDocumentForOwnerAsync(contact, invoice.Document.Id, null));
+        var file = await service.OpenDocumentForOwnerAsync(contact, mandate.Document.Id, null);
+        await file.Content.DisposeAsync();
+        var about = new StartOwnerConversation(null, null, OwnerConversationTopic.StatementVersion, null, null, null, published, "Estratto", "Una domanda");
+        Assert.Equal(OwnerCollaborationErrors.ConversationReferenceNotFound, (await Assert.ThrowsAsync<NotFoundException>(() => service.StartConversationByOwnerAsync(contact, about))).Code);
+
+        // With accounting.read too: all three documents, the statement, and a conversation about it.
+        await service.SetContactPermissionsAsync(owner, contactId, [OwnerPortalPermissions.DocumentsRead, OwnerPortalPermissions.InboxUse, OwnerPortalPermissions.AccountingRead]);
+        await ExpectAsync(["Estratto di settembre", "Fattura 12/2026", "Mandato"], 1);
+        var withAccounting = await w.AccessAsync(w.UserC);
+        var opened = await service.OpenDocumentForOwnerAsync(withAccounting, statement.Document.Id, null);
+        await opened.Content.DisposeAsync();
+        Assert.Equal(w.OwnerA, (await service.StartConversationByOwnerAsync(withAccounting, about)).PropertyOwnerId);
+
+        // accounting.read on its own: the statements of the accounting, none of the documents.
+        await service.SetContactPermissionsAsync(owner, contactId, [OwnerPortalPermissions.AccountingRead]);
+        await ExpectAsync([], 1);
+    }
+
+    /// <summary>
     /// Every invitation sends an e-mail to an address the owner chose: the ones of a day are capped, the withdrawn ones counted too (inviting, withdrawing and
     /// inviting again never reaches the limit of the contacts in force), and nothing is sent once the cap is reached.
     /// </summary>
@@ -501,6 +644,20 @@ public partial class OwnerCollaborationTests
             var w = new World(encrypted);
             await w.SeedAsync();
             return w;
+        }
+
+        /// <summary>A published statement version of the owner accounting (E06) of the owner profile, in the database of the world.</summary>
+        public async Task<Guid> SeedStatementAsync(Guid propertyOwnerId)
+        {
+            await using var db = NewDb();
+            var statement = new OwnerStatementVersion
+            {
+                OrgId = OrgId, PropertyOwnerId = propertyOwnerId, PeriodYear = 2026, PeriodMonth = 9, VersionNumber = 1, Status = OwnerStatementVersionStatus.Published, Currency = "EUR",
+                CutoffAt = Now.UtcDateTime, EntriesSha256 = new string('a', 64), PublishedAt = Now.UtcDateTime, PublishedSha256 = new string('b', 64), CreatedAt = Now.UtcDateTime,
+            };
+            db.OwnerStatementVersions.Add(statement);
+            await db.SaveChangesAsync();
+            return statement.Id;
         }
 
         /// <summary>A context of the same database with no Data Protection: it reads the columns as the table holds them.</summary>
