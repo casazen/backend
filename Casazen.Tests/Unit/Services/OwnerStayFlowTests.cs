@@ -215,6 +215,157 @@ public class OwnerStayFlowTests
         Assert.Equal(OwnerStayStatus.Requested, (await w.Db.OwnerStayRequests.AsNoTracking().SingleAsync(s => s.Id == waiting.Id)).Status);
     }
 
+    /// <summary>
+    /// The «To do» of a block the channel manager refused is created from the moment it was refused: when its creation failed after the state was saved (the run
+    /// ends in error), the next run, which sees no change of state any more, finds a refused block with no «To do» since it failed and creates it, once; one a
+    /// person closed by hand is not created again.
+    /// </summary>
+    [Fact]
+    public async Task OwnerStay_TheToDoOfARefusedBlock_LostWhenItsCreationFailed_IsRaisedByTheNextRun_OnceAndNotAfterAPersonClosedIt()
+    {
+        var w = await World.CreateAsync();
+        var real = w.Activities();
+        var failures = 1;
+        var flaky = new Mock<IInternalActivityService>();
+        flaky.Setup(a => a.CreateAsync(It.IsAny<CreateTodoRequest>(), It.IsAny<CancellationToken>()))
+            .Returns((CreateTodoRequest request, CancellationToken token) =>
+                failures-- > 0 ? Task.FromException<Guid>(new InvalidOperationException("the database went away")) : real.CreateAsync(request, token));
+        flaky.Setup(a => a.CloseAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns((Guid id, string closedBy, CancellationToken token) => real.CloseAsync(id, closedBy, token));
+        var service = w.Service(flaky.Object);
+        await service.SaveRuleAsync(w.OrgId, new OwnerStayRuleInput(w.PropertyA, null, null, 0, null, 1, null, false, null, null, null), Agent);
+        var stay = await service.RequestAsync(await w.AccessAsync(w.UserA), new OwnerStayRequestCommand(w.PropertyA, Today.AddDays(30), Today.AddDays(33)));
+        await service.ProcessAsync(stay.Id);
+        await w.SetProcessAsync(stay.Id, CalendarChangeState.Failed, "octorate_unavailable");
+
+        // The state turns «failed» and is saved; the «To do» cannot be created: the run ends in error, it does not pass in silence.
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.ReconcileAsync());
+        Assert.Equal(OwnerStaySyncState.Failed, (await w.Db.OwnerStayRequests.AsNoTracking().SingleAsync(s => s.Id == stay.Id)).SyncState);
+        Assert.False(await w.Db.InternalActivities.AnyAsync(a => a.EntityId == stay.Id));
+
+        // The next run: no change of state, a refused block with no «To do» since it failed: created.
+        var next = await service.ReconcileAsync();
+        Assert.Equal((0, 1), (next.SyncChanges, next.TodosRaised));
+        Assert.True(await w.Db.InternalActivities.AnyAsync(a => a.EntityId == stay.Id && a.ActivityType == nameof(ActivityType.OwnerStaySyncFailed) && a.CompletedAt == null));
+
+        // Once: not while it is open, and not again after a person closed it by hand.
+        Assert.Equal(0, (await service.ReconcileAsync()).TodosRaised);
+        var item = await w.Db.InternalActivities.SingleAsync(a => a.EntityId == stay.Id);
+        item.Status = InternalActivity.StatusCompleted;
+        item.CompletedAt = Now.UtcDateTime;
+        await w.Db.SaveChangesAsync();
+        Assert.Equal(0, (await service.ReconcileAsync()).TodosRaised);
+        Assert.Equal(1, await w.Db.InternalActivities.CountAsync(a => a.EntityId == stay.Id));
+    }
+
+    /// <summary>
+    /// The newest 500 stays of the list of an owner are chosen among the stays it may see: another owner profile of the agency with 501 later stays on the same
+    /// property does not push the owner's own out of the list, and does not see it either.
+    /// </summary>
+    [Fact]
+    public async Task OwnerStay_TheListOfAnOwner_IsNotFilledByTheStaysOfAnotherOwnerProfileOfTheSameProperty()
+    {
+        var w = await World.CreateAsync();
+        var service = w.Service();
+        var mine = await service.RequestAsync(await w.AccessAsync(w.UserA), new OwnerStayRequestCommand(w.PropertyA, Today.AddDays(10), Today.AddDays(12)));
+
+        for (var i = 0; i < 501; i++)
+        {
+            w.Db.OwnerStayRequests.Add(new OwnerStayRequest
+            {
+                OrgId = w.OrgId,
+                PropertyId = w.PropertyA,
+                PropertyOwnerId = w.OwnerB,
+                RequestedByOwnerUserId = w.UserB,
+                StartDate = Today.AddDays(100 + (3 * i)),
+                EndDate = Today.AddDays(102 + (3 * i)),
+                Nights = 2,
+                Status = OwnerStayStatus.Requested,
+                CreatedAt = Now.UtcDateTime,
+                UpdatedAt = Now.UtcDateTime,
+            });
+        }
+
+        await w.Db.SaveChangesAsync();
+
+        var listed = await service.ListForOwnerAsync(await w.AccessAsync(w.UserA));
+        Assert.Equal([mine.Id], listed.Select(s => s.Id));
+
+        // The other owner profile holds property B, not A: the stays it has on A are not on its list.
+        Assert.Empty(await service.ListForOwnerAsync(await w.AccessAsync(w.UserB)));
+    }
+
+    /// <summary>
+    /// PROOF TEST: retry is idempotent (AC 3). A stay whose block the channel manager refused is sent again once: a retry with nothing failed sends nothing, a
+    /// second one after the first was taken up sends nothing either, and every retry that sent something is a line of the activity log.
+    /// </summary>
+    [Fact]
+    public async Task OwnerStay_RetryOfTheSync_SendsOnlyWhatFailed_AndOnlyOnce()
+    {
+        var w = await World.CreateAsync();
+        var runner = new Mock<ICalendarChangeRunner>();
+        runner.Setup(r => r.RetryAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(CalendarChangeState.Queued);
+        var service = w.Service(runner: runner.Object);
+        var stay = await service.RequestAsync(await w.AccessAsync(w.UserA), new OwnerStayRequestCommand(w.PropertyA, Today.AddDays(10), Today.AddDays(12)));
+        await service.ApproveAsync(w.OrgId, stay.Id, Agent);
+
+        // Nothing failed: nothing is sent, the stay answers as it is.
+        var untouched = await service.RetrySyncAsync(w.OrgId, stay.Id, Agent);
+        Assert.Equal(OwnerStayStates.ApprovedSyncing, untouched.Stay.State);
+        runner.Verify(r => r.RetryAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // The channel manager refused the block: one retry sends it again.
+        await w.SetProcessAsync(stay.Id, CalendarChangeState.Failed, "octorate_unavailable");
+        var processId = (await w.Db.OwnerStayRequests.AsNoTracking().SingleAsync(s => s.Id == stay.Id)).BlockChangeProcessId!.Value;
+        await service.RetrySyncAsync(w.OrgId, stay.Id, Agent);
+        runner.Verify(r => r.RetryAsync(processId, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(OwnerStaySyncState.Pending, (await w.Db.OwnerStayRequests.AsNoTracking().SingleAsync(s => s.Id == stay.Id)).SyncState);
+
+        // Taken up by the channel manager: further retries (a double click, a second person) send nothing.
+        await w.SetProcessAsync(stay.Id, CalendarChangeState.Queued);
+        await service.RetrySyncAsync(w.OrgId, stay.Id, Agent);
+        await service.RetrySyncAsync(w.OrgId, stay.Id, Agent);
+        runner.Verify(r => r.RetryAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Once);
+
+        var lines = await w.Db.OrgActivityEntries.AsNoTracking().Where(e => e.SubjectId == stay.Id.ToString()).Select(e => e.DetailsJson).ToListAsync();
+        Assert.Equal(1, lines.Count(line => line.Contains("\"status\":\"syncRetried\"", StringComparison.Ordinal)));
+    }
+
+    /// <summary>
+    /// PROOF TEST: the owner withdraws a stay that was approved. It is cancelled at once (and cannot read «confirmed» any more), its block is given back by the
+    /// background work and only that block (another block of the property stays), a second withdrawal answers the same, and nothing is given back twice.
+    /// </summary>
+    [Fact]
+    public async Task OwnerStay_TheOwnerWithdrawsAnApprovedStay_ItsOwnBlockIsGivenBackInTheBackground_AndNoOther()
+    {
+        var w = await World.CreateAsync();
+        var service = w.Service();
+        var access = await w.AccessAsync(w.UserA);
+        var stay = await service.RequestAsync(access, new OwnerStayRequestCommand(w.PropertyA, Today.AddDays(10), Today.AddDays(12)));
+        await service.ApproveAsync(w.OrgId, stay.Id, Agent);
+        var maintenance = await w.Blocks().CreateAsync(new ManualBlockRequest(
+            w.PropertyA, Today.AddDays(50).ToDateTime(TimeOnly.MinValue), Today.AddDays(52).ToDateTime(TimeOnly.MinValue), CalendarBlockReason.Maintenance));
+
+        // At once: cancelled. The block stays where it is until the background work gives it back (the calendar needs the org of the property).
+        var withdrawn = await service.CancelByOwnerAsync(access, stay.Id);
+        Assert.Equal(OwnerStayStates.Cancelled, withdrawn.State);
+        Assert.True(await w.Db.CalendarBlocks.AnyAsync(b => b.Id == stay.Id));
+
+        await service.ProcessAsync(stay.Id);
+        Assert.False(await w.Db.CalendarBlocks.AnyAsync(b => b.Id == stay.Id));
+        Assert.True(await w.Db.CalendarBlocks.AnyAsync(b => b.Id == maintenance.Id));
+
+        // A second withdrawal answers the same; a second run of the background work gives nothing back.
+        var again = await service.CancelByOwnerAsync(access, stay.Id);
+        Assert.Equal(OwnerStayStates.Cancelled, again.State);
+        await service.ProcessAsync(stay.Id);
+        Assert.True(await w.Db.CalendarBlocks.AnyAsync(b => b.Id == maintenance.Id));
+
+        var lines = await w.Db.OrgActivityEntries.AsNoTracking().Where(e => e.SubjectId == stay.Id.ToString()).Select(e => e.DetailsJson).ToListAsync();
+        Assert.Equal(1, lines.Count(line => line.Contains("\"status\":\"withdrawn\"", StringComparison.Ordinal)));
+        Assert.Equal(1, lines.Count(line => line.Contains("\"status\":\"released\"", StringComparison.Ordinal)));
+    }
+
     [Fact]
     public void OwnerStayRules_TheNightsOfAStayCountInTheirOwnYear_AndTheAllowanceIsPerYear()
     {
@@ -254,6 +405,13 @@ public class OwnerStayFlowTests
 
         public Guid PropertyA { get; private set; }
 
+        public Guid PropertyB { get; private set; }
+
+        /// <summary>The owner profiles of the agency (<c>PropertyOwner.Id</c>) of the two portal accounts.</summary>
+        public Guid OwnerA { get; private set; }
+
+        public Guid OwnerB { get; private set; }
+
         public Guid UserA { get; private set; }
 
         public Guid UserB { get; private set; }
@@ -276,12 +434,16 @@ public class OwnerStayFlowTests
             return new CalendarBlockService(Db, Mock.Of<ICheckoutHoldExpiryService>(), NullLogger<CalendarBlockService>.Instance, _clock, recorder, Mock.Of<IBackgroundJobClient>());
         }
 
-        public OwnerStayService Service() =>
+        public InternalActivityService Activities() => new(Db, NullLogger<InternalActivityService>.Instance, _clock);
+
+        /// <param name="activities">The «To do» service; the real one by default.</param>
+        /// <param name="runner">What sends a calendar change again; a mock that does nothing by default.</param>
+        public OwnerStayService Service(IInternalActivityService? activities = null, ICalendarChangeRunner? runner = null) =>
             new(
                 Db,
                 Blocks(),
-                Mock.Of<ICalendarChangeRunner>(),
-                new InternalActivityService(Db, NullLogger<InternalActivityService>.Instance, _clock),
+                runner ?? Mock.Of<ICalendarChangeRunner>(),
+                activities ?? Activities(),
                 new ActivityLog(Db, _clock),
                 _clock,
                 NullLogger<OwnerStayService>.Instance,
@@ -350,9 +512,11 @@ public class OwnerStayFlowTests
             var userA = new OwnerUser { Auth0Sub = "auth0|anna", Email = "anna@example.com", FirstName = "Anna", LastName = "Alfa", CreatedAt = Now.UtcDateTime };
             var userB = new OwnerUser { Auth0Sub = "auth0|bruno", Email = "bruno@example.com", FirstName = "Bruno", LastName = "Beta", CreatedAt = Now.UtcDateTime };
             db.OwnerUsers.AddRange(userA, userB);
+            var owners = new List<PropertyOwner>();
             foreach (var (user, property) in new[] { (userA, propertyA), (userB, propertyB) })
             {
                 var owner = new PropertyOwner { OrgId = org.Id, FirstName = user.FirstName, LastName = user.LastName, Email = user.Email, CreatedAt = Now.UtcDateTime };
+                owners.Add(owner);
                 db.PropertyOwners.Add(owner);
                 db.PropertyOwnerships.Add(new PropertyOwnership
                 {
@@ -393,7 +557,8 @@ public class OwnerStayFlowTests
             });
             await db.SaveChangesAsync();
 
-            (OrgId, OtherOrgId, PropertyA, UserA, UserB, BookingId) = (org.Id, otherOrg.Id, propertyA.Id, userA.Id, userB.Id, booking.Id);
+            (OrgId, OtherOrgId, PropertyA, PropertyB, OwnerA, OwnerB, UserA, UserB, BookingId) =
+                (org.Id, otherOrg.Id, propertyA.Id, propertyB.Id, owners[0].Id, owners[1].Id, userA.Id, userB.Id, booking.Id);
         }
     }
 }

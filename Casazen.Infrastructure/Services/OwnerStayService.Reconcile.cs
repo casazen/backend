@@ -58,19 +58,30 @@ public sealed partial class OwnerStayService
             .Take(ReconcileBatch)
             .ToListAsync(cancellationToken));
 
-        // The «To do» still open that no longer hold (the stay was decided, withdrawn or is over): closed. Only those, the same rules as SyncTodosAsync,
-        // so the ones that still hold never fill the batch.
-        var waiting = stays.Where(s => s.Status == OwnerStayStatus.Requested && !s.AutoApprove).Select(s => s.Id);
+        // The stays whose block (or its release) the channel manager refused and that have no «To do» of that since they failed: the one that was to be raised
+        // when the state turned «failed» was lost (its creation failed after the state was saved, which the next run would not have seen as a change). Only
+        // those, so the ones that have theirs never fill the batch.
+        var syncFailedType = nameof(ActivityType.OwnerStaySyncFailed);
         var failing = stays
             .Where(s => s.EndDate > today
                         && ((s.Status == OwnerStayStatus.Approved && s.SyncState == OwnerStaySyncState.Failed)
-                            || (s.Status == OwnerStayStatus.Cancelled && s.ReleaseSyncState == OwnerStaySyncState.Failed)))
-            .Select(s => s.Id);
+                            || (s.Status == OwnerStayStatus.Cancelled && s.ReleaseSyncState == OwnerStaySyncState.Failed)));
+        ids.AddRange(await failing
+            .Where(s => !todos.Any(a => a.EntityId == s.Id && a.ActivityType == syncFailedType && a.CreatedAt >= s.UpdatedAt))
+            .OrderBy(s => s.SyncCheckedAt)
+            .Select(s => s.Id)
+            .Take(ReconcileBatch)
+            .ToListAsync(cancellationToken));
+
+        // The «To do» still open that no longer hold (the stay was decided, withdrawn or is over): closed. Only those, the same rules as SyncTodosAsync,
+        // so the ones that still hold never fill the batch.
+        var waiting = stays.Where(s => s.Status == OwnerStayStatus.Requested && !s.AutoApprove).Select(s => s.Id);
+        var failingIds = failing.Select(s => s.Id);
         var live = stays.Select(s => s.Id);
         ids.AddRange(await todos
             .Where(a => a.CompletedAt == null && a.EntityId != null && live.Contains(a.EntityId.Value)
                         && ((a.ActivityType == reviewType && !waiting.Contains(a.EntityId.Value))
-                            || (a.ActivityType != reviewType && !failing.Contains(a.EntityId.Value))))
+                            || (a.ActivityType != reviewType && !failingIds.Contains(a.EntityId.Value))))
             .Select(a => a.EntityId!.Value)
             .Take(ReconcileBatch)
             .ToListAsync(cancellationToken));
@@ -112,11 +123,9 @@ public sealed partial class OwnerStayService
             return;
 
         OwnerStayRequest stay;
-        bool syncTurnedFailed;
         await using (var transaction = await LockAsync(propertyId.Value, cancellationToken))
         {
             stay = await Stays().FirstAsync(s => s.Id == stayId, cancellationToken);
-            var before = (stay.SyncState, stay.ReleaseSyncState);
 
             if (stay.Status == OwnerStayStatus.Requested && stay.AutoApprove)
                 await AutoApproveAsync(stay, counter, cancellationToken);
@@ -128,8 +137,6 @@ public sealed partial class OwnerStayService
             }
 
             await RecordSyncAsync(stay, counter, cancellationToken);
-            syncTurnedFailed = (before.SyncState != OwnerStaySyncState.Failed && stay.SyncState == OwnerStaySyncState.Failed)
-                               || (before.ReleaseSyncState != OwnerStaySyncState.Failed && stay.ReleaseSyncState == OwnerStaySyncState.Failed);
 
             await db.SaveChangesAsync(cancellationToken);
             if (transaction is not null)
@@ -137,7 +144,7 @@ public sealed partial class OwnerStayService
         }
 
         // The «To do» are written by their own service, which saves on its own: outside the lock and the transaction of the stay.
-        await SyncTodosAsync(stay, syncTurnedFailed, counter, cancellationToken);
+        await SyncTodosAsync(stay, counter, cancellationToken);
     }
 
     /// <summary>
@@ -174,6 +181,10 @@ public sealed partial class OwnerStayService
             {
                 stay.SyncState = live;
                 stay.SyncErrorCode = live == OwnerStaySyncState.Failed ? ErrorOf(stay.BlockChangeProcessId, processes) : null;
+
+                // The moment the block failed: the «To do» of that failure is one created from then on (SyncTodosAsync).
+                if (live == OwnerStaySyncState.Failed)
+                    stay.UpdatedAt = now;
                 Audit(stay, null, live switch
                 {
                     OwnerStaySyncState.Acknowledged => OwnerPortalAuditStatuses.SyncAcknowledged,
@@ -190,6 +201,8 @@ public sealed partial class OwnerStayService
             {
                 stay.ReleaseSyncState = live;
                 stay.SyncErrorCode = live == OwnerStaySyncState.Failed ? ErrorOf(stay.ReleaseChangeProcessId, processes) : null;
+                if (live == OwnerStaySyncState.Failed)
+                    stay.UpdatedAt = now;
                 Audit(stay, null, live switch
                 {
                     OwnerStaySyncState.Acknowledged => OwnerPortalAuditStatuses.ReleaseAcknowledged,
@@ -205,10 +218,11 @@ public sealed partial class OwnerStayService
 
     /// <summary>
     /// Keeps the «To do» of the agency in step with the stay: a request a person decides is on the list once (a person who closes it by hand does not get it
-    /// back); a block the channel manager refused is on the list from the moment it was refused until it is acknowledged or the stay is over. The
-    /// candidates of ReconcileAsync follow the same rules.
+    /// back); a block the channel manager refused is on the list from the moment it was refused until it is acknowledged or the stay is over, once for each
+    /// failure (a «To do» created since the stay last failed, which <c>UpdatedAt</c> records: one that is missing because its creation failed is created by
+    /// the next run, and one a person closed by hand is not created again). The candidates of ReconcileAsync follow the same rules.
     /// </summary>
-    private async Task SyncTodosAsync(OwnerStayRequest stay, bool syncTurnedFailed, Counter counter, CancellationToken cancellationToken)
+    private async Task SyncTodosAsync(OwnerStayRequest stay, Counter counter, CancellationToken cancellationToken)
     {
         var toReview = stay.Status == OwnerStayStatus.Requested && !stay.AutoApprove;
         var failed = stay.EndDate > Today()
@@ -228,7 +242,9 @@ public sealed partial class OwnerStayService
         }
 
         // A block refused, then its release refused before the first «To do» was closed: still one item on the list.
-        if (failed && syncTurnedFailed && !open.Any(item => item.ActivityType == nameof(ActivityType.OwnerStaySyncFailed)))
+        if (failed
+            && !open.Any(item => item.ActivityType == nameof(ActivityType.OwnerStaySyncFailed))
+            && !await WasRaisedSinceAsync(stay, ActivityType.OwnerStaySyncFailed, stay.UpdatedAt, cancellationToken))
         {
             await RaiseAsync(stay, ActivityType.OwnerStaySyncFailed, ActivityUrgency.High, SyncFailedReason, cancellationToken);
             counter.TodosRaised++;
@@ -285,6 +301,18 @@ public sealed partial class OwnerStayService
             .AsNoTracking()
             .AnyAsync(
                 a => a.OrgId == stay.OrgId && a.Action != null && a.ActivityType == typeName && a.EntityType == StayEntityType && a.EntityId == stay.Id,
+                cancellationToken);
+    }
+
+    /// <summary>An item of <paramref name="type"/> about the stay was created at <paramref name="since"/> or later, open or closed.</summary>
+    private Task<bool> WasRaisedSinceAsync(OwnerStayRequest stay, ActivityType type, DateTime since, CancellationToken cancellationToken)
+    {
+        var typeName = type.ToString();
+        return db.InternalActivities
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .AnyAsync(
+                a => a.OrgId == stay.OrgId && a.Action != null && a.ActivityType == typeName && a.EntityType == StayEntityType && a.EntityId == stay.Id && a.CreatedAt >= since,
                 cancellationToken);
     }
 

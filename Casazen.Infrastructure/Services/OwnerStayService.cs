@@ -39,6 +39,9 @@ public sealed partial class OwnerStayService(
     /// <summary>The entity type of the «To do» about an owner stay.</summary>
     public const string StayEntityType = "OwnerStay";
 
+    /// <summary>The most stays the list of the owner portal answers.</summary>
+    private const int MaxOwnerList = 500;
+
     // ---------------------------------------------------------------- owner portal
 
     public async Task<OwnerCalendar> GetCalendarAsync(
@@ -132,19 +135,24 @@ public sealed partial class OwnerStayService(
         if (grants.Count == 0)
             throw new DomainForbiddenException(OwnerPortalErrors.PermissionMissing, OwnerPortalErrors.PermissionMissingMessageKey);
 
-        var propertyIds = grants.Select(g => g.PropertyId).Distinct().ToList();
-        var candidates = await Stays()
-            .AsNoTracking()
-            .Where(s => propertyIds.Contains(s.PropertyId))
-            .OrderByDescending(s => s.StartDate)
-            .Take(500)
-            .ToListAsync(cancellationToken);
+        // Only the stays of an owner profile the caller holds on that property now (an ended ownership closes them), chosen in the query, for each owner profile
+        // and the properties it holds, BEFORE the newest 500 are taken: the stays of a co-owner of the same property (or of another owner profile of the agency
+        // on it) are not the caller's and must never fill the 500 and push its own out.
+        var visible = new List<OwnerStayRequest>();
+        foreach (var profile in grants.GroupBy(g => (g.OrgId, g.PropertyOwnerId)))
+        {
+            var orgId = profile.Key.OrgId;
+            var propertyOwnerId = profile.Key.PropertyOwnerId;
+            var propertyIds = profile.Select(g => g.PropertyId).Distinct().ToList();
+            visible.AddRange(await Stays()
+                .AsNoTracking()
+                .Where(s => s.OrgId == orgId && s.PropertyOwnerId == propertyOwnerId && propertyIds.Contains(s.PropertyId))
+                .OrderByDescending(s => s.StartDate)
+                .Take(MaxOwnerList)
+                .ToListAsync(cancellationToken));
+        }
 
-        // Only the stays of an owner profile the caller holds on that property now (an ended ownership closes them).
-        var visible = candidates
-            .Where(s => grants.Any(g => g.OrgId == s.OrgId && g.PropertyId == s.PropertyId && g.PropertyOwnerId == s.PropertyOwnerId))
-            .ToList();
-        return await ViewsAsync(visible, cancellationToken);
+        return await ViewsAsync(visible.OrderByDescending(s => s.StartDate).ThenBy(s => s.Id).Take(MaxOwnerList).ToList(), cancellationToken);
     }
 
     public async Task<OwnerStayRuleSummary> GetRuleForOwnerAsync(OwnerPortalAccess access, Guid propertyId, CancellationToken cancellationToken = default)
