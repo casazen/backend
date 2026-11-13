@@ -13,9 +13,10 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>The tables are read from the model.</b> Every entity of <see cref="AppDbContext"/> that implements
 /// <see cref="ITenantOwned"/> is checked, so a new tenant table is part of the "org is empty" rule from the day it exists,
 /// without anyone remembering to add it here. Only <see cref="OnboardingRows"/> are left out (what the onboarding itself
-/// writes for a person who has not done anything yet, the drafts of the wizards and the notification settings of a person) and
-/// <see cref="OrgMember"/> (the person's
-/// own owner row is expected, anything else is another member). <c>IgnoreQueryFilters()</c> with no argument: the soft-deleted
+/// writes for a person who has not done anything yet, the drafts of the wizards, the alerts raised for the person, a part of the
+/// activation plan put off with «Do it later» and the notification settings of a person) and <see cref="OrgMember"/> (the person's
+/// own owner row is expected, anything else is another member). The one row-level exception is the "To do" the wizards raise when
+/// a person leaves half way (<see cref="WizardResumeActivityType"/>). <c>IgnoreQueryFilters()</c> with no argument: the soft-deleted
 /// properties count too, and the filter of the request's tenant is not the org being asked about.</para>
 /// <para>This is the guard of a destructive-looking move (the person leaves the org and the org is deactivated), so it
 /// fails closed: any doubt is a blocker and the acceptance is refused.</para>
@@ -28,7 +29,11 @@ public sealed class OrgEmptinessChecker(AppDbContext db) : IOrgEmptinessChecker
     /// progress of a form is not use of the org, and the rows are anonymized after 30 days but never deleted, so counting them
     /// would refuse the move for good: ADR-024, AM-02) and what a person chose for its own alerts (the channels of each kind of event,
     /// its quiet hours and the slots of the one-email-every-ten-minutes rule, NF-65: a person can set them in the org it has before
-    /// accepting an invitation, and they are never deleted). They stay with the org that is left.
+    /// accepting an invitation, and they are never deleted), the alerts raised for the person (<see cref="PopupAlert"/>: a user id, a
+    /// kind and a reference to an entity, no text, no business data) and a part of the activation plan the person put off with «Do it later»
+    /// (<see cref="OnboardingPartState"/>: a part, a status and two dates, E10). They stay with the org that is left. Every other table
+    /// of the plan (the outbox, the routines, the Octorate tables, the CRM, the fiscal tables...) is not listed: a row there is real use
+    /// and the check keeps failing closed.
     /// </summary>
     internal static readonly IReadOnlySet<Type> OnboardingRows = new HashSet<Type>
     {
@@ -36,10 +41,22 @@ public sealed class OrgEmptinessChecker(AppDbContext db) : IOrgEmptinessChecker
         typeof(SignupAttribution),
         typeof(OrgSlugAlias),
         typeof(WizardDraft),
+        typeof(PopupAlert),
         typeof(UserNotificationChannelSetting),
         typeof(UserNotificationPreferences),
         typeof(NotificationEmailSlot),
+        typeof(OnboardingPartState),
     };
+
+    /// <summary>
+    /// The one row-level exception of the check: the <see cref="InternalActivity.ActivityType"/> of the "To do" a wizard raises when a person
+    /// leaves it half way (<see cref="ActivityType.WizardResume"/>, ADR-026; the activation plan raises it for a part put off or left). It is
+    /// a reminder to resume what the onboarding itself started, never business data (codes and ids only, no person, no note), so it does not
+    /// make an org "used" while every other row of <c>InternalActivities</c> does: the staff work (cleaning, maintenance, check-in) and every
+    /// other kind of "To do" are real use. <see cref="OnboardingRows"/> is a set of types and cannot say this, so the generic check has this
+    /// one rule next to it; the comparison is exact (a different spelling is another type of activity and counts).
+    /// </summary>
+    internal const string WizardResumeActivityType = nameof(ActivityType.WizardResume);
 
     private static readonly MethodInfo HasRowsMethod = typeof(OrgEmptinessChecker)
         .GetMethod(nameof(HasRowsAsync), BindingFlags.Instance | BindingFlags.NonPublic)!;
@@ -79,11 +96,13 @@ public sealed class OrgEmptinessChecker(AppDbContext db) : IOrgEmptinessChecker
                 .AnyAsync(m => m.OrgId == orgId && m.UserId != userId, cancellationToken))
             blockers.Add("other_members");
 
-        // Nothing in any tenant table.
+        // Nothing in any tenant table (the "To do" a wizard raises when a person leaves half way is not a row of use: see WizardResumeActivityType).
         foreach (var table in CheckedTenantTables(db))
         {
-            var task = (Task<bool>)HasRowsMethod.MakeGenericMethod(table).Invoke(this, [orgId, cancellationToken])!;
-            if (await task)
+            var found = table == typeof(InternalActivity)
+                ? await HasUsedActivityAsync(orgId, cancellationToken)
+                : await (Task<bool>)HasRowsMethod.MakeGenericMethod(table).Invoke(this, [orgId, cancellationToken])!;
+            if (found)
                 blockers.Add($"data:{table.Name}");
         }
 
@@ -119,4 +138,14 @@ public sealed class OrgEmptinessChecker(AppDbContext db) : IOrgEmptinessChecker
     private async Task<bool> HasRowsAsync<TEntity>(Guid orgId, CancellationToken cancellationToken)
         where TEntity : class, ITenantOwned =>
         await db.Set<TEntity>().IgnoreQueryFilters().AsNoTracking().AnyAsync(e => e.OrgId == orgId, cancellationToken);
+
+    /// <summary>
+    /// A row of <c>InternalActivities</c> that is use of the org: any but a "To do" of the type <see cref="WizardResumeActivityType"/>, open or
+    /// closed. The staff work, with its plain-text types, and every other kind of "To do" count.
+    /// </summary>
+    private async Task<bool> HasUsedActivityAsync(Guid orgId, CancellationToken cancellationToken) =>
+        await db.InternalActivities
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .AnyAsync(a => a.OrgId == orgId && a.ActivityType != WizardResumeActivityType, cancellationToken);
 }

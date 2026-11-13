@@ -23,8 +23,8 @@ public sealed class FlowActivationResultDto
 /// <summary>
 /// The outcome for one property. <c>outcome</c>: <c>activated</c>, <c>alreadyActive</c>, <c>prerequisitesNotMet</c>, <c>notAvailable</c>,
 /// <c>notFound</c> (activation); <c>deactivated</c>, <c>alreadyInactive</c>, <c>notFound</c> (deactivation). <c>unmetPrerequisites</c>: the keys
-/// of what does not hold (<c>connection</c>, <c>mapping</c>, <c>singleSender</c>, <c>content</c>, <c>cin</c>, <c>taxRate</c>). <c>reason</c>: the
-/// code of a <c>prerequisitesNotMet</c> or <c>notAvailable</c> outcome. Codes only.
+/// of what does not hold (<c>connection</c>, <c>mapping</c>, <c>singleSender</c>, <c>content</c>, <c>cin</c>, <c>taxRate</c>, <c>messageSync</c>,
+/// <c>issuer</c>, <c>bookings</c>: the list only grows). <c>reason</c>: the code of a <c>prerequisitesNotMet</c> or <c>notAvailable</c> outcome. Codes only.
 /// </summary>
 public sealed class FlowActivationOutcomeDto
 {

@@ -36,6 +36,14 @@ public interface IMarketplaceCatalogService
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.NotFoundException">The property is not one of the org inside the caller's scope.</exception>
     Task<MarketplaceActive> GetActiveAsync(Guid orgId, HostScope scope, Guid? propertyId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Whether the Active tab holds at least one integration that is on (<see cref="MarketplaceCardStatus.Active"/>) or that the host declared
+    /// (<see cref="MarketplaceIntegration.IsDeclared"/>), for the caller's <paramref name="scope"/>: the same rows as <see cref="GetActiveAsync"/> without a
+    /// property, answered by one query that reads nothing else of the tab (no name, no property, no supplier). The part «Partners» of the activation plan
+    /// asks it on every read of the plan (E10/F01/US04/T01).
+    /// </summary>
+    Task<bool> HasActiveIntegrationAsync(Guid orgId, HostScope scope, CancellationToken ct = default);
 }
 
 /// <summary>The ids of the five groups of the catalog, in the order the page shows them.</summary>

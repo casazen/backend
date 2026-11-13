@@ -4082,6 +4082,21 @@
   <data name="BatchXmlNotFound" xml:space="preserve">
     <value>The batch XML file was not found</value>
   </data>
+  <data name="WireBatchXmlInvalid" xml:space="preserve">
+    <value>The wire file is not valid against the official schema: {0} errors (lines and positions of the first ones: {1}). No batch was saved.</value>
+  </data>
+  <data name="WireBatchSchemaUnavailable" xml:space="preserve">
+    <value>The official schema of the {0} wire file is not installed: the file cannot be validated and is not produced. No batch was saved.</value>
+  </data>
+  <data name="WireBatchContentInvalid" xml:space="preserve">
+    <value>The wire file does not match its own lines (to check: {0}). No batch was saved.</value>
+  </data>
+  <data name="WireCurrencyNotSupported" xml:space="preserve">
+    <value>Wire transfers can only be prepared in EUR (the SEPA file) or in CHF (the Swiss file): the currency of the statements is not supported.</value>
+  </data>
+  <data name="WireAmountInvalid" xml:space="preserve">
+    <value>The amount to pay to an owner must be greater than zero and have at most two decimals. No batch was saved.</value>
+  </data>
   <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
     <value>Access code not available or verification not passed</value>
   </data>

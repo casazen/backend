@@ -18,6 +18,7 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 | [`activation-checklist.md`](activation-checklist.md) | activation checklist and "site published" flag | BK-07, BK-13, BK-16, PC-03, PC-05, PL-04, PL-15 |
 | [`stripe.md`](stripe.md) | Stripe webhooks and platform billing (idempotency, one subscription per org) | BK-02, BK-04, BK-07, BK-08, BK-09, BK-10, BK-19, BK-21 |
 | [`billing-tax.md`](billing-tax.md) | VAT on the CasaZen subscriptions (Stripe Tax) and Italian e-invoices (SDI) | PL-10, PL-11, PL-13, RS-5 |
+| [`wire-transfers.md`](wire-transfers.md) | the pain.001 wire files that pay the owners of an agency (SEPA EUR, Swiss CHF): what is checked before a batch is saved (list, IBAN, currency, amounts, official schema, control sum and count of the file), the official schemas to add with their checksums, no IBAN or name in errors or logs, who holds the permission | E06/F05/US01/T01 |
 | [`legal-documents.md`](legal-documents.md) | legal documents and subprocessors | BK-14, CO-13, CO-16, PL-02, PL-13, PL-14 |
 | [`demo-mode.md`](demo-mode.md) | web demo mode (no login) | PL-01 |
 | [`feature-flags.md`](feature-flags.md) | feature flags (the ones still in the code, how to add and to remove one) | BL-01, FD-20, FD-21, LT-01, LT-02 |
