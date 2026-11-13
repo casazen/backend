@@ -247,6 +247,39 @@ public class Pain001ValidationProofTests
         Assert.Equal("EUR", (string?)XDocument.Parse(xml).Descendants(Pain + "InstdAmt").Single().Attribute("Ccy"));
     }
 
+    /// <summary>
+    /// Money rule: a statement is paid in one batch only (ADR-017, AC-NF19-8). The same statements sent twice make one batch the first time and are refused the
+    /// second time with 422 <c>statements_already_in_batch</c>; a request that mixes one of them with a new statement is refused too and leaves the new one
+    /// free. The batch and one row per statement are saved once, never two payable files for the same money.
+    /// </summary>
+    [Fact]
+    public async Task WireBatch_SameStatementsSentTwice_AreRefusedTheSecondTime_Test()
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = NewDb(orgId);
+        var mario = await AddOwnerAsync(db, orgId, "Mario", "Rossi", OwnerIban);
+        var luigi = await AddOwnerAsync(db, orgId, "Luigi", "Bianchi", OtherOwnerIban);
+        var first = await AddStatementAsync(db, orgId, mario, 1200.00m);
+        var second = await AddStatementAsync(db, orgId, luigi, 1574.50m);
+        var later = await AddStatementAsync(db, orgId, mario, 300.00m);
+        var service = new WireTransferService(db, NullLogger<WireTransferService>.Instance, _ => Pain001TestSchemas.Accepting());
+
+        var (batch, _) = await service.CreateBatchAsync(orgId, [first, second], DebitIban);
+        var again = await Assert.ThrowsAsync<DomainRuleException>(() => service.CreateBatchAsync(orgId, [first, second], DebitIban));
+        var mixed = await Assert.ThrowsAsync<DomainRuleException>(() => service.CreateBatchAsync(orgId, [second, later], DebitIban));
+
+        Assert.Equal("statements_already_in_batch", again.Code);
+        Assert.Equal("statements_already_in_batch", mixed.Code);
+        Assert.Equal("StatementsAlreadyInBatch", again.MessageKey);
+        Assert.Empty(again.MessageArgs);
+        Assert.Equal(batch.Id, Assert.Single(await db.WireBatches.IgnoreQueryFilters().ToListAsync()).Id);
+        var rows = await db.Set<WireBatchStatement>().IgnoreQueryFilters().ToListAsync();
+        Assert.Equal(2, rows.Count);
+        Assert.All(rows, row => Assert.Equal(batch.Id, row.WireBatchId));
+        Assert.Equal(new[] { first, second }.Order(), rows.Select(row => row.OwnerStatementId).Order());
+        Assert.DoesNotContain(later, rows.Select(row => row.OwnerStatementId));
+    }
+
     public static TheoryData<decimal> AmountsThatAreNotATransfer() => new() { 0m, -50m, 12.345m };
 
     /// <summary>
