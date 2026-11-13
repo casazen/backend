@@ -1,7 +1,21 @@
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Infrastructure;
+
+/// <summary>What a report request asks for: the JSON of the screen, or a file to download (NF-101).</summary>
+public enum ReportFormat
+{
+    /// <summary>The JSON the screens read: the default.</summary>
+    Json = 0,
+
+    /// <summary>The CSV of <see cref="CsvWriter"/>: UTF-8 with BOM, <c>;</c>, decimal comma, for a spreadsheet set to Italian.</summary>
+    Csv = 1,
+
+    /// <summary>The Excel file of <see cref="XlsxWriter"/>: the same columns and numbers as the CSV, numbers as numbers, days as dates, percentages as percentages.</summary>
+    Xlsx = 2,
+}
 
 /// <summary>
 /// The words of a report request, checked before anything is read (SR-10, NF-96): the format, how the report is cut, whether it
@@ -17,7 +31,7 @@ public static class ReportRequestChecks
     /// <summary>Code of a period longer than <see cref="HostReportRules.MaxMonths"/> months.</summary>
     public const string PeriodTooLongCode = "report_period_too_long";
 
-    /// <summary>Code of a <c>format</c> that is not <c>json</c> or <c>csv</c>.</summary>
+    /// <summary>Code of a <c>format</c> that is not <c>json</c>, <c>csv</c> or <c>xlsx</c>.</summary>
     public const string InvalidFormatCode = "report_invalid_format";
 
     /// <summary>Code of a <c>groupBy</c> that is not one of the cuts the report has.</summary>
@@ -36,17 +50,46 @@ public static class ReportRequestChecks
         HostPerformanceGroupBy GroupBy,
         bool CompareYear,
         HostTrendBucketUnit Bucket,
-        bool Csv);
+        ReportFormat Format);
 
-    /// <summary><c>json</c> (the default) or <c>csv</c>, whatever the case; 400 <c>report_invalid_format</c> for anything else.</summary>
-    public static ObjectResult? CheckFormat(this ControllerBase controller, string? format, out bool csv)
+    /// <summary><c>json</c> (the default), <c>csv</c> or <c>xlsx</c>, whatever the case; 400 <c>report_invalid_format</c> for anything else.</summary>
+    public static ObjectResult? CheckFormat(this ControllerBase controller, string? format, out ReportFormat reportFormat)
     {
         ArgumentNullException.ThrowIfNull(controller);
 
-        csv = string.Equals(format, "csv", StringComparison.OrdinalIgnoreCase);
-        return !csv && !string.IsNullOrWhiteSpace(format) && !string.Equals(format, "json", StringComparison.OrdinalIgnoreCase)
+        if (string.Equals(format, "csv", StringComparison.OrdinalIgnoreCase))
+        {
+            reportFormat = ReportFormat.Csv;
+            return null;
+        }
+
+        if (string.Equals(format, "xlsx", StringComparison.OrdinalIgnoreCase))
+        {
+            reportFormat = ReportFormat.Xlsx;
+            return null;
+        }
+
+        reportFormat = ReportFormat.Json;
+        return !string.IsNullOrWhiteSpace(format) && !string.Equals(format, "json", StringComparison.OrdinalIgnoreCase)
             ? controller.ApiProblem(StatusCodes.Status400BadRequest, InvalidFormatCode, "ReportInvalidFormat")
             : null;
+    }
+
+    /// <summary>The extension of the file of a report, without the dot: the one the documents put on the file name (<c>csv</c>, <c>xlsx</c>).</summary>
+    public static string FileExtensionOf(ReportFormat format) => format == ReportFormat.Xlsx ? "xlsx" : "csv";
+
+    /// <summary>
+    /// The file of a report as the answer: the bytes with the content type of <paramref name="format"/> and <c>Cache-Control: no-store</c>, because it is
+    /// money and is built on request, never stored.
+    /// </summary>
+    public static FileContentResult ReportFile(this ControllerBase controller, ReportFormat format, byte[] content, string fileName)
+    {
+        ArgumentNullException.ThrowIfNull(controller);
+        ArgumentNullException.ThrowIfNull(content);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+
+        controller.Response.Headers.CacheControl = "no-store";
+        return controller.File(content, format == ReportFormat.Xlsx ? XlsxWriter.ContentType : "text/csv", fileName);
     }
 
     /// <summary>
@@ -95,8 +138,8 @@ public static class ReportRequestChecks
     {
         ArgumentNullException.ThrowIfNull(controller);
 
-        request = new PerformanceRequest(default, default, HostPerformanceGroupBy.None, false, HostTrendBucketUnit.Auto, false);
-        if (controller.CheckFormat(format, out var csv) is { } formatProblem)
+        request = new PerformanceRequest(default, default, HostPerformanceGroupBy.None, false, HostTrendBucketUnit.Auto, ReportFormat.Json);
+        if (controller.CheckFormat(format, out var reportFormat) is { } formatProblem)
             return formatProblem;
 
         var cut = Choose(groupBy, HostPerformanceGroupBy.None, ("none", HostPerformanceGroupBy.None), ("property", HostPerformanceGroupBy.Property));
@@ -122,7 +165,7 @@ public static class ReportRequestChecks
         if (controller.CheckPeriod(fromDay, toDay, out var first, out var last) is { } periodProblem)
             return periodProblem;
 
-        request = new PerformanceRequest(first, last, cutBy, compareYear, unit, csv);
+        request = new PerformanceRequest(first, last, cutBy, compareYear, unit, reportFormat);
         return null;
     }
 

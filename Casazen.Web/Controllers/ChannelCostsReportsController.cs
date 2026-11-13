@@ -11,14 +11,14 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// The channel costs report of the host (NF-98): what each channel costs, gross, commission and net, the processing fees of the direct stays and how each channel
-/// settles its commission, as JSON or as a CSV to download. It is money, so it needs <c>payment.read</c> like the other reports (SR-D7), and it shows only what the
+/// settles its commission, as JSON, as a CSV or as an Excel file to download (NF-101). It is money, so it needs <c>payment.read</c> like the other reports (SR-D7), and it shows only what the
 /// caller's <see cref="HostScope"/> reaches, in SQL. By accrual, like the revenue of the Home: the stays are the ones of <c>bookings-by-channel</c>. A cost nobody
 /// reported is null in the answer (never zero) and the stays without one are counted apart. No guest data, no PDF. The rows come ordered by cost rate, the highest
 /// first, and the sentence "how much each channel costs" is written by the client from <c>costRate</c> and <c>commission</c>.
 /// <para>
 /// It takes <c>from</c> and <c>to</c> (<c>yyyy-MM-dd</c>, Europe/Rome days, both included, at most 24 months: 422 <c>report_period_too_long</c> beyond, 400
 /// <c>report_invalid_period</c> when missing, out of order or out of the supported years), an optional <c>propertyId</c> (one property of the caller's reach, 404 for
-/// any other) and <c>format</c> (<c>json</c>, the default, or <c>csv</c>; 400 <c>report_invalid_format</c> for anything else).
+/// any other) and <c>format</c> (<c>json</c>, the default, <c>csv</c> or <c>xlsx</c>; 400 <c>report_invalid_format</c> for anything else).
 /// </para>
 /// </summary>
 [ApiController]
@@ -46,7 +46,7 @@ public class ChannelCostsReportsController(
         [FromQuery] string? format,
         CancellationToken cancellationToken)
     {
-        if (this.CheckFormat(format, out var csv) is { } formatProblem)
+        if (this.CheckFormat(format, out var fileFormat) is { } formatProblem)
             return formatProblem;
         if (this.CheckPeriod(fromDay, toDay, out var first, out var last) is { } periodProblem)
             return periodProblem;
@@ -56,8 +56,11 @@ public class ChannelCostsReportsController(
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
         var report = await reports.GetChannelCostsAsync(scope, new HostReportQuery(first, last, propertyId), cancellationToken);
-        return csv
-            ? File(ChannelCostsReportDocuments.Csv(report), "text/csv", ChannelCostsReportDocuments.FileName(report.Period))
-            : Ok(ChannelCostsReportDto.From(report, ChannelCostsReportDocuments.Title));
+        return fileFormat == ReportFormat.Json
+            ? Ok(ChannelCostsReportDto.From(report, ChannelCostsReportDocuments.Title))
+            : this.ReportFile(
+                fileFormat,
+                fileFormat == ReportFormat.Xlsx ? ChannelCostsReportDocuments.Xlsx(report) : ChannelCostsReportDocuments.Csv(report),
+                ChannelCostsReportDocuments.FileName(report.Period, ReportRequestChecks.FileExtensionOf(fileFormat)));
     }
 }

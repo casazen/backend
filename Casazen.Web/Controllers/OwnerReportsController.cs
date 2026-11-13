@@ -14,8 +14,8 @@ namespace Casazen.Web.Controllers;
 /// <summary>
 /// The performance of an agency's properties cut by property owner (NF-96, <c>GET /api/reports/by-owner</c>): occupancy, revenue, ADR
 /// and RevPAR of each owner, weighted by the share it holds of each property in the days of the report, the properties nobody owns in a
-/// row of their own, and the total the Home gives. As JSON or as a CSV to download, by accrual (<c>competenza</c>), the base said in the
-/// title.
+/// row of their own, and the total the Home gives. As JSON, as a CSV or as an Excel file to download (NF-101), by accrual (<c>competenza</c>),
+/// the base said in the title.
 /// <para>
 /// It shows money per owner like the statements do, so it needs <b>both</b> policies: <c>agency.statement.view</c> (the owner and the
 /// administrators of an org on the agency plan; the property manager, who holds only <c>agency.owner.view</c>, does not pass, and an
@@ -50,7 +50,7 @@ public class OwnerReportsController(
         [FromQuery] string? format,
         CancellationToken cancellationToken)
     {
-        if (this.CheckFormat(format, out var csv) is { } formatProblem)
+        if (this.CheckFormat(format, out var fileFormat) is { } formatProblem)
             return formatProblem;
         if (this.CheckPeriod(fromDay, toDay, out var first, out var last) is { } periodProblem)
             return periodProblem;
@@ -60,8 +60,11 @@ public class OwnerReportsController(
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
         var report = await ownerReports.GetByOwnerAsync(scope, new HostPerformanceQuery(first, last), cancellationToken);
-        return csv
-            ? File(OwnerReportDocuments.Csv(report), "text/csv", OwnerReportDocuments.FileName(report.Period))
-            : Ok(OwnerReportDto.From(report, OwnerReportDocuments.Title, localizer["OwnerAnonymizedLabel"].Value));
+        return fileFormat == ReportFormat.Json
+            ? Ok(OwnerReportDto.From(report, OwnerReportDocuments.Title, localizer["OwnerAnonymizedLabel"].Value))
+            : this.ReportFile(
+                fileFormat,
+                fileFormat == ReportFormat.Xlsx ? OwnerReportDocuments.Xlsx(report) : OwnerReportDocuments.Csv(report),
+                OwnerReportDocuments.FileName(report.Period, ReportRequestChecks.FileExtensionOf(fileFormat)));
     }
 }

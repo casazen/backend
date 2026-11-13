@@ -25,8 +25,8 @@ namespace Casazen.Web.Controllers;
 /// </para>
 /// <para>
 /// <c>GET summary</c> takes <c>from</c> and <c>to</c> (<c>yyyy-MM-dd</c>, Europe/Rome days, both included, at most 366 days like the tourist
-/// tax report: 400 <c>fiscal_report_period_invalid</c>) and <c>format</c> (<c>json</c>, the default, or <c>csv</c>: 400
-/// <c>report_invalid_format</c>). <c>POST remittances</c> is <c>multipart/form-data</c> (<see cref="RecordRemittanceForm"/>); its errors
+/// tax report: 400 <c>fiscal_report_period_invalid</c>) and <c>format</c> (<c>json</c>, the default, <c>csv</c> or <c>xlsx</c>, the Excel file with a
+/// sheet for the comuni and one for the payments (NF-101): 400 <c>report_invalid_format</c>). <c>POST remittances</c> is <c>multipart/form-data</c> (<see cref="RecordRemittanceForm"/>); its errors
 /// are 422 <c>tourist_tax_comune_unknown</c>, <c>tourist_tax_amount_invalid</c>, <c>tourist_tax_date_in_future</c>,
 /// <c>tourist_tax_period_invalid</c>, <c>tourist_tax_receipt_invalid</c> and <c>tourist_tax_text_too_long</c>.
 /// </para>
@@ -40,7 +40,7 @@ public class TouristTaxSummaryController(
     IHostScopeResolver hostScopeResolver,
     IStringLocalizer<SharedResources> localizer) : ControllerBase
 {
-    /// <summary>The language of the CSV: Italian, whatever the language the caller asked in.</summary>
+    /// <summary>The language of the CSV and of the Excel file: Italian, whatever the language the caller asked in.</summary>
     private static readonly CultureInfo ItalianCulture = CultureInfo.GetCultureInfo("it-IT");
 
     /// <summary>
@@ -53,7 +53,7 @@ public class TouristTaxSummaryController(
     /// <summary>
     /// The tax owed, paid and receipted per comune for the period: for each comune with stays (check-in in the period) or with payments
     /// (whose period lies inside it), the owed amount (the one recorded on the stays, with the stays that have none counted apart), the
-    /// paid amount, the balance, the status and the payments; and the totals. As JSON, or as a CSV to download. For a caller who reaches only
+    /// paid amount, the balance, the status and the payments; and the totals. As JSON, or as a CSV or an Excel file to download. For a caller who reaches only
     /// some of the properties: only the owed amount of those properties, with <c>paymentsHidden</c> true and the rest null.
     /// </summary>
     [HttpGet("summary")]
@@ -66,7 +66,7 @@ public class TouristTaxSummaryController(
         [FromQuery] string? format,
         CancellationToken cancellationToken)
     {
-        if (this.CheckFormat(format, out var csv) is { } formatProblem)
+        if (this.CheckFormat(format, out var fileFormat) is { } formatProblem)
             return formatProblem;
         if (fromDay is not { } from || toDay is not { } to)
             return this.ApiProblem(StatusCodes.Status400BadRequest, "fiscal_report_period_invalid", "FiscalReportPeriodInvalid");
@@ -76,9 +76,14 @@ public class TouristTaxSummaryController(
         try
         {
             var summary = await summaries.GetSummaryAsync(scope, new FiscalReportPeriod(from, to), cancellationToken);
-            return csv
-                ? File(TouristTaxSummaryDocuments.Csv(summary, CsvTexts()), "text/csv", TouristTaxSummaryDocuments.FileName(summary.Period))
-                : Ok(TouristTaxSummaryDto.From(summary, TouristTaxSummaryDocuments.TitleOf(summary)));
+            if (fileFormat == ReportFormat.Json)
+                return Ok(TouristTaxSummaryDto.From(summary, TouristTaxSummaryDocuments.TitleOf(summary)));
+
+            var texts = CsvTexts();
+            return this.ReportFile(
+                fileFormat,
+                fileFormat == ReportFormat.Xlsx ? TouristTaxSummaryDocuments.Xlsx(summary, texts) : TouristTaxSummaryDocuments.Csv(summary, texts),
+                TouristTaxSummaryDocuments.FileName(summary.Period, ReportRequestChecks.FileExtensionOf(fileFormat)));
         }
         catch (FiscalValidationException ex)
         {

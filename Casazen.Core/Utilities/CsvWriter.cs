@@ -52,6 +52,46 @@ public static class CsvWriter
         return [.. Encoding.UTF8.GetPreamble(), .. Encoding.UTF8.GetBytes(text.ToString())];
     }
 
+    /// <summary>The file for one <see cref="ReportTable"/>: its title row, its header and its rows, written as <see cref="Write(IReadOnlyList{ReportTable}, int)"/> does.</summary>
+    /// <exception cref="DomainRuleException">There are more than <paramref name="maxRows"/> rows (422 <c>csv_too_many_rows</c>).</exception>
+    public static byte[] Write(ReportTable table, int maxRows = MaxRows)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+
+        return Write(RowsOf([table]), maxRows);
+    }
+
+    /// <summary>
+    /// The file for the tables of a report (NF-101): each table is its title row, its header and its rows, and an empty row separates one table from the
+    /// next. A percentage is written as the percentage and a day as <see cref="ReportCell.CsvDateFormat"/>, as the host reports have always written them
+    /// (<see cref="ReportCell"/>); <see cref="XlsxWriter.Write(IReadOnlyList{ReportSheet}, int)"/> writes the same tables as the sheets of a workbook.
+    /// </summary>
+    /// <exception cref="DomainRuleException">There are more than <paramref name="maxRows"/> rows (422 <c>csv_too_many_rows</c>).</exception>
+    public static byte[] Write(IReadOnlyList<ReportTable> tables, int maxRows = MaxRows)
+    {
+        ArgumentNullException.ThrowIfNull(tables);
+
+        return Write(RowsOf(tables), maxRows);
+    }
+
+    // The rows of the tables one under the other: the title row, the header and the rows of each, an empty row between two tables.
+    private static IEnumerable<IReadOnlyList<object?>> RowsOf(IReadOnlyList<ReportTable> tables)
+    {
+        for (var t = 0; t < tables.Count; t++)
+        {
+            var table = tables[t];
+            ArgumentNullException.ThrowIfNull(table);
+
+            if (t > 0)
+                yield return [];
+
+            yield return [table.Title];
+            yield return [.. table.Header];
+            foreach (var row in table.Rows)
+                yield return [.. row.Select(cell => cell.ToCsvValue())];
+        }
+    }
+
     /// <summary>One cell as it is written: text guarded, a number in Italian, a day as <c>yyyy-MM-dd</c>, <c>null</c> empty.</summary>
     public static string Cell(object? value) => value switch
     {

@@ -2237,7 +2237,7 @@
     <value>The period is too long: a report covers at most {0} months.</value>
   </data>
   <data name="ReportInvalidFormat" xml:space="preserve">
-    <value>Invalid format: use format=json or format=csv.</value>
+    <value>Invalid format: use format=json, format=csv or format=xlsx.</value>
   </data>
   <data name="ReportInvalidGroupBy" xml:space="preserve">
     <value>Invalid grouping: use groupBy=none, groupBy=property or groupBy=channel.</value>

@@ -5,8 +5,8 @@ using Casazen.Core.Utilities;
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// The title and the CSV file of the report by property owner (NF-96), in Italian like the other host reports
-/// (<see cref="HostReportDocuments"/>): for a spreadsheet set to Italian (<see cref="CsvWriter"/>). The title says the base of the
+/// The title, the CSV file and the Excel file of the report by property owner (NF-96, NF-101), in Italian like the other host reports
+/// (<see cref="HostReportDocuments"/>): the CSV for a spreadsheet set to Italian (<see cref="CsvWriter"/>). The title says the base of the
 /// numbers and the file carries it on its first row, so no figure travels without its label. An owner appears with its name and nothing
 /// else: never a fiscal code, an IBAN, an e-mail or a phone (the report does not even read them).
 /// </summary>
@@ -14,6 +14,9 @@ public static class OwnerReportDocuments
 {
     /// <summary>Title of the report by owner: by accrual, the nights of the confirmed stays, each owner for the share it holds.</summary>
     public const string Title = "Prestazioni per proprietario, per competenza";
+
+    /// <summary>Name of the sheet of the Excel file.</summary>
+    public const string SheetName = "Per proprietario";
 
     /// <summary>What the file shows for an owner whose personal data was anonymized (the API says the same in <c>OwnerAnonymizedLabel</c>).</summary>
     public const string AnonymizedOwnerLabel = "Proprietario anonimizzato";
@@ -24,18 +27,17 @@ public static class OwnerReportDocuments
     private const string Total = "Totale";
 
     /// <summary>
-    /// The report as a file: the title with its base and the days on the first row, the header, a row for each owner, the row of the
+    /// The report as a table: the title with its base and the days on the first row, the header, a row for each owner, the row of the
     /// properties nobody owns (when there is one) and the total. Nights and stays can be fractions: a house shared by two owners is half
     /// of each.
     /// </summary>
-    public static byte[] Csv(OwnerPerformanceReport report)
+    public static ReportTable Table(OwnerPerformanceReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
 
-        var rows = new List<IReadOnlyList<object?>>
-        {
-            Row($"{Title}, dal {Date(report.Period.From)} al {Date(report.Period.To.AddDays(-1))}"),
-            Row(
+        var table = new ReportTable(
+            $"{Title}, dal {Date(report.Period.From)} al {Date(report.Period.To.AddDays(-1))}",
+            [
                 "Proprietario",
                 "Immobili",
                 "Notti occupate",
@@ -46,42 +48,45 @@ public static class OwnerReportDocuments
                 "Soggiorni",
                 "Notti dei soggiorni",
                 "ADR (€)",
-                "RevPAR (€)"),
-        };
-        rows.AddRange(report.Rows.Select(r => OwnerRow(r.IsAnonymized ? AnonymizedOwnerLabel : r.DisplayName ?? string.Empty, r.PropertyCount, r.Figures)));
-        if (report.Unassigned.PropertyCount > 0)
-            rows.Add(OwnerRow(UnassignedLabel, report.Unassigned.PropertyCount, report.Unassigned.Figures));
+                "RevPAR (€)",
+            ]);
+        foreach (var r in report.Rows)
+            table.Add(OwnerRow(r.IsAnonymized ? AnonymizedOwnerLabel : r.DisplayName ?? string.Empty, r.PropertyCount, r.Figures));
 
-        rows.Add(OwnerRow(Total, null, report.Total));
-        return CsvWriter.Write(rows);
+        if (report.Unassigned.PropertyCount > 0)
+            table.Add(OwnerRow(UnassignedLabel, report.Unassigned.PropertyCount, report.Unassigned.Figures));
+
+        return table.Add(OwnerRow(Total, null, report.Total));
     }
 
-    /// <summary>The file name of the report: <c>casazen-prestazioni-per-proprietario-competenza-20261001-20261031.csv</c>.</summary>
-    public static string FileName(HostDashboardPeriod period)
+    public static byte[] Csv(OwnerPerformanceReport report) => CsvWriter.Write(Table(report));
+
+    public static byte[] Xlsx(OwnerPerformanceReport report) => XlsxWriter.Write([new ReportSheet(SheetName, Table(report))]);
+
+    /// <summary>The file name of the report: <c>casazen-prestazioni-per-proprietario-competenza-20261001-20261031.csv</c>; <paramref name="extension"/> is <c>csv</c> or <c>xlsx</c>.</summary>
+    public static string FileName(HostDashboardPeriod period, string extension = "csv")
     {
         ArgumentNullException.ThrowIfNull(period);
+        ArgumentException.ThrowIfNullOrWhiteSpace(extension);
 
-        return $"casazen-prestazioni-per-proprietario-competenza-{Compact(period.From)}-{Compact(period.To.AddDays(-1))}.csv";
+        return $"casazen-prestazioni-per-proprietario-competenza-{Compact(period.From)}-{Compact(period.To.AddDays(-1))}.{extension}";
     }
 
-    private static IReadOnlyList<object?> OwnerRow(string label, int? propertyCount, OwnerPerformanceFigures figures) =>
-        Row(
+    // Nights and stays can be fractions when a house is shared; two places are enough to read them (the number cell rounds to them).
+    private static IReadOnlyList<ReportCell> OwnerRow(string label, int? propertyCount, OwnerPerformanceFigures figures) =>
+        [
             label,
-            propertyCount,
-            Nights(figures.OccupiedNights),
-            Nights(figures.AvailableNights),
-            Nights(figures.ClosedNights),
-            figures.OccupancyRate is { } rate ? (decimal?)Math.Round(rate * 100m, 2, MidpointRounding.AwayFromZero) : null,
-            Math.Round(figures.Revenue, 2, MidpointRounding.AwayFromZero),
-            Nights(figures.StayCount),
-            Nights(figures.RevenueNights),
-            figures.Adr,
-            figures.RevPar);
-
-    // Nights and stays can be fractions when a house is shared; two places are enough to read them.
-    private static decimal Nights(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
-
-    private static IReadOnlyList<object?> Row(params object?[] cells) => cells;
+            ReportCell.Integer(propertyCount),
+            ReportCell.Number(figures.OccupiedNights),
+            ReportCell.Number(figures.AvailableNights),
+            ReportCell.Number(figures.ClosedNights),
+            ReportCell.Percent(figures.OccupancyRate),
+            ReportCell.Money(figures.Revenue),
+            ReportCell.Number(figures.StayCount),
+            ReportCell.Number(figures.RevenueNights),
+            ReportCell.Money(figures.Adr),
+            ReportCell.Money(figures.RevPar),
+        ];
 
     private static string Date(DateTime day) => day.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
 
