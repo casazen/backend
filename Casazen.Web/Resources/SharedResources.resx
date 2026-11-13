@@ -4082,6 +4082,21 @@
   <data name="BatchXmlNotFound" xml:space="preserve">
     <value>Il file XML del batch non è stato trovato</value>
   </data>
+  <data name="WireBatchXmlInvalid" xml:space="preserve">
+    <value>Il file di bonifico non è valido secondo lo schema ufficiale: {0} errori (righe e posizioni dei primi: {1}). Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WireBatchSchemaUnavailable" xml:space="preserve">
+    <value>Lo schema ufficiale del file di bonifico in {0} non è installato: il file non può essere convalidato e non viene prodotto. Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WireBatchContentInvalid" xml:space="preserve">
+    <value>Il file di bonifico non corrisponde alle sue righe (da controllare: {0}). Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WireCurrencyNotSupported" xml:space="preserve">
+    <value>I bonifici si possono preparare solo in EUR (file SEPA) o in CHF (file svizzero): la valuta dei rendiconti non è supportata.</value>
+  </data>
+  <data name="WireAmountInvalid" xml:space="preserve">
+    <value>L'importo da pagare a un proprietario deve essere maggiore di zero e avere al massimo due decimali. Nessun batch è stato salvato.</value>
+  </data>
   <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
     <value>Codice di accesso non disponibile o verifica non superata</value>
   </data>
