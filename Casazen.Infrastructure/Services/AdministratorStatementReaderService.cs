@@ -9,6 +9,7 @@ using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using UglyToad.PdfPig;
+using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -71,6 +72,21 @@ public sealed class AdministratorStatementReaderService(
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Administrator statement {ProposalId} proposed for condominium {CondominiumId}", proposal.Id, condominiumId);
         return ToView(proposal);
+    }
+
+    public async Task<AdministratorInstallmentReader.Reading> ReadInstallmentsAsync(
+        HostScope scope, Guid condominiumId, StatementFileUpload file, string userId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(file);
+        RequireUser(userId);
+        await RequireCondominiumAsync(scope, condominiumId, cancellationToken);
+        if (file.Content.Length is 0 or > MaxFileBytes || !IsPdf(file))
+            throw new DomainRuleException(CondominiumErrorCodes.FileUnsupported, "CondominiumStatementFileUnsupported");
+        var result = AdministratorInstallmentReader.Read(PdfText(file.Content));
+        if (result.Installments.Count == 0)
+            throw new DomainRuleException(CondominiumErrorCodes.FileInvalid, "CondominiumStatementUnreadable");
+        return result;
     }
 
     public async Task<StatementProposalView> ConfirmAsync(
@@ -191,7 +207,7 @@ public sealed class AdministratorStatementReaderService(
         try
         {
             using var document = PdfDocument.Open(pdf);
-            return string.Join('\n', document.GetPages().Select(page => page.Text));
+            return string.Join('\n', document.GetPages().Select(page => ContentOrderTextExtractor.GetText(page)));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
