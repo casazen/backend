@@ -10,4 +10,5 @@ public enum CondominiumInstallmentCadence
     Bimonthly = 1,
     Semiannual = 2,
     Single = 3,
+    Custom = 4,
 }

@@ -82,7 +82,7 @@ public partial class CondominiumsController(
                 dto.OrdinaryAmount,
                 dto.Description,
                 dto.Extraordinary?.Select(line => new ExtraordinaryExpenseCommand(line.Amount, line.Description)).ToList(),
-                dto.Cadence),
+                dto.Cadence, CustomDueDates: dto.CustomDueDates),
             userId,
             cancellationToken));
     }
@@ -201,7 +201,10 @@ public partial class CondominiumsController(
         var (scope, userId) = await ScopeAsync(cancellationToken);
         if (scope is null || userId is null)
             return Unauthorized();
-        return Ok(await statements.ConfirmAsync(scope, condominiumId, proposalId, userId, cancellationToken));
+        var result = await statements.ConfirmAsync(scope, condominiumId, proposalId, userId, cancellationToken);
+        if (result.Posted && result.Kind == CondominiumStatementKind.Final && result.PeriodId is { } periodId)
+            await settlements.ReconcileConfirmedFinalAsync(scope, condominiumId, periodId, userId, cancellationToken);
+        return Ok(result);
     }
 
     /// <summary>
@@ -289,6 +292,7 @@ public sealed class ExtraordinaryExpenseDto
 
 public sealed class ConfirmBudgetDto
 {
+    public List<DateOnly>? CustomDueDates { get; set; }
     public decimal OrdinaryAmount { get; set; }
 
     public string? Description { get; set; }

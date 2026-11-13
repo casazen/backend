@@ -32,8 +32,23 @@ public static class OwnerInstallmentPlan
         CondominiumInstallmentCadence cadence,
         decimal ordinary,
         decimal extraordinary,
-        decimal priorOnFirst)
+        decimal priorOnFirst,
+        IReadOnlyList<DateOnly>? customDueDates = null)
     {
+        if (!Enum.IsDefined(cadence)) throw new ArgumentOutOfRangeException(nameof(cadence));
+        if (cadence == CondominiumInstallmentCadence.Custom)
+        {
+            if (customDueDates is not { Count: > 0 and <= 366 }
+                || customDueDates.Distinct().Count() != customDueDates.Count
+                || customDueDates.Any(d => d < periodStart || d >= periodStart.AddYears(1)))
+                throw new ArgumentException("Custom dates must be unique dates within the fiscal year.");
+            var dates = customDueDates.Order().ToList();
+            var ordinaryCustom = CondominiumMoney.SplitEqually(ordinary, dates.Count);
+            var extraordinaryCustom = CondominiumMoney.SplitEqually(extraordinary, dates.Count);
+            return dates.Select((due, i) => new Row(i, $"Rata {i + 1}",
+                i == 0 ? periodStart : dates[i - 1].AddDays(1), due, ordinaryCustom[i],
+                i == 0 ? priorOnFirst : 0m, extraordinaryCustom[i])).ToList();
+        }
         var (slots, step) = cadence switch
         {
             CondominiumInstallmentCadence.Bimonthly => (6, 2),

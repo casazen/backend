@@ -16,7 +16,7 @@ namespace Casazen.Infrastructure.Services;
 /// CondoLedger's year, adapted to CasaZen: preventivo and consuntivo, rates left as issued, extraordinary kept apart,
 /// and the prior-year balance settled only the way the owner chooses.
 /// </summary>
-public sealed class CondominiumAccountingService(
+public sealed partial class CondominiumAccountingService(
     AppDbContext db,
     IPdfDocumentRenderer pdfRenderer,
     ILogger<CondominiumAccountingService> logger,
@@ -129,6 +129,11 @@ public sealed class CondominiumAccountingService(
         if (command.OrdinaryAmount <= 0m || !CondominiumMoney.InRange(command.OrdinaryAmount))
             throw new DomainRuleException(CondominiumErrorCodes.StatementInvalid, "CondominiumStatementInvalid");
 
+        if (!Enum.IsDefined(command.Cadence)
+            || command.Cadence == CondominiumInstallmentCadence.Custom && (command.CustomDueDates is not { Count: > 0 and <= 366 }
+                || command.CustomDueDates.Distinct().Count() != command.CustomDueDates.Count
+                || command.CustomDueDates.Any(d => d < period.StartDate || d > period.EndDate)))
+            throw new DomainRuleException(CondominiumErrorCodes.StatementInvalid, "CondominiumStatementInvalid");
         var extraordinary = new List<(decimal Amount, string Description)>();
         foreach (var line in command.Extraordinary ?? [])
         {
@@ -160,7 +165,7 @@ public sealed class CondominiumAccountingService(
                 : 0m;
             var offset = existing.Count == 0 ? 0 : existing.Max(installment => installment.SlotIndex) + 1;
             var generated = OwnerInstallmentPlan.Generate(
-                period.StartDate, command.Cadence, command.OrdinaryAmount, extraordinary.Sum(line => line.Amount), priorOnFirst);
+                period.StartDate, command.Cadence, command.OrdinaryAmount, extraordinary.Sum(line => line.Amount), priorOnFirst, command.CustomDueDates);
             var now = UtcNow;
             foreach (var row in generated)
             {
