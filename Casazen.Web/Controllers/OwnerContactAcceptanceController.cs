@@ -4,6 +4,7 @@ using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Casazen.Web.Controllers;
 
@@ -21,6 +22,7 @@ namespace Casazen.Web.Controllers;
 [Route("api/owner-contacts")]
 [FeatureGate(FeatureFlags.AgencyTier)]
 [PrivateAnswer]
+[EnableRateLimiting(RateLimitPolicies.OwnerPortalRead)]
 public sealed class OwnerContactAcceptanceController(
     IOwnerCollaborationService collaboration,
     IAccountEmailResolver accountEmails) : ControllerBase

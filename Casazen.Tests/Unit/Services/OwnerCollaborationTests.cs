@@ -261,6 +261,33 @@ public partial class OwnerCollaborationTests
     }
 
     /// <summary>
+    /// Every invitation sends an e-mail to an address the owner chose: the ones of a day are capped, the withdrawn ones counted too (inviting, withdrawing and
+    /// inviting again never reaches the limit of the contacts in force), and nothing is sent once the cap is reached.
+    /// </summary>
+    [Fact]
+    public async Task OwnerContact_TheInvitationsOfADayAreCapped_TheWithdrawnOnesCounted()
+    {
+        var w = await World.CreateAsync();
+        var service = w.Service();
+        var owner = await w.AccessAsync(w.UserA);
+
+        for (var i = 0; i < OwnerCollaborationRules.MaxContactInvitationsPerDay; i++)
+        {
+            var invited = await service.InviteContactAsync(owner, new InviteOwnerContact(null, $"persona{i}@example.com", "Persona", $"Numero{i}", [OwnerPortalPermissions.InboxUse]));
+            await service.RevokeContactByOwnerAsync(owner, invited.Id);
+        }
+
+        Assert.DoesNotContain(await service.ListContactsForOwnerAsync(owner), c => c.Status != "revoked");
+        Assert.Equal(OwnerCollaborationRules.MaxContactInvitationsPerDay, w.Emails.Count);
+
+        var over = await Assert.ThrowsAsync<DomainTooManyRequestsException>(
+            () => service.InviteContactAsync(owner, new InviteOwnerContact(null, "una.di.troppo@example.com", "Una", "Di troppo", [OwnerPortalPermissions.InboxUse])));
+        Assert.Equal(OwnerCollaborationErrors.ContactDailyLimitReached, over.Code);
+        Assert.Equal(OwnerCollaborationRules.MaxContactInvitationsPerDay, w.Emails.Count);
+        Assert.Equal(OwnerCollaborationRules.MaxContactInvitationsPerDay, (await service.ListContactsForOwnerAsync(owner)).Count);
+    }
+
+    /// <summary>
     /// The name a download carries is the one sent without its extension and its dots, with the extension of the type the scan recognised: a document named
     /// «fattura.pdf.exe» and an attachment named «a.pdf.bat» are offered as «fattura_pdf.pdf» and «a_pdf.pdf», by the service and again at the download.
     /// </summary>

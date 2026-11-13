@@ -6,6 +6,7 @@ using Casazen.Web.Configuration;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Controllers;
@@ -27,6 +28,7 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.OwnerPortal)]
 [FeatureGate(FeatureFlags.AgencyTier)]
 [PrivateAnswer]
+[EnableRateLimiting(RateLimitPolicies.OwnerPortalRead)]
 public sealed class OwnerPortalCollaborationController(
     IOwnerPortalAccessResolver accessResolver,
     IOwnerCollaborationService collaboration,
@@ -52,6 +54,7 @@ public sealed class OwnerPortalCollaborationController(
 
     /// <summary>The file of a document: the version in force, or <c>versionId</c>. The download is written first (the audit). 404 <c>owner_document_not_found</c>.</summary>
     [HttpGet("documents/{documentId:guid}/file")]
+    [EnableRateLimiting(RateLimitPolicies.OwnerPortalDownload)]
     [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
@@ -84,6 +87,7 @@ public sealed class OwnerPortalCollaborationController(
     /// <c>owner_contact_exists</c>.
     /// </summary>
     [HttpPost("contacts")]
+    [EnableRateLimiting(RateLimitPolicies.OwnerPortalInvite)]
     [ProducesResponseType(typeof(OwnerContactView), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
@@ -151,6 +155,7 @@ public sealed class OwnerPortalCollaborationController(
     /// 422 <c>owner_conversation_invalid</c>, <c>owner_message_invalid</c>.
     /// </summary>
     [HttpPost("conversations")]
+    [EnableRateLimiting(RateLimitPolicies.OwnerPortalWrite)]
     [ProducesResponseType(typeof(OwnerConversationView), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
@@ -184,6 +189,7 @@ public sealed class OwnerPortalCollaborationController(
     /// <c>owner_message_invalid</c>, <c>owner_file_type_not_allowed</c>, <c>owner_file_active_content</c>.
     /// </summary>
     [HttpPost("conversations/{conversationId:guid}/messages")]
+    [EnableRateLimiting(RateLimitPolicies.OwnerPortalWrite)]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(OwnerPortalFiles.MaxRequestBytes)]
     [RequestFormLimits(MultipartBodyLengthLimit = OwnerPortalFiles.MaxRequestBytes)]
@@ -208,6 +214,7 @@ public sealed class OwnerPortalCollaborationController(
 
     /// <summary>The file of a message. 404 <c>owner_attachment_not_found</c>.</summary>
     [HttpGet("conversations/{conversationId:guid}/messages/{messageId:guid}/attachment")]
+    [EnableRateLimiting(RateLimitPolicies.OwnerPortalDownload)]
     [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]

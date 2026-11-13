@@ -219,4 +219,31 @@ public static class RateLimitPolicies
     /// partitioned by <b>person</b> and bounded at 20 an hour, on top of the per-user and per-org limits of the AI endpoints.
     /// </summary>
     public const string AssistantSimulate = "AssistantSimulate";
+
+    /// <summary>
+    /// The reads and the light calls of the owner portal operations (<c>api/owner-portal/…</c>, <c>api/owner-contacts/accept</c> and, for the agency,
+    /// <c>api/owner-stays</c> and <c>api/owner-collaboration</c>, E07/F07/US01): the default of those controllers. A policy of a signed-in endpoint,
+    /// partitioned by <b>person</b>: the owners are people outside the organization, and the people of one network share an address.
+    /// </summary>
+    public const string OwnerPortalRead = "OwnerPortalRead";
+
+    /// <summary>
+    /// The invitation of a delegated contact by an owner (<c>POST api/owner-portal/contacts</c>): each call sends an e-mail to an address and with names the
+    /// owner chose, so it is tight and partitioned by <b>person</b>; next to it a cap of invitations a day counts the ones withdrawn too
+    /// (<c>OwnerCollaborationRules.MaxContactInvitationsPerDay</c>).
+    /// </summary>
+    public const string OwnerPortalInvite = "OwnerPortalInvite";
+
+    /// <summary>
+    /// What writes in the owner portal: opening a conversation and writing a message with its file (<c>POST api/owner-portal/conversations[/{id}/messages]</c>
+    /// and the same of the agency), sharing a document or a new version of it (<c>POST api/owner-collaboration/documents[/{id}/versions]</c>). Each call can read a
+    /// file of up to 10 MB, scans it and stores it, and ends in an e-mail to the other side. Partitioned by <b>person</b>.
+    /// </summary>
+    public const string OwnerPortalWrite = "OwnerPortalWrite";
+
+    /// <summary>
+    /// The download of the files of the owner portal (the file of a document, the attachment of a message, for the owner and for the agency): each call writes a
+    /// line of the download audit of the document and streams a file of up to 10 MB. Partitioned by <b>person</b>.
+    /// </summary>
+    public const string OwnerPortalDownload = "OwnerPortalDownload";
 }

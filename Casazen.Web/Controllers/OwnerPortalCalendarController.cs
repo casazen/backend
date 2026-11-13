@@ -5,6 +5,7 @@ using Casazen.Web.Configuration;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Controllers;
@@ -26,6 +27,7 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.OwnerPortal)]
 [FeatureGate(FeatureFlags.AgencyTier)]
 [PrivateAnswer]
+[EnableRateLimiting(RateLimitPolicies.OwnerPortalRead)]
 public sealed class OwnerPortalCalendarController(
     IOwnerPortalAccessResolver accessResolver,
     IOwnerStayService stays,

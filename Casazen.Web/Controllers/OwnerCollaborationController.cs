@@ -6,6 +6,7 @@ using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Casazen.Web.Controllers;
 
@@ -25,6 +26,7 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.AgencyOwnerView)]
 [FeatureGate(FeatureFlags.AgencyTier)]
 [PrivateAnswer]
+[EnableRateLimiting(RateLimitPolicies.OwnerPortalRead)]
 public sealed class OwnerCollaborationController(
     IOwnerCollaborationService collaboration,
     IOrgContextResolver orgContextResolver,
@@ -49,6 +51,7 @@ public sealed class OwnerCollaborationController(
     /// </summary>
     [HttpPost("documents")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerManage)]
+    [EnableRateLimiting(RateLimitPolicies.OwnerPortalWrite)]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(OwnerPortalFiles.MaxRequestBytes)]
     [RequestFormLimits(MultipartBodyLengthLimit = OwnerPortalFiles.MaxRequestBytes)]
@@ -78,6 +81,7 @@ public sealed class OwnerCollaborationController(
     /// <summary>Adds a new file to a document (multipart: <c>effectiveFrom</c>?, <c>expiresOn</c>?, <c>file</c>): a new version, the earlier ones kept. 201.</summary>
     [HttpPost("documents/{documentId:guid}/versions")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerManage)]
+    [EnableRateLimiting(RateLimitPolicies.OwnerPortalWrite)]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(OwnerPortalFiles.MaxRequestBytes)]
     [RequestFormLimits(MultipartBodyLengthLimit = OwnerPortalFiles.MaxRequestBytes)]
@@ -146,6 +150,7 @@ public sealed class OwnerCollaborationController(
 
     /// <summary>The file of a version; the download of a person of the agency is written too.</summary>
     [HttpGet("documents/{documentId:guid}/versions/{versionId:guid}/file")]
+    [EnableRateLimiting(RateLimitPolicies.OwnerPortalDownload)]
     [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -201,6 +206,7 @@ public sealed class OwnerCollaborationController(
     /// </summary>
     [HttpPost("conversations")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerManage)]
+    [EnableRateLimiting(RateLimitPolicies.OwnerPortalWrite)]
     [ProducesResponseType(typeof(OwnerConversationView), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -230,6 +236,7 @@ public sealed class OwnerCollaborationController(
     /// <summary>Writes a message (multipart: <c>body</c>, optional <c>file</c>). 201. The owner side is told by e-mail, without the words.</summary>
     [HttpPost("conversations/{conversationId:guid}/messages")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerManage)]
+    [EnableRateLimiting(RateLimitPolicies.OwnerPortalWrite)]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(OwnerPortalFiles.MaxRequestBytes)]
     [RequestFormLimits(MultipartBodyLengthLimit = OwnerPortalFiles.MaxRequestBytes)]
@@ -253,6 +260,7 @@ public sealed class OwnerCollaborationController(
 
     /// <summary>The file of a message.</summary>
     [HttpGet("conversations/{conversationId:guid}/messages/{messageId:guid}/attachment")]
+    [EnableRateLimiting(RateLimitPolicies.OwnerPortalDownload)]
     [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]

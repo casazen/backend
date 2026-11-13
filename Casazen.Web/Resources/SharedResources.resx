@@ -6594,6 +6594,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerContactLimitReached" xml:space="preserve">
     <value>Puoi avere al massimo {0} contatti.</value>
   </data>
+  <data name="OwnerContactDailyLimitReached" xml:space="preserve">
+    <value>Hai raggiunto il limite di {0} inviti al giorno, anche contando quelli ritirati: riprova domani.</value>
+  </data>
   <data name="OwnerContactRevoked" xml:space="preserve">
     <value>Il contatto è stato revocato.</value>
   </data>

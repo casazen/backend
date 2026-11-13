@@ -186,6 +186,13 @@ public static class OwnerCollaborationRules
     /// <summary>The most contacts in force (invited or active) of one owner profile.</summary>
     public const int MaxContactsPerOwner = 10;
 
+    /// <summary>
+    /// The most invitations of contacts one person of the portal makes in a day, <b>the withdrawn ones counted too</b>: each sends an e-mail to an address the
+    /// owner chose, and the limit of the contacts in force alone would never stop inviting, withdrawing and inviting again (429
+    /// <c>owner_contact_daily_limit_reached</c>, as <c>OwnerInvitationService</c> does for the invitations of an agency).
+    /// </summary>
+    public const int MaxContactInvitationsPerDay = 20;
+
     /// <summary>The days the link of the invitation of a contact lasts.</summary>
     public const int ContactInvitationDays = 7;
 
@@ -205,6 +212,7 @@ public static class OwnerCollaborationErrors
     public const string ContactInvalid = "owner_contact_invalid";
     public const string ContactExists = "owner_contact_exists";
     public const string ContactLimitReached = "owner_contact_limit_reached";
+    public const string ContactDailyLimitReached = "owner_contact_daily_limit_reached";
     public const string ContactRevoked = "owner_contact_revoked";
     public const string ContactEmailNotQueued = "owner_contact_email_not_queued";
     public const string InvitationInvalid = "owner_contact_invitation_invalid";
@@ -228,6 +236,7 @@ public static class OwnerCollaborationErrors
     public const string ContactInvalidMessageKey = "OwnerContactInvalid";
     public const string ContactExistsMessageKey = "OwnerContactExists";
     public const string ContactLimitReachedMessageKey = "OwnerContactLimitReached";
+    public const string ContactDailyLimitReachedMessageKey = "OwnerContactDailyLimitReached";
     public const string ContactRevokedMessageKey = "OwnerContactRevoked";
     public const string ContactEmailNotQueuedMessageKey = "OwnerContactEmailNotQueued";
     public const string InvitationInvalidMessageKey = "OwnerContactInvitationInvalid";

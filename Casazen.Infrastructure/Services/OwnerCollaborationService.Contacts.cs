@@ -74,6 +74,18 @@ public sealed partial class OwnerCollaborationService
                     OwnerCollaborationErrors.ContactLimitReached, OwnerCollaborationErrors.ContactLimitReachedMessageKey, OwnerCollaborationRules.MaxContactsPerOwner);
             }
 
+            // Every invitation sends an e-mail to an address the owner chose: the ones of the last day are counted whatever became of them, the withdrawn too
+            // (inviting, withdrawing and inviting again would otherwise never reach the limit above, which counts the contacts in force).
+            var since = now.AddDays(-1);
+            var invitedToday = await Contacts().CountAsync(c => c.InvitedByOwnerUserId == access.OwnerUserId && c.CreatedAt > since, cancellationToken);
+            if (invitedToday >= OwnerCollaborationRules.MaxContactInvitationsPerDay)
+            {
+                throw new DomainTooManyRequestsException(
+                    OwnerCollaborationErrors.ContactDailyLimitReached,
+                    OwnerCollaborationErrors.ContactDailyLimitReachedMessageKey,
+                    OwnerCollaborationRules.MaxContactInvitationsPerDay);
+            }
+
             contact = new OwnerPortalContact
             {
                 OrgId = orgId,
