@@ -83,11 +83,13 @@ public sealed class MessagesFlowProvider(AppDbContext db, FlowPrerequisiteReader
 /// <para>No profile is <see cref="OnboardingFlowReasons.IssuerMissing"/> with the action <see cref="OnboardingFlowActions.ChooseIssuer"/>; the choice
 /// «none, my accountant issues» (<see cref="DocumentIssuerMode.Accountant"/>) is «not available» with
 /// <see cref="OnboardingFlowReasons.AccountantHandles"/>: CasaZen has no document to run. Octorate as the issuer needs the connection and the mapping
-/// like the other flows; CasaZen as the issuer (the direct bookings) needs neither. A mode this version does not know is taken as no choice.</para>
+/// like the other flows; CasaZen as the issuer (the direct bookings) needs neither. A mode this version does not know is taken as no choice, and so is
+/// «CasaZen issues» while <see cref="FeatureFlags.FiscalDocumentIssuance"/> is off (<see cref="IssuerChoice.Effective"/>): nobody issues then, as the
+/// issuer service says for the bookings.</para>
 /// <para><b>Reach.</b> The choice is the organization's: it is the same for every property asked about. Only those are answered, an empty list is an
 /// empty answer, and the row is read by org.</para>
 /// </remarks>
-public sealed class DocumentsFlowProvider(AppDbContext db, FlowPrerequisiteReader prerequisites) : IFlowReadinessProvider
+public sealed class DocumentsFlowProvider(AppDbContext db, FlowPrerequisiteReader prerequisites, IFeatureFlags featureFlags) : IFlowReadinessProvider
 {
     public OnboardingFlow Flow => OnboardingFlow.Documents;
 
@@ -104,11 +106,12 @@ public sealed class DocumentsFlowProvider(AppDbContext db, FlowPrerequisiteReade
         if (ids.Count == 0)
             return readiness;
 
-        var mode = await db.OrgFiscalIssuerProfiles
+        var stored = await db.OrgFiscalIssuerProfiles
             .AsNoTracking()
             .Where(p => p.OrgId == orgId)
             .Select(p => (DocumentIssuerMode?)p.IssuerMode)
             .FirstOrDefaultAsync(ct);
+        var mode = IssuerChoice.Effective(stored, featureFlags);
 
         if (mode == DocumentIssuerMode.Accountant)
         {
@@ -281,9 +284,10 @@ public sealed class MessagesAiPartEvaluator(AppDbContext db, IFeatureFlags featu
 /// </summary>
 /// <remarks>
 /// The choice belongs to the organization, not to some of its properties: it is the same for every caller, as <c>GET api/fiscal/documents/settings</c>
-/// is readable by a caller who reaches only some of the properties. One row is read, by org; the data of the issuer is never read.
+/// is readable by a caller who reaches only some of the properties. One row is read, by org; the data of the issuer is never read. «CasaZen issues» counts
+/// as a choice only while <see cref="FeatureFlags.FiscalDocumentIssuance"/> is on (<see cref="IssuerChoice.Effective"/>), as for the flow «Documents».
 /// </remarks>
-public sealed class FiscalDocumentsPartEvaluator(AppDbContext db) : IOnboardingPartEvaluator
+public sealed class FiscalDocumentsPartEvaluator(AppDbContext db, IFeatureFlags featureFlags) : IOnboardingPartEvaluator
 {
     public OnboardingPartKey Part => OnboardingPartKey.FiscalDocuments;
 
@@ -293,11 +297,12 @@ public sealed class FiscalDocumentsPartEvaluator(AppDbContext db) : IOnboardingP
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        var mode = await db.OrgFiscalIssuerProfiles
+        var stored = await db.OrgFiscalIssuerProfiles
             .AsNoTracking()
             .Where(p => p.OrgId == context.OrgId)
             .Select(p => (DocumentIssuerMode?)p.IssuerMode)
             .FirstOrDefaultAsync(ct);
+        var mode = IssuerChoice.Effective(stored, featureFlags);
 
         return mode switch
         {
@@ -334,5 +339,23 @@ public sealed class PartnersPartEvaluator(IFeatureFlags featureFlags, IMarketpla
         var active = await catalog.GetActiveAsync(context.OrgId, context.Scope, null, ct);
         var any = active.Integrations.Any(integration => integration.Status == MarketplaceCardStatus.Active || integration.IsDeclared);
         return PartFacts.Counted(any ? 1 : 0, 1, OnboardingPartReasons.PartnerIntegrationMissing);
+    }
+}
+
+/// <summary>
+/// The issuer choice of an organization as the activation reads it (E10/F01/US04/T01): the one definition the flow «Documents» and the part «Fiscal
+/// documents» share, so the two never disagree on whether the host has chosen.
+/// </summary>
+internal static class IssuerChoice
+{
+    /// <summary>
+    /// The mode the organization chose, or <c>null</c> for no usable choice: «CasaZen issues, direct bookings only» is no choice while
+    /// <see cref="FeatureFlags.FiscalDocumentIssuance"/> is off, because nobody issues then (<c>DocumentIssuerService.ResolveIssuerAsync</c> answers
+    /// <c>IssuanceOff</c> for every booking). The mode is saved only with the flag on, so this is a choice made before the flag was switched off.
+    /// </summary>
+    public static DocumentIssuerMode? Effective(DocumentIssuerMode? stored, IFeatureFlags featureFlags)
+    {
+        ArgumentNullException.ThrowIfNull(featureFlags);
+        return stored == DocumentIssuerMode.CasaZenDirectOnly && !featureFlags.IsEnabled(FeatureFlags.FiscalDocumentIssuance) ? null : stored;
     }
 }

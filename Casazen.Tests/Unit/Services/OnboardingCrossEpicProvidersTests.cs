@@ -155,13 +155,13 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
 
     /// <summary>
     /// The documents flow follows the issuer the organization chose: no profile is «to complete» (<c>issuer_missing</c>, action <c>chooseIssuer</c>), the
-    /// accountant is «not available», CasaZen needs no connection, Octorate needs the connection and the mapping too. The profile of another org
-    /// counts for nobody here.
+    /// accountant is «not available», CasaZen needs no connection (and counts only while the issuance is on), Octorate needs the connection and the
+    /// mapping too. The profile of another org counts for nobody here.
     /// </summary>
     [Fact]
     public async Task DocumentsFlow_FollowsTheIssuerTheOrganizationChose()
     {
-        var provider = new DocumentsFlowProvider(_db, Reader(_world.Granted.Id));
+        var provider = new DocumentsFlowProvider(_db, Reader(_world.Granted.Id), _flags.Object);
         var ids = new[] { _world.Granted.Id, _world.Hidden.Id };
         _db.OrgFiscalIssuerProfiles.Add(Issuer(DocumentIssuerMode.Accountant, _world.OtherOrgId));
         await _db.SaveChangesAsync();
@@ -180,12 +180,19 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
             Assert.Equal(OnboardingFlowReasons.AccountantHandles, accountant[id].NotAvailableReason);
         });
 
-        // CasaZen issues the direct bookings: the choice is enough, there is no connection to Octorate and none is needed.
+        // CasaZen issues the direct bookings: the choice is enough, there is no connection to Octorate and none is needed (the issuance is on).
+        _flags.Setup(f => f.IsEnabled(FeatureFlags.FiscalDocumentIssuance)).Returns(true);
         profile.IssuerMode = DocumentIssuerMode.CasaZenDirectOnly;
         await _db.SaveChangesAsync();
         var casazen = await provider.EvaluateAsync(_world.OrgId, ids, Ct);
         Assert.All(ids, id => Assert.Equal([OnboardingPrerequisiteKeys.Issuer], casazen[id].Prerequisites.Where(p => p.Met).Select(p => p.Key)));
         Assert.All(ids, id => Assert.Single(casazen[id].Prerequisites));
+
+        // The issuance is switched off after the host chose CasaZen: nobody issues then (the issuer service answers «issuance off» for every booking), so
+        // the choice is no choice and the flow leads the host to the wizard again. The accountant (above) and Octorate (below) do not depend on the flag.
+        _flags.Setup(f => f.IsEnabled(FeatureFlags.FiscalDocumentIssuance)).Returns(false);
+        var switchedOff = await provider.EvaluateAsync(_world.OrgId, ids, Ct);
+        Assert.All(ids, id => Assert.Equal(issuerMissing, switchedOff[id].Prerequisites.Select(p => (p.Key, p.Met, p.Reason))));
 
         // Octorate issues: the connection and the confirmed listing of each property are needed too (the listing of Granted only is confirmed).
         profile.IssuerMode = DocumentIssuerMode.Octorate;
@@ -249,7 +256,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         await AddBookingAsync(_world.Granted, BookingStatus.Confirmed);
         await AddBookingAsync(_world.Hidden, BookingStatus.Confirmed);
 
-        IFlowReadinessProvider[] providers = [new MessagesFlowProvider(_db, reader), new DocumentsFlowProvider(_db, reader), new ReportsFlowProvider(_db, reader)];
+        IFlowReadinessProvider[] providers = [new MessagesFlowProvider(_db, reader), new DocumentsFlowProvider(_db, reader, _flags.Object), new ReportsFlowProvider(_db, reader)];
         foreach (var provider in providers)
         {
             Assert.Empty(await provider.EvaluateAsync(_world.OrgId, [], Ct));
@@ -278,7 +285,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
     public async Task OnboardingCrossEpicParts_StateComesFromStoredFacts_Test()
     {
         var messages = new MessagesAiPartEvaluator(_db, _flags.Object);
-        var fiscal = new FiscalDocumentsPartEvaluator(_db);
+        var fiscal = new FiscalDocumentsPartEvaluator(_db, _flags.Object);
         var partners = new PartnersPartEvaluator(_flags.Object, Catalog());
         var context = new OnboardingPartContext(_world.OrgWide, [_world.Granted.Id, _world.Hidden.Id]);
 
@@ -316,6 +323,14 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         _db.OrgFiscalIssuerProfiles.Add(profile);
         await _db.SaveChangesAsync();
         Assert.Equal(PartFacts.Counted(1, 1, null), await fiscal.EvaluateAsync(context, Ct));
+
+        // «CasaZen issues» is a choice only while the issuance is on: switched off after the host chose it, nobody issues and the part is to do again.
+        profile.IssuerMode = DocumentIssuerMode.CasaZenDirectOnly;
+        await _db.SaveChangesAsync();
+        Assert.Equal(PartFacts.Counted(0, 1, OnboardingPartReasons.IssuerMissing), await fiscal.EvaluateAsync(context, Ct));
+        _flags.Setup(f => f.IsEnabled(FeatureFlags.FiscalDocumentIssuance)).Returns(true);
+        Assert.Equal(PartFacts.Counted(1, 1, null), await fiscal.EvaluateAsync(context, Ct));
+
         profile.IssuerMode = DocumentIssuerMode.Accountant;
         await _db.SaveChangesAsync();
         var accountant = await fiscal.EvaluateAsync(context, Ct);
@@ -404,7 +419,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         IOnboardingPartEvaluator[] evaluators =
         [
             new MessagesAiPartEvaluator(_db, _flags.Object),
-            new FiscalDocumentsPartEvaluator(_db),
+            new FiscalDocumentsPartEvaluator(_db, _flags.Object),
             new PartnersPartEvaluator(_flags.Object, Catalog()),
         ];
         var plans = new OnboardingPlanService(
@@ -529,7 +544,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         IFlowReadinessProvider[] flows =
         [
             new MessagesFlowProvider(_db, reader),
-            new DocumentsFlowProvider(_db, reader),
+            new DocumentsFlowProvider(_db, reader, _flags.Object),
             new ReportsFlowProvider(_db, reader),
         ];
         Assert.Equal(CrossEpicFlows, flows.Select(p => p.Flow));
@@ -537,7 +552,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         IOnboardingPartEvaluator[] parts =
         [
             new MessagesAiPartEvaluator(_db, _flags.Object),
-            new FiscalDocumentsPartEvaluator(_db),
+            new FiscalDocumentsPartEvaluator(_db, _flags.Object),
             new PartnersPartEvaluator(_flags.Object, Catalog()),
         ];
         Assert.Equal([OnboardingPartKey.MessagesAi, OnboardingPartKey.FiscalDocuments, OnboardingPartKey.Partners], parts.Select(p => p.Part));
@@ -581,7 +596,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
 
     private OnboardingFlowStatusService FlowStatus(FlowPrerequisiteReader reader)
     {
-        IFlowReadinessProvider[] providers = [new MessagesFlowProvider(_db, reader), new DocumentsFlowProvider(_db, reader), new ReportsFlowProvider(_db, reader)];
+        IFlowReadinessProvider[] providers = [new MessagesFlowProvider(_db, reader), new DocumentsFlowProvider(_db, reader, _flags.Object), new ReportsFlowProvider(_db, reader)];
         return new OnboardingFlowStatusService(_db, providers);
     }
 
