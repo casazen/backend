@@ -34,6 +34,22 @@ public class OpenapiRegistrationPaymentTests
     private static readonly DateTime Now = new(2026, 11, 8, 12, 0, 0, DateTimeKind.Utc);
 
     [Fact]
+    public async Task Checkout_IncompletePreparation_DoesNotContactStripe()
+    {
+        await using var db = NewDb();
+        await SeedLeaseAsync(db);
+        var stripe = new StripeDouble();
+        var preparation = new Mock<IOpenapiRegistrationPreparation>();
+        preparation.Setup(p => p.EnsureReadyAsync(It.IsAny<LeaseContract>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DomainRuleException("openapi_registration_incomplete", "OpenapiRegistrationIncomplete"));
+        var error = await Assert.ThrowsAsync<DomainRuleException>(() => Checkout(db, stripe.Client, preparation.Object)
+            .CreateCheckoutSessionAsync(LeaseId, OrgId, "auth0|owner"));
+        Assert.Equal("openapi_registration_incomplete", error.Code);
+        Assert.Empty(stripe.Requests);
+        Assert.Empty(await db.OpenapiLeaseRegistrationPayments.ToListAsync());
+    }
+
+    [Fact]
     public async Task Checkout_PreviousSessionAlreadyPaid_DoesNotOpenAnother()
     {
         await using var db = NewDb();
@@ -166,7 +182,7 @@ public class OpenapiRegistrationPaymentTests
         return await db.OpenapiLeaseRegistrationPayments.SingleAsync(p => p.Id == id);
     }
 
-    private static OpenapiRegistrationCheckoutService Checkout(AppDbContext db, Stripe.IStripeClient client) =>
+    private static OpenapiRegistrationCheckoutService Checkout(AppDbContext db, Stripe.IStripeClient client, IOpenapiRegistrationPreparation? preparation = null) =>
         new(
             db,
             Options.Create(new CedolareAdvisoryOptions
@@ -177,7 +193,8 @@ public class OpenapiRegistrationPaymentTests
             new ConfigurationBuilder().AddInMemoryCollection().Build(),
             NullLogger<OpenapiRegistrationCheckoutService>.Instance,
             client,
-            new FixedClock());
+            new FixedClock(),
+            preparation ?? Mock.Of<IOpenapiRegistrationPreparation>());
 
     private static OpenapiRegistrationPaymentHandler Handler(AppDbContext db, Stripe.IStripeClient client) =>
         new(db, NullLogger<OpenapiRegistrationPaymentHandler>.Instance, client);
@@ -190,6 +207,7 @@ public class OpenapiRegistrationPaymentTests
         {
             Id = LeaseId,
             OrgId = OrgId,
+            Property = new Property { OrgId = OrgId, Address = "Via Roma 1", City = "Milano" },
             Status = LeaseStatus.Signed,
             ContractType = LeaseContractType.Libero,
             FiscalRegime = FiscalRegime.CedolareSecca,

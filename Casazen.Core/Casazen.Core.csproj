@@ -16,4 +16,7 @@
     <InternalsVisibleTo Include="Casazen.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Leases/OpenapiRegistrationSchema.json" />
+  </ItemGroup>
 </Project>

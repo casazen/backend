@@ -49,9 +49,10 @@ public class OpenapiNonConcordatoRegistrationTests
     }
 
     [Theory]
-    [InlineData(LeaseContractType.Libero)]
-    [InlineData(LeaseContractType.Transitorio)]
-    public async Task Submit_SendsTheContractType_AsTheFirstSearchField(LeaseContractType contractType)
+    [InlineData(LeaseContractType.Libero, "L1")]
+    [InlineData(LeaseContractType.Transitorio, "L1")]
+    [InlineData(LeaseContractType.Concordato, "L2")]
+    public async Task Submit_SendsTheOfficialContractType_AtItsVerifiedPosition(LeaseContractType contractType, string expectedCode)
     {
         string? body = null;
         var handler = new StubHandler(request =>
@@ -69,21 +70,15 @@ public class OpenapiNonConcordatoRegistrationTests
 
         Assert.Equal("66c881896de559cb65055392", id);
         using var json = JsonDocument.Parse(body!);
-        Assert.Equal(contractType.ToString(), json.RootElement.GetProperty("search").GetProperty("field0").GetString());
+        Assert.Equal(expectedCode, json.RootElement.GetProperty("search").GetProperty("field1").GetString());
         Assert.Equal("doc-lease", json.RootElement.GetProperty("documentId").GetString());
     }
 
     [Fact]
-    public void Build_UnknownFieldOrderName_StillOccupiesItsIndex()
+    public void Build_RejectsUnverifiedFieldOrder()
     {
-        var search = OpenapiLeaseSearch.Build(
-            Lease(LeaseContractType.Libero),
-            default,
-            ["contractType", "not-a-casazen-field", "taxRegime"]);
-
-        Assert.Equal("Libero", search["field0"]);
-        Assert.Equal(string.Empty, search["field1"]);
-        Assert.Equal(LeaseTaxRegime.Ordinario.ToString(), search["field2"]);
+        Assert.Throws<InvalidOperationException>(() => OpenapiLeaseSearch.Build(
+            Lease(LeaseContractType.Libero), default, ["contractType", "not-a-casazen-field", "taxRegime"]));
     }
 
     [Fact]
@@ -230,6 +225,20 @@ public class OpenapiNonConcordatoRegistrationTests
         provider.Verify(p => p.SubmitAsync(It.IsAny<LeaseContract>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Fact]
+    public async Task Sync_OpenapiSubmission_UsesTheRecordedProviderEvenWhenGenericProviderIsConfigured()
+    {
+        var (service, openapi, provider, db) = await ReadyServiceAsync(LeaseContractType.Libero, paid: true);
+        await using var ownedDb = db;
+        await service.SubmitToProviderAsync(LeaseId, OwnerId, Delega);
+        openapi.Setup(c => c.GetStatusAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProviderRegistrationStatus(ProviderRegistrationState.InProgress));
+        await service.SyncProviderRegistrationsAsync();
+        Assert.Equal("openapi", (await db.LeaseRegistrations.SingleAsync()).ProviderCode);
+        openapi.Verify(c => c.GetStatusAsync("66c881896de559cb65055392", It.IsAny<CancellationToken>()), Times.Once);
+        provider.Verify(p => p.GetStatusAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private static readonly Guid LeaseId = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
     private static readonly RegistrationAuthorizationRequest Delega = new(new RliOptions().TosVersion, true);
 
@@ -296,13 +305,17 @@ public class OpenapiNonConcordatoRegistrationTests
             new OrgHolderService(db),
             NullLogger<RliRegistrationService>.Instance,
             openapi: openapi.Object,
-            registrationPayment: new OpenapiRegistrationPaymentGate(db, Options.Create(Advisory()), NullLogger<OpenapiRegistrationPaymentGate>.Instance));
+            registrationPayment: new OpenapiRegistrationPaymentGate(db, Options.Create(Advisory()), NullLogger<OpenapiRegistrationPaymentGate>.Instance),
+            preparation: Mock.Of<IOpenapiRegistrationPreparation>());
         return (service, openapi, provider, db);
     }
 
     private static OpenapiDocuEngineClient NewClient(HttpMessageHandler handler, string? token = "token")
     {
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.docuengine.openapi.com/") };
+        var preparation = new Mock<IOpenapiRegistrationPreparation>();
+        preparation.Setup(p => p.BuildSearchAsync(It.IsAny<LeaseContract>(), It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((LeaseContract lease, ReadOnlyMemory<byte> bytes, CancellationToken _) => OpenapiLeaseSearch.Build(lease, bytes, []));
         return new OpenapiDocuEngineClient(
             http,
             Options.Create(new OpenapiOptions
@@ -314,7 +327,7 @@ public class OpenapiNonConcordatoRegistrationTests
                 Token = token,
                 LeaseDocumentId = "doc-lease",
             }),
-            NullLogger<OpenapiDocuEngineClient>.Instance);
+            NullLogger<OpenapiDocuEngineClient>.Instance, preparation.Object);
     }
 
     private static CedolareAdvisoryOptions Advisory() => new() { Registro = Registro };

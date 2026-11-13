@@ -39,6 +39,16 @@ public sealed class LeaseDocumentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Upload_RegistrationIdentity_StaysPrivateAndSkipsAiExtraction()
+    {
+        var lease = await Seed();
+        var saved = await Service.UploadAsync(lease.Id, File(Pdf), LeaseDocumentKind.RegistrationIdentity, "owner");
+        var row = await _db.LeaseDocuments.SingleAsync(d => d.Id == saved.Id);
+        Assert.Equal(Casazen.Core.Entities.Enums.LeaseDocumentExtractionStatus.Skipped, row.ExtractionStatus);
+        Assert.StartsWith($"orgs/{lease.OrgId}/leases/{lease.Id}/documents/", row.StorageKey);
+    }
+
+    [Fact]
     public async Task Upload_PersistsOnLease_NotProperty_AndDownloadsOriginalBytes()
     {
         var lease = await Seed();

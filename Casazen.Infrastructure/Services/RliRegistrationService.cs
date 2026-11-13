@@ -45,7 +45,8 @@ public class RliRegistrationService(
     ILogger<RliRegistrationService> logger,
     TimeProvider? timeProvider = null,
     IOpenapiDocuEngineClient? openapi = null,
-    IOpenapiRegistrationPaymentGate? registrationPayment = null) : IRliRegistrationService
+    IOpenapiRegistrationPaymentGate? registrationPayment = null,
+    IOpenapiRegistrationPreparation? preparation = null) : IRliRegistrationService
 {
     /// <summary>A provider reservation still Pending after this long has lost its outcome.</summary>
     public static readonly TimeSpan StaleSubmissionAfter = TimeSpan.FromMinutes(15);
@@ -69,9 +70,7 @@ public class RliRegistrationService(
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
         ArgumentNullException.ThrowIfNull(delega);
 
-        // The flag is required for every provider filing. A non-concordato contract can use DocuEngine when that client
-        // is configured, even while the generic provider is still the unconfigured one. A canone concordato never takes
-        // this path.
+        // The flag is required for every filing. DocuEngine can handle every supported residential contract type.
         if (!featureFlags.IsEnabled(FeatureFlags.RliProvider))
             throw new DomainConflictException(RliRegistrationErrorCodes.ProviderUnavailable, "RliProviderUnavailable");
 
@@ -107,9 +106,11 @@ public class RliRegistrationService(
             if (registrationPayment is null)
                 throw new DomainConflictException(OpenapiRegistrationFee.UnpaidCode, "OpenapiRegistrationUnpaid");
             await registrationPayment.EnsurePaidAsync(lease, cancellationToken);
+            if (preparation is null) throw new InvalidOperationException("Registration preparation is not registered.");
+            await preparation.EnsureReadyAsync(lease, cancellationToken);
         }
 
-        var registration = await ReserveProviderSubmissionAsync(lease, ownerId, delega.TosVersion, cancellationToken);
+        var registration = await ReserveProviderSubmissionAsync(lease, ownerId, delega.TosVersion, cancellationToken, openapiFiling);
 
         // From here on the outcome is always recorded: a client that disconnects must not leave the reservation behind.
         string externalId;
@@ -259,6 +260,7 @@ public class RliRegistrationService(
 
             registration.Status = RegistrationStatus.Registered;
             registration.Channel = RegistrationChannel.Manual;
+            registration.ProviderCode = null;
             registration.RegistrationCode = code;
             registration.RegistrationDate = registrationDate;
             registration.ReceiptStoragePath = receiptKey;
@@ -361,13 +363,15 @@ public class RliRegistrationService(
             .Where(r => r.Channel == RegistrationChannel.Provider
                 && r.Status == RegistrationStatus.SentToProvider
                 && r.ExternalRegistrationId != null)
-            .Select(r => new { r.Id, r.LeaseContractId, r.ExternalRegistrationId, r.LeaseContract.OrgId })
+            .Select(r => new { r.Id, r.LeaseContractId, r.ExternalRegistrationId, r.LeaseContract.OrgId, r.ProviderCode })
             .ToListAsync(cancellationToken);
         foreach (var request in submitted)
         {
             try
             {
-                var status = await provider.GetStatusAsync(request.ExternalRegistrationId!, cancellationToken);
+                var status = request.ProviderCode == "openapi" && openapi is not null
+                    ? await openapi.GetStatusAsync(request.ExternalRegistrationId!, cancellationToken)
+                    : await provider.GetStatusAsync(request.ExternalRegistrationId!, cancellationToken);
                 switch (status.State)
                 {
                     case ProviderRegistrationState.Registered:
@@ -422,7 +426,7 @@ public class RliRegistrationService(
     }
 
     private async Task<LeaseRegistration> ReserveProviderSubmissionAsync(
-        LeaseContract lease, string ownerId, string tosVersion, CancellationToken cancellationToken)
+        LeaseContract lease, string ownerId, string tosVersion, CancellationToken cancellationToken, bool openapiFiling)
     {
         await using var transaction = await BeginTransactionAsync(cancellationToken);
         await LockLeaseAsync(lease.Id, cancellationToken);
@@ -440,6 +444,7 @@ public class RliRegistrationService(
         // A Failed row is reused: one registration per lease (unique index), its previous attempt stays in the timeline.
         registration.Status = RegistrationStatus.Pending;
         registration.Channel = RegistrationChannel.Provider;
+        registration.ProviderCode = openapiFiling ? "openapi" : "legacy";
         registration.ExternalRegistrationId = null;
         registration.RegistrationCode = null;
         registration.RegistrationDate = null;
@@ -566,7 +571,10 @@ public class RliRegistrationService(
         CancellationToken cancellationToken)
     {
         MemoryStream? receipt;
-        await using (var download = await provider.DownloadReceiptAsync(externalId, cancellationToken))
+        var providerCode = await db.LeaseRegistrations.Where(r => r.Id == registrationId).Select(r => r.ProviderCode).SingleAsync(cancellationToken);
+        await using (var download = providerCode == "openapi" && openapi is not null
+            ? await openapi.DownloadReceiptAsync(externalId, cancellationToken)
+            : await provider.DownloadReceiptAsync(externalId, cancellationToken))
         {
             receipt = await ReadPdfAsync(download, declaredLength: null, cancellationToken);
         }

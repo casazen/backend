@@ -4686,6 +4686,13 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("NoticeOn")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("OpenapiRegistrationData")
+                        .HasColumnType("text");
+
+                    b.Property<int>("OpenapiRegistrationVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
 
@@ -4975,6 +4982,10 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<Guid>("LeaseContractId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("ProviderCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<string>("ReceiptStoragePath")
                         .HasMaxLength(1000)

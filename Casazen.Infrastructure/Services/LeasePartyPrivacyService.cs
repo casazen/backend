@@ -35,7 +35,8 @@ public sealed class LeasePartyPrivacyService(
     AppDbContext db,
     IOptions<GdprOptions> gdprOptions,
     TimeProvider timeProvider,
-    ILogger<LeasePartyPrivacyService> logger) : ILeasePartyPrivacyService
+    ILogger<LeasePartyPrivacyService> logger,
+    IFileStorage? storage = null) : ILeasePartyPrivacyService
 {
     private const int ChunkSize = 100;
 
@@ -190,6 +191,7 @@ public sealed class LeasePartyPrivacyService(
         {
             // The values typed in the wizard repeat the data of the parties: they go with them (LR-12).
             lease.DraftData = null;
+            lease.OpenapiRegistrationData = null;
 
             var signers = await db.LeaseSigners
                 .Where(s => s.LeaseContractId == lease.Id && anonymizedIds.Contains(s.PartyId))
@@ -222,6 +224,7 @@ public sealed class LeasePartyPrivacyService(
             // Every party is anonymized (or the lease never had one: a draft whose entries are all incomplete lives in DraftData only):
             // the typed state goes too, whatever it holds for entries that never became a party (LR-12).
             lease.DraftData = null;
+            lease.OpenapiRegistrationData = null;
 
             // The need of a transitory contract and the documents that prove it are free text that can say why a person lives where
             // they live: they go with the parties (TR).
@@ -229,7 +232,18 @@ public sealed class LeasePartyPrivacyService(
             lease.TransitoryDocumentation = null;
         }
         if (anonymizedIds.Count > 0 || kept == 0)
+        {
+            var identityDocuments = await db.LeaseDocuments
+                .Where(d => d.LeaseContractId == lease.Id && d.Kind == LeaseDocumentKind.RegistrationIdentity)
+                .ToListAsync(cancellationToken);
+            foreach (var document in identityDocuments)
+            {
+                if (storage is null) throw new InvalidOperationException("Private storage is required to erase registration identity documents.");
+                await storage.DeleteAsync(StorageBucket.Private, document.StorageKey, cancellationToken);
+            }
+            db.LeaseDocuments.RemoveRange(identityDocuments);
             lease.UpdatedAt = now;
+        }
 
         if (kept > 0)
         {

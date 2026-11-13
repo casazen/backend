@@ -31,6 +31,9 @@ public class LeaseRegistration
     [MaxLength(200)]
     public string? ExternalRegistrationId { get; set; }
 
+    [MaxLength(20)]
+    public string? ProviderCode { get; set; }
+
     /// <summary>Registration number or protocol of the Agenzia delle Entrate, as written on the receipt.</summary>
     [MaxLength(100)]
     public string? RegistrationCode { get; set; }
