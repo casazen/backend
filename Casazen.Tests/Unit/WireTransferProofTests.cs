@@ -154,8 +154,9 @@ public class WireTransferProofTests
         db.OwnerStatements.AddRange(statement1, statement2);
         await db.SaveChangesAsync();
 
-        // Act: Create wire batch
-        var service = new WireTransferService(db, NullLogger<WireTransferService>.Instance);
+        // Act: Create wire batch (the official pain.001 schemas are not in the repository until an operator adds them, and a file is never produced without
+        // its validation: this proof is about the sums, so it validates against a schema of its own, see Pain001ValidationProofTests for the validation)
+        var service = new WireTransferService(db, NullLogger<WireTransferService>.Instance, _ => Pain001TestSchemas.Accepting());
         var (batch, xml) = await service.CreateBatchAsync(
             orgId,
             [statement1.Id, statement2.Id],
