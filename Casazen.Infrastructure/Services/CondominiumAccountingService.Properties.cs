@@ -40,8 +40,15 @@ public sealed partial class CondominiumAccountingService
         if (!Casazen.Core.Condominium.FiscalYear.IsValidStartMonth(command.FiscalStartMonth))
             throw new DomainRuleException(CondominiumErrorCodes.StatementInvalid, "CondominiumStatementInvalid");
         var name = RequireText(command.Name, Condominium.NameMaxLength, CondominiumErrorCodes.StatementInvalid, "CondominiumStatementInvalid");
-        var condo = new Condominium { OrgId = scope.OrgId, Name = name, FiscalStartMonth = command.FiscalStartMonth,
-            CreatedByUserId = userId, CreatedAt = UtcNow, UpdatedAt = UtcNow };
+        var condo = new Condominium
+        {
+            OrgId = scope.OrgId,
+            Name = name,
+            FiscalStartMonth = command.FiscalStartMonth,
+            CreatedByUserId = userId,
+            CreatedAt = UtcNow,
+            UpdatedAt = UtcNow
+        };
         condo.Units.Add(new CondominiumUnit { OrgId = scope.OrgId, PropertyId = property.Id, CreatedAt = UtcNow, UpdatedAt = UtcNow });
         db.Condominiums.Add(condo);
         await db.SaveChangesAsync(cancellationToken);

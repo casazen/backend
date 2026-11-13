@@ -294,9 +294,16 @@ public class TenantCondominiumSettlementServiceTests
         var paid = AddEntry(start.AddYears(1).AddMonths(1), RentLedgerStatus.Paid);
         var requested = AddEntry(start.AddYears(1).AddMonths(2), RentLedgerStatus.Scheduled);
         requested.PaymentRequestedAt = DateTime.UtcNow;
-        db.LeaseCondominiumTerms.Add(new() { OrgId = scope.OrgId, LeaseContractId = lease.Id,
-            AdvanceMode = CondominiumAdvanceMode.FixedContractAmount, AdvanceAmount = 150m,
-            Cadence = RentCadence.Monthly, ConfirmedAt = DateTime.UtcNow, SettlementRequired = clause });
+        db.LeaseCondominiumTerms.Add(new()
+        {
+            OrgId = scope.OrgId,
+            LeaseContractId = lease.Id,
+            AdvanceMode = CondominiumAdvanceMode.FixedContractAmount,
+            AdvanceAmount = 150m,
+            Cadence = RentCadence.Monthly,
+            ConfirmedAt = DateTime.UtcNow,
+            SettlementRequired = clause
+        });
         await db.SaveChangesAsync();
         var accounting = Condo(db);
         await LinkAndBudgetAsync(accounting, scope, condo, oldPeriod, lease.PropertyId);
@@ -334,6 +341,31 @@ public class TenantCondominiumSettlementServiceTests
             db.Add(entry);
             return entry;
         }
+    }
+
+
+    [Fact]
+    public async Task CancelledAdvances_DoNotCreateAnAutomaticTenantSettlement()
+    {
+        await using var db = NewDb();
+        var (scope, lease, period, condo) = await SeedAsync(db);
+        var accounting = Condo(db);
+        await LinkAndBudgetAsync(accounting, scope, condo, period, lease.PropertyId);
+        db.LeaseCondominiumTerms.Add(new()
+        {
+            OrgId = scope.OrgId,
+            LeaseContractId = lease.Id,
+            AdvanceMode = CondominiumAdvanceMode.FixedContractAmount,
+            AdvanceAmount = 150m,
+            Cadence = RentCadence.Monthly,
+            ConfirmedAt = DateTime.UtcNow,
+            SettlementRequired = true
+        });
+        foreach (var row in await db.RentLedgerEntries.ToListAsync()) row.Status = RentLedgerStatus.Cancelled;
+        await db.SaveChangesAsync();
+        await Settlements(db, accounting).ConfirmFinalAndReplaceAsync(scope, condo.Id, period.Id,
+            new(2160m, PriorYearBalanceDisposition.CarryForward, Recoverable(2160m)), "user");
+        Assert.Empty(await db.TenantCondominiumSettlements.ToListAsync());
     }
 
     private static async Task<(HostScope Scope, LeaseContract Lease, CondominiumPeriodView Period, CondominiumView Condo)> SeedAsync(AppDbContext db)

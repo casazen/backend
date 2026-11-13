@@ -444,8 +444,15 @@ public class CondominiumAccountingServiceTests
         var book = await accounting.SetupPropertyAsync(scope, property.Id, new("Casa", null, null, null, 1), "user");
         var period = await accounting.CreatePeriodAsync(scope, book.Id, new("2027"), "user");
         await accounting.ConfirmBudgetAsync(scope, book.Id, period.Id, new(2400m, null, null, CondominiumInstallmentCadence.Monthly), "user");
-        var lease = new LeaseContract { OrgId = scope.OrgId, PropertyId = property.Id, Status = LeaseStatus.Draft,
-            MonthlyRent = 650m, StartDate = new DateTime(2027, 1, 1), EndDate = new DateTime(2030, 12, 31) };
+        var lease = new LeaseContract
+        {
+            OrgId = scope.OrgId,
+            PropertyId = property.Id,
+            Status = LeaseStatus.Draft,
+            MonthlyRent = 650m,
+            StartDate = new DateTime(2027, 1, 1),
+            EndDate = new DateTime(2030, 12, 31)
+        };
         db.LeaseContracts.Add(lease);
         await db.SaveChangesAsync();
         var proposals = new TenantExpenseProposalService(db, accounting);
@@ -461,6 +468,90 @@ public class CondominiumAccountingServiceTests
         Assert.False(saved.SettledAtConsuntivo);
         Assert.Empty(db.RentSchedules);
         Assert.Empty(db.RentLedgerEntries);
+    }
+
+
+    [Fact]
+    public async Task WizardAnnualChoice_RestoresExactFigures_AndBillsTheLastCentsWithoutABook()
+    {
+        await using var db = NewDb();
+        var scope = await SeedAsync(db);
+        var property = await db.Properties.SingleAsync();
+        var lease = new LeaseContract
+        {
+            OrgId = scope.OrgId,
+            PropertyId = property.Id,
+            Status = LeaseStatus.Draft,
+            MonthlyRent = 650m,
+            StartDate = new DateTime(2027, 1, 1),
+            EndDate = new DateTime(2027, 12, 31),
+            ReviewConfirmedAt = DateTime.UtcNow,
+            ReviewFingerprint = "previous",
+            SentForSignatureAt = DateTime.UtcNow
+        };
+        db.LeaseContracts.Add(lease);
+        await db.SaveChangesAsync();
+        var proposals = new TenantExpenseProposalService(db, Service(db));
+        var request = new ProposeTenantExpenseCommand(null, null, RentCadence.Monthly, 900m, 1000m, null, true);
+        var choice = await proposals.ProposeAsync(lease.Id, request);
+        await proposals.SaveAsync(lease.Id, choice, request, "user");
+        Assert.Null(lease.ReviewConfirmedAt);
+        Assert.Null(lease.SentForSignatureAt);
+        Assert.Equal(choice, await proposals.GetSavedAsync(lease.Id));
+        Assert.Equal(83.37m, choice.LastInstallmentAmount);
+        lease.Status = LeaseStatus.Signed;
+        var schedule = new RentSchedule
+        {
+            OrgId = scope.OrgId,
+            LeaseContract = lease,
+            IsActive = true,
+            Cadence = RentCadence.Monthly,
+            Amount = 733.33m,
+            BillingDayOfMonth = 1,
+            NextRunDate = new DateOnly(2027, 1, 1)
+        };
+        db.RentSchedules.Add(schedule);
+        for (var i = 0; i < 12; i++)
+        {
+            var start = new DateOnly(2027, 1, 1).AddMonths(i);
+            var row = new RentLedgerEntry
+            {
+                OrgId = scope.OrgId,
+                LeaseContract = lease,
+                RentSchedule = schedule,
+                PeriodStart = start,
+                PeriodEnd = start.AddMonths(1).AddDays(-1),
+                DueDate = start,
+                AmountDue = 733.33m,
+                Status = RentLedgerStatus.Scheduled
+            };
+            row.Components.Add(new()
+            {
+                OrgId = scope.OrgId,
+                Kind = RentLedgerComponentKind.Rent,
+                Amount = 650m,
+                CompetenceStart = row.PeriodStart,
+                CompetenceEnd = row.PeriodEnd
+            });
+            row.Components.Add(new()
+            {
+                OrgId = scope.OrgId,
+                Kind = RentLedgerComponentKind.CondominiumAdvance,
+                Amount = 83.33m,
+                CompetenceStart = row.PeriodStart,
+                CompetenceEnd = row.PeriodEnd
+            });
+            db.RentLedgerEntries.Add(row);
+        }
+        await db.SaveChangesAsync();
+        await BudgetRentAdvanceUpdater.RefreshAsync(db, lease.Id, default);
+        await BudgetRentAdvanceUpdater.RefreshAsync(db, lease.Id, default);
+        var advances = await db.RentLedgerComponents.Where(c => c.Kind == RentLedgerComponentKind.CondominiumAdvance)
+            .OrderBy(c => c.CompetenceStart).ToListAsync();
+        Assert.Equal(12, advances.Count);
+        Assert.Equal(1000m, advances.Sum(c => c.Amount));
+        Assert.Equal(83.37m, advances[^1].Amount);
+        Assert.All(await db.RentLedgerComponents.Where(c => c.Kind == RentLedgerComponentKind.Rent).ToListAsync(), c => Assert.Equal(650m, c.Amount));
     }
 
     private static CondominiumAccountingService Service(AppDbContext db) =>

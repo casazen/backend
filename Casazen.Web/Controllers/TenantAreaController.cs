@@ -79,9 +79,16 @@ public sealed partial class TenantAreaController(
             .Where(s => s.OrgId == lease.OrgId && s.LeaseContractId == lease.Id
                 && (s.Status == TenantSettlementStatus.Posted || s.Status == TenantSettlementStatus.Settled))
             .OrderByDescending(s => s.PeriodEnd)
-            .Select(s => new { id = s.Id, periodLabel = s.Period.Label, periodEnd = s.PeriodEnd,
-                recoverable = s.RecoverableFinalAmount, advances = s.AdvancesAccountedAmount,
-                prior = s.PriorTenantBalanceAmount, balance = s.SettlementAmount })
+            .Select(s => new
+            {
+                id = s.Id,
+                periodLabel = s.Period.Label,
+                periodEnd = s.PeriodEnd,
+                recoverable = s.RecoverableFinalAmount,
+                advances = s.AdvancesAccountedAmount,
+                prior = s.PriorTenantBalanceAmount,
+                balance = s.SettlementAmount
+            })
             .ToListAsync(cancellationToken);
         var today = clock.TodayInRomeAsDateOnly();
 

@@ -159,4 +159,7 @@ public enum LeaseEventType
     /// Stripe confirmed the euro debit. Payload: <c>{requestId}:{amountCents}</c>. This is the only event that marks the request paid.
     /// </summary>
     MaintenancePaid,
+
+    /// <summary>The landlord kept a condominium advance in the draft wizard. Payload: the exact proposal (no personal data).</summary>
+    CondominiumExpenseChosen,
 }

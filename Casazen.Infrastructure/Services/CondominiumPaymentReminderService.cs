@@ -35,7 +35,11 @@ public sealed class CondominiumPaymentReminderService(AppDbContext db, ICondomin
                 i.Period.Condominium.Name,
                 i.Label,
                 i.DueDate,
-                i.TotalAmount, i.PeriodStart, i.OrdinaryAmount, i.ExtraordinaryAmount, i.PriorSettlementAmount
+                i.TotalAmount,
+                i.PeriodStart,
+                i.OrdinaryAmount,
+                i.ExtraordinaryAmount,
+                i.PriorSettlementAmount
             })
             .OrderBy(i => i.DueDate).ToListAsync(ct);
         var periodIds = rows.Select(i => i.CondominiumPeriodId).Distinct().ToArray();

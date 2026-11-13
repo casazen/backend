@@ -364,6 +364,7 @@ public sealed class TenantCondominiumSettlementService(
                 && s.CondominiumPeriodId == periodId && (s.Status == TenantSettlementStatus.Posted || s.Status == TenantSettlementStatus.Settled), cancellationToken);
             var hasAdvances = await db.RentLedgerComponents.AnyAsync(c => c.RentLedgerEntry.LeaseContractId == leaseId
                 && c.OrgId == scope.OrgId && c.Kind == RentLedgerComponentKind.CondominiumAdvance
+                && c.RentLedgerEntry.Status != RentLedgerStatus.Cancelled
                 && c.CompetenceStart <= periodEnd && c.CompetenceEnd >= periodStart, cancellationToken);
             if (!alreadyPosted && hasAdvances)
             {

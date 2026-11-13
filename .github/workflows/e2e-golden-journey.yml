@@ -23,7 +23,7 @@ concurrency:
 jobs:
   gj-l3:
     name: Golden Journey L3
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     # Throw-away service container: the password below is not a secret.
     services:
