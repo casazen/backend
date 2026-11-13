@@ -122,7 +122,7 @@ public sealed class DocumentsFlowProvider(AppDbContext db, FlowPrerequisiteReade
 
         if (mode is not (DocumentIssuerMode.Octorate or DocumentIssuerMode.CasaZenDirectOnly))
         {
-            // No profile, or a mode this version does not know: nobody chose who issues, and the host is led to the wizard that asks it.
+            // No profile, a mode this version does not know, or CasaZen while the issuance is off: nobody issues, and the host is led to the wizard that asks it.
             var missing = FlowPrerequisite.Lacks(OnboardingPrerequisiteKeys.Issuer, OnboardingFlowReasons.IssuerMissing);
             foreach (var id in ids)
                 readiness[id] = FlowReadiness.Needing(missing);
