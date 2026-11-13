@@ -685,6 +685,9 @@ property is not found; any other failure is a 500.
 | `GET` | `/api/reports/performance` | short-rent payment.read | NF-96. Occupancy, revenue, **ADR and RevPAR** of the Home for the whole scope, per property or per channel, and next to the same calendar days one year earlier: `{ title, basis, currency, groupBy, period, comparePeriod, rows, total }`, a row `{ key, propertyId, label, figures, previousYear, revenueDeltaPercent, occupancyDeltaPoints, adrDeltaPercent, revParDeltaPercent, revenueShare }`, `figures { occupiedNights, availableNights, closedNights, occupancyRate, revenue, revenueCents, stayCount, revenueNights, adr, adrCents, revPar, revParCents }`. Extra query: `groupBy` `none` (default, the total only), `property`, `channel`; `compare` `none` (default) or `previousYear` |
 | `GET` | `/api/reports/trend` | short-rent payment.read | NF-96. The same figures for each week or month: `{ title, basis, currency, groupBy, unit, period, comparePeriod, buckets, series }`, a bucket `{ label, from, to, previousYearFrom, previousYearTo }`, a line `{ key, propertyId, label, points, previousYear }` (`points` and `previousYear` have one entry for each bucket, the second `null` where there was nothing to compare with). Extra query: the two above and `bucket` `auto` (default), `week`, `month` |
 | `GET` | `/api/reports/by-owner` | `agency.statement.view` + short-rent payment.read | NF-96. The performance of an agency's properties cut by property owner: `{ title, basis, currency, period, rows, unassigned, total }`, a row `{ ownerId, displayName, propertyCount, figures, revenueShare }` (the anonymized label for an anonymized owner), `figures` and `total` the weighted `{ revenue, revenueCents, occupiedNights, availableNights, closedNights, occupancyRate, stayCount, revenueNights, adr, adrCents, revPar, revParCents }`. Only `from`, `to` and `format` (`json` or `csv`) |
+| `GET` | `/api/reports/collections` | short-rent payment.read | NF-97. The money collected by cash, by date, payment method and channel, with the credits: see "Money reports" below |
+| `GET` | `/api/reports/balances-to-collect` | short-rent payment.read | NF-97. The stays that still have something to collect, with no guest data: see "Money reports" below |
+| `GET` | `/api/reports/channel-costs` | short-rent payment.read | NF-98. Gross, commission and net of each channel, the processing fees of the direct stays and how each channel settles its commission: see "Money reports" below |
 
 All of them take `from` and `to` (`yyyy-MM-dd`, Europe/Rome days, both included; years 2000 to 2100) and `format` (`json`, the default, or
 `csv`); all but `by-owner` also an optional `propertyId`. Errors: 400 `report_invalid_period` (a day missing, `to` before `from`, a year out of range), 400
@@ -762,6 +765,94 @@ and `trend` compare, and only with the same days one year earlier.
   and a `Totale` row (the trend: a row for each bucket of each line). The columns of the year before and of the differences are there
   only when the report compared. File names: `casazen-prestazioni-per-immobile-competenza-20261001-20261031.csv`,
   `casazen-andamento-competenza-...`.
+
+#### Money reports: collections, balances and channel costs (NF-97, NF-98, E07/F03/US02)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/reports/collections` | short-rent payment.read | The money that came in between `from` and `to`, by cash: `{ title, basis, period, total, byDate, byMethod, byChannel, credits }`. `total { amount, amountCents, paymentCount }` is the Home's "incassato" for the same days; `byDate` a bucket `{ unit, label, from, to, amount, amountCents, paymentCount }` for every day (period of up to 92 days) or month (longer), the days without payments at zero; `byMethod` a row `{ method, amount, amountCents, paymentCount, share }`; `byChannel` a row `{ source, amount, amountCents, paymentCount, share }`; `credits { stripe { available, payouts, cardPaymentCount, paymentsWithoutFigures }, channels { available, reportedBy, rows, staysWithoutNet } }`. Query: `from`, `to`, `propertyId`, `format` (`json`, `csv`) |
+| `GET` | `/api/reports/balances-to-collect` | short-rent payment.read | The stays that still have something to collect, as of today, for the stays that ended in the last 24 months or are still to come: `{ title, basis, asOf, since, rows, totals }`, a row `{ bookingId, bookingCode, propertyId, propertyName, source, checkIn, checkOut, currency, total, totalCents, collected, collectedCents, toCollect, toCollectCents, overdue, basis }`, a total `{ currency, amount, amountCents, stayCount }` for each currency. Query: `propertyId`, `format` (`json`, `csv`). No guest name or contact anywhere |
+| `GET` | `/api/reports/channel-costs` | short-rent payment.read | NF-98. What each channel costs, by accrual: `{ title, basis, period, rows, total }`, a row `{ source, kind, stayCount, gross, grossCents, commission, commissionCents, net, netCents, costRate, commissionMode, staysWithoutCommission, mostExpensive }` ordered by `costRate`, the highest first; `total` the same shape with a null `source`, `kind` and `commissionMode`. `commission`, `net` and `costRate` are **null (not available), never 0**, when no stay reported a cost. Query: `from`, `to`, `propertyId`, `format` (`json`, `csv`) |
+
+`CollectionsReportsController` (`api/reports`, class policy `payment.read`, `HostScope` in SQL) over `IHostCollectionsReportService`
+(`HostCollectionsReportService`, three queries for the collections and two for the balances whatever the number of payments or stays; the payments of the period are read one
+at a time and added up as they come (`HostCollectionsSums`), never all held in memory). The words of the
+request are checked as in the other reports (`report_invalid_period`, `report_period_too_long`, `report_invalid_format`, 404 for a `propertyId` the caller does
+not reach, 403 without an org); `balances-to-collect` takes no period.
+
+- **Collected is the Home's "incassato".** A payment counts when `PaymentCashRules.CollectedBetween` says so (completed or partly refunded, on the Europe/Rome day
+  of `ProcessedAt ?? CreatedAt`), for what it brings (`PaymentCashRules.Collected`: the amount minus what was refunded); a failed, canceled, open or fully refunded
+  payment never counts. `total` is the sum rounded once, with the count of the payments, exactly as `GET /api/dashboard/kpis` gives it for the same days, and every
+  cut adds up to it. The report reads the payments of the scope the Home reads; a stay across the period boundary does not matter, the day the money came in does.
+  `basis` is `cash`, the CSV carries the same words in its title rows.
+- **Three cuts.** `byDate`: one bucket for each day up to 92 days (the limit of the trends) and for each calendar month beyond, the first and the last cut at the
+  edges of the period; `byMethod`: `Payment.Method`; `byChannel`: `Booking.Source` of the payment's booking. Each row has the amount, the payment count and its
+  `share` of the total (0 to 1, four decimals; null, never 0, when the total is 0). Rows by amount, the largest first. Amounts are euros as the Home counts them
+  (no conversion between currencies, like the Home); a CHF house is added as it is.
+- **Credits are what was stored, nothing else.** `credits.stripe` reads the fee, net and credit day the capture of the provider figures stored on the card
+  payments (`Payment.Provider*`, E06/F04/US01/T02) and captures nothing: a payout row `{ arrivalDate, currency, amount, amountCents, paymentCount, status }` groups
+  the payments that share the day the provider reported (`ProviderAvailableOn`, a UTC date) and the currency; `amount` is the net the provider credited, `status`
+  `Credited` when the day has come and `Expected` after. **The provider's own payout id is not stored**, so a row is the day's credits, not a bank payout, and a
+  refund is not netted (the capture reads the charge only). `available` is false when no payment has stored figures to show: the page says "not available", never
+  zero; `cardPaymentCount` and `paymentsWithoutFigures` count the card payments collected in the period and those whose figures were not stored (yet), so a total
+  that is partly unknown is never presented as complete. `credits.channels` is the `OtaNetAmount` of the confirmed stays arriving in the period whose channel
+  collected the money (`OtaCompanyCollect` true), per channel and currency, **reported by the channel manager** (`reportedBy`), with no date (the import carries
+  none) and never a bank credit; stays with no reported net are counted in `staysWithoutNet`; `available` false until Octorate documents a net field.
+- **Balances.** A stay counts when it is not cancelled and does not hold its dates through an expired checkout hold (`CheckoutHolds.OccupiesDates`), has not ended before the
+  horizon of the report (`since`: 24 months before today, `HostCollectionsRules.BalancesSince`; its check-out day is `since` or later, so the list does not grow with the whole
+  history of the host and a stay nobody marked as paid is not overdue for ever) and its amount
+  due is above what was collected. Whose money it is decides how: a stay whose money is CasaZen's (`HostCollectionsRules.HoldsCasaZenMoney`: not a channel, and not a
+  reservation of the channel manager) owes `Booking.TotalPrice` minus the payments collected for it (`PaymentCashRules.IsCollected`, `CollectedAmount`; `basis`
+  `Payments`); a stay whose money is the channel manager's (`HoldsChannelManagerMoney`, the one definition of `BookingAmountSourceRules`: a booking of a channel with
+  its reservation on Octorate, or a reservation of the booking engine of the agency that the import made) owes the stored `OtaBalanceAmount` (`basis`
+  `ChannelManager`), and **only when the host collects it (`OtaCompanyCollect` false): nothing when the channel collects it (true), when Octorate does not say who
+  collects (null: the reading of the payment ledger, `BookingPaymentLedgerService`) or when no balance was reported**: a balance is never worked out from the
+  price (ADR-033-R2). A stay of a channel without a reservation (an iCal stay) is the channel's own record and is never a row; a Direct booking CasaZen sent to
+  Octorate (it has a row of the mirror) is CasaZen's. A row's `total` and `collected` are null for a channel reservation that gave no price or no paid amount (not
+  available). `overdue` is a check-out day before today in Europe/Rome; rows by check-in, then code. `totals` has one entry for each currency of the rows
+  (the amounts of two currencies are never added). **No guest data**: the queries do not read the guest, a test proves it from the SQL and from the shape of a row.
+- **The CSV** is written by `CsvWriter`. The collections file has the three cuts one under the other, each under its own title row with the days
+  (`Incassato per data, per cassa, dal 01/10/2026 al 31/10/2026`...), its header and a `Totale` row, and an empty row between them; the balances file the title with
+  the day (`Saldi da incassare, al 09/10/2026`), a row for each stay and a total for each currency; a figure not available is an empty cell. File names:
+  `casazen-incassato-per-cassa-20261001-20261031.csv`, `casazen-saldi-da-incassare-20261009.csv`. The credits are not in the file.
+- **Channel costs (`GET /api/reports/channel-costs`, NF-98).** `ChannelCostsReportsController` (`api/reports/channel-costs`, class policy `payment.read`,
+  `HostScope` in SQL, the period checks and codes of the other reports) over `IChannelCostsReportService` (`ChannelCostsReportService`: the stays, the card
+  payments of the direct stays and the portal settings, a few statements whatever the number of stays). **By accrual** (`basis` `accrual`): the stays are exactly the
+  ones of `bookings-by-channel` (confirmed, with a night in the period: `StayKpiRules.IsConfirmedStay`, `PropertyOccupancy.BookingTakesNightIn`), so the `gross` of a
+  row is that report's revenue for the channel and `total.gross` the Home's revenue of the same days. One row for each channel with a stay, ordered by `costRate`
+  (highest first, the rows without a rate last, then the larger gross); `mostExpensive` marks the first one and never a rate of zero. "How much each channel costs"
+  is written by the client from `costRate` and `commission`.
+- **What a stay costs, as reported** (`ChannelCostRules`, pure). `Cost` of a stay: for a stay whose money is the channel manager's (`HoldsChannelManagerMoney`: a
+  booking of a channel with its reservation, or a reservation of the booking engine of the agency) the `Booking.OtaCommission` the import stored, null when Octorate
+  gave none (the sandbox and the OpenAPI show the commission only as an optional `COMMISSION` line of the price breakdown: until a real channel fills it, most stays
+  have none); for a stay of a channel without a reservation (an iCal stay) null (none was ever reported); for a direct stay the sum of the `ProviderFeeAmount` of its
+  settled card payments (`PaymentProviderFeeService.SettledStatuses`, with a Stripe PaymentIntent), **null as soon as one of them has no stored fee, or one in another
+  currency than the stay's, while a card payment is still on its way (Pending, Processing), while the card saved for a deferred charge was not charged yet, and when
+  nothing was collected at all (not paid yet, or a failed attempt only), and 0 only when what it collected came without a card** (cash and bank transfer have no fee,
+  but only money that came in says so: a stay nobody paid is not a free stay and is counted apart, and the rate of the row does not count it); for a stay the host entered or a local one 0 (nobody charges the
+  host). Nothing is derived from another figure. `kind` says which it is: `ChannelCommission`, `PaymentFee` (the Stripe fees of the direct stays, a line of their own
+  that says "not available" when `commission` is null) or `NoCost`.
+- **The figures of a row.** Each stay's share is pro rata per night in the period, as the revenue is (`StayKpiRules.RevenueInPeriod`), summed unrounded and rounded to the
+  cent on the total. `commission` = the sum of the costs of the stays that report one, null when none does; `net` = for the stays whose cost is known or whose net the
+  channel reported, the reported `OtaNetAmount` (it wins) or else gross minus cost, null when there is none; `costRate` = `commission` over the gross of the stays that
+  report it (not over the whole channel: a stay without a commission is **not taken as free**, it would understate the rate), to four decimals, null without one;
+  `staysWithoutCommission` counts the stays whose cost was not reported, apart. So `gross - commission` equals `net` only when every stay reported a cost. `total`
+  is worked out over all the stays at once (the gross is the Home's, which can differ by a cent from the sum of the rounded rows).
+- **How the commission is settled (`commissionMode`).** `ChannelCommissionSettingsProvider` (`Casazen.Infrastructure/Octorate`) reads the cached portals of the
+  marketplace (`MarketplacePortals`, E09/F01/US01/T02: CasaZen's own database, nothing is asked of Octorate) and maps a portal to a channel with the very mapping
+  the booking import uses (`BookingStateMapper.ToSource`: the portal code is the channel id, then its name). `commissionIncludedInPayments` true (and the invoiced flag
+  not true) is `DeductedFromPayout` (the channel pays the host net), `commissionsInvoiced` true (and not included) is `InvoicedSeparately` (the host pays the channel
+  afterwards); a flag that is false or absent claims nothing, two that disagree are `Unknown`, and so is a channel without a portal in the cache, a portal that maps to
+  no channel of its own (`OtherChannel`), one the catalog no longer lists, and every channel of an org that is not connected to Octorate in this environment (the report
+  still works from the stored amounts). `commissionMode` is null for a row that is not a channel.
+- **The CSV** (`ChannelCostsReportDocuments`): the title `Costi dei canali, per competenza, dal 01/10/2026 al 31/10/2026`, the header, a row for each channel and a
+  `Totale` row; the cost, the net and the rate are empty cells where nobody reported a cost. File name `casazen-costi-dei-canali-competenza-20261001-20261031.csv`.
+- **Demo.** Scenario `report-collections`: Villa del Lago's stays gain cash, bank transfer and card payments (a card payment partly refunded on a cancelled stay, one
+  that failed), a direct stay paid in part and a stay of a channel with an overdue balance; the payments are rows marked as showcase data (`TestDataEntities.Payment`)
+  with TEST ids, nothing is sent to Stripe. The demo stays that have no payment of their own (the future ones and the old ones) are balances to collect, as the
+  data says. Scenario `report-channel-costs`: finished stays of Airbnb (12 %, deducted from the payout) and Booking.com (15 %, invoiced apart) with the commission and net
+  the channel manager reports, and a direct stay paid by card with its stored fee; the Booking.com stay of the collections scenario has no commission reported, so the
+  report counts it apart.
 
 #### Tourist tax per guest (NF-46, ADR-037, E03/F01/US07)
 
@@ -1591,6 +1682,14 @@ reservation of the room of a property, found through the confirmed `OctorateList
   `ChatMessageReceivedHandler` handles `CHAT_MESSAGE_RECEIVED`; the jobs `ota-message-reconcile` (every 10 minutes) and `ota-message-deep-reconcile`
   (02:30 UTC) back it, behind the flag. The words and the names leave with the guest (`GuestDataEraser`) and with the retention of the guest data
   (`OtaMessageRetentionService`); details in `docs/runbooks/octorate-webhooks.md` § 4c and `docs/runbooks/gdpr.md` § 14.
+- *Octorate's own assistant kept off (E05/F05/US03/T03, NF-67, OCT-11).* `OctorateAiAssistantGuard`, a consumer of `OtaThreadSynced` (registered in
+  `AddMessageSync`, behind `Features:OctorateConnector`), switches the assistant of the channel manager off on every thread CasaZen manages
+  (`IOctorateApiClient.SetThreadAiAssistantAsync`, `PATCH .../threads/{thread}/aiAssistant?enabled=false`, documented and not yet proven on a licensed
+  property): one call for each thread and pass, none for a thread that is off. While the flag reads on, the key of the event has the ten minutes of the
+  pass in it (`MessageSyncService.SyncedEventKey`), so a person who switches it on again and a call that failed are found at the next pass. A refusal of
+  Octorate is logged with a code; one no retry changes does not fail the event, and one a retry can change (the calls of the org down to the reserve, a 5xx,
+  a 429) rises so the dispatcher delivers the event again, which is the only retry of a thread no pass reads any more and of a flag Octorate does not say;
+  details in `docs/runbooks/message-assistant.md` § «Octorate's own assistant kept off».
 - *The hub of messages, read side (E05/F02/US01/T01, ADR-032, NF-61, NF-64).* `IMessageHubService` is a read model over the two sources, which are not
   merged and not moved: the direct threads (`GuestThread`, served by `IGuestMessageService`) and the conversations of the channels
   (`OtaMessageThread`). Every conversation has an opaque `MessageThreadKey` (`ota:{thread id}`, `direct:{booking id}`; a malformed one is a 400

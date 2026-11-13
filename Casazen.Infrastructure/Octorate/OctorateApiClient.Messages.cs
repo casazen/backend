@@ -7,9 +7,9 @@ using Microsoft.Extensions.Logging;
 namespace Casazen.Infrastructure.Octorate;
 
 /// <summary>
-/// The write side of the chat, the reads of the templates and of the translation, and the contact of the booker of a reservation (E05/F02/US02,
-/// ADR-032, ADR-023): the operations of <see cref="IOctorateApiClient"/> the messages hub needs to answer. A partial of the client so that the
-/// operations added by the tasks of other epics never collide with these.
+/// The write side of the chat, the reads of the templates and of the translation, the contact of the booker of a reservation (E05/F02/US02,
+/// ADR-032, ADR-023) and the switch of Octorate's own assistant for a thread (E05/F05/US03/T03): the operations of <see cref="IOctorateApiClient"/>
+/// the messages hub needs to answer. A partial of the client so that the operations added by the tasks of other epics never collide with these.
 /// </summary>
 public sealed partial class OctorateApiClient
 {
@@ -126,6 +126,25 @@ public sealed partial class OctorateApiClient
         using var document = ParseJson(answer);
         return OctorateChatReader.ReadTranslation(Unwrap(document.RootElement), target) ?? throw new OctorateServerException(answer.StatusCode);
     }
+
+    public async Task SetThreadAiAssistantAsync(string accommodationId, string threadId, bool enabled, CancellationToken ct)
+    {
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var thread = CheckedThreadId(threadId);
+
+        // The call says the value it sets, so a second one changes nothing (an answer 304 is done: SendAsync takes it for a success) and the common
+        // retry of a 429 is safe. There is no body and nothing of the thread is read from the answer: what Octorate holds is what the next pass of the
+        // copy reads back (aiDriven), which is also how a person who switches the assistant on again is found. The same refusals as every chat call.
+        await SendAsync(
+            () => new HttpRequestMessage(HttpMethod.Patch, Address(AiAssistantPath(accommodation, thread, enabled))),
+            "chat-ai-assistant",
+            ct,
+            mapError: ChatErrorOf);
+    }
+
+    /// <summary>The address of <see cref="SetThreadAiAssistantAsync"/>: the thread of the accommodation and the value the assistant of Octorate is set to.</summary>
+    internal static string AiAssistantPath(string accommodationId, string threadId, bool enabled) =>
+        $"/rest/v1/chat/{Uri.EscapeDataString(accommodationId)}/threads/{Uri.EscapeDataString(threadId)}/aiAssistant?enabled={(enabled ? "true" : "false")}";
 
     /// <summary>The id of a message, trimmed: a number of 1 to <see cref="MaxConnectionIdDigits"/> digits, as the specification declares it (<c>int64</c>).</summary>
     internal static string CheckedMessageId(string messageId)
