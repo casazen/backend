@@ -340,8 +340,10 @@ alerts and the plan before it has done anything else, none of which is ever dele
 `UserNotificationChannelSetting`, `NotificationEmailSlot`), the alerts raised for the person (`PopupAlert`: a user id, a kind and a reference,
 no text) and a part of the activation plan put off with «Do it later» (`OnboardingPartState`, E10); and, in `InternalActivities`, the "To do"
 a wizard or the plan raises for a person who leaves half way (the type `WizardResume`, open or closed: the one row-level exception,
-`OrgEmptinessChecker.WizardResumeActivityType`). Every other "To do", and the staff work, makes the org used. The drafts, alerts and settings
-of the org that is left stay with it and are anonymized by the nightly retention like any other.
+`OrgEmptinessChecker.WizardResumeActivityType`). Every other "To do", and the staff work, makes the org used. The drafts of the org that is left
+stay with it and are anonymized by the nightly retention like any other (`GdprDataRetentionJob`). Its alerts, alert settings and deferred parts
+stay as they are too, but no retention reads them (the nightly one covers the guests, the lease parties, the customers of the suppliers, the
+drafts and the copy of the OTA messages): they hold a user id, codes and dates and no text, and they go with the user or the org when either is deleted.
 The tables are read from the EF model (`ITenantOwned`), so a new tenant table blocks the move from the day it exists (the outbox, the routines,
 the Octorate, CRM and fiscal tables of the plan included: a row there is real use); `OrgEmptinessCheckerTests` fails if one cannot be read.
 Any doubt is "not empty". An invitation the person sent from that org counts as data: whoever invited somebody cannot leave.
