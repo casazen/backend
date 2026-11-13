@@ -1,77 +1,77 @@
 using System.Globalization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Options;
+using Casazen.Core.Leases;
 
 namespace Casazen.Infrastructure.External;
 
-/// <summary>
-/// Maps a CasaZen lease onto DocuEngine <c>search.field0</c>…<c>fieldN</c>.
-/// Openapi does not publish the field order of the lease-registration service (it comes from <c>GET /documents</c>).
-/// The default order is the set of facts the product page names, with the contract type CasaZen already stores.
-/// <see cref="OpenapiOptions.LeaseFieldOrder"/> replaces it once that call has been confirmed.
-/// </summary>
+/// <summary>The verified DocuEngine registration schema, not a positional guess. Files are resolved by the preparation service.</summary>
 public static class OpenapiLeaseSearch
 {
-    public static readonly string[] DefaultFieldOrder =
-    [
-        "contractType",
-        "taxRegime",
-        "startDate",
-        "endDate",
-        "annualRent",
-        "landlordFiscalCode",
-        "tenantFiscalCode",
-        "city",
-        "address",
-        "cadastralSheet",
-        "cadastralParcel",
-        "cadastralSubaltern",
-        "cadastralCategory",
-        "signedContract",
-    ];
+    public static readonly string[] DefaultFieldOrder = OpenapiRegistrationSchema.Current.Fields.Select(f => f.Name).ToArray();
 
-    public static IReadOnlyDictionary<string, string> Build(
-        LeaseContract lease,
-        ReadOnlyMemory<byte> signedContract,
-        IReadOnlyList<string> fieldOrder)
+    public static IReadOnlyDictionary<string, string> Build(LeaseContract lease, ReadOnlyMemory<byte> signedContract,
+        IReadOnlyList<string> fieldOrder, IReadOnlyDictionary<string, string>? files = null, OpenapiRegistrationData? data = null)
     {
-        ArgumentNullException.ThrowIfNull(lease);
-        var order = fieldOrder.Count > 0 ? fieldOrder : DefaultFieldOrder;
-        var values = Values(lease, signedContract);
-        var search = new Dictionary<string, string>(order.Count, StringComparer.Ordinal);
-        for (var index = 0; index < order.Count; index++)
+        if (fieldOrder.Count > 0 && !fieldOrder.SequenceEqual(DefaultFieldOrder))
+            throw new InvalidOperationException("LeaseFieldOrder does not match the verified DocuEngine registration schema.");
+        var values = Prefill(lease);
+        foreach (var item in (data ?? OpenapiRegistrationData.Read(lease.OpenapiRegistrationData)).Values)
+            values[item.Key] = item.Value;
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var field in OpenapiRegistrationSchema.Current.Fields)
         {
-            // A name CasaZen does not know still occupies fieldN. Skipping it would shift every later value left.
-            values.TryGetValue(order[index], out var value);
-            search["field" + index.ToString(CultureInfo.InvariantCulture)] = value ?? string.Empty;
+            if (field.Name == "contractFile")
+            {
+                if (!signedContract.IsEmpty) result[field.Key] = Convert.ToBase64String(signedContract.Span);
+            }
+            else if (field.Type == "file")
+            {
+                if (files?.TryGetValue(field.Name, out var content) == true) result[field.Key] = content;
+            }
+            else if (values.TryGetValue(field.Name, out var value) && !string.IsNullOrWhiteSpace(value))
+                result[field.Key] = value;
         }
-
-        return search;
+        return result;
     }
 
-    private static Dictionary<string, string> Values(LeaseContract lease, ReadOnlyMemory<byte> signedContract)
+    public static Dictionary<string, string> Prefill(LeaseContract lease)
     {
-        var landlord = lease.Parties?.Where(p => p.Role == PartyRole.Landlord).OrderBy(p => p.Position).FirstOrDefault();
-        var tenant = lease.Parties?.Where(p => p.Role == PartyRole.Tenant).OrderBy(p => p.Position).FirstOrDefault();
-        var annual = decimal.Round(lease.MonthlyRent * 12m, 2, MidpointRounding.AwayFromZero);
-        var property = lease.Property;
-        return new Dictionary<string, string>(StringComparer.Ordinal)
+        var p = lease.Property;
+        var values = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["contractType"] = lease.ContractType.ToString(),
-            ["taxRegime"] = (lease.TaxRegime?.ToString() ?? lease.FiscalRegime.ToString()),
-            ["startDate"] = lease.StartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            ["endDate"] = lease.EndDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            ["annualRent"] = annual.ToString("0.00", CultureInfo.InvariantCulture),
-            ["landlordFiscalCode"] = landlord?.FiscalCode ?? string.Empty,
-            ["tenantFiscalCode"] = tenant?.FiscalCode ?? string.Empty,
-            ["city"] = property?.City ?? string.Empty,
-            ["address"] = property?.Address ?? string.Empty,
-            ["cadastralSheet"] = property?.CadastralSheet ?? string.Empty,
-            ["cadastralParcel"] = property?.CadastralParcel ?? string.Empty,
-            ["cadastralSubaltern"] = property?.CadastralSubaltern ?? string.Empty,
-            ["cadastralCategory"] = property?.CadastralCategory ?? string.Empty,
-            ["signedContract"] = signedContract.IsEmpty ? string.Empty : Convert.ToBase64String(signedContract.Span),
+            ["rentalContractType"] = lease.ContractType == LeaseContractType.Concordato ? "L2" : "L1",
+            ["contractStartDate"] = lease.StartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            ["contractEndDate"] = lease.EndDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            ["contractDate"] = lease.StipulaDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
+            // Sub-year contracts need the consideration for the whole term, explicitly entered by the holder.
+            ["annualFee"] = lease.EndDate.AddDays(1) >= lease.StartDate.AddYears(1)
+                ? (lease.MonthlyRent * 12m).ToString("0.00", CultureInfo.InvariantCulture) : "",
+            ["taxRegime"] = lease.TaxRegime switch { LeaseTaxRegime.CedolareSecca => "CEDOLARE", LeaseTaxRegime.Ordinario => "ORDINARIO", _ => "" },
+            ["town"] = p?.City ?? "", ["address"] = p?.Address ?? "",
+            ["cadastralSheet"] = p?.CadastralSheet ?? "", ["cadastralParcel"] = p?.CadastralParcel ?? "",
+            ["cadastralSub"] = p?.CadastralSubaltern ?? "",
+            ["cadastralCategory"] = p?.CadastralCategory?.Replace("/", "").Replace(" ", "").ToUpperInvariant() ?? "",
+            ["cadastralIncome"] = p?.CadastralIncome?.ToString("0.00", CultureInfo.InvariantCulture) ?? "",
         };
+        foreach (var role in new[] { PartyRole.Landlord, PartyRole.Tenant })
+        {
+            var parties = lease.Parties.Where(party => party.Role == role).OrderBy(party => party.Position).ToList();
+            for (var i = 0; i < Math.Min(parties.Count, 3); i++)
+            {
+                var prefix = (i == 0 ? "" : i == 1 ? "second" : "third") + (role == PartyRole.Landlord ? "Landlord" : "Conductor");
+                prefix = char.ToLowerInvariant(prefix[0]) + prefix[1..];
+                values[prefix + "Name"] = (parties[i].FirstName + " " + parties[i].LastName).Trim();
+                values[prefix + "TaxCode"] = parties[i].FiscalCode;
+            }
+            if (role == PartyRole.Landlord && parties.FirstOrDefault() is { } landlord)
+            {
+                values["applicantName"] = (landlord.FirstName + " " + landlord.LastName).Trim();
+                values["applicantPhone"] = landlord.ContactPhone ?? "";
+                values["applicantEmail"] = landlord.ContactEmail;
+                values[landlord.FiscalCode.Length == 11 ? "legalApplicantTaxCode" : "privateApplicantTaxCode"] = landlord.FiscalCode;
+            }
+        }
+        return values;
     }
 }

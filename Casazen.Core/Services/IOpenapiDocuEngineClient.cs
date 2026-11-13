@@ -6,7 +6,7 @@ namespace Casazen.Core.Services;
 /// <summary>
 /// Openapi DocuEngine client for the lease-contract registration product
 /// (<c>POST /requests</c>, <c>GET /requests/{id}</c>, <c>GET /requests/{id}/documents</c>).
-/// One product covers every contract type; CasaZen calls it only for contracts that are not canone concordato.
+/// One product covers all residential contract types supported by CasaZen.
 /// </summary>
 public interface IOpenapiDocuEngineClient
 {

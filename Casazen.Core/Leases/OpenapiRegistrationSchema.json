@@ -1,0 +1,1301 @@
+{
+  "documentId": "67e13cfd2cbb7e30d3d93e9d",
+  "verifiedOn": "2026-11-13",
+  "fields": [
+    {
+      "key": "field0",
+      "name": "territorialOffice",
+      "label": "ufficio territoriale",
+      "type": "territorialOffice",
+      "required": true,
+      "help": "Ufficio Territoriale presso cui registrare il contratto e competente per i successivi adempimenti",
+      "options": [],
+      "group": "contract"
+    },
+    {
+      "key": "field1",
+      "name": "rentalContractType",
+      "label": "tipologia contratto locazione",
+      "type": "optionCode",
+      "required": true,
+      "help": "Selezionare la tipologia di contratto di locazione",
+      "options": [
+        {
+          "code": "L1",
+          "description": "Locazione di immobile ad uso abitativo"
+        },
+        {
+          "code": "L2",
+          "description": "Locazione agevolata di immobile ad uso abitativo"
+        },
+        {
+          "code": "L3",
+          "description": "Locazione di immobile ad uso abitativo (contratto assoggettato ad IVA)"
+        },
+        {
+          "code": "L4",
+          "description": "Locazione finanziaria di immobile ad uso abitativo"
+        },
+        {
+          "code": "S1",
+          "description": "Locazione di immobile ad uso diverso dall'abitativo"
+        },
+        {
+          "code": "S2",
+          "description": "Locazione di immobile strumentale con locatore soggetto ad IVA"
+        },
+        {
+          "code": "S3",
+          "description": "Locazione Finanziaria di immobile ad uso diverso dall'abitativo"
+        },
+        {
+          "code": "T1",
+          "description": "Affitto di fondo rustico"
+        },
+        {
+          "code": "T2",
+          "description": "Affitto di fondo rustico agevolato"
+        },
+        {
+          "code": "T3",
+          "description": "Affitto di terreni ed aree non edificabili, cave e torbiere"
+        },
+        {
+          "code": "T4",
+          "description": "Affitto di terreni edificabili o non edificabili destinati a parcheggio (contratto assoggettato ad IVA)"
+        }
+      ],
+      "group": "contract"
+    },
+    {
+      "key": "field2",
+      "name": "contractStartDate",
+      "label": "data inizio contratto",
+      "type": "date",
+      "required": true,
+      "help": "Inserire la data da cui parte la decorrenza del contratto",
+      "options": [],
+      "group": "contract"
+    },
+    {
+      "key": "field3",
+      "name": "contractEndDate",
+      "label": "data fine contratto",
+      "type": "date",
+      "required": true,
+      "help": "Inserire la data in cui finisce la decorrenza del contratto",
+      "options": [],
+      "group": "contract"
+    },
+    {
+      "key": "field4",
+      "name": "contractPages",
+      "label": "numero pagine contratto",
+      "type": "integer",
+      "required": true,
+      "help": "Inserire il numero di pagine del contratto",
+      "options": [],
+      "group": "contract"
+    },
+    {
+      "key": "field5",
+      "name": "contractCopies",
+      "label": "copie contratto",
+      "type": "integer",
+      "required": true,
+      "help": "Inserire il numero di copie del contratto da registrare",
+      "options": [],
+      "group": "contract"
+    },
+    {
+      "key": "field6",
+      "name": "annualFee",
+      "label": "canone annuo",
+      "type": "float",
+      "required": true,
+      "help": "Inserire l'importo del canone annuo (es. 100.50) o, in caso di contratti di durata inferiore a un anno, l'importo relativo all'intera durata",
+      "options": [],
+      "group": "contract"
+    },
+    {
+      "key": "field7",
+      "name": "contractDate",
+      "label": "data contratto",
+      "type": "date",
+      "required": true,
+      "help": "Inserire la data di stipula del contratto",
+      "options": [],
+      "group": "contract"
+    },
+    {
+      "key": "field8",
+      "name": "contractFile",
+      "label": "file contratto",
+      "type": "file",
+      "required": true,
+      "help": "Allegare contratto di locazione firmato da tutte le parti",
+      "options": [],
+      "group": "contract"
+    },
+    {
+      "key": "field9",
+      "name": "province",
+      "label": "provincia immobile",
+      "type": "string",
+      "required": true,
+      "help": "Inserire la provincia dove e' presente l'immobile",
+      "options": [],
+      "group": "property"
+    },
+    {
+      "key": "field10",
+      "name": "town",
+      "label": "comune immobile",
+      "type": "string",
+      "required": true,
+      "help": "Inserire il comune dove e' presente l'immobile",
+      "options": [],
+      "group": "property"
+    },
+    {
+      "key": "field11",
+      "name": "address",
+      "label": "indirizzo immobile",
+      "type": "string",
+      "required": true,
+      "help": "Inserire l'indirizzo (con civico) dell'immobile",
+      "options": [],
+      "group": "property"
+    },
+    {
+      "key": "field12",
+      "name": "cadastralSheet",
+      "label": "foglio catastale",
+      "type": "cadastralSheet",
+      "required": true,
+      "help": "Inserire il foglio catastale dell'immobile",
+      "options": [],
+      "group": "property"
+    },
+    {
+      "key": "field13",
+      "name": "cadastralParcel",
+      "label": "particella catastale",
+      "type": "cadastralParcel",
+      "required": true,
+      "help": "Inserire la particella catastale dell'immobile",
+      "options": [],
+      "group": "property"
+    },
+    {
+      "key": "field14",
+      "name": "cadastralSub",
+      "label": "subalterno catastale",
+      "type": "cadastralSub",
+      "required": true,
+      "help": "Inserire il subalterno catastale dell'immobile",
+      "options": [],
+      "group": "property"
+    },
+    {
+      "key": "field15",
+      "name": "cadastralIncome",
+      "label": "rendita catastale",
+      "type": "float",
+      "required": true,
+      "help": "Inserire la rendita catastale dell'immobile",
+      "options": [],
+      "group": "property"
+    },
+    {
+      "key": "field16",
+      "name": "cadastralCategory",
+      "label": "categoria catastale",
+      "type": "optionCode",
+      "required": true,
+      "help": "Selezionare la categoria catastale dell'immobile",
+      "options": [
+        {
+          "code": "A1",
+          "description": "A/1 Abitazioni di tipo signorile"
+        },
+        {
+          "code": "A2",
+          "description": "A/2 Abitazioni di tipo civile"
+        },
+        {
+          "code": "A3",
+          "description": "A/3 Abitazioni di tipo economico"
+        },
+        {
+          "code": "A4",
+          "description": "A/4 Abitazioni di tipo popolare"
+        },
+        {
+          "code": "A5",
+          "description": "A/5 Abitazioni di tipo ultrapopolare"
+        },
+        {
+          "code": "A6",
+          "description": "A/6 Abitazioni di tipo rurale"
+        },
+        {
+          "code": "A7",
+          "description": "A/7 Abitazioni in villini"
+        },
+        {
+          "code": "A8",
+          "description": "A/8 Abitazioni in ville"
+        },
+        {
+          "code": "A9",
+          "description": "A/9 Castelli, palazzi di eminenti pregi artistici o storici"
+        },
+        {
+          "code": "A10",
+          "description": "A/10 Uffici e studi privati"
+        },
+        {
+          "code": "A11",
+          "description": "A/11 Abitazioni ed alloggi tipici dei luoghi"
+        },
+        {
+          "code": "B1",
+          "description": "B/1 Collegi e convitti, educandati; ricoveri; orfanotrofi; ospizi; conventi; seminari; caserme"
+        },
+        {
+          "code": "B2",
+          "description": "B/2 Case di cura ed ospedali (senza fine di lucro)"
+        },
+        {
+          "code": "B3",
+          "description": "B/3 Prigioni e riformatori"
+        },
+        {
+          "code": "B4",
+          "description": "B/4 Uffici pubblici"
+        },
+        {
+          "code": "B5",
+          "description": "B/5 Scuole e laboratori scientifici"
+        },
+        {
+          "code": "B6",
+          "description": "B/6 Biblioteche, pinacoteche, musei, gallerie, accademie che non hanno sede in edifici della categoria A/9"
+        },
+        {
+          "code": "B7",
+          "description": "B/7 Cappelle ed oratori non destinati all’esercizio pubblico del culto"
+        },
+        {
+          "code": "B8",
+          "description": "B/8 Magazzini sotterranei per depositi di derrate"
+        },
+        {
+          "code": "C1",
+          "description": "C/1 Negozi e botteghe"
+        },
+        {
+          "code": "C2",
+          "description": "C/2 Magazzini e locali di deposito"
+        },
+        {
+          "code": "C3",
+          "description": "C/3 Laboratori per arti e mestieri"
+        },
+        {
+          "code": "C4",
+          "description": "C/4 Fabbricati e locali per esercizi sportivi"
+        },
+        {
+          "code": "C5",
+          "description": "C/5 Stabilimenti balneari e di acque curative"
+        },
+        {
+          "code": "C6",
+          "description": "C/6 Stalle, scuderie, rimesse, autorimesse"
+        },
+        {
+          "code": "C7",
+          "description": "C/7 Tettoie chiuse od aperte"
+        },
+        {
+          "code": "D1",
+          "description": "D/1 Opifici"
+        },
+        {
+          "code": "D2",
+          "description": "D/2 Alberghi e pensioni (con fini di lucro)"
+        },
+        {
+          "code": "D3",
+          "description": "D/3 Teatri, cinematografi, sale per concerti e spettacoli e simili (con fine di lucro)"
+        },
+        {
+          "code": "D4",
+          "description": "D/4 Case di cura ed ospedali (con fine di lucro)"
+        },
+        {
+          "code": "D5",
+          "description": "D/5 Istituto di credito, cambio e assicurazione (con fine di lucro)"
+        },
+        {
+          "code": "D6",
+          "description": "D/6 Fabbricati e locali per esercizi sportivi (con fine di lucro)"
+        },
+        {
+          "code": "D7",
+          "description": "D/7 Fabbricati costruiti o adattati per le speciali esigenze di un'attivita' industriale e non suscettibili di destinazione diversa senza radicali trasformazioni"
+        },
+        {
+          "code": "D8",
+          "description": "D/8 Fabbricati costruiti o adattati per le speciali esigenze di un'attivita' commerciale e non suscettibili di destinazione diversa senza radicali trasformazioni"
+        },
+        {
+          "code": "D9",
+          "description": "D/9 Edifici galleggianti o sospesi assicurati a punti fissi del suolo, ponti privati soggetti a pedaggio"
+        },
+        {
+          "code": "D10",
+          "description": "D/10 Fabbricati per funzioni produttive connesse alle attivita' agricole"
+        },
+        {
+          "code": "E1",
+          "description": "E/1 Stazioni per servizi di trasporto, terrestri, marittimi ed aerei"
+        },
+        {
+          "code": "E2",
+          "description": "E/2 Ponti comunali e provinciali soggetti a pedaggio"
+        },
+        {
+          "code": "E3",
+          "description": "E/3 Costruzioni e fabbricati per speciali esigenze pubbliche"
+        },
+        {
+          "code": "E4",
+          "description": "E/4 Recinti chiusi per speciali esigenze pubbliche"
+        },
+        {
+          "code": "E5",
+          "description": "E/5 Fabbricati costituenti fortificazioni e loro dipendenze"
+        },
+        {
+          "code": "E6",
+          "description": "E/6 Fari, semafori, torri per rendere d'uso pubblico l'orologio comunale"
+        },
+        {
+          "code": "E7",
+          "description": "E/7 Fabbricati destinati all'esercizio pubblico dei culti"
+        },
+        {
+          "code": "E8",
+          "description": "E/8 Fabbricati e costruzioni nei cimiteri, esclusi i colombari, i sepolcri e le tombe di famiglia"
+        },
+        {
+          "code": "E9",
+          "description": "E/9 Edifici a destinazione particolare non compresi nelle categorie precedenti del gruppo E"
+        },
+        {
+          "code": "F1",
+          "description": "F/1 Aree urbane"
+        },
+        {
+          "code": "F2",
+          "description": "F/2 Unita' collabenti"
+        },
+        {
+          "code": "F3",
+          "description": "F/3 Unita' in corso di costruzione"
+        },
+        {
+          "code": "F4",
+          "description": "F/4 Unita' in corso di definizione"
+        },
+        {
+          "code": "F5",
+          "description": "F/5 Lastrici solari"
+        }
+      ],
+      "group": "property"
+    },
+    {
+      "key": "field17",
+      "name": "taxRegime",
+      "label": "regime fiscale",
+      "type": "optionCode",
+      "required": true,
+      "help": "Selezionare il regime fiscale",
+      "options": [
+        {
+          "code": "ORDINARIO",
+          "description": "Regime Ordinario IRPEF"
+        },
+        {
+          "code": "CEDOLARE",
+          "description": "Regime a Cedolare Secca"
+        }
+      ],
+      "group": "taxes"
+    },
+    {
+      "key": "field18",
+      "name": "applicantName",
+      "label": "nome richiedente",
+      "type": "string",
+      "required": true,
+      "help": "Inserire il nome completo del richiedente",
+      "options": [],
+      "group": "applicant"
+    },
+    {
+      "key": "field19",
+      "name": "applicantPhone",
+      "label": "telefono richiedente",
+      "type": "string",
+      "required": true,
+      "help": "Inserire un contatto telefonico del richiedente in caso di richiesta informazioni aggiuntive",
+      "options": [],
+      "group": "applicant"
+    },
+    {
+      "key": "field20",
+      "name": "applicantEmail",
+      "label": "email richiedente",
+      "type": "email",
+      "required": true,
+      "help": "Inserire un'email del richiedente in caso di richiesta informazioni aggiuntive",
+      "options": [],
+      "group": "applicant"
+    },
+    {
+      "key": "field21",
+      "name": "privateApplicantTaxCode",
+      "label": "codice fiscale richiedente privato",
+      "type": "taxCode",
+      "required": false,
+      "help": "Inserire il codice fiscale del richiedente privato",
+      "options": [],
+      "group": "applicant"
+    },
+    {
+      "key": "field22",
+      "name": "legalApplicantTaxCode",
+      "label": "codice fiscale richiedente giuridico",
+      "type": "taxCode",
+      "required": false,
+      "help": "Inserire il codice fiscale del richiedente giuridico (ad esempio azienda)",
+      "options": [],
+      "group": "applicant"
+    },
+    {
+      "key": "field23",
+      "name": "ibanCode",
+      "label": "codice iban",
+      "type": "string",
+      "required": false,
+      "help": "Inserire il codice IBAN per assolvere l'imposta di registro e quella di bollo (obbligatorio se contratto in regime ordinario)",
+      "options": [],
+      "group": "applicant"
+    },
+    {
+      "key": "field24",
+      "name": "accountHolderTaxCode",
+      "label": "codice fiscale titolare conto",
+      "type": "taxCode",
+      "required": false,
+      "help": "Inserire il codice fiscale del titotale del conto associato all'IBAN (obbligatorio se contratto in regime ordinario)",
+      "options": [],
+      "group": "applicant"
+    },
+    {
+      "key": "field25",
+      "name": "landlordName",
+      "label": "nome locatore",
+      "type": "string",
+      "required": true,
+      "help": "Inserire il nome completo del locatore",
+      "options": [],
+      "group": "landlords"
+    },
+    {
+      "key": "field26",
+      "name": "landlordTaxCode",
+      "label": "codice fiscale locatore",
+      "type": "taxCode",
+      "required": true,
+      "help": "Inserire il codice fiscale del locatore",
+      "options": [],
+      "group": "landlords"
+    },
+    {
+      "key": "field27",
+      "name": "landlordDocument",
+      "label": "documento locatore",
+      "type": "file",
+      "required": true,
+      "help": "Allegare un documento del locatore",
+      "options": [],
+      "group": "landlords"
+    },
+    {
+      "key": "field28",
+      "name": "landlordPercentage",
+      "label": "percentuale possesso locatore",
+      "type": "float",
+      "required": false,
+      "help": "Inserire la percentuale di possesso del locatore (obbligatorio se contratto in regime di cedolare secca)",
+      "options": [],
+      "group": "landlords"
+    },
+    {
+      "key": "field29",
+      "name": "secondLandlordName",
+      "label": "nome secondo locatore",
+      "type": "string",
+      "required": false,
+      "help": "Inserire il nome completo del secondo locatore (solo se presente)",
+      "options": [],
+      "group": "landlords"
+    },
+    {
+      "key": "field30",
+      "name": "secondLandlordTaxCode",
+      "label": "codice fiscale secondo locatore",
+      "type": "taxCode",
+      "required": false,
+      "help": "Inserire il codice fiscale del secondo locatore (solo se presente)",
+      "options": [],
+      "group": "landlords"
+    },
+    {
+      "key": "field31",
+      "name": "secondLandlordDocument",
+      "label": "documento secondo locatore",
+      "type": "file",
+      "required": false,
+      "help": "Allegare un documento del secondo locatore (solo se presente)",
+      "options": [],
+      "group": "landlords"
+    },
+    {
+      "key": "field32",
+      "name": "secondLandlordPercentage",
+      "label": "percentuale possesso secondo locatore",
+      "type": "float",
+      "required": false,
+      "help": "Inserire la percentuale di possesso del secondo locatore (obbligatorio se contratto in regime di cedolare secca e solo se presente)",
+      "options": [],
+      "group": "landlords"
+    },
+    {
+      "key": "field33",
+      "name": "thirdLandlordName",
+      "label": "nome terzo locatore",
+      "type": "string",
+      "required": false,
+      "help": "Inserire il nome completo del terzo locatore (solo se presente)",
+      "options": [],
+      "group": "landlords"
+    },
+    {
+      "key": "field34",
+      "name": "thirdLandlordTaxCode",
+      "label": "codice fiscale terzo locatore",
+      "type": "taxCode",
+      "required": false,
+      "help": "Inserire il codice fiscale del terzo locatore (solo se presente)",
+      "options": [],
+      "group": "landlords"
+    },
+    {
+      "key": "field35",
+      "name": "thirdLandlordDocument",
+      "label": "documento terzo locatore",
+      "type": "file",
+      "required": false,
+      "help": "Allegare un documento del terzo locatore (solo se presente)",
+      "options": [],
+      "group": "landlords"
+    },
+    {
+      "key": "field36",
+      "name": "thirdLandlordPercentage",
+      "label": "percentuale possesso terzo locatore",
+      "type": "float",
+      "required": false,
+      "help": "Inserire la percentuale di possesso del terzo locatore (obbligatorio se contratto in regime di cedolare secca e solo se presente)",
+      "options": [],
+      "group": "landlords"
+    },
+    {
+      "key": "field37",
+      "name": "conductorName",
+      "label": "nome conduttore",
+      "type": "string",
+      "required": true,
+      "help": "Inserire il nome completo del conduttore",
+      "options": [],
+      "group": "tenants"
+    },
+    {
+      "key": "field38",
+      "name": "conductorTaxCode",
+      "label": "codice fiscale conduttore",
+      "type": "taxCode",
+      "required": true,
+      "help": "Inserire il codice fiscale del conduttore",
+      "options": [],
+      "group": "tenants"
+    },
+    {
+      "key": "field39",
+      "name": "conductorDocument",
+      "label": "documento conduttore",
+      "type": "file",
+      "required": true,
+      "help": "Allegare un documento del conduttore",
+      "options": [],
+      "group": "tenants"
+    },
+    {
+      "key": "field40",
+      "name": "secondConductorName",
+      "label": "nome secondo conduttore",
+      "type": "string",
+      "required": false,
+      "help": "Inserire il nome completo del secondo conduttore (solo se presente)",
+      "options": [],
+      "group": "tenants"
+    },
+    {
+      "key": "field41",
+      "name": "secondConductorTaxCode",
+      "label": "codice fiscale secondo conduttore",
+      "type": "taxCode",
+      "required": false,
+      "help": "Inserire il codice fiscale del secondo conduttore (solo se presente)",
+      "options": [],
+      "group": "tenants"
+    },
+    {
+      "key": "field42",
+      "name": "secondConductorDocument",
+      "label": "documento secondo conduttore",
+      "type": "file",
+      "required": false,
+      "help": "Allegare un documento del secondo conduttore (solo se presente)",
+      "options": [],
+      "group": "tenants"
+    },
+    {
+      "key": "field43",
+      "name": "thirdConductorName",
+      "label": "nome terzo conduttore",
+      "type": "string",
+      "required": false,
+      "help": "Inserire il nome completo del terzo conduttore (solo se presente)",
+      "options": [],
+      "group": "tenants"
+    },
+    {
+      "key": "field44",
+      "name": "thirdConductorTaxCode",
+      "label": "codice fiscale terzo conduttore",
+      "type": "taxCode",
+      "required": false,
+      "help": "Inserire il codice fiscale del terzo conduttore (solo se presente)",
+      "options": [],
+      "group": "tenants"
+    },
+    {
+      "key": "field45",
+      "name": "thirdConductorDocument",
+      "label": "documento terzo conduttore",
+      "type": "file",
+      "required": false,
+      "help": "Allegare un documento del terzo conduttore (solo se presente)",
+      "options": [],
+      "group": "tenants"
+    },
+    {
+      "key": "field46",
+      "name": "feesPaymentGuarantees",
+      "label": "garanzie pagamento canoni",
+      "type": "optionCode",
+      "required": true,
+      "help": "Specificare se sono presenti garanzie per il pagamento dei canoni",
+      "options": [
+        {
+          "code": "SI",
+          "description": ""
+        },
+        {
+          "code": "NO",
+          "description": ""
+        }
+      ],
+      "group": "taxes"
+    },
+    {
+      "key": "field47",
+      "name": "guaranteeProviderTaxCode",
+      "label": "codice fiscale prestatore",
+      "type": "taxCode",
+      "required": false,
+      "help": "Inserire il codice fiscale di chi presta la garanzia",
+      "options": [],
+      "group": "taxes"
+    },
+    {
+      "key": "field48",
+      "name": "maximumGuaranteeAmount",
+      "label": "importo garanzia",
+      "type": "float",
+      "required": false,
+      "help": "Inserire l'importo massimo della garanzia",
+      "options": [],
+      "group": "taxes"
+    },
+    {
+      "key": "field49",
+      "name": "penaltyClauses",
+      "label": "clausole penali",
+      "type": "optionCode",
+      "required": true,
+      "help": "Segnalare eventuali clausole penali",
+      "options": [
+        {
+          "code": "SI",
+          "description": ""
+        },
+        {
+          "code": "NO",
+          "description": ""
+        }
+      ],
+      "group": "taxes"
+    },
+    {
+      "key": "field50",
+      "name": "taxPaymentType",
+      "label": "tipo pagamento imposte",
+      "type": "optionCode",
+      "required": false,
+      "help": "Indicare se si intende pagare le imposte per l'intero periodo o annualmente (obbligatorio se contratto in regime ordinario)",
+      "options": [
+        {
+          "code": "ANNUALMENTE",
+          "description": "Pagamento dell'imposta di registro anno per anno, quindi all'inizio di ogni nuovo anno di locazione"
+        },
+        {
+          "code": "INTERA",
+          "description": "Pagamento dell'intera imposta di registro alla prima registrazione"
+        }
+      ],
+      "group": "taxes"
+    },
+    {
+      "key": "field51",
+      "name": "secondPropertyCadastralSheet",
+      "label": "foglio catastale secondo immobile",
+      "type": "cadastralSheet",
+      "required": false,
+      "help": "Inserire il foglio catastale del secondo immobile",
+      "options": [],
+      "group": "otherProperties"
+    },
+    {
+      "key": "field52",
+      "name": "secondPropertyCadastralParcel",
+      "label": "particella catastale secondo immobile",
+      "type": "cadastralParcel",
+      "required": false,
+      "help": "Inserire la particella catastale del secondo immobile",
+      "options": [],
+      "group": "otherProperties"
+    },
+    {
+      "key": "field53",
+      "name": "secondPropertyCadastralSub",
+      "label": "subalterno catastale secondo immobile",
+      "type": "cadastralSub",
+      "required": false,
+      "help": "Inserire il subalterno catastale del secondo immobile",
+      "options": [],
+      "group": "otherProperties"
+    },
+    {
+      "key": "field54",
+      "name": "secondPropertyCadastralIncome",
+      "label": "rendita catastale secondo immobile",
+      "type": "float",
+      "required": false,
+      "help": "Inserire la rendita catastale del secondo immobile",
+      "options": [],
+      "group": "otherProperties"
+    },
+    {
+      "key": "field55",
+      "name": "secondPropertyCadastralCategory",
+      "label": "categoria catastale secondo immobile",
+      "type": "optionCode",
+      "required": false,
+      "help": "Selezionare la categoria catastale del secondo immobile",
+      "options": [
+        {
+          "code": "A1",
+          "description": "A/1 Abitazioni di tipo signorile"
+        },
+        {
+          "code": "A2",
+          "description": "A/2 Abitazioni di tipo civile"
+        },
+        {
+          "code": "A3",
+          "description": "A/3 Abitazioni di tipo economico"
+        },
+        {
+          "code": "A4",
+          "description": "A/4 Abitazioni di tipo popolare"
+        },
+        {
+          "code": "A5",
+          "description": "A/5 Abitazioni di tipo ultrapopolare"
+        },
+        {
+          "code": "A6",
+          "description": "A/6 Abitazioni di tipo rurale"
+        },
+        {
+          "code": "A7",
+          "description": "A/7 Abitazioni in villini"
+        },
+        {
+          "code": "A8",
+          "description": "A/8 Abitazioni in ville"
+        },
+        {
+          "code": "A9",
+          "description": "A/9 Castelli, palazzi di eminenti pregi artistici o storici"
+        },
+        {
+          "code": "A10",
+          "description": "A/10 Uffici e studi privati"
+        },
+        {
+          "code": "A11",
+          "description": "A/11 Abitazioni ed alloggi tipici dei luoghi"
+        },
+        {
+          "code": "B1",
+          "description": "B/1 Collegi e convitti, educandati; ricoveri; orfanotrofi; ospizi; conventi; seminari; caserme"
+        },
+        {
+          "code": "B2",
+          "description": "B/2 Case di cura ed ospedali (senza fine di lucro)"
+        },
+        {
+          "code": "B3",
+          "description": "B/3 Prigioni e riformatori"
+        },
+        {
+          "code": "B4",
+          "description": "B/4 Uffici pubblici"
+        },
+        {
+          "code": "B5",
+          "description": "B/5 Scuole e laboratori scientifici"
+        },
+        {
+          "code": "B6",
+          "description": "B/6 Biblioteche, pinacoteche, musei, gallerie, accademie che non hanno sede in edifici della categoria A/9"
+        },
+        {
+          "code": "B7",
+          "description": "B/7 Cappelle ed oratori non destinati all’esercizio pubblico del culto"
+        },
+        {
+          "code": "B8",
+          "description": "B/8 Magazzini sotterranei per depositi di derrate"
+        },
+        {
+          "code": "C1",
+          "description": "C/1 Negozi e botteghe"
+        },
+        {
+          "code": "C2",
+          "description": "C/2 Magazzini e locali di deposito"
+        },
+        {
+          "code": "C3",
+          "description": "C/3 Laboratori per arti e mestieri"
+        },
+        {
+          "code": "C4",
+          "description": "C/4 Fabbricati e locali per esercizi sportivi"
+        },
+        {
+          "code": "C5",
+          "description": "C/5 Stabilimenti balneari e di acque curative"
+        },
+        {
+          "code": "C6",
+          "description": "C/6 Stalle, scuderie, rimesse, autorimesse"
+        },
+        {
+          "code": "C7",
+          "description": "C/7 Tettoie chiuse od aperte"
+        },
+        {
+          "code": "D1",
+          "description": "D/1 Opifici"
+        },
+        {
+          "code": "D2",
+          "description": "D/2 Alberghi e pensioni (con fini di lucro)"
+        },
+        {
+          "code": "D3",
+          "description": "D/3 Teatri, cinematografi, sale per concerti e spettacoli e simili (con fine di lucro)"
+        },
+        {
+          "code": "D4",
+          "description": "D/4 Case di cura ed ospedali (con fine di lucro)"
+        },
+        {
+          "code": "D5",
+          "description": "D/5 Istituto di credito, cambio e assicurazione (con fine di lucro)"
+        },
+        {
+          "code": "D6",
+          "description": "D/6 Fabbricati e locali per esercizi sportivi (con fine di lucro)"
+        },
+        {
+          "code": "D7",
+          "description": "D/7 Fabbricati costruiti o adattati per le speciali esigenze di un'attivita' industriale e non suscettibili di destinazione diversa senza radicali trasformazioni"
+        },
+        {
+          "code": "D8",
+          "description": "D/8 Fabbricati costruiti o adattati per le speciali esigenze di un'attivita' commerciale e non suscettibili di destinazione diversa senza radicali trasformazioni"
+        },
+        {
+          "code": "D9",
+          "description": "D/9 Edifici galleggianti o sospesi assicurati a punti fissi del suolo, ponti privati soggetti a pedaggio"
+        },
+        {
+          "code": "D10",
+          "description": "D/10 Fabbricati per funzioni produttive connesse alle attivita' agricole"
+        },
+        {
+          "code": "E1",
+          "description": "E/1 Stazioni per servizi di trasporto, terrestri, marittimi ed aerei"
+        },
+        {
+          "code": "E2",
+          "description": "E/2 Ponti comunali e provinciali soggetti a pedaggio"
+        },
+        {
+          "code": "E3",
+          "description": "E/3 Costruzioni e fabbricati per speciali esigenze pubbliche"
+        },
+        {
+          "code": "E4",
+          "description": "E/4 Recinti chiusi per speciali esigenze pubbliche"
+        },
+        {
+          "code": "E5",
+          "description": "E/5 Fabbricati costituenti fortificazioni e loro dipendenze"
+        },
+        {
+          "code": "E6",
+          "description": "E/6 Fari, semafori, torri per rendere d'uso pubblico l'orologio comunale"
+        },
+        {
+          "code": "E7",
+          "description": "E/7 Fabbricati destinati all'esercizio pubblico dei culti"
+        },
+        {
+          "code": "E8",
+          "description": "E/8 Fabbricati e costruzioni nei cimiteri, esclusi i colombari, i sepolcri e le tombe di famiglia"
+        },
+        {
+          "code": "E9",
+          "description": "E/9 Edifici a destinazione particolare non compresi nelle categorie precedenti del gruppo E"
+        },
+        {
+          "code": "F1",
+          "description": "F/1 Aree urbane"
+        },
+        {
+          "code": "F2",
+          "description": "F/2 Unita' collabenti"
+        },
+        {
+          "code": "F3",
+          "description": "F/3 Unita' in corso di costruzione"
+        },
+        {
+          "code": "F4",
+          "description": "F/4 Unita' in corso di definizione"
+        },
+        {
+          "code": "F5",
+          "description": "F/5 Lastrici solari"
+        }
+      ],
+      "group": "otherProperties"
+    },
+    {
+      "key": "field56",
+      "name": "thirdPropertyCadastralSheet",
+      "label": "foglio catastale terzo immobile",
+      "type": "cadastralSheet",
+      "required": false,
+      "help": "Inserire il foglio catastale del terzo immobile",
+      "options": [],
+      "group": "otherProperties"
+    },
+    {
+      "key": "field57",
+      "name": "thirdPropertyCadastralParcel",
+      "label": "particella catastale terzo immobile",
+      "type": "cadastralParcel",
+      "required": false,
+      "help": "Inserire la particella catastale del terzo immobile",
+      "options": [],
+      "group": "otherProperties"
+    },
+    {
+      "key": "field58",
+      "name": "thirdPropertyCadastralSub",
+      "label": "subalterno catastale terzo immobile",
+      "type": "cadastralSub",
+      "required": false,
+      "help": "Inserire il subalterno catastale del terzo immobile",
+      "options": [],
+      "group": "otherProperties"
+    },
+    {
+      "key": "field59",
+      "name": "thirdPropertyCadastralIncome",
+      "label": "rendita catastale terzo immobile",
+      "type": "float",
+      "required": false,
+      "help": "Inserire la rendita catastale del terzo immobile",
+      "options": [],
+      "group": "otherProperties"
+    },
+    {
+      "key": "field60",
+      "name": "thirdPropertyCadastralCategory",
+      "label": "categoria catastale terzo immobile",
+      "type": "optionCode",
+      "required": false,
+      "help": "Selezionare la categoria catastale del terzo immobile",
+      "options": [
+        {
+          "code": "A1",
+          "description": "A/1 Abitazioni di tipo signorile"
+        },
+        {
+          "code": "A2",
+          "description": "A/2 Abitazioni di tipo civile"
+        },
+        {
+          "code": "A3",
+          "description": "A/3 Abitazioni di tipo economico"
+        },
+        {
+          "code": "A4",
+          "description": "A/4 Abitazioni di tipo popolare"
+        },
+        {
+          "code": "A5",
+          "description": "A/5 Abitazioni di tipo ultrapopolare"
+        },
+        {
+          "code": "A6",
+          "description": "A/6 Abitazioni di tipo rurale"
+        },
+        {
+          "code": "A7",
+          "description": "A/7 Abitazioni in villini"
+        },
+        {
+          "code": "A8",
+          "description": "A/8 Abitazioni in ville"
+        },
+        {
+          "code": "A9",
+          "description": "A/9 Castelli, palazzi di eminenti pregi artistici o storici"
+        },
+        {
+          "code": "A10",
+          "description": "A/10 Uffici e studi privati"
+        },
+        {
+          "code": "A11",
+          "description": "A/11 Abitazioni ed alloggi tipici dei luoghi"
+        },
+        {
+          "code": "B1",
+          "description": "B/1 Collegi e convitti, educandati; ricoveri; orfanotrofi; ospizi; conventi; seminari; caserme"
+        },
+        {
+          "code": "B2",
+          "description": "B/2 Case di cura ed ospedali (senza fine di lucro)"
+        },
+        {
+          "code": "B3",
+          "description": "B/3 Prigioni e riformatori"
+        },
+        {
+          "code": "B4",
+          "description": "B/4 Uffici pubblici"
+        },
+        {
+          "code": "B5",
+          "description": "B/5 Scuole e laboratori scientifici"
+        },
+        {
+          "code": "B6",
+          "description": "B/6 Biblioteche, pinacoteche, musei, gallerie, accademie che non hanno sede in edifici della categoria A/9"
+        },
+        {
+          "code": "B7",
+          "description": "B/7 Cappelle ed oratori non destinati all’esercizio pubblico del culto"
+        },
+        {
+          "code": "B8",
+          "description": "B/8 Magazzini sotterranei per depositi di derrate"
+        },
+        {
+          "code": "C1",
+          "description": "C/1 Negozi e botteghe"
+        },
+        {
+          "code": "C2",
+          "description": "C/2 Magazzini e locali di deposito"
+        },
+        {
+          "code": "C3",
+          "description": "C/3 Laboratori per arti e mestieri"
+        },
+        {
+          "code": "C4",
+          "description": "C/4 Fabbricati e locali per esercizi sportivi"
+        },
+        {
+          "code": "C5",
+          "description": "C/5 Stabilimenti balneari e di acque curative"
+        },
+        {
+          "code": "C6",
+          "description": "C/6 Stalle, scuderie, rimesse, autorimesse"
+        },
+        {
+          "code": "C7",
+          "description": "C/7 Tettoie chiuse od aperte"
+        },
+        {
+          "code": "D1",
+          "description": "D/1 Opifici"
+        },
+        {
+          "code": "D2",
+          "description": "D/2 Alberghi e pensioni (con fini di lucro)"
+        },
+        {
+          "code": "D3",
+          "description": "D/3 Teatri, cinematografi, sale per concerti e spettacoli e simili (con fine di lucro)"
+        },
+        {
+          "code": "D4",
+          "description": "D/4 Case di cura ed ospedali (con fine di lucro)"
+        },
+        {
+          "code": "D5",
+          "description": "D/5 Istituto di credito, cambio e assicurazione (con fine di lucro)"
+        },
+        {
+          "code": "D6",
+          "description": "D/6 Fabbricati e locali per esercizi sportivi (con fine di lucro)"
+        },
+        {
+          "code": "D7",
+          "description": "D/7 Fabbricati costruiti o adattati per le speciali esigenze di un'attivita' industriale e non suscettibili di destinazione diversa senza radicali trasformazioni"
+        },
+        {
+          "code": "D8",
+          "description": "D/8 Fabbricati costruiti o adattati per le speciali esigenze di un'attivita' commerciale e non suscettibili di destinazione diversa senza radicali trasformazioni"
+        },
+        {
+          "code": "D9",
+          "description": "D/9 Edifici galleggianti o sospesi assicurati a punti fissi del suolo, ponti privati soggetti a pedaggio"
+        },
+        {
+          "code": "D10",
+          "description": "D/10 Fabbricati per funzioni produttive connesse alle attivita' agricole"
+        },
+        {
+          "code": "E1",
+          "description": "E/1 Stazioni per servizi di trasporto, terrestri, marittimi ed aerei"
+        },
+        {
+          "code": "E2",
+          "description": "E/2 Ponti comunali e provinciali soggetti a pedaggio"
+        },
+        {
+          "code": "E3",
+          "description": "E/3 Costruzioni e fabbricati per speciali esigenze pubbliche"
+        },
+        {
+          "code": "E4",
+          "description": "E/4 Recinti chiusi per speciali esigenze pubbliche"
+        },
+        {
+          "code": "E5",
+          "description": "E/5 Fabbricati costituenti fortificazioni e loro dipendenze"
+        },
+        {
+          "code": "E6",
+          "description": "E/6 Fari, semafori, torri per rendere d'uso pubblico l'orologio comunale"
+        },
+        {
+          "code": "E7",
+          "description": "E/7 Fabbricati destinati all'esercizio pubblico dei culti"
+        },
+        {
+          "code": "E8",
+          "description": "E/8 Fabbricati e costruzioni nei cimiteri, esclusi i colombari, i sepolcri e le tombe di famiglia"
+        },
+        {
+          "code": "E9",
+          "description": "E/9 Edifici a destinazione particolare non compresi nelle categorie precedenti del gruppo E"
+        },
+        {
+          "code": "F1",
+          "description": "F/1 Aree urbane"
+        },
+        {
+          "code": "F2",
+          "description": "F/2 Unita' collabenti"
+        },
+        {
+          "code": "F3",
+          "description": "F/3 Unita' in corso di costruzione"
+        },
+        {
+          "code": "F4",
+          "description": "F/4 Unita' in corso di definizione"
+        },
+        {
+          "code": "F5",
+          "description": "F/5 Lastrici solari"
+        }
+      ],
+      "group": "otherProperties"
+    }
+  ],
+  "validation": "((field0 && field1 && field2 && field3 && field4 && field5 && field6 && field7 && field8 && field9 && field10 && field11 && field17 && field18 && field19 && field20 && field46 && field49) || (field0 && field1 && field2 && field3 && field4 && field5 && field6 && field7 && field8 && field9 && field10 && field11 && field17 && field18 && field19 && field20 && field46 && field47 && field48 && field49)) && ((field12 && field13 && field14 && field15 && field16) || (field12 && field13 && field14 && field15 && field16 && field51 && field52 && field53 && field54 && field55) || (field12 && field13 && field14 && field15 && field16 && field51 && field52 && field53 && field54 && field55 && field56 && field57 && field58 && field59 && field60)) && (field21 || field22) && ((field25 && field26 && field27 && field28 && field37 && field38 && field39) || (field25 && field26 && field27 && field28 && field29 && field30 && field31 && field32 && field37 && field38 && field39) || (field25 && field26 && field27 && field28 && field29 && field30 && field31 && field32 && field33 && field34 && field35 && field36 && field37 && field38 && field39) || (field25 && field26 && field27 && field28 && field29 && field30 && field31 && field32 && field33 && field34 && field35 && field36 && field37 && field38 && field39 && field40 && field41 && field42) || (field25 && field26 && field27 && field28 && field29 && field30 && field31 && field32 && field33 && field34 && field35 && field36 && field37 && field38 && field39 && field40 && field41 && field42 && field43 && field44 && field45) || (field25 && field26 && field27 && field28 && field37 && field38 && field39 && field40 && field41 && field42) || (field25 && field26 && field27 && field28 && field37 && field38 && field39 && field40 && field41 && field42 && field43 && field44 && field45) || (field25 && field26 && field27 && field28 && field29 && field30 && field31 && field32 && field37 && field38 && field39 && field40 && field41 && field42) || (field25 && field26 && field27 && field28 && field29 && field30 && field31 && field32 && field37 && field38 && field39 && field40 && field41 && field42 && field43 && field44 && field45) || (field23 && field24 && field25 && field26 && field27 && field37 && field38 && field39 && field50) || (field23 && field24 && field25 && field26 && field27 && field29 && field30 && field31 && field37 && field38 && field39 && field50) || (field23 && field24 && field25 && field26 && field27 && field29 && field30 && field31 && field33 && field34 && field35 && field37 && field38 && field39 && field50) || (field23 && field24 && field25 && field26 && field27 && field29 && field30 && field31 && field33 && field34 && field35 && field37 && field38 && field39 && field40 && field41 && field42 && field50) || (field23 && field24 && field25 && field26 && field27 && field29 && field30 && field31 && field33 && field34 && field35 && field37 && field38 && field39 && field40 && field41 && field42 && field43 && field44 && field45 && field50) || (field23 && field24 && field25 && field26 && field27 && field37 && field38 && field39 && field40 && field41 && field42 && field50) || (field23 && field24 && field25 && field26 && field27 && field37 && field38 && field39 && field40 && field41 && field42 && field43 && field44 && field45 && field50) || (field23 && field24 && field25 && field26 && field27 && field29 && field30 && field31 && field37 && field38 && field39 && field40 && field41 && field42 && field50) || (field23 && field24 && field25 && field26 && field27 && field29 && field30 && field31 && field37 && field38 && field39 && field40 && field41 && field42 && field43 && field44 && field45 && field50))"
+}

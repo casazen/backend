@@ -164,6 +164,13 @@ public class LeaseContract : ITenantOwned
     /// </summary>
     public string? DraftData { get; set; }
 
+    /// <summary>Encrypted registration supplement: official field names and private lease-document IDs, never file contents or URLs.</summary>
+    public string? OpenapiRegistrationData { get; set; }
+
+    [ConcurrencyCheck]
+    public int OpenapiRegistrationVersion { get; set; }
+
+
     /// <summary>
     /// Optimistic version of the draft: every change of the guided draft (a step saved, the review confirmed or withdrawn, the
     /// contract marked as downloaded for signature) increases it, and a save made with an older number is refused with 409

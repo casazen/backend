@@ -710,6 +710,7 @@ public static class ServiceCollectionExtensions
             if (Uri.TryCreate(configured, UriKind.Absolute, out var baseUri))
                 client.BaseAddress = baseUri;
         });
+        services.AddScoped<IOpenapiRegistrationPreparation, OpenapiRegistrationPreparation>();
         services.AddScoped<IOpenapiRegistrationPaymentGate, OpenapiRegistrationPaymentGate>();
         services.AddScoped<IOpenapiRegistrationCheckoutService, OpenapiRegistrationCheckoutService>();
         services.AddScoped<IRliRegistrationService, RliRegistrationService>();

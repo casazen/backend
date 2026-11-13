@@ -6486,4 +6486,10 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="AssistantSimulationInvalid" xml:space="preserve">
     <value>Scrivi un messaggio di prova da 1 a 2000 caratteri; la lingua, se la indichi, è un codice di due lettere.</value>
   </data>
+  <data name="OpenapiRegistrationConflict" xml:space="preserve"><value>I dati sono stati modificati da un’altra scheda. Riapri il modulo e riprova.</value></data>
+  <data name="OpenapiRegistrationInvalid" xml:space="preserve"><value>I dati della registrazione non sono validi.</value></data>
+  <data name="OpenapiRegistrationUnavailable" xml:space="preserve"><value>Il servizio di registrazione non è configurato correttamente.</value></data>
+  <data name="OpenapiRegistrationIncomplete" xml:space="preserve"><value>Completa e salva i dati e i documenti richiesti prima di pagare o inviare la registrazione.</value></data>
+  <data name="OpenapiRegistrationNotEditable" xml:space="preserve"><value>I dati possono essere preparati solo per un contratto firmato non ancora inviato o registrato.</value></data>
+  <data name="OpenapiRegistrationDocumentInvalid" xml:space="preserve"><value>Seleziona documenti disponibili tra gli allegati di questo contratto.</value></data>
 </root>

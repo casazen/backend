@@ -26,7 +26,8 @@ public sealed class OpenapiRegistrationCheckoutService(
     IConfiguration configuration,
     ILogger<OpenapiRegistrationCheckoutService> logger,
     Stripe.IStripeClient? stripeClient = null,
-    TimeProvider? timeProvider = null) : IOpenapiRegistrationCheckoutService
+    TimeProvider? timeProvider = null,
+    IOpenapiRegistrationPreparation? preparation = null) : IOpenapiRegistrationCheckoutService
 {
     public static readonly TimeSpan SessionLifetime = TimeSpan.FromMinutes(30);
 
@@ -46,7 +47,10 @@ public sealed class OpenapiRegistrationCheckoutService(
             cancellationToken,
             (PostgresAdvisoryLocks.Scope.OpenapiLeaseRegistrationCheckout, leaseId.ToString("N")));
 
-        var lease = await db.LeaseContracts.SingleAsync(l => l.Id == leaseId && l.OrgId == orgId, cancellationToken);
+        var lease = await db.LeaseContracts.Include(l => l.Property).Include(l => l.Parties).Include(l => l.Registration)
+            .SingleAsync(l => l.Id == leaseId && l.OrgId == orgId, cancellationToken);
+        if (preparation is null) throw new InvalidOperationException("Registration preparation is not registered.");
+        await preparation.EnsureReadyAsync(lease, cancellationToken);
         var quote = OpenapiRegistrationFee.Quote(lease.MonthlyRent, advisory.Value.Registro);
         if (quote.AmountCents <= 0)
             throw new DomainConflictException(OpenapiRegistrationFee.AlreadyPaidCode, "OpenapiRegistrationAlreadyPaid");

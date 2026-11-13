@@ -496,6 +496,48 @@ public class LeasesController(
         }
     }
 
+    [HttpGet("{id:guid}/registration/preparation")]
+    [FeatureGate(FeatureFlags.RliProvider)]
+    [Authorize(Policy = CasazenPolicies.LeaseRegister)]
+    public async Task<IActionResult> GetRegistrationPreparation(Guid id,
+        [FromServices] IOpenapiRegistrationPreparation preparation, CancellationToken ct)
+    {
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Register);
+        if (denied is not null) return denied;
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(await preparation.GetAsync(id, ct));
+    }
+
+    [HttpPut("{id:guid}/registration/preparation")]
+    [FeatureGate(FeatureFlags.RliProvider)]
+    [Authorize(Policy = CasazenPolicies.LeaseRegister)]
+    [RequestSizeLimit(65536)]
+    public async Task<IActionResult> SaveRegistrationPreparation(Guid id, [FromBody] OpenapiRegistrationData data,
+        [FromServices] IOpenapiRegistrationPreparation preparation, CancellationToken ct)
+    {
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Register);
+        if (denied is not null) return denied;
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(await preparation.SaveAsync(id, data, ct));
+    }
+
+    [HttpPost("{id:guid}/registration/preparation/documents")]
+    [FeatureGate(FeatureFlags.RliProvider)]
+    [Authorize(Policy = CasazenPolicies.LeaseRegister)]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(20 * 1024 * 1024 + 65536)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 20 * 1024 * 1024 + 65536)]
+    public async Task<IActionResult> UploadRegistrationDocument(Guid id, [FromForm] LeaseAttachmentForm form,
+        [FromServices] ILeaseDocumentService documents, CancellationToken ct)
+    {
+        var (_, denied) = await AuthorizeLeaseAsync(id, LeaseOperations.Register);
+        if (denied is not null) return denied;
+        var actor = GetOwnerId();
+        if (actor is null) return Unauthorized();
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(await documents.UploadAsync(id, form.File, LeaseDocumentKind.RegistrationIdentity, actor, ct));
+    }
+
     /// <summary>
     /// Stripe Checkout for the Openapi filing fee. Available for every supported lease type, including canone concordato.
     /// The amount is the Openapi listed service price plus CasaZen's fixed service fee. 409

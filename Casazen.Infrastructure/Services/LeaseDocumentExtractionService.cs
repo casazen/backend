@@ -56,6 +56,17 @@ public sealed class LeaseDocumentExtractionService(
         if (document.OrgId != lease.OrgId)
             throw new DomainRuleException("tenant_isolation_violation", "TenantIsolationViolation");
 
+        if (document.Kind == LeaseDocumentKind.RegistrationIdentity)
+        {
+            await UpdateAsync(documentId, d =>
+            {
+                d.ExtractionStatus = LeaseDocumentExtractionStatus.Skipped;
+                d.ExtractionResult = null;
+                d.ExtractionError = null;
+            }, ct);
+            return;
+        }
+
         var importedDraft = lease.Status == LeaseStatus.Draft && lease.Origin == LeaseOrigin.Imported;
         try
         {

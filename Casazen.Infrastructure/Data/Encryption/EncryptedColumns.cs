@@ -65,6 +65,9 @@ public static class EncryptedColumns
     /// <summary>Purpose of the AI provider key saved from the admin panel. Never change it: stored keys would become unreadable.</summary>
     public const string PlatformAiSettingsPurpose = "Casazen.PlatformAiSettings";
 
+    /// <summary>Purpose of the personal data and bank details collected for a provider registration. Never change it.</summary>
+    public const string OpenapiRegistrationPurpose = "Casazen.LeaseContract.OpenapiRegistration";
+
     /// <summary>
     /// Purpose of the typed state of a lease draft (LR-12): <see cref="LeaseContract.DraftData"/>, the JSON with the names, fiscal codes and
     /// residences the landlord typed in the wizard, kept until the data of the draft is complete. Nothing is searched in it. Never change it.
@@ -236,6 +239,9 @@ public static class EncryptedColumns
         new EncryptedEntity<LeaseContract>(
             LeaseDraftPurpose,
             nameof(LeaseContract.DraftData)),
+        new EncryptedEntity<LeaseContract>(
+            OpenapiRegistrationPurpose,
+            nameof(LeaseContract.OpenapiRegistrationData)),
         new EncryptedEntity<Party>(
             LeasePartyPurpose,
             nameof(Party.Residence),

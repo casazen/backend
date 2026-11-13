@@ -57,6 +57,7 @@ public class EncryptedColumnsTests
                 "GuestContact.Value:Casazen.GuestContact",
                 // LR-12: the values a landlord typed in the wizard and kept in the draft, and the residence of a party of a lease.
                 "LeaseContract.DraftData:Casazen.LeaseContract.Draft",
+                "LeaseContract.OpenapiRegistrationData:Casazen.LeaseContract.OpenapiRegistration",
                 // TR: the need of a transitory lease and the documentation that proves it.
                 "LeaseContract.TransitoryDocumentation:Casazen.LeaseContract.TransitoryNeed",
                 "LeaseContract.TransitoryNeed:Casazen.LeaseContract.TransitoryNeed",

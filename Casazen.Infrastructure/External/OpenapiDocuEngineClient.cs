@@ -19,7 +19,8 @@ namespace Casazen.Infrastructure.External;
 public sealed class OpenapiDocuEngineClient(
     HttpClient http,
     IOptions<OpenapiOptions> options,
-    ILogger<OpenapiDocuEngineClient> logger) : IOpenapiDocuEngineClient
+    ILogger<OpenapiDocuEngineClient> logger,
+    IOpenapiRegistrationPreparation? preparation = null) : IOpenapiDocuEngineClient
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -36,7 +37,8 @@ public sealed class OpenapiDocuEngineClient(
         if (!_options.IsConfigured)
             throw NotConfigured();
 
-        var search = OpenapiLeaseSearch.Build(lease, signedContract, _options.FieldOrderOrEmpty());
+        if (preparation is null) throw NotConfigured();
+        var search = await preparation.BuildSearchAsync(lease, signedContract, cancellationToken);
         var body = new Dictionary<string, object?>
         {
             ["documentId"] = _options.LeaseDocumentId!.Trim(),

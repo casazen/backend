@@ -191,7 +191,7 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
             UploadedBy = uploadedBy,
             SizeBytes = content.Length,
             DocumentHash = documentHash,
-            ExtractionStatus = LeaseDocumentExtractionStatus.Processing, // Set to Processing per ADR-009-R1
+            ExtractionStatus = kind == LeaseDocumentKind.RegistrationIdentity ? LeaseDocumentExtractionStatus.Skipped : LeaseDocumentExtractionStatus.Processing,
         };
         try
         {
@@ -199,8 +199,11 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
             await db.SaveChangesAsync(ct);
 
             // Enqueue extraction job (ADR-009-R1)
-            ExtractLeaseDocumentDataJob.EnqueueAsync(document.Id);
-            logger.LogInformation("Extraction job enqueued for document {DocumentId}", document.Id);
+            if (kind != LeaseDocumentKind.RegistrationIdentity)
+            {
+                ExtractLeaseDocumentDataJob.EnqueueAsync(document.Id);
+                logger.LogInformation("Extraction job enqueued for document {DocumentId}", document.Id);
+            }
         }
         catch
         {

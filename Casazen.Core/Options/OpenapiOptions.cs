@@ -27,10 +27,9 @@ public sealed class OpenapiOptions
 
     /// <summary>
     /// <c>documentId</c> of the lease-contract registration service, read from <c>GET /documents</c>.
-    /// Openapi publishes one registration product (not a separate non-concordato product); CasaZen chooses it only for
-    /// contracts that are not canone concordato.
+    /// Openapi publishes one registration product (not a separate non-concordato product); CasaZen maps the supported residential contract types to the provider codes.
     /// </summary>
-    public string? LeaseDocumentId { get; set; }
+    public string? LeaseDocumentId { get; set; } = "67e13cfd2cbb7e30d3d93e9d";
 
     /// <summary>Optional callback URL. Sent only together with <see cref="CallbackSecret"/>.</summary>
     public string? CallbackUrl { get; set; }
