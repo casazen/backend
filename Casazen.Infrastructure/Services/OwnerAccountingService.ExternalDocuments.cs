@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -113,15 +114,19 @@ public sealed partial class OwnerAccountingService
 
     public async Task<IReadOnlyList<OwnerExternalDocumentReference>> ListPublishedExternalDocumentsForOwnerUserAsync(Guid ownerUserId, CancellationToken ct = default)
     {
-        var owners = await db.PropertyOwnerships.AsNoTracking()
+        // The caller of the owner portal has no org of its own: the tenant filter of its request is fail-closed and would answer nothing, so every read here
+        // ignores it and names the owner (its own ownerships), the org and the owner profile in the predicate, and the filtering by pair below stays.
+        var owners = await db.PropertyOwnerships.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking()
             .Where(o => o.OwnerUserId == ownerUserId)
             .Select(o => new { o.OrgId, o.PropertyOwnerId })
             .Distinct()
             .ToListAsync(ct);
         var orgIds = owners.Select(o => o.OrgId).Distinct().ToList();
         var ownerIds = owners.Select(o => o.PropertyOwnerId).Distinct().ToList();
-        var published = db.OwnerStatementVersions.AsNoTracking().Where(v => v.PublishedAt != null).Select(v => v.Id);
-        var candidates = await db.OwnerExternalDocumentReferences.AsNoTracking()
+        var published = db.OwnerStatementVersions.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking()
+            .Where(v => v.PublishedAt != null)
+            .Select(v => v.Id);
+        var candidates = await db.OwnerExternalDocumentReferences.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking()
             .Where(r => orgIds.Contains(r.OrgId) && ownerIds.Contains(r.PropertyOwnerId) && r.RemovedAt == null && published.Contains(r.OwnerStatementVersionId))
             .OrderByDescending(r => r.ExternalDate)
             .ToListAsync(ct);

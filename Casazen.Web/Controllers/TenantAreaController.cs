@@ -75,6 +75,21 @@ public sealed partial class TenantAreaController(
                 && (x.Kind == LeaseDocumentKind.Contract || x.Kind == LeaseDocumentKind.Attestation || x.Kind == LeaseDocumentKind.Registration))
             .OrderByDescending(x => x.UploadedAt)
             .ToListAsync(cancellationToken);
+        var condominiumReports = await db.TenantCondominiumSettlements.IgnoreQueryFilters().AsNoTracking()
+            .Where(s => s.OrgId == lease.OrgId && s.LeaseContractId == lease.Id
+                && (s.Status == TenantSettlementStatus.Posted || s.Status == TenantSettlementStatus.Settled))
+            .OrderByDescending(s => s.PeriodEnd)
+            .Select(s => new
+            {
+                id = s.Id,
+                periodLabel = s.Period.Label,
+                periodEnd = s.PeriodEnd,
+                recoverable = s.RecoverableFinalAmount,
+                advances = s.AdvancesAccountedAmount,
+                prior = s.PriorTenantBalanceAmount,
+                balance = s.SettlementAmount
+            })
+            .ToListAsync(cancellationToken);
         var today = clock.TodayInRomeAsDateOnly();
 
         return Ok(new
@@ -105,6 +120,7 @@ public sealed partial class TenantAreaController(
                 bank = (object?)null,
                 declaration = latestDeclaration.TryGetValue(x.Id, out var declaration) ? Declaration(declaration) : null,
             }),
+            condominiumReports,
             documents = documents.Select(x => new
             {
                 id = x.Id,

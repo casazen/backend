@@ -61,7 +61,10 @@ public sealed class CalendarBlockService(
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<CalendarBlock> CreateAsync(ManualBlockRequest request, CancellationToken cancellationToken = default)
+    public async Task<CalendarBlock> CreateAsync(ManualBlockRequest request, CancellationToken cancellationToken = default) =>
+        (await CreateTrackedAsync(request, cancellationToken)).Block;
+
+    public async Task<ManualBlockChange> CreateTrackedAsync(ManualBlockRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -121,6 +124,7 @@ public sealed class CalendarBlockService(
 
         var block = new CalendarBlock
         {
+            Id = request.BlockId ?? Guid.NewGuid(),
             PropertyId = request.PropertyId,
             OrgId = orgId,
             Source = CalendarBlockSource.Manual,
@@ -141,7 +145,7 @@ public sealed class CalendarBlockService(
         logger.LogInformation(
             "Manual block {BlockId} ({Reason}) created on property {PropertyId}: {Nights} nights from {Start:yyyy-MM-dd}",
             block.Id, block.ManualReason, block.PropertyId, (end - start).Days, start);
-        return block;
+        return new ManualBlockChange(block, change?.ProcessId, change?.Process.State);
     }
 
     public async Task<CalendarBlock?> FindAsync(Guid blockId, CancellationToken cancellationToken = default) =>
@@ -158,6 +162,14 @@ public sealed class CalendarBlockService(
         // stays removes it (PropertyModeService, in the same transaction as the mode); by hand it would reopen the dates.
         if (block.ManualReason == CalendarBlockReason.ModeChange)
             throw new DomainRuleException(ManualBlockErrorCodes.HeldByModeChange, ManualBlockErrorCodes.HeldByModeChangeMessageKey);
+
+        // E07/F07/US01/T01: the block of an owner stay goes away with the stay (ReleaseOwnerStayBlockAsync), never by hand: the stay would say «confirmed»
+        // for dates that are open again.
+        if (block.ManualReason == CalendarBlockReason.Owner
+            && await db.OwnerStayRequests.AnyAsync(s => s.CalendarBlockId == block.Id && s.BlockReleasedAt == null, cancellationToken))
+        {
+            throw new DomainRuleException(ManualBlockErrorCodes.HeldByOwnerStay, ManualBlockErrorCodes.HeldByOwnerStayMessageKey);
+        }
 
         // E08/F05/US02/T02 (NF-78): the nights are open again on the channel manager: the change is recorded in the same save as the removal.
         var change = await RecordChangeAsync(block.PropertyId, block.StartUtc.Date, block.EndUtc.Date, "removed", block.ManualReason, null, cancellationToken);
@@ -176,6 +188,25 @@ public sealed class CalendarBlockService(
         EnqueueRun(change);
 
         logger.LogInformation("Manual block {BlockId} removed from property {PropertyId}", block.Id, block.PropertyId);
+    }
+
+    public async Task<ManualBlockChange?> ReleaseOwnerStayBlockAsync(Guid blockId, CancellationToken cancellationToken = default)
+    {
+        var block = await db.CalendarBlocks.FirstOrDefaultAsync(b => b.Id == blockId, cancellationToken);
+        if (block is null)
+            return null;
+
+        if (block.Source != CalendarBlockSource.Manual || block.ManualReason != CalendarBlockReason.Owner)
+            throw new DomainRuleException(ManualBlockErrorCodes.NotManual, ManualBlockErrorCodes.NotManualMessageKey);
+
+        // The nights are open again on the channel manager: the change is recorded in the same save as the removal (E08/F05/US02/T02).
+        var change = await RecordChangeAsync(block.PropertyId, block.StartUtc.Date, block.EndUtc.Date, "removed", block.ManualReason, null, cancellationToken);
+        db.CalendarBlocks.Remove(block);
+        await db.SaveChangesAsync(cancellationToken);
+        EnqueueRun(change);
+
+        logger.LogInformation("Owner stay block {BlockId} removed from property {PropertyId}", block.Id, block.PropertyId);
+        return new ManualBlockChange(block, change?.ProcessId, change?.Process.State);
     }
 
     /// <summary>

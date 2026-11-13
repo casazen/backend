@@ -400,9 +400,11 @@ public sealed class ActivationPartEvaluator(IOnboardingFlowStatusService flowSta
 }
 
 /// <summary>
-/// The placeholder of a part nobody has built yet (messages and AI, fiscal documents, partners until E05, E06 and E09 register their own
-/// evaluator with a higher <see cref="IOnboardingPartEvaluator.Order"/>): not available, <see cref="OnboardingPartReasons.NotProvided"/>. A part
-/// with no evaluator is never presumed done.
+/// The placeholder of a part nobody has built yet (an evaluator of the epic that owns the part registers with a higher
+/// <see cref="IOnboardingPartEvaluator.Order"/>, and the placeholder stops being asked): not available,
+/// <see cref="OnboardingPartReasons.NotProvided"/>. A part with no evaluator is never presumed done. Today every part has its evaluator (messages and
+/// AI, fiscal documents and partners are in <c>OnboardingCrossEpicProviders</c>, E10/F01/US04/T01) and nothing registers this one; it is the model for
+/// a future part and what the tests use as the answer of a part with nobody behind it.
 /// </summary>
 public sealed class NotProvidedPartEvaluator(OnboardingPartKey part) : IOnboardingPartEvaluator
 {

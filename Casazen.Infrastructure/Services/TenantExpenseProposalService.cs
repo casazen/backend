@@ -1,4 +1,8 @@
 using Casazen.Core.Authorization;
+using System.Text.Json;
+using Casazen.Infrastructure.Services.LeaseDrafts;
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Condominium;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
@@ -59,8 +63,85 @@ public sealed class TenantExpenseProposalService(AppDbContext db, ICondominiumAc
             result.AnnualAmount,
             result.PreviousConsuntivo,
             result.Preventivo,
-            result.SettledAtConsuntivo,
+            command.SettlementRequired ?? result.SettledAtConsuntivo,
             result.PeriodId,
             result.PeriodLabel);
+    }
+
+    public async Task<TenantExpenseProposalView?> GetSavedAsync(Guid leaseId, CancellationToken cancellationToken = default)
+    {
+        var terms = await db.LeaseCondominiumTerms.AsNoTracking().SingleOrDefaultAsync(t => t.LeaseContractId == leaseId, cancellationToken);
+        if (terms?.AdvanceAmount is not > 0m || terms.Cadence is null || terms.ConfirmedAt is null) return null;
+        var saved = await ReadChoiceAsync(db, leaseId, cancellationToken);
+        if (saved is not null && saved.InstallmentAmount == terms.AdvanceAmount && saved.SettledAtConsuntivo == terms.SettlementRequired
+            && saved.Installments == TenantExpenseProposal.InstallmentCount(terms.Cadence.Value)) return saved;
+        var count = TenantExpenseProposal.InstallmentCount(terms.Cadence.Value);
+        return new(terms.AdvanceMode == CondominiumAdvanceMode.BudgetAllocation ? TenantExpenseProposal.Source.ConfirmedBudget : TenantExpenseProposal.Source.Manual,
+            terms.AdvanceAmount.Value, terms.AdvanceAmount.Value, count, terms.AdvanceAmount.Value * count,
+            null, null, terms.SettlementRequired, null, null);
+    }
+
+    public async Task SaveAsync(Guid leaseId, TenantExpenseProposalView proposal, ProposeTenantExpenseCommand command,
+        string userId, CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken,
+            (PostgresAdvisoryLocks.Scope.RentLease, leaseId.ToString("N")));
+        await LeaseDraftLocking.LockRowAsync(db, leaseId, cancellationToken);
+        var lease = await db.LeaseContracts.SingleAsync(l => l.Id == leaseId, cancellationToken);
+        await db.Entry(lease).ReloadAsync(cancellationToken);
+        if (lease.Status != LeaseStatus.Draft)
+            throw new DomainRuleException("lease_not_draft", "LeaseNotDraft");
+        var terms = await db.LeaseCondominiumTerms.SingleOrDefaultAsync(t => t.LeaseContractId == leaseId, cancellationToken);
+        if (terms is null)
+        {
+            terms = new LeaseCondominiumTerms { OrgId = lease.OrgId, LeaseContractId = leaseId };
+            db.LeaseCondominiumTerms.Add(terms);
+        }
+        terms.AdvanceMode = proposal.Source is TenantExpenseProposal.Source.ConfirmedBudget or TenantExpenseProposal.Source.Statements
+            ? CondominiumAdvanceMode.BudgetAllocation : CondominiumAdvanceMode.FixedContractAmount;
+        terms.AdvanceAmount = proposal.InstallmentAmount;
+        terms.Cadence = command.Cadence ?? RentCadence.Monthly;
+        terms.SettlementRequired = proposal.SettledAtConsuntivo;
+        terms.ConfirmedAt = DateTime.UtcNow;
+        terms.ConfirmedByUserId = userId;
+        terms.UpdatedAt = DateTime.UtcNow;
+        db.LeaseEvents.Add(new LeaseEvent
+        {
+            LeaseContractId = leaseId,
+            EventType = LeaseEventType.CondominiumExpenseChosen,
+            OccurredAt = terms.UpdatedAt,
+            Payload = JsonSerializer.Serialize(proposal)
+        });
+        if (lease.ReviewConfirmedAt is not null)
+        {
+            lease.ReviewConfirmedAt = null;
+            lease.ReviewFingerprint = null;
+            db.LeaseEvents.Add(new LeaseEvent
+            {
+                LeaseContractId = leaseId,
+                EventType = LeaseEventType.ReviewReopened,
+                Payload = "condominium_expense_changed"
+            });
+            if (lease.SentForSignatureAt is not null)
+            {
+                lease.SentForSignatureAt = null;
+                db.LeaseEvents.Add(new LeaseEvent
+                {
+                    LeaseContractId = leaseId,
+                    EventType = LeaseEventType.SentRevoked,
+                    Payload = "review_reopened"
+                });
+            }
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+    }
+
+    internal static async Task<TenantExpenseProposalView?> ReadChoiceAsync(AppDbContext db, Guid leaseId, CancellationToken ct)
+    {
+        var payload = await db.LeaseEvents.AsNoTracking()
+            .Where(e => e.LeaseContractId == leaseId && e.EventType == LeaseEventType.CondominiumExpenseChosen)
+            .OrderByDescending(e => e.OccurredAt).ThenByDescending(e => e.Id).Select(e => e.Payload).FirstOrDefaultAsync(ct);
+        return payload is null ? null : JsonSerializer.Deserialize<TenantExpenseProposalView>(payload);
     }
 }

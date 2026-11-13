@@ -13,6 +13,9 @@ public interface IAdministratorStatementReaderService
     Task<StatementProposalView> ProposeAsync(
         HostScope scope, Guid condominiumId, StatementFileUpload file, string userId, CancellationToken cancellationToken = default);
 
+    Task<AdministratorInstallmentReader.Reading> ReadInstallmentsAsync(
+        HostScope scope, Guid condominiumId, StatementFileUpload file, string userId, CancellationToken cancellationToken = default);
+
     Task<StatementProposalView> ConfirmAsync(
         HostScope scope, Guid condominiumId, Guid proposalId, string userId, CancellationToken cancellationToken = default);
 }

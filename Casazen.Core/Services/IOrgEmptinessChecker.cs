@@ -26,7 +26,10 @@ public sealed record OrgEmptiness(bool IsEmpty, IReadOnlyList<string> Blockers)
 /// <item>the user is its only user and its only member (the owner);</item>
 /// <item>no row in <b>any</b> tenant-owned table (<c>ITenantOwned</c>), soft-deleted properties included, except the rows the
 /// onboarding itself leaves (<c>ConsentRecord</c>, <c>SignupAttribution</c>, <c>OrgSlugAlias</c>), the drafts of the wizards
-/// (<c>WizardDraft</c>: a half-filled form is not use of the org) and the user's own <c>OrgMember</c> row: the list of tables is
+/// (<c>WizardDraft</c>: a half-filled form is not use of the org), the alerts raised for the person and its alert settings
+/// (<c>PopupAlert</c>, <c>UserNotificationPreferences</c>, <c>UserNotificationChannelSetting</c>, <c>NotificationEmailSlot</c>), a part
+/// of the activation plan put off with «Do it later» (<c>OnboardingPartState</c>), the "To do" of the type <c>WizardResume</c> in
+/// <c>InternalActivities</c> (the one row-level exception) and the user's own <c>OrgMember</c> row: the list of tables is
 /// read from the model, so a table added tomorrow is checked from the first day (a test fails otherwise);</item>
 /// <item>the Starter plan with no Stripe customer, no subscription, no Connect account, no custom domain and no branding.</item>
 /// </list>

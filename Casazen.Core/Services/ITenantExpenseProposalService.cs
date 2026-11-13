@@ -5,10 +5,13 @@ namespace Casazen.Core.Services;
 
 /// <summary>
 /// The condominium expense the contract wizard proposes. It does not start a payment: the tenant pays on the rent
-/// APIs, and the landlord pays the condominium from the bank-link payments API.
+/// APIs, and the landlord records external payments in the condominium book.
 /// </summary>
 public interface ITenantExpenseProposalService
 {
+    Task<TenantExpenseProposalView?> GetSavedAsync(Guid leaseId, CancellationToken cancellationToken = default);
+    Task SaveAsync(Guid leaseId, TenantExpenseProposalView proposal, ProposeTenantExpenseCommand command, string userId, CancellationToken cancellationToken = default);
+
     Task<TenantExpenseProposalView> ProposeAsync(
         Guid leaseId, ProposeTenantExpenseCommand command, CancellationToken cancellationToken = default);
 }
@@ -19,7 +22,8 @@ public sealed record ProposeTenantExpenseCommand(
     RentCadence? Cadence,
     decimal? PreviousConsuntivo,
     decimal? Preventivo,
-    decimal? ManualAmount);
+    decimal? ManualAmount,
+    bool? SettlementRequired = null);
 
 public sealed record TenantExpenseProposalView(
     TenantExpenseProposal.Source Source,

@@ -93,7 +93,10 @@ public static class OrgActivityDetailKeys
     /// </summary>
     public const string Purpose = "purpose";
 
-    /// <summary>The code of the part of the activation plan a «Do it for me» request is about (<c>compliance</c>, <c>channels</c>...): a code of a closed list (E10/F01/US03/T01).</summary>
+    /// <summary>
+    /// The code of the part of the activation plan a «Do it for me» request is about (<c>compliance</c>, <c>channels</c>...): a code of a closed list
+    /// (E10/F01/US03/T01); or what an item of the owner portal operations is (<c>OwnerPortalParts</c>: <c>stay</c>, <c>stayRule</c>, ..., E07/F07/US01).
+    /// </summary>
     public const string Part = "part";
 
     /// <summary>
@@ -104,7 +107,8 @@ public static class OrgActivityDetailKeys
 
     /// <summary>
     /// Where a «Do it for me» request stands after the event (<c>requested</c>, <c>inProgress</c>, <c>done</c>, <c>cancelled</c>), a code (E10/F01/US03/T01); or
-    /// what happened to an invitation of a property owner (<c>sent</c>, <c>resent</c>, <c>accepted</c>, <c>revoked</c>, E10/F02/US02).
+    /// what happened to an invitation of a property owner (<c>sent</c>, <c>resent</c>, <c>accepted</c>, <c>revoked</c>, E10/F02/US02); or what happened to
+    /// an item of the owner portal operations (<c>requested</c>, <c>approved</c>, <c>syncFailed</c>, ..., E07/F07/US01).
     /// </summary>
     public const string Status = "status";
 
@@ -270,6 +274,11 @@ public static partial class OrgActivityCatalog
         new(OrgActivityType.OwnerImportApplied, OrgActivityArea.Account, OrgActivitySubjectType.Org,
             [OrgActivityDetailKeys.Rows, OrgActivityDetailKeys.Applied, OrgActivityDetailKeys.Fingerprint]),
         new(OrgActivityType.OwnerInvitationChanged, OrgActivityArea.Account, OrgActivitySubjectType.OwnerInvitation, [OrgActivityDetailKeys.Status]),
+
+        // The owner portal operations (E07/F07/US01, NF-111): one event for the owner stays, their rules and, with the collaboration of the portal, what it
+        // records; the part says what the subject id is. Codes only: never a name, a date of a guest, a text or an amount.
+        new(OrgActivityType.OwnerPortalChanged, OrgActivityArea.Account, OrgActivitySubjectType.OwnerPortalItem,
+            [OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Status]),
     ];
 
     /// <summary>Every event the log can record, in the order of the runbook.</summary>

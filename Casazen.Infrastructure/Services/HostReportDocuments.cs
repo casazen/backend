@@ -5,11 +5,14 @@ using Casazen.Core.Utilities;
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// The titles and the CSV files of the host reports (SR-10), in Italian like the fiscal ones (<see cref="FiscalReportDocuments"/>): for a
-/// spreadsheet set to Italian (<see cref="CsvWriter"/>). Every report says in its title which base its numbers are on, and the file
-/// carries that title on its first row, so no figure travels without its label. Nothing about a guest: properties, channels, counts and
-/// amounts only.
+/// The titles, the CSV files and the Excel files of the host reports (SR-10, NF-101), in Italian like the fiscal ones (<see cref="FiscalReportDocuments"/>): the CSV
+/// for a spreadsheet set to Italian (<see cref="CsvWriter"/>). Every report says in its title which base its numbers are on, and the file carries that title on its
+/// first row, so no figure travels without its label. Nothing about a guest: properties, channels, counts and amounts only.
 /// </summary>
+/// <remarks>
+/// Each report is built once as a <see cref="ReportTable"/> (<c>Table</c>): its title row, its header and its typed rows, so <c>Csv</c> and <c>Xlsx</c> carry the
+/// same columns and the same numbers, an amount to the cent, a percentage to the cent of a point and a day as a day. The CSV is what it always was, byte for byte.
+/// </remarks>
 public static class HostReportDocuments
 {
     /// <summary>Title of the revenue by property: by accrual, the nights of the confirmed stays, as the Home.</summary>
@@ -39,46 +42,75 @@ public static class HostReportDocuments
     /// <summary>Title of the trend per channel.</summary>
     public const string TrendByChannelTitle = "Andamento per canale, per competenza";
 
+    /// <summary>Name of the sheet of the revenue by property.</summary>
+    public const string RevenueByPropertySheet = "Ricavo per immobile";
+
+    /// <summary>Name of the sheet of the occupancy by property.</summary>
+    public const string OccupancyByPropertySheet = "Occupazione per immobile";
+
+    /// <summary>Name of the sheet of the bookings by channel.</summary>
+    public const string BookingsByChannelSheet = "Prenotazioni per canale";
+
     private const string Total = "Totale";
 
-    // ---------------------------------------------------------------- files
+    // ---------------------------------------------------------------- tables, files
 
-    public static byte[] Csv(HostRevenueByProperty report)
+    /// <summary>The revenue by property as a table: a row for each property and the total.</summary>
+    public static ReportTable Table(HostRevenueByProperty report)
     {
         ArgumentNullException.ThrowIfNull(report);
 
-        var rows = Start(RevenueByPropertyTitle, report.Period, "Immobile", "Ricavo per competenza (€)", "Soggiorni", "Notti");
-        rows.AddRange(report.Rows.Select(r => Row(r.PropertyName, r.Amount, r.StayCount, r.Nights)));
-        rows.Add(Row(Total, report.Amount, report.StayCount, report.Nights));
-        return CsvWriter.Write(rows);
+        var table = Start(RevenueByPropertyTitle, report.Period, "Immobile", "Ricavo per competenza (€)", "Soggiorni", "Notti");
+        foreach (var r in report.Rows)
+            table.Add(r.PropertyName, ReportCell.Money(r.Amount), r.StayCount, r.Nights);
+
+        return table.Add(Total, ReportCell.Money(report.Amount), report.StayCount, report.Nights);
     }
 
-    public static byte[] Csv(HostOccupancyByProperty report)
+    public static byte[] Csv(HostRevenueByProperty report) => CsvWriter.Write(Table(report));
+
+    public static byte[] Xlsx(HostRevenueByProperty report) => XlsxWriter.Write([new ReportSheet(RevenueByPropertySheet, Table(report))]);
+
+    /// <summary>The occupancy by property as a table: a row for each property and the total.</summary>
+    public static ReportTable Table(HostOccupancyByProperty report)
     {
         ArgumentNullException.ThrowIfNull(report);
 
-        var rows = Start(
+        var table = Start(
             OccupancyByPropertyTitle, report.Period, "Immobile", "Notti occupate", "Notti disponibili", "Notti chiuse dall'host", "Occupazione (%)");
-        rows.AddRange(report.Rows.Select(r => OccupancyRow(r.PropertyName, r.Occupancy)));
-        rows.Add(OccupancyRow(Total, report.Total));
-        return CsvWriter.Write(rows);
+        foreach (var r in report.Rows)
+            table.Add(OccupancyRow(r.PropertyName, r.Occupancy));
+
+        return table.Add(OccupancyRow(Total, report.Total));
     }
 
-    public static byte[] Csv(HostBookingsByChannel report)
+    public static byte[] Csv(HostOccupancyByProperty report) => CsvWriter.Write(Table(report));
+
+    public static byte[] Xlsx(HostOccupancyByProperty report) => XlsxWriter.Write([new ReportSheet(OccupancyByPropertySheet, Table(report))]);
+
+    /// <summary>The bookings by channel as a table: a row for each channel and the total, each with its share of the bookings.</summary>
+    public static ReportTable Table(HostBookingsByChannel report)
     {
         ArgumentNullException.ThrowIfNull(report);
 
-        var rows = Start(
+        var table = Start(
             BookingsByChannelTitle, report.Period, "Canale", "Prenotazioni", "Notti", "Ricavo per competenza (€)", "Quota delle prenotazioni (%)");
-        rows.AddRange(report.Rows.Select(r => Row(
-            FiscalReportDocuments.ChannelLabel(r.Source.ToString()),
-            r.BookingCount,
-            r.Nights,
-            r.Revenue,
-            Share(r.BookingCount, report.BookingCount))));
-        rows.Add(Row(Total, report.BookingCount, report.Nights, report.Revenue, Share(report.BookingCount, report.BookingCount)));
-        return CsvWriter.Write(rows);
+        foreach (var r in report.Rows)
+        {
+            table.Add(
+                FiscalReportDocuments.ChannelLabel(r.Source.ToString()),
+                r.BookingCount,
+                r.Nights,
+                ReportCell.Money(r.Revenue),
+                Share(r.BookingCount, report.BookingCount));
+        }
+
+        return table.Add(Total, report.BookingCount, report.Nights, ReportCell.Money(report.Revenue), Share(report.BookingCount, report.BookingCount));
     }
+
+    public static byte[] Csv(HostBookingsByChannel report) => CsvWriter.Write(Table(report));
+
+    public static byte[] Xlsx(HostBookingsByChannel report) => XlsxWriter.Write([new ReportSheet(BookingsByChannelSheet, Table(report))]);
 
     /// <summary>The title of a performance report, with its base: what the file carries on its first row and the JSON as <c>title</c>.</summary>
     public static string PerformanceTitle(HostPerformanceGroupBy groupBy) => groupBy switch
@@ -96,6 +128,22 @@ public static class HostReportDocuments
         _ => TrendTotalTitle,
     };
 
+    /// <summary>The name of the sheet of a performance report.</summary>
+    public static string PerformanceSheet(HostPerformanceGroupBy groupBy) => groupBy switch
+    {
+        HostPerformanceGroupBy.Property => "Prestazioni per immobile",
+        HostPerformanceGroupBy.Channel => "Prestazioni per canale",
+        _ => "Prestazioni",
+    };
+
+    /// <summary>The name of the sheet of a trend.</summary>
+    public static string TrendSheet(HostPerformanceGroupBy groupBy) => groupBy switch
+    {
+        HostPerformanceGroupBy.Property => "Andamento per immobile",
+        HostPerformanceGroupBy.Channel => "Andamento per canale",
+        _ => "Andamento",
+    };
+
     /// <summary>The file name of a performance report or of a trend: <c>prestazioni-per-immobile-competenza</c>, <c>andamento-competenza</c>...</summary>
     public static string PerformanceFileName(HostPerformanceGroupBy groupBy, bool trend) => (trend ? "andamento" : "prestazioni") + groupBy switch
     {
@@ -105,11 +153,11 @@ public static class HostReportDocuments
     };
 
     /// <summary>
-    /// The performance report as a file: the title with its base and the days on the first row, the header, a row for each property or
+    /// The performance report as a table: the title with its base and the days on the first row, the header, a row for each property or
     /// channel and the total. The columns of the year before and of the differences are there only when the report compared; a
     /// channel has no nights (they belong to a property), so those cells are empty.
     /// </summary>
-    public static byte[] Csv(HostPerformanceReport report, HostPerformanceGroupBy groupBy)
+    public static ReportTable Table(HostPerformanceReport report, HostPerformanceGroupBy groupBy)
     {
         ArgumentNullException.ThrowIfNull(report);
 
@@ -135,22 +183,26 @@ public static class HostReportDocuments
         if (compared)
             header.AddRange(ComparisonHeader);
 
-        var rows = StartCompared(PerformanceTitle(groupBy), report.Period, report.PreviousYearPeriod, [.. header]);
+        var table = StartCompared(PerformanceTitle(groupBy), report.Period, report.PreviousYearPeriod, [.. header]);
         foreach (var row in report.Rows)
         {
             var label = groupBy == HostPerformanceGroupBy.Channel ? FiscalReportDocuments.ChannelLabel(row.Key) : row.Label;
-            rows.Add(PerformanceRow(label, row, compared));
+            table.Add(PerformanceRow(label, row, compared));
         }
 
-        rows.Add(PerformanceRow(Total, report.Total, compared));
-        return CsvWriter.Write(rows);
+        return table.Add(PerformanceRow(Total, report.Total, compared));
     }
 
+    public static byte[] Csv(HostPerformanceReport report, HostPerformanceGroupBy groupBy) => CsvWriter.Write(Table(report, groupBy));
+
+    public static byte[] Xlsx(HostPerformanceReport report, HostPerformanceGroupBy groupBy) =>
+        XlsxWriter.Write([new ReportSheet(PerformanceSheet(groupBy), Table(report, groupBy))]);
+
     /// <summary>
-    /// The trend as a file: the title with its base and the days on the first row, the header, and a row for each bucket of each line
+    /// The trend as a table: the title with its base and the days on the first row, the header, and a row for each bucket of each line
     /// (the whole scope, a property or a channel), with the same days one year earlier next to it when the trend compared.
     /// </summary>
-    public static byte[] Csv(HostTrendReport report, HostPerformanceGroupBy groupBy)
+    public static ReportTable Table(HostTrendReport report, HostPerformanceGroupBy groupBy)
     {
         ArgumentNullException.ThrowIfNull(report);
 
@@ -186,7 +238,7 @@ public static class HostReportDocuments
             ]);
         }
 
-        var rows = StartCompared(TrendTitle(groupBy), report.Period, report.PreviousYearPeriod, [.. header]);
+        var table = StartCompared(TrendTitle(groupBy), report.Period, report.PreviousYearPeriod, [.. header]);
         foreach (var series in report.Series)
         {
             var label = SeriesLabel(series, groupBy);
@@ -194,64 +246,70 @@ public static class HostReportDocuments
             {
                 var bucket = report.Buckets[index];
                 var figures = series.Points[index].Figures;
-                var cells = new List<object?>
+                var cells = new List<ReportCell>
                 {
                     label,
                     bucket.Label,
-                    Date(bucket.From),
-                    Date(bucket.To.AddDays(-1)),
-                    figures.HasNights ? (int?)figures.OccupiedNights : null,
-                    figures.HasNights ? (int?)figures.AvailableNights : null,
-                    Percent(figures.OccupancyRate),
-                    figures.Revenue,
+                    ReportCell.Date(DateOnly.FromDateTime(bucket.From)),
+                    ReportCell.Date(DateOnly.FromDateTime(bucket.To.AddDays(-1))),
+                    ReportCell.Integer(figures.HasNights ? figures.OccupiedNights : null),
+                    ReportCell.Integer(figures.HasNights ? figures.AvailableNights : null),
+                    ReportCell.Percent(figures.OccupancyRate),
+                    ReportCell.Money(figures.Revenue),
                     figures.StayCount,
                     figures.RevenueNights,
-                    figures.Adr,
-                    figures.RevPar,
+                    ReportCell.Money(figures.Adr),
+                    ReportCell.Money(figures.RevPar),
                 };
                 if (compared)
                 {
                     var before = index < series.PreviousYear.Count ? series.PreviousYear[index]?.Figures : null;
-                    cells.Add(Percent(before?.OccupancyRate));
-                    cells.Add(before?.Revenue);
-                    cells.Add(before?.Adr);
-                    cells.Add(before?.RevPar);
+                    cells.Add(ReportCell.Percent(before?.OccupancyRate));
+                    cells.Add(ReportCell.Money(before?.Revenue));
+                    cells.Add(ReportCell.Money(before?.Adr));
+                    cells.Add(ReportCell.Money(before?.RevPar));
                 }
 
-                rows.Add(cells);
+                table.Add(cells);
             }
         }
 
-        return CsvWriter.Write(rows);
+        return table;
     }
 
-    /// <summary>The file name of a report: the report, its base where it has one, and the days (<c>casazen-ricavo-per-immobile-competenza-20261001-20261031.csv</c>).</summary>
-    public static string FileName(string report, HostDashboardPeriod period)
+    public static byte[] Csv(HostTrendReport report, HostPerformanceGroupBy groupBy) => CsvWriter.Write(Table(report, groupBy));
+
+    public static byte[] Xlsx(HostTrendReport report, HostPerformanceGroupBy groupBy) =>
+        XlsxWriter.Write([new ReportSheet(TrendSheet(groupBy), Table(report, groupBy))]);
+
+    /// <summary>
+    /// The file name of a report: the report, its base where it has one, and the days (<c>casazen-ricavo-per-immobile-competenza-20261001-20261031.csv</c>);
+    /// <paramref name="extension"/> is <c>csv</c> or <c>xlsx</c>.
+    /// </summary>
+    public static string FileName(string report, HostDashboardPeriod period, string extension = "csv")
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(report);
         ArgumentNullException.ThrowIfNull(period);
+        ArgumentException.ThrowIfNullOrWhiteSpace(extension);
 
-        return $"casazen-{report}-{Compact(period.From)}-{Compact(period.To.AddDays(-1))}.csv";
+        return $"casazen-{report}-{Compact(period.From)}-{Compact(period.To.AddDays(-1))}.{extension}";
     }
 
     // ---------------------------------------------------------------- shared
 
-    // The title with the days, then the header: the first rows of every file.
-    private static List<IReadOnlyList<object?>> Start(string title, HostDashboardPeriod period, params string[] header) =>
-    [
-        Row($"{title}, dal {Date(period.From)} al {Date(period.To.AddDays(-1))}"),
-        Row(header),
-    ];
+    // The table with its title and the days, then the header: the first rows of every file.
+    private static ReportTable Start(string title, HostDashboardPeriod period, params string[] header) =>
+        new($"{title}, dal {Date(period.From)} al {Date(period.To.AddDays(-1))}", header);
 
     // The same, for a report that also gives the same days one year earlier: the first row says which days they are.
-    private static List<IReadOnlyList<object?>> StartCompared(
+    private static ReportTable StartCompared(
         string title, HostDashboardPeriod period, HostDashboardPeriod? comparedWith, string[] header)
     {
         var days = $"{title}, dal {Date(period.From)} al {Date(period.To.AddDays(-1))}";
         if (comparedWith is not null)
             days += $", confrontato con dal {Date(comparedWith.From)} al {Date(comparedWith.To.AddDays(-1))}";
 
-        return [Row(days), Row(header)];
+        return new ReportTable(days, header);
     }
 
     // The columns of the year before and of the differences a compared performance report adds.
@@ -268,35 +326,35 @@ public static class HostReportDocuments
     ];
 
     // One row of a performance report. The nights are empty for a channel (they belong to a property); the year before is empty when
-    // there was nothing to compare with, and so are the differences.
-    private static IReadOnlyList<object?> PerformanceRow(string label, HostPerformanceRow row, bool compared)
+    // there was nothing to compare with, and so are the differences. A difference in percent is a percentage; one in points is a number.
+    private static IReadOnlyList<ReportCell> PerformanceRow(string label, HostPerformanceRow row, bool compared)
     {
         var figures = row.Figures;
-        var cells = new List<object?>
+        var cells = new List<ReportCell>
         {
             label,
-            figures.HasNights ? (int?)figures.OccupiedNights : null,
-            figures.HasNights ? (int?)figures.AvailableNights : null,
-            figures.HasNights ? (int?)figures.ClosedNights : null,
-            Percent(figures.OccupancyRate),
-            figures.Revenue,
+            ReportCell.Integer(figures.HasNights ? figures.OccupiedNights : null),
+            ReportCell.Integer(figures.HasNights ? figures.AvailableNights : null),
+            ReportCell.Integer(figures.HasNights ? figures.ClosedNights : null),
+            ReportCell.Percent(figures.OccupancyRate),
+            ReportCell.Money(figures.Revenue),
             figures.StayCount,
             figures.RevenueNights,
-            figures.Adr,
-            figures.RevPar,
+            ReportCell.Money(figures.Adr),
+            ReportCell.Money(figures.RevPar),
         };
         if (!compared)
             return cells;
 
         var before = row.PreviousYear;
-        cells.Add(Percent(before?.OccupancyRate));
-        cells.Add(before?.Revenue);
-        cells.Add(before?.Adr);
-        cells.Add(before?.RevPar);
-        cells.Add(HostPerformanceRules.DeltaPercent(figures.Revenue, before?.Revenue));
-        cells.Add(HostPerformanceRules.DeltaPoints(figures.OccupancyRate, before?.OccupancyRate));
-        cells.Add(HostPerformanceRules.DeltaPercent(figures.Adr, before?.Adr));
-        cells.Add(HostPerformanceRules.DeltaPercent(figures.RevPar, before?.RevPar));
+        cells.Add(ReportCell.Percent(before?.OccupancyRate));
+        cells.Add(ReportCell.Money(before?.Revenue));
+        cells.Add(ReportCell.Money(before?.Adr));
+        cells.Add(ReportCell.Money(before?.RevPar));
+        cells.Add(ReportCell.Percent(PercentToFraction(HostPerformanceRules.DeltaPercent(figures.Revenue, before?.Revenue))));
+        cells.Add(ReportCell.Number(HostPerformanceRules.DeltaPoints(figures.OccupancyRate, before?.OccupancyRate)));
+        cells.Add(ReportCell.Percent(PercentToFraction(HostPerformanceRules.DeltaPercent(figures.Adr, before?.Adr))));
+        cells.Add(ReportCell.Percent(PercentToFraction(HostPerformanceRules.DeltaPercent(figures.RevPar, before?.RevPar))));
         return cells;
     }
 
@@ -312,22 +370,20 @@ public static class HostReportDocuments
         return groupBy == HostPerformanceGroupBy.Channel ? FiscalReportDocuments.ChannelLabel(series.Key) : series.Label;
     }
 
-    private static IReadOnlyList<object?> OccupancyRow(string name, HostDashboardOccupancy occupancy) =>
-        Row(
+    private static IReadOnlyList<ReportCell> OccupancyRow(string name, HostDashboardOccupancy occupancy) =>
+        [
             name,
             occupancy.OccupiedNights,
             occupancy.AvailableNights,
             occupancy.ClosedNights,
-            Percent(occupancy.Rate));
+            ReportCell.Percent(occupancy.Rate),
+        ];
 
-    // A rate (0 to 1) as a percentage to the cent of a point; empty without one.
-    private static decimal? Percent(decimal? rate) =>
-        rate is { } value ? Math.Round(value * 100m, 2, MidpointRounding.AwayFromZero) : null;
+    // The share of the whole a part is, as a fraction; empty without a whole.
+    private static ReportCell Share(int part, int whole) => ReportCell.Percent(whole == 0 ? null : (decimal)part / whole);
 
-    // The share of the whole a part is, as a percentage; empty without a whole.
-    private static decimal? Share(int part, int whole) => whole == 0 ? null : Percent((decimal)part / whole);
-
-    private static IReadOnlyList<object?> Row(params object?[] cells) => cells;
+    // A difference the Home gives in percent (12.3 is 12.3%) as the fraction a percentage cell holds.
+    private static decimal? PercentToFraction(decimal? percent) => percent / 100m;
 
     private static string Date(DateTime day) => day.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
 

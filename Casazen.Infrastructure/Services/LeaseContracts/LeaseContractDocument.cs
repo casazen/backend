@@ -39,6 +39,15 @@ internal static class LeaseContractDocument
         [LeaseContractPlaceholders.Tenants] = "Conduttori",
         [LeaseContractPlaceholders.PropertyAddress] = "Indirizzo dell'immobile",
         [LeaseContractPlaceholders.PropertyComune] = "Comune",
+        [LeaseContractPlaceholders.LandlordResidences] = "Residenze dei locatori",
+        [LeaseContractPlaceholders.TenantResidences] = "Residenze dei conduttori",
+        [LeaseContractPlaceholders.TenantCitizenships] = "Cittadinanze dei conduttori",
+        [LeaseContractPlaceholders.LandlordEmails] = "Email dei locatori",
+        [LeaseContractPlaceholders.TenantEmails] = "Email dei conduttori",
+        [LeaseContractPlaceholders.PropertyFloor] = "Piano",
+        [LeaseContractPlaceholders.PropertyArea] = "Superficie (metri quadrati)",
+        [LeaseContractPlaceholders.PropertyComposition] = "Camere da letto e bagni",
+        [LeaseContractPlaceholders.TaxRegime] = "Regime fiscale",
         [LeaseContractPlaceholders.CadastralData] = "Dati catastali",
         [LeaseContractPlaceholders.ApeData] = "Estremi dell'APE",
         [LeaseContractPlaceholders.MonthlyRent] = "Canone mensile (euro)",
@@ -76,6 +85,24 @@ internal static class LeaseContractDocument
             [LeaseContractPlaceholders.Tenants] = FormatParties(lease.Parties, PartyRole.Tenant),
             [LeaseContractPlaceholders.PropertyAddress] = FormatAddress(lease.Property),
             [LeaseContractPlaceholders.PropertyComune] = NullIfBlank(lease.Property?.City),
+            [LeaseContractPlaceholders.LandlordResidences] = FormatPartyValues(lease.Parties, PartyRole.Landlord, p => p.Residence),
+            [LeaseContractPlaceholders.TenantResidences] = FormatPartyValues(lease.Parties, PartyRole.Tenant, p => p.Residence),
+            [LeaseContractPlaceholders.TenantCitizenships] = FormatPartyValues(lease.Parties, PartyRole.Tenant, p => p.Citizenship),
+            [LeaseContractPlaceholders.LandlordEmails] = FormatPartyValues(lease.Parties, PartyRole.Landlord, p => p.ContactEmail),
+            [LeaseContractPlaceholders.TenantEmails] = FormatPartyValues(lease.Parties, PartyRole.Tenant, p => p.ContactEmail),
+            [LeaseContractPlaceholders.PropertyFloor] = lease.Property?.FloorLevel?.ToString(CultureInfo.InvariantCulture),
+            [LeaseContractPlaceholders.PropertyArea] = lease.Property?.AreaSqm is > 0
+                ? lease.Property.AreaSqm.Value.ToString(CultureInfo.InvariantCulture)
+                : null,
+            [LeaseContractPlaceholders.PropertyComposition] = lease.Property is { Bedrooms: >= 0, Bathrooms: > 0 } property
+                ? $"{property.Bedrooms} {(property.Bedrooms == 1 ? "camera" : "camere")} da letto e {property.Bathrooms} {(property.Bathrooms == 1 ? "bagno" : "bagni")}"
+                : null,
+            [LeaseContractPlaceholders.TaxRegime] = lease.TaxRegime switch
+            {
+                LeaseTaxRegime.CedolareSecca => "cedolare secca",
+                LeaseTaxRegime.Ordinario => "regime ordinario",
+                _ => null,
+            },
             [LeaseContractPlaceholders.CadastralData] = FormatCadastralData(lease.Property),
             [LeaseContractPlaceholders.ApeData] = FormatApe(lease.Property),
             [LeaseContractPlaceholders.MonthlyRent] = lease.MonthlyRent > 0 ? FormatAmount(lease.MonthlyRent) : null,
@@ -243,6 +270,17 @@ internal static class LeaseContractDocument
             var name = $"{p.FirstName} {p.LastName}".Trim();
             return string.IsNullOrWhiteSpace(p.FiscalCode) ? name : $"{name} (C.F. {p.FiscalCode})";
         }));
+    }
+
+    // One missing value must block the whole placeholder, including when only a co-owner/co-tenant is incomplete.
+    // Keep the name beside each value so multiple parties cannot be confused.
+    private static string? FormatPartyValues(IEnumerable<Party>? parties, PartyRole role, Func<Party, string?> select)
+    {
+        var matching = parties?.Where(p => p.Role == role).OrderBy(p => p.Position).ToList() ?? [];
+        if (matching.Count == 0 || matching.Any(p => string.IsNullOrWhiteSpace(select(p))))
+            return null;
+
+        return string.Join("; ", matching.Select(p => $"{p.FirstName} {p.LastName}: {select(p)!.Trim()}"));
     }
 
     private static string? FormatAddress(Property? property)

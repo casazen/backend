@@ -1,4 +1,5 @@
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Services;
 
 namespace Casazen.Core.Condominium;
 
@@ -32,8 +33,23 @@ public static class OwnerInstallmentPlan
         CondominiumInstallmentCadence cadence,
         decimal ordinary,
         decimal extraordinary,
-        decimal priorOnFirst)
+        decimal priorOnFirst,
+        IReadOnlyList<DateOnly>? customDueDates = null)
     {
+        if (!Enum.IsDefined(cadence)) throw new ArgumentOutOfRangeException(nameof(cadence));
+        if (cadence == CondominiumInstallmentCadence.Custom)
+        {
+            if (customDueDates is not { Count: > 0 and <= 366 }
+                || customDueDates.Distinct().Count() != customDueDates.Count
+                || customDueDates.Any(d => d < periodStart || d >= periodStart.AddYears(1)))
+                throw new ArgumentException("Custom dates must be unique dates within the fiscal year.");
+            var dates = customDueDates.Order().ToList();
+            var ordinaryCustom = CondominiumMoney.SplitEqually(ordinary, dates.Count);
+            var extraordinaryCustom = CondominiumMoney.SplitEqually(extraordinary, dates.Count);
+            return dates.Select((due, i) => new Row(i, $"Rata {i + 1}",
+                i == 0 ? periodStart : dates[i - 1].AddDays(1), due, ordinaryCustom[i],
+                i == 0 ? priorOnFirst : 0m, extraordinaryCustom[i])).ToList();
+        }
         var (slots, step) = cadence switch
         {
             CondominiumInstallmentCadence.Bimonthly => (6, 2),
@@ -60,6 +76,22 @@ public static class OwnerInstallmentPlan
         }
 
         return rows;
+    }
+
+    public static IReadOnlyList<Row> GenerateCustom(DateOnly start, decimal ordinary, decimal extraordinary, decimal prior,
+        IReadOnlyList<CustomOwnerInstallment> installments)
+    {
+        if (installments is not { Count: > 0 and <= 366 }
+            || installments.Select(row => row.DueDate).Distinct().Count() != installments.Count
+            || installments.Any(row => row.DueDate < start || row.DueDate >= start.AddYears(1)
+                || row.Ordinary < 0m || row.Extraordinary < 0m || row.Ordinary + row.Extraordinary <= 0m
+                || !CondominiumMoney.InRange(row.Ordinary) || !CondominiumMoney.InRange(row.Extraordinary)
+                || row.Ordinary != CondominiumMoney.Round(row.Ordinary) || row.Extraordinary != CondominiumMoney.Round(row.Extraordinary))
+            || installments.Sum(row => row.Ordinary) != ordinary || installments.Sum(row => row.Extraordinary) != extraordinary)
+            throw new ArgumentException("Custom installment amounts must match the budget, with unique dates in the fiscal year.");
+        var rows = installments.OrderBy(row => row.DueDate).ToList();
+        return rows.Select((row, i) => new Row(i, $"Rata {i + 1}", i == 0 ? start : rows[i - 1].DueDate.AddDays(1),
+            row.DueDate, row.Ordinary, i == 0 ? prior : 0m, row.Extraordinary)).ToList();
     }
 
     /// <summary>

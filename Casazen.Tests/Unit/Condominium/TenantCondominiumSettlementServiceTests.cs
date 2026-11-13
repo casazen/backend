@@ -274,6 +274,100 @@ public class TenantCondominiumSettlementServiceTests
     private static AppDbContext NewDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 
+
+    [Theory]
+    [InlineData(true, 830)]
+    [InlineData(false, 800)]
+    public async Task ManualAdvance_NextYearAdjustment_RequiresTheSettlementClause(bool clause, decimal expected)
+    {
+        await using var db = NewDb();
+        var (scope, lease, oldPeriod, condo) = await SeedAsync(db);
+        lease.MonthlyRent = 650m;
+        var schedule = await db.RentSchedules.SingleAsync();
+        schedule.Amount = 800m;
+        db.RentLedgerComponents.RemoveRange(await db.RentLedgerComponents.ToListAsync());
+        db.RentLedgerEntries.RemoveRange(await db.RentLedgerEntries.ToListAsync());
+        await db.SaveChangesAsync();
+        var start = new DateOnly(2024, 6, 1);
+        for (var i = 0; i < 12; i++) AddEntry(start.AddMonths(i), RentLedgerStatus.Paid);
+        var next = AddEntry(start.AddYears(1), RentLedgerStatus.Scheduled);
+        var paid = AddEntry(start.AddYears(1).AddMonths(1), RentLedgerStatus.Paid);
+        var requested = AddEntry(start.AddYears(1).AddMonths(2), RentLedgerStatus.Scheduled);
+        requested.PaymentRequestedAt = DateTime.UtcNow;
+        db.LeaseCondominiumTerms.Add(new()
+        {
+            OrgId = scope.OrgId,
+            LeaseContractId = lease.Id,
+            AdvanceMode = CondominiumAdvanceMode.FixedContractAmount,
+            AdvanceAmount = 150m,
+            Cadence = RentCadence.Monthly,
+            ConfirmedAt = DateTime.UtcNow,
+            SettlementRequired = clause
+        });
+        await db.SaveChangesAsync();
+        var accounting = Condo(db);
+        await LinkAndBudgetAsync(accounting, scope, condo, oldPeriod, lease.PropertyId);
+        var year = await accounting.CreatePeriodAsync(scope, condo.Id, new("2025/2026"), "user");
+        await accounting.ConfirmBudgetAsync(scope, condo.Id, year.Id, new(1800m, null, null, CondominiumInstallmentCadence.Monthly), "user");
+        Assert.Equal(800m, next.AmountDue);
+        var settlements = Settlements(db, accounting);
+        await settlements.ConfirmFinalAndReplaceAsync(scope, condo.Id, oldPeriod.Id,
+            new(2160m, PriorYearBalanceDisposition.CarryForward, Recoverable(2160m)), "user");
+        Assert.Equal(expected, next.AmountDue);
+        Assert.Equal(650m, next.Components.Single(c => c.Kind == RentLedgerComponentKind.Rent).Amount);
+        Assert.Equal(800m, paid.AmountDue);
+        Assert.Equal(800m, requested.AmountDue);
+        if (clause)
+        {
+            var result = await db.TenantCondominiumSettlements.SingleAsync(s => s.Status == TenantSettlementStatus.Posted);
+            Assert.Equal(360m, result.SettlementAmount);
+            // A corrected final replaces the adjustment rather than adding it a second time.
+            await settlements.ConfirmFinalAndReplaceAsync(scope, condo.Id, oldPeriod.Id,
+                new(2160m, PriorYearBalanceDisposition.CarryForward, Recoverable(2160m)), "user");
+            Assert.Equal(830m, next.AmountDue);
+            Assert.Single(await db.TenantCondominiumSettlements.Where(s => s.Status == TenantSettlementStatus.Posted).ToListAsync());
+        }
+
+        RentLedgerEntry AddEntry(DateOnly date, RentLedgerStatus status)
+        {
+            var entry = Entry(scope.OrgId, lease, schedule, date, status);
+            entry.AmountDue = 800m;
+            foreach (var component in entry.Components)
+            {
+                component.Amount = component.Kind == RentLedgerComponentKind.Rent ? 650m : 150m;
+                component.CompetenceStart = date;
+                component.CompetenceEnd = date.AddMonths(1).AddDays(-1);
+            }
+            db.Add(entry);
+            return entry;
+        }
+    }
+
+
+    [Fact]
+    public async Task CancelledAdvances_DoNotCreateAnAutomaticTenantSettlement()
+    {
+        await using var db = NewDb();
+        var (scope, lease, period, condo) = await SeedAsync(db);
+        var accounting = Condo(db);
+        await LinkAndBudgetAsync(accounting, scope, condo, period, lease.PropertyId);
+        db.LeaseCondominiumTerms.Add(new()
+        {
+            OrgId = scope.OrgId,
+            LeaseContractId = lease.Id,
+            AdvanceMode = CondominiumAdvanceMode.FixedContractAmount,
+            AdvanceAmount = 150m,
+            Cadence = RentCadence.Monthly,
+            ConfirmedAt = DateTime.UtcNow,
+            SettlementRequired = true
+        });
+        foreach (var row in await db.RentLedgerEntries.ToListAsync()) row.Status = RentLedgerStatus.Cancelled;
+        await db.SaveChangesAsync();
+        await Settlements(db, accounting).ConfirmFinalAndReplaceAsync(scope, condo.Id, period.Id,
+            new(2160m, PriorYearBalanceDisposition.CarryForward, Recoverable(2160m)), "user");
+        Assert.Empty(await db.TenantCondominiumSettlements.ToListAsync());
+    }
+
     private static async Task<(HostScope Scope, LeaseContract Lease, CondominiumPeriodView Period, CondominiumView Condo)> SeedAsync(AppDbContext db)
     {
         var org = new Casazen.Core.Entities.Org { Name = "Demo", Slug = "demo-" + Guid.NewGuid().ToString("N")[..8] };

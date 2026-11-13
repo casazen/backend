@@ -145,6 +145,10 @@ public sealed partial class RentBillingService
 
         try
         {
+            // The amount accepted in the wizard is the starting advance until a confirmed
+            // fiscal budget replaces it on the individual ledger entries.
+            if (snapshot.AdvanceMode == CondominiumAdvanceMode.BudgetAllocation && snapshot.AdvanceAmount is > 0m)
+                snapshot = snapshot with { AdvanceMode = CondominiumAdvanceMode.FixedContractAmount };
             return snapshot.UniformAdvanceFor(rentCadence);
         }
         catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException)

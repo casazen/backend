@@ -98,6 +98,14 @@ public static class RateLimitingServiceCollectionExtensions
 
         // The simulator of the assistant (E05/F05/US02/T01): two calls to the AI provider each, per signed-in person, 20 an hour.
         new(RateLimitPolicies.AssistantSimulate, 20, TimeSpan.FromHours(1), PartitionByUser: true),
+
+        // The owner portal operations (E07/F07/US01): per signed-in person, since an owner is a person outside the organization and the people of one network
+        // share an address. The reads and light calls; the invitation of a contact (an e-mail to an address the owner chose); what writes and stores a file (a
+        // message, a document); the download of a file (a line of audit each).
+        new(RateLimitPolicies.OwnerPortalRead, 120, OneMinute, PartitionByUser: true),
+        new(RateLimitPolicies.OwnerPortalInvite, 10, TimeSpan.FromMinutes(10), PartitionByUser: true),
+        new(RateLimitPolicies.OwnerPortalWrite, 30, TimeSpan.FromMinutes(10), PartitionByUser: true),
+        new(RateLimitPolicies.OwnerPortalDownload, 60, TimeSpan.FromMinutes(10), PartitionByUser: true),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)

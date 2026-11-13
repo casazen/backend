@@ -2237,7 +2237,7 @@
     <value>Il periodo è troppo lungo: un report copre al massimo {0} mesi.</value>
   </data>
   <data name="ReportInvalidFormat" xml:space="preserve">
-    <value>Formato non valido: usa format=json oppure format=csv.</value>
+    <value>Formato non valido: usa format=json, format=csv oppure format=xlsx.</value>
   </data>
   <data name="ReportInvalidGroupBy" xml:space="preserve">
     <value>Raggruppamento non valido: usa groupBy=none, groupBy=property oppure groupBy=channel.</value>
@@ -4081,6 +4081,21 @@
   </data>
   <data name="BatchXmlNotFound" xml:space="preserve">
     <value>Il file XML del batch non è stato trovato</value>
+  </data>
+  <data name="WireBatchXmlInvalid" xml:space="preserve">
+    <value>Il file di bonifico non è valido secondo lo schema ufficiale: {0} errori (righe e posizioni dei primi: {1}). Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WireBatchSchemaUnavailable" xml:space="preserve">
+    <value>Lo schema ufficiale del file di bonifico in {0} non è installato: il file non può essere convalidato e non viene prodotto. Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WireBatchContentInvalid" xml:space="preserve">
+    <value>Il file di bonifico non corrisponde alle sue righe (da controllare: {0}). Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WireCurrencyNotSupported" xml:space="preserve">
+    <value>I bonifici si possono preparare solo in EUR (file SEPA) o in CHF (file svizzero): la valuta dei rendiconti non è supportata.</value>
+  </data>
+  <data name="WireAmountInvalid" xml:space="preserve">
+    <value>L'importo da pagare a un proprietario deve essere maggiore di zero e avere al massimo due decimali. Nessun batch è stato salvato.</value>
   </data>
   <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
     <value>Codice di accesso non disponibile o verifica non superata</value>
@@ -6492,4 +6507,154 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OpenapiRegistrationIncomplete" xml:space="preserve"><value>Completa e salva i dati e i documenti richiesti prima di pagare o inviare la registrazione.</value></data>
   <data name="OpenapiRegistrationNotEditable" xml:space="preserve"><value>I dati possono essere preparati solo per un contratto firmato non ancora inviato o registrato.</value></data>
   <data name="OpenapiRegistrationDocumentInvalid" xml:space="preserve"><value>Seleziona documenti disponibili tra gli allegati di questo contratto.</value></data>
+  <data name="OwnerPortalPermissionMissing" xml:space="preserve">
+    <value>Il proprietario non ti ha dato il permesso per questa funzione.</value>
+  </data>
+  <data name="OwnerPortalPermissionsEmpty" xml:space="preserve">
+    <value>Scegli almeno un permesso.</value>
+  </data>
+  <data name="OwnerPortalPermissionUnknown" xml:space="preserve">
+    <value>Uno dei permessi indicati non esiste.</value>
+  </data>
+  <data name="OwnerPortalPropertyNotFound" xml:space="preserve">
+    <value>Immobile non trovato.</value>
+  </data>
+  <data name="OwnerStayNotFound" xml:space="preserve">
+    <value>Soggiorno del proprietario non trovato.</value>
+  </data>
+  <data name="OwnerStayInvalidRange" xml:space="preserve">
+    <value>La partenza deve essere dopo l'arrivo, e il soggiorno non può superare un anno.</value>
+  </data>
+  <data name="OwnerStayInPast" xml:space="preserve">
+    <value>L'arrivo è già passato.</value>
+  </data>
+  <data name="OwnerStayTooShort" xml:space="preserve">
+    <value>Il soggiorno deve durare almeno {0} notti.</value>
+  </data>
+  <data name="OwnerStayTooLong" xml:space="preserve">
+    <value>Il soggiorno può durare al massimo {0} notti.</value>
+  </data>
+  <data name="OwnerStayNoticeTooShort" xml:space="preserve">
+    <value>Il soggiorno va chiesto con almeno {0} giorni di anticipo.</value>
+  </data>
+  <data name="OwnerStayBeyondWindow" xml:space="preserve">
+    <value>Il soggiorno può essere chiesto al massimo {0} giorni prima dell'arrivo.</value>
+  </data>
+  <data name="OwnerStayBlackout" xml:space="preserve">
+    <value>Le date scelte sono chiuse ai soggiorni del proprietario.</value>
+  </data>
+  <data name="OwnerStayOutsidePeriod" xml:space="preserve">
+    <value>Le date scelte sono fuori dal periodo in cui sono ammessi i soggiorni del proprietario.</value>
+  </data>
+  <data name="OwnerStayAllowanceExceeded" xml:space="preserve">
+    <value>Supereresti le {0} notti all'anno concesse per il {1}.</value>
+  </data>
+  <data name="OwnerStayDatesUnavailable" xml:space="preserve">
+    <value>Alcune notti scelte non sono libere.</value>
+  </data>
+  <data name="OwnerStayNotPending" xml:space="preserve">
+    <value>Il soggiorno non è più in attesa di una decisione.</value>
+  </data>
+  <data name="OwnerStayNotCancellable" xml:space="preserve">
+    <value>Questo soggiorno non può più essere annullato.</value>
+  </data>
+  <data name="OwnerCalendarRangeInvalid" xml:space="preserve">
+    <value>Il periodo del calendario non è valido: al massimo {0} giorni, e la fine non prima dell'inizio.</value>
+  </data>
+  <data name="OwnerStayRuleInvalid" xml:space="preserve">
+    <value>Un valore della regola dei soggiorni non è valido: {0}.</value>
+  </data>
+  <data name="OwnerStayRuleNotFound" xml:space="preserve">
+    <value>Regola dei soggiorni non trovata.</value>
+  </data>
+  <data name="OwnerStayPropertyNotFound" xml:space="preserve">
+    <value>Immobile non trovato.</value>
+  </data>
+  <data name="OwnerStayOwnerNotFound" xml:space="preserve">
+    <value>Il proprietario non ha una proprietà in corso su questo immobile.</value>
+  </data>
+  <data name="CalendarBlockHeldByOwnerStay" xml:space="preserve">
+    <value>Questo blocco tiene le date di un soggiorno del proprietario: si toglie annullando il soggiorno.</value>
+  </data>
+  <data name="OwnerFileTooLarge" xml:space="preserve">
+    <value>Il file supera i {0} MB.</value>
+  </data>
+  <data name="OwnerFileMissing" xml:space="preserve">
+    <value>Manca il file.</value>
+  </data>
+  <data name="OwnerFileTypeNotAllowed" xml:space="preserve">
+    <value>Sono accettati solo file PDF, JPEG o PNG.</value>
+  </data>
+  <data name="OwnerFileActiveContent" xml:space="preserve">
+    <value>Il PDF contiene script, azioni o file incorporati, è protetto da password o è scritto in una forma che non si può controllare, e non può essere condiviso: esportalo di nuovo come PDF semplice.</value>
+  </data>
+  <data name="OwnerDocumentNotFound" xml:space="preserve">
+    <value>Documento non trovato.</value>
+  </data>
+  <data name="OwnerDocumentInvalid" xml:space="preserve">
+    <value>Un dato del documento non è valido: {0}.</value>
+  </data>
+  <data name="OwnerDocumentOwnerNotFound" xml:space="preserve">
+    <value>Proprietario o immobile non trovato.</value>
+  </data>
+  <data name="OwnerContactNotFound" xml:space="preserve">
+    <value>Contatto non trovato.</value>
+  </data>
+  <data name="OwnerContactOwnerOnly" xml:space="preserve">
+    <value>Solo il proprietario può gestire i contatti.</value>
+  </data>
+  <data name="OwnerContactAgencyRequired" xml:space="preserve">
+    <value>Indica per quale agenzia invitare il contatto.</value>
+  </data>
+  <data name="OwnerContactInvalid" xml:space="preserve">
+    <value>Un dato del contatto non è valido: {0}.</value>
+  </data>
+  <data name="OwnerContactExists" xml:space="preserve">
+    <value>Questa persona è già tra i tuoi contatti.</value>
+  </data>
+  <data name="OwnerContactLimitReached" xml:space="preserve">
+    <value>Puoi avere al massimo {0} contatti.</value>
+  </data>
+  <data name="OwnerContactDailyLimitReached" xml:space="preserve">
+    <value>Hai raggiunto il limite di {0} inviti al giorno, anche contando quelli ritirati: riprova domani.</value>
+  </data>
+  <data name="OwnerContactRevoked" xml:space="preserve">
+    <value>Il contatto è stato revocato.</value>
+  </data>
+  <data name="OwnerContactEmailNotQueued" xml:space="preserve">
+    <value>Non è stato possibile inviare l'email di invito: riprova più tardi.</value>
+  </data>
+  <data name="OwnerContactInvitationInvalid" xml:space="preserve">
+    <value>Invito non valido.</value>
+  </data>
+  <data name="OwnerContactInvitationExpired" xml:space="preserve">
+    <value>L'invito è scaduto: chiedi al proprietario di invitarti di nuovo.</value>
+  </data>
+  <data name="OwnerContactInvitationUsed" xml:space="preserve">
+    <value>L'invito è già stato accettato con un altro account.</value>
+  </data>
+  <data name="OwnerContactInvitationRevoked" xml:space="preserve">
+    <value>L'invito è stato ritirato.</value>
+  </data>
+  <data name="OwnerContactEmailNotVerified" xml:space="preserve">
+    <value>Verifica prima l'indirizzo email del tuo account.</value>
+  </data>
+  <data name="OwnerContactEmailMismatch" xml:space="preserve">
+    <value>L'invito è stato inviato a un altro indirizzo email.</value>
+  </data>
+  <data name="OwnerConversationNotFound" xml:space="preserve">
+    <value>Conversazione non trovata.</value>
+  </data>
+  <data name="OwnerConversationInvalid" xml:space="preserve">
+    <value>Un dato della conversazione non è valido: {0}.</value>
+  </data>
+  <data name="OwnerConversationReferenceNotFound" xml:space="preserve">
+    <value>L'elemento a cui si riferisce la conversazione non è stato trovato.</value>
+  </data>
+  <data name="OwnerMessageInvalid" xml:space="preserve">
+    <value>Scrivi un messaggio (al massimo {0} caratteri) o allega un file.</value>
+  </data>
+  <data name="OwnerAttachmentNotFound" xml:space="preserve">
+    <value>Allegato non trovato.</value>
+  </data>
 </root>

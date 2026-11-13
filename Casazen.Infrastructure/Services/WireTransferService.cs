@@ -7,6 +7,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -17,12 +18,25 @@ namespace Casazen.Infrastructure.Services;
 /// Wire transfer service (ADR-017): generates SEPA pain.001 (Italy) or Swiss Payment Standards (Switzerland) XML files
 /// for paying property owners. One wire per owner, one file per currency and debit account.
 /// </summary>
+/// <remarks>
+/// <para><b>The file is validated before anything is saved</b> (E06/F05/US01/T01, NF-25): against the official schema of its currency (EUR: SEPA, CHF: Swiss;
+/// <see cref="Pain001SchemaProvider"/>, <see cref="XsdValidator"/>: no DTD, no resolver, no network) and against what a schema cannot say, the sums
+/// (<see cref="Pain001Checks"/>). The batch, its statements and the file are written by one <c>SaveChanges</c> after that: a file that does not validate
+/// leaves no row behind (422 <c>wire_batch_xml_invalid</c> or <c>wire_batch_content_invalid</c>), and a build without the official schema of the currency
+/// produces no file at all (422 <c>wire_batch_schema_unavailable</c>), never a file that was not validated.</para>
+/// <para><b>Privacy.</b> The IBAN and the name of an owner are written in the file and in no log line, message or exception. The errors of the validation are
+/// the line and position of the schema errors and the names of the ISO elements whose rule is broken.</para>
+/// </remarks>
 public sealed class WireTransferService(
     AppDbContext db,
-    ILogger<WireTransferService> logger) : IWireTransferService
+    ILogger<WireTransferService> logger,
+    Func<string, XmlSchemaSet>? schemaSource = null) : IWireTransferService
 {
     // ISO 20022 pain.001.001.03 namespace (SEPA and Swiss both use this)
-    private const string PainNamespace = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.03";
+    private const string PainNamespace = Pain001SchemaProvider.Namespace;
+
+    // The schemas a file is validated against, by currency: the official ones of the build (422 when they are not installed). Only a test supplies its own.
+    private readonly Func<string, XmlSchemaSet> schemaFor = schemaSource ?? Pain001SchemaProvider.GetSchemas;
 
     /// <inheritdoc />
     public async Task<(WireBatch Batch, string XmlContent)> CreateBatchAsync(
@@ -60,14 +74,19 @@ public sealed class WireTransferService(
             throw new DomainRuleException("statements_not_published", "StatementsNotPublished");
         }
 
-        // Ensure all statements are in the same currency
-        var currencies = statements.Select(s => s.Currency).Distinct().ToList();
+        // Ensure all statements are in the same currency (a letter case or a space does not make another one)
+        var currencies = statements.Select(s => NormalizeCurrency(s.Currency)).Distinct(StringComparer.Ordinal).ToList();
         if (currencies.Count > 1)
         {
             throw new DomainRuleException("mixed_currencies_not_allowed", "MixedCurrenciesNotAllowed");
         }
 
+        // Only the currencies of a wire file: EUR (the SEPA file) and CHF (the Swiss one). Any other currency in a SEPA file is not a payment a bank takes.
         var currency = currencies[0];
+        if (currency is not (WireTransferErrors.SepaCurrency or WireTransferErrors.SwissCurrency))
+        {
+            throw new DomainRuleException(WireTransferErrors.CurrencyNotSupported, "WireCurrencyNotSupported");
+        }
 
         // Check if any statement is already in a batch (AC-NF19-8)
         var statementsInBatches = await db.Set<WireBatchStatement>()
@@ -98,10 +117,8 @@ public sealed class WireTransferService(
         {
             if (string.IsNullOrWhiteSpace(group.Owner.Iban))
             {
-                throw new DomainRuleException(
-                    "owner_missing_iban",
-                    "OwnerMissingIban",
-                    $"Owner {group.Owner.FirstName} {group.Owner.LastName} has no IBAN");
+                // No name of the owner in the exception: it is not shown, and it would travel in the arguments of every log of the error.
+                throw new DomainRuleException("owner_missing_iban", "OwnerMissingIban");
             }
 
             var normalizedIban = NormalizeIban(group.Owner.Iban);
@@ -114,10 +131,17 @@ public sealed class WireTransferService(
                 throw new DomainRuleException("owner_invalid_iban", "OwnerInvalidIban");
             }
 
+            // A transfer is a positive amount with at most two decimals: never zero, never negative, never rounded in silence (the statements are
+            // rounded once at their total, ADR-017, so the sum of an owner's statements already has two).
+            if (group.TotalAmount <= 0m || decimal.Round(group.TotalAmount, 2) != group.TotalAmount)
+            {
+                throw new DomainRuleException(WireTransferErrors.AmountInvalid, "WireAmountInvalid");
+            }
+
             transfers.Add((group.Owner, group.TotalAmount, normalizedIban));
         }
 
-        // Create the batch
+        // The batch is built in memory: nothing is added to the context until its file has been validated.
         var batch = new WireBatch
         {
             OrgId = orgId,
@@ -129,40 +153,29 @@ public sealed class WireTransferService(
             CreatedAt = DateTime.UtcNow
         };
 
-        db.WireBatches.Add(batch);
-        await db.SaveChangesAsync(cancellationToken);
+        // Generate XML based on currency: EUR is the SEPA file, CHF the Swiss one
+        var xmlContent = currency == WireTransferErrors.SwissCurrency
+            ? GenerateSwissPaymentXml(batch, transfers, normalizedDebitAccount)
+            : GenerateSepaXml(batch, transfers, normalizedDebitAccount);
 
-        // Track which statements are in this batch (AC-NF19-8)
+        // Validate before anything is saved: a file that does not validate leaves no batch behind, and with no schema there is no file.
+        ValidateFile(xmlContent, batch);
+
+        // One save for the batch, the statements it covers (AC-NF19-8) and the file it was validated for: all or nothing. A child with its own
+        // Guid goes through its set (added to the collection alone it would be tracked as Modified).
+        batch.XmlContent = xmlContent;
+        db.WireBatches.Add(batch);
         foreach (var statementId in statementIds)
         {
-            var batchStatement = new WireBatchStatement
+            db.Set<WireBatchStatement>().Add(new WireBatchStatement
             {
                 OrgId = orgId,
                 WireBatchId = batch.Id,
                 OwnerStatementId = statementId,
                 CreatedAt = DateTime.UtcNow
-            };
-            db.Set<WireBatchStatement>().Add(batchStatement);
-        }
-        await db.SaveChangesAsync(cancellationToken);
-
-        // Generate XML based on currency
-        string xmlContent;
-        if (currency == "CHF")
-        {
-            xmlContent = GenerateSwissPaymentXml(batch, transfers, normalizedDebitAccount);
-        }
-        else
-        {
-            // EUR and other currencies use SEPA pain.001
-            xmlContent = GenerateSepaXml(batch, transfers, normalizedDebitAccount);
+            });
         }
 
-        // Validate against XSD (in a real implementation, we'd load the official XSD)
-        ValidateXml(xmlContent);
-
-        // Store the XML content for download
-        batch.XmlContent = xmlContent;
         await db.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation(
@@ -468,41 +481,41 @@ public sealed class WireTransferService(
     }
 
     /// <summary>
-    /// Validate XML against ISO 20022 pain.001 schema (basic well-formedness check).
-    /// In production, this would validate against the official XSD.
+    /// Validate the file of a batch before the batch is saved (E06/F05/US01/T01, NF-25): against the official schema of its currency (EUR: SEPA,
+    /// CHF: Swiss; no DTD, no resolver, no network), then against what a schema cannot say, the sums. 422 <c>wire_batch_schema_unavailable</c> when the
+    /// official schema of the currency is not installed (the file is never produced without its validation), <c>wire_batch_xml_invalid</c> with the line and
+    /// position of the first errors, <c>wire_batch_content_invalid</c> with the names of the broken rules. Never a value of the file: no IBAN, no name,
+    /// neither in the answer nor in the log (the text of a schema error can quote one, so it is not used).
     /// </summary>
-    private void ValidateXml(string xmlContent)
+    private void ValidateFile(string xmlContent, WireBatch batch)
     {
-        try
+        var schemas = schemaFor(batch.Currency);
+
+        var errors = XsdValidator.Validate(xmlContent, schemas);
+        if (errors.Count > 0)
         {
-            var doc = XDocument.Parse(xmlContent);
-
-            // Basic validation: ensure the document has the expected structure
-            var ns = XNamespace.Get(PainNamespace);
-            var root = doc.Root;
-
-            if (root == null || root.Name != ns + "Document")
-            {
-                throw new DomainRuleException("invalid_xml_structure", "InvalidXmlStructure");
-            }
-
-            var cstmrCdtTrfInitn = root.Element(ns + "CstmrCdtTrfInitn");
-            if (cstmrCdtTrfInitn == null)
-            {
-                throw new DomainRuleException("invalid_xml_structure", "InvalidXmlStructure");
-            }
-
-            // In production, we would load and validate against the official ISO 20022 XSD:
-            // var schemas = new XmlSchemaSet();
-            // schemas.Add(null, "path/to/pain.001.001.03.xsd");
-            // doc.Validate(schemas, (sender, e) => { throw new DomainRuleException("xsd_validation_failed", e.Message); });
-
-            logger.LogDebug("XML validation passed (well-formedness check)");
+            var positions = string.Join(", ", errors.Take(WireTransferErrors.ListedErrors).Select(e => $"{e.Line}:{e.Position}"));
+            logger.LogWarning(
+                "Wire file of {TransferCount} transfers in {Currency} does not validate against the official schema: {ErrorCount} errors",
+                batch.TransferCount,
+                batch.Currency,
+                errors.Count);
+            throw new DomainRuleException(WireTransferErrors.XmlInvalid, "WireBatchXmlInvalid", errors.Count, positions);
         }
-        catch (XmlException ex)
+
+        var violations = Pain001Checks.Violations(xmlContent, batch.Currency, batch.TotalAmount, batch.TransferCount);
+        if (violations.Count > 0)
         {
-            logger.LogError(ex, "XML validation failed");
-            throw new DomainRuleException("invalid_xml_format", "InvalidXmlFormat");
+            var rules = string.Join(", ", violations);
+            logger.LogWarning(
+                "Wire file of {TransferCount} transfers in {Currency} does not match its lines: {Rules}",
+                batch.TransferCount,
+                batch.Currency,
+                rules);
+            throw new DomainRuleException(WireTransferErrors.ContentInvalid, "WireBatchContentInvalid", rules);
         }
     }
+
+    /// <summary>The currency code of a statement: trimmed and in upper case (the stored one is a free text of three letters).</summary>
+    private static string NormalizeCurrency(string? currency) => (currency ?? string.Empty).Trim().ToUpperInvariant();
 }

@@ -448,6 +448,14 @@ internal static class PostgresAdvisoryLocks
         /// the lock taken leaves and the other one does the work. The values 20_800 to 20_899 are the booking operations of the calendar workspace (epic E08).
         /// </summary>
         CalendarChangeProcess = 20_851,
+
+        /// <summary>
+        /// The owner stays of one property (key: <c>propertyId.ToString("N")</c>, E07/F07/US01/T01): a request, an approval, a rejection, a withdrawal, a
+        /// cancellation and the work of the reconciliation on the stays of the property are taken one at a time, so two co-owners never get the same
+        /// nights, the nights of an owner in a year are never counted twice, and a stay withdrawn while it is approved never keeps its block. Held until
+        /// the commit; the dates lock of the property is taken inside it (by the block), never the other way round.
+        /// </summary>
+        OwnerStays = 21_071,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

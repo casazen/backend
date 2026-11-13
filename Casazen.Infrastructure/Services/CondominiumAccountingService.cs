@@ -16,7 +16,7 @@ namespace Casazen.Infrastructure.Services;
 /// CondoLedger's year, adapted to CasaZen: preventivo and consuntivo, rates left as issued, extraordinary kept apart,
 /// and the prior-year balance settled only the way the owner chooses.
 /// </summary>
-public sealed class CondominiumAccountingService(
+public sealed partial class CondominiumAccountingService(
     AppDbContext db,
     IPdfDocumentRenderer pdfRenderer,
     ILogger<CondominiumAccountingService> logger,
@@ -129,12 +129,31 @@ public sealed class CondominiumAccountingService(
         if (command.OrdinaryAmount <= 0m || !CondominiumMoney.InRange(command.OrdinaryAmount))
             throw new DomainRuleException(CondominiumErrorCodes.StatementInvalid, "CondominiumStatementInvalid");
 
+        if (!Enum.IsDefined(command.Cadence)
+            || command.Cadence == CondominiumInstallmentCadence.Custom && command.CustomInstallments is null && (command.CustomDueDates is not { Count: > 0 and <= 366 }
+                || command.CustomDueDates.Distinct().Count() != command.CustomDueDates.Count
+                || command.CustomDueDates.Any(d => d < period.StartDate || d > period.EndDate)))
+            throw new DomainRuleException(CondominiumErrorCodes.StatementInvalid, "CondominiumStatementInvalid");
         var extraordinary = new List<(decimal Amount, string Description)>();
         foreach (var line in command.Extraordinary ?? [])
         {
             if (line.Amount <= 0m || !CondominiumMoney.InRange(line.Amount))
                 throw new DomainRuleException(CondominiumErrorCodes.StatementInvalid, "CondominiumStatementInvalid");
             extraordinary.Add((line.Amount, string.IsNullOrWhiteSpace(line.Description) ? "Spesa straordinaria" : line.Description.Trim()));
+        }
+
+        if (command.CustomInstallments is not null)
+        {
+            try
+            {
+                if (command.Cadence != CondominiumInstallmentCadence.Custom)
+                    throw new ArgumentException("Custom installments require a custom cadence.");
+                OwnerInstallmentPlan.GenerateCustom(period.StartDate, command.OrdinaryAmount, extraordinary.Sum(line => line.Amount), 0m, command.CustomInstallments);
+            }
+            catch (ArgumentException)
+            {
+                throw new DomainRuleException(CondominiumErrorCodes.StatementInvalid, "CondominiumStatementInvalid");
+            }
         }
 
         var unitId = await FirstUnitIdAsync(condominium.Id, cancellationToken);
@@ -159,8 +178,9 @@ public sealed class CondominiumAccountingService(
                 ? prior.Amount
                 : 0m;
             var offset = existing.Count == 0 ? 0 : existing.Max(installment => installment.SlotIndex) + 1;
-            var generated = OwnerInstallmentPlan.Generate(
-                period.StartDate, command.Cadence, command.OrdinaryAmount, extraordinary.Sum(line => line.Amount), priorOnFirst);
+            var generated = command.CustomInstallments is not null
+                ? OwnerInstallmentPlan.GenerateCustom(period.StartDate, command.OrdinaryAmount, extraordinary.Sum(line => line.Amount), priorOnFirst, command.CustomInstallments)
+                : OwnerInstallmentPlan.Generate(period.StartDate, command.Cadence, command.OrdinaryAmount, extraordinary.Sum(line => line.Amount), priorOnFirst, command.CustomDueDates);
             var now = UtcNow;
             foreach (var row in generated)
             {

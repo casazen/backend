@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using Casazen.Core.Authorization;
+using Casazen.Core.Condominium;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
@@ -35,11 +36,25 @@ public sealed class CondominiumPaymentReminderService(AppDbContext db, ICondomin
                 i.Label,
                 i.DueDate,
                 i.TotalAmount,
-                Paid = i.Payments.Sum(p => (decimal?)p.Amount) ?? 0m
+                i.PeriodStart,
+                i.OrdinaryAmount,
+                i.ExtraordinaryAmount,
+                i.PriorSettlementAmount
             })
             .OrderBy(i => i.DueDate).ToListAsync(ct);
+        var periodIds = rows.Select(i => i.CondominiumPeriodId).Distinct().ToArray();
+        var payments = await db.CondominiumPayments.AsNoTracking().Where(p => p.OrgId == scope.OrgId && periodIds.Contains(p.CondominiumPeriodId))
+            .Select(p => new { p.CondominiumPeriodId, p.CondominiumInstallmentId, p.PaidOn, p.Amount }).ToListAsync(ct);
+        var allocated = new Dictionary<Guid, decimal>();
+        foreach (var year in rows.GroupBy(i => i.CondominiumPeriodId))
+        {
+            var amounts = SituazioneReport.Allocate(
+                year.Select(i => (i.Id, i.PeriodStart, i.DueDate, i.TotalAmount, i.OrdinaryAmount == 0m && i.ExtraordinaryAmount == 0m && i.PriorSettlementAmount != 0m)).ToList(),
+                payments.Where(p => p.CondominiumPeriodId == year.Key).Select(p => (p.CondominiumInstallmentId, p.PaidOn, p.Amount)).ToList());
+            foreach (var amount in amounts) allocated[amount.Key] = amount.Value;
+        }
         return rows.Select(i => new ManualCondominiumDue(i.Id, i.CondominiumId, i.CondominiumPeriodId, i.Name,
-            i.Label, i.DueDate, Math.Max(0m, i.TotalAmount - i.Paid), i.Paid >= i.TotalAmount)).ToList();
+            i.Label, i.DueDate, Math.Max(0m, i.TotalAmount - allocated[i.Id]), allocated[i.Id] >= i.TotalAmount)).ToList();
     }
     public async Task MarkPaidAsync(HostScope scope, Guid installmentId, string userId, CancellationToken ct)
     {
@@ -69,7 +84,8 @@ public sealed class CondominiumPaymentReminderService(AppDbContext db, ICondomin
             var row = await db.CondominiumInstallments.Include(i => i.Org).Include(i => i.Period).ThenInclude(p => p.Condominium)
                 .SingleAsync(i => i.Id == c.Id, ct);
             await db.Entry(row).ReloadAsync(ct);
-            var paid = await db.CondominiumPayments.Where(p => p.CondominiumInstallmentId == row.Id).SumAsync(p => (decimal?)p.Amount, ct) ?? 0m;
+            var report = await accounting.GetReportAsync(new HostScope(row.OrgId), c.CondominiumId, row.CondominiumPeriodId, ct);
+            var paid = report.Installments.Single(i => i.Id == row.Id).Paid;
             if (row.ReminderSentAt is not null || row.Status is CondominiumInstallmentStatus.Paid or CondominiumInstallmentStatus.Cancelled
                 || paid >= row.TotalAmount) continue;
             var url = (config["App:PublicSiteBaseUrl"] ?? "").TrimEnd('/') + "/app/long-rent/payments";

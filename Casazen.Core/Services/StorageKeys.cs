@@ -101,6 +101,18 @@ public static partial class StorageKeys
     public static string ManualComplianceProof(Guid orgId, Guid proofId, string fileName) =>
         $"compliance-proofs/{orgId}/{proofId}/{fileName}";
 
+    /// <summary>
+    /// A file of a document an agency shares with one of its owners (private bucket, E07/F07/US01/T02): read only through the endpoints that check the owner,
+    /// the agency and the permission, never by a public URL. <paramref name="fileName"/> is made by the server (the id of the version and the extension the
+    /// scan recognised), never the name sent.
+    /// </summary>
+    public static string OwnerDocumentFile(Guid orgId, Guid documentId, string fileName) =>
+        $"owner-documents/{orgId}/{documentId}/{fileName}";
+
+    /// <summary>The file attached to a message of the owner inbox (private bucket, E07/F07/US01/T02); the name is made by the server.</summary>
+    public static string OwnerMessageAttachment(Guid orgId, Guid conversationId, string fileName) =>
+        $"owner-messages/{orgId}/{conversationId}/{fileName}";
+
     /// <summary>A new random file name that keeps only the (lower-cased) extension of the upload.</summary>
     public static string NewFileName(string? originalFileName) =>
         $"{Guid.NewGuid()}{Path.GetExtension(originalFileName ?? string.Empty).ToLowerInvariant()}";

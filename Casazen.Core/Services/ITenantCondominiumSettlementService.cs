@@ -10,6 +10,8 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface ITenantCondominiumSettlementService
 {
+    Task ReconcileConfirmedFinalAsync(HostScope scope, Guid condominiumId, Guid periodId, string userId, CancellationToken cancellationToken = default);
+
     Task<TenantSettlementView> CalculateAsync(
         HostScope scope, Guid leaseId, CalculateTenantSettlementCommand command, string userId, CancellationToken cancellationToken = default);
 

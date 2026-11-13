@@ -82,7 +82,7 @@ public partial class CondominiumsController(
                 dto.OrdinaryAmount,
                 dto.Description,
                 dto.Extraordinary?.Select(line => new ExtraordinaryExpenseCommand(line.Amount, line.Description)).ToList(),
-                dto.Cadence),
+                dto.Cadence, OrdinaryNeedsReview: dto.OrdinaryNeedsReview, CustomDueDates: dto.CustomDueDates, CustomInstallments: dto.CustomInstallments),
             userId,
             cancellationToken));
     }
@@ -192,6 +192,22 @@ public partial class CondominiumsController(
             scope, condominiumId, new StatementFileUpload(file.FileName, buffer.ToArray()), userId, cancellationToken));
     }
 
+    [HttpPost("{condominiumId:guid}/installments/read")]
+    [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
+    [RequestSizeLimit(1_100_000)]
+    public async Task<ActionResult<AdministratorInstallmentReader.Reading>> ReadInstallments(Guid condominiumId, IFormFile file, CancellationToken cancellationToken)
+    {
+        var (scope, userId) = await ScopeAsync(cancellationToken);
+        if (scope is null || userId is null) return Unauthorized();
+        if (file is null || file.Length is 0 or > 1_048_576)
+            return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, CondominiumErrorCodes.FileUnsupported, "CondominiumStatementFileUnsupported");
+        await using var stream = file.OpenReadStream();
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer, cancellationToken);
+        return Ok(await statements.ReadInstallmentsAsync(scope, condominiumId,
+            new StatementFileUpload(file.FileName, buffer.ToArray()), userId, cancellationToken));
+    }
+
     /// <summary>Posts a proposal the reader stored. An uncertain line is not charged to the tenant.</summary>
     [HttpPost("{condominiumId:guid}/statements/proposals/{proposalId:guid}/confirm")]
     [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
@@ -201,7 +217,10 @@ public partial class CondominiumsController(
         var (scope, userId) = await ScopeAsync(cancellationToken);
         if (scope is null || userId is null)
             return Unauthorized();
-        return Ok(await statements.ConfirmAsync(scope, condominiumId, proposalId, userId, cancellationToken));
+        var result = await statements.ConfirmAsync(scope, condominiumId, proposalId, userId, cancellationToken);
+        if (result.Posted && result.Kind == CondominiumStatementKind.Final && result.PeriodId is { } periodId)
+            await settlements.ReconcileConfirmedFinalAsync(scope, condominiumId, periodId, userId, cancellationToken);
+        return Ok(result);
     }
 
     /// <summary>
@@ -289,6 +308,9 @@ public sealed class ExtraordinaryExpenseDto
 
 public sealed class ConfirmBudgetDto
 {
+    public List<CustomOwnerInstallment>? CustomInstallments { get; set; }
+    public bool OrdinaryNeedsReview { get; set; }
+    public List<DateOnly>? CustomDueDates { get; set; }
     public decimal OrdinaryAmount { get; set; }
 
     public string? Description { get; set; }
