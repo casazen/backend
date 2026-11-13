@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Hangfire;
@@ -52,13 +53,37 @@ public class OwnerPortalOperationsJob(
             return;
         }
 
-        // The expiry alerts of the shared documents first: a failure of the stays (which ends the run in error once every stay was tried) does not hold them.
-        var alerts = await collaboration.RaiseExpiryAlertsAsync(cancellationToken);
-        logger.LogInformation("Owner documents: {Raised} expiry To do raised, {Closed} closed", alerts.Raised, alerts.Closed);
+        // The two kinds of work never hold each other: the stays (the automatic approvals, the blocks to give back, the sync results) run even when the expiry alerts
+        // of the documents failed, and the alerts run even when a stay failed. Nothing is swallowed: every failure is logged and the run ends in error once both were
+        // done, so the next run tries again.
+        var failures = new List<Exception>();
+        try
+        {
+            var alerts = await collaboration.RaiseExpiryAlertsAsync(cancellationToken);
+            logger.LogInformation("Owner documents: {Raised} expiry To do raised, {Closed} closed", alerts.Raised, alerts.Closed);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Owner portal operations: the expiry alerts of the documents failed; the owner stays are still looked after");
+            failures.Add(ex);
+        }
 
-        var stayRun = await stays.ReconcileAsync(cancellationToken);
-        logger.LogInformation(
-            "Owner stays: {Approved} approved automatically, {Released} blocks given back, {SyncChanges} sync results, {Raised} To do raised, {Closed} closed",
-            stayRun.Approved, stayRun.Released, stayRun.SyncChanges, stayRun.TodosRaised, stayRun.TodosClosed);
+        try
+        {
+            var stayRun = await stays.ReconcileAsync(cancellationToken);
+            logger.LogInformation(
+                "Owner stays: {Approved} approved automatically, {Released} blocks given back, {SyncChanges} sync results, {Raised} To do raised, {Closed} closed",
+                stayRun.Approved, stayRun.Released, stayRun.SyncChanges, stayRun.TodosRaised, stayRun.TodosClosed);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Owner portal operations: the work on the owner stays failed");
+            failures.Add(ex);
+        }
+
+        if (failures.Count == 1)
+            ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        if (failures.Count > 1)
+            throw new AggregateException("The background work of the owner portal operations failed in the expiry alerts and in the owner stays.", failures);
     }
 }

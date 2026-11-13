@@ -249,67 +249,125 @@ public sealed partial class OwnerCollaborationService(
         return await HandOutAsync(document, version, null, actorUserId, cancellationToken);
     }
 
+    /// <summary>The documents one page of the expiry alerts looks at.</summary>
+    private const int AlertPageSize = 200;
+
+    /// <summary>The most pages one run reads (200,000 documents): a guard, never reached by a real portfolio.</summary>
+    private const int MaxAlertPages = 1_000;
+
     public async Task<OwnerDocumentAlertResult> RaiseExpiryAlertsAsync(CancellationToken cancellationToken = default)
     {
         var today = Today();
         var horizon = today.AddDays(OwnerCollaborationRules.ExpiryAlertDays);
+        var typeName = nameof(ActivityType.OwnerDocumentExpiring);
 
-        // The documents shared now that have a version lapsing within the window, and the open alerts: both are judged on the version in force.
-        var lapsing = await Versions().AsNoTracking()
-            .Where(v => v.ExpiresOn != null && v.ExpiresOn <= horizon)
-            .Select(v => v.OwnerDocumentId)
-            .Distinct()
-            .Take(OwnerCollaborationRules.MaxList)
-            .ToListAsync(cancellationToken);
+        // The versions in force that lapse within the window: in force today (no start date, or one that has come) and not replaced by a later version that is in force
+        // too. The subqueries are built outside the predicates: an expression tree cannot hold the list of the filters to ignore. The soft delete filter of the
+        // properties stays on: a document of a deleted property has no property to raise the item on.
+        var inForce = Versions().Where(v => v.EffectiveFrom == null || v.EffectiveFrom <= today);
+        var lapsing = inForce.Where(v => v.ExpiresOn != null
+                                         && v.ExpiresOn <= horizon
+                                         && !inForce.Any(later => later.OwnerDocumentId == v.OwnerDocumentId && later.VersionNumber > v.VersionNumber));
+        var properties = db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]);
+
         var open = await db.InternalActivities
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
             .Where(a => a.Action == ActivityAction.RenewOwnerDocument && a.EntityType == DocumentVersionEntityType && a.CompletedAt == null && a.EntityId != null)
             .Select(a => new { a.Id, VersionId = a.EntityId!.Value })
             .ToListAsync(cancellationToken);
-        var openVersionIds = open.Select(a => a.VersionId).ToList();
-        var openDocumentIds = await Versions().AsNoTracking().Where(v => openVersionIds.Contains(v.Id)).Select(v => v.OwnerDocumentId).ToListAsync(cancellationToken);
 
-        var documentIds = lapsing.Concat(openDocumentIds).Distinct().ToList();
-        var documents = await Documents().AsNoTracking().Where(d => documentIds.Contains(d.Id)).ToListAsync(cancellationToken);
-        var versions = await Versions().AsNoTracking().Where(v => documentIds.Contains(v.OwnerDocumentId)).ToListAsync(cancellationToken);
-
+        // Every one of them, soonest first, a page at a time: nothing is left unread however many documents lapse (the first 500 of a list without an order used to
+        // be the only ones ever looked at). One document that cannot be raised never stops the others: it is logged, the run goes on and ends in error.
         var alerting = new HashSet<Guid>();
         var raised = 0;
-        foreach (var document in documents.Where(d => d.RevokedAt is null))
+        Exception? firstFailure = null;
+        for (var page = 0; page < MaxAlertPages; page++)
         {
-            var current = CurrentOf(versions.Where(v => v.OwnerDocumentId == document.Id).ToList(), today);
-            if (current?.ExpiresOn is not { } expiresOn || expiresOn > horizon)
-                continue;
+            var rows = await lapsing
+                .AsNoTracking()
+                .OrderBy(v => v.ExpiresOn)
+                .ThenBy(v => v.Id)
+                .Skip(page * AlertPageSize)
+                .Take(AlertPageSize)
+                .Select(v => new { v.Id, v.OwnerDocumentId, v.ExpiresOn })
+                .ToListAsync(cancellationToken);
+            if (rows.Count == 0)
+                break;
 
-            alerting.Add(current.Id);
-            if (await WasRaisedAsync(document.OrgId, current.Id, cancellationToken))
-                continue;
+            var documentIds = rows.Select(r => r.OwnerDocumentId).Distinct().ToList();
+            var documents = await Documents().AsNoTracking()
+                .Where(d => documentIds.Contains(d.Id) && d.RevokedAt == null)
+                .ToDictionaryAsync(d => d.Id, cancellationToken);
+            var propertyIds = documents.Values.Where(d => d.PropertyId != null).Select(d => d.PropertyId!.Value).Distinct().ToList();
+            var liveProperties = (await properties.Where(p => propertyIds.Contains(p.Id)).Select(p => p.Id).ToListAsync(cancellationToken)).ToHashSet();
+            var versionIds = rows.Select(r => r.Id).ToList();
+            var alreadyRaised = (await db.InternalActivities
+                    .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+                    .AsNoTracking()
+                    .Where(a => a.Action != null && a.ActivityType == typeName && a.EntityType == DocumentVersionEntityType && a.EntityId != null && versionIds.Contains(a.EntityId.Value))
+                    .Select(a => a.EntityId!.Value)
+                    .ToListAsync(cancellationToken))
+                .ToHashSet();
 
-            await activities.CreateAsync(
-                new CreateTodoRequest
+            foreach (var row in rows)
+            {
+                if (!documents.TryGetValue(row.OwnerDocumentId, out var document) || row.ExpiresOn is not { } expiresOn)
+                    continue;
+                if (document.PropertyId is { } propertyId && !liveProperties.Contains(propertyId))
+                    continue;
+
+                alerting.Add(row.Id);
+                if (alreadyRaised.Contains(row.Id))
+                    continue;
+
+                try
                 {
-                    Type = ActivityType.OwnerDocumentExpiring,
-                    Action = ActivityAction.RenewOwnerDocument,
-                    EntityType = DocumentVersionEntityType,
-                    EntityId = current.Id,
-                    Urgency = expiresOn < today ? ActivityUrgency.High : ActivityUrgency.Medium,
-                    PropertyId = document.PropertyId,
-                    OrgId = document.OrgId,
-                    Deadline = expiresOn.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
-                    Reason = ExpiringReason,
-                },
-                cancellationToken);
-            raised++;
+                    await activities.CreateAsync(
+                        new CreateTodoRequest
+                        {
+                            Type = ActivityType.OwnerDocumentExpiring,
+                            Action = ActivityAction.RenewOwnerDocument,
+                            EntityType = DocumentVersionEntityType,
+                            EntityId = row.Id,
+                            Urgency = expiresOn < today ? ActivityUrgency.High : ActivityUrgency.Medium,
+                            PropertyId = document.PropertyId,
+                            OrgId = document.OrgId,
+                            Deadline = expiresOn.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+                            Reason = ExpiringReason,
+                        },
+                        cancellationToken);
+                    raised++;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Not swallowed: the run ends in error once the rest is done, and the next run tries again.
+                    logger.LogError(ex, "Owner document {DocumentId}: the expiry To do of its version {VersionId} could not be raised", document.Id, row.Id);
+                    firstFailure ??= ex;
+                    db.ChangeTracker.Clear();
+                }
+            }
         }
 
-        // An alert whose version is no longer in force, is renewed beyond the window, or whose document was withdrawn: closed by the system.
+        // An alert whose version is no longer in force, is renewed beyond the window, whose document was withdrawn or whose property is gone: closed by the system.
         var closed = 0;
         foreach (var item in open.Where(a => !alerting.Contains(a.VersionId)))
         {
-            await activities.CloseAsync(item.Id, InternalActivity.ClosedBySystem, cancellationToken);
-            closed++;
+            try
+            {
+                await activities.CloseAsync(item.Id, InternalActivity.ClosedBySystem, cancellationToken);
+                closed++;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(ex, "Owner document: the expiry To do {ActivityId} could not be closed", item.Id);
+                firstFailure ??= ex;
+                db.ChangeTracker.Clear();
+            }
         }
+
+        if (firstFailure is not null)
+            throw new InvalidOperationException("The expiry alerts of the owner documents failed for at least one document.", firstFailure);
 
         return new OwnerDocumentAlertResult(raised, closed);
     }
@@ -549,17 +607,6 @@ public sealed partial class OwnerCollaborationService(
             await storage.DeleteAsync(StorageBucket.Private, key, CancellationToken.None);
             throw;
         }
-    }
-
-    private async Task<bool> WasRaisedAsync(Guid orgId, Guid versionId, CancellationToken cancellationToken)
-    {
-        var typeName = nameof(ActivityType.OwnerDocumentExpiring);
-        return await db.InternalActivities
-            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .AsNoTracking()
-            .AnyAsync(
-                a => a.OrgId == orgId && a.Action != null && a.ActivityType == typeName && a.EntityType == DocumentVersionEntityType && a.EntityId == versionId,
-                cancellationToken);
     }
 
     /// <summary>The display names of owner profiles (never a fiscal or bank value of them).</summary>

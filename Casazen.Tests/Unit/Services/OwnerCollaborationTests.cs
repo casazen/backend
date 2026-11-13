@@ -261,6 +261,81 @@ public partial class OwnerCollaborationTests
     }
 
     /// <summary>
+    /// A document of a property that was deleted has no property to raise the item on: it is skipped (and its open item closed) and never stops the run, the
+    /// other documents get their alerts, and the run ends without an error.
+    /// </summary>
+    [Fact]
+    public async Task OwnerDocument_ExpiryAlert_ADocumentOfADeletedProperty_DoesNotStopTheRun()
+    {
+        var w = await World.CreateAsync();
+        var service = w.Service();
+        var ofLive = await service.ShareDocumentAsync(
+            w.OrgId, new ShareOwnerDocument(w.OwnerA, w.PropertyA, OwnerDocumentType.Insurance, "Polizza casa Alfa", null, Today.AddDays(10)), Pdf("A"), Agent);
+        var ofGone = await service.ShareDocumentAsync(
+            w.OrgId, new ShareOwnerDocument(w.OwnerB, w.PropertyB, OwnerDocumentType.Insurance, "Polizza casa Beta", null, Today.AddDays(10)), Pdf("B"), Agent);
+        Assert.Equal(new OwnerDocumentAlertResult(2, 0), await service.RaiseExpiryAlertsAsync());
+
+        // The property of the second is deleted: its open item is closed, the run does not fail.
+        await w.DeletePropertyAsync(w.PropertyB);
+        Assert.Equal(new OwnerDocumentAlertResult(0, 1), await service.RaiseExpiryAlertsAsync());
+        Assert.Equal(1, await w.Db.InternalActivities.CountAsync(a => a.CompletedAt == null && a.EntityId != null));
+
+        // A document shared for the deleted property afterwards never gets an item (the creation would fail: no such property); the live one still does.
+        var ofGoneToo = await service.ShareDocumentAsync(
+            w.OrgId, new ShareOwnerDocument(w.OwnerB, w.PropertyB, OwnerDocumentType.Mandate, "Mandato", null, Today.AddDays(3)), Pdf("C"), Agent);
+        var another = await service.ShareDocumentAsync(
+            w.OrgId, new ShareOwnerDocument(w.OwnerA, w.PropertyA, OwnerDocumentType.Mandate, "Mandato Alfa", null, Today.AddDays(4)), Pdf("D"), Agent);
+        Assert.Equal(new OwnerDocumentAlertResult(1, 0), await service.RaiseExpiryAlertsAsync());
+        var versionOfAnother = another.Document.Versions.Single().Id;
+        Assert.True(await w.Db.InternalActivities.AnyAsync(a => a.EntityId == versionOfAnother && a.CompletedAt == null));
+        Assert.False(await w.Db.InternalActivities.AnyAsync(a => a.EntityId == ofGoneToo.Document.Versions.Single().Id));
+        Assert.NotEqual(ofLive.Document.Id, ofGone.Document.Id);
+    }
+
+    /// <summary>
+    /// The expiry alerts read every document that lapses, not the first 500 of a list without an order: more than 500 documents lapse, behind the history of
+    /// documents that were renewed (their old versions lapsed long ago and are not the version in force), and every one gets its item once.
+    /// </summary>
+    [Fact]
+    public async Task OwnerDocument_ExpiryAlerts_ReadEveryDocument_NotOnlyTheFirstFiveHundred()
+    {
+        var w = await World.CreateAsync();
+        var service = w.Service();
+        var now = Now.UtcDateTime;
+
+        void Add(string title, int[] versionsExpiringIn)
+        {
+            var document = new OwnerDocument
+            {
+                OrgId = w.OrgId, PropertyOwnerId = w.OwnerA, PropertyId = w.PropertyA, Type = OwnerDocumentType.Insurance, Title = title, CreatedAt = now, CreatedByUserId = Agent, UpdatedAt = now,
+            };
+            w.Db.OwnerDocuments.Add(document);
+            for (var number = 1; number <= versionsExpiringIn.Length; number++)
+            {
+                w.Db.OwnerDocumentVersions.Add(new OwnerDocumentVersion
+                {
+                    OrgId = w.OrgId, OwnerDocumentId = document.Id, VersionNumber = number, StorageKey = $"owner-documents/{document.Id:N}/{number}.pdf", FileName = "polizza.pdf",
+                    ContentType = OwnerFileRules.Pdf, SizeBytes = 1, Sha256 = new string('a', 64), ExpiresOn = Today.AddDays(versionsExpiringIn[number - 1]),
+                    ScanEngine = "test", UploadedAt = now, UploadedByUserId = Agent,
+                });
+            }
+        }
+
+        // 300 documents renewed long ago (an old version that lapsed two years ago, the version in force beyond the window) and 520 that lapse in the next weeks.
+        for (var i = 0; i < 300; i++)
+            Add($"Rinnovata {i}", [-700, 200]);
+        for (var i = 0; i < 520; i++)
+            Add($"In scadenza {i}", [5 + (i % 20)]);
+        await w.Db.SaveChangesAsync();
+
+        Assert.Equal(new OwnerDocumentAlertResult(520, 0), await service.RaiseExpiryAlertsAsync());
+
+        // Once per version: the next run finds them all raised.
+        Assert.Equal(new OwnerDocumentAlertResult(0, 0), await service.RaiseExpiryAlertsAsync());
+        Assert.Equal(520, await w.Db.InternalActivities.CountAsync(a => a.CompletedAt == null && a.EntityId != null));
+    }
+
+    /// <summary>
     /// Every invitation sends an e-mail to an address the owner chose: the ones of a day are capped, the withdrawn ones counted too (inviting, withdrawing and
     /// inviting again never reaches the limit of the contacts in force), and nothing is sent once the cap is reached.
     /// </summary>
@@ -396,6 +471,19 @@ public partial class OwnerCollaborationTests
         public Guid OtherOrgId { get; private set; }
 
         public Guid PropertyA { get; private set; }
+
+        public Guid PropertyB { get; private set; }
+
+        /// <summary>The property is deleted (soft delete: the row stays, the global filter hides it).</summary>
+        public async Task DeletePropertyAsync(Guid propertyId)
+        {
+            await using var db = NewDb();
+            var property = await db.Properties.SingleAsync(p => p.Id == propertyId);
+            property.IsDeleted = true;
+            property.DeletedAt = Now.UtcDateTime;
+            await db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
 
         public Guid OwnerA { get; private set; }
 
@@ -540,8 +628,8 @@ public partial class OwnerCollaborationTests
             }
 
             await db.SaveChangesAsync();
-            (OrgId, OtherOrgId, PropertyA, OwnerA, OwnerB, UserA, UserB, UserC, AgencyEmail) =
-                (org.Id, otherOrg.Id, propertyA.Id, owners[0].Id, owners[1].Id, userA.Id, userB.Id, userC.Id, org.ContactEmail);
+            (OrgId, OtherOrgId, PropertyA, PropertyB, OwnerA, OwnerB, UserA, UserB, UserC, AgencyEmail) =
+                (org.Id, otherOrg.Id, propertyA.Id, propertyB.Id, owners[0].Id, owners[1].Id, userA.Id, userB.Id, userC.Id, org.ContactEmail);
         }
     }
 }
