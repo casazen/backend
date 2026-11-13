@@ -11,13 +11,13 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// The collections report of the host (NF-97): the money that came in by date, by payment method and by channel, what is still to collect and what reached
-/// the account, as JSON or as a CSV to download. It is money, so it needs <c>payment.read</c> like the other reports (SR-D7), and it shows only what the
+/// the account, as JSON, as a CSV or as an Excel file to download (NF-101). It is money, so it needs <c>payment.read</c> like the other reports (SR-D7), and it shows only what the
 /// caller's <see cref="HostScope"/> reaches, in SQL. The total of the collections is the Home's "incassato" for the same days (<see cref="IHostCollectionsReportService"/>).
 /// No guest data and no PDF.
 /// <para>
 /// <c>collections</c> takes <c>from</c> and <c>to</c> (<c>yyyy-MM-dd</c>, Europe/Rome days, both included, at most 24 months: 422 <c>report_period_too_long</c>
 /// beyond, 400 <c>report_invalid_period</c> when missing, out of order or out of the supported years), an optional <c>propertyId</c> (one property of the
-/// caller's reach, 404 for any other) and <c>format</c> (<c>json</c>, the default, or <c>csv</c>; 400 <c>report_invalid_format</c> for anything else).
+/// caller's reach, 404 for any other) and <c>format</c> (<c>json</c>, the default, <c>csv</c> or <c>xlsx</c>; 400 <c>report_invalid_format</c> for anything else).
 /// <c>balances-to-collect</c> is read as of today and takes <c>propertyId</c> and <c>format</c> only.
 /// </para>
 /// </summary>
@@ -46,7 +46,7 @@ public class CollectionsReportsController(
         [FromQuery] string? format,
         CancellationToken cancellationToken)
     {
-        if (this.CheckFormat(format, out var csv) is { } formatProblem)
+        if (this.CheckFormat(format, out var fileFormat) is { } formatProblem)
             return formatProblem;
         if (this.CheckPeriod(fromDay, toDay, out var first, out var last) is { } periodProblem)
             return periodProblem;
@@ -54,9 +54,12 @@ public class CollectionsReportsController(
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
         var report = await reports.GetCollectionsAsync(scope, new HostReportQuery(first, last, propertyId), cancellationToken);
-        return csv
-            ? File(HostCollectionsReportDocuments.Csv(report), "text/csv", HostReportDocuments.FileName("incassato-per-cassa", report.Period))
-            : Ok(CollectionsReportDto.From(report, HostCollectionsReportDocuments.CollectionsTitle));
+        return fileFormat == ReportFormat.Json
+            ? Ok(CollectionsReportDto.From(report, HostCollectionsReportDocuments.CollectionsTitle))
+            : this.ReportFile(
+                fileFormat,
+                fileFormat == ReportFormat.Xlsx ? HostCollectionsReportDocuments.Xlsx(report) : HostCollectionsReportDocuments.Csv(report),
+                HostReportDocuments.FileName("incassato-per-cassa", report.Period, ReportRequestChecks.FileExtensionOf(fileFormat)));
     }
 
     /// <summary>
@@ -73,15 +76,18 @@ public class CollectionsReportsController(
         [FromQuery] string? format,
         CancellationToken cancellationToken)
     {
-        if (this.CheckFormat(format, out var csv) is { } formatProblem)
+        if (this.CheckFormat(format, out var fileFormat) is { } formatProblem)
             return formatProblem;
         if (await GetScopeAsync(cancellationToken) is not { } scope)
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
         var report = await reports.GetBalancesToCollectAsync(scope, new HostBalancesQuery(propertyId), cancellationToken);
-        return csv
-            ? File(HostCollectionsReportDocuments.Csv(report), "text/csv", HostCollectionsReportDocuments.BalancesFileName(report.AsOf))
-            : Ok(BalancesToCollectReportDto.From(report, HostCollectionsReportDocuments.BalancesTitle));
+        return fileFormat == ReportFormat.Json
+            ? Ok(BalancesToCollectReportDto.From(report, HostCollectionsReportDocuments.BalancesTitle))
+            : this.ReportFile(
+                fileFormat,
+                fileFormat == ReportFormat.Xlsx ? HostCollectionsReportDocuments.Xlsx(report) : HostCollectionsReportDocuments.Csv(report),
+                HostCollectionsReportDocuments.BalancesFileName(report.AsOf, ReportRequestChecks.FileExtensionOf(fileFormat)));
     }
 
     private async Task<HostScope?> GetScopeAsync(CancellationToken cancellationToken)
