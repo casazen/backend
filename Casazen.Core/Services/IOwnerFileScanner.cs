@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text;
+
 namespace Casazen.Core.Services;
 
 /// <summary>
@@ -62,13 +65,39 @@ public static class OwnerFileRules
         _ => TypeNotAllowedMessageKey,
     };
 
-    /// <summary>The name of an uploaded file without any folder, cut to <paramref name="maxLength"/>; <c>file</c> when nothing is left.</summary>
-    public static string SafeFileName(string? name, int maxLength)
+    /// <summary>The extension, with its dot, a file of the type the scan recognised takes in the name of a download; empty for any other type.</summary>
+    public static string ExtensionOf(string? contentType) => contentType switch
     {
+        Pdf => ".pdf",
+        Jpeg => ".jpg",
+        Png => ".png",
+        _ => string.Empty,
+    };
+
+    /// <summary>
+    /// The name a download offers: the name the upload came with, made safe, and <b>the extension the scan recognised</b> (<paramref name="extension"/>), never the
+    /// one that came with it. Only the last part of a path is kept (whatever its separator), the extension sent is dropped and every other dot with it (so
+    /// «fattura.pdf.exe» and «a.pdf.bat» become «fattura_pdf.pdf» and «a_pdf.pdf»: no double extension, no script or program name), the control characters and
+    /// the invisible and direction characters of Unicode (the right-to-left override that makes «gpj.exe» read «exe.jpg») are dropped, and anything that is not
+    /// a letter, a digit, a space or one of <c>- _ ( ) ,</c> becomes <c>_</c>. Cut to <paramref name="maxLength"/> with the extension; <c>file</c> when nothing is left.
+    /// </summary>
+    public static string SafeFileName(string? name, string extension, int maxLength)
+    {
+        ArgumentNullException.ThrowIfNull(extension);
         var bare = Path.GetFileName((name ?? string.Empty).Replace('\\', '/').Split('/').Last()).Trim();
-        bare = new string(bare.Where(c => !char.IsControl(c)).ToArray());
-        if (bare.Length == 0)
-            bare = "file";
-        return bare.Length <= maxLength ? bare : bare[^maxLength..];
+        var stem = new StringBuilder();
+        foreach (var c in Path.GetFileNameWithoutExtension(bare))
+        {
+            if (char.IsControl(c) || CharUnicodeInfo.GetUnicodeCategory(c) is UnicodeCategory.Format or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator)
+                continue;
+
+            stem.Append(char.IsLetterOrDigit(c) || c is ' ' or '-' or '_' or '(' or ')' or ',' ? c : '_');
+        }
+
+        var clean = stem.ToString().Trim(' ', '_');
+        if (clean.Length == 0)
+            clean = "file";
+        var room = Math.Max(1, maxLength - extension.Length);
+        return (clean.Length <= room ? clean : clean[..room].TrimEnd(' ', '_')) + extension;
     }
 }

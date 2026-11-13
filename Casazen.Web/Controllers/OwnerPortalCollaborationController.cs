@@ -323,11 +323,16 @@ internal static class OwnerPortalFiles
         return (new OwnerFileUpload(file.FileName, content), null);
     }
 
-    /// <summary>A file as a download: never rendered from our origin, never cached.</summary>
+    /// <summary>
+    /// A file as a download: never rendered from our origin, never cached, and under a name made safe again with the extension of its type (the one the scan
+    /// recognised), whatever the name stored: no double extension, no script or program name reaches the person who saves it.
+    /// </summary>
     public static FileStreamResult Download(ControllerBase controller, OwnerFileContent file)
     {
         controller.Response.Headers.CacheControl = "private, no-store";
         controller.Response.Headers.XContentTypeOptions = "nosniff";
-        return controller.File(file.Content, file.ContentType, file.FileName);
+        var name = OwnerFileRules.SafeFileName(
+            file.FileName, OwnerFileRules.ExtensionOf(file.ContentType), Casazen.Core.Entities.OwnerDocumentVersion.FileNameMaxLength);
+        return controller.File(file.Content, file.ContentType, name);
     }
 }

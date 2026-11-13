@@ -410,7 +410,7 @@ public sealed partial class OwnerCollaborationService
         {
             var verdict = Scan(attachment);
             message.AttachmentKey = StorageKeys.OwnerMessageAttachment(conversation.OrgId, conversation.Id, $"{message.Id:N}{verdict.Extension}");
-            message.AttachmentFileName = OwnerFileRules.SafeFileName(attachment.FileName, OwnerDocumentVersion.FileNameMaxLength);
+            message.AttachmentFileName = OwnerFileRules.SafeFileName(attachment.FileName, verdict.Extension!, OwnerDocumentVersion.FileNameMaxLength);
             message.AttachmentContentType = verdict.ContentType;
             message.AttachmentSizeBytes = attachment.Content.LongLength;
             message.AttachmentSha256 = Convert.ToHexStringLower(SHA256.HashData(attachment.Content));

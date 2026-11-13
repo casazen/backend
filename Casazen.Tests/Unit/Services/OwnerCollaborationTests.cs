@@ -260,6 +260,30 @@ public partial class OwnerCollaborationTests
         Assert.Equal(OwnerCollaborationErrors.ContactExists, again.Code);
     }
 
+    /// <summary>
+    /// The name a download carries is the one sent without its extension and its dots, with the extension of the type the scan recognised: a document named
+    /// «fattura.pdf.exe» and an attachment named «a.pdf.bat» are offered as «fattura_pdf.pdf» and «a_pdf.pdf», by the service and again at the download.
+    /// </summary>
+    [Fact]
+    public async Task OwnerFile_TheNameOfADocumentAndOfAnAttachment_CarriesOnlyTheExtensionOfItsType()
+    {
+        var w = await World.CreateAsync();
+        var service = w.Service();
+        var owner = await w.AccessAsync(w.UserA);
+
+        var shared = await service.ShareDocumentAsync(
+            w.OrgId, new ShareOwnerDocument(w.OwnerA, null, OwnerDocumentType.Other, "Fattura", null, null), new OwnerFileUpload("fattura.pdf.exe", Pdf("F").Content), Agent);
+        Assert.Equal("fattura_pdf.pdf", shared.Document.Versions.Single().FileName);
+        var file = await service.OpenDocumentForOwnerAsync(owner, shared.Document.Id, null);
+        await using (file.Content)
+            Assert.Equal(("application/pdf", "fattura_pdf.pdf"), (file.ContentType, file.FileName));
+
+        var conversation = await service.StartConversationByOwnerAsync(
+            owner, new StartOwnerConversation(null, null, OwnerConversationTopic.General, null, null, null, null, "Allegato", "ecco il file"));
+        var message = await service.PostMessageByOwnerAsync(owner, conversation.Id, "il file", new OwnerFileUpload("a.pdf.bat", Pdf("B").Content));
+        Assert.Equal("a_pdf.pdf", message.Attachment!.FileName);
+    }
+
     [Theory]
     [InlineData("%PDF-1.4\n1 0 obj << /Type /Catalog /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >> endobj\n%%EOF")]
     [InlineData("%PDF-1.4\n1 0 obj << /Type /Catalog /OpenAction << /S /J#61vaScript >> >> endobj\n%%EOF")]

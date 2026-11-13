@@ -6565,7 +6565,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>Sono accettati solo file PDF, JPEG o PNG.</value>
   </data>
   <data name="OwnerFileActiveContent" xml:space="preserve">
-    <value>Il PDF contiene script, azioni o file incorporati e non può essere condiviso: esportalo di nuovo come PDF semplice.</value>
+    <value>Il PDF contiene script, azioni o file incorporati, è protetto da password o è scritto in una forma che non si può controllare, e non può essere condiviso: esportalo di nuovo come PDF semplice.</value>
   </data>
   <data name="OwnerDocumentNotFound" xml:space="preserve">
     <value>Documento non trovato.</value>

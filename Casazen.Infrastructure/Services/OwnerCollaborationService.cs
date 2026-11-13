@@ -519,7 +519,7 @@ public sealed partial class OwnerCollaborationService(
             OwnerDocumentId = document.Id,
             VersionNumber = number,
             StorageKey = StorageKeys.OwnerDocumentFile(document.OrgId, document.Id, $"{id:N}{verdict.Extension}"),
-            FileName = OwnerFileRules.SafeFileName(file.FileName, OwnerDocumentVersion.FileNameMaxLength),
+            FileName = OwnerFileRules.SafeFileName(file.FileName, verdict.Extension!, OwnerDocumentVersion.FileNameMaxLength),
             ContentType = verdict.ContentType!,
             SizeBytes = file.Content.LongLength,
             Sha256 = Convert.ToHexStringLower(SHA256.HashData(file.Content)),
