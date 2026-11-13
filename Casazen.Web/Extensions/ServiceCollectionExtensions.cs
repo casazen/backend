@@ -347,6 +347,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPublicSiteSearchService, PublicSiteSearchService>();
         // Host dashboard KPIs per period and iCal feeds widget (PC-16).
         services.AddScoped<IHostDashboardService, HostDashboardService>();
+        // The money reports of the host (NF-97): what came in by date, method and channel, the balances still to collect and the credits (E07/F03/US02/T01).
+        services.AddScoped<IHostCollectionsReportService, HostCollectionsReportService>();
+        // What each channel costs (NF-98, E07/F03/US02/T02): gross, commission and net, and how each channel settles its commission from the cached portal settings
+        // (CasaZen's own database: nothing is asked of Octorate).
+        services.AddScoped<IChannelCommissionSettingsProvider, Casazen.Infrastructure.Octorate.ChannelCommissionSettingsProvider>();
+        services.AddScoped<IChannelCostsReportService, ChannelCostsReportService>();
         // The host's day in one read: stays of the day, requests, things to do (SR-03). What the cockpit items lack is a service apart.
         services.AddScoped<IHostTodayService, HostTodayService>();
         services.AddScoped<IComplianceMissingService, ComplianceMissingService>();

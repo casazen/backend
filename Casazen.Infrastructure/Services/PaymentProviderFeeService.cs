@@ -25,7 +25,11 @@ public sealed class PaymentProviderFeeService(
     TimeProvider timeProvider,
     ILogger<PaymentProviderFeeService> logger) : IPaymentProviderFeeService
 {
-    private static readonly PaymentStatus[] SettledStatuses = [PaymentStatus.Completed, PaymentStatus.Refunded, PaymentStatus.PartiallyRefunded];
+    /// <summary>
+    /// The statuses of a card payment that settled at the provider, so it has a balance transaction to read: the payments the capture is for, and the
+    /// ones the reports of the money (NF-97, NF-98) read the stored figures of. One list, for the capture and for what reads its result.
+    /// </summary>
+    internal static readonly PaymentStatus[] SettledStatuses = [PaymentStatus.Completed, PaymentStatus.Refunded, PaymentStatus.PartiallyRefunded];
 
     public async Task<IReadOnlyList<Guid>> DuePaymentIdsAsync(int max, CancellationToken ct = default)
     {

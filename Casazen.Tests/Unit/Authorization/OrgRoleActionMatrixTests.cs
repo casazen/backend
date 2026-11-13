@@ -96,6 +96,9 @@ public class OrgRoleActionMatrixTests
         { typeof(ReportsController), nameof(ReportsController.BookingsByChannel), WithMoney },
         { typeof(ReportsController), nameof(ReportsController.Performance), WithMoney },
         { typeof(ReportsController), nameof(ReportsController.Trend), WithMoney },
+        { typeof(CollectionsReportsController), nameof(CollectionsReportsController.Collections), WithMoney },
+        { typeof(CollectionsReportsController), nameof(CollectionsReportsController.BalancesToCollect), WithMoney },
+        { typeof(ChannelCostsReportsController), nameof(ChannelCostsReportsController.ChannelCosts), WithMoney },
         { typeof(PaymentsController), nameof(PaymentsController.Create), Operators },
         { typeof(PaymentsController), nameof(PaymentsController.Refund), Operators },
 
