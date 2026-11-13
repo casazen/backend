@@ -1491,6 +1491,14 @@ reservation of the room of a property, found through the confirmed `OctorateList
   `ChatMessageReceivedHandler` handles `CHAT_MESSAGE_RECEIVED`; the jobs `ota-message-reconcile` (every 10 minutes) and `ota-message-deep-reconcile`
   (02:30 UTC) back it, behind the flag. The words and the names leave with the guest (`GuestDataEraser`) and with the retention of the guest data
   (`OtaMessageRetentionService`); details in `docs/runbooks/octorate-webhooks.md` § 4c and `docs/runbooks/gdpr.md` § 14.
+- *Octorate's own assistant kept off (E05/F05/US03/T03, NF-67, OCT-11).* `OctorateAiAssistantGuard`, a consumer of `OtaThreadSynced` (registered in
+  `AddMessageSync`, behind `Features:OctorateConnector`), switches the assistant of the channel manager off on every thread CasaZen manages
+  (`IOctorateApiClient.SetThreadAiAssistantAsync`, `PATCH .../threads/{thread}/aiAssistant?enabled=false`, documented and not yet proven on a licensed
+  property): one call for each thread and pass, none for a thread that is off. While the flag reads on, the key of the event has the ten minutes of the
+  pass in it (`MessageSyncService.SyncedEventKey`), so a person who switches it on again and a call that failed are found at the next pass. A refusal of
+  Octorate is logged with a code; one no retry changes does not fail the event, and one a retry can change (the calls of the org down to the reserve, a 5xx,
+  a 429) rises so the dispatcher delivers the event again, which is the only retry of a thread no pass reads any more and of a flag Octorate does not say;
+  details in `docs/runbooks/message-assistant.md` § «Octorate's own assistant kept off».
 - *The hub of messages, read side (E05/F02/US01/T01, ADR-032, NF-61, NF-64).* `IMessageHubService` is a read model over the two sources, which are not
   merged and not moved: the direct threads (`GuestThread`, served by `IGuestMessageService`) and the conversations of the channels
   (`OtaMessageThread`). Every conversation has an opaque `MessageThreadKey` (`ota:{thread id}`, `direct:{booking id}`; a malformed one is a 400

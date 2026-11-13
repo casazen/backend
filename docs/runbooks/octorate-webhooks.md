@@ -126,7 +126,9 @@ be another object), makes `ReconcileRecentAsync` read the org's listings instead
 
 1. **Once, in any order.** A message is one row of the org by its Octorate id and `GuestMessageReceived` (key `ota-msg:{message id}`) is recorded in
    the same save, so a notification that arrives twice, late or out of order stores one message and raises one event. `OtaThreadSynced` (key
-   `ota-thread:{thread}:{last message}:{flag of Octorate's assistant}`) says a thread was read, for the guard that keeps that assistant off.
+   `ota-thread:{thread}:{last message}:{flag of Octorate's assistant}`, with the ten minutes of the pass added while the flag reads on) says a thread
+   was read, for the guard that keeps that assistant off (`OctorateAiAssistantGuard`, [message-assistant.md](message-assistant.md) § «Octorate's own
+   assistant kept off»): an assistant that reads on is told to the guard at every pass.
    A new inbound message older than 48 hours is stored and raises no event: the import of a history must not notify.
 2. **A thread of a listing nobody confirmed** is stored with no property (unassigned) and gets it at the first pass after the confirmation.
 3. **Failures.** An error of Octorate, or the calls of the org being used up, makes the handler throw, and the dispatcher delivers the event again

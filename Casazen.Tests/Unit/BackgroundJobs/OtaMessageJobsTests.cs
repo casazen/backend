@@ -201,6 +201,12 @@ public class OtaMessageJobsTests
         Assert.Contains(
             services,
             d => d.ServiceType == typeof(IOtaMessageRetentionService) && d.ImplementationType == typeof(Casazen.Infrastructure.Services.OtaMessageRetentionService));
+
+        // E05/F05/US03/T03: the guard that keeps Octorate's own assistant off the threads the copy reads is the one consumer of the events of the bus this
+        // registration adds, one for each event, in a scope of its own (it checks the type of the event and the connector flag itself).
+        var consumers = Assert.Single(services, d => d.ServiceType == typeof(IEventHandler<DomainEvent>));
+        Assert.Equal(typeof(OctorateAiAssistantGuard), consumers.ImplementationType);
+        Assert.Equal(ServiceLifetime.Scoped, consumers.Lifetime);
     }
 
     private static IFeatureFlags Flags(bool octorateConnector)
