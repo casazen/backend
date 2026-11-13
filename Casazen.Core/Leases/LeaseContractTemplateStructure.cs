@@ -19,6 +19,16 @@ public static class LeaseContractPlaceholders
 
     public const string PropertyComune = "immobile_comune";
 
+    public const string LandlordResidences = "locatori_residenze";
+    public const string TenantResidences = "conduttori_residenze";
+    public const string TenantCitizenships = "conduttori_cittadinanze";
+    public const string LandlordEmails = "locatori_email";
+    public const string TenantEmails = "conduttori_email";
+    public const string PropertyFloor = "immobile_piano";
+    public const string PropertyArea = "immobile_superficie";
+    public const string PropertyComposition = "immobile_composizione";
+    public const string TaxRegime = "regime_fiscale";
+
     /// <summary>Cadastral identification of the unit, from the property (sheet, parcel, subaltern, category, income; LT-10).</summary>
     public const string CadastralData = "dati_catastali";
 
@@ -63,6 +73,8 @@ public static class LeaseContractPlaceholders
     public static readonly IReadOnlyList<string> All =
     [
         Landlords, Tenants, PropertyAddress, PropertyComune, CadastralData, ApeData,
+        LandlordResidences, TenantResidences, TenantCitizenships, LandlordEmails, TenantEmails,
+        PropertyFloor, PropertyArea, PropertyComposition, TaxRegime,
         MonthlyRent, AnnualRent, SecurityDeposit, StartDate, EndDate, Term,
         TransitoryParty, TransitoryNeed, TransitoryDocumentation, DepositPayment, DepositMonths,
     ];
