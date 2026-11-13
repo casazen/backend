@@ -93,7 +93,10 @@ public sealed record ConfirmBudgetCommand(
     IReadOnlyList<ExtraordinaryExpenseCommand>? Extraordinary,
     CondominiumInstallmentCadence Cadence,
     bool OrdinaryNeedsReview = false,
-    IReadOnlyList<DateOnly>? CustomDueDates = null);
+    IReadOnlyList<DateOnly>? CustomDueDates = null,
+    IReadOnlyList<CustomOwnerInstallment>? CustomInstallments = null);
+
+public sealed record CustomOwnerInstallment(DateOnly DueDate, decimal Ordinary, decimal Extraordinary);
 
 public sealed record FinalExpenseLineCommand(
     string Description,
