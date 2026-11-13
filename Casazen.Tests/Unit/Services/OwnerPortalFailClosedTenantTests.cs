@@ -82,7 +82,12 @@ public class OwnerPortalFailClosedTenantTests
             db.PropertyOwners.Add(owner);
             db.PropertyOwnerships.Add(new PropertyOwnership
             {
-                OrgId = org.Id, PropertyId = property.Id, PropertyOwnerId = owner.Id, OwnerUserId = user.Id, SharePercent = 100m, OwnershipStart = Now.UtcDateTime.AddYears(-1),
+                OrgId = org.Id,
+                PropertyId = property.Id,
+                PropertyOwnerId = owner.Id,
+                OwnerUserId = user.Id,
+                SharePercent = 100m,
+                OwnershipStart = Now.UtcDateTime.AddYears(-1),
             });
         }
 
@@ -93,8 +98,15 @@ public class OwnerPortalFailClosedTenantTests
         {
             db.Bookings.Add(new Booking
             {
-                OrgId = org.Id, PropertyId = property.Id, GuestId = guest.Id, NumberOfGuests = 2, Status = BookingStatus.Confirmed, Source = BookingSource.Airbnb, TotalPrice = 300m,
-                CheckInDate = Today.AddDays(5).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc), CheckOutDate = Today.AddDays(8).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+                OrgId = org.Id,
+                PropertyId = property.Id,
+                GuestId = guest.Id,
+                NumberOfGuests = 2,
+                Status = BookingStatus.Confirmed,
+                Source = BookingSource.Airbnb,
+                TotalPrice = 300m,
+                CheckInDate = Today.AddDays(5).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+                CheckOutDate = Today.AddDays(8).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
             });
         }
 
@@ -104,41 +116,90 @@ public class OwnerPortalFailClosedTenantTests
         {
             var statement = new OwnerStatementVersion
             {
-                OrgId = org.Id, PropertyOwnerId = owner.Id, PeriodYear = 2026, PeriodMonth = 9, VersionNumber = 1, Status = OwnerStatementVersionStatus.Published, Currency = "EUR",
-                CutoffAt = Now.UtcDateTime, EntriesSha256 = new string('a', 64), PublishedAt = Now.UtcDateTime, PublishedSha256 = new string('b', 64), CreatedAt = Now.UtcDateTime,
+                OrgId = org.Id,
+                PropertyOwnerId = owner.Id,
+                PeriodYear = 2026,
+                PeriodMonth = 9,
+                VersionNumber = 1,
+                Status = OwnerStatementVersionStatus.Published,
+                Currency = "EUR",
+                CutoffAt = Now.UtcDateTime,
+                EntriesSha256 = new string('a', 64),
+                PublishedAt = Now.UtcDateTime,
+                PublishedSha256 = new string('b', 64),
+                CreatedAt = Now.UtcDateTime,
             };
             statementIds.Add(statement.Id);
             db.OwnerStatementVersions.Add(statement);
             db.OwnerExternalDocumentReferences.Add(new OwnerExternalDocumentReference
             {
-                OrgId = org.Id, OwnerStatementVersionId = statement.Id, PropertyOwnerId = owner.Id, Provider = "fatture", ExternalId = $"ext-{owner.Id:N}", ExternalNumber = "12/2026",
-                ExternalDate = Today, CreatedAt = Now.UtcDateTime,
+                OrgId = org.Id,
+                OwnerStatementVersionId = statement.Id,
+                PropertyOwnerId = owner.Id,
+                Provider = "fatture",
+                ExternalId = $"ext-{owner.Id:N}",
+                ExternalNumber = "12/2026",
+                ExternalDate = Today,
+                CreatedAt = Now.UtcDateTime,
             });
 
             // A document shared with the owner profile, a conversation with one message of the agency, and a stay asked on its property.
             var document = new OwnerDocument
             {
-                OrgId = org.Id, PropertyOwnerId = owner.Id, Type = OwnerDocumentType.Mandate, Title = "Mandato", CreatedAt = Now.UtcDateTime, CreatedByUserId = "auth0|agenzia", UpdatedAt = Now.UtcDateTime,
+                OrgId = org.Id,
+                PropertyOwnerId = owner.Id,
+                Type = OwnerDocumentType.Mandate,
+                Title = "Mandato",
+                CreatedAt = Now.UtcDateTime,
+                CreatedByUserId = "auth0|agenzia",
+                UpdatedAt = Now.UtcDateTime,
             };
             db.OwnerDocuments.Add(document);
             db.OwnerDocumentVersions.Add(new OwnerDocumentVersion
             {
-                OrgId = org.Id, OwnerDocumentId = document.Id, VersionNumber = 1, StorageKey = $"owner-documents/{document.Id:N}/1.pdf", FileName = "mandato.pdf", ContentType = OwnerFileRules.Pdf,
-                SizeBytes = 1, Sha256 = new string('c', 64), ScanEngine = "test", UploadedAt = Now.UtcDateTime, UploadedByUserId = "auth0|agenzia",
+                OrgId = org.Id,
+                OwnerDocumentId = document.Id,
+                VersionNumber = 1,
+                StorageKey = $"owner-documents/{document.Id:N}/1.pdf",
+                FileName = "mandato.pdf",
+                ContentType = OwnerFileRules.Pdf,
+                SizeBytes = 1,
+                Sha256 = new string('c', 64),
+                ScanEngine = "test",
+                UploadedAt = Now.UtcDateTime,
+                UploadedByUserId = "auth0|agenzia",
             });
             var conversation = new OwnerConversation
             {
-                OrgId = org.Id, PropertyOwnerId = owner.Id, Topic = OwnerConversationTopic.General, Subject = "Benvenuto", CreatedAt = Now.UtcDateTime, LastMessageAt = Now.UtcDateTime,
+                OrgId = org.Id,
+                PropertyOwnerId = owner.Id,
+                Topic = OwnerConversationTopic.General,
+                Subject = "Benvenuto",
+                CreatedAt = Now.UtcDateTime,
+                LastMessageAt = Now.UtcDateTime,
             };
             db.OwnerConversations.Add(conversation);
             db.OwnerMessages.Add(new OwnerMessage
             {
-                OrgId = org.Id, ConversationId = conversation.Id, Sender = OwnerMessageSender.Agency, SenderUserId = "auth0|agenzia", Body = "Buongiorno", CreatedAt = Now.UtcDateTime,
+                OrgId = org.Id,
+                ConversationId = conversation.Id,
+                Sender = OwnerMessageSender.Agency,
+                SenderUserId = "auth0|agenzia",
+                Body = "Buongiorno",
+                CreatedAt = Now.UtcDateTime,
             });
             var stay = new OwnerStayRequest
             {
-                OrgId = org.Id, PropertyId = owner == owners[0] ? propertyA.Id : propertyB.Id, PropertyOwnerId = owner.Id, RequestedByOwnerUserId = owner == owners[0] ? userA.Id : userB.Id,
-                StartDate = Today.AddDays(20), EndDate = Today.AddDays(22), Nights = 2, Status = OwnerStayStatus.Requested, CreatedAt = Now.UtcDateTime, UpdatedAt = Now.UtcDateTime,
+                OrgId = org.Id,
+                PropertyId = owner == owners[0] ? propertyA.Id : propertyB.Id,
+                PropertyOwnerId = owner.Id,
+                RequestedByOwnerUserId = owner == owners[0] ? userA.Id : userB.Id,
+                StartDate = Today.AddDays(20),
+                EndDate = Today.AddDays(22),
+                Nights = 2,
+                Status = OwnerStayStatus.Requested,
+                CreatedAt = Now.UtcDateTime,
+                UpdatedAt = Now.UtcDateTime,
             };
             db.OwnerStayRequests.Add(stay);
             if (owner == owners[0])
@@ -150,10 +211,21 @@ public class OwnerPortalFailClosedTenantTests
         // A contact the first owner lets into its portal with the inbox and the documents, with the account of a third person.
         db.OwnerPortalContacts.Add(new OwnerPortalContact
         {
-            OrgId = org.Id, PropertyOwnerId = owners[0].Id, Email = "carla@example.com", EmailHash = ContactIndex.HashEmail("carla@example.com"),
-            FirstName = "Carla", LastName = "Contatto", Permissions = OwnerPortalPermission.InboxUse | OwnerPortalPermission.DocumentsRead, Status = OwnerPortalContactStatus.Active,
-            TokenHash = new string('d', 64), InvitationExpiresAt = Now.UtcDateTime.AddDays(7), InvitedByOwnerUserId = userA.Id, OwnerUserId = userC.Id, AcceptedAt = Now.UtcDateTime,
-            CreatedAt = Now.UtcDateTime, UpdatedAt = Now.UtcDateTime,
+            OrgId = org.Id,
+            PropertyOwnerId = owners[0].Id,
+            Email = "carla@example.com",
+            EmailHash = ContactIndex.HashEmail("carla@example.com"),
+            FirstName = "Carla",
+            LastName = "Contatto",
+            Permissions = OwnerPortalPermission.InboxUse | OwnerPortalPermission.DocumentsRead,
+            Status = OwnerPortalContactStatus.Active,
+            TokenHash = new string('d', 64),
+            InvitationExpiresAt = Now.UtcDateTime.AddDays(7),
+            InvitedByOwnerUserId = userA.Id,
+            OwnerUserId = userC.Id,
+            AcceptedAt = Now.UtcDateTime,
+            CreatedAt = Now.UtcDateTime,
+            UpdatedAt = Now.UtcDateTime,
         });
 
         await db.SaveChangesAsync();

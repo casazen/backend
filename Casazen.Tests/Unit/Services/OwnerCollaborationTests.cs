@@ -307,16 +307,32 @@ public partial class OwnerCollaborationTests
         {
             var document = new OwnerDocument
             {
-                OrgId = w.OrgId, PropertyOwnerId = w.OwnerA, PropertyId = w.PropertyA, Type = OwnerDocumentType.Insurance, Title = title, CreatedAt = now, CreatedByUserId = Agent, UpdatedAt = now,
+                OrgId = w.OrgId,
+                PropertyOwnerId = w.OwnerA,
+                PropertyId = w.PropertyA,
+                Type = OwnerDocumentType.Insurance,
+                Title = title,
+                CreatedAt = now,
+                CreatedByUserId = Agent,
+                UpdatedAt = now,
             };
             w.Db.OwnerDocuments.Add(document);
             for (var number = 1; number <= versionsExpiringIn.Length; number++)
             {
                 w.Db.OwnerDocumentVersions.Add(new OwnerDocumentVersion
                 {
-                    OrgId = w.OrgId, OwnerDocumentId = document.Id, VersionNumber = number, StorageKey = $"owner-documents/{document.Id:N}/{number}.pdf", FileName = "polizza.pdf",
-                    ContentType = OwnerFileRules.Pdf, SizeBytes = 1, Sha256 = new string('a', 64), ExpiresOn = Today.AddDays(versionsExpiringIn[number - 1]),
-                    ScanEngine = "test", UploadedAt = now, UploadedByUserId = Agent,
+                    OrgId = w.OrgId,
+                    OwnerDocumentId = document.Id,
+                    VersionNumber = number,
+                    StorageKey = $"owner-documents/{document.Id:N}/{number}.pdf",
+                    FileName = "polizza.pdf",
+                    ContentType = OwnerFileRules.Pdf,
+                    SizeBytes = 1,
+                    Sha256 = new string('a', 64),
+                    ExpiresOn = Today.AddDays(versionsExpiringIn[number - 1]),
+                    ScanEngine = "test",
+                    UploadedAt = now,
+                    UploadedByUserId = Agent,
                 });
             }
         }
@@ -416,7 +432,8 @@ public partial class OwnerCollaborationTests
         var forAgency = await service.OpenAttachmentForAgencyAsync(w.OrgId, conversation.Id, message.Id);
         await forAgency.Content.DisposeAsync();
 
-        await Assert.ThrowsAsync<NotFoundException>(() => service.OpenAttachmentForOwnerAsync(await w.AccessAsync(w.UserB), conversation.Id, message.Id));
+        var ownerB = await w.AccessAsync(w.UserB);
+        await Assert.ThrowsAsync<NotFoundException>(() => service.OpenAttachmentForOwnerAsync(ownerB, conversation.Id, message.Id));
         await Assert.ThrowsAsync<NotFoundException>(() => service.OpenAttachmentForAgencyAsync(w.OtherOrgId, conversation.Id, message.Id));
         Assert.Equal(
             OwnerCollaborationErrors.AttachmentNotFound,
@@ -652,8 +669,18 @@ public partial class OwnerCollaborationTests
             await using var db = NewDb();
             var statement = new OwnerStatementVersion
             {
-                OrgId = OrgId, PropertyOwnerId = propertyOwnerId, PeriodYear = 2026, PeriodMonth = 9, VersionNumber = 1, Status = OwnerStatementVersionStatus.Published, Currency = "EUR",
-                CutoffAt = Now.UtcDateTime, EntriesSha256 = new string('a', 64), PublishedAt = Now.UtcDateTime, PublishedSha256 = new string('b', 64), CreatedAt = Now.UtcDateTime,
+                OrgId = OrgId,
+                PropertyOwnerId = propertyOwnerId,
+                PeriodYear = 2026,
+                PeriodMonth = 9,
+                VersionNumber = 1,
+                Status = OwnerStatementVersionStatus.Published,
+                Currency = "EUR",
+                CutoffAt = Now.UtcDateTime,
+                EntriesSha256 = new string('a', 64),
+                PublishedAt = Now.UtcDateTime,
+                PublishedSha256 = new string('b', 64),
+                CreatedAt = Now.UtcDateTime,
             };
             db.OwnerStatementVersions.Add(statement);
             await db.SaveChangesAsync();
