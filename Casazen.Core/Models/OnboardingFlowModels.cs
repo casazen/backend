@@ -74,6 +74,18 @@ public static class OnboardingFlowReasons
     /// <summary>CasaZen has no tourist tax rate in force today for the comune of the property.</summary>
     public const string TaxRateMissing = "tax_rate_missing";
 
+    /// <summary>
+    /// The copy of the conversations of the listing has not worked yet (E10/F01/US04/T01): no pass of the message sync has read the listing, or the
+    /// last one failed (<c>OtaMessageSyncState.LastError</c>). The host cannot fix it: the sync runs by itself and tries again.
+    /// </summary>
+    public const string MessageSyncNotReady = "message_sync_not_ready";
+
+    /// <summary>The organization has not chosen who issues its fiscal documents (E10/F01/US04/T01, E06): the host chooses in the issuer wizard.</summary>
+    public const string IssuerMissing = "issuer_missing";
+
+    /// <summary>The property has no booking imported from the channel manager yet (E10/F01/US04/T01): there is nothing to report on.</summary>
+    public const string NoBookingsYet = "no_bookings_yet";
+
     /// <summary>Every prerequisite holds and the host did not activate the flow on the property yet.</summary>
     public const string FlowNotActivated = "flow_not_activated";
 
@@ -85,6 +97,15 @@ public static class OnboardingFlowReasons
 
     /// <summary>The content of the property is written on the channel itself (Expedia): CasaZen sends nothing to it.</summary>
     public const string ContentManagedOnChannel = "content_managed_on_channel";
+
+    /// <summary>
+    /// The license of the listing has no chat module (E10/F01/US04/T01): the message sync keeps that as the state of the listing
+    /// (<c>OtaMessageSyncState.LastError</c>, <c>OtaMessageSyncErrorCodes.ChatNotLicensed</c>), so the flow says so instead of an empty inbox.
+    /// </summary>
+    public const string ChatNotLicensed = "chat_not_licensed";
+
+    /// <summary>The organization chose «none, my accountant issues» (E10/F01/US04/T01, E06): CasaZen has no document to run for it.</summary>
+    public const string AccountantHandles = "accountant_handles";
 
     /// <summary>CasaZen has nothing to run for this flow (yet): no provider answers for it.</summary>
     public const string NotProvided = "not_provided";
@@ -120,9 +141,14 @@ public static class OnboardingFlowActions
     /// <summary>Activate the flow on the property.</summary>
     public const string Activate = "activate";
 
+    /// <summary>Choose who issues the fiscal documents of the organization: it opens the issuer wizard of E06 (E10/F01/US04/T01).</summary>
+    public const string ChooseIssuer = "chooseIssuer";
+
     /// <summary>
     /// The action that fixes <paramref name="reason"/>; <c>null</c> when the host cannot fix it or the reason is not one of the unmet
-    /// prerequisites (a «not available» reason, a reason this version does not know).
+    /// prerequisites (a «not available» reason, a reason this version does not know). The host cannot fix
+    /// <see cref="OnboardingFlowReasons.MessageSyncNotReady"/> (the sync runs by itself) nor <see cref="OnboardingFlowReasons.NoBookingsYet"/> (it
+    /// ends when the first booking is imported).
     /// </summary>
     public static string? ForReason(string? reason) => reason switch
     {
@@ -133,6 +159,7 @@ public static class OnboardingFlowActions
         OnboardingFlowReasons.ChannelContentToFix => FixListing,
         OnboardingFlowReasons.CinMissingOrInvalid => EnterCin,
         OnboardingFlowReasons.TaxRateMissing => EnterTaxRate,
+        OnboardingFlowReasons.IssuerMissing => ChooseIssuer,
         OnboardingFlowReasons.FlowNotActivated => Activate,
         _ => null,
     };
@@ -159,6 +186,15 @@ public static class OnboardingPrerequisiteKeys
     /// <summary>CasaZen has a tourist tax rate in force for the comune of the property.</summary>
     public const string TaxRate = "taxRate";
 
+    /// <summary>The message sync has read the listing of the property and its last pass worked (E10/F01/US04/T01).</summary>
+    public const string MessageSync = "messageSync";
+
+    /// <summary>The organization chose who issues its fiscal documents: an issuer profile exists (E10/F01/US04/T01, E06).</summary>
+    public const string Issuer = "issuer";
+
+    /// <summary>The property has at least one active booking imported from the channel manager (E10/F01/US04/T01).</summary>
+    public const string Bookings = "bookings";
+
     /// <summary>
     /// The reason an unmet prerequisite stands for when its provider did not give one: every prerequisite has one reason, so a provider that
     /// forgets it never turns an unmet prerequisite into a met one. <c>null</c> for a key this version does not know.
@@ -171,6 +207,9 @@ public static class OnboardingPrerequisiteKeys
         Content => OnboardingFlowReasons.ChannelContentToFix,
         Cin => OnboardingFlowReasons.CinMissingOrInvalid,
         TaxRate => OnboardingFlowReasons.TaxRateMissing,
+        MessageSync => OnboardingFlowReasons.MessageSyncNotReady,
+        Issuer => OnboardingFlowReasons.IssuerMissing,
+        Bookings => OnboardingFlowReasons.NoBookingsYet,
         _ => null,
     };
 }

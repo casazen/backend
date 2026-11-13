@@ -72,6 +72,33 @@ public static class OnboardingPartReasons
     /// <summary>A flow is still to complete on a property.</summary>
     public const string FlowsIncomplete = "flows_incomplete";
 
+    /// <summary>No administrator of the organization has saved its notification preferences yet (E10/F01/US04/T01, part «Messages and AI»).</summary>
+    public const string NotificationPreferencesMissing = "notification_preferences_missing";
+
+    /// <summary>
+    /// The assistant is switched on in this installation and the organization has configured none of its situations (E10/F01/US04/T01, part
+    /// «Messages and AI»).
+    /// </summary>
+    public const string AssistantSituationMissing = "assistant_situation_missing";
+
+    /// <summary>The organization has not chosen who issues its fiscal documents (E10/F01/US04/T01, part «Fiscal documents»).</summary>
+    public const string IssuerMissing = OnboardingFlowReasons.IssuerMissing;
+
+    /// <summary>
+    /// The organization chose «none, my accountant issues»: the part counts as done and its facts say so with this reason (E10/F01/US04/T01). The plan
+    /// shows no reason for a part that is done, so this one is for whoever reads the facts.
+    /// </summary>
+    public const string AccountantHandles = OnboardingFlowReasons.AccountantHandles;
+
+    /// <summary>The organization has no integration active or declared in the marketplace (E10/F01/US04/T01, part «Partners», optional).</summary>
+    public const string PartnerIntegrationMissing = "partner_integration_missing";
+
+    /// <summary>
+    /// The Octorate connector is switched off in this installation (<c>Features:OctorateConnector</c>), and with it the marketplace endpoints the
+    /// part «Partners» reads (E10/F01/US04/T01).
+    /// </summary>
+    public const string ConnectorOff = "connector_off";
+
     /// <summary>The caller reaches no short-rent property that is active: there is nothing to count yet.</summary>
     public const string NoProperty = "no_property";
 

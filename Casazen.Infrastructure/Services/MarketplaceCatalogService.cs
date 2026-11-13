@@ -28,6 +28,13 @@ public sealed class MarketplaceCatalogService(
     IMarketplaceTexts texts,
     IHostEnvironment hostEnvironment) : IMarketplaceCatalogService
 {
+    /// <summary>
+    /// The activation statuses a card shows as <see cref="MarketplaceCardStatus.Active"/>, derived from the one rule of the cards
+    /// (<see cref="MarketplaceCardRules.CardStatusOf"/>) and never written out, so a new status is one here as soon as the rule says so.
+    /// </summary>
+    private static readonly MarketplaceActivationStatus[] OnStatuses =
+        [.. Enum.GetValues<MarketplaceActivationStatus>().Where(status => MarketplaceCardRules.CardStatusOf(status) == MarketplaceCardStatus.Active)];
+
     public async Task<MarketplaceCatalog> GetCatalogAsync(
         Guid orgId, HostScope scope, Guid? propertyId, string language, CancellationToken ct = default)
     {
@@ -62,15 +69,7 @@ public sealed class MarketplaceCatalogService(
         MarketplaceReads.EnsureSameOrg(orgId, scope);
         await MarketplaceReads.EnsurePropertyInScopeAsync(db, orgId, scope, propertyId, ct);
 
-        // The org's own rows: the properties inside the caller's scope, and the org-level ones only for a caller who reaches the whole org.
-        var orgWide = scope.IsOrgWide;
-        var reachable = db.Properties.Where(p => p.OrgId == orgId).InScope(scope).Select(p => p.Id);
-        var query = db.MarketplaceActivations.AsNoTracking()
-            .Where(a => a.OrgId == orgId && a.Status != MarketplaceActivationStatus.Deactivated);
-        query = propertyId is { } only
-            ? query.Where(a => a.PropertyId == only || (a.PropertyId == null && orgWide))
-            : query.Where(a => (a.PropertyId == null && orgWide) || (a.PropertyId != null && reachable.Contains(a.PropertyId.Value)));
-        var rows = await query.ToListAsync(ct);
+        var rows = await ActiveRows(orgId, scope, propertyId).ToListAsync(ct);
 
         var portalNames = await PortalNamesAsync(rows, ct);
         var partnerNames = await PartnerNamesAsync(rows, ct);
@@ -102,6 +101,30 @@ public sealed class MarketplaceCatalogService(
         // The suppliers the host already asked for a job, in the same scope: together with the integrations they are the Active tab.
         var providers = await suppliers.ListAsync(scope, ct);
         return new MarketplaceActive(integrations, providers);
+    }
+
+    public async Task<bool> HasActiveIntegrationAsync(Guid orgId, HostScope scope, CancellationToken ct = default)
+    {
+        MarketplaceReads.EnsureSameOrg(orgId, scope);
+
+        // The rows of the Active tab for this scope, asked only whether one is on or declared: no name, no property and no supplier is read.
+        return await ActiveRows(orgId, scope, null).AnyAsync(a => a.IsDeclared || OnStatuses.Contains(a.Status), ct);
+    }
+
+    /// <summary>
+    /// The org's own rows of the Active tab (not the deactivated ones), the one query of <see cref="GetActiveAsync"/> and
+    /// <see cref="HasActiveIntegrationAsync"/>: the properties inside the caller's scope, and the org-level ones only for a caller who reaches the whole org.
+    /// With a <paramref name="propertyId"/> only that property's rows and the org-level ones.
+    /// </summary>
+    private IQueryable<MarketplaceActivation> ActiveRows(Guid orgId, HostScope scope, Guid? propertyId)
+    {
+        var orgWide = scope.IsOrgWide;
+        var reachable = db.Properties.Where(p => p.OrgId == orgId).InScope(scope).Select(p => p.Id);
+        var query = db.MarketplaceActivations.AsNoTracking()
+            .Where(a => a.OrgId == orgId && a.Status != MarketplaceActivationStatus.Deactivated);
+        return propertyId is { } only
+            ? query.Where(a => a.PropertyId == only || (a.PropertyId == null && orgWide))
+            : query.Where(a => (a.PropertyId == null && orgWide) || (a.PropertyId != null && reachable.Contains(a.PropertyId.Value)));
     }
 
     private IReadOnlyList<MarketplaceCatalogEntry> PortalEntries(

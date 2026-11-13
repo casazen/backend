@@ -2,3 +2,5 @@
 Casazen.Infrastructure/Data/Seeds/comuni-istat.csv -text
 # The centres of the comuni: the SHA-256 in comuni-centroidi.source.json is the one of these exact bytes (a test compares them).
 Casazen.Infrastructure/Data/Seeds/comuni-centroidi.csv -text
+# The official schemas of the wire files (E06/F05/US01/T01): the SHA-256 in docs/runbooks/wire-transfers.md is the one of these exact bytes.
+Casazen.Infrastructure/Payments/Schemas/**/*.xsd -text

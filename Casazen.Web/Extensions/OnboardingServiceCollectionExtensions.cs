@@ -1,4 +1,3 @@
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
@@ -25,18 +24,19 @@ public static class OnboardingServiceCollectionExtensions
         services.AddScoped<IPropertyMappingReader, ChannelMappingReader>();
         services.AddScoped<FlowPrerequisiteReader>();
 
-        // One provider for each flow that exists. A flow nobody has built yet (messages, documents, reports) has the placeholder that
-        // answers «not provided» (order 0): E05, E06 and E07 register their own provider with a higher order and it stops being asked.
+        // One provider for each of the six flows (order 10). The messages, documents and reports flows read the facts of the epics that own them
+        // (E05, E06, E07) through the providers of E10/F01/US04/T01, which replace the placeholders that answered «not provided» (order 0): a flow
+        // is never ready from a flag, only from what is stored. NotProvidedFlowProvider stays as the answer for a flow that has no provider.
         services.AddScoped<IFlowReadinessProvider, ListingsFlowProvider>();
         services.AddScoped<IFlowReadinessProvider, BookingsFlowProvider>();
         services.AddScoped<IFlowReadinessProvider, CheckInComplianceFlowProvider>();
-        services.AddScoped<IFlowReadinessProvider>(_ => new NotProvidedFlowProvider(OnboardingFlow.Messages));
-        services.AddScoped<IFlowReadinessProvider>(_ => new NotProvidedFlowProvider(OnboardingFlow.Documents));
-        services.AddScoped<IFlowReadinessProvider>(_ => new NotProvidedFlowProvider(OnboardingFlow.Reports));
+        services.AddScoped<IFlowReadinessProvider, MessagesFlowProvider>();
+        services.AddScoped<IFlowReadinessProvider, DocumentsFlowProvider>();
+        services.AddScoped<IFlowReadinessProvider, ReportsFlowProvider>();
 
-        // The plan of the eleven parts, the path of UX-10 and the deferral (E10/F01/US01/T03). One evaluator for each part that exists; the parts
-        // nobody has built yet (messages and AI, fiscal documents, partners) have the placeholder that answers «not provided» (order 0): E05, E06
-        // and E09 register their own evaluator with a higher order and it stops being asked.
+        // The plan of the eleven parts, the path of UX-10 and the deferral (E10/F01/US01/T03). One evaluator for each of the eleven parts (order
+        // 10): messages and AI, fiscal documents and partners read the facts of E05, E06 and E09 (E10/F01/US04/T01) in place of the placeholders that
+        // answered «not provided» (order 0). NotProvidedPartEvaluator stays as the answer for a part that has no evaluator.
         services.AddScoped<IOnboardingPlanService, OnboardingPlanService>();
         services.AddScoped<IOnboardingPartEvaluator, OctorateConnectionPartEvaluator>();
         services.AddScoped<IOnboardingPartEvaluator, PropertiesPartEvaluator>();
@@ -46,9 +46,9 @@ public static class OnboardingServiceCollectionExtensions
         services.AddScoped<IOnboardingPartEvaluator, CompliancePartEvaluator>();
         services.AddScoped<IOnboardingPartEvaluator, IdentificationPartEvaluator>();
         services.AddScoped<IOnboardingPartEvaluator, ActivationPartEvaluator>();
-        services.AddScoped<IOnboardingPartEvaluator>(_ => new NotProvidedPartEvaluator(OnboardingPartKey.MessagesAi));
-        services.AddScoped<IOnboardingPartEvaluator>(_ => new NotProvidedPartEvaluator(OnboardingPartKey.FiscalDocuments));
-        services.AddScoped<IOnboardingPartEvaluator>(_ => new NotProvidedPartEvaluator(OnboardingPartKey.Partners));
+        services.AddScoped<IOnboardingPartEvaluator, MessagesAiPartEvaluator>();
+        services.AddScoped<IOnboardingPartEvaluator, FiscalDocumentsPartEvaluator>();
+        services.AddScoped<IOnboardingPartEvaluator, PartnersPartEvaluator>();
 
         // The activation of the flows, the reader of the active flows for the consumers, the final read-only test with one check for each flow
         // that has one (the others are skipped as «not provided»), and the hourly "To do" sync (E10/F01/US01/T04).

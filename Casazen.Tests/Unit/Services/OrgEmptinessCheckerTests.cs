@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Reflection;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
@@ -40,12 +42,16 @@ public class OrgEmptinessCheckerTests
     {
         // A new entry here is a decision, not a convenience: it makes an org with that table filled still "empty". The wizard drafts
         // are one (ADR-024): a half-filled form is not use of the org, and its rows are anonymized but never deleted. So are the notification
-        // settings of a person (NF-65): the channels of each kind of event, its quiet hours and the slots of the email rule.
+        // settings of a person (NF-65): the channels of each kind of event, its quiet hours and the slots of the email rule; the alerts
+        // raised for the person (ADR-025) and a part of the activation plan put off with «Do it later» (E10/F01/US04/T02). Every other table
+        // of the plan (the outbox, the routines, the Octorate tables, the CRM, the fiscal tables...) is NOT here: a row there is real use.
         Assert.Equal(
             [
                 typeof(ConsentRecord),
                 typeof(NotificationEmailSlot),
+                typeof(OnboardingPartState),
                 typeof(OrgSlugAlias),
+                typeof(PopupAlert),
                 typeof(SignupAttribution),
                 typeof(UserNotificationChannelSetting),
                 typeof(UserNotificationPreferences),
@@ -53,6 +59,34 @@ public class OrgEmptinessCheckerTests
             ],
             OrgEmptinessChecker.OnboardingRows.OrderBy(t => t.Name, StringComparer.Ordinal));
         Assert.All(OrgEmptinessChecker.OnboardingRows, t => Assert.True(typeof(ITenantOwned).IsAssignableFrom(t), t.Name));
+
+        // The one row-level exception is the type of "To do" a wizard raises when a person leaves half way: nothing else. The table itself
+        // stays one of the checked ones (a row of any other type of activity makes the org used).
+        Assert.Equal("WizardResume", OrgEmptinessChecker.WizardResumeActivityType);
+        using var db = NewDb();
+        Assert.Contains(typeof(InternalActivity), OrgEmptinessChecker.CheckedTenantTables(db));
+        Assert.DoesNotContain(typeof(InternalActivity), OrgEmptinessChecker.OnboardingRows);
+    }
+
+    /// <summary>
+    /// Privacy tripwire for the two types this task adds to <see cref="OrgEmptinessChecker.OnboardingRows"/>: they hold a user id, codes, references
+    /// and dates, never a free text or a person's data (a name, an address, a note). A new text column on either must make somebody decide again
+    /// whether the table can stay a row that does not make the org "used".
+    /// </summary>
+    [Fact]
+    public void OnboardingRows_TheTypesOfTheAlertsAndOfThePlan_HoldIdsAndCodesOnly()
+    {
+        static string[] TextColumns(Type type) =>
+            [.. type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => p.PropertyType == typeof(string) && !p.IsDefined(typeof(NotMappedAttribute)))
+                .Select(p => p.Name)
+                .Order(StringComparer.Ordinal)];
+
+        // PopupAlert: who is alerted and which kind of entity the alert points to (the client reads the detail from the API of that entity).
+        Assert.Equal(["EntityType", "UserId"], TextColumns(typeof(PopupAlert)));
+
+        // OnboardingPartState: who changed the row last (the Auth0 subject). The part, the status and the dates are not text.
+        Assert.Equal(["UpdatedByUserId"], TextColumns(typeof(OnboardingPartState)));
     }
 
     [Fact]
@@ -238,6 +272,163 @@ public class OrgEmptinessCheckerTests
         Assert.True(result.IsEmpty);
         Assert.Empty(result.Blockers);
     }
+
+    /// <summary>
+    /// Proof (data, E10/F01/US04/T02): what the onboarding itself writes for a person who has done nothing yet does not make the org "used": a saved
+    /// wizard draft, an alert raised for the person, the two kinds of alert settings, a part of the activation plan put off with «Do it later» and the
+    /// "To do" the plan raises for it (<c>WizardResume</c>), open or closed. If any of them counted, the person who only started a wizard or saved a
+    /// preference would be refused with 409 <c>invitation_user_has_organization</c> for good (AM-02): none of these rows is ever deleted.
+    /// </summary>
+    [Fact]
+    public async Task OrgEmptiness_OnboardingRowsOnly_StillEmpty_Test()
+    {
+        await using var db = NewDb();
+        var orgId = await SeedEmptyOrgAsync(db);
+        var now = DateTime.UtcNow;
+        var openPart = Guid.NewGuid();
+        var closedPart = Guid.NewGuid();
+        db.WizardDrafts.Add(new WizardDraft { OrgId = orgId, UserId = OwnerId, WizardType = WizardType.OnboardingActivation, Version = 1 });
+        db.PopupAlerts.Add(new PopupAlert
+        {
+            OrgId = orgId,
+            UserId = OwnerId,
+            AlertType = AlertType.BookingNeedsReview,
+            EntityType = PopupAlert.BookingEntityType,
+            EntityId = Guid.NewGuid(),
+        });
+        db.UserNotificationPreferences.Add(new UserNotificationPreferences { OrgId = orgId, UserId = OwnerId });
+        db.UserNotificationChannelSettings.Add(new UserNotificationChannelSetting
+        {
+            OrgId = orgId,
+            UserId = OwnerId,
+            EventType = NotificationEventType.NewGuestMessage,
+            Channels = NotificationChannels.Email,
+        });
+        db.OnboardingPartStates.Add(new OnboardingPartState
+        {
+            OrgId = orgId,
+            PartKey = OnboardingPartKey.Listings,
+            Status = OnboardingPartStatus.Deferred,
+            DeferredAt = now,
+            RemindAt = now.AddDays(1),
+            ActivityId = openPart,
+            UpdatedByUserId = OwnerId,
+        });
+        db.InternalActivities.Add(Todo(orgId, nameof(ActivityType.WizardResume), openPart, closed: false));
+        db.InternalActivities.Add(Todo(orgId, nameof(ActivityType.WizardResume), closedPart, closed: true));
+        await db.SaveChangesAsync();
+
+        // Every kind of row is really there: the test is not empty of the very things it is about.
+        Assert.Equal(
+            (1, 1, 1, 1, 1, 2),
+            (await db.WizardDrafts.CountAsync(),
+                await db.PopupAlerts.CountAsync(),
+                await db.UserNotificationPreferences.CountAsync(),
+                await db.UserNotificationChannelSettings.CountAsync(),
+                await db.OnboardingPartStates.CountAsync(),
+                await db.InternalActivities.CountAsync()));
+
+        var result = await new OrgEmptinessChecker(db).CheckAsync(orgId, OwnerId);
+
+        Assert.True(result.IsEmpty);
+        Assert.Empty(result.Blockers);
+    }
+
+    /// <summary>
+    /// Proof (permission, data, E10/F01/US04/T02): the check keeps failing closed. A "To do" of any type but <c>WizardResume</c> (the staff work, with
+    /// its plain-text types, and every other kind of "To do", open or closed, even a different spelling of the type) makes the org used, and it does so
+    /// next to the onboarding rows too, which add no blocker of their own: a person with real data is never merged into another organization.
+    /// </summary>
+    [Theory]
+    [InlineData("Cleaning", false, false)]
+    [InlineData("Maintenance", false, true)]
+    [InlineData("CheckIn", false, false)]
+    [InlineData(nameof(ActivityType.MessageToApprove), true, false)]
+    [InlineData(nameof(ActivityType.FiscalDocument), true, true)]
+    [InlineData(nameof(ActivityType.IntegrationError), true, false)]
+    [InlineData(nameof(ActivityType.ReconnectChannelManager), true, false)]
+    [InlineData("wizardresume", true, false)]
+    public async Task OrgEmptiness_AnyOtherTenantRow_StillBlocks_Test(string activityType, bool isTodo, bool closed)
+    {
+        await using var db = NewDb();
+        var orgId = await SeedEmptyOrgAsync(db);
+        db.WizardDrafts.Add(new WizardDraft { OrgId = orgId, UserId = OwnerId, WizardType = WizardType.OnboardingActivation, Version = 1 });
+        db.PopupAlerts.Add(new PopupAlert
+        {
+            OrgId = orgId,
+            UserId = OwnerId,
+            AlertType = AlertType.BookingNeedsReview,
+            EntityType = PopupAlert.BookingEntityType,
+            EntityId = Guid.NewGuid(),
+        });
+        db.InternalActivities.Add(Todo(orgId, nameof(ActivityType.WizardResume), Guid.NewGuid(), closed: false));
+        db.InternalActivities.Add(Todo(orgId, activityType, Guid.NewGuid(), closed, isTodo));
+        await db.SaveChangesAsync();
+
+        var result = await new OrgEmptinessChecker(db).CheckAsync(orgId, OwnerId);
+
+        Assert.False(result.IsEmpty);
+        Assert.Equal([$"data:{nameof(InternalActivity)}"], result.Blockers);
+    }
+
+    /// <summary>
+    /// Proof (data, E10/F01/US04/T02): the tables the plan adds besides the onboarding ones are all checked, and a single row in any of them makes the
+    /// org used: the outbox, the routines, the Octorate tables, the fiscal tables, the marketplace, the copy of the messages and the assistant settings.
+    /// </summary>
+    [Fact]
+    public async Task OrgEmptiness_TheOtherTablesOfThePlan_StillBlock_Test()
+    {
+        Type[] tablesOfThePlan =
+        [
+            typeof(OutboxEvent),
+            typeof(Routine),
+            typeof(RoutineExecution),
+            typeof(OctorateConnection),
+            typeof(OctorateListingMapping),
+            typeof(FiscalDocument),
+            typeof(OrgFiscalIssuerProfile),
+            typeof(MarketplaceActivation),
+            typeof(OtaMessageThread),
+            typeof(OtaMessageSyncState),
+            typeof(AssistantSituationSetting),
+            typeof(PropertyFlowActivation),
+            typeof(OnboardingAssistRequest),
+        ];
+
+        List<Type> checkedTables;
+        using (var model = NewDb())
+            checkedTables = [.. OrgEmptinessChecker.CheckedTenantTables(model)];
+        Assert.All(tablesOfThePlan, table => Assert.Contains(table, checkedTables));
+        Assert.All(tablesOfThePlan, table => Assert.DoesNotContain(table, OrgEmptinessChecker.OnboardingRows));
+
+        foreach (var table in tablesOfThePlan)
+        {
+            await using var db = NewDb();
+            var orgId = await SeedEmptyOrgAsync(db);
+            Assert.True(await TryAddRowAsync(db, table, orgId), $"{table.Name} cannot be built from its defaults: give it a row in TryAddRowAsync.");
+
+            var result = await new OrgEmptinessChecker(db).CheckAsync(orgId, OwnerId);
+
+            Assert.False(result.IsEmpty, table.Name);
+            Assert.Contains($"data:{table.Name}", result.Blockers);
+        }
+    }
+
+    /// <summary>A "To do" (with its action) or a row of the staff work (without) of the org, open or closed, of the given type.</summary>
+    private static InternalActivity Todo(Guid orgId, string activityType, Guid entityId, bool closed, bool isTodo = true) => new()
+    {
+        OrgId = orgId,
+        ActivityType = activityType,
+        Action = isTodo ? ActivityAction.ResumeWizard : null,
+        EntityType = isTodo ? "OnboardingPart" : null,
+        EntityId = isTodo ? entityId : null,
+        Urgency = isTodo ? ActivityUrgency.Medium : null,
+        Reason = isTodo ? "deferred" : null,
+        Status = closed ? InternalActivity.StatusCompleted : InternalActivity.StatusPending,
+        CompletedAt = closed ? DateTime.UtcNow : null,
+        ClosedBy = closed ? InternalActivity.ClosedBySystem : null,
+        ScheduledAt = DateTime.UtcNow,
+    };
 
     [Fact]
     public async Task CheckAsync_AnOrgThatDoesNotExist_IsNotEmpty()

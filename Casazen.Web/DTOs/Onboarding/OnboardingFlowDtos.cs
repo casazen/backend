@@ -22,8 +22,9 @@ public sealed class FlowSummaryDto
 
 /// <summary>
 /// A prerequisite of a flow on a property and whether it holds (NF-106). <c>key</c>: <c>connection</c>, <c>mapping</c>,
-/// <c>singleSender</c>, <c>content</c>, <c>cin</c>, <c>taxRate</c>. <c>reason</c>: the stable code of why it does not hold, <c>null</c>
-/// when it does. Codes only: the client translates them.
+/// <c>singleSender</c>, <c>content</c>, <c>cin</c>, <c>taxRate</c>, <c>messageSync</c>, <c>issuer</c>, <c>bookings</c> (the last three since the flows
+/// messages, documents and reports read the facts of their epics, E10/F01/US04/T01; the list only grows). <c>reason</c>: the stable code of why it
+/// does not hold, <c>null</c> when it does. Codes only: the client translates them.
 /// </summary>
 public sealed class FlowPrerequisiteDto
 {
