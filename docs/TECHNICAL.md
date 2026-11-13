@@ -1103,7 +1103,8 @@ ended ownership or a missing one; 403 `owner_portal_permission_missing` for a pe
   leave the request to a person (its «To do»). An owner stay is never a booking: no guest, no price, no message, no invoice, no tourist tax.
 - **Confirmed only when acknowledged.** `state` is `confirmed` only when the change of the block is `Applied` (the property is not on the channel
   manager), `Sent` or `Confirmed`; `approved_syncing` while it is `Queued`/`Sending`; `sync_failed` when `Failed`/`PartiallySent` (a «To do»
-  `OwnerStaySyncFailed` of the agency, urgent, closed when acknowledged). The read derives it from the change itself; the job records each change
+  `OwnerStaySyncFailed` of the agency, urgent, created once for each failure (the stay records when it failed, and a run that finds a refused block with no
+  «To do» since then creates it, so one whose creation failed is not lost; one a person closed by hand is not created again), closed when acknowledged). The read derives it from the change itself; the job records each change
   of state with its line of the activity log.
 - **Only its own block.** A withdrawal (the owner, then the background work) or a cancellation (the agency, at once) removes the block whose id is
   the stay's, with the change that opens the nights (`ReleaseOwnerStayBlockAsync`); the block of an owner stay cannot be deleted by hand
@@ -1140,13 +1141,30 @@ ones the owner gave it, each independent, on the ownerships in force of that own
 
 - **Files.** At most 10 MB (413 `owner_file_too_large`), recognised from their bytes: PDF, JPEG, PNG only (422 `owner_file_type_not_allowed`);
   a PDF with active content (`/JavaScript`, `/JS`, `/Launch`, `/GoToR`, `/GoToE`, embedded files, rich media, XFA, submit/import forms; names read
-  with their `#xx` escapes, also inside the compressed streams, at most 50 MB inflated) is refused (422 `owner_file_active_content`).
+  with their `#xx` escapes, also inside the streams written with `FlateDecode` (zlib), at most 50 MB inflated) is refused (422 `owner_file_active_content`).
+  **What the scan cannot read it refuses, with the same code**: an encrypted PDF (`/Encrypt`) and a stream written with `ASCIIHexDecode`, `ASCII85Decode`,
+  `LZWDecode`, `RunLengthDecode` or `Crypt` (also by their short names) would hide the names above; the filters of images (`DCTDecode`, `CCITTFaxDecode`,
+  `JBIG2Decode`, `JPXDecode`) pass. A stream is inflated from where it starts (no search for `endstream`, at most 5,000 streams). It is a strict content check,
+  not an antivirus: it also refuses, rarely, a legitimate PDF whose binary data happens to hold one of these names.
   `OwnerFileContentScanner` (engine `casazen-content-rules-1`, recorded on every stored file) is the scan: **there is no antivirus engine in the
   stack**; an engine is another `IOwnerFileScanner`. Only clean files are stored, in the private bucket, under `owner-documents/{org}/{document}/{version}.ext`
   and `owner-messages/{org}/{conversation}/{message}.ext`; a save that fails removes the file again.
+  **The name of a download** is the name sent made safe, with the extension the scan recognised and no other: only the last part of a path, the extension sent
+  and every other dot dropped («fattura.pdf.exe» is offered as «fattura_pdf.pdf»), control and direction characters dropped, anything that is not a letter, a
+  digit, a space or `- _ ( ) ,` becomes `_`; the controller makes the stored name safe again at the download (`Content-Disposition: attachment`, `nosniff`).
+- **Personal data at rest.** The words of the inbox (`OwnerMessages.Body` and `AttachmentFileName`, `OwnerConversations.Subject`) and the address and name of a
+  delegated contact (`OwnerPortalContacts.Email`, `FirstName`, `LastName`) are Data Protection payloads (`EncryptedColumns`, purposes
+  `Casazen.OwnerPortal.Message` and `Casazen.OwnerPortal.Contact`, columns without length), never searched and never logged. A contact is found, and kept
+  unique for its owner profile, by `OwnerPortalContacts.EmailHash`, an HMAC-SHA256 of the lowercase address keyed by `OwnerPortal__ContactIndexKey`
+  (`IOwnerContactIndex`; required at startup outside Development/Testing with `Features__AgencyTier` on; it must never change once contacts exist).
+- **Rate limits** (per signed-in person, `docs/runbooks/proxy-ip.md`): `OwnerPortalRead` 120/min on every endpoint of the five controllers, tighter
+  `OwnerPortalInvite` (10 per 10 minutes), `OwnerPortalWrite` (30 per 10 minutes: conversations, messages, the documents the agency shares) and
+  `OwnerPortalDownload` (60 per 10 minutes). An owner makes at most 20 invitations a day, the withdrawn ones counted (429 `owner_contact_daily_limit_reached`).
 - **Expiry alerts.** The recurring `owner-portal-operations` raises a «To do» `OwnerDocumentExpiring` (action `RenewOwnerDocument`, entity
   `OwnerDocumentVersion`) once per version in force that lapses within 30 days (urgent when lapsed), and closes it when a new version is in force
-  beyond the window or the document is withdrawn.
+  beyond the window, the document is withdrawn or its property is deleted. It reads the versions in force that lapse, soonest first, 200 at a time (every
+  one, however many); a document whose property is deleted is skipped; a document that fails is logged and the run goes on and ends in error. The run
+  does the alerts and the owner stays whatever the other did (a failure of one never holds the other), and ends in error afterwards if either failed.
 - **Notifications** (AC-NF111-5). The agency writes: an e-mail (`owner-inbox-message`) to the owners of the owner profile and its active contacts
   with `inbox.use`, unless they opted out; an owner writes: one e-mail (`owner-inbox-message-to-agency`) to the contact address of the org. Both say
   only that there is a message and link to the conversation (`/portale-proprietari/messaggi/{id}`, `/app/owners/messages/{id}`): **never its words,
