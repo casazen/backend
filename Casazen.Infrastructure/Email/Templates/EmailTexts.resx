@@ -2658,4 +2658,49 @@
   <data name="TodoReason_BookingSyncConflict" xml:space="preserve">
     <value>La prenotazione è stata modificata nel tuo channel manager: scegli quale versione tenere</value>
   </data>
+  <data name="OwnerContactInvitation_Subject" xml:space="preserve">
+    <value>Invito al portale proprietari di {0}</value>
+  </data>
+  <data name="OwnerContactInvitation_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="OwnerContactInvitation_Body" xml:space="preserve">
+    <value>{0} ti ha invitato a seguire con il tuo account gli immobili che &lt;strong&gt;{1}&lt;/strong&gt; gestisce per suo conto su CasaZen. Potrai fare solo quello che ti ha permesso.</value>
+  </data>
+  <data name="OwnerContactInvitation_Cta" xml:space="preserve">
+    <value>Accetta l'invito</value>
+  </data>
+  <data name="OwnerContactInvitation_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="OwnerContactInvitation_Expires" xml:space="preserve">
+    <value>L'invito scade il &lt;strong&gt;{0}&lt;/strong&gt; (ora italiana).</value>
+  </data>
+  <data name="OwnerInboxMessage_Subject" xml:space="preserve">
+    <value>Nuovo messaggio da {0}</value>
+  </data>
+  <data name="OwnerInboxMessage_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ti ha scritto nel portale proprietari di CasaZen. Per leggere il messaggio apri il portale.</value>
+  </data>
+  <data name="OwnerInboxMessage_Cta" xml:space="preserve">
+    <value>Leggi il messaggio</value>
+  </data>
+  <data name="OwnerInboxMessage_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="OwnerInboxMessage_Preferences" xml:space="preserve">
+    <value>Puoi smettere di ricevere questi avvisi dalle preferenze dei messaggi nel portale.</value>
+  </data>
+  <data name="OwnerInboxToAgency_Subject" xml:space="preserve">
+    <value>Nuovo messaggio da un proprietario</value>
+  </data>
+  <data name="OwnerInboxToAgency_Body" xml:space="preserve">
+    <value>Un proprietario ti ha scritto nei messaggi dei proprietari di CasaZen. Per leggerlo apri CasaZen.</value>
+  </data>
+  <data name="OwnerInboxToAgency_Cta" xml:space="preserve">
+    <value>Apri il messaggio</value>
+  </data>
+  <data name="OwnerInboxToAgency_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
 </root>

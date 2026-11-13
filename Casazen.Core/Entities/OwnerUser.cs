@@ -41,4 +41,10 @@ public class OwnerUser
 
     /// <summary>When this owner last logged in to the owner portal (UTC). Null if never logged in.</summary>
     public DateTime? LastLoginAt { get; set; }
+
+    /// <summary>
+    /// The person asked not to get an e-mail when the agency writes in the owner inbox (E07/F07/US01/T02, the notification preference of the inbox). Off by
+    /// default: the e-mail says only that there is a message and links to the portal.
+    /// </summary>
+    public bool InboxEmailOptOut { get; set; }
 }

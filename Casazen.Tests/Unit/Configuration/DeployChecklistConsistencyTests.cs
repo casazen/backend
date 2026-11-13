@@ -65,6 +65,7 @@ public class DeployChecklistConsistencyTests
         ["Biometrics"] = typeof(BiometricModelOptions),
         ["MrzOcr"] = typeof(MrzOcrOptions),
         ["Crm"] = typeof(CrmOptions),
+        ["OwnerPortal"] = typeof(OwnerPortalOptions),
     };
 
     /// <summary>Roots whose keys are composed at runtime (no literal in the code, not in <c>appsettings.json</c>), with why.</summary>

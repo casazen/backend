@@ -30,8 +30,10 @@ public sealed class OwnerPortalService(AppDbContext db, TimeProvider timeProvide
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
 
-        // Get active property ownerships for this owner (ADR-011-R2, ADR-011-R8)
-        var propertyIds = await db.Set<PropertyOwnership>()
+        // Get active property ownerships for this owner (ADR-011-R2, ADR-011-R8). The caller of the portal has no org of its own: the tenant filter of its
+        // request is fail-closed and would match nothing, so every read here ignores it and names the owner, the org and the property explicitly (the soft
+        // delete filter of the properties stays).
+        var propertyIds = await Ownerships()
             .Where(po => po.OwnerUserId == ownerUserId
                       && po.OwnershipStart <= now
                       && (po.OwnershipEnd == null || po.OwnershipEnd >= now))
@@ -41,21 +43,23 @@ public sealed class OwnerPortalService(AppDbContext db, TimeProvider timeProvide
         if (!propertyIds.Any())
             return [];
 
-        // Get properties with their bookings
+        // Get properties with their bookings. The subquery is built outside the projection: an expression tree cannot hold the list of the filters to ignore.
+        var bookings = db.Set<Booking>().IgnoreQueryFilters([AppDbContext.TenantQueryFilter]);
         var properties = await db.Set<Property>()
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(p => propertyIds.Contains(p.Id))
             .Select(p => new OwnerPortalPropertyInfo
             {
                 PropertyId = p.Id,
                 PropertyName = p.Name,
                 Address = p.Address,
-                TotalBookings = db.Set<Booking>()
-                    .Count(b => b.PropertyId == p.Id && b.Status != BookingStatus.Cancelled),
-                TotalRevenue = db.Set<Booking>()
-                    .Where(b => b.PropertyId == p.Id && b.Status != BookingStatus.Cancelled)
+                TotalBookings = bookings
+                    .Count(b => b.OrgId == p.OrgId && b.PropertyId == p.Id && b.Status != BookingStatus.Cancelled),
+                TotalRevenue = bookings
+                    .Where(b => b.OrgId == p.OrgId && b.PropertyId == p.Id && b.Status != BookingStatus.Cancelled)
                     .Sum(b => (decimal?)b.TotalPrice) ?? 0m,
-                RecentBookings = db.Set<Booking>()
-                    .Where(b => b.PropertyId == p.Id && b.Status != BookingStatus.Cancelled)
+                RecentBookings = bookings
+                    .Where(b => b.OrgId == p.OrgId && b.PropertyId == p.Id && b.Status != BookingStatus.Cancelled)
                     .OrderByDescending(b => b.CheckInDate)
                     .Take(10)
                     .Select(b => new OwnerPortalBookingInfo
@@ -142,7 +146,7 @@ public sealed class OwnerPortalService(AppDbContext db, TimeProvider timeProvide
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
 
-        return await db.Set<PropertyOwnership>()
+        return await Ownerships()
             .AnyAsync(po => po.OwnerUserId == ownerUserId
                          && po.PropertyId == propertyId
                          && po.OwnershipStart <= now
@@ -279,7 +283,7 @@ public sealed class OwnerPortalService(AppDbContext db, TimeProvider timeProvide
         CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        var ownerships = await db.Set<PropertyOwnership>()
+        var ownerships = await Ownerships()
             .Where(po => po.OwnerUserId == ownerUserId
                          && po.OwnershipStart <= now
                          && (po.OwnershipEnd == null || po.OwnershipEnd >= now))
@@ -305,6 +309,13 @@ public sealed class OwnerPortalService(AppDbContext db, TimeProvider timeProvide
 
         return owned;
     }
+
+    /// <summary>
+    /// The ownerships of every org: the caller of the owner portal has no org of its own (the tenant filter of its request is fail-closed and would answer
+    /// nothing), so what an owner reaches is named by its own <c>OwnerUserId</c> in each predicate.
+    /// </summary>
+    private IQueryable<PropertyOwnership> Ownerships() =>
+        db.Set<PropertyOwnership>().IgnoreQueryFilters([AppDbContext.TenantQueryFilter]);
 
     private IHostDashboardService HostDashboard() =>
         dashboard ?? throw new InvalidOperationException("The owner portal numbers need the Home's service, which the dependency injection provides.");
