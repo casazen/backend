@@ -805,7 +805,8 @@ not reach, 403 without an org); `balances-to-collect` takes no period.
   reservation of the channel manager) owes `Booking.TotalPrice` minus the payments collected for it (`PaymentCashRules.IsCollected`, `CollectedAmount`; `basis`
   `Payments`); a stay whose money is the channel manager's (`HoldsChannelManagerMoney`, the one definition of `BookingAmountSourceRules`: a booking of a channel with
   its reservation on Octorate, or a reservation of the booking engine of the agency that the import made) owes the stored `OtaBalanceAmount` (`basis`
-  `ChannelManager`), and **nothing when the channel collects it (`OtaCompanyCollect` true) or when no balance was reported**: a balance is never worked out from the
+  `ChannelManager`), and **only when the host collects it (`OtaCompanyCollect` false): nothing when the channel collects it (true), when Octorate does not say who
+  collects (null: the reading of the payment ledger, `BookingPaymentLedgerService`) or when no balance was reported**: a balance is never worked out from the
   price (ADR-033-R2). A stay of a channel without a reservation (an iCal stay) is the channel's own record and is never a row; a Direct booking CasaZen sent to
   Octorate (it has a row of the mirror) is CasaZen's. A row's `total` and `collected` are null for a channel reservation that gave no price or no paid amount (not
   available). `overdue` is a check-out day before today in Europe/Rome; rows by check-in, then code. `totals` has one entry for each currency of the rows

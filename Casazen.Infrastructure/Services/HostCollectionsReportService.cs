@@ -117,11 +117,13 @@ public sealed class HostCollectionsReportService(
                 null))
             .ToListAsync(cancellationToken);
 
-        // The channel manager's money: the balance of the reservation, stored as read. Nothing when the channel collects it (the host has nothing to ask the
-        // guest for) and nothing when no balance was reported: a balance is never worked out from the price (ADR-033-R2).
+        // The channel manager's money: the balance of the reservation, stored as read, and only when the host is the one who collects it (companyCollect false). Nothing
+        // when the channel collects it (true: the host has nothing to ask the guest for) and nothing when Octorate does not say who collects (null): the reading of the
+        // payment ledger (BookingPaymentLedgerService: only an explicit "host" is the host), so a booking is never the host's here and the channel's there. Nothing when
+        // no balance was reported either: a balance is never worked out from the price (ADR-033-R2).
         var ofChannel = await holding
             .Where(HostCollectionsRules.HoldsChannelManagerMoney(db.OctorateBookingSyncs))
-            .Where(b => b.OtaBalanceAmount > 0m && b.OtaCompanyCollect != true)
+            .Where(b => b.OtaBalanceAmount > 0m && b.OtaCompanyCollect == false)
             .Select(b => new BalanceRow(
                 b.Id,
                 b.BookingCode,

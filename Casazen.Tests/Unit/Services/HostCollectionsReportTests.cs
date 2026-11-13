@@ -449,7 +449,9 @@ public class HostCollectionsReportTests
 
             // The channel manager's money: the balance of the reservation, when the host collects it.
             Channel("ota-balance", BookingSource.BookingCom, Day(10, 20), "RES-1", 200m, 120m, 80m, false);
-            Channel("ota-balance-unsaid", BookingSource.Expedia, Day(10, 22), "RES-9", 300m, 45m, null, null);
+            Channel("ota-balance-no-paid", BookingSource.Expedia, Day(10, 22), "RES-9", 300m, 45m, null, false);
+            // Octorate does not say who collects (null): the payment ledger reads it as the channel's, so it is no balance of the host's either (the same fact, one reading).
+            Channel("ota-collector-unsaid", BookingSource.Expedia, Day(10, 23), "RES-10", 300m, 45m, null, null);
             Channel("ota-channel-collects", BookingSource.Airbnb, Day(10, 21), "RES-2", 400m, 90m, 310m, true);
             Channel("ota-unreported", BookingSource.Expedia, Day(10, 23), "RES-3", 400m, null, null, false);
             Channel("ota-nothing-left", BookingSource.Vrbo, Day(10, 24), "RES-4", 400m, 0m, 400m, false);
@@ -483,7 +485,7 @@ public class HostCollectionsReportTests
         Assert.Equal(new DateOnly(2026, 10, 9), report.AsOf);
         var rows = report.Rows.ToDictionary(r => r.BookingId);
         Assert.Equal(
-            new[] { "overdue", "other-property", "direct", "pushed", "engine-balance", "ota-balance", "ota-balance-unsaid", "request" }.Order(),
+            new[] { "overdue", "other-property", "direct", "pushed", "engine-balance", "ota-balance", "ota-balance-no-paid", "request" }.Order(),
             rows.Keys.Select(id => by.Single(kv => kv.Value.Id == id).Key).Order());
         Assert.Equal(report.Rows.Select(r => r.CheckIn).Order(), report.Rows.Select(r => r.CheckIn));
 
@@ -498,16 +500,42 @@ public class HostCollectionsReportTests
 
         // The channel manager's money: the balance it reported, as stored, and the paid amount as stored (null stays null, never worked out).
         Assert.Equal((200m, 80m, 120m, HostBalanceBasis.ChannelManager), (Row("ota-balance").Total, Row("ota-balance").Collected, Row("ota-balance").ToCollect, Row("ota-balance").Basis));
-        Assert.Equal((300m, (decimal?)null, 45m), (Row("ota-balance-unsaid").Total, Row("ota-balance-unsaid").Collected, Row("ota-balance-unsaid").ToCollect));
+        Assert.Equal((300m, (decimal?)null, 45m), (Row("ota-balance-no-paid").Total, Row("ota-balance-no-paid").Collected, Row("ota-balance-no-paid").ToCollect));
         Assert.Equal((300m, 230m, 70m, HostBalanceBasis.ChannelManager), (Row("engine-balance").Total, Row("engine-balance").Collected, Row("engine-balance").ToCollect, Row("engine-balance").Basis));
 
-        // Never a row: paid in full, a channel that collects, a balance never reported (or zero), an iCal stay, a cancelled stay, an expired hold, another org.
-        foreach (var key in new[] { "paid", "ota-channel-collects", "ota-unreported", "ota-nothing-left", "ota-ical", "engine-unreported", "cancelled", "expired-hold" })
+        // Never a row: paid in full, a channel that collects (or does not say who collects), a balance never reported (or zero), an iCal stay, a cancelled stay, an expired hold, another org.
+        foreach (var key in new[] { "paid", "ota-channel-collects", "ota-collector-unsaid", "ota-unreported", "ota-nothing-left", "ota-ical", "engine-unreported", "cancelled", "expired-hold" })
             Assert.DoesNotContain(by[key].Id, rows.Keys);
 
         // What is to collect, in the one currency of the properties.
         var total = Assert.Single(report.Totals);
         Assert.Equal(("EUR", 240m + 300m + 250m + 500m + 100m + 120m + 45m + 70m, 8), (total.Currency, total.Amount, total.StayCount));
+    }
+
+    [Fact]
+    public async Task BalancesToCollect_AChannelBookingThatDoesNotSayWhoCollects_IsNotTheHostsBalance_LikeThePaymentLedger()
+    {
+        Dictionary<string, Booking> by = new();
+        var world = await SeedAsync(w =>
+        {
+            // The same booking of Expedia (300, 45 still to pay) for each answer Octorate can give about who collects.
+            foreach (var (key, companyCollect) in new (string, bool?)[] { ("unsaid", null), ("channel", true), ("host", false) })
+            {
+                var booking = Add(w, w.Trullo, BookingStatus.Confirmed, BookingSource.Expedia, Day(10, 22), Day(10, 25), 300m);
+                booking.OctorateReservationId = $"RES-{key}";
+                booking.OtaBalanceAmount = 45m;
+                booking.OtaCompanyCollect = companyCollect;
+                by[key] = booking;
+            }
+        });
+
+        var report = await Reports(world.Db).GetBalancesToCollectAsync(new HostScope(world.OrgId), new HostBalancesQuery());
+
+        // Only the one the host collects is the host's balance: the channel's, and the one that does not say (the payment ledger's reading), are not.
+        var row = Assert.Single(report.Rows);
+        Assert.Equal(by["host"].Id, row.BookingId);
+        var total = Assert.Single(report.Totals);
+        Assert.Equal(("EUR", 45m, 1), (total.Currency, total.Amount, total.StayCount));
     }
 
     [Fact]

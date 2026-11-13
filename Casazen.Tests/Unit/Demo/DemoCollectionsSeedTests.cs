@@ -168,7 +168,7 @@ public class DemoCollectionsSeedTests
 
         var channelMoney = booking.Ota is not null && (FiscalCopy.IsOtaBookingSource(booking.Source) || (booking.Source == BookingSource.Direct && booking.Ota.Sync is null));
         if (channelMoney)
-            return booking.Ota!.Balance is > 0m && booking.Ota.CompanyCollect != true ? booking.Ota.Balance : null;
+            return booking.Ota!.Balance is > 0m && booking.Ota.CompanyCollect == false ? booking.Ota.Balance : null;
 
         if (FiscalCopy.IsOtaBookingSource(booking.Source))
             return null;

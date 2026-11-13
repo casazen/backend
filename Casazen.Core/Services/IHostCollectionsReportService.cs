@@ -24,7 +24,7 @@ public interface IHostCollectionsReportService
     /// and not holding their dates through an expired checkout hold
     /// (<see cref="CheckoutHolds.OccupiesDates"/>), whose amount due is above what was collected. A stay whose money is CasaZen's (<see cref="HostCollectionsRules.HoldsCasaZenMoney"/>)
     /// owes its total minus the payments collected for it; one whose money is the channel manager's, the balance stored from the reservation, and nothing when the
-    /// channel collects it or the balance was never reported. No guest data in any row. Sorted by check-in.
+    /// channel collects it, when it does not say who collects (the reading of the payment ledger) or when the balance was never reported. No guest data in any row. Sorted by check-in.
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.NotFoundException">The property of the query is not one the scope reaches.</exception>
     Task<HostBalancesToCollect> GetBalancesToCollectAsync(HostScope scope, HostBalancesQuery query, CancellationToken cancellationToken = default);
