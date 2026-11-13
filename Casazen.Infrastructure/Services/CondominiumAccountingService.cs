@@ -130,7 +130,7 @@ public sealed partial class CondominiumAccountingService(
             throw new DomainRuleException(CondominiumErrorCodes.StatementInvalid, "CondominiumStatementInvalid");
 
         if (!Enum.IsDefined(command.Cadence)
-            || command.Cadence == CondominiumInstallmentCadence.Custom && (command.CustomDueDates is not { Count: > 0 and <= 366 }
+            || command.Cadence == CondominiumInstallmentCadence.Custom && command.CustomInstallments is null && (command.CustomDueDates is not { Count: > 0 and <= 366 }
                 || command.CustomDueDates.Distinct().Count() != command.CustomDueDates.Count
                 || command.CustomDueDates.Any(d => d < period.StartDate || d > period.EndDate)))
             throw new DomainRuleException(CondominiumErrorCodes.StatementInvalid, "CondominiumStatementInvalid");
@@ -140,6 +140,20 @@ public sealed partial class CondominiumAccountingService(
             if (line.Amount <= 0m || !CondominiumMoney.InRange(line.Amount))
                 throw new DomainRuleException(CondominiumErrorCodes.StatementInvalid, "CondominiumStatementInvalid");
             extraordinary.Add((line.Amount, string.IsNullOrWhiteSpace(line.Description) ? "Spesa straordinaria" : line.Description.Trim()));
+        }
+
+        if (command.CustomInstallments is not null)
+        {
+            try
+            {
+                if (command.Cadence != CondominiumInstallmentCadence.Custom)
+                    throw new ArgumentException("Custom installments require a custom cadence.");
+                OwnerInstallmentPlan.GenerateCustom(period.StartDate, command.OrdinaryAmount, extraordinary.Sum(line => line.Amount), 0m, command.CustomInstallments);
+            }
+            catch (ArgumentException)
+            {
+                throw new DomainRuleException(CondominiumErrorCodes.StatementInvalid, "CondominiumStatementInvalid");
+            }
         }
 
         var unitId = await FirstUnitIdAsync(condominium.Id, cancellationToken);
@@ -164,8 +178,9 @@ public sealed partial class CondominiumAccountingService(
                 ? prior.Amount
                 : 0m;
             var offset = existing.Count == 0 ? 0 : existing.Max(installment => installment.SlotIndex) + 1;
-            var generated = OwnerInstallmentPlan.Generate(
-                period.StartDate, command.Cadence, command.OrdinaryAmount, extraordinary.Sum(line => line.Amount), priorOnFirst, command.CustomDueDates);
+            var generated = command.CustomInstallments is not null
+                ? OwnerInstallmentPlan.GenerateCustom(period.StartDate, command.OrdinaryAmount, extraordinary.Sum(line => line.Amount), priorOnFirst, command.CustomInstallments)
+                : OwnerInstallmentPlan.Generate(period.StartDate, command.Cadence, command.OrdinaryAmount, extraordinary.Sum(line => line.Amount), priorOnFirst, command.CustomDueDates);
             var now = UtcNow;
             foreach (var row in generated)
             {

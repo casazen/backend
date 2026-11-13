@@ -118,6 +118,42 @@ public class AdministratorStatementReaderTests
         Assert.Equal(2, await db.CondominiumStatements.CountAsync(statement => statement.Kind == CondominiumStatementKind.Budget));
     }
 
+    [Fact]
+    public async Task InstallmentPdfIsOnlyAProposal_AndCustomAmountsPersistExactly()
+    {
+        await using var db = NewDb();
+        var scope = await SeedAsync(db);
+        var books = new CondominiumAccountingService(db, new MigraDocPdfDocumentRenderer(), NullLogger<CondominiumAccountingService>.Instance);
+        var reader = new AdministratorStatementReaderService(db, books, NullLogger<AdministratorStatementReaderService>.Instance);
+        var condo = await books.CreateCondominiumAsync(scope, new CreateCondominiumCommand("Casa A", null, null, null, 1), "user");
+        var pdf = new MigraDocPdfDocumentRenderer().Render(PdfDocumentContent.FromPlainText("Piano rate", "Rata 1 31/01/2027 800,00\nRata 2 30/06/2027 1.000,00"));
+        var proposal = await reader.ReadInstallmentsAsync(scope, condo.Id, new StatementFileUpload("rate.pdf", pdf), "user");
+        Assert.Equal(2, proposal.Installments.Count);
+        Assert.Empty(await db.CondominiumStatements.ToListAsync());
+        var period = await books.CreatePeriodAsync(scope, condo.Id, new CreateCondominiumPeriodCommand("2027"), "user");
+        await books.ConfirmBudgetAsync(scope, condo.Id, period.Id,
+            new ConfirmBudgetCommand(1800m, null, null, CondominiumInstallmentCadence.Custom,
+                OrdinaryNeedsReview: true, CustomInstallments: proposal.Installments), "user");
+        var report = await books.GetReportAsync(scope, condo.Id, period.Id);
+        Assert.Equal(new[] { 800m, 1000m }, report.Installments.Select(row => row.Ordinary));
+        var line = await db.CondominiumExpenseLines.SingleAsync();
+        Assert.Equal(ExpenseReviewStatus.Pending, line.ReviewStatus);
+    }
+
+    [Fact]
+    public async Task InstallmentPdfCannotReadAnotherOrganizationsBook()
+    {
+        await using var db = NewDb();
+        var scope = await SeedAsync(db);
+        var books = new CondominiumAccountingService(db, new MigraDocPdfDocumentRenderer(), NullLogger<CondominiumAccountingService>.Instance);
+        var reader = new AdministratorStatementReaderService(db, books, NullLogger<AdministratorStatementReaderService>.Instance);
+        var condo = await books.CreateCondominiumAsync(scope, new CreateCondominiumCommand("Casa A", null, null, null, 1), "user");
+        var pdf = new MigraDocPdfDocumentRenderer().Render(PdfDocumentContent.FromPlainText("Piano rate", "Rata 1 31/01/2027 800,00"));
+        await Assert.ThrowsAsync<Casazen.Core.Exceptions.NotFoundException>(() => reader.ReadInstallmentsAsync(
+            new HostScope(Guid.NewGuid()), condo.Id, new StatementFileUpload("rate.pdf", pdf), "user"));
+        Assert.Empty(await db.CondominiumStatements.ToListAsync());
+    }
+
     private static AppDbContext NewDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 
