@@ -57,8 +57,14 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(FiscalController), CasazenPolicies.PropertyRead)]
     // AM-03: the fiscal area is about money, so it needs payment.read too (a collaborator reads properties, not payments).
     [InlineData(typeof(FiscalController), CasazenPolicies.PaymentRead)]
+    // AM-03, E06/F03/US03/T01: the list of the fiscal documents and its CSV and Excel files are money and the names of the customers, so payment.read too.
+    [InlineData(typeof(FiscalDocumentsController), CasazenPolicies.PaymentRead)]
+    [InlineData(typeof(FiscalDocumentExportsController), CasazenPolicies.PaymentRead)]
     // SR-10: the reports are money in aggregate, so payment.read too (SR-D7).
     [InlineData(typeof(ReportsController), CasazenPolicies.PaymentRead)]
+    // NF-97, NF-98, E07/F03/US02: the money collected, the balances to collect and what each channel costs are money in aggregate too, so payment.read.
+    [InlineData(typeof(CollectionsReportsController), CasazenPolicies.PaymentRead)]
+    [InlineData(typeof(ChannelCostsReportsController), CasazenPolicies.PaymentRead)]
     [InlineData(typeof(LeasesController), CasazenPolicies.LeaseRead)]
     [InlineData(typeof(CanoneConcordatoController), CasazenPolicies.LeaseRead)]
     [InlineData(typeof(LongRentServiceRequestsController), CasazenPolicies.LongRentPropertyRead)]

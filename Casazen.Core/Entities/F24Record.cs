@@ -36,12 +36,11 @@ public class F24Record : ITenantOwned
     public decimal TotalAmount { get; set; }
 
     /// <summary>
-    /// Tax code for withholding on short-term rental income (ADR-018-R8).
-    /// Fixed value: "1919" per official AdE F24 form structure.
+    /// The tax code of the F24, as the approved rule of the withholding evidence gives it (E06/F05/US02/T03): never written in the code.
     /// </summary>
     [Required]
     [MaxLength(10)]
-    public string TaxCode { get; set; } = "1919";
+    public string TaxCode { get; set; } = string.Empty;
 
     /// <summary>
     /// Payment deadline (16th of the month following ReferenceMonth, ADR-018-R8).
@@ -57,4 +56,27 @@ public class F24Record : ITenantOwned
 
     /// <summary>When this F24 record was created (UTC).</summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Where the F24 is (E06/F05/US02/T03): generated is never filed; submitted only through a controlled manual handoff.</summary>
+    public Enums.TaxFilingState FilingState { get; set; } = Enums.TaxFilingState.Generated;
+
+    /// <summary>The rule versions of the evidence it was built from (<c>{ruleCode}@{version}</c>, comma separated).</summary>
+    [MaxLength(200)]
+    public string? RuleVersion { get; set; }
+
+    /// <summary>The reference of the controlled manual handoff.</summary>
+    [MaxLength(200)]
+    public string? HandoffReference { get; set; }
+
+    /// <summary>The receipt once accepted.</summary>
+    [MaxLength(200)]
+    public string? ReceiptReference { get; set; }
+
+    [MaxLength(200)]
+    public string? RejectionReason { get; set; }
+
+    public DateTime? FilingUpdatedAt { get; set; }
+
+    [MaxLength(255)]
+    public string? FilingUpdatedByUserId { get; set; }
 }

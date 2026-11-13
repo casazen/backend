@@ -17,6 +17,13 @@ public class EncryptedColumnsTests
         Assert.Equal(
             new[]
             {
+                // ADR-032-R3: the text of an item of the approval queue (a draft of a message to a guest, a mailing) and the host's edit of it: the same purpose as the
+                // words of the conversations (E05/F04/US01/T01).
+                "ApprovalQueueItem.ContentText:Casazen.Message.Content",
+                "ApprovalQueueItem.EditedContentText:Casazen.Message.Content",
+                // NF-66, PO-09: the free text a host writes for the assistant: what a lesson proposes to learn and the response template of a situation (E05/F05/US01/T01).
+                "AssistantLesson.ProposedText:Casazen.Assistant.Content",
+                "AssistantSituationSetting.ResponseTemplate:Casazen.Assistant.Content",
                 // NF-81: who an invoice of a booking is made out to (name, fiscal code, VAT number, address, PEC) and, with it, the hash of what was
                 // last written to Octorate (E06/F02/US01/T04).
                 "BookingInvoiceData.AddressCivic:Casazen.BookingInvoiceData",
@@ -30,6 +37,19 @@ public class EncryptedColumnsTests
                 "BookingInvoiceData.VatNumber:Casazen.BookingInvoiceData",
                 "DocumentImage.BackImageUrl:Casazen.DocumentImage",
                 "DocumentImage.FrontImageUrl:Casazen.DocumentImage",
+                // NF-83: the recipient snapshot of a fiscal document and its FatturaPA XML (E06/F01/US02/T01).
+                "FiscalDocument.FatturaPaXml:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientAddressCivic:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientAddressStreet:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientCity:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientCountryCode:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientFiscalCode:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientName:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientPec:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientPostalCode:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientProvince:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientSdiCode:Casazen.FiscalDocument",
+                "FiscalDocument.RecipientVatNumber:Casazen.FiscalDocument",
                 "Guest.DocumentIssuingCountry:Casazen.Guest.Document",
                 "Guest.DocumentNumber:Casazen.Guest.Document",
                 // NF-89: the value (e-mail address or phone number) and the display name of a CRM contact.
@@ -47,12 +67,21 @@ public class EncryptedColumnsTests
                 "OtaIntegration.ApiSecret:Casazen.OtaIntegration.Secrets",
                 // ADR-032-R3: the words of the conversations of the guests with the channels, copied from the channel manager.
                 "OtaMessage.Text:Casazen.Message.Content",
+                // ADR-012, NF-109: the identifiers, the address and the bank account of the fiscal profile of an owner (E06/F05/US02/T01).
+                "OwnerFiscalProfile.BankAccountReference:Casazen.OwnerFiscalProfile",
+                "OwnerFiscalProfile.FiscalCode:Casazen.OwnerFiscalProfile",
+                "OwnerFiscalProfile.ForeignTaxId:Casazen.OwnerFiscalProfile",
+                "OwnerFiscalProfile.LegalAddress:Casazen.OwnerFiscalProfile",
+                "OwnerFiscalProfile.LegalName:Casazen.OwnerFiscalProfile",
+                "OwnerFiscalProfile.VatNumber:Casazen.OwnerFiscalProfile",
                 "Party.ContactPhone:Casazen.LeaseParty",
                 "Party.Residence:Casazen.LeaseParty",
                 "PlatformAiSettings.ApiKey:Casazen.PlatformAiSettings",
                 // NF-13: encrypted property access codes (gate, lockbox, smart lock PIN).
                 "PropertyAccessCode.EncryptedCode:Casazen.PropertyAccessCode",
                 "PropertyICalFeed.ImportUrl:Casazen.PropertyICalFeed.ImportUrl",
+                // NF-66, PO-09: an entry of the knowledge base of the assistant (a fact, a rule, the answer of a FAQ).
+                "PropertyKnowledgeEntry.Text:Casazen.Assistant.Content",
                 // ADR-012: property owner financial data (IBAN and fiscal code), and the BIC and the VAT number of the owner profile (E10/F02/US02/T01).
                 "PropertyOwner.Bic:Casazen.PropertyOwner.Financial",
                 "PropertyOwner.FiscalCode:Casazen.PropertyOwner.Financial",

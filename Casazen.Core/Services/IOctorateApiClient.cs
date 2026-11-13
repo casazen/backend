@@ -301,6 +301,19 @@ public interface IOctorateApiClient
     Task<string> TranslateChatMessageAsync(string accommodationId, string threadId, string messageId, string language, CancellationToken ct);
 
     /// <summary>
+    /// Switches the assistant of Octorate itself on or off for ONE chat thread (<c>PATCH /rest/v1/chat/{property}/threads/{thread}/aiAssistant</c>,
+    /// E05/F05/US03/T03, OCT-11, D4). CasaZen is the inbox of the conversations of the channels, and a guest must never get two answers, so the guard
+    /// that keeps it off (<c>OctorateAiAssistantGuard</c>) calls this with <c>enabled = false</c> on every thread CasaZen manages; what Octorate holds is
+    /// read back at the next pass (<see cref="OctorateChatThread.AiDriven"/>). The operation states the value it sets, it does not toggle, so a repeat
+    /// changes nothing and is safe; an answer 304 («not modified») is done. Same typed errors, token and bucket as the other chat calls: a license
+    /// without the <c>chat</c> module is <c>OctorateAuthException</c> with the code <c>chat_not_licensed</c>. <b>Documented, not proven:</b> the sandbox
+    /// has no chat license, so the way the value travels (the query parameter <c>enabled</c>) follows the operations of the same API that set a state
+    /// (<c>?status=</c> of the check-in) and has not been seen answered by Octorate; the first real verification is the first licensed property. The
+    /// account-level message agent of Octorate has no operation in the API at all: it is a setting of the account and this method does not touch it.
+    /// </summary>
+    Task SetThreadAiAssistantAsync(string accommodationId, string threadId, bool enabled, CancellationToken ct);
+
+    /// <summary>
     /// The catalog of portals and tools Octorate offers (<c>GET /rest/v1/meta/portals</c>, E09/F01/US01/T02). A partner-level call: it acts
     /// for the application and carries no property data, so it needs no org in <see cref="IOctorateOrgScope"/>, uses the partner token
     /// (<see cref="IOctorateTokenService.GetPartnerAccessTokenAsync"/>) and takes its call from the rate-limit bucket <c>platform</c>, not an
@@ -480,4 +493,44 @@ public interface IOctorateApiClient
     /// <see cref="OctorateProcessState.Unknown"/>, never a success.
     /// </summary>
     Task<OctorateContentProcess> GetContentProcessAsync(string accommodationId, string processId, CancellationToken ct);
+
+    /// <summary>
+    /// The documents Octorate issued for an accommodation and changed from <paramref name="modifiedAfter"/> (E06/F03/US02/T01, FIS-04):
+    /// <c>GET /rest/v2/invoice/{codice}</c> of the OpenAPI (S24), every page read. <b>Unverified:</b> the sandbox answers an empty <c>data</c> (no invoice
+    /// module, S25), so the member names are the OpenAPI's (<c>type</c>, <c>number</c>, <c>date</c>, <c>paid</c>, <c>fiscalInvoiceGroup</c>, <c>refer</c>)
+    /// and were never seen with content; the import that calls it is behind <c>Features:OctorateDocumentImport</c>. An item without an id is left out.
+    /// </summary>
+    Task<OctorateFiscalDocument[]> GetDocumentsAsync(string accommodationId, DateTime modifiedAfter, CancellationToken ct);
+
+    /// <summary>
+    /// The PDF of a document of an accommodation: <c>GET /rest/v2/invoice/pdf/{acc}/summary/{idDocumentEncrypted}</c>, the only PDF operation the
+    /// OpenAPI documents (S24 notes no download of the PDF or the XML of a fiscal document). An answer that is not a PDF, or larger than 20 MB, is an
+    /// error, never a file. <b>Unverified</b>, behind the same flag.
+    /// </summary>
+    Task<Stream> GetDocumentPdfAsync(string accommodationId, string documentId, CancellationToken ct);
+
+    /// <summary>
+    /// The collections of a reservation (E06/F04/US01/T03, FIS-05): the <c>payments</c> of its single read (<c>GET /rest/v1/reservation/{acc}/{id}</c>) with
+    /// the amount, the day, the mode and who collects (<c>companyCollect</c>, absent on the sandbox OTA samples). A payment without an amount is left out.
+    /// </summary>
+    Task<IReadOnlyList<OctoratePayment>> GetReservationPaymentsAsync(string accommodationId, string reservationId, CancellationToken ct);
+
+    /// <summary>
+    /// Writes the calendar of rooms (<c>POST /rest/v1/calendar/bulk</c>, E08/F05/US02/T01, NF-36, D7): for each element a room, an interval of nights (both days
+    /// included) and the values written to each of them (availability, price, <c>minstay</c>, <c>maxstay</c>, <c>stopSells</c>, <c>closeToArrival</c>,
+    /// <c>closeToDeparture</c>, <c>cutOffDays</c>; a member left out is not touched). The call acts for <see cref="IOctorateOrgScope.OrgId"/>, the rooms named are
+    /// its own. <b>An answer is not a write</b>: 200 with <c>success: true</c> and no process id means Octorate wrote nothing (the sandbox answers so for a room with no
+    /// license), and the result has no process id; the caller never takes it for an acceptance; an answer with process ids <b>and</b> a non-empty <c>warnings</c> is not an
+    /// acceptance either (any warning is a chunk not taken whole): <c>OctorateRequestRejectedException</c>. <c>success: false</c> (no access to the room, no such room) is
+    /// <c>OctorateRequestRejectedException</c>; an answer that cannot be read is <c>OctorateServerException</c>; the rest is the typed error of the client. A call
+    /// counts for one unit of quota for every 15 room-days it covers (decision D7).
+    /// </summary>
+    Task<OctorateCalendarUpdateResult> UpdateCalendarAsync(IReadOnlyList<OctorateCalendarUpdate> updates, CancellationToken ct);
+
+    /// <summary>
+    /// The state of the process Octorate runs for a bulk call (<c>GET /rest/v1/calendar/process/{id}</c>, E08/F05/US02/T02, D7): its status and the dates it has sent,
+    /// each with its status. The endpoint is documented only in the Postman collection: 404 is <c>OctorateNotFoundException</c> and an answer that cannot be read, or
+    /// that reports an error of its own, is <c>OctorateServerException</c>; a caller leaves what it asks about as it was and claims nothing.
+    /// </summary>
+    Task<OctorateCalendarProcess> GetCalendarProcessAsync(string processId, CancellationToken ct);
 }

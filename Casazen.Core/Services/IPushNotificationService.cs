@@ -7,13 +7,23 @@ namespace Casazen.Core.Services;
 /// opens (<see cref="Route"/>, built with <see cref="PushRoutes"/>) and the ids the app may use.
 /// </summary>
 /// <param name="Type">Kind of push (<see cref="PushTypes"/>), sent as <c>data.type</c> and used in the logs.</param>
+/// <param name="ApprovalItemId">
+/// The item of the approval queue a push about an approval is for (E05/F04/US01/T02): sent as <c>data.approvalItemId</c>, so the app opens that item
+/// (and its Approve and Edit buttons act on it). <c>null</c> for every other push.
+/// </param>
+/// <param name="CategoryId">
+/// The category of notification the app registered, with its buttons (<c>categoryId</c> of the Expo message): <see cref="ApprovalQueueRules.PushCategory"/>
+/// for the alert of an item waiting for approval. <c>null</c> for every other push: the message then carries no category.
+/// </param>
 public sealed record PushNotificationPayload(
     string Title,
     string Body,
     string Type,
     Guid? BookingId,
     string Route,
-    Guid? ServiceRequestId = null);
+    Guid? ServiceRequestId = null,
+    Guid? ApprovalItemId = null,
+    string? CategoryId = null);
 
 /// <summary>Who receives a push. Resolved into devices by the delivery job at send time, never inside the request.</summary>
 public enum PushAudienceKind
@@ -158,6 +168,34 @@ public static class PushDeliveryKeys
     }
 
     /// <summary>
+    /// A message of a guest the assistant judged urgent (E05/F05/US02/T01, NF-67), to one host user: one per message and user, and not the key of the alert of the new message
+    /// (<see cref="OtaMessage"/>, <see cref="GuestMessage"/>), which the same person had already: the urgent alert is one more push and one more notification. A user id too long for the
+    /// 200 characters of a key is replaced by its SHA-256.
+    /// </summary>
+    public static string UrgentGuestMessage(Guid messageId, string userId)
+    {
+        var key = $"urgent-msg:{messageId:N}:{userId}";
+        return key.Length <= 200
+            ? key
+            : $"urgent-msg:{messageId:N}:{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(userId)))}";
+    }
+
+    /// <summary>
+    /// An item of the approval queue waits for a decision (E05/F04/US01/T02, NF-68), to one host user who may decide: one per alert and user, so an alert
+    /// delivered again is one push and one notification. <paramref name="raisedAtUtc"/> is the instant the alert was raised (whole seconds): an item that
+    /// goes back to pending with a new text is alerted again, with a key of its own. The key is also the delivery key of the in-app notification. A user id
+    /// too long for the 200 characters of a key is replaced by its SHA-256, so the key is stable and never refused.
+    /// </summary>
+    public static string ApprovalQueueItem(Guid itemId, DateTime raisedAtUtc, string userId)
+    {
+        var prefix = $"approval:{itemId:N}:{ApprovalQueueRules.StampOf(raisedAtUtc)}:";
+        var key = prefix + userId;
+        return key.Length <= 200
+            ? key
+            : prefix + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(userId)));
+    }
+
+    /// <summary>
     /// The guest completed the online check-in, to the hosts of the booking: one per completed session, stable across retries
     /// (a link issued again and completed again is another event).
     /// </summary>
@@ -172,6 +210,15 @@ public static class PushDeliveryKeys
     /// </summary>
     public static string StayAlert(Guid bookingId, StayAlertKind kind, DateTime referenceDate, int reminderNumber) =>
         $"stay-alert:{bookingId:N}:{kind}:{referenceDate:yyyyMMdd}:{reminderNumber}";
+
+    /// <summary>
+    /// One stage of an alert about a period or the connection of a property (E03/F02/US02/T01): the kind, the reference (the month, or
+    /// <c>connection</c>), the stage and the instant the stage was claimed. The connection is alerted again for a new incident after the first one
+    /// cleared, with the same kind, reference and stage, so the instant of the claim (whole minutes) tells the incidents apart; a retry of the push
+    /// job keeps the key it was queued with.
+    /// </summary>
+    public static string ComplianceAlert(Guid propertyId, Casazen.Core.Entities.ComplianceAlertType type, string referenceKey, int stage, DateTime raisedAtUtc) =>
+        $"compliance-alert:{propertyId:N}:{type}:{referenceKey}:{stage}:{raisedAtUtc:yyyyMMddHHmm}";
 
     /// <summary>
     /// An OTA stay "da verificare" (CO-21): the reason and, for <c>BlockDatesChanged</c>, the channel's dates, so a host
@@ -272,6 +319,13 @@ public static class PushTypes
     /// </summary>
     public const string OtaMessage = "ota-message";
 
+    /// <summary>
+    /// An item of the approval queue waits for a decision (E05/F04, NF-68): pushed to the one user the preferences selected and written to the bell
+    /// (the type the bell has always written for the queue); <c>entityId</c> is the item, the route is the conversation of a draft of a message or
+    /// <c>/approvals</c>. The push carries <c>data.approvalItemId</c> and the category <see cref="ApprovalQueueRules.PushCategory"/>. Never the text of the item.
+    /// </summary>
+    public const string ApprovalQueueItem = "approval-queue-item";
+
     /// <summary>The guest completed the online check-in (US-020): pushed to the hosts of the booking; <c>entityId</c> is the booking, the route its detail.</summary>
     public const string GuestCheckInCompleted = "guest-checkin-completed";
     public const string GuestDataMissing = "guest-data-missing";
@@ -279,6 +333,14 @@ public static class PushTypes
     public const string AlloggiatiOverdue = "alloggiati-overdue";
     public const string AlloggiatiFailed = "alloggiati-failed";
     public const string CheckoutReminder = "checkout-reminder";
+
+    // E03/F02/US02/T01 (NF-52, CHK-12): the new stay stages and the alerts about a period and the connection of a property.
+    public const string ReceiptMissing = "receipt-missing";
+    public const string ShortStayAtRisk = "short-stay-at-risk";
+    public const string OverThirtyNights = "over-thirty-nights";
+    public const string IstatDeadline = "istat-deadline";
+    public const string TouristTaxDeadline = "tourist-tax-deadline";
+    public const string ConnectionInactive = "connection-inactive";
 
     /// <summary>An OTA stay created from an iCal block is "da verificare" (CO-21): the app opens the booking from the route.</summary>
     public const string OtaStayReview = "ota-stay-review";
@@ -308,6 +370,18 @@ public static class PushTypes
         StayAlertKind.AlloggiatiOverdue => AlloggiatiOverdue,
         StayAlertKind.AlloggiatiFailed => AlloggiatiFailed,
         StayAlertKind.CheckoutReminder => CheckoutReminder,
+        StayAlertKind.ReceiptMissing => ReceiptMissing,
+        StayAlertKind.ShortStayAtRisk => ShortStayAtRisk,
+        StayAlertKind.OverThirtyNights => OverThirtyNights,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "No push type for this alert."),
+    };
+
+    /// <summary>Type of the push of an alert about a period or the connection of a property (E03/F02/US02/T01).</summary>
+    public static string ForComplianceAlert(Casazen.Core.Entities.ComplianceAlertType type) => type switch
+    {
+        Casazen.Core.Entities.ComplianceAlertType.IstatPeriod => IstatDeadline,
+        Casazen.Core.Entities.ComplianceAlertType.TouristTaxPeriod => TouristTaxDeadline,
+        Casazen.Core.Entities.ComplianceAlertType.ConnectionInactive => ConnectionInactive,
+        _ => throw new ArgumentOutOfRangeException(nameof(type), type, "No push type for this alert."),
     };
 }

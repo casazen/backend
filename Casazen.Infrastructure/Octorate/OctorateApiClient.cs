@@ -1062,7 +1062,8 @@ public sealed partial class OctorateApiClient(
         CancellationToken ct,
         int? answerStatus = null,
         Func<int, string, OctorateException?>? translateError = null,
-        Func<int, string?, string, OctorateException?>? mapError = null)
+        Func<int, string?, string, OctorateException?>? mapError = null,
+        bool binary = false)
     {
         var orgId = orgScope.OrgId;
         var caller = new Caller(
@@ -1070,7 +1071,7 @@ public sealed partial class OctorateApiClient(
             token => tokenService.GetAccessTokenAsync(orgId, token),
             (rejected, token) => tokenService.RefreshRejectedTokenAsync(orgId, rejected, token),
             () => rateLimiter.TryAcquireAsync(orgId));
-        return await SendAsync(createRequest, operation, caller, ct, answerStatus, translateError, mapError);
+        return await SendAsync(createRequest, operation, caller, ct, answerStatus, translateError, mapError, binary);
     }
 
     /// <summary>
@@ -1091,7 +1092,10 @@ public sealed partial class OctorateApiClient(
         return SendAsync(createRequest, operation, caller, ct, translateError: translateError);
     }
 
-    /// <summary>The call itself, for whoever <paramref name="caller"/> is: its token, its bucket, its refresh of a refused token.</summary>
+    /// <summary>
+    /// The call itself, for whoever <paramref name="caller"/> is: its token, its bucket, its refresh of a refused token. With <paramref name="binary"/>
+    /// the content of a success is read as bytes (a PDF, E06/F03/US02/T01) and an error as text, as always.
+    /// </summary>
     private async Task<OctorateAnswer> SendAsync(
         Func<HttpRequestMessage> createRequest,
         string operation,
@@ -1099,7 +1103,8 @@ public sealed partial class OctorateApiClient(
         CancellationToken ct,
         int? answerStatus = null,
         Func<int, string, OctorateException?>? translateError = null,
-        Func<int, string?, string, OctorateException?>? mapError = null)
+        Func<int, string?, string, OctorateException?>? mapError = null,
+        bool binary = false)
     {
         var token = await caller.GetTokenAsync(ct);
         var tokenRefreshed = false;
@@ -1138,6 +1143,13 @@ public sealed partial class OctorateApiClient(
             using (response)
             {
                 var status = (int)response.StatusCode;
+                if (binary && response.IsSuccessStatusCode)
+                {
+                    var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+                    logger.LogDebug("Octorate {Operation} for {Caller}: HTTP {StatusCode}, {Bytes} bytes", operation, caller.Label, status, bytes.Length);
+                    return new OctorateAnswer(status, string.Empty, bytes);
+                }
+
                 var body = await OctorateHttp.ReadBodyAsync(response, ct);
                 var elapsedMs = (long)timeProvider.GetElapsedTime(started).TotalMilliseconds;
                 // 304: a PATCH or a PUT whose content is identical to what Octorate holds answers "not modified" (S25, D13): it is done.
@@ -1260,11 +1272,17 @@ public sealed partial class OctorateApiClient(
         404 => new OctorateNotFoundException(),
         409 => new OctorateConflictException(),
         429 => new OctorateRateLimitException(status),
+        // A quota that is used up is a 403 of its own type (OCT-13): not a refusal of the access, a wait.
+        403 when IsQuotaExhausted(errorType, body) => new OctorateRateLimitException(status, quotaExhausted: true),
         401 or 403 when IsWrongEnvironment(errorType, body) => new OctorateWrongEnvironmentException(status),
         401 or 403 => OctorateAuthException.Refused(status),
         >= 500 => new OctorateServerException(status),
         _ => new OctorateRequestRejectedException(status),
     };
+
+    private static bool IsQuotaExhausted(string? errorType, string body) =>
+        string.Equals(errorType, OctorateRateLimitException.QuotaErrorType, StringComparison.OrdinalIgnoreCase)
+        || body.Contains(OctorateRateLimitException.QuotaErrorType, StringComparison.OrdinalIgnoreCase);
 
     private static bool IsWrongEnvironment(string? errorType, string body) =>
         string.Equals(errorType, OctorateWrongEnvironmentException.OctorateErrorType, StringComparison.OrdinalIgnoreCase)
@@ -1728,8 +1746,8 @@ public sealed partial class OctorateApiClient(
         return null;
     }
 
-    /// <summary>A successful answer: Octorate's status and its text.</summary>
-    internal sealed record OctorateAnswer(int StatusCode, string Body);
+    /// <summary>A successful answer: Octorate's status and its text, or its bytes for a binary read (empty text then).</summary>
+    internal sealed record OctorateAnswer(int StatusCode, string Body, byte[]? Bytes = null);
 
     /// <summary>
     /// Who a call is made for: an org (its token, its bucket) or the platform (the partner token, the bucket <c>platform</c>). The label is

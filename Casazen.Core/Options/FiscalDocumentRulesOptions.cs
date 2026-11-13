@@ -33,6 +33,12 @@ public class FiscalDocumentRulesOptions
     /// <summary>The stamp duty due above <see cref="StampDutyThreshold"/>, in euros.</summary>
     public decimal StampDutyAmount { get; set; } = 2.00m;
 
+    /// <summary>
+    /// Whether the stamp duty of a document is charged to the guest and so added to its total (E06/F01/US02/T03). Off by default: the issuer bears it
+    /// and the total is what the guest paid for the stay; only the accountant's decision turns it on.
+    /// </summary>
+    public bool StampDutyChargedToRecipient { get; set; }
+
     /// <summary>The rule of each regime of the issuer.</summary>
     public Dictionary<DocumentRegime, FiscalDocumentRule> Rules { get; set; } = new();
 

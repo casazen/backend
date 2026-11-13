@@ -879,11 +879,13 @@ public class DemoEnvironmentService(
             db.GuestThreads.Add(thread);
             foreach (var (message, at) in messages)
             {
+                var sender = message.FromGuest ? GuestMessageSender.Guest : GuestMessageSender.Host;
                 db.GuestMessages.Add(new GuestMessage
                 {
                     OrgId = orgId,
                     ThreadId = thread.Id,
-                    Sender = message.FromGuest ? GuestMessageSender.Guest : GuestMessageSender.Host,
+                    Sender = sender,
+                    Origin = GuestMessageRules.OriginOf(sender),
                     Text = message.Text,
                     CreatedAt = at,
                     AuthorUserId = message.FromGuest ? null : ownerId,
@@ -1778,6 +1780,10 @@ public class DemoEnvironmentService(
         if (template.InvoiceData is { } invoiceData)
             await CreateInvoiceDataAsync(orgId, booking.Id, invoiceData, template.Key, madeAt, cancellationToken);
 
+        // E07/F03/US02 (NF-97): the payments of the stay, so the reports of the money have something to show. They go with the booking at the next reset.
+        if (template.Payments is { Count: > 0 } payments)
+            await CreatePaymentsAsync(orgId, property, booking, template.Key, payments, today, cancellationToken);
+
         // NF-40, NF-46: the registered guests of the stay, with complete data of the right shape (they go with the booking at the next reset).
         List<StayGuest> rows = [];
         if (template.Guests is { Count: > 0 } guests)
@@ -1989,6 +1995,67 @@ public class DemoEnvironmentService(
             DateOnly.FromDateTime(booking.CheckInDate).AddDays(shift),
             DateOnly.FromDateTime(booking.CheckOutDate).AddDays(shift),
             template.VersionGuests ?? booking.NumberOfGuests).ToJson();
+    }
+
+    /// <summary>
+    /// The payments of a showcase stay (E07/F03/US02, NF-97): each one at 10:00 in Rome, <c>DaysAgo</c> days before the reset (never in the future). A payment that
+    /// is completed (or partly refunded) has its processing instant, like one the provider confirmed; a card payment the provider settled also has a TEST payment
+    /// intent and the commission, the net and the credit day the capture stores (so the capture never reads it: it is marked as read). Nothing is sent to a
+    /// provider. The rows are marked as showcase data and go with the booking at the next reset (the table cascades).
+    /// </summary>
+    private async Task CreatePaymentsAsync(
+        Guid orgId,
+        Property property,
+        Booking booking,
+        string templateKey,
+        IReadOnlyList<DemoPaymentTemplate> templates,
+        DateOnly today,
+        CancellationToken cancellationToken)
+    {
+        var currency = StayCurrency.ForProperty(property);
+        var now = UtcNow();
+        var rows = new List<Payment>();
+        for (var position = 0; position < templates.Count; position++)
+        {
+            var demo = templates[position];
+            var day = today.AddDays(-demo.DaysAgo);
+            var at = RomeCalendar.ToUtc(day, new TimeOnly(10, 0));
+            if (at > now)
+                at = now;
+
+            var settled = demo.Status is PaymentStatus.Completed or PaymentStatus.PartiallyRefunded or PaymentStatus.Refunded;
+            var payment = new Payment
+            {
+                OrgId = orgId,
+                BookingId = booking.Id,
+                Amount = demo.Amount,
+                RefundedAmount = demo.RefundedAmount,
+                Status = demo.Status,
+                Method = demo.Method,
+                TransactionId = $"TEST-{templateKey}-{position}",
+                Description = "Pagamento di dimostrazione (TEST)",
+                ProcessedAt = settled ? at : null,
+                CreatedAt = at,
+                UpdatedAt = at,
+            };
+            if (demo.Card is { } card)
+            {
+                payment.StripePaymentIntentId = $"pi_TEST_{templateKey}_{position}";
+                payment.ProviderFeeAmount = card.Fee;
+                payment.ProviderNetAmount = card.Net;
+                payment.ProviderBalanceCurrency = currency;
+                payment.ProviderBalanceTransactionId = $"txn_TEST_{templateKey}_{position}";
+                payment.ProviderAvailableOn = DateTime.SpecifyKind(day.AddDays(card.CreditAfterDays).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+                payment.ProviderFeeFetchedAt = at.AddHours(1) > now ? now : at.AddHours(1);
+            }
+
+            rows.Add(payment);
+        }
+
+        db.Payments.AddRange(rows);
+        await db.SaveChangesAsync(cancellationToken);
+        for (var position = 0; position < rows.Count; position++)
+            await MarkAsync(orgId, TestDataEntities.Payment, rows[position].Id, TestDataOrigins.Showcase, $"{templateKey}/{position}", cancellationToken);
     }
 
     /// <summary>

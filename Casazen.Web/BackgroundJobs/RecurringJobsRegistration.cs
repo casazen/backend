@@ -28,6 +28,11 @@ public static class RecurringJobsRegistration
         // E02/F02: the jobs of the Octorate connector (bookings and calendar), only while the connector is on.
         ConfigureOctorateJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateConnector));
 
+        // E06/F03/US02/T01: the import of the documents Octorate issued, only while the connector and the import are both on.
+        ConfigureOctorateDocumentJobs(
+            recurringJobManager,
+            featureFlags.IsEnabled(FeatureFlags.OctorateConnector) && featureFlags.IsEnabled(FeatureFlags.OctorateDocumentImport));
+
         // E10/F01/US01/T04: the "To do" of the flows to complete and of a lost connection, only while the activation with Octorate is on.
         ConfigureOnboardingJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateOnboarding));
 
@@ -75,6 +80,9 @@ public static class RecurringJobsRegistration
 
         // E09/F01/US01/T02 (ADR-023): the cache of the portal catalog of the marketplace is refreshed every day, only while the Octorate connector is on.
         ConfigureMarketplacePortalRefresh(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateConnector));
+
+        // E09/F03/US01/T01 (ADR-023, NF-57): the health of the active integrations is read from Octorate every 30 minutes, only while the Octorate connector is on.
+        ConfigureMarketplaceConnectionSync(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateConnector));
 
         // SP-BKP: the groups of backup suppliers are followed whatever the flag SupplierRequestBackups says (it only gates their creation): a
         // group that exists has its windows, and turning the flag off must not leave its requests hanging. With no group a run finds nothing.
@@ -130,6 +138,14 @@ public static class RecurringJobsRegistration
             job => job.ExecuteAsync(),
             Cron.Hourly,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // E03/F02/US02/T02 (NF-52, CHK-12): the monthly compliance summary of every active short-rent org, on the first of the month at 07:00 Europe/Rome.
+        // Always registered: the service reads Features:ComplianceTrafficLight at each run and sends nothing while it is off.
+        recurringJobManager.AddOrUpdate<ComplianceMonthlySummaryJob>(
+            ComplianceMonthlySummaryJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            ComplianceMonthlySummaryJob.Cron,
+            new RecurringJobOptions { TimeZone = RomeCalendar.TimeZone });
 
         // CO-20: daily CIN alert, after the nightly compliance check of CO-06.
         recurringJobManager.AddOrUpdate<CinDeadlineAlertJob>(
@@ -290,6 +306,14 @@ public static class RecurringJobsRegistration
             "0 5 * * 1",  // every Monday at 05:00 UTC
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // E06/F04/US01/T02 (FIS-05, NF-85): what Stripe kept and credited for the settled card payments, every 15 minutes, 50 payments a run.
+        // Always registered: without a Stripe key the job reads nothing and counts no attempt.
+        recurringJobManager.AddOrUpdate<PaymentProviderFeeJob>(
+            PaymentProviderFeeJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            PaymentProviderFeeJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         // RS-6, RS-7, CO-12: daily check of the official ISTAT comuni file, the Alloggiati tables and the tourist-tax pages.
         recurringJobManager.AddOrUpdate<OfficialReferenceDataRefreshJob>(
             OfficialReferenceDataRefreshJob.RecurringJobId,
@@ -330,6 +354,7 @@ public static class RecurringJobsRegistration
             recurringJobManager.RemoveIfExists(ListingStatusSyncJob.RecurringJobId);
             recurringJobManager.RemoveIfExists(ListingChannelHealthJob.RecurringJobId);
             recurringJobManager.RemoveIfExists(ListingOutsideChangeJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(CalendarChangeProcessJob.RecurringJobId);
             return;
         }
 
@@ -388,6 +413,14 @@ public static class RecurringJobsRegistration
             ListingOutsideChangeJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             ListingOutsideChangeJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // E08/F05/US02/T02 (NF-36, NF-78): the changes of the calendar that are due (a postponement for quota, a back-off, a retry) are sent, and what the channel manager
+        // accepted is followed until it confirms it, every minute; the run enqueued right after a change is the fast path and this is the safety net.
+        recurringJobManager.AddOrUpdate<CalendarChangeProcessJob>(
+            CalendarChangeProcessJob.RecurringJobId,
+            job => job.RunDueAsync(CancellationToken.None),
+            CalendarChangeProcessJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 
@@ -448,6 +481,45 @@ public static class RecurringJobsRegistration
             MarketplacePortalRefreshJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             MarketplacePortalRefreshJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The import of the documents Octorate issued (E06/F03/US02/T01), every 30 minutes, only with <see cref="FeatureFlags.OctorateConnector"/> and
+    /// <see cref="FeatureFlags.OctorateDocumentImport"/> on; otherwise the schedule of an earlier deploy is removed.
+    /// </summary>
+    private static void ConfigureOctorateDocumentJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(OctorateDocumentImportJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<OctorateDocumentImportJob>(
+            OctorateDocumentImportJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OctorateDocumentImportJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The sync of the connections of the active integrations (E09/F03/US01/T01, NF-57): every 30 minutes, only with <see cref="FeatureFlags.OctorateConnector"/> on. It reads
+    /// Octorate (the connections, the license, the quota) and writes only CasaZen's own rows and the «To do» items. With the flag off nothing calls Octorate, and the schedule of an
+    /// earlier deploy is removed.
+    /// </summary>
+    private static void ConfigureMarketplaceConnectionSync(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(MarketplaceConnectionSyncJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<MarketplaceConnectionSyncJob>(
+            MarketplaceConnectionSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            MarketplaceConnectionSyncJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

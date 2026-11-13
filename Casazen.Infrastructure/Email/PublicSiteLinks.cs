@@ -337,6 +337,9 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         return Build($"/app/short-rent/messages/{threadKey}");
     }
 
+    /// <summary>Host console: the approval queue (route <c>/app/short-rent/approval-queue</c>, E05/F04, NF-68), where the host reads, edits, approves or rejects an item.</summary>
+    public string HostApprovalQueue() => Build("/app/short-rent/approval-queue");
+
     /// <summary>
     /// Host console: the page of one property in the area of its rental mode (routes <c>/app/short-rent/properties/:id</c> for
     /// <see cref="Core.Entities.Enums.RentalMode.Short"/>, <c>/app/long-rent/properties/:id</c> for
@@ -350,6 +353,12 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
 
     /// <summary>Host console: CIN compliance page (route <c>/app/short-rent/compliance/cin</c>, CO-20).</summary>
     public string HostCinCompliance() => Build("/app/short-rent/compliance/cin");
+
+    /// <summary>
+    /// Host console: the compliance page «am I compliant?» of the short-rent area (route <c>/app/short-rent/compliance</c>, E03/F02/US02, NF-52): the
+    /// alerts about a period and the monthly summary lead to it, where the open items and the guided hand-off to the channel manager are.
+    /// </summary>
+    public string HostCompliance() => Build("/app/short-rent/compliance");
 
     /// <summary>
     /// Plan page of the host console (route <c>/app/short-rent/settings/plan</c> of the web app): the default page Stripe

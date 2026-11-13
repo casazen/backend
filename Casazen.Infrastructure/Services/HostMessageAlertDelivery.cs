@@ -535,11 +535,16 @@ public sealed class HostMessageAlertDelivery(
     private static Guid EntityOf(HostMessageAlert alert, Subject subject) =>
         alert.Source == HostMessageSource.Ota ? alert.ThreadId : subject.BookingId ?? alert.ThreadId;
 
-    /// <summary>The delivery key of the notification and of the push: one per message, and per person for a channel.</summary>
+    /// <summary>
+    /// The delivery key of the notification and of the push: one per message, and per person for a channel. The urgent alert the assistant raises for a message (E05/F05/US02/T01) has a
+    /// key of its own, per message and person: under the key of the new message it would find the push and the notification that message already had, and tell nobody.
+    /// </summary>
     private static string KeyOf(HostMessageAlert alert, string userId) =>
-        alert.Source == HostMessageSource.Ota
-            ? PushDeliveryKeys.OtaMessage(alert.MessageId, userId)
-            : PushDeliveryKeys.GuestMessage(alert.MessageId);
+        alert.EventType == NotificationEventType.UrgentGuestMessage
+            ? PushDeliveryKeys.UrgentGuestMessage(alert.MessageId, userId)
+            : alert.Source == HostMessageSource.Ota
+                ? PushDeliveryKeys.OtaMessage(alert.MessageId, userId)
+                : PushDeliveryKeys.GuestMessage(alert.MessageId);
 
     private static string RouteOf(HostMessageAlert alert, Subject subject) =>
         alert.Source == HostMessageSource.Ota

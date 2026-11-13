@@ -23,6 +23,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
+using FiscalDocumentKind = Casazen.Core.Options.FiscalDocumentKind;
 
 namespace Casazen.Tests.Unit.Services;
 

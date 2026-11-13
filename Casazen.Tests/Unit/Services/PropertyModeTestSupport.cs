@@ -4,6 +4,7 @@ using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -53,7 +54,11 @@ internal sealed class PropertyModeHarness : IDisposable
     /// A service on another context over the same database, as a second request or a second job run would have. The activity log is
     /// required (every host has it); the default is the one of <paramref name="db"/>.
     /// </summary>
-    public PropertyModeService NewService(AppDbContext db, IActivityLog? activityLog = null) =>
+    public PropertyModeService NewService(
+        AppDbContext db,
+        IActivityLog? activityLog = null,
+        ICalendarChangeRecorder? changeRecorder = null,
+        IBackgroundJobClient? jobs = null) =>
         new(
             db,
             new ConfigurationBuilder().Build(),
@@ -61,7 +66,9 @@ internal sealed class PropertyModeHarness : IDisposable
             Notifications.Object,
             activityLog ?? ActivityLogFor(db),
             NullLogger<PropertyModeService>.Instance,
-            Clock);
+            Clock,
+            changeRecorder,
+            jobs);
 
     /// <summary>The activity log writer of AM-02c on <paramref name="db"/>.</summary>
     public ActivityLog ActivityLogFor(AppDbContext db) => new(db, Clock);

@@ -14,10 +14,13 @@ using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Logging;
 using Casazen.Web.DTOs;
 using Casazen.Web.Extensions;
+using Casazen.Web.Resources;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
 
@@ -701,6 +704,66 @@ public class MarketplaceChannelActivationTests
     }
 
     [Fact]
+    public async Task ActivateAsync_FinishesAnEnabledConnectionWhosePullsAreOff_AndTheSyncOfTheHealthNeverDoesItInsteadOfTheWizard()
+    {
+        var w = await World.CreateAsync();
+        var started = await w.StartAsync();
+        w.Rooms.Add(new OctorateChannelRoom("3301", "Camera", "956528"));
+
+        // The first click: «mark connected» ran, the channel manager does not show the connection working yet. To fix, and the pulls are not switched on.
+        w.StatusAfterMarkConnected = "WAITING";
+        await using (var db = w.NewDb())
+        {
+            var toFix = await w.Service(db).ActivateAsync(w.OrgA, w.OrgWide, started.ActivationId);
+            Assert.Equal((MarketplaceActivationStatus.ToFix, "connection_not_enabled"), (toFix.Status, toFix.LastErrorCode));
+        }
+
+        Assert.Empty(w.Patches);
+
+        // Later the channel manager shows the connection enabled, its pulls still off. The sync of the health reads it: the activation is not finished, so it is not
+        // Active, it stays to fix and its «To do» stays open.
+        w.Connections[0] = w.Connections[0] with { Status = "ENABLED" };
+        var sync = await w.SyncHealthAsync();
+        Assert.Equal(1, sync.TodoRaised);
+        var row = Assert.Single(await w.ActivationsAsync());
+        Assert.Equal((MarketplaceActivationStatus.ToFix, "connection_not_enabled", null), (row.Status, row.LastErrorCode, row.VerifiedAt));
+        Assert.NotNull(row.TodoActivityId);
+        Assert.Empty(w.Patches);
+
+        // The host tries again, as the message says: nothing stops the step, which switches the pulls on, and the activation is Active.
+        w.StatusAfterMarkConnected = "ENABLED";
+        w.Calls.Clear();
+        await using (var db = w.NewDb())
+            Assert.Equal(MarketplaceActivationStatus.Active, (await w.Service(db).ActivateAsync(w.OrgA, w.OrgWide, started.ActivationId)).Status);
+
+        Assert.Equal(["MarkConnected", "Patch"], w.Calls);
+        var patch = Assert.Single(w.Patches);
+        Assert.Equal((true, true), (patch.UpdateCalendar, patch.PullReservations));
+
+        // The next sync sees a finished activation: it stays Active and the item of the problem is closed by the system.
+        var after = await w.SyncHealthAsync();
+        Assert.Equal(1, after.TodoClosed);
+        Assert.Equal(MarketplaceActivationStatus.Active, Assert.Single(await w.ActivationsAsync()).Status);
+
+        // A second click on a finished activation (its pulls are on) changes nothing.
+        w.Calls.Clear();
+        await using (var db = w.NewDb())
+            Assert.Equal(MarketplaceActivationStatus.Active, (await w.Service(db).ActivateAsync(w.OrgA, w.OrgWide, started.ActivationId)).Status);
+
+        Assert.Empty(w.Calls);
+
+        // An Active activation whose pulls are off (an enabled connection nobody finished) is not left looking finished: the click switches them on.
+        w.Connections[0] = w.Connections[0] with { UpdateCalendar = false, PullReservations = false };
+        w.Patches.Clear();
+        w.Calls.Clear();
+        await using (var db = w.NewDb())
+            Assert.Equal(MarketplaceActivationStatus.Active, (await w.Service(db).ActivateAsync(w.OrgA, w.OrgWide, started.ActivationId)).Status);
+
+        Assert.Equal(["MarkConnected", "Patch"], w.Calls);
+        Assert.Single(w.Patches);
+    }
+
+    [Fact]
     public async Task StartAsync_AfterTheActivationWasDeactivated_StartsAgainOnTheSameRow_AndALostAnswerLeavesNoStaleConnection()
     {
         var w = await World.CreateAsync();
@@ -957,6 +1020,30 @@ public class MarketplaceChannelActivationTests
                 Logs);
         }
 
+        /// <summary>One run of the sync of the health for the org, over the same database and the same channel manager as the steps of the wizard.</summary>
+        public async Task<MarketplaceSyncResult> SyncHealthAsync()
+        {
+            await using var db = NewDb();
+            var flags = new Mock<IFeatureFlags>();
+            flags.Setup(f => f.IsEnabled(FeatureFlags.OctorateConnector)).Returns(() => FlagOn);
+            var host = new Mock<IHostEnvironment>();
+            host.SetupGet(h => h.EnvironmentName).Returns("Staging");
+            var health = new MarketplaceHealthService(
+                db,
+                Client.Object,
+                new OctorateOrgScope(NullTenantContext.Instance),
+                new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, Clock),
+                Mock.Of<IMarketplaceLicensedFunctionService>(),
+                flags.Object,
+                host.Object,
+                new ResxMarketplaceTexts(),
+                new MemoryCache(new MemoryCacheOptions()),
+                Microsoft.Extensions.Options.Options.Create(new MarketplaceHealthOptions()),
+                Clock,
+                NullLogger<MarketplaceHealthService>.Instance);
+            return await health.SyncAsync(OrgA);
+        }
+
         /// <summary>The start of the first property for the portal «142», with the credentials, as the wizard sends it.</summary>
         public MarketplaceActivationStart StartRequest() =>
             new(MarketplaceActivationKind.Channel, "142", PropertyId, HotelId, Username, Password);
@@ -1122,12 +1209,30 @@ public class MarketplaceChannelActivationTests
 
             Client
                 .Setup(c => c.UpdateConnectionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<OctorateConnectionPatch>(), It.IsAny<CancellationToken>()))
-                .Returns((string _, string _, OctorateConnectionPatch patch, CancellationToken _) =>
+                .Returns((string _, string connectionId, OctorateConnectionPatch patch, CancellationToken _) =>
                 {
                     Calls.Add("Patch");
                     Patches.Add(patch);
+
+                    // The channel manager keeps what it is sent: from then on it lists the connection with the pulls the change set.
+                    for (var i = 0; i < Connections.Count; i++)
+                    {
+                        if (Connections[i].ConnectionId == connectionId)
+                        {
+                            Connections[i] = Connections[i] with
+                            {
+                                UpdateCalendar = patch.UpdateCalendar ?? Connections[i].UpdateCalendar,
+                                PullReservations = patch.PullReservations ?? Connections[i].PullReservations,
+                            };
+                        }
+                    }
+
                     return Task.CompletedTask;
                 });
+
+            Client
+                .Setup(c => c.GetConfigurationAsync(It.IsAny<CancellationToken>()))
+                .Returns(() => Task.FromResult(new OctorateConfiguration("SANDBOX", 164, 10, null)));
         }
     }
 }

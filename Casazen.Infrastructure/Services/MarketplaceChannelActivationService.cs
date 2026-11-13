@@ -33,7 +33,9 @@ namespace Casazen.Infrastructure.Services;
 /// makes (or takes) a connection on the same row. The start itself never frees a row, because the list may lag just after a create, and a read of the
 /// state changes nothing.</para>
 /// <para><b>Only the channel manager decides.</b> Active is written only when it lists the connection as working after «mark connected»; the pulls of the
-/// connection are switched on after that, and only once at least one room is mapped (D6). A failure of the channel itself (550) leaves the activation To fix
+/// connection are switched on after that, and only once at least one room is mapped (D6). The sync of the health (<see cref="MarketplaceHealthService"/>) makes
+/// an activation that is not Active Active only when the connection is enabled and its pulls are on, so an enabled connection with the pulls still off is finished
+/// by <see cref="ActivateAsync"/> and a second click on a finished one (pulls on) changes nothing. A failure of the channel itself (550) leaves the activation To fix
 /// with its code and is raised again; a failure worth a retry (rate limit, no answer) changes nothing and is raised.</para>
 /// <para><b>Fail closed (D6).</b> The four operations of the D6 sequence (<c>IMPORT_ROOMS</c>, <c>IMPORT_RESERVATIONS</c>, <c>IMPORT_CALENDAR</c>,
 /// <c>MARK_CONNECTED</c>) were never run on a real property: each is called only when its flag
@@ -392,8 +394,9 @@ public sealed class MarketplaceChannelActivationService(
         var current = await RequireConnectionAsync(orgId, link, activation, ct);
         await EnsurePanelAccessAsync(activation, current, ct);
 
-        // Already on and working: a second click changes nothing.
-        if (activation.Status == MarketplaceActivationStatus.Active && current.IsConnected)
+        // Already on and working, with its pulls on: a second click changes nothing. An Active activation whose pulls are still off is not finished (the
+        // sync of the health never switches them on): it goes through the steps below, which switch them on, instead of looking finished.
+        if (activation.Status == MarketplaceActivationStatus.Active && current.IsConnected && current.PullsAreOn)
             return StateOf(activation, current);
 
         var connectionId = activation.OctorateConnectionId!;
@@ -413,7 +416,7 @@ public sealed class MarketplaceChannelActivationService(
                 // The proof is what the channel manager lists, not the answer of the action. The pulls are switched on under the flag of «mark
                 // connected», checked at the top of the step (the operations of the D6 sequence have no flag of their own for it).
                 verified = Match(await client.ListConnectionsAsync(link.AccommodationId, ct), activation);
-                if (verified is { IsConnected: true } && (verified.UpdateCalendar != true || verified.PullReservations != true))
+                if (verified is { IsConnected: true, PullsAreOn: false })
                 {
                     await client.UpdateConnectionAsync(
                         link.AccommodationId,

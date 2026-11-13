@@ -9,7 +9,7 @@ on, and nothing produces a message or an email without a person writing.
 | Table | What |
 |---|---|
 | `GuestThreads` | One per booking (`UIX_GuestThreads_BookingId`), created by the first message of either side. Holds `OrgId`, `PropertyId` (the host's reach on properties applies to it, `InScope`), and the figures that answer the host's screens without reading the messages: `LastMessageAt`, `LastGuestMessageAt`, `LastHostMessageAt`, `HostReadAt` (the guest's messages up to this instant are read), `HostNotifiedAt` / `GuestNotifiedAt` (when the last email to each side was queued). Updated by one atomic `UPDATE` per message, never read and written back. |
-| `GuestMessages` | `Sender` (`Guest` = 0, `Host` = 1), `Text` (≤ 2000, plain text), `CreatedAt`, `IdempotencyKey` (unique per thread), `AuthorUserId` (the host user, an opaque id). Never edited or deleted by a user. |
+| `GuestMessages` | `Sender` (`Guest` = 0, `Host` = 1), `Text` (≤ 2000, plain text), `CreatedAt`, `IdempotencyKey` (unique per thread), `AuthorUserId` (the host user, an opaque id), `Origin` (`MessageOrigin`: `Guest` = 1, `Person` = 2, `Assistant` = 3, the same as an OTA message, E05/F05/US01/T01; the migration `AddMessageAssistant` set `Person` on the messages of the host and the column defaults to `Guest`; the writers set it) and `RuleCode` (the situation code of an assistant message, up to 64 characters, `null` for the others). Never edited or deleted by a user. |
 
 Both are `ITenantOwned`. A thread goes with its booking and its property (cascade); a guest that is erased or anonymized takes the threads of
 its bookings with it (`GuestDataEraser.DeleteMessageThreadsAsync`, called by the erasure, the anonymization and the retention job), so the

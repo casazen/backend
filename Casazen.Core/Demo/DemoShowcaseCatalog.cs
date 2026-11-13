@@ -250,6 +250,38 @@ public static class DemoShowcaseCatalog
         /// and straordinarie € 600. It does not post, and it does not read millesimi, payments or the rate plan.
         /// </summary>
         public const string AdministratorStatementPdf = "administrator-statement-pdf";
+
+        /// <summary>
+        /// The fiscal documents CasaZen issues for a direct booking (E06/F01/US01/T01, FIS-03, NF-83): a draft (no number, the amounts of the stay with
+        /// the VAT separated) and an issued receipt with its number, on a direct stay of the demo. Invented amounts and a TEST recipient, marked with
+        /// <c>TestDataEntities.FiscalDocument</c>; a template only, issuance being off (<c>Features:FiscalDocumentIssuance</c>).
+        /// </summary>
+        public const string FiscalDocumentsDirect = "fiscal-documents-direct";
+
+        /// <summary>
+        /// The payment ledger (E06/F04/US01/T03, FIS-05, NF-85): a card payment with the commission and the net the provider reported, a cash payment
+        /// the host recorded, and a booking of a channel with the amount the channel collected (commission not given by Octorate: not shown). Invented
+        /// amounts, a template of the lines the ledger answers.
+        /// </summary>
+        public const string PaymentLedger = "payment-ledger";
+
+        /// <summary>
+        /// The collections report (E07/F03/US02/T01, NF-97): the demo stays of Villa del Lago gain the payments a host sees come in: cash at the property, a bank
+        /// transfer and cards (one with a refund, one that failed and never counts), a direct stay paid in part (a card deposit, the rest to collect) and a stay of
+        /// a channel with a balance still to collect whose check-out is past (overdue). The card payments carry the commission and the net the provider
+        /// reported, so the credits show; the channel's net is not reported, so the credits of that channel read «not available». Invented amounts, TEST ids
+        /// (<c>TestDataEntities.Payment</c>); nothing is sent to Stripe or to a channel.
+        /// </summary>
+        public const string ReportCollections = "report-collections";
+
+        /// <summary>
+        /// The channel costs report (E07/F03/US02/T02, NF-98): Villa del Lago has finished stays of two channels with the commission and the net the channel manager
+        /// reports, one whose portal pays the host net of its commission (Airbnb: deducted from the payout, collected by the channel) and one that invoices its commission
+        /// apart (Booking.com, collected by the host), and a direct stay paid by card with the fee the provider reported. The Booking.com stay of the collections
+        /// scenario has no commission reported, so the report counts it apart and never takes it as free. Invented amounts, TEST reservations; nothing is sent to
+        /// Octorate or Stripe.
+        /// </summary>
+        public const string ReportChannelCosts = "report-channel-costs";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -327,6 +359,10 @@ public static class DemoShowcaseCatalog
         Scenario.TenantExpenseProposal,
         Scenario.CondominiumHistoricalImport,
         Scenario.AdministratorStatementPdf,
+        Scenario.FiscalDocumentsDirect,
+        Scenario.PaymentLedger,
+        Scenario.ReportCollections,
+        Scenario.ReportChannelCosts,
     ];
 
     /// <summary>
@@ -413,6 +449,27 @@ public static class DemoShowcaseCatalog
             490.30m,
             600m,
             Scenario.AdministratorStatementPdf),
+    ];
+
+    /// <summary>
+    /// The fiscal documents of a direct demo stay (E06/F01/US01/T01): a draft without a number and an issued receipt, the amounts as the guest paid them
+    /// (lodging and cleaning, the tourist tax without VAT) and the TEST recipient. Not written at reset while issuance is off.
+    /// </summary>
+    public static IReadOnlyList<DemoFiscalDocumentTemplate> FiscalDocumentExamples { get; } =
+    [
+        new("bozza-soggiorno-diretto", "Draft", null, "TEST Ospite Diretto", 362.00m, 12.00m, "EUR", Scenario.FiscalDocumentsDirect),
+        new("ricevuta-soggiorno-diretto", "Issued", "2026/1", "TEST Ospite Diretto", 248.00m, 8.00m, "EUR", Scenario.FiscalDocumentsDirect),
+    ];
+
+    /// <summary>
+    /// The lines of the payment ledger of the demo (E06/F04/US01/T03): a card payment with the provider's commission and net, a cash payment, a booking of a
+    /// channel with what it collected. The commission of the channel is absent, as Octorate gives it today.
+    /// </summary>
+    public static IReadOnlyList<DemoPaymentLedgerTemplate> PaymentLedgerExamples { get; } =
+    [
+        new("carta-soggiorno-diretto", "Card", 450.00m, 6.55m, 443.45m, "Host", "EUR", Scenario.PaymentLedger),
+        new("contanti-soggiorno-manuale", "Cash", 120.00m, null, null, "Host", "EUR", Scenario.PaymentLedger),
+        new("incasso-canale-booking", "Ota", 380.00m, null, null, "Channel", "EUR", Scenario.PaymentLedger),
     ];
 
     /// <summary>
@@ -580,7 +637,17 @@ public static class DemoShowcaseCatalog
             Bookings:
             [
                 new("arrivo", "Giulia", "Bianchi", "ospite.demo.arrivo@example.com", 14, 4, BookingStatus.Confirmed, Scenario.BookingUpcoming),
-                new("partito", "Marco", "Rossi", "ospite.demo.partito@example.com", -20, 4, BookingStatus.CheckedOut, Scenario.BookingPast),
+                // NF-97 (Scenario.ReportCollections): the guest paid in cash at the arrival, as the host recorded it.
+                new(
+                    "partito",
+                    "Marco",
+                    "Rossi",
+                    "ospite.demo.partito@example.com",
+                    -20,
+                    4,
+                    BookingStatus.CheckedOut,
+                    Scenario.BookingPast,
+                    Payments: [new(PaymentMethod.CashOnArrival, 760m, 20)]),
                 // SR-06a: entered by hand with only the name and the email, at a price agreed over the phone (the guest gives the rest with the online check-in).
                 new(
                     "a-mano",
@@ -618,7 +685,9 @@ public static class DemoShowcaseCatalog
                     BookingStatus.CheckedOut,
                     Scenario.GuestAppAccount,
                     BookingSource.Direct,
-                    PaymentOption: PaymentOption.OnSite),
+                    PaymentOption: PaymentOption.OnSite,
+                    // NF-97: paid at the property, in cash, as the host recorded it (the demo reaches no card or provider for this guest).
+                    Payments: [new(PaymentMethod.CashOnArrival, 760m, 45)]),
                 new(
                     "app-annullata",
                     "Anna",
@@ -667,7 +736,132 @@ public static class DemoShowcaseCatalog
                     Scenario.CrmProfiles,
                     BookingSource.Direct,
                     PaymentOption: PaymentOption.OnSite,
-                    Phone: "+39 333 0000555"),
+                    Phone: "+39 333 0000555",
+                    // NF-97: paid by bank transfer, two days before the arrival.
+                    Payments: [new(PaymentMethod.BankTransfer, 580m, 72)]),
+                // NF-98 (Scenario.ReportChannelCosts), in the nights before the stays of the collections. A booking of Airbnb as the import leaves it: the
+                // channel collected the money and its portal pays the host net, so the commission is deducted from the payout.
+                new(
+                    "costi-airbnb",
+                    "Katharina",
+                    "Brandt",
+                    "ospite.demo.costi-1@example.com",
+                    -28,
+                    3,
+                    BookingStatus.CheckedOut,
+                    Scenario.ReportChannelCosts,
+                    BookingSource.Airbnb,
+                    Ota: new DemoOtaTemplate(
+                        "TEST-OCT-7201",
+                        Commission: 69.60m,
+                        Net: 510.40m,
+                        Paid: 580.00m,
+                        Balance: 0.00m,
+                        CompanyCollect: true,
+                        CommissionIncludedInPayments: true)),
+                // A booking of Booking.com the host collected itself, whose commission the channel invoices apart: it costs more than the first, and its net is what is left
+                // once the invoice is paid.
+                new(
+                    "costi-booking",
+                    "Luca",
+                    "Moretti",
+                    "ospite.demo.costi-2@example.com",
+                    -25,
+                    3,
+                    BookingStatus.CheckedOut,
+                    Scenario.ReportChannelCosts,
+                    BookingSource.BookingCom,
+                    Ota: new DemoOtaTemplate(
+                        "TEST-OCT-7202",
+                        Commission: 87.00m,
+                        Net: 493.00m,
+                        Paid: 580.00m,
+                        Balance: 0.00m,
+                        CompanyCollect: false,
+                        CommissionIncludedInPayments: false)),
+                // A direct stay paid by card with the fee the provider reported (1,5 % and 0,25): the cost of the booking site is the fees of its payments.
+                new(
+                    "costi-diretta",
+                    "Ines",
+                    "Duarte",
+                    "ospite.demo.costi-3@example.com",
+                    -22,
+                    2,
+                    BookingStatus.CheckedOut,
+                    Scenario.ReportChannelCosts,
+                    BookingSource.Direct,
+                    Payments: [new(PaymentMethod.CreditCard, 400m, 30, Card: new DemoPaymentProviderTemplate(6.25m, 393.75m))]),
+                // NF-97 (Scenario.ReportCollections), in the nights between the stays above. A direct stay paid by card, as the booking site takes it: the
+                // provider's commission and net are the figures its capture stores.
+                new(
+                    "incassi-carta",
+                    "Valeria",
+                    "Monti",
+                    "ospite.demo.incassi-1@example.com",
+                    -16,
+                    3,
+                    BookingStatus.CheckedOut,
+                    Scenario.ReportCollections,
+                    BookingSource.Direct,
+                    Payments: [new(PaymentMethod.CreditCard, 580m, 25, Card: new DemoPaymentProviderTemplate(8.95m, 571.05m))]),
+                // A direct stay the guest cancelled: the host kept 180 of the 580 paid and refunded the rest, so the payment is partly refunded and the report
+                // counts what was kept. A cancelled stay holds no night and has nothing to collect.
+                new(
+                    "incassi-annullata",
+                    "Elio",
+                    "Sartori",
+                    "ospite.demo.incassi-5@example.com",
+                    8,
+                    3,
+                    BookingStatus.Cancelled,
+                    Scenario.ReportCollections,
+                    BookingSource.Direct,
+                    CancellationReason: BookingCancellationReason.GuestRequested,
+                    Payments: [new(PaymentMethod.CreditCard, 580m, 14, PaymentStatus.PartiallyRefunded, 400m, new DemoPaymentProviderTemplate(8.95m, 571.05m))]),
+                // A stay the host entered, at the price agreed: a deposit by bank transfer and the rest in cash at the arrival (fully paid).
+                new(
+                    "incassi-contanti",
+                    "Dario",
+                    "Fabbri",
+                    "ospite.demo.incassi-2@example.com",
+                    -12,
+                    3,
+                    BookingStatus.CheckedOut,
+                    Scenario.ReportCollections,
+                    BookingSource.Manual,
+                    AgreedTotal: 500m,
+                    PriceNote: "Concordato al telefono (dimostrazione)",
+                    Payments: [new(PaymentMethod.BankTransfer, 200m, 14), new(PaymentMethod.CashOnArrival, 300m, 12)]),
+                // A booking of Booking.com that the host collects itself: 200 came in, 380 is still to collect and the stay is over (overdue). Octorate gives
+                // the balance (as the demo imagines a field that has it); the commission and the net are not given, so the channel credits read «not available».
+                new(
+                    "incassi-saldo-canale",
+                    "Joana",
+                    "Silva",
+                    "ospite.demo.incassi-3@example.com",
+                    -9,
+                    3,
+                    BookingStatus.CheckedOut,
+                    Scenario.ReportCollections,
+                    BookingSource.BookingCom,
+                    Ota: new DemoOtaTemplate("TEST-OCT-7101", Paid: 200.00m, Balance: 380.00m, CompanyCollect: false, CommissionIncludedInPayments: false)),
+                // A direct stay paid in part: a card deposit that settled (the credit is on its way), the rest to collect at the arrival, and an earlier attempt
+                // with a declined card that never counts.
+                new(
+                    "incassi-acconto",
+                    "Nadia",
+                    "Ricci",
+                    "ospite.demo.incassi-4@example.com",
+                    3,
+                    3,
+                    BookingStatus.Confirmed,
+                    Scenario.ReportCollections,
+                    BookingSource.Direct,
+                    Payments:
+                    [
+                        new(PaymentMethod.CreditCard, 580m, 6, PaymentStatus.Failed),
+                        new(PaymentMethod.CreditCard, 200m, 1, Card: new DemoPaymentProviderTemplate(3.25m, 196.75m)),
+                    ]),
             ]),
         new(
             Key: "appartamento-brera",
@@ -1614,7 +1808,35 @@ public sealed record DemoBookingTemplate(
     bool CheckInMarketingConsent = false,
     DemoOtaTemplate? Ota = null,
     DemoInvoiceData? InvoiceData = null,
-    DemoComplianceTemplate? Compliance = null);
+    DemoComplianceTemplate? Compliance = null,
+    IReadOnlyList<DemoPaymentTemplate>? Payments = null);
+
+/// <summary>
+/// A payment of a demo stay (E07/F03/US02, NF-97): written with the stay at the reset, marked as showcase data (<c>TestDataEntities.Payment</c>) and gone with the
+/// stay at the next one (the table cascades). Invented like the rest: the transaction says TEST and nothing is sent to a payment provider.
+/// </summary>
+/// <param name="Method">How it was paid.</param>
+/// <param name="Amount">The amount, to the cent.</param>
+/// <param name="DaysAgo">How many days before the reset it came in (at 10:00 in Rome, never in the future).</param>
+/// <param name="Status">Where the payment stands; a payment that is not completed (or partly refunded) is never counted as collected.</param>
+/// <param name="RefundedAmount">What was refunded of it.</param>
+/// <param name="Card">
+/// Set for a card payment the provider settled: the payment has a (TEST) payment intent and the commission, the net and the credit day the capture would have
+/// stored; left out for a payment that never went through the provider.
+/// </param>
+public sealed record DemoPaymentTemplate(
+    PaymentMethod Method,
+    decimal Amount,
+    int DaysAgo,
+    PaymentStatus Status = PaymentStatus.Completed,
+    decimal RefundedAmount = 0m,
+    DemoPaymentProviderTemplate? Card = null);
+
+/// <summary>What the provider reported for a settled card payment of the showcase (<c>Fee</c> plus <c>Net</c> is the amount, to the cent).</summary>
+/// <param name="Fee">The commission the provider kept.</param>
+/// <param name="Net">What was credited after it.</param>
+/// <param name="CreditAfterDays">Days after the payment the funds are credited (a credit day that is still ahead reads «expected»).</param>
+public sealed record DemoPaymentProviderTemplate(decimal Fee, decimal Net, int CreditAfterDays = 2);
 
 /// <summary>
 /// What the compliance traffic light finds on a demo stay (E03/F02/US01/T03, NF-52): invented like the rest of the demo, nothing is sent to Octorate or
@@ -1757,6 +1979,28 @@ public sealed record DemoTenantSettlementTemplate(
 /// The wizard proposal when the property has no condominium year yet: the advance is the new preventivo split into
 /// <see cref="Installments"/>, and <see cref="PreviousConsuntivo"/> is kept for the settlement.
 /// </summary>
+/// <summary>A line of the demo payment ledger: its kind and collector codes, the gross and, only when stored, the provider's fee and net.</summary>
+public sealed record DemoPaymentLedgerTemplate(
+    string Key,
+    string Kind,
+    decimal Gross,
+    decimal? ProviderFee,
+    decimal? Net,
+    string CollectedBy,
+    string Currency,
+    string Scenario);
+
+/// <summary>A fiscal document of a direct demo stay: its status, the number of an issued one, the TEST recipient, the total and the tourist tax in it.</summary>
+public sealed record DemoFiscalDocumentTemplate(
+    string Key,
+    string Status,
+    string? Number,
+    string RecipientName,
+    decimal Total,
+    decimal TouristTax,
+    string Currency,
+    string Scenario);
+
 public sealed record DemoAdministratorStatementTemplate(
     string Key,
     string Text,

@@ -8,6 +8,11 @@ public class PushRoutesTests
 {
     [Theory]
     [InlineData("/properties", true)]
+    [InlineData("/approvals", true)]
+    [InlineData("/approvals/", false)]
+    [InlineData("/approvals/3f2504e0-4f89-41d3-9a0c-0305e82c3301", false)]
+    [InlineData("/approvals?x=1", false)]
+    [InlineData("https://example.com/approvals", false)]
     [InlineData("/bookings/3f2504e0-4f89-41d3-9a0c-0305e82c3301", true)]
     [InlineData("/bookings/3f2504e0-4f89-41d3-9a0c-0305e82c3301/checkout", true)]
     [InlineData("/supplier/requests/3f2504e0-4f89-41d3-9a0c-0305e82c3301", true)]
@@ -69,6 +74,15 @@ public class PushRoutesTests
     public void MessageThread_AKeyThatIsNotAConversation_IsRefused(string threadKey)
     {
         Assert.Throws<ArgumentException>(() => PushRoutes.MessageThread(threadKey));
+    }
+
+    [Fact]
+    public void Approvals_BuildsTheRouteOfTheListOfTheItemsWaitingForADecision()
+    {
+        var route = PushRoutes.Approvals();
+
+        Assert.Equal("/approvals", route);
+        Assert.True(PushRoutes.IsAppRoute(route));
     }
 
     [Fact]

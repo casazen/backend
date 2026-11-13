@@ -141,10 +141,26 @@ public sealed class OctorateWrongEnvironmentException(int? octorateStatusCode)
 
 /// <summary>
 /// Too many calls (ADR-023-R8, R9): CasaZen's own bucket of the org is empty (no call left Octorate), or Octorate answered 429 again after
-/// the three retries. 429, try again later.
+/// the three retries, or Octorate says the quota of its calls is used up (its 403 <c>ApiQuotaException</c>, which is not a refusal of the access: OCT-13). 429, try
+/// again later.
 /// </summary>
-public sealed class OctorateRateLimitException(int? octorateStatusCode)
-    : OctorateException("octorate_rate_limited", "OctorateRateLimited", StatusCodes.Status429TooManyRequests, octorateStatusCode);
+public sealed class OctorateRateLimitException : OctorateException
+{
+    /// <summary>The <c>type</c> of Octorate's 403 for a quota that is used up, spelled as Octorate spells it (OCT-13).</summary>
+    public const string QuotaErrorType = "ApiQuotaException";
+
+    public OctorateRateLimitException(int? octorateStatusCode, bool quotaExhausted = false)
+        : base("octorate_rate_limited", "OctorateRateLimited", StatusCodes.Status429TooManyRequests, octorateStatusCode)
+    {
+        QuotaExhausted = quotaExhausted;
+    }
+
+    /// <summary>
+    /// True when Octorate itself said the quota of its calls is used up (403 <c>ApiQuotaException</c>): the caller waits for the window of the quota to pass, as it
+    /// does for a quota it reads nearly used, and never takes it for a refusal of the access.
+    /// </summary>
+    public bool QuotaExhausted { get; }
+}
 
 /// <summary>Octorate refused the request itself (400, 405, 406, 415, 422 and the other 4xx not mapped above): 502.</summary>
 public sealed class OctorateRequestRejectedException(int octorateStatusCode)
