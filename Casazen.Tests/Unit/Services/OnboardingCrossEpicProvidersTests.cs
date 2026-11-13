@@ -403,6 +403,86 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// «Saved by an administrator» (the part «Messages and AI», E05): an active Admin of the org, not only its owner, is an administrator, and what it saves
+    /// counts.
+    /// </summary>
+    [Fact]
+    public async Task MessagesAiPart_PreferencesSavedByAnActiveAdmin_Count()
+    {
+        var evaluator = new MessagesAiPartEvaluator(_db, _flags.Object);
+        var context = new OnboardingPartContext(_world.OrgWide, [_world.Granted.Id]);
+        var admin = await AddMemberAsync(_world.OrgId, OrgRole.Admin, OrgMemberStatus.Active);
+        Assert.Equal(0, await DoneAsync(evaluator, context));
+
+        _db.UserNotificationChannelSettings.Add(ChannelSetting(admin));
+        await _db.SaveChangesAsync();
+
+        Assert.Equal(PartFacts.Counted(1, 1, null), await evaluator.EvaluateAsync(context, Ct));
+    }
+
+    /// <summary>
+    /// A deactivated Admin is nobody's administrator any more: its saved channels and its quiet hours are not a save of the org, however many there are.
+    /// </summary>
+    [Fact]
+    public async Task MessagesAiPart_PreferencesOfADeactivatedAdmin_DoNotCount()
+    {
+        var evaluator = new MessagesAiPartEvaluator(_db, _flags.Object);
+        var context = new OnboardingPartContext(_world.OrgWide, [_world.Granted.Id]);
+        var gone = await AddMemberAsync(_world.OrgId, OrgRole.Admin, OrgMemberStatus.Deactivated);
+        _db.UserNotificationChannelSettings.Add(ChannelSetting(gone));
+        _db.UserNotificationPreferences.Add(new UserNotificationPreferences { OrgId = _world.OrgId, UserId = gone, QuietHoursStart = new TimeOnly(23, 0) });
+        await _db.SaveChangesAsync();
+
+        Assert.Equal(PartFacts.Counted(0, 1, OnboardingPartReasons.NotificationPreferencesMissing), await evaluator.EvaluateAsync(context, Ct));
+    }
+
+    /// <summary>
+    /// Quiet hours that differ from the defaults (22:00 to 08:00) are a save of the administrator, and so is the legal alerts switch turned off; the row the
+    /// alert router makes by itself, with the defaults, is not (it proves nothing: it exists for whoever was ever alerted).
+    /// </summary>
+    [Theory]
+    [InlineData(22, 8, true, false)]
+    [InlineData(23, 8, true, true)]
+    [InlineData(22, 7, true, true)]
+    [InlineData(22, 8, false, true)]
+    public async Task MessagesAiPart_QuietHoursThatDifferFromTheDefaults_Count_TheDefaultsDoNot(int startHour, int endHour, bool legalOverride, bool counts)
+    {
+        var evaluator = new MessagesAiPartEvaluator(_db, _flags.Object);
+        var context = new OnboardingPartContext(_world.OrgWide, [_world.Granted.Id]);
+        _db.UserNotificationPreferences.Add(new UserNotificationPreferences
+        {
+            OrgId = _world.OrgId,
+            UserId = _world.OwnerUserId,
+            QuietHoursStart = new TimeOnly(startHour, 0),
+            QuietHoursEnd = new TimeOnly(endHour, 0),
+            LegalAlertsOverrideQuietHours = legalOverride,
+        });
+        await _db.SaveChangesAsync();
+
+        Assert.Equal(counts ? 1 : 0, await DoneAsync(evaluator, context));
+    }
+
+    /// <summary>
+    /// Isolation between organizations: the rows of another org (its administrator's channels and quiet hours, and a row of that org under the id of an
+    /// administrator of this one) are not a save of this org, while they do count for the org they belong to, so the rows are really there to be read.
+    /// </summary>
+    [Fact]
+    public async Task MessagesAiPart_ThePreferencesOfAnotherOrganization_DoNotCount()
+    {
+        var evaluator = new MessagesAiPartEvaluator(_db, _flags.Object);
+        var context = new OnboardingPartContext(_world.OrgWide, [_world.Granted.Id]);
+        var otherContext = new OnboardingPartContext(new HostScope(_world.OtherOrgId), []);
+        var otherAdmin = await AddMemberAsync(_world.OtherOrgId, OrgRole.Admin, OrgMemberStatus.Active);
+        _db.UserNotificationChannelSettings.Add(ChannelSetting(otherAdmin, _world.OtherOrgId));
+        _db.UserNotificationPreferences.Add(new UserNotificationPreferences { OrgId = _world.OtherOrgId, UserId = otherAdmin, QuietHoursStart = new TimeOnly(23, 0) });
+        _db.UserNotificationChannelSettings.Add(ChannelSetting(_world.OwnerUserId, _world.OtherOrgId));
+        await _db.SaveChangesAsync();
+
+        Assert.Equal(PartFacts.Counted(0, 1, OnboardingPartReasons.NotificationPreferencesMissing), await evaluator.EvaluateAsync(context, Ct));
+        Assert.Equal(PartFacts.Counted(1, 1, null), await evaluator.EvaluateAsync(otherContext, Ct));
+    }
+
+    /// <summary>
     /// «Partners» reads the Active tab of the marketplace for the scope of the caller (E09): an integration of a property counts for a caller who reaches
     /// it, one of the organization only for a caller who reaches the whole org; a request that is not active nor declared, and a deactivated one, do not.
     /// </summary>
@@ -677,9 +757,19 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         IssuerMode = mode,
     };
 
-    private UserNotificationChannelSetting ChannelSetting(string userId) => new()
+    /// <summary>A member of an org with its own account: the row of the team and the user it belongs to. Returns the id of the user.</summary>
+    private async Task<string> AddMemberAsync(Guid orgId, OrgRole role, OrgMemberStatus status)
     {
-        OrgId = _world.OrgId,
+        var user = HostScopeScenario.NewUser($"auth0|{role}-{Guid.NewGuid():N}", orgId, UserRole.None);
+        _db.Users.Add(user);
+        _db.OrgMembers.Add(new OrgMember { OrgId = orgId, UserId = user.Id, Role = role, Status = status });
+        await _db.SaveChangesAsync();
+        return user.Id;
+    }
+
+    private UserNotificationChannelSetting ChannelSetting(string userId, Guid? orgId = null) => new()
+    {
+        OrgId = orgId ?? _world.OrgId,
         UserId = userId,
         EventType = NotificationEventType.NewGuestMessage,
         Channels = NotificationChannels.Email,
