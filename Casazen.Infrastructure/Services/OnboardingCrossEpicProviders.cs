@@ -148,10 +148,12 @@ public sealed class DocumentsFlowProvider(AppDbContext db, FlowPrerequisiteReade
 
 /// <summary>
 /// The reports flow (E10/F01/US04/T01, NF-106, E07): the reports and the figures made of the bookings of the property. Needs the connection, the
-/// confirmed mapping and at least one booking imported from the channel manager (<see cref="Booking.OctorateReservationId"/> set) that is still a
-/// booking: not a request or a hold, not cancelled and not a no-show (<see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/> and no no-show mark, the
-/// one definition of an active booking). Without one the property is «to complete» with <see cref="OnboardingFlowReasons.NoBookingsYet"/>, never
-/// active.
+/// confirmed mapping and at least one booking imported from the channel manager that is still a booking. «Imported» is a booking of a channel (the one
+/// definition, <see cref="HostCollectionsRules.ChannelSources"/>, that is <see cref="FiscalCopy.IsOtaBookingSource"/>) with its reservation on Octorate
+/// (<see cref="Booking.OctorateReservationId"/> set, as <see cref="OtaChannelActionPolicy.IsChannelBooking(BookingSource, string?)"/> says): the
+/// bookings CasaZen made itself and mirrored on the channel manager get that id too and were not imported from it. Still a booking: not a request or a
+/// hold, not cancelled and not a no-show (<see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/> and no no-show mark, the one definition of an
+/// active booking). Without one the property is «to complete» with <see cref="OnboardingFlowReasons.NoBookingsYet"/>, never active.
 /// </summary>
 /// <remarks>
 /// <para><b>Reach.</b> Only the properties asked about are read (the flow status service gives the ones the caller reaches, AM-03), the bookings of
@@ -177,11 +179,13 @@ public sealed class ReportsFlowProvider(AppDbContext db, FlowPrerequisiteReader 
 
         var connection = await prerequisites.ConnectionAsync(orgId, ct);
         var mapping = await prerequisites.MappingAsync(orgId, ids, ct);
+        var channels = HostCollectionsRules.ChannelSources.ToArray();
         var withBookings = (await db.Bookings
                 .AsNoTracking()
                 .Where(b => b.OrgId == orgId
                             && ids.Contains(b.PropertyId)
                             && !string.IsNullOrWhiteSpace(b.OctorateReservationId)
+                            && channels.Contains(b.Source)
                             && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status)
                             && b.NoShowAt == null)
                 .Select(b => b.PropertyId)

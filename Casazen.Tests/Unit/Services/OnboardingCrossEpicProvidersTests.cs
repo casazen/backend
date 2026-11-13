@@ -241,6 +241,34 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// «Imported» is a booking of a channel (the one definition, <see cref="FiscalCopy.IsOtaBookingSource"/>) with its reservation on Octorate: the
+    /// bookings CasaZen made itself (the booking site, the host's own entry, the local ones) get an Octorate reservation id too when they are mirrored on
+    /// the channel manager, and they were not imported from it, so they never make the reports ready. Every source of the enum is tried, so a new one is
+    /// judged by the definition and not by a list written out here.
+    /// </summary>
+    [Fact]
+    public async Task ReportsFlow_OnlyABookingOfAChannelCountsAsImported_NotOneCasaZenMirroredOnOctorate()
+    {
+        await ConnectAsync();
+        var provider = new ReportsFlowProvider(_db, Reader(_world.Granted.Id));
+        var sources = Enum.GetValues<BookingSource>();
+        Assert.Contains(BookingSource.Manual, sources.Where(source => !FiscalCopy.IsOtaBookingSource(source)));
+        Assert.Contains(BookingSource.OtherChannel, sources.Where(FiscalCopy.IsOtaBookingSource));
+
+        foreach (var source in sources)
+        {
+            var booking = await AddBookingAsync(_world.Granted, BookingStatus.Confirmed, source: source);
+
+            var answer = await provider.EvaluateAsync(_world.OrgId, [_world.Granted.Id], Ct);
+
+            var bookings = answer[_world.Granted.Id].Prerequisites.Single(p => p.Key == OnboardingPrerequisiteKeys.Bookings);
+            Assert.True(FiscalCopy.IsOtaBookingSource(source) == bookings.Met, $"{source}: imported = {FiscalCopy.IsOtaBookingSource(source)}, ready = {bookings.Met}");
+            _db.Bookings.Remove(booking);
+            await _db.SaveChangesAsync();
+        }
+    }
+
+    /// <summary>
     /// Proof (permission, AM-03): the providers answer only for the properties they are asked about and an empty list is an empty answer, never
     /// «every property of the org» (the org here has facts for both of its properties); and the flow status of a collaborator «Solo alcuni» holds only
     /// the property it was given, for the three flows.
@@ -677,7 +705,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
     };
 
     /// <summary>A booking of <paramref name="property"/> that came (or not, with no reservation id) from the channel manager.</summary>
-    private async Task<Booking> AddBookingAsync(Property property, BookingStatus status, string? reservationId = "RES-1", bool noShow = false)
+    private async Task<Booking> AddBookingAsync(Property property, BookingStatus status, string? reservationId = "RES-1", bool noShow = false, BookingSource source = BookingSource.BookingCom)
     {
         var guestId = await _db.Guests.AsNoTracking().Where(g => g.OrgId == property.OrgId).Select(g => g.Id).FirstAsync();
         var booking = new Booking
@@ -689,7 +717,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
             CheckOutDate = HostScopeScenario.Day(2026, 12, 4),
             NumberOfGuests = 2,
             Status = status,
-            Source = BookingSource.BookingCom,
+            Source = source,
             // A blank or missing id stays as it is (that is the case under test); a real one is made unique for the org.
             OctorateReservationId = string.IsNullOrWhiteSpace(reservationId) ? reservationId : $"{reservationId}-{Guid.NewGuid():N}",
             NoShowAt = noShow ? HostScopeScenario.Now.UtcDateTime : null,
