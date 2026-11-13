@@ -293,9 +293,11 @@ public sealed class CheckInComplianceFlowProvider(
 }
 
 /// <summary>
-/// The placeholder of a flow nobody has built yet (messages, documents, reports until E05, E06 and E07 register their own provider with a
-/// higher <see cref="IFlowReadinessProvider.Order"/>): every property is «not available», <see cref="OnboardingFlowReasons.NotProvided"/>.
-/// A flow with no provider is never presumed ready.
+/// The placeholder of a flow nobody has built yet (a provider of the epic that owns the flow registers with a higher
+/// <see cref="IFlowReadinessProvider.Order"/>, and the placeholder stops being asked): every property is «not available»,
+/// <see cref="OnboardingFlowReasons.NotProvided"/>. A flow with no provider is never presumed ready. Today every flow has its provider (the messages,
+/// documents and reports ones are in <c>OnboardingCrossEpicProviders</c>, E10/F01/US04/T01) and nothing registers this one; it is the model for a
+/// future flow and what the tests use as the answer of a flow with nobody behind it.
 /// </summary>
 public sealed class NotProvidedFlowProvider(OnboardingFlow flow) : IFlowReadinessProvider
 {
