@@ -32,14 +32,18 @@ public class OwnerMessage : ITenantOwned, IAppendOnlyRecord
     /// <summary>The person of the portal who wrote it (<c>OwnerUser.Id</c>): the owner or a delegated contact.</summary>
     public Guid? SenderOwnerUserId { get; set; }
 
+    /// <summary>
+    /// What was written, plain text. <b>Encrypted at rest</b> (<c>EncryptedColumns</c>, purpose <c>Casazen.OwnerPortal.Message</c>, like the words of the other
+    /// conversations): no length on the column, the payload is longer than the text, and <see cref="BodyMaxLength"/> is the rule of the service. Free text a
+    /// person wrote can say anything: never searched, never put in an e-mail or a log.
+    /// </summary>
     [Required]
-    [MaxLength(BodyMaxLength)]
     public string Body { get; set; } = string.Empty;
 
     [MaxLength(OwnerDocumentVersion.StorageKeyMaxLength)]
     public string? AttachmentKey { get; set; }
 
-    [MaxLength(OwnerDocumentVersion.FileNameMaxLength)]
+    /// <summary>The name the download offers (made by <c>OwnerFileRules.SafeFileName</c>). <b>Encrypted at rest</b>, with <see cref="Body"/>: a name can name a person or a case.</summary>
     public string? AttachmentFileName { get; set; }
 
     [MaxLength(OwnerDocumentVersion.ContentTypeMaxLength)]

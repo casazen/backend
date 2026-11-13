@@ -150,6 +150,20 @@ public static class EncryptedColumns
     public const string AssistantContentPurpose = "Casazen.Assistant.Content";
 
     /// <summary>
+    /// Purpose of the words of the owner inbox (E07/F07/US01/T02, NF-111): <see cref="OwnerMessage.Body"/> and <see cref="OwnerMessage.AttachmentFileName"/>, and the
+    /// subject of the conversation (<see cref="OwnerConversation.Subject"/>). Free text an owner or the agency wrote, read by the two parties of the conversation
+    /// and by nobody else, never searched, never put in an e-mail or a log. Its own purpose, apart from the words of the channels. Never change it.
+    /// </summary>
+    public const string OwnerPortalMessagePurpose = "Casazen.OwnerPortal.Message";
+
+    /// <summary>
+    /// Purpose of the delegated contacts of an owner (E07/F07/US01/T02, AC-NF111-4): the address and the name of <see cref="OwnerPortalContact"/>, a person the owner
+    /// lets into the portal. Nothing is searched in them: an address is found by its keyed hash (<see cref="OwnerPortalContact.EmailHash"/>, HMAC-SHA256 keyed by
+    /// <c>OwnerPortal:ContactIndexKey</c>). Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string OwnerPortalContactPurpose = "Casazen.OwnerPortal.Contact";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -327,6 +341,20 @@ public static class EncryptedColumns
         new EncryptedEntity<AssistantSituationSetting>(
             AssistantContentPurpose,
             nameof(AssistantSituationSetting.ResponseTemplate)),
+        // NF-111: the words of the owner inbox (the message, the name of its file, the subject of the conversation) and the address and name of the
+        // delegated contacts of an owner (E07/F07/US01/T02). The contact is found by OwnerPortalContact.EmailHash, never by the address.
+        new EncryptedEntity<OwnerMessage>(
+            OwnerPortalMessagePurpose,
+            nameof(OwnerMessage.Body),
+            nameof(OwnerMessage.AttachmentFileName)),
+        new EncryptedEntity<OwnerConversation>(
+            OwnerPortalMessagePurpose,
+            nameof(OwnerConversation.Subject)),
+        new EncryptedEntity<OwnerPortalContact>(
+            OwnerPortalContactPurpose,
+            nameof(OwnerPortalContact.Email),
+            nameof(OwnerPortalContact.FirstName),
+            nameof(OwnerPortalContact.LastName)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

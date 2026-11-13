@@ -47,6 +47,9 @@ public sealed partial class OwnerCollaborationService
         RequireContact(lastName.Length is > 0 and <= OwnerPortalContact.NameMaxLength, "lastName");
         var permissions = OwnerPortalPermissions.Parse(command.Permissions);
 
+        // The address is encrypted at rest: it is found, and kept unique for the owner profile, by its keyed hash (never by the address).
+        var emailHash = contactIndex.HashEmail(email);
+
         // The link is built before anything is saved: a missing public address leaves no contact behind.
         var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         var acceptUrl = links.OwnerContactAccept(token);
@@ -61,9 +64,9 @@ public sealed partial class OwnerCollaborationService
                 .ToListAsync(cancellationToken);
 
             // An invitation that lapsed for the same address is closed and replaced; a live one, or an active contact, is the same person already.
-            foreach (var lapsed in inForce.Where(c => c.Email == email && c.Status == OwnerPortalContactStatus.Invited && c.InvitationExpiresAt <= now))
+            foreach (var lapsed in inForce.Where(c => c.EmailHash == emailHash && c.Status == OwnerPortalContactStatus.Invited && c.InvitationExpiresAt <= now))
                 Close(lapsed, now, access.Actor);
-            if (inForce.Any(c => c.Email == email && c.Status != OwnerPortalContactStatus.Revoked))
+            if (inForce.Any(c => c.EmailHash == emailHash && c.Status != OwnerPortalContactStatus.Revoked))
                 throw new DomainConflictException(OwnerCollaborationErrors.ContactExists, OwnerCollaborationErrors.ContactExistsMessageKey);
             if (inForce.Count(c => c.Status != OwnerPortalContactStatus.Revoked) >= OwnerCollaborationRules.MaxContactsPerOwner)
             {
@@ -76,6 +79,7 @@ public sealed partial class OwnerCollaborationService
                 OrgId = orgId,
                 PropertyOwnerId = propertyOwnerId,
                 Email = email,
+                EmailHash = emailHash,
                 FirstName = firstName,
                 LastName = lastName,
                 Permissions = permissions,

@@ -92,7 +92,7 @@ internal sealed class OwnerDocumentDownloadConfiguration : IEntityTypeConfigurat
 
 /// <summary>
 /// The delegated contacts (E07/F07/US01/T02): the owner profile restricts; the secret of a link is unique; one contact in force (invited or active) per
-/// owner profile and address.
+/// owner profile and address (found by its keyed hash: the address itself is encrypted).
 /// </summary>
 internal sealed class OwnerPortalContactConfiguration : IEntityTypeConfiguration<OwnerPortalContact>
 {
@@ -102,7 +102,7 @@ internal sealed class OwnerPortalContactConfiguration : IEntityTypeConfiguration
         entity.HasOne<PropertyOwner>().WithMany().HasForeignKey(c => c.PropertyOwnerId).OnDelete(DeleteBehavior.Restrict);
         entity.HasOne<OwnerUser>().WithMany().HasForeignKey(c => c.OwnerUserId).OnDelete(DeleteBehavior.Restrict);
         entity.HasIndex(c => c.TokenHash).IsUnique();
-        entity.HasIndex(c => new { c.OrgId, c.PropertyOwnerId, c.Email }).IsUnique().HasFilter("\"Status\" <> 3")
+        entity.HasIndex(c => new { c.OrgId, c.PropertyOwnerId, c.EmailHash }).IsUnique().HasFilter("\"Status\" <> 3")
             .HasDatabaseName("UIX_OwnerPortalContacts_Owner_Email_InForce");
         entity.HasIndex(c => new { c.OwnerUserId, c.Status });
         entity.ToTable(table => table.HasCheckConstraint("CK_OwnerPortalContacts_Permissions", "\"Permissions\" > 0"));

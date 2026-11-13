@@ -33,6 +33,7 @@ public sealed partial class OwnerCollaborationService(
     IEmailQueue emailQueue,
     PublicSiteLinks links,
     IAuth0ManagementService auth0Management,
+    IOwnerContactIndex contactIndex,
     TimeProvider timeProvider,
     ILogger<OwnerCollaborationService> logger) : IOwnerCollaborationService
 {

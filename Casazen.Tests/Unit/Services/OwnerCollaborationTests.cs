@@ -4,12 +4,16 @@ using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Data.Encryption;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Services;
 using Hangfire;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -28,6 +32,9 @@ public partial class OwnerCollaborationTests
     private static readonly DateTimeOffset Now = new(2026, 10, 9, 10, 0, 0, TimeSpan.Zero);
     private static readonly DateOnly Today = new(2026, 10, 9);
     private const string Agent = "auth0|agenzia";
+
+    // One provider for the whole class: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
+    private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
 
     /// <summary>
     /// PROOF TEST: permission rule (AC-NF111-4). A contact holds exactly the permissions the owner gave, each on its own: with <c>calendar.read</c> only it
@@ -196,6 +203,63 @@ public partial class OwnerCollaborationTests
         Assert.Equal(new OwnerDocumentAlertResult(0, 1), await service.RaiseExpiryAlertsAsync());
     }
 
+    /// <summary>
+    /// PROOF TEST: privacy rule. The words of the inbox (the message, the subject of the conversation, the name of the file of a message) and the address and the name of a
+    /// delegated contact are Data Protection payloads at rest (<c>EncryptedColumns</c>): the table holds none of the words, the service reads them back in clear, and a
+    /// contact is found, and kept unique for its owner profile, by the keyed hash of the address whatever the spelling (never by the address).
+    /// </summary>
+    [Fact]
+    public async Task OwnerInbox_WordsAndContacts_AreEncryptedAtRest_AndTheContactIsFoundByItsKeyedHash_Test()
+    {
+        const string Words = "Il mio IBAN e IT60X0542811101000000123456; chiamami al +39 333 1234567";
+        const string Subject = "Dati bancari della signora Verdi";
+        var w = await World.CreateAsync(encrypted: true);
+        var service = w.Service();
+        var owner = await w.AccessAsync(w.UserA);
+
+        await service.InviteContactAsync(owner, new InviteOwnerContact(null, "Carla@Example.com", "Carla", "Contabile", [OwnerPortalPermissions.InboxUse]));
+        var conversation = await service.StartConversationByOwnerAsync(
+            owner, new StartOwnerConversation(null, null, OwnerConversationTopic.General, null, null, null, null, Subject, Words));
+        await service.PostMessageByOwnerAsync(owner, conversation.Id, "Allego la visura", new OwnerFileUpload("Visura Verdi Maria.pdf", Pdf("V").Content));
+
+        // What the tables hold: payloads, none of the words.
+        await using (var raw = w.RawDb())
+        {
+            var contact = await raw.OwnerPortalContacts.AsNoTracking().SingleAsync();
+            Assert.All(
+                new[] { contact.Email, contact.FirstName, contact.LastName },
+                stored => Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, stored, StringComparison.Ordinal));
+            Assert.DoesNotContain("carla", contact.Email + contact.FirstName + contact.LastName, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("contabile", contact.Email + contact.FirstName + contact.LastName, StringComparison.OrdinalIgnoreCase);
+            Assert.Matches("^[0-9a-f]{64}$", contact.EmailHash);
+            Assert.Equal(World.ContactIndex.HashEmail("carla@example.com"), contact.EmailHash);
+
+            var subject = (await raw.OwnerConversations.AsNoTracking().SingleAsync()).Subject;
+            Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, subject, StringComparison.Ordinal);
+            Assert.DoesNotContain("Verdi", subject, StringComparison.Ordinal);
+
+            var messages = await raw.OwnerMessages.AsNoTracking().ToListAsync();
+            Assert.Equal(2, messages.Count);
+            Assert.All(messages, m => Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, m.Body, StringComparison.Ordinal));
+            Assert.DoesNotContain(messages, m => m.Body.Contains("IBAN", StringComparison.Ordinal) || m.Body.Contains("Allego", StringComparison.Ordinal));
+            var fileName = Assert.Single(messages, m => m.AttachmentKey is not null).AttachmentFileName!;
+            Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, fileName, StringComparison.Ordinal);
+            Assert.DoesNotContain("Visura", fileName, StringComparison.Ordinal);
+        }
+
+        // What the service reads: the words, in clear.
+        Assert.Equal("carla@example.com", (await service.ListContactsForOwnerAsync(owner)).Single().Email);
+        var read = await service.ListMessagesForOwnerAsync(owner, conversation.Id);
+        Assert.Contains(read, m => m.Body == Words);
+        Assert.Contains(read, m => m.Attachment is { } file && file.FileName.StartsWith("Visura Verdi Maria", StringComparison.Ordinal));
+        Assert.Equal(Subject, (await service.ListConversationsForOwnerAsync(owner)).Single().Subject);
+
+        // The address is found by its keyed hash: another spelling of it is the same contact, an invitation already in force.
+        var again = await Assert.ThrowsAsync<DomainConflictException>(
+            () => service.InviteContactAsync(owner, new InviteOwnerContact(null, "  CARLA@example.com ", "Carla", "Altra", [OwnerPortalPermissions.InboxUse])));
+        Assert.Equal(OwnerCollaborationErrors.ContactExists, again.Code);
+    }
+
     [Theory]
     [InlineData("%PDF-1.4\n1 0 obj << /Type /Catalog /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >> endobj\n%%EOF")]
     [InlineData("%PDF-1.4\n1 0 obj << /Type /Catalog /OpenAction << /S /J#61vaScript >> >> endobj\n%%EOF")]
@@ -262,8 +326,11 @@ public partial class OwnerCollaborationTests
         private readonly FixedTimeProvider _clock = new(Now);
         private readonly Dictionary<string, byte[]> _files = [];
 
-        private World()
+        private readonly IDataProtectionProvider? _provider;
+
+        private World(bool encrypted)
         {
+            _provider = encrypted ? Provider : null;
             Db = NewDb();
         }
 
@@ -289,12 +356,16 @@ public partial class OwnerCollaborationTests
 
         public Guid UserC { get; private set; }
 
-        public static async Task<World> CreateAsync()
+        /// <param name="encrypted">The model encrypts the columns of <c>EncryptedColumns</c> (Data Protection), as in production; the default stores them as written.</param>
+        public static async Task<World> CreateAsync(bool encrypted = false)
         {
-            var w = new World();
+            var w = new World(encrypted);
             await w.SeedAsync();
             return w;
         }
+
+        /// <summary>A context of the same database with no Data Protection: it reads the columns as the table holds them.</summary>
+        public AppDbContext RawDb() => new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_name).Options);
 
         public async Task<OwnerPortalAccess> AccessAsync(Guid ownerUserId) => await new OwnerPortalAccessResolver(NewDb(), _clock).ResolveAsync(ownerUserId);
 
@@ -335,9 +406,16 @@ public partial class OwnerCollaborationTests
                 emails.Object,
                 new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = "https://casazen.example.test/" })),
                 auth0.Object,
+                ContactIndex,
                 _clock,
                 NullLogger<OwnerCollaborationService>.Instance);
         }
+
+        /// <summary>The keyed index of the contacts, with the fixed key of Development (what the tests run with).</summary>
+        public static OwnerContactIndex ContactIndex { get; } = new(
+            Options.Create(new OwnerPortalOptions()),
+            Mock.Of<IHostEnvironment>(environment => environment.EnvironmentName == "Development"),
+            NullLogger<OwnerContactIndex>.Instance);
 
         public OwnerStayService Stays() =>
             new(
@@ -358,6 +436,7 @@ public partial class OwnerCollaborationTests
                 OrgId = OrgId,
                 PropertyOwnerId = propertyOwnerId,
                 Email = "carla@example.com",
+                EmailHash = ContactIndex.HashEmail("carla@example.com"),
                 FirstName = "Carla",
                 LastName = "Contatto",
                 Permissions = permissions,
@@ -375,7 +454,8 @@ public partial class OwnerCollaborationTests
             return contact.Id;
         }
 
-        private AppDbContext NewDb() => new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_name).Options);
+        private AppDbContext NewDb() =>
+            new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_name).Options, tenantContext: null, _provider);
 
         private async Task SeedAsync()
         {

@@ -36,6 +36,9 @@ public class OwnerPortalOperationsRegistrationTests
             // The shared documents, the delegated contacts and the inbox (E07/F07/US01/T02).
             (typeof(IOwnerFileScanner), typeof(OwnerFileContentScanner), ServiceLifetime.Singleton),
             (typeof(IOwnerCollaborationService), typeof(OwnerCollaborationService), ServiceLifetime.Scoped),
+
+            // The keyed index of the delegated contacts (the address is encrypted at rest; the options are validated at startup).
+            (typeof(IOwnerContactIndex), typeof(OwnerContactIndex), ServiceLifetime.Singleton),
         };
 
         Assert.Equal(expected, ours);

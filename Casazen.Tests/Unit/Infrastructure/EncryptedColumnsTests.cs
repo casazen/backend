@@ -67,6 +67,8 @@ public class EncryptedColumnsTests
                 "OtaIntegration.ApiSecret:Casazen.OtaIntegration.Secrets",
                 // ADR-032-R3: the words of the conversations of the guests with the channels, copied from the channel manager.
                 "OtaMessage.Text:Casazen.Message.Content",
+                // NF-111: the subject of a conversation of the owner inbox (E07/F07/US01/T02).
+                "OwnerConversation.Subject:Casazen.OwnerPortal.Message",
                 // ADR-012, NF-109: the identifiers, the address and the bank account of the fiscal profile of an owner (E06/F05/US02/T01).
                 "OwnerFiscalProfile.BankAccountReference:Casazen.OwnerFiscalProfile",
                 "OwnerFiscalProfile.FiscalCode:Casazen.OwnerFiscalProfile",
@@ -74,6 +76,12 @@ public class EncryptedColumnsTests
                 "OwnerFiscalProfile.LegalAddress:Casazen.OwnerFiscalProfile",
                 "OwnerFiscalProfile.LegalName:Casazen.OwnerFiscalProfile",
                 "OwnerFiscalProfile.VatNumber:Casazen.OwnerFiscalProfile",
+                // NF-111: the words of the owner inbox, the name of the file of a message, and the address and name of the delegated contacts of an owner (E07/F07/US01/T02).
+                "OwnerMessage.AttachmentFileName:Casazen.OwnerPortal.Message",
+                "OwnerMessage.Body:Casazen.OwnerPortal.Message",
+                "OwnerPortalContact.Email:Casazen.OwnerPortal.Contact",
+                "OwnerPortalContact.FirstName:Casazen.OwnerPortal.Contact",
+                "OwnerPortalContact.LastName:Casazen.OwnerPortal.Contact",
                 "Party.ContactPhone:Casazen.LeaseParty",
                 "Party.Residence:Casazen.LeaseParty",
                 "PlatformAiSettings.ApiKey:Casazen.PlatformAiSettings",

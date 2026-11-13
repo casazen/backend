@@ -28,18 +28,29 @@ public class OwnerPortalContact : ITenantOwned
     /// <summary>The owner profile the contact acts for (<c>PropertyOwner.Id</c>).</summary>
     public Guid PropertyOwnerId { get; set; }
 
-    /// <summary>The invited address, normalized (trimmed, lower case): the account that accepts must hold it, verified.</summary>
+    /// <summary>
+    /// The invited address, normalized (trimmed, lower case): the account that accepts must hold it, verified. <b>Personal data, encrypted at rest</b>
+    /// (<c>EncryptedColumns</c>, purpose <c>Casazen.OwnerPortal.Contact</c>): no length on the column, <see cref="EmailMaxLength"/> is the rule of the service.
+    /// It is never searched: the address is found by <see cref="EmailHash"/>.
+    /// </summary>
     [Required]
-    [MaxLength(EmailMaxLength)]
     public string Email { get; set; } = string.Empty;
 
+    /// <summary>The first name of the contact. <b>Encrypted at rest</b> with <see cref="Email"/>; <see cref="NameMaxLength"/> is the rule of the service.</summary>
     [Required]
-    [MaxLength(NameMaxLength)]
     public string FirstName { get; set; } = string.Empty;
 
+    /// <summary>The last name of the contact. <b>Encrypted at rest</b> with <see cref="Email"/>; <see cref="NameMaxLength"/> is the rule of the service.</summary>
     [Required]
-    [MaxLength(NameMaxLength)]
     public string LastName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// HMAC-SHA256 (lower-case hex) of the normalized address, keyed by <c>OwnerPortal:ContactIndexKey</c> (<c>IOwnerContactIndex</c>): how an address is found
+    /// and kept unique for an owner profile while <see cref="Email"/> is encrypted (never a deterministic encryption, never an unkeyed hash).
+    /// </summary>
+    [Required]
+    [MaxLength(HashLength)]
+    public string EmailHash { get; set; } = string.Empty;
 
     /// <summary>What the contact may do (a mask of <see cref="OwnerPortalPermission"/>); never empty.</summary>
     public OwnerPortalPermission Permissions { get; set; }

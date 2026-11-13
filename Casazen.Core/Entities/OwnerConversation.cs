@@ -36,8 +36,11 @@ public class OwnerConversation : ITenantOwned
 
     public Guid? OwnerStatementVersionId { get; set; }
 
+    /// <summary>
+    /// What the conversation is called, written by a person. <b>Encrypted at rest</b> (<c>EncryptedColumns</c>, purpose <c>Casazen.OwnerPortal.Message</c>, as
+    /// the words of its messages): no length on the column, <see cref="SubjectMaxLength"/> is the rule of the service.
+    /// </summary>
     [Required]
-    [MaxLength(SubjectMaxLength)]
     public string Subject { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; }
