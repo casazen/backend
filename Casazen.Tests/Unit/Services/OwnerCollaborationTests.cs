@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
@@ -205,8 +206,9 @@ public partial class OwnerCollaborationTests
 
     /// <summary>
     /// PROOF TEST: privacy rule. The words of the inbox (the message, the subject of the conversation, the name of the file of a message) and the address and the name of a
-    /// delegated contact are Data Protection payloads at rest (<c>EncryptedColumns</c>): the table holds none of the words, the service reads them back in clear, and a
-    /// contact is found, and kept unique for its owner profile, by the keyed hash of the address whatever the spelling (never by the address).
+    /// delegated contact are Data Protection payloads at rest (<c>EncryptedColumns</c>, under a purpose of their own, no length on the column): the converter of each
+    /// column writes none of the words, the service reads them back in clear, and a contact is found, and kept unique for its owner profile, by the keyed hash of the
+    /// address whatever the spelling (never by the address).
     /// </summary>
     [Fact]
     public async Task OwnerInbox_WordsAndContacts_AreEncryptedAtRest_AndTheContactIsFoundByItsKeyedHash_Test()
@@ -222,29 +224,43 @@ public partial class OwnerCollaborationTests
             owner, new StartOwnerConversation(null, null, OwnerConversationTopic.General, null, null, null, null, Subject, Words));
         await service.PostMessageByOwnerAsync(owner, conversation.Id, "Allego la visura", new OwnerFileUpload("Visura Verdi Maria.pdf", Pdf("V").Content));
 
-        // What the tables hold: payloads, none of the words.
+        // What the model does with each of these columns: no length (the payload is longer than the text), a Data Protection payload with none of the words under
+        // the purpose of the column, read back only by the decryption of that purpose (the EF InMemory store keeps the values the model hands it, so the proof is on
+        // the model and its converters, as for the other encrypted columns).
+        var otherPurpose = Provider.CreateProtector(EncryptedColumns.OtaMessageTextPurpose);
+        foreach (var (entityType, property, purpose) in new[]
+                 {
+                     (typeof(OwnerMessage), nameof(OwnerMessage.Body), EncryptedColumns.OwnerPortalMessagePurpose),
+                     (typeof(OwnerMessage), nameof(OwnerMessage.AttachmentFileName), EncryptedColumns.OwnerPortalMessagePurpose),
+                     (typeof(OwnerConversation), nameof(OwnerConversation.Subject), EncryptedColumns.OwnerPortalMessagePurpose),
+                     (typeof(OwnerPortalContact), nameof(OwnerPortalContact.Email), EncryptedColumns.OwnerPortalContactPurpose),
+                     (typeof(OwnerPortalContact), nameof(OwnerPortalContact.FirstName), EncryptedColumns.OwnerPortalContactPurpose),
+                     (typeof(OwnerPortalContact), nameof(OwnerPortalContact.LastName), EncryptedColumns.OwnerPortalContactPurpose),
+                 })
+        {
+            Assert.Contains(EncryptedColumns.All, c => c.EntityType == entityType && c.Property == property && c.Purpose == purpose);
+            var column = w.Db.Model.FindEntityType(entityType)!.FindProperty(property)!;
+            var converter = Assert.IsType<EncryptedStringConverter>(column.GetValueConverter());
+            Assert.Null(column.GetMaxLength());
+
+            var stored = (string)converter.ConvertToProvider(Words)!;
+            Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, stored, StringComparison.Ordinal);
+            Assert.DoesNotContain("IBAN", stored, StringComparison.Ordinal);
+            Assert.DoesNotContain("chiamami", stored, StringComparison.Ordinal);
+            Assert.Equal(Words, converter.ConvertFromProvider(stored));
+            Assert.ThrowsAny<CryptographicException>(() => otherPurpose.Unprotect(stored));
+        }
+
+        Assert.Equal("Casazen.OwnerPortal.Message", EncryptedColumns.OwnerPortalMessagePurpose);
+        Assert.Equal("Casazen.OwnerPortal.Contact", EncryptedColumns.OwnerPortalContactPurpose);
+        Assert.True(EncryptedColumns.IsConfigured(w.Db));
+
+        // The contact table holds the keyed hash of the address, and it is the one the index makes.
         await using (var raw = w.RawDb())
         {
-            var contact = await raw.OwnerPortalContacts.AsNoTracking().SingleAsync();
-            Assert.All(
-                new[] { contact.Email, contact.FirstName, contact.LastName },
-                stored => Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, stored, StringComparison.Ordinal));
-            Assert.DoesNotContain("carla", contact.Email + contact.FirstName + contact.LastName, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("contabile", contact.Email + contact.FirstName + contact.LastName, StringComparison.OrdinalIgnoreCase);
-            Assert.Matches("^[0-9a-f]{64}$", contact.EmailHash);
-            Assert.Equal(World.ContactIndex.HashEmail("carla@example.com"), contact.EmailHash);
-
-            var subject = (await raw.OwnerConversations.AsNoTracking().SingleAsync()).Subject;
-            Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, subject, StringComparison.Ordinal);
-            Assert.DoesNotContain("Verdi", subject, StringComparison.Ordinal);
-
-            var messages = await raw.OwnerMessages.AsNoTracking().ToListAsync();
-            Assert.Equal(2, messages.Count);
-            Assert.All(messages, m => Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, m.Body, StringComparison.Ordinal));
-            Assert.DoesNotContain(messages, m => m.Body.Contains("IBAN", StringComparison.Ordinal) || m.Body.Contains("Allego", StringComparison.Ordinal));
-            var fileName = Assert.Single(messages, m => m.AttachmentKey is not null).AttachmentFileName!;
-            Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, fileName, StringComparison.Ordinal);
-            Assert.DoesNotContain("Visura", fileName, StringComparison.Ordinal);
+            var hash = (await raw.OwnerPortalContacts.AsNoTracking().SingleAsync()).EmailHash;
+            Assert.Matches("^[0-9a-f]{64}$", hash);
+            Assert.Equal(World.ContactIndex.HashEmail("carla@example.com"), hash);
         }
 
         // What the service reads: the words, in clear.
