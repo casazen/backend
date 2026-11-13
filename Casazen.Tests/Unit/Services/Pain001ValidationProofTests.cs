@@ -102,7 +102,18 @@ public class Pain001ValidationProofTests
             return;
         }
 
-        var (_, xml) = await service.CreateBatchAsync(orgId, [statement], DebitIban);
+        string xml;
+        try
+        {
+            (_, xml) = await service.CreateBatchAsync(orgId, [statement], DebitIban);
+        }
+        catch (DomainRuleException refused)
+        {
+            // The generator has to change, not the schema: the failure says where (line and position, and the text of every error of the schema).
+            Assert.Fail(await ExplainRefusedFileAsync(refused, currency, ownerIban));
+            return;
+        }
+
         var schemas = Pain001SchemaProvider.GetSchemas(currency);
         Assert.Empty(XsdValidator.Validate(xml, schemas));
 
@@ -481,6 +492,33 @@ public class Pain001ValidationProofTests
     }
 
     // ---- helpers -------------------------------------------------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// What a person who has to fix the generator needs when the file CasaZen writes does not validate against the official schema of its currency: the refusal
+    /// (its code and arguments: the count with the lines and positions of the schema errors, or the broken rules) and every error of the schema on the same
+    /// file with its line, position and text. The file is written with a schema that accepts anything. Its data are the invented ones of these tests, so the
+    /// text of an error may quote them without harm.
+    /// </summary>
+    private static async Task<string> ExplainRefusedFileAsync(DomainRuleException refused, string currency, string ownerIban)
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = NewDb(orgId);
+        var owner = await AddOwnerAsync(db, orgId, "Mario", "Rossi", ownerIban);
+        var statement = await AddStatementAsync(db, orgId, owner, 800.00m, currency);
+        var writer = new WireTransferService(db, NullLogger<WireTransferService>.Instance, _ => Pain001TestSchemas.Accepting());
+        var (batch, xml) = await writer.CreateBatchAsync(orgId, [statement], DebitIban);
+        var arguments = string.Join(" | ", refused.MessageArgs);
+        var brokenRules = string.Join(", ", Pain001Checks.Violations(xml, currency, batch.TotalAmount, batch.TransferCount));
+
+        var lines = new List<string>
+        {
+            $"The {currency} file does not validate against its official schema: {refused.Code} ({arguments}).",
+            "Errors of the schema on the file (line:position text):",
+        };
+        lines.AddRange(XsdValidator.Validate(xml, Pain001SchemaProvider.GetSchemas(currency)).Select(e => $"  {e.Line}:{e.Position} {e.Message}"));
+        lines.Add($"Rules the file breaks beyond the schema: {brokenRules}");
+        return string.Join(Environment.NewLine, lines);
+    }
 
     private static async Task<(WireBatch Batch, string Xml)> WriteTwoTransfersAsync()
     {
