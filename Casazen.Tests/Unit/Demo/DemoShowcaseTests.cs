@@ -144,6 +144,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.AdministratorStatementPdfExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.FiscalDocumentExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.SwissFiscalDocumentExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.OwnerIssuerDocumentExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.PaymentLedgerExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.ChannelCommissionRules.Select(rule => rule.Scenario))
             .ToHashSet(StringComparer.Ordinal);
@@ -1077,6 +1078,48 @@ public class DemoShowcaseTests
             Assert.Equal(736.00m, amounts.Total);
             Assert.Equal(0m, amounts.StampDuty);
             Assert.Equal(example == invoice ? 27.89m : 0m, amounts.VatAmount);
+        }
+    }
+
+    /// <summary>
+    /// E17/F01/US01: the demo documents of the owners are a receipt of two private co-owners (shares adding up to 100, the stamp duty of 2.00 above 77.47 with
+    /// the shipped rule of a private person, the stamp reference TEST) and the invoice of a company (VAT with the shipped ordinary rule, its own sezionale), the
+    /// cleaning billed apart by the agency; every series fits the 10 characters of a series and names a TEST owner.
+    /// </summary>
+    [Fact]
+    public void OwnerIssuerDocuments_TheExamplesAreValid()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.OwnerIssuerDocuments, DemoShowcaseCatalog.Scenarios);
+        var examples = DemoShowcaseCatalog.OwnerIssuerDocumentExamples;
+        var receipt = Assert.Single(examples, e => e.Regime == DocumentRegime.PrivatePerson);
+        var invoice = Assert.Single(examples, e => e.Regime == DocumentRegime.VatOrdinary);
+        Assert.All(examples, e => Assert.StartsWith("TEST", e.OwnerName, StringComparison.Ordinal));
+        Assert.All(examples, e => Assert.Equal(100m, e.CoOwnerShares.Sum()));
+        Assert.All(examples, e => Assert.True(Casazen.Core.Services.FiscalNumberFormat.SeriesFor(e.Series, new DateOnly(2026, 11, 4)).Length <= Casazen.Core.Services.FiscalNumberFormat.SeriesMaxLength));
+        Assert.Equal(2, receipt.CoOwnerShares.Count);
+        Assert.StartsWith("TEST", receipt.StampDutyReference, StringComparison.Ordinal);
+        Assert.True(invoice.CleaningByTheAgency);
+
+        var resolver = Casazen.Tests.Unit.Services.TaxRuleCatalogs.Resolver();
+        foreach (var example in examples)
+        {
+            var rule = resolver.Resolve("IT", example.Regime, StayVatTreatment.Standard, CleaningFeeTreatment.FollowsStay, new DateOnly(2026, 11, 4));
+            var lines = new[] { (example.Stay, FiscalLineType.Accommodation), (example.TouristTax, FiscalLineType.TouristTax) }
+                .Concat(example.CleaningByTheAgency ? Array.Empty<(decimal, FiscalLineType)>() : new[] { (example.Cleaning, FiscalLineType.Cleaning) })
+                .Select(l => new FiscalDocumentGrossLine("TEST", 1m, l.Item1, rule.RateOf(l.Item2).Percent, rule.RateOf(l.Item2).NatureCode, l.Item2))
+                .ToList();
+            var amounts = FiscalDocumentTotals.FromGross(lines, rule.StampDuty);
+            if (example == receipt)
+            {
+                Assert.Equal(Casazen.Core.Options.FiscalDocumentKind.Receipt, rule.DocumentKind);
+                Assert.Equal((362.00m, 0m, 2.00m), (amounts.Total, amounts.VatAmount, amounts.StampDuty));
+            }
+            else
+            {
+                Assert.Equal(Casazen.Core.Options.FiscalDocumentKind.Invoice, rule.DocumentKind);
+                Assert.Equal(312.00m, amounts.Total);
+                Assert.True(amounts.VatAmount > 0m);
+            }
         }
     }
 

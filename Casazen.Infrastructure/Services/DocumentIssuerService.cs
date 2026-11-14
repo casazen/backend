@@ -25,8 +25,9 @@ namespace Casazen.Infrastructure.Services;
 /// issuer gives its UID (format and check digit), an Italian one keeps the Italian checks. The IBAN is checked (mod 97), the QR-IBAN too and must be one.</item>
 /// <item><b>Draft or confirmed.</b> A profile that cannot issue yet is saved as a draft (its <c>missingFields</c> say what is left); the wizard is
 /// confirmed only with nothing missing (422 <c>issuer_profile_incomplete</c>). Every save needs <c>Features:FiscalDocumentIssuance</c> on.</item>
-/// <item><b>One issuer for a booking.</b> The row of <see cref="BookingDocumentIssuer"/> is unique for a booking and written with CasaZen only; a booking a
-/// legacy row locked to Octorate keeps it (it was issued there) and is never issued again by CasaZen.</item>
+/// <item><b>One row for each document.</b> The rows of <see cref="BookingDocumentIssuer"/> are one for each document CasaZen issues for the booking (E17/F01/US01/T02:
+/// the owner's and the agency's), written with CasaZen only; a booking a legacy row locked to Octorate keeps it (it was issued there) and is never issued again
+/// by CasaZen.</item>
 /// <item><b>No second source of truth.</b> The Italian VAT number and the fiscal code of the issuer are read from <c>Org</c>; the regime code is the
 /// profile's own or the rule's.</item>
 /// <item><b>Logs</b> carry ids, modes and field names: never a value of the profile.</item>
@@ -165,12 +166,10 @@ public sealed class DocumentIssuerService(
         var booking = await BookingAsync(bookingId, ct);
 
         // A booking a legacy row locked to Octorate was issued there: CasaZen never issues it again.
-        var locked = await db.BookingDocumentIssuers
+        var lockedToOctorate = await db.BookingDocumentIssuers
             .AsNoTracking()
-            .Where(i => i.BookingId == bookingId && i.OrgId == booking.OrgId)
-            .Select(i => (BookingDocumentIssuerKind?)i.Issuer)
-            .FirstOrDefaultAsync(ct);
-        if (locked == BookingDocumentIssuerKind.Octorate)
+            .AnyAsync(i => i.BookingId == bookingId && i.OrgId == booking.OrgId && i.Issuer == BookingDocumentIssuerKind.Octorate, ct);
+        if (lockedToOctorate)
             return new IssuerDecision(IssuerDecisionKind.Octorate, IssuerReasons.IssuerLockedOctorate);
 
         // Every other booking, whatever its source, is CasaZen's while the issuance is on.
@@ -193,14 +192,19 @@ public sealed class DocumentIssuerService(
         for (var attempt = 1; ; attempt++)
         {
             var booking = await BookingAsync(bookingId, ct);
+            var rows = await RowsOfAsync(bookingId, ct);
 
-            var existing = await FindLockAsync(bookingId, ct);
+            // A legacy row locked to Octorate keeps CasaZen off the booking.
+            if (rows.FirstOrDefault(row => row.Issuer != kind) is { } other)
+                throw IssuerConflict(other.Issuer);
+
+            // One row for each document (E17/F01/US01/T02): the row of this document again changes nothing; a legacy row of a lock made before any document is
+            // the one the first document completes.
+            var existing = documentId is { } id
+                ? rows.FirstOrDefault(row => row.LockedByDocumentId == id) ?? rows.FirstOrDefault(row => row.LockedByDocumentId is null)
+                : rows.FirstOrDefault();
             if (existing is not null)
             {
-                if (existing.Issuer != kind)
-                    throw IssuerConflict(existing.Issuer);
-
-                // The same kind again: nothing changes, but the first document that locked it is remembered when the lock had none.
                 if (existing.LockedByDocumentId is null && documentId is not null)
                 {
                     existing.LockedByDocumentId = documentId;
@@ -229,12 +233,12 @@ public sealed class DocumentIssuerService(
             try
             {
                 await db.SaveChangesAsync(ct);
-                logger.LogInformation("Booking {BookingId} locked to the issuer {Issuer}", bookingId, kind);
+                logger.LogInformation("Booking {BookingId} locked to the issuer {Issuer} for document {DocumentId}", bookingId, kind, documentId);
                 return LockOf(row);
             }
             catch (DbUpdateException ex) when (attempt < MaxAttempts && OrgTeamAccess.IsUniqueViolation(ex, BookingDocumentIssuer.DocumentIndexName))
             {
-                // Another lock of this booking won: read it and answer as for a row that was there.
+                // Another lock of this document won: read it and answer as for a row that was there.
                 db.Entry(row).State = EntityState.Detached;
             }
         }
@@ -252,11 +256,15 @@ public sealed class DocumentIssuerService(
             .FirstOrDefaultAsync(ct)
         ?? throw new NotFoundException($"Booking {bookingId} was not found") { Code = "booking_not_found", MessageKey = "BookingNotFound" };
 
-    private async Task<BookingDocumentIssuer?> FindLockAsync(Guid bookingId, CancellationToken ct)
+    /// <summary>The issuer rows of the booking: the ones staged in this unit of work (a document issued in the same transaction) and the stored ones.</summary>
+    private async Task<IReadOnlyList<BookingDocumentIssuer>> RowsOfAsync(Guid bookingId, CancellationToken ct)
     {
-        var local = db.ChangeTracker.Entries<BookingDocumentIssuer>()
-            .FirstOrDefault(e => e.Entity.BookingId == bookingId && e.State != EntityState.Detached);
-        return local?.Entity ?? await db.BookingDocumentIssuers.FirstOrDefaultAsync(i => i.BookingId == bookingId, ct);
+        var staged = db.ChangeTracker.Entries<BookingDocumentIssuer>()
+            .Where(e => e.Entity.BookingId == bookingId && e.State != EntityState.Detached && e.State != EntityState.Deleted)
+            .Select(e => e.Entity)
+            .ToList();
+        var stored = await db.BookingDocumentIssuers.Where(i => i.BookingId == bookingId).ToListAsync(ct);
+        return staged.Concat(stored.Where(row => staged.All(s => s.Id != row.Id))).ToList();
     }
 
     private async Task<bool> IsOctorateConnectedAsync(Guid orgId, CancellationToken ct)

@@ -53,7 +53,8 @@ public sealed partial class FiscalDocumentService(
     IPushNotificationService? pushNotifications = null,
     IFeatureFlags? featureFlags = null,
     IBillingSetupService? billingSetup = null,
-    IOwnerAccountingService? ownerAccounting = null) : IFiscalDocumentService
+    IOwnerAccountingService? ownerAccounting = null,
+    IDocumentPlanService? documentPlans = null) : IFiscalDocumentService
 {
     /// <summary>The description of the lines of a credit note: fixed words of the document, never personal data.</summary>
     private const string CreditKey = "FiscalDocLineCredit";
@@ -65,22 +66,130 @@ public sealed partial class FiscalDocumentService(
     private readonly IGuestDocumentLineBuilder _lines = lineBuilder
         ?? new GuestDocumentLineBuilder(db, texts, Options.Create(new FiscalDocumentRulesOptions()), Options.Create(new SwissTouristTaxOptions()));
 
+    /// <summary>The documents a booking needs and who issues each (E17/F01/US01/T02); a service built by hand without one (a test) reads the same plan.</summary>
+    private readonly IDocumentPlanService _plans = documentPlans ?? new DocumentPlanService(db, taxRules);
+
     private DateTime UtcNow => timeProvider.GetUtcNow().UtcDateTime;
 
+    /// <summary>
+    /// The drafts of every document of the plan of the booking (E17/F01/US01/T02): the answer is the document of the stay (or the only one the call made). Nothing
+    /// to make (every document of the plan is issued) is 409 <c>document_already_issued</c>, as before.
+    /// </summary>
     public async Task<FiscalDocument> CreateDraftAsync(Guid bookingId, string? userId, CancellationToken ct = default)
     {
-        var existing = await db.FiscalDocuments
-            .Include(d => d.Lines)
-            .Where(d => d.BookingId == bookingId && d.Source == FiscalDocumentSource.CasaZen && d.Status == FiscalDocumentStatus.Draft
-                        && d.Kind != DocumentKind.CreditNote)
-            .OrderByDescending(d => d.CreatedAt)
-            .FirstOrDefaultAsync(ct);
-        if (existing is not null)
-            return await RebuildAsync(existing, ct);
+        var drafts = await MakeDraftsOfThePlanAsync(bookingId, userId, onlyMissing: false, ct);
+        if (drafts.Count == 0)
+            throw new DomainConflictException(FiscalDocumentErrors.AlreadyIssued, "FiscalDocumentAlreadyIssued");
 
-        var draft = new FiscalDocument { Source = FiscalDocumentSource.CasaZen, Status = FiscalDocumentStatus.Draft, CreatedAt = UtcNow, CreatedByUserId = userId };
-        draft.BookingId = bookingId;
-        return await RebuildAsync(draft, ct, isNew: true);
+        return drafts.FirstOrDefault(d => !d.ForAgencyServices) ?? drafts[0];
+    }
+
+    /// <summary>
+    /// The drafts of the documents the booking needs (<see cref="IDocumentPlanService"/>), in the order of the plan: a draft of the same part (the stay, or the
+    /// services of the agency) is made again from the booking (left as it is with <paramref name="onlyMissing"/>: the check-out event, the daily run); a document
+    /// of the part whose issuer already has a live one (issued, or issued elsewhere) is left alone; otherwise the draft is made. A draft the plan has no place for
+    /// any more (the services of the agency once the cleaning follows the stay again) is discarded: it has no number. An owner with no issuer profile that can
+    /// issue: nothing at all, its «Da fare», 422 <c>owner_issuer_missing</c>.
+    /// </summary>
+    private async Task<IReadOnlyList<FiscalDocument>> MakeDraftsOfThePlanAsync(Guid bookingId, string? userId, bool onlyMissing, CancellationToken ct)
+    {
+        var booking = await BookingOfAsync(bookingId, ct);
+        await RequireCasazenIssuesAsync(booking, ct);
+        var (organization, _) = await RequireIssuerAsync(booking.OrgId, ct);
+        var plan = await RequirePlanAsync(booking, ct);
+
+        var drafts = await db.FiscalDocuments
+            .Include(d => d.Lines)
+            .Where(d => d.BookingId == bookingId && d.Source == FiscalDocumentSource.CasaZen && d.Purpose == FiscalDocumentPurpose.GuestStay
+                        && d.Status == FiscalDocumentStatus.Draft && d.Kind != DocumentKind.CreditNote)
+            .OrderByDescending(d => d.CreatedAt)
+            .ToListAsync(ct);
+
+        var made = new List<FiscalDocument>();
+        foreach (var planned in plan.Documents)
+        {
+            var existing = drafts.FirstOrDefault(d => d.ForAgencyServices == planned.ForAgencyServices);
+            if (existing is not null)
+            {
+                drafts.Remove(existing);
+                if (!onlyMissing)
+                    made.Add(await RebuildAsync(existing, ct, planned: planned));
+                continue;
+            }
+
+            if (await HasBlockingDocumentAsync(booking.Id, Guid.Empty, planned.IssuerProfileId, countPlannedCredit: true, ct))
+                continue;
+
+            var draft = new FiscalDocument
+            {
+                Source = FiscalDocumentSource.CasaZen,
+                Status = FiscalDocumentStatus.Draft,
+                CreatedAt = UtcNow,
+                CreatedByUserId = userId,
+                BookingId = bookingId,
+            };
+            made.Add(await RebuildAsync(draft, ct, isNew: true, planned: planned));
+        }
+
+        // The drafts of a part the plan no longer has: discarded (no number was given), never issued in the name of an issuer that no longer bills it.
+        foreach (var stale in drafts.Where(d => plan.Of(d.ForAgencyServices) is null))
+        {
+            stale.Status = FiscalDocumentStatus.Discarded;
+            stale.UpdatedAt = UtcNow;
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Draft {DocumentId} of booking {BookingId} discarded: the plan of the booking has no such document any more", stale.Id, booking.Id);
+        }
+
+        return made;
+    }
+
+    /// <summary>
+    /// The plan of the booking; an owner without an issuer profile that can issue gets its «Da fare» (once while it is open) and the call is 422
+    /// <c>owner_issuer_missing</c>: no document in the name of anybody else.
+    /// </summary>
+    private async Task<DocumentPlan> RequirePlanAsync(BookingFacts booking, CancellationToken ct)
+    {
+        var plan = await _plans.PlanAsync(booking.Id, ct);
+        if (plan.OwnersWithoutIssuer.Count == 0)
+            return plan;
+
+        foreach (var ownerId in plan.OwnersWithoutIssuer)
+            await TellOwnerIssuerMissingAsync(booking, ownerId, ct);
+
+        logger.LogInformation("Booking {BookingId}: no document, {Count} owners without an issuer profile that can issue", booking.Id, plan.OwnersWithoutIssuer.Count);
+        throw new DomainRuleException(FiscalDocumentErrors.OwnerIssuerMissing, "FiscalDocumentOwnerIssuerMissing")
+        {
+            Extensions = new Dictionary<string, object?> { ["ownerId"] = plan.OwnersWithoutIssuer[0] },
+        };
+    }
+
+    /// <summary>The «Da fare» of an owner whose issuer profile is missing (no personal data: a code, the owner and the property); one open item per owner.</summary>
+    private async Task TellOwnerIssuerMissingAsync(BookingFacts booking, Guid ownerId, CancellationToken ct)
+    {
+        if (activities is null)
+            return;
+
+        try
+        {
+            await activities.CreateAsync(
+                new CreateTodoRequest
+                {
+                    Type = ActivityType.FiscalDocument,
+                    Action = ActivityAction.ReviewFiscalDocument,
+                    EntityType = FiscalDocumentTodos.OwnerEntityType,
+                    EntityId = ownerId,
+                    Urgency = ActivityUrgency.Medium,
+                    PropertyId = booking.PropertyId,
+                    OrgId = booking.OrgId,
+                    Reason = FiscalDocumentTodos.OwnerIssuerMissingReason,
+                },
+                ct);
+        }
+        catch (NotFoundException)
+        {
+            // The property is gone (deleted since): nobody to tell, and a retry would find the same.
+            logger.LogInformation("Owner {OwnerId} of booking {BookingId}: property not found, no «To do» raised", ownerId, booking.Id);
+        }
     }
 
     public async Task<FiscalDocument> RefreshDraftAsync(Guid documentId, CancellationToken ct = default)
@@ -135,18 +244,83 @@ public sealed partial class FiscalDocumentService(
 
         var booking = await BookingOfAsync(document.BookingId, ct);
         await RequireCasazenIssuesAsync(booking, ct);
-        var (profile, org) = await RequireIssuerAsync(booking.OrgId, ct);
+        var (organization, org) = await RequireIssuerAsync(booking.OrgId, ct);
+
+        // The issuer of the draft (E17/F01/US01/T02): an owner's draft is issued on the owner's profile, in the owner's series, with the owner's rule.
+        var profile = await IssuerProfileAsync(booking, organization, document.IssuerProfileId, requireComplete: true, ct);
         var rule = RuleOf(profile, booking);
         RequireDraftOfTheRule(document, rule);
-        await RequireNoOtherDocumentAsync(booking.Id, document.Id, ct);
+        await RequireNoOtherDocumentAsync(booking.Id, document.Id, profile.Id, ct);
 
         var today = timeProvider.TodayInRomeAsDateOnly();
         var series = SeriesOf(profile, today);
-        await IssueInTransactionAsync(document, booking.OrgId, booking.Id, rule, profile, org, series, today, credited: null, ct);
+        var parties = await IssuerPartiesAsync(booking, profile, organization, org, ct);
+        await IssueInTransactionAsync(document, booking.OrgId, booking.Id, rule, profile, org, series, today, credited: null, ct, parties: parties);
         logger.LogInformation("Fiscal document {DocumentId} of booking {BookingId} issued", document.Id, booking.Id);
         if (notify)
             TellTheHostsOfTheIssue(document, org);
         return document;
+    }
+
+    /// <summary>
+    /// The profile a document of the booking is (or will be) issued on: the organization's, or an owner's of the same org (E17/F01/US01/T02). An owner's profile
+    /// that can no longer issue (gone, or missing a field: <paramref name="requireComplete"/>) is 422 <c>owner_issuer_missing</c>, never the organization's in its
+    /// place; a credit note only needs it to exist (it repeats the issuer of its original).
+    /// </summary>
+    private async Task<OrgFiscalIssuerProfile> IssuerProfileAsync(
+        BookingFacts booking,
+        OrgFiscalIssuerProfile organization,
+        Guid? issuerProfileId,
+        bool requireComplete,
+        CancellationToken ct)
+    {
+        if (issuerProfileId is null || issuerProfileId == organization.Id)
+            return organization;
+
+        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.Id == issuerProfileId && p.OrgId == booking.OrgId, ct);
+        if (profile is not null && (!requireComplete || OwnerIssuerProfileRules.MissingFields(profile, RegimeCodeOfTheRule(profile, booking.StayDate)).Count == 0))
+            return profile;
+
+        throw new DomainRuleException(FiscalDocumentErrors.OwnerIssuerMissing, "FiscalDocumentOwnerIssuerMissing")
+        {
+            Extensions = new Dictionary<string, object?> { ["ownerId"] = profile?.PropertyOwnerId },
+        };
+    }
+
+    /// <summary>The regime code of FatturaPA of the rule in force on <paramref name="day"/> for <paramref name="profile"/>, used when the profile has none of its own.</summary>
+    private string? RegimeCodeOfTheRule(OrgFiscalIssuerProfile profile, DateOnly day) =>
+        taxRules.TryResolve(profile.CountryCode, profile.DocumentRegime, profile.StayVatTreatment, profile.CleaningFeeTreatment, day)?.FatturaPaRegimeCode;
+
+    /// <summary>
+    /// What the snapshot of an owner's document adds to the owner (E17/F01/US01/T02): the agency that issues through CasaZen on its behalf and the co-owners of the
+    /// plan with their shares (⚖ I6). <c>null</c> for a document the organization issues in its own name.
+    /// </summary>
+    private async Task<IssuerParties?> IssuerPartiesAsync(
+        BookingFacts booking,
+        OrgFiscalIssuerProfile profile,
+        OrgFiscalIssuerProfile organization,
+        Org org,
+        CancellationToken ct)
+    {
+        if (!profile.IsOwnerProfile)
+            return null;
+
+        var plan = await _plans.PlanAsync(booking.Id, ct);
+        var coOwners = plan.Documents.FirstOrDefault(d => d.IssuerProfileId == profile.Id)?.CoOwners ?? [];
+        return new IssuerParties(
+            FiscalIssuerIntermediary.Of(organization, org),
+            coOwners.Count > 1 ? coOwners.Select(c => new FiscalIssuerCoOwner(c.Name, c.SharePercent)).ToList() : null);
+    }
+
+    /// <summary>The parties an owner's document names beside the owner: the agency and the co-owners.</summary>
+    private sealed record IssuerParties(FiscalIssuerIntermediary? Intermediary, IReadOnlyList<FiscalIssuerCoOwner>? CoOwners)
+    {
+        /// <summary>The parties of an issued document, for its credit note (the same issuer, as it was).</summary>
+        public static IssuerParties? Of(FiscalDocument original)
+        {
+            var snapshot = FiscalIssuerSnapshot.FromJson(original.IssuerSnapshot);
+            return snapshot?.Intermediary is null ? null : new IssuerParties(snapshot.Intermediary, snapshot.CoOwners);
+        }
     }
 
     public async Task<FiscalDocument> IssueOwnerInvoiceAsync(Guid documentId, decimal vatToPost, string? userId, CancellationToken ct = default)
@@ -196,10 +370,13 @@ public sealed partial class FiscalDocumentService(
         }
 
         var booking = await BookingOfAsync(note.BookingId, ct);
-        var (profile, org) = await RequireIssuerAsync(booking.OrgId, ct);
+        var (organization, org) = await RequireIssuerAsync(booking.OrgId, ct);
+
+        // The issuer of the credited document (E17/F01/US01/T02): an owner's reversal is the owner's, in the owner's series.
+        var profile = await IssuerProfileAsync(booking, organization, original.IssuerProfileId, requireComplete: false, ct);
         var rule = RuleOf(profile, booking);
         var today = timeProvider.TodayInRomeAsDateOnly();
-        await IssueInTransactionAsync(note, booking.OrgId, booking.Id, rule, profile, org, original.Series, today, original, ct);
+        await IssueInTransactionAsync(note, booking.OrgId, booking.Id, rule, profile, org, original.Series, today, original, ct, parties: IssuerParties.Of(original));
         logger.LogInformation("Credit note {CreditNoteId} of fiscal document {DocumentId} issued", note.Id, original.Id);
         if (notify)
             TellTheHostsOfTheIssue(note, org);
@@ -258,10 +435,12 @@ public sealed partial class FiscalDocumentService(
         if (value <= 0m || value > remaining)
             throw new DomainRuleException(FiscalDocumentErrors.CreditAmountExceeds, "FiscalDocumentCreditAmountExceeds", remaining);
 
-        // A document of a stay takes the rule of its check-out; an owner invoice the rule of the last day of its period (E14/F01/US01/T01).
+        // A document of a stay takes the rule of its check-out; an owner invoice the rule of the last day of its period (E14/F01/US01/T01). A document of a stay is
+        // credited by its own issuer (E17/F01/US01/T02): an owner's credit note is the owner's.
         Guid? bookingId = null;
         FiscalTaxRule rule;
-        var (profile, org) = await RequireIssuerAsync(original.OrgId, ct);
+        var (organization, org) = await RequireIssuerAsync(original.OrgId, ct);
+        var profile = organization;
         if (ownerInvoice)
         {
             if (original.PeriodYear is null || original.PeriodMonth is null || original.RecipientOwnerId is null)
@@ -272,6 +451,7 @@ public sealed partial class FiscalDocumentService(
         {
             var booking = await BookingOfAsync(original.BookingId, ct);
             bookingId = booking.Id;
+            profile = await IssuerProfileAsync(booking, organization, original.IssuerProfileId, requireComplete: false, ct);
             rule = RuleOf(profile, booking);
         }
 
@@ -284,7 +464,7 @@ public sealed partial class FiscalDocumentService(
         Func<CancellationToken, Task>? reverseVat = ownerInvoice
             ? async token => posting = await ownerAccounting!.ReverseOwnerInvoiceVatAsync(note, original, userId, token)
             : null;
-        await IssueInTransactionAsync(note, original.OrgId, bookingId, rule, profile, org, original.Series, today, original, ct, reverseVat);
+        await IssueInTransactionAsync(note, original.OrgId, bookingId, rule, profile, org, original.Series, today, original, ct, reverseVat, IssuerParties.Of(original));
         logger.LogInformation("Credit note {CreditNoteId} of fiscal document {DocumentId} issued", note.Id, original.Id);
         if (posting is not null)
             await RegenerateOpenVersionAsync(original.OrgId, posting, userId, ct);
@@ -307,8 +487,9 @@ public sealed partial class FiscalDocumentService(
             PropertyId = original.PropertyId,
             Purpose = original.Purpose,
 
-            // A credit note is the issuer's own: the same profile, the same series and counter as the document it credits.
+            // A credit note is the issuer's own: the same profile, the same series and counter as the document it credits, and the same part of the booking.
             IssuerProfileId = original.IssuerProfileId,
+            ForAgencyServices = original.ForAgencyServices,
             RecipientOwnerId = original.RecipientOwnerId,
             OwnerStatementVersionId = original.OwnerStatementVersionId,
             PeriodYear = original.PeriodYear,
@@ -534,21 +715,30 @@ public sealed partial class FiscalDocumentService(
             throw ReadOnly();
 
         await ApplyCurrentPaymentStateAsync(db, [document], ct);
-        var issuer = document.Status == FiscalDocumentStatus.Issued ? FiscalIssuerSnapshot.FromJson(document.IssuerSnapshot) : null;
-        if (issuer is null)
-        {
-            // A draft shows the issuer it will be issued on today: its own profile (an owner who issues, E17), else the profile of the organization.
-            var profiles = db.OrgFiscalIssuerProfiles.AsNoTracking();
-            var profile = document.IssuerProfileId is { } issuerProfileId
-                ? await profiles.FirstOrDefaultAsync(p => p.Id == issuerProfileId && p.OrgId == document.OrgId, ct)
-                : await profiles.OfOrganization(document.OrgId).FirstOrDefaultAsync(ct);
-            var org = await db.Orgs.AsNoTracking().FirstAsync(o => o.Id == document.OrgId, ct);
-            issuer = FiscalIssuerSnapshot.From(profile, org);
-        }
-
         var credited = document.CreditedDocumentId is { } creditedId
             ? await db.FiscalDocuments.AsNoTracking().FirstOrDefaultAsync(d => d.Id == creditedId, ct)
             : null;
+        var issuer = document.Status == FiscalDocumentStatus.Issued ? FiscalIssuerSnapshot.FromJson(document.IssuerSnapshot) : null;
+        if (issuer is null)
+        {
+            // A draft shows the issuer it will be issued on today: its own profile (an owner who issues, E17), else the profile of the organization; an owner's
+            // draft names the agency and the co-owners as the issue will.
+            var profiles = db.OrgFiscalIssuerProfiles.AsNoTracking();
+            var organization = await profiles.OfOrganization(document.OrgId).FirstOrDefaultAsync(ct);
+            var profile = document.IssuerProfileId is { } issuerProfileId
+                ? await profiles.FirstOrDefaultAsync(p => p.Id == issuerProfileId && p.OrgId == document.OrgId, ct)
+                : organization;
+            var org = await db.Orgs.AsNoTracking().FirstAsync(o => o.Id == document.OrgId, ct);
+            issuer = FiscalIssuerSnapshot.From(profile, org);
+            if (profile is { IsOwnerProfile: true } && document.BookingId is { } bookingId && organization is not null)
+            {
+                var parties = document.Kind == DocumentKind.CreditNote && credited is not null
+                    ? IssuerParties.Of(credited)
+                    : await IssuerPartiesAsync(await BookingOfAsync(bookingId, ct), profile, organization, org, ct);
+                issuer = issuer with { Intermediary = parties?.Intermediary, CoOwners = parties?.CoOwners };
+            }
+        }
+
         var propertyName = document.PropertyId is { } propertyId
             ? await db.Properties.AsNoTracking().IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]).Where(p => p.Id == propertyId).Select(p => p.Name).FirstOrDefaultAsync(ct)
             : null;
@@ -563,17 +753,30 @@ public sealed partial class FiscalDocumentService(
     // ---------------------------------------------------------------- draft
 
     /// <summary>
-    /// The draft made from the booking: the checks of the issuer and of its profile, the tax rule in force at the check-out of the stay, the invoice data
-    /// the kind of document needs, then the lines (one VAT per line type) and the amounts.
+    /// The draft made from the booking: the checks of the issuer and of its profile, the document of the plan it is (<paramref name="planned"/>, else the one of
+    /// its part: the stay or the services of the agency, E17/F01/US01/T02) and its issuer, the tax rule of that issuer in force at the check-out of the stay, the
+    /// invoice data the kind of document needs, then the lines the document bills (one VAT per line type) and the amounts. A draft whose part the plan no longer
+    /// has is discarded (no number was given) and returned as it is.
     /// </summary>
-    private async Task<FiscalDocument> RebuildAsync(FiscalDocument draft, CancellationToken ct, bool isNew = false)
+    private async Task<FiscalDocument> RebuildAsync(FiscalDocument draft, CancellationToken ct, bool isNew = false, PlannedDocument? planned = null)
     {
         var booking = await BookingOfAsync(draft.BookingId, ct);
         await RequireCasazenIssuesAsync(booking, ct);
-        var (profile, _) = await RequireIssuerAsync(booking.OrgId, ct);
+        var (organization, _) = await RequireIssuerAsync(booking.OrgId, ct);
+        planned ??= (await RequirePlanAsync(booking, ct)).Of(draft.ForAgencyServices);
+        if (planned is null)
+        {
+            draft.Status = FiscalDocumentStatus.Discarded;
+            draft.UpdatedAt = UtcNow;
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Draft {DocumentId} of booking {BookingId} discarded: the plan of the booking has no such document any more", draft.Id, booking.Id);
+            return draft;
+        }
+
+        var profile = await IssuerProfileAsync(booking, organization, planned.IssuerProfileId, requireComplete: true, ct);
         var rule = RuleOf(profile, booking);
         if (isNew)
-            await RequireNoOtherDocumentAsync(booking.Id, draft.Id, ct, countPlannedCredit: true);
+            await RequireNoOtherDocumentAsync(booking.Id, draft.Id, profile.Id, ct, countPlannedCredit: true);
 
         var kind = rule.DocumentKind == RuleDocumentKind.Receipt ? DocumentKind.Receipt : DocumentKind.Invoice;
         var recipient = await invoiceData.GetAsync(booking.Id, ct);
@@ -586,14 +789,16 @@ public sealed partial class FiscalDocumentService(
             };
         }
 
-        // The lines of the stay whatever its source (E12/F01/US01/T01): the amounts of the portal, the tourist tax only when the host collects it, who collected the money.
-        var built = await _lines.BuildAsync(booking.Id, rule, _lines.PlatformCollectedChannelsOf(profile), ct);
-        var amounts = FiscalDocumentTotals.FromGross(built.Lines, rule.StampDuty);
+        // The lines of the stay whatever its source (E12/F01/US01/T01): the amounts of the portal, the tourist tax only when the host collects it (the agency's choice of
+        // the portals that collect it), who collected the money; then only the lines this document bills (E17/F01/US01/T02).
+        var built = await _lines.BuildAsync(booking.Id, rule, _lines.PlatformCollectedChannelsOf(organization), ct);
+        var amounts = FiscalDocumentTotals.FromGross(GuestDocumentLineBuilder.LinesOf(built.Lines, planned), rule.StampDuty);
 
         draft.OrgId = booking.OrgId;
         draft.PropertyId = booking.PropertyId;
-        draft.Purpose = FiscalDocumentPurpose.GuestStay;
+        draft.Purpose = planned.Purpose;
         draft.IssuerProfileId = profile.Id;
+        draft.ForAgencyServices = planned.ForAgencyServices;
         draft.ServicePeriodFrom = DateOnly.FromDateTime(booking.CheckIn);
         draft.ServicePeriodTo = DateOnly.FromDateTime(booking.CheckOut);
         draft.RuleVersion = rule.Version;
@@ -707,8 +912,9 @@ public sealed partial class FiscalDocumentService(
     // ---------------------------------------------------------------- issue
 
     /// <summary>
-    /// The issue in one READ COMMITTED transaction: the number, the checks again under the lock of the series, the snapshot of the issuer, the XML, the lock of the
-    /// booking, the event and <paramref name="beforeSave"/> (the VAT of an owner invoice in the owner ledger), saved and committed together.
+    /// The issue in one READ COMMITTED transaction: the number, the checks again under the lock of the series, the snapshot of the issuer (with the agency and the
+    /// co-owners of an owner's document, <paramref name="parties"/>), the XML, the issuer row of the booking, the event and <paramref name="beforeSave"/> (the VAT
+    /// of an owner invoice in the owner ledger), saved and committed together.
     /// </summary>
     private async Task IssueInTransactionAsync(
         FiscalDocument document,
@@ -721,7 +927,8 @@ public sealed partial class FiscalDocumentService(
         DateOnly today,
         FiscalDocument? credited,
         CancellationToken ct,
-        Func<CancellationToken, Task>? beforeSave = null)
+        Func<CancellationToken, Task>? beforeSave = null,
+        IssuerParties? parties = null)
     {
         // READ COMMITTED: the advisory lock of the numbering joins it; a failure rolls the number back with the document (no gap).
         await using var transaction = PostgresAdvisoryLocks.IsSupported(db)
@@ -740,7 +947,7 @@ public sealed partial class FiscalDocumentService(
         if (credited is null)
         {
             if (bookingId is { } booking)
-                await RequireNoOtherDocumentAsync(booking, document.Id, ct);
+                await RequireNoOtherDocumentAsync(booking, document.Id, document.IssuerProfileId.Value, ct);
         }
         else
         {
@@ -763,6 +970,8 @@ public sealed partial class FiscalDocumentService(
         // A Swiss owner invoice keeps the account its QR-bill is paid on (E14/F01/US01/T02): the payment part prints it, as it was at the issue.
         var issuer = FiscalIssuerSnapshot.From(
             profile, org, rule.FatturaPaRegimeCode, withQrBillAccount: document.Purpose == FiscalDocumentPurpose.OwnerInvoice && credited is null && rule.IsSwiss);
+        if (parties is not null)
+            issuer = issuer with { Intermediary = parties.Intermediary, CoOwners = parties.CoOwners };
         document.IssuerSnapshot = issuer.ToJson();
         document.RuleVersion ??= rule.Version;
 
@@ -914,15 +1123,26 @@ public sealed partial class FiscalDocumentService(
     }
 
     /// <summary>
-    /// One invoice (or receipt) per booking, unless it was credited in full: 409 <c>document_already_issued</c>. Whoever issued it counts: a document imported
-    /// from Octorate (a document issued elsewhere) holds the booking too, so CasaZen never issues a second document for the stay; a proforma is not a document.
+    /// Never two documents of the same issuer and purpose for one booking (E17/F01/US01/T02), unless the first was credited in full: 409 <c>document_already_issued</c>.
+    /// The documents of the other issuers of the booking do not count (the owner's receipt and the agency's invoice of one stay live side by side); a document
+    /// imported from Octorate (issued elsewhere) and a document without an issuer hold the whole booking, so CasaZen never issues a second document for the stay; a
+    /// proforma is not a document.
     /// </summary>
-    private async Task RequireNoOtherDocumentAsync(Guid bookingId, Guid exceptId, CancellationToken ct, bool countPlannedCredit = false)
+    private async Task RequireNoOtherDocumentAsync(Guid bookingId, Guid exceptId, Guid issuerProfileId, CancellationToken ct, bool countPlannedCredit = false)
+    {
+        if (await HasBlockingDocumentAsync(bookingId, exceptId, issuerProfileId, countPlannedCredit, ct))
+            throw new DomainConflictException(FiscalDocumentErrors.AlreadyIssued, "FiscalDocumentAlreadyIssued");
+    }
+
+    /// <summary>The booking has an issued document of <paramref name="issuerProfileId"/> (or issued elsewhere) that is not credited in full (see <see cref="RequireNoOtherDocumentAsync"/>).</summary>
+    private async Task<bool> HasBlockingDocumentAsync(Guid bookingId, Guid exceptId, Guid issuerProfileId, bool countPlannedCredit, CancellationToken ct)
     {
         var issued = await db.FiscalDocuments
             .AsNoTracking()
             .Where(d => d.BookingId == bookingId && d.Id != exceptId && d.Status == FiscalDocumentStatus.Issued
-                        && d.Kind != DocumentKind.CreditNote && d.Kind != DocumentKind.Proforma)
+                        && d.Purpose == FiscalDocumentPurpose.GuestStay
+                        && d.Kind != DocumentKind.CreditNote && d.Kind != DocumentKind.Proforma
+                        && (d.Source != FiscalDocumentSource.CasaZen || d.IssuerProfileId == null || d.IssuerProfileId == issuerProfileId))
             .Select(d => new { d.Id, d.Total })
             .ToListAsync(ct);
         foreach (var document in issued)
@@ -931,8 +1151,10 @@ public sealed partial class FiscalDocumentService(
             // issue asks again with only the credit notes issued (E12/F01/US01/T03).
             var credited = await CreditedSoFarAsync(document.Id, ct) + (countPlannedCredit ? await PlannedCreditAsync(document.Id, ct) : 0m);
             if (credited < document.Total)
-                throw new DomainConflictException(FiscalDocumentErrors.AlreadyIssued, "FiscalDocumentAlreadyIssued");
+                return true;
         }
+
+        return false;
     }
 
     private Task<decimal> CreditedSoFarAsync(Guid documentId, CancellationToken ct) =>

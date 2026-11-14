@@ -231,6 +231,10 @@ public static class SwissFiscalDocumentPdf
         // MWSTG art. 26: the UID followed by the suffix of the VAT register in the language of the document.
         if (issuer.VatRegistered && !string.IsNullOrWhiteSpace(issuer.SwissVatNumber))
             yield return texts.Get("FiscalDocPdfChVatNumber", language, issuer.SwissVatNumber);
+
+        // An owner who issues in Switzerland (⚖ C1, E17/F01/US01/T02): the co-owners and the agency it issues through.
+        foreach (var line in FiscalDocumentPdfs.OwnerIssuerLines(issuer, texts, language))
+            yield return line;
     }
 
     /// <summary>The recipient: the name, then the address when it has one. No Italian fiscal code or VAT number.</summary>

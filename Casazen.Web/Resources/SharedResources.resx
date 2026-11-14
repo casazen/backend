@@ -6117,6 +6117,18 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocPdfFiscalCode" xml:space="preserve">
     <value>Codice fiscale: {0}</value>
   </data>
+  <data name="FiscalDocPdfIssuedOnBehalf" xml:space="preserve">
+    <value>Emessa tramite {0} per conto del proprietario</value>
+  </data>
+  <data name="FiscalDocPdfCoOwners" xml:space="preserve">
+    <value>Comproprietari: {0}</value>
+  </data>
+  <data name="FiscalDocPdfStampDutyReference" xml:space="preserve">
+    <value>Imposta di bollo assolta: {0}</value>
+  </data>
+  <data name="FiscalDocPdfStampDutyToPay" xml:space="preserve">
+    <value>Imposta di bollo da assolvere</value>
+  </data>
   <data name="FiscalDocPdfLinesHeading" xml:space="preserve">
     <value>Dettaglio</value>
   </data>
@@ -6224,6 +6236,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="FiscalDocumentAlreadyIssued" xml:space="preserve">
     <value>Per questa prenotazione esiste già un documento emesso: per emetterne un altro serve prima una nota di credito totale.</value>
+  </data>
+  <data name="FiscalDocumentOwnerIssuerMissing" xml:space="preserve">
+    <value>Il proprietario dell'immobile non ha ancora un profilo di emittente completo: nessun documento viene preparato finché non lo completi.</value>
   </data>
   <data name="FiscalDocumentDraftOutdated" xml:space="preserve">
     <value>Le regole fiscali o i dati dell'emittente sono cambiati da quando è stata preparata la bozza: aggiornala e controlla di nuovo gli importi prima di emettere.</value>

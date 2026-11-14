@@ -99,6 +99,9 @@ public static class FiscalDocumentExtensions
         // (E12/F01/US01/T01).
         services.AddScoped<IGuestDocumentLineBuilder, GuestDocumentLineBuilder>();
 
+        // The documents a booking needs and who issues each: the owner of an Italian property its stay, the agency its services (E17/F01/US01/T02).
+        services.AddScoped<IDocumentPlanService, DocumentPlanService>();
+
         // The fiscal documents CasaZen issues for its direct bookings and the reading of every document (E06/F01/US01/T01, NF-83); the changes are
         // behind Features:FiscalDocumentIssuance.
         services.AddScoped<IFiscalDocumentService, FiscalDocumentService>();

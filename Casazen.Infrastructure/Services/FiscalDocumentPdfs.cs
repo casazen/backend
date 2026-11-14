@@ -140,6 +140,15 @@ public static class FiscalDocumentPdfs
             ],
             totals));
 
+        // ⚖ I4: a document with a stamp duty says how it is paid, the authorization of the virtual stamp or the number of the physical one of its issuer, else that
+        // it is still to be paid.
+        if (document.StampDuty > 0m)
+        {
+            blocks.Add(new PdfParagraph(issuer.StampDutyReference is { Length: > 0 } reference
+                ? texts.Get("FiscalDocPdfStampDutyReference", language, reference)
+                : texts.Get("FiscalDocPdfStampDutyToPay", language)));
+        }
+
         if (document.Purpose != FiscalDocumentPurpose.OwnerInvoice)
             blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfPayment", language, PaymentLabel(document.PaymentState, texts, language))));
         else if (document.Kind != DocumentKind.CreditNote && settlement is not null)
@@ -173,6 +182,28 @@ public static class FiscalDocumentPdfs
             yield return texts.Get("FiscalDocPdfVatNumber", language, issuer.VatNumber);
         if (!string.IsNullOrWhiteSpace(issuer.FiscalCode))
             yield return texts.Get("FiscalDocPdfFiscalCode", language, issuer.FiscalCode);
+
+        foreach (var line in OwnerIssuerLines(issuer, texts, language))
+            yield return line;
+    }
+
+    /// <summary>
+    /// What the document of an owner adds below its issuer (E17/F01/US01/T02): the co-owners with their shares (⚖ I6) and «Emessa tramite <agenzia> per conto del
+    /// proprietario». Nothing for a document the organization issues in its own name.
+    /// </summary>
+    internal static IEnumerable<string> OwnerIssuerLines(FiscalIssuerSnapshot issuer, IDocumentTexts texts, string language)
+    {
+        if (issuer.CoOwners is { Count: > 1 } coOwners)
+        {
+            var culture = DocumentLanguages.CultureOf(language);
+            yield return texts.Get(
+                "FiscalDocPdfCoOwners",
+                language,
+                string.Join(", ", coOwners.Select(c => $"{c.Name} ({c.SharePercent.ToString("0.##", culture)}%)")));
+        }
+
+        if (issuer.Intermediary is { } agency)
+            yield return texts.Get("FiscalDocPdfIssuedOnBehalf", language, agency.Name);
     }
 
     private static IEnumerable<string> RecipientLines(FiscalDocument document, IDocumentTexts texts, string language)

@@ -21,6 +21,12 @@ public sealed partial class FiscalDocumentService
 {
     public async Task<EnsureDraftOutcome> EnsureDraftAsync(Guid bookingId, string? userId, CancellationToken ct = default)
     {
+        // An owner without an issuer profile that can issue (E17/F01/US01/T02) gets its «Da fare» here, before the lock: inside it the refusal would roll the item back
+        // with the transaction. The refusal itself (422 owner_issuer_missing) is the answer: no document is made.
+        var booking = await BookingOfAsync(bookingId, ct);
+        if (IsActive(booking) && !await HasLiveDocumentAsync(bookingId, ct))
+            await RequirePlanAsync(booking, ct);
+
         // The check and the draft under the lock of the booking: the check-out event and the daily run, or two runs, never both see «no document» and make two drafts.
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db,
@@ -71,8 +77,9 @@ public sealed partial class FiscalDocumentService
         var todayStart = timeProvider.TodayInRome();
         var since = todayStart.AddDays(-Math.Max(1, lookbackDays));
 
-        // The active stays that ended (the one definition of «active»), without a live document; with the automatic issue also the ones that only have a draft. The most recent
-        // first, so a stay that can never get its document (the guest never gave its data) does not hold back the ones behind it.
+        // The active stays that ended (the one definition of «active»), without a live document; with the automatic issue also the ones that only have a draft, and the ones
+        // whose document of the agency's services is still a draft beside the owner's document already issued (E17/F01/US01/T02). The most recent first, so a stay that can
+        // never get its document (the guest never gave its data) does not hold back the ones behind it.
         var candidates = await db.Bookings
             .AsNoTracking()
             .Where(b => b.OrgId == orgId
@@ -80,13 +87,19 @@ public sealed partial class FiscalDocumentService
                         && b.NoShowAt == null
                         && b.CheckOutDate < todayStart
                         && b.CheckOutDate >= since
-                        && !db.FiscalDocuments.Any(d => d.BookingId == b.Id
-                                                        && d.Purpose == FiscalDocumentPurpose.GuestStay
-                                                        && d.Status != FiscalDocumentStatus.Discarded
-                                                        && d.Kind != DocumentKind.CreditNote
-                                                        && d.Kind != DocumentKind.Proforma
-                                                        && !d.CreditedInFull
-                                                        && (!autoIssue || d.Status == FiscalDocumentStatus.Issued)))
+                        && (!db.FiscalDocuments.Any(d => d.BookingId == b.Id
+                                                         && d.Purpose == FiscalDocumentPurpose.GuestStay
+                                                         && d.Status != FiscalDocumentStatus.Discarded
+                                                         && d.Kind != DocumentKind.CreditNote
+                                                         && d.Kind != DocumentKind.Proforma
+                                                         && !d.CreditedInFull
+                                                         && (!autoIssue || d.Status == FiscalDocumentStatus.Issued))
+                            || (autoIssue && db.FiscalDocuments.Any(d => d.BookingId == b.Id
+                                                                         && d.Source == FiscalDocumentSource.CasaZen
+                                                                         && d.Purpose == FiscalDocumentPurpose.GuestStay
+                                                                         && d.ForAgencyServices
+                                                                         && d.Status == FiscalDocumentStatus.Draft
+                                                                         && d.Kind != DocumentKind.CreditNote))))
             .OrderByDescending(b => b.CheckOutDate)
             .ThenBy(b => b.Id)
             .Select(b => new { b.Id, b.CheckOutDate })
@@ -112,15 +125,19 @@ public sealed partial class FiscalDocumentService
                 if (outcome == EnsureDraftOutcome.Created)
                     created++;
 
-                if (autoIssue && await LiveDraftIdOfAsync(candidate.Id, ct) is { } draftId)
+                if (autoIssue)
                 {
-                    // Nobody checks a document issued here, so it is issued from what the booking bills now: a draft made earlier (the check-out event) may be old, the tourist tax or the
+                    // Every draft of the booking in the order of the plan (the owner's document of the stay, then the agency's services, E17/F01/US01/T02). Nobody checks a
+                    // document issued here, so it is issued from what the booking bills now: a draft made earlier (the check-out event) may be old, the tourist tax or the
                     // collector confirmed and the data of the invoice changed since are no change of the booking that the corrections follow.
-                    if (outcome != EnsureDraftOutcome.Created)
-                        await MakeDraftAgainAsync(candidate.Id, draftId, ct);
+                    foreach (var draftId in await LiveDraftIdsOfAsync(candidate.Id, ct))
+                    {
+                        if (outcome != EnsureDraftOutcome.Created)
+                            await MakeDraftAgainAsync(candidate.Id, draftId, ct);
 
-                    await IssueCoreAsync(draftId, confirm: true, notify: false, ct);
-                    issued++;
+                        await IssueCoreAsync(draftId, confirm: true, notify: false, ct);
+                        issued++;
+                    }
                 }
             }
             catch (Exception ex) when (ex is DomainException or NotFoundException)
@@ -177,17 +194,17 @@ public sealed partial class FiscalDocumentService
         if (documents.Count == 0)
             return 0;
 
-        OrgFiscalIssuerProfile profile;
+        OrgFiscalIssuerProfile organization;
         try
         {
-            (profile, _) = await RequireIssuerAsync(orgId, ct);
+            (organization, _) = await RequireIssuerAsync(orgId, ct);
         }
         catch (DomainException)
         {
             return 0;
         }
 
-        var platformCollected = _lines.PlatformCollectedChannelsOf(profile);
+        var platformCollected = _lines.PlatformCollectedChannelsOf(organization);
         var told = 0;
         foreach (var document in documents)
         {
@@ -201,9 +218,11 @@ public sealed partial class FiscalDocumentService
                 var changed = !IsActive(booking);
                 if (!changed)
                 {
+                    // Compared with the lines the document's own issuer billed (E17/F01/US01/T02): the owner's stay, or the agency's services, or everything.
+                    var profile = await IssuerProfileAsync(booking, organization, document.IssuerProfileId, requireComplete: false, ct);
                     var rule = RuleOf(profile, booking);
                     var built = await _lines.BuildAsync(booking.Id, rule, platformCollected, ct);
-                    changed = !BillsWhatTheDocumentSays(document, built.Lines, rule);
+                    changed = !BillsWhatTheDocumentSays(document, GuestDocumentLineBuilder.LinesOf(built.Lines, document, organization), rule);
                 }
 
                 if (changed)
@@ -378,18 +397,25 @@ public sealed partial class FiscalDocumentService
                      && !d.CreditedInFull,
                 ct);
 
-    /// <summary>The newest draft CasaZen made for the booking (not a credit note); <c>null</c> when it has none.</summary>
-    private Task<Guid?> LiveDraftIdOfAsync(Guid bookingId, CancellationToken ct) =>
-        db.FiscalDocuments
+    /// <summary>
+    /// The drafts CasaZen made for the booking (not a credit note), one for each part of the plan in its order: the document of the stay, then the services of the
+    /// agency (E17/F01/US01/T02); the newest of a part when there are several.
+    /// </summary>
+    private async Task<IReadOnlyList<Guid>> LiveDraftIdsOfAsync(Guid bookingId, CancellationToken ct)
+    {
+        var drafts = await db.FiscalDocuments
             .AsNoTracking()
             .Where(d => d.BookingId == bookingId
                         && d.Source == FiscalDocumentSource.CasaZen
                         && d.Purpose == FiscalDocumentPurpose.GuestStay
                         && d.Status == FiscalDocumentStatus.Draft
                         && d.Kind != DocumentKind.CreditNote)
-            .OrderByDescending(d => d.CreatedAt)
-            .Select(d => (Guid?)d.Id)
-            .FirstOrDefaultAsync(ct);
+            .OrderBy(d => d.ForAgencyServices)
+            .ThenByDescending(d => d.CreatedAt)
+            .Select(d => new { d.Id, d.ForAgencyServices })
+            .ToListAsync(ct);
+        return drafts.GroupBy(d => d.ForAgencyServices).Select(g => g.First().Id).ToList();
+    }
 
     /// <summary>
     /// Tells the hosts of the booking that a document was issued (<see cref="FiscalDocumentLiveRefresh"/>): a push that the decorator turns into the entry of the bell and the live

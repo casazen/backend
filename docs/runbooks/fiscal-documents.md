@@ -1,14 +1,16 @@
-# Fiscal documents (epics E06 and E11)
+# Fiscal documents (epics E06, E11, E12 and E17)
 
 What CasaZen issues, how the numbers, the amounts and the FatturaPA XML are made, and where the official schema comes from. Requirements NF-83,
-NF-84, NF-87, NF-112, NF-113; ADR-019 (amended twice), ADR-033-R7 (retention).
+NF-84, NF-87, NF-112, NF-113, NF-116; ADR-019 (amended twice), ADR-033-R7 (retention).
 
 ## Boundary
 
 - **CasaZen is the only issuer (decision of the PO of 2026-11-14, E11/F01/US01/T01).** CasaZen issues the document of every active booking of
   every source: direct, manual, local and the portals imported through Octorate (`IDocumentIssuerService`, flag `Features:FiscalDocumentIssuance`, off
   by default, on in test). A booking that is not active (a request, a hold, cancelled, a no-show: the one definition of the code) gets no document.
-  Nobody issues outside CasaZen; the accountant only receives the exports.
+  Nobody issues outside CasaZen; the accountant only receives the exports. **In whose name** (E17/F01/US01/T02): in Italy the document of a stay is issued
+  in the name of the owner of the property, on the owner's issuer profile, and the agency's own services to the guest are a document of the agency (see
+  *Document plan of a booking*); in Switzerland the agency issues, unless it chose «emette il proprietario» for an owner (⚖ C1).
 - **Retired modes.** `DocumentIssuerMode` keeps its numbers for the stored rows: `CasaZen = 2` (formerly `CasaZenDirectOnly`) is the only mode;
   `Octorate = 1` and `Accountant = 3` are `[Obsolete]`, the migration `AddSoleIssuerModel` moved every profile to 2 and `PUT api/fiscal/documents/settings`
   answers 422 `issuer_mode_retired` for them (the old name `CasaZenDirectOnly` is still read as `CasaZen`).
@@ -308,6 +310,35 @@ Example: 2 guests × 3 nights × CHF 2.00 = CHF 12.00, out of VAT.
 longer active and nothing was collected for it; kept with a «To do» when money was collected or when it cannot be made again); an **issued** document is **never** rewritten: it is corrected
 by a credit note (see *Corrections when a booking changes*), and when the correction cannot be prepared (the issuer's profile is incomplete, no tax rule applies, a portal collected the money)
 the host gets a «To do» (`ReviewFiscalDocument`, reason `fiscal_document_booking_changed`, about the document and its property, no personal data) that a credit note may be needed.
+
+## Document plan of a booking (`IDocumentPlanService`, E17/F01/US01/T02, NF-116, D12)
+
+`IDocumentPlanService.PlanAsync(bookingId)` says which documents a booking needs and who issues each; every draft CasaZen makes goes through it (the manual draft
+`POST api/fiscal/documents/drafts`, the check-out event, the daily run `fiscal-documents-due`, the corrections of a change). The day of the stay is its **check-out**
+(the day of the tax rule and of the owner ledger).
+
+| Booking | Documents |
+|---|---|
+| **Italian property** (`Property.Country` `IT`) with ownerships in force on the day | **The owner issues the stay**, on its issuer profile: a private owner's rule gives a **receipt** (the stamp duty of the rule, 2.00 above 77.47 of amounts without VAT, borne by the issuer, ⚖ I4), a company's a **FatturaPA invoice** in its own sezionale, with the VAT of its `StayVatTreatment` (⚖ I1) and the agency as third-party issuer (TZ, T03). Several co-owners: **one** document, issued on the profile of the co-owner whose mandate is in force on the day (several, or none: the largest share, then the oldest ownership, then the smallest id), listing every co-owner with its share (⚖ I6). |
+| the same, with the agency's services | **A second document of the organization** (`ForAgencyServices`): the cleaning when the organization's `CleaningFeeTreatment` is `Service`, and the extras (the model has no extras of a booking yet), with the agency's VAT. The owner's document then leaves them out. A cleaning that follows the stay stays in the owner's document. |
+| an owner **without an issuer profile that can issue** (none, or incomplete) | **No document at all**: 422 `owner_issuer_missing`, and the «Da fare» of the owner (`ReviewFiscalDocument`, entity `PropertyOwner`, reason `owner_issuer_missing`, about the property; one open item per owner). The daily run skips the stay until the profile is complete. |
+| **Swiss property** (`CH`) | The organization issues everything, as E11/E12 do, **unless** the owner has a Swiss issuer profile on which the agency chose «emette il proprietario» (`StayIssuedByOwner`, ⚖ C1): then the owner issues. |
+| a property without owners in force, a property of another country | The organization issues one document with everything, as before. |
+
+- **Never two documents of the same issuer and purpose.** A booking may now have several documents (one per issuer), but never two live documents of the same issuer:
+  the draft and the issue ask again with the issuer of the document (409 `document_already_issued`); a document imported from Octorate still holds the whole
+  booking. `BookingDocumentIssuers` has **one row per document issued** (unique on `LockedByDocumentId`, the booking only indexed); a legacy row locked to Octorate
+  still keeps CasaZen off the booking (409 `document_issuer_conflict`).
+- **Drafts follow the plan.** The draft endpoint makes (or makes again) every document of the plan and answers with the document of the stay; a draft the plan has no
+  place for any more (the agency's services once the cleaning follows the stay again) is discarded; a document that is issued is left alone. The check-out event
+  and the daily run make the missing drafts of a booking that has none, and with the automatic issue they issue them in the order of the plan (the stay first).
+- **Issuer of each step.** The issue, the credit notes (and the reversal receipts) and the corrections use the profile the document was made on: an owner's credit
+  note is the owner's, in the owner's series. The issuer snapshot of an owner's document keeps the owner's own fiscal code and VAT number, the agency as
+  `intermediary`, the co-owners and the stamp reference.
+- **PDF.** An owner's document shows the owner as issuer, the co-owners with their shares (`Comproprietari: … (50%)`) and «Emessa tramite <agenzia> per conto del
+  proprietario» (EN «Issued through … on behalf of the owner»); a document with a stamp duty prints the stamp reference of its issuer («Imposta di bollo assolta:
+  …») or «Imposta di bollo da assolvere» (⚖ I4). Resources `FiscalDocPdfIssuedOnBehalf`, `FiscalDocPdfCoOwners`, `FiscalDocPdfStampDutyReference`,
+  `FiscalDocPdfStampDutyToPay`, Italian and English.
 
 ## Drafts and bulk issue (E12/F01/US01/T02)
 
