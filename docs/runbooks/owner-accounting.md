@@ -305,7 +305,8 @@ migration, no new table).
   step (and `agency.statement.view` of the controller); a caller restricted to some properties gets 403 before anything is read. 422 `owner_bulk_action_invalid`,
   `owner_period_invalid`; 409 `owner_period_not_ended` for a `close` of a month that is not over (once, for every owner: never one refusal each).
 - **Which owners.** Without `ownerIds`: every owner the readiness of the month knows (a line, a source, a version or a close in it), by id. With a list: those named,
-  each once, in the order given. **An empty list is 422 `owner_bulk_owners_empty`, never «everyone»**; more than 5,000 is 422 `owner_bulk_too_many_owners`; an id that is
+  each once, in the order given. **An empty list is 422 `owner_bulk_owners_empty`, never «everyone»** (the list was sent and says nobody); **no list on a month in which the
+  readiness knows no owner is an empty run**: 200 with no row (`total` 0), not that error. More than 5,000 is 422 `owner_bulk_too_many_owners`; an id that is
   not an owner of the org (another org's included: the same row for both) is a row `owner_not_found` and nothing is run for it.
 - **One transaction and one result for each owner.** `generate`, `approve`, `publish` and `close` run owner by owner through the single operations (their rules, their
   refusals, their lock of the org): an owner that fails leaves nothing behind (the tracked changes are dropped) and never stops the others. The answer has one row for

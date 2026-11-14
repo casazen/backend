@@ -222,7 +222,8 @@ public class OwnerAccountingController(
     /// transaction and its own result <c>{ ownerId, ok, code?, unchanged, issues?, details? }</c>: a run never answers «all done» while one owner failed (<c>allDone</c>), a flagged
     /// version is never approved (it is skipped with its blocking <c>issues</c>), the close never waives a difference, and running a step twice changes nothing more
     /// (<c>unchanged</c>). Up to <see cref="OwnerBulk.SyncMaxOwners"/> owners it answers 200 with the results; for more it queues a background job and answers 202 with its
-    /// <c>jobId</c> and the progress to read at <c>…/bulk/{jobId}</c>. An empty <c>ownerIds</c> is 422 <c>owner_bulk_owners_empty</c>, never «everyone». The whole org only (403
+    /// <c>jobId</c> and the progress to read at <c>…/bulk/{jobId}</c>. An empty <c>ownerIds</c> is 422 <c>owner_bulk_owners_empty</c>, never «everyone»; with no list on a month in
+    /// which the readiness knows no owner the answer is 200 with no row (<c>total</c> 0). The whole org only (403
     /// otherwise). 422 <c>owner_bulk_action_invalid</c>, <c>owner_bulk_too_many_owners</c>, <c>owner_period_invalid</c>; 409 <c>owner_period_not_ended</c> for a close of a month that is
     /// not over.
     /// </summary>
@@ -246,6 +247,11 @@ public class OwnerAccountingController(
 
         var ct = HttpContext.RequestAborted;
         var owners = await accounting.ResolveBulkOwnersAsync(orgId, year, month, action, request.OwnerIds, ct);
+
+        // The list was left out and the readiness of the month knows no owner: nothing to run is an empty run, not the refusal of an empty list (which is only for a list that was sent).
+        if (owners.Count == 0)
+            return Ok(new OwnerBulkRun(null, action, year, month, OwnerBulkRunStatus.Completed, 0, []));
+
         var userId = User.GetUserId();
         if (owners.Count > OwnerBulk.SyncMaxOwners)
         {

@@ -398,6 +398,31 @@ public class OwnerBulkCloseTests
         accounting.Verify(a => a.RunBulkAsync(CallerOrg, 2026, 10, OwnerBulkAction.Generate, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<string?>(), It.IsAny<OwnerBulkProgress?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    /// <summary>
+    /// Data: leaving the list out on a month the readiness knows no owner in is an empty run (200, no row, nothing run), never the refusal of an empty list: the list was not sent.
+    /// </summary>
+    [Fact]
+    public async Task BulkEndpoint_NoListOnAMonthWithoutOwnersIsAnEmptyRunNotAnError_Test()
+    {
+        // The service: a month nothing happened in has no owner to run for.
+        var world = await OwnerMonthEndWorld.CreateAsync();
+        await OwnerWithAStayAsync(world);
+        Assert.Empty(await world.Service.ResolveBulkOwnersAsync(world.OrgId, 2026, 9, OwnerBulkAction.Post, null));
+
+        // The endpoint: that is a run with no owner, not 422 owner_bulk_owners_empty.
+        var accounting = new Mock<IOwnerAccountingService>(MockBehavior.Strict);
+        accounting.Setup(a => a.ResolveBulkOwnersAsync(CallerOrg, 2026, 9, OwnerBulkAction.Post, null, It.IsAny<CancellationToken>())).ReturnsAsync(new List<Guid>());
+        var jobs = new Mock<IOwnerBulkJobs>(MockBehavior.Strict);
+        var controller = Controller(accounting.Object, granted: CasazenPolicies.AgencyStatementManage);
+
+        var answered = Assert.IsType<OkObjectResult>((await controller.Bulk(2026, 9, new OwnerBulkRequest(OwnerBulkAction.Post, null), jobs.Object)).Result);
+
+        var run = Assert.IsType<OwnerBulkRun>(answered.Value);
+        Assert.Null(run.JobId);
+        Assert.Equal((OwnerBulkRunStatus.Completed, 0, 0, 0), (run.Status, run.Total, run.Processed, run.Failed));
+        accounting.Verify(a => a.RunBulkAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<OwnerBulkAction>(), It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<string?>(), It.IsAny<OwnerBulkProgress?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // ---------------------------------------------------------------- the job and its progress
 
     /// <summary>
