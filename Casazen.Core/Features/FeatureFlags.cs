@@ -266,6 +266,16 @@ public static class FeatureFlags
     /// </summary>
     public const string TouristTaxOnlinePayment = "TouristTaxOnlinePayment";
 
+    /// <summary>
+    /// E01/F04/US01/T03 (NF-21, DEB-06, ADR-022): the automation routines, <b>off by default</b> until the actions a host needs are real (today the To do of
+    /// <c>CreateActivity</c> and the wait; the others are listed by <c>RoutineActionCatalog</c> as not available yet). It closes the whole module. Off, every
+    /// endpoint of <c>RoutinesController</c> (<c>api/routines</c>: the list, one routine, its changes, its log, the simulation and the catalog of the actions)
+    /// answers 404 like a route that does not exist, before authentication; no routine runs (the engine ignores the events of the bus, and a wait that
+    /// comes due changes nothing: the job reads and writes nothing and the execution stays waiting); and <c>TimeEventEmitterJob</c> writes no time trigger.
+    /// The routines already saved are kept. It needs no variable to start. The frontend reads the key <c>routines</c> (the routines page).
+    /// </summary>
+    public const string Routines = "Routines";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -293,5 +303,6 @@ public static class FeatureFlags
         OwnerInvoicing,
         AccountantPackage,
         TouristTaxOnlinePayment,
+        Routines,
     ];
 }

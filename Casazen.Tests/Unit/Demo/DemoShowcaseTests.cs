@@ -10,6 +10,8 @@ using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.SiteProfile;
+using Casazen.Infrastructure.Events;
+using Casazen.Tests.Unit.Services;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Demo;
@@ -153,6 +155,56 @@ public class DemoShowcaseTests
         Assert.Contains(DemoShowcaseCatalog.Properties, p => p.Publish);
         Assert.Contains(DemoShowcaseCatalog.Properties, p => p.Key == DemoShowcaseCatalog.DraftKey && !p.Publish);
         Assert.All(DemoShowcaseCatalog.Properties, p => Assert.Equal(6, p.Place.IstatCode.Length));
+    }
+
+    /// <summary>
+    /// E01/F04/US01/T03 (NF-21): the demo routines are routines the API would save, and the scenarios of the active and of the test-mode routine have their
+    /// template data: the active one is a time trigger with an action the engine can run (a routine with an action that cannot run is refused when it is
+    /// activated), the one in test mode holds a Wait, and both say DEMO or TEST.
+    /// </summary>
+    [Fact]
+    public void Routines_TheDemoRoutines_AreRoutinesTheApiWouldSave_AndSayDemoOrTest()
+    {
+        var routines = DemoShowcaseCatalog.Routines;
+        var flags = new TestFeatureFlags();
+
+        Assert.Equal(routines.Count, routines.Select(r => r.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(routines, routine =>
+        {
+            Assert.InRange(routine.Name.Length, 1, RoutineLimits.MaxNameLength);
+            Assert.True(routine.Name.Contains("DEMO", StringComparison.Ordinal) || routine.Name.Contains("TEST", StringComparison.Ordinal), $"{routine.Key}: the name says neither DEMO nor TEST");
+            Assert.Contains(routine.EventType, TimeTrigger.StayKinds.Keys);
+            Assert.InRange(routine.DaysBefore, 0, RoutineLimits.MaxEventConfigMember);
+            Assert.InRange(routine.Actions.Count, 1, RoutineLimits.MaxActions);
+            foreach (var action in routine.Actions)
+            {
+                Assert.True(
+                    RoutineAction.TryParseList($$"""[{"type":"{{action.Type}}","config":{{action.ConfigJson}}}]""", out var parsed),
+                    $"{routine.Key}: {action.Type} is not an action the engine reads");
+                Assert.True(RoutineActionRules.IsValidConfig(Assert.Single(parsed)), $"{routine.Key}: the configuration of {action.Type} would be refused");
+            }
+
+            if (!routine.IsTestMode)
+                Assert.All(routine.Actions, action => Assert.True(RoutineActionCatalog.IsAvailable(action.Type, flags), $"{routine.Key}: {action.Type} cannot run, so it cannot be active"));
+        });
+
+        var active = Assert.Single(routines, r => r.Scenario == DemoShowcaseCatalog.Scenario.RoutineActive);
+        Assert.False(active.IsTestMode);
+        Assert.Equal((RoutineEventType.BeforeCheckin, 2), (active.EventType, active.DaysBefore));
+        Assert.Equal([RoutineActionType.CreateActivity], active.Actions.Select(a => a.Type));
+
+        var test = Assert.Single(routines, r => r.Scenario == DemoShowcaseCatalog.Scenario.RoutineTestMode);
+        Assert.True(test.IsTestMode);
+        Assert.Contains(RoutineActionType.Wait, test.Actions.Select(a => a.Type));
+        Assert.Contains(DemoShowcaseCatalog.Scenario.RoutineActive, DemoShowcaseCatalog.Scenarios);
+        Assert.Contains(DemoShowcaseCatalog.Scenario.RoutineTestMode, DemoShowcaseCatalog.Scenarios);
+    }
+
+    /// <summary>The routines of the demo are marked rows of the reset, like the other invented rows of the org.</summary>
+    [Fact]
+    public void Routines_TheMarkerOfTheDemoRoutines_IsTheNameOfTheEntity()
+    {
+        Assert.Equal(nameof(Routine), TestDataEntities.Routine);
     }
 
     /// <summary>

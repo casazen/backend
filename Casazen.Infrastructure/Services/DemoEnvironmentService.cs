@@ -133,6 +133,7 @@ public class DemoEnvironmentService(
         // The drafts, the popup alerts, the tourist tax payments, the marketplace rows and the CRM profiles first: removing the showcase
         // properties drops every showcase marker of the org, and these are found by theirs.
         await RemoveShowcaseWizardDraftsAsync(orgId, cancellationToken);
+        await RemoveShowcaseRoutinesAsync(orgId, cancellationToken);
         await RemoveShowcasePopupAlertsAsync(orgId, cancellationToken);
         await RemoveShowcaseTouristTaxRemittancesAsync(orgId, cancellationToken);
         await RemoveShowcaseMarketplaceAsync(orgId, cancellationToken);
@@ -177,6 +178,10 @@ public class DemoEnvironmentService(
 
         foreach (var draft in DemoShowcaseCatalog.WizardDrafts)
             await CreateWizardDraftAsync(orgId, ownerId, draft, cancellationToken);
+
+        // E01/F04/US01/T03: the routines of the demo host are of the org, not of a house, so they can come anywhere after the removal above.
+        foreach (var routine in DemoShowcaseCatalog.Routines)
+            await CreateRoutineAsync(orgId, routine, cancellationToken);
 
         // NF-100: the tourist tax payments of the demo host name the comune of a house just created, so they come after the houses.
         foreach (var remittance in DemoShowcaseCatalog.TouristTaxRemittances)
@@ -290,6 +295,54 @@ public class DemoEnvironmentService(
         await Markers()
             .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.HostInvite)
             .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Deletes the routines the showcase wrote for the org, found by their markers (E01/F04/US01/T03): invented rows, and a routine of the host has no
+    /// marker. The log of a routine goes with it (the foreign key of the executions cascades).
+    /// </summary>
+    private async Task RemoveShowcaseRoutinesAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var routineIds = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.Routine)
+            .Select(m => m.EntityId)
+            .ToListAsync(cancellationToken);
+        if (routineIds.Count == 0)
+            return;
+
+        await db.Routines.IgnoreQueryFilters([Tenant]).Where(r => r.OrgId == orgId && routineIds.Contains(r.Id)).ExecuteDeleteAsync(cancellationToken);
+        await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.Routine)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// One routine of the demo host, as the API would save it: active, a time trigger of <see cref="DemoRoutineTemplate.DaysBefore"/> days, no condition, and
+    /// the actions of its template (in test mode when it says so). Marked as showcase data, so the next reset deletes it.
+    /// </summary>
+    private async Task CreateRoutineAsync(Guid orgId, DemoRoutineTemplate template, CancellationToken cancellationToken)
+    {
+        var actions = template.Actions
+            .Select(action => new
+            {
+                type = action.Type.ToString(),
+                config = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(action.ConfigJson),
+            })
+            .ToList();
+        var routine = new Routine
+        {
+            OrgId = orgId,
+            Name = template.Name,
+            EventType = template.EventType,
+            EventConfig = System.Text.Json.JsonSerializer.Serialize(new { days = template.DaysBefore }),
+            ConditionJson = "{}",
+            ActionsJson = System.Text.Json.JsonSerializer.Serialize(actions),
+            TestMode = template.IsTestMode,
+            Active = true,
+        };
+        db.Routines.Add(routine);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.Routine, routine.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
     /// <summary>Deletes the wizard drafts the showcase wrote for the org, found by their markers (invented rows: nothing of a real person).</summary>
