@@ -81,12 +81,17 @@ public static class OnboardingPartReasons
     /// </summary>
     public const string AssistantSituationMissing = "assistant_situation_missing";
 
-    /// <summary>The organization has not chosen who issues its fiscal documents (E10/F01/US04/T01, part «Fiscal documents»).</summary>
+    /// <summary>
+    /// Part «Fatturazione» (E10/F01/US04/T01, E11/F01/US01/T04): the issuance is switched off (<c>Features:FiscalDocumentIssuance</c>), so nobody issues and the
+    /// wizard is closed. With the issuance on the reason of the part is never this one but the key of the first missing item of the billing setup
+    /// (<see cref="BillingSetupItemKeys"/>: <c>legal_name_missing</c>, <c>regime_missing</c>, <c>guest_series_unconfirmed</c>...), which the client maps to
+    /// the step of the wizard to reopen.
+    /// </summary>
     public const string IssuerMissing = OnboardingFlowReasons.IssuerMissing;
 
     /// <summary>
-    /// The organization chose «none, my accountant issues»: the part counts as done and its facts say so with this reason (E10/F01/US04/T01). The plan
-    /// shows no reason for a part that is done, so this one is for whoever reads the facts.
+    /// Retired on 2026-11-14 (E11/F01/US01/T01, E11/F01/US01/T04): CasaZen is the only issuer and the accountant only receives the exports, so no part is
+    /// «done because my accountant issues» any more. The constant stays for the rows and the clients that still know the code; nothing produces it.
     /// </summary>
     public const string AccountantHandles = OnboardingFlowReasons.AccountantHandles;
 

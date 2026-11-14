@@ -342,6 +342,7 @@ public sealed class DocumentIssuerService(
             AutoIssueGuestDocuments = profile.AutoIssueGuestDocuments,
             EmailGuestDocuments = profile.EmailGuestDocuments,
             PlatformCollectedTouristTaxChannels = profile.PlatformCollectedTouristTaxChannels,
+            PlatformCollectedTouristTaxChannelsConfirmed = profile.PlatformCollectedTouristTaxChannelsConfirmed,
             StampDutyReference = profile.StampDutyReference,
             ConservationAgreementConfirmed = profile.ConservationAgreementConfirmed,
             VirtualStampConfirmed = profile.VirtualStampConfirmed,
@@ -370,7 +371,12 @@ public sealed class DocumentIssuerService(
         profile.OwnerInvoiceSeries = data.OwnerInvoiceSeries;
         profile.AutoIssueGuestDocuments = data.AutoIssueGuestDocuments;
         profile.EmailGuestDocuments = data.EmailGuestDocuments;
-        profile.PlatformCollectedTouristTaxChannels = data.PlatformCollectedTouristTaxChannels;
+
+        // The channels are written only when the save carried them (an empty list confirms that no portal collects the tax); left out, the saved choice
+        // stays, confirmed or not (E11/F01/US01/T04).
+        if (data.PlatformCollectedTouristTaxChannelsConfirmed)
+            profile.ConfirmPlatformCollectedTouristTaxChannels(data.PlatformCollectedTouristTaxChannels);
+
         profile.StampDutyReference = data.StampDutyReference;
         profile.ConservationAgreementConfirmed = data.ConservationAgreementConfirmed;
         profile.VirtualStampConfirmed = data.VirtualStampConfirmed;
@@ -496,6 +502,7 @@ public sealed class DocumentIssuerService(
             AutoIssueGuestDocuments = command.AutoIssueGuestDocuments,
             EmailGuestDocuments = command.EmailGuestDocuments,
             PlatformCollectedTouristTaxChannels = channels,
+            PlatformCollectedTouristTaxChannelsConfirmed = command.PlatformCollectedTouristTaxChannels is not null,
             StampDutyReference = stampDutyReference,
             ConservationAgreementConfirmed = command.ConservationAgreementConfirmed,
             VirtualStampConfirmed = command.VirtualStampConfirmed,

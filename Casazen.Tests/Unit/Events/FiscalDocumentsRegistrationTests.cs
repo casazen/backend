@@ -46,6 +46,16 @@ public class FiscalDocumentsRegistrationTests
             (typeof(IFiscalTaxRuleResolver), typeof(FiscalTaxRuleResolver), ServiceLifetime.Singleton),
             (typeof(IDocumentIssuerService), typeof(DocumentIssuerService), ServiceLifetime.Scoped),
 
+            // The whole invoicing setup (the wizard «Fatturazione») and the contributors of its missing items, in the order of the wizard (E11/F01/US01/T04): the
+            // epics that own another piece register theirs next to these (channels and mandates, the Italian owner issuers).
+            (typeof(IBillingSetupService), typeof(BillingSetupService), ServiceLifetime.Scoped),
+            (typeof(IBillingSetupContributor), typeof(IssuerSectionContributor), ServiceLifetime.Scoped),
+            (typeof(IBillingSetupContributor), typeof(VatSectionContributor), ServiceLifetime.Scoped),
+            (typeof(IBillingSetupContributor), typeof(NumberingSectionContributor), ServiceLifetime.Scoped),
+            (typeof(IBillingSetupContributor), typeof(TouristTaxSectionContributor), ServiceLifetime.Scoped),
+            (typeof(IBillingSetupContributor), typeof(AutomationSectionContributor), ServiceLifetime.Scoped),
+            (typeof(IBillingSetupContributor), typeof(ItalySectionContributor), ServiceLifetime.Scoped),
+
             // The two consumers of the sync with Octorate (E06/F02/US01/T04): the pre-fill on BookingCreated, then the write-back on InvoiceDataSaved.
             (typeof(IEventHandler<DomainEvent>), typeof(InvoiceDataFromOctorateHandler), ServiceLifetime.Scoped),
             (typeof(IEventHandler<DomainEvent>), typeof(OctorateBillingWriteBackHandler), ServiceLifetime.Scoped),
