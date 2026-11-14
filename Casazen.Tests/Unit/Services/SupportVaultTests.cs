@@ -133,6 +133,9 @@ public class SupportVaultTests : IAsyncLifetime
         Assert.Equal(
             [SupportVaultCredentialKind.OctoratePanel, SupportVaultCredentialKind.Police],
             (await _db.SupportVaultAccesses.AsNoTracking().ToListAsync()).Select(a => a.Kind).Order());
+
+        // Same org AND same property, for every kind: the credentials of a sibling property, of another org and of the whole org never answer.
+        await AssertEveryKindStaysWithinTheOrgAndThePropertyOfTheRequestAsync();
     }
 
     /// <summary>
@@ -440,6 +443,129 @@ public class SupportVaultTests : IAsyncLifetime
 
     private Task<SupportVaultSecretPresence> StoreAsync(Guid orgId, Guid? propertyId, string username, string password) =>
         Vault().StoreAsync(Staff, new SupportVaultSecretInput(orgId, propertyId, SupportVaultSecretKind.OctoratePanel, username, password, null), Ct);
+
+    private Task<SupportVaultSecretPresence> StoreKindAsync(Guid orgId, Guid? propertyId, SupportVaultSecretKind kind, string username, string password) =>
+        Vault().StoreAsync(Staff, new SupportVaultSecretInput(orgId, propertyId, kind, username, password, null), Ct);
+
+    /// <summary>
+    /// The rule «of the same org and the same property» for every kind of credential. Each place that can hold a credential holds its own (a property
+    /// of each org, the whole org of each org, the host's ISTAT form, the police credentials), and each request of the matrix is open and asks for
+    /// the kinds it needs: it opens the credentials of its own org and property and nothing else. The refusals matter as much as the openings: a read
+    /// that forgot the property of the request would answer for the sibling property, one that forgot the org would answer for the other org (the whole
+    /// org of the other org is stored first, so a read without the org predicate finds it first), and a request whose org and property disagree (a
+    /// row the service never makes) opens nothing.
+    /// </summary>
+    private async Task AssertEveryKindStaysWithinTheOrgAndThePropertyOfTheRequestAsync()
+    {
+        await StoreKindAsync(_world.OtherOrgId, null, SupportVaultSecretKind.OctoratePanel, "utente-pannello-org-B-31", "PASSWORD-PANNELLO-ORG-B-31");
+        await StoreKindAsync(_world.OrgId, null, SupportVaultSecretKind.OctoratePanel, "utente-pannello-org-A-31", "PASSWORD-PANNELLO-ORG-A-31");
+        await StoreKindAsync(_world.OtherOrgId, _world.OtherOrgProperty.Id, SupportVaultSecretKind.OctoratePanel, "utente-pannello-B-P-31", "PASSWORD-PANNELLO-B-P-31");
+        await StoreKindAsync(_world.OrgId, _world.Granted.Id, SupportVaultSecretKind.RegionalIstat, "utente-istat-vault-A-G-31", "PASSWORD-ISTAT-VAULT-A-G-31");
+        _db.PropertyQuesturaCredentials.Add(new PropertyQuesturaCredentials
+        {
+            OrgId = _world.OtherOrgId,
+            PropertyId = _world.OtherOrgProperty.Id,
+            Username = "utente-questura-B-P-31",
+            Password = "PASSWORD-QUESTURA-B-P-31",
+            WsKey = "WSKEY-B-P-31",
+        });
+        _db.PropertyIstatCredentials.AddRange(
+            new PropertyIstatCredentials
+            {
+                OrgId = _world.OrgId,
+                PropertyId = _world.Granted.Id,
+                Username = "utente-istat-A-G-31",
+                Password = "PASSWORD-ISTAT-A-G-31",
+                StructureCode = "CIR-A-G-31",
+            },
+            new PropertyIstatCredentials
+            {
+                OrgId = _world.OtherOrgId,
+                PropertyId = _world.OtherOrgProperty.Id,
+                Username = "utente-istat-B-P-31",
+                Password = "PASSWORD-ISTAT-B-P-31",
+                StructureCode = "CIR-B-P-31",
+            });
+        await _db.SaveChangesAsync();
+        var vault = Vault();
+
+        // A property of the same org that holds nothing: neither its sibling's credentials nor the other org's ever answer for it, whatever the kind.
+        var ofHidden = await AddOpenRequestAsync(_world.OrgId, _world.Hidden.Id, OnboardingPartKey.Compliance);
+        foreach (var kind in Enum.GetValues<SupportVaultCredentialKind>())
+            await AssertMissingAsync(vault, ofHidden.Id, kind);
+
+        // The whole org of each org opens the panel user of that org only, and no credential of a property.
+        var ofOrgA = await AddOpenRequestAsync(_world.OrgId, null, OnboardingPartKey.Channels);
+        await AssertOpensAsync(vault, ofOrgA.Id, SupportVaultCredentialKind.OctoratePanel, "utente-pannello-org-A-31", "PASSWORD-PANNELLO-ORG-A-31", null);
+        await AssertNotNeededAsync(vault, ofOrgA.Id, SupportVaultCredentialKind.Police);
+        await AssertNotNeededAsync(vault, ofOrgA.Id, SupportVaultCredentialKind.RegionalIstat);
+        var ofOrgB = await AddOpenRequestAsync(_world.OtherOrgId, null, OnboardingPartKey.Channels);
+        await AssertOpensAsync(vault, ofOrgB.Id, SupportVaultCredentialKind.OctoratePanel, "utente-pannello-org-B-31", "PASSWORD-PANNELLO-ORG-B-31", null);
+
+        // Each property of each org opens its own, for the three kinds the whole compliance part needs (the host's ISTAT form before the vault).
+        var ofGranted = await AddOpenRequestAsync(_world.OrgId, _world.Granted.Id, OnboardingPartKey.Compliance);
+        await AssertOpensAsync(vault, ofGranted.Id, SupportVaultCredentialKind.OctoratePanel, PanelUser, PanelPassword, null);
+        await AssertOpensAsync(vault, ofGranted.Id, SupportVaultCredentialKind.Police, PoliceUser, PolicePassword, PoliceWsKey);
+        await AssertOpensAsync(vault, ofGranted.Id, SupportVaultCredentialKind.RegionalIstat, "utente-istat-A-G-31", "PASSWORD-ISTAT-A-G-31", "CIR-A-G-31");
+        var ofForeign = await AddOpenRequestAsync(_world.OtherOrgId, _world.OtherOrgProperty.Id, OnboardingPartKey.Compliance);
+        await AssertOpensAsync(vault, ofForeign.Id, SupportVaultCredentialKind.OctoratePanel, "utente-pannello-B-P-31", "PASSWORD-PANNELLO-B-P-31", null);
+        await AssertOpensAsync(vault, ofForeign.Id, SupportVaultCredentialKind.Police, "utente-questura-B-P-31", "PASSWORD-QUESTURA-B-P-31", "WSKEY-B-P-31");
+        await AssertOpensAsync(vault, ofForeign.Id, SupportVaultCredentialKind.RegionalIstat, "utente-istat-B-P-31", "PASSWORD-ISTAT-B-P-31", "CIR-B-P-31");
+
+        // A request whose org and property disagree opens nothing: the org is part of the key too, not only the property.
+        var corrupt = await AddOpenRequestAsync(_world.OtherOrgId, _world.Granted.Id, OnboardingPartKey.Compliance);
+        foreach (var kind in Enum.GetValues<SupportVaultCredentialKind>())
+            await AssertMissingAsync(vault, corrupt.Id, kind);
+
+        // Only the openings that passed are recorded (two before, eight here), each in the org of its request.
+        var accesses = await _db.SupportVaultAccesses.AsNoTracking().ToListAsync();
+        Assert.Equal(10, accesses.Count);
+        Assert.All(accesses.Where(a => a.RequestId == ofGranted.Id), a => Assert.Equal((_world.OrgId, (Guid?)_world.Granted.Id), (a.OrgId, a.PropertyId)));
+        Assert.All(accesses.Where(a => a.RequestId == ofForeign.Id), a => Assert.Equal((_world.OtherOrgId, (Guid?)_world.OtherOrgProperty.Id), (a.OrgId, a.PropertyId)));
+        Assert.DoesNotContain(accesses, a => a.RequestId == ofHidden.Id || a.RequestId == corrupt.Id);
+    }
+
+    /// <summary>An open request of the whole part, written as it is stored whatever the org and the property it names (the matrix needs one the service never makes).</summary>
+    private async Task<OnboardingAssistRequest> AddOpenRequestAsync(Guid orgId, Guid? propertyId, OnboardingPartKey part)
+    {
+        var now = _clock.GetUtcNow().UtcDateTime;
+        var request = new OnboardingAssistRequest
+        {
+            OrgId = orgId,
+            PartKey = part,
+            PropertyId = propertyId,
+            Context = OnboardingAssistContexts.Part,
+            RequestedByUserId = "auth0|titolare-prova",
+            RequestedAt = now,
+            UpdatedAt = now,
+        };
+        _db.OnboardingAssistRequests.Add(request);
+        await _db.SaveChangesAsync();
+        return request;
+    }
+
+    private async Task AssertOpensAsync(SupportVaultService vault, Guid requestId, SupportVaultCredentialKind kind, string username, string password, string? extraCode)
+    {
+        var opened = await vault.RevealAsync(Staff, requestId, kind, Reason, Ct);
+
+        Assert.Equal((kind, username, password, extraCode), (opened.Kind, opened.Username, opened.Password, opened.ExtraCode));
+    }
+
+    /// <summary>The credential is not in the vault for the org and the property of the request: the 404 of a credential that is not there, never another one.</summary>
+    private async Task AssertMissingAsync(SupportVaultService vault, Guid requestId, SupportVaultCredentialKind kind)
+    {
+        var missing = await Assert.ThrowsAsync<NotFoundException>(() => vault.RevealAsync(Staff, requestId, kind, Reason, Ct));
+
+        Assert.Equal(SupportVaultCodes.SecretMissing, missing.Code);
+    }
+
+    /// <summary>The kind is not one the request needs (a credential of a property for a request of the whole org): refused before anything is read.</summary>
+    private async Task AssertNotNeededAsync(SupportVaultService vault, Guid requestId, SupportVaultCredentialKind kind)
+    {
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => vault.RevealAsync(Staff, requestId, kind, Reason, Ct));
+
+        Assert.Equal(SupportVaultCodes.KindNotForRequest, refused.Code);
+    }
 
     private void AddPoliceCredentials(Guid orgId, Guid propertyId)
     {
