@@ -174,6 +174,13 @@ public static class EncryptedColumns
     public const string OwnerPortalContactPurpose = "Casazen.OwnerPortal.Contact";
 
     /// <summary>
+    /// Purpose of the wire files of the agency (NF-25, NF-113, E16/F01/US01/T01): <see cref="WireBatch.XmlContent"/>, the bank file with the IBAN, the name and the
+    /// address of every owner, and <see cref="WireBatch.DebitAccount"/>, the IBAN of the agency that pays. Read to give the file back to the agency and by nobody
+    /// else, never searched, never listed, never logged. Its own purpose, apart from the owner registry. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string WireBatchFilePurpose = "Casazen.WireBatch.File";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -381,6 +388,12 @@ public static class EncryptedColumns
             nameof(OwnerPortalContact.Email),
             nameof(OwnerPortalContact.FirstName),
             nameof(OwnerPortalContact.LastName)),
+        // NF-25, NF-113: the wire file of the agency, with the IBAN, the name and the address of every owner, and the IBAN of the agency that pays (E16/F01/US01/T01).
+        // The columns are text, they have no length: the converter writes a longer text in them.
+        new EncryptedEntity<WireBatch>(
+            WireBatchFilePurpose,
+            nameof(WireBatch.XmlContent),
+            nameof(WireBatch.DebitAccount)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>
