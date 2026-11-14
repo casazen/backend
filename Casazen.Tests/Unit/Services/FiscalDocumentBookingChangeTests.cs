@@ -492,6 +492,38 @@ public class FiscalDocumentBookingChangeTests
         Assert.Equal(63, (int)DomainEventType.PaymentRefunded);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule. The host marking a stay as a no-show records <c>BookingNoShowMarked</c> in the unit of work of the mark, once for the booking (the mark seen again records
+    /// nothing), with ids and dates only: the only event that tells the fiscal documents of the stay about the no-show.
+    /// </summary>
+    [Fact]
+    public async Task MarkNoShow_RecordsBookingNoShowMarkedOncePerBooking_WithIdsAndDatesOnly()
+    {
+        await using var db = NewDb();
+        await SeedOrgAsync(db);
+        var property = await AddPropertyAsync(db);
+        var bookingId = await AddBookingAsync(db, property);
+        await ChangeBookingAsync(db, bookingId, b => b.Status = BookingStatus.Confirmed);
+        var lifecycle = new StayLifecycleService(
+            db,
+            Mock.Of<IAlloggiatiWebService>(),
+            Mock.Of<IAlloggiatiReportScheduler>(),
+            Mock.Of<IServiceRequestService>(),
+            NullLogger<StayLifecycleService>.Instance,
+            new FakeTimeProvider(Now),
+            new DomainEventRecorder(db, new ChangeTenant(), new FakeTimeProvider(Now)));
+
+        var marked = await lifecycle.MarkNoShowAsync(bookingId, CancellationToken.None);
+        await lifecycle.MarkNoShowAsync(bookingId, CancellationToken.None);
+
+        Assert.NotNull(marked.NoShowAt);
+        var recorded = Assert.Single(await db.OutboxEvents.AsNoTracking().Where(e => e.EventType == DomainEventType.BookingNoShowMarked).ToListAsync());
+        Assert.Equal((bookingId, OrgId, BookingEvents.DedupKeyOf(DomainEventType.BookingNoShowMarked, new Booking { Id = bookingId })), (recorded.EntityId, recorded.OrgId, recorded.DedupKey));
+        var payload = JsonSerializer.Deserialize<BookingEventPayload>(recorded.PayloadJson, DomainEventRecorder.PayloadJsonOptions);
+        Assert.Equal((bookingId, BookingEventOrigin.Host), (payload!.BookingId, payload.Origin));
+        Assert.DoesNotContain("Guest", recorded.PayloadJson, StringComparison.Ordinal);
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static FiscalDocumentBookingChangeHandler HandlerOf(FiscalDocumentService service) =>
