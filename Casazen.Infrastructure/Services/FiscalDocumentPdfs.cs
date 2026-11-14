@@ -38,7 +38,8 @@ public static class FiscalDocumentPdfs
 
     /// <summary>
     /// The PDF of <paramref name="document"/> issued by <paramref name="issuer"/> (the snapshot of the document, or the profile of today for a draft);
-    /// <paramref name="propertyName"/> is the name of the property of the stay, when there is one.
+    /// <paramref name="propertyName"/> is the name of the property of the stay, when there is one; <paramref name="settlement"/> how an issued owner invoice is
+    /// paid (E14/F01/US01/T02: offset in the statement, or to pay, with the QR-bill of a Swiss one).
     /// </summary>
     public static PdfDocumentContent Pdf(
         FiscalDocument document,
@@ -46,7 +47,8 @@ public static class FiscalDocumentPdfs
         IDocumentTexts texts,
         string language,
         FiscalDocument? credited = null,
-        string? propertyName = null)
+        string? propertyName = null,
+        OwnerInvoiceSettlement? settlement = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(issuer);
@@ -54,7 +56,7 @@ public static class FiscalDocumentPdfs
 
         // A Swiss issuer gets the document of MWSTG art. 26 (E11/F01/US01/T03): nothing Italian on it.
         if (issuer.IsSwiss)
-            return SwissFiscalDocumentPdf.Pdf(document, issuer, texts, language, credited, propertyName);
+            return SwissFiscalDocumentPdf.Pdf(document, issuer, texts, language, credited, propertyName, settlement);
 
         // A receipt carries no VAT: its nature codes stay internal (E11/F01/US01/T02), and so do those of the credit note of a receipt.
         var showNature = document.Kind != DocumentKind.Receipt && !(document.Kind == DocumentKind.CreditNote && credited?.Kind == DocumentKind.Receipt);
@@ -80,6 +82,8 @@ public static class FiscalDocumentPdfs
         blocks.Add(new PdfParagraph(string.Join('\n', IssuerLines(issuer, texts, language))));
         blocks.Add(new PdfHeading(texts.Get("FiscalDocPdfRecipient", language), 3));
         blocks.Add(new PdfParagraph(string.Join('\n', RecipientLines(document, texts, language))));
+        if (OwnerInvoicePeriodLabel(document) is { } period)
+            blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfOwnerPeriod", language, period)));
 
         var lines = document.Lines.OrderBy(l => l.LineNumber).ToList();
         blocks.Add(new PdfHeading(texts.Get("FiscalDocPdfLinesHeading", language)));
@@ -136,7 +140,14 @@ public static class FiscalDocumentPdfs
             ],
             totals));
 
-        blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfPayment", language, PaymentLabel(document.PaymentState, texts, language))));
+        if (document.Purpose != FiscalDocumentPurpose.OwnerInvoice)
+            blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfPayment", language, PaymentLabel(document.PaymentState, texts, language))));
+        else if (document.Kind != DocumentKind.CreditNote && settlement is not null)
+        {
+            // An Italian owner invoice has no QR-bill: offset in the statement, or to pay as the property manager says.
+            blocks.AddRange(OwnerInvoicePaymentLines(document, settlement, texts, language, DocumentLanguages.Money(settlement.AmountDue, language), qrBill: false));
+        }
+
         if (!string.IsNullOrEmpty(document.FatturaPaXml))
             blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfCourtesyCopy", language)));
 
@@ -185,6 +196,44 @@ public static class FiscalDocumentPdfs
         if (!string.IsNullOrWhiteSpace(document.RecipientFiscalCode))
             yield return texts.Get("FiscalDocPdfFiscalCode", language, document.RecipientFiscalCode);
     }
+
+    /// <summary>
+    /// What an issued owner invoice says of its payment (E14/F01/US01/T02): «Compensata nel rendiconto del MM/yyyy» when the statement offsets it, the credit
+    /// when it was credited, else the amount to pay and, without a QR-bill (<paramref name="qrBill"/> false), «Pagamento su indicazione del gestore».
+    /// </summary>
+    internal static IEnumerable<PdfBlock> OwnerInvoicePaymentLines(
+        FiscalDocument document,
+        OwnerInvoiceSettlement settlement,
+        IDocumentTexts texts,
+        string language,
+        string amountDue,
+        bool qrBill)
+    {
+        switch (settlement.State)
+        {
+            case OwnerInvoiceSettlements.Offset:
+                yield return new PdfParagraph(texts.Get("OwnerInvoicePdfOffset", language, OwnerInvoicePeriodLabel(document) ?? string.Empty), Bold: true);
+                break;
+            case OwnerInvoiceSettlements.Credited:
+                yield return new PdfParagraph(texts.Get("OwnerInvoicePdfCredited", language), Bold: true);
+                break;
+            default:
+                yield return new PdfParagraph(texts.Get("OwnerInvoicePdfToPay", language, document.Currency, amountDue), Bold: true);
+                if (!qrBill)
+                    yield return new PdfParagraph(texts.Get("OwnerInvoicePdfPaymentByManager", language));
+                break;
+        }
+    }
+
+    /// <summary>The month of the services of an owner invoice (or of its credit note), <c>MM/yyyy</c>; <c>null</c> for any other document.</summary>
+    internal static string? OwnerInvoicePeriodLabel(FiscalDocument document) =>
+        document.Purpose == FiscalDocumentPurpose.OwnerInvoice && document.PeriodYear is { } year && document.PeriodMonth is { } month
+            ? PeriodLabel(year, month)
+            : null;
+
+    /// <summary>A month as <c>MM/yyyy</c>.</summary>
+    internal static string PeriodLabel(int year, int month) =>
+        string.Create(CultureInfo.InvariantCulture, $"{month:00}/{year:0000}");
 
     /// <summary>The word of the kind of a document (invoice, receipt, credit note, proforma): also the one of the list exported to CSV and Excel.</summary>
     internal static string KindLabel(DocumentKind kind, IDocumentTexts texts, string language) => kind switch

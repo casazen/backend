@@ -71,7 +71,8 @@ public sealed partial class OwnerAccountingService
             OpeningBalance = opening,
             Revenue = SumOf(ofMonth, OwnerLedgerEntryType.BookingRevenue),
             ChannelFees = SumOf(ofMonth, OwnerLedgerEntryType.ChannelFee),
-            Commission = SumOf(ofMonth, OwnerLedgerEntryType.AgencyCommission),
+            // The commission of the agency with the VAT its owner invoice added on top (E14/F01/US01/T01): the section of the statement that names the invoice.
+            Commission = SumOf(ofMonth, OwnerLedgerEntryType.AgencyCommission, OwnerLedgerEntryType.AgencyVat),
             Charges = SumOf(ofMonth, OwnerLedgerEntryType.OwnerCharge, OwnerLedgerEntryType.OwnerExpense),
             Payments = SumOf(ofMonth, OwnerLedgerEntryType.OwnerPayment, OwnerLedgerEntryType.AgencyPayment),
             Corrections = SumOf(ofMonth, OwnerLedgerEntryType.Correction),

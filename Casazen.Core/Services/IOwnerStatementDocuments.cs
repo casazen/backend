@@ -125,7 +125,7 @@ public enum OwnerStatementSection
 /// <param name="PropertyName">The name of the property, when the line has one.</param>
 /// <param name="Channel">The channel of the stay (<see cref="BookingSource"/> name; the label of an «other portal» when it has one).</param>
 /// <param name="BookingCode">The code of the booking, the reference of a stay.</param>
-/// <param name="Reference">The reference of the line when it is not a stay (a payout reference, the kind of a flat fee, a month).</param>
+/// <param name="Reference">The reference of the line when it is not a stay (a payout reference, the kind of a flat fee, a month, the number of the owner invoice or of the credit note a line of VAT is of).</param>
 /// <param name="Description">The words of the agency for a charge, an expense or a correction.</param>
 /// <param name="SharePercent">The part of the source the owner holds.</param>
 /// <param name="Amount">The signed amount in the currency of the statement: positive is owed to the owner.</param>

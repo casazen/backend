@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Features;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Microsoft.Extensions.Logging;
@@ -28,13 +29,16 @@ namespace Casazen.Infrastructure.Services;
 public sealed class BillingSetupService(
     IDocumentIssuerService issuers,
     IEnumerable<IBillingSetupContributor> contributors,
-    ILogger<BillingSetupService> logger) : IBillingSetupService
+    ILogger<BillingSetupService> logger,
+    IPortalAccountSettingsService? portalAccounts = null,
+    IFeatureFlags? featureFlags = null) : IBillingSetupService
 {
     public async Task<BillingSetup> GetAsync(Guid orgId, CancellationToken ct = default)
     {
         var view = await issuers.GetSettingsAsync(orgId, ct);
         var evaluations = await EvaluateAsync(orgId, new SettingReader(issuers, orgId, view), null, ct);
-        return new BillingSetup([.. evaluations.Select(evaluation => SectionOf(evaluation, view))]);
+        var channels = await ChannelValuesAsync(orgId, ct);
+        return new BillingSetup([.. evaluations.Select(evaluation => SectionOf(evaluation, view, channels))]);
     }
 
     public async Task<BillingSetupSection> PutSectionAsync(
@@ -188,8 +192,31 @@ public sealed class BillingSetupService(
         return SectionOf(evaluations.Single(), view);
     }
 
-    private static BillingSetupSection SectionOf(Evaluation evaluation, IssuerSettingsView view) =>
-        new(evaluation.Section, evaluation.Applies, ValuesOf(evaluation.Section, view), evaluation.Items);
+    /// <summary>The section with its values: the ones of the profile of the issuer, and for <c>channels</c> the defaults of the portal accounts (E14/F01/US01/T01).</summary>
+    private static BillingSetupSection SectionOf(Evaluation evaluation, IssuerSettingsView view, IReadOnlyDictionary<string, object?>? channels = null) =>
+        new(
+            evaluation.Section,
+            evaluation.Applies,
+            evaluation.Section == BillingSetupSections.Channels && channels is not null ? channels : ValuesOf(evaluation.Section, view),
+            evaluation.Items);
+
+    /// <summary>
+    /// The values of the section <c>channels</c> the owner invoice adds (E14/F01/US01/T01, ⚖ I10, I11): who holds the accounts of the portals by default and
+    /// whether their commissions are recharged, saved by <c>PUT api/billing-setup/channels</c>; <c>null</c> without the settings of the portal accounts and while
+    /// <c>Features:OwnerInvoicing</c> is off (the endpoints that save them answer 404 then, so the section shows nothing it could not save).
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, object?>?> ChannelValuesAsync(Guid orgId, CancellationToken ct)
+    {
+        if (portalAccounts is null || featureFlags?.IsEnabled(FeatureFlags.OwnerInvoicing) != true)
+            return null;
+
+        var settings = await portalAccounts.GetAsync(orgId, ct);
+        return new Dictionary<string, object?>
+        {
+            [PortalAccountFields.PortalAccountHolder] = settings.PortalAccountHolder.ToString(),
+            [PortalAccountFields.RechargePortalCommissions] = settings.RechargePortalCommissions,
+        };
+    }
 
     /// <summary>
     /// The sections asked (all when <paramref name="only"/> is <c>null</c>), in the order of the wizard and then the ones an epic added, each with the items of its

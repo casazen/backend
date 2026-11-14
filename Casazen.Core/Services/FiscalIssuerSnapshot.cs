@@ -12,7 +12,8 @@ namespace Casazen.Core.Services;
 /// document issued before the snapshot existed, are shown with the current profile (<see cref="From"/>).
 /// </summary>
 /// <remarks>
-/// The bank account is kept masked (<see cref="IssuerBankAccounts.Mask"/>): the document needs to say which account, not to carry it. The Italian VAT
+/// The bank account is kept masked (<see cref="IssuerBankAccounts.Mask"/>): the document needs to say which account, not to carry it. The one exception is
+/// the payment part of a Swiss owner invoice, which prints the account it is paid on (<see cref="QrBillAccount"/>, E14/F01/US01/T02). The Italian VAT
 /// number and fiscal code are the organization's (<c>Org</c>), the one source of the Italian fiscal identity.
 /// </remarks>
 public sealed record FiscalIssuerSnapshot
@@ -68,6 +69,13 @@ public sealed record FiscalIssuerSnapshot
     /// <summary>The IBAN of the issuer, masked.</summary>
     public string? IbanMasked { get; init; }
 
+    /// <summary>
+    /// The account the QR-bill of a Swiss owner invoice is paid on (E14/F01/US01/T02): the QR-IBAN of the issuer, else its IBAN of Switzerland or Liechtenstein,
+    /// <b>in clear</b>, because the payment part prints it. Kept only in the snapshot of a Swiss owner invoice (<c>null</c> for every other document and for
+    /// an issuer without such an account: the invoice then says the payment is as the manager says); the snapshot is encrypted at rest.
+    /// </summary>
+    public string? QrBillAccount { get; init; }
+
     /// <summary>True for an issuer in Switzerland.</summary>
     [JsonIgnore]
     public bool IsSwiss => string.Equals(CountryCode, "CH", StringComparison.OrdinalIgnoreCase);
@@ -78,9 +86,9 @@ public sealed record FiscalIssuerSnapshot
 
     /// <summary>
     /// The snapshot of the issuer as the profile and the organization say now. <paramref name="ruleRegimeCode"/> is the regime code of FatturaPA of the
-    /// tax rule, used when the profile has none of its own.
+    /// tax rule, used when the profile has none of its own; <paramref name="withQrBillAccount"/> keeps the account of the QR-bill (a Swiss owner invoice only).
     /// </summary>
-    public static FiscalIssuerSnapshot From(OrgFiscalIssuerProfile? profile, Org org, string? ruleRegimeCode = null)
+    public static FiscalIssuerSnapshot From(OrgFiscalIssuerProfile? profile, Org org, string? ruleRegimeCode = null, bool withQrBillAccount = false)
     {
         ArgumentNullException.ThrowIfNull(org);
 
@@ -103,6 +111,7 @@ public sealed record FiscalIssuerSnapshot
             Regime = profile?.DocumentRegime,
             FatturaPaRegimeCode = swiss ? null : Text(profile?.FatturaPaRegimeCode) ?? Text(ruleRegimeCode),
             IbanMasked = IssuerBankAccounts.Mask(profile?.Iban),
+            QrBillAccount = withQrBillAccount && swiss ? SwissQrBill.AccountOf(profile?.QrIban, profile?.Iban) : null,
         };
     }
 

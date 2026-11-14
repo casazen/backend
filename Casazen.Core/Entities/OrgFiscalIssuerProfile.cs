@@ -153,6 +153,18 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     [MaxLength(SeriesMaxLength)]
     public string? OwnerInvoiceSeries { get; set; }
 
+    /// <summary>
+    /// Who holds the accounts of the listings on the portals, for the whole organization (E14/F01/US01/T01, ⚖ I10): the owner by default (V1); a listing
+    /// and portal can say otherwise (<see cref="PropertyChannelAccountHolder"/>). Read through <c>IPortalAccountHolderResolver</c>.
+    /// </summary>
+    public PortalAccountHolder PortalAccountHolder { get; set; } = PortalAccountHolder.Owner;
+
+    /// <summary>
+    /// The commissions of the portals whose account the agency holds (V2) are recharged to the owner on the owner invoice, at the VAT of a recharge
+    /// (E14/F01/US01/T01, ⚖ I11: the scheme of a mandate without representation). On by default.
+    /// </summary>
+    public bool RechargePortalCommissions { get; set; } = true;
+
     /// <summary>The documents to the guests are issued without the confirmation of a person (E12). Off by default.</summary>
     public bool AutoIssueGuestDocuments { get; set; }
 

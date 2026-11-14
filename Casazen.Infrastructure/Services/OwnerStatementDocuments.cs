@@ -441,7 +441,7 @@ public sealed class OwnerStatementDocuments(
             propertyName,
             booking is null ? null : ChannelOf(booking),
             booking is null ? null : BookingCodes.Format(booking.BookingCode),
-            entry.SourceType == OwnerLedgerSourceType.MandateFlatFee ? entry.SourceReference : null,
+            entry.SourceType is OwnerLedgerSourceType.MandateFlatFee or OwnerLedgerSourceType.OwnerInvoice ? entry.SourceReference : null,
             entry.Description,
             entry.SharePercent,
             entry.Amount,

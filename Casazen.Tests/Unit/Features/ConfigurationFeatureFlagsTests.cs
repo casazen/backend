@@ -99,6 +99,8 @@ public class ConfigurationFeatureFlagsTests
                 "OctorateDocumentImport",
                 // E05/F05/US01/T01: the assistant that answers the guests' messages (knowledge base, rules, situations, drafts), off until the privacy notice and the processing agreement exist.
                 "MessageAssistant",
+                // E14/F01/US01/T01: the invoices of the property manager to the owners made from the statement versions, off until the accountant confirms the ⚖ choices.
+                "OwnerInvoicing",
             },
             FeatureFlags.All);
     }

@@ -93,11 +93,22 @@ public sealed class StatementExportService(
                 && (v.Status == OwnerStatementVersionStatus.Approved || v.Status == OwnerStatementVersionStatus.Published))
             .OrderByDescending(v => v.VersionNumber)
             .FirstOrDefaultAsync(ct);
+        // The statement is not a fiscal document; the owner invoice of the month is, and the statement names its number in the commission (E14/F01/US01/T01).
+        var invoiceNumber = version is null
+            ? null
+            : await db.FiscalDocuments
+                .AsNoTracking()
+                .Where(d => d.OrgId == statement.OrgId && d.Purpose == FiscalDocumentPurpose.OwnerInvoice && d.RecipientOwnerId == statement.PropertyOwnerId
+                    && d.PeriodYear == statement.Year && d.PeriodMonth == statement.Month && d.Status == FiscalDocumentStatus.Issued
+                    && d.Kind != FiscalDocumentKind.CreditNote && !d.CreditedInFull)
+                .OrderByDescending(d => d.IssueDate)
+                .Select(d => d.Number)
+                .FirstOrDefaultAsync(ct);
         var ledger = version is null
             ? null
             : new StatementVersionTotals(
                 version.VersionNumber, version.Currency, version.OpeningBalance, version.Revenue, version.ChannelFees, version.Commission, version.Charges,
-                version.Payments, version.Corrections, version.ClosingBalance, version.EntriesSha256);
+                version.Payments, version.Corrections, version.ClosingBalance, version.EntriesSha256, invoiceNumber);
 
         var wires = await db.WireBatchStatements
             .AsNoTracking()

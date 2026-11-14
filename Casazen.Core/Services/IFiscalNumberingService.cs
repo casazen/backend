@@ -3,9 +3,9 @@ using System.Globalization;
 namespace Casazen.Core.Services;
 
 /// <summary>
-/// The numbers of the fiscal documents of guests and direct bookings (NF-83, ADR-019-R4, E06/F01/US02/T02): consecutive from the first, without gaps
-/// and without duplicates per issuer (org) and series. Owner statements are not fiscal documents and never draw from it, and no new owner invoice
-/// does either (E06/F01/US02/T05).
+/// The numbers of the fiscal documents (NF-83, ADR-019-R4, E06/F01/US02/T02): consecutive from the first, without gaps and without duplicates per issuer
+/// (org) and series. The documents of the guests and the owner invoices (E14/F01/US01/T01, their own series) draw from it; owner statements are not fiscal
+/// documents and never do.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
