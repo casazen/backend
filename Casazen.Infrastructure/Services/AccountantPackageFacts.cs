@@ -83,11 +83,13 @@ internal static class AccountantPackageFacts
         return query.Where(d => d.BookingId != null && bookings.Any(b => b.Id == d.BookingId));
     }
 
-    /// <summary>The documents of <see cref="IssuedDocuments"/> as <see cref="PackageDocument"/>, oldest first (the day of the issue, then the series and the number).</summary>
-    public static async Task<List<PackageDocument>> ReadAsync(
-        AppDbContext db, HostScope scope, AccountantPackagePeriod period, FiscalDocumentPurpose purpose, CancellationToken cancellationToken)
+    /// <summary>
+    /// The documents of <see cref="IssuedDocuments"/> as <see cref="PackageDocument"/>, oldest first (the day of the issue, then the series and the number): the query, not run, so a
+    /// test can read how a provider translates it (<see cref="ReadAsync"/> runs it).
+    /// </summary>
+    public static IQueryable<PackageDocument> Documents(AppDbContext db, HostScope scope, AccountantPackagePeriod period, FiscalDocumentPurpose purpose)
     {
-        return await IssuedDocuments(db, scope, period, purpose)
+        return IssuedDocuments(db, scope, period, purpose)
             .OrderBy(d => d.IssueDate)
             .ThenBy(d => d.Series)
             .ThenBy(d => d.SequenceNumber)
@@ -118,8 +120,14 @@ internal static class AccountantPackageFacts
                 d.Lines
                     .OrderBy(l => l.LineNumber)
                     .Select(l => new PackageDocumentLine(l.LineNumber, l.LineType, l.TotalPrice, l.VatRatePercent, l.VatNatureCode, l.VatAmount))
-                    .ToList()))
-            .ToListAsync(cancellationToken);
+                    .ToList()));
+    }
+
+    /// <summary>The documents of <see cref="Documents"/>, read.</summary>
+    public static async Task<List<PackageDocument>> ReadAsync(
+        AppDbContext db, HostScope scope, AccountantPackagePeriod period, FiscalDocumentPurpose purpose, CancellationToken cancellationToken)
+    {
+        return await Documents(db, scope, period, purpose).ToListAsync(cancellationToken);
     }
 
     /// <summary>The issuer of the org as its profile and the org say it today: the issuer of a document issued before the snapshot of the issuer existed.</summary>
