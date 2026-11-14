@@ -6186,6 +6186,21 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocumentXmlUnavailable" xml:space="preserve">
     <value>Questo documento non ha un file XML (solo le fatture e le note di credito emesse lo hanno).</value>
   </data>
+  <data name="FiscalDocumentBatchSelectionRequired" xml:space="preserve">
+    <value>Indica quali documenti emettere: i documenti scelti, oppure un periodo o degli immobili. Una selezione vuota non vale «tutti».</value>
+  </data>
+  <data name="FiscalDocumentBatchTooLarge" xml:space="preserve">
+    <value>Si emettono al massimo {0} documenti alla volta: restringi la selezione.</value>
+  </data>
+  <data name="FiscalDocumentBatchPeriodInvalid" xml:space="preserve">
+    <value>Il periodo non è valido: la data finale precede quella iniziale.</value>
+  </data>
+  <data name="FiscalDocPushIssuedTitle" xml:space="preserve">
+    <value>Documento fiscale emesso</value>
+  </data>
+  <data name="FiscalDocPushIssuedBody" xml:space="preserve">
+    <value>È stato emesso un documento fiscale per una prenotazione.</value>
+  </data>
   <data name="FiscalDocLineLodging" xml:space="preserve">
     <value>Soggiorno di {0} notti</value>
   </data>

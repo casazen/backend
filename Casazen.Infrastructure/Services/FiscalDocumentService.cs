@@ -4,6 +4,7 @@ using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
@@ -42,7 +43,9 @@ public sealed partial class FiscalDocumentService(
     TimeProvider timeProvider,
     ILogger<FiscalDocumentService> logger,
     IGuestDocumentLineBuilder? lineBuilder = null,
-    IInternalActivityService? activities = null) : IFiscalDocumentService
+    IInternalActivityService? activities = null,
+    IPushNotificationService? pushNotifications = null,
+    IFeatureFlags? featureFlags = null) : IFiscalDocumentService
 {
     /// <summary>The description of the lines of a credit note: fixed words of the document, never personal data.</summary>
     private const string CreditKey = "FiscalDocLineCredit";
@@ -89,7 +92,15 @@ public sealed partial class FiscalDocumentService(
         logger.LogInformation("Fiscal document draft {DocumentId} discarded", document.Id);
     }
 
-    public async Task<FiscalDocument> IssueAsync(Guid documentId, bool confirm, CancellationToken ct = default)
+    public Task<FiscalDocument> IssueAsync(Guid documentId, bool confirm, CancellationToken ct = default) =>
+        IssueCoreAsync(documentId, confirm, notify: true, ct);
+
+    /// <summary>
+    /// The issue of a draft, the one path of the API, of the bulk issue and of the automatic issue. <paramref name="notify"/> tells the hosts of the booking that a document was issued
+    /// (a push, the bell and the live message of the open pages, E12/F01/US01/T02): the issue of one document asked by a person and the corrections made by an event do, the bulk
+    /// issue and the daily run do not (a notification for each of hundreds of documents is no help to anybody; their answer and the list tell).
+    /// </summary>
+    private async Task<FiscalDocument> IssueCoreAsync(Guid documentId, bool confirm, bool notify, CancellationToken ct)
     {
         if (!confirm)
             throw new DomainRuleException(FiscalDocumentErrors.ConfirmationRequired, "FiscalDocumentConfirmationRequired");
@@ -107,6 +118,8 @@ public sealed partial class FiscalDocumentService(
         var series = SeriesOf(profile, today);
         await IssueInTransactionAsync(document, booking, rule, profile, org, series, today, credited: null, ct);
         logger.LogInformation("Fiscal document {DocumentId} of booking {BookingId} issued", document.Id, booking.Id);
+        if (notify)
+            TellTheHostsOfTheIssue(document, org);
         return document;
     }
 
@@ -188,6 +201,7 @@ public sealed partial class FiscalDocumentService(
         var today = timeProvider.TodayInRomeAsDateOnly();
         await IssueInTransactionAsync(note, booking, rule, profile, org, original.Series, today, original, ct);
         logger.LogInformation("Credit note {CreditNoteId} of fiscal document {DocumentId} issued", note.Id, original.Id);
+        TellTheHostsOfTheIssue(note, org);
         return note;
     }
 

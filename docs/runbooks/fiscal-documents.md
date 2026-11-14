@@ -215,6 +215,44 @@ Example: 2 guests × 3 nights × CHF 2.00 = CHF 12.00, out of VAT.
 longer active and nothing was collected for it; kept with a «To do» when money was collected or when it cannot be made again); an **issued** document is **never** rewritten: the host
 gets a «To do» (`ReviewFiscalDocument`, reason `fiscal_document_booking_changed`, about the document and its property, no personal data) that a credit note may be needed.
 
+## Drafts and bulk issue (E12/F01/US01/T02)
+
+**One draft for every stay that ended, never two.** A booking has a *live document* when it has one that is not discarded, not a credit note, not a proforma and **not credited in
+full** (whoever issued it: a document imported from Octorate counts). `IFiscalDocumentService.EnsureDraftAsync` makes the draft only for a booking without a live document, with the check
+and the draft under the advisory lock of the booking (`FiscalDocumentBooking`, 1_604), so the check-out event, the daily run and the host never make two. A document credited in full is
+over: the booking may have its next one (the new draft of a date change).
+
+- **The check-out event.** `FiscalDocumentCheckOutHandler` consumes `CheckOutCompleted` (`DomainEventType` 7, run by the outbox dispatcher, so it can never fail the check-out) and makes the
+  draft. A refusal of the rules (invoice data of the guest missing, no tax rule, the profile incomplete) is an answer: logged with its code and ids, the event is not delivered again and
+  the daily run makes the draft once the data is there. Any other failure is logged with the type of the error and thrown again, so the outbox delivers the event again. Nothing while
+  `Features:FiscalDocumentIssuance` is off.
+- **The daily run `fiscal-documents-due`** (`FiscalDocumentsDueJob`, 05:10 Europe/Rome, registered only while the flag is on, `[DisableConcurrentExecution]`). It exists because a booking of a
+  portal rarely has a check-out recorded in CasaZen. For each organization with an issuer profile, in a DI scope of its own under its tenant (the tenant scope is once per scope), it looks at
+  the **active** bookings (`AlloggiatiStatusRules`: no request, cancelled or no-show) whose check-out day is **before today in Rome** and not older than `FiscalDocuments:DueLookbackDays`
+  (31: a channel import brings years of past stays, and the first run after the issuance is switched on must never draft or issue the history; an older stay is drafted by hand or with the
+  bulk issue), the most recent first, **at most 500 a run per organization**, the rest the next day. Nothing runs with the flag off or while the profile misses an item the documents need
+  (`MissingFields`); one session advisory lock per organization (`FiscalDocumentsDueRun`, 1_602) keeps a retry or a manual trigger from running over it. With `AutoIssueGuestDocuments` on
+  the draft (the one the event made too) is issued through the same path as the API (the whole point of the profile setting); with it off the drafts wait for the host. A stay whose
+  data is missing is skipped and counted (`skipped`), read again at the next run: never a failure, never a stop of the others. An organization that fails does not stop the others. Idempotent:
+  the second run finds nothing to do. The log carries ids and counts.
+
+**Bulk issue.** `POST api/fiscal/documents/issue-batch` (`payment.write` + the flag): `{ documentIds?, from?, to?, propertyIds? }`; at most 200 documents; **an empty selection is 422
+`document_batch_selection_required`, never «all»** (nothing, `[]`, an empty `propertyIds` alone); more than 200 ids is 422 `document_batch_too_large`; a period that ends before it starts is 422
+`document_batch_period_invalid`. `from`/`to` select the drafts of the stays whose check-out day falls in the period (both ends included), `propertyIds` the drafts of those properties; a
+credit note draft is issued only when named by id. Each draft goes through the issue path of the API in **its own transaction** (the number is reserved and rolled back with it: no gap); the
+answer has **one row per document** `{ id, issued, number?, errorCode? }` with the counts and `remaining`, and never says «all issued» while one failed. **Reach:** the documents are narrowed
+in SQL to the scope of the caller (the list's own `Matching`), so a caller restricted to some properties issues only the documents of the properties it reaches; any other id is the row
+`fiscal_document_not_found`, the same answer as an id that does not exist. A row's code is the one of the issue (`booking_not_active`, `document_not_draft`, `document_read_only`,
+`document_draft_outdated`, `invoice data missing`...) or `document_issue_failed` for a failure that is not a rule (the draft stays a draft and can be issued again).
+
+**The documents of a booking.** `GET api/bookings/{id}/fiscal-documents` (`payment.read`, the booking authorized like its payments): number, kind, status, total, currency and the current payment
+state of each document (a discarded draft left out). The booking card reads it.
+
+**Live refresh.** The issue of **one** document asked by a person, and a credit note, queue the push `fiscal-document-issued` (`PushDeliveryKeys.FiscalDocumentIssued`, once per document, to the
+hosts of the booking): through the decorator it is the entry of the bell and the live `notificationsChanged` that makes the open pages read the list of the documents and the booking again
+(`docs/runbooks/in-app-notifications.md`). The bulk issue and the daily run do **not** notify: a message for each of hundreds of documents helps nobody, and their answer and the list tell.
+No guest and no amount is in the text; a push that cannot be queued is logged and never fails the issue.
+
 ## XML (`FatturaPaXmlBuilder`)
 
 - Written with `XDocument`/`XmlWriter`, never by concatenation: every text is escaped; decimals in invariant culture (two places, unit prices and

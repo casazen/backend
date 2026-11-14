@@ -50,6 +50,9 @@ public class FiscalDocumentsRegistrationTests
             (typeof(IEventHandler<DomainEvent>), typeof(InvoiceDataFromOctorateHandler), ServiceLifetime.Scoped),
             (typeof(IEventHandler<DomainEvent>), typeof(OctorateBillingWriteBackHandler), ServiceLifetime.Scoped),
 
+            // The draft of the document of a stay at its check-out (E12/F01/US01/T02): the consumer of CheckOutCompleted.
+            (typeof(IEventHandler<DomainEvent>), typeof(FiscalDocumentCheckOutHandler), ServiceLifetime.Scoped),
+
             // What the other tasks of the epic register, in the order they were added: the labels of the documents and the statement files (E06/F01/US01/T02),
             // the fees of the card payments (E06/F04/US01/T02), the gap-free numbers (E06/F01/US02/T02), the FatturaPA XML and its schema set (E06/F01/US02/T03),
             // the import of the documents Octorate issued (E06/F03/US02/T01), the fiscal documents (E06/F01/US01/T01) and the payment ledger (E06/F04/US01/T03).
@@ -124,12 +127,15 @@ public class FiscalDocumentsRegistrationTests
         services.AddDbContext<AppDbContext>(options => options.UseInMemoryDatabase($"fiscal-registration-{Guid.NewGuid():N}"));
         services.AddCasazenFiscalDocuments(new ConfigurationBuilder().Build());
 
+        // The consumers of the documents take the service of the documents, which has many dependencies of its own: this test is about what the container builds, not about it.
+        services.AddScoped(_ => Mock.Of<IFiscalDocumentService>());
+
         await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         await using var scope = provider.CreateAsyncScope();
 
         var handlers = scope.ServiceProvider.GetServices<IEventHandler<DomainEvent>>().Select(handler => handler.GetType()).ToList();
 
-        Assert.Equal([typeof(InvoiceDataFromOctorateHandler), typeof(OctorateBillingWriteBackHandler)], handlers);
+        Assert.Equal([typeof(InvoiceDataFromOctorateHandler), typeof(OctorateBillingWriteBackHandler), typeof(FiscalDocumentCheckOutHandler)], handlers);
         Assert.IsType<InvoiceDataService>(scope.ServiceProvider.GetRequiredService<IInvoiceDataService>());
         Assert.IsType<DocumentIssuerService>(scope.ServiceProvider.GetRequiredService<IDocumentIssuerService>());
     }

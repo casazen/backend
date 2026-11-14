@@ -253,6 +253,12 @@ public static class PushDeliveryKeys
 
     /// <summary>A host asked CasaZen support for «Fallo per me», to the platform staff: one per request, stable across retries.</summary>
     public static string AssistRequested(Guid requestId) => $"assist-request:{requestId:N}:requested";
+
+    /// <summary>
+    /// A fiscal document of a booking was issued (E12/F01/US01/T02), to the hosts of the booking: one per document (an invoice, a receipt or a credit note), stable across retries,
+    /// so the bell and the open pages of the host read the document list and the booking again.
+    /// </summary>
+    public static string FiscalDocumentIssued(Guid documentId) => $"fiscal-document:{documentId:N}:issued";
 }
 
 /// <summary><c>data.type</c> of each push, one per kind of event (the app opens <c>data.route</c>).</summary>
@@ -369,6 +375,12 @@ public static class PushTypes
     /// org, the property or the person in it: the staff queue shows the request.
     /// </summary>
     public const string AssistRequested = "assist-requested";
+
+    /// <summary>
+    /// A fiscal document of a booking was issued (E12/F01/US01/T02): pushed to the hosts of the booking, written to the bell and published live; <c>entityId</c> is the booking, the
+    /// route its detail. The web client reads again the list of the documents and the booking when it arrives. Neither the guest nor an amount is ever in it.
+    /// </summary>
+    public const string FiscalDocumentIssued = "fiscal-document-issued";
 
     /// <summary>
     /// Type of the push to the host when a service request reaches <paramref name="status"/>; <c>null</c> for a status that has

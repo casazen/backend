@@ -6186,6 +6186,21 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="FiscalDocumentXmlUnavailable" xml:space="preserve">
     <value>This document has no XML file (only issued invoices and credit notes have one).</value>
   </data>
+  <data name="FiscalDocumentBatchSelectionRequired" xml:space="preserve">
+    <value>Say which documents to issue: the documents chosen, or a period or some properties. An empty selection never means «all».</value>
+  </data>
+  <data name="FiscalDocumentBatchTooLarge" xml:space="preserve">
+    <value>At most {0} documents are issued at a time: narrow the selection.</value>
+  </data>
+  <data name="FiscalDocumentBatchPeriodInvalid" xml:space="preserve">
+    <value>The period is not valid: the end date is before the start date.</value>
+  </data>
+  <data name="FiscalDocPushIssuedTitle" xml:space="preserve">
+    <value>Fiscal document issued</value>
+  </data>
+  <data name="FiscalDocPushIssuedBody" xml:space="preserve">
+    <value>A fiscal document was issued for a booking.</value>
+  </data>
   <data name="FiscalDocLineLodging" xml:space="preserve">
     <value>Stay of {0} nights</value>
   </data>

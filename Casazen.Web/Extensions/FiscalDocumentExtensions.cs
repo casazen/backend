@@ -41,6 +41,10 @@ public static class FiscalDocumentExtensions
         services.AddScoped<IEventHandler<DomainEvent>, InvoiceDataFromOctorateHandler>();
         services.AddScoped<IEventHandler<DomainEvent>, OctorateBillingWriteBackHandler>();
 
+        // The draft of the document of a stay at its check-out (E12/F01/US01/T02), the consumer of CheckOutCompleted, run by the outbox dispatcher so it can never fail the
+        // check-out; behind Features:FiscalDocumentIssuance (the daily run fiscal-documents-due makes the drafts the event did not).
+        services.AddScoped<IEventHandler<DomainEvent>, FiscalDocumentCheckOutHandler>();
+
         // The labels of the generated documents, read from SharedResources in the language the caller names (E06/F01/US01/T02).
         services.AddSingleton<IDocumentTexts, ResxDocumentTexts>();
 
