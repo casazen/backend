@@ -169,6 +169,14 @@ public sealed partial class OwnerCollaborationService(
 
         var document = await Documents().FirstOrDefaultAsync(d => d.Id == documentId && d.OrgId == orgId, cancellationToken)
             ?? throw DocumentNotFound(documentId);
+
+        // The PDF of a published statement is the file that was published (the id of the document is the id of the version): it keeps that file for good, whoever asks.
+        if (document.Type == OwnerDocumentType.Statement
+            && await db.OwnerStatementVersions.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AnyAsync(v => v.Id == document.Id && v.OrgId == orgId, cancellationToken))
+        {
+            throw new DomainConflictException(OwnerStatementFileErrors.FileImmutable, OwnerStatementFileErrors.FileImmutableMessageKey);
+        }
+
         var verdict = Scan(file);
         var number = 1 + await Versions().Where(v => v.OwnerDocumentId == document.Id).Select(v => (int?)v.VersionNumber).MaxAsync(cancellationToken) ?? 1;
         var now = Now();

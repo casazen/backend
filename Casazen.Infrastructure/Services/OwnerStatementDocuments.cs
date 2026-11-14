@@ -62,18 +62,10 @@ public sealed class OwnerStatementDocuments(
         // A published version has its file: exactly what the owner downloads, in the language it was published in.
         if (version.PublishedAt is not null && await StoredFileAsync(orgId, versionId, ct) is { } file)
         {
-            var stored = await storage.OpenReadAsync(StorageBucket.Private, file.StorageKey, ct);
-            if (stored is not null)
-            {
-                await using (stored)
-                {
-                    using var buffer = new MemoryStream();
-                    await stored.CopyToAsync(buffer, ct);
-                    return new OwnerStatementFile(buffer.ToArray(), file.FileName, file.ContentType);
-                }
-            }
+            if (await ReadStoredAsync(file, ct) is { } bytes)
+                return new OwnerStatementFile(bytes, file.FileName, file.ContentType);
 
-            logger.LogError("Owner statement version {VersionId}: the stored PDF {FileId} is missing from the storage, it is built again from the lines", versionId, file.Id);
+            logger.LogError("Owner statement version {VersionId}: the stored PDF {FileId} cannot be handed out as it was published, it is built again from the lines", versionId, file.Id);
         }
 
         var entries = await EntriesAsync(version, ct);
@@ -180,33 +172,23 @@ public sealed class OwnerStatementDocuments(
         if (document is null || await StoredFileAsync(orgId, versionId, ct) is not { } file)
             return null;
 
-        var content = await storage.OpenReadAsync(StorageBucket.Private, file.StorageKey, ct);
-        if (content is null)
-        {
-            logger.LogError("Owner statement version {VersionId}: the stored PDF {FileId} is missing from the storage", versionId, file.Id);
+        // What the owner gets is what was published: a file that is missing, or no longer has the SHA-256 kept at the publication, is not handed out.
+        var bytes = await ReadStoredAsync(file, ct);
+        if (bytes is null)
             return null;
-        }
 
         // The download is written before the file is handed out, as every download of an owner document is.
-        try
+        db.OwnerDocumentDownloads.Add(new OwnerDocumentDownload
         {
-            db.OwnerDocumentDownloads.Add(new OwnerDocumentDownload
-            {
-                OrgId = orgId,
-                OwnerDocumentId = document.Id,
-                OwnerDocumentVersionId = file.Id,
-                DownloadedAt = Now(),
-                OwnerUserId = ownerUserId,
-            });
-            await db.SaveChangesAsync(ct);
-        }
-        catch
-        {
-            await content.DisposeAsync();
-            throw;
-        }
+            OrgId = orgId,
+            OwnerDocumentId = document.Id,
+            OwnerDocumentVersionId = file.Id,
+            DownloadedAt = Now(),
+            OwnerUserId = ownerUserId,
+        });
+        await db.SaveChangesAsync(ct);
 
-        return new OwnerFileContent(content, file.FileName, file.ContentType);
+        return new OwnerFileContent(new MemoryStream(bytes, writable: false), file.FileName, file.ContentType);
     }
 
     public async Task TellOwnerPublishedAsync(OwnerStatementVersion version, CancellationToken ct = default)
@@ -506,14 +488,43 @@ public sealed class OwnerStatementDocuments(
         .ThenBy(e => e.Id)
         .ToList();
 
-    /// <summary>The latest stored file of the version's owner document (its id is the id of the version), or <c>null</c> when none was stored.</summary>
+    /// <summary>
+    /// The file stored at the publication of the version: the version 1 of its owner document (its id is the id of the version), or <c>null</c> when none was stored.
+    /// A statement has no other: the owner documents refuse a new version of it, and a row that got there some other way is never the file that was published.
+    /// </summary>
     private async Task<OwnerDocumentVersion?> StoredFileAsync(Guid orgId, Guid versionId, CancellationToken ct) =>
-        (await db.OwnerDocumentVersions
+        await db.OwnerDocumentVersions
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
-            .Where(v => v.OrgId == orgId && v.OwnerDocumentId == versionId)
-            .ToListAsync(ct))
-        .MaxBy(v => v.VersionNumber);
+            .FirstOrDefaultAsync(v => v.OrgId == orgId && v.OwnerDocumentId == versionId && v.VersionNumber == 1, ct);
+
+    /// <summary>
+    /// The stored file as it was published: its bytes, read from the bucket and checked against the SHA-256 kept at the publication. <c>null</c>, with an error in the log
+    /// (the ids only), when the file is missing from the bucket or is no longer that file.
+    /// </summary>
+    private async Task<byte[]?> ReadStoredAsync(OwnerDocumentVersion file, CancellationToken ct)
+    {
+        var stored = await storage.OpenReadAsync(StorageBucket.Private, file.StorageKey, ct);
+        if (stored is null)
+        {
+            logger.LogError("Owner statement version {VersionId}: the stored PDF {FileId} is missing from the storage", file.OwnerDocumentId, file.Id);
+            return null;
+        }
+
+        await using (stored)
+        {
+            using var buffer = new MemoryStream();
+            await stored.CopyToAsync(buffer, ct);
+            var bytes = buffer.ToArray();
+            if (!string.Equals(Convert.ToHexStringLower(SHA256.HashData(bytes)), file.Sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                logger.LogError("Owner statement version {VersionId}: the stored PDF {FileId} is not the file that was published (its SHA-256 differs)", file.OwnerDocumentId, file.Id);
+                return null;
+            }
+
+            return bytes;
+        }
+    }
 
     private DateTime Now() => UtcDateTime.TruncateToMicroseconds(time.GetUtcNow().UtcDateTime);
 

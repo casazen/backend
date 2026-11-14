@@ -277,4 +277,9 @@ public static class OwnerStatementFileErrors
     public const string InvoiceNotFound = "owner_portal_invoice_not_found";
 
     public const string InvoiceNotFoundMessageKey = "OwnerPortalInvoiceNotFound";
+
+    /// <summary>409: the document is the PDF of a published statement (its id is the id of the version): it keeps the file that was published and never gets another version.</summary>
+    public const string FileImmutable = "owner_statement_file_immutable";
+
+    public const string FileImmutableMessageKey = "OwnerStatementFileImmutable";
 }

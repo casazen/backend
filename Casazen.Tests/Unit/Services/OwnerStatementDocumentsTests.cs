@@ -8,6 +8,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Documents;
@@ -22,6 +23,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -213,6 +215,62 @@ public class OwnerStatementDocumentsTests
         await world.Db.SaveChangesAsync();
         Assert.Null(await world.Documents.OpenPublishedPdfAsync(world.OrgId, world.VersionId, owner));
         Assert.Null(await world.Documents.OpenPublishedPdfAsync(world.OtherOrgId, world.VersionId, owner));
+    }
+
+    /// <summary>
+    /// Data: the PDF stored at the publication is the file that was published, for good. The owner documents refuse a new version of it (409), a version that got there
+    /// some other way is never the file handed out, and a file in the bucket that is no longer the one that was published is not handed to the owner.
+    /// </summary>
+    [Fact]
+    public async Task StatementPdf_PublishedFileIsNeverReplaced_Test()
+    {
+        var world = await World.CreateAsync(approved: true);
+        await world.Accounting().PublishVersionAsync(world.OrgId, world.VersionId, "auth0|publisher");
+        var published = await world.Db.OwnerDocumentVersions.AsNoTracking().SingleAsync();
+        var original = await ReadAsync(world.Storage, published.StorageKey);
+        var forged = Encoding.ASCII.GetBytes("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n");
+
+        // The agency cannot add a version to the document of a statement: 409, and nothing is stored.
+        var input = new OwnerDocumentVersionInput(null, null);
+        var upload = new OwnerFileUpload("altro.pdf", forged);
+        var refusal = await Assert.ThrowsAsync<DomainConflictException>(() => world.Collaboration().AddDocumentVersionAsync(world.OrgId, world.VersionId, input, upload, "auth0|agent"));
+        Assert.Equal(OwnerStatementFileErrors.FileImmutable, refusal.Code);
+        Assert.Equal(1, await world.Db.OwnerDocumentVersions.CountAsync());
+
+        // A second version that got there some other way (a direct insert) is not the file handed out: the first one is the file that was published.
+        world.Storage.Add("owner-documents/test/planted.pdf", forged);
+        world.Db.OwnerDocumentVersions.Add(new OwnerDocumentVersion
+        {
+            Id = Guid.NewGuid(),
+            OrgId = world.OrgId,
+            OwnerDocumentId = world.VersionId,
+            VersionNumber = 2,
+            StorageKey = "owner-documents/test/planted.pdf",
+            FileName = "planted.pdf",
+            ContentType = "application/pdf",
+            SizeBytes = forged.Length,
+            Sha256 = Convert.ToHexStringLower(SHA256.HashData(forged)),
+            ScanEngine = "test",
+            UploadedAt = world.Clock.GetUtcNow().UtcDateTime,
+            UploadedByUserId = "auth0|agent",
+        });
+        await world.Db.SaveChangesAsync();
+        Assert.Equal(original, (await world.Documents.GetPdfAsync(world.OrgId, world.VersionId)).Content);
+        await using (var download = (await world.Documents.OpenPublishedPdfAsync(world.OrgId, world.VersionId, Guid.NewGuid()))!.Content)
+        {
+            using var copy = new MemoryStream();
+            await download.CopyToAsync(copy);
+            Assert.Equal(original, copy.ToArray());
+        }
+
+        // The file in the bucket is replaced: it is no longer what was published (its SHA-256 differs), so the owner is not given it and no download is written for it.
+        var downloads = await world.Db.OwnerDocumentDownloads.CountAsync();
+        world.Storage.Add(published.StorageKey, forged);
+        Assert.Null(await world.Documents.OpenPublishedPdfAsync(world.OrgId, world.VersionId, Guid.NewGuid()));
+        Assert.Equal(downloads, await world.Db.OwnerDocumentDownloads.CountAsync());
+        var rebuilt = (await world.Documents.GetPdfAsync(world.OrgId, world.VersionId)).Content;
+        Assert.NotEqual(forged, rebuilt);
+        Assert.Equal("%PDF", Encoding.ASCII.GetString(rebuilt, 0, 4));
     }
 
     /// <summary>The PDF stored when a save fails is removed again, and a version that is not published stores no file.</summary>
@@ -465,6 +523,28 @@ public class OwnerStatementDocumentsTests
 
         public OwnerAccountingService Accounting() =>
             new(Db, Mock.Of<IOwnerFiscalProfileService>(), Clock, NullLogger<OwnerAccountingService>.Instance, null, Documents);
+
+        /// <summary>The documents the agency shares with its owners, on the same database and bucket (what adds a version to a document).</summary>
+        public OwnerCollaborationService Collaboration()
+        {
+            var links = new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = "https://app.example.com" }));
+            var environment = Mock.Of<IHostEnvironment>(e => e.EnvironmentName == "Development");
+            var contacts = new OwnerContactIndex(Options.Create(new OwnerPortalOptions()), environment, NullLogger<OwnerContactIndex>.Instance);
+            var activities = new InternalActivityService(Db, NullLogger<InternalActivityService>.Instance, Clock);
+            return new OwnerCollaborationService(
+                Db,
+                Storage,
+                new OwnerFileContentScanner(),
+                new OwnerPortalAccessResolver(Db, Clock),
+                new ActivityLog(Db, Clock),
+                activities,
+                Queue,
+                links,
+                Mock.Of<IAuth0ManagementService>(),
+                contacts,
+                Clock,
+                NullLogger<OwnerCollaborationService>.Instance);
+        }
 
         public static async Task<World> CreateAsync(bool approved = false)
         {

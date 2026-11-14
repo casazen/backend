@@ -6954,6 +6954,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerStatementPdfNotAvailable" xml:space="preserve">
     <value>Il PDF di questo rendiconto non è disponibile.</value>
   </data>
+  <data name="OwnerStatementFileImmutable" xml:space="preserve">
+    <value>Il PDF di un rendiconto pubblicato non può essere sostituito né avere nuove versioni.</value>
+  </data>
   <data name="OwnerPortalInvoiceNotFound" xml:space="preserve">
     <value>Fattura non trovata.</value>
   </data>
