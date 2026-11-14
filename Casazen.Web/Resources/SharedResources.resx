@@ -6300,6 +6300,18 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocumentBatchPeriodInvalid" xml:space="preserve">
     <value>Il periodo non è valido: la data finale precede quella iniziale.</value>
   </data>
+  <data name="FiscalDocumentNotIssued" xml:space="preserve">
+    <value>Il documento non è ancora stato emesso: si invia per e-mail solo un documento emesso.</value>
+  </data>
+  <data name="DocumentRecipientEmailInvalid" xml:space="preserve">
+    <value>Manca un indirizzo e-mail valido dell'ospite: il documento non può essere inviato per e-mail.</value>
+  </data>
+  <data name="FiscalDocumentEmailNotSent" xml:space="preserve">
+    <value>Non è stato possibile mettere in coda l'e-mail all'ospite. Riprova tra poco.</value>
+  </data>
+  <data name="DocumentLinkInvalid" xml:space="preserve">
+    <value>Il link non è valido o è scaduto.</value>
+  </data>
   <data name="FiscalDocCorrectionModified" xml:space="preserve">
     <value>modifica della prenotazione</value>
   </data>

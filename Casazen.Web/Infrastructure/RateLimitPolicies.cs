@@ -246,4 +246,11 @@ public static class RateLimitPolicies
     /// line of the download audit of the document and streams a file of up to 10 MB. Partitioned by <b>person</b>.
     /// </summary>
     public const string OwnerPortalDownload = "OwnerPortalDownload";
+
+    /// <summary>
+    /// The public page of the document of a stay that the guest got by e-mail (<c>POST api/public/fiscal-documents/{id}</c>, the summary, and <c>…/pdf</c>, the file, E12/F01/US02/T01): the
+    /// token is in the body, never in the address, and every link that does not open answers the same 404. Per client IP, like the other anonymous policies; a page asks once and a guest
+    /// downloads the file a few times, and the PDF is drawn only for a token that opens, so 20 a minute leave room for that and no more than a script could waste.
+    /// </summary>
+    public const string PublicFiscalDocumentDownload = "PublicFiscalDocumentDownload";
 }

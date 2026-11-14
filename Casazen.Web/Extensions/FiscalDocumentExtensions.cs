@@ -65,6 +65,13 @@ public static class FiscalDocumentExtensions
         // (a credit note, or the reversal receipt of a receipt, and the new draft), also behind Features:FiscalDocumentIssuance; idempotent per event.
         services.AddScoped<IEventHandler<DomainEvent>, FiscalDocumentBookingChangeHandler>();
 
+        // The document sent to the guest (E12/F01/US02/T01): the signed link (Data Protection, purpose Casazen.FiscalDocument.Link, 30 days, nothing but the document id), the e-mail queued on Hangfire
+        // and the two public reads that the link opens; the consumer of FiscalDocumentIssued and FiscalDocumentCreditNoteIssued sends it by itself when the profile has «e-mail to the guest» on (also
+        // behind Features:FiscalDocumentIssuance). The e-mail needs the public address of the web app (App:PublicSiteBaseUrl) and the e-mail provider; without them nothing is sent and the send says so.
+        services.AddSingleton<FiscalDocumentLinkTokens>();
+        services.AddScoped<IFiscalDocumentDeliveryService, FiscalDocumentDeliveryService>();
+        services.AddScoped<IEventHandler<DomainEvent>, FiscalDocumentEmailHandler>();
+
         // The labels of the generated documents, read from SharedResources in the language the caller names (E06/F01/US01/T02).
         services.AddSingleton<IDocumentTexts, ResxDocumentTexts>();
 

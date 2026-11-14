@@ -106,6 +106,9 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.OwnerPortalInvite, 10, TimeSpan.FromMinutes(10), PartitionByUser: true),
         new(RateLimitPolicies.OwnerPortalWrite, 30, TimeSpan.FromMinutes(10), PartitionByUser: true),
         new(RateLimitPolicies.OwnerPortalDownload, 60, TimeSpan.FromMinutes(10), PartitionByUser: true),
+
+        // The page of the document the guest got by e-mail (E12/F01/US02/T01): anonymous, per client IP, the token in the body. A page asks once and the guest downloads the file a few times.
+        new(RateLimitPolicies.PublicFiscalDocumentDownload, 20, OneMinute),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)
