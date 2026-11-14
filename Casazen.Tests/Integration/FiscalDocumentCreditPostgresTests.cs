@@ -42,11 +42,15 @@ public class FiscalDocumentCreditPostgresTests
         await using var database = PostgresTestDatabase.CreateMigrated("fdcred");
         var orgId = Guid.NewGuid();
         Guid originalId;
+        Guid issuer;
         await using (var db = Context(database))
         {
             var bookingId = await SeedOrgAndBookingAsync(db, orgId);
-            originalId = AddDocument(db, orgId, bookingId, FiscalDocumentStatus.Issued, number: 1);
-            db.FiscalNumberSequences.Add(new FiscalNumberSequence { OrgId = orgId, Series = "2026", LastNumber = 1 });
+
+            // The numbers are counted per issuer and series (E17/F01/US01/T01): the invoice and its counter are the organization's own profile's.
+            issuer = await db.OrgFiscalIssuerProfiles.OfOrganization(orgId).Select(p => p.Id).SingleAsync();
+            originalId = AddDocument(db, orgId, bookingId, FiscalDocumentStatus.Issued, number: 1, issuer);
+            db.FiscalNumberSequences.Add(new FiscalNumberSequence { OrgId = orgId, IssuerProfileId = issuer, Series = "2026", LastNumber = 1 });
             await db.SaveChangesAsync();
         }
 
@@ -62,6 +66,7 @@ public class FiscalDocumentCreditPostgresTests
             .ToListAsync();
         Assert.Equal(100m, Assert.Single(notes).Total);
         Assert.Equal(2, notes[0].SequenceNumber);
+        Assert.Equal(issuer, notes[0].IssuerProfileId);
         Assert.Equal(2, (await check.FiscalNumberSequences.SingleAsync(s => s.OrgId == orgId)).LastNumber);
     }
 
@@ -251,14 +256,18 @@ public class FiscalDocumentCreditPostgresTests
         return bookingId;
     }
 
-    /// <summary>An invoice of 122 (100 and 22 of VAT, one line) of the booking: issued with its number, or a draft without one.</summary>
-    private static Guid AddDocument(AppDbContext db, Guid orgId, Guid bookingId, FiscalDocumentStatus status, int? number)
+    /// <summary>
+    /// An invoice of 122 (100 and 22 of VAT, one line) of the booking: issued with its number, or a draft without one; on <paramref name="issuerProfileId"/>, else on
+    /// no issuer (a document of before the issuers, the organization's).
+    /// </summary>
+    private static Guid AddDocument(AppDbContext db, Guid orgId, Guid bookingId, FiscalDocumentStatus status, int? number, Guid? issuerProfileId = null)
     {
         var id = Guid.NewGuid();
         var document = new FiscalDocument
         {
             Id = id,
             OrgId = orgId,
+            IssuerProfileId = issuerProfileId,
             BookingId = bookingId,
             Source = FiscalDocumentSource.CasaZen,
             Kind = DocumentKind.Invoice,
