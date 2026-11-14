@@ -50,7 +50,10 @@ public interface IOwnerMandateService
 
     /// <summary>
     /// Replaces the channel commission rules of the org with <paramref name="rules"/> (the whole list; an empty list leaves the org with the defaults). A rule
-    /// identical to a stored one keeps its id. 422 <c>channel_commission_rules_invalid</c> (with the <c>index</c> and the <c>field</c>).
+    /// with the channel and the first day of a stored one is that rule and keeps its id. A rule that lines of the owner ledger already name
+    /// (<c>channel-rule:{id}</c>) is the evidence of the commission they took: it can be closed (its last day moves) but never removed nor given another percent
+    /// or base, 409 <c>channel_commission_rule_in_use</c> (with the <c>ruleId</c>). 422 <c>channel_commission_rules_invalid</c> (with the <c>index</c> and the
+    /// <c>field</c>).
     /// </summary>
     Task<ChannelCommissionRuleSet> SaveChannelRulesAsync(Guid orgId, IReadOnlyList<ChannelCommissionRuleCommand>? rules, string? userId, CancellationToken ct = default);
 }
@@ -61,8 +64,11 @@ public sealed record OwnerMandateCommand
     /// <summary>The first day of the version (Europe/Rome). Required.</summary>
     public DateOnly ValidFrom { get; init; }
 
-    /// <summary>The commission of the agency, 0 to 100 with at most two decimals.</summary>
-    public decimal CommissionPercent { get; init; }
+    /// <summary>
+    /// The commission of the agency, 0 to 100 with at most two decimals. Required: a request that does not carry it is 422 (a mandate of 0% is a choice,
+    /// never what an omitted or misspelt field turns into).
+    /// </summary>
+    public decimal? CommissionPercent { get; init; }
 
     /// <summary>What the commission is a percentage of; <c>null</c> = <see cref="CommissionBase.GrossExclTouristTax"/> (⚖ R3).</summary>
     public CommissionBase? CommissionBase { get; init; }
@@ -123,8 +129,8 @@ public sealed record ChannelCommissionRuleCommand
     /// <summary>The portal (<see cref="FiscalCopy.IsOtaBookingSource"/>).</summary>
     public BookingSource Channel { get; init; }
 
-    /// <summary>0 to 100 with at most two decimals.</summary>
-    public decimal Percent { get; init; }
+    /// <summary>0 to 100 with at most two decimals. Required: a rule of 0% is a choice (it replaces the default), never what an omitted field turns into.</summary>
+    public decimal? Percent { get; init; }
 
     /// <summary>What the percent is of; <c>null</c> = <see cref="CommissionBase.GrossExclTouristTax"/>.</summary>
     public CommissionBase? Base { get; init; }
@@ -160,6 +166,7 @@ public static class OwnerMandateErrors
     public const string TemplateOwnersEmpty = "owner_mandate_owners_empty";
     public const string AddressInvalid = "owner_address_invalid";
     public const string ChannelRulesInvalid = "channel_commission_rules_invalid";
+    public const string ChannelRuleInUse = "channel_commission_rule_in_use";
 }
 
 /// <summary>Which mandate applies to an owner's share on a day: the one definition of the readiness, the owner ledger and the statements.</summary>

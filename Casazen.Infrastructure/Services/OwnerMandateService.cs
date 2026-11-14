@@ -211,7 +211,7 @@ public sealed partial class OwnerMandateService(
             var rule = rules[i] ?? throw ChannelRulesInvalid(i, "rule");
             if (!FiscalCopy.IsOtaBookingSource(rule.Channel))
                 throw ChannelRulesInvalid(i, "channel");
-            if (!IsPercent(rule.Percent))
+            if (rule.Percent is not { } percent || !IsPercent(percent))
                 throw ChannelRulesInvalid(i, "percent");
             if (rule.Base is { } basis && !Enum.IsDefined(basis))
                 throw ChannelRulesInvalid(i, "base");
@@ -220,7 +220,7 @@ public sealed partial class OwnerMandateService(
             if (rule.ValidTo is { } last && last < rule.ValidFrom)
                 throw ChannelRulesInvalid(i, "validTo");
 
-            wanted.Add((i, rule.Channel.ToString(), rule.Percent, rule.Base ?? CommissionBase.GrossExclTouristTax, rule.ValidFrom, rule.ValidTo));
+            wanted.Add((i, rule.Channel.ToString(), percent, rule.Base ?? CommissionBase.GrossExclTouristTax, rule.ValidFrom, rule.ValidTo));
         }
 
         // The rules of one channel never overlap: on a check-out day one rule at most is in force.
@@ -237,34 +237,57 @@ public sealed partial class OwnerMandateService(
         await using var tx = await LockAsync(orgId, ct);
         var stored = await db.OrgChannelCommissionRules.Where(r => r.OrgId == orgId).ToListAsync(ct);
         var now = time.GetUtcNow().UtcDateTime;
-        var kept = new HashSet<Guid>();
-        var added = 0;
+
+        // A rule of the list with the channel and the first day of a stored one is that rule (the unique index: one rule per channel and first day): it keeps its
+        // row and its id, which the lines already posted name (channel-rule:{id}). A stored rule the list leaves out, or gives another percent or base, does not
+        // stay as it was.
+        var matches = new List<(OrgChannelCommissionRule Stored, decimal Percent, CommissionBase Base, DateOnly? ValidTo)>();
+        var created = new List<(string Channel, decimal Percent, CommissionBase Base, DateOnly ValidFrom, DateOnly? ValidTo)>();
         foreach (var w in wanted)
         {
-            // A rule identical to a stored one keeps its row and its id: the lines already posted name it (channel-rule:{id}).
-            var same = stored.FirstOrDefault(r => !kept.Contains(r.Id) && r.Channel == w.Channel && r.ValidFrom == w.ValidFrom && r.ValidTo == w.ValidTo
-                && r.Percent == w.Percent && r.Base == w.Base);
-            if (same is not null)
-            {
-                kept.Add(same.Id);
-                continue;
-            }
+            var current = stored.FirstOrDefault(r => r.Channel == w.Channel && r.ValidFrom == w.ValidFrom);
+            if (current is null)
+                created.Add((w.Channel, w.Percent, w.Base, w.ValidFrom, w.ValidTo));
+            else
+                matches.Add((current, w.Percent, w.Base, w.ValidTo));
+        }
 
+        var removed = stored.Where(r => matches.All(m => m.Stored.Id != r.Id)).ToList();
+        var changed = matches.Where(m => m.Stored.Percent != m.Percent || m.Stored.Base != m.Base).Select(m => m.Stored).ToList();
+
+        // The ledger keeps the id of the rule behind a channel commission, not its terms: a rule named by lines already posted is the evidence of what they took, so
+        // it is never removed nor given another percent or base. Its last day can move: the rule is closed and the new one starts after it.
+        var named = await RulesNamedByPostedLinesAsync(orgId, removed.Concat(changed).ToList(), ct);
+        if (named.Count > 0)
+        {
+            throw new DomainConflictException(OwnerMandateErrors.ChannelRuleInUse, "ChannelCommissionRuleInUse")
+            {
+                Extensions = new Dictionary<string, object?> { ["ruleId"] = named[0] },
+            };
+        }
+
+        foreach (var (current, percent, basis, validTo) in matches)
+        {
+            current.Percent = percent;
+            current.Base = basis;
+            current.ValidTo = validTo;
+        }
+
+        foreach (var (channel, percent, basis, validFrom, validTo) in created)
+        {
             db.OrgChannelCommissionRules.Add(new OrgChannelCommissionRule
             {
                 OrgId = orgId,
-                Channel = w.Channel,
-                Percent = w.Percent,
-                Base = w.Base,
-                ValidFrom = w.ValidFrom,
-                ValidTo = w.ValidTo,
+                Channel = channel,
+                Percent = percent,
+                Base = basis,
+                ValidFrom = validFrom,
+                ValidTo = validTo,
                 CreatedAt = now,
                 CreatedByUserId = userId,
             });
-            added++;
         }
 
-        var removed = stored.Where(r => !kept.Contains(r.Id)).ToList();
         db.OrgChannelCommissionRules.RemoveRange(removed);
         await db.SaveChangesAsync(ct);
         if (tx is not null)
@@ -272,8 +295,23 @@ public sealed partial class OwnerMandateService(
 
         logger.LogInformation(
             "Channel commission rules of org {OrgId} saved by {UserId}: {Kept} kept, {Added} added, {Removed} removed",
-            orgId, userId, kept.Count, added, removed.Count);
+            orgId, userId, matches.Count, created.Count, removed.Count);
         return await GetChannelRulesAsync(orgId, ct);
+    }
+
+    /// <summary>The ones among <paramref name="rules"/> that a line of the owner ledger names in its rule version (<c>channel-rule:{id}</c>).</summary>
+    private async Task<List<Guid>> RulesNamedByPostedLinesAsync(Guid orgId, IReadOnlyCollection<OrgChannelCommissionRule> rules, CancellationToken ct)
+    {
+        if (rules.Count == 0)
+            return [];
+
+        var names = rules.Select(r => ChannelFeeSources.Rule(r.Id)).ToList();
+        var used = await db.OwnerLedgerEntries.AsNoTracking()
+            .Where(e => e.OrgId == orgId && e.RuleVersion != null && names.Contains(e.RuleVersion))
+            .Select(e => e.RuleVersion!)
+            .Distinct()
+            .ToListAsync(ct);
+        return rules.Where(r => used.Contains(ChannelFeeSources.Rule(r.Id))).Select(r => r.Id).ToList();
     }
 
     /// <summary>The rules and, for each portal, what applies today: the rule in force, else the configured default (marked), else nothing.</summary>
@@ -359,7 +397,7 @@ public sealed partial class OwnerMandateService(
             throw MandateInvalid("template");
         if (command.ValidFrom == default)
             throw MandateInvalid("validFrom");
-        if (!IsPercent(command.CommissionPercent))
+        if (command.CommissionPercent is not { } percent || !IsPercent(percent))
             throw MandateInvalid("commissionPercent");
         if (command.CommissionBase is { } basis && !Enum.IsDefined(basis))
             throw MandateInvalid("commissionBase");
@@ -376,7 +414,7 @@ public sealed partial class OwnerMandateService(
 
         return new MandateTerms(
             command.ValidFrom,
-            command.CommissionPercent,
+            percent,
             command.CommissionBase ?? CommissionBase.GrossExclTouristTax,
             command.CommissionIncludesVat,
             command.CleaningFlatRate,

@@ -37,13 +37,15 @@ public class ChannelCommissionRulesController(
     }
 
     /// <summary>
-    /// Replaces the rules with the whole list (<c>[{ channel, percent, base, validFrom, validTo }]</c>; an empty list leaves the defaults). 422
-    /// <c>channel_commission_rules_invalid</c> (with the <c>index</c> and the <c>field</c>).
+    /// Replaces the rules with the whole list (<c>[{ channel, percent, base, validFrom, validTo }]</c>, the <c>percent</c> of every rule required; an empty list
+    /// leaves the defaults). A rule that posted lines of the owner ledger name can be closed but not removed nor given another percent or base: 409
+    /// <c>channel_commission_rule_in_use</c> (with the <c>ruleId</c>). 422 <c>channel_commission_rules_invalid</c> (with the <c>index</c> and the <c>field</c>).
     /// </summary>
     [HttpPut]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
     [ProducesResponseType(typeof(ChannelCommissionRuleSetDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ChannelCommissionRuleSetDto>> Put([FromBody] List<ChannelCommissionRuleCommand>? rules)
     {

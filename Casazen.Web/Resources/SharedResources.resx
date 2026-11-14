@@ -6354,6 +6354,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="ChannelCommissionRulesInvalid" xml:space="preserve">
     <value>Una commissione dei canali non è valida: controlla la riga e il campo indicati.</value>
   </data>
+  <data name="ChannelCommissionRuleInUse" xml:space="preserve">
+    <value>Una regola è già citata da righe del conto dei proprietari: non si elimina e non se ne cambiano percentuale o base. Chiudila con una data di fine e aggiungi la nuova dal giorno dopo.</value>
+  </data>
   <data name="OwnerPeriodInvalid" xml:space="preserve">
     <value>Il periodo non è valido: indica un anno tra 2000 e 2100 e un mese tra 1 e 12.</value>
   </data>
