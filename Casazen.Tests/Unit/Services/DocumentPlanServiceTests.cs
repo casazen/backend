@@ -89,6 +89,11 @@ public class DocumentPlanServiceTests
         var input = Assert.Single(world.XmlInputs);
         Assert.Equal(new FatturaPaId("IT", "01234567897"), input.Issuer.VatId);
         Assert.Equal("TEST Immobiliare Lago Srl", input.Issuer.Denomination);
+
+        // E17/F01/US01/T03: the agency is the third-party issuer (TZ) and the transmitter of the owner's invoice.
+        Assert.Equal(FatturaPaIssuedBy.ThirdParty, input.IssuedBy);
+        Assert.Equal(("TEST Agenzia Lago Srl", new FatturaPaId("IT", "09876543217")), (input.ThirdPartyIssuer!.Denomination, input.ThirdPartyIssuer.VatId));
+        Assert.Equal(new FatturaPaId("IT", "09876543217"), input.Transmitter);
         Assert.Equal(1, (await world.Db.FiscalNumberSequences.SingleAsync(s => s.IssuerProfileId == world.ProfileOf(company))).LastNumber);
 
         // A booking of a property without owners is the agency's, in the agency's own series: its number 1 too.

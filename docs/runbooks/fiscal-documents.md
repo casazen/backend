@@ -166,28 +166,29 @@ the snapshot and the layout would be the new one's: the issue answers 409 `docum
 ## Official schema (precondition of the XML)
 
 The XML is validated against the official FatturaPA schema before it is stored (ADR-019-R6). The schema files are **not** written or rebuilt by
-hand: they are the files the Agenzia delle Entrate publishes, committed as they are under `Casazen.Infrastructure/Fiscal/Schemas/` and embedded
-in the assembly (`Casazen.Infrastructure.csproj`, logical names `Casazen.Infrastructure.Fiscal.Schemas.<file>`).
+hand: they are the files their publishers give, committed as they are under `Casazen.Infrastructure/Fiscal/Schemas/` and embedded
+in the assembly (`Casazen.Infrastructure.csproj`, logical names `Casazen.Infrastructure.Fiscal.Schemas.<file>`; `FatturaPaSchemaProvider.OfficialFiles`).
 
-| File | Source | SHA-256 |
-|---|---|---|
-| The FatturaPA schema in force, format FPR12 (namespace `http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2`) | Agenzia delle Entrate, site of the electronic invoice (fatturapa.gov.it), page «Formato FatturaPA» | to record when the file is added |
-| The XML signature schema it imports (`xmldsig-core-schema.xsd`) | the same publication | to record when the file is added |
+| File | Version | Source (taken on 2026-11-14) | SHA-256 |
+|---|---|---|---|
+| `Schema_VFPR12_v1.2.3.xsd`: the FatturaPA schema of the ordinary invoice, format FPR12 (namespace `http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2`) | 1.2.3, the documentation valid from 2025-04-01 (Specifiche tecniche del formato FatturaPA 1.4) | Agenzia delle Entrate, fatturapa.gov.it, page «Formato FatturaPA» (`https://www.fatturapa.gov.it/it/norme-e-regole/documentazione-fattura-elettronica/formato-fatturapa/`), file `https://www.fatturapa.gov.it/export/documenti/fatturapa/v1.4/Schema_VFPR12_v1.2.3.xsd` | `152944f6eef9f5d69ef6e955ee173b32142b00a8c1c5222fc97dfab5910e8a8c` (68,619 bytes) |
+| `xmldsig-core-schema.xsd`: the XML signature schema the FatturaPA schema imports (its `schemaLocation`) | W3C Recommendation of 2002-02-12 | W3C, `https://www.w3.org/TR/2002/REC-xmldsig-core-20020212/xmldsig-core-schema.xsd` | `35cf8197da812c85e40d57891b35c94187569ed474a2dac813ce5090dafcd35c` (10,293 bytes) |
 
-**State of this build: the files are not in the repository yet.** They could not be taken from the publication while this change was written (no
-network access was allowed to the delivery). Until they are added, `FatturaPaSchemaProvider.HasOfficialSchema` is false and every issue of an
-invoice answers 422 `fatturapa_schema_unavailable`: no XML is ever produced without the validation. Issuance is off anyway (`Features:FiscalDocumentIssuance`).
+**State of this build: the files are in the repository** (E17/F01/US01/T03). `.gitattributes` marks `Casazen.Infrastructure/Fiscal/Schemas/*.xsd` as `-text`, so
+the bytes, and the checksums, are the same on every machine; `FatturaPaSchemaProvider_EmbeddedSchemas_AreTheOfficialFiles_Test` fails when an embedded file is
+not the one recorded here. The Italian invoices and their credit notes are now issued with their XML; 422 `fatturapa_schema_unavailable` remains only for a build
+without the files. Every test of the builder validates what it writes against the real schema (`FatturaPaProofTests`).
 
-**Adding or updating the schema (operator):**
+**Updating the schema (operator):**
 
-1. Download the schema files from the publication of the Agenzia delle Entrate (the page above), never from a mirror.
-2. Put them in `Casazen.Infrastructure/Fiscal/Schemas/` unchanged (no reformatting: the checksum must be the one of the published file).
-3. Record in the table above the exact URL of each file, the version and the SHA-256 (`sha256sum <file>`).
-4. Run `FatturaPaProofTests`: with the files, `FatturaPa_Xml_ValidatesAgainstOfficialSchema_Test` builds a document and validates it, and checks that
-   an altered one fails.
+1. Download the new files from the publication of the Agenzia delle Entrate (the page above) and the signature schema from the address its `schemaLocation`
+   names, never from a mirror.
+2. Put them in `Casazen.Infrastructure/Fiscal/Schemas/` unchanged (no reformatting, no change of line endings), removing the old version.
+3. Record in the table above and in `FatturaPaSchemaProvider.OfficialFiles` the exact URL of each file, the version and the SHA-256 (`sha256sum <file>`).
+4. Run `FatturaPaProofTests`: every document of the builder is validated against the new files; if one does not validate, the builder is what changes.
 
-The schemas are compiled without a resolver (the import of the signature schema is satisfied by the embedded file, never fetched); the documents
-are read with the DTD prohibited and no resolver (`XsdValidator`): no external entity, no network.
+The schemas are compiled without a resolver (the import of the signature schema is satisfied by the embedded file, never fetched; the internal DTD of the W3C
+file is parsed, its external one never read); the documents are read with the DTD prohibited and no resolver (`XsdValidator`): no external entity, no network.
 
 ## Tax rules (`FiscalDocuments:TaxRules`, E11/F01/US01/T02)
 
@@ -426,10 +427,22 @@ events of one change (the refund and the cancellation) and events delivered out 
 
 - Written with `XDocument`/`XmlWriter`, never by concatenation: every text is escaped; decimals in invariant culture (two places, unit prices and
   quantities up to eight); days as `yyyy-MM-dd` (Europe/Rome calendar days).
-- `IdTrasmittente`: the issuer's own fiscal id (no intermediary configured). `CodiceDestinatario`: the recipient's code; `0000000` with the PEC or
-  with nothing (the recipient's fiscal drawer); `XXXXXXX` for a recipient outside Italy.
-- `CedentePrestatore` from the issuer profile (`OrgFiscalIssuerProfile`) and the organization (VAT number, fiscal code); `CessionarioCommittente`
-  from the recipient snapshot of the document (a company with `Denominazione`, a person with `Nome` and `Cognome`).
+- `IdTrasmittente` (E17/F01/US01/T03): the subject whose channel sends the file to the SDI, by its fiscal code (else its VAT number): the agency, both for a
+  document it issues in its own name and for one it issues on behalf of an owner. No provider of the SDI exists yet: E17/F01/US02 replaces it with the
+  provider's when one is configured (`FiscalDocumentService.TransmitterOf`, the one place). A Swiss agency has no Italian code: the invoice of an Italian owner
+  company needs that provider.
+- `CodiceDestinatario`: the recipient's code; `0000000` with the PEC or with nothing (the recipient's fiscal drawer); `XXXXXXX` for a recipient outside
+  Italy. A recipient abroad without a VAT number (a private guest, B2C) has `IdFiscaleIVA` with its country and `99999999999`; every address abroad has the `CAP`
+  `00000` and no `Provincia`.
+- `CedentePrestatore` from the snapshot of the issuer: the organization (its VAT number and fiscal code from `Org`) or **the owner company** that issues the
+  document of its stay (its own VAT number, fiscal code and regime code); `CessionarioCommittente` from the recipient snapshot of the document (a company
+  with `Denominazione`, a person with `Nome` and `Cognome`).
+- **Third-party issuer (TZ).** The invoice of an owner company issued through the agency carries `TerzoIntermediarioOSoggettoEmittente` with the agency
+  (`IdFiscaleIVA` IT + its VAT number, its fiscal code, its `Denominazione`, from `FiscalIssuerSnapshot.Intermediary`, as at the issue) and `SoggettoEmittente`
+  `TZ`; the credit note of such an invoice too. An invoice of the organization names no third party.
+- **TD17 (for E17/F01/US03).** The builder writes a self-billed invoice issued by its recipient (`FatturaPaInput.IssuedBy` `Recipient`: `SoggettoEmittente`
+  `CC`) with a foreign supplier as cedente (its country and VAT number, `RF18`, an address abroad) and the supplier's invoice as `DatiFattureCollegate`; the
+  type code comes from the caller. Nothing in this slice makes one yet.
 - A document that does not validate is 422 `fatturapa_xml_invalid`: the message names the number of errors and the line:position of the first ones,
   never a value of the document; the log carries ids and counts only.
 

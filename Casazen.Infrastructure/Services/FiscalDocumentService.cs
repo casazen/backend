@@ -1009,9 +1009,11 @@ public sealed partial class FiscalDocumentService(
 
     /// <summary>
     /// The input of the XML of an issued document: the issuer from its snapshot, the recipient from the document, the stored lines and the VAT summary of
-    /// their stored VAT per rate (<see cref="FiscalDocumentTotals.SummaryOf"/>), never <c>taxable × rate</c> again.
+    /// their stored VAT per rate (<see cref="FiscalDocumentTotals.SummaryOf"/>), never <c>taxable × rate</c> again. The document of an owner company issued
+    /// through the agency names the agency as the third-party issuer (<c>TZ</c>, E17/F01/US01/T03), from the snapshot as at the issue; the transmitter is
+    /// <see cref="TransmitterOf"/>.
     /// </summary>
-    private static FatturaPaInput FatturaPaInputOf(FiscalDocument document, FiscalIssuerSnapshot issuerSnapshot, FiscalTaxRule rule, FiscalDocument? credited)
+    internal static FatturaPaInput FatturaPaInputOf(FiscalDocument document, FiscalIssuerSnapshot issuerSnapshot, FiscalTaxRule rule, FiscalDocument? credited)
     {
         var lines = AmountsOf(document);
         var summary = FiscalDocumentTotals.SummaryOf(lines, document.VatAmount);
@@ -1046,13 +1048,14 @@ public sealed partial class FiscalDocumentService(
             new FatturaPaAddress(
                 document.RecipientAddressStreet ?? string.Empty,
                 document.RecipientAddressCivic,
-                string.Equals(recipientCountry, "IT", StringComparison.OrdinalIgnoreCase) ? document.RecipientPostalCode ?? string.Empty : "00000",
+                string.Equals(recipientCountry, "IT", StringComparison.OrdinalIgnoreCase) ? document.RecipientPostalCode ?? string.Empty : FatturaPaParties.ForeignPostalCode,
                 document.RecipientCity ?? string.Empty,
                 string.Equals(recipientCountry, "IT", StringComparison.OrdinalIgnoreCase) ? document.RecipientProvince : null,
                 recipientCountry));
 
+        var thirdParty = issuerSnapshot.Intermediary is { } agency ? AgencyParty(agency) : null;
         return new FatturaPaInput(
-            new FatturaPaId(issuerCountry, issuerSnapshot.FiscalCode ?? vatNumber ?? string.Empty),
+            TransmitterOf(issuerSnapshot),
             document.Id.ToString("N")[..10].ToUpperInvariant(),
             issuer,
             recipient,
@@ -1066,8 +1069,47 @@ public sealed partial class FiscalDocumentService(
             summary,
             document.StampDuty,
             document.Total,
-            credited is null ? null : new FatturaPaRelatedDocument(credited.Number ?? string.Empty, credited.IssueDate));
+            credited is null ? null : new FatturaPaRelatedDocument(credited.Number ?? string.Empty, credited.IssueDate))
+        {
+            IssuedBy = thirdParty is null ? FatturaPaIssuedBy.Issuer : FatturaPaIssuedBy.ThirdParty,
+            ThirdPartyIssuer = thirdParty,
+        };
     }
+
+    /// <summary>
+    /// Who transmits the file to the SDI (<c>IdTrasmittente</c>, E17/F01/US01/T03): the subject whose channel sends it, by its fiscal code (else its VAT number).
+    /// No provider of the SDI is configured yet (E17/F01/US02 replaces this with the provider's id): it is the agency, for a document it issues in its own name as
+    /// for one it issues on behalf of an owner (the agency, not the owner, sends the file).
+    /// </summary>
+    internal static FatturaPaId TransmitterOf(FiscalIssuerSnapshot issuerSnapshot)
+    {
+        ArgumentNullException.ThrowIfNull(issuerSnapshot);
+
+        if (issuerSnapshot.Intermediary is { } agency)
+            return new FatturaPaId(CountryOf(agency.CountryCode), agency.FiscalCode ?? DigitsOf(agency.VatNumber) ?? string.Empty);
+
+        return new FatturaPaId(CountryOf(issuerSnapshot.CountryCode), issuerSnapshot.FiscalCode ?? DigitsOf(issuerSnapshot.VatNumber) ?? string.Empty);
+    }
+
+    /// <summary>
+    /// The agency as the third-party issuer of a document of its owner (<c>TerzoIntermediarioOSoggettoEmittente</c>): its Italian VAT number and fiscal code and its
+    /// name. The block has no address: the one of the party is not written.
+    /// </summary>
+    private static FatturaPaParty AgencyParty(FiscalIssuerIntermediary agency)
+    {
+        var country = CountryOf(agency.CountryCode);
+        var vatNumber = DigitsOf(agency.VatNumber);
+        return new FatturaPaParty(
+            vatNumber is null ? null : new FatturaPaId(country, vatNumber),
+            agency.FiscalCode,
+            agency.Name,
+            null,
+            null,
+            new FatturaPaAddress(string.Empty, null, string.Empty, string.Empty, null, country));
+    }
+
+    private static string CountryOf(string? countryCode) =>
+        string.IsNullOrWhiteSpace(countryCode) ? OrgFiscalIssuerProfile.DefaultCountryCode : countryCode.Trim().ToUpperInvariant();
 
     /// <summary>The stored lines of a document as amounts, in order, with their type and their stored VAT.</summary>
     internal static IReadOnlyList<FiscalDocumentLineAmounts> AmountsOf(FiscalDocument document) =>
@@ -1399,7 +1441,7 @@ public sealed partial class FiscalDocumentService(
         }
 
         return !string.Equals(country, "IT", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(fiscalCode)
-            ? new FatturaPaId(country.ToUpperInvariant(), "99999999999")
+            ? new FatturaPaId(country.ToUpperInvariant(), FatturaPaParties.ForeignPrivateCode)
             : null;
     }
 
