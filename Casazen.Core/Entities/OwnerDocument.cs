@@ -9,7 +9,8 @@ namespace Casazen.Core.Entities;
 /// A document an agency shares with one of its owners in the owner portal (E07/F07/US01/T02, AC-NF111-3): a mandate, a contract, an insurance, a
 /// statement or an invoice, or another document named by its title, for the owner profile and, when it says so, for one of its properties. Its files are
 /// <see cref="OwnerDocumentVersion"/> rows, immutable; every download is an <see cref="OwnerDocumentDownload"/> row. The statements the owner accounting
-/// publishes (E06) are not copied here: the portal reads their published versions where they are.
+/// publishes (E06) are read where they are (their published versions); only their PDF is kept here, as a document of type statement whose id is the id of the
+/// version (E13/F01/US02/T01).
 /// </summary>
 [Table("OwnerDocuments")]
 public class OwnerDocument : ITenantOwned

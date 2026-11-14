@@ -139,4 +139,11 @@ public enum ActivityType
     /// per version, closed when a new version is in force beyond the window or the document is withdrawn.
     /// </summary>
     OwnerDocumentExpiring = 72,
+
+    /// <summary>
+    /// The owner could not be told by e-mail that a statement was published (E13/F01/US02/T02): the e-mail could not be prepared, or the queue refused it, so the agency
+    /// tells the owner by hand. About the statement version (entity type <c>OwnerStatementVersion</c>), organization-level; the statement is published whatever happens.
+    /// Raised once for each version, and never for a portal that is off or an owner nobody reaches in it. The number leaves room for the values the owner portal appends after 72.
+    /// </summary>
+    OwnerStatementNoticeFailed = 80,
 }

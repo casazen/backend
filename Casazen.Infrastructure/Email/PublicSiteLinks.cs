@@ -121,6 +121,9 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     /// <summary>A conversation of the owner inbox in the owner portal (route <c>/portale-proprietari/messaggi/{id}</c>, E07/F07/US01/T02): the id only.</summary>
     public string OwnerPortalConversation(Guid conversationId) => Build($"/portale-proprietari/messaggi/{conversationId:D}");
 
+    /// <summary>The page «Contabilità» of the owner portal (route <c>/portale-proprietari/contabilita</c>, E13/F01/US02/T02): the statements and the invoices of the owner. No id, no amount.</summary>
+    public string OwnerPortalAccounting() => Build("/portale-proprietari/contabilita");
+
     /// <summary>A conversation of the owner inbox in the console of the agency (route <c>/app/owners/messages/{id}</c>, E07/F07/US01/T02): the id only.</summary>
     public string AgencyOwnerConversation(Guid conversationId) => Build($"/app/owners/messages/{conversationId:D}");
 

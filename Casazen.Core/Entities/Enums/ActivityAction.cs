@@ -87,4 +87,10 @@ public enum ActivityAction
 
     /// <summary>A document shared with an owner lapses: the documents of the owner in the console, where a new version is uploaded. About the version in force.</summary>
     RenewOwnerDocument = 41,
+
+    /// <summary>
+    /// A statement of an owner waits for the agency (E13/F01/US02/T02): the owner could not be told that it was published, so the agency opens the statement and tells the
+    /// owner by hand. About the statement version. The numbers from 50 are the owner ledger (epic E13), apart from the owner portal operations of 40 to 49.
+    /// </summary>
+    ReviewOwnerStatement = 50,
 }

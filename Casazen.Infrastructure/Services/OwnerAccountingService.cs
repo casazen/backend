@@ -27,13 +27,16 @@ namespace Casazen.Infrastructure.Services;
 /// alone, a new key is posted, a posted key no longer planned is reversed. The shares are split in the currency of the source, rounded half to even, the
 /// last owner (by id) taking the remainder, then converted with the rate of the agency.</para>
 /// <para><b>Locks.</b> Posting, generation, close and corrections of one org run one at a time (<see cref="PostgresAdvisoryLocks.Scope.OwnerAccounting"/>).</para>
+/// <para><b>Files.</b> The publication of a version stores its PDF with it, in the same save (<paramref name="statementFiles"/>, E13/F01/US02/T01), and tells the owner
+/// after it (E13/F01/US02/T02); a service built without it (a test) publishes the version and the JSON file only.</para>
 /// </remarks>
 public sealed partial class OwnerAccountingService(
     AppDbContext db,
     IOwnerFiscalProfileService fiscal,
     TimeProvider time,
     ILogger<OwnerAccountingService> logger,
-    IOptions<OwnerAccountingOptions>? accountingOptions = null) : IOwnerAccountingService
+    IOptions<OwnerAccountingOptions>? accountingOptions = null,
+    IOwnerStatementDocuments? statementFiles = null) : IOwnerAccountingService
 {
     /// <summary>A rate older than this many days before the day of the source is not used.</summary>
     public const int FxMaxAgeDays = 7;
