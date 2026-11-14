@@ -337,6 +337,42 @@ migration, no new table).
   (below) before it asks the agency to close.
 - **Not here.** No notification when a run ends (the screen polls the progress); no waiver; no bulk correction.
 
+## Month reconciliation (E13/F01/US03/T02)
+
+Acceptance step C1 of `pilota-flusso-completo-2026-11-14.md`: before closing a month the agency checks that the portals' payments, the bookings and the statements
+agree. **Read only, no entity, and a difference blocks nothing: the agency decides** (the close of an owner does not read it).
+
+- **Endpoint** `GET api/owner-accounting/periods/{y}/{m}/reconciliation` (`agency.statement.view`, the whole org: 403 otherwise; `Cache-Control: no-store`). 422
+  `owner_period_invalid`. Amounts are in the currency they were posted or recorded in and **are never added to those of another currency**: a channel has a row for
+  each currency, the statements one for each statement currency.
+- **`channels`**: one row for each channel and currency with a stay posted in the month (by channel, then currency). `stays` and `ledgerGross` are the live lines of the owner
+  ledger of the month that come from a booking (neither reversals nor reversed lines; the owners' shares add up to the whole stay): the stays with a revenue line and their
+  gross without the tourist tax, in the currency of the property. `commissions` is what the portals kept, split by where the line says it comes from (its rule version):
+  `fromPortal` (`payload`, the reservation's own figure; also the lines of before the rules existed, which could only come from it), `fromRule` (`channel-rule:{id}`, a rule of
+  the agency) and `fromDefault` (`channel-default`, the configured default); `total` and `onRule` (`fromRule + fromDefault`) tell how much of it rests on a rule and not on the
+  portal (⚖ R2). For a **portal** (`FiscalCopy.IsOtaBookingSource`): `expectedNetPayout` is the gross less the commission of the stays **the portal collected** (a stay with
+  `OtaCompanyCollect = false` is collected by the host: no payout is expected, it is counted in `hostCollectedStays`; unknown counts as collected, as the payment ledger reads
+  it), `recordedPayouts` what the payment ledger records as paid for them, `difference` the recorded less the expected (negative: less was recorded), and
+  `staysWithoutRecordedPayout` the stays with an expected payout and nothing recorded. These four are `null` for a channel that is not a portal (the agency's own site, a
+  booking entered by hand).
+- **What is «recorded».** Read from the database like the payment ledger (`IBookingPaymentLedgerService`), without a call to the channel manager: the payments collected in
+  CasaZen for the booking (recorded by hand, net of refunds: a refunded one counts 0) and, when there is none, the net the channel manager reported
+  (`Booking.OtaNetAmount`; **never derived** from the amount paid and the commission, ADR-033). A portal stay with neither has nothing recorded (`recorded` `null` in its
+  difference). The comparison is on the gross **without the tourist tax**: a portal that collects it (Airbnb in Ticino, ⚖ C5) is read for the rest.
+- **`statements`**: one row for each statement currency of the month: the owners with a line in it (`ledgerOwners`), the published statements (`publishedStatements`: the
+  newest published version of each owner for the month, even superseded by one not published yet, as the owner portal reads it), `ledgerTotal` (every line of the month,
+  a reversal cancelling the line it reverses), `publishedTotal` (closing less opening balance of those versions) and `difference` (published less ledger).
+- **`differences`**: every difference, by what it is about (`kind`: `Stay` with the booking, `Entry` with the ledger line, `Statement` with the version), with `reason`,
+  `currency`, `expected`, `recorded` and `difference` (**always recorded less expected**), the `channel` of a stay and the `ownerId` of an owner's ledger or statement. The
+  reasons: `payout_not_recorded` (a stay the portal collected has an expected payout and nothing recorded; `recorded` `null`), `payout_differs`, `stay_not_posted` (an
+  active stay of the month with no collected payment, that the ledger posts from its booking, with a gross to post and no live revenue line in any month: expected its
+  gross, recorded 0; a stay paid in CasaZen is posted by its payments on their day and is never told here), `statement_not_published` (the owner has no published statement:
+  its lines are in none; the lines of a booking of an owner are one difference, any other line is one by itself) and `posted_after_publication` (lines posted after the
+  cut-off of the published statement, listed the same way). What is left once those are taken out (a published total that is not the total of the lines it was cut from) is
+  told by the version, `statement_total_differs`, so **the listed differences always add up to the difference of the totals**.
+- **Scope.** Every read names the org; the lines, the bookings (also of a property deleted since) and the payments of another org are never read; nothing is written; the
+  logs carry ids and counts.
+
 ## External invoice references (E06/F01/US02/T05)
 
 - **The months invoiced outside CasaZen.** Before E14 the agency invoiced its fee with its own fiscal system; the stored agency invoices of the retired

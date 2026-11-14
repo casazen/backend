@@ -53,6 +53,24 @@ public class OwnerAccountingController(
         return Ok(await accounting.GetReadinessAsync(orgId, year, month, HttpContext.RequestAborted));
     }
 
+    /// <summary>
+    /// The reconciliation of the month (E13/F01/US03/T02, acceptance step C1): one row for each channel and currency with the stays and the gross posted in the owner ledgers, the
+    /// commissions of the portals split by where they come from (the portal's data or a rule of the agency), the payout the portal is expected to have made and the one the payment
+    /// ledger records, and their difference; the published statements against the ledger in each statement currency; and every difference listed by its stay, its entry or its
+    /// statement with its reason. Read only: a difference blocks nothing, the agency decides. The whole org only (403 otherwise). 422 <c>owner_period_invalid</c>.
+    /// </summary>
+    [HttpGet("periods/{year:int}/{month:int}/reconciliation")]
+    [PrivateAnswer]
+    [ProducesResponseType(typeof(OwnerReconciliation), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<OwnerReconciliation>> Reconciliation(int year, int month, [FromServices] IOwnerReconciliationService reconciliation)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        return Ok(await reconciliation.GetAsync(orgId, year, month, HttpContext.RequestAborted));
+    }
+
     /// <summary>A new version of the owner's statement from the ledger now. 409 <c>owner_period_closed</c>, <c>owner_statement_unchanged</c>.</summary>
     [HttpPost("periods/{year:int}/{month:int}/owners/{ownerId:guid}/versions")]
     [Authorize(Policy = CasazenPolicies.AgencyStatementManage)]

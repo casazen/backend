@@ -88,9 +88,10 @@ public class FiscalDocumentsRegistrationTests
             (typeof(IOwnerFiscalProfileService), typeof(OwnerFiscalProfileService), ServiceLifetime.Scoped),
             (typeof(IOwnerAccountingService), typeof(OwnerAccountingService), ServiceLifetime.Scoped),
 
-            // The month-end in bulk (E13/F01/US03/T01): the Hangfire job and the queue that reads its progress.
+            // The month-end in bulk (the Hangfire job and the queue that reads its progress) and the reconciliation of the month (E13/F01/US03).
             (typeof(IOwnerBulkJobs), typeof(HangfireOwnerBulkJobs), ServiceLifetime.Scoped),
             (typeof(OwnerBulkCloseJob), typeof(OwnerBulkCloseJob), ServiceLifetime.Scoped),
+            (typeof(IOwnerReconciliationService), typeof(OwnerReconciliationService), ServiceLifetime.Scoped),
             (typeof(IOwnerStatementDocuments), typeof(OwnerStatementDocuments), ServiceLifetime.Scoped),
             (typeof(IOwnerPayoutService), typeof(OwnerPayoutService), ServiceLifetime.Scoped),
 

@@ -31,6 +31,7 @@ internal sealed class OwnerMonthEndWorld
         var options = Microsoft.Extensions.Options.Options.Create(defaults);
         Fiscal = new OwnerFiscalProfileService(db, clock, NullLogger<OwnerFiscalProfileService>.Instance);
         Service = new OwnerAccountingService(db, Fiscal, clock, NullLogger<OwnerAccountingService>.Instance, options, files);
+        Reconciliation = new OwnerReconciliationService(db, NullLogger<OwnerReconciliationService>.Instance);
     }
 
     public AppDbContext Db { get; }
@@ -42,6 +43,8 @@ internal sealed class OwnerMonthEndWorld
     public OwnerFiscalProfileService Fiscal { get; }
 
     public OwnerAccountingService Service { get; }
+
+    public OwnerReconciliationService Reconciliation { get; }
 
     /// <summary>A new agency over its own database, or over the database of another (a second org in the same database).</summary>
     public static Task<OwnerMonthEndWorld> CreateAsync(IOwnerStatementDocuments? files = null, OwnerMonthEndWorld? sameDatabaseAs = null)
