@@ -43,10 +43,46 @@ public class RoutineRulesTests
         Assert.Equal(3d, nights);
         Assert.True(facts.TryGet(RoutineConditions.GuestCount, out var guests));
         Assert.Equal(2d, guests);
-        Assert.True(facts.TryGet(RoutineConditions.BookingLeadTime, out var lead));
-        Assert.Equal(10d, lead);
         Assert.False(facts.TryGet("paymentStatus", out _));
         Assert.False(RoutineConditionFacts.None.TryGet(RoutineConditions.Channel, out _));
+
+        // A booking of a channel (the Airbnb one of Facts) is saved when it is imported: the day the guest booked is not known.
+        Assert.False(facts.TryGet(RoutineConditions.BookingLeadTime, out _));
+    }
+
+    /// <summary>
+    /// The lead time is the day the guest booked, known for the bookings CasaZen takes itself (the booking site, the host) and not for those of a channel,
+    /// which are saved when they are imported: a rule on it is met by the first and never by the second, whatever the operator.
+    /// </summary>
+    [Theory]
+    [InlineData(BookingSource.Direct, true)]
+    [InlineData(BookingSource.Manual, true)]
+    [InlineData(BookingSource.Local, true)]
+    [InlineData(BookingSource.Airbnb, false)]
+    [InlineData(BookingSource.BookingCom, false)]
+    [InlineData(BookingSource.Expedia, false)]
+    [InlineData(BookingSource.Vrbo, false)]
+    [InlineData(BookingSource.TripAdvisor, false)]
+    [InlineData(BookingSource.Agoda, false)]
+    [InlineData(BookingSource.OtherChannel, false)]
+    public void Facts_BookingLeadTime_IsKnownOnlyForTheBookingsCasaZenTakesItself(BookingSource source, bool known)
+    {
+        var facts = RoutineConditionFacts.OfBooking(
+            Property,
+            source,
+            new DateTime(2026, 11, 20, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 11, 23, 0, 0, 0, DateTimeKind.Utc),
+            2,
+            new DateTime(2026, 11, 10, 8, 0, 0, DateTimeKind.Utc));
+
+        Assert.Equal(known, facts.TryGet(RoutineConditions.BookingLeadTime, out _));
+        Assert.Equal(known, RoutineConditions.Satisfies(Rule("bookingLeadTime", "equals", 10), facts));
+        Assert.Equal(known, RoutineConditions.Satisfies(Rule("bookingLeadTime", "between", new[] { 0, 30 }), facts));
+        Assert.False(RoutineConditions.Satisfies(Rule("bookingLeadTime", "lessThan", 3), facts));
+
+        // The other facts of the booking do not depend on where it comes from.
+        Assert.True(facts.TryGet(RoutineConditions.StayDuration, out var nights));
+        Assert.Equal(3d, nights);
     }
 
     /// <summary>The day a booking was made is the Rome day: 23:30 UTC on the 9th is half past midnight on the 10th in Rome.</summary>

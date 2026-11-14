@@ -2,6 +2,7 @@ using System.Collections;
 using System.Globalization;
 using System.Text.Json;
 using Casazen.Core.Entities;
+using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Core.Validation;
 
@@ -29,7 +30,9 @@ public sealed class RoutineConditionFacts
     /// <summary>
     /// The facts of a booking: its property (<c>propertyId</c>), where it comes from (<c>channel</c>, the name of its <see cref="BookingSource"/>),
     /// the nights (<c>stayDuration</c>), the guests (<c>guestCount</c>) and the days between the day it was made, in Rome, and its check-in
-    /// (<c>bookingLeadTime</c>, never below 0). Dates are the stored ones (midnight UTC of the Rome date).
+    /// (<c>bookingLeadTime</c>, never below 0). Dates are the stored ones (midnight UTC of the Rome date). The lead time is a fact only of the bookings
+    /// CasaZen takes itself (the booking site, the host): one that comes from a channel (<see cref="FiscalCopy.IsOtaBookingSource"/>) is saved when it is
+    /// imported, so its creation is the import and not the day the guest booked. Its lead time is not known, and a rule on it is not met.
     /// </summary>
     public static RoutineConditionFacts OfBooking(
         Guid propertyId,
@@ -41,14 +44,18 @@ public sealed class RoutineConditionFacts
     {
         var checkIn = DateOnly.FromDateTime(checkInDate);
         var checkOut = DateOnly.FromDateTime(checkOutDate);
-        return new RoutineConditionFacts(new Dictionary<string, object?>
+        var facts = new Dictionary<string, object?>
         {
             [RoutineConditions.PropertyId] = propertyId.ToString("D"),
             [RoutineConditions.Channel] = source.ToString(),
             [RoutineConditions.StayDuration] = (double)Math.Max(0, checkOut.DayNumber - checkIn.DayNumber),
             [RoutineConditions.GuestCount] = (double)Math.Max(0, numberOfGuests),
-            [RoutineConditions.BookingLeadTime] = (double)Math.Max(0, checkIn.DayNumber - RomeCalendar.DateInRome(bookedAt).DayNumber),
-        });
+        };
+
+        if (!FiscalCopy.IsOtaBookingSource(source))
+            facts[RoutineConditions.BookingLeadTime] = (double)Math.Max(0, checkIn.DayNumber - RomeCalendar.DateInRome(bookedAt).DayNumber);
+
+        return new RoutineConditionFacts(facts);
     }
 
     /// <summary>The fact of a field; false when there is none.</summary>

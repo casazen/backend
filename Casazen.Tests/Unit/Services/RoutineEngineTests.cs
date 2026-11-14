@@ -90,7 +90,6 @@ public class RoutineEngineTests
     [InlineData("stayDuration", "between", "[2,3]", "AND", true)]
     [InlineData("stayDuration", "between", "[4,9]", "AND", false)]
     [InlineData("guestCount", "equals", "2", "AND", true)]
-    [InlineData("bookingLeadTime", "equals", "10", "AND", true)]
     public async Task Trigger_ConditionRules_AreEvaluatedOnTheBookingOfTheEvent(string fieldId, string op, string valueJson, string groupOperator, bool met)
     {
         var rig = new RoutineRig();
@@ -104,6 +103,27 @@ public class RoutineEngineTests
         await rig.TriggerAsync(OrgA, RoutineEventType.BookingConfirmed, RoutineRig.PayloadOf(booking));
 
         Assert.Equal(met ? 1 : 0, (await rig.ExecutionsAsync()).Count);
+    }
+
+    /// <summary>
+    /// The lead time (the day the guest booked, 10 days before the check-in here) is a fact of the bookings CasaZen takes itself; the booking of a channel is
+    /// saved when it is imported, so its lead time is not known and the rule is not met: the routine does not run.
+    /// </summary>
+    [Theory]
+    [InlineData(BookingSource.Direct, 1)]
+    [InlineData(BookingSource.Manual, 1)]
+    [InlineData(BookingSource.Airbnb, 0)]
+    [InlineData(BookingSource.BookingCom, 0)]
+    [InlineData(BookingSource.OtherChannel, 0)]
+    public async Task Trigger_BookingLeadTime_IsKnownOnlyForTheBookingsCasaZenTakesItself(BookingSource source, int executions)
+    {
+        var rig = new RoutineRig();
+        var booking = await rig.SeedBookingAsync(OrgA, source);
+        await rig.SeedRoutineAsync(OrgA, RoutineEventType.BookingConfirmed, "[]", Rule("bookingLeadTime", "equals", "10"));
+
+        await rig.TriggerAsync(OrgA, RoutineEventType.BookingConfirmed, RoutineRig.PayloadOf(booking));
+
+        Assert.Equal(executions, (await rig.ExecutionsAsync()).Count);
     }
 
     [Fact]
