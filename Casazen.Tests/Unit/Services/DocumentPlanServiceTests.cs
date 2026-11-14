@@ -177,6 +177,39 @@ public class DocumentPlanServiceTests
     }
 
     /// <summary>
+    /// A draft made before the owner of today was recorded (or one of before the owners issued, moved to the organization by the migration) is never issued in the
+    /// name of the agency: an owner whose profile cannot issue gets its «Da fare» (422 <c>owner_issuer_missing</c>); with a profile that can issue the old draft is
+    /// out of date (409 <c>document_draft_outdated</c>, no number) and, made again from the booking, it is the owner's, in the owner's series.
+    /// </summary>
+    [Fact]
+    public async Task DocumentPlan_DraftOfAnIssuerThePlanNoLongerHas_IsNeverIssued()
+    {
+        var world = await World.CreateAsync(CleaningFeeTreatment.FollowsStay);
+        var booking = await world.BookingAsync();
+        var draft = await world.Service.CreateDraftAsync(booking, null);
+        Assert.Equal(world.OrganizationProfile, draft.IssuerProfileId);
+        var owner = await world.OwnerAsync("TEST Senza Profilo", 100m, mandate: true, OwnerProfile.None);
+
+        var missing = await Assert.ThrowsAsync<DomainRuleException>(() => world.Service.IssueAsync(draft.Id, confirm: true));
+        Assert.Equal(FiscalDocumentErrors.OwnerIssuerMissing, missing.Code);
+        world.Activities.Verify(
+            a => a.CreateAsync(It.Is<CreateTodoRequest>(r => r.EntityId == owner && r.Reason == FiscalDocumentTodos.OwnerIssuerMissingReason), It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
+
+        var other = await World.CreateAsync(CleaningFeeTreatment.FollowsStay);
+        var stay = await other.BookingAsync();
+        var old = await other.Service.CreateDraftAsync(stay, null);
+        var company = await other.OwnerAsync("TEST Immobiliare Lago Srl", 100m, mandate: true, OwnerProfile.Company);
+
+        var outdated = await Assert.ThrowsAsync<DomainConflictException>(() => other.Service.IssueAsync(old.Id, confirm: true));
+        Assert.Equal(FiscalDocumentErrors.DraftOutdated, outdated.Code);
+        Assert.Null((await other.Db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == old.Id)).Number);
+
+        Assert.Equal(other.ProfileOf(company), (await other.Service.RefreshDraftAsync(old.Id)).IssuerProfileId);
+        Assert.Equal("SRL2026/1", (await other.Service.IssueAsync(old.Id, confirm: true)).Number);
+    }
+
+    /// <summary>
     /// An owner without an issuer profile that can issue: no draft at all (never a document in the agency's name in its place), 422 <c>owner_issuer_missing</c> for
     /// the draft and for the check-out path, and the «Da fare» of the owner.
     /// </summary>

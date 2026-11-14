@@ -246,6 +246,11 @@ public sealed partial class FiscalDocumentService(
         await RequireCasazenIssuesAsync(booking, ct);
         var (organization, org) = await RequireIssuerAsync(booking.OrgId, ct);
 
+        // The draft is still the document the plan wants (E17/F01/US01/T02): a draft made before the owner, the ownership or the mandate of today (or one of before
+        // the owners issued, moved to the organization by the migration) is never issued in the name of an issuer that no longer bills it. An owner whose profile
+        // cannot issue gets its «Da fare» (422 owner_issuer_missing); any other change is 409 document_draft_outdated, and the draft made again follows the plan.
+        RequireDraftOfThePlan(document, (await RequirePlanAsync(booking, ct)).Of(document.ForAgencyServices), organization);
+
         // The issuer of the draft (E17/F01/US01/T02): an owner's draft is issued on the owner's profile, in the owner's series, with the owner's rule.
         var profile = await IssuerProfileAsync(booking, organization, document.IssuerProfileId, requireComplete: true, ct);
         var rule = RuleOf(profile, booking);
@@ -1319,6 +1324,22 @@ public sealed partial class FiscalDocumentService(
         var sameRule = string.Equals(draft.RuleVersion, rule.Version, StringComparison.Ordinal) && draft.Kind == kind;
         if (sameRule && draft.Lines.All(line => HasTheVatOfTheRule(line, rule)))
             return;
+
+        throw new DomainConflictException(FiscalDocumentErrors.DraftOutdated, "FiscalDocumentDraftOutdated");
+    }
+
+    /// <summary>
+    /// The draft is the document <paramref name="planned"/> of the plan of its booking (E17/F01/US01/T02): the same issuer (a draft without one is the
+    /// organization's) and no line of a type that document does not bill; 409 <c>document_draft_outdated</c> otherwise.
+    /// </summary>
+    private static void RequireDraftOfThePlan(FiscalDocument draft, PlannedDocument? planned, OrgFiscalIssuerProfile organization)
+    {
+        if (planned is not null
+            && planned.IssuerProfileId == (draft.IssuerProfileId ?? organization.Id)
+            && draft.Lines.All(line => planned.Bills(line.LineType)))
+        {
+            return;
+        }
 
         throw new DomainConflictException(FiscalDocumentErrors.DraftOutdated, "FiscalDocumentDraftOutdated");
     }
