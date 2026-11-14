@@ -209,7 +209,7 @@ internal static class DocumentArchiveExport
     /// order, with the next asynchronous write or the final <see cref="FlushAsync(CancellationToken)"/>: nothing blocks and no thread waits for
     /// the network.
     /// </summary>
-    private sealed class DeferredWriteStream(Stream destination) : Stream
+    internal sealed class DeferredWriteStream(Stream destination) : Stream
     {
         private readonly ArrayBufferWriter<byte> _pending = new();
 

@@ -724,6 +724,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITouristTaxSummaryService, TouristTaxSummaryService>();
         // NF-99: the document archive, a read model over the tables of its sources (GET /api/documents).
         services.AddDocumentArchive();
+        // NF-101, E15/F01/US01/T01: the agency summary and the ZIP of the accountant (GET /api/accountant-package, behind Features:AccountantPackage), both composed of the
+        // services above and of the fiscal documents and the owner accounting; the ZIP is capped like the archive export (DocumentArchive).
+        services.AddScoped<IAgencySummaryService, AgencySummaryService>();
+        services.AddScoped<IAccountantPackageService, AccountantPackageService>();
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
         // AM-02: the people of an org: seats of the plan, invitations and their acceptance, the members and the hourly
