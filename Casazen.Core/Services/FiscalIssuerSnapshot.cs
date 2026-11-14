@@ -79,9 +79,16 @@ public sealed record FiscalIssuerSnapshot
 
     /// <summary>
     /// The authorization of the virtual stamp duty or the number of the physical stamp of the issuer (⚖ I4, Italy), printed on a document with a stamp duty;
-    /// <c>null</c> = «imposta di bollo da assolvere».
+    /// <c>null</c> when it gave none (then <see cref="VirtualStampConfirmed"/> says how the stamp is paid).
     /// </summary>
     public string? StampDutyReference { get; init; }
+
+    /// <summary>
+    /// How the stamp duty of a document is paid when the issuer gave no reference (⚖ I4, Italy): <c>true</c> when it confirmed the virtual stamp («assolta in modo
+    /// virtuale»), <c>false</c> when it did not («da assolvere»); <c>null</c> for a Swiss issuer and for a snapshot written before the issuer said it, whose
+    /// document prints nothing about it (it stays as it was issued).
+    /// </summary>
+    public bool? VirtualStampConfirmed { get; init; }
 
     /// <summary>
     /// The agency that issues the document through CasaZen on behalf of the owner who is its issuer (E17/F01/US01/T02, T03): printed «Emessa tramite … per conto
@@ -131,6 +138,7 @@ public sealed record FiscalIssuerSnapshot
             IbanMasked = IssuerBankAccounts.Mask(profile?.Iban),
             QrBillAccount = withQrBillAccount && swiss ? SwissQrBill.AccountOf(profile?.QrIban, profile?.Iban) : null,
             StampDutyReference = swiss ? null : Text(profile?.StampDutyReference),
+            VirtualStampConfirmed = swiss ? null : profile?.VirtualStampConfirmed ?? false,
         };
     }
 

@@ -140,14 +140,9 @@ public static class FiscalDocumentPdfs
             ],
             totals));
 
-        // ⚖ I4: a document with a stamp duty says how it is paid, the authorization of the virtual stamp or the number of the physical one of its issuer, else that
-        // it is still to be paid.
-        if (document.StampDuty > 0m)
-        {
-            blocks.Add(new PdfParagraph(issuer.StampDutyReference is { Length: > 0 } reference
-                ? texts.Get("FiscalDocPdfStampDutyReference", language, reference)
-                : texts.Get("FiscalDocPdfStampDutyToPay", language)));
-        }
+        // ⚖ I4: a document with a stamp duty says how it is paid (see StampDutyLine).
+        if (document.StampDuty > 0m && StampDutyLine(issuer, texts, language) is { } stamp)
+            blocks.Add(new PdfParagraph(stamp));
 
         if (document.Purpose != FiscalDocumentPurpose.OwnerInvoice)
             blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfPayment", language, PaymentLabel(document.PaymentState, texts, language))));
@@ -185,6 +180,27 @@ public static class FiscalDocumentPdfs
 
         foreach (var line in OwnerIssuerLines(issuer, texts, language))
             yield return line;
+    }
+
+    /// <summary>
+    /// How the stamp duty of a document is paid (⚖ I4): the authorization of the virtual stamp or the number of the physical one of its issuer, the virtual stamp
+    /// the issuer confirmed, else that it is still to be paid; <c>null</c> (nothing printed) for a snapshot written before the issuer said it, so a document issued
+    /// before stays as it was.
+    /// </summary>
+    internal static string? StampDutyLine(FiscalIssuerSnapshot issuer, IDocumentTexts texts, string language)
+    {
+        ArgumentNullException.ThrowIfNull(issuer);
+        ArgumentNullException.ThrowIfNull(texts);
+
+        if (issuer.StampDutyReference is { Length: > 0 } reference)
+            return texts.Get("FiscalDocPdfStampDutyReference", language, reference);
+
+        return issuer.VirtualStampConfirmed switch
+        {
+            true => texts.Get("FiscalDocPdfStampDutyVirtual", language),
+            false => texts.Get("FiscalDocPdfStampDutyToPay", language),
+            null => null,
+        };
     }
 
     /// <summary>

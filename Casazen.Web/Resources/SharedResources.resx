@@ -6177,6 +6177,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocPdfStampDutyToPay" xml:space="preserve">
     <value>Imposta di bollo da assolvere</value>
   </data>
+  <data name="FiscalDocPdfStampDutyVirtual" xml:space="preserve">
+    <value>Imposta di bollo assolta in modo virtuale</value>
+  </data>
   <data name="FiscalDocPdfLinesHeading" xml:space="preserve">
     <value>Dettaglio</value>
   </data>

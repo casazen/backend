@@ -71,6 +71,27 @@ public class DocumentPlanServiceTests
     }
 
     /// <summary>
+    /// ⚖ I4: a document with a stamp duty says how it is paid: the reference of its issuer, the virtual stamp the issuer confirmed (kept in the snapshot), else
+    /// «da assolvere»; a snapshot written before the issuer said it (a document issued before E17) prints nothing new.
+    /// </summary>
+    [Fact]
+    public async Task StampDuty_SaysHowItIsPaid_AndADocumentIssuedBeforeStaysAsItWas()
+    {
+        var texts = new ResxDocumentTexts();
+        Assert.Equal(
+            "Imposta di bollo assolta: TEST-BOLLO-1",
+            FiscalDocumentPdfs.StampDutyLine(new FiscalIssuerSnapshot { StampDutyReference = "TEST-BOLLO-1", VirtualStampConfirmed = false }, texts, "it"));
+        Assert.Equal("Imposta di bollo da assolvere", FiscalDocumentPdfs.StampDutyLine(new FiscalIssuerSnapshot { VirtualStampConfirmed = false }, texts, "it"));
+        Assert.Null(FiscalDocumentPdfs.StampDutyLine(FiscalIssuerSnapshot.FromJson("""{"version":1,"legalName":"TEST Agenzia Lago Srl"}""")!, texts, "it"));
+
+        var world = await World.CreateAsync(CleaningFeeTreatment.FollowsStay);
+        var organization = await world.Db.OrgFiscalIssuerProfiles.SingleAsync(p => p.Id == world.OrganizationProfile);
+        organization.VirtualStampConfirmed = true;
+        var snapshot = FiscalIssuerSnapshot.FromJson(FiscalIssuerSnapshot.From(organization, await world.Db.Orgs.SingleAsync()).ToJson())!;
+        Assert.Equal("Imposta di bollo assolta in modo virtuale", FiscalDocumentPdfs.StampDutyLine(snapshot, texts, "it"));
+    }
+
+    /// <summary>
     /// PROOF TEST: data rule. A company owner: a FatturaPA invoice with the company as cedente (its VAT number, never the agency's), numbered in the company's own
     /// sezionale; the organization's own documents keep their series and counter (both have their number 1).
     /// </summary>
