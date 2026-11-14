@@ -73,6 +73,32 @@ public sealed class OnboardingAssistController(
         return Ok((await assist.ListAsync(scope, cancellationToken)).Select(request => request.ToDto()).ToList());
     }
 
+    /// <summary>
+    /// «Non funziona» (E20/F03/US01/T02): the host reopens a request support marked done, with a note. The request is open again (<c>Requested</c>), its
+    /// panel step goes back to support, the "To do" comes back and CasaZen support is told.
+    /// </summary>
+    /// <response code="200">The request, open again, with the note.</response>
+    /// <response code="404"><c>assist_request_not_found</c>: no such request in the org, or one of a property the caller does not reach.</response>
+    /// <response code="409"><c>assist_request_not_done</c>: only a request done can be reopened; <c>assist_request_already_open</c>.</response>
+    /// <response code="422"><c>assist_reopen_note_required</c>: the note is missing, over 500 characters or holds an e-mail address.</response>
+    [HttpPost("{id:guid}/reopen")]
+    [PrivateAnswer]
+    [ProducesResponseType(typeof(AssistRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<AssistRequestDto>> Reopen(Guid id, [FromBody] ReopenAssistRequestDto? body, CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+        var scope = await ScopeAsync(cancellationToken);
+        if (scope is null || string.IsNullOrWhiteSpace(userId))
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        return Ok((await assist.ReopenAsync(scope, userId, id, body?.Note, cancellationToken)).ToDto());
+    }
+
     private async Task<HostScope?> ScopeAsync(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
