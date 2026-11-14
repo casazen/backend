@@ -311,8 +311,8 @@ public static class OwnerLedgerFlatFees
 }
 
 /// <summary>
-/// The money rules of the posting of a stay (E13/F01/US01/T02, NF-115), pure: the revenue of a payment without the tourist tax and the base a commission
-/// is a percentage of. Every amount is rounded to the cent half to even, as the rest of the owner ledger.
+/// The money rules of the posting of a stay (E13/F01/US01/T02, NF-115), pure: the revenue of a payment without the tourist tax, the gross of a stay posted
+/// from its booking and the base a commission is a percentage of. Every amount is rounded to the cent half to even, as the rest of the owner ledger.
 /// </summary>
 public static class OwnerLedgerRules
 {
@@ -345,6 +345,21 @@ public static class OwnerLedgerRules
 
         var cleaning = Math.Min(stayCleaning, stayGross);
         return amount - Math.Round(amount * cleaning / stayGross, 2, MidpointRounding.ToEven);
+    }
+
+    /// <summary>
+    /// The gross, without the tourist tax, of a stay posted from its booking (no collected payment). For a booking of a portal
+    /// (<paramref name="fromPortal"/>) it is the total of the reservation less the tourist tax: the room, the cleaning and the extras the portal charged, which
+    /// the booking does not keep apart (<c>BasePrice</c> of an imported reservation is its room only, <c>CleaningFee</c> stays 0). It is a prudent choice to be
+    /// checked on the first real payload of the channel manager, and never less than the room (<paramref name="basePrice"/>): a total that leaves the tax out
+    /// is not taxed twice. Any other booking is priced by CasaZen: its <c>BasePrice</c> already holds the cleaning (PC-07) and it has no extras of its own.
+    /// </summary>
+    public static decimal GrossOfStay(bool fromPortal, decimal basePrice, decimal totalPrice, decimal touristTax)
+    {
+        if (!fromPortal || totalPrice <= 0m)
+            return basePrice;
+
+        return Math.Max(basePrice, totalPrice - Math.Max(touristTax, 0m));
     }
 }
 

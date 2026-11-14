@@ -39,7 +39,7 @@ public sealed partial class OwnerAccountingService
                 && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
             .Select(b => new StaySource(
                 b.Id, b.PropertyId, b.Source, b.BasePrice, b.CleaningFee, b.OtaCommission, b.CheckInDate, b.CheckOutDate, b.Property.Currency,
-                b.Payments.Any(p => CollectedStatuses.Contains(p.Status) && p.ProcessedAt != null)))
+                b.Payments.Any(p => CollectedStatuses.Contains(p.Status) && p.ProcessedAt != null), b.TotalPrice, b.TouristTax, b.PriceOverridden))
             .ToListAsync(ct);
 
         // The channel commission of a booking on the payment path, with its first payment that still holds money: a portal booking (the commission of the
@@ -52,7 +52,8 @@ public sealed partial class OwnerAccountingService
                 .Select(b => new
                 {
                     Stay = new StaySource(
-                        b.Id, b.PropertyId, b.Source, b.BasePrice, b.CleaningFee, b.OtaCommission, b.CheckInDate, b.CheckOutDate, b.Property.Currency, true),
+                        b.Id, b.PropertyId, b.Source, b.BasePrice, b.CleaningFee, b.OtaCommission, b.CheckInDate, b.CheckOutDate, b.Property.Currency, true,
+                        b.TotalPrice, b.TouristTax, b.PriceOverridden),
                     FirstPaymentId = b.Payments
                         .Where(p => (p.Status == PaymentStatus.Completed || p.Status == PaymentStatus.PartiallyRefunded) && p.ProcessedAt != null)
                         .OrderBy(p => p.ProcessedAt)
@@ -254,9 +255,10 @@ public sealed partial class OwnerAccountingService
 
     /// <summary>
     /// The lines of a stay that checks out in the month. Without a collected payment (a portal, the agency's own site, a booking entered by hand) its revenue
-    /// is the gross of the booking without the tourist tax (<see cref="Booking.BasePrice"/>, the cleaning included) recognized on the check-out (⚖ R1), with
-    /// the commission of the mandate and the channel commission of a portal. Every stay, whatever path posts its revenue, gets the flat fees of the mandate
-    /// in force on the check-out, once (cleaning, linen: recharges of the agency).
+    /// is the gross of the booking without the tourist tax (<see cref="StaySource.Gross"/>: the <see cref="Booking.BasePrice"/>, the cleaning included, of a booking
+    /// priced by CasaZen; the total of the reservation less the tourist tax for a portal) recognized on the check-out (⚖ R1), with the commission of the mandate
+    /// and the channel commission of a portal. A price the host agreed by hand is an amount even when it is 0 (a stay for free): no revenue, nothing to tell.
+    /// Every stay, whatever path posts its revenue, gets the flat fees of the mandate in force on the check-out, once (cleaning, linen: recharges of the agency).
     /// </summary>
     private async Task PlanStayAsync(PlanInputs inputs, StaySource stay, CancellationToken ct)
     {
@@ -265,54 +267,52 @@ public sealed partial class OwnerAccountingService
         var currency = StayCurrency.Normalize(stay.Currency);
         var checkIn = DateOnly.FromDateTime(stay.CheckIn);
         var checkOut = DateOnly.FromDateTime(stay.CheckOut);
+        var gross = stay.Gross;
 
-        if (!stay.Collected)
+        // A booking without its amounts (a reservation that brought none) is held back, never a revenue of zero; a price agreed by hand is an amount, 0 included.
+        if (!stay.Collected && gross <= 0m && !stay.PriceOverridden)
+            plan.Issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.SourceAmountMissing, PropertyId: stay.PropertyId, SourceId: stay.Id));
+
+        // The owners of the check-out day: the shares of the revenue of a stay posted from its booking and the ones its flat fees are charged to. A property that has
+        // none (or whose shares do not make 100) is told here, for a stay posted from its payments too: their revenue was shared on the day of the payment.
+        if (SharesOn(plan, inputs.Ownerships, stay.PropertyId, checkOut, stay.Id) is not { } shares)
+            return;
+
+        if (!stay.Collected && gross > 0m)
         {
-            if (stay.BasePrice <= 0m)
+            var revenue = Split(gross, shares);
+            var fee = ChannelFeeOf(inputs, stay);
+            var fees = fee is null ? null : Split(fee.Amount, shares);
+            for (var i = 0; i < shares.Count; i++)
             {
-                // A booking without its amounts (a reservation that brought none): held back, never a revenue of zero.
-                plan.Issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.SourceAmountMissing, PropertyId: stay.PropertyId, SourceId: stay.Id));
-            }
-            else if (SharesOn(plan, inputs.Ownerships, stay.PropertyId, checkOut, stay.Id) is { } shares)
-            {
-                var revenue = Split(stay.BasePrice, shares);
-                var fee = ChannelFeeOf(inputs, stay);
-                var fees = fee is null ? null : Split(fee.Amount, shares);
-                for (var i = 0; i < shares.Count; i++)
+                var share = shares[i];
+                var context = await ContextAsync(inputs.OrgId, share.OwnerId, inputs.Period, plan, inputs.Contexts, ct);
+                var source = new Source(
+                    OwnerLedgerEntryType.BookingRevenue, OwnerLedgerSourceType.Booking, stay.Id, reference, "stay:" + reference,
+                    stay.PropertyId, currency, gross, checkIn, checkOut, null, checkOut);
+                inputs.Builder.Add(source, share, revenue[i], context);
+
+                var mandate = OwnerMandateRules.InForce(inputs.Mandates, share.OwnerId, share.OwnershipId, checkOut);
+                if (mandate is null)
+                    plan.MandateMissing(share.OwnerId, stay.PropertyId, stay.Id);
+                else
+                    AddCommission(inputs, source, shares, i, mandate, gross, gross, stay.CleaningFee, context);
+
+                if (fee is not null && fees is not null)
                 {
-                    var share = shares[i];
-                    var context = await ContextAsync(inputs.OrgId, share.OwnerId, inputs.Period, plan, inputs.Contexts, ct);
-                    var source = new Source(
-                        OwnerLedgerEntryType.BookingRevenue, OwnerLedgerSourceType.Booking, stay.Id, reference, "stay:" + reference,
-                        stay.PropertyId, currency, stay.BasePrice, checkIn, checkOut, null, checkOut);
-                    inputs.Builder.Add(source, share, revenue[i], context);
-
-                    var mandate = OwnerMandateRules.InForce(inputs.Mandates, share.OwnerId, share.OwnershipId, checkOut);
-                    if (mandate is null)
-                        plan.MandateMissing(share.OwnerId, stay.PropertyId, stay.Id);
-                    else
-                        AddCommission(inputs, source, shares, i, mandate, stay.BasePrice, stay.BasePrice, stay.CleaningFee, context);
-
-                    if (fee is not null && fees is not null)
-                    {
-                        inputs.Builder.Add(
-                            source with { Type = OwnerLedgerEntryType.ChannelFee, Group = fee.Group, SourceAmount = -fee.Amount, RuleVersion = fee.Source },
-                            share,
-                            -fees[i],
-                            context);
-                    }
+                    inputs.Builder.Add(
+                        source with { Type = OwnerLedgerEntryType.ChannelFee, Group = fee.Group, SourceAmount = -fee.Amount, RuleVersion = fee.Source },
+                        share,
+                        -fees[i],
+                        context);
                 }
             }
         }
 
-        // The flat fees of the mandate, per stay: the owners of the check-out day (a property without them is told by the revenue of the stay).
-        var owners = ActiveShares(inputs.Ownerships, stay.PropertyId, checkOut);
-        if (owners is null)
-            return;
-
-        for (var i = 0; i < owners.Count; i++)
+        // The flat fees of the mandate, per stay.
+        for (var i = 0; i < shares.Count; i++)
         {
-            var share = owners[i];
+            var share = shares[i];
             var mandate = OwnerMandateRules.InForce(inputs.Mandates, share.OwnerId, share.OwnershipId, checkOut);
             if (mandate is null)
             {
@@ -330,7 +330,7 @@ public sealed partial class OwnerAccountingService
                 var source = new Source(
                     OwnerLedgerEntryType.OwnerCharge, OwnerLedgerSourceType.MandateFlatFee, stay.Id, kind, "flat:" + reference + ":" + kind,
                     stay.PropertyId, context.Currency ?? currency, -amount, checkIn, checkOut, null, checkOut);
-                inputs.Builder.Add(source, share, -Split(amount, owners)[i], context);
+                inputs.Builder.Add(source, share, -Split(amount, shares)[i], context);
             }
         }
     }
@@ -379,7 +379,8 @@ public sealed partial class OwnerAccountingService
             return null;
         }
 
-        var basis = OwnerLedgerRules.CommissionBaseOf(terms.Base, stay.BasePrice, stay.BasePrice, stay.CleaningFee);
+        var gross = stay.Gross;
+        var basis = OwnerLedgerRules.CommissionBaseOf(terms.Base, gross, gross, stay.CleaningFee);
         var amount = Round(basis * terms.Percent / 100m);
         var group = "fee:" + reference + (terms.RuleId is { } ruleId ? ":rule:" + ruleId.ToString("N") : ":default");
         return amount > 0m ? new ChannelFee(amount, terms.Source, group) : null;
@@ -487,15 +488,6 @@ public sealed partial class OwnerAccountingService
         }
 
         return active.Select(o => new Share(o.PropertyOwnerId, o.Id, o.SharePercent)).ToList();
-    }
-
-    /// <summary>The owners of the property on the day, as <see cref="SharesOn"/>, without telling why there are none: <c>null</c> then.</summary>
-    private static List<Share>? ActiveShares(IReadOnlyList<PropertyOwnership> ownerships, Guid propertyId, DateOnly day)
-    {
-        var active = ActiveOwnerships(ownerships, propertyId, day);
-        return active.Count == 0 || active.Sum(o => o.SharePercent) != 100m
-            ? null
-            : active.Select(o => new Share(o.PropertyOwnerId, o.Id, o.SharePercent)).ToList();
     }
 
     private static List<PropertyOwnership> ActiveOwnerships(IReadOnlyList<PropertyOwnership> ownerships, Guid propertyId, DateOnly day) =>
@@ -674,8 +666,9 @@ public sealed partial class OwnerAccountingService
         string? ProviderCurrency);
 
     /// <summary>
-    /// An active stay: its amounts (<see cref="Booking.BasePrice"/>, the gross without the tourist tax with the cleaning in it), the commission its reservation
-    /// brought, its days, and whether a payment of it was collected (then the payment path posts its revenue).
+    /// An active stay: its amounts (<see cref="Booking.BasePrice"/>, the gross without the tourist tax of a booking priced by CasaZen, with the cleaning in it; the
+    /// total of the reservation and its tourist tax, which a portal stay is grossed from), the commission its reservation brought, its days, whether a payment of
+    /// it was collected (then the payment path posts its revenue) and whether the host agreed its price by hand (<see cref="Booking.PriceOverridden"/>).
     /// </summary>
     private sealed record StaySource(
         Guid Id,
@@ -687,7 +680,14 @@ public sealed partial class OwnerAccountingService
         DateTime CheckIn,
         DateTime CheckOut,
         string? Currency,
-        bool Collected);
+        bool Collected,
+        decimal TotalPrice,
+        decimal TouristTax,
+        bool PriceOverridden)
+    {
+        /// <summary>The gross of the stay without the tourist tax (<see cref="OwnerLedgerRules.GrossOfStay"/>): what its booking posts and what the commissions are a percentage of.</summary>
+        public decimal Gross => OwnerLedgerRules.GrossOfStay(FiscalCopy.IsOtaBookingSource(Source), BasePrice, TotalPrice, TouristTax);
+    }
 
     /// <summary>A booking whose channel commission goes with its first payment that still holds money.</summary>
     private sealed record FeeBooking(StaySource Stay, Guid FirstPaymentId);
