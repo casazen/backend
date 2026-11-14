@@ -52,6 +52,8 @@ internal static class PackageLabels
     public const string VatOutsideTitle = "AccPkgVatOutsideTitle";
     public const string VatPortalTitle = "AccPkgVatPortalTitle";
     public const string VatItalyTitle = "AccPkgVatItalyTitle";
+    public const string VatOwnerInvoicesOmittedTitle = "AccPkgVatOwnerInvoicesOmittedTitle";
+    public const string VatOwnerInvoicesOmittedReason = "AccPkgVatOwnerInvoicesOmittedReason";
     public const string ColTurnover = "AccPkgColTurnover";
     public const string ColVatDue = "AccPkgColVatDue";
     public const string ColClass = "AccPkgColClass";
@@ -97,10 +99,8 @@ internal static class PackageLabels
 
     // The index.
     public const string IndexTitle = "AccPkgIndexTitle";
-    public const string IndexColFile = "AccPkgIndexColFile";
     public const string IndexColDescription = "AccPkgIndexColDescription";
     public const string IndexColRows = "AccPkgIndexColRows";
-    public const string IndexColSha = "AccPkgIndexColSha";
     public const string IndexOmittedTitle = "AccPkgIndexOmittedTitle";
     public const string IndexColFolder = "AccPkgIndexColFolder";
     public const string IndexColReason = "AccPkgIndexColReason";

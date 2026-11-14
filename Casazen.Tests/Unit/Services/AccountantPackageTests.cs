@@ -42,6 +42,10 @@ public class AccountantPackageTests
 
         var index = ParseIndex(files[AccountantPackageStructure.IndexFile]);
         Assert.NotEmpty(index.Entries);
+
+        // The two words of the header that read the same in both languages are written by the code.
+        var header = ParseCsv(files[AccountantPackageStructure.IndexFile])[1];
+        Assert.Equal(("File", "SHA-256"), (header[0], header[3]));
         foreach (var entry in index.Entries)
         {
             Assert.True(files.ContainsKey(entry.Path), $"{entry.Path} is in the index and not in the ZIP");
@@ -105,12 +109,22 @@ public class AccountantPackageTests
         rig.StatementFiles.Verify(f => f.GetPdfAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
         rig.OwnerReports.Verify(r => r.GetByOwnerAsync(It.IsAny<HostScope>(), It.IsAny<HostPerformanceQuery>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // The caller of the permission still has the documents of the guests and their VAT, and no invoice of the agency to an owner is in the VAT: 8.1% is the guest's CHF 100.00 only.
+        // The caller of the permission still has the documents of the guests and their VAT. The VAT of the issuer is made of everything it issued, so a caller that reaches the whole org has the
+        // invoice to the owner in it too, as figures for each rate (8.1% is the guest's CHF 100.00 and the invoice's CHF 1'310.00) and never its owner or its register; only the portal
+        // commissions, which come from the owner ledger, are left out, and the file says so. A caller that reaches some properties has no invoice to an owner (it belongs to no property) and is told.
         Assert.Equal(3, withoutPermission.Keys.Count(k => k.StartsWith("documenti-ospiti/", StringComparison.Ordinal) && k.EndsWith(".pdf", StringComparison.Ordinal)));
         Assert.DoesNotContain(restricted.Keys, k => k.StartsWith("documenti-ospiti/", StringComparison.Ordinal) && k.EndsWith(".pdf", StringComparison.Ordinal));
-        var vat = Text(withoutPermission.Single(f => f.Key.StartsWith("iva/iva-", StringComparison.Ordinal) && f.Key.EndsWith(".csv", StringComparison.Ordinal)).Value);
-        Assert.Contains("2026-Q4;8,10;100,00;8,10;CHF;1", vat, StringComparison.Ordinal);
-        Assert.DoesNotContain("1410,00", vat, StringComparison.Ordinal);
+        var vat = VatCsv(withoutPermission);
+        var fullVat = VatCsv(Unzip(await rig.BuildAsync(AccountantPackageAccess.Full, period)));
+        var rateRow = vat.Split("\r\n").Single(line => line.StartsWith("2026-Q4;8,10;", StringComparison.Ordinal));
+        Assert.Equal("2026-Q4;8,10;1410,00;114,21;CHF;2", rateRow);
+        Assert.Contains(rateRow, fullVat, StringComparison.Ordinal);
+        Assert.DoesNotContain("Proprietario", vat, StringComparison.Ordinal);
+        Assert.Contains("agency.statement.view", vat, StringComparison.Ordinal);
+        Assert.DoesNotContain("agency.statement.view", fullVat, StringComparison.Ordinal);
+        Assert.DoesNotContain(OwnerInvoicesNotInVat, vat, StringComparison.Ordinal);
+        Assert.DoesNotContain(OwnerInvoicesNotInVat, fullVat, StringComparison.Ordinal);
+        Assert.Contains(OwnerInvoicesNotInVat, VatCsv(restricted), StringComparison.Ordinal);
 
         // A collaborator given the lake house gets the documents of the lake house, and still no owner folder: an owner's accounts span properties it does not reach.
         var lake = Unzip(await rig.BuildAsync(AccountantPackageAccess.Full, period, new HostScope(rig.OrgId, GrantedToUserId: "auth0|lago")));
@@ -253,7 +267,88 @@ public class AccountantPackageTests
         Assert.Equal(("Fatture in regime forfettario", 500.00m), (flat.Rows[0][1].TextValue, flat.Rows[0][5].DecimalValue));
     }
 
-    private static PackageDocument ItalianDocument(FiscalDocumentKind kind, DateOnly issued, decimal net, decimal rate, decimal vat, FiscalDocumentKind? credited = null) =>
+    /// <summary>
+    /// PROOF TEST: money rule. The class of a document in the sales register is the regime it was issued under (its own issuer snapshot): an issuer is one issuer by its country, tax number and
+    /// name, so an issuer that moves to the flat-rate regime inside a period has each invoice in the class of its own regime, never all in the class of the first.
+    /// </summary>
+    [Fact]
+    public void AccountantPackage_ItalianSalesRegister_ClassifiesEachInvoiceByTheRegimeItWasIssuedUnder_Test()
+    {
+        var texts = new PackageTexts(new ResxDocumentTexts(), PackageTexts.PackageLanguage);
+        var issuer = new AgencyIssuer("IT|01234567890|TEST Agenzia Srl", "TEST Agenzia Srl", "IT", "01234567890", DocumentRegime.VatOrdinary);
+        var documents = new[]
+        {
+            ItalianDocument(FiscalDocumentKind.Invoice, new DateOnly(2026, 3, 5), 1000.00m, 22m, 220.00m, issuerSnapshot: SnapshotOf(DocumentRegime.VatOrdinary)),
+            ItalianDocument(FiscalDocumentKind.Invoice, new DateOnly(2026, 9, 5), 500.00m, 0m, 0m, issuerSnapshot: SnapshotOf(DocumentRegime.VatFlatRate)),
+            ItalianDocument(FiscalDocumentKind.Invoice, new DateOnly(2026, 9, 6), 100.00m, 22m, 22.00m, issuerSnapshot: SnapshotOf(DocumentRegime.VatOrdinary)),
+        };
+
+        var register = Assert.Single(AccountantPackageDocuments.Vat(issuer, documents, [], texts));
+
+        Assert.Equal(
+            new[]
+            {
+                ("2026-03", "Fatture ordinarie", 1000.00m),
+                ("2026-09", "Fatture ordinarie", 100.00m),
+                ("2026-09", "Fatture in regime forfettario", 500.00m),
+            },
+            register.Rows.Select(r => (r[0].TextValue ?? string.Empty, r[1].TextValue ?? string.Empty, r[5].DecimalValue)));
+    }
+
+    private static string SnapshotOf(DocumentRegime regime) =>
+        new FiscalIssuerSnapshot { LegalName = "TEST Agenzia Srl", CountryCode = "IT", VatNumber = "01234567890", Regime = regime }.ToJson();
+
+    /// <summary>
+    /// PROOF TEST: money rule. A document with no lines (one imported from a channel manager) states its own totals and enters the base of the Swiss return as it states them: in its quarter and
+    /// rate with the documents that have lines, with the rate «not stated» when it gives none, and outside the VAT when it is at rate zero; it is never dropped from the return while the register
+    /// counts it.
+    /// </summary>
+    [Fact]
+    public void AccountantPackage_SwissVat_CountsADocumentWithNoLinesAsItStatesItself_Test()
+    {
+        var texts = new PackageTexts(new ResxDocumentTexts(), PackageTexts.PackageLanguage);
+        var swiss = new AgencyIssuer("CH|CHE-109.322.551|TEST", "TEST Gestioni Lugano Sagl", "CH", "CHE-109.322.551", DocumentRegime.SwissVatRegistered);
+        var withLines = ItalianDocument(FiscalDocumentKind.Invoice, new DateOnly(2026, 10, 5), 1000.00m, 8.1m, 81.00m);
+        var noLines = ItalianDocument(FiscalDocumentKind.Invoice, new DateOnly(2026, 10, 20), 200.00m, 8.1m, 16.20m) with { Lines = [], VatRatePercent = 8.1m };
+        var noRate = ItalianDocument(FiscalDocumentKind.Invoice, new DateOnly(2026, 11, 2), 50.00m, 0m, 0m) with { Lines = [] };
+        var exempt = ItalianDocument(FiscalDocumentKind.Invoice, new DateOnly(2026, 11, 3), 300.00m, 0m, 0m) with { Lines = [], VatRatePercent = 0m, VatNatureCode = "N2.2" };
+
+        var tables = AccountantPackageDocuments.Vat(swiss, [withLines, noLines, noRate, exempt], [], texts);
+
+        Assert.Equal(
+            new (string Quarter, decimal? Rate, decimal Turnover, decimal Vat, int Documents)[]
+            {
+                ("2026-Q4", 0.081m, 1200.00m, 97.20m, 2),
+                ("2026-Q4", null, 50.00m, 0.00m, 1),
+            },
+            tables[0].Rows.Select(r => (r[0].TextValue ?? string.Empty, r[1].Kind == ReportCellKind.Percent ? r[1].DecimalValue : (decimal?)null, r[2].DecimalValue, r[3].DecimalValue, (int)r[5].WholeValue)));
+        Assert.Equal(texts[PackageLabels.RateUnknown], tables[0].Rows[1][1].TextValue);
+        var outside = Assert.Single(tables[1].Rows);
+        Assert.Equal(("2026-Q4", 300.00m, "EUR"), (outside[0].TextValue, outside[2].DecimalValue, outside[3].TextValue));
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule. The withholding of the package is the Italian evidence that the F24 and the Certificazione Unica of the same folder are built from (AC-NF110-7): a decision of
+    /// another jurisdiction, even an applicable one, is never an Italian withholding, and its payout is not counted in the row of the Italian one.
+    /// </summary>
+    [Fact]
+    public async Task AccountantPackage_Withholding_IsTheItalianEvidenceOnly_Test()
+    {
+        await using var rig = await AccountantPackageRig.CreateAsync();
+        rig.Db.TaxObligationEvidence.AddRange(rig.Evidence("IT", 1000.00m, 210.00m), rig.Evidence("CH", 500.00m, 105.00m));
+        await rig.Db.SaveChangesAsync();
+        rig.Db.ChangeTracker.Clear();
+
+        var files = Unzip(await rig.BuildAsync(AccountantPackageAccess.Full, AccountantPackagePeriod.OfMonth(2026, 10)));
+
+        var withholding = Text(files["ritenute/ritenute-proprietari.csv"]);
+        Assert.Contains("TEST Proprietario;2026-10;1919;1;1000,00;210,00", withholding, StringComparison.Ordinal);
+        Assert.DoesNotContain("1500,00", withholding, StringComparison.Ordinal);
+        Assert.DoesNotContain("315,00", withholding, StringComparison.Ordinal);
+    }
+
+    private static PackageDocument ItalianDocument(
+        FiscalDocumentKind kind, DateOnly issued, decimal net, decimal rate, decimal vat, FiscalDocumentKind? credited = null, string? issuerSnapshot = null) =>
         new(
             Guid.NewGuid(),
             FiscalDocumentPurpose.GuestStay,
@@ -262,7 +357,7 @@ public class AccountantPackageTests
             "TEST",
             issued,
             "EUR",
-            null,
+            issuerSnapshot,
             "TEST Ospite",
             null,
             null,
@@ -343,6 +438,7 @@ public class AccountantPackageTests
     public void Labels_EveryKey_IsInBothResourceFiles()
     {
         var root = FindRepositoryRoot();
+        var texts = new List<Dictionary<string, string?>>();
         foreach (var file in new[] { "SharedResources.resx", "SharedResources.en.resx" })
         {
             var keys = XDocument.Load(Path.Combine(root, "Casazen.Web", "Resources", file)).Root!
@@ -351,7 +447,13 @@ public class AccountantPackageTests
             var missing = PackageLabels.All.Where(k => !keys.TryGetValue(k, out var value) || string.IsNullOrWhiteSpace(value)).ToList();
 
             Assert.True(missing.Count == 0, $"{file} has no text for: {string.Join(", ", missing)}");
+            texts.Add(keys);
         }
+
+        // The localization test of the resource files (SharedResourcesLocalizationTests, run by the CI) refuses a key whose English text is the Italian one: a word that reads the same in both
+        // languages is a constant of the code (AccountantPackageDocuments.IndexFileHeader), not a key.
+        var same = PackageLabels.All.Where(k => texts[0][k] == texts[1][k]).ToList();
+        Assert.True(same.Count == 0, $"The same text in Italian and in English: {string.Join(", ", same)}");
 
         Assert.True(PackageLabels.All.Count > 100);
         Assert.Equal(PackageLabels.All.Count, PackageLabels.All.Distinct().Count());
@@ -361,6 +463,13 @@ public class AccountantPackageTests
 
     private static Task<decimal> SumAsync(AccountantPackageRig rig, OwnerLedgerEntryType type) =>
         rig.Db.OwnerLedgerEntries.AsNoTracking().Where(e => e.EntryType == type).SumAsync(e => e.Amount);
+
+    /// <summary>The title of the table that tells a VAT file does not hold the invoices to the owners (a caller that reaches only some properties).</summary>
+    private const string OwnerInvoicesNotInVat = "Fatture emesse ai proprietari non incluse in questo file";
+
+    /// <summary>The VAT file (CSV) of the one issuer of the rig.</summary>
+    private static string VatCsv(Dictionary<string, byte[]> files) =>
+        Text(files.Single(f => f.Key.StartsWith("iva/iva-", StringComparison.Ordinal) && f.Key.EndsWith(".csv", StringComparison.Ordinal)).Value);
 
     private static Dictionary<string, byte[]> Unzip(byte[] zip)
     {
@@ -683,6 +792,30 @@ internal sealed class AccountantPackageRig : IAsyncDisposable
         NetAmount = 1000.00m,
         Status = status,
         ConfirmedAt = new DateTime(2026, 10, 31, 9, 0, 0, DateTimeKind.Utc),
+    };
+
+    /// <summary>The withholding decision of a payout of October, applicable, under the rule of <paramref name="jurisdiction"/> (<c>IT</c>, <c>CH</c>): <paramref name="amount"/> of <paramref name="gross"/>, tax code 1919.</summary>
+    public TaxObligationEvidence Evidence(string jurisdiction, decimal gross, decimal amount) => new()
+    {
+        OrgId = OrgId,
+        OwnerPayoutId = Guid.NewGuid(),
+        PropertyOwnerId = OwnerId,
+        OwnerStatementVersionId = Guid.NewGuid(),
+        IdempotencyKey = $"payout:{Guid.NewGuid():N}",
+        Decision = TaxDecision.Applicable,
+        ReasonCode = "applicable",
+        Jurisdiction = jurisdiction,
+        RuleCode = $"TEST-{jurisdiction}",
+        RuleVersion = "1",
+        GrossBase = gross,
+        RatePercent = 21m,
+        Rounding = "half_up",
+        Amount = amount,
+        TaxCode = "1919",
+        PaidOn = new DateOnly(2026, 10, 31),
+        PeriodYear = 2026,
+        PeriodMonth = 10,
+        CreatedAt = new DateTime(2026, 10, 31, 9, 0, 0, DateTimeKind.Utc),
     };
 
     private static FiscalDocumentLine Line(int number, FiscalLineType type, decimal net, decimal rate, decimal vat) => new()

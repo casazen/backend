@@ -7146,6 +7146,12 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="AccPkgVatItalyTitle" xml:space="preserve">
     <value>Sales register, monthly summary by document class and rate (credit notes negative). Issuer: {0}</value>
   </data>
+  <data name="AccPkgVatOwnerInvoicesOmittedTitle" xml:space="preserve">
+    <value>Invoices issued to owners not included in this file</value>
+  </data>
+  <data name="AccPkgVatOwnerInvoicesOmittedReason" xml:space="preserve">
+    <value>Invoices to owners belong to no property: reading them needs access to the whole organization. The figures of this file are therefore those of the documents of the properties reached only.</value>
+  </data>
   <data name="AccPkgColTurnover" xml:space="preserve">
     <value>Taxable turnover</value>
   </data>
@@ -7257,17 +7263,11 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="AccPkgIndexTitle" xml:space="preserve">
     <value>Index of the accountant package, period {0}</value>
   </data>
-  <data name="AccPkgIndexColFile" xml:space="preserve">
-    <value>File</value>
-  </data>
   <data name="AccPkgIndexColDescription" xml:space="preserve">
     <value>Description</value>
   </data>
   <data name="AccPkgIndexColRows" xml:space="preserve">
     <value>Rows</value>
-  </data>
-  <data name="AccPkgIndexColSha" xml:space="preserve">
-    <value>SHA-256</value>
   </data>
   <data name="AccPkgIndexOmittedTitle" xml:space="preserve">
     <value>Folders left out for lack of permission</value>

@@ -31,6 +31,19 @@ internal sealed record PackageWithholding(string? OwnerName, int Year, int Month
 internal sealed record PackageCuRow(string? OwnerName, decimal GrossBase, decimal Withheld, int Evidence);
 
 /// <summary>
+/// What the VAT tables of an issuer cover when the caller cannot read all of it: the invoices of the agency to the owners (they belong to no property: only a caller that reaches
+/// the whole org reads them, as figures for each rate with no name) and the portal commissions of the owner ledger (owner accounting). A part that is not covered is said in the
+/// file, never left out in silence.
+/// </summary>
+/// <param name="OwnerInvoices">The invoices to the owners are in the tables.</param>
+/// <param name="PortalCommissions">The portal commissions of the accounts the agency holds are in the tables.</param>
+internal sealed record VatCoverage(bool OwnerInvoices, bool PortalCommissions)
+{
+    /// <summary>Everything is in.</summary>
+    public static VatCoverage Whole { get; } = new(true, true);
+}
+
+/// <summary>
 /// The tables of the files of the accountant package (E15/F01/US01/T01, NF-101): the registers of the documents, the VAT of each issuer, the statements, the
 /// withholding, the Swiss tourist tax and the index. Each is a <see cref="ReportTable"/>, written by <see cref="CsvWriter"/> and by <see cref="XlsxWriter"/>, so the CSV and the Excel
 /// file of a register carry the same rows. The words come from the resource files (<see cref="PackageTexts"/>); an amount is a number to the cent in the currency of its
@@ -38,6 +51,15 @@ internal sealed record PackageCuRow(string? OwnerName, decimal GrossBase, decima
 /// </summary>
 internal static class AccountantPackageDocuments
 {
+    /// <summary>
+    /// The two words of the header of the index that read the same in Italian and in English («File», «SHA-256»): not texts to translate, so they are not in the resource files
+    /// (the localization test wants a different English text for every key).
+    /// </summary>
+    public const string IndexFileHeader = "File";
+
+    /// <inheritdoc cref="IndexFileHeader"/>
+    public const string IndexHashHeader = "SHA-256";
+
     /// <summary>The words that tell an issuer: its name, its country and its tax number.</summary>
     public static string IssuerLabel(AgencyIssuer issuer)
     {
@@ -146,44 +168,68 @@ internal static class AccountantPackageDocuments
     /// The VAT tables of one issuer (NF-101, D11). A Swiss issuer: the base of the quarterly return (the taxable turnover and the VAT due for each rate, by the quarter of the
     /// day of the issue), what is outside the VAT (the tourist tax, the expenses advanced) and, for information only, the commissions of the portals whose account the agency holds
     /// (⚖ not verified: a possible base of the purchase tax, never added to the VAT due). An Italian issuer: the helper of the sales register, by month, for the ordinary invoices,
-    /// the invoices in the flat-rate regime and the receipts. The documents are the ones of the issuer (the guests' and, when the caller may read them, the owners').
+    /// the invoices in the flat-rate regime and the receipts. The documents are the ones of the issuer: the guests' and the invoices to the owners (as figures for each rate, with
+    /// no name, for a caller that reaches the whole org: the VAT of the issuer is made of everything it issued). What <paramref name="coverage"/> says the caller cannot read is
+    /// said in the file, never left out in silence.
     /// </summary>
     public static IReadOnlyList<ReportTable> Vat(
         AgencyIssuer issuer,
         IReadOnlyList<PackageDocument> documents,
         IReadOnlyList<AgencyPortalCommissionBorneRow> portalCommissions,
-        PackageTexts t)
+        PackageTexts t,
+        VatCoverage? coverage = null)
     {
         ArgumentNullException.ThrowIfNull(issuer);
         ArgumentNullException.ThrowIfNull(documents);
         ArgumentNullException.ThrowIfNull(portalCommissions);
         ArgumentNullException.ThrowIfNull(t);
 
-        return issuer.IsSwiss ? SwissVat(issuer, documents, portalCommissions, t) : ItalianVat(issuer, documents, t);
+        var covered = coverage ?? VatCoverage.Whole;
+        return issuer.IsSwiss ? SwissVat(issuer, documents, portalCommissions, covered, t) : ItalianVat(issuer, documents, covered, t);
+    }
+
+    /// <summary>One amount of a document as the Swiss return counts it: its taxable amount, its stored VAT, its rate (<c>null</c> when the document does not state it) and what it is (<c>null</c> for a document with no lines).</summary>
+    private sealed record SwissVatPart(PackageDocument Document, FiscalLineType? LineType, decimal Taxable, decimal Vat, decimal? RatePercent);
+
+    /// <summary>The parts of a document: one for each line, with the stored VAT of the line; a document with no lines (one imported from a channel manager) states its own totals and enters as it states them, never dropped.</summary>
+    private static IEnumerable<SwissVatPart> SwissVatPartsOf(PackageDocument document)
+    {
+        if (document.Lines.Count > 0)
+            return document.Lines.Select(l => new SwissVatPart(document, l.LineType, l.TotalPrice, AccountantPackageFacts.VatOfLine(l), l.VatRatePercent));
+
+        return AccountantPackageFacts.VatOf(document).Select(r => new SwissVatPart(document, null, r.Taxable, r.Vat, r.RatePercent));
+    }
+
+    private static ReportCell RateOrUnknown(decimal? ratePercent, PackageTexts t) => ratePercent is { } rate ? ReportCell.Percent(rate / 100m) : t[PackageLabels.RateUnknown];
+
+    /// <summary>The table that says what a file does not hold for the caller: its title and the reason.</summary>
+    private static ReportTable OwnerInvoicesNote(PackageTexts t)
+    {
+        var note = new ReportTable(t[PackageLabels.VatOwnerInvoicesOmittedTitle], [t[PackageLabels.IndexColReason]]);
+        note.Add(t[PackageLabels.VatOwnerInvoicesOmittedReason]);
+        return note;
     }
 
     private static IReadOnlyList<ReportTable> SwissVat(
-        AgencyIssuer issuer, IReadOnlyList<PackageDocument> documents, IReadOnlyList<AgencyPortalCommissionBorneRow> portalCommissions, PackageTexts t)
+        AgencyIssuer issuer, IReadOnlyList<PackageDocument> documents, IReadOnlyList<AgencyPortalCommissionBorneRow> portalCommissions, VatCoverage coverage, PackageTexts t)
     {
-        var lines = documents
-            .SelectMany(d => d.Lines.Select(l => (Document: d, Line: l)))
-            .ToList();
+        var parts = documents.SelectMany(SwissVatPartsOf).ToList();
 
         var returnBase = new ReportTable(
             t.Get(PackageLabels.VatSwissTitle, IssuerLabel(issuer)),
             [t[PackageLabels.ColPeriod], t[PackageLabels.ColRate], t[PackageLabels.ColTurnover], t[PackageLabels.ColVatDue], t["FiscalExportColCurrency"], t[PackageLabels.ColDocuments]]);
-        foreach (var group in lines
-                     .Where(x => x.Line.VatRatePercent > 0m)
-                     .GroupBy(x => (Quarter: AccountantPackageFacts.QuarterOf(x.Document.IssueDate), x.Line.VatRatePercent, x.Document.Currency))
+        foreach (var group in parts
+                     .Where(x => x.RatePercent is null or > 0m)
+                     .GroupBy(x => (Quarter: AccountantPackageFacts.QuarterOf(x.Document.IssueDate), x.RatePercent, x.Document.Currency))
                      .OrderBy(g => g.Key.Quarter, StringComparer.Ordinal)
                      .ThenBy(g => g.Key.Currency, StringComparer.Ordinal)
-                     .ThenByDescending(g => g.Key.VatRatePercent))
+                     .ThenByDescending(g => g.Key.RatePercent ?? -1m))
         {
             returnBase.Add(
                 group.Key.Quarter,
-                ReportCell.Percent(group.Key.VatRatePercent / 100m),
-                ReportCell.Money(group.Sum(x => x.Document.Sign * x.Line.TotalPrice)),
-                ReportCell.Money(group.Sum(x => x.Document.Sign * AccountantPackageFacts.VatOfLine(x.Line))),
+                RateOrUnknown(group.Key.RatePercent, t),
+                ReportCell.Money(group.Sum(x => x.Document.Sign * x.Taxable)),
+                ReportCell.Money(group.Sum(x => x.Document.Sign * x.Vat)),
                 group.Key.Currency,
                 group.Select(x => x.Document.Id).Distinct().Count());
         }
@@ -191,9 +237,9 @@ internal static class AccountantPackageDocuments
         var outside = new ReportTable(
             t[PackageLabels.VatOutsideTitle],
             [t[PackageLabels.ColPeriod], t["FiscalExportColKind"], t[PackageLabels.ColAmount], t["FiscalExportColCurrency"]]);
-        foreach (var group in lines
-                     .Where(x => x.Line.VatRatePercent == 0m)
-                     .GroupBy(x => (Quarter: AccountantPackageFacts.QuarterOf(x.Document.IssueDate), Category: OutsideCategoryOf(x.Line.LineType), x.Document.Currency))
+        foreach (var group in parts
+                     .Where(x => x.RatePercent == 0m)
+                     .GroupBy(x => (Quarter: AccountantPackageFacts.QuarterOf(x.Document.IssueDate), Category: OutsideCategoryOf(x.LineType), x.Document.Currency))
                      .OrderBy(g => g.Key.Quarter, StringComparer.Ordinal)
                      .ThenBy(g => g.Key.Category)
                      .ThenBy(g => g.Key.Currency, StringComparer.Ordinal))
@@ -201,7 +247,7 @@ internal static class AccountantPackageDocuments
             outside.Add(
                 group.Key.Quarter,
                 OutsideLabel(group.Key.Category, t),
-                ReportCell.Money(group.Sum(x => x.Document.Sign * x.Line.TotalPrice)),
+                ReportCell.Money(group.Sum(x => x.Document.Sign * x.Taxable)),
                 group.Key.Currency);
         }
 
@@ -211,10 +257,17 @@ internal static class AccountantPackageDocuments
         foreach (var row in portalCommissions)
             portals.Add(FiscalReportDocuments.ChannelLabel(row.Source.ToString()), ReportCell.Money(row.Amount), row.Currency);
 
-        return [returnBase, outside, portals];
+        // The portal commissions come from the owner ledger: a caller who may not read the owner accounting is told, the table is not left empty as if there were none.
+        if (!coverage.PortalCommissions)
+            portals.Add(t[PackageLabels.OmittedOwnerAccounting]);
+
+        if (coverage.OwnerInvoices)
+            return [returnBase, outside, portals];
+
+        return [returnBase, outside, portals, OwnerInvoicesNote(t)];
     }
 
-    private static IReadOnlyList<ReportTable> ItalianVat(AgencyIssuer issuer, IReadOnlyList<PackageDocument> documents, PackageTexts t)
+    private static IReadOnlyList<ReportTable> ItalianVat(AgencyIssuer issuer, IReadOnlyList<PackageDocument> documents, VatCoverage coverage, PackageTexts t)
     {
         var table = new ReportTable(
             t.Get(PackageLabels.VatItalyTitle, IssuerLabel(issuer)),
@@ -251,17 +304,25 @@ internal static class AccountantPackageDocuments
                 group.Select(x => x.Document.Id).Distinct().Count());
         }
 
-        return [table];
+        if (coverage.OwnerInvoices)
+            return [table];
+
+        return [table, OwnerInvoicesNote(t)];
     }
 
-    /// <summary>The class of a document in the sales register: a receipt, an invoice in the flat-rate regime, an ordinary invoice (a credit note follows the document it credits).</summary>
+    /// <summary>
+    /// The class of a document in the sales register: a receipt, an invoice in the flat-rate regime, an ordinary invoice (a credit note follows the document it credits). The regime is the
+    /// one the document was issued under (its own issuer snapshot), because the issuer of a file is told by its country, tax number and name and a regime can change inside a period;
+    /// a document with no snapshot (issued before it existed) takes the regime of <paramref name="issuer"/>.
+    /// </summary>
     internal static SalesClass ClassOf(PackageDocument document, AgencyIssuer issuer)
     {
         var kind = document.Kind == FiscalDocumentKind.CreditNote && document.CreditedKind is { } credited ? credited : document.Kind;
         if (kind == FiscalDocumentKind.Receipt)
             return SalesClass.Receipt;
 
-        return issuer.Regime == DocumentRegime.VatFlatRate ? SalesClass.FlatRate : SalesClass.Ordinary;
+        var regime = FiscalIssuerSnapshot.FromJson(document.IssuerSnapshot)?.Regime ?? issuer.Regime;
+        return regime == DocumentRegime.VatFlatRate ? SalesClass.FlatRate : SalesClass.Ordinary;
     }
 
     /// <summary>The classes of the sales register of an Italian issuer.</summary>
@@ -286,7 +347,7 @@ internal static class AccountantPackageDocuments
         Other = 3,
     }
 
-    private static OutsideCategory OutsideCategoryOf(FiscalLineType type) => type switch
+    private static OutsideCategory OutsideCategoryOf(FiscalLineType? type) => type switch
     {
         FiscalLineType.TouristTax => OutsideCategory.TouristTax,
         FiscalLineType.AdvancedExpense => OutsideCategory.AdvancedExpenses,
@@ -417,7 +478,7 @@ internal static class AccountantPackageDocuments
     {
         var files = new ReportTable(
             t.Get(PackageLabels.IndexTitle, period.Key),
-            [t[PackageLabels.IndexColFile], t[PackageLabels.IndexColDescription], t[PackageLabels.IndexColRows], t[PackageLabels.IndexColSha]]);
+            [IndexFileHeader, t[PackageLabels.IndexColDescription], t[PackageLabels.IndexColRows], IndexHashHeader]);
         foreach (var e in entries)
             files.Add(e.Path, e.Description, e.Rows is { } rows ? ReportCell.Integer(rows) : ReportCell.Empty, e.Sha256);
 

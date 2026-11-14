@@ -88,7 +88,13 @@ public sealed class AccountantPackageService(
             ? await AccountantPackageFacts.ReadAsync(db, scope, period, FiscalDocumentPurpose.OwnerInvoice, cancellationToken)
             : [];
 
-        var slugs = SlugsOf(IssuersOf(guestDocuments, ownerInvoices, fallback, current));
+        // The VAT of an issuer is made of everything it issued: the invoices to the owners enter it as figures for each rate, with no name, for any caller that reaches the whole org
+        // (they belong to no property, so a restricted scope reads none, and the file says so). They are files of the package only with the owner accounting.
+        var vatOwnerInvoices = ownerAccounting
+            ? ownerInvoices
+            : scope.IsOrgWide ? await AccountantPackageFacts.ReadAsync(db, scope, period, FiscalDocumentPurpose.OwnerInvoice, cancellationToken) : [];
+
+        var slugs = SlugsOf(IssuersOf(guestDocuments, vatOwnerInvoices, fallback, current));
         PlanGuestDocuments(plan, guestDocuments, fallback, current, slugs, period, t);
         if (ownerAccounting)
         {
@@ -98,7 +104,7 @@ public sealed class AccountantPackageService(
         }
 
         await PlanAgencySummaryAsync(plan, scope, access, period, t, cancellationToken);
-        await PlanVatAsync(plan, scope, ownerAccounting, guestDocuments, ownerInvoices, fallback, current, slugs, period, t, cancellationToken);
+        await PlanVatAsync(plan, scope, ownerAccounting, guestDocuments, vatOwnerInvoices, fallback, current, slugs, period, t, cancellationToken);
         await PlanTouristTaxAsync(plan, scope, period, guestDocuments, t, cancellationToken);
         await PlanCollectionsAsync(plan, scope, period, cancellationToken);
 
@@ -253,8 +259,10 @@ public sealed class AccountantPackageService(
         var toKey = (period.To.Year * 100) + period.To.Month;
         var folder = AccountantPackageStructure.WithholdingFolder;
 
-        var evidence = await db.TaxObligationEvidence.AsNoTracking()
-            .Where(e => e.OrgId == orgId && e.Decision == TaxDecision.Applicable && ((e.PeriodYear * 100) + e.PeriodMonth) >= fromKey && ((e.PeriodYear * 100) + e.PeriodMonth) <= toKey)
+        // The Italian evidence only, the one the F24 and the Certificazione Unica of the same folder are built from (AC-NF110-7): a decision of another jurisdiction is never an Italian
+        // withholding, whatever the parameters of its rule say.
+        var evidence = await OwnerPayoutService.F24EvidenceQuery(db, orgId)
+            .Where(e => ((e.PeriodYear * 100) + e.PeriodMonth) >= fromKey && ((e.PeriodYear * 100) + e.PeriodMonth) <= toKey)
             .Select(e => new { e.PropertyOwnerId, e.PeriodYear, e.PeriodMonth, e.TaxCode, e.OwnerPayoutId, e.ReversesEvidenceId, e.GrossBase, e.Amount })
             .ToListAsync(cancellationToken);
         var names = await AccountantPackageFacts.OwnerNamesAsync(db, orgId, [.. evidence.Select(e => e.PropertyOwnerId).Distinct()], cancellationToken);
@@ -324,7 +332,10 @@ public sealed class AccountantPackageService(
             null);
     }
 
-    /// <summary>The VAT tables of every issuer of the period: the documents of the guests and, when the caller may read them, the invoices to the owners (and the portal commissions of the agency, for information).</summary>
+    /// <summary>
+    /// The VAT tables of every issuer of the period: the documents of the guests and the invoices to the owners (as figures for each rate, for a caller that reaches the whole org) and,
+    /// with the owner accounting, the portal commissions of the agency (for information). What the caller cannot read is said in the file (<see cref="VatCoverage"/>).
+    /// </summary>
     private async Task PlanVatAsync(
         Plan plan,
         HostScope scope,
@@ -341,11 +352,12 @@ public sealed class AccountantPackageService(
         var portalCommissions = ownerAccounting
             ? await AccountantPackageFacts.PortalCommissionsBorneAsync(db, holders, scope.OrgId, period, cancellationToken)
             : [];
+        var coverage = new VatCoverage(OwnerInvoices: scope.IsOrgWide, PortalCommissions: ownerAccounting);
         foreach (var issuer in IssuersOf(guest, owner, fallback, current))
         {
             var mine = guest.Concat(owner).Where(d => AccountantPackageFacts.IssuerOf(d.IssuerSnapshot, fallback).Key == issuer.Key).ToList();
             var portals = issuer.Key == current.Key ? portalCommissions : [];
-            plan.AddTables(AccountantPackageStructure.VatFolder, "iva-" + slugs[issuer.Key], AccountantPackageDocuments.Vat(issuer, mine, portals, t));
+            plan.AddTables(AccountantPackageStructure.VatFolder, "iva-" + slugs[issuer.Key], AccountantPackageDocuments.Vat(issuer, mine, portals, t, coverage));
         }
     }
 

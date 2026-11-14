@@ -7146,6 +7146,12 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="AccPkgVatItalyTitle" xml:space="preserve">
     <value>Registro delle vendite, riepilogo mensile per classe di documento e aliquota (note di credito in negativo). Emittente: {0}</value>
   </data>
+  <data name="AccPkgVatOwnerInvoicesOmittedTitle" xml:space="preserve">
+    <value>Fatture emesse ai proprietari non incluse in questo file</value>
+  </data>
+  <data name="AccPkgVatOwnerInvoicesOmittedReason" xml:space="preserve">
+    <value>Le fatture ai proprietari non appartengono a un immobile: per leggerle serve l'accesso a tutta l'organizzazione. Le cifre di questo file sono quindi quelle dei soli documenti degli immobili raggiunti.</value>
+  </data>
   <data name="AccPkgColTurnover" xml:space="preserve">
     <value>Cifra d'affari imponibile</value>
   </data>
@@ -7257,17 +7263,11 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="AccPkgIndexTitle" xml:space="preserve">
     <value>Indice del pacchetto per il commercialista, periodo {0}</value>
   </data>
-  <data name="AccPkgIndexColFile" xml:space="preserve">
-    <value>File</value>
-  </data>
   <data name="AccPkgIndexColDescription" xml:space="preserve">
     <value>Descrizione</value>
   </data>
   <data name="AccPkgIndexColRows" xml:space="preserve">
     <value>Righe</value>
-  </data>
-  <data name="AccPkgIndexColSha" xml:space="preserve">
-    <value>SHA-256</value>
   </data>
   <data name="AccPkgIndexOmittedTitle" xml:space="preserve">
     <value>Cartelle non incluse per mancanza di permesso</value>
