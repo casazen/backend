@@ -152,7 +152,7 @@ public class RoutineService(
             executionId, execution.RoutineId, saved.NextActionIndex);
 
         var run = new Run(db, execution.OrgId, RoutinePayload.FromJson(saved.PayloadJson));
-        await RunAsync(routine, execution, run, results, saved.NextActionIndex, cancellationToken);
+        await RunAsync(routine, execution, run, results, saved.NextActionIndex, resumed: true, cancellationToken);
     }
 
     public async Task<RoutineSimulationResult> SimulateAsync(
@@ -263,12 +263,14 @@ public class RoutineService(
             return;
         }
 
-        await RunAsync(routine, execution, run, [], 0, cancellationToken);
+        await RunAsync(routine, execution, run, [], 0, resumed: false, cancellationToken);
     }
 
     /// <summary>
     /// Runs the actions of <paramref name="routine"/> from <paramref name="startIndex"/> and closes the execution: <c>Success</c>, <c>Failed</c>, or
-    /// <c>Waiting</c> at a Wait. <paramref name="results"/> holds what the actions before it did (a resumed execution).
+    /// <c>Waiting</c> at a Wait. <paramref name="results"/> holds what the actions before it did (a resumed execution). After a wait
+    /// (<paramref name="resumed"/>) a stay that was cancelled, or marked as a no-show, meanwhile gets nothing more: each action left is recorded
+    /// <c>blocked</c> with <see cref="RoutineCodes.BookingNotActive"/>, but for the routines of a cancellation, which are about exactly that.
     /// </summary>
     private async Task RunAsync(
         Routine routine,
@@ -276,6 +278,7 @@ public class RoutineService(
         Run run,
         List<RoutineActionResult> results,
         int startIndex,
+        bool resumed,
         CancellationToken cancellationToken)
     {
         try
@@ -291,11 +294,24 @@ public class RoutineService(
                 return;
             }
 
+            var bookingGone = resumed
+                              && routine.EventType != RoutineEventType.BookingCanceled
+                              && await run.BookingIsGoneAsync(cancellationToken);
+
             var next = startIndex;
             for (var index = startIndex; index < actions.Count; index++)
             {
                 var action = actions[index];
                 next = index + 1;
+
+                if (bookingGone)
+                {
+                    logger.LogInformation(
+                        "Routine {RoutineId} execution {ExecutionId}: the stay was cancelled or marked as a no-show while it waited, action {ActionType} is not run",
+                        routine.Id, execution.Id, action.Type);
+                    results.Add(RoutineActionResult.Blocked(index, action.Type, RoutineCodes.BookingNotActive));
+                    continue;
+                }
 
                 // Apply guardrails (AC-NF26-4, AC-NF26-5, AC-NF26-6, ADR-022-R11): a blocked action is not run, and the next ones go on
                 var guardrail = await CheckGuardrailsAsync(run, action, cancellationToken);
@@ -606,7 +622,8 @@ public class RoutineService(
         DateTime CheckInDate,
         DateTime CheckOutDate,
         int NumberOfGuests,
-        DateTime CreatedAt);
+        DateTime CreatedAt,
+        DateTime? NoShowAt);
 
     /// <summary>
     /// One run of a routine: the payload of the event, and the facts of its booking read once, on first use, in the org of the routine. A resumed
@@ -646,10 +663,18 @@ public class RoutineService(
                     b.CheckInDate,
                     b.CheckOutDate,
                     b.NumberOfGuests,
-                    b.CreatedAt))
+                    b.CreatedAt,
+                    b.NoShowAt))
                 .FirstOrDefaultAsync(cancellationToken);
             return _booking;
         }
+
+        /// <summary>
+        /// The booking the payload names was cancelled, or marked as a no-show (it stays <c>Confirmed</c> with <c>NoShowAt</c> set): a stay that does not
+        /// happen. <c>false</c> when the payload names no booking the org has, or the stay is on (a request that waits for an answer is).
+        /// </summary>
+        public async Task<bool> BookingIsGoneAsync(CancellationToken cancellationToken) =>
+            await BookingAsync(cancellationToken) is { } booking && (booking.Status == BookingStatus.Cancelled || booking.NoShowAt is not null);
 
         /// <summary>The facts a condition is evaluated on: those of the booking, none when there is none.</summary>
         public async Task<RoutineConditionFacts> FactsAsync(CancellationToken cancellationToken)

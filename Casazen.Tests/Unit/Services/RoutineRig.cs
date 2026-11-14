@@ -164,6 +164,15 @@ internal sealed class RoutineRig
         return booking;
     }
 
+    /// <summary>Changes a booking as it is saved (the host cancels it, marks it as a no-show…) in a context of its own.</summary>
+    public async Task ChangeBookingAsync(Guid bookingId, Action<Booking> change)
+    {
+        await using var db = NewDb();
+        var booking = await db.Bookings.SingleAsync(b => b.Id == bookingId);
+        change(booking);
+        await db.SaveChangesAsync();
+    }
+
     /// <summary>A verification of the identity of a booking: what the access code gate reads.</summary>
     public async Task SeedVerificationAsync(Guid orgId, Booking booking, BiometricOutcome outcome, DateTime createdAt)
     {

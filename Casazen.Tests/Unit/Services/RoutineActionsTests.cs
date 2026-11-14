@@ -153,6 +153,65 @@ public class RoutineActionsTests
         Assert.Equal(RoutineExecutionOutcomes.Success, (await rig.ExecutionAsync(waiting.Id)).Outcome);
     }
 
+    /// <summary>
+    /// After a Wait a routine acts on nothing more for a stay that was cancelled, or marked as a no-show, while it waited: the action left is recorded
+    /// <c>blocked</c> with <c>routine_booking_not_active</c> and no To do is raised for a stay that does not happen. A request that waits for an answer
+    /// (Pending) and a stay that is on go on.
+    /// </summary>
+    [Theory]
+    [InlineData(BookingStatus.Cancelled, false, false)]
+    [InlineData(BookingStatus.Confirmed, true, false)]
+    [InlineData(BookingStatus.Pending, false, true)]
+    [InlineData(BookingStatus.Confirmed, false, true)]
+    public async Task CreateActivity_AfterAWait_ActsOnlyOnAStayThatIsStillOn(BookingStatus status, bool noShow, bool acts)
+    {
+        var rig = new RoutineRig();
+        var booking = await rig.SeedBookingAsync(OrgA);
+        await rig.SeedRoutineAsync(
+            OrgA,
+            RoutineEventType.BookingConfirmed,
+            RoutineRig.Actions(("Wait", """{"hours":1}"""), ("CreateActivity", CreateActivityConfig("Dopo l'attesa"))));
+        await rig.TriggerAsync(OrgA, RoutineEventType.BookingConfirmed, RoutineRig.PayloadOf(booking));
+        var waiting = await rig.SingleExecutionAsync();
+        await rig.ChangeBookingAsync(booking.Id, b =>
+        {
+            b.Status = status;
+            b.NoShowAt = noShow ? RoutineRig.Now.UtcDateTime : null;
+        });
+
+        await rig.ResumeAsync(waiting.Id, new FixedTimeProvider(RoutineRig.Now.AddHours(1)));
+
+        var ended = await rig.ExecutionAsync(waiting.Id);
+        Assert.Equal(RoutineExecutionOutcomes.Success, ended.Outcome);
+        var results = RoutineRig.ResultOf(ended).Actions;
+        Assert.Equal(new RoutineActionResult(0, RoutineActionType.Wait, RoutineActionOutcomes.Done, null), results[0]);
+        var expected = acts
+            ? new RoutineActionResult(1, RoutineActionType.CreateActivity, RoutineActionOutcomes.Done, null)
+            : new RoutineActionResult(1, RoutineActionType.CreateActivity, RoutineActionOutcomes.Blocked, RoutineCodes.BookingNotActive);
+        Assert.Equal(expected, results[1]);
+        Assert.Equal(acts ? 1 : 0, (await TodosAsync(rig)).Count);
+    }
+
+    /// <summary>A routine of a cancellation is about exactly the stay that was cancelled: it goes on after its Wait.</summary>
+    [Fact]
+    public async Task CreateActivity_OfACancellationRoutine_GoesOnAfterItsWait_ForTheCancelledStay()
+    {
+        var rig = new RoutineRig();
+        var booking = await rig.SeedBookingAsync(OrgA, status: BookingStatus.Cancelled);
+        await rig.SeedRoutineAsync(
+            OrgA,
+            RoutineEventType.BookingCanceled,
+            RoutineRig.Actions(("Wait", """{"hours":1}"""), ("CreateActivity", CreateActivityConfig("Rimetti la casa in vendita"))));
+        await rig.TriggerAsync(OrgA, RoutineEventType.BookingCanceled, RoutineRig.PayloadOf(booking));
+        var waiting = await rig.SingleExecutionAsync();
+
+        await rig.ResumeAsync(waiting.Id, new FixedTimeProvider(RoutineRig.Now.AddHours(1)));
+
+        var results = RoutineRig.ResultOf(await rig.ExecutionAsync(waiting.Id)).Actions;
+        Assert.Equal(RoutineActionOutcomes.Done, results[1].Outcome);
+        Assert.Equal(booking.Id, Assert.Single(await TodosAsync(rig)).EntityId);
+    }
+
     [Fact]
     public async Task CreateActivity_OnceTheToDoIsClosed_TheNextEventRaisesANewOne()
     {

@@ -35,6 +35,12 @@ public static class RoutineCodes
     /// <summary><c>CreateActivity</c> needs the booking of the event: the event names none, or the org has no such booking.</summary>
     public const string ActivityNeedsBooking = "routine_activity_needs_booking";
 
+    /// <summary>
+    /// The booking of the event was cancelled, or marked as a no-show, while the execution waited: the actions after the wait are not run (a stay that does not
+    /// happen gets no To do and no message). Recorded as the reason of each action left, <c>blocked</c>; the routines of a cancellation are not stopped by it.
+    /// </summary>
+    public const string BookingNotActive = "routine_booking_not_active";
+
     /// <summary>API, 422: the name of a routine is empty or longer than <see cref="RoutineLimits.MaxNameLength"/>.</summary>
     public const string NameInvalid = "routine_name_invalid";
 

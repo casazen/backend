@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -24,8 +25,9 @@ namespace Casazen.Infrastructure.Jobs;
 /// <item><b>Only what a routine asks for</b>: the offsets come from the active routines of each org whose event type is a stay
 /// trigger (<c>BeforeCheckin</c>, <c>AfterCheckin</c>, <c>BeforeCheckout</c>, <c>AfterCheckout</c>), in whole hours
 /// (<see cref="TimeTrigger.OffsetHours"/>); an org without such a routine gets nothing.</item>
-/// <item><b>Only the stays that happen</b>: bookings <c>Confirmed</c>, <c>CheckedIn</c> or <c>CheckedOut</c> (an after-check-out
-/// trigger is about a stay already checked out); a pending or cancelled booking emits nothing.</item>
+/// <item><b>Only the stays that happen</b>: the bookings of <see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/> (<c>Confirmed</c>,
+/// <c>CheckedIn</c> or <c>CheckedOut</c>: an after-check-out trigger is about a stay already checked out) that are not marked as a no-show, the one
+/// definition of a stay that is due (<see cref="AlloggiatiStatusRules.IsDue"/>); a pending, cancelled or no-show booking emits nothing.</item>
 /// <item><b>When it is due</b>: a check-in or check-out date is a calendar date stored as midnight UTC, and the trigger is due at the
 /// time of that day on the clock of the property (<c>Property.CheckInFrom</c> for a check-in, <c>Property.CheckOutBy</c> for a check-out, in
 /// <c>Property.Timezone</c>, <see cref="RomeCalendar.ToUtc(DateOnly, TimeOnly, TimeZoneInfo)"/>) shifted by the offset: "2 hours before
@@ -54,8 +56,6 @@ public class TimeEventEmitterJob(
 
     /// <summary>The least a run looks back for the triggers that became due.</summary>
     public static readonly TimeSpan CatchUpWindow = TimeSpan.FromHours(1);
-
-    private static readonly BookingStatus[] StayStatuses = [BookingStatus.Confirmed, BookingStatus.CheckedIn, BookingStatus.CheckedOut];
 
     private static readonly RoutineEventType[] StayEventTypes = [.. TimeTrigger.StayKinds.Keys];
 
@@ -125,7 +125,7 @@ public class TimeEventEmitterJob(
         var query = db.Bookings
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
-            .Where(b => b.OrgId == orgId && StayStatuses.Contains(b.Status));
+            .Where(b => b.OrgId == orgId && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null);
         query = (checkIn, checkOut) switch
         {
             ({ } i, { } o) => query.Where(b =>

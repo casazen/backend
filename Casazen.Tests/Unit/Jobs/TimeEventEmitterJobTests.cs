@@ -49,6 +49,7 @@ public class TimeEventEmitterJobTests
         var stay = await SeedBookingAsync(OrgA, BookingStatus.Confirmed);
         await SeedBookingAsync(OrgA, BookingStatus.Pending);
         await SeedBookingAsync(OrgA, BookingStatus.Cancelled);
+        await SeedBookingAsync(OrgA, BookingStatus.Confirmed, noShow: true); // a no-show is a stay that never happens: no time trigger
         await SeedBookingAsync(OrgB, BookingStatus.Confirmed); // no routine in org B
 
         await RunAsync(TwoDaysBeforeCheckIn.AddMinutes(-5)); // not due yet
@@ -368,12 +369,16 @@ public class TimeEventEmitterJobTests
         await db.SaveChangesAsync();
     }
 
-    private async Task<Booking> SeedBookingAsync(Guid orgId, BookingStatus status, DateTime? checkIn = null, Guid? propertyId = null)
+    private async Task<Booking> SeedBookingAsync(Guid orgId, BookingStatus status, DateTime? checkIn = null, Guid? propertyId = null, bool noShow = false)
     {
         await using var db = NewDb();
         var booking = NewBooking(orgId, status, checkIn ?? CheckIn);
         if (propertyId is { } property)
             booking.PropertyId = property;
+
+        // A no-show stays Confirmed and carries the mark of the host (NF-45): the stay never happened.
+        if (noShow)
+            booking.NoShowAt = TwoDaysBeforeCheckIn;
 
         db.Bookings.Add(booking);
         await db.SaveChangesAsync();
