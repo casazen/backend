@@ -1,269 +1,284 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Services;
-using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.Services;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
-using Moq;
-using System.Text.Json;
+using Casazen.Core.Models;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
-/// NF-26: Routine automation proof tests for guardrails (ADR-022-R11).
-/// These tests prove that critical guardrails (access code after ID verification, no Airbnb contact before booking)
-/// are non-bypassable, even if configured incorrectly.
+/// NF-26, E01/F04/US01/T01: the guardrails of ADR-022-R11 (an access code only after the identity is verified, no contact with an Airbnb guest before the
+/// booking is confirmed, a campaign only with consent) are non-bypassable. They read the booking of the event, in the org of the routine, and never the
+/// payload: a payload that says the booking is confirmed, the identity verified or the consent given changes nothing, and with no booking to read
+/// nothing passes. A blocked action is recorded with the stable code of its guardrail.
 /// </summary>
 public class RoutineGuardrailProofTests
 {
+    private static readonly Guid OrgA = RoutineRig.OrgA;
+    private static readonly Guid OrgB = RoutineRig.OrgB;
+    private static readonly DateTime Earlier = RoutineRig.Now.UtcDateTime.AddHours(-5);
+    private static readonly DateTime Later = RoutineRig.Now.UtcDateTime.AddHours(-1);
+
+    /// <summary>Runs the one action in a routine on <paramref name="payload"/> and returns what the engine recorded for it.</summary>
+    private static async Task<RoutineActionResult> RunAsync(RoutineRig rig, string type, string? config, object payload)
+    {
+        await rig.SeedRoutineAsync(OrgA, RoutineEventType.BookingConfirmed, RoutineRig.Actions((type, config)));
+        await rig.TriggerAsync(OrgA, RoutineEventType.BookingConfirmed, payload);
+        var execution = Assert.Single(await rig.ExecutionsAsync());
+        return Assert.Single(RoutineRig.ResultOf(execution).Actions);
+    }
+
+    private static void AssertBlocked(RoutineActionResult result, RoutineActionType type, string code)
+    {
+        Assert.Equal(new RoutineActionResult(0, type, RoutineActionOutcomes.Blocked, code), result);
+    }
+
+    private static void AssertNotBlocked(RoutineActionResult result)
+    {
+        // What follows a guardrail that lets an action through is the action: today none of these has an implementation, so it fails with its code.
+        Assert.NotEqual(RoutineActionOutcomes.Blocked, result.Outcome);
+    }
+
+    // ─── Access code (AC-NF26-4) ─────────────────────────────────────────────────
+
     /// <summary>
-    /// Proof test for AC-NF26-4 (ADR-022-R11): proves that SendAccessCode action is blocked when ID verification
-    /// is not completed. Without this check, guests could receive access codes without identity verification,
-    /// violating security and potentially regulatory requirements.
+    /// Proof (permission rule, AC-NF26-4): <c>SendAccessCode</c> is blocked while the booking carries no accepted verification of the identity, even when
+    /// the payload of the event says <c>IdVerified</c>: the payload is not where the gate reads. Without it, guests could receive access codes without
+    /// identity verification.
     /// </summary>
     [Fact]
     public async Task Routine_AccessCodeGuardrail()
     {
-        // Arrange: Set up in-memory database with a routine that tries to send access code
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
-            .Options;
+        var rig = new RoutineRig();
+        var booking = await rig.SeedBookingAsync(OrgA);
 
-        var orgId = Guid.NewGuid();
-        var bookingId = Guid.NewGuid();
+        var result = await RunAsync(rig, "SendAccessCode", null, new { BookingId = booking.Id, IdVerified = true });
 
-        // Create a routine that attempts to send access code
-        var routine = new Routine
-        {
-            Id = Guid.NewGuid(),
-            OrgId = orgId,
-            Name = "Send Access Code on Booking Confirmed",
-            EventType = RoutineEventType.BookingConfirmed,
-            Active = true,
-            TestMode = false,
-            ActionsJson = JsonSerializer.Serialize(new[]
-            {
-                new { Type = RoutineActionType.SendAccessCode, Config = new { } }
-            })
-        };
-
-        await using (var context = new AppDbContext(options))
-        {
-            context.Routines.Add(routine);
-            await context.SaveChangesAsync();
-        }
-
-        // Act: Trigger the routine with a payload indicating ID is NOT verified
-        await using (var context = new AppDbContext(options))
-        {
-            var mockLogger = new Mock<ILogger<RoutineService>>();
-            var service = new RoutineService(context, mockLogger.Object);
-
-            var payload = new
-            {
-                BookingId = bookingId,
-                IdVerified = false  // CRITICAL: ID not verified yet
-            };
-
-            await service.TriggerAsync(
-                orgId,
-                RoutineEventType.BookingConfirmed,
-                $"booking-{bookingId}",
-                payload,
-                CancellationToken.None);
-        }
-
-        // Assert: Verify that execution was created but action was blocked
-        await using (var context = new AppDbContext(options))
-        {
-            var execution = await context.RoutineExecutions
-                .FirstOrDefaultAsync(e => e.RoutineId == routine.Id);
-
-            Assert.NotNull(execution);
-            Assert.Equal("Success", execution.Outcome); // Execution completed
-
-            var result = JsonSerializer.Deserialize<RoutineExecutionResult>(execution.ResultJson);
-            Assert.NotNull(result);
-
-            // The critical assertion: access code action was BLOCKED, not executed
-            Assert.Contains(result.Errors, e => e.Contains("Access code can only be sent after ID verification"));
-
-            // Verify no successful SendAccessCode action was recorded
-            Assert.DoesNotContain(result.ExecutedActions, a => a.Contains("SendAccessCode") && !a.Contains("blocked"));
-        }
+        AssertBlocked(result, RoutineActionType.SendAccessCode, RoutineCodes.AccessCodeNeedsIdVerification);
+        var execution = Assert.Single(await rig.ExecutionsAsync());
+        Assert.Equal(RoutineExecutionOutcomes.Success, execution.Outcome);
     }
 
+    [Fact]
+    public async Task AccessCode_AnAcceptedVerificationOfTheBooking_LetsItThrough()
+    {
+        var rig = new RoutineRig();
+        var booking = await rig.SeedBookingAsync(OrgA);
+        await rig.SeedVerificationAsync(OrgA, booking, BiometricOutcome.Accept, Earlier);
+
+        AssertNotBlocked(await RunAsync(rig, "SendAccessCode", null, new { BookingId = booking.Id }));
+    }
+
+    [Theory]
+    [InlineData(BiometricOutcome.Escalate)]
+    [InlineData(BiometricOutcome.Reject)]
+    public async Task AccessCode_AVerificationThatIsNotAnAccept_DoesNotOpenTheGate(BiometricOutcome outcome)
+    {
+        var rig = new RoutineRig();
+        var booking = await rig.SeedBookingAsync(OrgA);
+        await rig.SeedVerificationAsync(OrgA, booking, outcome, Earlier);
+
+        var result = await RunAsync(rig, "SendAccessCode", null, new { BookingId = booking.Id });
+
+        AssertBlocked(result, RoutineActionType.SendAccessCode, RoutineCodes.AccessCodeNeedsIdVerification);
+    }
+
+    /// <summary>The latest verification decides, as for the code itself: an operator's rejection after an accept closes the gate again.</summary>
+    [Fact]
+    public async Task AccessCode_TheLatestVerificationOfTheBookingDecides()
+    {
+        var rig = new RoutineRig();
+        var booking = await rig.SeedBookingAsync(OrgA);
+        await rig.SeedVerificationAsync(OrgA, booking, BiometricOutcome.Accept, Earlier);
+        await rig.SeedVerificationAsync(OrgA, booking, BiometricOutcome.Reject, Later);
+
+        var result = await RunAsync(rig, "SendAccessCode", null, new { BookingId = booking.Id });
+
+        AssertBlocked(result, RoutineActionType.SendAccessCode, RoutineCodes.AccessCodeNeedsIdVerification);
+    }
+
+    /// <summary>A verification written for another org's booking id is not this org's: every read names the org.</summary>
+    [Fact]
+    public async Task AccessCode_AVerificationOfAnotherOrg_IsNotOurs()
+    {
+        var rig = new RoutineRig();
+        var booking = await rig.SeedBookingAsync(OrgA);
+        await rig.SeedVerificationAsync(OrgB, booking, BiometricOutcome.Accept, Earlier);
+
+        var result = await RunAsync(rig, "SendAccessCode", null, new { BookingId = booking.Id });
+
+        AssertBlocked(result, RoutineActionType.SendAccessCode, RoutineCodes.AccessCodeNeedsIdVerification);
+    }
+
+    /// <summary>No booking in the event, an unknown booking, and a booking of another org that is verified: with nothing of this org to read, nothing opens the gate.</summary>
+    [Fact]
+    public async Task AccessCode_NoBookingInTheEvent_FailsClosed()
+    {
+        var rig = new RoutineRig();
+
+        var result = await RunAsync(rig, "SendAccessCode", null, new { IdVerified = true });
+
+        AssertBlocked(result, RoutineActionType.SendAccessCode, RoutineCodes.AccessCodeNeedsIdVerification);
+    }
+
+    [Fact]
+    public async Task AccessCode_AnUnknownBooking_FailsClosed()
+    {
+        var rig = new RoutineRig();
+
+        var result = await RunAsync(rig, "SendAccessCode", null, new { BookingId = Guid.NewGuid(), IdVerified = true });
+
+        AssertBlocked(result, RoutineActionType.SendAccessCode, RoutineCodes.AccessCodeNeedsIdVerification);
+    }
+
+    [Fact]
+    public async Task AccessCode_AVerifiedBookingOfAnotherOrg_FailsClosed()
+    {
+        var rig = new RoutineRig();
+        var otherOrgs = await rig.SeedBookingAsync(OrgB);
+        await rig.SeedVerificationAsync(OrgB, otherOrgs, BiometricOutcome.Accept, Earlier);
+
+        var result = await RunAsync(rig, "SendAccessCode", null, new { BookingId = otherOrgs.Id });
+
+        AssertBlocked(result, RoutineActionType.SendAccessCode, RoutineCodes.AccessCodeNeedsIdVerification);
+    }
+
+    // ─── Airbnb (AC-NF26-5) ──────────────────────────────────────────────────────
+
     /// <summary>
-    /// Proof test for AC-NF26-5 (ADR-022-R11): proves that MessageToGuest action is blocked for Airbnb bookings
-    /// before confirmation. Without this check, the org could violate Airbnb's terms of service by contacting
-    /// guests through external channels before the booking is confirmed.
+    /// Proof (permission rule, AC-NF26-5): <c>MessageToGuest</c> is blocked for an Airbnb booking that is not confirmed, whatever the payload says (a
+    /// payload that carried <c>Channel</c> and <c>BookingConfirmed</c> is how the old check could be fooled, or left open by omission). Without it, the
+    /// org could violate Airbnb's terms by contacting guests outside the channel before the confirmation.
     /// </summary>
     [Fact]
     public async Task Routine_AirbnbGuardrail()
     {
-        // Arrange: Set up in-memory database with a routine that tries to message guest
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
-            .Options;
+        var rig = new RoutineRig();
+        var booking = await rig.SeedBookingAsync(OrgA, BookingSource.Airbnb, BookingStatus.Pending);
 
-        var orgId = Guid.NewGuid();
-        var bookingId = Guid.NewGuid();
+        var result = await RunAsync(
+            rig,
+            "MessageToGuest",
+            """{"templateId":"welcome"}""",
+            new { BookingId = booking.Id, Channel = "Direct", BookingConfirmed = true });
 
-        // Create a routine that attempts to send a message
-        var routine = new Routine
-        {
-            Id = Guid.NewGuid(),
-            OrgId = orgId,
-            Name = "Welcome Message on Booking New",
-            EventType = RoutineEventType.BookingNew,
-            Active = true,
-            TestMode = false,
-            ActionsJson = JsonSerializer.Serialize(new[]
-            {
-                new { Type = RoutineActionType.MessageToGuest, Config = new { TemplateId = "welcome" } }
-            })
-        };
-
-        await using (var context = new AppDbContext(options))
-        {
-            context.Routines.Add(routine);
-            await context.SaveChangesAsync();
-        }
-
-        // Act: Trigger the routine with a payload for an unconfirmed Airbnb booking
-        await using (var context = new AppDbContext(options))
-        {
-            var mockLogger = new Mock<ILogger<RoutineService>>();
-            var service = new RoutineService(context, mockLogger.Object);
-
-            var payload = new
-            {
-                BookingId = bookingId,
-                Channel = "Airbnb",          // CRITICAL: Airbnb booking
-                BookingConfirmed = false     // CRITICAL: Not confirmed yet
-            };
-
-            await service.TriggerAsync(
-                orgId,
-                RoutineEventType.BookingNew,
-                $"booking-{bookingId}",
-                payload,
-                CancellationToken.None);
-        }
-
-        // Assert: Verify that execution was created but action was blocked
-        await using (var context = new AppDbContext(options))
-        {
-            var execution = await context.RoutineExecutions
-                .FirstOrDefaultAsync(e => e.RoutineId == routine.Id);
-
-            Assert.NotNull(execution);
-            Assert.Equal("Success", execution.Outcome);
-
-            var result = JsonSerializer.Deserialize<RoutineExecutionResult>(execution.ResultJson);
-            Assert.NotNull(result);
-
-            // The critical assertion: Airbnb contact was BLOCKED before confirmation
-            Assert.Contains(result.Errors, e => e.Contains("Cannot contact Airbnb guests before booking is confirmed"));
-
-            // Verify no successful MessageToGuest action was recorded
-            Assert.DoesNotContain(result.ExecutedActions, a => a.Contains("MessageToGuest") && !a.Contains("blocked"));
-        }
+        AssertBlocked(result, RoutineActionType.MessageToGuest, RoutineCodes.AirbnbNotConfirmed);
     }
 
+    [Theory]
+    [InlineData(BookingSource.Airbnb, BookingStatus.Confirmed)]
+    [InlineData(BookingSource.Airbnb, BookingStatus.CheckedIn)]
+    [InlineData(BookingSource.Airbnb, BookingStatus.CheckedOut)]
+    [InlineData(BookingSource.BookingCom, BookingStatus.Pending)]
+    [InlineData(BookingSource.Direct, BookingStatus.Pending)]
+    public async Task Airbnb_ConfirmedBookings_AndOtherChannels_AreNotBlocked(BookingSource source, BookingStatus status)
+    {
+        var rig = new RoutineRig();
+        var booking = await rig.SeedBookingAsync(OrgA, source, status);
+
+        AssertNotBlocked(await RunAsync(rig, "MessageToGuest", null, new { BookingId = booking.Id }));
+    }
+
+    [Fact]
+    public async Task Airbnb_ACancelledBooking_IsNotConfirmed()
+    {
+        var rig = new RoutineRig();
+        var booking = await rig.SeedBookingAsync(OrgA, BookingSource.Airbnb, BookingStatus.Cancelled);
+
+        var result = await RunAsync(rig, "MessageToGuest", null, new { BookingId = booking.Id });
+
+        AssertBlocked(result, RoutineActionType.MessageToGuest, RoutineCodes.AirbnbNotConfirmed);
+    }
+
+    /// <summary>With no booking to read the engine cannot say the guest is not an Airbnb one that is not confirmed: it blocks (no booking, no pass).</summary>
+    [Fact]
+    public async Task Airbnb_NoBookingToRead_FailsClosed()
+    {
+        var rig = new RoutineRig();
+        await rig.SeedBookingAsync(OrgB, BookingSource.Direct);
+
+        var result = await RunAsync(rig, "MessageToGuest", null, new { Channel = "Direct", BookingConfirmed = true });
+
+        AssertBlocked(result, RoutineActionType.MessageToGuest, RoutineCodes.AirbnbNotConfirmed);
+    }
+
+    [Fact]
+    public async Task Airbnb_ABookingOfAnotherOrg_IsNotRead()
+    {
+        var rig = new RoutineRig();
+        var otherOrgs = await rig.SeedBookingAsync(OrgB, BookingSource.Direct);
+
+        var result = await RunAsync(rig, "MessageToGuest", null, new { BookingId = otherOrgs.Id });
+
+        AssertBlocked(result, RoutineActionType.MessageToGuest, RoutineCodes.AirbnbNotConfirmed);
+    }
+
+    // ─── Campaigns (AC-NF26-6) ───────────────────────────────────────────────────
+
     /// <summary>
-    /// Proof test for AC-NF26-6 (ADR-022-R11): proves that MessageToGuest action configured as a campaign
-    /// is blocked when MarketingConsent is false. Without this check, the org would violate GDPR Article 6
-    /// by sending marketing emails to guests who never opted in.
+    /// Proof (privacy rule, AC-NF26-6): a <c>MessageToGuest</c> configured as a campaign is blocked while the guest of the booking has not consented to
+    /// marketing, whatever the payload says (<c>MarketingConsent</c> in it is not read). Without it, the org would send marketing e-mails to guests
+    /// who never opted in (GDPR art. 6).
     /// </summary>
     [Fact]
     public async Task Routine_MarketingConsentGuardrail()
     {
-        // Arrange: Set up in-memory database with a routine that tries to send a campaign message
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
-            .Options;
+        var rig = new RoutineRig();
+        var guest = await rig.SeedGuestAsync(OrgA, marketingConsent: false);
+        var booking = await rig.SeedBookingAsync(OrgA, guestId: guest.Id);
 
-        var orgId = Guid.NewGuid();
-        var bookingId = Guid.NewGuid();
+        var result = await RunAsync(
+            rig,
+            "MessageToGuest",
+            """{"templateId":"promo-offer","isCampaign":true}""",
+            new { BookingId = booking.Id, MarketingConsent = true });
 
-        // Create a routine that attempts to send a campaign (marketing) message
-        var routine = new Routine
-        {
-            Id = Guid.NewGuid(),
-            OrgId = orgId,
-            Name = "Send Promotional Campaign",
-            EventType = RoutineEventType.BookingConfirmed,
-            Active = true,
-            TestMode = false,
-            ActionsJson = JsonSerializer.Serialize(new[]
-            {
-                new
-                {
-                    Type = RoutineActionType.MessageToGuest,
-                    Config = new
-                    {
-                        TemplateId = "promo-offer",
-                        IsCampaign = true  // CRITICAL: This is a marketing campaign
-                    }
-                }
-            })
-        };
-
-        await using (var context = new AppDbContext(options))
-        {
-            context.Routines.Add(routine);
-            await context.SaveChangesAsync();
-        }
-
-        // Act: Trigger the routine with a payload indicating NO marketing consent
-        await using (var context = new AppDbContext(options))
-        {
-            var mockLogger = new Mock<ILogger<RoutineService>>();
-            var service = new RoutineService(context, mockLogger.Object);
-
-            var payload = new
-            {
-                BookingId = bookingId,
-                MarketingConsent = false  // CRITICAL: Guest has NOT consented to marketing
-            };
-
-            await service.TriggerAsync(
-                orgId,
-                RoutineEventType.BookingConfirmed,
-                $"booking-{bookingId}",
-                payload,
-                CancellationToken.None);
-        }
-
-        // Assert: Verify that execution was created but campaign action was blocked
-        await using (var context = new AppDbContext(options))
-        {
-            var execution = await context.RoutineExecutions
-                .FirstOrDefaultAsync(e => e.RoutineId == routine.Id);
-
-            Assert.NotNull(execution);
-            Assert.Equal("Success", execution.Outcome);
-
-            var result = JsonSerializer.Deserialize<RoutineExecutionResult>(execution.ResultJson);
-            Assert.NotNull(result);
-
-            // The critical assertion: campaign was BLOCKED due to missing consent
-            Assert.Contains(result.Errors, e => e.Contains("Marketing campaigns require guest consent"));
-
-            // Verify no successful campaign message was sent
-            Assert.DoesNotContain(result.ExecutedActions, a => a.Contains("MessageToGuest") && !a.Contains("blocked"));
-        }
+        AssertBlocked(result, RoutineActionType.MessageToGuest, RoutineCodes.CampaignNeedsConsent);
     }
 
-    /// <summary>
-    /// Helper class to deserialize execution results for assertions.
-    /// </summary>
-    private class RoutineExecutionResult
+    [Fact]
+    public async Task Campaign_AGuestWhoConsented_IsNotBlocked()
     {
-        public List<string> ExecutedActions { get; set; } = new();
-        public List<string> Errors { get; set; } = new();
+        var rig = new RoutineRig();
+        var guest = await rig.SeedGuestAsync(OrgA, marketingConsent: true);
+        var booking = await rig.SeedBookingAsync(OrgA, guestId: guest.Id);
+
+        AssertNotBlocked(await RunAsync(rig, "MessageToGuest", """{"isCampaign":true}""", new { BookingId = booking.Id }));
+    }
+
+    [Theory]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    public async Task Campaign_AGuestWhoWasDeletedOrErased_HasNoConsent(bool deleted, bool erasureRequested, bool anonymized)
+    {
+        var rig = new RoutineRig();
+        var guest = await rig.SeedGuestAsync(OrgA, marketingConsent: true, deleted: deleted, erasureRequested: erasureRequested, anonymized: anonymized);
+        var booking = await rig.SeedBookingAsync(OrgA, guestId: guest.Id);
+
+        var result = await RunAsync(rig, "MessageToGuest", """{"isCampaign":true}""", new { BookingId = booking.Id });
+
+        AssertBlocked(result, RoutineActionType.MessageToGuest, RoutineCodes.CampaignNeedsConsent);
+    }
+
+    [Fact]
+    public async Task Campaign_ThePlainMessageOfAnotherOrgsGuest_HasNoConsentEither()
+    {
+        var rig = new RoutineRig();
+        var guestOfAnotherOrg = await rig.SeedGuestAsync(OrgB, marketingConsent: true);
+        var booking = await rig.SeedBookingAsync(OrgA, guestId: guestOfAnotherOrg.Id);
+
+        var result = await RunAsync(rig, "MessageToGuest", """{"isCampaign":true}""", new { BookingId = booking.Id });
+
+        AssertBlocked(result, RoutineActionType.MessageToGuest, RoutineCodes.CampaignNeedsConsent);
+    }
+
+    [Fact]
+    public async Task Campaign_AMessageThatIsNotACampaign_NeedsNoConsent()
+    {
+        var rig = new RoutineRig();
+        var guest = await rig.SeedGuestAsync(OrgA, marketingConsent: false);
+        var booking = await rig.SeedBookingAsync(OrgA, guestId: guest.Id);
+
+        AssertNotBlocked(await RunAsync(rig, "MessageToGuest", """{"isCampaign":false,"templateId":"welcome"}""", new { BookingId = booking.Id }));
     }
 }

@@ -3956,6 +3956,9 @@
   <data name="ApprovalOriginActionFailed" xml:space="preserve">
     <value>L'azione collegata non è riuscita e l'elemento resta da approvare. Puoi modificare il testo e riprovare.</value>
   </data>
+  <data name="RoutineNotFound" xml:space="preserve">
+    <value>Routine non trovata tra quelle della tua organizzazione.</value>
+  </data>
   <data name="Only campaigns waiting for approval can be approved" xml:space="preserve">
     <value>Solo le campagne in attesa di approvazione possono essere approvate</value>
   </data>

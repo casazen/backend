@@ -6,9 +6,11 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Events;
@@ -193,7 +195,14 @@ public class RoutineEventHandlerTests
     }
 
     private static RoutineEventHandler Handler(AppDbContext db) =>
-        new(new RoutineService(db, NullLogger<RoutineService>.Instance), NullLogger<RoutineEventHandler>.Instance);
+        new(
+            new RoutineService(
+                db,
+                new ConditionEvaluator(NullLogger<ConditionEvaluator>.Instance),
+                Mock.Of<IBackgroundJobClient>(),
+                TimeProvider.System,
+                NullLogger<RoutineService>.Instance),
+            NullLogger<RoutineEventHandler>.Instance);
 
     private async Task HandleAsync(DomainEvent domainEvent)
     {
