@@ -11,6 +11,12 @@ public static class RoutineActionRules
     /// <summary>The longest a Wait lasts, in days (ADR-022-R10): days and hours together.</summary>
     public const int MaxWaitDays = 365;
 
+    /// <summary>The longest text of a <c>CreateActivity</c>: one line, what the host wants to be told, never a guest's words.</summary>
+    public const int MaxActivityTextLength = 140;
+
+    /// <summary>The furthest deadline of a <c>CreateActivity</c>, in days from the moment the routine runs.</summary>
+    public const int MaxActivityDueInDays = 60;
+
     /// <summary>
     /// How long a <c>Wait</c> lasts: <c>days</c> and/or <c>hours</c>, whole numbers of 0 or more, together at least one hour and at most
     /// <see cref="MaxWaitDays"/> days. <c>null</c> when the configuration is not that (neither member, a member that is not a whole number, a negative
@@ -25,6 +31,34 @@ public static class RoutineActionRules
 
         var total = ((long)days * 24) + hours;
         return total is >= 1 and <= MaxWaitDays * 24L ? TimeSpan.FromHours(total) : null;
+    }
+
+    /// <summary>
+    /// What a <c>CreateActivity</c> says: its <c>text</c>, 1 to <see cref="MaxActivityTextLength"/> characters once trimmed (the reason of the To do, written
+    /// by the host), and its <c>dueInDays</c>, a whole number from 0 to <see cref="MaxActivityDueInDays"/> or none (no deadline). False when the
+    /// configuration is not that: the engine then fails the action, it never makes a To do out of "about what was meant".
+    /// </summary>
+    public static bool TryReadActivity(RoutineAction action, out string text, out int? dueInDays)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+
+        text = string.Empty;
+        dueInDays = null;
+
+        var written = action.GetString("text")?.Trim();
+        if (written is not { Length: > 0 and <= MaxActivityTextLength })
+            return false;
+
+        if (action.Config.ContainsKey("dueInDays"))
+        {
+            if (!action.TryGetInt("dueInDays", out var days) || days is < 0 or > MaxActivityDueInDays)
+                return false;
+
+            dueInDays = days;
+        }
+
+        text = written;
+        return true;
     }
 
     /// <summary>A member that is missing counts 0; one that is there must be a whole number of 0 or more.</summary>

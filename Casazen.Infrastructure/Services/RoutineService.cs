@@ -2,6 +2,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Features;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -38,7 +39,9 @@ namespace Casazen.Infrastructure.Services;
 public class RoutineService(
     AppDbContext db,
     IConditionEvaluator conditionEvaluator,
+    IInternalActivityService activities,
     IBackgroundJobClient jobs,
+    IFeatureFlags featureFlags,
     TimeProvider timeProvider,
     ILogger<RoutineService> logger) : IRoutineService
 {
@@ -47,6 +50,9 @@ public class RoutineService(
     /// a routine for the same event is refused by the database (ADR-022-R7).
     /// </summary>
     internal const string ExecutionPerEventIndexName = "IX_RoutineExecutions_RoutineId_EventId";
+
+    /// <summary>The code of a <see cref="NotFoundException"/> that names none: the generic one of the API.</summary>
+    private const string GenericNotFoundCode = "not_found";
 
     public Task TriggerAsync(
         Guid orgId,
@@ -164,7 +170,10 @@ public class RoutineService(
         for (var index = 0; index < actions.Count; index++)
         {
             var action = actions[index];
-            var reason = await CheckGuardrailsAsync(run, action, cancellationToken);
+
+            // What stops it for real: a guardrail, or no implementation (the routine in test mode may hold any action; live it would fail).
+            var reason = await CheckGuardrailsAsync(run, action, cancellationToken)
+                         ?? (RoutineActionCatalog.IsAvailable(action.Type, featureFlags) ? null : RoutineCodes.ActionNotAvailable);
             simulated.Add(new RoutineSimulatedAction(index, action.Type, action.ConfigElement, reason is not null, reason));
         }
 
@@ -377,10 +386,11 @@ public class RoutineService(
     }
 
     /// <summary>
-    /// The one place that runs an action: a case for each action, owned by the task that makes it real. What has no case yet fails with
-    /// <see cref="RoutineCodes.ActionNotAvailable"/>: nothing here pretends to have done what it did not.
+    /// The one place that runs an action: a case for each action, owned by the task that makes it real (<c>CreateActivity</c>: E01/F04/US01/T02).
+    /// What the catalog does not list as available, and what has no case yet, fails with <see cref="RoutineCodes.ActionNotAvailable"/>: nothing here
+    /// pretends to have done what it did not.
     /// </summary>
-    private Task<RoutineActionResult> ExecuteActionAsync(
+    private async Task<RoutineActionResult> ExecuteActionAsync(
         Routine routine,
         RoutineExecution execution,
         int actionIndex,
@@ -388,14 +398,77 @@ public class RoutineService(
         IReadOnlyDictionary<string, object?> payload,
         CancellationToken cancellationToken)
     {
-        switch (action.Type)
+        // The catalog is the one source of what can run: an action it does not list as available never reaches its case.
+        if (RoutineActionCatalog.IsAvailable(action.Type, featureFlags))
         {
-            default:
-                logger.LogWarning(
-                    "Routine {RoutineId} execution {ExecutionId}: action {ActionType} has no implementation",
-                    routine.Id, execution.Id, action.Type);
-                return Task.FromResult(RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ActionNotAvailable));
+            switch (action.Type)
+            {
+                case RoutineActionType.CreateActivity:
+                    return await CreateActivityAsync(routine, actionIndex, action, payload, cancellationToken);
+            }
         }
+
+        logger.LogWarning(
+            "Routine {RoutineId} execution {ExecutionId}: action {ActionType} is not available",
+            routine.Id, execution.Id, action.Type);
+        return RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ActionNotAvailable);
+    }
+
+    /// <summary>
+    /// <c>CreateActivity</c> (E01/F04/US01/T02): a To do for the booking of the event, in the org of the routine, with the words the host wrote as its
+    /// reason (<c>text</c>, never guest data) and a deadline of <c>dueInDays</c> days from now when it says so. The booking is read in the org of the
+    /// routine, and its property is the one of the To do. The activity service raises one open To do for each type, entity type and entity id, so a
+    /// redelivered event, a resume or another routine asking for the same booking creates no second one. A booking the event does not name, or the org
+    /// does not have, fails the action; so does a property that is gone (the code the activity service answers).
+    /// </summary>
+    private async Task<RoutineActionResult> CreateActivityAsync(
+        Routine routine,
+        int actionIndex,
+        RoutineAction action,
+        IReadOnlyDictionary<string, object?> payload,
+        CancellationToken cancellationToken)
+    {
+        if (!RoutinePayload.TryGetId(payload, "bookingId", out var bookingId))
+            return RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ActivityNeedsBooking);
+
+        var booking = await db.Bookings
+            .AsNoTracking()
+            .Where(b => b.Id == bookingId && b.OrgId == routine.OrgId)
+            .Select(b => new { b.Id, b.PropertyId })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (booking is null)
+            return RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ActivityNeedsBooking);
+
+        if (!RoutineActionRules.TryReadActivity(action, out var text, out var dueInDays))
+            return RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ActionsInvalid);
+
+        var request = new CreateTodoRequest
+        {
+            Type = ActivityType.RoutineTask,
+            Action = ActivityAction.ReviewBooking,
+            EntityType = InternalActivity.BookingEntityType,
+            EntityId = booking.Id,
+            Urgency = ActivityUrgency.Medium,
+            PropertyId = booking.PropertyId,
+            OrgId = routine.OrgId,
+            Deadline = dueInDays is { } days ? Now().AddDays(days) : null,
+            Reason = text,
+        };
+
+        try
+        {
+            await activities.CreateAsync(request, cancellationToken);
+        }
+        catch (NotFoundException ex)
+        {
+            // The property of the booking is gone (deleted since): there is nothing to raise the To do on, and a retry would find the same.
+            logger.LogWarning(
+                "Routine {RoutineId}: no To do for booking {BookingId} of org {OrgId}: {Code}",
+                routine.Id, booking.Id, routine.OrgId, ex.Code ?? GenericNotFoundCode);
+            return RoutineActionResult.Failed(actionIndex, action.Type, ex.Code ?? GenericNotFoundCode);
+        }
+
+        return RoutineActionResult.Done(actionIndex, action.Type);
     }
 
     /// <summary>

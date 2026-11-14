@@ -41,18 +41,26 @@ internal sealed class RoutineRig
 
     public Mock<IBackgroundJobClient> Jobs { get; }
 
+    /// <summary>The feature flags the engine reads: all off until a test turns one on.</summary>
+    public TestFeatureFlags Flags { get; } = new();
+
     /// <summary>The jobs the engine scheduled, in order.</summary>
     public IReadOnlyList<(Job Job, IState State)> Scheduled => _scheduled;
 
     public AppDbContext NewDb() => new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options);
 
-    public RoutineService Service(AppDbContext db, TimeProvider? clock = null) =>
-        new(
+    public RoutineService Service(AppDbContext db, TimeProvider? clock = null)
+    {
+        var time = clock ?? new FixedTimeProvider(Now);
+        return new RoutineService(
             db,
             new ConditionEvaluator(NullLogger<ConditionEvaluator>.Instance),
+            new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, time),
             Jobs.Object,
-            clock ?? new FixedTimeProvider(Now),
+            Flags,
+            time,
             NullLogger<RoutineService>.Instance);
+    }
 
     /// <summary>Triggers the routines of <paramref name="eventType"/> for an event in its own unit of work.</summary>
     public async Task TriggerAsync(Guid orgId, RoutineEventType eventType, object payload, string? eventId = null, TimeProvider? clock = null)
@@ -117,6 +125,7 @@ internal sealed class RoutineRig
         return guest;
     }
 
+    /// <summary>A booking of <paramref name="orgId"/> at a property of its own (the To do of a routine is raised on the property).</summary>
     public async Task<Booking> SeedBookingAsync(
         Guid orgId,
         BookingSource source = BookingSource.Direct,
@@ -124,14 +133,19 @@ internal sealed class RoutineRig
         Guid? guestId = null,
         int guests = 2,
         DateTime? checkIn = null,
-        DateTime? checkOut = null)
+        DateTime? checkOut = null,
+        bool withProperty = true)
     {
         await using var db = NewDb();
         var arrival = checkIn ?? new DateTime(2026, 11, 20, 0, 0, 0, DateTimeKind.Utc);
+        var property = new Property { OrgId = orgId, OwnerId = "auth0|rig-owner", Name = "Casa", Address = "Via Roma 1", City = "Roma" };
+        if (withProperty)
+            db.Properties.Add(property);
+
         var booking = new Booking
         {
             OrgId = orgId,
-            PropertyId = Guid.NewGuid(),
+            PropertyId = property.Id,
             GuestId = guestId ?? Guid.NewGuid(),
             Source = source,
             Status = status,

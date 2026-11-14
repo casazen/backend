@@ -146,4 +146,12 @@ public enum ActivityType
     /// Raised once for each version, and never for a portal that is off or an owner nobody reaches in it. The number leaves room for the values the owner portal appends after 72.
     /// </summary>
     OwnerStatementNoticeFailed = 80,
+
+    /// <summary>
+    /// A task a routine of the host raised (E01/F04/US01/T02, NF-21): the action <c>CreateActivity</c> of a routine, about the booking of the event (entity
+    /// type <c>Booking</c>), leading to the booking (<see cref="ActivityAction.ReviewBooking"/>), with the words the host wrote in the routine as its
+    /// reason. One open task for each booking, whatever the number of routines and events that ask for it; it closes when the host closes it. The number
+    /// 90 keeps clear of the values the tasks that run in parallel append after 80.
+    /// </summary>
+    RoutineTask = 90,
 }

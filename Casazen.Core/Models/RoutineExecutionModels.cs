@@ -32,6 +32,9 @@ public static class RoutineCodes
     /// <summary>The routine does not exist in the org of the caller (a routine of another org is the same 404).</summary>
     public const string NotFound = "routine_not_found";
 
+    /// <summary><c>CreateActivity</c> needs the booking of the event: the event names none, or the org has no such booking.</summary>
+    public const string ActivityNeedsBooking = "routine_activity_needs_booking";
+
     /// <summary>Guardrail (ADR-022-R11): an access code goes out only once the identity of the guest is verified.</summary>
     public const string AccessCodeNeedsIdVerification = "access_code_needs_id_verification";
 

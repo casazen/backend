@@ -6,6 +6,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
+using Casazen.Tests.Unit.Services;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -199,7 +200,9 @@ public class RoutineEventHandlerTests
             new RoutineService(
                 db,
                 new ConditionEvaluator(NullLogger<ConditionEvaluator>.Instance),
+                new InternalActivityService(db, NullLogger<InternalActivityService>.Instance),
                 Mock.Of<IBackgroundJobClient>(),
+                new TestFeatureFlags(),
                 TimeProvider.System,
                 NullLogger<RoutineService>.Instance),
             NullLogger<RoutineEventHandler>.Instance);
