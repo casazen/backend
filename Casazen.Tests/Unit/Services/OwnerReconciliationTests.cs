@@ -225,7 +225,7 @@ public class OwnerReconciliationTests
         var result = await world.Reconciliation.GetAsync(world.OrgId, 2026, 10);
 
         // Expected is what the ledger posted (the revenue of the payments, without the tourist tax) less the commission of the reservation; recorded is the payments as posted.
-        var checks = new[] { (Stay: full, Expected: 85m, Recorded: 100m), (halfRefunded, 35m, 50m), (refundedInFull, 35m, 50m) };
+        var checks = new (Guid Stay, decimal Expected, decimal Recorded)[] { (full, 85m, 100m), (halfRefunded, 35m, 50m), (refundedInFull, 35m, 50m) };
         foreach (var check in checks)
         {
             var difference = Assert.Single(result.Differences, d => d.Id == check.Stay && d.Reason == OwnerReconciliationReasons.PayoutDiffers);
