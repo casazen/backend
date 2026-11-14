@@ -143,14 +143,16 @@ public enum SelfieStepStatus
 
 /// <summary>
 /// The answer of the selfie step (AC-NF50-1, AC-NF50-2): <c>ok</c>, <c>retry</c> or <c>operator</c>, the guidance codes, the attempts left and,
-/// only on <c>ok</c>, the lock code of the property (null when none is set).
+/// only on <c>ok</c>, the lock code of the property (null when none is set or when it is held back). <c>LockCodeHeld</c> is why an <c>ok</c> came with no lock
+/// code although the property has one (<see cref="AccessCodeHoldReasons"/>, E25/F01/US01/T01): the clear state the page shows instead of the code; null otherwise.
 /// </summary>
 public sealed record SelfieStepResult(
     SelfieStepStatus Status,
     string Result,
     IReadOnlyList<string> GuidanceCodes,
     int AttemptsRemaining,
-    string? LockCode)
+    string? LockCode,
+    string? LockCodeHeld = null)
 {
     /// <summary>The way to a person is always open.</summary>
     public bool OperatorPathOpen => true;

@@ -7131,6 +7131,36 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OwnerPortalInvoiceNotFound" xml:space="preserve">
     <value>Invoice not found.</value>
   </data>
+  <data name="TouristTaxPaymentNotAvailable" xml:space="preserve">
+    <value>Paying the tourist tax online is not available for this stay.</value>
+  </data>
+  <data name="TouristTaxNothingToPay" xml:space="preserve">
+    <value>There is nothing to pay online for the tourist tax of this stay.</value>
+  </data>
+  <data name="TouristTaxPaymentInProgress" xml:space="preserve">
+    <value>A payment of the tourist tax is already in progress. Wait a few minutes and reload the page.</value>
+  </data>
+  <data name="TouristTaxAlreadyPaidOnline" xml:space="preserve">
+    <value>The guest already paid the tourist tax of this stay online.</value>
+  </data>
+  <data name="TouristTaxCollectionNotApplicable" xml:space="preserve">
+    <value>The tourist tax of this stay is not collected at the property: the stay is not active or the channel collects it.</value>
+  </data>
+  <data name="TouristTaxPushPaidTitle" xml:space="preserve">
+    <value>Tourist tax paid</value>
+  </data>
+  <data name="TouristTaxPushPaidBody" xml:space="preserve">
+    <value>A guest paid the tourist tax of their stay online.</value>
+  </data>
+  <data name="TouristTaxTodoRefundDifference" xml:space="preserve">
+    <value>Refund the tax difference: the amount due is lower than what was already collected.</value>
+  </data>
+  <data name="TouristTaxTodoPartialStay" xml:space="preserve">
+    <value>Refund the tax difference: the stay was cancelled after the arrival and the tax had been paid online.</value>
+  </data>
+  <data name="TouristTaxTodoRefundFailed" xml:space="preserve">
+    <value>Refund the tax to the guest: the automatic refund of the cancelled stay failed.</value>
+  </data>
   <data name="AccPkgGuestRegisterTitle" xml:space="preserve">
     <value>Documents issued to guests, from {1} to {2}, by issue date; credit notes are negative. Issuer: {0}</value>
   </data>

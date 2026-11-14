@@ -59,6 +59,25 @@ public class PublicGuestCheckInControllerVerificationTests
     }
 
     [Fact]
+    public async Task UploadSelfie_OkWithTheCodeHeldBack_AnswersWhyAndNoCode()
+    {
+        SetupSession();
+        _flow.Setup(f => f.SubmitSelfieAsync(It.IsAny<GuestCheckInSession>(), It.IsAny<Stream>(), It.IsAny<Stream?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SelfieStepResult(SelfieStepStatus.Done, IdentityVerificationGuestResults.Ok, [], 3, null, AccessCodeHoldReasons.TouristTaxDue));
+
+        var ok = Assert.IsType<OkObjectResult>((await Controller().UploadSelfie(Token, Image("selfie"))).Result);
+
+        // The verification passed but the code is held back until the tourist tax is paid (E25/F01/US01/T01): a clear state, never a bare empty answer.
+        var response = Assert.IsType<SelfieUploadResponse>(ok.Value);
+        Assert.Equal(IdentityVerificationGuestResults.Ok, response.Result);
+        Assert.Null(response.LockCode);
+        Assert.Equal("tourist_tax_due", response.LockCodeHeld);
+        var json = System.Text.Json.JsonSerializer.Serialize(response, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        Assert.DoesNotContain("\"lockCode\":", json, StringComparison.Ordinal);
+        Assert.Contains("\"lockCodeHeld\":\"tourist_tax_due\"", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task UploadSelfie_NotAPicture_Answers400AndTheFlowNeverSeesIt()
     {
         SetupSession();
