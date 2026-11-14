@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
@@ -19,19 +20,50 @@ public interface IOwnerPortalService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets published monthly statements for the owner's properties (ADR-011-R2).
-    /// Returns empty list for now (statements feature not yet implemented).
+    /// The statements the owner portal shows (E13/F01/US02/T02, <c>GET api/owner-portal/statements</c>): the published versions of the statements of the owner profiles the
+    /// caller holds <c>accounting.read</c> on, the newest first, each with its period, version, currency, publication day and totals; the ones a later version superseded
+    /// are marked. Behind <c>Features:AgencyTier</c>: with the flag off the list stays empty, as it was. A caller with no ownership in force gets an empty list; a
+    /// delegated contact the owner did not give <c>accounting.read</c> is refused (403 <c>owner_portal_permission_missing</c>). Never a guest.
     /// </summary>
     Task<IReadOnlyList<OwnerPortalStatementInfo>> GetOwnerStatementsAsync(
         Guid ownerUserId,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets invoices received by the owner (ADR-011-R2).
-    /// Returns empty list for now (invoices feature not yet implemented).
+    /// One published statement with its lines grouped as in its PDF (<c>GET api/owner-portal/statements/{id}</c>). 404 <c>owner_statement_version_not_found</c> for a
+    /// statement that is not published, not the caller's, of another owner or missing (one answer for all); 403 as <see cref="GetOwnerStatementsAsync"/>.
+    /// </summary>
+    Task<OwnerPortalStatementDetailInfo> GetOwnerStatementAsync(
+        Guid ownerUserId,
+        Guid statementId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The stored PDF of a published statement, exactly what was published (<c>GET api/owner-portal/statements/{id}/pdf</c>); the download is written first. The caller
+    /// disposes the stream. 404 as <see cref="GetOwnerStatementAsync"/>, and <c>owner_statement_pdf_not_available</c> when the version has no stored file.
+    /// </summary>
+    Task<OwnerFileContent> OpenOwnerStatementPdfAsync(
+        Guid ownerUserId,
+        Guid statementId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The invoices of the property manager to the owner (<c>GET api/owner-portal/invoices</c>, E13/F01/US02/T02): the issued documents with the purpose owner invoice
+    /// whose recipient is an owner profile the caller holds <c>accounting.read</c> on, the newest first. Same flag, same empty list and same 403 as
+    /// <see cref="GetOwnerStatementsAsync"/>.
     /// </summary>
     Task<IReadOnlyList<OwnerPortalInvoiceInfo>> GetOwnerInvoicesAsync(
         Guid ownerUserId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The PDF of one invoice of the owner (<c>GET api/owner-portal/invoices/{id}/pdf</c>), made from the document as it was issued, in <paramref name="language"/> (Italian
+    /// by default). 404 <c>owner_portal_invoice_not_found</c> for an invoice that is not the caller's, of another owner or missing.
+    /// </summary>
+    Task<OwnerFileContent> OpenOwnerInvoicePdfAsync(
+        Guid ownerUserId,
+        Guid invoiceId,
+        string? language = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -175,33 +207,66 @@ public class OwnerPortalBookingInfo
 }
 
 /// <summary>
-/// Monthly statement information (placeholder for future implementation).
+/// A published statement as the owner portal lists it (E13/F01/US02/T02): the period, the version, the currency, when it was published and its totals. Nothing of a
+/// guest, nothing of another owner.
 /// </summary>
-public class OwnerPortalStatementInfo
-{
-    public Guid StatementId { get; set; }
-    public Guid PropertyId { get; set; }
-    public string PropertyName { get; set; } = string.Empty;
-    public int Month { get; set; }
-    public int Year { get; set; }
-    public decimal TotalRevenue { get; set; }
-    public decimal AgencyCommission { get; set; }
-    public decimal NetAmount { get; set; }
-    public DateTime PublishedAt { get; set; }
-}
+/// <param name="StatementId">The version of the statement.</param>
+/// <param name="AgencyId">The agency that publishes it (an owner can have more than one).</param>
+/// <param name="AgencyName">The name of the agency.</param>
+/// <param name="Year">The year of the period.</param>
+/// <param name="Month">The month of the period.</param>
+/// <param name="Version">The number of the version: 1 for the first of the month, then one more each.</param>
+/// <param name="Currency">The currency of the amounts.</param>
+/// <param name="PublishedAt">When it was published (UTC).</param>
+/// <param name="Superseded">True when a later version of the period replaced it (it is kept, as it was published).</param>
+/// <param name="SupersededByStatementId">The version that replaced it, when that one is published too.</param>
+/// <param name="HasPdf">True when its PDF was stored with it and is available.</param>
+/// <param name="Totals">The gross, the channel commissions, the withholding, the commission, the charges and the net, and the balances.</param>
+public sealed record OwnerPortalStatementInfo(
+    Guid StatementId,
+    Guid AgencyId,
+    string AgencyName,
+    int Year,
+    int Month,
+    int Version,
+    string Currency,
+    DateTime PublishedAt,
+    bool Superseded,
+    Guid? SupersededByStatementId,
+    bool HasPdf,
+    OwnerStatementTotals Totals);
 
-/// <summary>
-/// Invoice information (placeholder for future implementation).
-/// </summary>
-public class OwnerPortalInvoiceInfo
-{
-    public Guid InvoiceId { get; set; }
-    public string InvoiceNumber { get; set; } = string.Empty;
-    public DateTime InvoiceDate { get; set; }
-    public decimal Amount { get; set; }
-    public string Description { get; set; } = string.Empty;
-    public bool IsPaid { get; set; }
-}
+/// <summary>A published statement with what its PDF says: the lines grouped by part, the invoice of the property manager when one is linked, and the tourist tax box.</summary>
+/// <param name="Statement">The statement as the list shows it.</param>
+/// <param name="Content">What the statement says (the lines and the box).</param>
+public sealed record OwnerPortalStatementDetailInfo(OwnerPortalStatementInfo Statement, OwnerStatementContent Content);
+
+/// <summary>An invoice of the property manager to the owner (E13/F01/US02/T02): its number, day, kind, total and currency, and what it is made from.</summary>
+/// <param name="InvoiceId">The fiscal document.</param>
+/// <param name="AgencyId">The agency that issued it.</param>
+/// <param name="AgencyName">The name of the agency.</param>
+/// <param name="Number">The number, with its series.</param>
+/// <param name="IssueDate">The day it was issued (a Europe/Rome calendar day).</param>
+/// <param name="Kind">An invoice, a receipt or a credit note.</param>
+/// <param name="Total">The total, in <paramref name="Currency"/>.</param>
+/// <param name="Currency">The currency.</param>
+/// <param name="PeriodYear">The year of the period it is about.</param>
+/// <param name="PeriodMonth">The month of the period it is about.</param>
+/// <param name="StatementId">The version of the statement it was made from, when it is linked to one.</param>
+/// <param name="CreditedInFull">True when credit notes credited the whole of it.</param>
+public sealed record OwnerPortalInvoiceInfo(
+    Guid InvoiceId,
+    Guid AgencyId,
+    string AgencyName,
+    string Number,
+    DateOnly IssueDate,
+    FiscalDocumentKind Kind,
+    decimal Total,
+    string Currency,
+    int? PeriodYear,
+    int? PeriodMonth,
+    Guid? StatementId,
+    bool CreditedInFull);
 
 /// <summary>
 /// Withholding tax summary (placeholder for future implementation).

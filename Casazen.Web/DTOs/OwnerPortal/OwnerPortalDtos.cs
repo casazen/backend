@@ -33,37 +33,6 @@ public class OwnerPortalBookingSummaryDto
 }
 
 /// <summary>
-/// Monthly statement summary for owner portal (ADR-011-R2).
-/// Only published statements are visible.
-/// </summary>
-public class OwnerPortalStatementDto
-{
-    public Guid StatementId { get; set; }
-    public Guid PropertyId { get; set; }
-    public string PropertyName { get; set; } = string.Empty;
-    public int Month { get; set; }
-    public int Year { get; set; }
-    public decimal TotalRevenue { get; set; }
-    public decimal AgencyCommission { get; set; }
-    public decimal NetAmount { get; set; }
-    public DateTime PublishedAt { get; set; }
-}
-
-/// <summary>
-/// Invoice summary for owner portal (ADR-011-R2).
-/// Invoices received by the owner from the agency.
-/// </summary>
-public class OwnerPortalInvoiceDto
-{
-    public Guid InvoiceId { get; set; }
-    public string InvoiceNumber { get; set; } = string.Empty;
-    public DateTime InvoiceDate { get; set; }
-    public decimal Amount { get; set; }
-    public string Description { get; set; } = string.Empty;
-    public bool IsPaid { get; set; }
-}
-
-/// <summary>
 /// Withholding tax summary for owner portal (ADR-011-R2).
 /// Aggregated withholding information for tax purposes.
 /// </summary>
