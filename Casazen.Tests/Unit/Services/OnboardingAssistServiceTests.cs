@@ -78,19 +78,21 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal([CasazenPolicies.AdminOnly], controller.GetCustomAttributes<AuthorizeAttribute>(inherit: true).Select(a => a.Policy));
         Assert.Empty(controller.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true));
 
-        // The queue, its update and the controlled opening of the support vault (E20/F03/US01/T01).
+        // The queue, one request with its checklist (E20/F03/US01/T02), its update and the controlled opening of the support vault (E20/F03/US01/T01).
         var routed = RoutedActions(controller);
-        Assert.Equal(["List", "Reveal", "Update"], routed.Select(a => a.Method.Name).Order());
-        Assert.Equal(["GET", "POST", "PUT"], routed.Select(a => a.Verb.HttpMethods.Single()).Order());
+        Assert.Equal(["Get", "List", "Reveal", "Update"], routed.Select(a => a.Method.Name).Order());
+        Assert.Equal(["GET", "GET", "POST", "PUT"], routed.Select(a => a.Verb.HttpMethods.Single()).Order());
         Assert.All(routed, action =>
         {
             Assert.Empty(action.Method.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true));
             Assert.DoesNotContain(action.Method.GetCustomAttributes<AuthorizeAttribute>(inherit: true), a => a.Policy != CasazenPolicies.AdminOnly);
         });
 
-        // The host controller of the requests can create and list them: it has no verb to update one, and its policy is the org's.
+        // The host controller of the requests can create and list them and reopen one support marked done («Non funziona», E20/F03/US01/T02): it has no
+        // verb to take, complete or close one, and its policy is the org's.
         var hostController = typeof(OnboardingAssistController);
-        Assert.Equal(["GET", "POST"], RoutedActions(hostController).Select(a => a.Verb.HttpMethods.Single()).Order());
+        Assert.Equal(["Create", "List", "Reopen"], RoutedActions(hostController).Select(a => a.Method.Name).Order());
+        Assert.Equal(["GET", "POST", "POST"], RoutedActions(hostController).Select(a => a.Verb.HttpMethods.Single()).Order());
         Assert.Equal([CasazenPolicies.OrgBillingAdmin], hostController.GetCustomAttributes<AuthorizeAttribute>(inherit: true).Select(a => a.Policy));
 
         var services = new ServiceCollection();
@@ -167,11 +169,12 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal((_world.OrgId, (Guid?)_world.Granted.Id), (item.OrgId, item.PropertyId));
 
         // The shape is closed: the view of staff, as a record and as the DTO of the API, has exactly these members (ChannelCode, 14/11/2026: the
-        // portal of a channel access request, so support knows which one to connect).
+        // portal of a channel access request, so support knows which one to connect; Outcome, HostNote and ReopenedAt, E20/F03/US01/T02: what «Fatto»
+        // recorded and the host's «Non funziona», codes, an instant and the host's own short note, no e-mail address in it).
         string[] members =
         [
             "Id", "OrgId", "PartCode", "PropertyId", "PropertyName", "Comune", "Context", "ChannelCode", "Status", "RequestedAt", "UpdatedAt",
-            "CompletedAt", "AssignedToUserId", "StaffNote", "DraftWizardType", "DraftEntityId",
+            "CompletedAt", "AssignedToUserId", "StaffNote", "DraftWizardType", "DraftEntityId", "Outcome", "HostNote", "ReopenedAt",
         ];
         Assert.Equal(members.Order(), typeof(AssistQueueItem).GetProperties().Select(p => p.Name).Order());
         Assert.Equal(

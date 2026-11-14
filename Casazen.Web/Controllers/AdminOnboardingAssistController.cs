@@ -62,12 +62,31 @@ public sealed class AdminOnboardingAssistController(IOnboardingAssistService ass
     }
 
     /// <summary>
+    /// One request with the checklist of what support needs, per property (E20/F03/US01/T02): the user of the panel in the vault, the police and the ISTAT
+    /// credentials (and whether the region needs the ISTAT ones), the sender of the property, and the panel steps to do with the key of their guide and
+    /// their state. Presence and dates only: never a credential, never the draft.
+    /// </summary>
+    /// <response code="200">The request and its checklist.</response>
+    /// <response code="404"><c>assist_request_not_found</c>.</response>
+    [HttpGet("{id:guid}")]
+    [PrivateAnswer]
+    [ProducesResponseType(typeof(AdminAssistRequestDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AdminAssistRequestDetailDto>> Get(Guid id, CancellationToken cancellationToken) =>
+        Ok((await assist.GetAsync(id, cancellationToken)).ToDto());
+
+    /// <summary>
     /// Takes (<c>inProgress</c>), completes (<c>done</c>) or closes (<c>cancelled</c>) a request, with an optional note. <c>done</c> on a panel
-    /// context confirms the matching panel step with the staff user as who completed it and closes the host's "To do".
+    /// context first reads the panel for the org of the request (E20/F03/US01/T02): the step becomes <c>verified</c> when CasaZen read it done (the
+    /// police: <c>policeAccount.valid</c>), otherwise <c>confirmed</c> as declared by the staff user; the request records <c>verified</c> or
+    /// <c>declared</c>, the host's "To do" is closed and the administrators of the org are told live.
     /// </summary>
     /// <response code="200">The request as staff reads it.</response>
     /// <response code="404"><c>assist_request_not_found</c>.</response>
-    /// <response code="409"><c>assist_request_closed</c>: the request is done or cancelled already.</response>
+    /// <response code="409"><c>assist_request_closed</c>: the request is done or cancelled already; <c>assist_done_not_valid</c>: the panel reads the step as
+    /// not valid (nothing changed). A read of the panel that failed answers with the code of the channel manager (nothing changed).</response>
     /// <response code="422"><c>assist_status_invalid</c>, <c>assist_note_invalid</c> (over 500 characters, or an e-mail address in it).</response>
     [HttpPut("{id:guid}")]
     [PrivateAnswer]

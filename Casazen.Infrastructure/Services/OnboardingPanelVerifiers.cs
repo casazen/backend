@@ -1,7 +1,34 @@
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Casazen.Infrastructure.Services;
+
+/// <summary>
+/// The check «Fatto» runs on the panel step of a «Do it for me» request (E20/F03/US01/T02): the verifier of the kind with the highest order, the same
+/// one the host's guided step runs, in a dependency-injection scope of its own put under the org <b>of the request</b>
+/// (<see cref="IBackgroundTenantScope"/>), the way the event bus runs a handler. Staff works from the context of its own org: there the reads of the
+/// mapping see only that org and a call to the channel manager for another org is refused, so the verifier could never read the host's panel. In the
+/// scope of the request's org it reads the confirmed listing of the property and asks the panel for that org only.
+/// </summary>
+/// <remarks>A failure worth a retry (the channel manager down, the quota used) is thrown by the verifier and reaches the caller: it decides nothing.</remarks>
+public sealed class OrgScopedPanelVerification(IServiceScopeFactory scopeFactory) : IAssistPanelVerification
+{
+    public async Task<PanelVerificationOutcome> VerifyAsync(PanelStepContext context, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        await using var scope = scopeFactory.CreateAsyncScope();
+        scope.ServiceProvider.GetRequiredService<IBackgroundTenantScope>().EnterOrg(context.OrgId);
+        var verifier = scope.ServiceProvider.GetServices<IPanelStepVerifier>()
+            .Where(v => v.Kind == context.Kind)
+            .OrderByDescending(v => v.Order)
+            .FirstOrDefault();
+
+        return verifier is null ? PanelVerificationOutcome.Unverifiable : await verifier.VerifyAsync(context, ct);
+    }
+}
 
 /// <summary>
 /// The default check of the guided step of the police connection (NF-107, E10/F01/US03/T01, D17, D31): it asks Octorate for the

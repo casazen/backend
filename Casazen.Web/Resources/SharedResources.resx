@@ -5691,6 +5691,15 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="IstatCredentialsStructureCodeTooLong" xml:space="preserve">
     <value>Il codice della struttura può avere al massimo 50 caratteri.</value>
   </data>
+  <data name="AssistDoneNotValid" xml:space="preserve">
+    <value>Il pannello del channel manager segna il collegamento come non valido: correggilo prima di chiudere la richiesta.</value>
+  </data>
+  <data name="AssistRequestNotDone" xml:space="preserve">
+    <value>Si può riaprire solo una richiesta che il supporto ha segnato come fatta.</value>
+  </data>
+  <data name="AssistReopenNoteRequired" xml:space="preserve">
+    <value>Scrivi cosa non funziona: al massimo 500 caratteri, senza indirizzi e-mail.</value>
+  </data>
   <data name="ComplianceProofNotFound" xml:space="preserve">
     <value>Prova non trovata tra quelle della tua organizzazione.</value>
   </data>

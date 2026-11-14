@@ -145,8 +145,9 @@ public enum OrgActivityType
 
     /// <summary>
     /// A host asked CasaZen support to do a part, or a step of the Octorate panel, of the activation for it («Do it for me», UX-15, AC-NF15-1).
-    /// Written by <c>OnboardingAssistService.RequestAsync</c>, in the save that stores the request. Subject: the org. Details: the part, the context
-    /// of the request and its status (<c>requested</c>), short codes only: never the draft, a note or a person. The actor is the host.
+    /// Written by <c>OnboardingAssistService.RequestAsync</c>, in the save that stores the request, and by <c>OnboardingAssistService.ReopenAsync</c> when
+    /// the host reopens a request support marked done («Non funziona», E20/F03/US01/T02). Subject: the org. Details: the part, the context of the request
+    /// and its status (<c>requested</c>), short codes only: never the draft, a note or a person. The actor is the host.
     /// </summary>
     OnboardingAssistRequested = 110,
 

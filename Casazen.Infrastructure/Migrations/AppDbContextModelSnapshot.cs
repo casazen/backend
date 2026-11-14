@@ -6311,14 +6311,25 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int?>("DraftWizardType")
                         .HasColumnType("integer");
 
+                    b.Property<string>("HostNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Outcome")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<int>("PartKey")
                         .HasColumnType("integer");
 
                     b.Property<Guid?>("PropertyId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ReopenedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("RequestedAt")
                         .HasColumnType("timestamp with time zone");

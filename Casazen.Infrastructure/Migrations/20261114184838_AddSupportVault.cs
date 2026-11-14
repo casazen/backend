@@ -11,6 +11,26 @@ namespace Casazen.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.AddColumn<string>(
+                name: "HostNote",
+                table: "OnboardingAssistRequests",
+                type: "character varying(500)",
+                maxLength: 500,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "Outcome",
+                table: "OnboardingAssistRequests",
+                type: "character varying(20)",
+                maxLength: 20,
+                nullable: true);
+
+            migrationBuilder.AddColumn<DateTime>(
+                name: "ReopenedAt",
+                table: "OnboardingAssistRequests",
+                type: "timestamp with time zone",
+                nullable: true);
+
             migrationBuilder.CreateTable(
                 name: "PropertyIstatCredentials",
                 columns: table => new
@@ -149,6 +169,18 @@ namespace Casazen.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "SupportVaultSecrets");
+
+            migrationBuilder.DropColumn(
+                name: "HostNote",
+                table: "OnboardingAssistRequests");
+
+            migrationBuilder.DropColumn(
+                name: "Outcome",
+                table: "OnboardingAssistRequests");
+
+            migrationBuilder.DropColumn(
+                name: "ReopenedAt",
+                table: "OnboardingAssistRequests");
         }
     }
 }

@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261114181908_AddSupportVault")]
+    [Migration("20261114184838_AddSupportVault")]
     partial class AddSupportVault
     {
         /// <inheritdoc />
@@ -6314,14 +6314,25 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int?>("DraftWizardType")
                         .HasColumnType("integer");
 
+                    b.Property<string>("HostNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Outcome")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<int>("PartKey")
                         .HasColumnType("integer");
 
                     b.Property<Guid?>("PropertyId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ReopenedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("RequestedAt")
                         .HasColumnType("timestamp with time zone");
