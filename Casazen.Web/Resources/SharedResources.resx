@@ -5508,6 +5508,18 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalSettingsNeedWholeOrg" xml:space="preserve">
     <value>Solo chi gestisce tutti gli immobili dell'organizzazione può cambiare chi emette i documenti.</value>
   </data>
+  <data name="BillingSetupSectionUnknown" xml:space="preserve">
+    <value>Questa sezione della fatturazione non esiste.</value>
+  </data>
+  <data name="BillingSetupSectionNotWritable" xml:space="preserve">
+    <value>Questa sezione della fatturazione non si salva da qui: usa la schermata che la gestisce.</value>
+  </data>
+  <data name="BillingSetupFieldNotInSection" xml:space="preserve">
+    <value>Un dato non appartiene a questa sezione della fatturazione: salvalo insieme alla sezione giusta.</value>
+  </data>
+  <data name="OnboardingPartFiscalDocuments" xml:space="preserve">
+    <value>Fatturazione</value>
+  </data>
   <data name="OctorateSyncNotMirrored" xml:space="preserve">
     <value>La struttura non è collegata al channel manager in questo momento (connessione interrotta o mappatura da confermare): l'annullamento non è stato inviato. Ricollega o conferma la mappatura, poi riprova.</value>
   </data>

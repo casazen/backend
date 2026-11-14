@@ -161,7 +161,9 @@ public class OrgFiscalIssuerProfile : ITenantOwned
 
     /// <summary>
     /// The channels whose portal collects the tourist tax itself, as a JSON array of <see cref="BookingSource"/> names (jsonb, column
-    /// <c>PlatformCollectedTouristTaxChannels</c>); <c>null</c> = none. Read and written through <see cref="PlatformCollectedTouristTaxChannels"/>.
+    /// <c>PlatformCollectedTouristTaxChannels</c>). <c>null</c> = nothing confirmed yet (no channel is listed; for Switzerland the default of the
+    /// configuration applies); <c>[]</c> = the issuer confirmed that no portal collects it (E11/F01/US01/T04). Read through
+    /// <see cref="PlatformCollectedTouristTaxChannels"/>, confirmed through <see cref="ConfirmPlatformCollectedTouristTaxChannels"/>.
     /// </summary>
     [Column("PlatformCollectedTouristTaxChannels", TypeName = "jsonb")]
     public string? PlatformCollectedTouristTaxChannelsJson { get; set; }
@@ -169,6 +171,8 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     /// <summary>
     /// The channels whose portal collects the tourist tax itself, so the document of their bookings has no tourist tax line (empty for Italy; for
     /// Switzerland the default comes from the configuration of the tourist tax). Names that are no longer a <see cref="BookingSource"/> are skipped.
+    /// Assigning an empty list leaves the choice as it is (never confirmed stays so): to say that none collects it, use
+    /// <see cref="ConfirmPlatformCollectedTouristTaxChannels"/>.
     /// </summary>
     [NotMapped]
     public IReadOnlyList<BookingSource> PlatformCollectedTouristTaxChannels
@@ -177,6 +181,24 @@ public class OrgFiscalIssuerProfile : ITenantOwned
         set => PlatformCollectedTouristTaxChannelsJson = value is { Count: > 0 }
             ? JsonSerializer.Serialize(value.Distinct().Order().Select(source => source.ToString()))
             : null;
+    }
+
+    /// <summary>
+    /// True once the issuer confirmed the channels whose portal collects the tourist tax, even to say that none does; false while nothing was ever
+    /// confirmed (the step «Tassa di soggiorno» of the billing setup, E11/F01/US01/T04). A reader that falls back to the Swiss default of the configuration
+    /// does it only while this is false: a confirmed empty list means «no portal collects it», never «use the default».
+    /// </summary>
+    [NotMapped]
+    public bool PlatformCollectedTouristTaxChannelsConfirmed => PlatformCollectedTouristTaxChannelsJson is not null;
+
+    /// <summary>
+    /// Confirms the channels whose portal collects the tourist tax itself: the list as it is (without duplicates), an empty one included, which is stored
+    /// as <c>[]</c> and says that no portal collects it.
+    /// </summary>
+    public void ConfirmPlatformCollectedTouristTaxChannels(IEnumerable<BookingSource> channels)
+    {
+        ArgumentNullException.ThrowIfNull(channels);
+        PlatformCollectedTouristTaxChannelsJson = JsonSerializer.Serialize(channels.Distinct().Order().Select(source => source.ToString()));
     }
 
     /// <summary>
@@ -192,7 +214,11 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     /// <summary>The issuer confirmed how it pays the stamp duty (virtual authorization or physical stamp; Italy, a reminder of the wizard).</summary>
     public bool VirtualStampConfirmed { get; set; }
 
-    /// <summary>When the wizard was completed with nothing missing (UTC); <c>null</c> while the profile is a draft.</summary>
+    /// <summary>
+    /// When the wizard was completed with nothing missing (UTC); <c>null</c> while the profile is a draft. In the billing setup (E11/F01/US01/T04) it is also
+    /// the confirmation of the step «Emissione» (the automatic issue has no «not chosen» state): set by saving that step while the profile can issue, and cleared
+    /// by the issuer service whenever the profile stops being complete.
+    /// </summary>
     public DateTime? ConfirmedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
