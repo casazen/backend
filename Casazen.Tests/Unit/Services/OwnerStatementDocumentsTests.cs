@@ -8,7 +8,6 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
-using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Documents;
@@ -720,7 +719,7 @@ public class OwnerStatementDocumentsTests
         {
             var links = new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = "https://app.example.com" }));
             var environment = Mock.Of<IHostEnvironment>(e => e.EnvironmentName == "Development");
-            var contacts = new OwnerContactIndex(Options.Create(new OwnerPortalOptions()), environment, NullLogger<OwnerContactIndex>.Instance);
+            var contacts = new OwnerContactIndex(Options.Create(new Casazen.Core.Options.OwnerPortalOptions()), environment, NullLogger<OwnerContactIndex>.Instance);
             var activities = new InternalActivityService(Db, NullLogger<InternalActivityService>.Instance, Clock);
             return new OwnerCollaborationService(
                 Db,
