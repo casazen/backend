@@ -34,6 +34,9 @@ public class StayGuestOctorateLink : ITenantOwned
     /// <summary>Length of <see cref="ErrorCode"/>.</summary>
     public const int ErrorCodeMaxLength = 64;
 
+    /// <summary>Length of <see cref="ErrorFields"/>.</summary>
+    public const int ErrorFieldsMaxLength = 100;
+
     /// <summary>Name of the unique index on (<see cref="BookingId"/>, <see cref="Position"/>).</summary>
     public const string PositionIndexName = "UIX_StayGuestOctorateLinks_BookingId_Position";
 
@@ -67,6 +70,14 @@ public class StayGuestOctorateLink : ITenantOwned
     /// <summary>Why the last attempt failed (<c>octorate_auth</c>, <c>octorate_guest_rejected</c>, ...); null after a success.</summary>
     [MaxLength(ErrorCodeMaxLength)]
     public string? ErrorCode { get; set; }
+
+    /// <summary>
+    /// The fields of the guest that caused <see cref="ErrorCode"/> when it is <c>place_not_recognized</c>: the camelCase names of the Alloggiati record
+    /// (<c>birthComune</c>, <c>residenceComune</c>, <c>documentIssuePlace</c>), comma separated, so the host knows which place to correct. Never a
+    /// value of the guest. <c>null</c> for any other error and after a success.
+    /// </summary>
+    [MaxLength(ErrorFieldsMaxLength)]
+    public string? ErrorFields { get; set; }
 
     /// <summary>When Octorate last accepted the guest (UTC).</summary>
     public DateTime? SentAt { get; set; }

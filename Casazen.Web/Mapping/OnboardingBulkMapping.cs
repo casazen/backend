@@ -11,7 +11,7 @@ public static class OnboardingBulkMapping
         dto?.PropertyIds,
         dto?.Filter is { } filter ? filter.ToModel() : null);
 
-    public static BulkChoice ToModel(this BulkChoiceDto? dto) => new(dto?.ComplianceSender);
+    public static BulkChoice ToModel(this BulkChoiceDto? dto) => new(dto?.ComplianceSender, dto?.AutoSendGuestsToOctorate);
 
     public static BulkPreviewDto ToDto(this BulkPreview preview) => new()
     {
@@ -26,6 +26,7 @@ public static class OnboardingBulkMapping
     {
         DryRun = result.DryRun,
         ComplianceSender = result.ComplianceSender,
+        AutoSendGuestsToOctorate = result.AutoSendGuestsToOctorate,
         Summary = new BulkApplySummaryDto
         {
             Applied = result.Summary.Applied,

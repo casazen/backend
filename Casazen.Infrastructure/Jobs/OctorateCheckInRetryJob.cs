@@ -1,8 +1,10 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Octorate;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Octorate;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -26,6 +28,12 @@ namespace Casazen.Infrastructure.Jobs;
 /// does not stop the others. At most <see cref="MaxBookingsPerRun"/> bookings per run; the next run takes the rest.</item>
 /// <item>No retry by Hangfire: the next run reads the rows again. The lock waits <see cref="LockTimeoutSeconds"/>, the value of
 /// <c>JobLockTimeouts.FrequentSeconds</c>, far less than the interval.</item>
+/// <item><b>Held back, not retried.</b> A guest held back for a place Octorate does not know (<c>place_not_recognized</c>) is never picked up here: a
+/// retry cannot correct it, the host's change of the data sends it. An arrival that waits for the write of the guests stays <c>Pending</c> and is asked
+/// again by this run.</item>
+/// <item><b>The sweep</b> (E20/F01/US01/T01): the stays of the orgs that let CasaZen write the guests on their own, ready, whose event was missed
+/// (the setting turned on later, the listing mapped later) and whose guests were never written or changed since, are sent once each and for each change
+/// (<see cref="IStayGuestsAutoSendService.FindStaysToSweepAsync"/>), by the same path as the event handler. At most <see cref="MaxSweepPerRun"/> a run.</item>
 /// </list>
 /// </remarks>
 public class OctorateCheckInRetryJob(
@@ -34,7 +42,8 @@ public class OctorateCheckInRetryJob(
     IOctorateOrgScope orgScope,
     IOptions<OctorateOptions> options,
     ILogger<OctorateCheckInRetryJob> logger,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    IStayGuestsAutoSendService? autoSend = null)
 {
     public const string RecurringJobId = "octorate-checkin-retry";
 
@@ -46,6 +55,9 @@ public class OctorateCheckInRetryJob(
 
     /// <summary>The bookings a run retries at most.</summary>
     public const int MaxBookingsPerRun = 200;
+
+    /// <summary>The stays a run sweeps at most (E20/F01/US01/T01): the next run takes the rest.</summary>
+    public const int MaxSweepPerRun = 50;
 
     /// <summary>The wait after each attempt: a write is due again 15 minutes times its attempts after the last one.</summary>
     public static readonly TimeSpan BackoffStep = TimeSpan.FromMinutes(15);
@@ -67,6 +79,7 @@ public class OctorateCheckInRetryJob(
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
             .Where(l => (l.Status == OctorateSyncStatus.Pending || l.Status == OctorateSyncStatus.Failed) && l.Attempts < maxAttempts)
+            .Where(l => l.ErrorCode == null || l.ErrorCode != OctoratePlaceRules.PlaceNotRecognizedCode)
             .Select(l => new { l.OrgId, l.BookingId, l.Attempts, l.UpdatedAt })
             .ToListAsync(cancellationToken);
         var states = await db.OctorateStayStateSyncs
@@ -116,9 +129,33 @@ public class OctorateCheckInRetryJob(
             }
         }
 
+        var swept = await SweepAsync(cancellationToken);
+
         logger.LogInformation(
-            "Octorate check-in retry: {Bookings} bookings due, {Retried} writes tried again, {Failed} not tried",
-            bookings.Count, retried, failed);
+            "Octorate check-in retry: {Bookings} bookings due, {Retried} writes tried again, {Failed} not tried, {Swept} ready stays swept",
+            bookings.Count, retried, failed, swept);
+    }
+
+    /// <summary>
+    /// The ready stays of the orgs that asked whose event was missed, each sent through the path of the event handler. A stay that fails does not stop
+    /// the others, and the next run does not take it again unless its guests change (the sweep reads what was tried after the last change).
+    /// </summary>
+    private async Task<int> SweepAsync(CancellationToken cancellationToken)
+    {
+        if (autoSend is null)
+            return 0;
+
+        var swept = 0;
+        foreach (var (orgId, bookingId) in await autoSend.FindStaysToSweepAsync(MaxSweepPerRun, cancellationToken))
+        {
+            using (orgScope.Use(orgId))
+            {
+                if (await TryAsync(bookingId, () => autoSend.TrySendAsync(orgId, bookingId, cancellationToken), cancellationToken))
+                    swept++;
+            }
+        }
+
+        return swept;
     }
 
     /// <summary>One retry; an error of a booking is logged (ids only) and never stops the others.</summary>

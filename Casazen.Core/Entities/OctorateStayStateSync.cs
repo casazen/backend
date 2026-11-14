@@ -5,8 +5,9 @@ using Casazen.Core.Multitenancy;
 namespace Casazen.Core.Entities;
 
 /// <summary>
-/// A state of a stay CasaZen sends to Octorate (NF-45). Stored as an integer, append only. The check-in sync pushes only <see cref="NoShow"/>
-/// today: the arrival and the departure are pushed by the booking-state push of E02, so they are not sent twice for one event.
+/// A state of a stay CasaZen sends to Octorate (NF-45). Stored as an integer, append only. The three states are sent through the check-in sync
+/// with a row each (E20/F01/US01/T01): <see cref="NoShow"/> queued by the check-in endpoints, the arrival and the departure queued once by the
+/// booking-state push of E02 (so they are not sent twice for one event).
 /// </summary>
 public enum OctorateStayState
 {
@@ -22,7 +23,9 @@ public enum OctorateStayState
 
 /// <summary>
 /// One state of a stay sent to Octorate (E03/F01/US01/T03, NF-45, AC-NF45-1): each state is sent once, retried with a backoff when it fails,
-/// and after the arrival the arrival Octorate registered is read back. No personal data. One row per booking and state.
+/// and after the arrival the arrival Octorate registered is read back. After the last failed attempt one "To do" is raised
+/// (<c>octorate_stay_state_failed</c>), closed by a later success. The arrival waits, <c>Pending</c> with no attempt used, while the write of the
+/// stay's guests is still to complete. No personal data. One row per booking and state.
 /// </summary>
 [Table("OctorateStayStateSyncs")]
 public class OctorateStayStateSync : ITenantOwned

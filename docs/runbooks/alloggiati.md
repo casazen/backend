@@ -537,3 +537,46 @@ every line is valid, `Inviato` only with the downloaded receipt, and the first r
    lines **without sending** until "Prosegui" (`MANUALEALBERGHI.pdf` p. 16-17); do not press "Prosegui" for a fake stay.
 3. Report any rejected line (portal message and field) to the developers: the open points are the characters allowed in names
    and the two-digit days of stay. If the portal wants something else, change `AlloggiatiRecordFile` and its tests together.
+
+## Invio automatico degli ospiti (E20/F01/US01)
+
+The guests of a stay reach Octorate (the channel manager that sends Alloggiati Web and ISTAT, PO-02) without the host confirming the check-in wizard, for an organization that asked for it. CasaZen still never sends to the police.
+
+### The setting (decision O1)
+
+- Organization setting `Org.AutoSendGuestsToOctorate`, **off by default**: CHK-02 wants data confirmed by the host. When it is on, the agency accepts that complete data plus a passed identity check is that confirmation.
+- Read in `GET api/properties/{id}/sender` as `autoSendGuestsToOctorate` (the same for every property of the org); changed with `PUT api/properties/{id}/sender` (field `autoSendGuestsToOctorate`, applied after the sender when the sender change went through) or with the bulk apply (`POST api/onboarding/bulk/apply`, `choice.autoSendGuestsToOctorate`, written once, only by a confirmed apply). Only the organization administrator (`OrgBillingAdmin`) changes it: another member who sends a different value gets 403 and nothing of the request is done. Who and when are kept on the org (`AutoSendGuestsToOctorateChangedByUserId`, `...ChangedAt`).
+- No new flag or configuration key: the behaviour sits under `Features:OctorateConnector` and the setting.
+
+### When a stay goes
+
+Two facts put an event in the outbox (ids and one word, never a guest's data): `StayGuestsChanged` (number 200, recorded by `StayGuestService.ReplaceAsync` in the save of the guests: guest portal or host) and `IdVerificationCompleted` (number 8, recorded when a verification ends with an Accept, by the agent in `IdentityVerificationFlowService` or by an operator in `VerificationQueueService`). `StayGuestsReadyOctorateHandler` (own registration `AddCasazenOctorateGuestAutoSend`) reads the stay as it is now and asks `StayGuestsAutoSendService`:
+
+1. the connector is on and the org's setting is on, otherwise nothing changes;
+2. the stay is of the org of the event, on Octorate (`OctorateReservationId`) and due (confirmed, checked in or checked out, not a no-show: `AlloggiatiStatusRules.IsDue`);
+3. the guests are ready: no blocking issue of `CheckInReadinessRules` (complete guests, the head's document, the names Octorate needs of a complete guest);
+4. while `Features:CheckInIdentityVerification` is on, the latest `BiometricVerificationLog` of the stay is an Accept (agent or operator); a rejection or the row that asks for a new photo is not a pass.
+
+Then it calls `ICheckInOctorateSyncService.SendGuestsAsync`, **the send of the wizard**, with every rule kept: sender must be the channel manager for `draft = false` (another sender sends nothing unless `Octorate:SendGuestsWhenSenderIsNotChannelManager`, and then only drafts), connection connected, mapping confirmed, one send at a time (advisory lock), hash of the payload (a second event sends nothing), link of each guest, "To do" after `Octorate:CheckInMaxAttempts`. A guest already sent with `draft = false` whose data changed goes again and raises the warning of a correction: an urgent "To do" on the booking (`octorate_guest_corrected_after_send`), because what went to the police may need a correction on the Alloggiati portal.
+
+The retry job (every 15 minutes) keeps retrying the links that are Pending or Failed and also **sweeps** the stays whose event was missed (setting turned on later, listing mapped later): at most 50 stays a run, arrival from yesterday to 14 days ahead, a stay with a registered guest that has no link or changed after its link was last touched. A stay whose guests were all tried after their last change is not taken again: once for each stay and change.
+
+### Recognized place names (decision O2)
+
+The sandbox accepted a complete guest only with place names Octorate recognizes. `OctoratePlaceNames` reads Octorate's table (`GET /rest/v2/checkin/city/IT`, about 11,149 entries with their police codes) through the client, keeps it in memory for 24 hours (one read at a time, no table in the database) and the Italian comuni of a guest (birth, residence, place of issue of the document) are sent with the exact name of that table, found by the 9-character police code CasaZen holds (a guest with no code is found by its name only when exactly one place carries it). The create stays the proven v1.
+
+- A place the table does not know holds **that guest** back: the link says `place_not_recognized` with the fields (`ErrorFields`: `birthComune`, `residenceComune`, `documentIssuePlace`), one "To do" `octorate_place_not_recognized:<fields>` is raised at once and no retry takes the guest again; the host's change of the data sends it and closes the "To do".
+- States, citizenship and the country of residence are not mapped (no table of states is known to exist) and never hold a guest back: foreign guests are not affected.
+- A table that cannot be read is the typed Octorate error of the guests that need it, kept on their links and retried.
+
+### Arrival and departure
+
+`CHECKIN_END` and `CHECKOUT_END` are tracked like `NO_SHOW`: a row in `OctorateStayStateSyncs`, attempts, last error and, after the last attempt, one "To do" `octorate_stay_state_failed`, closed when a later attempt succeeds. The arrival waits for the write of the guests (`WaitingForGuests`: a link Pending, or Failed with attempts left): the row stays Pending with no attempt used up and the retry job asks again. `OctorateBookingStatePushJob` keeps the signature of E02 (jobs already queued run the new body).
+
+### Per-stay status
+
+See `GET api/alloggiati/{bookingId}/status` and `GET api/bookings/{bookingId}/compliance` (E20/F01/US01/T02): the status reads `EntrustedToChannelManager` (yellow, never green without an archived receipt) or `ChannelManagerWriteFailed`, with the sender, the state of each guest, the receipt coverage and the action `RetryOctorateWrite` (`POST api/alloggiati/{bookingId}/retry-octorate-write`, `alloggiati.submit`).
+
+### Migration `AddOctorateGuestAutoSend`
+
+Adds `Orgs.AutoSendGuestsToOctorate` (default false), `AutoSendGuestsToOctorateChangedAt`, `AutoSendGuestsToOctorateChangedByUserId` and `StayGuestOctorateLinks.ErrorFields`. Rollback: the columns are additive; the code ignores them when the setting is off.

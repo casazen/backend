@@ -196,25 +196,39 @@ public class OctorateBookingJobsTests
         Assert.Empty(queue.Jobs);
     }
 
-    [Fact]
-    public async Task ThePushJob_RunsForTheOrgOfTheBooking_AndSendsTheState()
+    [Theory]
+    [InlineData(BookingStatus.CheckedIn, OctorateStayState.CheckInEnd)]
+    [InlineData(BookingStatus.CheckedOut, OctorateStayState.CheckOutEnd)]
+    public async Task ThePushJob_RunsForTheOrgOfTheBooking_AndSendsTheStateThroughTheTrackedPath(BookingStatus status, OctorateStayState expected)
     {
+        // E20/F01/US01/T01: the arrival and the departure are sent by the service that keeps a row, the retries and the "To do" of each state.
         var seenOrg = Guid.Empty;
         var scope = new OctorateOrgScope(NullTenantContext.Instance);
-        var import = new Mock<IBookingImportService>();
-        import
-            .Setup(i => i.SyncBookingStateAsync(It.IsAny<Guid>(), It.IsAny<BookingStatus>(), It.IsAny<CancellationToken>()))
+        var sync = new Mock<ICheckInOctorateSyncService>();
+        sync
+            .Setup(s => s.SetStayStateAsync(It.IsAny<Guid>(), It.IsAny<OctorateStayState>(), It.IsAny<CancellationToken>()))
             .Callback(() => seenOrg = scope.OrgId)
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync(new OctorateStayStateResult(OctorateStayStateOutcome.Sent, null));
         var bookingId = Guid.NewGuid();
 
-        await new OctorateBookingStatePushJob(import.Object, scope, NullLogger<OctorateBookingStatePushJob>.Instance)
-            .PushAsync(OrgA, bookingId, BookingStatus.CheckedOut, CancellationToken.None);
+        await new OctorateBookingStatePushJob(sync.Object, scope, NullLogger<OctorateBookingStatePushJob>.Instance)
+            .PushAsync(OrgA, bookingId, status, CancellationToken.None);
 
         // The client takes no org: the job opened the scope of the booking's org for the call, and closed it after.
         Assert.Equal(OrgA, seenOrg);
-        import.Verify(i => i.SyncBookingStateAsync(bookingId, BookingStatus.CheckedOut, It.IsAny<CancellationToken>()), Times.Once);
+        sync.Verify(s => s.SetStayStateAsync(bookingId, expected, It.IsAny<CancellationToken>()), Times.Once);
         Assert.Throws<InvalidOperationException>(() => scope.OrgId);
+    }
+
+    [Fact]
+    public async Task ThePushJob_SendsNothingForAStatusThatIsNotAStateOfTheStay()
+    {
+        var sync = new Mock<ICheckInOctorateSyncService>();
+
+        await new OctorateBookingStatePushJob(sync.Object, new OctorateOrgScope(NullTenantContext.Instance), NullLogger<OctorateBookingStatePushJob>.Instance)
+            .PushAsync(OrgA, Guid.NewGuid(), BookingStatus.Cancelled, CancellationToken.None);
+
+        sync.VerifyNoOtherCalls();
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────

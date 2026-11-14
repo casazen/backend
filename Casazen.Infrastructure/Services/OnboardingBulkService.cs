@@ -35,8 +35,14 @@ public sealed class OnboardingBulkService(
     IPropertySenderStore senderStore,
     IOptions<OnboardingOptions> options,
     TimeProvider timeProvider,
-    ILogger<OnboardingBulkService> logger) : IOnboardingBulkService
+    ILogger<OnboardingBulkService> logger,
+    IOrgGuestAutoSendSetting? autoSendSetting = null) : IOnboardingBulkService
 {
+    // The org-wide setting of the guests written to the channel manager on their own (E20/F01/US01/T01): the container gives the service; built by hand
+    // without it, one on the same context writes the same column.
+    private readonly IOrgGuestAutoSendSetting _autoSend = autoSendSetting
+        ?? new OrgGuestAutoSendSetting(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<OrgGuestAutoSendSetting>.Instance, timeProvider);
+
     /// <summary>The most values a list of a filter may hold (a code of a comune, a region or a channel).</summary>
     public const int MaxFilterValues = 500;
 
@@ -90,6 +96,11 @@ public sealed class OnboardingBulkService(
 
         items.AddRange(selected.NotFound.Select(id => new BulkApplyItem(id, null, null, BulkApplyOutcomes.Refused, OnboardingBulkCodes.PropertyNotFound)));
 
+        // The org-wide setting rides on the same confirmed apply (E20/F01/US01/T01): written once for the org, never for each property, and never by a
+        // look (a dry run, or no confirmation). The policy of the endpoint is the organization administrator's.
+        if (!writeNothing && choice.AutoSendGuestsToOctorate is { } autoSend)
+            await _autoSend.SetAsync(scope.OrgId, autoSend, actorUserId, ct);
+
         var summary = new BulkApplySummary(
             Count(items, BulkApplyOutcomes.Applied),
             Count(items, BulkApplyOutcomes.Unchanged),
@@ -104,7 +115,7 @@ public sealed class OnboardingBulkService(
             summary.Unchanged,
             summary.Refused,
             summary.WouldChange);
-        return new BulkApplyResult(writeNothing, sender, summary, items);
+        return new BulkApplyResult(writeNothing, sender, summary, items, choice.AutoSendGuestsToOctorate);
     }
 
     public async Task<BulkProgress> GetProgressAsync(HostScope scope, CancellationToken ct)

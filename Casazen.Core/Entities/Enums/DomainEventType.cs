@@ -102,4 +102,13 @@ public enum DomainEventType
 
     /// <summary>An org administrator deactivated a flow on a property (E10/F01/US01/T04): about the property, with the same payload.</summary>
     OnboardingFlowDeactivated = 101,
+
+    /// <summary>
+    /// The guests of a stay were saved, by the guest on the check-in page or by the host (E20/F01/US01/T01): about the booking (<c>EntityId</c>), with the
+    /// payload <c>StayGuestsChangedPayload</c> (the booking, the property and who saved them, ids and a word, never a guest's data), recorded by
+    /// <c>StayGuestService.ReplaceAsync</c> in the same save as the guests. The consumer that writes the guests to the channel manager of an org that
+    /// asked for it (<c>StayGuestsReadyOctorateHandler</c>) reads the stay as it is now. Starts no routine. The numbers 200 to 209 are the guests of a
+    /// stay written to Octorate (epic E20), so that the tasks of the waves that run in parallel never pick the same one.
+    /// </summary>
+    StayGuestsChanged = 200,
 }

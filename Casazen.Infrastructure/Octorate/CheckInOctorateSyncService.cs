@@ -27,6 +27,12 @@ public static class CheckInErrorCodes
     public const string Server = "octorate_server";
     public const string GuestRejected = "octorate_guest_rejected";
 
+    /// <summary>
+    /// A place of the guest is not in Octorate's table (decision O2): the guest is not sent, and the host corrects the place named by the link's
+    /// <c>ErrorFields</c>. Not an Octorate error: nothing was asked of it about this guest.
+    /// </summary>
+    public const string PlaceNotRecognized = OctoratePlaceRules.PlaceNotRecognizedCode;
+
     /// <summary>The code of a typed Octorate error.</summary>
     public static string Of(OctorateException exception) => exception switch
     {
@@ -60,6 +66,14 @@ public static class CheckInErrorCodes
 /// <para><b>Failures.</b> A typed Octorate error is a stable code on the row; the attempts are counted per payload and, at
 /// <c>Octorate:CheckInMaxAttempts</c>, one "To do" is raised for the booking (closed when a later attempt succeeds). Logs carry ids and codes,
 /// never a name or a document.</para>
+/// <para><b>Recognized places (E20/F01/US01/T01, decision O2).</b> The Italian comuni of a guest (birth, residence, the place of issue of the
+/// document) are sent with the exact names of Octorate's own table, found by the police codes CasaZen holds (<see cref="IOctoratePlaceNames"/>).
+/// A place the table does not know holds that guest back, and only that guest: its link says <c>place_not_recognized</c> and which field, one "To do"
+/// is raised at once (the host has to correct the place, a retry cannot fix it) and no retry takes it again; the data changed by the host sends it.
+/// A table that cannot be read is a typed Octorate error of the guests that need it: kept as failed and retried.</para>
+/// <para><b>Arrival and departure.</b> <see cref="SetStayStateAsync"/> keeps a row for each state, with its attempts and its last error; after the last
+/// failed attempt one "To do" (<see cref="StayStateTodoReason"/>) is raised, closed by a later success. The arrival is sent only after the guests of
+/// the stay were written: while a write of theirs is still to complete (<see cref="OctorateStayStateOutcome.WaitingForGuests"/>) it waits.</para>
 /// </remarks>
 public sealed class CheckInOctorateSyncService(
     AppDbContext db,
@@ -75,10 +89,20 @@ public sealed class CheckInOctorateSyncService(
     IOptions<OctorateOptions> options,
     ILogger<CheckInOctorateSyncService> logger,
     TimeProvider? timeProvider = null,
-    IComplianceSendLog? complianceSendLog = null) : ICheckInOctorateSyncService
+    IComplianceSendLog? complianceSendLog = null,
+    IOctoratePlaceNames? placeNames = null) : ICheckInOctorateSyncService
 {
     /// <summary>The reason code of a "To do" raised for a check-in that keeps failing.</summary>
     public const string TodoReason = "octorate_checkin_failed";
+
+    /// <summary>The reason code of a "To do" raised for an arrival, a departure or a no-show that keeps failing to reach Octorate.</summary>
+    public const string StayStateTodoReason = "octorate_stay_state_failed";
+
+    /// <summary>
+    /// The reason code of a "To do" for a guest held back because a place is not in Octorate's table; the fields to correct follow after a colon
+    /// (<c>octorate_place_not_recognized:birthComune,residenceComune</c>). Field names only, never a value.
+    /// </summary>
+    public const string PlaceTodoReason = "octorate_place_not_recognized";
 
     public const string ReasonConnectorOff = "connector_off";
     public const string ReasonNoReservation = "no_reservation";
@@ -101,18 +125,25 @@ public sealed class CheckInOctorateSyncService(
     public int MaxAttempts => Math.Clamp(options.Value.CheckInMaxAttempts, 1, 20);
 
     public Task<OctorateCheckInSendResult> SendGuestsAsync(Guid bookingId, CancellationToken cancellationToken) =>
-        SendGuestsCoreAsync(bookingId, retryOnly: false, cancellationToken);
+        SendGuestsCoreAsync(bookingId, retryOnly: false, ignoreAttemptLimit: false, cancellationToken);
 
     public Task<OctorateCheckInSendResult> RetryGuestsAsync(Guid bookingId, CancellationToken cancellationToken) =>
-        SendGuestsCoreAsync(bookingId, retryOnly: true, cancellationToken);
+        SendGuestsCoreAsync(bookingId, retryOnly: true, ignoreAttemptLimit: false, cancellationToken);
+
+    public Task<OctorateCheckInSendResult> RetryGuestsNowAsync(Guid bookingId, CancellationToken cancellationToken) =>
+        SendGuestsCoreAsync(bookingId, retryOnly: true, ignoreAttemptLimit: true, cancellationToken);
 
     /// <summary>
     /// The send of the guests of a booking. <paramref name="retryOnly"/> (the retry job) takes up only the guests whose link a send already tried
     /// and did not complete (Pending or Failed, with attempts left) and the deletes that failed: never a guest changed or added since the host
     /// confirmed, which travels with the next confirmation (after the checks of the wizard, with the warning of a correction after send), and
-    /// no link is created.
+    /// no link is created. <paramref name="ignoreAttemptLimit"/> (the host asked again) takes up the links whose attempts are used up too.
     /// </summary>
-    private async Task<OctorateCheckInSendResult> SendGuestsCoreAsync(Guid bookingId, bool retryOnly, CancellationToken cancellationToken)
+    private async Task<OctorateCheckInSendResult> SendGuestsCoreAsync(
+        Guid bookingId,
+        bool retryOnly,
+        bool ignoreAttemptLimit,
+        CancellationToken cancellationToken)
     {
         var booking = await LoadBookingAsync(bookingId, cancellationToken);
         var target = await ResolveTargetAsync(booking, cancellationToken);
@@ -154,7 +185,7 @@ public sealed class CheckInOctorateSyncService(
             .ToListAsync(cancellationToken);
         if (guests.Count == 0 && links.Count == 0)
             return new OctorateCheckInSendResult(OctorateCheckInSendState.NothingToSend, ReasonNoGuests, draft, [], false);
-        if (retryOnly && !links.Any(IsToRetry))
+        if (retryOnly && !links.Any(l => IsToRetry(l, ignoreAttemptLimit)))
             return new OctorateCheckInSendResult(OctorateCheckInSendState.NothingToSend, null, draft, [], false);
 
         var tax = await TaxValuesAsync(booking, cancellationToken);
@@ -162,18 +193,44 @@ public sealed class CheckInOctorateSyncService(
         var checkOut = RomeCalendar.DateInRome(booking.CheckOutDate);
         var now = UtcNow();
 
+        // The recognized names of the Italian comuni (decision O2): the table is read once for the whole send, and only when a guest that goes now
+        // has a place to look up. A table that cannot be read is the typed error of Octorate, kept on the links of those guests.
+        var (italianPlaces, tableError) = await ReadItalianPlacesAsync(
+            booking,
+            guests.Where(g => !retryOnly || IsToRetry(links.FirstOrDefault(l => l.Position == g.Position), ignoreAttemptLimit)).ToList(),
+            cancellationToken);
+
         var results = new List<OctorateGuestSendResult>();
         var toSend = new List<(OctorateCheckInGuestUpsert Upsert, StayGuestOctorateLink Link)>();
+        var held = new List<(StayGuestOctorateLink Link, OctorateGuestPlaces? Places)>();
+        var failures = 0;
+        var successes = 0;
         var correction = false;
         foreach (var guest in guests)
         {
             var link = links.FirstOrDefault(l => l.Position == guest.Position);
-            if (retryOnly && !IsToRetry(link))
+            if (retryOnly && !IsToRetry(link, ignoreAttemptLimit))
                 continue;
 
+            var lookup = placeNames is not null && OctoratePlaceRules.NeedsItalianPlaces(guest);
+            var places = lookup && italianPlaces is not null ? OctoratePlaceRules.Resolve(guest, italianPlaces) : null;
             var upsert = OctorateCheckInMapper.Map(
-                guest, checkIn, checkOut, draft, link?.OctorateGuestId, tax.GetValueOrDefault(guest.Position));
+                guest, checkIn, checkOut, draft, link?.OctorateGuestId, tax.GetValueOrDefault(guest.Position), places);
             var hash = OctorateCheckInMapper.Hash(upsert);
+
+            // Held back before anything is compared or sent: the table could not be read, or it does not know one of the guest's places.
+            if (lookup && (italianPlaces is null || places is { IsRecognized: false }))
+            {
+                var heldLink = MarkPending(booking, link, guest.Position, hash, now);
+                heldLink.Status = OctorateSyncStatus.Failed;
+                heldLink.ErrorCode = places is null ? tableError ?? CheckInErrorCodes.Server : CheckInErrorCodes.PlaceNotRecognized;
+                heldLink.ErrorFields = places?.FieldsText;
+                held.Add((heldLink, places));
+                results.Add(new OctorateGuestSendResult(guest.Position, OctorateGuestSendOutcome.Failed, heldLink.ErrorCode));
+                failures++;
+                continue;
+            }
+
             if (link is { Status: OctorateSyncStatus.Sent } && link.PayloadHash == hash)
             {
                 results.Add(new OctorateGuestSendResult(guest.Position, OctorateGuestSendOutcome.Unchanged, null));
@@ -187,14 +244,13 @@ public sealed class CheckInOctorateSyncService(
         }
 
         // The attempts are on record before the call: a send cut short (a crash, a timeout) stays Pending and the retry job takes it again.
-        if (toSend.Count > 0)
+        if (toSend.Count > 0 || held.Count > 0)
             await db.SaveChangesAsync(cancellationToken);
+        await RaiseHeldTodosAsync(booking, held, cancellationToken);
 
         var removedPositions = links
-            .Where(l => guests.All(g => g.Position != l.Position) && (!retryOnly || IsToRetry(l)))
+            .Where(l => guests.All(g => g.Position != l.Position) && (!retryOnly || IsToRetry(l, ignoreAttemptLimit)))
             .ToList();
-        var failures = 0;
-        var successes = 0;
         using (orgScope.Use(booking.OrgId))
         {
             foreach (var gone in removedPositions)
@@ -302,6 +358,16 @@ public sealed class CheckInOctorateSyncService(
             db.OctorateStayStateSyncs.Add(row);
         }
 
+        // The arrival goes after the guests of the stay (E20/F01/US01/T01): while a write of theirs is still to complete, it waits. The row says so
+        // (Pending, no attempt used up) and the retry job asks again every 15 minutes; once the guests are written, or their attempts are used up and
+        // the host has been told, it goes. A stay with no guest to write, or with all of them written, never waits.
+        if (state == OctorateStayState.CheckInEnd && await GuestWritesPendingAsync(booking, cancellationToken))
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            logger.LogInformation("State {State} of booking {BookingId} waits for the write of its guests to Octorate", state, booking.Id);
+            return new OctorateStayStateResult(OctorateStayStateOutcome.WaitingForGuests, null);
+        }
+
         // The attempt is on record before the call: a push cut short stays Pending and the retry job takes it again.
         var now = UtcNow();
         row.Attempts++;
@@ -317,7 +383,7 @@ public sealed class CheckInOctorateSyncService(
         {
             row.Status = OctorateSyncStatus.Failed;
             row.ErrorCode = CheckInErrorCodes.Of(ex);
-            row.TodoActivityId ??= row.Attempts >= MaxAttempts ? await RaiseTodoAsync(booking, cancellationToken) : null;
+            row.TodoActivityId ??= row.Attempts >= MaxAttempts ? await RaiseTodoAsync(booking, StayStateTodoReason, cancellationToken) : null;
             await db.SaveChangesAsync(cancellationToken);
             logger.LogWarning(
                 "State {State} of booking {BookingId} not accepted by Octorate on attempt {Attempt}: {ErrorCode}",
@@ -336,6 +402,20 @@ public sealed class CheckInOctorateSyncService(
 
         logger.LogInformation("State {State} of booking {BookingId} sent to Octorate", state, booking.Id);
         return new OctorateStayStateResult(OctorateStayStateOutcome.Sent, null);
+    }
+
+    /// <summary>
+    /// A write of the guests of the stay is still to complete: a link Pending, or Failed with attempts left (a guest held back for a place Octorate does
+    /// not know is not one: nothing will complete it by itself, so it never holds the arrival). Read in the org of the booking.
+    /// </summary>
+    private async Task<bool> GuestWritesPendingAsync(Booking booking, CancellationToken cancellationToken)
+    {
+        var links = await db.StayGuestOctorateLinks
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(l => l.OrgId == booking.OrgId && l.BookingId == booking.Id)
+            .ToListAsync(cancellationToken);
+        return links.Any(l => IsToRetry(l));
     }
 
     public async Task<OctorateCheckInView> GetStatusAsync(Guid bookingId, CancellationToken cancellationToken)
@@ -362,7 +442,7 @@ public sealed class CheckInOctorateSyncService(
             .ToList();
         return new OctorateCheckInView(
             true,
-            links.Select(l => new OctorateGuestLinkView(l.Position, l.Status, l.SentAsDraft, l.Attempts, l.ErrorCode, l.SentAt)).ToList(),
+            links.Select(l => new OctorateGuestLinkView(l.Position, l.Status, l.SentAsDraft, l.Attempts, l.ErrorCode, l.SentAt, l.ErrorFields, l.UpdatedAt)).ToList(),
             states);
     }
 
@@ -375,9 +455,66 @@ public sealed class CheckInOctorateSyncService(
         _ => throw new ArgumentOutOfRangeException(nameof(state), state, "Not a state of a stay."),
     };
 
-    /// <summary>A link a send tried and did not complete: Pending or Failed, with fewer than <see cref="MaxAttempts"/> attempts.</summary>
-    private bool IsToRetry(StayGuestOctorateLink? link) =>
-        link is { Status: OctorateSyncStatus.Pending or OctorateSyncStatus.Failed } && link.Attempts < MaxAttempts;
+    /// <summary>
+    /// A link a send tried and did not complete: Pending or Failed, with fewer than <see cref="MaxAttempts"/> attempts (or any, when the host asked
+    /// again). A guest held back for a place Octorate does not know is never one: only a change of its data can send it.
+    /// </summary>
+    private bool IsToRetry(StayGuestOctorateLink? link, bool ignoreAttemptLimit = false) =>
+        link is { Status: OctorateSyncStatus.Pending or OctorateSyncStatus.Failed }
+        && link.ErrorCode != CheckInErrorCodes.PlaceNotRecognized
+        && (ignoreAttemptLimit || link.Attempts < MaxAttempts);
+
+    /// <summary>
+    /// The table of the Italian places for the guests that go now (decision O2): <c>null</c> when none of them needs it or the check-in has no place
+    /// names to ask. An Octorate error is not thrown: it is the code the links of those guests keep (and the retry job tries again).
+    /// </summary>
+    private async Task<(OctoratePlaceTable? Table, string? Error)> ReadItalianPlacesAsync(
+        Booking booking,
+        IReadOnlyList<StayGuest> guestsToSend,
+        CancellationToken cancellationToken)
+    {
+        if (placeNames is null || !guestsToSend.Any(OctoratePlaceRules.NeedsItalianPlaces))
+            return (null, null);
+
+        try
+        {
+            using (orgScope.Use(booking.OrgId))
+                return (await placeNames.GetPlacesAsync(OctorateCheckInMapper.ItalyCountry, cancellationToken), null);
+        }
+        catch (OctorateException ex)
+        {
+            logger.LogWarning(
+                "The places of Octorate could not be read for booking {BookingId}: {ErrorCode}", booking.Id, CheckInErrorCodes.Of(ex));
+            return (null, CheckInErrorCodes.Of(ex));
+        }
+    }
+
+    /// <summary>
+    /// The "To do" of the guests held back. A place Octorate does not know needs the host at once (a retry cannot correct it): one "To do" names the
+    /// fields, whatever the attempts. A table that could not be read is a failure like any other: the "To do" comes at the last attempt.
+    /// </summary>
+    private async Task RaiseHeldTodosAsync(
+        Booking booking,
+        IReadOnlyList<(StayGuestOctorateLink Link, OctorateGuestPlaces? Places)> held,
+        CancellationToken cancellationToken)
+    {
+        if (held.Count == 0)
+            return;
+
+        var places = held.Where(h => h.Places is { IsRecognized: false }).ToList();
+        if (places.Count > 0)
+        {
+            var fields = places.SelectMany(h => h.Places!.UnrecognizedFields).Distinct(StringComparer.Ordinal).ToList();
+            var todo = await RaiseTodoAsync(booking, $"{PlaceTodoReason}:{string.Join(',', fields)}", cancellationToken);
+            foreach (var (link, _) in places)
+                link.TodoActivityId = todo ?? link.TodoActivityId;
+        }
+
+        foreach (var (link, _) in held.Where(h => h.Places is null))
+            link.TodoActivityId ??= link.Attempts >= MaxAttempts ? await RaiseTodoAsync(booking, TodoReason, cancellationToken) : null;
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
 
     /// <summary>
     /// The link of a guest about to be sent (created when missing), Pending with one more attempt. The attempts are counted per payload: a
@@ -420,6 +557,7 @@ public sealed class CheckInOctorateSyncService(
             link.SentAsDraft = upsert.Draft;
             link.SentAt = now;
             link.ErrorCode = null;
+            link.ErrorFields = null;
             link.TodoActivityId = await CloseTodoAsync(link.TodoActivityId, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             return new OctorateGuestSendResult(
@@ -428,7 +566,8 @@ public sealed class CheckInOctorateSyncService(
 
         link.Status = OctorateSyncStatus.Failed;
         link.ErrorCode = answer.ErrorCode ?? CheckInErrorCodes.Server;
-        link.TodoActivityId ??= link.Attempts >= MaxAttempts ? await RaiseTodoAsync(booking, cancellationToken) : null;
+        link.ErrorFields = null;
+        link.TodoActivityId ??= link.Attempts >= MaxAttempts ? await RaiseTodoAsync(booking, TodoReason, cancellationToken) : null;
         await db.SaveChangesAsync(cancellationToken);
         return new OctorateGuestSendResult(upsert.Position, OctorateGuestSendOutcome.Failed, link.ErrorCode);
     }
@@ -454,8 +593,9 @@ public sealed class CheckInOctorateSyncService(
             link.Attempts++;
             link.Status = OctorateSyncStatus.Failed;
             link.ErrorCode = CheckInErrorCodes.Of(ex);
+            link.ErrorFields = null;
             link.UpdatedAt = UtcNow();
-            link.TodoActivityId ??= link.Attempts >= MaxAttempts ? await RaiseTodoAsync(booking, cancellationToken) : null;
+            link.TodoActivityId ??= link.Attempts >= MaxAttempts ? await RaiseTodoAsync(booking, TodoReason, cancellationToken) : null;
             await db.SaveChangesAsync(cancellationToken);
             return false;
         }
@@ -564,8 +704,11 @@ public sealed class CheckInOctorateSyncService(
             .FirstOrDefaultAsync(b => b.Id == bookingId, cancellationToken)
         ?? throw new NotFoundException($"Booking {bookingId} not found") { MessageKey = "BookingNotFound" };
 
-    /// <summary>One "To do" for a booking whose check-in keeps failing (idempotent: the open one is returned). No guest data.</summary>
-    private async Task<Guid?> RaiseTodoAsync(Booking booking, CancellationToken cancellationToken)
+    /// <summary>
+    /// One "To do" for a booking whose check-in keeps failing (idempotent: the open one is returned, and keeps its reason). No guest data: the reason
+    /// is a code, and for a place the names of the fields.
+    /// </summary>
+    private async Task<Guid?> RaiseTodoAsync(Booking booking, string reason, CancellationToken cancellationToken)
     {
         try
         {
@@ -579,7 +722,7 @@ public sealed class CheckInOctorateSyncService(
                     Urgency = ActivityUrgency.Medium,
                     PropertyId = booking.PropertyId,
                     OrgId = booking.OrgId,
-                    Reason = TodoReason,
+                    Reason = reason,
                 },
                 cancellationToken);
         }
