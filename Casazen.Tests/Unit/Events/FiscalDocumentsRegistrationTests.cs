@@ -69,6 +69,11 @@ public class FiscalDocumentsRegistrationTests
             // The correction of the documents of a stay when its booking changes (E12/F01/US01/T03): the consumer of the booking changes and of the refunds.
             (typeof(IEventHandler<DomainEvent>), typeof(FiscalDocumentBookingChangeHandler), ServiceLifetime.Scoped),
 
+            // The document sent to the guest (E12/F01/US02/T01): the signed link, the e-mail with it and the two public reads, and the consumer of the issue that sends it by itself when the issuer asks.
+            (typeof(FiscalDocumentLinkTokens), typeof(FiscalDocumentLinkTokens), ServiceLifetime.Singleton),
+            (typeof(IFiscalDocumentDeliveryService), typeof(FiscalDocumentDeliveryService), ServiceLifetime.Scoped),
+            (typeof(IEventHandler<DomainEvent>), typeof(FiscalDocumentEmailHandler), ServiceLifetime.Scoped),
+
             // What the other tasks of the epic register, in the order they were added: the labels of the documents and the statement files (E06/F01/US01/T02),
             // the fees of the card payments (E06/F04/US01/T02), the gap-free numbers (E06/F01/US02/T02), the FatturaPA XML and its schema set (E06/F01/US02/T03),
             // the import of the documents Octorate issued (E06/F03/US02/T01), the fiscal documents (E06/F01/US01/T01) and the payment ledger (E06/F04/US01/T03).
@@ -158,13 +163,16 @@ public class FiscalDocumentsRegistrationTests
         // The consumers of the documents take the service of the documents, which has many dependencies of its own: this test is about what the container builds, not about it.
         services.AddScoped(_ => Mock.Of<IFiscalDocumentService>());
 
+        // The consumer that sends the document to the guest takes the delivery service, which needs the e-mail queue, the public links and the key ring of the application.
+        services.AddScoped(_ => Mock.Of<IFiscalDocumentDeliveryService>());
+
         await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         await using var scope = provider.CreateAsyncScope();
 
         var handlers = scope.ServiceProvider.GetServices<IEventHandler<DomainEvent>>().Select(handler => handler.GetType()).ToList();
 
         Assert.Equal(
-            [typeof(InvoiceDataFromOctorateHandler), typeof(OctorateBillingWriteBackHandler), typeof(FiscalDocumentCheckOutHandler), typeof(FiscalDocumentBookingChangeHandler)],
+            [typeof(InvoiceDataFromOctorateHandler), typeof(OctorateBillingWriteBackHandler), typeof(FiscalDocumentCheckOutHandler), typeof(FiscalDocumentBookingChangeHandler), typeof(FiscalDocumentEmailHandler)],
             handlers);
         Assert.IsType<InvoiceDataService>(scope.ServiceProvider.GetRequiredService<IInvoiceDataService>());
         Assert.IsType<DocumentIssuerService>(scope.ServiceProvider.GetRequiredService<IDocumentIssuerService>());
