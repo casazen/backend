@@ -151,13 +151,6 @@ public sealed record OwnerInvoiceGenerationDto(
         generation.Failed);
 }
 
-/// <summary>The <c>channels</c> section of the billing setup: who holds the accounts of the portals by default and whether their commissions are recharged.</summary>
-public sealed record BillingChannelsDto(string PortalAccountHolder, bool RechargePortalCommissions)
-{
-    public static BillingChannelsDto From(BillingChannelSettings settings) =>
-        new(settings.PortalAccountHolder.ToString(), settings.RechargePortalCommissions);
-}
-
 /// <summary>The holder of a listing on a portal, where it differs from the default of the organization.</summary>
 public sealed record ChannelAccountHolderDto(Guid PropertyId, string PropertyName, string Channel, string Holder, DateTime UpdatedAt)
 {

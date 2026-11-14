@@ -253,11 +253,14 @@ The holder of the account of a listing on a portal decides the recharge of its c
   VAT of a recharge (the scheme of a mandate without representation, art. 3 c. 3 DPR 633/72), when `RechargePortalCommissions` is on (default on).
 
 The default of the organization and the recharge are on the profile of the issuer (`OrgFiscalIssuerProfile.PortalAccountHolder`, `RechargePortalCommissions`,
-migration `AddPortalAccountHolder`: the profiles that exist get the owner and the recharge on), read and written by `GET/PUT api/billing-setup/channels`. The
-override of a listing and portal is a row of `PropertyChannelAccountHolders` (unique per property and portal, gone with the property), read and written in bulk
-by `GET/PUT api/billing-setup/channel-account-holders` (`[{ propertyId, channel, holder }]`, `holder: null` back to the default; an empty list is 422, never
-«all»). Both need `property.read` and `payment.read` (`property.write` to write), the whole org, and the flag. `IPortalAccountHolderResolver` is the one reader
-(owner invoice, statement labels of E13, VAT summary of E15, TD17 of E17). These two settings are the first part of the billing setup of E11/F02.
+migration `AddPortalAccountHolder`: the profiles that exist get the owner and the recharge on): they are the `values` of the section `channels` of the billing
+setup (`GET api/billing-setup`, wizard «Fatturazione») and are saved by the endpoint of that section, `PUT api/billing-setup/channels`
+(`IPortalAccountSettingsService`). The override of a listing and portal is a row of `PropertyChannelAccountHolders` (unique per property and portal, gone with
+the property), read and written in bulk by `GET/PUT api/billing-setup/channel-account-holders` (`[{ propertyId, channel, holder }]`, `holder: null` back to the
+default; an empty list is 422, never «all»). They are part of the billing setup: `payment.read` (`property.write` to write), the whole org, behind
+`Features:FiscalDocumentIssuance` like the rest of the setup and behind `Features:OwnerInvoicing` like the invoices that use them (404 while either is off;
+while `OwnerInvoicing` is off the section `channels` shows no values). `IPortalAccountHolderResolver` is the one reader: the owner invoice today; the statement
+labels of E13, the VAT summary of E15 and the TD17 of E17 are meant to read it too.
 
 ## External invoice references (E06/F01/US02/T05)
 

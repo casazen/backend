@@ -35,6 +35,17 @@ public static class FiscalDocumentExtensions
         // Who issues the documents of an organization and of each booking (E06/F02/US02/T02).
         services.AddScoped<IDocumentIssuerService, DocumentIssuerService>();
 
+        // The whole setup of the invoicing in one place, the wizard «Fatturazione» of the onboarding guide (E11/F01/US01/T04): the sections and their missing items,
+        // and the save of one section. The missing items come from the contributors, one for each piece of the setup, in the order of the wizard; the epics that own
+        // another piece (the owner ledger: channels and mandates; the Italian owner issuers and the SDI: italy) register their own next to these, never in the service.
+        services.AddScoped<IBillingSetupService, BillingSetupService>();
+        services.AddScoped<IBillingSetupContributor, IssuerSectionContributor>();
+        services.AddScoped<IBillingSetupContributor, VatSectionContributor>();
+        services.AddScoped<IBillingSetupContributor, NumberingSectionContributor>();
+        services.AddScoped<IBillingSetupContributor, TouristTaxSectionContributor>();
+        services.AddScoped<IBillingSetupContributor, AutomationSectionContributor>();
+        services.AddScoped<IBillingSetupContributor, ItalySectionContributor>();
+
         // The billing data and Octorate (E06/F02/US01/T04), both behind Features:OctorateConnector and Features:OctorateBillingSync: the invoice data of a
         // booking imported from Octorate is pre-filled from its customer record (BookingCreated), and the data saved in CasaZen is written to Octorate where
         // Octorate is the issuer (InvoiceDataSaved). Run by the outbox dispatcher, so neither can fail an import or a host's save.
@@ -86,10 +97,11 @@ public static class FiscalDocumentExtensions
         // The versioned mandates of the owners, the standard mandate, the billing address of an owner and the channel commission rules (E13/F01/US01/T01).
         services.AddScoped<IOwnerMandateService, OwnerMandateService>();
 
-        // Who holds the account of a listing on a portal (⚖ I10) and the settings of the billing setup the owner invoice needs, and the invoices of the property
-        // manager to the owners made from the statement versions, behind Features:OwnerInvoicing (E14/F01/US01/T01).
+        // Who holds the account of a listing on a portal (⚖ I10, I11): the reader of the other epics and the settings of the section «channels» of the billing setup
+        // with the holders of the listings; and the invoices of the property manager to the owners made from the statement versions, behind
+        // Features:OwnerInvoicing (E14/F01/US01/T01).
         services.AddScoped<IPortalAccountHolderResolver, PortalAccountHolderResolver>();
-        services.AddScoped<IBillingSetupService, BillingSetupService>();
+        services.AddScoped<IPortalAccountSettingsService, PortalAccountSettingsService>();
         services.AddScoped<IOwnerInvoiceService, OwnerInvoiceService>();
 
         return services;

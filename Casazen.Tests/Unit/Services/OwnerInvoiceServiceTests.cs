@@ -14,6 +14,11 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
+using AuthorizeAttribute = Microsoft.AspNetCore.Authorization.AuthorizeAttribute;
+using BillingSetupController = Casazen.Web.Controllers.BillingSetupController;
+using BillingSetupSections = Casazen.Core.Models.BillingSetupSections;
+using CasazenPolicies = Casazen.Web.Authorization.CasazenPolicies;
+using FeatureGateAttribute = Casazen.Web.Infrastructure.FeatureGateAttribute;
 
 namespace Casazen.Tests.Unit.Services;
 
@@ -157,14 +162,45 @@ public class OwnerInvoiceServiceTests
         Assert.Equal((FiscalLineType.Recharge, 150.00m, 8.1m), (recharge.LineType, recharge.TotalPrice, recharge.VatRatePercent));
         Assert.Equal(owners.Id, agencys.Id);
 
-        await rig.Setup.SaveChannelsAsync(rig.OrgId, new BillingChannelsCommand { RechargePortalCommissions = false }, null);
+        await rig.Setup.SaveAsync(rig.OrgId, new PortalAccountSettingsCommand { RechargePortalCommissions = false }, null);
         var off = await rig.Invoices.CreateDraftAsync(rig.OrgId, version.Id, null);
         Assert.DoesNotContain(off.Lines, l => l.Description.StartsWith("Riaddebito commissioni", StringComparison.Ordinal));
 
         // An empty list is never «all the listings».
         var empty = await Assert.ThrowsAsync<DomainRuleException>(() => rig.Setup.SaveAccountHoldersAsync(rig.OrgId, [], null));
-        Assert.Equal(BillingSetupErrors.AccountHoldersInvalid, empty.Code);
+        Assert.Equal(PortalAccountErrors.AccountHoldersInvalid, empty.Code);
     }
+
+    /// <summary>
+    /// PROOF TEST: permission rule. Who holds the portal accounts is off while <c>Features:OwnerInvoicing</c> is off, like the owner invoices: its three
+    /// endpoints are behind that flag as well as behind the billing setup, the two writes need <c>property.write</c>, and the section <c>channels</c> of the
+    /// billing setup shows its values only while the flag is on.
+    /// </summary>
+    [Fact]
+    public async Task PortalAccounts_OffWhileOwnerInvoicingIsOff_Test()
+    {
+        var controller = typeof(BillingSetupController);
+        Assert.Equal(new[] { FeatureFlags.FiscalDocumentIssuance }, GatesOf(controller));
+        var actions = new[] { nameof(BillingSetupController.PutChannels), nameof(BillingSetupController.GetAccountHolders), nameof(BillingSetupController.PutAccountHolders) };
+        Assert.All(actions, action => Assert.Equal(new[] { FeatureFlags.OwnerInvoicing }, GatesOf(controller.GetMethod(action)!)));
+        Assert.All(
+            new[] { nameof(BillingSetupController.PutChannels), nameof(BillingSetupController.PutAccountHolders) },
+            action => Assert.Contains(
+                CasazenPolicies.PropertyWrite,
+                controller.GetMethod(action)!.GetCustomAttributes(typeof(AuthorizeAttribute), inherit: false).Cast<AuthorizeAttribute>().Select(a => a.Policy)));
+
+        await using var rig = await OwnerInvoiceRig.SwissAsync();
+        var off = await rig.BillingSetup(ownerInvoicing: false).GetAsync(rig.OrgId);
+        Assert.Empty(off.Sections.Single(s => s.Section == BillingSetupSections.Channels).Values);
+
+        var on = await rig.BillingSetup(ownerInvoicing: true).GetAsync(rig.OrgId);
+        var values = on.Sections.Single(s => s.Section == BillingSetupSections.Channels).Values;
+        Assert.Equal(nameof(PortalAccountHolder.Owner), values[PortalAccountFields.PortalAccountHolder]);
+        Assert.True(values[PortalAccountFields.RechargePortalCommissions] is true);
+    }
+
+    private static List<string> GatesOf(System.Reflection.MemberInfo member) =>
+        [.. member.GetCustomAttributes(typeof(FeatureGateAttribute), inherit: false).Cast<FeatureGateAttribute>().Select(gate => gate.Flag)];
 
     private static decimal Sum(FiscalDocument document, FiscalLineType type) => document.Lines.Where(l => l.LineType == type).Sum(l => l.TotalPrice);
 }
@@ -184,7 +220,7 @@ internal sealed class OwnerInvoiceRig : IAsyncDisposable
         var fiscal = new OwnerFiscalProfileService(db, Clock, NullLogger<OwnerFiscalProfileService>.Instance);
         Accounting = new OwnerAccountingService(db, fiscal, Clock, NullLogger<OwnerAccountingService>.Instance);
         (Documents, Invoices) = ServicesOver(db, Clock, Accounting);
-        Setup = new BillingSetupService(db, Clock, NullLogger<BillingSetupService>.Instance);
+        Setup = new PortalAccountSettingsService(db, Clock, NullLogger<PortalAccountSettingsService>.Instance);
     }
 
     /// <summary>
@@ -218,6 +254,19 @@ internal sealed class OwnerInvoiceRig : IAsyncDisposable
         return (documents, invoices);
     }
 
+    /// <summary>The billing setup over the profile of the issuer of the rig, with the settings of the portal accounts and <c>Features:OwnerInvoicing</c> as given.</summary>
+    public BillingSetupService BillingSetup(bool ownerInvoicing)
+    {
+        var environment = new Mock<IHostEnvironment>();
+        environment.SetupGet(e => e.EnvironmentName).Returns("Test");
+        var issuers = new DocumentIssuerService(
+            Db, new TestFeatureFlags(FeatureFlags.FiscalDocumentIssuance), TaxRuleCatalogs.Resolver(), environment.Object, Clock, NullLogger<DocumentIssuerService>.Instance);
+        var flags = ownerInvoicing
+            ? new TestFeatureFlags(FeatureFlags.FiscalDocumentIssuance, FeatureFlags.OwnerInvoicing)
+            : new TestFeatureFlags(FeatureFlags.FiscalDocumentIssuance);
+        return new BillingSetupService(issuers, [], NullLogger<BillingSetupService>.Instance, Setup, flags);
+    }
+
     public AppDbContext Db { get; }
 
     public FakeTimeProvider Clock { get; }
@@ -228,7 +277,7 @@ internal sealed class OwnerInvoiceRig : IAsyncDisposable
 
     public OwnerInvoiceService Invoices { get; }
 
-    public BillingSetupService Setup { get; }
+    public PortalAccountSettingsService Setup { get; }
 
     public Guid OrgId { get; } = Guid.NewGuid();
 
