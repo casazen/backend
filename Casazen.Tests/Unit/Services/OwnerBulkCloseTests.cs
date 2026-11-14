@@ -267,6 +267,45 @@ public class OwnerBulkCloseTests
         Assert.Equal([1, 2, 3], seen);
     }
 
+    /// <summary>
+    /// Data: a step out of its order is a failed row with its own code (nothing to approve or publish before a version, nothing to publish or close before the approval); the
+    /// generation leaves a draft that is still the picture of the ledger, but makes a new version as soon as a source changed: never a stale statement.
+    /// </summary>
+    [Fact]
+    public async Task Bulk_StepsOutOfOrderAreFailedRowsAndAStaleDraftIsGeneratedAgain_Test()
+    {
+        var world = await OwnerMonthEndWorld.CreateAsync();
+        var changing = await OwnerWithAStayAsync(world);
+        var steady = await OwnerWithAStayAsync(world);
+        var owners = new[] { changing, steady };
+        await world.BulkAsync(OwnerBulkAction.Post, owners);
+
+        // Nothing to approve or publish before there is a version, nothing to close before it is approved.
+        foreach (var action in new[] { OwnerBulkAction.Approve, OwnerBulkAction.Publish })
+            Assert.All(await world.BulkAsync(action, owners), r => Assert.Equal((false, OwnerAccountingErrors.VersionNotFound), (r.Ok, r.Code)));
+        Assert.All(await world.BulkAsync(OwnerBulkAction.Close, owners), r => Assert.Equal((false, OwnerAccountingErrors.VersionNotApproved), (r.Ok, r.Code)));
+        Assert.All(await world.BulkAsync(OwnerBulkAction.Generate, owners), r => Assert.True(r.Ok && !r.Unchanged));
+        foreach (var action in new[] { OwnerBulkAction.Publish, OwnerBulkAction.Close })
+            Assert.All(await world.BulkAsync(action, owners), r => Assert.Equal((false, OwnerAccountingErrors.VersionNotApproved), (r.Ok, r.Code)));
+
+        // The drafts are still the picture of the ledger: generating again leaves them as they are.
+        Assert.All(await world.BulkAsync(OwnerBulkAction.Generate, owners), r => Assert.True(r.Ok && r.Unchanged));
+        Assert.All(owners, owner => Assert.Equal(1, world.Db.OwnerStatementVersions.Count(v => v.PropertyOwnerId == owner)));
+
+        // A stay is posted for one owner: its draft is stale, so it gets a new version (the old one superseded) and the other owner's draft is left.
+        var house = world.Db.PropertyOwnerships.Single(o => o.PropertyOwnerId == changing).PropertyId;
+        await world.StayAsync(house, BookingSource.Direct, 80m, Day(10, 25), Day(10, 27));
+        await world.BulkAsync(OwnerBulkAction.Post, changing);
+        var regenerated = await world.BulkAsync(OwnerBulkAction.Generate, owners);
+
+        Assert.Equal([true, true], regenerated.Select(r => r.Ok));
+        Assert.Equal([false, true], regenerated.Select(r => r.Unchanged));
+        var current = await world.VersionAsync(changing);
+        Assert.Equal((2, OwnerStatementVersionStatus.Draft), (current.VersionNumber, current.Status));
+        Assert.Equal(OwnerStatementVersionStatus.Superseded, world.Db.OwnerStatementVersions.Single(v => v.PropertyOwnerId == changing && v.VersionNumber == 1).Status);
+        Assert.Equal(1, world.Db.OwnerStatementVersions.Count(v => v.PropertyOwnerId == steady));
+    }
+
     // ---------------------------------------------------------------- the endpoint
 
     /// <summary>Permission: the publication in bulk needs the permission of the publication, every other step the one of the management of the statements, as the single operations do.</summary>
