@@ -613,6 +613,59 @@ public class Pain001V09Tests
         Assert.Equal(dateText, XDocument.Parse(xml).Descendants(Swiss + "ReqdExctnDt").Single().Element(Swiss + "Dt")!.Value);
     }
 
+    /// <summary>
+    /// Money rule: a payout reversed after its batch was made is still in the batch (a reversal posts the opposite ledger lines and does not know about the
+    /// batches), so the file would pay it. A batch that is not paid yet is then neither handed out, nor confirmed as downloaded, nor marked as paid (422
+    /// <c>wire_batch_payouts_reversed</c>, with the ids of the payouts) and its state does not move; a batch that was paid stays readable as evidence.
+    /// </summary>
+    [Fact]
+    public async Task WireBatch_PayoutReversedAfterTheBatch_IsNeitherDownloadedNorMarkedPaid_Test()
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = NewDb(orgId);
+        await AddIssuerAsync(db, orgId);
+        var service = NewService(db);
+
+        // A batch that was made and downloaded, and then one of its payouts is reversed: its file is the one that would pay it.
+        var downloaded = await AddTwoPayoutsAsync(db, orgId);
+        var (batch, _) = await service.CreateBatchAsync(orgId, downloaded, ExecutionDate);
+        await service.ConfirmDownloadAsync(orgId, batch.Id);
+        await ReverseAsync(db, downloaded[0]);
+
+        var file = await Assert.ThrowsAsync<DomainRuleException>(() => service.GetBatchFileAsync(orgId, batch.Id));
+        var paid = await Assert.ThrowsAsync<DomainRuleException>(() => service.ConfirmPaidAsync(orgId, batch.Id));
+        Assert.Equal(WireTransferErrors.BatchPayoutsReversed, file.Code);
+        Assert.Equal(WireTransferErrors.BatchPayoutsReversed, paid.Code);
+        Assert.Equal("WireBatchPayoutsReversed", paid.MessageKey);
+        Assert.Equal(1, (int)Assert.Single(paid.MessageArgs));
+        Assert.Equal(downloaded[0], Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<Guid>>(paid.Extensions["payoutIds"])));
+        var stillDownloaded = await db.WireBatches.AsNoTracking().SingleAsync(b => b.Id == batch.Id);
+        Assert.Equal(WireBatchStatus.Downloaded, stillDownloaded.Status);
+        Assert.Null(stillDownloaded.PaidAt);
+
+        // A batch not downloaded yet: the file is not handed out, the confirmation of the download is refused, and it stays as it was.
+        var fresh = await AddTwoPayoutsAsync(db, orgId);
+        var (generated, _) = await service.CreateBatchAsync(orgId, fresh, ExecutionDate);
+        await ReverseAsync(db, fresh[1]);
+
+        var freshFile = await Assert.ThrowsAsync<DomainRuleException>(() => service.GetBatchFileAsync(orgId, generated.Id));
+        var freshDownload = await Assert.ThrowsAsync<DomainRuleException>(() => service.ConfirmDownloadAsync(orgId, generated.Id));
+        Assert.Equal(WireTransferErrors.BatchPayoutsReversed, freshFile.Code);
+        Assert.Equal(WireTransferErrors.BatchPayoutsReversed, freshDownload.Code);
+        var untouched = await db.WireBatches.AsNoTracking().SingleAsync(b => b.Id == generated.Id);
+        Assert.Equal(WireBatchStatus.Generated, untouched.Status);
+        Assert.Null(untouched.DownloadedAt);
+
+        // A batch that was paid before the reversal is the evidence of what was sent: its file stays readable.
+        var sent = await AddTwoPayoutsAsync(db, orgId);
+        var (settled, xml) = await service.CreateBatchAsync(orgId, sent, ExecutionDate);
+        await service.ConfirmDownloadAsync(orgId, settled.Id);
+        await service.ConfirmPaidAsync(orgId, settled.Id);
+        await ReverseAsync(db, sent[0]);
+
+        Assert.Equal(xml, (await service.GetBatchFileAsync(orgId, settled.Id)).XmlContent);
+    }
+
     // ---- the request and the list ----------------------------------------------------------------------------------------------------------------------------
 
     /// <summary>
@@ -743,6 +796,16 @@ public class Pain001V09Tests
     }
 
     // ---- helpers -------------------------------------------------------------------------------------------------------------------------------------------------
+
+    /// <summary>What <c>OwnerPayoutService.ReversePayoutAsync</c> does to the payout row (it does not know about the wire batches).</summary>
+    private static async Task ReverseAsync(AppDbContext db, Guid payoutId)
+    {
+        var payout = await db.OwnerPayouts.SingleAsync(p => p.Id == payoutId);
+        payout.Status = OwnerPayoutStatus.Reversed;
+        payout.ReversedAt = Now.UtcDateTime;
+        payout.ReversalReason = "reversed after the batch";
+        await db.SaveChangesAsync();
+    }
 
     private static string[] Names(XElement element)
     {

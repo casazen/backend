@@ -4118,6 +4118,9 @@
   <data name="PayoutsAlreadyInBatch" xml:space="preserve">
     <value>One or more payouts are already included in a wire transfer batch</value>
   </data>
+  <data name="WireBatchPayoutsReversed" xml:space="preserve">
+    <value>The batch includes {0} payouts that were reversed after it was made: its file would still pay them. The batch is neither downloaded nor marked as paid: check the payouts listed.</value>
+  </data>
   <data name="WireExecutionDateInvalid" xml:space="preserve">
     <value>The execution date is required: it must be today or a later day, within a year. No batch was saved.</value>
   </data>

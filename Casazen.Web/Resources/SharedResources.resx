@@ -4118,6 +4118,9 @@
   <data name="PayoutsAlreadyInBatch" xml:space="preserve">
     <value>Uno o più pagamenti sono già inclusi in un batch di bonifici</value>
   </data>
+  <data name="WireBatchPayoutsReversed" xml:space="preserve">
+    <value>Il batch comprende {0} pagamenti che sono stati stornati dopo la sua creazione: il suo file li pagherebbe ancora. Il batch non si scarica e non si segna come pagato: controlla i pagamenti indicati.</value>
+  </data>
   <data name="WireExecutionDateInvalid" xml:space="preserve">
     <value>La data di esecuzione è obbligatoria: deve essere oggi o un giorno successivo, entro un anno. Nessun batch è stato salvato.</value>
   </data>

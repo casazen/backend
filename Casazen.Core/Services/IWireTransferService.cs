@@ -34,17 +34,20 @@ public interface IWireTransferService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Mark a batch of the org as downloaded. Updates Status to Downloaded and sets DownloadedAt. A batch of another org is not found.
+    /// Mark a batch of the org as downloaded. Updates Status to Downloaded and sets DownloadedAt. A batch of another org is not found; a batch that pays a payout
+    /// reversed after it was made is refused (<see cref="WireTransferErrors.BatchPayoutsReversed"/>).
     /// </summary>
     Task ConfirmDownloadAsync(Guid orgId, Guid batchId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Mark a batch of the org as paid. Updates Status to Paid and sets PaidAt. A batch of another org is not found.
+    /// Mark a batch of the org as paid. Updates Status to Paid and sets PaidAt. A batch of another org is not found; a batch that pays a payout reversed after it was
+    /// made is refused (<see cref="WireTransferErrors.BatchPayoutsReversed"/>), so a batch is never «paid» with a reversed payout in it.
     /// </summary>
     Task ConfirmPaidAsync(Guid orgId, Guid batchId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Get the batch file content and mark it as downloaded on first retrieval.
+    /// Get the batch file content and mark it as downloaded on first retrieval. The file of a batch that is not paid yet is not handed out while the batch pays a
+    /// payout reversed after it was made (<see cref="WireTransferErrors.BatchPayoutsReversed"/>); a paid batch stays readable.
     /// </summary>
     /// <param name="orgId">The caller's org ID (from tenant context).</param>
     /// <param name="batchId">The batch ID.</param>
@@ -139,6 +142,12 @@ public static class WireTransferErrors
 
     /// <summary>A payout is already paid by a batch.</summary>
     public const string PayoutsAlreadyInBatch = "payouts_already_in_batch";
+
+    /// <summary>
+    /// A payout of the batch was reversed after the batch was made, and its file would still pay it: the batch is neither downloaded nor marked as paid
+    /// (a paid batch stays readable). The ids of the payouts are in the <c>payoutIds</c> member of the problem.
+    /// </summary>
+    public const string BatchPayoutsReversed = "wire_batch_payouts_reversed";
 
     /// <summary>The payouts are in more than one currency: a batch is one currency.</summary>
     public const string MixedCurrencies = "mixed_currencies_not_allowed";

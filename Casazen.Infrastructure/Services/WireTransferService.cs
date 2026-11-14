@@ -236,6 +236,8 @@ public sealed class WireTransferService(
             throw new DomainRuleException("batch_already_downloaded_or_paid", "BatchAlreadyDownloadedOrPaid");
         }
 
+        await EnsureNoReversedPayoutsAsync(orgId, batch.Id, cancellationToken);
+
         batch.Status = WireBatchStatus.Downloaded;
         batch.DownloadedAt = clock.GetUtcNow().UtcDateTime;
 
@@ -257,6 +259,9 @@ public sealed class WireTransferService(
             throw new DomainRuleException("batch_already_paid", "BatchAlreadyPaid");
         }
 
+        // A batch is never marked paid while its file would still pay a payout that was reversed after the batch was made.
+        await EnsureNoReversedPayoutsAsync(orgId, batch.Id, cancellationToken);
+
         batch.Status = WireBatchStatus.Paid;
         batch.PaidAt = clock.GetUtcNow().UtcDateTime;
 
@@ -274,6 +279,13 @@ public sealed class WireTransferService(
         if (string.IsNullOrEmpty(batch.XmlContent))
         {
             throw new DomainRuleException("batch_xml_not_found", "BatchXmlNotFound");
+        }
+
+        // The file of a batch that is not paid yet is not handed out while it pays a payout that was reversed after the batch was made: it would go to the bank
+        // and pay it. A paid batch is evidence of what was sent and stays readable.
+        if (batch.Status != WireBatchStatus.Paid)
+        {
+            await EnsureNoReversedPayoutsAsync(orgId, batch.Id, cancellationToken);
         }
 
         // Mark as downloaded on first retrieval
@@ -426,6 +438,37 @@ public sealed class WireTransferService(
         // through a guessed id (404, as if it did not exist).
         var batch = await db.WireBatches.FirstOrDefaultAsync(b => b.Id == batchId && b.OrgId == orgId, cancellationToken);
         return batch ?? throw new NotFoundException($"Wire batch {batchId} not found");
+    }
+
+    /// <summary>
+    /// Refuses (422 <c>wire_batch_payouts_reversed</c>, with the ids of the payouts in <c>payoutIds</c>) a step of a batch whose file would still pay a payout that was
+    /// reversed after the batch was made. A reversal posts the opposite ledger lines and does not know about the batches, and a batch cannot be cancelled yet: the file
+    /// stays as it was written, so the batch is neither handed out nor marked as paid until the payouts are checked.
+    /// </summary>
+    private async Task EnsureNoReversedPayoutsAsync(Guid orgId, Guid batchId, CancellationToken cancellationToken)
+    {
+        var reversed = await (
+                from link in db.WireBatchPayouts.AsNoTracking()
+                join payout in db.OwnerPayouts.AsNoTracking() on link.OwnerPayoutId equals payout.Id
+                where link.OrgId == orgId && link.WireBatchId == batchId && payout.OrgId == orgId && payout.Status == OwnerPayoutStatus.Reversed
+                orderby link.OwnerPayoutId
+                select link.OwnerPayoutId)
+            .ToListAsync(cancellationToken);
+        if (reversed.Count == 0)
+        {
+            return;
+        }
+
+        logger.LogWarning(
+            "Wire batch {BatchId} pays {PayoutCount} payouts that were reversed after it was made, first ids: {PayoutIds}",
+            batchId,
+            reversed.Count,
+            string.Join(", ", reversed.Take(20)));
+
+        throw new DomainRuleException(WireTransferErrors.BatchPayoutsReversed, "WireBatchPayoutsReversed", reversed.Count)
+        {
+            Extensions = new Dictionary<string, object?> { ["payoutIds"] = reversed },
+        };
     }
 
     /// <summary>The name an owner is paid under: the legal name when the registry has one, else the first and last name.</summary>

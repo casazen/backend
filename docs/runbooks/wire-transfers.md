@@ -156,7 +156,10 @@ external entity and no network connection** is ever opened by the validation (`W
 - The statement flow is gone (422 `wire_batch_from_statement_retired`); the frontend wire page of before sends `statementIds` and `debitAccount` and has to move to
   `payoutIds` and `executionDate` (its own change).
 - A batch cannot be cancelled, and a payout that was **reversed after** it was put in a batch is not taken out of it: the reversal posts the opposite ledger lines and the
-  file is unchanged. Check the payouts before the file is uploaded to the bank; cancelling a batch (and freeing its payouts) is a later change.
+  file is unchanged. A batch that is not paid yet and pays such a payout is therefore **neither downloaded, nor confirmed as downloaded, nor marked as paid**: 422
+  `wire_batch_payouts_reversed`, with the ids of the payouts in `payoutIds` (`WireBatch_PayoutReversedAfterTheBatch_IsNeitherDownloadedNorMarkedPaid_Test`); a batch that
+  was paid stays readable as evidence. The other payouts of such a batch stay in it (a payout is in one batch only), so they are paid outside CasaZen until cancelling a
+  batch (and freeing its payouts) exists, which is a later change; a file that was already uploaded to the bank cannot be recalled from here.
 - The execution date is independent of the `PaidOn` day of the payouts (the day the withholding was decided on); the bank file asks for the date of the request.
 - EUR is still the SEPA `pain.001.001.03` message, written as before (the name of the creditor alone, `NOTPROVIDED` agents), until E16/F01/US02.
 - Only Swiss and Liechtenstein IBANs are paid in CHF (a domestic payment); cross-border CHF payments need creditor agent data this file does not carry.
