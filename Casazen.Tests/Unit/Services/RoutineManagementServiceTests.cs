@@ -679,6 +679,46 @@ public class RoutineManagementServiceTests
         Assert.Equal((1, 3), (first.Page, first.PageSize));
     }
 
+    /// <summary>
+    /// A page number so large that the rows to skip would not fit an int (it wrapped to a negative OFFSET, an error of the database, a 500) is a page that no
+    /// log reaches: empty, with the total of the log.
+    /// </summary>
+    [Theory]
+    [InlineData(int.MaxValue, 100)]
+    [InlineData(int.MaxValue, 7)]
+    [InlineData(int.MaxValue, 1)]
+    [InlineData(21474837, 100)]
+    public async Task ListExecutions_APageBeyondAnyLog_IsEmpty_NeverAnOverflow(int page, int pageSize)
+    {
+        var rig = new RoutineRig();
+        var routine = await rig.SeedRoutineAsync(OrgA, RoutineEventType.BookingConfirmed, "[]");
+        await using (var seed = rig.NewDb())
+        {
+            for (var i = 0; i < 3; i++)
+            {
+                seed.RoutineExecutions.Add(new RoutineExecution
+                {
+                    OrgId = OrgA,
+                    RoutineId = routine.Id,
+                    EventId = $"event-{i}",
+                    StartedAt = RoutineRig.Now.UtcDateTime.AddMinutes(i),
+                    Outcome = RoutineExecutionOutcomes.Success,
+                });
+            }
+
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = rig.NewDb();
+
+        var result = await rig.Management(db).ListExecutionsAsync(OrgA, routine.Id, page, pageSize);
+
+        Assert.Empty(result.Items);
+        Assert.Equal(3, result.TotalCount);
+        Assert.Equal(int.MaxValue / result.PageSize, result.Page);
+        Assert.True((long)(result.Page - 1) * result.PageSize <= int.MaxValue);
+    }
+
     [Theory]
     [InlineData(0, 0, 1, 1)]
     [InlineData(-4, 1000, 1, 100)]

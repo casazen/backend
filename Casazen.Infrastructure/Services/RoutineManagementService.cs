@@ -151,8 +151,10 @@ public class RoutineManagementService(
         if (!await db.Routines.AnyAsync(r => r.Id == routineId && r.OrgId == orgId, cancellationToken))
             throw NotFound(routineId);
 
-        var number = Math.Max(1, page);
+        // The page is bound so that the rows to skip, (page - 1) * size, fit an int: a page that no log reaches is an empty page, never an overflow
+        // (a negative OFFSET is an error of the database, a 500).
         var size = Math.Clamp(pageSize, 1, RoutineLimits.MaxExecutionsPageSize);
+        var number = Math.Clamp(page, 1, int.MaxValue / size);
         var executions = db.RoutineExecutions
             .AsNoTracking()
             .Where(e => e.OrgId == orgId && e.RoutineId == routineId);
