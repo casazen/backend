@@ -1,173 +1,44 @@
 using System.Text;
 using System.Xml.Linq;
-using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
-using Casazen.Core.Multitenancy;
-using Casazen.Core.Services;
-using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.Data.Encryption;
+using Casazen.Core.Exceptions;
 using Casazen.Infrastructure.Services;
-using Microsoft.AspNetCore.DataProtection;
+using Casazen.Tests.Unit.Logging;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
+using static Casazen.Tests.Unit.Services.WireTestData;
 
 namespace Casazen.Tests.Unit;
 
 /// <summary>
-/// ADR-017 proof tests for wire transfer money rules and IBAN privacy.
+/// ADR-017 proof tests for wire transfer money rules and IBAN privacy, on the payouts (E16/F01/US01/T01): the amount of a transfer is the net of the confirmed
+/// payout, and the IBAN of an owner is never in a log or an error.
 /// </summary>
 public class WireTransferProofTests
 {
     /// <summary>
-    /// Money rule proof: Wire batch TotalAmount equals the sum of statement NetPayable amounts.
-    /// Tests that the wire batch total is computed correctly from the included statements.
+    /// Money rule proof: the wire batch TotalAmount equals the sum of the net amounts of the confirmed payouts it pays. Tests that the wire batch total is computed
+    /// correctly from the included payouts (EUR, the SEPA file).
     /// </summary>
     [Fact]
-    public async Task WireBatch_SumEqualsStatementNets()
+    public async Task WireBatch_SumEqualsPayoutNets()
     {
-        // Arrange: in-memory database
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase($"WireBatchSumTest_{Guid.NewGuid()}")
-            .Options;
-
-        var dataProtection = new EphemeralDataProtectionProvider();
+        // Arrange: in-memory database, two owners with a valid Italian IBAN and a confirmed payout each
         var orgId = Guid.NewGuid();
-        var propertyId1 = Guid.NewGuid();
-        var propertyId2 = Guid.NewGuid();
-        var propertyOwnerId1 = Guid.NewGuid();
-        var propertyOwnerId2 = Guid.NewGuid();
+        await using var db = NewDb(orgId);
+        await AddIssuerAsync(db, orgId);
+        var owner1 = await AddOwnerAsync(db, orgId, "Mario", "Rossi", ItalianIban);
+        var owner2 = await AddOwnerAsync(db, orgId, "Luigi", "Bianchi", OtherItalianIban);
+        var payout1 = await AddPayoutAsync(db, orgId, owner1, 1200.00m, "EUR");
+        var payout2 = await AddPayoutAsync(db, orgId, owner2, 1574.50m, "EUR");
 
-        await using var db = new AppDbContext(options, new FixedTenantContext(orgId), dataProtection);
-
-        // Create test properties
-        var property1 = new Property
-        {
-            Id = propertyId1,
-            OrgId = orgId,
-            OwnerId = "test-owner-1",
-            Name = "Test Property 1",
-            Address = "Test Address 1",
-            City = "Rome",
-            CreatedAt = DateTime.UtcNow
-        };
-
-        var property2 = new Property
-        {
-            Id = propertyId2,
-            OrgId = orgId,
-            OwnerId = "test-owner-2",
-            Name = "Test Property 2",
-            Address = "Test Address 2",
-            City = "Milan",
-            CreatedAt = DateTime.UtcNow
-        };
-
-        // Create test owners with valid IBANs
-        var owner1 = new PropertyOwner
-        {
-            Id = propertyOwnerId1,
-            OrgId = orgId,
-            FirstName = "Mario",
-            LastName = "Rossi",
-            Email = "mario@example.com",
-            Iban = "IT60X0542811101000000123456", // Valid Italian IBAN
-            TaxRegime = OwnerTaxRegime.Private,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        var owner2 = new PropertyOwner
-        {
-            Id = propertyOwnerId2,
-            OrgId = orgId,
-            FirstName = "Luigi",
-            LastName = "Bianchi",
-            Email = "luigi@example.com",
-            Iban = "IT41W8000000292100645211151", // Valid Italian IBAN
-            TaxRegime = OwnerTaxRegime.Private,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        // Create ownerships
-        var ownership1 = new PropertyOwnership
-        {
-            OrgId = orgId,
-            PropertyId = propertyId1,
-            PropertyOwnerId = propertyOwnerId1,
-            SharePercent = 100.00m,
-            OwnershipStart = DateTime.UtcNow.AddMonths(-1)
-        };
-
-        var ownership2 = new PropertyOwnership
-        {
-            OrgId = orgId,
-            PropertyId = propertyId2,
-            PropertyOwnerId = propertyOwnerId2,
-            SharePercent = 100.00m,
-            OwnershipStart = DateTime.UtcNow.AddMonths(-1)
-        };
-
-        // Create published statements with different net amounts
-        var statement1 = new OwnerStatement
-        {
-            OrgId = orgId,
-            PropertyOwnerId = propertyOwnerId1,
-            PropertyId = propertyId1,
-            Month = 10,
-            Year = 2026,
-            Currency = "EUR",
-            Status = StatementStatus.Published,
-            TotalRevenue = 1500.00m,
-            Commission = 150.00m,
-            Expenses = 50.00m,
-            WithholdingTax = 100.00m,
-            NetPayable = 1200.00m,
-            OwnershipPercent = 100.00m,
-            PublishedAt = DateTime.UtcNow.AddDays(-1),
-            CreatedAt = DateTime.UtcNow.AddDays(-2),
-            UpdatedAt = DateTime.UtcNow.AddDays(-1)
-        };
-
-        var statement2 = new OwnerStatement
-        {
-            OrgId = orgId,
-            PropertyOwnerId = propertyOwnerId2,
-            PropertyId = propertyId2,
-            Month = 10,
-            Year = 2026,
-            Currency = "EUR",
-            Status = StatementStatus.Published,
-            TotalRevenue = 2000.00m,
-            Commission = 200.00m,
-            Expenses = 75.50m,
-            WithholdingTax = 150.00m,
-            NetPayable = 1574.50m,
-            OwnershipPercent = 100.00m,
-            PublishedAt = DateTime.UtcNow.AddDays(-1),
-            CreatedAt = DateTime.UtcNow.AddDays(-2),
-            UpdatedAt = DateTime.UtcNow.AddDays(-1)
-        };
-
-        db.Properties.AddRange(property1, property2);
-        db.PropertyOwners.AddRange(owner1, owner2);
-        db.PropertyOwnerships.AddRange(ownership1, ownership2);
-        db.OwnerStatements.AddRange(statement1, statement2);
-        await db.SaveChangesAsync();
-
-        // Act: Create wire batch (the official pain.001 schemas are not in the repository until an operator adds them, and a file is never produced without
+        // Act: create the wire batch (the official pain.001 schemas are not in the repository until an operator adds them, and a file is never produced without
         // its validation: this proof is about the sums, so it validates against a schema of its own, see Pain001ValidationProofTests for the validation)
-        var service = new WireTransferService(db, NullLogger<WireTransferService>.Instance, _ => Pain001TestSchemas.Accepting());
-        var (batch, xml) = await service.CreateBatchAsync(
-            orgId,
-            [statement1.Id, statement2.Id],
-            "IT60X0542811101000000123456", // Valid debit account IBAN
-            CancellationToken.None);
+        var (batch, xml) = await NewService(db).CreateBatchAsync(orgId, [payout1, payout2], ExecutionDate, CancellationToken.None);
 
-        // Assert: Batch total equals sum of statement NetPayable amounts
-        var expectedTotal = statement1.NetPayable + statement2.NetPayable;
-        Assert.Equal(expectedTotal, batch.TotalAmount);
-        Assert.Equal(2774.50m, batch.TotalAmount); // 1200.00 + 1574.50
-        Assert.Equal(2, batch.TransferCount); // One wire per owner
+        // Assert: batch total equals the sum of the payout nets
+        Assert.Equal(1200.00m + 1574.50m, batch.TotalAmount);
+        Assert.Equal(2774.50m, batch.TotalAmount);
+        Assert.Equal(2, batch.TransferCount); // One wire per payout
 
         // The downloaded bytes must form a complete UTF-8 payment document.
         using var xmlStream = new MemoryStream(Encoding.UTF8.GetBytes(xml));
@@ -186,107 +57,32 @@ public class WireTransferProofTests
     [Fact]
     public async Task WireIban_NeverInLogs()
     {
-        // Arrange: in-memory database
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase($"WireIbanPrivacyTest_{Guid.NewGuid()}")
-            .Options;
-
-        var dataProtection = new EphemeralDataProtectionProvider();
+        // Arrange: an owner with an INVALID IBAN (wrong check digits) and a confirmed payout
         var orgId = Guid.NewGuid();
-        var propertyId = Guid.NewGuid();
-        var propertyOwnerId = Guid.NewGuid();
+        const string invalidIban = "IT00X0542811101000000123456";
+        await using var db = NewDb(orgId);
+        await AddIssuerAsync(db, orgId);
+        var owner = await AddOwnerAsync(db, orgId, "Mario", "Rossi", invalidIban);
+        var payout = await AddPayoutAsync(db, orgId, owner, 1200.00m, "EUR");
+        var logger = new CapturingLogger<WireTransferService>();
 
-        await using var db = new AppDbContext(options, new FixedTenantContext(orgId), dataProtection);
-
-        // Create test property
-        var property = new Property
-        {
-            Id = propertyId,
-            OrgId = orgId,
-            OwnerId = "test-owner",
-            Name = "Test Property",
-            Address = "Test Address",
-            City = "Rome",
-            CreatedAt = DateTime.UtcNow
-        };
-
-        // Create test owner with INVALID IBAN (wrong check digits)
-        var owner = new PropertyOwner
-        {
-            Id = propertyOwnerId,
-            OrgId = orgId,
-            FirstName = "Mario",
-            LastName = "Rossi",
-            Email = "mario@example.com",
-            Iban = "IT00X0542811101000000123456", // INVALID IBAN (wrong check digits)
-            TaxRegime = OwnerTaxRegime.Private,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        var ownership = new PropertyOwnership
-        {
-            OrgId = orgId,
-            PropertyId = propertyId,
-            PropertyOwnerId = propertyOwnerId,
-            SharePercent = 100.00m,
-            OwnershipStart = DateTime.UtcNow.AddMonths(-1)
-        };
-
-        // Create published statement
-        var statement = new OwnerStatement
-        {
-            OrgId = orgId,
-            PropertyOwnerId = propertyOwnerId,
-            PropertyId = propertyId,
-            Month = 10,
-            Year = 2026,
-            Currency = "EUR",
-            Status = StatementStatus.Published,
-            TotalRevenue = 1500.00m,
-            Commission = 150.00m,
-            Expenses = 50.00m,
-            WithholdingTax = 100.00m,
-            NetPayable = 1200.00m,
-            OwnershipPercent = 100.00m,
-            PublishedAt = DateTime.UtcNow.AddDays(-1),
-            CreatedAt = DateTime.UtcNow.AddDays(-2),
-            UpdatedAt = DateTime.UtcNow.AddDays(-1)
-        };
-
-        db.Properties.Add(property);
-        db.PropertyOwners.Add(owner);
-        db.PropertyOwnerships.Add(ownership);
-        db.OwnerStatements.Add(statement);
-        await db.SaveChangesAsync();
-
-        // Act & Assert: Attempting to create a batch with invalid IBAN should fail
-        // WITHOUT logging the IBAN itself (only the owner ID is logged)
-        var service = new WireTransferService(db, NullLogger<WireTransferService>.Instance);
-
-        var exception = await Assert.ThrowsAsync<Core.Exceptions.DomainRuleException>(async () =>
-            await service.CreateBatchAsync(
-                orgId,
-                [statement.Id],
-                "IT60X0542811101000000123456", // Valid debit account
-                CancellationToken.None));
+        // Act & Assert: attempting to create a batch with an invalid IBAN should fail WITHOUT logging the IBAN itself (only the owner id is listed)
+        var exception = await Assert.ThrowsAsync<DomainRuleException>(async () =>
+            await NewService(db, logger).CreateBatchAsync(orgId, [payout], ExecutionDate, CancellationToken.None));
 
         // The exception should mention the error but NOT contain the IBAN
         Assert.Equal("owner_invalid_iban", exception.Code);
-        Assert.DoesNotContain("IT00X0542811101000000123456", exception.Message);
-        Assert.DoesNotContain(owner.Iban, exception.Message);
+        Assert.DoesNotContain(invalidIban, exception.Message);
+        Assert.DoesNotContain(invalidIban, exception.ToString());
+        Assert.DoesNotContain(invalidIban, logger.AllOutput);
+        Assert.DoesNotContain("Rossi", logger.AllOutput);
+        Assert.Equal(owner, Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<Guid>>(exception.Extensions["ownerIds"])));
 
         // The IBAN is encrypted in the database (EF automatically encrypts it)
-        var storedOwner = await db.PropertyOwners.AsNoTracking().FirstAsync(o => o.Id == propertyOwnerId);
+        var storedOwner = await db.PropertyOwners.AsNoTracking().FirstAsync(o => o.Id == owner);
         // When read through EF with encryption, the IBAN is decrypted
         // When read directly from the database, it would be encrypted
         // This proves the encryption mechanism is in place
         Assert.NotNull(storedOwner.Iban);
     }
-}
-
-/// <summary>Fixed tenant context for unit tests.</summary>
-file sealed class FixedTenantContext(Guid orgId) : ITenantContext
-{
-    public Guid? OrgId => orgId;
-    public bool FilterEnabled => true;
 }

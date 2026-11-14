@@ -58,6 +58,7 @@ public class AppDbContext(
     public DbSet<AgencyInvoice> AgencyInvoices { get; set; } = null!;
     public DbSet<WireBatch> WireBatches { get; set; } = null!;
     public DbSet<WireBatchStatement> WireBatchStatements { get; set; } = null!;
+    public DbSet<WireBatchPayout> WireBatchPayouts { get; set; } = null!;
     public DbSet<WithholdingLog> WithholdingLogs { get; set; } = null!;
     public DbSet<F24Record> F24Records { get; set; } = null!;
     public DbSet<OwnerInvitation> OwnerInvitations { get; set; } = null!;
@@ -2081,6 +2082,9 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new OwnerFxRateConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerExternalDocumentReferenceConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerPayoutConfiguration());
+
+        // The payouts a wire batch pays (E16/F01/US01/T01): a payout is in one batch only (unique on the payout), the batch holds its rows.
+        modelBuilder.ApplyConfiguration(new WireBatchPayoutConfiguration());
 
         // The owner portal operations (E07/F07/US01, NF-111). The tenant query filter is applied below, to every ITenantOwned entity.
         modelBuilder.ApplyConfiguration(new OwnerStayRuleConfiguration());

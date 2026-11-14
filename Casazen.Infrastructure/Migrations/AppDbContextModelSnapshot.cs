@@ -16913,11 +16913,17 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<string>("DebitAccount")
                         .IsRequired()
-                        .HasMaxLength(34)
-                        .HasColumnType("character varying(34)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime?>("DownloadedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly?>("ExecutionDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("MessageFormat")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
 
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
@@ -16943,6 +16949,55 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("OrgId");
 
                     b.ToTable("WireBatches");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.WireBatchPayout", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EndToEndId")
+                        .IsRequired()
+                        .HasMaxLength(35)
+                        .HasColumnType("character varying(35)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OwnerPayoutId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyOwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("WireBatchId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerPayoutId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_WireBatchPayouts_OwnerPayoutId");
+
+                    b.HasIndex("PropertyOwnerId");
+
+                    b.HasIndex("OrgId", "WireBatchId");
+
+                    b.HasIndex("WireBatchId", "EndToEndId")
+                        .IsUnique();
+
+                    b.ToTable("WireBatchPayouts", t =>
+                        {
+                            t.HasCheckConstraint("CK_WireBatchPayouts_Amount", "\"Amount\" > 0");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.WireBatchStatement", b =>
@@ -20563,6 +20618,27 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Org");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.WireBatchPayout", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.OwnerPayout", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerPayoutId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.PropertyOwner", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyOwnerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.WireBatch", null)
+                        .WithMany()
+                        .HasForeignKey("WireBatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.WireBatchStatement", b =>

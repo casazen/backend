@@ -132,8 +132,8 @@ accounting for Swiss owners, and the retention law that applies (Italy at least 
 - **Corrections** (`POST api/owner-accounting/corrections`, `agency.owner.financial.manage`): a signed manual line with its reason; `replacesEntryId`
   reverses an earlier manual line first. A line of a source is corrected by fixing the source and posting again.
 - **Scope**: the endpoints need an org-wide reach; a collaborator restricted to some properties gets 403 even with the permission.
-- **Not yet**: the import of the outgoing bank movements (a wire marked paid, or a confirmed payout, is the evidence of the transfer), and the wire batch that
-  pays the net of the withholding (see «Payouts»).
+- **Not yet**: the import of the outgoing bank movements (a wire marked paid, or a confirmed payout, is the evidence of the transfer). The wire batch that pays the net
+  of the withholding exists since E16/F01/US01/T01: it is made from the confirmed payouts (see «Payouts» and [`wire-transfers.md`](wire-transfers.md)).
 
 ### Posting per booking flow (E13/F01/US01/T02)
 
