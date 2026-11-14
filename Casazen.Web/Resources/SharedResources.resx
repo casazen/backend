@@ -6570,9 +6570,6 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerInvoiceLineCommission" xml:space="preserve">
     <value>Provvigione di gestione - {0} - {1}</value>
   </data>
-  <data name="OwnerInvoiceLineFlatFee" xml:space="preserve">
-    <value>{0} - {1} - {2}</value>
-  </data>
   <data name="OwnerInvoiceFlatFeeCleaning" xml:space="preserve">
     <value>Forfait pulizie</value>
   </data>
@@ -6581,9 +6578,6 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="OwnerInvoiceStay" xml:space="preserve">
     <value>soggiorno {0} con partenza il {1}</value>
-  </data>
-  <data name="OwnerInvoiceLineCharge" xml:space="preserve">
-    <value>{0} - {1} - {2}</value>
   </data>
   <data name="OwnerInvoiceLineCardFees" xml:space="preserve">
     <value>Riaddebito commissioni di incasso con carta - {0} - {1}</value>
@@ -6647,9 +6641,6 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="QrBillSeparate" xml:space="preserve">
     <value>Da staccare prima del versamento</value>
-  </data>
-  <data name="QrBillMessage" xml:space="preserve">
-    <value>Fattura {0}</value>
   </data>
   <data name="OwnerExternalDocumentInvalid" xml:space="preserve">
     <value>Il collegamento alla fattura esterna non è valido: controlla il campo indicato.</value>

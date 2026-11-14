@@ -302,7 +302,7 @@ public sealed class OwnerInvoiceService(
                      .GroupBy(e => (e.SourceId, e.SourceReference, e.PropertyId)))
         {
             var kind = group.Key.SourceReference == OwnerLedgerFlatFees.Linen ? Text("OwnerInvoiceFlatFeeLinen") : Text("OwnerInvoiceFlatFeeCleaning");
-            Add(FiscalLineType.Recharge, 1, Text("OwnerInvoiceLineFlatFee", kind, PropertyName(group.Key.PropertyId), StayLabel(group.Key.SourceId)), group);
+            Add(FiscalLineType.Recharge, 1, Dashed(kind, PropertyName(group.Key.PropertyId), StayLabel(group.Key.SourceId)), group);
         }
 
         // The approved charges, and the charges of any other source: a recharge for each, with its own description and day.
@@ -310,7 +310,7 @@ public sealed class OwnerInvoiceService(
                      .Where(e => e.EntryType == OwnerLedgerEntryType.OwnerCharge && e.SourceType != OwnerLedgerSourceType.MandateFlatFee)
                      .GroupBy(e => (e.SourceType, e.SourceId, e.PropertyId)))
         {
-            Add(FiscalLineType.Recharge, 2, Text("OwnerInvoiceLineCharge", DescriptionOf(group), PropertyName(group.Key.PropertyId), DayOf(group)), group);
+            Add(FiscalLineType.Recharge, 2, Dashed(DescriptionOf(group), PropertyName(group.Key.PropertyId), DayOf(group)), group);
         }
 
         // The card fees the mandate passes to the owner: a cost the agency bears in its own name, recharged with the VAT of a recharge, one line per property.
@@ -601,6 +601,12 @@ public sealed class OwnerInvoiceService(
     }
 
     private string Text(string key, params object[] args) => texts.Get(key, LineLanguage, args);
+
+    /// <summary>
+    /// The three parts of the description of a recharge (what it is, the property, the stay or the day) with a dash between them: no word of its own, so no text of the
+    /// resource files (a text that reads the same in Italian and in English is no resource, and the lines of a document are in Italian anyway).
+    /// </summary>
+    private static string Dashed(string first, string second, string third) => $"{first} - {second} - {third}";
 
     private static string DescriptionOf(IEnumerable<OwnerLedgerEntry> group) =>
         group.Select(e => e.Description).FirstOrDefault(d => !string.IsNullOrWhiteSpace(d))?.Trim() ?? string.Empty;

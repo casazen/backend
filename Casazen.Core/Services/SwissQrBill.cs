@@ -60,6 +60,9 @@ public static class SwissQrBill
     public const int TownMaxLength = 35;
     public const int MessageMaxLength = 140;
 
+    /// <summary>The word the unstructured message of the QR-bill of an invoice starts with: the brief names the message «Fattura &lt;numero&gt;», in Italian in every language.</summary>
+    public const string MessageWord = "Fattura";
+
     /// <summary>The longest body of a creditor reference (ISO 11649: 25 characters with <c>RF</c> and the two check digits).</summary>
     public const int ScorBodyMaxLength = 21;
 
@@ -79,6 +82,16 @@ public static class SwissQrBill
             return qr;
 
         return BankValues.NormalizeIban(iban) is { } plain && IsSwissAccount(plain) && !IssuerBankAccounts.IsQrIban(plain) ? plain : null;
+    }
+
+    /// <summary>
+    /// The unstructured message of the QR-bill of the invoice <paramref name="invoiceNumber"/>: «Fattura PM2026/1». The payment instruction of one invoice is the
+    /// same whoever downloads it and in whatever language, so it is not a text of the resource files (only the headings of the payment part are).
+    /// </summary>
+    public static string MessageOf(string invoiceNumber)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(invoiceNumber);
+        return MessageWord + " " + invoiceNumber.Trim();
     }
 
     /// <summary>True for an IBAN of Switzerland or Liechtenstein (21 characters).</summary>

@@ -6570,9 +6570,6 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OwnerInvoiceLineCommission" xml:space="preserve">
     <value>Management commission - {0} - {1}</value>
   </data>
-  <data name="OwnerInvoiceLineFlatFee" xml:space="preserve">
-    <value>{0} - {1} - {2}</value>
-  </data>
   <data name="OwnerInvoiceFlatFeeCleaning" xml:space="preserve">
     <value>Cleaning flat fee</value>
   </data>
@@ -6581,9 +6578,6 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="OwnerInvoiceStay" xml:space="preserve">
     <value>stay {0} checking out on {1}</value>
-  </data>
-  <data name="OwnerInvoiceLineCharge" xml:space="preserve">
-    <value>{0} - {1} - {2}</value>
   </data>
   <data name="OwnerInvoiceLineCardFees" xml:space="preserve">
     <value>Recharge of the card payment fees - {0} - {1}</value>
@@ -6647,9 +6641,6 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="QrBillSeparate" xml:space="preserve">
     <value>Separate before paying in</value>
-  </data>
-  <data name="QrBillMessage" xml:space="preserve">
-    <value>Fattura {0}</value>
   </data>
   <data name="OwnerExternalDocumentInvalid" xml:space="preserve">
     <value>The link to the external invoice is not valid: check the field named.</value>
