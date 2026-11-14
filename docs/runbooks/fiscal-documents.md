@@ -62,6 +62,11 @@ period of the stay (`ServicePeriodFrom`/`To`, from the check-in and the check-ou
 carry a `LineType` (`Accommodation`, `Cleaning`, `ExtraService`, `TouristTax`, `Commission`, `Recharge`, `AdvancedExpense`, `Other`); the stored lines
 were migrated (the tourist tax line, recognized by its fixed description, became `TouristTax`; the others `Accommodation`).
 
+**A draft is issued only with the rule it was made with.** The draft keeps the `RuleVersion` and the VAT of each line it was made with; if the regime, the
+country or a treatment of the issuer changed since (or a new version of the catalog started), the amounts the host confirmed are the old rule's while the XML,
+the snapshot and the layout would be the new one's: the issue answers 409 `document_draft_outdated` and nothing is numbered. Refreshing the draft
+(`POST api/fiscal/documents/{id}/refresh`) makes it again with the rule of today. A draft without a version (made before the versions existed) is not checked.
+
 ## Official schema (precondition of the XML)
 
 The XML is validated against the official FatturaPA schema before it is stored (ADR-019-R6). The schema files are **not** written or rebuilt by

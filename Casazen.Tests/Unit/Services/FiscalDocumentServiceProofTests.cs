@@ -221,6 +221,47 @@ public class FiscalDocumentServiceProofTests
     private static async Task<bool> IsCreditedInFullAsync(AppDbContext db, Guid documentId) =>
         (await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == documentId)).CreditedInFull;
 
+    /// <summary>
+    /// PROOF TEST: money and data rule. A draft is issued only with the rule it was made with: when a treatment of the issuer (the cleaning with the stay or as a
+    /// service) or its regime changes after the draft, the amounts the host confirmed are the old rule's while the XML, the snapshot and the layout would be the
+    /// new one's, so issuing is refused (409 <c>document_draft_outdated</c>, nothing is numbered); a draft that is refreshed takes the amounts of the new rule
+    /// and is issued.
+    /// </summary>
+    [Fact]
+    public async Task FiscalDocument_DraftOfAnotherRule_IsNotIssued_UntilItIsRefreshed_Test()
+    {
+        await using var db = NewDb();
+        var booking = await SeedAsync(db, BookingSource.Direct);
+        var service = Service(db);
+        var draft = await service.CreateDraftAsync(booking, null);
+        Assert.Equal("it-ordinary-2026.1", draft.RuleVersion);
+        Assert.Equal(31.82m, draft.VatAmount);
+
+        // A treatment changes: the cleaning is now a service at 22% instead of following the stay at 10%.
+        var profile = await db.OrgFiscalIssuerProfiles.SingleAsync();
+        profile.CleaningFeeTreatment = CleaningFeeTreatment.Service;
+        await db.SaveChangesAsync();
+
+        var outdated = await Assert.ThrowsAsync<DomainConflictException>(() => service.IssueAsync(draft.Id, confirm: true));
+        Assert.Equal(FiscalDocumentErrors.DraftOutdated, outdated.Code);
+        Assert.Empty(await db.FiscalNumberSequences.ToListAsync());
+        Assert.Equal(FiscalDocumentStatus.Draft, (await db.FiscalDocuments.AsNoTracking().SingleAsync()).Status);
+
+        // Refreshed, the draft has the amounts of the new rule, and it is issued with them.
+        var refreshed = await service.RefreshDraftAsync(draft.Id);
+        Assert.Equal(36.29m, refreshed.VatAmount);
+        var issued = await service.IssueAsync(draft.Id, confirm: true);
+        Assert.Equal((FiscalDocumentStatus.Issued, 36.29m, 362.00m), (issued.Status, issued.VatAmount, issued.Total));
+
+        // The regime changes after another draft: a private person gives a receipt, not the invoice the draft is.
+        var second = await SeedBookingAsync(db, BookingSource.Manual);
+        var draftOfAnInvoice = await service.CreateDraftAsync(second, null);
+        profile.DocumentRegime = DocumentRegime.PrivatePerson;
+        await db.SaveChangesAsync();
+        var changed = await Assert.ThrowsAsync<DomainConflictException>(() => service.IssueAsync(draftOfAnInvoice.Id, confirm: true));
+        Assert.Equal(FiscalDocumentErrors.DraftOutdated, changed.Code);
+    }
+
     /// <summary>A booking that is not active owes no document: no draft, no number, no lock of the issuer (the one definition of an active booking).</summary>
     [Theory]
     [InlineData(BookingStatus.Pending, false)]

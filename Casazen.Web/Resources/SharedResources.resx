@@ -6168,6 +6168,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocumentAlreadyIssued" xml:space="preserve">
     <value>Per questa prenotazione esiste già un documento emesso: per emetterne un altro serve prima una nota di credito totale.</value>
   </data>
+  <data name="FiscalDocumentDraftOutdated" xml:space="preserve">
+    <value>Le regole fiscali o i dati dell'emittente sono cambiati da quando è stata preparata la bozza: aggiornala e controlla di nuovo gli importi prima di emettere.</value>
+  </data>
   <data name="FiscalDocumentBookingNotActive" xml:space="preserve">
     <value>La prenotazione non è attiva (richiesta, annullata o no-show): non si emette un documento fiscale per questa prenotazione.</value>
   </data>

@@ -94,6 +94,7 @@ public sealed class FiscalDocumentService(
         await RequireCasazenIssuesAsync(booking, ct);
         var (profile, org) = await RequireIssuerAsync(booking.OrgId, ct);
         var rule = RuleOf(profile, booking);
+        RequireDraftOfTheRule(document, rule);
         await RequireNoOtherDocumentAsync(booking.Id, document.Id, ct);
 
         var today = timeProvider.TodayInRomeAsDateOnly();
@@ -766,6 +767,29 @@ public sealed class FiscalDocumentService(
 
     /// <summary>A Swiss document (any kind) and an Italian receipt need only the name of the recipient; an Italian invoice the whole of its data.</summary>
     internal static bool NeedsOnlyTheName(FiscalTaxRule rule, DocumentKind kind) => rule.IsSwiss || kind == DocumentKind.Receipt;
+
+    /// <summary>
+    /// The draft was made with the tax rule the document is about to be issued with: the version of its rule, the kind of document and the VAT of each of its
+    /// lines (by type, with the treatments of the issuer) are those of <paramref name="rule"/>. When the regime, the country, a treatment of the issuer or the
+    /// catalog changed since the draft was made, its amounts are the old rule's while the XML, the snapshot of the issuer and the layout would be the new one's
+    /// and the host confirmed other amounts: 409 <c>document_draft_outdated</c>, the draft has to be refreshed first. A draft without a version (made before the
+    /// versions existed) is not checked.
+    /// </summary>
+    private static void RequireDraftOfTheRule(FiscalDocument draft, FiscalTaxRule rule)
+    {
+        if (draft.RuleVersion is null)
+            return;
+
+        var kind = rule.DocumentKind == RuleDocumentKind.Receipt ? DocumentKind.Receipt : DocumentKind.Invoice;
+        var sameRule = string.Equals(draft.RuleVersion, rule.Version, StringComparison.Ordinal) && draft.Kind == kind;
+        if (sameRule && draft.Lines.All(line => HasTheVatOfTheRule(line, rule)))
+            return;
+
+        throw new DomainConflictException(FiscalDocumentErrors.DraftOutdated, "FiscalDocumentDraftOutdated");
+    }
+
+    private static bool HasTheVatOfTheRule(FiscalDocumentLine line, FiscalTaxRule rule) =>
+        rule.Rates.TryGetValue(line.LineType, out var rate) && line.VatRatePercent == rate.Percent && string.Equals(line.VatNatureCode, rate.NatureCode, StringComparison.Ordinal);
 
     /// <summary>
     /// An Italian invoice, or the credit note of one, is an electronic invoice (FatturaPA, to send to the SDI). A Swiss document is not, nor is a receipt or the

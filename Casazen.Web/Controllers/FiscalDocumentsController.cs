@@ -115,7 +115,8 @@ public class FiscalDocumentsController(
 
     /// <summary>
     /// The draft issued, after the host's confirmation (<c>{ confirm: true }</c>, else 422 <c>document_confirmation_required</c>): number, validated XML,
-    /// state <c>to_send</c>. 422 <c>fatturapa_xml_invalid</c>, <c>fatturapa_schema_unavailable</c>, <c>series_too_long</c>.
+    /// state <c>to_send</c>. 422 <c>fatturapa_xml_invalid</c>, <c>fatturapa_schema_unavailable</c>, <c>series_too_long</c>; 409 <c>document_draft_outdated</c> when
+    /// the tax rule or the data of the issuer changed since the draft was made (refresh it first).
     /// </summary>
     [HttpPost("{id:guid}/issue")]
     [Authorize(Policy = CasazenPolicies.PaymentWrite)]
