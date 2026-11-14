@@ -4050,7 +4050,7 @@
     <value>The batch has not been downloaded yet</value>
   </data>
   <data name="InvalidDebitAccountIban" xml:space="preserve">
-    <value>The debit account IBAN is invalid</value>
+    <value>The IBAN of the debit account in the issuer profile is not valid: correct it in the «Fatturazione» setup. No batch was saved.</value>
   </data>
   <data name="InvalidXmlFormat" xml:space="preserve">
     <value>The wire transfer file XML format is invalid</value>
@@ -4059,13 +4059,13 @@
     <value>The XML file structure does not comply with ISO 20022 standard</value>
   </data>
   <data name="MixedCurrenciesNotAllowed" xml:space="preserve">
-    <value>Cannot include statements in different currencies in the same batch</value>
+    <value>Cannot include payouts in different currencies in the same batch</value>
   </data>
   <data name="NoStatementsProvided" xml:space="preserve">
     <value>No statements provided to create the batch</value>
   </data>
   <data name="OwnerInvalidIban" xml:space="preserve">
-    <value>An owner has an invalid IBAN</value>
+    <value>{0} owners have an invalid IBAN (the check digits do not match): correct the data of the owners listed. No batch was saved.</value>
   </data>
   <data name="OwnerMissingIban" xml:space="preserve">
     <value>An owner does not have an IBAN configured</value>
@@ -4092,10 +4092,52 @@
     <value>The wire file does not match its own lines (to check: {0}). No batch was saved.</value>
   </data>
   <data name="WireCurrencyNotSupported" xml:space="preserve">
-    <value>Wire transfers can only be prepared in EUR (the SEPA file) or in CHF (the Swiss file): the currency of the statements is not supported.</value>
+    <value>Wire transfers can only be prepared in EUR (the SEPA file) or in CHF (the Swiss file): the currency of the payouts is not supported.</value>
   </data>
   <data name="WireAmountInvalid" xml:space="preserve">
     <value>The amount to pay to an owner must be greater than zero and have at most two decimals. No batch was saved.</value>
+  </data>
+  <data name="WireBatchFromStatementRetired" xml:space="preserve">
+    <value>Wires are no longer made from statements: choose the confirmed payouts to the owners and the execution date. The account to debit is the one of the issuer profile and is not part of the request. No batch was saved.</value>
+  </data>
+  <data name="NoPayoutsProvided" xml:space="preserve">
+    <value>No owner payouts provided to create the batch</value>
+  </data>
+  <data name="WireBatchTooLarge" xml:space="preserve">
+    <value>A batch holds at most {0} transfers: split the payouts into more batches. No batch was saved.</value>
+  </data>
+  <data name="PayoutsNotFoundOrNotOwned" xml:space="preserve">
+    <value>One or more payouts were not found or do not belong to your organization</value>
+  </data>
+  <data name="WirePayoutsNotConfirmed" xml:space="preserve">
+    <value>Only confirmed payouts can be paid: one or more were reversed. No batch was saved.</value>
+  </data>
+  <data name="WirePayoutsNotPublished" xml:space="preserve">
+    <value>The statement of one or more payouts has not been published to the owner yet: publish it before preparing the wire. No batch was saved.</value>
+  </data>
+  <data name="PayoutsAlreadyInBatch" xml:space="preserve">
+    <value>One or more payouts are already included in a wire transfer batch</value>
+  </data>
+  <data name="WireExecutionDateInvalid" xml:space="preserve">
+    <value>The execution date is required: it must be today or a later day, within a year. No batch was saved.</value>
+  </data>
+  <data name="WireDebtorIncomplete" xml:space="preserve">
+    <value>The issuer profile has no name or no complete address (street, postal code, town and country) for who pays: complete them in the «Fatturazione» setup. No batch was saved.</value>
+  </data>
+  <data name="WireDebitAccountMissing" xml:space="preserve">
+    <value>The issuer profile has no IBAN for the account to debit: add it in the «Fatturazione» setup. No batch was saved.</value>
+  </data>
+  <data name="WireOwnerAddressMissing" xml:space="preserve">
+    <value>{0} owners have no complete address (street, postal code, town and country), which the Swiss wire needs: complete the data of the owners listed. No batch was saved.</value>
+  </data>
+  <data name="WireOwnerIbanMissing" xml:space="preserve">
+    <value>{0} owners do not have an IBAN configured: complete the data of the owners listed. No batch was saved.</value>
+  </data>
+  <data name="WireOwnerQrIban" xml:space="preserve">
+    <value>{0} owners have a QR-IBAN, which is the account of the QR-bill and not the creditor account of a normal transfer: their ordinary IBAN is needed. No batch was saved.</value>
+  </data>
+  <data name="WireOwnerIbanNotSwiss" xml:space="preserve">
+    <value>{0} owners have an IBAN that is not Swiss or Liechtenstein: a CHF transfer to that account is not a domestic payment and this file does not cover it. No batch was saved.</value>
   </data>
   <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
     <value>Access code not available or verification not passed</value>

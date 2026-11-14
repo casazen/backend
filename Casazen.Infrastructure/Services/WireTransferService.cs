@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Text;
-using System.Xml;
 using System.Xml.Linq;
 using System.Xml.Schema;
 using Casazen.Core.Entities;
@@ -15,172 +13,212 @@ using Microsoft.Extensions.Logging;
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// Wire transfer service (ADR-017): generates SEPA pain.001 (Italy) or Swiss Payment Standards (Switzerland) XML files
-/// for paying property owners. One wire per owner, one file per currency and debit account.
+/// Wire transfer service (ADR-017, E16/F01/US01/T01): builds the bank file that pays the owners from their <b>confirmed payouts</b>, the net after the withholding
+/// (<see cref="OwnerPayout"/>), and never from a statement. CHF is the Swiss <c>pain.001.001.09.ch.03</c> file (<see cref="Pain001V09Writer"/>), EUR keeps the SEPA
+/// <c>pain.001.001.03</c> file until its own change. One transfer per payout, one file per currency; the debtor and the debit account are the issuer profile of the
+/// org. A payout is paid by one batch only.
 /// </summary>
 /// <remarks>
-/// <para><b>The file is validated before anything is saved</b> (E06/F05/US01/T01, NF-25): against the official schema of its currency (EUR: SEPA, CHF: Swiss;
+/// <para><b>The file is validated before anything is saved</b> (E06/F05/US01/T01, NF-25, NF-113): against the official schema of its currency (EUR: SEPA, CHF: Swiss;
 /// <see cref="Pain001SchemaProvider"/>, <see cref="XsdValidator"/>: no DTD, no resolver, no network) and against what a schema cannot say, the sums
-/// (<see cref="Pain001Checks"/>). The batch, its statements and the file are written by one <c>SaveChanges</c> after that: a file that does not validate
-/// leaves no row behind (422 <c>wire_batch_xml_invalid</c> or <c>wire_batch_content_invalid</c>), and a build without the official schema of the currency
-/// produces no file at all (422 <c>wire_batch_schema_unavailable</c>), never a file that was not validated.</para>
-/// <para><b>Privacy.</b> The IBAN and the name of an owner are written in the file and in no log line, message or exception. The errors of the validation are
-/// the line and position of the schema errors and the names of the ISO elements whose rule is broken.</para>
+/// (<see cref="Pain001Checks"/>). The batch, its payouts and the file are written by one <c>SaveChanges</c> after that: a file that does not validate leaves no row
+/// behind (422 <c>wire_batch_xml_invalid</c> or <c>wire_batch_content_invalid</c>), and a build without the official schema of the currency produces no file at all
+/// (422 <c>wire_batch_schema_unavailable</c>), never a file that was not validated.</para>
+/// <para><b>One batch for a payout.</b> The batch is made under the lock of the owner accounting of the org, the one a payout confirmation and a reversal take, so a
+/// payout reversed while its batch is made is seen by one of them; the unique index of <see cref="WireBatchPayout"/> is the backstop of two requests that could not
+/// be told apart.</para>
+/// <para><b>Privacy.</b> The IBAN, the name and the address of an owner are written in the file and in no log line, message or exception: the refusals about owners
+/// list their <b>ids</b>. The errors of the validation are the line and position of the schema errors and the names of the ISO elements whose rule is broken. The file
+/// and the debit account are encrypted at rest (<c>EncryptedColumns</c>).</para>
+/// <para><b>Tenant.</b> Every read and write filters on the org of the caller explicitly, besides the global filter of the context (a <c>Find</c> by key does not
+/// apply it): a batch or a payout of another org does not exist for the caller.</para>
 /// </remarks>
 public sealed class WireTransferService(
     AppDbContext db,
     ILogger<WireTransferService> logger,
-    Func<string, XmlSchemaSet>? schemaSource = null) : IWireTransferService
+    Func<string, XmlSchemaSet>? schemaSource = null,
+    TimeProvider? time = null) : IWireTransferService
 {
-    // ISO 20022 pain.001.001.03 namespace (SEPA and Swiss both use this)
-    private const string PainNamespace = Pain001SchemaProvider.Namespace;
-
     // The schemas a file is validated against, by currency: the official ones of the build (422 when they are not installed). Only a test supplies its own.
     private readonly Func<string, XmlSchemaSet> schemaFor = schemaSource ?? Pain001SchemaProvider.GetSchemas;
+
+    private readonly TimeProvider clock = time ?? TimeProvider.System;
 
     /// <inheritdoc />
     public async Task<(WireBatch Batch, string XmlContent)> CreateBatchAsync(
         Guid orgId,
-        List<Guid> statementIds,
-        string debitAccount,
+        IReadOnlyList<Guid> payoutIds,
+        DateOnly executionDate,
         CancellationToken cancellationToken = default)
     {
-        if (statementIds.Count == 0)
+        ArgumentNullException.ThrowIfNull(payoutIds);
+
+        // An empty list is never «all the payouts», and a request has a size.
+        var ids = payoutIds.Distinct().ToList();
+        if (ids.Count == 0)
         {
-            throw new DomainRuleException("no_statements_provided", "NoStatementsProvided");
+            throw new DomainRuleException(WireTransferErrors.NoPayoutsProvided, "NoPayoutsProvided");
         }
 
-        // Validate and normalize the debit account IBAN
-        var normalizedDebitAccount = NormalizeIban(debitAccount);
-        if (!ValidateIban(normalizedDebitAccount))
+        if (ids.Count > WireTransferErrors.MaxTransfers)
         {
-            throw new DomainRuleException("invalid_debit_account_iban", "InvalidDebitAccountIban");
+            throw new DomainRuleException(WireTransferErrors.BatchTooLarge, "WireBatchTooLarge", WireTransferErrors.MaxTransfers);
         }
 
-        // Load statements with owner and ownership details
-        var statements = await db.OwnerStatements
-            .Include(s => s.PropertyOwner)
-            .Where(s => statementIds.Contains(s.Id) && s.OrgId == orgId)
+        // The bank is asked for today (Europe/Rome) or a later day, within a year.
+        var today = clock.TodayInRomeAsDateOnly();
+        if (executionDate < today || executionDate > today.AddYears(1))
+        {
+            throw new DomainRuleException(WireTransferErrors.ExecutionDateInvalid, "WireExecutionDateInvalid");
+        }
+
+        await using var tx = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db,
+            cancellationToken,
+            (PostgresAdvisoryLocks.Scope.OwnerAccounting, orgId.ToString("N")));
+
+        // The payouts: all in the org, all confirmed, all of a version published to the owner, all in one currency of a wire file, none in a batch.
+        var payouts = await db.OwnerPayouts.AsNoTracking()
+            .Where(p => p.OrgId == orgId && ids.Contains(p.Id))
             .ToListAsync(cancellationToken);
-
-        if (statements.Count != statementIds.Count)
+        if (payouts.Count != ids.Count)
         {
-            throw new DomainRuleException("statements_not_found_or_not_owned", "StatementsNotFoundOrNotOwned");
+            throw new DomainRuleException(WireTransferErrors.PayoutsNotFound, "PayoutsNotFoundOrNotOwned");
         }
 
-        // Ensure all statements are Published
-        if (statements.Any(s => s.Status != StatementStatus.Published))
+        if (payouts.Any(p => p.Status != OwnerPayoutStatus.Confirmed))
         {
-            throw new DomainRuleException("statements_not_published", "StatementsNotPublished");
+            throw new DomainRuleException(WireTransferErrors.PayoutsNotConfirmed, "WirePayoutsNotConfirmed");
         }
 
-        // Ensure all statements are in the same currency (a letter case or a space does not make another one)
-        var currencies = statements.Select(s => NormalizeCurrency(s.Currency)).Distinct(StringComparer.Ordinal).ToList();
+        var versionIds = payouts.Select(p => p.OwnerStatementVersionId).Distinct().ToList();
+        var versions = await db.OwnerStatementVersions.AsNoTracking()
+            .Where(v => v.OrgId == orgId && versionIds.Contains(v.Id) && v.PublishedAt != null)
+            .Select(v => new { v.Id, v.PeriodYear, v.PeriodMonth })
+            .ToDictionaryAsync(v => v.Id, cancellationToken);
+        if (versions.Count != versionIds.Count)
+        {
+            throw new DomainRuleException(WireTransferErrors.PayoutsNotPublished, "WirePayoutsNotPublished");
+        }
+
+        // One currency per batch (a letter case or a space does not make another one), and only the currencies of a wire file.
+        var currencies = payouts.Select(p => NormalizeCurrency(p.Currency)).Distinct(StringComparer.Ordinal).ToList();
         if (currencies.Count > 1)
         {
-            throw new DomainRuleException("mixed_currencies_not_allowed", "MixedCurrenciesNotAllowed");
+            throw new DomainRuleException(WireTransferErrors.MixedCurrencies, "MixedCurrenciesNotAllowed");
         }
 
-        // Only the currencies of a wire file: EUR (the SEPA file) and CHF (the Swiss one). Any other currency in a SEPA file is not a payment a bank takes.
         var currency = currencies[0];
         if (currency is not (WireTransferErrors.SepaCurrency or WireTransferErrors.SwissCurrency))
         {
             throw new DomainRuleException(WireTransferErrors.CurrencyNotSupported, "WireCurrencyNotSupported");
         }
 
-        // Check if any statement is already in a batch (AC-NF19-8)
-        var statementsInBatches = await db.Set<WireBatchStatement>()
-            .Where(wbs => statementIds.Contains(wbs.OwnerStatementId))
-            .Select(wbs => wbs.OwnerStatementId)
-            .ToListAsync(cancellationToken);
-
-        if (statementsInBatches.Any())
+        // A transfer is a positive amount with at most two decimals: the net of the payout, never zero, never negative, never rounded in silence.
+        if (payouts.Any(p => p.NetAmount <= 0m || decimal.Round(p.NetAmount, 2) != p.NetAmount))
         {
-            throw new DomainRuleException("statements_already_in_batch", "StatementsAlreadyInBatch");
+            throw new DomainRuleException(WireTransferErrors.AmountInvalid, "WireAmountInvalid");
         }
 
-        // Group statements by PropertyOwnerId to create one wire per owner
-        var ownerGroups = statements
-            .GroupBy(s => s.PropertyOwnerId)
-            .Select(g => new
-            {
-                PropertyOwnerId = g.Key,
-                Owner = g.First().PropertyOwner,
-                Statements = g.ToList(),
-                TotalAmount = g.Sum(s => s.NetPayable)
-            })
+        if (await db.WireBatchPayouts.AsNoTracking().AnyAsync(w => w.OrgId == orgId && ids.Contains(w.OwnerPayoutId), cancellationToken))
+        {
+            throw new DomainRuleException(WireTransferErrors.PayoutsAlreadyInBatch, "PayoutsAlreadyInBatch");
+        }
+
+        // The debtor and the debit account: the issuer profile of the org.
+        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.OrgId == orgId, cancellationToken);
+        var debtor = new Pain001Party(profile?.LegalName, profile?.AddressStreet, profile?.AddressCivic, profile?.PostalCode, profile?.City, profile?.CountryCode);
+        if (profile is null || !Pain001V09Writer.IsComplete(debtor))
+        {
+            throw new DomainRuleException(WireTransferErrors.DebtorIncomplete, "WireDebtorIncomplete");
+        }
+
+        if (string.IsNullOrWhiteSpace(profile.Iban))
+        {
+            throw new DomainRuleException(WireTransferErrors.DebitAccountMissing, "WireDebitAccountMissing");
+        }
+
+        var debitAccount = WireIban.Normalize(profile.Iban);
+        if (!WireIban.IsValid(debitAccount))
+        {
+            // NEVER log the IBAN itself (ADR-012-R2)
+            logger.LogWarning("The issuer profile of org {OrgId} has an invalid IBAN (validation failed)", orgId);
+            throw new DomainRuleException(WireTransferErrors.DebitAccountInvalid, "InvalidDebitAccountIban");
+        }
+
+        // The creditors: every owner of the batch with a complete structured address (for the Swiss file) and an IBAN that is a creditor account of a normal transfer.
+        var creditors = await CreditorsAsync(orgId, payouts, currency, cancellationToken);
+
+        var now = clock.GetUtcNow().UtcDateTime;
+        var ordered = payouts.OrderBy(p => p.ConfirmedAt).ThenBy(p => p.Id).ToList();
+        var transfers = ordered
+            .Select(p => new Pain001Transfer(
+                WireBatchPayout.EndToEndIdOf(p.Id),
+                p.NetAmount,
+                creditors[p.PropertyOwnerId].Party,
+                creditors[p.PropertyOwnerId].Iban,
+                RemittanceOf(versions[p.OwnerStatementVersionId].PeriodYear, versions[p.OwnerStatementVersionId].PeriodMonth),
+                executionDate))
             .ToList();
-
-        // Validate all owner IBANs
-        var transfers = new List<(PropertyOwner Owner, decimal Amount, string Iban)>();
-        foreach (var group in ownerGroups)
-        {
-            if (string.IsNullOrWhiteSpace(group.Owner.Iban))
-            {
-                // No name of the owner in the exception: it is not shown, and it would travel in the arguments of every log of the error.
-                throw new DomainRuleException("owner_missing_iban", "OwnerMissingIban");
-            }
-
-            var normalizedIban = NormalizeIban(group.Owner.Iban);
-            if (!ValidateIban(normalizedIban))
-            {
-                // NEVER log the IBAN itself (ADR-012-R2)
-                logger.LogWarning(
-                    "Owner {OwnerId} has invalid IBAN (validation failed)",
-                    group.Owner.Id);
-                throw new DomainRuleException("owner_invalid_iban", "OwnerInvalidIban");
-            }
-
-            // A transfer is a positive amount with at most two decimals: never zero, never negative, never rounded in silence (the statements are
-            // rounded once at their total, ADR-017, so the sum of an owner's statements already has two).
-            if (group.TotalAmount <= 0m || decimal.Round(group.TotalAmount, 2) != group.TotalAmount)
-            {
-                throw new DomainRuleException(WireTransferErrors.AmountInvalid, "WireAmountInvalid");
-            }
-
-            transfers.Add((group.Owner, group.TotalAmount, normalizedIban));
-        }
 
         // The batch is built in memory: nothing is added to the context until its file has been validated.
         var batch = new WireBatch
         {
             OrgId = orgId,
             Currency = currency,
-            DebitAccount = normalizedDebitAccount,
+            DebitAccount = debitAccount,
             TotalAmount = transfers.Sum(t => t.Amount),
             TransferCount = transfers.Count,
             Status = WireBatchStatus.Generated,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = now,
+            ExecutionDate = executionDate,
+            MessageFormat = WireMessageFormats.Of(currency),
         };
 
-        // Generate XML based on currency: EUR is the SEPA file, CHF the Swiss one
-        var xmlContent = currency == WireTransferErrors.SwissCurrency
-            ? GenerateSwissPaymentXml(batch, transfers, normalizedDebitAccount)
-            : GenerateSepaXml(batch, transfers, normalizedDebitAccount);
+        // CHF is the Swiss pain.001.001.09.ch.03 file, EUR keeps the SEPA file.
+        var message = new Pain001Message(MessageIdOf(batch.Id), RomeCalendar.ToRome(now).DateTime, currency, debtor, debitAccount, transfers);
+        var xmlContent = currency == WireTransferErrors.SwissCurrency ? Pain001V09Writer.Write(message) : WriteSepa(message);
 
         // Validate before anything is saved: a file that does not validate leaves no batch behind, and with no schema there is no file.
         ValidateFile(xmlContent, batch);
 
-        // One save for the batch, the statements it covers (AC-NF19-8) and the file it was validated for: all or nothing. A child with its own
-        // Guid goes through its set (added to the collection alone it would be tracked as Modified).
+        // One save for the batch, its payouts and the file it was validated for: all or nothing. A child with its own Guid goes through its set (added to a
+        // collection alone it would be tracked as Modified).
         batch.XmlContent = xmlContent;
         db.WireBatches.Add(batch);
-        foreach (var statementId in statementIds)
+        for (var i = 0; i < ordered.Count; i++)
         {
-            db.Set<WireBatchStatement>().Add(new WireBatchStatement
+            db.WireBatchPayouts.Add(new WireBatchPayout
             {
                 OrgId = orgId,
                 WireBatchId = batch.Id,
-                OwnerStatementId = statementId,
-                CreatedAt = DateTime.UtcNow
+                OwnerPayoutId = ordered[i].Id,
+                PropertyOwnerId = ordered[i].PropertyOwnerId,
+                Amount = ordered[i].NetAmount,
+                EndToEndId = transfers[i].EndToEndId,
+                CreatedAt = now,
             });
         }
 
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, WireBatchPayout.PayoutIndexName))
+        {
+            // Two requests for the same payouts that the lock could not tell apart: the index refused the second.
+            throw new DomainRuleException(WireTransferErrors.PayoutsAlreadyInBatch, "PayoutsAlreadyInBatch");
+        }
+
+        if (tx is not null)
+        {
+            await tx.CommitAsync(cancellationToken);
+        }
 
         logger.LogInformation(
-            "Created wire batch {BatchId} with {TransferCount} transfers for {TotalAmount:N2} {Currency}",
+            "Created wire batch {BatchId} ({Format}) with {TransferCount} transfers for {TotalAmount:N2} {Currency}",
             batch.Id,
+            batch.MessageFormat,
             batch.TransferCount,
             batch.TotalAmount,
             batch.Currency);
@@ -189,13 +227,9 @@ public sealed class WireTransferService(
     }
 
     /// <inheritdoc />
-    public async Task ConfirmDownloadAsync(Guid batchId, CancellationToken cancellationToken = default)
+    public async Task ConfirmDownloadAsync(Guid orgId, Guid batchId, CancellationToken cancellationToken = default)
     {
-        var batch = await db.WireBatches.FindAsync([batchId], cancellationToken);
-        if (batch is null)
-        {
-            throw new NotFoundException($"Wire batch {batchId} not found");
-        }
+        var batch = await FindBatchAsync(orgId, batchId, cancellationToken);
 
         if (batch.Status != WireBatchStatus.Generated)
         {
@@ -203,19 +237,15 @@ public sealed class WireTransferService(
         }
 
         batch.Status = WireBatchStatus.Downloaded;
-        batch.DownloadedAt = DateTime.UtcNow;
+        batch.DownloadedAt = clock.GetUtcNow().UtcDateTime;
 
         await db.SaveChangesAsync(cancellationToken);
     }
 
     /// <inheritdoc />
-    public async Task ConfirmPaidAsync(Guid batchId, CancellationToken cancellationToken = default)
+    public async Task ConfirmPaidAsync(Guid orgId, Guid batchId, CancellationToken cancellationToken = default)
     {
-        var batch = await db.WireBatches.FindAsync([batchId], cancellationToken);
-        if (batch is null)
-        {
-            throw new NotFoundException($"Wire batch {batchId} not found");
-        }
+        var batch = await FindBatchAsync(orgId, batchId, cancellationToken);
 
         if (batch.Status == WireBatchStatus.Generated)
         {
@@ -228,7 +258,7 @@ public sealed class WireTransferService(
         }
 
         batch.Status = WireBatchStatus.Paid;
-        batch.PaidAt = DateTime.UtcNow;
+        batch.PaidAt = clock.GetUtcNow().UtcDateTime;
 
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -239,14 +269,7 @@ public sealed class WireTransferService(
         Guid batchId,
         CancellationToken cancellationToken = default)
     {
-        var batch = await db.WireBatches
-            .Where(wb => wb.Id == batchId && wb.OrgId == orgId)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (batch is null)
-        {
-            throw new NotFoundException($"Wire batch {batchId} not found");
-        }
+        var batch = await FindBatchAsync(orgId, batchId, cancellationToken);
 
         if (string.IsNullOrEmpty(batch.XmlContent))
         {
@@ -257,227 +280,233 @@ public sealed class WireTransferService(
         if (batch.Status == WireBatchStatus.Generated)
         {
             batch.Status = WireBatchStatus.Downloaded;
-            batch.DownloadedAt = DateTime.UtcNow;
+            batch.DownloadedAt = clock.GetUtcNow().UtcDateTime;
             await db.SaveChangesAsync(cancellationToken);
         }
 
         return (batch, batch.XmlContent);
     }
 
-    /// <summary>
-    /// Normalize an IBAN: remove spaces and convert to uppercase.
-    /// </summary>
-    private static string NormalizeIban(string iban)
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<WireBatchSummary>> ListBatchesAsync(Guid orgId, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(iban))
-            return string.Empty;
-
-        return iban.Replace(" ", "").Replace("-", "").ToUpperInvariant();
+        // The columns are chosen one by one: the file and the debit account are never read, so never decrypted and never in a list.
+        return await db.WireBatches.AsNoTracking()
+            .Where(b => b.OrgId == orgId)
+            .OrderByDescending(b => b.CreatedAt)
+            .ThenBy(b => b.Id)
+            .Take(WireTransferErrors.ListedBatches)
+            .Select(b => new WireBatchSummary(
+                b.Id,
+                b.Currency,
+                b.Status,
+                b.TransferCount,
+                b.TotalAmount,
+                b.ExecutionDate,
+                b.MessageFormat,
+                b.CreatedAt,
+                b.DownloadedAt,
+                b.PaidAt))
+            .ToListAsync(cancellationToken);
     }
 
     /// <summary>
-    /// Validate an IBAN using mod-97 check digits (ISO 13616).
+    /// The creditor and the IBAN of every owner of the batch, or the refusal that lists the owners that cannot be paid with this file (their ids, never their names): an
+    /// owner with no complete structured address (the Swiss file writes it), with no IBAN, with an IBAN that fails the check digits, with a QR-IBAN (the account of a
+    /// QR-bill, never the creditor account of a normal transfer) or, in CHF, with an IBAN that is not Swiss or Liechtenstein. One refusal at a time, in that order.
     /// </summary>
-    private static bool ValidateIban(string iban)
+    private async Task<Dictionary<Guid, (Pain001Party Party, string Iban)>> CreditorsAsync(
+        Guid orgId,
+        IReadOnlyList<OwnerPayout> payouts,
+        string currency,
+        CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(iban))
-            return false;
+        var ownerIds = payouts.Select(p => p.PropertyOwnerId).Distinct().Order().ToList();
+        var owners = await db.PropertyOwners.AsNoTracking()
+            .Where(o => o.OrgId == orgId && ownerIds.Contains(o.Id))
+            .ToDictionaryAsync(o => o.Id, cancellationToken);
 
-        // IBAN must be 15-34 characters
-        if (iban.Length < 15 || iban.Length > 34)
-            return false;
-
-        // Must start with two letters (country code) followed by two digits (check digits)
-        if (!char.IsLetter(iban[0]) || !char.IsLetter(iban[1]))
-            return false;
-
-        if (!char.IsDigit(iban[2]) || !char.IsDigit(iban[3]))
-            return false;
-
-        // Move first 4 characters to end
-        var rearranged = iban.Substring(4) + iban.Substring(0, 4);
-
-        // Replace letters with numbers (A=10, B=11, ..., Z=35)
-        var numeric = new StringBuilder();
-        foreach (var c in rearranged)
+        var swiss = currency == WireTransferErrors.SwissCurrency;
+        var creditors = new Dictionary<Guid, (Pain001Party Party, string Iban)>();
+        var withoutAddress = new List<Guid>();
+        var withoutIban = new List<Guid>();
+        var invalidIban = new List<Guid>();
+        var qrIban = new List<Guid>();
+        var notSwissIban = new List<Guid>();
+        foreach (var ownerId in ownerIds)
         {
-            if (char.IsDigit(c))
+            owners.TryGetValue(ownerId, out var owner);
+            var party = new Pain001Party(
+                OwnerNameOf(owner),
+                owner?.BillingStreet,
+                owner?.BillingCivic,
+                owner?.BillingPostalCode,
+                owner?.BillingCity,
+                owner?.BillingCountry);
+
+            // The Swiss file writes the structured address; the SEPA file of before writes the name alone, and so asks for it only.
+            var complete = swiss ? Pain001V09Writer.IsComplete(party) : Pain001Text.Clean(party.Name, Pain001V09Writer.Max70).Length > 0;
+            if (!complete)
             {
-                numeric.Append(c);
+                withoutAddress.Add(ownerId);
             }
-            else if (char.IsLetter(c))
+
+            var iban = WireIban.Normalize(owner?.Iban);
+            if (iban.Length == 0)
             {
-                numeric.Append((int)c - 55); // A=10, B=11, ..., Z=35
+                withoutIban.Add(ownerId);
+            }
+            else if (!WireIban.IsValid(iban))
+            {
+                invalidIban.Add(ownerId);
+            }
+            else if (WireIban.IsQrIban(iban))
+            {
+                qrIban.Add(ownerId);
+            }
+            else if (swiss && !WireIban.IsSwiss(iban))
+            {
+                notSwissIban.Add(ownerId);
             }
             else
             {
-                return false; // Invalid character
+                creditors[ownerId] = (party, iban);
             }
         }
 
-        // Compute mod 97
-        var numericString = numeric.ToString();
-        var remainder = 0;
-        foreach (var digit in numericString)
+        if (withoutAddress.Count > 0)
         {
-            remainder = (remainder * 10 + (digit - '0')) % 97;
+            throw OwnersRefused(WireTransferErrors.OwnerAddressMissing, "WireOwnerAddressMissing", withoutAddress);
         }
 
-        return remainder == 1;
-    }
-
-    /// <summary>
-    /// Generate SEPA pain.001.001.03 XML for EUR transfers (Italy).
-    /// </summary>
-    private string GenerateSepaXml(
-        WireBatch batch,
-        List<(PropertyOwner Owner, decimal Amount, string Iban)> transfers,
-        string debitAccount)
-    {
-        var ns = XNamespace.Get(PainNamespace);
-        var now = DateTime.UtcNow;
-        var messageId = $"BATCH-{batch.Id:N}".Substring(0, 35);
-        var paymentId = $"PMT-{batch.Id:N}".Substring(0, 35);
-
-        // Build credit transfer transaction info elements
-        var creditTransfers = transfers.Select((t, i) => new XElement(ns + "CdtTrfTxInf",
-            new XElement(ns + "PmtId",
-                new XElement(ns + "EndToEndId", $"TXN-{i + 1:D5}")),
-            new XElement(ns + "Amt",
-                new XElement(ns + "InstdAmt",
-                    new XAttribute("Ccy", batch.Currency),
-                    t.Amount.ToString("F2", CultureInfo.InvariantCulture))),
-            new XElement(ns + "CdtrAgt",
-                new XElement(ns + "FinInstnId",
-                    new XElement(ns + "BIC", "NOTPROVIDED"))),
-            new XElement(ns + "Cdtr",
-                new XElement(ns + "Nm", $"{t.Owner.FirstName} {t.Owner.LastName}")),
-            new XElement(ns + "CdtrAcct",
-                new XElement(ns + "Id",
-                    new XElement(ns + "IBAN", t.Iban))),
-            new XElement(ns + "RmtInf",
-                new XElement(ns + "Ustrd", "Owner statement payment"))));
-
-        var doc = new XDocument(
-            new XDeclaration("1.0", "UTF-8", null),
-            new XElement(ns + "Document",
-                new XElement(ns + "CstmrCdtTrfInitn",
-                    new XElement(ns + "GrpHdr",
-                        new XElement(ns + "MsgId", messageId),
-                        new XElement(ns + "CreDtTm", now.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture)),
-                        new XElement(ns + "NbOfTxs", batch.TransferCount),
-                        new XElement(ns + "CtrlSum", batch.TotalAmount.ToString("F2", CultureInfo.InvariantCulture)),
-                        new XElement(ns + "InitgPty",
-                            new XElement(ns + "Nm", "CasaZen Agency"))),
-                    new XElement(ns + "PmtInf",
-                        new XElement(ns + "PmtInfId", paymentId),
-                        new XElement(ns + "PmtMtd", "TRF"),
-                        new XElement(ns + "BtchBookg", "true"),
-                        new XElement(ns + "NbOfTxs", batch.TransferCount),
-                        new XElement(ns + "CtrlSum", batch.TotalAmount.ToString("F2", CultureInfo.InvariantCulture)),
-                        new XElement(ns + "PmtTpInf",
-                            new XElement(ns + "SvcLvl",
-                                new XElement(ns + "Cd", "SEPA"))),
-                        new XElement(ns + "ReqdExctnDt", now.AddDays(1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
-                        new XElement(ns + "Dbtr",
-                            new XElement(ns + "Nm", "CasaZen Agency")),
-                        new XElement(ns + "DbtrAcct",
-                            new XElement(ns + "Id",
-                                new XElement(ns + "IBAN", debitAccount))),
-                        new XElement(ns + "DbtrAgt",
-                            new XElement(ns + "FinInstnId",
-                                new XElement(ns + "BIC", "NOTPROVIDED"))),
-                        creditTransfers))));
-
-        return FormatXml(doc);
-    }
-
-    /// <summary>
-    /// Generate Swiss Payment Standards (pain.001.001.03) XML for CHF transfers (Switzerland).
-    /// </summary>
-    private string GenerateSwissPaymentXml(
-        WireBatch batch,
-        List<(PropertyOwner Owner, decimal Amount, string Iban)> transfers,
-        string debitAccount)
-    {
-        var ns = XNamespace.Get(PainNamespace);
-        var now = DateTime.UtcNow;
-        var messageId = $"BATCH-{batch.Id:N}".Substring(0, 35);
-        var paymentId = $"PMT-{batch.Id:N}".Substring(0, 35);
-
-        // Build credit transfer transaction info elements
-        var creditTransfers = transfers.Select((t, i) => new XElement(ns + "CdtTrfTxInf",
-            new XElement(ns + "PmtId",
-                new XElement(ns + "EndToEndId", $"TXN-{i + 1:D5}")),
-            new XElement(ns + "Amt",
-                new XElement(ns + "InstdAmt",
-                    new XAttribute("Ccy", batch.Currency),
-                    t.Amount.ToString("F2", CultureInfo.InvariantCulture))),
-            new XElement(ns + "CdtrAgt",
-                new XElement(ns + "FinInstnId",
-                    new XElement(ns + "BIC", "NOTPROVIDED"))),
-            new XElement(ns + "Cdtr",
-                new XElement(ns + "Nm", $"{t.Owner.FirstName} {t.Owner.LastName}")),
-            new XElement(ns + "CdtrAcct",
-                new XElement(ns + "Id",
-                    new XElement(ns + "IBAN", t.Iban))),
-            new XElement(ns + "RmtInf",
-                new XElement(ns + "Ustrd", "Owner statement payment"))));
-
-        var doc = new XDocument(
-            new XDeclaration("1.0", "UTF-8", null),
-            new XElement(ns + "Document",
-                new XElement(ns + "CstmrCdtTrfInitn",
-                    new XElement(ns + "GrpHdr",
-                        new XElement(ns + "MsgId", messageId),
-                        new XElement(ns + "CreDtTm", now.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture)),
-                        new XElement(ns + "NbOfTxs", batch.TransferCount),
-                        new XElement(ns + "CtrlSum", batch.TotalAmount.ToString("F2", CultureInfo.InvariantCulture)),
-                        new XElement(ns + "InitgPty",
-                            new XElement(ns + "Nm", "CasaZen Agency"))),
-                    new XElement(ns + "PmtInf",
-                        new XElement(ns + "PmtInfId", paymentId),
-                        new XElement(ns + "PmtMtd", "TRF"),
-                        new XElement(ns + "BtchBookg", "true"),
-                        new XElement(ns + "NbOfTxs", batch.TransferCount),
-                        new XElement(ns + "CtrlSum", batch.TotalAmount.ToString("F2", CultureInfo.InvariantCulture)),
-                        new XElement(ns + "PmtTpInf",
-                            new XElement(ns + "SvcLvl",
-                                new XElement(ns + "Cd", "URGP"))), // Swiss uses URGP instead of SEPA
-                        new XElement(ns + "ReqdExctnDt", now.AddDays(1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
-                        new XElement(ns + "Dbtr",
-                            new XElement(ns + "Nm", "CasaZen Agency")),
-                        new XElement(ns + "DbtrAcct",
-                            new XElement(ns + "Id",
-                                new XElement(ns + "IBAN", debitAccount))),
-                        new XElement(ns + "DbtrAgt",
-                            new XElement(ns + "FinInstnId",
-                                new XElement(ns + "BIC", "NOTPROVIDED"))),
-                        creditTransfers))));
-
-        return FormatXml(doc);
-    }
-
-    /// <summary>
-    /// Format an XDocument as indented XML string.
-    /// </summary>
-    private static string FormatXml(XDocument doc)
-    {
-        var settings = new XmlWriterSettings
+        if (withoutIban.Count > 0)
         {
-            Indent = true,
-            IndentChars = "  ",
-            NewLineChars = "\n",
-            Encoding = new UTF8Encoding(false),
-            OmitXmlDeclaration = false
+            throw OwnersRefused(WireTransferErrors.OwnerIbanMissing, "WireOwnerIbanMissing", withoutIban);
+        }
+
+        if (invalidIban.Count > 0)
+        {
+            throw OwnersRefused(WireTransferErrors.OwnerIbanInvalid, "OwnerInvalidIban", invalidIban);
+        }
+
+        if (qrIban.Count > 0)
+        {
+            throw OwnersRefused(WireTransferErrors.OwnerQrIban, "WireOwnerQrIban", qrIban);
+        }
+
+        if (notSwissIban.Count > 0)
+        {
+            throw OwnersRefused(WireTransferErrors.OwnerIbanNotSwiss, "WireOwnerIbanNotSwiss", notSwissIban);
+        }
+
+        return creditors;
+    }
+
+    /// <summary>
+    /// The refusal of a batch for some owners: 422 with the code and, in <c>ownerIds</c>, the ids of the owners (a number of them is the message argument). The log
+    /// carries the code, how many and their ids, never a name or an IBAN.
+    /// </summary>
+    private DomainRuleException OwnersRefused(string code, string messageKey, IReadOnlyList<Guid> ownerIds)
+    {
+        logger.LogWarning(
+            "Wire batch refused ({Code}) for {OwnerCount} owners, first ids: {OwnerIds}",
+            code,
+            ownerIds.Count,
+            string.Join(", ", ownerIds.Take(20)));
+
+        return new DomainRuleException(code, messageKey, ownerIds.Count)
+        {
+            Extensions = new Dictionary<string, object?> { ["ownerIds"] = ownerIds },
         };
+    }
 
-        using var stream = new MemoryStream();
-        using (var xmlWriter = XmlWriter.Create(stream, settings))
+    private async Task<WireBatch> FindBatchAsync(Guid orgId, Guid batchId, CancellationToken cancellationToken)
+    {
+        // The org is checked here, in the query: a Find by key does not apply the global filter of the context, and a batch of another org must not be reachable
+        // through a guessed id (404, as if it did not exist).
+        var batch = await db.WireBatches.FirstOrDefaultAsync(b => b.Id == batchId && b.OrgId == orgId, cancellationToken);
+        return batch ?? throw new NotFoundException($"Wire batch {batchId} not found");
+    }
+
+    /// <summary>The name an owner is paid under: the legal name when the registry has one, else the first and last name.</summary>
+    private static string OwnerNameOf(PropertyOwner? owner)
+    {
+        if (owner is null)
         {
-            doc.Save(xmlWriter);
+            return string.Empty;
         }
-        return Encoding.UTF8.GetString(stream.ToArray());
+
+        return string.IsNullOrWhiteSpace(owner.LegalName) ? $"{owner.FirstName} {owner.LastName}" : owner.LegalName;
+    }
+
+    /// <summary>The remittance of a transfer: «Rendiconto» and the period of the statement it pays, <c>Rendiconto 10/2026</c>.</summary>
+    private static string RemittanceOf(int year, int month)
+    {
+        return string.Create(CultureInfo.InvariantCulture, $"Rendiconto {month:D2}/{year:D4}");
+    }
+
+    /// <summary>The message id of the file of a batch: <c>CZ</c> and its id without hyphens (34 characters, unique).</summary>
+    private static string MessageIdOf(Guid batchId)
+    {
+        return WireBatchPayout.EndToEndIdPrefix + batchId.ToString("N");
+    }
+
+    /// <summary>
+    /// The SEPA <c>pain.001.001.03</c> file for EUR transfers, as it was written before the Swiss message: the name of the creditor alone, no address, the same
+    /// debtor agent and creditor agent. EUR keeps this writer until its own change; the debtor, the transfers and the date are those of the payouts.
+    /// </summary>
+    private static string WriteSepa(Pain001Message message)
+    {
+        var ns = XNamespace.Get(Pain001SchemaProvider.SepaNamespace);
+        var payments = message.Transfers.GroupBy(t => t.ExecutionDate).OrderBy(g => g.Key).ToList();
+        var total = message.Transfers.Sum(t => t.Amount);
+        var debtorName = Pain001Text.Clean(message.Debtor.Name, Pain001V09Writer.Max70);
+
+        var initiation = new XElement(
+            ns + "CstmrCdtTrfInitn",
+            new XElement(
+                ns + "GrpHdr",
+                new XElement(ns + "MsgId", message.MessageId),
+                new XElement(ns + "CreDtTm", message.CreatedAt.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture)),
+                new XElement(ns + "NbOfTxs", message.Transfers.Count.ToString(CultureInfo.InvariantCulture)),
+                new XElement(ns + "CtrlSum", Pain001V09Writer.Amount(total)),
+                new XElement(ns + "InitgPty", new XElement(ns + "Nm", debtorName))));
+
+        for (var i = 0; i < payments.Count; i++)
+        {
+            var transfers = payments[i].ToList();
+            var payment = new XElement(
+                ns + "PmtInf",
+                new XElement(ns + "PmtInfId", Pain001V09Writer.PaymentId(message.MessageId, i + 1)),
+                new XElement(ns + "PmtMtd", "TRF"),
+                new XElement(ns + "BtchBookg", "true"),
+                new XElement(ns + "NbOfTxs", transfers.Count.ToString(CultureInfo.InvariantCulture)),
+                new XElement(ns + "CtrlSum", Pain001V09Writer.Amount(transfers.Sum(t => t.Amount))),
+                new XElement(ns + "PmtTpInf", new XElement(ns + "SvcLvl", new XElement(ns + "Cd", "SEPA"))),
+                new XElement(ns + "ReqdExctnDt", payments[i].Key.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
+                new XElement(ns + "Dbtr", new XElement(ns + "Nm", debtorName)),
+                new XElement(ns + "DbtrAcct", new XElement(ns + "Id", new XElement(ns + "IBAN", message.DebtorIban))),
+                new XElement(ns + "DbtrAgt", new XElement(ns + "FinInstnId", new XElement(ns + "BIC", "NOTPROVIDED"))));
+
+            foreach (var transfer in transfers)
+            {
+                payment.Add(
+                    new XElement(
+                        ns + "CdtTrfTxInf",
+                        new XElement(ns + "PmtId", new XElement(ns + "EndToEndId", transfer.EndToEndId)),
+                        new XElement(
+                            ns + "Amt",
+                            new XElement(ns + "InstdAmt", new XAttribute("Ccy", message.Currency), Pain001V09Writer.Amount(transfer.Amount))),
+                        new XElement(ns + "CdtrAgt", new XElement(ns + "FinInstnId", new XElement(ns + "BIC", "NOTPROVIDED"))),
+                        new XElement(ns + "Cdtr", new XElement(ns + "Nm", Pain001Text.Clean(transfer.Creditor.Name, Pain001V09Writer.Max70))),
+                        new XElement(ns + "CdtrAcct", new XElement(ns + "Id", new XElement(ns + "IBAN", transfer.CreditorIban))),
+                        new XElement(ns + "RmtInf", new XElement(ns + "Ustrd", Pain001Text.Clean(transfer.Remittance, Pain001V09Writer.Max140)))));
+            }
+
+            initiation.Add(payment);
+        }
+
+        return Pain001V09Writer.Format(new XDocument(new XDeclaration("1.0", "UTF-8", null), new XElement(ns + "Document", initiation)));
     }
 
     /// <summary>
@@ -516,6 +545,79 @@ public sealed class WireTransferService(
         }
     }
 
-    /// <summary>The currency code of a statement: trimmed and in upper case (the stored one is a free text of three letters).</summary>
-    private static string NormalizeCurrency(string? currency) => (currency ?? string.Empty).Trim().ToUpperInvariant();
+    /// <summary>The currency code of a payout: trimmed and in upper case (the stored one is a free text of three letters).</summary>
+    private static string NormalizeCurrency(string? currency)
+    {
+        return (currency ?? string.Empty).Trim().ToUpperInvariant();
+    }
+}
+
+/// <summary>
+/// The IBANs of the wire files (E16/F01/US01/T01): the normal form, the check digits of ISO 13616 (mod 97), and the two kinds of Swiss IBAN a wire has to tell
+/// apart, the QR-IBAN (the account of a QR-bill, never the creditor account of a normal transfer) and the Swiss or Liechtenstein IBAN of a domestic CHF payment.
+/// None of them logs: an IBAN is never written anywhere but in the file.
+/// </summary>
+internal static class WireIban
+{
+    /// <summary>The institution identifiers of a QR-IBAN: 30000 to 31999 (the five digits that follow the check digits of a Swiss or Liechtenstein IBAN).</summary>
+    private const int QrIidFirst = 30000;
+
+    private const int QrIidLast = 31999;
+
+    /// <summary>An IBAN with no space and no hyphen, in upper case; empty for a missing one.</summary>
+    public static string Normalize(string? iban)
+    {
+        if (string.IsNullOrWhiteSpace(iban))
+        {
+            return string.Empty;
+        }
+
+        return iban.Replace(" ", string.Empty, StringComparison.Ordinal).Replace("-", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
+    }
+
+    /// <summary>True for an IBAN in its normal form that passes the check digits (ISO 13616: 15 to 34 characters, two letters, two digits, mod 97 equal to 1).</summary>
+    public static bool IsValid(string iban)
+    {
+        if (string.IsNullOrWhiteSpace(iban) || iban.Length < 15 || iban.Length > 34)
+        {
+            return false;
+        }
+
+        // Only digits and capital letters of the ASCII set (the normal form), two letters of the country and two check digits first.
+        if (!iban.All(c => char.IsAsciiDigit(c) || char.IsAsciiLetterUpper(c)) || !char.IsAsciiLetterUpper(iban[0]) || !char.IsAsciiLetterUpper(iban[1]) || !char.IsAsciiDigit(iban[2]) || !char.IsAsciiDigit(iban[3]))
+        {
+            return false;
+        }
+
+        // Move the first four characters to the end and read the letters as numbers (A is 10, Z is 35): the remainder of the division by 97 is computed digit by digit.
+        var rearranged = string.Concat(iban.AsSpan(4), iban.AsSpan(0, 4));
+        var remainder = 0;
+        foreach (var c in rearranged)
+        {
+            if (char.IsAsciiDigit(c))
+            {
+                remainder = ((remainder * 10) + (c - '0')) % 97;
+            }
+            else
+            {
+                remainder = ((remainder * 100) + (c - 'A' + 10)) % 97;
+            }
+        }
+
+        return remainder == 1;
+    }
+
+    /// <summary>True for a Swiss or Liechtenstein IBAN (21 characters).</summary>
+    public static bool IsSwiss(string iban)
+    {
+        return iban.Length == 21 && (iban.StartsWith("CH", StringComparison.Ordinal) || iban.StartsWith("LI", StringComparison.Ordinal));
+    }
+
+    /// <summary>True for a QR-IBAN: a Swiss or Liechtenstein IBAN whose institution identifier (characters 5 to 9) is between 30000 and 31999.</summary>
+    public static bool IsQrIban(string iban)
+    {
+        return IsSwiss(iban)
+               && int.TryParse(iban.AsSpan(4, 5), NumberStyles.None, CultureInfo.InvariantCulture, out var institution)
+               && institution is >= QrIidFirst and <= QrIidLast;
+    }
 }

@@ -4050,7 +4050,7 @@
     <value>Il batch non è ancora stato scaricato</value>
   </data>
   <data name="InvalidDebitAccountIban" xml:space="preserve">
-    <value>L'IBAN del conto di addebito non è valido</value>
+    <value>L'IBAN del conto di addebito nel profilo emittente non è valido: correggilo nella configurazione «Fatturazione». Nessun batch è stato salvato.</value>
   </data>
   <data name="InvalidXmlFormat" xml:space="preserve">
     <value>Il formato XML del file di bonifico non è valido</value>
@@ -4059,13 +4059,13 @@
     <value>La struttura del file XML non è conforme allo standard ISO 20022</value>
   </data>
   <data name="MixedCurrenciesNotAllowed" xml:space="preserve">
-    <value>Non è possibile includere rendiconti in valute diverse nello stesso batch</value>
+    <value>Non è possibile includere pagamenti in valute diverse nello stesso batch</value>
   </data>
   <data name="NoStatementsProvided" xml:space="preserve">
     <value>Nessun rendiconto fornito per creare il batch</value>
   </data>
   <data name="OwnerInvalidIban" xml:space="preserve">
-    <value>Un proprietario ha un IBAN non valido</value>
+    <value>{0} proprietari hanno un IBAN non valido (le cifre di controllo non tornano): correggi i dati dei proprietari indicati. Nessun batch è stato salvato.</value>
   </data>
   <data name="OwnerMissingIban" xml:space="preserve">
     <value>Un proprietario non ha un IBAN configurato</value>
@@ -4092,10 +4092,52 @@
     <value>Il file di bonifico non corrisponde alle sue righe (da controllare: {0}). Nessun batch è stato salvato.</value>
   </data>
   <data name="WireCurrencyNotSupported" xml:space="preserve">
-    <value>I bonifici si possono preparare solo in EUR (file SEPA) o in CHF (file svizzero): la valuta dei rendiconti non è supportata.</value>
+    <value>I bonifici si possono preparare solo in EUR (file SEPA) o in CHF (file svizzero): la valuta dei pagamenti non è supportata.</value>
   </data>
   <data name="WireAmountInvalid" xml:space="preserve">
     <value>L'importo da pagare a un proprietario deve essere maggiore di zero e avere al massimo due decimali. Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WireBatchFromStatementRetired" xml:space="preserve">
+    <value>I bonifici non si preparano più dai rendiconti: scegli i pagamenti confermati ai proprietari e la data di esecuzione. Il conto da addebitare è quello del profilo emittente e non si indica nella richiesta. Nessun batch è stato salvato.</value>
+  </data>
+  <data name="NoPayoutsProvided" xml:space="preserve">
+    <value>Nessun pagamento al proprietario indicato per creare il batch</value>
+  </data>
+  <data name="WireBatchTooLarge" xml:space="preserve">
+    <value>Un batch contiene al massimo {0} bonifici: dividi i pagamenti in più batch. Nessun batch è stato salvato.</value>
+  </data>
+  <data name="PayoutsNotFoundOrNotOwned" xml:space="preserve">
+    <value>Uno o più pagamenti non sono stati trovati o non appartengono alla tua organizzazione</value>
+  </data>
+  <data name="WirePayoutsNotConfirmed" xml:space="preserve">
+    <value>Si possono pagare solo pagamenti confermati: uno o più sono stati stornati. Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WirePayoutsNotPublished" xml:space="preserve">
+    <value>Il rendiconto di uno o più pagamenti non è ancora stato pubblicato al proprietario: pubblicalo prima di preparare il bonifico. Nessun batch è stato salvato.</value>
+  </data>
+  <data name="PayoutsAlreadyInBatch" xml:space="preserve">
+    <value>Uno o più pagamenti sono già inclusi in un batch di bonifici</value>
+  </data>
+  <data name="WireExecutionDateInvalid" xml:space="preserve">
+    <value>La data di esecuzione è obbligatoria: deve essere oggi o un giorno successivo, entro un anno. Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WireDebtorIncomplete" xml:space="preserve">
+    <value>Nel profilo emittente mancano il nome o l'indirizzo completo (via, CAP, località e paese) di chi paga: completali nella configurazione «Fatturazione». Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WireDebitAccountMissing" xml:space="preserve">
+    <value>Nel profilo emittente manca l'IBAN del conto da addebitare: inseriscilo nella configurazione «Fatturazione». Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WireOwnerAddressMissing" xml:space="preserve">
+    <value>{0} proprietari non hanno un indirizzo completo (via, CAP, località e paese), che il bonifico svizzero richiede: completa i dati dei proprietari indicati. Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WireOwnerIbanMissing" xml:space="preserve">
+    <value>{0} proprietari non hanno un IBAN configurato: completa i dati dei proprietari indicati. Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WireOwnerQrIban" xml:space="preserve">
+    <value>{0} proprietari hanno un QR-IBAN, che è il conto della QR-fattura e non il conto del beneficiario di un bonifico normale: serve il loro IBAN ordinario. Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WireOwnerIbanNotSwiss" xml:space="preserve">
+    <value>{0} proprietari hanno un IBAN che non è svizzero né del Liechtenstein: un bonifico in CHF verso quel conto non è un pagamento nazionale e questo file non lo copre. Nessun batch è stato salvato.</value>
   </data>
   <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
     <value>Codice di accesso non disponibile o verifica non superata</value>
