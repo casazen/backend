@@ -663,6 +663,9 @@ public class TouristTaxCollectionTests
         var record = await SeedRecordAsync(db, world.Booking, intentId: "pi_tax_webhook_refund", collected: 15.00m);
         var rig = Rig(db, (world.Booking.Id, Calculated(world.Booking.Id, 7.50m, 7.50m)));
         var refunds = new Mock<IPaymentRefundService>();
+        refunds
+            .Setup(r => r.SyncPaymentIntentRefundsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<Guid>());
         var handler = WebhookHandler(db, rig.Service, refunds.Object);
 
         // The refund of a tax paid online: the stay follows the charge, never a Payment row, and the refunds of the bookings are not asked.
