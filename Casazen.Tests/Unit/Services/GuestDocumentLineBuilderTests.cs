@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
@@ -269,6 +270,33 @@ public class GuestDocumentLineBuilderTests
         await ChangeBookingAsync(db, paidInPart, b => b.OtaPaidAmount = 400m);
         Assert.Equal(FiscalDocumentPaymentState.Paid, (await service.GetAsync(part.Id))!.PaymentState);
         Assert.Equal(FiscalDocumentPaymentState.ToCollect, (await service.GetAsync(nothing.Id))!.PaymentState);
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule. One predicate reads the payment state of a document for the list, the export and the ledger: the document of a portal that collected keeps the state it was
+    /// made with (paid through the portal: CasaZen sees none of its payments), and the one of a stay the host collects from reads the figure of the channel manager, in the export too.
+    /// </summary>
+    [Fact]
+    public async Task PaymentState_PortalKeepsItsStoredPaidInTheExport_AndAHostCollectedStayReadsTheChannelManagersFigure()
+    {
+        await using var db = NewDb();
+        await SeedItalianOrgAsync(db);
+        var property = await AddPropertyAsync(db, swiss: false);
+        var service = ServiceOf(db, new SwissTouristTaxOptions());
+        var portal = await AddBookingAsync(db, property, BookingSource.Airbnb, 400m, 0m, 0m, 2, companyCollect: true);
+        var hostCollects = await AddBookingAsync(db, property, BookingSource.BookingCom, 400m, 0m, 0m, 2, companyCollect: false);
+        var nothingReported = await AddBookingAsync(db, property, BookingSource.BookingCom, 400m, 0m, 0m, 2, companyCollect: false);
+        await ChangeBookingAsync(db, hostCollects, b => b.OtaPaidAmount = 400m);
+        var portalDocument = await service.IssueAsync((await service.CreateDraftAsync(portal, null)).Id, confirm: true);
+        var hostDocument = await service.IssueAsync((await service.CreateDraftAsync(hostCollects, null)).Id, confirm: true);
+        var silentDocument = await service.IssueAsync((await service.CreateDraftAsync(nothingReported, null)).Id, confirm: true);
+
+        var rows = await service.ListForExportAsync(new HostScope(OrgId), new FiscalDocumentCriteria(), 100);
+
+        FiscalDocumentPaymentState StateOf(Guid documentId) => rows.Single(r => r.Id == documentId).PaymentState;
+        Assert.Equal(FiscalDocumentPaymentState.Paid, StateOf(portalDocument.Id));
+        Assert.Equal(FiscalDocumentPaymentState.Paid, StateOf(hostDocument.Id));
+        Assert.Equal(FiscalDocumentPaymentState.ToCollect, StateOf(silentDocument.Id));
     }
 
     /// <summary>
