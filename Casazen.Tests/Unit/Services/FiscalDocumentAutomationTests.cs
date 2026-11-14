@@ -10,6 +10,7 @@ using Casazen.Core.Models;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Documents;
@@ -175,6 +176,45 @@ public class FiscalDocumentAutomationTests
         var result = await ServiceOf(manual).ProcessDueDocumentsAsync(OrgId, 500, 31);
         Assert.Equal((1, 0), (result.DraftsCreated, result.DocumentsIssued));
         Assert.Equal(FiscalDocumentStatus.Draft, (await manual.FiscalDocuments.AsNoTracking().SingleAsync()).Status);
+    }
+
+    /// <summary>
+    /// PROOF TEST: money rule. The automatic issue issues what the booking bills now: a draft made earlier (by the check-out event) is made again first, because the tourist tax the host
+    /// confirmed since is no change of the booking that the corrections follow and nobody checks a document issued here.
+    /// </summary>
+    [Fact]
+    public async Task DueJob_WithTheAutomaticIssue_MakesAnOldDraftAgainBeforeIssuingIt()
+    {
+        await using var db = NewDb();
+        await SeedOrgAsync(db, autoIssue: true);
+        var property = await AddPropertyAsync(db, "auth0|host");
+        var booking = await AddBookingAsync(db, property, BookingStatus.CheckedOut, BookingSource.Direct, checkOut: new DateTime(2026, 11, 17));
+        var service = ServiceOf(db);
+        Assert.Equal(350.00m, (await service.CreateDraftAsync(booking, null)).Total);
+
+        // The host confirms the tourist tax of the stay (9.00) after the draft was made.
+        db.StayTouristTaxes.Add(new StayTouristTax
+        {
+            OrgId = OrgId,
+            BookingId = booking,
+            Status = TouristTaxQuoteStatus.Calculated,
+            Nights = 3,
+            TaxableNights = 3,
+            Total = 9m,
+            AmountDue = 9m,
+            Collector = TouristTaxCollector.Host,
+            ConfirmedAt = Now.UtcDateTime,
+            CalculationHash = new string('a', StayTouristTax.CalculationHashLength),
+            RetainUntil = new DateOnly(2036, 11, 17),
+        });
+        await db.SaveChangesAsync();
+
+        var run = await service.ProcessDueDocumentsAsync(OrgId, 500, 31);
+
+        Assert.Equal((1, 0, 1), (run.Examined, run.DraftsCreated, run.DocumentsIssued));
+        var issued = await db.FiscalDocuments.AsNoTracking().Include(d => d.Lines).SingleAsync(d => d.BookingId == booking);
+        Assert.Equal((FiscalDocumentStatus.Issued, 359.00m), (issued.Status, issued.Total));
+        Assert.Contains(issued.Lines, l => l.LineType == FiscalLineType.TouristTax && l.TotalPrice == 9m);
     }
 
     /// <summary>

@@ -107,11 +107,17 @@ public sealed partial class FiscalDocumentService
             examined++;
             try
             {
-                if (await EnsureDraftAsync(candidate.Id, null, ct) == EnsureDraftOutcome.Created)
+                var outcome = await EnsureDraftAsync(candidate.Id, null, ct);
+                if (outcome == EnsureDraftOutcome.Created)
                     created++;
 
                 if (autoIssue && await LiveDraftIdOfAsync(candidate.Id, ct) is { } draftId)
                 {
+                    // Nobody checks a document issued here, so it is issued from what the booking bills now: a draft made earlier (the check-out event) may be old, the tourist tax or the
+                    // collector confirmed and the data of the invoice changed since are no change of the booking that the corrections follow.
+                    if (outcome != EnsureDraftOutcome.Created)
+                        await MakeDraftAgainAsync(candidate.Id, draftId, ct);
+
                     await IssueCoreAsync(draftId, confirm: true, notify: false, ct);
                     issued++;
                 }
@@ -137,6 +143,19 @@ public sealed partial class FiscalDocumentService
             issued,
             skipped);
         return new FiscalDocumentsDueResult(null, examined, created, issued, skipped);
+    }
+
+    /// <summary>The draft made again from the booking, under the lock of the booking as the corrections of a change are: a change handled at the same moment never rewrites it too.</summary>
+    private async Task MakeDraftAgainAsync(Guid bookingId, Guid draftId, CancellationToken ct)
+    {
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db,
+            ct,
+            (PostgresAdvisoryLocks.Scope.FiscalDocumentBooking, bookingId.ToString("N")));
+
+        await RefreshDraftAsync(draftId, ct);
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
     }
 
     /// <summary>Nothing is missing in the sections «issuer» and «VAT» of the billing setup of the organization (true when no billing setup is wired, as in a service built by hand).</summary>
