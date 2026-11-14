@@ -26,6 +26,11 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>The issuer as it was.</b> The issue writes the snapshot of the issuer and the version of the rule on the document; the PDF and the XML of an
 /// issued document read the issuer from the snapshot, never from the profile of today.</item>
 /// <item><b>Payment state.</b> A document is <c>Paid</c> when the completed payments of its booking, net of the refunds, reach its total; else <c>ToCollect</c>.</item>
+/// <item><b>Owner invoices</b> (E14/F01/US01/T01) are made by <see cref="IOwnerInvoiceService"/> and issued here (<see cref="IssueOwnerInvoiceAsync"/>): the same
+/// numbering (their own series), snapshot, rule version and XML, the rule of the last day of their period, and the VAT added on top posted to the owner ledger
+/// in the transaction of the issue; their credit note posts its reversal. The endpoints of the guest documents neither make them again, issue, credit nor
+/// discard them (422 <c>document_owner_invoice</c>): the owner invoices do, behind <c>agency.statement.manage</c> and their flag
+/// (<see cref="CreateOwnerInvoiceCreditNoteAsync"/>, <see cref="DiscardOwnerInvoiceDraftAsync"/>).</item>
 /// <item><b>Logs</b> carry ids, codes and counts: never a value of the recipient or an amount.</item>
 /// </list>
 /// </remarks>
@@ -40,7 +45,8 @@ public sealed class FiscalDocumentService(
     IDocumentTexts texts,
     IFiscalTaxRuleResolver taxRules,
     TimeProvider timeProvider,
-    ILogger<FiscalDocumentService> logger) : IFiscalDocumentService
+    ILogger<FiscalDocumentService> logger,
+    IOwnerAccountingService? ownerAccounting = null) : IFiscalDocumentService
 {
     /// <summary>The descriptions of the lines: fixed words of the document, never personal data.</summary>
     private const string LodgingKey = "FiscalDocLineLodging";
@@ -71,13 +77,22 @@ public sealed class FiscalDocumentService(
     {
         var document = await RequireAsync(documentId, ct);
         RequireCasazenDraft(document);
+        RequireGuestDocument(document);
         return await RebuildAsync(document, ct);
     }
 
-    public async Task DiscardDraftAsync(Guid documentId, CancellationToken ct = default)
+    public Task DiscardDraftAsync(Guid documentId, CancellationToken ct = default) => DiscardAsync(documentId, ownerInvoice: false, ct);
+
+    public Task DiscardOwnerInvoiceDraftAsync(Guid documentId, CancellationToken ct = default) => DiscardAsync(documentId, ownerInvoice: true, ct);
+
+    private async Task DiscardAsync(Guid documentId, bool ownerInvoice, CancellationToken ct)
     {
         var document = await RequireAsync(documentId, ct);
         RequireCasazenDraft(document);
+        if (ownerInvoice)
+            RequireOwnerInvoice(document);
+        else
+            RequireGuestDocument(document);
         document.Status = FiscalDocumentStatus.Discarded;
         document.UpdatedAt = UtcNow;
         await db.SaveChangesAsync(ct);
@@ -91,6 +106,7 @@ public sealed class FiscalDocumentService(
 
         var document = await RequireAsync(documentId, ct);
         RequireCasazenDraft(document);
+        RequireGuestDocument(document);
         var booking = await BookingOfAsync(document.BookingId, ct);
         await RequireCasazenIssuesAsync(booking, ct);
         var (profile, org) = await RequireIssuerAsync(booking.OrgId, ct);
@@ -100,25 +116,84 @@ public sealed class FiscalDocumentService(
 
         var today = timeProvider.TodayInRomeAsDateOnly();
         var series = SeriesOf(profile, today);
-        await IssueInTransactionAsync(document, booking, rule, profile, org, series, today, credited: null, ct);
+        await IssueInTransactionAsync(document, booking.OrgId, booking.Id, rule, profile, org, series, today, credited: null, ct);
         logger.LogInformation("Fiscal document {DocumentId} of booking {BookingId} issued", document.Id, booking.Id);
         return document;
     }
 
-    public async Task<FiscalDocument> CreateCreditNoteAsync(
+    public async Task<FiscalDocument> IssueOwnerInvoiceAsync(Guid documentId, decimal vatToPost, string? userId, CancellationToken ct = default)
+    {
+        var document = await RequireAsync(documentId, ct);
+        RequireCasazenDraft(document);
+        if (document.Purpose != FiscalDocumentPurpose.OwnerInvoice || document.RecipientOwnerId is null || document.PeriodYear is null || document.PeriodMonth is null)
+            throw NotFound(documentId);
+        if (vatToPost > 0m && ownerAccounting is null)
+            throw new InvalidOperationException("The owner accounting is needed to post the VAT of an owner invoice.");
+
+        var (profile, org) = await RequireIssuerAsync(document.OrgId, ct);
+        var rule = OwnerInvoiceRuleOf(profile, document);
+        RequireDraftOfTheRule(document, rule);
+
+        // The series of the owner invoices (E14), its own counter: never the one of the documents of the guests.
+        var today = timeProvider.TodayInRomeAsDateOnly();
+        var series = FiscalNumberFormat.SeriesFor(profile.OwnerInvoiceSeries ?? OrgFiscalIssuerProfile.DefaultOwnerInvoiceSeries, today);
+
+        // The VAT added on top goes to the owner ledger in the transaction of the number: posted with the issue, or not at all (a second issue is refused
+        // before, as the document is no longer a draft, and the line has a key of its own).
+        OwnerLedgerPosting? posting = null;
+        Func<CancellationToken, Task>? postVat = vatToPost > 0m
+            ? async token => posting = await ownerAccounting!.PostOwnerInvoiceVatAsync(document, vatToPost, userId, token)
+            : null;
+        await IssueInTransactionAsync(document, document.OrgId, bookingId: null, rule, profile, org, series, today, credited: null, ct, postVat);
+        logger.LogInformation("Owner invoice {DocumentId} issued", document.Id);
+        if (posting is not null)
+            await RegenerateOpenVersionAsync(document.OrgId, posting, userId, ct);
+        return document;
+    }
+
+    public Task<FiscalDocument> CreateCreditNoteAsync(
         Guid documentId,
         decimal? amount,
         string reason,
         bool confirm,
         string? userId,
-        CancellationToken ct = default)
+        CancellationToken ct = default) =>
+        CreditNoteAsync(documentId, amount, reason, confirm, userId, ownerInvoice: false, ct);
+
+    public Task<FiscalDocument> CreateOwnerInvoiceCreditNoteAsync(
+        Guid documentId,
+        decimal? amount,
+        string reason,
+        bool confirm,
+        string? userId,
+        CancellationToken ct = default) =>
+        CreditNoteAsync(documentId, amount, reason, confirm, userId, ownerInvoice: true, ct);
+
+    /// <summary>
+    /// The credit note of a guest document (<paramref name="ownerInvoice"/> false: 422 <c>document_owner_invoice</c> for an owner invoice) or of an owner invoice
+    /// (true: 404 for any other document): the one path of both, so the permission and the flag of the owner invoices cannot be skipped by the other endpoints.
+    /// </summary>
+    private async Task<FiscalDocument> CreditNoteAsync(
+        Guid documentId,
+        decimal? amount,
+        string reason,
+        bool confirm,
+        string? userId,
+        bool ownerInvoice,
+        CancellationToken ct)
     {
         if (!confirm)
             throw new DomainRuleException(FiscalDocumentErrors.ConfirmationRequired, "FiscalDocumentConfirmationRequired");
+        if (ownerInvoice && ownerAccounting is null)
+            throw new InvalidOperationException("The owner accounting is needed to give back the VAT of an owner invoice.");
 
         var original = await RequireAsync(documentId, ct);
         if (original.Source != FiscalDocumentSource.CasaZen)
             throw ReadOnly();
+        if (ownerInvoice)
+            RequireOwnerInvoice(original);
+        else
+            RequireGuestDocument(original);
         if (original.Status != FiscalDocumentStatus.Issued || original.Kind == DocumentKind.CreditNote || original.Kind == DocumentKind.Proforma)
             throw new DomainRuleException(FiscalDocumentErrors.NotCreditable, "FiscalDocumentNotCreditable");
 
@@ -128,9 +203,22 @@ public sealed class FiscalDocumentService(
         if (value <= 0m || value > remaining)
             throw new DomainRuleException(FiscalDocumentErrors.CreditAmountExceeds, "FiscalDocumentCreditAmountExceeds", remaining);
 
-        var booking = await BookingOfAsync(original.BookingId, ct);
-        var (profile, org) = await RequireIssuerAsync(booking.OrgId, ct);
-        var rule = RuleOf(profile, booking);
+        // A document of a stay takes the rule of its check-out; an owner invoice the rule of the last day of its period (E14/F01/US01/T01).
+        Guid? bookingId = null;
+        FiscalTaxRule rule;
+        var (profile, org) = await RequireIssuerAsync(original.OrgId, ct);
+        if (ownerInvoice)
+        {
+            if (original.PeriodYear is null || original.PeriodMonth is null || original.RecipientOwnerId is null)
+                throw new DomainRuleException(FiscalDocumentErrors.NotCreditable, "FiscalDocumentNotCreditable");
+            rule = OwnerInvoiceRuleOf(profile, original);
+        }
+        else
+        {
+            var booking = await BookingOfAsync(original.BookingId, ct);
+            bookingId = booking.Id;
+            rule = RuleOf(profile, booking);
+        }
 
         var note = new FiscalDocument
         {
@@ -181,9 +269,38 @@ public sealed class FiscalDocumentService(
 
         db.FiscalDocuments.Add(note);
         var today = timeProvider.TodayInRomeAsDateOnly();
-        await IssueInTransactionAsync(note, booking, rule, profile, org, original.Series, today, original, ct);
+
+        // The credit note of an owner invoice gives back, in the same transaction, the VAT the invoice posted to the owner ledger (E14/F01/US01/T01).
+        OwnerLedgerPosting? posting = null;
+        Func<CancellationToken, Task>? reverseVat = ownerInvoice
+            ? async token => posting = await ownerAccounting!.ReverseOwnerInvoiceVatAsync(note, original, userId, token)
+            : null;
+        await IssueInTransactionAsync(note, original.OrgId, bookingId, rule, profile, org, original.Series, today, original, ct, reverseVat);
         logger.LogInformation("Credit note {CreditNoteId} of fiscal document {DocumentId} issued", note.Id, original.Id);
+        if (posting is not null)
+            await RegenerateOpenVersionAsync(original.OrgId, posting, userId, ct);
         return note;
+    }
+
+    /// <summary>
+    /// The statement version of the month an owner invoice posted a line in is generated again when it is a draft or flagged (an approved or published one is told by
+    /// the readiness). The document is issued already: a refusal of the generation is logged, the month stays dirty and the agency generates it.
+    /// </summary>
+    internal async Task RegenerateOpenVersionAsync(Guid orgId, OwnerLedgerPosting posting, string? userId, CancellationToken ct)
+    {
+        if (ownerAccounting is null)
+            return;
+
+        try
+        {
+            await ownerAccounting.RegenerateOpenVersionAsync(orgId, posting.OwnerId, posting.Year, posting.Month, userId, ct);
+        }
+        catch (DomainException ex)
+        {
+            logger.LogWarning(
+                "The statement version of owner {OwnerId} for {Year}-{Month} was not generated again after an owner invoice: {Code}",
+                posting.OwnerId, posting.Year, posting.Month, ex.Code);
+        }
     }
 
     public async Task<FiscalDocument?> GetAsync(Guid documentId, CancellationToken ct = default)
@@ -359,7 +476,12 @@ public sealed class FiscalDocumentService(
         var propertyName = document.PropertyId is { } propertyId
             ? await db.Properties.AsNoTracking().IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]).Where(p => p.Id == propertyId).Select(p => p.Name).FirstOrDefaultAsync(ct)
             : null;
-        return FiscalDocumentPdfs.Pdf(document, issuer, texts, language, credited, propertyName);
+
+        // An issued owner invoice says how it is paid, read now from the owner ledger: offset in the statement, or to pay (with the QR-bill in Switzerland).
+        var settlement = document.Purpose == FiscalDocumentPurpose.OwnerInvoice && document.Status == FiscalDocumentStatus.Issued && document.Kind != DocumentKind.CreditNote
+            ? (await OwnerInvoiceSettlementReader.ReadAsync(db, [document], ct)).GetValueOrDefault(document.Id)
+            : null;
+        return FiscalDocumentPdfs.Pdf(document, issuer, texts, language, credited, propertyName, settlement);
     }
 
     // ---------------------------------------------------------------- draft
@@ -479,7 +601,8 @@ public sealed class FiscalDocumentService(
         return gross;
     }
 
-    private static void ApplyAmounts(FiscalDocument document, FiscalDocumentAmounts amounts)
+    /// <summary>The lines and the totals of <paramref name="amounts"/> written on the document (its lines added to its collection).</summary>
+    internal static void ApplyAmounts(FiscalDocument document, FiscalDocumentAmounts amounts)
     {
         foreach (var line in amounts.Lines)
         {
@@ -515,32 +638,48 @@ public sealed class FiscalDocumentService(
     private FiscalTaxRule RuleOf(OrgFiscalIssuerProfile profile, BookingFacts booking) =>
         taxRules.Resolve(profile.CountryCode, profile.DocumentRegime, profile.StayVatTreatment, profile.CleaningFeeTreatment, booking.StayDate);
 
+    /// <summary>The tax rule of an owner invoice: the rule set in force on the last day of its period (E14/F01/US01/T01).</summary>
+    private FiscalTaxRule OwnerInvoiceRuleOf(OrgFiscalIssuerProfile profile, FiscalDocument document) =>
+        taxRules.Resolve(profile.CountryCode, profile.DocumentRegime, profile.StayVatTreatment, profile.CleaningFeeTreatment, PeriodEndOf(document));
+
+    /// <summary>The last day of the period of an owner invoice.</summary>
+    internal static DateOnly PeriodEndOf(FiscalDocument document) =>
+        new DateOnly(document.PeriodYear!.Value, document.PeriodMonth!.Value, 1).AddMonths(1).AddDays(-1);
+
     // ---------------------------------------------------------------- issue
 
+    /// <summary>
+    /// The issue in one READ COMMITTED transaction: the number, the checks again under the lock of the series, the snapshot of the issuer, the XML, the lock of the
+    /// booking, the event and <paramref name="beforeSave"/> (the VAT of an owner invoice in the owner ledger), saved and committed together.
+    /// </summary>
     private async Task IssueInTransactionAsync(
         FiscalDocument document,
-        BookingFacts booking,
+        Guid orgId,
+        Guid? bookingId,
         FiscalTaxRule rule,
         OrgFiscalIssuerProfile profile,
         Org org,
         string series,
         DateOnly today,
         FiscalDocument? credited,
-        CancellationToken ct)
+        CancellationToken ct,
+        Func<CancellationToken, Task>? beforeSave = null)
     {
         // READ COMMITTED: the advisory lock of the numbering joins it; a failure rolls the number back with the document (no gap).
         await using var transaction = PostgresAdvisoryLocks.IsSupported(db)
             ? await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct)
             : null;
 
-        var number = await numbering.ReserveNextAsync(booking.OrgId, series, ct);
+        var number = await numbering.ReserveNextAsync(orgId, series, ct);
 
         // What the document may be is decided again here, under the lock of the series (a credit note takes the series of its original, so the same lock):
         // the checks before the transaction are quick refusals, but two parallel requests both pass them, and neither the original nor the booking changes to
-        // tell them apart. A refusal rolls the transaction back with the number (no gap).
+        // tell them apart. A refusal rolls the transaction back with the number (no gap). An owner invoice has no booking: its draft already holds its owner
+        // and period (the unique index of the live owner invoices), and the concurrency token of the row refuses a second issue of the same draft.
         if (credited is null)
         {
-            await RequireNoOtherDocumentAsync(booking.Id, document.Id, ct);
+            if (bookingId is { } booking)
+                await RequireNoOtherDocumentAsync(booking, document.Id, ct);
         }
         else
         {
@@ -560,7 +699,9 @@ public sealed class FiscalDocumentService(
 
         // The issuer as it is now, kept with the document: its PDF and its XML read it from here from now on. The version of the rule is the one the draft
         // was made with (a document made before the versions existed takes the one in force).
-        var issuer = FiscalIssuerSnapshot.From(profile, org, rule.FatturaPaRegimeCode);
+        // A Swiss owner invoice keeps the account its QR-bill is paid on (E14/F01/US01/T02): the payment part prints it, as it was at the issue.
+        var issuer = FiscalIssuerSnapshot.From(
+            profile, org, rule.FatturaPaRegimeCode, withQrBillAccount: document.Purpose == FiscalDocumentPurpose.OwnerInvoice && credited is null && rule.IsSwiss);
         document.IssuerSnapshot = issuer.ToJson();
         document.RuleVersion ??= rule.Version;
 
@@ -576,12 +717,14 @@ public sealed class FiscalDocumentService(
             document.SdiStatus = FiscalDocumentSdiStatuses.NotApplicable;
         }
 
-        if (credited is null)
-            await issuers.LockIssuerAsync(booking.Id, BookingDocumentIssuerKind.CasaZen, document.Id, save: false, ct);
+        if (credited is null && bookingId is { } lockedBooking)
+            await issuers.LockIssuerAsync(lockedBooking, BookingDocumentIssuerKind.CasaZen, document.Id, save: false, ct);
 
         document.Status = FiscalDocumentStatus.Issued;
         document.SdiStatusUpdatedAt = UtcNow;
         document.UpdatedAt = UtcNow;
+        if (beforeSave is not null)
+            await beforeSave(ct);
         events.Record(
             credited is null ? DomainEventType.FiscalDocumentIssued : DomainEventType.FiscalDocumentCreditNoteIssued,
             document.Id,
@@ -740,6 +883,24 @@ public sealed class FiscalDocumentService(
             throw ReadOnly();
         if (document.Status != FiscalDocumentStatus.Draft)
             throw new DomainRuleException(FiscalDocumentErrors.NotDraft, "FiscalDocumentNotDraft");
+    }
+
+    /// <summary>
+    /// An owner invoice is made again, issued, credited and discarded from the owner invoices, behind their permission (<c>agency.statement.manage</c>) and their
+    /// flag (E14/F01/US01/T01): never by the endpoints of the documents of the guests, which hold only <c>payment.write</c> and would skip both and the owner
+    /// ledger the VAT is posted to and given back from.
+    /// </summary>
+    private static void RequireGuestDocument(FiscalDocument document)
+    {
+        if (document.Purpose == FiscalDocumentPurpose.OwnerInvoice)
+            throw new DomainRuleException(OwnerInvoiceErrors.UseOwnerInvoices, "FiscalDocumentOwnerInvoice");
+    }
+
+    /// <summary>The owner path takes only an owner invoice: any other document is not found there.</summary>
+    private static void RequireOwnerInvoice(FiscalDocument document)
+    {
+        if (document.Purpose != FiscalDocumentPurpose.OwnerInvoice)
+            throw NotFound(document.Id);
     }
 
     /// <summary>

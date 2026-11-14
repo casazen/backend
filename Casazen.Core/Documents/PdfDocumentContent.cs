@@ -15,6 +15,12 @@ public sealed record PdfDocumentContent(string Title, IReadOnlyList<PdfBlock> Bl
     public string Language { get; init; } = "it-IT";
 
     /// <summary>
+    /// The payment part of a Swiss QR-bill (receipt and payment part), drawn at the bottom of a page of its own at the end of the document (E14/F01/US01/T02).
+    /// Null: none.
+    /// </summary>
+    public PdfSwissQrBill? QrBill { get; init; }
+
+    /// <summary>
     /// Document of <paramref name="title"/> and a plain text body: a blank line separates paragraphs, a single line
     /// break is kept inside the paragraph.
     /// </summary>
@@ -41,6 +47,35 @@ public sealed record PdfTable(IReadOnlyList<PdfTableColumn> Columns, IReadOnlyLi
 
 /// <summary>Column of a <see cref="PdfTable"/>: header, width relative to the other columns, alignment of the cells.</summary>
 public sealed record PdfTableColumn(string Header, double RelativeWidth = 1, PdfCellAlignment Alignment = PdfCellAlignment.Left);
+
+/// <summary>
+/// What the payment part of a Swiss QR-bill prints (E14/F01/US01/T02, made by <c>SwissQrBill.Part</c>): the payload of the Swiss QR Code, the account, the
+/// creditor, the reference, the message, the debtor (<c>null</c>: a box to fill in), the currency, the amount (<c>null</c>: a box) and the labels of its language.
+/// </summary>
+public sealed record PdfSwissQrBill(
+    string Payload,
+    string Account,
+    IReadOnlyList<string> Creditor,
+    string? Reference,
+    string? AdditionalInformation,
+    IReadOnlyList<string>? Debtor,
+    string Currency,
+    string? Amount,
+    PdfSwissQrBillLabels Labels);
+
+/// <summary>The headings of the receipt and of the payment part of a QR-bill, in the language of the document (the wording of the guidelines).</summary>
+public sealed record PdfSwissQrBillLabels(
+    string Receipt,
+    string PaymentPart,
+    string AccountPayableTo,
+    string Reference,
+    string AdditionalInformation,
+    string PayableBy,
+    string PayableByNameAddress,
+    string Currency,
+    string Amount,
+    string AcceptancePoint,
+    string SeparateBeforePayingIn);
 
 /// <summary>Horizontal alignment of the cells of a column (right for amounts).</summary>
 public enum PdfCellAlignment

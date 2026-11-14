@@ -97,6 +97,13 @@ public static class FiscalDocumentExtensions
         // The versioned mandates of the owners, the standard mandate, the billing address of an owner and the channel commission rules (E13/F01/US01/T01).
         services.AddScoped<IOwnerMandateService, OwnerMandateService>();
 
+        // Who holds the account of a listing on a portal (⚖ I10, I11): the reader of the other epics and the settings of the section «channels» of the billing setup
+        // with the holders of the listings; and the invoices of the property manager to the owners made from the statement versions, behind
+        // Features:OwnerInvoicing (E14/F01/US01/T01).
+        services.AddScoped<IPortalAccountHolderResolver, PortalAccountHolderResolver>();
+        services.AddScoped<IPortalAccountSettingsService, PortalAccountSettingsService>();
+        services.AddScoped<IOwnerInvoiceService, OwnerInvoiceService>();
+
         return services;
     }
 }

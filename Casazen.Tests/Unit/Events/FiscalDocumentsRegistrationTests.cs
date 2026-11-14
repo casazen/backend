@@ -81,6 +81,12 @@ public class FiscalDocumentsRegistrationTests
 
             // The mandates of the owners, their billing address and the channel commission rules (E13/F01/US01/T01).
             (typeof(IOwnerMandateService), typeof(OwnerMandateService), ServiceLifetime.Scoped),
+
+            // Who holds the account of a listing on a portal (the reader of the other epics and the settings of the section «channels» with the holders of the
+            // listings), and the invoices of the property manager to the owners (E14/F01/US01/T01).
+            (typeof(IPortalAccountHolderResolver), typeof(PortalAccountHolderResolver), ServiceLifetime.Scoped),
+            (typeof(IPortalAccountSettingsService), typeof(PortalAccountSettingsService), ServiceLifetime.Scoped),
+            (typeof(IOwnerInvoiceService), typeof(OwnerInvoiceService), ServiceLifetime.Scoped),
         };
 
         Assert.Equal(expected, ours);

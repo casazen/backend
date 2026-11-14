@@ -86,6 +86,10 @@ public sealed partial class MigraDocPdfDocumentRenderer : IPdfDocumentRenderer
         pdf.Info.Creator = "CasaZen";
         pdf.Language = content.Language;
 
+        // The payment part of a Swiss QR-bill (E14/F01/US01/T02) is drawn on a page of its own at the end, under the same lock and with the same font.
+        if (content.QrBill is { } qrBill)
+            Services.SwissQrBillRenderer.AddPaymentPart(pdf, qrBill);
+
         if (!string.IsNullOrWhiteSpace(content.Watermark))
         {
             foreach (var page in pdf.Pages)

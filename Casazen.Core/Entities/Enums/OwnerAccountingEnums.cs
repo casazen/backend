@@ -32,6 +32,13 @@ public enum OwnerLedgerEntryType
 
     /// <summary>The withholding kept from a payout for the tax authority (debit: it settles what is owed, E06/F05/US02/T03).</summary>
     Withholding = 9,
+
+    /// <summary>
+    /// The VAT an owner invoice added on top of the commission and the recharges (E14/F01/US01/T01, ⚖ R4: a mandate «+ IVA»): posted when the invoice is
+    /// issued (debit, source <see cref="OwnerLedgerSourceType.OwnerInvoice"/>), so the net paid to the owner is right; a credit note of the invoice posts
+    /// its reversal. A mandate «IVA inclusa» posts none: the VAT is inside the amounts the ledger already holds.
+    /// </summary>
+    AgencyVat = 10,
 }
 
 /// <summary>Where a line of the owner ledger comes from (E06/F05/US02/T02). Stored as its number: never renumber.</summary>
@@ -64,6 +71,32 @@ public enum OwnerLedgerSourceType
     /// recharge of the agency, approved by the mandate itself: the owner invoice (E14) applies its VAT.
     /// </summary>
     MandateFlatFee = 7,
+
+    /// <summary>
+    /// An owner invoice CasaZen issued, or a credit note of one (E14/F01/US01/T01): the <see cref="OwnerLedgerEntry.SourceId"/> and the
+    /// <see cref="OwnerLedgerEntry.SourceDocumentId"/> are the document, the line an <see cref="OwnerLedgerEntryType.AgencyVat"/>. Never planned from the
+    /// sources of a month: the posting of a month neither posts nor reverses it.
+    /// </summary>
+    OwnerInvoice = 8,
+}
+
+/// <summary>
+/// Who holds the account of a listing on a portal (E14/F01/US01/T01, ⚖ I10): the organization default (<see cref="OrgFiscalIssuerProfile.PortalAccountHolder"/>)
+/// and the override of a listing and portal (<see cref="PropertyChannelAccountHolder"/>). Stored as its number: never renumber.
+/// </summary>
+public enum PortalAccountHolder
+{
+    /// <summary>
+    /// V1, the default: the owner holds the account. The portal invoices the owner, its commission is the owner's cost («trattenuta del portale») and the
+    /// owner invoice has no recharge of it.
+    /// </summary>
+    Owner = 1,
+
+    /// <summary>
+    /// V2: the agency holds the account. The portal invoices the agency and its commission reaches the owner as a recharge of the owner invoice, when the
+    /// organization recharges it (<see cref="OrgFiscalIssuerProfile.RechargePortalCommissions"/>, ⚖ I11).
+    /// </summary>
+    Agency = 2,
 }
 
 /// <summary>The life of a version of an owner statement (E06/F05/US02/T02, AC-NF110-2). Stored as its number: never renumber.</summary>

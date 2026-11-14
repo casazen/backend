@@ -89,6 +89,67 @@ public static class FiscalDocumentTotals
     }
 
     /// <summary>
+    /// The amounts of a document whose lines are taxable amounts the VAT is added to (an owner invoice of a mandate «+ IVA», E14/F01/US01/T01, ⚖ R4): every line
+    /// keeps its net to the cent. The lines are grouped by VAT rate and nature code; the VAT of a group is <c>round(T × rate / 100, 2)</c> (half away from zero)
+    /// on its taxable amount <c>T</c>, shared among its lines by the same rounding of each, the cent of difference on the largest; the total is the nets plus the
+    /// VAT (plus the stamp duty when the rule charges it to the recipient). The stamp duty is the one of <see cref="FromGross"/>.
+    /// </summary>
+    public static FiscalDocumentAmounts FromNet(IReadOnlyList<FiscalDocumentNetLine> lines, FiscalStampDutyRule? stamp)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+        if (lines.Count == 0
+            || lines.Any(l => l.NetAmount < 0m || l.Quantity <= 0m || l.VatRatePercent is < 0m or > 100m)
+            || lines.Sum(l => l.NetAmount) <= 0m)
+        {
+            throw new DomainRuleException(AmountsInvalidCode, "FiscalDocumentAmountsInvalid");
+        }
+
+        var computed = new FiscalDocumentLineAmounts[lines.Count];
+        var summary = new List<FiscalDocumentVatSummary>();
+        foreach (var group in lines
+                     .Select((line, index) => (Line: line, Index: index))
+                     .GroupBy(x => (x.Line.VatRatePercent, Nature: x.Line.VatRatePercent == 0m ? x.Line.NatureCode : null))
+                     .OrderByDescending(g => g.Key.VatRatePercent)
+                     .ThenBy(g => g.Key.Nature, StringComparer.Ordinal))
+        {
+            var rate = group.Key.VatRatePercent;
+            var taxable = group.Sum(x => x.Line.NetAmount);
+            var tax = Vat(taxable, rate);
+            var shares = group.Select(x => (x.Index, x.Line, Vat: Vat(x.Line.NetAmount, rate))).ToList();
+            var difference = tax - shares.Sum(s => s.Vat);
+            if (difference != 0m)
+            {
+                var largest = shares.OrderByDescending(s => s.Line.NetAmount).ThenBy(s => s.Index).First();
+                shares[shares.IndexOf(largest)] = largest with { Vat = largest.Vat + difference };
+            }
+
+            foreach (var (index, line, vat) in shares)
+            {
+                computed[index] = new FiscalDocumentLineAmounts(
+                    index + 1,
+                    line.Description,
+                    line.Quantity,
+                    line.Quantity == 1m ? line.NetAmount : Math.Round(line.NetAmount / line.Quantity, 8, MidpointRounding.AwayFromZero),
+                    line.NetAmount,
+                    rate,
+                    rate == 0m ? line.NatureCode : null,
+                    line.LineType,
+                    vat);
+            }
+
+            summary.Add(new FiscalDocumentVatSummary(rate, group.Key.Nature, taxable, tax));
+        }
+
+        var withoutVat = summary.Where(s => s.VatRatePercent == 0m).Sum(s => s.TaxableAmount);
+        var stampDuty = stamp is not null && withoutVat > stamp.Threshold ? stamp.Amount : 0m;
+        var taxableBase = summary.Sum(s => s.TaxableAmount);
+        var vatAmount = summary.Sum(s => s.Tax);
+        var total = taxableBase + vatAmount + (stamp?.ChargedToRecipient == true ? stampDuty : 0m);
+
+        return new FiscalDocumentAmounts(computed, summary, taxableBase, vatAmount, stampDuty, total, RuleVersion);
+    }
+
+    /// <summary>
     /// The VAT summary of stored lines, one row per rate and nature code (the highest rate first): the taxable amount is the sum of the nets, the VAT the
     /// sum of the stored VAT of the lines. The lines written before their VAT was stored (<c>VatAmount</c> <c>null</c>) take the stored VAT of the
     /// document when it has one taxed rate, and <c>taxable × rate</c> otherwise (the computation of those documents).
@@ -146,7 +207,26 @@ public static class FiscalDocumentTotals
     /// <summary>The net of a gross amount at <paramref name="rate"/> percent, to the cent (half away from zero).</summary>
     public static decimal Net(decimal gross, decimal rate) =>
         rate == 0m ? Math.Round(gross, 2, MidpointRounding.AwayFromZero) : Math.Round(gross * 100m / (100m + rate), 2, MidpointRounding.AwayFromZero);
+
+    /// <summary>The VAT of a taxable amount at <paramref name="rate"/> percent, to the cent (half away from zero).</summary>
+    public static decimal Vat(decimal taxable, decimal rate) =>
+        rate == 0m ? 0m : Math.Round(taxable * rate / 100m, 2, MidpointRounding.AwayFromZero);
 }
+
+/// <summary>A line as a taxable amount the VAT is added to (an owner invoice of a mandate «+ IVA»): <see cref="FiscalDocumentGrossLine"/> without the VAT.</summary>
+/// <param name="Description">What the line is (no personal data of a guest).</param>
+/// <param name="Quantity">The quantity (1 for the lines of an owner invoice).</param>
+/// <param name="NetAmount">The taxable amount of the line, VAT excluded.</param>
+/// <param name="VatRatePercent">The VAT rate of the line in percent; 0 for an operation without VAT.</param>
+/// <param name="NatureCode">The nature code of an operation without VAT.</param>
+/// <param name="LineType">What the line is: the tax rule gives its rate by type.</param>
+public sealed record FiscalDocumentNetLine(
+    string Description,
+    decimal Quantity,
+    decimal NetAmount,
+    decimal VatRatePercent,
+    string? NatureCode,
+    FiscalLineType LineType);
 
 /// <summary>A line as the guest pays it (VAT included).</summary>
 /// <param name="Description">What the line is (no personal data).</param>

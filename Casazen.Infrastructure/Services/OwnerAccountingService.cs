@@ -178,6 +178,15 @@ public sealed partial class OwnerAccountingService(
                         issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.LedgerStatementImbalance, owner, SourceId: latest.Id));
                     if (latest.ClosingBalance < 0m)
                         issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.NegativeBalance, owner, SourceId: latest.Id));
+
+                    // An owner invoice issued after the version was approved or published posted its VAT in the month (E14/F01/US01/T01): the version is
+                    // generated again by the agency, with the invoice named.
+                    if (latest.Status is OwnerStatementVersionStatus.Approved or OwnerStatementVersionStatus.Published
+                        && all.FirstOrDefault(e => e.PropertyOwnerId == owner && e.EntryType == OwnerLedgerEntryType.AgencyVat && e.PostedAt > latest.CutoffAt)
+                            is { } invoiceLine)
+                    {
+                        issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.OwnerInvoiceAfterApproval, owner, SourceId: invoiceLine.SourceDocumentId));
+                    }
                 }
 
                 if (row?.IsDirty == true)

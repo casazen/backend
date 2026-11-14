@@ -2,6 +2,7 @@ using System.Globalization;
 using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using DocumentKind = Casazen.Core.Entities.Enums.FiscalDocumentKind;
 
@@ -22,7 +23,8 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Swiss figures.</b> Amounts with the it-CH culture and its apostrophe as the thousands separator (<c>1'234.50</c>), pinned here so every platform
 /// writes the same (some write U+2019 instead).</item>
 /// <item><b>Payment.</b> «Pagata tramite il portale» when the portal collected, «Pagata» when the money is collected, «Da incassare» otherwise: never the
-/// name of a portal or of a supplier.</item>
+/// name of a portal or of a supplier. An owner invoice says instead whether the statement offsets it, and when it leaves an amount to pay it ends with the
+/// QR-bill of that amount (E14/F01/US01/T02).</item>
 /// <item><b>Language.</b> The labels in the language asked for (the guest's; Italian by default), from the same resource files as the Italian layout.</item>
 /// </list>
 /// </remarks>
@@ -40,7 +42,8 @@ public static class SwissFiscalDocumentPdf
         IDocumentTexts texts,
         string language,
         FiscalDocument? credited = null,
-        string? propertyName = null)
+        string? propertyName = null,
+        OwnerInvoiceSettlement? settlement = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(issuer);
@@ -134,15 +137,74 @@ public static class SwissFiscalDocumentPdf
 
         if (!registered)
             blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfChNotVatRegistered", language)));
-        if (document.Kind != DocumentKind.CreditNote)
+        if (document.Kind != DocumentKind.CreditNote && document.Purpose != FiscalDocumentPurpose.OwnerInvoice)
             blocks.Add(new PdfParagraph(PaymentLabel(document, texts, language), Bold: true));
+
+        // An issued owner invoice that leaves an amount for the owner to pay ends with the QR-bill of that amount (E14/F01/US01/T02); offset in the statement,
+        // or without an account of the agency for a QR-bill, it says so instead.
+        PdfSwissQrBill? qrBill = null;
+        if (document.Purpose == FiscalDocumentPurpose.OwnerInvoice && document.Kind != DocumentKind.CreditNote && settlement is not null)
+        {
+            if (settlement.State == OwnerInvoiceSettlements.ToPay)
+                qrBill = QrBillOf(document, issuer, settlement.AmountDue, texts, language);
+            blocks.AddRange(FiscalDocumentPdfs.OwnerInvoicePaymentLines(document, settlement, texts, language, Money(settlement.AmountDue), qrBill is not null));
+        }
 
         return new PdfDocumentContent(title, blocks)
         {
             Language = DocumentLanguages.Normalize(language) == DocumentLanguages.English ? "en-GB" : "it-CH",
             Watermark = document.Status == FiscalDocumentStatus.Draft ? texts.Get("FiscalDocPdfDraftWatermark", language) : null,
+            QrBill = qrBill,
         };
     }
+
+    /// <summary>
+    /// The QR-bill of <paramref name="amountDue"/> of an owner invoice (E14/F01/US01/T02): the account the snapshot of the issuer kept (a QR-IBAN with a QR
+    /// reference made from the document, else an IBAN with a creditor reference made from its number), the agency as the creditor, the owner as the debtor
+    /// when its structured address is complete (else a box to fill in), the message «Fattura &lt;numero&gt;» (always in Italian, as the guidelines leave the
+    /// language of the message free and the brief names it: the payload of one document never changes with the language of the request, only the headings of
+    /// the payment part do). <c>null</c> when the issuer kept no account or the
+    /// data are not a QR-bill (a currency other than CHF and EUR, an incomplete address of the agency): the invoice then says the payment is as the manager says.
+    /// </summary>
+    internal static PdfSwissQrBill? QrBillOf(FiscalDocument document, FiscalIssuerSnapshot issuer, decimal amountDue, IDocumentTexts texts, string language)
+    {
+        if (string.IsNullOrWhiteSpace(issuer.QrBillAccount) || string.IsNullOrWhiteSpace(document.Number))
+            return null;
+
+        var account = issuer.QrBillAccount;
+        var creditor = new SwissQrBillAddress(
+            issuer.DisplayName, issuer.AddressStreet, issuer.AddressCivic, issuer.PostalCode ?? string.Empty, issuer.City ?? string.Empty, issuer.CountryCode);
+        var debtor = !string.IsNullOrWhiteSpace(document.RecipientName) && !string.IsNullOrWhiteSpace(document.RecipientPostalCode)
+                     && !string.IsNullOrWhiteSpace(document.RecipientCity) && document.RecipientCountryCode is { Length: 2 } country
+            ? new SwissQrBillAddress(
+                document.RecipientName, document.RecipientAddressStreet, document.RecipientAddressCivic, document.RecipientPostalCode, document.RecipientCity, country)
+            : null;
+        var qrAccount = IssuerBankAccounts.IsQrIban(account);
+        var data = new SwissQrBillData(
+            account,
+            creditor,
+            amountDue,
+            document.Currency,
+            debtor,
+            qrAccount ? SwissQrBill.ReferenceQrr : SwissQrBill.ReferenceScor,
+            qrAccount ? SwissQrBill.QrrReferenceOf(document.Id) : SwissQrBill.ScorReference(document.Number),
+            texts.Get("QrBillMessage", DocumentLanguages.Italian, document.Number));
+        return SwissQrBill.Part(data, LabelsOf(texts, language));
+    }
+
+    /// <summary>The headings of the receipt and of the payment part in the language of the document.</summary>
+    private static PdfSwissQrBillLabels LabelsOf(IDocumentTexts texts, string language) => new(
+        texts.Get("QrBillReceipt", language),
+        texts.Get("QrBillPaymentPart", language),
+        texts.Get("QrBillAccountPayableTo", language),
+        texts.Get("QrBillReference", language),
+        texts.Get("QrBillAdditionalInformation", language),
+        texts.Get("QrBillPayableBy", language),
+        texts.Get("QrBillPayableByNameAddress", language),
+        texts.Get("QrBillCurrency", language),
+        texts.Get("QrBillAmount", language),
+        texts.Get("QrBillAcceptancePoint", language),
+        texts.Get("QrBillSeparate", language));
 
     /// <summary>An amount of a Swiss document: two decimals, the apostrophe between the thousands (<c>1'234.50</c>).</summary>
     public static string Money(decimal amount) => amount.ToString("N2", SwissNumbers);
@@ -184,9 +246,18 @@ public static class SwissFiscalDocumentPdf
             yield return city;
     }
 
-    /// <summary>The period of the stay (art. 26: the date or the period of the service) and the property, when the document has them.</summary>
+    /// <summary>
+    /// The period of the stay (art. 26: the date or the period of the service) and the property, when the document has them; for an owner invoice the month of
+    /// the services of the property manager (E14/F01/US01/T01).
+    /// </summary>
     private static IEnumerable<string> StayLines(FiscalDocument document, IDocumentTexts texts, string language, string? propertyName)
     {
+        if (FiscalDocumentPdfs.OwnerInvoicePeriodLabel(document) is { } period)
+        {
+            yield return texts.Get("FiscalDocPdfOwnerPeriod", language, period);
+            yield break;
+        }
+
         if (document.ServicePeriodFrom is { } from && document.ServicePeriodTo is { } to)
             yield return texts.Get("FiscalDocPdfChStayPeriod", language, DocumentLanguages.Day(from), DocumentLanguages.Day(to));
         if (!string.IsNullOrWhiteSpace(propertyName))

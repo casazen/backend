@@ -7064,6 +7064,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("PlatformCollectedTouristTaxChannels");
 
+                    b.Property<int>("PortalAccountHolder")
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
                     b.Property<string>("PostalCode")
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
@@ -7074,6 +7078,10 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<string>("QrIban")
                         .HasColumnType("text");
+
+                    b.Property<bool>("RechargePortalCommissions")
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
 
                     b.Property<string>("StampDutyReference")
                         .HasMaxLength(60)
@@ -10639,6 +10647,47 @@ namespace Casazen.Infrastructure.Migrations
                         .HasDatabaseName("UIX_PropertyAssistantSettings_OrgId_PropertyId");
 
                     b.ToTable("PropertyAssistantSettings");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.PropertyChannelAccountHolder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("Holder")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
+
+                    b.HasIndex("PropertyId", "Channel")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_PropertyChannelAccountHolders_PropertyId_Channel");
+
+                    b.ToTable("PropertyChannelAccountHolders", t =>
+                        {
+                            t.HasCheckConstraint("CK_PropertyChannelAccountHolders_Holder", "\"Holder\" IN (1, 2)");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.PropertyComplianceSender", b =>
@@ -19260,6 +19309,15 @@ namespace Casazen.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.PropertyChannelAccountHolder", b =>
+                {
                     b.HasOne("Casazen.Core.Entities.Property", null)
                         .WithMany()
                         .HasForeignKey("PropertyId")
