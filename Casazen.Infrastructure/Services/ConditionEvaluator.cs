@@ -213,6 +213,12 @@ public class ConditionEvaluator(
         HostScope scope,
         CancellationToken cancellationToken)
     {
+        // The conditions of the routines (E01/F04/US01/T01): the context is the facts of the booking of the event, and the rule is met or not.
+        if (context is RoutineConditionFacts routineFacts)
+        {
+            return RoutineConditions.Satisfies(rule, routineFacts);
+        }
+
         // For MVP: placeholder implementation
         // Full implementation will extract field values from context and apply operators
         logger.LogDebug(
