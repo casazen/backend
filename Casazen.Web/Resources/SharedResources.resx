@@ -5446,7 +5446,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>Mancano dei dati dell'emittente per emettere con CasaZen: completali e riprova.</value>
   </data>
   <data name="DocumentBookingNotDirect" xml:space="preserve">
-    <value>CasaZen non emette documenti per le prenotazioni che arrivano da un portale, solo per quelle dirette.</value>
+    <value>Questo documento non è collegato a una prenotazione: CasaZen lo prepara e lo emette solo a partire da una prenotazione.</value>
   </data>
   <data name="DocumentIssuerConflict" xml:space="preserve">
     <value>I documenti di questa prenotazione sono già di un altro emittente: una prenotazione ha un solo emittente.</value>
