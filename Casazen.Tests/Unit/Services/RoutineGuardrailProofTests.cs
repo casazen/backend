@@ -235,6 +235,31 @@ public class RoutineGuardrailProofTests
         AssertBlocked(result, RoutineActionType.MessageToGuest, RoutineCodes.CampaignNeedsConsent);
     }
 
+    /// <summary>
+    /// Proof (privacy rule, AC-NF26-6): the marker of a campaign is read closed in the doubt. Any value that is present and is not <c>false</c> (a text, a
+    /// number, null, an object) makes the message a campaign, so it never goes to a guest who did not consent because the marker was not spelled as a JSON
+    /// <c>true</c>: the API saves any configuration for this action, so the engine cannot rely on its spelling.
+    /// </summary>
+    [Theory]
+    [InlineData("true")]
+    [InlineData("\"true\"")]
+    [InlineData("\"yes\"")]
+    [InlineData("\"false\"")]
+    [InlineData("1")]
+    [InlineData("0")]
+    [InlineData("null")]
+    [InlineData("{}")]
+    public async Task Campaign_AMarkerThatIsNotFalse_IsACampaign_AndNeedsTheConsent(string marker)
+    {
+        var rig = new RoutineRig();
+        var guest = await rig.SeedGuestAsync(OrgA, marketingConsent: false);
+        var booking = await rig.SeedBookingAsync(OrgA, guestId: guest.Id);
+
+        var result = await RunAsync(rig, "MessageToGuest", $$"""{"templateId":"promo","isCampaign":{{marker}}}""", new { BookingId = booking.Id });
+
+        AssertBlocked(result, RoutineActionType.MessageToGuest, RoutineCodes.CampaignNeedsConsent);
+    }
+
     [Fact]
     public async Task Campaign_AGuestWhoConsented_IsNotBlocked()
     {

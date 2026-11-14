@@ -364,6 +364,23 @@ public class RoutineRulesTests
         Assert.False(config.TryGetInt("missing", out _));
     }
 
+    /// <summary>The marker of a campaign is read closed: present and not false is on.</summary>
+    [Theory]
+    [InlineData("""{"isCampaign":true}""", true)]
+    [InlineData("""{"IsCampaign":"yes"}""", true)]
+    [InlineData("""{"isCampaign":"false"}""", true)]
+    [InlineData("""{"isCampaign":0}""", true)]
+    [InlineData("""{"isCampaign":null}""", true)]
+    [InlineData("""{"isCampaign":false}""", false)]
+    [InlineData("""{"templateId":"welcome"}""", false)]
+    [InlineData("{}", false)]
+    public void IsOnUnlessFalse_ASwitchThatIsPresentAndNotFalse_IsOn(string configJson, bool expected)
+    {
+        Assert.True(RoutineAction.TryParseList($$"""[{"type":"MessageToGuest","config":{{configJson}}}]""", out var actions));
+
+        Assert.Equal(expected, Assert.Single(actions).IsOnUnlessFalse("isCampaign"));
+    }
+
     [Theory]
     [InlineData("""{"hours":1}""", 1)]
     [InlineData("""{"days":1}""", 24)]

@@ -529,8 +529,9 @@ public class RoutineService(
                 if (booking is null || (booking.Source == BookingSource.Airbnb && !IsConfirmed(booking.Status)))
                     return RoutineCodes.AirbnbNotConfirmed;
 
-                // Campaigns only with the marketing consent the campaigns themselves read (Guest.MarketingConsent).
-                if (action.GetFlag("isCampaign") && !await run.MarketingConsentAsync(cancellationToken))
+                // Campaigns only with the marketing consent the campaigns themselves read (Guest.MarketingConsent). The marker is read closed: any value
+                // but false (a text, a number, null) marks a campaign, so a marker that is not spelled as a JSON true never lets a message through.
+                if (action.IsOnUnlessFalse("isCampaign") && !await run.MarketingConsentAsync(cancellationToken))
                     return RoutineCodes.CampaignNeedsConsent;
 
                 return null;

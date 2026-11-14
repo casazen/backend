@@ -293,6 +293,13 @@ public sealed class RoutineAction
     public string? GetString(string name) =>
         Config.TryGetValue(name, out var member) && member.ValueKind == JsonValueKind.String ? member.GetString() : null;
 
+    /// <summary>
+    /// A switch of the configuration read the way a guardrail needs it, closed in the doubt: on for any value that is present and is not the JSON <c>false</c>
+    /// (<c>true</c>, a text, a number, <c>null</c>), off only when it is missing or <c>false</c>. Whoever wrote something there meant it to count.
+    /// </summary>
+    public bool IsOnUnlessFalse(string name) =>
+        Config.TryGetValue(name, out var member) && member.ValueKind != JsonValueKind.False;
+
     /// <summary>A switch of the configuration: true only for the JSON <c>true</c>.</summary>
     public bool GetFlag(string name) =>
         Config.TryGetValue(name, out var member) && member.ValueKind == JsonValueKind.True;
