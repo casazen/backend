@@ -14,7 +14,7 @@ namespace Casazen.Web.DTOs.OwnerPortal;
 /// <param name="Version">The number of the version.</param>
 /// <param name="Currency">The currency of every amount.</param>
 /// <param name="PublishedAt">When it was published (UTC).</param>
-/// <param name="Superseded">True when a later version of the period replaced it; it stays as it was published.</param>
+/// <param name="Superseded">True when a later version of the period replaced it and that one is published too; it stays as it was published. While the correction is only a draft it is false.</param>
 /// <param name="SupersededByStatementId">The version that replaced it, when that one is published too.</param>
 /// <param name="HasPdf">True when the PDF stored with it can be downloaded (<c>…/pdf</c>).</param>
 /// <param name="Totals">The totals of the statement.</param>

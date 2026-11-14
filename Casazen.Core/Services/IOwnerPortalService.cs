@@ -218,7 +218,7 @@ public class OwnerPortalBookingInfo
 /// <param name="Version">The number of the version: 1 for the first of the month, then one more each.</param>
 /// <param name="Currency">The currency of the amounts.</param>
 /// <param name="PublishedAt">When it was published (UTC).</param>
-/// <param name="Superseded">True when a later version of the period replaced it (it is kept, as it was published).</param>
+/// <param name="Superseded">True when a later version of the period replaced it and that one is published too (it is kept, as it was published): while the correction is only a draft, the published statement is still the one the owner was given.</param>
 /// <param name="SupersededByStatementId">The version that replaced it, when that one is published too.</param>
 /// <param name="HasPdf">True when its PDF was stored with it and is available.</param>
 /// <param name="Totals">The gross, the channel commissions, the withholding, the commission, the charges and the net, and the balances.</param>

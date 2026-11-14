@@ -179,6 +179,29 @@ public class OwnerPortalStatementsTests
     }
 
     /// <summary>
+    /// Data: for the owner a statement is replaced only when its replacement is published. The agency marks the published version as superseded as soon as it generates a
+    /// correction; until that one is published, the statement the owner was given is still the valid one, not «replaced» by something the owner cannot see.
+    /// </summary>
+    [Fact]
+    public async Task OwnerPortal_StatementIsSupersededOnlyOnceItsReplacementIsPublished_Test()
+    {
+        var world = await World.CreateAsync();
+
+        // A correction of the month was generated: the published version is superseded in the ledger, by a version that is still a draft.
+        await world.SupersedeAsync(world.SecondVersionId, world.DraftVersionId);
+        var asked = (await world.Portal.GetOwnerStatementsAsync(world.OwnerUserA)).Single(s => s.StatementId == world.SecondVersionId);
+        Assert.Equal((false, (Guid?)null), (asked.Superseded, asked.SupersededByStatementId));
+        var detail = await world.Portal.GetOwnerStatementAsync(world.OwnerUserA, world.SecondVersionId);
+        Assert.Equal((false, (Guid?)null), (detail.Statement.Superseded, detail.Statement.SupersededByStatementId));
+        Assert.DoesNotContain(await world.Portal.GetOwnerStatementsAsync(world.OwnerUserA), s => s.StatementId == world.DraftVersionId);
+
+        // The correction is published: now the first statement is superseded, by it.
+        await world.PublishAsync(world.DraftVersionId);
+        var replaced = (await world.Portal.GetOwnerStatementsAsync(world.OwnerUserA)).Single(s => s.StatementId == world.SecondVersionId);
+        Assert.Equal((true, (Guid?)world.DraftVersionId), (replaced.Superseded, replaced.SupersededByStatementId));
+    }
+
+    /// <summary>
     /// The e-mail of the publication goes to the people of the portal who read the statements of the owner (the owner, a contact with <c>accounting.read</c>), says who
     /// published and links to the page «Contabilità»: no amount, no period, no line, in the language of the agency.
     /// </summary>
@@ -384,6 +407,26 @@ public class OwnerPortalStatementsTests
         }
 
         private OwnerStatementVersion SecondVersionForStore() => Db.OwnerStatementVersions.AsNoTracking().Single(v => v.Id == SecondVersionId);
+
+        /// <summary>The ledger marks a version as superseded by a later one (what generating a correction does to the previous version).</summary>
+        public async Task SupersedeAsync(Guid versionId, Guid byVersionId)
+        {
+            var version = await Db.OwnerStatementVersions.SingleAsync(v => v.Id == versionId);
+            version.Status = OwnerStatementVersionStatus.Superseded;
+            version.SupersededByVersionId = byVersionId;
+            version.SupersededAt = Cutoff.AddHours(3);
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
+
+        public async Task PublishAsync(Guid versionId)
+        {
+            var version = await Db.OwnerStatementVersions.SingleAsync(v => v.Id == versionId);
+            version.Status = OwnerStatementVersionStatus.Published;
+            version.PublishedAt = Cutoff.AddHours(4);
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
 
         private PropertyOwnership Ownership(Guid property, Guid owner, Guid ownerUser) => new()
         {

@@ -280,6 +280,10 @@ public sealed class OwnerPortalService(
                 .ToListAsync(cancellationToken))
             .ToHashSet();
 
+        // For the owner a statement is replaced only when the version that replaces it is published too: the agency marks the published one as superseded as soon as it
+        // generates a correction, but until that one is published (a draft, or approved and not yet given) the published statement is still the one the owner was given.
+        Guid? ReplacementOf(OwnerStatementVersion version) => version.SupersededByVersionId is { } later && laterPublished.Contains(later) ? later : null;
+
         return versions
             .Select(v => new OwnerPortalStatementInfo(
                 v.Id,
@@ -290,8 +294,8 @@ public sealed class OwnerPortalService(
                 v.VersionNumber,
                 v.Currency,
                 v.PublishedAt!.Value,
-                v.Status == OwnerStatementVersionStatus.Superseded,
-                v.SupersededByVersionId is { } later && laterPublished.Contains(later) ? later : null,
+                ReplacementOf(v) is not null,
+                ReplacementOf(v),
                 withPdf.Contains(v.Id),
                 OwnerStatementTotals.Of(v)))
             .ToList();
