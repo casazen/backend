@@ -102,6 +102,88 @@ public class FiscalDocumentCreditPostgresTests
         events.VerifyNoOtherCalls();
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (E11/F01/US01/T01, E14). One live invoice to an owner for each period: a second invoice of the same owner and month is refused by
+    /// the database (<c>UIX_FiscalDocuments_OrgId_RecipientOwnerId_Period</c>); a discarded draft, a credit note, another month and another owner do not collide,
+    /// and an invoice credited in full (<c>CreditedInFull</c>) frees its owner and month for a new one.
+    /// </summary>
+    [PostgresFact]
+    public async Task FiscalDocument_OwnerInvoice_OneLiveInvoicePerOwnerAndPeriod_Test()
+    {
+        await using var database = PostgresTestDatabase.CreateMigrated("fdowner");
+        var orgId = Guid.NewGuid();
+        var ownerId = Guid.NewGuid();
+        var otherOwnerId = Guid.NewGuid();
+        Guid firstId;
+        await using (var db = Context(database))
+        {
+            await SeedOrgAndBookingAsync(db, orgId);
+            db.PropertyOwners.AddRange(NewOwner(orgId, ownerId), NewOwner(orgId, otherOwnerId));
+            var first = OwnerInvoice(orgId, ownerId, 10, FiscalDocumentStatus.Issued, 1);
+            firstId = first.Id;
+            db.FiscalDocuments.Add(first);
+            await db.SaveChangesAsync();
+        }
+
+        // A second live invoice of the same owner and month: the unique index refuses it.
+        await using (var db = Context(database))
+        {
+            db.FiscalDocuments.Add(OwnerInvoice(orgId, ownerId, 10, FiscalDocumentStatus.Issued, 2));
+            var refused = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+            Assert.Contains(FiscalDocument.OwnerPeriodIndexName, refused.InnerException?.Message, StringComparison.Ordinal);
+        }
+
+        // What does not hold the period: a discarded draft, a credit note, another month, another owner.
+        await using (var db = Context(database))
+        {
+            var creditNote = OwnerInvoice(orgId, ownerId, 10, FiscalDocumentStatus.Issued, 3);
+            creditNote.Kind = DocumentKind.CreditNote;
+            creditNote.CreditedDocumentId = firstId;
+            db.FiscalDocuments.AddRange(
+                OwnerInvoice(orgId, ownerId, 10, FiscalDocumentStatus.Discarded, null),
+                creditNote,
+                OwnerInvoice(orgId, ownerId, 11, FiscalDocumentStatus.Issued, 4),
+                OwnerInvoice(orgId, otherOwnerId, 10, FiscalDocumentStatus.Issued, 5));
+            await db.SaveChangesAsync();
+        }
+
+        // An invoice credited in full frees its period: a new live invoice of the same owner and month is accepted, and then holds it again.
+        await using (var db = Context(database))
+        {
+            (await db.FiscalDocuments.SingleAsync(d => d.Id == firstId)).CreditedInFull = true;
+            await db.SaveChangesAsync();
+            db.FiscalDocuments.Add(OwnerInvoice(orgId, ownerId, 10, FiscalDocumentStatus.Issued, 6));
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = Context(database))
+        {
+            db.FiscalDocuments.Add(OwnerInvoice(orgId, ownerId, 10, FiscalDocumentStatus.Issued, 7));
+            var refused = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+            Assert.Contains(FiscalDocument.OwnerPeriodIndexName, refused.InnerException?.Message, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>An invoice of the property manager to an owner for a month of 2026 (E14): issued with its number, or a draft without one.</summary>
+    private static FiscalDocument OwnerInvoice(Guid orgId, Guid ownerId, int month, FiscalDocumentStatus status, int? number) => new()
+    {
+        OrgId = orgId,
+        Purpose = FiscalDocumentPurpose.OwnerInvoice,
+        RecipientOwnerId = ownerId,
+        PeriodYear = 2026,
+        PeriodMonth = month,
+        Source = FiscalDocumentSource.CasaZen,
+        Kind = DocumentKind.Invoice,
+        Status = status,
+        Series = number is null ? string.Empty : "PM2026",
+        SequenceNumber = number,
+        Number = number is null ? null : $"PM2026/{number}",
+        Currency = "EUR",
+        SdiStatus = FiscalDocumentSdiStatuses.NotApplicable,
+    };
+
+    private static PropertyOwner NewOwner(Guid orgId, Guid ownerId) => new() { Id = ownerId, OrgId = orgId, FirstName = "TEST", LastName = "Proprietario", Email = $"owner.{ownerId:N}@example.com" };
+
     /// <summary>One credit note as the endpoint asks for it: its own context and service, the exception (if any) returned.</summary>
     private static async Task<Exception?> CreditAsync(PostgresTestDatabase database, Guid originalId)
     {

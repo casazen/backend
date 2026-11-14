@@ -186,6 +186,41 @@ public class FiscalDocumentServiceProofTests
         await Assert.ThrowsAsync<DomainRuleException>(() => service.CreateCreditNoteAsync(original.Id, 0.01m, "TEST", confirm: true, null));
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (E11/F01/US01/T01, E14). Only the credit note that completes the credit marks the original <c>CreditedInFull</c> (an owner invoice
+    /// credited in full frees its owner and period): a partial one does not, one refused for exceeding the original marks nothing, the last part does, and
+    /// so does a single note of the whole document.
+    /// </summary>
+    [Fact]
+    public async Task FiscalDocument_CreditNote_MarksTheOriginalCreditedInFullOnlyWhenItCompletesTheCredit_Test()
+    {
+        await using var db = NewDb();
+        var booking = await SeedAsync(db, BookingSource.Direct);
+        var wholeBooking = await SeedBookingAsync(db, BookingSource.Manual);
+        var service = Service(db);
+        var original = await service.IssueAsync((await service.CreateDraftAsync(booking, null)).Id, confirm: true);
+        var whole = await service.IssueAsync((await service.CreateDraftAsync(wholeBooking, null)).Id, confirm: true);
+        Assert.False(await IsCreditedInFullAsync(db, original.Id));
+
+        await service.CreateCreditNoteAsync(original.Id, 100m, "TEST rimborso parziale", confirm: true, null);
+        Assert.False(await IsCreditedInFullAsync(db, original.Id));
+
+        await Assert.ThrowsAsync<DomainRuleException>(() => service.CreateCreditNoteAsync(original.Id, 262.01m, "TEST", confirm: true, null));
+        Assert.False(await IsCreditedInFullAsync(db, original.Id));
+
+        await service.CreateCreditNoteAsync(original.Id, null, "TEST storno del residuo", confirm: true, null);
+        Assert.True(await IsCreditedInFullAsync(db, original.Id));
+
+        // One note of the whole document completes the credit at once; the other documents are untouched.
+        Assert.False(await IsCreditedInFullAsync(db, whole.Id));
+        await service.CreateCreditNoteAsync(whole.Id, null, "TEST storno totale", confirm: true, null);
+        Assert.True(await IsCreditedInFullAsync(db, whole.Id));
+        Assert.Equal(2, await db.FiscalDocuments.AsNoTracking().CountAsync(d => d.CreditedInFull));
+    }
+
+    private static async Task<bool> IsCreditedInFullAsync(AppDbContext db, Guid documentId) =>
+        (await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == documentId)).CreditedInFull;
+
     /// <summary>A booking that is not active owes no document: no draft, no number, no lock of the issuer (the one definition of an active booking).</summary>
     [Theory]
     [InlineData(BookingStatus.Pending, false)]
