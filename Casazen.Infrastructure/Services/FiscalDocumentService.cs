@@ -438,7 +438,12 @@ public sealed class FiscalDocumentService(
         var propertyName = document.PropertyId is { } propertyId
             ? await db.Properties.AsNoTracking().IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]).Where(p => p.Id == propertyId).Select(p => p.Name).FirstOrDefaultAsync(ct)
             : null;
-        return FiscalDocumentPdfs.Pdf(document, issuer, texts, language, credited, propertyName);
+
+        // An issued owner invoice says how it is paid, read now from the owner ledger: offset in the statement, or to pay (with the QR-bill in Switzerland).
+        var settlement = document.Purpose == FiscalDocumentPurpose.OwnerInvoice && document.Status == FiscalDocumentStatus.Issued && document.Kind != DocumentKind.CreditNote
+            ? (await OwnerInvoiceSettlementReader.ReadAsync(db, [document], ct)).GetValueOrDefault(document.Id)
+            : null;
+        return FiscalDocumentPdfs.Pdf(document, issuer, texts, language, credited, propertyName, settlement);
     }
 
     // ---------------------------------------------------------------- draft
@@ -656,7 +661,9 @@ public sealed class FiscalDocumentService(
 
         // The issuer as it is now, kept with the document: its PDF and its XML read it from here from now on. The version of the rule is the one the draft
         // was made with (a document made before the versions existed takes the one in force).
-        var issuer = FiscalIssuerSnapshot.From(profile, org, rule.FatturaPaRegimeCode);
+        // A Swiss owner invoice keeps the account its QR-bill is paid on (E14/F01/US01/T02): the payment part prints it, as it was at the issue.
+        var issuer = FiscalIssuerSnapshot.From(
+            profile, org, rule.FatturaPaRegimeCode, withQrBillAccount: document.Purpose == FiscalDocumentPurpose.OwnerInvoice && credited is null && rule.IsSwiss);
         document.IssuerSnapshot = issuer.ToJson();
         document.RuleVersion ??= rule.Version;
 

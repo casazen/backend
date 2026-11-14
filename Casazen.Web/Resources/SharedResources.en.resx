@@ -6519,6 +6519,54 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="StatementDocOwnerInvoice" xml:space="preserve">
     <value>Invoice no. {0}</value>
   </data>
+  <data name="OwnerInvoicePdfOffset" xml:space="preserve">
+    <value>Offset in the statement of {0}</value>
+  </data>
+  <data name="OwnerInvoicePdfToPay" xml:space="preserve">
+    <value>Amount to pay: {0} {1}</value>
+  </data>
+  <data name="OwnerInvoicePdfPaymentByManager" xml:space="preserve">
+    <value>Payment as instructed by the property manager</value>
+  </data>
+  <data name="OwnerInvoicePdfCredited" xml:space="preserve">
+    <value>Credited by a credit note</value>
+  </data>
+  <data name="QrBillReceipt" xml:space="preserve">
+    <value>Receipt</value>
+  </data>
+  <data name="QrBillPaymentPart" xml:space="preserve">
+    <value>Payment part</value>
+  </data>
+  <data name="QrBillAccountPayableTo" xml:space="preserve">
+    <value>Account / Payable to</value>
+  </data>
+  <data name="QrBillReference" xml:space="preserve">
+    <value>Reference</value>
+  </data>
+  <data name="QrBillAdditionalInformation" xml:space="preserve">
+    <value>Additional information</value>
+  </data>
+  <data name="QrBillPayableBy" xml:space="preserve">
+    <value>Payable by</value>
+  </data>
+  <data name="QrBillPayableByNameAddress" xml:space="preserve">
+    <value>Payable by (name/address)</value>
+  </data>
+  <data name="QrBillCurrency" xml:space="preserve">
+    <value>Currency</value>
+  </data>
+  <data name="QrBillAmount" xml:space="preserve">
+    <value>Amount</value>
+  </data>
+  <data name="QrBillAcceptancePoint" xml:space="preserve">
+    <value>Acceptance point</value>
+  </data>
+  <data name="QrBillSeparate" xml:space="preserve">
+    <value>Separate before paying in</value>
+  </data>
+  <data name="QrBillMessage" xml:space="preserve">
+    <value>Invoice {0}</value>
+  </data>
   <data name="OwnerExternalDocumentInvalid" xml:space="preserve">
     <value>The link to the external invoice is not valid: check the field named.</value>
   </data>

@@ -220,6 +220,29 @@ The invoice of the property manager to an owner (NF-114, D9): a `FiscalDocument`
 - **The statement names the invoice.** The PDF and the CSV of the statement (`IStatementExportService`) print «Fattura n. PM2026/1» next to the commission of
   the ledger once the owner invoice of the month is issued. The statement PDF of the version (E13/F02) reads the same number.
 
+### QR-bill of a Swiss owner invoice (E14/F01/US01/T02, NF-113)
+
+- **When.** The PDF of an issued Swiss owner invoice (the snapshot of its issuer is Swiss) ends with the QR-bill payment part (receipt and payment part, on a page
+  of its own) **only when the invoice leaves an amount for the owner to pay** (`payment.state = to_pay`): the amount of the QR-bill is that amount. Offset in the
+  statement: no QR-bill and «Compensata nel rendiconto del MM/yyyy». An agency without an IBAN or a QR-IBAN of Switzerland or Liechtenstein: no QR-bill and
+  «Pagamento su indicazione del gestore». A draft never has one. An Italian owner invoice says «Pagamento su indicazione del gestore» when there is something to pay.
+- **The account** is kept in the snapshot of the issuer at the issue (`FiscalIssuerSnapshot.QrBillAccount`, encrypted at rest like the whole snapshot): the
+  QR-IBAN when the profile has one (with a QR reference `QRR` of 27 digits made from the document id, recursive modulo-10 check digit), else the IBAN (with a
+  creditor reference `SCOR`, ISO 11649, made from the number of the invoice). A later change of the bank accounts does not change an issued invoice.
+- **The payload** (`SwissQrBill.Build`, Core): `SPC` / `0200` / `1`, the account, the creditor (the agency, structured address `S`), seven empty lines of the
+  ultimate creditor, the amount and the currency (CHF or EUR), the debtor (the owner, structured address `S`, from the recipient of the document; seven empty
+  lines and a box to fill in when its postal code, town or country is missing), the reference type and the reference, the message «Fattura PM2026/7», `EPD`.
+  Only structured addresses; the characters outside the Latin set of the guidelines become dots; a payload that is not valid gives no QR-bill.
+- **Guidelines followed:** Swiss Implementation Guidelines for the QR-bill, **version 2.3**, published by SIX:
+  <https://www.six-group.com/en/products-services/banking-services/payment-standardization/standards/qr-bill.html> (the version and the address are
+  `SwissQrBill.GuidelinesVersion` / `GuidelinesUrl`; they were taken from the knowledge of the payment standard, not read again on the page when the code was
+  written: check them against the page and validate one generated bill on the validation portal of SIX before the first real payment).
+- **Rendering** (`SwissQrBillRenderer`, called by `MigraDocPdfDocumentRenderer` under its lock): the Swiss QR Code with error correction M, 46 × 46 mm, the Swiss
+  cross of 7 × 7 mm in the middle, drawn as vector squares from the module matrix of **QRCoder 1.6.0** (MIT, fully managed, no System.Drawing); the receipt of
+  62 mm and the payment part of 148 mm on the bottom 105 mm of an A4 page, the dashed lines between them and «Da staccare prima del versamento». **Known gap:**
+  the text is in the embedded DejaVu Sans of the documents, while the guidelines name Arial, Frutiger, Helvetica or Liberation Sans; commit Liberation Sans
+  (SIL OFL) next to DejaVu and switch the font of the payment part to close it.
+
 ### Who holds the portal account (⚖ I10, I11)
 
 The holder of the account of a listing on a portal decides the recharge of its commissions (acceptance step C2 of `pilota-flusso-completo-2026-11-14.md`):

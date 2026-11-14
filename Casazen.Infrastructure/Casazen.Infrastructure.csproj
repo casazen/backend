@@ -35,6 +35,9 @@
     <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
     <!-- Official tourist-tax PDF text extraction (RS-7): Apache-2.0, same package the tests already use. -->
     <PackageReference Include="PdfPig" Version="0.1.16" />
+    <!-- The Swiss QR Code of the QR-bill of an owner invoice (E14/F01/US01/T02): MIT, fully managed; only its generator of the module matrix is used (no
+         System.Drawing), the code is drawn as vector squares by SwissQrBillRenderer. -->
+    <PackageReference Include="QRCoder" Version="1.6.0" />
     <PackageReference Include="Resend" Version="0.5.1" />
     <PackageReference Include="Stripe.net" Version="50.1.0" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />

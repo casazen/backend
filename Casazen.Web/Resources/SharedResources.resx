@@ -6519,6 +6519,54 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="StatementDocOwnerInvoice" xml:space="preserve">
     <value>Fattura n. {0}</value>
   </data>
+  <data name="OwnerInvoicePdfOffset" xml:space="preserve">
+    <value>Compensata nel rendiconto del {0}</value>
+  </data>
+  <data name="OwnerInvoicePdfToPay" xml:space="preserve">
+    <value>Importo da pagare: {0} {1}</value>
+  </data>
+  <data name="OwnerInvoicePdfPaymentByManager" xml:space="preserve">
+    <value>Pagamento su indicazione del gestore</value>
+  </data>
+  <data name="OwnerInvoicePdfCredited" xml:space="preserve">
+    <value>Stornata con nota di credito</value>
+  </data>
+  <data name="QrBillReceipt" xml:space="preserve">
+    <value>Ricevuta</value>
+  </data>
+  <data name="QrBillPaymentPart" xml:space="preserve">
+    <value>Sezione pagamento</value>
+  </data>
+  <data name="QrBillAccountPayableTo" xml:space="preserve">
+    <value>Conto / Pagabile a</value>
+  </data>
+  <data name="QrBillReference" xml:space="preserve">
+    <value>Riferimento</value>
+  </data>
+  <data name="QrBillAdditionalInformation" xml:space="preserve">
+    <value>Informazioni supplementari</value>
+  </data>
+  <data name="QrBillPayableBy" xml:space="preserve">
+    <value>Pagabile da</value>
+  </data>
+  <data name="QrBillPayableByNameAddress" xml:space="preserve">
+    <value>Pagabile da (nome/indirizzo)</value>
+  </data>
+  <data name="QrBillCurrency" xml:space="preserve">
+    <value>Valuta</value>
+  </data>
+  <data name="QrBillAmount" xml:space="preserve">
+    <value>Importo</value>
+  </data>
+  <data name="QrBillAcceptancePoint" xml:space="preserve">
+    <value>Punto di accettazione</value>
+  </data>
+  <data name="QrBillSeparate" xml:space="preserve">
+    <value>Da staccare prima del versamento</value>
+  </data>
+  <data name="QrBillMessage" xml:space="preserve">
+    <value>Fattura {0}</value>
+  </data>
   <data name="OwnerExternalDocumentInvalid" xml:space="preserve">
     <value>Il collegamento alla fattura esterna non è valido: controlla il campo indicato.</value>
   </data>
