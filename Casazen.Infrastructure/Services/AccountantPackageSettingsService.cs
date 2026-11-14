@@ -16,6 +16,8 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Saved as a whole, under the lock of the org.</b> A save takes the lock of <see cref="PostgresAdvisoryLocks.Scope.AccountantPackage"/> (the one the send takes to record a month), reads the row again and writes
 /// all the fields of the change in one save, so two saves never mix their fields and a save never lands between the check that a month was sent and the line that says so. The first save creates the row; the
 /// unique index on the org is the last word if two first saves run on a database that does not lock.</item>
+/// <item><b>The owner accounting is not for everyone to send.</b> On an organization on the agency plan a caller that does not hold <c>agency.statement.view</c> cannot choose the folders that carry the owner accounting
+/// (<see cref="AccountantPackageFolderRules.OwnerAccountingCarriers"/>): the refusal is a 422 and saves nothing. The save replaces the folders as a whole, so what such a caller saves holds none of them.</item>
 /// <item><b>What a save leaves alone.</b> The history of the last send and the package that waits in the storage are the send's: a change of the address, the day or the folders does not erase what was sent.</item>
 /// <item><b>Nothing personal in the log.</b> A save writes the ids of the org and of the user, whether the send is on, the day and the number of folders: never the address.</item>
 /// </list>
@@ -41,6 +43,11 @@ public sealed class AccountantPackageSettingsService(
     {
         ArgumentNullException.ThrowIfNull(change);
         var (enabled, email, day, contents) = Validate(change);
+
+        // The owner accounting is the agency's: whoever chooses the folders that carry it for the package sent to a third party must hold agency.statement.view (the web layer says so in the change). The plan is read here, so an
+        // organization that is not on the agency plan (whose package holds no owner accounting) is never refused.
+        if (!change.OwnerAccounting && (contents & AccountantPackageFolderRules.OwnerAccountingCarriers) != 0 && await HoldsOwnerAccountingAsync(orgId, cancellationToken))
+            throw new DomainRuleException(AccountantPackageErrors.OwnerAccountingRequired, "AccountantPackageOwnerAccountingRequired");
 
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, cancellationToken, (PostgresAdvisoryLocks.Scope.AccountantPackage, orgId.ToString("N")));
@@ -70,6 +77,13 @@ public sealed class AccountantPackageSettingsService(
             day,
             AccountantPackageFolderRules.KeysOf(contents).Count);
         return ViewOf(row);
+    }
+
+    /// <summary>True when the organization is on the agency plan (<see cref="AccountantPackageFolderRules.PlanHoldsOwnerAccounting"/>): the package it sends holds the owner accounting.</summary>
+    private async Task<bool> HoldsOwnerAccountingAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var plan = await db.Orgs.AsNoTracking().Where(o => o.Id == orgId).Select(o => new { o.PlanTier, o.IsAgencyTierDowngraded }).FirstOrDefaultAsync(cancellationToken);
+        return plan is not null && AccountantPackageFolderRules.PlanHoldsOwnerAccounting(plan.PlanTier, plan.IsAgencyTierDowngraded);
     }
 
     /// <summary>The id of the user as the column keeps it: trimmed and at most the length of the column; <c>null</c> for none.</summary>

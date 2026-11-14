@@ -53,9 +53,11 @@ public class AccountantPackageSettingsTests : IDisposable
 
     private AccountantPackageSettingsService Service() => new(_db, NullLogger<AccountantPackageSettingsService>.Instance, _clock);
 
-    private async Task<Guid> OrgAsync()
+    private async Task<Guid> OrgAsync(PlanTier plan = PlanTier.Starter, bool downgraded = false)
     {
         var org = OrgTeamTestData.AddOrg(_db);
+        org.PlanTier = plan;
+        org.IsAgencyTierDowngraded = downgraded;
         await _db.SaveChangesAsync();
         return org.Id;
     }
@@ -65,8 +67,9 @@ public class AccountantPackageSettingsTests : IDisposable
         string? email = Address,
         int? day = 5,
         IReadOnlyList<string>? contents = null,
-        bool noContents = false) =>
-        new(enabled, email, day, noContents ? null : contents ?? AllKeys);
+        bool noContents = false,
+        bool ownerAccounting = false) =>
+        new(enabled, email, day, noContents ? null : contents ?? AllKeys, ownerAccounting);
 
     // ---------------------------------------------------------------- the permission rule (the proof)
 
@@ -162,6 +165,94 @@ public class AccountantPackageSettingsTests : IDisposable
         Assert.Equal(["guestDocuments", "vat"], dto.Contents);
         Assert.Equal(("2026-10", "failed", "package_too_large"), (dto.LastSend!.Period, dto.LastSend.Result, dto.LastSend.Error));
         Assert.Equal("private, no-store", harness.Http.Response.Headers.CacheControl.ToString());
+    }
+
+    // ---------------------------------------------------------------- the owner accounting (the permission proof)
+
+    /// <summary>
+    /// PROOF TEST: permission rule. The package an agency sends every month holds the owner accounting, which a property manager may not read (it does not hold agency.statement.view): through the controller, with the real
+    /// service, the body the wizard sends by default (every folder) is refused to it with its code and saves nothing; the folders it may read are saved; the administrator, who holds the permission, chooses every folder.
+    /// </summary>
+    [Fact]
+    public async Task AccountantSettings_PropertyManagerCannotSaveOwnerAccountingFolders_Test()
+    {
+        var orgId = await OrgAsync(PlanTier.Agency);
+        var propertyManager = new ControllerHarness(orgId, new HostScope(orgId), holdsStatementView: false, service: Service());
+        var administrator = new ControllerHarness(orgId, new HostScope(orgId), holdsStatementView: true, service: Service());
+
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => propertyManager.Controller.SaveSettings(WholeRequest(), CancellationToken.None));
+
+        Assert.Equal(AccountantPackageErrors.OwnerAccountingRequired, refused.Code);
+        Assert.Empty(_db.AccountantPackageSettings);
+
+        var readable = new SaveAccountantPackageSettingsRequest { Enabled = true, Email = Address, SendDay = 5, Contents = ["guestDocuments", "touristTax", "collections"] };
+        var saved = Assert.IsType<AccountantPackageSettingsDto>(Assert.IsType<OkObjectResult>(await propertyManager.Controller.SaveSettings(readable, CancellationToken.None)).Value);
+        Assert.Equal(["guestDocuments", "touristTax", "collections"], saved.Contents);
+
+        var everything = Assert.IsType<AccountantPackageSettingsDto>(Assert.IsType<OkObjectResult>(await administrator.Controller.SaveSettings(WholeRequest(), CancellationToken.None)).Value);
+        Assert.Equal(AllKeys, everything.Contents);
+    }
+
+    /// <summary>
+    /// PROOF TEST: permission rule. On an organization on the agency plan a caller without agency.statement.view cannot choose any folder that carries the owner accounting (the three made of it and the two that hold a part of
+    /// it): 422 and nothing saved, and a refused change leaves what was saved as it was; what it may read it saves, and the holder of the permission chooses the folder.
+    /// </summary>
+    [Theory]
+    [InlineData("ownerInvoices")]
+    [InlineData("statements")]
+    [InlineData("withholding")]
+    [InlineData("agencySummary")]
+    [InlineData("vat")]
+    public async Task Save_AFolderThatCarriesTheOwnerAccounting_IsRefusedToACallerWithoutTheStatementPermission_OnAnAgency(string folder)
+    {
+        var orgId = await OrgAsync(PlanTier.Agency);
+
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => Service().SaveAsync(orgId, Change(contents: [folder, "collections"]), UserId));
+
+        Assert.Equal(AccountantPackageErrors.OwnerAccountingRequired, refused.Code);
+        Assert.DoesNotContain("studio", refused.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(_db.AccountantPackageSettings);
+
+        var allowed = await Service().SaveAsync(orgId, Change(contents: ["guestDocuments", "collections"]), UserId);
+        await Assert.ThrowsAsync<DomainRuleException>(() => Service().SaveAsync(orgId, Change(contents: [folder], day: 9), "auth0|altro"));
+        Assert.Equal(allowed, await Service().GetAsync(orgId));
+
+        var holder = await Service().SaveAsync(orgId, Change(contents: [folder, "collections"], ownerAccounting: true), "auth0|amministratrice");
+        Assert.Contains(folder, AccountantPackageFolderRules.KeysOf(holder.Contents));
+    }
+
+    /// <summary>An organization whose package holds no owner accounting (another plan, or an agency in the read-only mode of a downgrade) refuses nobody: there is nothing to share.</summary>
+    [Theory]
+    [InlineData(PlanTier.Starter, false)]
+    [InlineData(PlanTier.Pro, false)]
+    [InlineData(PlanTier.Scale, false)]
+    [InlineData(PlanTier.Agency, true)]
+    public async Task Save_AnOrganizationWhosePackageHoldsNoOwnerAccounting_RefusesNobody(PlanTier plan, bool downgraded)
+    {
+        var orgId = await OrgAsync(plan, downgraded);
+
+        var view = await Service().SaveAsync(orgId, Change(contents: AllKeys), UserId);
+
+        Assert.Equal(AccountantPackageFolders.All, view.Contents);
+    }
+
+    /// <summary>The controller evaluates agency.statement.view by its name, once, and tells the service whether the caller holds it.</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SaveSettings_TheStatementPermission_IsWhatTheServiceIsToldTheCallerMayChoose(bool holdsStatementView)
+    {
+        var orgId = Guid.NewGuid();
+        var harness = new ControllerHarness(orgId, new HostScope(orgId), holdsStatementView: holdsStatementView);
+        harness.Settings
+            .Setup(s => s.SaveAsync(orgId, It.IsAny<AccountantPackageSettingsChange>(), UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AccountantPackageSettingsService.ViewOf(null));
+
+        var result = await harness.Controller.SaveSettings(WholeRequest(), CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        harness.Settings.Verify(s => s.SaveAsync(orgId, It.Is<AccountantPackageSettingsChange>(c => c.OwnerAccounting == holdsStatementView), UserId, It.IsAny<CancellationToken>()), Times.Once);
+        harness.Authorization.Verify(a => a.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), CasazenPolicies.AgencyStatementView), Times.Once);
     }
 
     // ---------------------------------------------------------------- the privacy rule
@@ -427,8 +518,11 @@ public class AccountantPackageSettingsTests : IDisposable
 
     private sealed class ControllerHarness
     {
-        public ControllerHarness(Guid orgId, HostScope? scope, bool hasOrg = true)
+        public ControllerHarness(Guid orgId, HostScope? scope, bool hasOrg = true, bool holdsStatementView = true, IAccountantPackageSettingsService? service = null)
         {
+            Authorization
+                .Setup(a => a.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), CasazenPolicies.AgencyStatementView))
+                .ReturnsAsync(holdsStatementView ? AuthorizationResult.Success() : AuthorizationResult.Failed());
             var orgs = new Mock<IOrgContextResolver>();
             orgs.Setup(o => o.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(hasOrg ? orgId : (Guid?)null);
             var scopes = new Mock<IHostScopeResolver>();
@@ -442,11 +536,11 @@ public class AccountantPackageSettingsTests : IDisposable
             Controller = new AccountantPackageController(
                 Mock.Of<IAccountantPackageService>(),
                 Mock.Of<IAgencySummaryService>(),
-                Settings.Object,
+                service ?? Settings.Object,
                 Mock.Of<IAccountantPackageDeliveryService>(),
                 orgs.Object,
                 scopes.Object,
-                Mock.Of<IAuthorizationService>(),
+                Authorization.Object,
                 NullLogger<AccountantPackageController>.Instance)
             {
                 ControllerContext = new ControllerContext { HttpContext = Http },
@@ -454,6 +548,8 @@ public class AccountantPackageSettingsTests : IDisposable
         }
 
         public Mock<IAccountantPackageSettingsService> Settings { get; } = new();
+
+        public Mock<IAuthorizationService> Authorization { get; } = new();
 
         public HttpContext Http { get; }
 

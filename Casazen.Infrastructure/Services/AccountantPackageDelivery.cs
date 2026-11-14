@@ -209,10 +209,13 @@ public sealed class AccountantPackageDelivery(
         var org = await db.Orgs
             .AsNoTracking()
             .Where(o => o.Id == orgId && o.IsActive)
-            .Select(o => new OrgFacts(o.DisplayName, o.Name, o.DefaultLanguage))
+            .Select(o => new OrgFacts(o.DisplayName, o.Name, o.DefaultLanguage, o.PlanTier, o.IsAgencyTierDowngraded))
             .FirstOrDefaultAsync(cancellationToken);
         if (org is null)
             return Delivery.NotConfigured();
+
+        // The owner accounting follows the plan, never the job: the package of an organization that is not on the agency plan holds none, whatever it chose and whoever asks (the agency.* policies ask for the same plan).
+        access = access with { OwnerAccounting = access.OwnerAccounting && AccountantPackageFolderRules.PlanHoldsOwnerAccounting(org.PlanTier, org.AgencyTierDowngraded) };
 
         // The package, made outside the lock.
         await using var buffer = new MemoryStream();
@@ -377,7 +380,7 @@ public sealed class AccountantPackageDelivery(
         return AccountantPackagePeriod.OfMonth(first.Year, first.Month);
     }
 
-    private sealed record OrgFacts(string DisplayName, string Name, string Language);
+    private sealed record OrgFacts(string DisplayName, string Name, string Language, PlanTier PlanTier, bool AgencyTierDowngraded);
 
     private enum DeliveryState
     {

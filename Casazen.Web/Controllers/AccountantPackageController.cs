@@ -115,7 +115,8 @@ public class AccountantPackageController(
     /// <summary>
     /// Saves all the settings of the send (<see cref="SaveAccountantPackageSettingsRequest"/>) and answers them as they are. <c>property.write</c> on top of <c>payment.read</c>, and a scope that reaches the whole org: a
     /// caller restricted to some properties cannot save, even with the permission (403, nothing saved). 422 <c>accountant_package_settings_invalid</c> (a field is missing), <c>accountant_package_recipient_invalid</c>,
-    /// <c>accountant_package_recipient_missing</c> (the send on with no address), <c>accountant_package_send_day_invalid</c>, <c>accountant_package_contents_invalid</c>; a refused save changes nothing.
+    /// <c>accountant_package_recipient_missing</c> (the send on with no address), <c>accountant_package_send_day_invalid</c>, <c>accountant_package_contents_invalid</c> and, on an agency's organization, <c>accountant_package_owner_accounting_required</c> (a folder that carries the owner accounting:
+    /// <c>ownerInvoices</c>, <c>statements</c>, <c>withholding</c>, <c>agencySummary</c> or <c>vat</c>, from a caller without <c>agency.statement.view</c>); a refused save changes nothing.
     /// </summary>
     [HttpPut("settings")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
@@ -128,9 +129,11 @@ public class AccountantPackageController(
         if (await WholeOrgAsync(cancellationToken) is not { } orgId)
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
+        // The owner accounting is the agency's: the folders that carry it are chosen only by a caller that holds agency.statement.view (as for «Send a test»); on an agency's organization the service refuses them otherwise.
+        var ownerAccounting = (await authorizationService.AuthorizeAsync(User, CasazenPolicies.AgencyStatementView)).Succeeded;
         var saved = await settings.SaveAsync(
             orgId,
-            new AccountantPackageSettingsChange(request.Enabled, request.Email, request.SendDay, request.Contents),
+            new AccountantPackageSettingsChange(request.Enabled, request.Email, request.SendDay, request.Contents, ownerAccounting),
             User.GetUserId(),
             cancellationToken);
         Response.Headers.CacheControl = "private, no-store";

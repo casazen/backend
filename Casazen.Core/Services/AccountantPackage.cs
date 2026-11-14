@@ -239,6 +239,12 @@ public static class AccountantPackageErrors
 
     /// <summary>422 (E15/F01/US02/T02): the package could not be made, stored or queued for the accountant (the e-mail provider, the link secret or the storage is not available): nothing was sent, and the answer never says it was.</summary>
     public const string NotSent = "accountant_package_not_sent";
+
+    /// <summary>
+    /// 422 (E15/F01/US02): the organization is on the agency plan and the caller does not hold <c>agency.statement.view</c>, so it may neither choose the folders that carry the owner accounting for the package sent every month
+    /// (<c>ownerInvoices</c>, <c>statements</c>, <c>withholding</c>, <c>agencySummary</c>, <c>vat</c>) nor send a test of it: a person never shares with a third party what it may not read.
+    /// </summary>
+    public const string OwnerAccountingRequired = "accountant_package_owner_accounting_required";
 }
 
 // ---------------------------------------------------------------- the agency summary

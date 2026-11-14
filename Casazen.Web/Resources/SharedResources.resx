@@ -7632,4 +7632,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="AccPkgOmittedNotSelected" xml:space="preserve">
     <value>Cartella non scelta nelle impostazioni dell'invio mensile.</value>
   </data>
+  <data name="AccountantPackageOwnerAccountingRequired" xml:space="preserve">
+    <value>Le cartelle con la contabilità dei proprietari (fatture ai proprietari, rendiconti, ritenute, riepilogo dell'agenzia, IVA) si scelgono, e se ne invia una prova, solo con il permesso di leggere i rendiconti dei proprietari.</value>
+  </data>
 </root>

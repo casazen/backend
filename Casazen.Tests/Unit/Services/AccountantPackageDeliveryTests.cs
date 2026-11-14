@@ -111,9 +111,13 @@ internal sealed class AccountantPackageDeliveryWorld : IDisposable
         AccountantPackageFolders contents = AccountantPackageFolders.All,
         string language = "it",
         string name = "Casa Rossi Srl",
-        bool active = true)
+        bool active = true,
+        PlanTier plan = PlanTier.Agency,
+        bool downgraded = false)
     {
         var org = OrgTeamTestData.AddOrg(Db);
+        org.PlanTier = plan;
+        org.IsAgencyTierDowngraded = downgraded;
         org.Name = name;
         org.DisplayName = name;
         org.DefaultLanguage = language;
@@ -213,6 +217,27 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Equal(AccountantPackageMonthlyOutcome.Sent, await _world.Delivery().SendMonthlyAsync(first, december));
         Assert.Equal(4, _world.Emails.Snapshot().Count);
         Assert.Equal("2026-11", (await _world.RowAsync(first)).LastSendPeriod);
+    }
+
+    /// <summary>
+    /// PROOF TEST: permission rule. The monthly package holds the owner accounting only when the organization is on the agency plan (and not downgraded): an organization on another plan sends none of it, whatever
+    /// folders it chose, and the index says they are left out; the organization of an agency sends all of it.
+    /// </summary>
+    [Fact]
+    public async Task AccountantPackageJob_AnOrganizationOffTheAgencyPlan_SendsNoOwnerAccounting_Test()
+    {
+        var agency = await _world.SeedAsync("agenzia@studio.example.com");
+        var pro = await _world.SeedAsync("pro@studio.example.com", plan: PlanTier.Pro);
+        var downgraded = await _world.SeedAsync("ridotta@studio.example.com", downgraded: true);
+
+        foreach (var org in new[] { agency, pro, downgraded })
+            Assert.Equal(AccountantPackageMonthlyOutcome.Sent, await _world.Delivery().SendMonthlyAsync(org, Today));
+
+        var built = _world.Built.ToDictionary(b => b.Scope.OrgId, b => b.Access);
+        Assert.True(built[agency].OwnerAccounting);
+        Assert.False(built[pro].OwnerAccounting);
+        Assert.False(built[downgraded].OwnerAccounting);
+        Assert.All(built.Values, access => Assert.Equal(AccountantPackageFolders.All, access.Folders));
     }
 
     [Fact]

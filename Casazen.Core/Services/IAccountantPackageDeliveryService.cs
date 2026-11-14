@@ -28,8 +28,8 @@ public interface IAccountantPackageDeliveryService
     Task<IReadOnlyList<Guid>> DueOrganizationsAsync(DateOnly today, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The package of the month before <paramref name="today"/> for <paramref name="orgId"/>, with the folders its settings chose and the whole of the owner accounting (it is the organization that sends it, not a
-    /// person), sent to its accountant, once: <see cref="AccountantPackageMonthlyOutcome.AlreadySent"/> when the month is already sent. A failure (the package too large, the storage, the queue, the link secret) is
+    /// The package of the month before <paramref name="today"/> for <paramref name="orgId"/>, with the folders its settings chose and the whole of the owner accounting when the organization is on the agency plan (it is
+    /// the organization that sends it, not a person; an organization on another plan has none to send), sent to its accountant, once: <see cref="AccountantPackageMonthlyOutcome.AlreadySent"/> when the month is already sent. A failure (the package too large, the storage, the queue, the link secret) is
     /// recorded in the settings as <c>failed</c> with its code and answered as <see cref="AccountantPackageMonthlyOutcome.Failed"/>, never swallowed: the job fails after it has tried every org, so Hangfire runs it again.
     /// </summary>
     Task<AccountantPackageMonthlyOutcome> SendMonthlyAsync(Guid orgId, DateOnly today, CancellationToken cancellationToken = default);

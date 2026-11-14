@@ -9,7 +9,8 @@ namespace Casazen.Core.Services;
 /// <remarks>
 /// <list type="bullet">
 /// <item><b>The service never checks roles.</b> The web layer decides who reads (<c>payment.read</c>) and who saves (<c>property.write</c> and a scope that reaches the whole org); the service works in the
-/// org it is given and names it in every query.</item>
+/// org it is given, names it in every query, and is told by the web layer whether the caller holds <c>agency.statement.view</c> (<see cref="AccountantPackageSettingsChange.OwnerAccounting"/>): on an organization
+/// on the agency plan it refuses the folders that carry the owner accounting to a caller that does not, because the package it sends every month holds all of it.</item>
 /// <item><b>Validated here, never half saved.</b> A refused change saves nothing (422, with a code of <see cref="AccountantPackageErrors"/>): the address is a plain address or none, the send cannot be on without an address,
 /// the day is 1 to 28, the folders are a non-empty list of known keys (an empty list never means «everything»).</item>
 /// <item><b>The address is personal data of a third party.</b> Encrypted at rest, never written to a log and never put in an error.</item>
@@ -25,7 +26,8 @@ public interface IAccountantPackageSettingsService
     /// </summary>
     /// <exception cref="Exceptions.DomainRuleException">
     /// 422 <c>accountant_package_settings_invalid</c> (a field is missing), <c>accountant_package_recipient_invalid</c> (not a plain address), <c>accountant_package_recipient_missing</c> (the send on with no address),
-    /// <c>accountant_package_send_day_invalid</c> (not 1 to 28), <c>accountant_package_contents_invalid</c> (an empty list, an unknown or a repeated folder).
+    /// <c>accountant_package_send_day_invalid</c> (not 1 to 28), <c>accountant_package_contents_invalid</c> (an empty list, an unknown or a repeated folder), <c>accountant_package_owner_accounting_required</c> (a folder that
+    /// carries the owner accounting, on an agency's organization, from a caller that does not hold <c>agency.statement.view</c>).
     /// </exception>
     Task<AccountantPackageSettingsView> SaveAsync(
         Guid orgId,
@@ -41,7 +43,8 @@ public interface IAccountantPackageSettingsService
 /// <param name="Email">The address of the accountant; empty or <c>null</c> clears it. A plain address (no name, no spaces).</param>
 /// <param name="SendDay">The day of the month the send is due, 1 to 28 (Europe/Rome). Required.</param>
 /// <param name="Contents">The keys of the folders to send (<see cref="AccountantPackageFolderRules.KeyOf"/>). Required and never empty.</param>
-public sealed record AccountantPackageSettingsChange(bool? Enabled, string? Email, int? SendDay, IReadOnlyList<string>? Contents);
+/// <param name="OwnerAccounting">The caller holds <c>agency.statement.view</c> (decided by the web layer, as for the package). <c>false</c> unless said: without it a folder that carries the owner accounting is refused to the caller of an agency's organization.</param>
+public sealed record AccountantPackageSettingsChange(bool? Enabled, string? Email, int? SendDay, IReadOnlyList<string>? Contents, bool OwnerAccounting = false);
 
 /// <summary>What the last attempt to send the package ended in.</summary>
 /// <param name="Period">The month the package was of (<c>yyyy-MM</c>).</param>
@@ -115,6 +118,18 @@ public static class AccountantPackageFolderRules
     /// <summary>True for a folder that holds the owner accounting (the invoices to the owners, the statements, the withholding).</summary>
     public static bool IsOwnerAccounting(AccountantPackageFolders folder) =>
         folder is AccountantPackageFolders.OwnerInvoices or AccountantPackageFolders.Statements or AccountantPackageFolders.Withholding;
+
+    /// <summary>
+    /// The folders that can carry the owner accounting in the package an agency sends: the three that are made of it and the two that hold a part of it (the owner parts of the agency summary, the portal commissions in the VAT).
+    /// On an organization on the agency plan the monthly package holds all of it, so choosing one of them is sharing the owner accounting with a third party: it needs <c>agency.statement.view</c>.
+    /// </summary>
+    public const AccountantPackageFolders OwnerAccountingCarriers = AccountantPackageFolders.OwnerInvoices | AccountantPackageFolders.Statements | AccountantPackageFolders.Withholding | AccountantPackageFolders.AgencySummary | AccountantPackageFolders.Vat;
+
+    /// <summary>
+    /// True when an organization on <paramref name="tier"/> sends the owner accounting in its package: the agency plan, and not in the read-only mode of a downgrade (the plan the <c>agency.*</c> policies ask for, ADR-010). The
+    /// package of any other organization holds no owner accounting, whatever folders it chose.
+    /// </summary>
+    public static bool PlanHoldsOwnerAccounting(PlanTier tier, bool agencyTierDowngraded) => tier == PlanTier.Agency && !agencyTierDowngraded;
 
     /// <summary>The keys of the folders of <paramref name="set"/>, in the order of the package.</summary>
     public static IReadOnlyList<string> KeysOf(AccountantPackageFolders set) =>
