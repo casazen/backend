@@ -97,7 +97,7 @@ public static class RoutineConditions
 
         // A member nobody reads (a misspelled "groups", "conditions" for "rules") is an error: ignoring it would turn the rules that were meant into
         // "no condition", a routine that runs for every booking.
-        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow,
     };
 
     /// <summary>
