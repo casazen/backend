@@ -4,6 +4,7 @@ using System.Xml.Schema;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -596,58 +597,23 @@ public sealed class WireTransferService(
 }
 
 /// <summary>
-/// The IBANs of the wire files (E16/F01/US01/T01): the normal form, the check digits of ISO 13616 (mod 97), and the two kinds of Swiss IBAN a wire has to tell
-/// apart, the QR-IBAN (the account of a QR-bill, never the creditor account of a normal transfer) and the Swiss or Liechtenstein IBAN of a domestic CHF payment.
-/// None of them logs: an IBAN is never written anywhere but in the file.
+/// The IBANs of the wire files (E16/F01/US01/T01), on the definitions the rest of CasaZen already has (the owner registry and the issuer profile): the normal form,
+/// the length of the country and the check digits of ISO 13616 (<see cref="OwnerFieldRules"/>, which is <c>BankValues.IsValidIban</c>), and the QR-IBAN of the
+/// QR-bill, never the creditor account of a normal transfer (<see cref="IssuerBankAccounts.IsQrIban"/>); the Swiss or Liechtenstein IBAN of a domestic CHF payment is
+/// the one rule that is the wire's own. None of them logs: an IBAN is never written anywhere but in the file.
 /// </summary>
 internal static class WireIban
 {
-    /// <summary>The institution identifiers of a QR-IBAN: 30000 to 31999 (the five digits that follow the check digits of a Swiss or Liechtenstein IBAN).</summary>
-    private const int QrIidFirst = 30000;
-
-    private const int QrIidLast = 31999;
-
     /// <summary>An IBAN with no space and no hyphen, in upper case; empty for a missing one.</summary>
     public static string Normalize(string? iban)
     {
-        if (string.IsNullOrWhiteSpace(iban))
-        {
-            return string.Empty;
-        }
-
-        return iban.Replace(" ", string.Empty, StringComparison.Ordinal).Replace("-", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
+        return OwnerFieldRules.NormalizeIban(iban);
     }
 
-    /// <summary>True for an IBAN in its normal form that passes the check digits (ISO 13616: 15 to 34 characters, two letters, two digits, mod 97 equal to 1).</summary>
+    /// <summary>True for an IBAN in its normal form that has the length of its country and passes the check digits (ISO 13616, mod 97 equal to 1).</summary>
     public static bool IsValid(string iban)
     {
-        if (string.IsNullOrWhiteSpace(iban) || iban.Length < 15 || iban.Length > 34)
-        {
-            return false;
-        }
-
-        // Only digits and capital letters of the ASCII set (the normal form), two letters of the country and two check digits first.
-        if (!iban.All(c => char.IsAsciiDigit(c) || char.IsAsciiLetterUpper(c)) || !char.IsAsciiLetterUpper(iban[0]) || !char.IsAsciiLetterUpper(iban[1]) || !char.IsAsciiDigit(iban[2]) || !char.IsAsciiDigit(iban[3]))
-        {
-            return false;
-        }
-
-        // Move the first four characters to the end and read the letters as numbers (A is 10, Z is 35): the remainder of the division by 97 is computed digit by digit.
-        var rearranged = string.Concat(iban.AsSpan(4), iban.AsSpan(0, 4));
-        var remainder = 0;
-        foreach (var c in rearranged)
-        {
-            if (char.IsAsciiDigit(c))
-            {
-                remainder = ((remainder * 10) + (c - '0')) % 97;
-            }
-            else
-            {
-                remainder = ((remainder * 100) + (c - 'A' + 10)) % 97;
-            }
-        }
-
-        return remainder == 1;
+        return !string.IsNullOrEmpty(iban) && OwnerFieldRules.IsValidIban(iban);
     }
 
     /// <summary>True for a Swiss or Liechtenstein IBAN (21 characters).</summary>
@@ -659,8 +625,6 @@ internal static class WireIban
     /// <summary>True for a QR-IBAN: a Swiss or Liechtenstein IBAN whose institution identifier (characters 5 to 9) is between 30000 and 31999.</summary>
     public static bool IsQrIban(string iban)
     {
-        return IsSwiss(iban)
-               && int.TryParse(iban.AsSpan(4, 5), NumberStyles.None, CultureInfo.InvariantCulture, out var institution)
-               && institution is >= QrIidFirst and <= QrIidLast;
+        return IssuerBankAccounts.IsQrIban(iban);
     }
 }

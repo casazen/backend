@@ -37,6 +37,9 @@ internal static class WireTestData
     /// <summary>Another valid Italian IBAN.</summary>
     public const string OtherItalianIban = "IT41W8000000292100645211151";
 
+    /// <summary>An Italian IBAN of 26 characters (Italy has 27) whose check digits are right: the checksum alone cannot tell, the length of the country does.</summary>
+    public const string WrongLengthItalianIban = "IT90X054281110100000012345";
+
     /// <summary>The IBAN of the agency, on its issuer profile: a valid Swiss IBAN.</summary>
     public const string DebitIban = "CH4308307000289537312";
 
@@ -46,7 +49,7 @@ internal static class WireTestData
     /// <summary>Everything that identifies a person or an account in these tests.</summary>
     public static readonly string[] Secrets =
     [
-        SwissIban, OtherSwissIban, LiechtensteinIban, QrIban, ItalianIban, OtherItalianIban, DebitIban, BadIban,
+        SwissIban, OtherSwissIban, LiechtensteinIban, QrIban, ItalianIban, OtherItalianIban, WrongLengthItalianIban, DebitIban, BadIban,
         "Mario", "Rossi", "Luigi", "Bianchi", "Giulia", "Verdi", "Quokka Immobiliare", "Via Nassa", "Via Cantonale",
     ];
 

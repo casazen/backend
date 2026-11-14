@@ -415,6 +415,7 @@ public class Pain001V09Tests
     [InlineData("CHF", QrIban, WireTransferErrors.OwnerQrIban)]
     [InlineData("CHF", BadIban, WireTransferErrors.OwnerIbanInvalid)]
     [InlineData("CHF", ItalianIban, WireTransferErrors.OwnerIbanNotSwiss)]
+    [InlineData("EUR", WrongLengthItalianIban, WireTransferErrors.OwnerIbanInvalid)]
     [InlineData("CHF", LiechtensteinIban, null)]
     [InlineData("EUR", ItalianIban, null)]
     public async Task WireBatch_CreditorIban_IsACreditorAccountOfTheFile_OrRefused_Test(string currency, string iban, string? code)
@@ -781,6 +782,11 @@ public class Pain001V09Tests
         Assert.False(WireIban.IsValid("CH93"));
         Assert.False(WireIban.IsValid("ch9300762011623852957"));
         Assert.False(WireIban.IsValid("CH93007620116238529É7"));
+
+        // The length of the country is part of the check, as for the owners and the issuer (the same definition): an Italian IBAN of 26 characters (Italy has 27)
+        // whose check digits are right is no IBAN.
+        Assert.False(WireIban.IsValid(WrongLengthItalianIban));
+        Assert.Equal("IT90X054281110100000012345", WireIban.Normalize(" it90 X054 2811 1010 0000 0123 45"));
 
         Assert.True(WireIban.IsQrIban(QrIban));
         Assert.True(WireIban.IsQrIban("CH0030000000000000000"));
