@@ -41,8 +41,20 @@ public interface IAccessCodeService
     /// <param name="bookingId">Booking to release code for</param>
     /// <param name="channel">How the code is released, one of <see cref="AccessCodeReleaseChannels"/>; another value is an <see cref="ArgumentException"/></param>
     /// <param name="ct">Cancellation token</param>
-    /// <returns>Plain text code, or null if verification not passed</returns>
+    /// <returns>
+    /// Plain text code, or null if verification not passed, the stay is not active, the property has no code, or the code is held back
+    /// (<see cref="GetHoldReasonAsync"/>: E25/F01/US01/T01, the tourist tax asked before the code)
+    /// </returns>
     Task<string?> ReleaseToGuestAsync(Guid bookingId, string channel, CancellationToken ct = default);
+
+    /// <summary>
+    /// Why the lock code of the booking is held back from the guest now (E25/F01/US01/T01, NF-119): one of <see cref="AccessCodeHoldReasons"/>, or <c>null</c>
+    /// when nothing holds it back. The one gate of every release to a guest (<see cref="ReleaseToGuestAsync"/>: the screen, the e-mail, the operator's
+    /// approval) reads it, so no channel can bypass it; the callers that tell the guest why no code came read it too.
+    /// </summary>
+    /// <param name="bookingId">Booking whose code is asked for</param>
+    /// <param name="ct">Cancellation token</param>
+    Task<string?> GetHoldReasonAsync(Guid bookingId, CancellationToken ct = default);
 
     /// <summary>
     /// Which of the properties <paramref name="scope"/> reaches have a lock code (NF-50, E03/F01/US03/T01), a page at a time: the
@@ -81,6 +93,16 @@ public static class AccessCodeReleaseChannels
 
     /// <summary>Every channel; any other value is refused.</summary>
     public static IReadOnlyList<string> All { get; } = [CheckInScreen, Email, Operator, Screen];
+}
+
+/// <summary>Why the lock code of a stay is held back from the guest (<see cref="IAccessCodeService.GetHoldReasonAsync"/>); the codes the guest page reads.</summary>
+public static class AccessCodeHoldReasons
+{
+    /// <summary>
+    /// The organization asks for the tourist tax before the lock code, the guest can pay it online, and it is due, not paid, not exempt and not marked paid at
+    /// the property (E25/F01/US01/T01). The guest pays on the tourist tax endpoints and asks again: the code comes with the next answer.
+    /// </summary>
+    public const string TouristTaxDue = "tourist_tax_due";
 }
 
 /// <summary>A page of the lock code status of the properties of the host (NF-50).</summary>
