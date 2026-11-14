@@ -28,7 +28,10 @@ public interface IFiscalDocumentService
     /// <summary>The draft of the booking: made from its stored price, or the draft it already has, refreshed.</summary>
     Task<FiscalDocument> CreateDraftAsync(Guid bookingId, string? userId, CancellationToken ct = default);
 
-    /// <summary>The draft made again from the current price, recipient and rule of its booking.</summary>
+    /// <summary>
+    /// The draft made again from the current price, recipient and rule of its booking. 422 <c>document_owner_invoice</c> for an owner invoice, which is made
+    /// again from its statement version (<see cref="IOwnerInvoiceService.CreateDraftAsync"/>).
+    /// </summary>
     Task<FiscalDocument> RefreshDraftAsync(Guid documentId, CancellationToken ct = default);
 
     /// <summary>The draft discarded: no number is consumed.</summary>
@@ -37,9 +40,18 @@ public interface IFiscalDocumentService
     /// <summary>
     /// The draft issued (see the remarks); 422 <c>document_confirmation_required</c> without <paramref name="confirm"/>, and 409 <c>document_draft_outdated</c>
     /// when the tax rule, the regime, the country or a treatment of the issuer changed since the draft was made (the amounts the host confirmed would not be
-    /// the ones of the rule the document is issued with): <see cref="RefreshDraftAsync"/> first.
+    /// the ones of the rule the document is issued with): <see cref="RefreshDraftAsync"/> first. 422 <c>document_owner_invoice</c> for an owner invoice: it is
+    /// issued by <see cref="IOwnerInvoiceService.IssueAsync"/>, behind its own permission and flag.
     /// </summary>
     Task<FiscalDocument> IssueAsync(Guid documentId, bool confirm, CancellationToken ct = default);
+
+    /// <summary>
+    /// The issue of an owner invoice (E14/F01/US01/T01), called by <see cref="IOwnerInvoiceService.IssueAsync"/> once it checked the draft against its statement
+    /// version: the same issue as a document of a guest (the gap-free number in the owner-invoice series of the profile, the snapshot of the issuer, the rule
+    /// version, the Italian XML of an invoice), with <paramref name="vatToPost"/> posted to the owner ledger in the same transaction (nothing for 0). The tax rule
+    /// is the one in force on the last day of the period of the invoice.
+    /// </summary>
+    Task<FiscalDocument> IssueOwnerInvoiceAsync(Guid documentId, decimal vatToPost, string? userId, CancellationToken ct = default);
 
     /// <summary>
     /// A credit note of an issued CasaZen document, issued at once in the same series: the whole document by default, never more than what is left

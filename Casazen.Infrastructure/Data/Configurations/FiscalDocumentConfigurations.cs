@@ -32,6 +32,29 @@ internal sealed class OrgFiscalIssuerProfileConfiguration : IEntityTypeConfigura
     {
         entity.HasIndex(p => p.OrgId).IsUnique().HasDatabaseName(OrgFiscalIssuerProfile.OrgIndexName);
         entity.Ignore(p => p.PlatformCollectedTouristTaxChannels);
+
+        // Who holds the accounts of the portals and whether their commissions are recharged (E14/F01/US01/T01, ⚖ I10, I11): the migration gives the profiles that
+        // exist the defaults (the owner, the recharge on). EF always writes the value of the entity: left to generate it, EF would take an explicit false for
+        // «not set» and the insert would write the default (true) in its place.
+        entity.Property(p => p.PortalAccountHolder).HasDefaultValue(PortalAccountHolder.Owner).ValueGeneratedNever();
+        entity.Property(p => p.RechargePortalCommissions).HasDefaultValue(true).ValueGeneratedNever();
+    }
+}
+
+/// <summary>
+/// Who holds the account of a listing on a portal (E14/F01/US01/T01, ⚖ I10): one row for each property and portal (<see cref="PropertyChannelAccountHolder.PropertyChannelIndexName"/>),
+/// gone with its property (cascade), and only a known holder (check).
+/// </summary>
+internal sealed class PropertyChannelAccountHolderConfiguration : IEntityTypeConfiguration<PropertyChannelAccountHolder>
+{
+    public void Configure(EntityTypeBuilder<PropertyChannelAccountHolder> entity)
+    {
+        entity.HasOne<Property>().WithMany().HasForeignKey(h => h.PropertyId).OnDelete(DeleteBehavior.Cascade);
+        entity.HasIndex(h => new { h.PropertyId, h.Channel }).IsUnique().HasDatabaseName(PropertyChannelAccountHolder.PropertyChannelIndexName);
+        entity.HasIndex(h => h.OrgId);
+        entity.ToTable(table => table.HasCheckConstraint(
+            "CK_PropertyChannelAccountHolders_Holder",
+            $"\"Holder\" IN ({(int)PortalAccountHolder.Owner}, {(int)PortalAccountHolder.Agency})"));
     }
 }
 

@@ -64,6 +64,7 @@ public sealed record StatementExportData(
 /// <summary>
 /// The totals of the owner ledger the current version of the statement was cut from, as stored on it: the opening and closing balance, the totals by type and
 /// the SHA-256 of the lines. They are in the settlement currency of the owner, which can differ from the currency of the statement of one property.
+/// <paramref name="OwnerInvoiceNumber"/> is the number of the owner invoice issued for the owner and month (E14/F01/US01/T01), named in the commission.
 /// </summary>
 public sealed record StatementVersionTotals(
     int VersionNumber,
@@ -76,7 +77,8 @@ public sealed record StatementVersionTotals(
     decimal Payments,
     decimal Corrections,
     decimal ClosingBalance,
-    string EntriesSha256);
+    string EntriesSha256,
+    string? OwnerInvoiceNumber = null);
 
 /// <summary>A payment to the owner as a statement prints it.</summary>
 /// <param name="Reference">The stable reference of the payout.</param>

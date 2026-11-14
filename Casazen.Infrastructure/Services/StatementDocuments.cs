@@ -238,7 +238,12 @@ public static class StatementDocuments
         yield return (texts.Get("StatementDocLedgerOpening", language), ledger.OpeningBalance);
         yield return (texts.Get("StatementDocLedgerRevenue", language), ledger.Revenue);
         yield return (texts.Get("StatementDocLedgerChannelFees", language), ledger.ChannelFees);
-        yield return (texts.Get("StatementDocLedgerCommission", language), ledger.Commission);
+
+        // The commission names the owner invoice of the month once it is issued (E14/F01/US01/T01): «Fattura n. X».
+        var commission = texts.Get("StatementDocLedgerCommission", language);
+        yield return (
+            ledger.OwnerInvoiceNumber is { Length: > 0 } number ? $"{commission} - {texts.Get("StatementDocOwnerInvoice", language, number)}" : commission,
+            ledger.Commission);
         yield return (texts.Get("StatementDocLedgerCharges", language), ledger.Charges);
         yield return (texts.Get("StatementDocLedgerPayments", language), ledger.Payments);
         yield return (texts.Get("StatementDocLedgerCorrections", language), ledger.Corrections);

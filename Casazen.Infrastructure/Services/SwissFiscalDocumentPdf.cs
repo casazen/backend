@@ -134,7 +134,7 @@ public static class SwissFiscalDocumentPdf
 
         if (!registered)
             blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfChNotVatRegistered", language)));
-        if (document.Kind != DocumentKind.CreditNote)
+        if (document.Kind != DocumentKind.CreditNote && document.Purpose != FiscalDocumentPurpose.OwnerInvoice)
             blocks.Add(new PdfParagraph(PaymentLabel(document, texts, language), Bold: true));
 
         return new PdfDocumentContent(title, blocks)
@@ -184,9 +184,18 @@ public static class SwissFiscalDocumentPdf
             yield return city;
     }
 
-    /// <summary>The period of the stay (art. 26: the date or the period of the service) and the property, when the document has them.</summary>
+    /// <summary>
+    /// The period of the stay (art. 26: the date or the period of the service) and the property, when the document has them; for an owner invoice the month of
+    /// the services of the property manager (E14/F01/US01/T01).
+    /// </summary>
     private static IEnumerable<string> StayLines(FiscalDocument document, IDocumentTexts texts, string language, string? propertyName)
     {
+        if (FiscalDocumentPdfs.OwnerInvoicePeriodLabel(document) is { } period)
+        {
+            yield return texts.Get("FiscalDocPdfOwnerPeriod", language, period);
+            yield break;
+        }
+
         if (document.ServicePeriodFrom is { } from && document.ServicePeriodTo is { } to)
             yield return texts.Get("FiscalDocPdfChStayPeriod", language, DocumentLanguages.Day(from), DocumentLanguages.Day(to));
         if (!string.IsNullOrWhiteSpace(propertyName))

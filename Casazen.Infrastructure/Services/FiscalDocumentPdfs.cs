@@ -80,6 +80,8 @@ public static class FiscalDocumentPdfs
         blocks.Add(new PdfParagraph(string.Join('\n', IssuerLines(issuer, texts, language))));
         blocks.Add(new PdfHeading(texts.Get("FiscalDocPdfRecipient", language), 3));
         blocks.Add(new PdfParagraph(string.Join('\n', RecipientLines(document, texts, language))));
+        if (OwnerInvoicePeriodLabel(document) is { } period)
+            blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfOwnerPeriod", language, period)));
 
         var lines = document.Lines.OrderBy(l => l.LineNumber).ToList();
         blocks.Add(new PdfHeading(texts.Get("FiscalDocPdfLinesHeading", language)));
@@ -136,7 +138,8 @@ public static class FiscalDocumentPdfs
             ],
             totals));
 
-        blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfPayment", language, PaymentLabel(document.PaymentState, texts, language))));
+        if (document.Purpose != FiscalDocumentPurpose.OwnerInvoice)
+            blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfPayment", language, PaymentLabel(document.PaymentState, texts, language))));
         if (!string.IsNullOrEmpty(document.FatturaPaXml))
             blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfCourtesyCopy", language)));
 
@@ -185,6 +188,16 @@ public static class FiscalDocumentPdfs
         if (!string.IsNullOrWhiteSpace(document.RecipientFiscalCode))
             yield return texts.Get("FiscalDocPdfFiscalCode", language, document.RecipientFiscalCode);
     }
+
+    /// <summary>The month of the services of an owner invoice (or of its credit note), <c>MM/yyyy</c>; <c>null</c> for any other document.</summary>
+    internal static string? OwnerInvoicePeriodLabel(FiscalDocument document) =>
+        document.Purpose == FiscalDocumentPurpose.OwnerInvoice && document.PeriodYear is { } year && document.PeriodMonth is { } month
+            ? PeriodLabel(year, month)
+            : null;
+
+    /// <summary>A month as <c>MM/yyyy</c>.</summary>
+    internal static string PeriodLabel(int year, int month) =>
+        string.Create(CultureInfo.InvariantCulture, $"{month:00}/{year:0000}");
 
     /// <summary>The word of the kind of a document (invoice, receipt, credit note, proforma): also the one of the list exported to CSV and Excel.</summary>
     internal static string KindLabel(DocumentKind kind, IDocumentTexts texts, string language) => kind switch

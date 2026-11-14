@@ -9,17 +9,13 @@ using Microsoft.EntityFrameworkCore;
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// The agency-to-owner invoices of the retired internal generator (ADR-019 amended, E06/F01/US02/T05, AC-NF110-6). CasaZen issues no agency-to-owner
-/// invoice, fiscal number or FatturaPA XML any more: <see cref="GenerateInvoiceAsync"/> answers 410 <c>owner_invoice_issuance_removed</c>; the agency
-/// links the invoice its external fiscal system issued to the statement version instead (<c>OwnerExternalDocumentReference</c>). The historical rows
-/// stay readable as they were stored, marked <c>legacy_unverified</c>, never relabelled as compliant.
+/// The agency-to-owner invoices of the retired internal generator (ADR-019 amended, E06/F01/US02/T05, AC-NF110-6), read-only. Nothing writes this table any
+/// more: the invoice of the property manager to an owner is a fiscal document made from the statement version since E14/F01/US01/T01
+/// (<see cref="IOwnerInvoiceService"/>; the old generate endpoint makes those drafts instead of answering 410). The historical rows stay readable as they were
+/// stored, marked <c>legacy_unverified</c>, never relabelled as compliant.
 /// </summary>
 public sealed class AgencyInvoiceService(AppDbContext db) : IAgencyInvoiceService
 {
-    /// <inheritdoc />
-    public Task<InvoiceGenerationResult> GenerateInvoiceAsync(Guid statementId, CancellationToken cancellationToken = default) =>
-        throw new DomainGoneException(OwnerAccountingErrors.OwnerInvoiceIssuanceRemoved, "OwnerInvoiceIssuanceRemoved");
-
     /// <inheritdoc />
     public async Task<string?> GetInvoiceXmlAsync(Guid invoiceId, CancellationToken cancellationToken = default)
     {

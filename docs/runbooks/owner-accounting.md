@@ -7,8 +7,9 @@ append-only owner ledger, the statement versions and the month-end close (T02), 
 ## Product boundary
 
 - **A rendiconto is not an invoice.** The owner statement is a management report («Rendiconto gestionale - non è una fattura»): no fiscal series or
-  number, never FatturaPA XML. CasaZen issues **no agency-to-owner invoice**: when the agency invoices its fee, its own external fiscal system issues the
-  invoice and CasaZen only keeps a reference to it (see «External invoice references»).
+  number, never FatturaPA XML. Since 2026-11-14 (decision P1, E14/F01/US01/T01) **CasaZen issues the invoice of the property manager to the owner** from a
+  version of the statement, as a fiscal document with lines (see «Owner invoices»); the reference to an invoice issued elsewhere stays for the months
+  invoiced before (see «External invoice references»).
 - **Legal and accounting review is a launch gate.** Every rate, applicability rule, tax code and retention period is data of a rule set approved by a
   qualified accountant; nothing is inferred from a country or written in the code.
 
@@ -173,14 +174,74 @@ booking line, and the month of the payment then posts it (the readiness says `un
   checked on the first real payload of the channel manager** (does `totalGross` include the tourist tax?): the channel commission and the commission of the
   mandate are a percentage of the same gross.
 
+## Owner invoices (E14/F01/US01/T01)
+
+The invoice of the property manager to an owner (NF-114, D9): a `FiscalDocument` with `Purpose = OwnerInvoice`, made from a version of the statement, behind
+`Features:OwnerInvoicing` (off by default, on only in the test environment; [`feature-flags.md`](feature-flags.md)).
+
+- **Endpoints** `api/owner-invoices`, the whole org only (403 for a caller restricted to some properties), 404 while the flag is off:
+  `POST drafts { versionId }` and `POST {id}/issue { confirm }` (`agency.statement.manage`), `GET ?period=yyyy-MM&ownerId=` (`agency.statement.view`: number,
+  owner, total, currency, status and, once issued, `payment`: `offset`, `to_pay` with `amountDue`, `credited`). The PDF and the XML are those of every fiscal
+  document (`GET api/fiscal/documents/{id}/pdf|xml`, a document without a booking: the whole org). The endpoints of the guest documents refuse to make an owner
+  invoice again or to issue it (422 `document_owner_invoice`); its credit note is the one of every document (`POST api/fiscal/documents/{id}/credit-note`).
+- **The drafts of a period.** `POST api/agency-invoices/generate { year, month }` (`agency.invoice.manage`, behind the same flag) no longer answers 410: it makes,
+  or makes again, the draft of every owner with a version of the month that is not superseded and answers the counts (`owners`, `created`, `updated`,
+  `alreadyIssued`, `nothingToInvoice`, `failed` with the owner and the code). The rows of the retired generator (`AgencyInvoices`) stay read-only, `legacy_unverified`.
+- **One per owner and period.** A live owner invoice (neither discarded, nor credited in full) holds its owner and month (`UIX_FiscalDocuments_OrgId_RecipientOwnerId_Period`):
+  a second draft of the month is the same document made again from the version asked for; once issued, 409 `document_already_issued`. A superseded version is
+  refused (409 `owner_invoice_version_superseded`), a version with nothing to invoice too (422 `owner_invoice_nothing_to_invoice`).
+- **Recipient.** The owner: the fiscal profile in force on the last day of the month (legal name, fiscal code, VAT number), else the registry; the structured
+  billing address of E13. A Swiss invoice needs the name; an Italian electronic invoice also the identification and the address (422
+  `document_invoice_data_missing` with the `fields`).
+- **Lines, from the ledger lines of the version** (the owner's lines of the month up to its cut-off; a reversal and the line it reverses cancel out):
+  - `AgencyCommission` → one `Commission` line per property («Provvigione di gestione - casa - mese»);
+  - `OwnerCharge` → one `Recharge` line per flat fee of a stay (cleaning, linen) and per approved charge, with its own description and day;
+  - `OwnerExpense` of an owner charge of kind expense → one `AdvancedExpense` line each, outside the VAT (an expense advanced in the name and on behalf of the
+    owner, art. 15 in Italy); the card fees the mandate passes on (`OwnerExpense` of a payment) are a cost the agency bears in its own name → one `Recharge`
+    line per property;
+  - `ChannelFee` → one `Recharge` line per portal «Riaddebito commissioni Booking.com», **only** for the listings whose portal account the agency holds (V2)
+    and only when the organization recharges them (⚖ I10, I11, below). A listing whose account the owner holds (V1, the default) has none.
+- **VAT (⚖ R4).** The mandate of the owner in force on the last day of the month says it: `CommissionIncludesVat = false` (the default) makes the ledger amounts
+  the taxable amounts and adds the VAT (`FiscalDocumentTotals.FromNet`: every line keeps its net to the cent, the VAT of a rate on the sum of its lines);
+  `true` makes them the gross and takes the VAT out (`FromGross`). The rates are those of the catalog `FiscalDocuments:TaxRules` in force on the last day of
+  the month by line type: Switzerland 8.1 (`ch-vat-2024.1`), Italy 22, a flat-rate issuer `N2.2` with the stamp duty (borne by the issuer, as the catalog says).
+- **Issue.** The issue of the fiscal documents: the gap-free number in the series `OrgFiscalIssuerProfile.OwnerInvoiceSeries` (default `PM{year}`, e.g.
+  `PM2026/1`), the snapshot of the issuer, the rule version, the Italian XML of an invoice (422 `fatturapa_schema_unavailable` until the official schema is in
+  the build, E17). The draft is made again from its version first: when the version was superseded or the mandate, the holders, the rule or the recipient give
+  other amounts now, 409 `document_draft_outdated` (make the draft again). **A VAT added on top is posted to the owner ledger in the transaction of the
+  number**: one line `AgencyVat` (debit, source `OwnerInvoice`, key `invoicevat:{documentId}`), once, in the month of the invoice (the month of today when that
+  month of the owner is closed), so the net paid to the owner is right. The month is marked dirty; a **draft or flagged** version of it is generated again at
+  once; an **approved or published** one is left as it is and the readiness says `owner_invoice_after_approval` (blocking, with the invoice), so the agency
+  generates it again. The `Commission` of a version counts the `AgencyVat` lines with the commission.
+- **Credit note.** A credit note of the owner invoice gives the VAT back in its own transaction: the reversal of the line when it credits the whole invoice at
+  once, else the VAT of the note (the rest of it with the note that completes the credit); an invoice credited in full frees its owner and month.
+- **Payment.** An issued invoice is `offset` when the statement covers it, else `to_pay` with how much the debt of the owner grew in the month (the ledger before
+  the month and at its end, the VAT included), never more than what is left of the invoice after its credit notes (`OwnerInvoiceSettlements`).
+- **The statement names the invoice.** The PDF and the CSV of the statement (`IStatementExportService`) print «Fattura n. PM2026/1» next to the commission of
+  the ledger once the owner invoice of the month is issued. The statement PDF of the version (E13/F02) reads the same number.
+
+### Who holds the portal account (⚖ I10, I11)
+
+The holder of the account of a listing on a portal decides the recharge of its commissions (acceptance step C2 of `pilota-flusso-completo-2026-11-14.md`):
+
+- **V1, the owner** (default, `PortalAccountHolder.Owner`): the portal invoices the owner; the agency invoices only its fee and the commission is the owner's
+  cost («trattenuta del portale»).
+- **V2, the agency** (`PortalAccountHolder.Agency`): the portal invoices the agency; the commission reaches the owner as a recharge of the owner invoice, at the
+  VAT of a recharge (the scheme of a mandate without representation, art. 3 c. 3 DPR 633/72), when `RechargePortalCommissions` is on (default on).
+
+The default of the organization and the recharge are on the profile of the issuer (`OrgFiscalIssuerProfile.PortalAccountHolder`, `RechargePortalCommissions`,
+migration `AddPortalAccountHolder`: the profiles that exist get the owner and the recharge on), read and written by `GET/PUT api/billing-setup/channels`. The
+override of a listing and portal is a row of `PropertyChannelAccountHolders` (unique per property and portal, gone with the property), read and written in bulk
+by `GET/PUT api/billing-setup/channel-account-holders` (`[{ propertyId, channel, holder }]`, `holder: null` back to the default; an empty list is 422, never
+«all»). Both need `property.read` and `payment.read` (`property.write` to write), the whole org, and the flag. `IPortalAccountHolderResolver` is the one reader
+(owner invoice, statement labels of E13, VAT summary of E15, TD17 of E17). These two settings are the first part of the billing setup of E11/F02.
+
 ## External invoice references (E06/F01/US02/T05)
 
-- **No owner invoice in CasaZen.** `POST api/agency-invoices/generate` answers 410 `owner_invoice_issuance_removed`; the stored agency invoices stay
-  readable (`…/xml`, `…/pdf`) and carry `ComplianceStatus = legacy_unverified` (ADR-019 amended). The courtesy copy is dated with the day the invoice was
-  made (`CreatedAt`), never the day it is downloaded. The requirements v2.2 (NF-110: «agency-to-owner tax invoicing is outside CasaZen») and ADR-019 decide
-  the retirement; the brief of E06/F01/US02/T05 asks for it in its coding objective, while its «Files» section and the criterion 3 of E06/F01/US02/T04 still
-  name the old generator and a PDF overload (the briefs are not edited: the deviation is declared in the pull request). The frontend button «Genera
-  fattura» must be replaced by the link of the external invoice, or hidden (manual follow-up of the pull request): until then it answers 410.
+- **The months invoiced outside CasaZen.** Before E14 the agency invoiced its fee with its own fiscal system; the stored agency invoices of the retired
+  generator stay readable (`api/agency-invoices/{id}/xml`, `…/pdf`) and carry `ComplianceStatus = legacy_unverified` (ADR-019 amended). The courtesy copy is
+  dated with the day the invoice was made (`CreatedAt`), never the day it is downloaded. `POST api/agency-invoices/generate` makes the owner invoices of a
+  period since E14/F01/US01/T01 (see «Owner invoices»).
 - **Link** (`OwnerExternalDocumentReference`): `POST api/owner-accounting/versions/{id}/external-documents` (`agency.owner.financial.manage`) on an
   approved or published version, with `provider`, `externalId`, `externalNumber`, `externalDate`, optional `documentUrl` (https) and `documentSha256`.
   `…/external-documents/{id}/verify` records the check against the external system, `…/remove` (with `reason`) removes a mistaken link: the row stays.

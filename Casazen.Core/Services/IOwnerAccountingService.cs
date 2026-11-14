@@ -113,7 +113,31 @@ public interface IOwnerAccountingService
 
     /// <summary>The links an owner of the portal may read: of its own published versions, not removed.</summary>
     Task<IReadOnlyList<OwnerExternalDocumentReference>> ListPublishedExternalDocumentsForOwnerUserAsync(Guid ownerUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Posts the VAT an owner invoice added on top (<see cref="OwnerLedgerEntryType.AgencyVat"/>, a debit of <paramref name="vat"/>, E14/F01/US01/T01, ⚖ R4) in
+    /// the transaction of its issue: once (a second call finds the line and posts nothing), in the month of the invoice, or in the month of today when that
+    /// month of the owner is closed; the month is marked dirty. Nothing for a VAT of 0. Returns the month posted in, or <c>null</c>.
+    /// </summary>
+    Task<OwnerLedgerPosting?> PostOwnerInvoiceVatAsync(FiscalDocument invoice, decimal vat, string? userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Posts the reversal of the VAT of an owner invoice for a credit note of it, in the transaction of the credit note: the reversal of the whole line when the
+    /// note credits the whole invoice at once, else the VAT of the note (the rest of the VAT with the note that completes the credit). Nothing when the invoice
+    /// posted no VAT (a mandate «IVA inclusa», a rate of 0). Returns the month posted in, or <c>null</c>.
+    /// </summary>
+    Task<OwnerLedgerPosting?> ReverseOwnerInvoiceVatAsync(FiscalDocument creditNote, FiscalDocument invoice, string? userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Generates again the statement version of the owner's month when its current version is a draft or flagged (an owner invoice posted a line in it); an
+    /// approved or published version is left as it is: its month is dirty and the readiness says <c>owner_invoice_after_approval</c>, so the agency generates
+    /// it again. Returns the new version, or <c>null</c> when none was generated.
+    /// </summary>
+    Task<OwnerStatementVersion?> RegenerateOpenVersionAsync(Guid orgId, Guid ownerId, int year, int month, string? userId, CancellationToken ct = default);
 }
+
+/// <summary>The month of an owner a line of an owner invoice was posted in (E14/F01/US01/T01).</summary>
+public sealed record OwnerLedgerPosting(Guid OwnerId, int Year, int Month);
 
 /// <summary>A link to an invoice issued by the agency's external fiscal or accounting system.</summary>
 public sealed record OwnerExternalDocumentCommand
@@ -264,7 +288,6 @@ public static class OwnerAccountingErrors
     public const string ExternalDocumentDuplicate = "owner_external_document_duplicate";
     public const string ExternalDocumentNotFound = "owner_external_document_not_found";
     public const string ExternalDocumentRemoved = "owner_external_document_removed";
-    public const string OwnerInvoiceIssuanceRemoved = "owner_invoice_issuance_removed";
 }
 
 /// <summary>The codes of the month-end readiness issues (besides the codes of the fiscal profile, <c>owner_fiscal_*</c>).</summary>
@@ -298,6 +321,12 @@ public static class OwnerReadinessCodes
     /// channel (E13/F01/US01/T02): the fee is not guessed, the owners of the property are held back (blocking) until a rule says it.
     /// </summary>
     public const string ChannelCommissionMissing = "channel_commission_missing";
+
+    /// <summary>
+    /// An owner invoice was issued after the version of the month was approved or published and posted its VAT in the month (E14/F01/US01/T01): the version is no
+    /// longer the picture of the ledger and the agency generates it again (blocking, with the invoice as the source).
+    /// </summary>
+    public const string OwnerInvoiceAfterApproval = "owner_invoice_after_approval";
 }
 
 /// <summary>The kinds of the flat fees of a mandate, as the <see cref="OwnerLedgerEntry.SourceReference"/> of their lines (E13/F01/US01/T02).</summary>

@@ -231,6 +231,16 @@ public static class FeatureFlags
     /// </summary>
     public const string MessageAssistant = "MessageAssistant";
 
+    /// <summary>
+    /// E14/F01/US01/T01 (NF-114, D9, D15): the invoices of the property manager to the owners, made by CasaZen from a version of the owner statement, <b>off by
+    /// default</b> and turned on only in the test environment until the accountant confirms the ⚖ choices (R4, I10, I11). Off, every endpoint of
+    /// <c>api/owner-invoices</c> (the list, the draft, the issue), <c>POST api/agency-invoices/generate</c> (the drafts of a period) and the two settings of the
+    /// portal accounts (<c>api/billing-setup/channels</c>, <c>api/billing-setup/channel-account-holders</c>) answer 404 before authentication. <b>Not behind it</b>:
+    /// the reading of the legacy agency invoices, and the PDF, the XML and the credit note of an owner invoice already issued (through
+    /// <c>api/fiscal/documents</c>: a document issued stays a document). It needs no variable to start. The frontend reads the key <c>ownerInvoicing</c>.
+    /// </summary>
+    public const string OwnerInvoicing = "OwnerInvoicing";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -255,5 +265,6 @@ public static class FeatureFlags
         MessageTranslationAi,
         OctorateDocumentImport,
         MessageAssistant,
+        OwnerInvoicing,
     ];
 }

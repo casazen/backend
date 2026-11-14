@@ -1156,6 +1156,26 @@ caller sees and may not use is 403. The accountant reads and cannot write; the c
   files print the withholding stored for an authorized payout with its rule version (E06/F05/US02/T03), or say that there is none.
 - **Labels from the resource files.** `IDocumentTexts` (`ResxDocumentTexts` over `SharedResources`) gives the labels in the language of the request
   (`it` or `en`); the export code never writes a currency or a euro sign.
+- **The owner invoice is named.** Once the owner invoice of the owner and month is issued (E14/F01/US01/T01), the commission of the ledger totals reads
+  «Commissioni … - Fattura n. PM2026/1» in the PDF and the CSV.
+
+#### Owner invoices and the portal accounts (E14/F01/US01/T01, NF-114, D9)
+
+All behind `Features:OwnerInvoicing` (404 while off, before authentication) and the whole org (403 for a caller restricted to some properties). Runbook:
+[`owner-accounting.md`](runbooks/owner-accounting.md) § Owner invoices.
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/owner-invoices?period=yyyy-MM&ownerId=` | `agency.statement.view` | The owner invoices of the org (drafts and issued, not the discarded ones nor the credit notes), the newest period first, at most 1000: `[{ id, ownerId, ownerName, periodYear, periodMonth, statementVersionId, number, issueDate, status, kind, taxableBase, vatAmount, stampDuty, total, currency, creditedInFull, payment }]`, `payment` `{ state: offset\|to_pay\|credited, amountDue }` once issued (`OwnerInvoiceSettlements`, read from the owner ledger now). 422 `owner_period_invalid` |
+| `POST` | `/api/owner-invoices/drafts` | `agency.statement.manage` | `{ versionId }`: the draft (`FiscalDocument`, `Purpose = OwnerInvoice`) of a statement version, or the live draft of the owner and month made again from it: one `Commission` line per property, one `Recharge` per flat fee, charge, card fees of a property and portal the agency holds the account of (⚖ I10, I11), one `AdvancedExpense` per expense (outside the VAT), the VAT of the catalog on the last day of the month, «+ IVA» or «IVA inclusa» as the mandate says (⚖ R4). 201 with `{ id, ownerId, ownerName, statementVersionId, periodYear, periodMonth, kind, status, series, number, issueDate, currency, ruleVersion, taxableBase, vatAmount, stampDuty, total, hasXml, creditedInFull, lines: [{ lineNumber, type, description, quantity, unitPrice, totalPrice, vatRatePercent, vatNatureCode, vatAmount }] }`. 404 `owner_statement_version_not_found`; 409 `owner_invoice_version_superseded`, `document_already_issued`; 422 `owner_invoice_nothing_to_invoice`, `document_rule_not_configured`, `issuer_profile_incomplete`, `document_invoice_data_missing` |
+| `POST` | `/api/owner-invoices/{id}/issue` | `agency.statement.manage` | `{ confirm }`: the issue of the fiscal documents in the series `OwnerInvoiceSeries` (default `PM{year}`), and the VAT added on top posted once to the owner ledger (`AgencyVat`) in the same transaction; the draft or flagged version of the month generated again. 404 for another org's invoice; 409 `document_draft_outdated`; 422 `document_confirmation_required`, `document_not_draft`, `fatturapa_schema_unavailable` (Italy, until the schema is in the build) |
+| `POST` | `/api/agency-invoices/generate` | `agency.invoice.manage` | `{ year, month }`: the drafts of every owner with a statement version of the month (made or made again), `{ year, month, owners, created, updated, alreadyIssued, nothingToInvoice, failed: [{ ownerId, code }] }`. It answered 410 before E14 |
+| `GET`/`PUT` | `/api/billing-setup/channels` | `property.read` + `payment.read` (`PUT`: + `property.write`) | The `channels` section of the billing setup: `{ portalAccountHolder: Owner\|Agency, rechargePortalCommissions }`, a member left out of the `PUT` keeps its value. 422 `billing_channels_invalid` |
+| `GET`/`PUT` | `/api/billing-setup/channel-account-holders` | `property.read` + `payment.read` (`PUT`: + `property.write`) | The holder of the portal account of a listing where it differs from the default: `[{ propertyId, propertyName, channel, holder, updatedAt }]`; the `PUT` writes in bulk `[{ propertyId, channel, holder }]` (`holder: null` back to the default, the listings not named keep theirs) and answers the whole list. 422 `channel_account_holders_invalid` (with `index`, `field`: an empty list, a property of another org, a channel that is not a portal, a listing named twice); 409 `channel_account_holders_conflict` |
+
+- The PDF and the XML of an owner invoice are those of every fiscal document (`/api/fiscal/documents/{id}/pdf|xml`); the endpoints of the guest documents
+  refuse to make it again or to issue it (422 `document_owner_invoice`), its credit note gives the VAT back to the owner ledger.
+- `IPortalAccountHolderResolver` is the one reader of the holder (override of the listing and portal, else the default of the organization).
 
 #### Owner portal (ADR-011, NF-96)
 

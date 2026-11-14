@@ -395,6 +395,9 @@ public class AppDbContext(
     // The commission rules of the channels of an agency, when a reservation brings none (E13/F01/US01/T01, ⚖ R2)
     public DbSet<OrgChannelCommissionRule> OrgChannelCommissionRules { get; set; } = null!;
 
+    // Who holds the account of a listing on a portal when it is not the organization default (E14/F01/US01/T01, ⚖ I10)
+    public DbSet<PropertyChannelAccountHolder> PropertyChannelAccountHolders { get; set; } = null!;
+
     // The links from the owner statement versions to the invoices of the agency's external fiscal system (E06/F01/US02/T05): ids, numbers, hashes
     public DbSet<OwnerExternalDocumentReference> OwnerExternalDocumentReferences { get; set; } = null!;
 
@@ -2068,6 +2071,9 @@ public class AppDbContext(
         // The versioned mandates of the owners and the commission rules of the channels (E13/F01/US01/T01).
         modelBuilder.ApplyConfiguration(new OwnerMandateConfiguration());
         modelBuilder.ApplyConfiguration(new OrgChannelCommissionRuleConfiguration());
+
+        // Who holds the account of a listing on a portal (E14/F01/US01/T01, ⚖ I10): one row for each property and portal, gone with the property.
+        modelBuilder.ApplyConfiguration(new PropertyChannelAccountHolderConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerLedgerEntryConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerStatementVersionConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerClosePeriodConfiguration());

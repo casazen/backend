@@ -6,6 +6,7 @@ using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Services;
 using Casazen.Web.Resources;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -15,16 +16,22 @@ using Xunit;
 namespace Casazen.Tests.Unit;
 
 /// <summary>
-/// E06/F01/US02/T05 (ADR-019 amended, AC-NF110-6): CasaZen issues no agency-to-owner invoice, fiscal number or FatturaPA XML; the owner statement is a
-/// non-fiscal versioned report; the invoices of the retired generator stay readable and are never called compliant; a link to the invoice the
-/// agency's external system issued changes nothing of the statement and is itself evidence.
+/// E06/F01/US02/T05 (ADR-019 amended, AC-NF110-6), rewritten by E14/F01/US01/T01 (decision P1 of 2026-11-14): the owner statement is still a non-fiscal versioned
+/// report, and the invoice of the property manager made from it is the fiscal document; the old generate endpoint makes those invoices instead of answering
+/// 410; the invoices of the retired generator stay readable and are never called compliant; a link to an invoice the agency's external system issued changes
+/// nothing of the statement and is itself evidence.
 /// </summary>
 public class InvoiceProofTests
 {
     private static readonly Guid OrgId = Guid.NewGuid();
 
+    /// <summary>
+    /// PROOF TEST: data rule. A published statement has no fiscal series, number, XML or SDI state and publishing it makes no fiscal document; the owner invoice
+    /// made from it is one (its purpose, owner, period and version, a number of the owner-invoice series, the XML of an Italian invoice), and issuing it after the
+    /// publication changes nothing of the published statement: the readiness tells the agency to generate the month again.
+    /// </summary>
     [Fact]
-    public async Task OwnerStatement_NeverGetsFiscalNumberOrFatturaPaXml_Test()
+    public async Task OwnerStatement_IsNoFiscalDocument_TheOwnerInvoiceIs_Test()
     {
         var world = await InvoiceWorld.CreateAsync();
         var version = await world.PublishedVersionAsync();
@@ -39,24 +46,43 @@ public class InvoiceProofTests
         var names = typeof(OwnerStatementVersion).GetProperties().Select(p => p.Name).ToList();
         Assert.DoesNotContain(names, n => n.Contains("Xml", StringComparison.OrdinalIgnoreCase) || n.Contains("Series", StringComparison.Ordinal)
             || n.Contains("Sdi", StringComparison.Ordinal) || (n.Contains("Number", StringComparison.Ordinal) && n != nameof(OwnerStatementVersion.VersionNumber)));
-
-        // The files of a statement say what it is, and the generator of the owner invoices is gone.
         Assert.Equal("Rendiconto gestionale - non è una fattura", new ResxDocumentTexts().Get("StatementDocNonFiscal", "it"));
-        var gone = await Assert.ThrowsAsync<DomainGoneException>(() => new AgencyInvoiceService(world.Db).GenerateInvoiceAsync(Guid.NewGuid()));
-        Assert.Equal(OwnerAccountingErrors.OwnerInvoiceIssuanceRemoved, gone.Code);
-        Assert.Empty(await world.Db.AgencyInvoices.ToListAsync());
+
+        // The owner invoice made from the statement is the fiscal document.
+        world.Clock.Advance(TimeSpan.FromMinutes(1));
+        var invoices = world.OwnerInvoices();
+        var draft = await invoices.CreateDraftAsync(OrgId, version.Id, "auth0|agency");
+        var issued = await invoices.IssueAsync(OrgId, draft.Id, confirm: true, "auth0|agency");
+        Assert.Equal(
+            (FiscalDocumentPurpose.OwnerInvoice, (Guid?)world.Owner, (Guid?)version.Id, (int?)2026, (int?)10),
+            (issued.Purpose, issued.RecipientOwnerId, issued.OwnerStatementVersionId, issued.PeriodYear, issued.PeriodMonth));
+        Assert.Equal(("PM2026/1", FiscalDocumentSdiStatuses.ToSend), (issued.Number, issued.SdiStatus));
+        Assert.False(string.IsNullOrEmpty(issued.FatturaPaXml));
+        Assert.Equal((10.00m, 2.20m, 12.20m), (issued.TaxableBase, issued.VatAmount, issued.Total));
+
+        // The published statement is not touched; its month is told to be generated again, naming the invoice.
+        var stored = await world.Db.OwnerStatementVersions.AsNoTracking().SingleAsync(v => v.Id == version.Id);
+        Assert.Equal((OwnerStatementVersionStatus.Published, version.PublishedSha256, version.ClosingBalance), (stored.Status, stored.PublishedSha256, stored.ClosingBalance));
+        var readiness = await world.Service.GetReadinessAsync(OrgId, 2026, 10);
+        Assert.Contains(
+            readiness.Owners.Single(o => o.OwnerId == world.Owner).Issues,
+            i => i.Code == OwnerReadinessCodes.OwnerInvoiceAfterApproval && i.SourceId == issued.Id);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule. The old generate (<c>POST api/agency-invoices/generate</c>) no longer answers 410: for a period it makes the draft of every owner with
+    /// a version, and makes it again on a second run; the rows of the retired generator are never written and stay readable as they were stored, unverified.
+    /// </summary>
     [Fact]
-    public async Task LegacyAgencyInvoice_CreateReturnsGoneAndHistoryRemainsReadable_Test()
+    public async Task LegacyAgencyInvoice_GenerateMakesOwnerInvoiceDraftsAndHistoryRemainsReadable_Test()
     {
         var world = await InvoiceWorld.CreateAsync();
-        var owner = await world.OwnerAsync();
+        var version = await world.DraftVersionAsync();
         const string Xml = "<p:FatturaElettronica versione=\"FPR12\">TEST storico</p:FatturaElettronica>";
         var legacy = new AgencyInvoice
         {
             OrgId = OrgId,
-            OwnerId = owner,
+            OwnerId = world.Owner,
             InvoiceNumber = "7",
             Series = "A",
             Month = 9,
@@ -72,11 +98,21 @@ public class InvoiceProofTests
         world.Db.AgencyInvoices.Add(legacy);
         await world.Db.SaveChangesAsync();
         var service = new AgencyInvoiceService(world.Db);
+        var invoices = world.OwnerInvoices();
 
-        var gone = await Assert.ThrowsAsync<DomainGoneException>(() => service.GenerateInvoiceAsync(Guid.NewGuid()));
-        Assert.Equal(OwnerAccountingErrors.OwnerInvoiceIssuanceRemoved, gone.Code);
+        var generation = await invoices.CreateDraftsForPeriodAsync(OrgId, 2026, 10, "auth0|agency");
+        Assert.Equal((1, 1, 0, 0, 0), (generation.Owners, generation.Created, generation.Updated, generation.AlreadyIssued, generation.Failed.Count));
+        var draft = Assert.Single(await world.Db.FiscalDocuments.AsNoTracking().ToListAsync());
+        Assert.Equal(
+            (FiscalDocumentPurpose.OwnerInvoice, FiscalDocumentStatus.Draft, (Guid?)version.Id, (Guid?)world.Owner),
+            (draft.Purpose, draft.Status, draft.OwnerStatementVersionId, draft.RecipientOwnerId));
+        var again = await invoices.CreateDraftsForPeriodAsync(OrgId, 2026, 10, null);
+        Assert.Equal((0, 1), (again.Created, again.Updated));
+        Assert.Single(await world.Db.FiscalDocuments.AsNoTracking().ToListAsync());
+        var invalid = await Assert.ThrowsAsync<DomainRuleException>(() => invoices.CreateDraftsForPeriodAsync(OrgId, 2026, 13, null));
+        Assert.Equal(OwnerAccountingErrors.PeriodInvalid, invalid.Code);
 
-        // The history is read as it was stored, and says it is unverified.
+        // The history is read as it was stored, and says it is unverified; nothing wrote to it.
         Assert.Equal(Xml, await service.GetInvoiceXmlAsync(legacy.Id));
         var copy = Encoding.UTF8.GetString(await service.GetInvoicePdfAsync(legacy.Id));
         Assert.Contains("A7", copy, StringComparison.Ordinal);
@@ -147,10 +183,12 @@ public class InvoiceProofTests
         Assert.Equal(("2026/15", "TEST numero sbagliato"), (kept.ExternalNumber, kept.RemovalReason));
     }
 
-    /// <summary>An agency with one owner and one property paid in October, and the owner accounting over one in-memory database.</summary>
+    /// <summary>
+    /// An agency with one owner and one property paid in October, an Italian issuer of the ordinary regime, and the owner accounting over one in-memory
+    /// database.
+    /// </summary>
     private sealed class InvoiceWorld
     {
-        private Guid _owner;
         private Guid _property;
 
         private InvoiceWorld(AppDbContext db)
@@ -170,6 +208,9 @@ public class InvoiceProofTests
 
         public FakeTimeProvider Clock { get; }
 
+        /// <summary>The owner of the version (after <see cref="DraftVersionAsync"/>).</summary>
+        public Guid Owner { get; private set; }
+
         public static async Task<InvoiceWorld> CreateAsync()
         {
             var db = new AppDbContext(
@@ -184,23 +225,54 @@ public class InvoiceProofTests
                 DisplayName = "TEST Agenzia",
                 ContactEmail = "agenzia@example.com",
                 PlanTier = PlanTier.Agency,
+                HasPartitaIva = true,
+                PartitaIvaNumber = "01234567897",
+                FiscalCode = "01234567897",
+            });
+            db.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile
+            {
+                OrgId = OrgId,
+                IssuerMode = DocumentIssuerMode.CasaZen,
+                DocumentRegime = DocumentRegime.VatOrdinary,
+                LegalName = "TEST Agenzia Srl",
+                AddressStreet = "Via di Test",
+                AddressCivic = "1",
+                PostalCode = "00187",
+                City = "Roma",
+                Province = "RM",
+                CountryCode = "IT",
             });
             await db.SaveChangesAsync();
             return new InvoiceWorld(db);
         }
 
+        /// <summary>The invoices of the property manager to the owners over this database and clock.</summary>
+        public OwnerInvoiceService OwnerInvoices() => OwnerInvoiceRig.ServicesOver(Db, Clock, Service).Invoices;
+
         public async Task<Guid> OwnerAsync()
         {
-            var owner = new PropertyOwner { OrgId = OrgId, FirstName = "TEST", LastName = "Owner", Email = $"{Guid.NewGuid():N}@example.com" };
+            var owner = new PropertyOwner
+            {
+                OrgId = OrgId,
+                FirstName = "TEST",
+                LastName = "Owner",
+                Email = $"{Guid.NewGuid():N}@example.com",
+                BillingStreet = "Via del Proprietario",
+                BillingCivic = "3",
+                BillingPostalCode = "00100",
+                BillingCity = "Roma",
+                BillingProvince = "RM",
+                BillingCountry = "IT",
+            };
             Db.PropertyOwners.Add(owner);
             await Db.SaveChangesAsync();
             return owner.Id;
         }
 
-        /// <summary>A draft version of October: one payment of 100, the owner's profile and approved Italian rule set.</summary>
+        /// <summary>A draft version of October: one payment of 100, the owner's profile, the approved Italian rule set and a mandate of 10% «+ IVA».</summary>
         public async Task<OwnerStatementVersion> DraftVersionAsync()
         {
-            _owner = await OwnerAsync();
+            Owner = await OwnerAsync();
             var policy = await Fiscal.CreatePolicyAsync(OrgId, new OwnerAccountingPolicyCommand
             {
                 Jurisdiction = "IT",
@@ -212,7 +284,7 @@ public class InvoiceProofTests
                 Parameters = new OwnerAccountingRuleParameters { WithholdingApplies = false, Rounding = "half_even", RetentionYears = 10 },
             }, null);
             await Fiscal.ApprovePolicyAsync(OrgId, policy.Id, "TEST Commercialista", null);
-            await Fiscal.SaveProfileAsync(OrgId, _owner, new OwnerFiscalProfileCommand
+            await Fiscal.SaveProfileAsync(OrgId, Owner, new OwnerFiscalProfileCommand
             {
                 ValidFrom = new DateOnly(2026, 1, 1),
                 EntityKind = OwnerEntityKind.NaturalPerson,
@@ -244,7 +316,7 @@ public class InvoiceProofTests
             {
                 OrgId = OrgId,
                 PropertyId = property.Id,
-                PropertyOwnerId = _owner,
+                PropertyOwnerId = Owner,
                 SharePercent = 100m,
                 OwnershipStart = new DateTime(2026, 1, 1),
             });
@@ -261,14 +333,14 @@ public class InvoiceProofTests
                 ProcessedAt = new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc),
             });
 
-            // A stay of an owner without a mandate holds its version back (E13/F01/US01/T02): the owner has one, of zero (the commission is not the point).
-            Db.OwnerMandates.Add(new OwnerMandate { OrgId = OrgId, PropertyOwnerId = _owner, CommissionPercent = 0m, ValidFrom = new DateOnly(2026, 1, 1) });
+            // A stay of an owner without a mandate holds its version back (E13/F01/US01/T02): the owner has one of 10%, so the owner invoice has a commission.
+            Db.OwnerMandates.Add(new OwnerMandate { OrgId = OrgId, PropertyOwnerId = Owner, CommissionPercent = 10m, ValidFrom = new DateOnly(2026, 1, 1) });
             await Db.SaveChangesAsync();
             _property = property.Id;
 
             await Service.PostPeriodAsync(OrgId, 2026, 10, null);
             Clock.Advance(TimeSpan.FromMinutes(1));
-            return await Service.GenerateVersionAsync(OrgId, _owner, 2026, 10, null);
+            return await Service.GenerateVersionAsync(OrgId, Owner, 2026, 10, null);
         }
 
         public async Task<OwnerStatementVersion> PublishedVersionAsync()
@@ -282,7 +354,7 @@ public class InvoiceProofTests
         public async Task<Guid> PortalUserAsync()
         {
             var ownerUser = Guid.NewGuid();
-            var ownership = await Db.PropertyOwnerships.SingleAsync(o => o.PropertyId == _property && o.PropertyOwnerId == _owner);
+            var ownership = await Db.PropertyOwnerships.SingleAsync(o => o.PropertyId == _property && o.PropertyOwnerId == Owner);
             ownership.OwnerUserId = ownerUser;
             await Db.SaveChangesAsync();
             return ownerUser;

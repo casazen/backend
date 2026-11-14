@@ -6465,8 +6465,59 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerFxRateExists" xml:space="preserve">
     <value>Esiste già un cambio per queste valute in questo giorno.</value>
   </data>
-  <data name="OwnerInvoiceIssuanceRemoved" xml:space="preserve">
-    <value>CasaZen non emette più fatture dell'agenzia ai proprietari: collega al rendiconto la fattura emessa dal tuo sistema fiscale.</value>
+  <data name="OwnerInvoiceVersionSuperseded" xml:space="preserve">
+    <value>Questa versione del rendiconto è stata sostituita da una più recente: prepara la fattura dalla versione attuale.</value>
+  </data>
+  <data name="OwnerInvoiceNothingToInvoice" xml:space="preserve">
+    <value>Nel rendiconto non ci sono provvigioni, riaddebiti o spese da fatturare al proprietario.</value>
+  </data>
+  <data name="FiscalDocumentOwnerInvoice" xml:space="preserve">
+    <value>La fattura al proprietario si prepara e si emette dalle fatture ai proprietari.</value>
+  </data>
+  <data name="BillingChannelsInvalid" xml:space="preserve">
+    <value>L'impostazione dei portali non è valida: controlla il campo indicato.</value>
+  </data>
+  <data name="ChannelAccountHoldersInvalid" xml:space="preserve">
+    <value>L'elenco degli intestatari degli account dei portali non è valido: controlla la riga e il campo indicati.</value>
+  </data>
+  <data name="ChannelAccountHoldersConflict" xml:space="preserve">
+    <value>Gli intestatari sono stati modificati da un'altra richiesta: ricarica l'elenco e salva di nuovo.</value>
+  </data>
+  <data name="OwnerInvoiceLineCommission" xml:space="preserve">
+    <value>Provvigione di gestione - {0} - {1}</value>
+  </data>
+  <data name="OwnerInvoiceLineFlatFee" xml:space="preserve">
+    <value>{0} - {1} - {2}</value>
+  </data>
+  <data name="OwnerInvoiceFlatFeeCleaning" xml:space="preserve">
+    <value>Forfait pulizie</value>
+  </data>
+  <data name="OwnerInvoiceFlatFeeLinen" xml:space="preserve">
+    <value>Forfait biancheria</value>
+  </data>
+  <data name="OwnerInvoiceStay" xml:space="preserve">
+    <value>soggiorno {0} con partenza il {1}</value>
+  </data>
+  <data name="OwnerInvoiceLineCharge" xml:space="preserve">
+    <value>{0} - {1} - {2}</value>
+  </data>
+  <data name="OwnerInvoiceLineCardFees" xml:space="preserve">
+    <value>Riaddebito commissioni di incasso con carta - {0} - {1}</value>
+  </data>
+  <data name="OwnerInvoiceLinePortalCommissions" xml:space="preserve">
+    <value>Riaddebito commissioni {0} - {1}</value>
+  </data>
+  <data name="OwnerInvoiceOtherPortals" xml:space="preserve">
+    <value>altri portali</value>
+  </data>
+  <data name="OwnerInvoiceLineExpense" xml:space="preserve">
+    <value>Spesa anticipata in nome e per conto del proprietario: {0} - {1} - {2}</value>
+  </data>
+  <data name="FiscalDocPdfOwnerPeriod" xml:space="preserve">
+    <value>Prestazioni del periodo {0}</value>
+  </data>
+  <data name="StatementDocOwnerInvoice" xml:space="preserve">
+    <value>Fattura n. {0}</value>
   </data>
   <data name="OwnerExternalDocumentInvalid" xml:space="preserve">
     <value>Il collegamento alla fattura esterna non è valido: controlla il campo indicato.</value>
