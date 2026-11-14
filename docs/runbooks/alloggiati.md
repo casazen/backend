@@ -571,7 +571,7 @@ The sandbox accepted a complete guest only with place names Octorate recognizes.
 
 ### Arrival and departure
 
-`CHECKIN_END` and `CHECKOUT_END` are tracked like `NO_SHOW`: a row in `OctorateStayStateSyncs`, attempts, last error and, after the last attempt, one "To do" `octorate_stay_state_failed`, closed when a later attempt succeeds. The arrival waits for the write of the guests (`WaitingForGuests`: a link Pending, or Failed with attempts left): the row stays Pending with no attempt used up and the retry job asks again. `OctorateBookingStatePushJob` keeps the signature of E02 (jobs already queued run the new body).
+`CHECKIN_END` and `CHECKOUT_END` are tracked like `NO_SHOW`: a row in `OctorateStayStateSyncs`, attempts, last error and, after the last attempt, one "To do" `octorate_stay_state_failed`, closed when a later attempt succeeds. The arrival waits for the write of the guests (`WaitingForGuests`: a link Pending, or Failed with attempts left, tried within the last 6 hours): the row stays Pending with no attempt used up and the retry job asks again; a write that has not moved for 6 hours is stuck and no longer holds it. `OctorateBookingStatePushJob` keeps the signature of E02 (jobs already queued run the new body).
 
 ### Per-stay status
 

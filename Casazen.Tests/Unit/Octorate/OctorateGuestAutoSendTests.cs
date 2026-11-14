@@ -319,6 +319,12 @@ public class OctorateGuestAutoSendTests
         await held.AddLinkAsync(1, OctorateSyncStatus.Failed, attempts: 1, errorCode: CheckInErrorCodes.PlaceNotRecognized);
         await held.AddLinkAsync(0, OctorateSyncStatus.Failed, attempts: 5, errorCode: CheckInErrorCodes.Server);
         Assert.Equal(OctorateStayStateOutcome.Sent, (await held.Sync().SetStayStateAsync(held.BookingId, OctorateStayState.CheckInEnd, CancellationToken.None)).Outcome);
+
+        // A write the retry job has not moved for longer than the limit is stuck (a rule keeps it from going on): the arrival is not held for ever.
+        var stuck = await World.CreateAsync();
+        stuck.Client.Setup(c => c.SetCheckInStatusAsync(Accommodation, Reservation, It.IsAny<OctorateCheckInStatus>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        await stuck.AddLinkAsync(0, OctorateSyncStatus.Pending, attempts: 1, ageHours: (int)CheckInOctorateSyncService.ArrivalWaitLimit.TotalHours + 1);
+        Assert.Equal(OctorateStayStateOutcome.Sent, (await stuck.Sync().SetStayStateAsync(stuck.BookingId, OctorateStayState.CheckInEnd, CancellationToken.None)).Outcome);
     }
 
     /// <summary>The state of the stay is tracked with a row, a retry and one "To do" (<c>octorate_stay_state_failed</c>) after the last attempt, closed by a later success.</summary>
@@ -582,7 +588,7 @@ public class OctorateGuestAutoSendTests
             await db.SaveChangesAsync();
         }
 
-        public async Task AddLinkAsync(int position, OctorateSyncStatus status, int attempts, string? errorCode = null)
+        public async Task AddLinkAsync(int position, OctorateSyncStatus status, int attempts, string? errorCode = null, int ageHours = 1)
         {
             await using var db = NewDb();
             db.StayGuestOctorateLinks.Add(new StayGuestOctorateLink
@@ -595,7 +601,7 @@ public class OctorateGuestAutoSendTests
                 Status = status,
                 Attempts = attempts,
                 ErrorCode = errorCode,
-                UpdatedAt = Now.UtcDateTime.AddHours(-1),
+                UpdatedAt = Now.UtcDateTime.AddHours(-ageHours),
             });
             await db.SaveChangesAsync();
         }

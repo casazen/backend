@@ -104,6 +104,12 @@ public sealed class CheckInOctorateSyncService(
     /// </summary>
     public const string PlaceTodoReason = "octorate_place_not_recognized";
 
+    /// <summary>
+    /// How long the arrival waits for a write of the stay's guests that the retry job has not moved: the five attempts of a link take about two and a
+    /// half hours with the backoff of the job, so six hours is a write that is stuck, not one that is still going.
+    /// </summary>
+    public static readonly TimeSpan ArrivalWaitLimit = TimeSpan.FromHours(6);
+
     public const string ReasonConnectorOff = "connector_off";
     public const string ReasonNoReservation = "no_reservation";
     public const string ReasonNotConnected = "not_connected";
@@ -405,8 +411,10 @@ public sealed class CheckInOctorateSyncService(
     }
 
     /// <summary>
-    /// A write of the guests of the stay is still to complete: a link Pending, or Failed with attempts left (a guest held back for a place Octorate does
-    /// not know is not one: nothing will complete it by itself, so it never holds the arrival). Read in the org of the booking.
+    /// A write of the guests of the stay is still to complete: a link Pending, or Failed with attempts left, that was tried within
+    /// <see cref="ArrivalWaitLimit"/> (a guest held back for a place Octorate does not know is not one: nothing will complete it by itself, so it never
+    /// holds the arrival; and a write the retry job has not moved for longer than the limit, because a rule keeps it from going on, such as a sender
+    /// changed since, is not waited for either: the arrival is a fact). Read in the org of the booking.
     /// </summary>
     private async Task<bool> GuestWritesPendingAsync(Booking booking, CancellationToken cancellationToken)
     {
@@ -415,7 +423,8 @@ public sealed class CheckInOctorateSyncService(
             .AsNoTracking()
             .Where(l => l.OrgId == booking.OrgId && l.BookingId == booking.Id)
             .ToListAsync(cancellationToken);
-        return links.Any(l => IsToRetry(l));
+        var oldest = UtcNow() - ArrivalWaitLimit;
+        return links.Any(l => IsToRetry(l) && l.UpdatedAt > oldest);
     }
 
     public async Task<OctorateCheckInView> GetStatusAsync(Guid bookingId, CancellationToken cancellationToken)

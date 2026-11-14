@@ -227,6 +227,38 @@ public class OnboardingBulkServiceTests : IAsyncLifetime
     /// default), no consent, no audit line, no call to Octorate. Each property is judged by the rules of the switch of E03 and reported
     /// <c>wouldChange</c>, <c>unchanged</c> or <c>refused</c> with the rule.
     /// </summary>
+    /// <summary>
+    /// E20/F01/US01/T01 (decision O1): the org-wide setting of the guests written to the channel manager on their own rides on the confirmed apply, once for
+    /// the org and never for each property; a dry run and an apply that is not confirmed write nothing, and the answer says what was asked.
+    /// </summary>
+    [Fact]
+    public async Task Apply_TheOrgWideAutoSendRidesOnTheConfirmedApply_AndNeverOnALook()
+    {
+        await ConnectAsync();
+        await ConfirmListingAsync(_world.Granted);
+        var bulk = Bulk();
+        var choice = new BulkChoice(ComplianceSenderType.Manual, AutoSendGuestsToOctorate: true);
+
+        async Task<bool> StoredAsync() => (await _db.Orgs.AsNoTracking().SingleAsync(o => o.Id == _world.OrgId)).AutoSendGuestsToOctorate;
+
+        var look = await bulk.ApplyAsync(_world.OrgWide, _world.OwnerUserId, All(), choice, dryRun: true, confirmed: true, Ct);
+        var unconfirmed = await bulk.ApplyAsync(_world.OrgWide, _world.OwnerUserId, All(), choice, dryRun: false, confirmed: false, Ct);
+        Assert.All([look, unconfirmed], r => Assert.Equal((true, true), (r.DryRun, r.AutoSendGuestsToOctorate)));
+        Assert.False(await StoredAsync());
+
+        var applied = await bulk.ApplyAsync(_world.OrgWide, _world.OwnerUserId, All(), choice, dryRun: false, confirmed: true, Ct);
+
+        Assert.Equal((false, true), (applied.DryRun, applied.AutoSendGuestsToOctorate));
+        Assert.True(await StoredAsync());
+        var org = await _db.Orgs.AsNoTracking().SingleAsync(o => o.Id == _world.OrgId);
+        Assert.Equal(_world.OwnerUserId, org.AutoSendGuestsToOctorateChangedByUserId);
+
+        // A choice that does not carry it leaves it as it is (and says nothing about it).
+        var sender = await bulk.ApplyAsync(_world.OrgWide, _world.OwnerUserId, All(), Choice(ComplianceSenderType.Manual), dryRun: false, confirmed: true, Ct);
+        Assert.Null(sender.AutoSendGuestsToOctorate);
+        Assert.True(await StoredAsync());
+    }
+
     [Fact]
     public async Task Apply_DryRunOrNotConfirmed_WritesNothing_AndReportsTheRuleOfEachProperty()
     {
