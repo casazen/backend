@@ -83,12 +83,14 @@ accounting for Swiss owners, and the retention law that applies (Italy at least 
   (positive = owed to the owner). `AppDbContext` refuses to save a change or a removal of a line (409 `owner_ledger_immutable`); a correction is a
   reversal (`ReversesEntryId`, at most one per line) plus a replacement line.
 - **Posting** (`POST api/owner-accounting/periods/{y}/{m}/post`, `agency.statement.manage`): idempotent. Sources: the collected payments (`Completed`,
-  `PartiallyRefunded` and `Refunded`: a refund moves a payment to one of the last two, so the revenue is `Amount - RefundedAmount`; a partial refund lowers
-  the line, a full one leaves nothing; the share in force on the payment day; recognized on the payment day, or on the check-out for a profile whose
-  recognition rule is `stay`), the mandate commission on that share, the channel commission of an **active** booking (the one definition of the code:
-  `AlloggiatiStatusRules.ActiveBookingStatuses` and no no-show) whose payments are gross (`OtaCommissionIncludedInPayments`, with its first payment that
-  still holds money), the approved charges (`OwnerCharge`, one-time or monthly, to one owner or split by the shares), the wires marked paid **unless the
-  owner settled the same statement month with a confirmed payout** (see «Payouts»). The shares are split in the source currency, rounded half to even, the
+  `PartiallyRefunded` and `Refunded`: a refund moves a payment to one of the last two, so the revenue is `Amount - RefundedAmount` less its part of the
+  tourist tax; a partial refund lowers the line, a full one leaves nothing; the share in force on the payment day; recognized on the payment day, or on the
+  check-out for a profile whose recognition rule is `stay`), the stays that check out in the month without a collected payment (E13/F01/US01/T02, see
+  «Posting per booking flow»), the mandate commission on each share, the channel commission of an **active** booking (the one definition of the code:
+  `AlloggiatiStatusRules.ActiveBookingStatuses` and no no-show) of a portal, or whose payments are gross (`OtaCommissionIncludedInPayments`, with its
+  first payment that still holds money), the flat fees of the mandate and the card fees it passes through, the approved charges (`OwnerCharge`, one-time
+  or monthly, to one owner or split by the shares), the wires marked paid **unless the owner settled the same statement month with a confirmed payout**
+  (see «Payouts»). The shares are split in the source currency, rounded half to even, the
   last owner (by id) taking the remainder; then converted with the agency's rate (`OwnerFxRate`, `api/owner-accounting/fx-rates`, the rate of the day or of
   the 7 days before; CasaZen fetches none). Changed facts reverse the old line and post the new one. A line computed while the owner could not be resolved
   (no profile, no approved rule) has no rule version and its own key (`…:norule`): once the owner can be resolved it is reversed and replaced by a line that
@@ -101,9 +103,10 @@ accounting for Swiss owners, and the retention law that applies (Italy at least 
   (`…/versions/{id}/approve`, `agency.statement.manage`) and publication (`…/publish`, `agency.statement.publish`) are distinct permissions; publication
   stores the JSON of the version and of its lines with its SHA-256 (`…/published`), kept after it is superseded. `GET …/versions/{id}` drills down to the
   lines and their sources.
-- **Readiness** (`GET …/periods/{y}/{m}/readiness`): issues of a property (`ownership_missing`, `ownership_share_gap`, `source_amount_missing`) have no owner of
+- **Readiness** (`GET …/periods/{y}/{m}/readiness`): issues of a property (`ownership_missing`, `ownership_share_gap`, `source_amount_missing`,
+  `channel_commission_missing`) have no owner of
   their own and are listed for the org, **and** hold back the statement of every owner of that property (a source left out of the ledger is a line missing
-  from their accounts); owner issues from the fiscal profile (`owner_fiscal_*`), `fx_missing`, `unposted_source`, `duplicate_entry`, `currency_mixed`,
+  from their accounts); owner issues from the fiscal profile (`owner_fiscal_*`), `mandate_missing_for_stay`, `fx_missing`, `unposted_source`, `duplicate_entry`, `currency_mixed`,
   `statement_missing`, `statement_not_approved`, `ledger_statement_imbalance` (the lines of the month or the balance carried in changed after the cut-off),
   `negative_balance`, `period_dirty`. For a closed month: `period_closed` and, not blocking, `late_source_after_close` for each line the sources say the
   month should hold and the ledger does not (it arrived or changed after the close: it is told, never posted; a correction in a later month fixes the account).
@@ -123,6 +126,39 @@ accounting for Swiss owners, and the retention law that applies (Italy at least 
 - **Scope**: the endpoints need an org-wide reach; a collaborator restricted to some properties gets 403 even with the permission.
 - **Not yet**: the import of the outgoing bank movements (a wire marked paid, or a confirmed payout, is the evidence of the transfer), and the wire batch that
   pays the net of the withholding (see «Payouts»).
+
+### Posting per booking flow (E13/F01/US01/T02)
+
+The three flows of `fatturazione/analisi-tecnica.md` §5bis, plus the bookings entered by hand. **One path posts a stay**: a stay with a collected payment
+(of the showcase, or one the agency recorded with `ManualPaymentService`) is posted by its payments; a stay without one by its booking. A stay whose
+booking line is still live in another month (it was posted before it was paid) is not posted again by its payment; posting that month again reverses the
+booking line, and the month of the payment then posts it (the readiness says `unposted_source` until then).
+
+| Flow | Revenue (`BookingRevenue`) | Channel commission (`ChannelFee`) | Commission, flat fees, card fee |
+|---|---|---|---|
+| Portal (Booking.com, Airbnb, Expedia, Vrbo, the others of `FiscalCopy.IsOtaBookingSource`) collected by the portal or at the property | source `Booking`: `Booking.BasePrice` (the gross without the tourist tax, the cleaning included; never the tourist tax, never the guest fee of the portal) on the **check-out** (⚖ R1), the shares of that day | the commission of the reservation (`Booking.OtaCommission`, `RuleVersion` `payload`); without it the rule of the agency in force at the check-out (`channel-rule:{id}`) or the configured default (`channel-default`), its percent × its base; neither: `channel_commission_missing` (blocking, for every owner of the property), no fee. **Borne by the owner**, as before | commission of the mandate on its base; flat fees; no card fee |
+| The agency's own site outside CasaZen, a booking entered by hand: no payment recorded | source `Booking`: `BasePrice` on the check-out | none (not a portal) | commission; flat fees |
+| The same, the agency recorded the payment | source `Payment`: what it collected net of refunds and of its part of the tourist tax, on the **day of the recorded payment** (or the check-out for a profile `stay`) | none | commission; flat fees |
+| CasaZen showcase (card through Stripe) | source `Payment`, as above, on the payment day | none | commission; flat fees; `OwnerExpense` of the card fee (`Payment.ProviderFeeAmount`, in its currency) when `PassthroughPaymentFees` |
+
+- **Tourist tax out**: `Payment.Amount` includes `Booking.TouristTax`; a payment's part of it is `round(collected × TouristTax / TotalPrice)` half to even,
+  never more than the tax or the payment (`OwnerLedgerRules.RevenueOfPayment`): a deposit, a balance and a partial refund each lose their own part, so the
+  parts of several payments can differ by a cent from the tax. The tourist tax is never in the revenue nor in a commission base.
+- **Commission** (`AgencyCommission`): the percent of the mandate in force on the day of the revenue × its base (`GrossExclTouristTax`: the revenue;
+  `GrossExclTouristTaxAndCleaning`: less its part of `Booking.CleaningFee`), the base split by the shares half to even with the remainder to the last owner.
+  A share with **no mandate** in force is posted without commission and raises the blocking `mandate_missing_for_stay` (owner, stay): never a commission of
+  zero by default; a mandate of 0% is a choice and raises nothing.
+- **Flat fees**: for every active stay that checks out in the month, whatever path posts its revenue, an `OwnerCharge` line per fee kind
+  (`SourceType` `MandateFlatFee`, `SourceReference` `cleaning` or `linen`, the booking as source) of the mandate in force on the check-out, in the settlement
+  currency of the owner, split by the shares; approved by the mandate itself, a recharge whose VAT the owner invoice applies (E14); once per stay and kind
+  (key `flat:{booking}:{kind}`).
+- **Card fee**: `OwnerExpense` (source the payment, key `payfee:{payment}`) only when the mandate of the share passes the payment fees through.
+- **Cancellations and no-shows**: only the active bookings are posted (a pending, cancelled or no-show booking is not); a booking cancelled after it was
+  posted loses its lines at the next posting of its month (reversal), as any changed source.
+- **Keys**: `stay:{booking}` (booking path), `pay:{payment}` (payment path), `fee:{booking}` (`:rule:{id}` or `:default` when the fee does not come from the
+  reservation), `flat:{booking}:{kind}`, `payfee:{payment}`.
+- **Deviation from the brief**: the brief writes `BasePrice + CleaningFee + extras`; in the code `Booking.BasePrice` already holds the cleaning (PC-07, the
+  fiscal document and the Home revenue read it so) and a booking has no extras of its own, so the gross is `BasePrice`.
 
 ## External invoice references (E06/F01/US02/T05)
 
