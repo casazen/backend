@@ -20,9 +20,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public sealed partial class OrgInvitationService
 {
-    /// <summary>Context key of the staff console: whoever has a membership of it is a platform admin.</summary>
-    private const string PlatformAdminContext = "admin";
-
     /// <summary>
     /// The Auth0 roles the onboarding gives an owner by rental type; a person who leaves its empty org for another loses them,
     /// whatever the rental type it chose (only the roles it can hold are removed, the others are left alone).
@@ -394,11 +391,10 @@ public sealed partial class OrgInvitationService
         return new OrgInvitationAccepted(invitation.OrgId, OrgName(org), invitation.Role, invitation.Areas.ToList(), LeftEmptyOrg: false);
     }
 
+    /// <summary>The token says the caller is staff, or the account is a platform administrator (<see cref="PlatformAdministrators"/>).</summary>
     private async Task<bool> IsPlatformAdminAsync(bool tokenSaysAdmin, User account, CancellationToken cancellationToken) =>
         tokenSaysAdmin
-        || account.Role == UserRole.Admin
-        || await db.UserContextMemberships.AsNoTracking()
-            .AnyAsync(m => m.UserId == account.Id && m.ContextKey == PlatformAdminContext, cancellationToken);
+        || await PlatformAdministrators.Of(db).AsNoTracking().AnyAsync(u => u.Id == account.Id, cancellationToken);
 
     private static string OrgName(Org org) => string.IsNullOrWhiteSpace(org.DisplayName) ? org.Name : org.DisplayName;
 

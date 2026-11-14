@@ -263,6 +263,28 @@ public class InAppNotificationPushDecoratorTests
     }
 
     [Fact]
+    public void AddCasazenPush_ThePlatformStaff_GetsTheBellAboutTheRequest_AndNoPushOnAPhone()
+    {
+        // «Fallo per me» (14/11/2026): the app has no screen of the staff, so no job for the phones; the bell is queued, about the request.
+        using var provider = Wire(out var jobs);
+        using var scope = provider.CreateScope();
+        var push = scope.ServiceProvider.GetRequiredService<IPushNotificationService>();
+
+        var queued = push.Enqueue(
+            PushDeliveryKeys.AssistRequested(RequestId),
+            PushAudience.PlatformStaff(RequestId),
+            new PushNotificationPayload(string.Empty, string.Empty, PushTypes.AssistRequested, null, string.Empty));
+
+        Assert.False(queued);
+        var job = Assert.Single(jobs);
+        Assert.Equal(typeof(InAppNotificationJob), job.Type);
+        var notification = Assert.IsType<QueuedInAppNotification>(job.Args[1]);
+        Assert.Equal(
+            (PushAudienceKind.PlatformStaff, RequestId, (Guid?)RequestId, PushTypes.AssistRequested),
+            (notification.AudienceKind, notification.AudienceId, notification.EntityId, notification.Type));
+    }
+
+    [Fact]
     public void AddCasazenPush_RegistersTheServiceAndTheJobsOfTheBell()
     {
         var services = new ServiceCollection();
