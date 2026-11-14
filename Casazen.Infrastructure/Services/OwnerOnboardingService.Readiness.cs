@@ -26,19 +26,18 @@ public sealed partial class OwnerOnboardingService
         var periods = await LoadPeriodsAsync(scope, propertyIds, ct);
         var owners = await LoadVisibleOwnersAsync(scope, ct);
 
-        var ownershipIds = periods.Select(p => p.Id).ToHashSet();
-        var mandates = (await db.OwnerMandates
+        // The mandates of each owner: those of its ownerships in reach (the shape of before E13) and its own, which cover all its properties
+        // (E13/F01/US01/T01). An owner is only ever judged on its own mandates.
+        var ownerOfPeriod = periods.ToDictionary(p => p.Id, p => p.OwnerId);
+        var mandatesByOwner = (await db.OwnerMandates
                 .AsNoTracking()
                 .Where(m => m.OrgId == scope.OrgId)
-                .Select(m => new { m.PropertyOwnershipId, m.EffectiveFrom, m.EffectiveUntil, m.MandatePdfUrl })
+                .Select(m => new { m.PropertyOwnerId, m.PropertyOwnershipId, m.ValidFrom, m.ValidTo, m.MandatePdfUrl })
                 .ToListAsync(ct))
-            .Where(m => ownershipIds.Contains(m.PropertyOwnershipId))
-            .Select(m => new OwnerMandateFact(
-                m.PropertyOwnershipId,
-                RomeCalendar.DateInRome(m.EffectiveFrom),
-                m.EffectiveUntil is { } until ? RomeCalendar.DateInRome(until) : null,
-                !string.IsNullOrWhiteSpace(m.MandatePdfUrl)))
-            .ToList();
+            .Where(m => m.PropertyOwnershipId is not { } ownership || ownerOfPeriod.ContainsKey(ownership))
+            .ToLookup(
+                m => m.PropertyOwnershipId is { } ownership ? ownerOfPeriod[ownership] : m.PropertyOwnerId,
+                m => new OwnerMandateFact(m.PropertyOwnershipId, m.ValidFrom, m.ValidTo, !string.IsNullOrWhiteSpace(m.MandatePdfUrl)));
         var invitations = (await db.OwnerInvitations
                 .AsNoTracking()
                 .Where(i => i.OrgId == scope.OrgId)
@@ -83,7 +82,7 @@ public sealed partial class OwnerOnboardingService
 
             // Only the periods that are not over are the owner's today: the shares of a property it left are not its reason to complete.
             var ownership = OwnerReadinessRules.Ownership([.. facts.Where(f => f.End is not { } last || last >= today)], ownIssues);
-            var mandate = OwnerReadinessRules.Mandate(facts, mandates, today);
+            var mandate = OwnerReadinessRules.Mandate(facts, [.. mandatesByOwner[owner.Id]], today);
             var fiscal = OwnerReadinessRules.FiscalProfile(owner);
             var payment = OwnerReadinessRules.Payment(owner);
             // The portal needs a name to greet the owner by, not the whole registry: the kind of the owner can wait.

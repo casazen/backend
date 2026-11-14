@@ -67,6 +67,9 @@ public class FiscalDocumentsRegistrationTests
             (typeof(IOwnerFiscalProfileService), typeof(OwnerFiscalProfileService), ServiceLifetime.Scoped),
             (typeof(IOwnerAccountingService), typeof(OwnerAccountingService), ServiceLifetime.Scoped),
             (typeof(IOwnerPayoutService), typeof(OwnerPayoutService), ServiceLifetime.Scoped),
+
+            // The mandates of the owners, their billing address and the channel commission rules (E13/F01/US01/T01).
+            (typeof(IOwnerMandateService), typeof(OwnerMandateService), ServiceLifetime.Scoped),
         };
 
         Assert.Equal(expected, ours);

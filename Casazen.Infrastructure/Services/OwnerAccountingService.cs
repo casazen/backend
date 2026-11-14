@@ -4,28 +4,36 @@ using System.Text;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
 /// <inheritdoc cref="IOwnerAccountingService"/>
 /// <remarks>
-/// <para><b>Posting.</b> The lines of a month are planned from their sources: the completed payments (the owner's share on the payment day, recognized on
-/// the payment day, or on the check-out for a profile with the recognition rule <c>stay</c>), the mandate commission on that share, the channel commission
-/// of an active booking whose payments are gross (with its first payment), the approved charges, the paid wires. Each line gets a key made of its source,
-/// type, owner and amounts: a key already posted is left alone, a new key is posted, a posted key no longer planned is reversed. The shares are split
-/// in the currency of the source, rounded half to even, the last owner (by id) taking the remainder, then converted with the rate of the agency.</para>
+/// <para><b>Posting.</b> The lines of a month are planned from their sources: the collected payments (the owner's share on the payment day of the revenue
+/// net of the refunds and of the tourist tax, recognized on the payment day, or on the check-out for a profile with the recognition rule <c>stay</c>); the
+/// stays that check out in the month without a collected payment (a portal, the agency's own site, a booking entered by hand: the gross of the booking
+/// without the tourist tax, recognized on the check-out, E13/F01/US01/T02); the commission of the mandate in force on the share's day on its base (a share
+/// without a mandate is a blocking <c>mandate_missing_for_stay</c>, never a commission of zero); the channel commission of a portal (from the reservation,
+/// else the rule of the agency or the configured default) or of a booking whose payments are gross (with its first payment); the flat fees of the mandate
+/// per stay; the card fee when the mandate passes it through; the approved charges; the paid wires. One path posts a stay: a stay with a collected payment
+/// is posted by its payments, one without by its booking. Each line gets a key made of its source, type, owner and amounts: a key already posted is left
+/// alone, a new key is posted, a posted key no longer planned is reversed. The shares are split in the currency of the source, rounded half to even, the
+/// last owner (by id) taking the remainder, then converted with the rate of the agency.</para>
 /// <para><b>Locks.</b> Posting, generation, close and corrections of one org run one at a time (<see cref="PostgresAdvisoryLocks.Scope.OwnerAccounting"/>).</para>
 /// </remarks>
 public sealed partial class OwnerAccountingService(
     AppDbContext db,
     IOwnerFiscalProfileService fiscal,
     TimeProvider time,
-    ILogger<OwnerAccountingService> logger) : IOwnerAccountingService
+    ILogger<OwnerAccountingService> logger,
+    IOptions<OwnerAccountingOptions>? accountingOptions = null) : IOwnerAccountingService
 {
     /// <summary>A rate older than this many days before the day of the source is not used.</summary>
     public const int FxMaxAgeDays = 7;
@@ -39,6 +47,7 @@ public sealed partial class OwnerAccountingService(
     private static readonly OwnerLedgerSourceType[] PostedSources =
     [
         OwnerLedgerSourceType.Payment, OwnerLedgerSourceType.Booking, OwnerLedgerSourceType.OwnerCharge, OwnerLedgerSourceType.WireBatch,
+        OwnerLedgerSourceType.MandateFlatFee,
     ];
 
     /// <summary>The states of a payment that collected money: a refund moves it to <c>PartiallyRefunded</c> or <c>Refunded</c> (the revenue is the net).</summary>

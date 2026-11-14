@@ -196,6 +196,8 @@ public class OwnerAccountingCloseTests
             (swiss, 60m, new DateTime(2026, 10, 15)),
             (italian, 40m, new DateTime(2026, 10, 15)));
         await world.EndOwnershipAsync(property, swiss, 100m, new DateTime(2026, 10, 15));
+        await world.OwnerMandateAsync(swiss, 0m);
+        await world.OwnerMandateAsync(italian, 0m);
         world.Db.OwnerFxRates.Add(new OwnerFxRate
         {
             OrgId = OrgId,
@@ -329,6 +331,7 @@ public class OwnerAccountingCloseTests
         var world = await World.CreateAsync();
         var owner = await world.OwnerAsync("IT", "EUR");
         var property = await world.PropertyAsync("EUR", (owner, 100m, new DateTime(2026, 1, 1)));
+        await world.OwnerMandateAsync(owner, 0m);
         await world.PaymentAsync(property, 100m, new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc));
         await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
         world.Clock.Advance(TimeSpan.FromMinutes(1));
@@ -379,6 +382,7 @@ public class OwnerAccountingCloseTests
         var world = await World.CreateAsync();
         var owner = await world.OwnerAsync("IT", "EUR");
         var property = await world.PropertyAsync("EUR", (owner, 100m, new DateTime(2026, 1, 1)));
+        await world.OwnerMandateAsync(owner, 0m);
         await world.PaymentAsync(property, 100m, new DateTime(2026, 9, 10, 9, 0, 0, DateTimeKind.Utc));
         await world.PaymentAsync(property, 50m, new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc));
         await world.Service.PostPeriodAsync(OrgId, 2026, 9, null);
@@ -538,10 +542,28 @@ public class OwnerAccountingCloseTests
             Db.OwnerMandates.Add(new OwnerMandate
             {
                 OrgId = OrgId,
+                PropertyOwnerId = owner,
                 PropertyOwnershipId = ownership.Id,
                 CommissionPercent = commission,
                 MandatePdfUrl = "https://example.com/mandato-test.pdf",
-                EffectiveFrom = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                ValidFrom = new DateOnly(2026, 1, 1),
+            });
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// A mandate of the owner for all its properties from January (E13/F01/US01/T01): a stay of an owner without one holds its version back
+        /// (mandate_missing_for_stay), so the owners of the tests whose versions are approved have one, of zero when the commission is not the point.
+        /// </summary>
+        public async Task OwnerMandateAsync(Guid owner, decimal commission)
+        {
+            Db.OwnerMandates.Add(new OwnerMandate
+            {
+                OrgId = OrgId,
+                PropertyOwnerId = owner,
+                CommissionPercent = commission,
+                MandatePdfUrl = "https://example.com/mandato-test.pdf",
+                ValidFrom = new DateOnly(2026, 1, 1),
             });
             await Db.SaveChangesAsync();
         }

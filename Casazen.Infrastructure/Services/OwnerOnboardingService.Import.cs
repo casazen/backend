@@ -185,19 +185,18 @@ public sealed partial class OwnerOnboardingService
                 .ToListAsync(ct);
         var periodsByProperty = periods.ToLookup(p => p.PropertyId);
         var ownershipIds = periods.Select(p => p.Id).ToList();
+        // Only a mandate of one ownership (the shape of before E13) is bound to the period it must stay inside; the mandate of an owner covers all its
+        // properties and no period (E13/F01/US01/T01).
         var mandatesByOwnership = (ownershipIds.Count == 0
                 ? []
                 : await db.OwnerMandates
                     .AsNoTracking()
-                    .Where(m => m.OrgId == scope.OrgId && ownershipIds.Contains(m.PropertyOwnershipId))
-                    .Select(m => new { m.PropertyOwnershipId, m.EffectiveFrom, m.EffectiveUntil })
+                    .Where(m => m.OrgId == scope.OrgId && m.PropertyOwnershipId != null && ownershipIds.Contains(m.PropertyOwnershipId.Value))
+                    .Select(m => new { OwnershipId = m.PropertyOwnershipId!.Value, m.ValidFrom, m.ValidTo })
                     .ToListAsync(ct))
             .ToLookup(
-                m => m.PropertyOwnershipId,
-                m => new MandateRow(
-                    m.PropertyOwnershipId,
-                    RomeCalendar.DateInRome(m.EffectiveFrom),
-                    m.EffectiveUntil is { } until ? RomeCalendar.DateInRome(until) : null));
+                m => m.OwnershipId,
+                m => new MandateRow(m.OwnershipId, m.ValidFrom, m.ValidTo));
 
         // The owners of the file, row after row: the same owner named twice is one owner, and what a row gives is checked against what the
         // owner holds and against what the earlier valid rows gave it.

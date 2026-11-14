@@ -6339,6 +6339,24 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerNotFound" xml:space="preserve">
     <value>Proprietario non trovato.</value>
   </data>
+  <data name="OwnerMandateInvalid" xml:space="preserve">
+    <value>Un dato del mandato non è valido: controlla il campo indicato.</value>
+  </data>
+  <data name="OwnerMandateOverlap" xml:space="preserve">
+    <value>Esiste già una versione del mandato che inizia in questa data o dopo: le versioni non si sovrappongono.</value>
+  </data>
+  <data name="OwnerMandateOwnersEmpty" xml:space="preserve">
+    <value>Indica almeno un proprietario, oppure non indicarne nessuno per applicare il mandato standard a tutti quelli che ne sono senza.</value>
+  </data>
+  <data name="OwnerAddressInvalid" xml:space="preserve">
+    <value>Un dato dell'indirizzo del proprietario non è valido: controlla il campo indicato.</value>
+  </data>
+  <data name="ChannelCommissionRulesInvalid" xml:space="preserve">
+    <value>Una commissione dei canali non è valida: controlla la riga e il campo indicati.</value>
+  </data>
+  <data name="ChannelCommissionRuleInUse" xml:space="preserve">
+    <value>Una regola è già citata da righe del conto dei proprietari: non si elimina e non se ne cambiano percentuale o base. Chiudila con una data di fine e aggiungi la nuova dal giorno dopo.</value>
+  </data>
   <data name="OwnerPeriodInvalid" xml:space="preserve">
     <value>Il periodo non è valido: indica un anno tra 2000 e 2100 e un mese tra 1 e 12.</value>
   </data>

@@ -172,11 +172,13 @@ internal static class OwnerRowRules
         if (row.VatNumber is not null)
             values.Vat = OwnerFieldRules.NormalizeVat(row.VatNumber);
 
-        Address(state, row.BillingStreet, 200, OwnerImportColumns.BillingStreet, v => values.Street = v);
-        Address(state, row.BillingCivic, 20, OwnerImportColumns.BillingCivic, v => values.Civic = v);
-        Address(state, row.BillingPostalCode, 20, OwnerImportColumns.BillingPostalCode, v => values.PostalCode = v);
-        Address(state, row.BillingCity, 100, OwnerImportColumns.BillingCity, v => values.City = v);
-        Address(state, row.BillingProvince, 50, OwnerImportColumns.BillingProvince, v => values.Province = v);
+        // The structured address (columns indirizzo_via, indirizzo_civico, cap, localita, paese of the template, E13/F01/US01/T01), stored encrypted: the
+        // limits are the ones of the clear text, the same as PUT api/owners/{id}/address.
+        Address(state, row.BillingStreet, PropertyOwner.BillingStreetMaxLength, OwnerImportColumns.BillingStreet, v => values.Street = v);
+        Address(state, row.BillingCivic, PropertyOwner.BillingCivicMaxLength, OwnerImportColumns.BillingCivic, v => values.Civic = v);
+        Address(state, row.BillingPostalCode, PropertyOwner.BillingPostalCodeMaxLength, OwnerImportColumns.BillingPostalCode, v => values.PostalCode = v);
+        Address(state, row.BillingCity, PropertyOwner.BillingCityMaxLength, OwnerImportColumns.BillingCity, v => values.City = v);
+        Address(state, row.BillingProvince, PropertyOwner.BillingProvinceMaxLength, OwnerImportColumns.BillingProvince, v => values.Province = v);
         if (row.BillingCountry is not null)
         {
             if (OwnerFieldRules.TryNormalizeCountry(row.BillingCountry, out var country))

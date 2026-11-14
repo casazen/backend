@@ -72,6 +72,14 @@ public static class FiscalDocumentExtensions
         // The payouts to the owners with their withholding evidence, the annual tax data and the filing states (E06/F05/US02/T03).
         services.AddScoped<IOwnerPayoutService, OwnerPayoutService>();
 
+        // The prudent defaults of the owner ledger (E13/F01/US01/T01, ⚖ R2: the channel commissions when a reservation brings none), from the section
+        // OwnerAccounting. Not validated at startup: a value that is not a portal or a percent is ignored and the stays of that channel are held back by
+        // the readiness (channel_commission_missing), never posted with a guessed commission.
+        services.AddOptions<OwnerAccountingOptions>().Bind(configuration.GetSection(OwnerAccountingOptions.SectionName));
+
+        // The versioned mandates of the owners, the standard mandate, the billing address of an owner and the channel commission rules (E13/F01/US01/T01).
+        services.AddScoped<IOwnerMandateService, OwnerMandateService>();
+
         return services;
     }
 }

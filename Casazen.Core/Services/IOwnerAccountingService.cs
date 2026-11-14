@@ -286,6 +286,81 @@ public static class OwnerReadinessCodes
 
     /// <summary>A source of a closed month that the ledger does not hold (it arrived or changed after the close): told, never posted (not blocking).</summary>
     public const string LateSourceAfterClose = "late_source_after_close";
+
+    /// <summary>
+    /// A stay of an owner with no mandate in force on its day (E13/F01/US01/T02): its revenue is posted, no commission and no flat fee is, and the version is
+    /// held back (blocking) until a mandate covers the day: never a commission of zero by default.
+    /// </summary>
+    public const string MandateMissingForStay = "mandate_missing_for_stay";
+
+    /// <summary>
+    /// A stay of a portal whose reservation brings no commission, with no rule of the agency in force at the check-out and no configured default for the
+    /// channel (E13/F01/US01/T02): the fee is not guessed, the owners of the property are held back (blocking) until a rule says it.
+    /// </summary>
+    public const string ChannelCommissionMissing = "channel_commission_missing";
+}
+
+/// <summary>The kinds of the flat fees of a mandate, as the <see cref="OwnerLedgerEntry.SourceReference"/> of their lines (E13/F01/US01/T02).</summary>
+public static class OwnerLedgerFlatFees
+{
+    /// <summary>The cleaning of a stay (<see cref="OwnerMandate.CleaningFlatRate"/>).</summary>
+    public const string Cleaning = "cleaning";
+
+    /// <summary>The linen of a stay (<see cref="OwnerMandate.LinenFlatRate"/>).</summary>
+    public const string Linen = "linen";
+}
+
+/// <summary>
+/// The money rules of the posting of a stay (E13/F01/US01/T02, NF-115), pure: the revenue of a payment without the tourist tax, the gross of a stay posted
+/// from its booking and the base a commission is a percentage of. Every amount is rounded to the cent half to even, as the rest of the owner ledger.
+/// </summary>
+public static class OwnerLedgerRules
+{
+    /// <summary>
+    /// The revenue of a collected payment for the owners: what it collected net of its refunds (<paramref name="collected"/>) less its part of the tourist
+    /// tax of the stay, in proportion to the part of the total of the stay it covers (<paramref name="touristTax"/> / <paramref name="stayTotal"/>, which
+    /// includes the tax): a deposit, a balance and a partial refund each keep their own part. The part of the tax is rounded half to even and never more
+    /// than the tax or the payment. Without a tax or a total the whole amount is revenue.
+    /// </summary>
+    public static decimal RevenueOfPayment(decimal collected, decimal touristTax, decimal stayTotal)
+    {
+        if (collected <= 0m)
+            return 0m;
+        if (touristTax <= 0m || stayTotal <= 0m)
+            return collected;
+
+        var tax = Math.Round(collected * touristTax / stayTotal, 2, MidpointRounding.ToEven);
+        return collected - Math.Min(tax, Math.Min(touristTax, collected));
+    }
+
+    /// <summary>
+    /// The part of <paramref name="amount"/> (the gross of a stay without the tourist tax, or the revenue a payment brought of it) a commission of
+    /// <paramref name="basis"/> is a percentage of: all of it, or without the share of the cleaning of the stay (<paramref name="stayCleaning"/> /
+    /// <paramref name="stayGross"/>, rounded half to even). The tourist tax is never in it.
+    /// </summary>
+    public static decimal CommissionBaseOf(CommissionBase basis, decimal amount, decimal stayGross, decimal stayCleaning)
+    {
+        if (basis != CommissionBase.GrossExclTouristTaxAndCleaning || amount <= 0m || stayGross <= 0m || stayCleaning <= 0m)
+            return amount;
+
+        var cleaning = Math.Min(stayCleaning, stayGross);
+        return amount - Math.Round(amount * cleaning / stayGross, 2, MidpointRounding.ToEven);
+    }
+
+    /// <summary>
+    /// The gross, without the tourist tax, of a stay posted from its booking (no collected payment). For a booking of a portal
+    /// (<paramref name="fromPortal"/>) it is the total of the reservation less the tourist tax: the room, the cleaning and the extras the portal charged, which
+    /// the booking does not keep apart (<c>BasePrice</c> of an imported reservation is its room only, <c>CleaningFee</c> stays 0). It is a prudent choice to be
+    /// checked on the first real payload of the channel manager, and never less than the room (<paramref name="basePrice"/>): a total that leaves the tax out
+    /// is not taxed twice. Any other booking is priced by CasaZen: its <c>BasePrice</c> already holds the cleaning (PC-07) and it has no extras of its own.
+    /// </summary>
+    public static decimal GrossOfStay(bool fromPortal, decimal basePrice, decimal totalPrice, decimal touristTax)
+    {
+        if (!fromPortal || totalPrice <= 0m)
+            return basePrice;
+
+        return Math.Max(basePrice, totalPrice - Math.Max(touristTax, 0m));
+    }
 }
 
 /// <summary>

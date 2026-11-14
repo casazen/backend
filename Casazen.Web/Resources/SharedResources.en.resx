@@ -6339,6 +6339,24 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OwnerNotFound" xml:space="preserve">
     <value>Owner not found.</value>
   </data>
+  <data name="OwnerMandateInvalid" xml:space="preserve">
+    <value>A value of the mandate is not valid: check the field shown.</value>
+  </data>
+  <data name="OwnerMandateOverlap" xml:space="preserve">
+    <value>A mandate version already starts on this date or later: versions do not overlap.</value>
+  </data>
+  <data name="OwnerMandateOwnersEmpty" xml:space="preserve">
+    <value>Name at least one owner, or none to apply the standard mandate to every owner without one.</value>
+  </data>
+  <data name="OwnerAddressInvalid" xml:space="preserve">
+    <value>A value of the owner's address is not valid: check the field shown.</value>
+  </data>
+  <data name="ChannelCommissionRulesInvalid" xml:space="preserve">
+    <value>A channel commission is not valid: check the row and the field shown.</value>
+  </data>
+  <data name="ChannelCommissionRuleInUse" xml:space="preserve">
+    <value>A rule is already named by lines of the owner ledger: it cannot be removed and its percent or base cannot change. Close it with an end date and add the new one from the next day.</value>
+  </data>
   <data name="OwnerPeriodInvalid" xml:space="preserve">
     <value>The period is not valid: give a year between 2000 and 2100 and a month between 1 and 12.</value>
   </data>

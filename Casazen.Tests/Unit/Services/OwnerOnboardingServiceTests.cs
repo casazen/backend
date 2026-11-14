@@ -556,7 +556,7 @@ public class OwnerOnboardingServiceTests : IAsyncLifetime
             OrgId = _world.OrgId,
             PropertyOwnershipId = period,
             MandatePdfUrl = "mandates/a.pdf",
-            EffectiveFrom = HostScopeScenario.Day(2027, 1, 1),
+            ValidFrom = new DateOnly(2027, 1, 1),
         });
         await _db.SaveChangesAsync();
 
@@ -687,7 +687,7 @@ public class OwnerOnboardingServiceTests : IAsyncLifetime
             OrgId = _world.OrgId,
             PropertyOwnershipId = period,
             MandatePdfUrl = "mandates/a.pdf",
-            EffectiveFrom = HostScopeScenario.Day(2025, 1, 1),
+            ValidFrom = new DateOnly(2025, 1, 1),
         });
         await _db.SaveChangesAsync();
 
@@ -704,7 +704,7 @@ public class OwnerOnboardingServiceTests : IAsyncLifetime
             OrgId = _world.OrgId,
             PropertyOwnershipId = hiddenPeriod,
             MandatePdfUrl = "mandates/b.pdf",
-            EffectiveFrom = HostScopeScenario.Day(2025, 1, 1),
+            ValidFrom = new DateOnly(2025, 1, 1),
         });
         await _db.SaveChangesAsync();
 
@@ -723,8 +723,8 @@ public class OwnerOnboardingServiceTests : IAsyncLifetime
         await AddPeriodAsync(Granted, former, 100m, new DateOnly(2020, 1, 1), new DateOnly(2025, 12, 31));
         var onGranted = await AddPeriodAsync(Granted, current, 100m, new DateOnly(2026, 1, 1));
         var onHidden = await AddPeriodAsync(Hidden, current, 100m, new DateOnly(2025, 1, 1));
-        _db.OwnerMandates.Add(new OwnerMandate { OrgId = _world.OrgId, PropertyOwnershipId = onGranted, MandatePdfUrl = "mandates/g.pdf", EffectiveFrom = HostScopeScenario.Day(2026, 1, 1) });
-        _db.OwnerMandates.Add(new OwnerMandate { OrgId = _world.OrgId, PropertyOwnershipId = onHidden, MandatePdfUrl = "mandates/h.pdf", EffectiveFrom = HostScopeScenario.Day(2025, 1, 1) });
+        _db.OwnerMandates.Add(new OwnerMandate { OrgId = _world.OrgId, PropertyOwnershipId = onGranted, MandatePdfUrl = "mandates/g.pdf", ValidFrom = new DateOnly(2026, 1, 1) });
+        _db.OwnerMandates.Add(new OwnerMandate { OrgId = _world.OrgId, PropertyOwnershipId = onHidden, MandatePdfUrl = "mandates/h.pdf", ValidFrom = new DateOnly(2025, 1, 1) });
         await _db.SaveChangesAsync();
 
         var report = await Service().GetReadinessAsync(_world.OrgWide, Ct);
