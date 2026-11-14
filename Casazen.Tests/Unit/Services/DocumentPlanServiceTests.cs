@@ -274,6 +274,11 @@ public class DocumentPlanServiceTests
         await world.Db.SaveChangesAsync();
         Assert.Equal(profile.Id, Assert.Single((await world.Plans.PlanAsync(booking)).Documents).IssuerProfileId);
 
+        // The same owner's stay in Italy is issued with the Italian rules: its Swiss profile does not issue it, the owner needs an Italian one («Da fare»).
+        var italian = await world.Plans.PlanAsync(await world.BookingAsync());
+        Assert.Empty(italian.Documents);
+        Assert.Equal([owner], italian.OwnersWithoutIssuer);
+
         var withoutOwners = await world.BookingAsync(withOwners: false);
         Assert.Equal(world.OrganizationProfile, Assert.Single((await world.Plans.PlanAsync(withoutOwners)).Documents).IssuerProfileId);
     }

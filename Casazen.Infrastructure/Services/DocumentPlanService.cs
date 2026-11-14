@@ -15,7 +15,7 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Who signs for several co-owners</b> (⚖ I6): the co-owner whose mandate is in force on the day (<see cref="OwnerMandateRules.InForce"/>); among several, or
 /// when none has one, the largest share, then the oldest ownership, then the smallest id: always the same one.</item>
 /// <item><b>A profile that can issue</b> is a complete one (<see cref="OwnerIssuerProfileRules.MissingFields"/>, with the regime code of the rule in force on the
-/// day of the stay): a profile that misses a field counts as none.</item>
+/// day of the stay): a profile that misses a field counts as none, and so does a Swiss profile for the stay of an Italian property.</item>
 /// <item>Reads through the tenant filter of its caller and names the org of the booking in every query; it writes nothing.</item>
 /// </list>
 /// </remarks>
@@ -78,8 +78,9 @@ public sealed class DocumentPlanService(AppDbContext db, IFiscalTaxRuleResolver 
             if (!ready || !profile!.StayIssuedByOwner || !FiscalDocumentRules.IsSwiss(profile.CountryCode))
                 return everything;
         }
-        else if (!ready)
+        else if (!ready || FiscalDocumentRules.IsSwiss(profile!.CountryCode))
         {
+            // The stay of an Italian property is issued with the Italian rules: a Swiss profile (made for ⚖ C1) does not issue it, the owner needs an Italian one.
             return new DocumentPlan(booking.Id, [], [signatory.PropertyOwnerId]);
         }
 

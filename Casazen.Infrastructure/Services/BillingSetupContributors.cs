@@ -247,9 +247,15 @@ public sealed class OwnerIssuerSetupContributor(AppDbContext db, IFiscalTaxRuleR
             : [new BillingSetupItem(BillingSetupItemKeys.OwnerIssuerMissing, Section, BillingSetupReasons.Required, without)];
     }
 
-    /// <summary>The profile has everything an issue needs today (the regime code of the rule in force when it has none of its own).</summary>
+    /// <summary>
+    /// The profile has everything an issue of an Italian stay needs today (the regime code of the rule in force when it has none of its own): an Italian profile,
+    /// since a Swiss one (made for ⚖ C1) never issues the stay of an Italian property.
+    /// </summary>
     private bool CanIssue(OrgFiscalIssuerProfile profile, DateOnly today)
     {
+        if (FiscalDocumentRules.IsSwiss(profile.CountryCode))
+            return false;
+
         var rule = taxRules.TryResolve(profile.CountryCode, profile.DocumentRegime, profile.StayVatTreatment, CleaningFeeTreatment.FollowsStay, today);
         return OwnerIssuerProfileRules.MissingFields(profile, rule?.FatturaPaRegimeCode).Count == 0;
     }

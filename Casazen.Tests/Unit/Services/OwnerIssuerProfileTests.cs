@@ -264,8 +264,25 @@ public class OwnerIssuerProfileTests
         (await world.Db.PropertyOwners.SingleAsync(o => o.Id == anonymized)).AnonymizedAt = Now.UtcDateTime;
         await world.Db.SaveChangesAsync();
 
+        // A complete Swiss profile (made for ⚖ C1) does not issue the stays of an Italian property: that owner is missing too.
+        var swissProfile = await world.OwnerAsync("IT");
+        var swiss = await world.Service.SaveAsync(
+            OrgId,
+            swissProfile,
+            new SaveOwnerIssuerProfileCommand
+            {
+                Regime = DocumentRegime.SwissNotRegistered,
+                LegalName = "TEST Hans Muster",
+                AddressStreet = "Via Nassa",
+                PostalCode = "6900",
+                City = "Lugano",
+                CountryCode = "CH",
+            },
+            null);
+        Assert.True(swiss.CanIssue);
+
         var item = Assert.Single(await contributor.EvaluateAsync(OrgId, CancellationToken.None));
-        Assert.Equal((BillingSetupItemKeys.OwnerIssuerMissing, BillingSetupSections.Italy, BillingSetupReasons.Required, 2), (item.Key, item.Section, item.Reason, item.Count));
+        Assert.Equal((BillingSetupItemKeys.OwnerIssuerMissing, BillingSetupSections.Italy, BillingSetupReasons.Required, 3), (item.Key, item.Section, item.Reason, item.Count));
         Assert.Empty(await contributor.EvaluateAsync(Guid.NewGuid(), CancellationToken.None));
     }
 
