@@ -348,66 +348,49 @@ public class GuestDocumentLineBuilderTests
         Assert.True(new SwissTouristTaxOptionsValidator().Validate(null, new SwissTouristTaxOptions { PlatformCollected = [BookingSource.Direct] }).Failed);
     }
 
+    /// <summary>
+    /// PROOF TEST: money rule (⚖ C5, E11/F01/US01/T04). The channels whose portal collects the Swiss tourist tax are the ones the issuer confirmed, an empty list included («no portal
+    /// collects it» is an answer, never «use the default»); until it confirms them a Swiss issuer has the shipped default (Airbnb) and an Italian one none. The default is read, never
+    /// copied into the profile, so the step «Tassa di soggiorno» of the billing setup stays open until the issuer confirms the channels itself; the document follows the list.
+    /// </summary>
     [Fact]
-    public async Task NewSwissProfile_StartsFromTheShippedPlatformCollectedDefault_AndAnAnswerIsKept()
+    public async Task PlatformCollectedChannels_AreTheConfirmedOnes_ElseTheShippedSwissDefault_NeverCopiedIntoTheProfile()
     {
         await using var db = NewDb();
-        db.Orgs.Add(NewOrg(OrgId, hasVat: false));
-        var second = Guid.NewGuid();
-        db.Orgs.Add(NewOrg(second, hasVat: false));
-        await db.SaveChangesAsync();
-        var issuers = IssuersOf(db, ShippedSwissTouristTax());
+        await SeedSwissOrgAsync(db, []);
+        var property = await AddPropertyAsync(db, swiss: true);
+        var airbnb = await AddBookingAsync(db, property, BookingSource.Airbnb, 400m, 0m, touristTax: 0m, guests: 2);
+        var bookingCom = await AddBookingAsync(db, property, BookingSource.BookingCom, 400m, 0m, touristTax: 0m, guests: 2);
+        var rule = Rule("CH", DocumentRegime.SwissVatRegistered);
+        var builder = BuilderOf(db, ShippedSwissTouristTax());
+        var profile = await db.OrgFiscalIssuerProfiles.SingleAsync();
 
-        // Nothing said about the channels: the default is copied into the profile when it is created.
-        await issuers.SaveSettingsAsync(OrgId, SwissSetting(channels: null));
-        Assert.Equal([BookingSource.Airbnb], (await db.OrgFiscalIssuerProfiles.AsNoTracking().SingleAsync(p => p.OrgId == OrgId)).PlatformCollectedTouristTaxChannels);
+        // Nothing confirmed: the default applies (Airbnb collects it, Booking.com does not) and the draft of the service follows it; the profile is left as it was.
+        Assert.False(profile.PlatformCollectedTouristTaxChannelsConfirmed);
+        Assert.Equal([BookingSource.Airbnb], builder.PlatformCollectedChannelsOf(profile));
+        var draft = await ServiceOf(db, ShippedSwissTouristTax()).CreateDraftAsync(airbnb, "auth0|host");
+        Assert.DoesNotContain(draft.Lines, l => l.LineType == FiscalLineType.TouristTax);
+        Assert.False((await db.OrgFiscalIssuerProfiles.AsNoTracking().SingleAsync()).PlatformCollectedTouristTaxChannelsConfirmed);
+        Assert.Equal(12m, TaxOf(await builder.BuildAsync(bookingCom, rule, builder.PlatformCollectedChannelsOf(profile))));
 
-        // An answer, even an empty one, is kept; and a save of the existing profile never brings the default back.
-        await issuers.SaveSettingsAsync(second, SwissSetting(channels: []));
-        Assert.Empty((await db.OrgFiscalIssuerProfiles.AsNoTracking().SingleAsync(p => p.OrgId == second)).PlatformCollectedTouristTaxChannels);
-        await issuers.SaveSettingsAsync(OrgId, SwissSetting(channels: []));
-        Assert.Empty((await db.OrgFiscalIssuerProfiles.AsNoTracking().SingleAsync(p => p.OrgId == OrgId)).PlatformCollectedTouristTaxChannels);
+        // Confirmed that no portal collects it: the default is gone and the guest of Airbnb is billed it too.
+        profile.ConfirmPlatformCollectedTouristTaxChannels([]);
+        Assert.Empty(builder.PlatformCollectedChannelsOf(profile));
+        Assert.Equal(12m, TaxOf(await builder.BuildAsync(airbnb, rule, builder.PlatformCollectedChannelsOf(profile))));
 
-        // An Italian profile never gets it.
-        var italian = Guid.NewGuid();
-        db.Orgs.Add(NewOrg(italian, hasVat: true));
-        await db.SaveChangesAsync();
-        await issuers.SaveSettingsAsync(
-            italian,
-            SwissSetting(channels: null) with { CountryCode = "IT", Regime = DocumentRegime.VatOrdinary, PostalCode = "00187", Province = "RM", SwissVatNumber = null, VatRegistered = null });
-        Assert.Empty((await db.OrgFiscalIssuerProfiles.AsNoTracking().SingleAsync(p => p.OrgId == italian)).PlatformCollectedTouristTaxChannels);
+        // Confirmed another list: only that one.
+        profile.ConfirmPlatformCollectedTouristTaxChannels([BookingSource.BookingCom]);
+        Assert.Equal([BookingSource.BookingCom], builder.PlatformCollectedChannelsOf(profile));
+        Assert.Null(TaxOf(await builder.BuildAsync(bookingCom, rule, builder.PlatformCollectedChannelsOf(profile))));
+        Assert.Equal(12m, TaxOf(await builder.BuildAsync(airbnb, rule, builder.PlatformCollectedChannelsOf(profile))));
+
+        // An Italian issuer never has the Swiss default, confirmed or not; the shipped default is not shared between callers.
+        Assert.Empty(builder.PlatformCollectedChannelsOf(new OrgFiscalIssuerProfile { CountryCode = "IT" }));
+        Assert.Equal([BookingSource.Airbnb], builder.PlatformCollectedChannelsOf(new OrgFiscalIssuerProfile { CountryCode = "ch" }));
+        Assert.Empty(BuilderOf(db, new SwissTouristTaxOptions()).PlatformCollectedChannelsOf(new OrgFiscalIssuerProfile { CountryCode = "CH" }));
     }
 
     // ---------------------------------------------------------------- helpers
-
-    private static SaveIssuerSettingsCommand SwissSetting(IReadOnlyList<string>? channels) =>
-        new()
-        {
-            Mode = DocumentIssuerMode.CasaZen,
-            Regime = DocumentRegime.SwissVatRegistered,
-            LegalName = "TEST Agenzia SA",
-            AddressStreet = "Via Test",
-            AddressCivic = "1",
-            PostalCode = "6900",
-            City = "Lugano",
-            CountryCode = "CH",
-            SwissVatNumber = "CHE-109.322.551",
-            PlatformCollectedTouristTaxChannels = channels,
-        };
-
-    private static DocumentIssuerService IssuersOf(AppDbContext db, SwissTouristTaxOptions swissTax)
-    {
-        var environment = new Mock<IHostEnvironment>();
-        environment.SetupGet(e => e.EnvironmentName).Returns("Test");
-        return new DocumentIssuerService(
-            db,
-            new TestFeatureFlags(FeatureFlags.FiscalDocumentIssuance),
-            TaxRuleCatalogs.Resolver(),
-            environment.Object,
-            new FakeTimeProvider(Now),
-            NullLogger<DocumentIssuerService>.Instance,
-            Options.Create(swissTax));
-    }
 
     private static decimal? TaxOf(GuestDocumentLines lines) =>
         lines.Lines.SingleOrDefault(l => l.LineType == FiscalLineType.TouristTax)?.GrossAmount;

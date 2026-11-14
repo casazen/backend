@@ -254,11 +254,12 @@ draft). The amounts are gross (VAT included), in the currency of the property; t
 or the agency collects it** (`TouristTaxCollectorRules`: a booking that is not of a channel, the active `TouristTaxChannelRule` of the comune and the channel, then the
 host's declaration). If the portal collects it there is no line (never a double charge to the guest); a channel stay whose collector nobody has declared yet has none either.
 
-**Tourist tax, Switzerland.** No line for a channel in the profile's `PlatformCollectedTouristTaxChannels`; else `Booking.TouristTax` when it is > 0; else the canton rule of
+**Tourist tax, Switzerland.** No line for a channel in the channels the profile says collect it (`PlatformCollectedTouristTaxChannels` once confirmed, else the shipped default, below); else `Booking.TouristTax` when it is > 0; else the canton rule of
 `SwissTouristTax:Rules` (the canton comes from `SwissMunicipalities` through `Property.SwissMunicipalityCode`): `guests × nights × rate`, each night at the rate in force on
 that night. Shipped: Ticino, CHF 2.00 per person and night from 2025-01-01, no age exemption (⚖ C4: all the guests of `Booking.NumberOfGuests`), source
 `https://www.ticino.ch/en/hospitality/opportunita/tasse/alloggio.html`. A canton without a rule gives no line. `SwissTouristTax:PlatformCollected` (⚖ C5, `Airbnb`) is the default
-copied into the profile of a Swiss issuer **when the profile is created** without an answer for it; the issuer's own list is the one the documents follow afterwards.
+list of a Swiss issuer **that has not confirmed its own yet**: `IGuestDocumentLineBuilder.PlatformCollectedChannelsOf` reads it when the document is made and never copies it into
+the profile (the step «Tassa di soggiorno» of the billing setup stays open until the issuer confirms its list). The issuer's confirmed list, an empty one included («no portal collects it»), is the one the documents follow from then on; an Italian issuer never has the default.
 Example: 2 guests × 3 nights × CHF 2.00 = CHF 12.00, out of VAT.
 
 **Who collected the money** (`FiscalDocument.PaymentChannel`, written with the draft):
@@ -290,7 +291,8 @@ over: the booking may have its next one (the new draft of a date change).
   the **active** bookings (`AlloggiatiStatusRules`: no request, cancelled or no-show) whose check-out day is **before today in Rome** and not older than `FiscalDocuments:DueLookbackDays`
   (31: a channel import brings years of past stays, and the first run after the issuance is switched on must never draft or issue the history; an older stay is drafted by hand or with the
   bulk issue), the most recent first, **at most 500 a run per organization**, the rest the next day. Nothing runs with the flag off or while the profile misses an item the documents need
-  (`MissingFields`); one session advisory lock per organization (`FiscalDocumentsDueRun`, 1_602) keeps a retry or a manual trigger from running over it. With `AutoIssueGuestDocuments` on
+  (`MissingFields`) or the billing setup misses an item in the sections `issuer` and `vat` (`IBillingSetupService.GetProgressAsync`, the same prerequisite as the flow «Documents»; the
+  other sections, a series or the automatic issue not confirmed yet, never hold back a draft); one session advisory lock per organization (`FiscalDocumentsDueRun`, 1_602) keeps a retry or a manual trigger from running over it. With `AutoIssueGuestDocuments` on
   the draft (the one the event made too) is issued through the same path as the API (the whole point of the profile setting); with it off the drafts wait for the host. A stay whose
   data is missing is skipped and counted (`skipped`), read again at the next run: never a failure, never a stop of the others. An organization that fails does not stop the others. Idempotent:
   the second run finds nothing to do. The log carries ids and counts.

@@ -154,7 +154,7 @@ public sealed partial class FiscalDocumentService
         if (active)
         {
             // The lines the booking bills now, against what the document says.
-            var built = await _lines.BuildAsync(booking.Id, rule, profile.PlatformCollectedTouristTaxChannels, ct);
+            var built = await _lines.BuildAsync(booking.Id, rule, _lines.PlatformCollectedChannelsOf(profile), ct);
             FiscalDocumentAmounts? now = null;
             try
             {

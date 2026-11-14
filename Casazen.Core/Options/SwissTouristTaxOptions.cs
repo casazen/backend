@@ -15,7 +15,8 @@ namespace Casazen.Core.Options;
 /// rule is Ticino, CHF 2.00 per person and night from 2025-01-01 for holiday apartments, no age exemption (⚖ C4). A canton without a rule gets no tourist tax
 /// line of its own (a booking that carries its own amount still does).</item>
 /// <item><b>Platform collected.</b> The channels whose portal collects the tax itself (⚖ C5, <c>Airbnb</c> in Ticino): the document of their bookings has no tourist tax
-/// line. It is the default copied into the profile of a Swiss issuer when it is created; the issuer can change its own list.</item>
+/// line. It is the default of a Swiss issuer that has not confirmed its own list yet (<see cref="IGuestDocumentLineBuilder.PlatformCollectedChannelsOf"/>): read, never copied
+/// into the profile, so the step «Tassa di soggiorno» of the billing setup stays open until the issuer confirms its list, which is then the one the documents follow.</item>
 /// <item><b>Validated at startup</b> (<see cref="SwissTouristTaxOptionsValidator"/>): a malformed canton, a rate that is not positive or has more than two decimals, a rule
 /// without its source, overlapping ranges of a canton and a channel that is not a portal stop the application with a clear message.</item>
 /// </list>

@@ -6,6 +6,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
+using Casazen.Core.Models;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
@@ -88,6 +89,39 @@ public class FiscalDocumentAutomationTests
         profile.LegalName = null;
         await db.SaveChangesAsync();
         Assert.Equal(FiscalDocumentsDueSkipReasons.ProfileIncomplete, (await service.ProcessDueDocumentsAsync(OrgId, 500, 31)).NotRunReason);
+    }
+
+    /// <summary>
+    /// The flow «Documents» reads the sections «issuer» and «VAT» of the billing setup (E11/F01/US01/T04): an item missing in them (the tax rule of the regime, or one that another epic
+    /// adds) stops the daily run of the organization, and nothing of the other sections does (a series or the automatic issue not confirmed yet never holds back a draft).
+    /// </summary>
+    [Fact]
+    public async Task DueJob_ReadsTheIssuerAndVatSectionsOfTheBillingSetup_AndNothingElse()
+    {
+        await using var db = NewDb();
+        await SeedOrgAsync(db);
+        var property = await AddPropertyAsync(db, "auth0|host");
+        await AddBookingAsync(db, property, BookingStatus.CheckedOut, BookingSource.Direct, checkOut: new DateTime(2026, 11, 17));
+        IReadOnlyCollection<string>? asked = null;
+        var progress = new BillingSetupProgress(2, 2, []);
+        var setup = new Mock<IBillingSetupService>();
+        setup
+            .Setup(s => s.GetProgressAsync(OrgId, It.IsAny<IReadOnlyCollection<string>?>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, IReadOnlyCollection<string>?, CancellationToken>((_, sections, _) => asked = sections)
+            .ReturnsAsync(() => progress);
+        var service = ServiceOf(db, billingSetup: setup.Object);
+
+        // An item missing in the setup of the issuer or of the VAT: the run does nothing for the organization.
+        progress = new BillingSetupProgress(1, 2, [new BillingSetupItem(BillingSetupItemKeys.TaxRuleMissing, BillingSetupSections.Vat, BillingSetupReasons.Unavailable)]);
+        Assert.Equal(FiscalDocumentsDueSkipReasons.ProfileIncomplete, (await service.ProcessDueDocumentsAsync(OrgId, 500, 31)).NotRunReason);
+        Assert.Empty(await db.FiscalDocuments.AsNoTracking().ToListAsync());
+        Assert.Equal([BillingSetupSections.Issuer, BillingSetupSections.Vat], asked);
+
+        // Nothing missing in those two sections (the others are not even asked): the draft is made.
+        progress = new BillingSetupProgress(2, 2, []);
+        var run = await service.ProcessDueDocumentsAsync(OrgId, 500, 31);
+        Assert.Null(run.NotRunReason);
+        Assert.Equal(1, run.DraftsCreated);
     }
 
     [Fact]
@@ -550,7 +584,8 @@ public class FiscalDocumentAutomationTests
         AppDbContext db,
         bool issuanceOn = true,
         IPushNotificationService? push = null,
-        Func<Guid, InvoiceDataView?>? recipient = null)
+        Func<Guid, InvoiceDataView?>? recipient = null,
+        IBillingSetupService? billingSetup = null)
     {
         var flags = issuanceOn ? new TestFeatureFlags(FeatureFlags.FiscalDocumentIssuance) : new TestFeatureFlags();
         var rules = TaxRuleCatalogs.Resolver();
@@ -579,7 +614,8 @@ public class FiscalDocumentAutomationTests
             new GuestDocumentLineBuilder(db, texts, Options.Create(new FiscalDocumentRulesOptions()), Options.Create(new SwissTouristTaxOptions())),
             new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, time),
             push,
-            flags);
+            flags,
+            billingSetup);
     }
 
     private static (Mock<IRecurringJobManager> Manager, Dictionary<string, (Job Job, string Cron, RecurringJobOptions Options)> Registered) Schedule(bool issuance)

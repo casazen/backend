@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
+using Casazen.Core.Models;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -50,8 +51,9 @@ public sealed partial class FiscalDocumentService
             return FiscalDocumentsDueResult.NotRun(FiscalDocumentsDueSkipReasons.IssuanceOff);
 
         // The setup of the issuer is the one of the other writes: a profile that misses an item the documents need makes nothing (the host is told by the setup, not by a run).
+        // The flow «Documents» reads the sections «issuer» and «VAT» of the billing setup (E11/F01/US01/T04: an item that another epic adds to them counts too).
         var settings = await issuers.GetSettingsAsync(orgId, ct);
-        if (settings.MissingFields.Count > 0)
+        if (settings.MissingFields.Count > 0 || !await IssuerAndVatSetupIsCompleteAsync(orgId, ct))
             return FiscalDocumentsDueResult.NotRun(FiscalDocumentsDueSkipReasons.ProfileIncomplete);
 
         // One run per organization at a time, for the whole run: a retry or a manual trigger finds the lock taken and leaves.
@@ -135,6 +137,16 @@ public sealed partial class FiscalDocumentService
             issued,
             skipped);
         return new FiscalDocumentsDueResult(null, examined, created, issued, skipped);
+    }
+
+    /// <summary>Nothing is missing in the sections «issuer» and «VAT» of the billing setup of the organization (true when no billing setup is wired, as in a service built by hand).</summary>
+    private async Task<bool> IssuerAndVatSetupIsCompleteAsync(Guid orgId, CancellationToken ct)
+    {
+        if (billingSetup is null)
+            return true;
+
+        var progress = await billingSetup.GetProgressAsync(orgId, [BillingSetupSections.Issuer, BillingSetupSections.Vat], ct);
+        return progress.Missing.Count == 0;
     }
 
     public async Task<FiscalDocumentBatchResult> IssueBatchAsync(HostScope scope, FiscalDocumentBatchRequest request, CancellationToken ct = default)

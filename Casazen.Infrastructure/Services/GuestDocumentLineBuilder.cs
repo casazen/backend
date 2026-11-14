@@ -28,6 +28,16 @@ public sealed class GuestDocumentLineBuilder(
     private const string TouristTaxKey = "FiscalDocLineTouristTax";
     private const string SwissTouristTaxKey = "FiscalDocLineTouristTaxCh";
 
+    public IReadOnlyList<BookingSource> PlatformCollectedChannelsOf(OrgFiscalIssuerProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+
+        if (profile.PlatformCollectedTouristTaxChannelsConfirmed)
+            return profile.PlatformCollectedTouristTaxChannels;
+
+        return FiscalDocumentRules.IsSwiss(profile.CountryCode) ? swissTouristTax.Value.PlatformCollected.Distinct().ToList() : [];
+    }
+
     public async Task<GuestDocumentLines> BuildAsync(
         Guid bookingId,
         FiscalTaxRule rule,

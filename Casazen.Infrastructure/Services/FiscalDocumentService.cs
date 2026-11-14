@@ -45,7 +45,8 @@ public sealed partial class FiscalDocumentService(
     IGuestDocumentLineBuilder? lineBuilder = null,
     IInternalActivityService? activities = null,
     IPushNotificationService? pushNotifications = null,
-    IFeatureFlags? featureFlags = null) : IFiscalDocumentService
+    IFeatureFlags? featureFlags = null,
+    IBillingSetupService? billingSetup = null) : IFiscalDocumentService
 {
     /// <summary>The description of the lines of a credit note: fixed words of the document, never personal data.</summary>
     private const string CreditKey = "FiscalDocLineCredit";
@@ -456,7 +457,7 @@ public sealed partial class FiscalDocumentService(
         }
 
         // The lines of the stay whatever its source (E12/F01/US01/T01): the amounts of the portal, the tourist tax only when the host collects it, who collected the money.
-        var built = await _lines.BuildAsync(booking.Id, rule, profile.PlatformCollectedTouristTaxChannels, ct);
+        var built = await _lines.BuildAsync(booking.Id, rule, _lines.PlatformCollectedChannelsOf(profile), ct);
         var amounts = FiscalDocumentTotals.FromGross(built.Lines, rule.StampDuty);
 
         draft.OrgId = booking.OrgId;

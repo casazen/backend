@@ -24,14 +24,23 @@ namespace Casazen.Core.Services;
 public interface IGuestDocumentLineBuilder
 {
     /// <summary>
-    /// The lines of the booking under <paramref name="rule"/>, and who collected the money. <paramref name="platformCollectedTouristTaxChannels"/> are the channels the
-    /// profile of the issuer says collect the tourist tax themselves (used for a Swiss document). 404 when the booking is not visible to the caller.
+    /// The lines of the booking under <paramref name="rule"/>, and who collected the money. <paramref name="platformCollectedTouristTaxChannels"/> are the channels whose portal
+    /// collects the tourist tax itself (used for a Swiss document): what <see cref="PlatformCollectedChannelsOf"/> says of the profile of the issuer. 404 when the booking is not
+    /// visible to the caller.
     /// </summary>
     Task<GuestDocumentLines> BuildAsync(
         Guid bookingId,
         FiscalTaxRule rule,
         IReadOnlyList<BookingSource> platformCollectedTouristTaxChannels,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// The channels whose portal collects the tourist tax of the guests of an issuer (⚖ C5): the ones the issuer confirmed, an empty list included (E11/F01/US01/T04: «no portal
+    /// collects it» is an answer, never «use the default»); while it has confirmed none, a Swiss issuer has the shipped default <c>SwissTouristTax:PlatformCollected</c> and an
+    /// Italian one has none (its channel rules are the ones of the comune). The default is read here and never copied into the profile, so the step «Tassa di soggiorno» of the
+    /// billing setup stays open until the issuer itself confirms the channels.
+    /// </summary>
+    IReadOnlyList<BookingSource> PlatformCollectedChannelsOf(OrgFiscalIssuerProfile profile);
 }
 
 /// <summary>The lines of a guest document as the guest pays them (VAT included), in order, with who collected the money.</summary>
