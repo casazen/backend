@@ -93,6 +93,10 @@ public class EncryptedColumnsTests
                 // NF-13: encrypted property access codes (gate, lockbox, smart lock PIN).
                 "PropertyAccessCode.EncryptedCode:Casazen.PropertyAccessCode",
                 "PropertyICalFeed.ImportUrl:Casazen.PropertyICalFeed.ImportUrl",
+                // E20/F03/US01/T01: the regional ISTAT credentials the host enters (write-only, opened only through the support vault).
+                "PropertyIstatCredentials.Password:Casazen.PropertyIstatCredentials",
+                "PropertyIstatCredentials.StructureCode:Casazen.PropertyIstatCredentials",
+                "PropertyIstatCredentials.Username:Casazen.PropertyIstatCredentials",
                 // NF-66, PO-09: an entry of the knowledge base of the assistant (a fact, a rule, the answer of a FAQ).
                 "PropertyKnowledgeEntry.Text:Casazen.Assistant.Content",
                 // ADR-012: property owner financial data (IBAN and fiscal code), and the BIC and the VAT number of the owner profile (E10/F02/US02/T01).
@@ -133,6 +137,10 @@ public class EncryptedColumnsTests
                 "StayGuest.TaxExemptionCode:Casazen.Guest.Document",
                 // NF-46: the same reason on the confirmed tax of the stay (kept 10 years, cleared with the guest's data).
                 "StayTouristTaxGuest.ExemptionCode:Casazen.Guest.Document",
+                // E20/F03/US01/T01 (decision O5): the credentials of the support vault.
+                "SupportVaultSecret.ExtraCode:Casazen.SupportVault",
+                "SupportVaultSecret.Password:Casazen.SupportVault",
+                "SupportVaultSecret.Username:Casazen.SupportVault",
                 // NF-25, NF-113: the wire file of the agency (the IBAN, the name and the address of every owner) and the IBAN of the agency that pays (E16/F01/US01/T01).
                 "WireBatch.DebitAccount:Casazen.WireBatch.File",
                 "WireBatch.XmlContent:Casazen.WireBatch.File",

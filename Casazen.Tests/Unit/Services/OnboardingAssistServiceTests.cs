@@ -78,9 +78,10 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal([CasazenPolicies.AdminOnly], controller.GetCustomAttributes<AuthorizeAttribute>(inherit: true).Select(a => a.Policy));
         Assert.Empty(controller.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true));
 
+        // The queue, its update and the controlled opening of the support vault (E20/F03/US01/T01).
         var routed = RoutedActions(controller);
-        Assert.Equal(["List", "Update"], routed.Select(a => a.Method.Name).Order());
-        Assert.Equal(["GET", "PUT"], routed.Select(a => a.Verb.HttpMethods.Single()).Order());
+        Assert.Equal(["List", "Reveal", "Update"], routed.Select(a => a.Method.Name).Order());
+        Assert.Equal(["GET", "POST", "PUT"], routed.Select(a => a.Verb.HttpMethods.Single()).Order());
         Assert.All(routed, action =>
         {
             Assert.Empty(action.Method.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true));

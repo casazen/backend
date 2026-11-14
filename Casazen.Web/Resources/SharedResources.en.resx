@@ -5652,6 +5652,45 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="AssistStepAlreadyDone" xml:space="preserve">
     <value>This step is already done: there is nothing to ask support.</value>
   </data>
+  <data name="SupportVaultReasonInvalid" xml:space="preserve">
+    <value>Write why you open the credentials: {0} to {1} characters.</value>
+  </data>
+  <data name="SupportVaultKindInvalid" xml:space="preserve">
+    <value>The kind of credential is not valid.</value>
+  </data>
+  <data name="SupportVaultKindNotForRequest" xml:space="preserve">
+    <value>This credential is not needed for this help request.</value>
+  </data>
+  <data name="SupportVaultRequestNotOpen" xml:space="preserve">
+    <value>The help request is closed: credentials are opened only for an open request.</value>
+  </data>
+  <data name="SupportVaultTooManyOpenings" xml:space="preserve">
+    <value>The credentials of this request were already opened {0} times in the last hour: try again later.</value>
+  </data>
+  <data name="SupportVaultSecretMissing" xml:space="preserve">
+    <value>This credential is not in the vault for the organization and the property of the request.</value>
+  </data>
+  <data name="SupportVaultOrgNotFound" xml:space="preserve">
+    <value>Organization not found.</value>
+  </data>
+  <data name="SupportVaultValueInvalid" xml:space="preserve">
+    <value>A user name and a password are required (at most 200 characters each); the further code can have at most 100 characters.</value>
+  </data>
+  <data name="IstatCredentialsUsernameRequired" xml:space="preserve">
+    <value>The ISTAT user name is required.</value>
+  </data>
+  <data name="IstatCredentialsUsernameTooLong" xml:space="preserve">
+    <value>The ISTAT user name can have at most 100 characters.</value>
+  </data>
+  <data name="IstatCredentialsPasswordRequired" xml:space="preserve">
+    <value>The ISTAT password is required.</value>
+  </data>
+  <data name="IstatCredentialsPasswordTooLong" xml:space="preserve">
+    <value>The ISTAT password can have at most 200 characters.</value>
+  </data>
+  <data name="IstatCredentialsStructureCodeTooLong" xml:space="preserve">
+    <value>The code of the structure can have at most 50 characters.</value>
+  </data>
   <data name="ComplianceProofNotFound" xml:space="preserve">
     <value>Proof not found among those of your organization.</value>
   </data>

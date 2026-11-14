@@ -5652,6 +5652,45 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="AssistStepAlreadyDone" xml:space="preserve">
     <value>Questo passaggio è già completato: non c'è nulla da chiedere all'assistenza.</value>
   </data>
+  <data name="SupportVaultReasonInvalid" xml:space="preserve">
+    <value>Scrivi perché apri le credenziali: da {0} a {1} caratteri.</value>
+  </data>
+  <data name="SupportVaultKindInvalid" xml:space="preserve">
+    <value>Il tipo di credenziale non è valido.</value>
+  </data>
+  <data name="SupportVaultKindNotForRequest" xml:space="preserve">
+    <value>Questa credenziale non serve per questa richiesta di aiuto.</value>
+  </data>
+  <data name="SupportVaultRequestNotOpen" xml:space="preserve">
+    <value>La richiesta di aiuto è chiusa: le credenziali si aprono solo per una richiesta aperta.</value>
+  </data>
+  <data name="SupportVaultTooManyOpenings" xml:space="preserve">
+    <value>Le credenziali di questa richiesta sono già state aperte {0} volte nell'ultima ora: riprova più tardi.</value>
+  </data>
+  <data name="SupportVaultSecretMissing" xml:space="preserve">
+    <value>Questa credenziale non è nel deposito per l'organizzazione e l'immobile della richiesta.</value>
+  </data>
+  <data name="SupportVaultOrgNotFound" xml:space="preserve">
+    <value>Organizzazione non trovata.</value>
+  </data>
+  <data name="SupportVaultValueInvalid" xml:space="preserve">
+    <value>Servono nome utente e password (al massimo 200 caratteri ciascuno); il codice aggiuntivo può avere al massimo 100 caratteri.</value>
+  </data>
+  <data name="IstatCredentialsUsernameRequired" xml:space="preserve">
+    <value>Il nome utente ISTAT è obbligatorio.</value>
+  </data>
+  <data name="IstatCredentialsUsernameTooLong" xml:space="preserve">
+    <value>Il nome utente ISTAT può avere al massimo 100 caratteri.</value>
+  </data>
+  <data name="IstatCredentialsPasswordRequired" xml:space="preserve">
+    <value>La password ISTAT è obbligatoria.</value>
+  </data>
+  <data name="IstatCredentialsPasswordTooLong" xml:space="preserve">
+    <value>La password ISTAT può avere al massimo 200 caratteri.</value>
+  </data>
+  <data name="IstatCredentialsStructureCodeTooLong" xml:space="preserve">
+    <value>Il codice della struttura può avere al massimo 50 caratteri.</value>
+  </data>
   <data name="ComplianceProofNotFound" xml:space="preserve">
     <value>Prova non trovata tra quelle della tua organizzazione.</value>
   </data>

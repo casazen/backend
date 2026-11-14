@@ -154,7 +154,9 @@ public enum OrgActivityType
     /// CasaZen staff took, completed or closed a «Do it for me» request, or changed its note (AC-NF15-3). Written by
     /// <c>OnboardingAssistService.UpdateAsync</c> in the <b>org of the request</b>, not in the staff user's, with the staff user as the actor.
     /// Subject: the org. Details: the part, the context and the new status (<c>inProgress</c>, <c>done</c>, <c>cancelled</c>); the note is never
-    /// recorded.
+    /// recorded. Also written by <c>SupportVaultService.RevealAsync</c> (E20/F03/US01/T01) when staff opens a credential of the support vault for the
+    /// request: then the status is the request's and the detail <c>credential</c> says which kind was used (<c>panel</c>, <c>police</c>,
+    /// <c>regionalIstat</c>), never its value or the reason.
     /// </summary>
     OnboardingAssistUpdated = 111,
 

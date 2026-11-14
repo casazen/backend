@@ -216,15 +216,23 @@ public class OrgActivityCatalogTests
     [Fact]
     public void DetailKeys_TheContextOfAnAssistRequest_IsACodeOfTheClosedList_NeverAText()
     {
-        // The three keys of the events of «Do it for me»: the part, the context and the status, each a short code.
-        foreach (var type in new[] { OrgActivityType.OnboardingAssistRequested, OrgActivityType.OnboardingAssistUpdated })
+        // The keys of the events of «Do it for me»: the part, the context and the status, each a short code; a staff update also says which kind of
+        // credential of the support vault was opened for the request (E20/F03/US01/T01): «panel», «police» or «regionalIstat».
+        foreach (var (type, keys) in new[]
+                 {
+                     (OrgActivityType.OnboardingAssistRequested, new[] { OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Context, OrgActivityDetailKeys.Status }),
+                     (OrgActivityType.OnboardingAssistUpdated, new[]
+                     {
+                         OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Context, OrgActivityDetailKeys.Status, OrgActivityDetailKeys.Credential,
+                     }),
+                 })
         {
             var info = OrgActivityCatalog.Describe(type);
             Assert.Equal((OrgActivityArea.Account, OrgActivitySubjectType.Org, false), (info.DefaultArea, info.SubjectType, info.Reserved));
-            Assert.Equal(
-                new[] { OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Context, OrgActivityDetailKeys.Status }.Order(),
-                info.DetailKeys.Order());
+            Assert.Equal(keys.Order(), info.DetailKeys.Order());
         }
+
+        Assert.All(Enum.GetValues<SupportVaultCredentialKind>(), kind => Assert.True(OrgActivityCatalog.IsSafeDetailValue(SupportVaultRules.CodeOf(kind))));
 
         foreach (var context in new[]
                  {

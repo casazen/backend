@@ -70,6 +70,11 @@ public static class OnboardingServiceCollectionExtensions
         services.AddScoped<IPanelStepVerifier, IstatConnectionPanelVerifier>();
         services.AddScoped<IPanelStepVerifier, ChannelAccessDefaultPanelVerifier>();
 
+        // The support vault of «Do it for me» (E20/F03/US01/T01, decision O5): the credentials support keeps for a host and their controlled opening,
+        // and the regional ISTAT credentials the host enters (write-only).
+        services.AddScoped<ISupportVaultService, SupportVaultService>();
+        services.AddScoped<IPropertyIstatCredentialsService, PropertyIstatCredentialsService>();
+
         // The integration settings (E10/F01/US02/T01, NF-108): the overview of the connection and of what can be reopened, and the reopen of a
         // part. It reads the facts the other epics store and clears a deferral through the plan; it adds no path that changes a sender.
         services.AddScoped<IOnboardingIntegrationService, OnboardingIntegrationService>();
