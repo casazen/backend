@@ -421,6 +421,23 @@ public class OwnerStatementDocumentsTests
         Assert.DoesNotContain("Trattenuta dal portale", rechargedText, StringComparison.Ordinal);
     }
 
+    /// <summary>The day a statement says it was published is the day in Rome, as the other documents write their days: 23:30 UTC is already the next day there, winter and summer time.</summary>
+    [Fact]
+    public async Task StatementFiles_PublishedDayIsTheDayInRome_Test()
+    {
+        var world = await World.CreateAsync();
+        var texts = new ResxDocumentTexts();
+        var content = await world.Documents.GetContentAsync(world.OrgId, world.VersionId, "it");
+
+        var winter = content with { PublishedAt = new DateTime(2026, 11, 10, 23, 30, 0, DateTimeKind.Utc) };
+        Assert.Contains("Pubblicato il 11/11/2026", TextOf(OwnerStatementLayout.Pdf(winter, texts).Blocks), StringComparison.Ordinal);
+        Assert.Contains("Pubblicato il 11/11/2026", Encoding.UTF8.GetString(OwnerStatementLayout.Csv(winter, texts)), StringComparison.Ordinal);
+
+        var summer = content with { PublishedAt = new DateTime(2026, 7, 10, 22, 30, 0, DateTimeKind.Utc) };
+        Assert.Contains("Pubblicato il 11/07/2026", TextOf(OwnerStatementLayout.Pdf(summer, texts).Blocks), StringComparison.Ordinal);
+        Assert.Contains("Pubblicato il 11/07/2026", Encoding.UTF8.GetString(OwnerStatementLayout.Csv(summer, texts)), StringComparison.Ordinal);
+    }
+
     /// <summary>The invoice of the property manager is linked through the version, or through the owner and the month; a credit note, a draft or another owner's is not.</summary>
     [Fact]
     public async Task StatementPdf_PropertyManagerInvoiceNumberIsFoundWhenLinked_Test()

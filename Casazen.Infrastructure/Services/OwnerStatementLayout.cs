@@ -110,7 +110,7 @@ public static class OwnerStatementLayout
             new PdfParagraph(texts.Get("StatementFileVersion", language, content.VersionNumber)),
             new PdfParagraph(texts.Get("StatementFileCurrency", language, currency)),
             new PdfParagraph(content.PublishedAt is { } published
-                ? texts.Get("StatementFilePublished", language, DocumentLanguages.Day(DateOnly.FromDateTime(published)))
+                ? texts.Get("StatementFilePublished", language, DocumentLanguages.Day(RomeCalendar.DateInRome(published)))
                 : texts.Get("StatementFileDraft", language)),
             new PdfParagraph(texts.Get("StatementFileNotInvoice", language)),
         };
@@ -150,7 +150,7 @@ public static class OwnerStatementLayout
             Cells(texts.Get("StatementFileVersion", language, content.VersionNumber)),
             Cells(texts.Get("StatementFileCurrency", language, currency)),
             Cells(content.PublishedAt is { } published
-                ? texts.Get("StatementFilePublished", language, DocumentLanguages.Day(DateOnly.FromDateTime(published)))
+                ? texts.Get("StatementFilePublished", language, DocumentLanguages.Day(RomeCalendar.DateInRome(published)))
                 : texts.Get("StatementFileDraft", language)),
             Cells(texts.Get("StatementFileNotInvoice", language)),
             Cells(
