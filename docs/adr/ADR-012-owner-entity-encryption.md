@@ -121,8 +121,8 @@ The owner import (NF-109, ONB-06) needs a place for the facts an agency knows ab
 |---|---|---|
 | `ExternalKey` | the code the agency gives the owner; the first thing the import matches on | clear, filtered unique index `UIX_PropertyOwners_OrgId_ExternalKey` (`OrgId`, `ExternalKey`) where the key is set |
 | `LegalName`, `EntityKind` (`NaturalPerson` 1, `LegalEntity` 2) | the name on the fiscal documents and the kind of the subject; `FirstName`/`LastName` stay the display name of the older screens | clear |
-| `TaxResidenceCountry`, `BillingCountry`, `SettlementCurrency` | ISO 3166-1 alpha-2 and ISO 4217 | clear |
-| `BillingStreet`, `BillingCivic`, `BillingPostalCode`, `BillingCity`, `BillingProvince` | the structured billing address | clear (like the e-mail and the phone) |
+| `TaxResidenceCountry`, `SettlementCurrency` | ISO 3166-1 alpha-2 and ISO 4217 | clear |
+| `BillingStreet`, `BillingCivic`, `BillingPostalCode`, `BillingCity`, `BillingProvince`, `BillingCountry` | the structured billing address | **encrypted** with `Casazen.PropertyOwner.Financial` since the amendment E13/F01/US01/T01 below (it was clear, like the e-mail and the phone) |
 | `VatNumber`, `Bic` | VAT number and bank identifier | **encrypted** with `Casazen.PropertyOwner.Financial`, with `FiscalCode` and `Iban` (ADR-012-R1) |
 
 - **Matching never uses a hash column.** The fiscal code and the VAT number are decrypted for the owners of one org (hundreds, not millions) and
@@ -160,3 +160,16 @@ CasaZen issues no agency-to-owner invoice (ADR-019 amended), so there is no SDI 
   must be approved by a qualified accountant and of the same jurisdiction, and anything missing blocks the financial operations with a precise code.
 - **History.** Profiles never overlap and are never edited after the fact: a change is a new profile from a date; the documents keep the rule version
   they used.
+
+## Amendment 2026-11 (E13/F01/US01/T01): the billing address of an owner is encrypted
+
+**Decision.** The structured billing address of a `PropertyOwner` (`BillingStreet`, `BillingCivic`, `BillingPostalCode`, `BillingCity`, `BillingProvince`
+and `BillingCountry`) is personal data of a person, and the same treatment is given to a company. It is **encrypted** with `Casazen.PropertyOwner.Financial`
+(`EncryptedColumns`), like the IBAN and the fiscal code: this supersedes the «clear» of the amendment E10/F02/US02/T01 above for these columns, which the
+decisions of 2026-11-14 for the owner invoice, the QR-bill and the pain.001.09 transfer (the address is the recipient and the creditor) require.
+
+- **Columns.** They are `text` (a payload is longer than the value); the lengths of the clear text are checked on input by the import and by
+  `PUT api/owners/{id}/address`. The values stored in clear before are encrypted by the startup step (`EncryptedColumns.EncryptLegacyPlaintextAsync`).
+- **Least privilege.** `GET`/`PUT api/owners/{id}/address` need `agency.owner.financial.read` / `agency.owner.financial.manage` and an owner inside the
+  reach of the caller; the address is in no list and no log (ADR-012-R2: the logs carry the ids of the owner and of the user).
+- **Never searched.** The address is read through EF only; no query filters on it.

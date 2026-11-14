@@ -6939,6 +6939,53 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("OrgAssistantRules");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OrgChannelCommissionRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Base")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Percent")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<DateOnly>("ValidFrom")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("ValidTo")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "Channel", "ValidFrom")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OrgChannelCommissionRules_OrgId_Channel_ValidFrom");
+
+                    b.ToTable("OrgChannelCommissionRules", t =>
+                        {
+                            t.HasCheckConstraint("CK_OrgChannelCommissionRules_Percent", "\"Percent\" >= 0 AND \"Percent\" <= 100");
+
+                            t.HasCheckConstraint("CK_OrgChannelCommissionRules_Validity", "\"ValidTo\" IS NULL OR \"ValidTo\" >= \"ValidFrom\"");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OrgFiscalIssuerProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -8718,14 +8765,21 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<decimal?>("CleaningFlatRate")
                         .HasColumnType("decimal(10,2)");
 
+                    b.Property<int>("CommissionBase")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("CommissionIncludesVat")
+                        .HasColumnType("boolean");
+
                     b.Property<decimal>("CommissionPercent")
                         .HasColumnType("decimal(5,2)");
 
-                    b.Property<DateTime>("EffectiveFrom")
+                    b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime?>("EffectiveUntil")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
                     b.Property<decimal?>("LinenFlatRate")
                         .HasColumnType("decimal(10,2)");
@@ -8744,19 +8798,40 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool>("PassthroughPaymentFees")
                         .HasColumnType("boolean");
 
-                    b.Property<Guid>("PropertyOwnershipId")
+                    b.Property<Guid>("PropertyOwnerId")
                         .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PropertyOwnershipId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("ValidFrom")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("ValidTo")
+                        .HasColumnType("date");
 
                     b.Property<int>("WithholdingTreatment")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OrgId");
+                    b.HasIndex("PropertyOwnerId");
 
                     b.HasIndex("PropertyOwnershipId");
 
-                    b.ToTable("OwnerMandates");
+                    b.HasIndex("OrgId", "PropertyOwnerId", "ValidFrom")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OwnerMandates_OrgId_PropertyOwnerId_ValidFrom")
+                        .HasFilter("\"PropertyOwnershipId\" IS NULL");
+
+                    b.ToTable("OwnerMandates", t =>
+                        {
+                            t.HasCheckConstraint("CK_OwnerMandates_CommissionPercent", "\"CommissionPercent\" >= 0 AND \"CommissionPercent\" <= 100");
+
+                            t.HasCheckConstraint("CK_OwnerMandates_FlatRates", "(\"CleaningFlatRate\" IS NULL OR \"CleaningFlatRate\" >= 0) AND (\"LinenFlatRate\" IS NULL OR \"LinenFlatRate\" >= 0)");
+
+                            t.HasCheckConstraint("CK_OwnerMandates_Validity", "\"ValidTo\" IS NULL OR \"ValidTo\" >= \"ValidFrom\"");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OwnerMessage", b =>
@@ -11171,28 +11246,22 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(500)");
 
                     b.Property<string>("BillingCity")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasColumnType("text");
 
                     b.Property<string>("BillingCivic")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
+                        .HasColumnType("text");
 
                     b.Property<string>("BillingCountry")
-                        .HasMaxLength(2)
-                        .HasColumnType("character varying(2)");
+                        .HasColumnType("text");
 
                     b.Property<string>("BillingPostalCode")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
+                        .HasColumnType("text");
 
                     b.Property<string>("BillingProvince")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
+                        .HasColumnType("text");
 
                     b.Property<string>("BillingStreet")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -18512,6 +18581,15 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OrgChannelCommissionRule", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OrgInvitation", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Org", null)
@@ -18825,11 +18903,16 @@ namespace Casazen.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Casazen.Core.Entities.PropertyOwner", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyOwnerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Casazen.Core.Entities.PropertyOwnership", "PropertyOwnership")
                         .WithMany()
                         .HasForeignKey("PropertyOwnershipId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.Navigation("Org");
 

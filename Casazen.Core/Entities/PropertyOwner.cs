@@ -8,7 +8,7 @@ namespace Casazen.Core.Entities;
 /// <summary>
 /// Property owner in the agency registry (ADR-012): the natural or legal person who owns a property managed
 /// by the agency. Separate from <c>OwnerUser</c> (portal access): a property owner is not necessarily a user.
-/// IBAN and fiscal code are encrypted at rest with the <c>PropertyOwnerEncryptionPurpose</c>.
+/// IBAN, BIC, fiscal code, VAT number and the structured billing address are encrypted at rest with the <c>PropertyOwnerEncryptionPurpose</c>.
 /// </summary>
 [Table("PropertyOwners")]
 public class PropertyOwner : ITenantOwned
@@ -95,29 +95,45 @@ public class PropertyOwner : ITenantOwned
     [MaxLength(3)]
     public string? SettlementCurrency { get; set; }
 
-    /// <summary>Structured billing address: the street (without the civic number).</summary>
-    [MaxLength(200)]
+    // The structured billing address (E13/F01/US01/T01): the recipient of the owner invoice, the debtor of the QR-bill and the creditor of a pain.001.09
+    // transfer. Encrypted at rest with the PropertyOwnerEncryptionPurpose, for a person as for a company (EncryptedColumns): the columns have no length (the
+    // payload is longer than the text), the import and PUT api/owners/{id}/address check the length of the clear text. Never searched, never logged.
+
+    /// <summary>Structured billing address: the street (without the building number); at most <see cref="BillingStreetMaxLength"/> characters. Encrypted.</summary>
     public string? BillingStreet { get; set; }
 
-    /// <summary>Structured billing address: the civic number.</summary>
-    [MaxLength(20)]
+    /// <summary>Structured billing address: the building (civic) number; at most <see cref="BillingCivicMaxLength"/> characters. Encrypted.</summary>
     public string? BillingCivic { get; set; }
 
-    /// <summary>Structured billing address: the postal code.</summary>
-    [MaxLength(20)]
+    /// <summary>Structured billing address: the postal code; at most <see cref="BillingPostalCodeMaxLength"/> characters. Encrypted.</summary>
     public string? BillingPostalCode { get; set; }
 
-    /// <summary>Structured billing address: the city.</summary>
-    [MaxLength(100)]
+    /// <summary>Structured billing address: the town; at most <see cref="BillingCityMaxLength"/> characters. Encrypted.</summary>
     public string? BillingCity { get; set; }
 
-    /// <summary>Structured billing address: the province (the two-letter sigla in Italy) or the canton/region abroad.</summary>
-    [MaxLength(50)]
+    /// <summary>
+    /// Structured billing address: the province (the two-letter sigla in Italy) or the canton/region abroad; at most <see cref="BillingProvinceMaxLength"/>
+    /// characters. Encrypted.
+    /// </summary>
     public string? BillingProvince { get; set; }
 
-    /// <summary>Structured billing address: ISO 3166-1 alpha-2 country.</summary>
-    [MaxLength(2)]
+    /// <summary>Structured billing address: ISO 3166-1 alpha-2 country. Encrypted.</summary>
     public string? BillingCountry { get; set; }
+
+    /// <summary>The longest <see cref="BillingStreet"/> in clear.</summary>
+    public const int BillingStreetMaxLength = 200;
+
+    /// <summary>The longest <see cref="BillingCivic"/> in clear.</summary>
+    public const int BillingCivicMaxLength = 20;
+
+    /// <summary>The longest <see cref="BillingPostalCode"/> in clear.</summary>
+    public const int BillingPostalCodeMaxLength = 20;
+
+    /// <summary>The longest <see cref="BillingCity"/> in clear.</summary>
+    public const int BillingCityMaxLength = 100;
+
+    /// <summary>The longest <see cref="BillingProvince"/> in clear.</summary>
+    public const int BillingProvinceMaxLength = 50;
 
     /// <summary>The longest <see cref="ExternalKey"/>.</summary>
     public const int ExternalKeyMaxLength = 64;

@@ -6,8 +6,12 @@ namespace Casazen.Core.Services;
 /// <summary>One ownership period of an owner on a property, in Rome days (<see cref="OwnerReadinessRules.Mandate"/>).</summary>
 public sealed record OwnerOwnershipFact(Guid OwnershipId, Guid PropertyId, DateOnly Start, DateOnly? End, decimal SharePercent);
 
-/// <summary>A mandate of the agency on one ownership, in Rome days; <paramref name="HasDocument"/> is true when the signed mandate is on file.</summary>
-public sealed record OwnerMandateFact(Guid OwnershipId, DateOnly From, DateOnly? Until, bool HasDocument);
+/// <summary>
+/// A mandate of the agency, in Rome days: of one ownership (<paramref name="OwnershipId"/> set, the shape of before E13), or of the owner itself
+/// (<paramref name="OwnershipId"/> <c>null</c>: it covers every ownership of the owner it is given for, E13/F01/US01/T01). <paramref name="HasDocument"/> is
+/// true when the signed mandate is on file.
+/// </summary>
+public sealed record OwnerMandateFact(Guid? OwnershipId, DateOnly From, DateOnly? Until, bool HasDocument);
 
 /// <summary>
 /// What is missing on an owner of the registry, one rule for each dimension of the readiness (E10/F02/US02/T01, NF-109, AC-NF109-3): pure,
@@ -99,8 +103,10 @@ public static class OwnerReadinessRules
 
     /// <summary>
     /// For each ownership that has not ended by <paramref name="today"/>: a mandate of the agency in force on the day the ownership is judged on
-    /// (today, or its first day when it has not started), with the signed document on file and inside the ownership period. An owner with no
-    /// ownership in force or to come has no mandate to speak of: <see cref="OwnerReadinessReasons.MandateMissing"/> with no property.
+    /// (today, or its first day when it has not started), with the signed document on file. A mandate of the ownership (the shape of before E13) comes
+    /// first and must be inside the ownership period; otherwise the mandate of the owner (E13/F01/US01/T01, <paramref name="mandates"/> holds only the
+    /// owner's), which covers all its properties and so is never «outside» one of them. An owner with no ownership in force or to come has no mandate to
+    /// speak of: <see cref="OwnerReadinessReasons.MandateMissing"/> with no property.
     /// </summary>
     public static IReadOnlyList<OwnerReadinessReason> Mandate(
         IReadOnlyList<OwnerOwnershipFact> ownerships,
@@ -118,10 +124,8 @@ public static class OwnerReadinessRules
         foreach (var ownership in live.OrderBy(o => o.PropertyId).ThenBy(o => o.Start))
         {
             var day = ownership.Start > today ? ownership.Start : today;
-            var covering = mandates
-                .Where(m => m.OwnershipId == ownership.OwnershipId && m.From <= day && (m.Until is not { } until || until >= day))
-                .OrderByDescending(m => m.HasDocument)
-                .ToList();
+            var ofOwnership = Covering(mandates.Where(m => m.OwnershipId == ownership.OwnershipId), day);
+            var covering = ofOwnership.Count > 0 ? ofOwnership : Covering(mandates.Where(m => m.OwnershipId is null), day);
             if (covering.Count == 0)
             {
                 reasons.Add(Reason(OwnerReadinessDimensions.Mandate, OwnerReadinessReasons.MandateMissing, propertyId: ownership.PropertyId));
@@ -133,7 +137,7 @@ public static class OwnerReadinessRules
             {
                 reasons.Add(Reason(OwnerReadinessDimensions.Mandate, OwnerReadinessReasons.MandateDocumentMissing, propertyId: ownership.PropertyId));
             }
-            else if (IsOutside(mandate.From, mandate.Until, ownership.Start, ownership.End))
+            else if (mandate.OwnershipId is not null && IsOutside(mandate.From, mandate.Until, ownership.Start, ownership.End))
             {
                 reasons.Add(Reason(OwnerReadinessDimensions.Mandate, OwnerReadinessReasons.MandateOutsideOwnership, propertyId: ownership.PropertyId));
             }
@@ -141,6 +145,10 @@ public static class OwnerReadinessRules
 
         return reasons;
     }
+
+    /// <summary>The mandates in force on <paramref name="day"/>, those with the signed document first.</summary>
+    private static List<OwnerMandateFact> Covering(IEnumerable<OwnerMandateFact> mandates, DateOnly day) =>
+        mandates.Where(m => m.From <= day && (m.Until is not { } until || until >= day)).OrderByDescending(m => m.HasDocument).ToList();
 
     /// <summary>
     /// What stops the owner from being invited to the portal: a name to greet it by (<paramref name="registryReady"/>), an ownership that is ready, and an

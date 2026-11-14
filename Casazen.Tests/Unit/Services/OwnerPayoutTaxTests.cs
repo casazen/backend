@@ -448,6 +448,10 @@ public class OwnerPayoutTaxTests
                 Description = "TEST",
                 ProcessedAt = new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc),
             });
+
+            // A stay of an owner without a mandate holds its version back (E13/F01/US01/T02): the owner has one, of zero (the commission is not the point).
+            if (!await Db.OwnerMandates.AnyAsync(m => m.PropertyOwnerId == owner))
+                Db.OwnerMandates.Add(new OwnerMandate { OrgId = OrgId, PropertyOwnerId = owner, CommissionPercent = 0m, ValidFrom = new DateOnly(2026, 1, 1) });
             await Db.SaveChangesAsync();
 
             await Accounting.PostPeriodAsync(OrgId, 2026, 10, null);

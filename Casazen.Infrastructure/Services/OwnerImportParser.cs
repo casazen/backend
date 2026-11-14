@@ -327,6 +327,8 @@ internal static class OwnerImportParser
             "nazione residenza fiscale");
         Add(OwnerImportColumns.FiscalCode, "fiscalCode", "fiscal code", "codice fiscale", "cf", "c.f.", "tax id", "taxId", "tax code");
         Add(OwnerImportColumns.VatNumber, "vatNumber", "vat number", "vat id", "vat", "partita iva", "p.iva", "piva", "p iva");
+        // The structured address of the owner (E13/F01/US01/T01: the columns of the import template are indirizzo_via, indirizzo_civico, cap, localita, paese;
+        // the header is compared without spaces, underscores and accents, so «indirizzo_via» and «Indirizzo via» are one column).
         Add(
             OwnerImportColumns.BillingStreet,
             "billingStreet",
@@ -334,11 +336,32 @@ internal static class OwnerImportParser
             "via fatturazione",
             "indirizzo fatturazione",
             "indirizzo di fatturazione",
+            "indirizzo_via",
             "via",
-            "indirizzo");
-        Add(OwnerImportColumns.BillingCivic, "billingCivic", "billing civic", "civico", "numero civico", "civico fatturazione");
+            "indirizzo",
+            "street");
+        Add(
+            OwnerImportColumns.BillingCivic,
+            "billingCivic",
+            "billing civic",
+            "civico",
+            "numero civico",
+            "civico fatturazione",
+            "indirizzo_civico",
+            "building number");
         Add(OwnerImportColumns.BillingPostalCode, "billingPostalCode", "billing postal code", "cap", "cap fatturazione", "postal code", "zip");
-        Add(OwnerImportColumns.BillingCity, "billingCity", "billing city", "comune", "citta", "città", "citta fatturazione", "city");
+        Add(
+            OwnerImportColumns.BillingCity,
+            "billingCity",
+            "billing city",
+            "comune",
+            "citta",
+            "città",
+            "citta fatturazione",
+            "city",
+            "localita",
+            "località",
+            "town");
         Add(OwnerImportColumns.BillingProvince, "billingProvince", "billing province", "provincia", "prov", "province");
         Add(OwnerImportColumns.BillingCountry, "billingCountry", "billing country", "paese", "nazione", "country", "paese fatturazione");
         Add(

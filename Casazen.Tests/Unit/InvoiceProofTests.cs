@@ -260,6 +260,9 @@ public class InvoiceProofTests
                 Description = "TEST",
                 ProcessedAt = new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc),
             });
+
+            // A stay of an owner without a mandate holds its version back (E13/F01/US01/T02): the owner has one, of zero (the commission is not the point).
+            Db.OwnerMandates.Add(new OwnerMandate { OrgId = OrgId, PropertyOwnerId = _owner, CommissionPercent = 0m, ValidFrom = new DateOnly(2026, 1, 1) });
             await Db.SaveChangesAsync();
             _property = property.Id;
 

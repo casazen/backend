@@ -37,10 +37,13 @@ public enum OwnerLedgerEntryType
 /// <summary>Where a line of the owner ledger comes from (E06/F05/US02/T02). Stored as its number: never renumber.</summary>
 public enum OwnerLedgerSourceType
 {
-    /// <summary>A completed payment of a booking.</summary>
+    /// <summary>A collected payment of a booking (its revenue, the commission on it, the card fee the mandate passes to the owner).</summary>
     Payment = 1,
 
-    /// <summary>A booking (the channel commission).</summary>
+    /// <summary>
+    /// A booking: the channel commission, and since E13/F01/US01/T02 the revenue (and its commission) of a stay without a CasaZen payment (a portal, the
+    /// agency's own site, a booking entered by hand), from its amounts at the check-out.
+    /// </summary>
     Booking = 2,
 
     /// <summary>An approved charge or expense of the owner.</summary>
@@ -54,6 +57,13 @@ public enum OwnerLedgerSourceType
 
     /// <summary>A confirmed payout to the owner (E06/F05/US02/T03).</summary>
     OwnerPayout = 6,
+
+    /// <summary>
+    /// A flat fee of the owner's mandate for a stay (E13/F01/US01/T02): the <see cref="OwnerLedgerEntry.SourceId"/> is the booking, the
+    /// <see cref="OwnerLedgerEntry.SourceReference"/> the kind (<c>cleaning</c>, <c>linen</c>), the line an <see cref="OwnerLedgerEntryType.OwnerCharge"/>. A
+    /// recharge of the agency, approved by the mandate itself: the owner invoice (E14) applies its VAT.
+    /// </summary>
+    MandateFlatFee = 7,
 }
 
 /// <summary>The life of a version of an owner statement (E06/F05/US02/T02, AC-NF110-2). Stored as its number: never renumber.</summary>
@@ -159,4 +169,18 @@ public enum OwnerChargeStatus
 
     /// <summary>Cancelled: what it posted is reversed.</summary>
     Cancelled = 3,
+}
+
+/// <summary>
+/// What a commission is a percentage of (E13/F01/US01/T01): the commission of the agency under the mandate of an owner (<see cref="OwnerMandate.CommissionBase"/>,
+/// ⚖ R3) and the commission of a channel (<see cref="OrgChannelCommissionRule.Base"/>, ⚖ R2). The tourist tax is never part of it. Stored as its number: never
+/// renumber.
+/// </summary>
+public enum CommissionBase
+{
+    /// <summary>The gross of the stay without the tourist tax, the cleaning included (<see cref="Booking.BasePrice"/>): the default.</summary>
+    GrossExclTouristTax = 1,
+
+    /// <summary>The gross of the stay without the tourist tax and without the cleaning fee (<see cref="Booking.BasePrice"/> less <see cref="Booking.CleaningFee"/>).</summary>
+    GrossExclTouristTaxAndCleaning = 2,
 }

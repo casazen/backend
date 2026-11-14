@@ -97,6 +97,13 @@ public class EncryptedColumnsTests
                 "PropertyKnowledgeEntry.Text:Casazen.Assistant.Content",
                 // ADR-012: property owner financial data (IBAN and fiscal code), and the BIC and the VAT number of the owner profile (E10/F02/US02/T01).
                 "PropertyOwner.Bic:Casazen.PropertyOwner.Financial",
+                // E13/F01/US01/T01: the structured billing address of the owner (personal data, the same treatment for a company).
+                "PropertyOwner.BillingCity:Casazen.PropertyOwner.Financial",
+                "PropertyOwner.BillingCivic:Casazen.PropertyOwner.Financial",
+                "PropertyOwner.BillingCountry:Casazen.PropertyOwner.Financial",
+                "PropertyOwner.BillingPostalCode:Casazen.PropertyOwner.Financial",
+                "PropertyOwner.BillingProvince:Casazen.PropertyOwner.Financial",
+                "PropertyOwner.BillingStreet:Casazen.PropertyOwner.Financial",
                 "PropertyOwner.FiscalCode:Casazen.PropertyOwner.Financial",
                 "PropertyOwner.Iban:Casazen.PropertyOwner.Financial",
                 "PropertyOwner.VatNumber:Casazen.PropertyOwner.Financial",

@@ -1,3 +1,5 @@
+using Casazen.Core.Authorization;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Owners;
@@ -88,5 +90,59 @@ public class OwnersController(
 
         Response.Headers.CacheControl = "private, no-store";
         return Ok(PropertyOwnerDtoMapper.ToIbanDto(owner));
+    }
+
+    /// <summary>
+    /// The structured billing address of the owner (E13/F01/US01/T01), in clear. Requires <c>agency.owner.financial.read</c> and an owner in the caller's
+    /// reach (the whole org, or an owner whose every property the caller reaches); the read is logged with ids, never the address. 404 <c>owner_not_found</c>.
+    /// </summary>
+    [HttpGet("{id:guid}/address")]
+    [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialRead)]
+    [ProducesResponseType(typeof(OwnerAddressDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OwnerAddressDto>> GetAddress(
+        Guid id,
+        [FromServices] IOwnerMandateService mandates,
+        [FromServices] IHostScopeResolver hostScopeResolver)
+    {
+        if (await ScopeAsync(hostScopeResolver) is not { } scope)
+            return Forbid();
+
+        var owner = await mandates.GetAddressAsync(scope, id, HttpContext.RequestAborted);
+        logger.LogInformation("User {UserId} read the billing address of property owner {OwnerId}", User.GetUserId(), id);
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(OwnerAddressDto.From(owner));
+    }
+
+    /// <summary>
+    /// Replaces the structured billing address of the owner (<c>{ street, buildingNumber, postalCode, town, province, country }</c>), stored encrypted: the
+    /// recipient of the owner invoice, the QR-bill and the pain.001.09 transfer (E13/F01/US01/T01). Requires <c>agency.owner.financial.manage</c> and an owner
+    /// in the caller's reach. 422 <c>owner_address_invalid</c> (with the <c>field</c>); 404 <c>owner_not_found</c>.
+    /// </summary>
+    [HttpPut("{id:guid}/address")]
+    [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
+    [ProducesResponseType(typeof(OwnerAddressDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<OwnerAddressDto>> SaveAddress(
+        Guid id,
+        [FromBody] OwnerAddressCommand command,
+        [FromServices] IOwnerMandateService mandates,
+        [FromServices] IHostScopeResolver hostScopeResolver)
+    {
+        if (await ScopeAsync(hostScopeResolver) is not { } scope)
+            return Forbid();
+
+        var owner = await mandates.SaveAddressAsync(scope, id, command, User.GetUserId(), HttpContext.RequestAborted);
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(OwnerAddressDto.From(owner));
+    }
+
+    /// <summary>The caller's reach on its org; <c>null</c> without an org or a reach (never widened to the whole org).</summary>
+    private async Task<HostScope?> ScopeAsync(IHostScopeResolver hostScopeResolver)
+    {
+        var ct = HttpContext.RequestAborted;
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
+        return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct);
     }
 }
