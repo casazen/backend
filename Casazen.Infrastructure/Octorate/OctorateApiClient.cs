@@ -1584,7 +1584,11 @@ public sealed partial class OctorateApiClient(
     /// <summary>The names under which a portal's identifier may come, most specific first; a number is read as its text.</summary>
     private static readonly string[] PortalCodeMembers = ["portalCode", "channelId", "portalId", "id", "code"];
 
-    private static readonly string[] PortalNameMembers = ["name", "portalName", "title"];
+    /// <summary>
+    /// The names under which a portal's name may come, most specific first. <c>meta/portals</c> sends the public name as
+    /// <c>externalName</c> («Booking», «Airbnb»); its <c>internalName</c> is a technical id and is never shown.
+    /// </summary>
+    private static readonly string[] PortalNameMembers = ["externalName", "name", "portalName", "title"];
 
     private static readonly string[] PortalCategoryMembers = ["portalCategory", "category"];
 
