@@ -1513,6 +1513,9 @@
   <data name="CheckInDocumentRequired" xml:space="preserve">
     <value>Document file is required.</value>
   </data>
+  <data name="CheckInDocumentSideInvalid" xml:space="preserve">
+    <value>The document side must be front, back or single (one picture).</value>
+  </data>
   <data name="CheckInDocumentPhotoTypeUnsupported" xml:space="preserve">
     <value>Document photo must be JPEG or PNG.</value>
   </data>

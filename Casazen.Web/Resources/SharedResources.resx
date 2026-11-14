@@ -1513,6 +1513,9 @@
   <data name="CheckInDocumentRequired" xml:space="preserve">
     <value>Il file del documento è obbligatorio.</value>
   </data>
+  <data name="CheckInDocumentSideInvalid" xml:space="preserve">
+    <value>Il lato del documento deve essere front (fronte), back (retro) o single (una sola foto).</value>
+  </data>
   <data name="CheckInDocumentPhotoTypeUnsupported" xml:space="preserve">
     <value>La foto del documento deve essere JPEG o PNG.</value>
   </data>

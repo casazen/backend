@@ -29,9 +29,20 @@ public interface IIdentityVerificationFlowService
     /// <summary>
     /// Reads the document (the MRZ, then the printed fields) with the capture guidance of the agent, checks it against the check-in data of the
     /// guest who must verify (flags only, kept on the session) and, outside Ticino and after the consent, keeps its photo encrypted so the selfie
-    /// can be compared without sending it again.
+    /// can be compared without sending it again. One picture with the face and the MRZ (a passport): <see cref="DocumentSide.Single"/>.
     /// </summary>
     Task<DocumentStepResult> SubmitDocumentAsync(GuestCheckInSession session, Stream image, CancellationToken ct);
+
+    /// <summary>
+    /// <see cref="SubmitDocumentAsync(GuestCheckInSession, Stream, CancellationToken)"/> for one <paramref name="side"/> of a document that has two
+    /// (E22/F01/US01/T02): the Italian electronic identity card and the other TD1 cards have the face on the front and the MRZ on the back. The face must
+    /// come from the front (or a single picture), the MRZ from any side; the step is acceptable when both were found across the pictures of the
+    /// attempt. A side sent again replaces its own picture and leaves the other; a single picture replaces both. The guidance codes say which side is
+    /// missing (<see cref="CaptureGuidanceCodes.DocumentBackNeeded"/>, <see cref="CaptureGuidanceCodes.DocumentFrontNeeded"/>). Re-taking a side never
+    /// counts as an attempt: the attempts are the complete document and selfie tries. The rules of what is kept do not change: both pictures encrypted
+    /// in the private bucket until the verification is over, nothing kept for a property in Ticino.
+    /// </summary>
+    Task<DocumentStepResult> SubmitDocumentAsync(GuestCheckInSession session, Stream image, DocumentSide side, CancellationToken ct);
 
     /// <summary>
     /// Runs the agent on the selfie, in the request (ADR-013-R1), logs the outcome and updates the session; on <c>ok</c> releases the lock code
@@ -39,6 +50,19 @@ public interface IIdentityVerificationFlowService
     /// photo of the document comes again with the selfie (<paramref name="documentPhoto"/>) and must be the one read.
     /// </summary>
     Task<SelfieStepResult> SubmitSelfieAsync(GuestCheckInSession session, Stream selfie, Stream? documentPhoto, CancellationToken ct);
+
+    /// <summary>
+    /// <see cref="SubmitSelfieAsync(GuestCheckInSession, Stream, Stream?, CancellationToken)"/> for a document of two sides (E22/F01/US01/T02): for a property
+    /// in Ticino, where nothing is kept, <paramref name="documentPhoto"/> is the front (the face) and <paramref name="documentPhotoBack"/> the back, both
+    /// the pictures that were read (compared by their SHA-256); elsewhere they are not needed, the encrypted copies are used. A document of which the face
+    /// or the MRZ is still missing does not reach the comparison (<see cref="SelfieStepStatus.DocumentRequired"/>, no attempt is spent).
+    /// </summary>
+    Task<SelfieStepResult> SubmitSelfieAsync(
+        GuestCheckInSession session,
+        Stream selfie,
+        Stream? documentPhoto,
+        Stream? documentPhotoBack,
+        CancellationToken ct);
 
     /// <summary>The guest asks for a person, at any step, also after a retry or a failed attempt (AC-NF51-11): the operators are alerted at once.</summary>
     Task<IdentityVerificationState> RequestOperatorAsync(GuestCheckInSession session, CancellationToken ct);
@@ -71,10 +95,67 @@ public static class IdentityVerificationSteps
 }
 
 /// <summary>
+/// Which side of the identity document one picture is (E22/F01/US01/T02). A passport has the face and the MRZ on one page; the Italian electronic
+/// identity card and the other TD1 cards have the face on the front and the MRZ on the back.
+/// </summary>
+public enum DocumentSide
+{
+    /// <summary>One picture holds the face and the MRZ, the behaviour before the two-sided document: a passport. The default of the endpoint.</summary>
+    Single = 0,
+
+    /// <summary>The front: the photo of the face, from which the selfie is compared (and the MRZ, when the document has it there).</summary>
+    Front = 1,
+
+    /// <summary>The back: the MRZ. No face is looked for on it.</summary>
+    Back = 2,
+}
+
+/// <summary>The codes of <see cref="DocumentSide"/> the endpoint speaks (<c>side</c> of <c>POST api/public/checkin/{token}/document</c>).</summary>
+public static class DocumentSides
+{
+    public const string Single = "single";
+    public const string Front = "front";
+    public const string Back = "back";
+
+    /// <summary>The side a client named: nothing (or a blank value) is <see cref="DocumentSide.Single"/>; anything but <c>front</c>, <c>back</c> and <c>single</c> is not a side.</summary>
+    public static bool TryParse(string? value, out DocumentSide side)
+    {
+        side = DocumentSide.Single;
+        if (string.IsNullOrWhiteSpace(value))
+            return true;
+
+        switch (value.Trim().ToLowerInvariant())
+        {
+            case Single:
+                return true;
+            case Front:
+                side = DocumentSide.Front;
+                return true;
+            case Back:
+                side = DocumentSide.Back;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>The code of a side, as the endpoint answers it.</summary>
+    public static string CodeOf(DocumentSide side) => side switch
+    {
+        DocumentSide.Front => Front,
+        DocumentSide.Back => Back,
+        _ => Single,
+    };
+}
+
+/// <summary>
 /// Where the verification of a session stands: the <paramref name="Step"/> of <see cref="IdentityVerificationSteps"/>, the last
 /// <paramref name="Result"/> (<c>ok</c>, <c>retry</c>, <c>operator</c>, or null before any), whether the biometric verification is offered,
 /// the consent, whether the document was checked, the attempts left, whether an operator was asked, whether the property keeps no document
 /// (Ticino: <paramref name="DocumentNotArchived"/>, ADR-013-R15) and the position of the guest who must verify (the others skip the step).
+/// For a document of two sides (E22/F01/US01/T02) <paramref name="DocumentSides"/> are the pictures of the attempt (<c>front</c>, <c>back</c>, or
+/// <c>single</c>) and <paramref name="DocumentSideNeeded"/> the side still to photograph (<c>front</c> or <c>back</c>), so a reloaded page asks for it; the
+/// document counts as checked, and the step moves to the selfie, only when the face and the MRZ were found across the pictures.
 /// </summary>
 public sealed record IdentityVerificationState(
     string Step,
@@ -86,7 +167,9 @@ public sealed record IdentityVerificationState(
     int AttemptsRemaining,
     bool OperatorRequested,
     bool DocumentNotArchived,
-    int VerifyingGuestPosition)
+    int VerifyingGuestPosition,
+    IReadOnlyList<string>? DocumentSides = null,
+    string? DocumentSideNeeded = null)
 {
     /// <summary>The way to a person is always open.</summary>
     public bool OperatorPathOpen => true;
@@ -113,14 +196,18 @@ public sealed record BiometricConsentResult(BiometricConsentStatus Status, Ident
 
 /// <summary>
 /// The reading of the document (the fields for the guest to confirm), whether the capture is good enough, the guidance codes, whether its photo
-/// was kept (encrypted) for the comparison and whether the property keeps no document (Ticino).
+/// was kept (encrypted) for the comparison and whether the property keeps no document (Ticino). For a document of two sides (E22/F01/US01/T02)
+/// <paramref name="Side"/> is the one just processed and <paramref name="SidesReceived"/> the pictures of the attempt; <paramref name="Acceptable"/> then
+/// means that the face and the MRZ were found across them, and the guidance says which side is missing.
 /// </summary>
 public sealed record DocumentStepResult(
     DocumentReading Reading,
     bool Acceptable,
     IReadOnlyList<string> GuidanceCodes,
     bool DocumentStored,
-    bool DocumentNotArchived);
+    bool DocumentNotArchived,
+    DocumentSide Side = DocumentSide.Single,
+    IReadOnlyList<string>? SidesReceived = null);
 
 /// <summary>Why a selfie was not run.</summary>
 public enum SelfieStepStatus
