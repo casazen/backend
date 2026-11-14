@@ -84,6 +84,14 @@ public interface ITouristTaxCollectionService
     /// effective state, and a difference owed back to the guest raises the host's «To do» once.
     /// </summary>
     Task ReconcileAsync(Guid bookingId, CancellationToken ct = default);
+
+    /// <summary>
+    /// After the host changed the tax of a stay (confirmed it, chose an exemption, declared who collected it, in the tax endpoints or in the check-in wizard): none
+    /// of these records an event, so a lower confirmed amount (AC2) would raise its «To do» only at a later check-in, check-out or change of the booking. The
+    /// collection is evaluated here instead (<see cref="ReconcileAsync"/>). Nothing while <c>Features:TouristTaxOnlinePayment</c> is off. Never throws: the change
+    /// of the host is saved, what fails here is logged with ids, and the state is read again at the next event and shown at once in the host's block.
+    /// </summary>
+    Task ReconcileAfterChangeAsync(Guid bookingId, CancellationToken ct = default);
 }
 
 /// <summary>The markers of the PaymentIntent of a tourist tax (its metadata) and the problem codes of the collection.</summary>

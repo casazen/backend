@@ -143,6 +143,7 @@ public class StayTouristTaxController(
             request.Exemptions.Select(e => new GuestExemption(e.Position, e.Code)).ToList(),
             userId,
             cancellationToken);
+        await ReconcileCollectionAsync(bookingId, cancellationToken);
         return Ok(StayTouristTaxDto.From(view, await CanReadGuestsAsync(bookingId, cancellationToken)));
     }
 
@@ -163,6 +164,7 @@ public class StayTouristTaxController(
             return Unauthorized();
 
         var view = await stayTouristTax.SetCollectorAsync(bookingId, request.Collector, userId, cancellationToken);
+        await ReconcileCollectionAsync(bookingId, cancellationToken);
         return Ok(StayTouristTaxDto.From(view, await CanReadGuestsAsync(bookingId, cancellationToken)));
     }
 
@@ -181,6 +183,7 @@ public class StayTouristTaxController(
             return Unauthorized();
 
         var view = await stayTouristTax.ConfirmAsync(bookingId, userId, cancellationToken);
+        await ReconcileCollectionAsync(bookingId, cancellationToken);
         return Ok(StayTouristTaxDto.From(view, await CanReadGuestsAsync(bookingId, cancellationToken)));
     }
 
@@ -255,6 +258,13 @@ public class StayTouristTaxController(
             "User {UserId} denied {Permission} on the tourist tax rate of property {PropertyId}", User.GetUserId(), operation.PermissionKey, propertyId);
         return false;
     }
+
+    /// <summary>
+    /// The confirmation of the tax, an exemption and the declaration of the collector record no event (E25/F01/US01/T01, AC2): with the collection on, it is
+    /// evaluated here, so a confirmed amount lower than what the price included or the guest paid raises the host's «To do» at once. Never throws.
+    /// </summary>
+    private Task ReconcileCollectionAsync(Guid bookingId, CancellationToken cancellationToken) =>
+        touristTaxCollection is null ? Task.CompletedTask : touristTaxCollection.ReconcileAfterChangeAsync(bookingId, cancellationToken);
 
     private ObjectResult BookingNotFound() =>
         this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "BookingNotFound");

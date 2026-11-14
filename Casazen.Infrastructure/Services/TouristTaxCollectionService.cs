@@ -468,6 +468,23 @@ public sealed class TouristTaxCollectionService(
             await RaiseRefundTodoAsync(booking, RefundDifferenceReason, ct);
     }
 
+    public async Task ReconcileAfterChangeAsync(Guid bookingId, CancellationToken ct = default)
+    {
+        if (!featureFlags.IsEnabled(FeatureFlags.TouristTaxOnlinePayment))
+            return;
+
+        try
+        {
+            await ReconcileAsync(bookingId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The host's change is saved: the difference owed back is evaluated again at the next event of the stay and shown at once in the host's block.
+            logger.LogError(
+                "Tourist tax of booking {BookingId}: the collection could not be reconciled after a change of the tax ({Error})", bookingId, ex.GetType().Name);
+        }
+    }
+
     /// <summary>
     /// The booking of a check-in link that can pay: the link is known, not expired, and its stay is confirmed or in progress (like the check-in page; a
     /// completed check-in still pays its tax). <c>null</c> otherwise. Read without the tenant filter, with the org of the link as an explicit predicate.

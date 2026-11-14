@@ -379,6 +379,59 @@ public class TouristTaxCollectionTests
         Assert.Equal(0m, (await rig.Service.GetForHostAsync(declared.Booking.Id, null)).IncludedInBooking);
     }
 
+    // ─── The tax confirmed lower than what was collected: the «To do» at the change, not at a later event ──────────────────────────
+
+    [Fact]
+    public async Task TouristTaxConfirmation_LowerThanWhatThePriceIncluded_RaisesTheRefundTodoRightAway_Test()
+    {
+        await using var db = NewDb();
+        var world = await SeedAsync(db, source: BookingSource.Direct, touristTaxAmount: 12.00m, payment: PaymentStatus.Completed);
+        await SeedStayRecordAsync(db, world.Booking, confirmedAmount: 9.00m);
+        var rig = Rig(db, (world.Booking.Id, Calculated(world.Booking.Id, 4.50m, 4.50m)));
+
+        // The host confirmed 9.00 for a price that included 12.00: the confirmation records no event, so the change itself evaluates the collection.
+        await rig.Service.ReconcileAfterChangeAsync(world.Booking.Id);
+
+        var todo = Assert.Single(await db.InternalActivities.AsNoTracking().Where(a => a.EntityId == world.Booking.Id).ToListAsync());
+        Assert.Equal(nameof(ActivityType.TouristTaxRefundDue), todo.ActivityType);
+        Assert.Equal(ActivityAction.ReviewBooking, todo.Action);
+        Assert.Equal(TouristTaxCollectionService.RefundDifferenceReason, todo.Reason);
+        Assert.Equal(3.00m, (await rig.Service.GetForHostAsync(world.Booking.Id, null)).RefundDue);
+
+        // Never a charge, and once per booking: the same change again raises nothing new.
+        Assert.Equal(0m, (await rig.Service.GetForGuestAsync(world.Token))!.Payable);
+        await rig.Service.ReconcileAfterChangeAsync(world.Booking.Id);
+        Assert.Single(await db.InternalActivities.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task TouristTaxConfirmation_OfABookingCasaZenCollectedNothingFor_RaisesNoRefundTodo()
+    {
+        await using var db = NewDb();
+        var world = await SeedAsync(db, source: BookingSource.Manual, touristTaxAmount: 12.00m);
+        await SeedStayRecordAsync(db, world.Booking, confirmedAmount: 9.00m);
+        var rig = Rig(db, (world.Booking.Id, Calculated(world.Booking.Id, 4.50m, 4.50m)));
+
+        // Nothing was collected with the price: a confirmed amount below the quote owes nothing back.
+        await rig.Service.ReconcileAfterChangeAsync(world.Booking.Id);
+
+        Assert.Empty(await db.InternalActivities.AsNoTracking().ToListAsync());
+        Assert.Equal(0m, (await rig.Service.GetForHostAsync(world.Booking.Id, null)).RefundDue);
+    }
+
+    [Fact]
+    public async Task TouristTaxConfirmation_WithTheFlagOff_EvaluatesNothing()
+    {
+        await using var db = NewDb();
+        var world = await SeedAsync(db, source: BookingSource.Direct, touristTaxAmount: 12.00m, payment: PaymentStatus.Completed);
+        await SeedStayRecordAsync(db, world.Booking, confirmedAmount: 9.00m);
+        var rig = RigWith(db, new RigOptions(FlagOn: false), (world.Booking.Id, Calculated(world.Booking.Id, 4.50m, 4.50m)));
+
+        await rig.Service.ReconcileAfterChangeAsync(world.Booking.Id);
+
+        Assert.Empty(await db.InternalActivities.AsNoTracking().ToListAsync());
+    }
+
     // ─── A stay that ends: the refund, never a Payment row ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
