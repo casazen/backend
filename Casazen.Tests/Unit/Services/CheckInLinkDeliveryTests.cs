@@ -81,7 +81,7 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         var tried = await rig.Service.RetryWaitingAsync(IssueNothing);
 
         Assert.Equal(1, tried);
-        Assert.Equal(1, await _db.OtaMessages.CountAsync(m => m.ThreadId == stay.Thread.Id && m.Origin == MessageOrigin.Automation));
+        Assert.Equal(1, await _db.OtaMessages.CountAsync(m => m.ThreadId == stay.Thread!.Id && m.Origin == MessageOrigin.Automation));
         Assert.Equal(CheckInLinkDeliveryState.Sent, (await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync()).State);
         rig.Messages.Client.Verify(
             c => c.SendChatMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
@@ -108,7 +108,7 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         rig.Messages.NothingWasSent();
         var todo = Assert.Single(await _db.InternalActivities.AsNoTracking().ToListAsync());
         Assert.Equal(nameof(ActivityType.CheckInLinkToSend), todo.ActivityType);
-        Assert.Equal(nameof(ActivityAction.CopyCheckInLink), todo.Action);
+        Assert.Equal(ActivityAction.CopyCheckInLink, todo.Action);
         Assert.Equal(stay.Booking.Id, todo.EntityId);
         Assert.Null(todo.CompletedAt);
         Assert.Equal(stay.Token, (await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync()).LinkToken);
@@ -186,8 +186,8 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         var after = await _db.OtaMessageThreads.AsNoTracking().SingleAsync(t => t.Id == stay.Thread!.Id);
         Assert.Equal(OtaMessageDirection.Inbound, after.LastMessageDirection);
         Assert.Equal(1, after.UnreadCount);
-        Assert.Null((await _db.OtaMessages.AsNoTracking().SingleAsync(m => m.ThreadId == stay.Thread.Id && m.Direction == OtaMessageDirection.Inbound)).ReadAt);
-        var view = await MessageHubTestKit.Service(_db).GetThreadAsync(_world.Scope.OrgWide, MessageThreadKey.ForOta(stay.Thread.Id), includeAmounts: false);
+        Assert.Null((await _db.OtaMessages.AsNoTracking().SingleAsync(m => m.ThreadId == stay.Thread!.Id && m.Direction == OtaMessageDirection.Inbound)).ReadAt);
+        var view = await MessageHubTestKit.Service(_db).GetThreadAsync(_world.Scope.OrgWide, MessageThreadKey.ForOta(stay.Thread!.Id), includeAmounts: false);
         Assert.True(view.NeedsReply);
         Assert.Equal(MessageOrigin.Automation, view.Messages[^1].Origin);
         Assert.Null(view.Messages[^1].RuleCode);
@@ -566,7 +566,7 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Contains(new OctorateRateLimitException(429).Code, CheckInLinkDeliveryService.TransientCodes);
         Assert.Contains(new OctorateChatNotReadException(500).Code, CheckInLinkDeliveryService.TransientCodes);
         Assert.Equal(2, CheckInLinkDeliveryService.TransientCodes.Length);
-        Assert.Equal(new OctorateSensitiveDataNotAllowedException(403).Code, CheckInLinkDeliveryService.OctorateSensitiveDataCode);
+        Assert.Equal(CheckInLinkDeliveryService.OctorateSensitiveDataCode, new OctorateSensitiveDataNotAllowedException(403).Code);
 
         var booking = Guid.NewGuid();
         var key = CheckInLinkDeliveryRules.IdempotencyKey(booking, "token-1");

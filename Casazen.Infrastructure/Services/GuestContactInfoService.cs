@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.OrgTeam;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
@@ -16,7 +17,7 @@ namespace Casazen.Infrastructure.Services;
 /// <list type="bullet">
 /// <item><b>The rules, in this order</b>; the first that does not hold ends the call and nothing is asked: the flags <see cref="FeatureFlags.GuestContactInfo"/> and
 /// <see cref="FeatureFlags.OctorateConnector"/> are on; the booking is one of the org that came from a portal through the channel manager
-/// (<see cref="OtaChannelActionPolicy.IsChannelBooking(Booking)"/>) and is an active stay (confirmed or checked in, not a no-show); its guest was not erased, anonymized
+/// (<see cref="OtaChannelActionPolicy.IsChannelBooking(Booking)"/>) and is an active stay (<see cref="AlloggiatiStatusRules.IsDue"/>, the one definition: confirmed, checked in or checked out, not a no-show); its guest was not erased, anonymized
 /// or deleted; the guest has <b>no</b> e-mail address yet; the property of the booking has a confirmed listing. Then the reservation is read, which gives flags and no
 /// data (<c>emailAvailable</c>): when the channel manager says it holds no address, the contact is <b>not asked for</b> (an Airbnb guest has none, and a sensitive read of
 /// nothing is still a read Octorate records).</item>
@@ -65,8 +66,7 @@ public sealed class GuestContactInfoService(
             .FirstOrDefaultAsync(b => b.Id == bookingId && b.OrgId == orgId, ct);
         if (booking is null
             || !OtaChannelActionPolicy.IsChannelBooking(booking)
-            || booking.Status is not (BookingStatus.Confirmed or BookingStatus.CheckedIn)
-            || booking.NoShowAt is not null
+            || !AlloggiatiStatusRules.IsDue(booking)
             || booking.Guest is not { IsDeleted: false, ErasureRequested: false, DataAnonymizedDate: null } guest)
         {
             return new GuestContactInfoOutcome(GuestContactInfoStatus.NotApplicable);

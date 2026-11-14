@@ -4,6 +4,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -555,7 +556,8 @@ public sealed class CheckInLinkDeliveryService(
     /// </summary>
     private async Task<string?> EndReasonAsync(CheckInLinkDelivery delivery, Booking booking, DateTime now, CancellationToken ct)
     {
-        if (booking.Status is not (BookingStatus.Confirmed or BookingStatus.CheckedIn) || booking.NoShowAt is not null)
+        // Active is the one definition (confirmed, checked in or checked out, not a no-show); a stay that is over takes no check-in any more.
+        if (!AlloggiatiStatusRules.IsDue(booking) || booking.Status == BookingStatus.CheckedOut)
             return CheckInLinkEndReasons.BookingNotActive;
 
         var sessions = await db.GuestCheckInSessions
