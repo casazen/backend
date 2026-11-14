@@ -237,7 +237,8 @@ The invoice of the property manager to an owner (NF-114, D9): a `FiscalDocument`
   creditor reference `SCOR`, ISO 11649, made from the number of the invoice). A later change of the bank accounts does not change an issued invoice.
 - **The payload** (`SwissQrBill.Build`, Core): `SPC` / `0200` / `1`, the account, the creditor (the agency, structured address `S`), seven empty lines of the
   ultimate creditor, the amount and the currency (CHF or EUR), the debtor (the owner, structured address `S`, from the recipient of the document; seven empty
-  lines and a box to fill in when its postal code, town or country is missing), the reference type and the reference, the message «Fattura PM2026/7», `EPD`.
+  lines and a box to fill in when its postal code, town or country is missing), the reference type and the reference, the message «Fattura PM2026/7» (always in
+  Italian: the payload of an invoice does not change with the language of the request, only the headings of the payment part do), `EPD`.
   Only structured addresses; the characters outside the Latin set of the guidelines become dots; a payload that is not valid gives no QR-bill.
 - **Guidelines followed:** Swiss Implementation Guidelines for the QR-bill, **version 2.3**, published by SIX:
   <https://www.six-group.com/en/products-services/banking-services/payment-standardization/standards/qr-bill.html> (the version and the address are

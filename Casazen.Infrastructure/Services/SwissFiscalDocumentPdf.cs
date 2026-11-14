@@ -161,7 +161,9 @@ public static class SwissFiscalDocumentPdf
     /// <summary>
     /// The QR-bill of <paramref name="amountDue"/> of an owner invoice (E14/F01/US01/T02): the account the snapshot of the issuer kept (a QR-IBAN with a QR
     /// reference made from the document, else an IBAN with a creditor reference made from its number), the agency as the creditor, the owner as the debtor
-    /// when its structured address is complete (else a box to fill in), the message «Fattura &lt;numero&gt;». <c>null</c> when the issuer kept no account or the
+    /// when its structured address is complete (else a box to fill in), the message «Fattura &lt;numero&gt;» (always in Italian, as the guidelines leave the
+    /// language of the message free and the brief names it: the payload of one document never changes with the language of the request, only the headings of
+    /// the payment part do). <c>null</c> when the issuer kept no account or the
     /// data are not a QR-bill (a currency other than CHF and EUR, an incomplete address of the agency): the invoice then says the payment is as the manager says.
     /// </summary>
     internal static PdfSwissQrBill? QrBillOf(FiscalDocument document, FiscalIssuerSnapshot issuer, decimal amountDue, IDocumentTexts texts, string language)
@@ -186,7 +188,7 @@ public static class SwissFiscalDocumentPdf
             debtor,
             qrAccount ? SwissQrBill.ReferenceQrr : SwissQrBill.ReferenceScor,
             qrAccount ? SwissQrBill.QrrReferenceOf(document.Id) : SwissQrBill.ScorReference(document.Number),
-            texts.Get("QrBillMessage", language, document.Number));
+            texts.Get("QrBillMessage", DocumentLanguages.Italian, document.Number));
         return SwissQrBill.Part(data, LabelsOf(texts, language));
     }
 

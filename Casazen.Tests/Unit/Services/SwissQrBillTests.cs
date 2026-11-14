@@ -105,6 +105,26 @@ public class SwissQrBillTests
     }
 
     /// <summary>
+    /// The message of the payload is «Fattura PM2026/1» whatever the language of the request: what the QR code of one invoice says never changes with who
+    /// downloads it; only the headings of the payment part follow the language.
+    /// </summary>
+    [Fact]
+    public async Task SwissQrBill_TheMessageOfThePayload_DoesNotFollowTheLanguageOfTheRequest_Test()
+    {
+        await using var rig = await OwnerInvoiceRig.SwissAsync();
+        var version = await rig.VersionAsync([rig.Line(OwnerLedgerEntryType.AgencyCommission, -1000.00m, rig.LakeHouse)]);
+        var issued = await rig.Invoices.IssueAsync(rig.OrgId, (await rig.Invoices.CreateDraftAsync(rig.OrgId, version.Id, null)).Id, confirm: true, null);
+
+        var italian = Assert.IsType<PdfSwissQrBill>((await rig.Documents.PdfContentAsync(issued.Id, DocumentLanguages.Italian)).QrBill);
+        var english = Assert.IsType<PdfSwissQrBill>((await rig.Documents.PdfContentAsync(issued.Id, DocumentLanguages.English)).QrBill);
+
+        Assert.Equal(italian.Payload, english.Payload);
+        Assert.Equal("Fattura PM2026/1", english.Payload.Split('\n')[29]);
+        Assert.Equal("Fattura PM2026/1", english.AdditionalInformation);
+        Assert.Equal(("Ricevuta", "Receipt"), (italian.Labels.Receipt, english.Labels.Receipt));
+    }
+
+    /// <summary>
     /// An invoice the statement offsets gets no QR-bill and «Compensata nel rendiconto del 10/2026»; an invoice left to pay by an agency without an IBAN or a
     /// QR-IBAN gets no QR-bill either and «Pagamento su indicazione del gestore».
     /// </summary>

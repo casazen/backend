@@ -6622,7 +6622,7 @@ Once active, the function works on the data the channel manager already holds.</
     <value>Separate before paying in</value>
   </data>
   <data name="QrBillMessage" xml:space="preserve">
-    <value>Invoice {0}</value>
+    <value>Fattura {0}</value>
   </data>
   <data name="OwnerExternalDocumentInvalid" xml:space="preserve">
     <value>The link to the external invoice is not valid: check the field named.</value>
