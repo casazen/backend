@@ -52,6 +52,12 @@ public static class FiscalDocumentPdfs
         ArgumentNullException.ThrowIfNull(issuer);
         ArgumentNullException.ThrowIfNull(texts);
 
+        // A Swiss issuer gets the document of MWSTG art. 26 (E11/F01/US01/T03): nothing Italian on it.
+        if (issuer.IsSwiss)
+            return SwissFiscalDocumentPdf.Pdf(document, issuer, texts, language, credited, propertyName);
+
+        // A receipt carries no VAT: its nature codes stay internal (E11/F01/US01/T02).
+        var showNature = document.Kind != DocumentKind.Receipt;
         var currency = document.Currency;
         var kind = KindLabel(document.Kind, texts, language);
         var title = document.Number is { Length: > 0 } number
@@ -92,15 +98,14 @@ public static class FiscalDocumentPdfs
                     l.Quantity.ToString("0.##", DocumentLanguages.CultureOf(language)),
                     DocumentLanguages.Money(l.UnitPrice, language),
                     DocumentLanguages.Money(l.TotalPrice, language),
-                    RateLabel(l.VatRatePercent, l.VatNatureCode, language)))
+                    RateLabel(l.VatRatePercent, showNature ? l.VatNatureCode : null, language)))
                 .ToList()));
 
-        var groups = lines
-            .GroupBy(l => (l.VatRatePercent, Nature: l.VatRatePercent == 0m ? l.VatNatureCode : null))
-            .OrderByDescending(g => g.Key.VatRatePercent)
-            .ToList();
-        var taxedGroups = groups.Count(g => g.Key.VatRatePercent > 0m);
-        if (groups.Count > 0)
+        // The VAT of each rate (and nature) is the stored VAT of its lines (FiscalDocumentTotals.SummaryOf), never taxable × rate again; a receipt shows one
+        // row for its rate of 0, without its natures.
+        var amounts = FiscalDocumentService.AmountsOf(document);
+        var summary = FiscalDocumentTotals.SummaryOf(showNature ? amounts : amounts.Select(l => l with { NatureCode = null }).ToList(), document.VatAmount);
+        if (summary.Count > 0)
         {
             blocks.Add(new PdfHeading(texts.Get("FiscalDocPdfSummaryHeading", language), 3));
             blocks.Add(new PdfTable(
@@ -109,12 +114,10 @@ public static class FiscalDocumentPdfs
                     new PdfTableColumn(texts.Get("FiscalDocPdfColTaxable", language, currency), 1.2, PdfCellAlignment.Right),
                     new PdfTableColumn(texts.Get("FiscalDocPdfColTax", language, currency), 1.2, PdfCellAlignment.Right),
                 ],
-                groups.Select(g => Row(
-                        RateLabel(g.Key.VatRatePercent, g.Key.Nature, language),
-                        DocumentLanguages.Money(g.Sum(l => l.TotalPrice), language),
-                        g.Key.VatRatePercent == 0m
-                            ? DocumentLanguages.Money(0m, language)
-                            : taxedGroups == 1 ? DocumentLanguages.Money(document.VatAmount, language) : "—"))
+                summary.Select(s => Row(
+                        RateLabel(s.VatRatePercent, s.NatureCode, language),
+                        DocumentLanguages.Money(s.TaxableAmount, language),
+                        DocumentLanguages.Money(s.Tax, language)))
                     .ToList()));
         }
 

@@ -126,6 +126,29 @@ FatturaPA (`FatturaPaRegimeCode`, `TD01`/`TD04`), the `StampDuty` (`Threshold`, 
 - **The preview** `GET api/fiscal/documents/issuer-preview` (without `bookingId`: the organization) and `GET api/fiscal/documents/settings` return the rule
   in force today for the profile (`rule`: version, dates, source, kind, the rate of every line type, the stamp duty): the summary of the wizard.
 
+## Swiss document (`SwissFiscalDocumentPdf`, MWSTG art. 26, E11/F01/US01/T03)
+
+`FiscalDocumentPdfs` lays out the document of an issuer whose snapshot is in Switzerland (`CountryCode` `CH`) with the Swiss layout (MigraDoc through
+`IPdfDocumentRenderer`, embedded DejaVu fonts), in the language asked for (the guest's; Italian by default, the endpoint passes the language of the
+request). It carries the data of art. 26:
+
+- **Issuer**: legal name, address and, for a registered issuer, «N. IVA CHE-123.456.789 IVA» (IT) / «VAT no. CHE-123.456.789 VAT» (EN), from the
+  snapshot (the issuer as it was at the issue).
+- **Recipient**: the name, plus the address when there is one (never an Italian fiscal code or VAT number).
+- **Title** «Fattura» / «Ricevuta» (IT), «Invoice» / «Receipt» (EN) with the number; the date of the document; the period of the stay
+  (`ServicePeriodFrom`/`To`) and the property.
+- **Lines**: description, quantity, unit price, amount and VAT rate (`3.8%`, `8.1%`; `—` for a line outside the VAT); the tourist tax is always labelled
+  «Tassa di soggiorno (non soggetta all'IVA)» / «Tourist tax (not subject to VAT)».
+- **VAT per rate**: base, rate and VAT, the stored VAT of the lines of each rate; then the taxable total, the VAT and the total in CHF, written with the
+  it-CH culture and its apostrophe pinned (`1'234.50`).
+- **Payment**: «Pagata tramite il portale» when the portal collected (`PaymentChannel` `Portal`), «Pagata» when the money is collected, «Da incassare»
+  otherwise; never the name of a portal or of a supplier.
+- **Not registered**: a receipt without the VAT column, without the summary and with the note «Non soggetto all'IVA» (⚖ wording, the resource
+  `FiscalDocPdfChNotVatRegistered`).
+
+A Swiss document never shows the Italian courtesy copy, nature codes, stamp duty or SDI wording. The labels are the resources `FiscalDocPdf*` (the
+Italian layout's) and `FiscalDocPdfCh*`, in Italian and English. The Italian layout shows no nature code on a receipt (they stay internal).
+
 ## Amounts (`FiscalDocumentTotals`, computation `fiscal-totals-2026.11-1`)
 
 - The lines come from what the guest paid for the booking, **VAT included**, each with its type and the VAT the rule gives it: lodging

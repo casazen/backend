@@ -6126,6 +6126,30 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocPdfCourtesyCopy" xml:space="preserve">
     <value>Copia di cortesia della fattura elettronica: il documento valido ai fini fiscali è il file XML trasmesso al Sistema di Interscambio.</value>
   </data>
+  <data name="FiscalDocPdfChVatNumber" xml:space="preserve">
+    <value>N. IVA {0} IVA</value>
+  </data>
+  <data name="FiscalDocPdfChStayPeriod" xml:space="preserve">
+    <value>Soggiorno dal {0} al {1}</value>
+  </data>
+  <data name="FiscalDocPdfChProperty" xml:space="preserve">
+    <value>Alloggio: {0}</value>
+  </data>
+  <data name="FiscalDocPdfChColRate" xml:space="preserve">
+    <value>Aliquota IVA</value>
+  </data>
+  <data name="FiscalDocPdfChNotVatRegistered" xml:space="preserve">
+    <value>Non soggetto all'IVA</value>
+  </data>
+  <data name="FiscalDocPdfChPaidPortal" xml:space="preserve">
+    <value>Pagata tramite il portale</value>
+  </data>
+  <data name="FiscalDocPdfChPaid" xml:space="preserve">
+    <value>Pagata</value>
+  </data>
+  <data name="FiscalDocPdfChToCollect" xml:space="preserve">
+    <value>Da incassare</value>
+  </data>
   <data name="FiscalDocumentNotFound" xml:space="preserve">
     <value>Documento fiscale non trovato.</value>
   </data>

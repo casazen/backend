@@ -6126,6 +6126,30 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="FiscalDocPdfCourtesyCopy" xml:space="preserve">
     <value>Courtesy copy of the electronic invoice: the document valid for tax purposes is the XML file sent to the Exchange System.</value>
   </data>
+  <data name="FiscalDocPdfChVatNumber" xml:space="preserve">
+    <value>VAT no. {0} VAT</value>
+  </data>
+  <data name="FiscalDocPdfChStayPeriod" xml:space="preserve">
+    <value>Stay from {0} to {1}</value>
+  </data>
+  <data name="FiscalDocPdfChProperty" xml:space="preserve">
+    <value>Accommodation: {0}</value>
+  </data>
+  <data name="FiscalDocPdfChColRate" xml:space="preserve">
+    <value>VAT rate</value>
+  </data>
+  <data name="FiscalDocPdfChNotVatRegistered" xml:space="preserve">
+    <value>Not subject to VAT</value>
+  </data>
+  <data name="FiscalDocPdfChPaidPortal" xml:space="preserve">
+    <value>Paid through the portal</value>
+  </data>
+  <data name="FiscalDocPdfChPaid" xml:space="preserve">
+    <value>Paid</value>
+  </data>
+  <data name="FiscalDocPdfChToCollect" xml:space="preserve">
+    <value>To be collected</value>
+  </data>
   <data name="FiscalDocumentNotFound" xml:space="preserve">
     <value>Fiscal document not found.</value>
   </data>

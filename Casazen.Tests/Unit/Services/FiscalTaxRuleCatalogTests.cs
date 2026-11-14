@@ -134,6 +134,11 @@ public class FiscalTaxRuleCatalogTests
             Assert.All(issued.Lines, line => Assert.Null(line.VatNatureCode));
             Assert.Equal(regime == DocumentRegime.SwissNotRegistered ? 0m : 18.30m, issued.VatAmount);
             xml.Verify(x => x.Build(It.IsAny<FatturaPaInput>()), Times.Never);
+
+            // Its PDF is the Swiss one (E11/F01/US01/T03), from the snapshot of the issuer kept at the issue.
+            var pdf = await service.PdfContentAsync(issued.Id, "it");
+            Assert.Equal(regime == DocumentRegime.SwissNotRegistered ? "Ricevuta n. 2026/1" : "Fattura n. 2026/1", pdf.Title);
+            Assert.Equal("it-CH", pdf.Language);
         }
     }
 
