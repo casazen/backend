@@ -141,6 +141,18 @@ public sealed class AssistRequestDto
 
     /// <summary>The "To do" that stands for the request while it is open.</summary>
     public Guid? ActivityId { get; set; }
+
+    /// <summary>
+    /// What «Fatto» recorded (E20/F03/US01/T02): <c>verified</c> («Il collegamento è attivo»: CasaZen read it on the panel) or <c>declared</c> («Il supporto
+    /// dichiara di aver collegato …»: the panel could not be read); <c>null</c> while the request is open or after it was cancelled.
+    /// </summary>
+    public string? Outcome { get; set; }
+
+    /// <summary>What the host wrote when it reopened the request («Non funziona»).</summary>
+    public string? HostNote { get; set; }
+
+    /// <summary>When the host last reopened the request (UTC).</summary>
+    public DateTime? ReopenedAt { get; set; }
 }
 
 /// <summary>The body of <c>PUT api/admin/onboarding/assist-requests/{id}</c>: <c>inProgress</c>, <c>done</c> or <c>cancelled</c>, and an optional note.</summary>
@@ -149,6 +161,96 @@ public sealed class UpdateAssistRequestDto
     public OnboardingAssistStatus? Status { get; set; }
 
     public string? Note { get; set; }
+}
+
+/// <summary>
+/// The body of <c>POST api/onboarding/assist-requests/{id}/reopen</c> («Non funziona», E20/F03/US01/T02): what does not work, at most 500 characters, no
+/// e-mail address. Required.
+/// </summary>
+public sealed class ReopenAssistRequestDto
+{
+    public string? Note { get; set; }
+}
+
+/// <summary>
+/// One request as staff reads it (<c>GET api/admin/onboarding/assist-requests/{id}</c>, E20/F03/US01/T02): the request and the checklist of what support
+/// needs, per property. Presence and dates only: never a credential.
+/// </summary>
+public sealed class AdminAssistRequestDetailDto
+{
+    public AdminAssistRequestDto Request { get; set; } = new();
+
+    public List<AssistChecklistPropertyDto> Checklist { get; set; } = [];
+}
+
+/// <summary>
+/// What support needs for one property of a request, or for the org itself (<c>propertyId</c> <c>null</c>). <c>panelUser</c>: the user of the channel
+/// manager panel of the structure in the support vault. <c>policeCredentials</c>, <c>istatCredentials</c> (with <c>requirement</c>: <c>required</c>,
+/// <c>notRequired</c>, <c>toVerify</c>) and <c>sender</c> are <c>null</c> for the org itself; <c>sender</c> is <c>null</c> too when nothing is stored (the
+/// default applies). <c>steps</c>: the panel steps the request is about.
+/// </summary>
+public sealed class AssistChecklistPropertyDto
+{
+    public Guid? PropertyId { get; set; }
+
+    public string? PropertyName { get; set; }
+
+    public string? Comune { get; set; }
+
+    public AssistPresenceDto PanelUser { get; set; } = new();
+
+    public AssistPresenceDto? PoliceCredentials { get; set; }
+
+    public AssistIstatPresenceDto? IstatCredentials { get; set; }
+
+    public AssistSenderDto? Sender { get; set; }
+
+    public List<AssistChecklistStepDto> Steps { get; set; } = [];
+}
+
+/// <summary>Whether a credential is there and since when. Never a value.</summary>
+public class AssistPresenceDto
+{
+    public bool Present { get; set; }
+
+    public DateTime? UpdatedAt { get; set; }
+}
+
+/// <summary>Whether the ISTAT credentials are there, since when, and whether the region needs them: <c>required</c>, <c>notRequired</c>, <c>toVerify</c>.</summary>
+public sealed class AssistIstatPresenceDto : AssistPresenceDto
+{
+    public string Requirement { get; set; } = string.Empty;
+}
+
+/// <summary>Who sends the police and ISTAT communications of the property, since when, and whether the host declared it active after that change.</summary>
+public sealed class AssistSenderDto
+{
+    public ComplianceSenderType Sender { get; set; }
+
+    public DateTime ChangedAt { get; set; }
+
+    public bool ActivationDeclared { get; set; }
+}
+
+/// <summary>
+/// One panel step to do: <c>kind</c> (<c>policeConnection</c>, <c>istatConnection</c>, <c>channelAccess</c>), the channel of a channel access,
+/// <c>instructionsKey</c> (the guide the client shows: <c>panelPolice</c>, <c>panelIstat</c>, <c>panelChannelAccess</c>), <c>state</c>
+/// (<c>notStarted</c>, <c>started</c>, <c>verified</c>, <c>confirmed</c>, <c>notValid</c>, <c>assistRequested</c>), what its last check found and when it
+/// was completed.
+/// </summary>
+public sealed class AssistChecklistStepDto
+{
+    public string Kind { get; set; } = string.Empty;
+
+    public string? ChannelCode { get; set; }
+
+    public string InstructionsKey { get; set; } = string.Empty;
+
+    public string State { get; set; } = string.Empty;
+
+    public string? LastVerificationOutcome { get; set; }
+
+    public DateTime? CompletedAt { get; set; }
 }
 
 /// <summary>
@@ -189,4 +291,13 @@ public sealed class AdminAssistRequestDto
     public WizardType? DraftWizardType { get; set; }
 
     public Guid? DraftEntityId { get; set; }
+
+    /// <summary>What «Fatto» recorded: <c>verified</c> or <c>declared</c> (E20/F03/US01/T02); <c>null</c> while open or after a cancellation.</summary>
+    public string? Outcome { get; set; }
+
+    /// <summary>What the host wrote when it reopened the request («Non funziona»): at most 500 characters, no e-mail address.</summary>
+    public string? HostNote { get; set; }
+
+    /// <summary>When the host last reopened the request (UTC).</summary>
+    public DateTime? ReopenedAt { get; set; }
 }

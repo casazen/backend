@@ -145,8 +145,9 @@ public enum OrgActivityType
 
     /// <summary>
     /// A host asked CasaZen support to do a part, or a step of the Octorate panel, of the activation for it («Do it for me», UX-15, AC-NF15-1).
-    /// Written by <c>OnboardingAssistService.RequestAsync</c>, in the save that stores the request. Subject: the org. Details: the part, the context
-    /// of the request and its status (<c>requested</c>), short codes only: never the draft, a note or a person. The actor is the host.
+    /// Written by <c>OnboardingAssistService.RequestAsync</c>, in the save that stores the request, and by <c>OnboardingAssistService.ReopenAsync</c> when
+    /// the host reopens a request support marked done («Non funziona», E20/F03/US01/T02). Subject: the org. Details: the part, the context of the request
+    /// and its status (<c>requested</c>), short codes only: never the draft, a note or a person. The actor is the host.
     /// </summary>
     OnboardingAssistRequested = 110,
 
@@ -154,7 +155,9 @@ public enum OrgActivityType
     /// CasaZen staff took, completed or closed a «Do it for me» request, or changed its note (AC-NF15-3). Written by
     /// <c>OnboardingAssistService.UpdateAsync</c> in the <b>org of the request</b>, not in the staff user's, with the staff user as the actor.
     /// Subject: the org. Details: the part, the context and the new status (<c>inProgress</c>, <c>done</c>, <c>cancelled</c>); the note is never
-    /// recorded.
+    /// recorded. Also written by <c>SupportVaultService.RevealAsync</c> (E20/F03/US01/T01) when staff opens a credential of the support vault for the
+    /// request: then the status is the request's and the detail <c>credential</c> says which kind was used (<c>panel</c>, <c>police</c>,
+    /// <c>regionalIstat</c>), never its value or the reason.
     /// </summary>
     OnboardingAssistUpdated = 111,
 

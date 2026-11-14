@@ -834,6 +834,18 @@
   <data name="Push_GuestCheckInCompleted_Body" xml:space="preserve">
     <value>{0}: a guest completed the online check-in.</value>
   </data>
+  <data name="Push_AssistVerified_Title" xml:space="preserve">
+    <value>The connection is active</value>
+  </data>
+  <data name="Push_AssistVerified_Body" xml:space="preserve">
+    <value>CasaZen support completed the connection you asked for and we checked that it is active.</value>
+  </data>
+  <data name="Push_AssistDeclared_Title" xml:space="preserve">
+    <value>Connection done by support</value>
+  </data>
+  <data name="Push_AssistDeclared_Body" xml:space="preserve">
+    <value>CasaZen support says it completed the connection you asked for. If something does not work, reopen the request.</value>
+  </data>
   <data name="Push_CheckoutReminder_Title" xml:space="preserve">
     <value>Check-out reminder</value>
   </data>
