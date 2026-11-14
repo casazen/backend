@@ -333,6 +333,22 @@ public class RoutineManagementServiceTests
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"totalStays","operator":"greaterThan","value":2}]}]}""")]
     [InlineData("[]")]
     [InlineData("\"channel = Airbnb\"")]
+    // The value of a rule is of the kind its operator takes: a routine that could never run, or would run for every booking, is not saved.
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"in","value":"Airbnb"}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"in","value":[]}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"notIn","value":[]}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"notEquals","value":["Airbnb"]}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"notIn","value":[1,2]}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"equals","value":"Booking.com"}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"propertyId","operator":"in","value":["not-an-id"]}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"stayDuration","operator":"equals","value":2.5}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"stayDuration","operator":"greaterThan","value":"2"}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"stayDuration","operator":"between","value":[3,1]}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"guestCount","operator":"between","value":[1,2,3]}]}]}""")]
+    // A member nobody reads: what was meant is never saved as "no condition" (the shape of the old frontend types, `conditions` and `field`, included).
+    [InlineData("""{"rules":[{"fieldId":"channel","operator":"equals","value":"Airbnb"}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","conditions":[{"field":"channel","operator":"equals","value":"Airbnb"}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[],"extra":true}""")]
     public async Task Create_AConditionTheEvaluatorOrTheRoutinesRefuse_IsRefusedWithItsErrors(string condition)
     {
         var rig = new RoutineRig();
@@ -351,6 +367,29 @@ public class RoutineManagementServiceTests
         var rig = new RoutineRig();
         await using var db = rig.NewDb();
         const string condition = """{"version":"1.0","groups":[{"operator":"OR","rules":[{"fieldId":"stayDuration","operator":"between","value":[2,5]},{"fieldId":"guestCount","operator":"greaterThan","value":3}]}]}""";
+
+        var routine = await rig.Management(db).CreateAsync(OrgA, Command(condition: condition));
+
+        Assert.Equal(condition, routine.ConditionJson);
+    }
+
+    /// <summary>Every kind of value the engine reads is saved: what is refused above is only what the engine could not meet, or would meet for every booking.</summary>
+    [Theory]
+    [InlineData("channel", "equals", "\"airbnb\"")]
+    [InlineData("channel", "notEquals", "\"BookingCom\"")]
+    [InlineData("channel", "in", "[\"Direct\",\"Manual\"]")]
+    [InlineData("channel", "notIn", "[\"Airbnb\"]")]
+    [InlineData("propertyId", "in", "[\"3c1d5f52-9f0e-4b8a-8d65-2c4e1f0b9a11\"]")]
+    [InlineData("propertyId", "notIn", "[\"3c1d5f52-9f0e-4b8a-8d65-2c4e1f0b9a11\",\"8e2d4b19-6a5f-4f3c-b1e7-2c9a0d3e5f02\"]")]
+    [InlineData("stayDuration", "equals", "3")]
+    [InlineData("stayDuration", "greaterThan", "2.5")]
+    [InlineData("guestCount", "lessThan", "4")]
+    [InlineData("bookingLeadTime", "between", "[0,30]")]
+    public async Task Create_EveryKindOfValueTheEngineReads_IsSaved(string fieldId, string op, string valueJson)
+    {
+        var rig = new RoutineRig();
+        await using var db = rig.NewDb();
+        var condition = $$"""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"{{fieldId}}","operator":"{{op}}","value":{{valueJson}}}]}]}""";
 
         var routine = await rig.Management(db).CreateAsync(OrgA, Command(condition: condition));
 

@@ -83,8 +83,6 @@ public class RoutineEngineTests
     [InlineData("channel", "notEquals", "\"Airbnb\"", "AND", false)]
     [InlineData("channel", "in", "[\"Direct\",\"Airbnb\"]", "AND", true)]
     [InlineData("channel", "notIn", "[\"Direct\",\"Airbnb\"]", "AND", false)]
-    [InlineData("channel", "in", "[]", "AND", false)]
-    [InlineData("channel", "notIn", "[]", "AND", false)]
     [InlineData("stayDuration", "equals", "3", "AND", true)]
     [InlineData("stayDuration", "greaterThan", "2", "AND", true)]
     [InlineData("stayDuration", "greaterThan", "3", "AND", false)]
@@ -160,6 +158,22 @@ public class RoutineEngineTests
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"equals"}]}]}""")]
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"paymentStatus","operator":"equals","value":"paid"}]}]}""")]
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"totalStays","operator":"greaterThan","value":3}]}]}""")]
+    // The value of a rule is of the kind its operator takes (E01/F04/US01 review): what the engine could never meet, or would meet for every booking, is invalid.
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"in","value":"Airbnb"}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"in","value":[]}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"notIn","value":[]}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"notEquals","value":["Airbnb"]}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"notIn","value":[1,2]}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"equals","value":"Booking.com"}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"propertyId","operator":"in","value":["not-an-id"]}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"stayDuration","operator":"equals","value":2.5}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"stayDuration","operator":"greaterThan","value":"2"}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"stayDuration","operator":"between","value":[3,1]}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"guestCount","operator":"between","value":[1,2,3]}]}]}""")]
+    // A member nobody reads: the rules that were meant are never read as "no condition".
+    [InlineData("""{"rules":[{"fieldId":"channel","operator":"equals","value":"Airbnb"}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","conditions":[{"field":"channel","operator":"equals","value":"Airbnb"}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"field":"channel","operator":"equals","value":"Airbnb"}]}]}""")]
     public async Task Trigger_InvalidCondition_IsRecordedAsFailed_AndRunsNothing(string conditionJson)
     {
         var rig = new RoutineRig();

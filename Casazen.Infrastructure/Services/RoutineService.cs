@@ -528,6 +528,7 @@ public class RoutineService(
 
         var errors = conditionEvaluator.ValidateCondition(condition)
             .Concat(RoutineConditions.UnsupportedFieldErrors(condition))
+            .Concat(RoutineConditions.ValueErrors(condition))
             .ToList();
         if (errors.Count > 0)
         {

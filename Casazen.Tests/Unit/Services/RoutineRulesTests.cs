@@ -143,6 +143,91 @@ public class RoutineRulesTests
         Assert.All(RoutineConditions.SupportedFields, field => Assert.True(FieldCatalog.IsValidField(field)));
     }
 
+    /// <summary>A member nobody reads is an error, never "no condition": the rules that were meant would otherwise be dropped and the routine run for every booking.</summary>
+    [Theory]
+    [InlineData("""{"rules":[{"fieldId":"channel","operator":"equals","value":"Airbnb"}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","conditions":[{"field":"channel","operator":"equals","value":"Airbnb"}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"equals","value":"Airbnb","label":"x"}]}]}""")]
+    [InlineData("""{"version":"1.0","groups":[],"extra":1}""")]
+    public void Parse_AMemberNobodyReads_IsInvalid_NeverNoCondition(string json)
+    {
+        Assert.False(RoutineConditions.Parse(json).Valid);
+    }
+
+    /// <summary>The kind of value each operator of a field the routines read takes: what is refused is what <see cref="RoutineConditions.Satisfies"/> could never meet.</summary>
+    [Theory]
+    [InlineData("channel", "equals", "\"airbnb\"", true)]
+    [InlineData("channel", "equals", "\"Booking.com\"", false)]
+    [InlineData("channel", "equals", "[\"Airbnb\"]", false)]
+    [InlineData("channel", "equals", "5", false)]
+    [InlineData("channel", "notEquals", "\"Direct\"", true)]
+    [InlineData("channel", "notEquals", "[\"Direct\"]", false)]
+    [InlineData("channel", "in", "[\"Direct\",\"Airbnb\"]", true)]
+    [InlineData("channel", "in", "\"Airbnb\"", false)]
+    [InlineData("channel", "in", "[]", false)]
+    [InlineData("channel", "in", "[\"Airbnb\",3]", false)]
+    [InlineData("channel", "in", "[\"Airbnb\",\"Nowhere\"]", false)]
+    [InlineData("channel", "notIn", "[\"Airbnb\"]", true)]
+    [InlineData("channel", "notIn", "[]", false)]
+    [InlineData("channel", "notIn", "[1,2]", false)]
+    [InlineData("propertyId", "in", "[\"3c1d5f52-9f0e-4b8a-8d65-2c4e1f0b9a11\"]", true)]
+    [InlineData("propertyId", "in", "[\"3c1d5f529f0e4b8a8d652c4e1f0b9a11\"]", false)]
+    [InlineData("propertyId", "notIn", "[\"nope\"]", false)]
+    [InlineData("propertyId", "notIn", "[]", false)]
+    [InlineData("stayDuration", "equals", "3", true)]
+    [InlineData("stayDuration", "equals", "2.5", false)]
+    [InlineData("stayDuration", "equals", "\"3\"", false)]
+    [InlineData("guestCount", "greaterThan", "2.5", true)]
+    [InlineData("guestCount", "greaterThan", "\"2\"", false)]
+    [InlineData("guestCount", "lessThan", "[2]", false)]
+    [InlineData("bookingLeadTime", "between", "[0,30]", true)]
+    [InlineData("bookingLeadTime", "between", "[3,3]", true)]
+    [InlineData("bookingLeadTime", "between", "[30,0]", false)]
+    [InlineData("bookingLeadTime", "between", "[1]", false)]
+    [InlineData("bookingLeadTime", "between", "[1,2,3]", false)]
+    [InlineData("bookingLeadTime", "between", "[\"a\",\"z\"]", false)]
+    [InlineData("bookingLeadTime", "between", "5", false)]
+    public void ValueErrors_AreTheValuesTheOperatorDoesNotTake(string fieldId, string op, string valueJson, bool valid)
+    {
+        var condition = RoutineConditions
+            .Parse($$"""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"{{fieldId}}","operator":"{{op}}","value":{{valueJson}}}]}]}""")
+            .Condition!;
+
+        var errors = RoutineConditions.ValueErrors(condition);
+
+        Assert.Equal(valid, errors.Count == 0);
+        Assert.All(errors, error => Assert.Contains(fieldId, error, StringComparison.Ordinal));
+    }
+
+    /// <summary>What is not the business of this check (no value, a field the routines do not read, an operator the field does not take) is left to the generic validator.</summary>
+    [Fact]
+    public void ValueErrors_LeaveToTheGenericValidator_WhatIsNotAboutTheKindOfValue()
+    {
+        var condition = RoutineConditions.Parse(
+            """
+            {"version":"1.0","groups":[{"operator":"AND","rules":[
+              {"fieldId":"channel","operator":"equals"},
+              {"fieldId":"paymentStatus","operator":"equals","value":5},
+              {"fieldId":"channel","operator":"between","value":5},
+              {"fieldId":"nope","operator":"equals","value":5}]}]}
+            """).Condition!;
+
+        Assert.Empty(RoutineConditions.ValueErrors(condition));
+    }
+
+    /// <summary>A value of another kind is never "different": <c>notEquals</c> and <c>notIn</c> would otherwise be met for every booking.</summary>
+    [Theory]
+    [InlineData("notEquals", "[\"Direct\"]")]
+    [InlineData("notEquals", "5")]
+    [InlineData("notEquals", "true")]
+    [InlineData("notIn", "[1,2]")]
+    [InlineData("notIn", "[\"Direct\",1]")]
+    [InlineData("notIn", "\"Direct\"")]
+    public void Satisfies_NotEqualsAndNotIn_WithAValueOfAnotherKind_AreNotMet(string op, string valueJson)
+    {
+        Assert.False(RoutineConditions.Satisfies(Rule("channel", op, Json(valueJson)), Facts()));
+    }
+
     // ─── Meeting a rule ──────────────────────────────────────────────────────────
 
     [Theory]

@@ -299,13 +299,14 @@ public class RoutineManagementService(
 
         var parsed = RoutineConditions.Parse(conditionJson);
         if (!parsed.Valid)
-            throw ConditionInvalid(["The condition is not a condition"]);
+            throw ConditionInvalid(["The condition is not a condition: only version and groups (operator and rules, each with fieldId, operator and value) are read"]);
 
         if (parsed.Condition is not { } condition)
             return;
 
         var errors = conditionEvaluator.ValidateCondition(condition)
             .Concat(RoutineConditions.UnsupportedFieldErrors(condition))
+            .Concat(RoutineConditions.ValueErrors(condition))
             .ToList();
         if (errors.Count > 0)
             throw ConditionInvalid(errors);
