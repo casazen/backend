@@ -6,12 +6,13 @@ namespace Casazen.Core.Services;
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
-/// <item><b>Behind two flags.</b> <c>Features:OctorateConnector</c> and <c>Features:OctorateDocumentImport</c> (off): the documents list is documented in the
-/// OpenAPI but never seen with content (the sandbox has no invoice module, S25), so the field names are unverified; nothing is written while either is
-/// off, and only for an org whose issuer is Octorate with a connected connection.</item>
+/// <item><b>Behind two flags and an option.</b> <c>Features:OctorateConnector</c> and <c>Features:OctorateDocumentImport</c> (off), and the option
+/// <c>FiscalDocuments:ImportOctorateDocuments</c> (false): CasaZen is the only issuer since 2026-11-14 (E11/F01/US01/T01), so the import never runs by
+/// accident. The documents list is documented in the OpenAPI but never seen with content (the sandbox has no invoice module, S25), so the field names are
+/// unverified; nothing is written while any of the three is off.</item>
 /// <item><b>Tenant.</b> The import writes only the org of the connection, under its Octorate scope; a booking is linked only within that org.</item>
-/// <item><b>Never two issuers hidden.</b> A booking of an imported document is locked to Octorate; when CasaZen already issued for it, the imported
-/// document is stored anyway and an urgent "To do" says <c>two_issuers_detected</c>.</item>
+/// <item><b>Never a block.</b> An imported document is stored read-only and linked to its booking, and nothing more: it never locks the issuer of the
+/// booking, so CasaZen still issues for it.</item>
 /// </list>
 /// </remarks>
 public interface IOctorateDocumentImportService
@@ -24,7 +25,10 @@ public interface IOctorateDocumentImportService
     /// </summary>
     Task<OctorateDocumentImportResult> ImportAsync(Guid orgId, DateTime? since, CancellationToken ct = default);
 
-    /// <summary>The orgs an import runs for: the issuer is Octorate and the connection of this environment is connected.</summary>
+    /// <summary>
+    /// The orgs an import runs for: none while <c>FiscalDocuments:ImportOctorateDocuments</c> is false (the default); with it, the orgs whose connection of
+    /// this environment is connected.
+    /// </summary>
     Task<IReadOnlyList<Guid>> OrgsToImportAsync(CancellationToken ct = default);
 
     /// <summary>When the org's imported documents last changed (informational: every accommodation is read from its own last import); <c>null</c> before the first.</summary>
@@ -32,7 +36,7 @@ public interface IOctorateDocumentImportService
 }
 
 /// <summary>What one import of an org did.</summary>
-public sealed record OctorateDocumentImportResult(int Created, int Updated, int Skipped, int FailedReads, int TwoIssuers);
+public sealed record OctorateDocumentImportResult(int Created, int Updated, int Skipped, int FailedReads);
 
 /// <summary>The constants of the import of the Octorate documents.</summary>
 public static class OctorateDocumentImport
@@ -49,17 +53,11 @@ public static class OctorateDocumentImport
     /// <summary>The reason of the "To do" of a document still to collect.</summary>
     public const string ToCollectReason = "to_collect";
 
-    /// <summary>The reason of the urgent "To do" of a booking with documents of two issuers.</summary>
-    public const string TwoIssuersReason = "two_issuers_detected";
-
     /// <summary>The entity type of the "To do" about the SDI state of a document.</summary>
     public const string SdiEntityType = "FiscalDocument";
 
     /// <summary>The entity type of the "To do" about the payment of a document.</summary>
     public const string PaymentEntityType = "FiscalDocumentPayment";
-
-    /// <summary>The entity type of the "To do" about the issuers of a booking.</summary>
-    public const string IssuersEntityType = "BookingIssuers";
 }
 
 /// <summary>The stable codes of the errors of the documents of Octorate, with the keys of their messages in <c>SharedResources</c>.</summary>

@@ -904,7 +904,7 @@ public class DemoShowcaseTests
     }
 
     [Fact]
-    public void FiscalIssuerProfile_TheDemoOrgHasACompleteProfileOfItsIssuer_InventedAndNeedingNeitherTheFlagNorAConnection()
+    public void FiscalIssuerProfile_TheDemoOrgHasACompleteProfileOfItsIssuer_InventedAndIssuedByCasazen()
     {
         // FIS-02, NF-82: a scenario without template data fails (the coverage test above), and the profile is complete and obviously test data.
         Assert.Contains(DemoShowcaseCatalog.Scenario.FiscalIssuerProfile, DemoShowcaseCatalog.Scenarios);
@@ -913,9 +913,11 @@ public class DemoShowcaseTests
         Assert.Contains("TEST", profile.LegalName, StringComparison.Ordinal);
         Assert.True(profile.ConfirmedOffsetDays <= 0);
 
-        // The accountant is the one mode that needs no flag and no Octorate connection, so the demo works in every environment.
-        Assert.Equal(DocumentIssuerMode.Accountant, profile.Mode);
+        // CasaZen is the only issuer since 2026-11-14 (E11/F01/US01/T01): the demo profile says so, never a retired mode, with an Italian regime.
+        Assert.Equal(DocumentIssuerMode.CasaZen, profile.Mode);
+        Assert.False(FiscalDocumentRules.IsRetiredMode(profile.Mode));
         Assert.True(Enum.IsDefined(profile.Regime));
+        Assert.True(FiscalDocumentRules.IsRegimeOfCountry(profile.Regime, "IT"));
         var issuer = new IssuerData(
             profile.LegalName, profile.AddressStreet, profile.AddressCivic, profile.PostalCode, profile.City, profile.Province, "IT",
             profile.FatturaPaRegimeCode, null, null, null);

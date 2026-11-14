@@ -270,12 +270,12 @@ public class OctorateBillingSyncProofTests
         var rewritten = await rig.RowAsync(booking.Id);
         Assert.NotEqual(written.OctorateBillingHash, rewritten.OctorateBillingHash);
 
-        // Where Octorate does not issue (CasaZen, the accountant, nobody) nothing is sent, however the data changes.
+        // Where Octorate does not issue nothing is sent, however the data changes: CasaZen issues every booking since 2026-11-14 (E11/F01/US01/T01), and
+        // nobody issues while the issuance is off. Only a booking a legacy row locked to Octorate is written back (the rig above).
         foreach (var (kind, reason) in new[]
                  {
                      (IssuerDecisionKind.CasaZen, IssuerReasons.IssuerCasazen),
-                     (IssuerDecisionKind.None, IssuerReasons.IssuerNobody),
-                     (IssuerDecisionKind.None, IssuerReasons.BookingNotDirect),
+                     (IssuerDecisionKind.None, IssuerReasons.IssuanceOff),
                  })
         {
             rig.Issuer.Setup(i => i.ResolveIssuerAsync(booking.Id, It.IsAny<CancellationToken>())).ReturnsAsync(new IssuerDecision(kind, reason));
@@ -940,7 +940,7 @@ public class OctorateBillingSyncProofTests
             Targets.Setup(t => t.AccommodationOfAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(AccommodationId);
             Issuer
                 .Setup(i => i.ResolveIssuerAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new IssuerDecision(IssuerDecisionKind.Octorate, IssuerReasons.IssuerOctorate));
+                .ReturnsAsync(new IssuerDecision(IssuerDecisionKind.Octorate, IssuerReasons.IssuerLockedOctorate));
         }
 
         public string DatabaseName { get; } = $"octorate-billing-{Guid.NewGuid():N}";

@@ -12,9 +12,9 @@ using Microsoft.Extensions.Options;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Who issues the fiscal documents of the organization and with which data (FIS-02, NF-82, PO-05, E06/F02/US02/T02): the setting the wizard
-/// «Come emetti i documenti?» reads and saves, and the preview of who would issue the documents of a booking. It is about money: besides
-/// <c>property.read</c> it needs <c>payment.read</c> (as <see cref="FiscalController"/>), the save adds <c>property.write</c>. No new permission keys.
+/// With which data CasaZen issues the fiscal documents of the organization (FIS-02, NF-82, NF-112, E06/F02/US02/T02, E11/F01/US01/T01): the setting the
+/// wizard reads and saves, and the preview of who would issue the documents of a booking. It is about money: besides <c>property.read</c> it needs
+/// <c>payment.read</c> (as <see cref="FiscalController"/>), the save adds <c>property.write</c>. No new permission keys.
 /// </summary>
 /// <remarks>
 /// The setting belongs to the whole organization, not to some of its properties: a caller who reaches only some of them (a collaborator «Solo
@@ -54,9 +54,10 @@ public class FiscalDocumentSettingsController(
     }
 
     /// <summary>
-    /// Saves the answers of the wizard as a whole and answers the setting as saved. 422 <c>issuer_field_invalid</c> (with the <c>field</c>),
-    /// <c>document_issuance_not_available</c> (the mode CasaZen while the flag is off), <c>issuer_profile_incomplete</c> (with the <c>fields</c> that
-    /// are missing) or <c>octorate_not_connected</c>; 403 <c>fiscal_settings_need_whole_org</c> for a caller who reaches only some of the properties.
+    /// Saves the answers of the wizard as a whole and answers the setting as saved. 422 <c>issuer_mode_retired</c> (the mode Octorate or Accountant),
+    /// <c>issuer_regime_country_mismatch</c>, <c>issuer_field_invalid</c> (with the <c>field</c>), <c>document_issuance_not_available</c> (the flag is
+    /// off) or <c>issuer_profile_incomplete</c> (a confirmed wizard with <c>fields</c> missing); 403 <c>fiscal_settings_need_whole_org</c> for a caller
+    /// who reaches only some of the properties. A refusal saves nothing.
     /// </summary>
     [HttpPut("settings")]
     [Authorize(Policy = "RequireContext:short-rent:property.write")]
@@ -87,9 +88,9 @@ public class FiscalDocumentSettingsController(
     }
 
     /// <summary>
-    /// Who would issue the documents of the booking and why: <c>issuer</c> (<c>None</c>, <c>Octorate</c> or <c>CasaZen</c>) and <c>reason</c>, a stable
-    /// code (<c>issuer_octorate</c>, <c>issuer_casazen</c>, <c>issuer_nobody</c>, <c>booking_not_direct</c>, <c>issuer_locked_octorate</c>,
-    /// <c>issuance_off</c>). It changes nothing. 404 for a booking of another org, 403 for one the caller may not read.
+    /// Who would issue the documents of the booking and why: <c>issuer</c> (<c>CasaZen</c>, <c>None</c> while the issuance is off, <c>Octorate</c> for a
+    /// booking a legacy row locked to it) and <c>reason</c>, a stable code (<c>issuer_casazen</c>, <c>issuance_off</c>, <c>issuer_locked_octorate</c>).
+    /// It changes nothing. 404 for a booking of another org, 403 for one the caller may not read.
     /// </summary>
     [HttpGet("issuer-preview")]
     [ProducesResponseType(typeof(IssuerPreviewDto), StatusCodes.Status200OK)]

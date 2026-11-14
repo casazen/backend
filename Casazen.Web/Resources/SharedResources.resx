@@ -5457,6 +5457,12 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="IssuerFieldInvalid" xml:space="preserve">
     <value>Un dato dell'emittente non è valido o è troppo lungo: controllalo e riprova.</value>
   </data>
+  <data name="IssuerModeRetired" xml:space="preserve">
+    <value>Questa modalità non è più disponibile: i documenti fiscali li emette sempre CasaZen. Il commercialista riceve gli export.</value>
+  </data>
+  <data name="IssuerRegimeCountryMismatch" xml:space="preserve">
+    <value>Il regime scelto non è quello del paese dell'emittente: per la Svizzera scegli un regime svizzero, per l'Italia uno italiano.</value>
+  </data>
   <data name="FiscalSettingsNeedWholeOrg" xml:space="preserve">
     <value>Solo chi gestisce tutti gli immobili dell'organizzazione può cambiare chi emette i documenti.</value>
   </data>

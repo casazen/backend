@@ -1666,17 +1666,17 @@ public static class DemoShowcaseCatalog
     ];
 
     /// <summary>
-    /// The profile of the issuer of the documents of the demo organization (E06/F02/US02, FIS-02, NF-82): complete, so the wizard «Come emetti i
-    /// documenti?» opens on an answered setting and the settings page has data to show. Invented like the rest (TEST in the name, a plausible address
-    /// in Milano), with the choice «the accountant takes care of the documents»: it needs neither the flag of the issuance nor an Octorate connection.
-    /// Written for the org at reset only when the org has no profile (there is one per org, and a real one is never touched), marked as showcase data
-    /// (<c>TestDataEntities.FiscalIssuerProfile</c>) and deleted by the next reset.
+    /// The profile of the issuer of the documents of the demo organization (E06/F02/US02, E11/F01/US01, FIS-02, NF-82): complete, so the wizard opens on
+    /// an answered setting and the settings page has data to show. Invented like the rest (TEST in the name, a plausible address in Milano), with CasaZen
+    /// as the issuer (the only mode since 2026-11-14) and the prudent defaults of the profile (stay at the rate of the rule, cleaning with the stay, the
+    /// default series, no automatic issue). Written for the org at reset only when the org has no profile (there is one per org, and a real one is never
+    /// touched), marked as showcase data (<c>TestDataEntities.FiscalIssuerProfile</c>) and deleted by the next reset.
     /// </summary>
     public static IReadOnlyList<DemoFiscalIssuerProfileTemplate> FiscalIssuerProfiles { get; } =
     [
         new(
             "emittente-demo",
-            DocumentIssuerMode.Accountant,
+            DocumentIssuerMode.CasaZen,
             DocumentRegime.VatOrdinary,
             "Casa Demo S.r.l. (TEST)",
             "Via Brera",

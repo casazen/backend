@@ -1,13 +1,15 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Core.Entities;
 
 /// <summary>
-/// A line of a fiscal document CasaZen issues (FIS-03, E06/F01/US02/T01): lodging, cleaning, tourist tax. It goes with its document (cascade), which is
-/// itself never removed once issued; <see cref="LineNumber"/> is unique within the document.
+/// A line of a fiscal document CasaZen issues (FIS-03, E06/F01/US02/T01, E11/F01/US01/T01): lodging, cleaning, an extra service, the tourist tax, a
+/// commission... (<see cref="LineType"/>). It goes with its document (cascade), which is itself never removed once issued; <see cref="LineNumber"/> is
+/// unique within the document.
 /// </summary>
 [Table("FiscalDocumentLines")]
 public class FiscalDocumentLine : ITenantOwned
@@ -29,6 +31,9 @@ public class FiscalDocumentLine : ITenantOwned
     /// <summary>The number of the line within the document, from 1.</summary>
     public int LineNumber { get; set; }
 
+    /// <summary>What the line is: its type decides the VAT of the tax rule. The lines written before the types existed were migrated (lodging, or tourist tax).</summary>
+    public FiscalLineType LineType { get; set; } = FiscalLineType.Accommodation;
+
     [Required, MaxLength(DescriptionMaxLength)]
     public string Description { get; set; } = string.Empty;
 
@@ -47,4 +52,11 @@ public class FiscalDocumentLine : ITenantOwned
 
     [MaxLength(VatNatureCodeMaxLength)]
     public string? VatNatureCode { get; set; }
+
+    /// <summary>
+    /// The VAT of the line as it was computed (<c>FiscalDocumentTotals</c>): the lines of one rate add up to the VAT of that rate, so the summaries of the
+    /// PDF and of the XML are the stored amounts and never <c>taxable × rate</c> again. <c>null</c> for the lines written before it was stored.
+    /// </summary>
+    [Precision(18, 2)]
+    public decimal? VatAmount { get; set; }
 }

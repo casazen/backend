@@ -28,8 +28,9 @@ using FiscalDocumentKind = Casazen.Core.Options.FiscalDocumentKind;
 namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
-/// FIS-02, NF-82, E06/F02/US02/T02: who issues the documents of a booking. The rules that cost if they fail: a booking never has two issuers, CasaZen
-/// never issues for an OTA booking whatever the setting says, and the setting of one organization is never returned to another.
+/// FIS-02, NF-82, NF-112, E11/F01/US01/T01: CasaZen is the only issuer. The rules that cost if they fail: every booking of every source is CasaZen's while
+/// the issuance is on, a booking never has two issuers (a legacy Octorate lock is kept), a retired mode is refused and changes nothing, and the setting of
+/// one organization is never returned to another.
 /// </summary>
 public class DocumentIssuerProofTests
 {
@@ -38,118 +39,100 @@ public class DocumentIssuerProofTests
     private static readonly Guid PropertyOfColleague = Guid.Parse("3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e14");
 
     /// <summary>
-    /// PROOF TEST: data rule. A booking locked to CasaZen cannot be locked to Octorate, and a booking locked to Octorate cannot be locked to CasaZen:
-    /// 409 <c>document_issuer_conflict</c>, the row of the first issuer untouched and no second row. The same kind again is a success that keeps the
-    /// first document; the decision of the booking follows the lock.
+    /// PROOF TEST: data rule. A booking is locked to CasaZen once (the first document is kept); the rows are written with CasaZen only, so Octorate can no
+    /// longer be locked; a booking a legacy row locked to Octorate keeps it: CasaZen cannot be locked over it (409 <c>document_issuer_conflict</c>) and
+    /// the decision says so, so a booking Octorate issued for is never issued twice.
     /// </summary>
     [Fact]
     public async Task DocumentIssuer_NeverTwoIssuersPerBooking_Test()
     {
-        var databaseName = $"document-issuer-lock-{Guid.NewGuid()}";
-        await using var db = NewDb(databaseName, new FixedTenantContext(OrgA));
-        db.OrgFiscalIssuerProfiles.Add(NewProfile(OrgA, DocumentIssuerMode.CasaZenDirectOnly));
-        var ownBooking = NewBooking(OrgA, BookingSource.Direct);
-        var channelBooking = NewBooking(OrgA, BookingSource.Manual);
-        db.Bookings.AddRange(ownBooking, channelBooking);
+        await using var db = NewDb($"document-issuer-lock-{Guid.NewGuid()}", new FixedTenantContext(OrgA));
+        db.OrgFiscalIssuerProfiles.Add(NewProfile(OrgA, DocumentIssuerMode.CasaZen));
+        var ownBooking = NewBooking(OrgA, BookingSource.BookingCom);
+        var legacyBooking = NewBooking(OrgA, BookingSource.Airbnb);
+        db.Bookings.AddRange(ownBooking, legacyBooking);
+        db.BookingDocumentIssuers.Add(new BookingDocumentIssuer
+        {
+            OrgId = OrgA,
+            BookingId = legacyBooking.Id,
+            Issuer = BookingDocumentIssuerKind.Octorate,
+            LockedAt = new DateTime(2026, 11, 1, 9, 0, 0, DateTimeKind.Utc),
+        });
         await db.SaveChangesAsync();
         var sut = Service(db, issuanceOn: true);
 
-        // CasaZen takes a booking: Octorate cannot take it afterwards.
+        // CasaZen takes a booking of a portal; the same kind again changes nothing.
         var firstDocument = Guid.NewGuid();
         var locked = await sut.LockIssuerAsync(ownBooking.Id, BookingDocumentIssuerKind.CasaZen, firstDocument);
         Assert.Equal(BookingDocumentIssuerKind.CasaZen, locked.Issuer);
         Assert.Equal(firstDocument, locked.LockedByDocumentId);
-        var conflict = await Assert.ThrowsAsync<DomainConflictException>(
-            () => sut.LockIssuerAsync(ownBooking.Id, BookingDocumentIssuerKind.Octorate, Guid.NewGuid()));
-        Assert.Equal(DocumentIssuerErrorCodes.IssuerConflict, conflict.Code);
-
-        // The same kind again changes nothing: the first document stays the one that locked it.
         var again = await sut.LockIssuerAsync(ownBooking.Id, BookingDocumentIssuerKind.CasaZen, Guid.NewGuid());
-        Assert.Equal(BookingDocumentIssuerKind.CasaZen, again.Issuer);
         Assert.Equal(firstDocument, again.LockedByDocumentId);
         Assert.Equal(new IssuerDecision(IssuerDecisionKind.CasaZen, IssuerReasons.IssuerCasazen), await sut.ResolveIssuerAsync(ownBooking.Id));
 
-        // The reverse: Octorate issued (even by hand, in its panel), CasaZen cannot issue for the booking.
-        await sut.LockIssuerAsync(channelBooking.Id, BookingDocumentIssuerKind.Octorate, null);
-        var reverse = await Assert.ThrowsAsync<DomainConflictException>(
-            () => sut.LockIssuerAsync(channelBooking.Id, BookingDocumentIssuerKind.CasaZen, Guid.NewGuid()));
-        Assert.Equal(DocumentIssuerErrorCodes.IssuerConflict, reverse.Code);
+        // The rows are written with CasaZen only: an imported document never locks a booking to Octorate.
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => sut.LockIssuerAsync(ownBooking.Id, BookingDocumentIssuerKind.Octorate, Guid.NewGuid()));
+
+        // A legacy lock to Octorate stays: Octorate issued that booking, CasaZen does not issue it again.
+        var conflict = await Assert.ThrowsAsync<DomainConflictException>(
+            () => sut.LockIssuerAsync(legacyBooking.Id, BookingDocumentIssuerKind.CasaZen, Guid.NewGuid()));
+        Assert.Equal(DocumentIssuerErrorCodes.IssuerConflict, conflict.Code);
         Assert.Equal(
             new IssuerDecision(IssuerDecisionKind.Octorate, IssuerReasons.IssuerLockedOctorate),
-            await sut.ResolveIssuerAsync(channelBooking.Id));
+            await sut.ResolveIssuerAsync(legacyBooking.Id));
 
         db.ChangeTracker.Clear();
         var rows = await db.BookingDocumentIssuers.AsNoTracking().ToListAsync();
         Assert.Equal(2, rows.Count);
         Assert.Equal(BookingDocumentIssuerKind.CasaZen, rows.Single(r => r.BookingId == ownBooking.Id).Issuer);
-        Assert.Equal(BookingDocumentIssuerKind.Octorate, rows.Single(r => r.BookingId == channelBooking.Id).Issuer);
+        Assert.Equal(BookingDocumentIssuerKind.Octorate, rows.Single(r => r.BookingId == legacyBooking.Id).Issuer);
     }
 
     /// <summary>
-    /// PROOF TEST: data rule. Whatever the organization chose (Octorate, CasaZen for its direct bookings, the accountant), a booking that comes from
-    /// an OTA is never CasaZen's: the decision is never CasaZen, and locking CasaZen as its issuer is 422 <c>document_booking_not_direct</c> with no
-    /// row written. A direct booking and one entered by the host are CasaZen's only in the mode CasaZen, and only while issuance is on.
+    /// PROOF TEST: data rule (replaces «an OTA booking is never CasaZen's»). Whatever mode a stored profile still says (the retired Octorate and accountant
+    /// included), every booking of every source, the portals through Octorate included, is CasaZen's while the issuance is on, and can be locked to it.
+    /// With the issuance off nobody issues and nothing can be locked.
     /// </summary>
     [Fact]
-    public async Task DocumentIssuer_OtaBooking_NeverCasazen_Test()
+    public async Task DocumentIssuer_EveryBookingSource_IsCasazen_Test()
     {
-        var otaSources = Enum.GetValues<BookingSource>().Where(FiscalCopy.IsOtaBookingSource).ToList();
-        Assert.Contains(BookingSource.OtherChannel, otaSources);
+        var sources = Enum.GetValues<BookingSource>();
+        Assert.Contains(BookingSource.BookingCom, sources);
+        Assert.Contains(BookingSource.OtherChannel, sources);
 
         foreach (var mode in Enum.GetValues<DocumentIssuerMode>())
         {
-            await using var db = NewDb($"document-issuer-ota-{Guid.NewGuid()}", new FixedTenantContext(OrgA));
+            await using var db = NewDb($"document-issuer-sources-{Guid.NewGuid()}", new FixedTenantContext(OrgA));
             db.OrgFiscalIssuerProfiles.Add(NewProfile(OrgA, mode));
-            var ota = otaSources.Select(source => NewBooking(OrgA, source)).ToList();
-            var own = new[] { NewBooking(OrgA, BookingSource.Direct), NewBooking(OrgA, BookingSource.Manual) };
-            db.Bookings.AddRange(ota);
-            db.Bookings.AddRange(own);
+            var bookings = sources.Select(source => NewBooking(OrgA, source)).ToList();
+            db.Bookings.AddRange(bookings);
             await db.SaveChangesAsync();
-            var sut = Service(db, issuanceOn: true);
 
-            foreach (var booking in ota)
-            {
-                var decision = await sut.ResolveIssuerAsync(booking.Id);
-                Assert.NotEqual(IssuerDecisionKind.CasaZen, decision.Kind);
-                Assert.Equal(
-                    mode switch
-                    {
-                        DocumentIssuerMode.Octorate => IssuerReasons.IssuerOctorate,
-                        DocumentIssuerMode.CasaZenDirectOnly => IssuerReasons.BookingNotDirect,
-                        _ => IssuerReasons.IssuerNobody,
-                    },
-                    decision.Reason);
-
-                var refusal = await Assert.ThrowsAsync<DomainRuleException>(
-                    () => sut.LockIssuerAsync(booking.Id, BookingDocumentIssuerKind.CasaZen, Guid.NewGuid()));
-                Assert.Equal(DocumentIssuerErrorCodes.BookingNotDirect, refusal.Code);
-            }
-
-            // Nothing was written for an OTA booking; the direct ones are CasaZen's only when the organization chose it.
-            db.ChangeTracker.Clear();
-            Assert.Empty(await db.BookingDocumentIssuers.AsNoTracking().ToListAsync());
-            foreach (var booking in own)
-            {
-                var decision = await sut.ResolveIssuerAsync(booking.Id);
-                Assert.Equal(mode == DocumentIssuerMode.CasaZenDirectOnly, decision.Kind == IssuerDecisionKind.CasaZen);
-            }
-
-            // Issuance switched off: even the mode CasaZen decides nobody, and no booking can be locked to CasaZen.
+            // Issuance off: nobody issues, and no booking can be locked to CasaZen.
             var off = Service(db, issuanceOn: false);
-            if (mode == DocumentIssuerMode.CasaZenDirectOnly)
+            Assert.Equal(new IssuerDecision(IssuerDecisionKind.None, IssuerReasons.IssuanceOff), await off.ResolveIssuerAsync(bookings[0].Id));
+            var notAvailable = await Assert.ThrowsAsync<DomainRuleException>(
+                () => off.LockIssuerAsync(bookings[0].Id, BookingDocumentIssuerKind.CasaZen, null));
+            Assert.Equal(DocumentIssuerErrorCodes.IssuanceNotAvailable, notAvailable.Code);
+            Assert.Empty(await db.BookingDocumentIssuers.AsNoTracking().ToListAsync());
+
+            var sut = Service(db, issuanceOn: true);
+            foreach (var booking in bookings)
             {
-                Assert.Equal(IssuerReasons.IssuanceOff, (await off.ResolveIssuerAsync(own[0].Id)).Reason);
-                var notAvailable = await Assert.ThrowsAsync<DomainRuleException>(
-                    () => off.LockIssuerAsync(own[0].Id, BookingDocumentIssuerKind.CasaZen, null));
-                Assert.Equal(DocumentIssuerErrorCodes.IssuanceNotAvailable, notAvailable.Code);
+                Assert.Equal(new IssuerDecision(IssuerDecisionKind.CasaZen, IssuerReasons.IssuerCasazen), await sut.ResolveIssuerAsync(booking.Id));
+                Assert.Equal(BookingDocumentIssuerKind.CasaZen, (await sut.LockIssuerAsync(booking.Id, BookingDocumentIssuerKind.CasaZen, Guid.NewGuid())).Issuer);
             }
+
+            db.ChangeTracker.Clear();
+            Assert.Equal(bookings.Count, await db.BookingDocumentIssuers.AsNoTracking().CountAsync(r => r.Issuer == BookingDocumentIssuerKind.CasaZen));
         }
     }
 
     /// <summary>
-    /// PROOF TEST: permission rule. Two organizations each chose how their documents are issued. The caller of org A reads its own setting only: the
-    /// one of org B is not in the answer, and not found even when the service is asked for it by id; the booking of org B is a 404 of the preview, a
-    /// booking the caller sees and does not reach a 403, and a caller who reaches only some of the properties cannot change the setting (403).
+    /// PROOF TEST: permission rule. Two organizations each saved their issuer. The caller of org A reads its own setting only: the one of org B is not in
+    /// the answer, and not found even when the service is asked for it by id; the booking of org B is a 404 of the preview, a booking the caller sees and
+    /// does not reach a 403, and a caller who reaches only some of the properties cannot change the setting (403).
     /// </summary>
     [Fact]
     public async Task FiscalDocumentSettings_OtherOrg_NotReadable_Test()
@@ -161,8 +144,8 @@ public class DocumentIssuerProofTests
         {
             system.Orgs.AddRange(NewOrg(OrgA, "casa-rossi"), NewOrg(OrgB, "casa-bianchi"));
             system.OrgFiscalIssuerProfiles.AddRange(
-                NewProfile(OrgA, DocumentIssuerMode.Accountant, "Casa Rossi S.r.l."),
-                NewProfile(OrgB, DocumentIssuerMode.CasaZenDirectOnly, "Casa Bianchi S.r.l."));
+                NewProfile(OrgA, DocumentIssuerMode.CasaZen, "Casa Rossi S.r.l."),
+                NewProfile(OrgB, DocumentIssuerMode.CasaZen, "Casa Bianchi S.r.l."));
             await system.SaveChangesAsync();
         }
 
@@ -179,14 +162,14 @@ public class DocumentIssuerProofTests
         var staff = Controller(sut, resolver, lookup, HostAuthorizationTestHarness.User("auth0|staff-a", "Staff"));
         var read = Assert.IsType<OkObjectResult>((await staff.GetSettings(CancellationToken.None)).Result);
         var settings = Assert.IsType<FiscalDocumentSettingsDto>(read.Value);
-        Assert.Equal("Accountant", settings.Mode);
+        Assert.Equal("CasaZen", settings.Mode);
         Assert.Equal("Casa Rossi S.r.l.", settings.Issuer.LegalName);
         Assert.DoesNotContain("Bianchi", JsonSerializer.Serialize(settings, new JsonSerializerOptions(JsonSerializerDefaults.Web)), StringComparison.Ordinal);
 
-        // By id, the service under the filter of org A finds nothing of org B: the empty setting of one that has not chosen.
+        // By id, the service under the filter of org A finds nothing of org B: the empty setting of one that has saved nothing.
         Assert.Null((await sut.GetSettingsAsync(OrgB)).Mode);
 
-        var refused = await staff.PutSettings(new SaveFiscalDocumentSettingsRequest { Mode = "Octorate" }, CancellationToken.None);
+        var refused = await staff.PutSettings(new SaveFiscalDocumentSettingsRequest { Mode = "CasaZen" }, CancellationToken.None);
         var problem = Assert.IsType<ObjectResult>(refused.Result);
         Assert.Equal(StatusCodes.Status403Forbidden, problem.StatusCode);
         Assert.Equal(DocumentIssuerErrorCodes.NeedsWholeOrg, Assert.IsAssignableFrom<ProblemDetails>(problem.Value).Extensions["code"]);
@@ -196,21 +179,64 @@ public class DocumentIssuerProofTests
             Assert.IsType<ObjectResult>((await staff.IssuerPreview(bookingOfOrgB, CancellationToken.None)).Result).StatusCode);
         Assert.IsType<ForbidResult>((await staff.IssuerPreview(bookingOfColleague, CancellationToken.None)).Result);
 
-        // A manager of the whole org changes the setting of its own org, and org B's stays as it was.
+        // A manager of the whole org changes the setting of its own org (a draft: the profile is not complete yet), and org B's stays as it was.
         var manager = Controller(sut, resolver, lookup, HostAuthorizationTestHarness.User("auth0|manager-a", "PropertyManager"));
         var saved = await manager.PutSettings(
-            new SaveFiscalDocumentSettingsRequest { Mode = "Accountant", Regime = "VatOrdinary", Issuer = new SaveIssuerDataRequest { LegalName = "Casa Rossi Due S.r.l." } },
+            new SaveFiscalDocumentSettingsRequest { Regime = "VatOrdinary", Issuer = new SaveIssuerDataRequest { LegalName = "Casa Rossi Due S.r.l." } },
             CancellationToken.None);
         Assert.Equal("Casa Rossi Due S.r.l.", Assert.IsType<FiscalDocumentSettingsDto>(Assert.IsType<OkObjectResult>(saved.Result).Value).Issuer.LegalName);
 
         await using var system2 = NewDb(databaseName, tenant: null);
         var others = await system2.OrgFiscalIssuerProfiles.AsNoTracking().SingleAsync(p => p.OrgId == OrgB);
         Assert.Equal("Casa Bianchi S.r.l.", others.LegalName);
-        Assert.Equal(DocumentIssuerMode.CasaZenDirectOnly, others.IssuerMode);
+        Assert.Equal(DocumentIssuerMode.CasaZen, others.IssuerMode);
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule. The modes Octorate and accountant were retired on 2026-11-14: a PUT that asks for either answers 422
+    /// <c>issuer_mode_retired</c> and changes nothing of the stored profile; the old name of the mode CasaZen is still read as CasaZen.
+    /// </summary>
+    [Fact]
+    public async Task IssuerSettings_RetiredModeRefused_Test()
+    {
+        var databaseName = $"document-issuer-retired-{Guid.NewGuid()}";
+        await using (var system = NewDb(databaseName, tenant: null))
+        {
+            system.Orgs.Add(NewOrg(OrgA, "casa-rossi"));
+            system.OrgFiscalIssuerProfiles.Add(NewProfile(OrgA, DocumentIssuerMode.CasaZen, "Casa Rossi S.r.l."));
+            await system.SaveChangesAsync();
+        }
+
+        await using var db = NewDb(databaseName, new FixedTenantContext(OrgA));
+        var resolver = new Mock<IOrgContextResolver>();
+        resolver.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(OrgA);
+        var manager = Controller(Service(db, issuanceOn: true), resolver, new Mock<IHostResourceLookup>(), HostAuthorizationTestHarness.User("auth0|manager-a", "PropertyManager"));
+
+        foreach (var retired in new[] { "Octorate", "Accountant" })
+        {
+            var refusal = await Assert.ThrowsAsync<DomainRuleException>(() => manager.PutSettings(
+                new SaveFiscalDocumentSettingsRequest { Mode = retired, Regime = "VatFlatRate", Issuer = new SaveIssuerDataRequest { LegalName = "Altro Nome S.r.l." } },
+                CancellationToken.None));
+            Assert.Equal(DocumentIssuerErrorCodes.ModeRetired, refusal.Code);
+            Assert.Equal("IssuerModeRetired", refusal.MessageKey);
+        }
+
+        await using (var check = NewDb(databaseName, tenant: null))
+        {
+            var stored = await check.OrgFiscalIssuerProfiles.AsNoTracking().SingleAsync(p => p.OrgId == OrgA);
+            Assert.Equal("Casa Rossi S.r.l.", stored.LegalName);
+            Assert.Equal(DocumentRegime.VatOrdinary, stored.DocumentRegime);
+            Assert.Equal(DocumentIssuerMode.CasaZen, stored.IssuerMode);
+        }
+
+        var legacyName = await manager.PutSettings(
+            new SaveFiscalDocumentSettingsRequest { Mode = "CasaZenDirectOnly", Regime = "VatOrdinary", Issuer = new SaveIssuerDataRequest { LegalName = "Casa Rossi S.r.l." } },
+            CancellationToken.None);
+        Assert.Equal("CasaZen", Assert.IsType<FiscalDocumentSettingsDto>(Assert.IsType<OkObjectResult>(legacyName.Result).Value).Mode);
     }
 
     [Fact]
-    public async Task DocumentIssuer_TheModeIsAcceptedOnlyWhenItCanWork_AndARefusedSaveChangesNothing()
+    public async Task DocumentIssuer_TheSettingIsSavedOnlyWhenItCanWork_AndARefusedSaveChangesNothing()
     {
         var databaseName = $"document-issuer-modes-{Guid.NewGuid()}";
         await using (var system = NewDb(databaseName, tenant: null))
@@ -222,7 +248,6 @@ public class DocumentIssuerProofTests
         await using var db = NewDb(databaseName, new FixedTenantContext(OrgA));
         var complete = new SaveIssuerSettingsCommand
         {
-            Mode = DocumentIssuerMode.CasaZenDirectOnly,
             Regime = DocumentRegime.VatOrdinary,
             LegalName = "Casa Rossi S.r.l.",
             AddressStreet = "Via Roma",
@@ -231,38 +256,39 @@ public class DocumentIssuerProofTests
             City = "Roma",
             Province = "rm",
             FatturaPaRegimeCode = "rf01",
+            Confirmed = true,
         };
 
-        // The flag is off: CasaZen is not an option, whatever else is true.
+        // The flag is off: nothing can be saved, whatever else is true.
         var off = Service(db, issuanceOn: false);
         var notAvailable = await Assert.ThrowsAsync<DomainRuleException>(() => off.SaveSettingsAsync(OrgA, complete));
         Assert.Equal(DocumentIssuerErrorCodes.IssuanceNotAvailable, notAvailable.Code);
 
-        // The flag is on, the profile has no VAT number on the organization: the missing field is named.
+        // The flag is on, the wizard is confirmed and the organization has no VAT number: the missing field is named.
         var on = Service(db, issuanceOn: true);
         var incomplete = await Assert.ThrowsAsync<DomainRuleException>(() => on.SaveSettingsAsync(OrgA, complete));
         Assert.Equal(DocumentIssuerErrorCodes.ProfileIncomplete, incomplete.Code);
         Assert.Equal(new[] { IssuerFields.VatNumber }, Assert.IsAssignableFrom<IReadOnlyList<string>>(incomplete.Extensions["fields"]).ToArray());
 
-        // Octorate needs an active connection.
-        var notConnected = await Assert.ThrowsAsync<DomainRuleException>(
-            () => on.SaveSettingsAsync(OrgA, complete with { Mode = DocumentIssuerMode.Octorate }));
-        Assert.Equal(DocumentIssuerErrorCodes.OctorateNotConnected, notConnected.Code);
-
-        // A value that is not valid names its field.
-        var invalid = await Assert.ThrowsAsync<DomainRuleException>(
-            () => on.SaveSettingsAsync(OrgA, complete with { Mode = DocumentIssuerMode.Accountant, IssuerPec = "not an address" }));
+        // A Swiss regime in Italy, a value that is not valid, a VAT registration the regime contradicts: each names its field.
+        var mismatch = await Assert.ThrowsAsync<DomainRuleException>(() => on.SaveSettingsAsync(OrgA, complete with { Regime = DocumentRegime.SwissVatRegistered }));
+        Assert.Equal(DocumentIssuerErrorCodes.RegimeCountryMismatch, mismatch.Code);
+        var invalid = await Assert.ThrowsAsync<DomainRuleException>(() => on.SaveSettingsAsync(OrgA, complete with { IssuerPec = "not an address" }));
         Assert.Equal(DocumentIssuerErrorCodes.FieldInvalid, invalid.Code);
         Assert.Equal(IssuerFields.IssuerPec, invalid.Extensions["field"]);
+        var registration = await Assert.ThrowsAsync<DomainRuleException>(() => on.SaveSettingsAsync(OrgA, complete with { VatRegistered = false }));
+        Assert.Equal(IssuerFields.VatRegistered, registration.Extensions["field"]);
 
-        // Nothing was saved by the four refusals; the accountant needs nothing, and saves.
+        // Nothing was saved by the refusals; the same answers not confirmed are a draft, with what is missing.
         Assert.Empty(await db.OrgFiscalIssuerProfiles.IgnoreQueryFilters().AsNoTracking().ToListAsync());
-        var saved = await on.SaveSettingsAsync(OrgA, complete with { Mode = DocumentIssuerMode.Accountant, Confirmed = true });
-        Assert.Equal(DocumentIssuerMode.Accountant, saved.Mode);
+        var saved = await on.SaveSettingsAsync(OrgA, complete with { Confirmed = false });
+        Assert.Equal(DocumentIssuerMode.CasaZen, saved.Mode);
         Assert.Equal(DocumentRegime.VatOrdinary, saved.Regime);
         Assert.Equal("RF01", saved.EffectiveRegimeCode);
         Assert.Equal("RM", saved.Issuer.Province);
-        Assert.NotNull(saved.ConfirmedAt);
+        Assert.True(saved.Issuer.VatRegistered);
+        Assert.Null(saved.ConfirmedAt);
+        Assert.Equal(new[] { IssuerFields.VatNumber }, saved.MissingFields.ToArray());
 
         // The rule is not configured until the accountant approves it: issuance refuses instead of guessing a rate.
         var refusal = await Assert.ThrowsAsync<DomainRuleException>(() => on.RequireRuleAsync(OrgA));
@@ -280,6 +306,74 @@ public class DocumentIssuerProofTests
             },
         };
         Assert.Equal(FiscalDocumentKind.Invoice, (await Service(db, issuanceOn: true, approved).RequireRuleAsync(OrgA)).DocumentKind);
+    }
+
+    /// <summary>
+    /// A Swiss issuer (E11/F01/US01/T01): the UID is checked (format and check digit of eCH-0097) and stored as <c>CHE-123.456.789</c>, the Italian tax ids
+    /// are not asked, the IBAN and the QR-IBAN are checked (mod 97, a QR-IBAN of a Swiss bank), and the settings return them with the treatments and the
+    /// series. A UID with a wrong check digit or an IBAN in the place of the QR-IBAN is refused on its field.
+    /// </summary>
+    [Fact]
+    public async Task IssuerSettings_SwissProfile_ChecksTheUidAndTheBankAccounts()
+    {
+        var databaseName = $"document-issuer-swiss-{Guid.NewGuid()}";
+        await using (var system = NewDb(databaseName, tenant: null))
+        {
+            system.Orgs.Add(NewOrg(OrgA, "quokka-test"));
+            await system.SaveChangesAsync();
+        }
+
+        await using var db = NewDb(databaseName, new FixedTenantContext(OrgA));
+        var sut = Service(db, issuanceOn: true);
+        var swiss = new SaveIssuerSettingsCommand
+        {
+            Regime = DocumentRegime.SwissVatRegistered,
+            LegalName = "TEST Quokka Sagl",
+            AddressStreet = "Via Nassa",
+            AddressCivic = "5",
+            PostalCode = "6900",
+            City = "Lugano",
+            Province = "ti",
+            CountryCode = "ch",
+            SwissVatNumber = "che 109 322 551 mwst",
+            Iban = "CH93 0076 2011 6238 5295 7",
+            QrIban = "CH44 3199 9123 0008 8901 2",
+            CleaningFeeTreatment = CleaningFeeTreatment.Service,
+            GuestDocumentSeries = "Q{year}",
+            PlatformCollectedTouristTaxChannels = ["Airbnb", "airbnb"],
+            Confirmed = true,
+        };
+
+        var wrongCheckDigit = await Assert.ThrowsAsync<DomainRuleException>(() => sut.SaveSettingsAsync(OrgA, swiss with { SwissVatNumber = "CHE-109.322.552" }));
+        Assert.Equal(IssuerFields.SwissVatNumber, wrongCheckDigit.Extensions["field"]);
+        var notQr = await Assert.ThrowsAsync<DomainRuleException>(() => sut.SaveSettingsAsync(OrgA, swiss with { QrIban = "CH93 0076 2011 6238 5295 7" }));
+        Assert.Equal(IssuerFields.QrIban, notQr.Extensions["field"]);
+        var badIban = await Assert.ThrowsAsync<DomainRuleException>(() => sut.SaveSettingsAsync(OrgA, swiss with { Iban = "CH93 0076 2011 6238 5295 8" }));
+        Assert.Equal(IssuerFields.Iban, badIban.Extensions["field"]);
+        var italianRegime = await Assert.ThrowsAsync<DomainRuleException>(() => sut.SaveSettingsAsync(OrgA, swiss with { Regime = DocumentRegime.VatOrdinary }));
+        Assert.Equal(DocumentIssuerErrorCodes.RegimeCountryMismatch, italianRegime.Code);
+        Assert.Empty(await db.OrgFiscalIssuerProfiles.IgnoreQueryFilters().AsNoTracking().ToListAsync());
+
+        var saved = await sut.SaveSettingsAsync(OrgA, swiss);
+
+        Assert.Empty(saved.MissingFields);
+        Assert.NotNull(saved.ConfirmedAt);
+        Assert.Equal("CH", saved.Issuer.CountryCode);
+        Assert.Equal("CHE-109.322.551", saved.Issuer.SwissVatNumber);
+        Assert.True(saved.Issuer.VatRegistered);
+        Assert.Equal("CH9300762011623852957", saved.Issuer.Iban);
+        Assert.Equal("CH4431999123000889012", saved.Issuer.QrIban);
+        Assert.Equal(CleaningFeeTreatment.Service, saved.Issuer.CleaningFeeTreatment);
+        Assert.Equal(StayVatTreatment.Standard, saved.Issuer.StayVatTreatment);
+        Assert.Equal("Q{year}", saved.Issuer.GuestDocumentSeries);
+        Assert.Equal([BookingSource.Airbnb], saved.Issuer.PlatformCollectedTouristTaxChannels);
+        Assert.Null(saved.EffectiveRegimeCode);
+
+        // The same issuer not registered: no UID is needed and the registration follows the regime.
+        var notRegistered = await sut.SaveSettingsAsync(OrgA, swiss with { Regime = DocumentRegime.SwissNotRegistered, SwissVatNumber = null });
+        Assert.Empty(notRegistered.MissingFields);
+        Assert.False(notRegistered.Issuer.VatRegistered);
+        Assert.Null(notRegistered.Issuer.SwissVatNumber);
     }
 
     private static DocumentIssuerService Service(AppDbContext db, bool issuanceOn, FiscalDocumentRulesOptions? rules = null)

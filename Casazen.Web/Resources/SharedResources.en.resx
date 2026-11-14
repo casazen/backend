@@ -5457,6 +5457,12 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="IssuerFieldInvalid" xml:space="preserve">
     <value>A field of the issuer data is not valid or is too long: check it and try again.</value>
   </data>
+  <data name="IssuerModeRetired" xml:space="preserve">
+    <value>This mode is no longer available: CasaZen always issues the fiscal documents. The accountant receives the exports.</value>
+  </data>
+  <data name="IssuerRegimeCountryMismatch" xml:space="preserve">
+    <value>The regime chosen is not one of the country of the issuer: choose a Swiss regime for Switzerland and an Italian one for Italy.</value>
+  </data>
   <data name="FiscalSettingsNeedWholeOrg" xml:space="preserve">
     <value>Only someone who manages every property of the organization can change who issues the documents.</value>
   </data>

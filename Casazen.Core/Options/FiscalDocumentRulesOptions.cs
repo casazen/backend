@@ -25,6 +25,14 @@ public class FiscalDocumentRulesOptions
     public bool OctorateIssuesAllBookings { get; set; }
 
     /// <summary>
+    /// Whether the job <c>octorate-document-import</c> reads the documents Octorate issued (E11/F01/US01/T01, D1). Off by default: CasaZen is the only
+    /// issuer since 2026-11-14 and the import is kept only to read old documents, so it never runs by accident. While it is off the job selects no
+    /// organization and an import reads nothing; on, it reads the organizations connected to Octorate in this environment. An imported document never
+    /// locks the issuer of a booking.
+    /// </summary>
+    public bool ImportOctorateDocuments { get; set; }
+
+    /// <summary>
     /// The taxable amount above which the stamp duty is due on a document without VAT (<c>AgencyInvoiceService</c> holds the same figure as a
     /// constant today; E06/F01/US02/T05 makes it read this one).
     /// </summary>

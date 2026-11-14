@@ -23,8 +23,9 @@ using RuleKind = Casazen.Core.Options.FiscalDocumentKind;
 namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
-/// E06/F01/US01/T01 (NF-83, NF-82, NF-84): the documents CasaZen issues for a direct booking are cent-accurate, never issued for an OTA booking or a
-/// booking locked to Octorate, immutable once issued, credited never above the original, and the documents imported from Octorate are read-only.
+/// E06/F01/US01/T01, E11/F01/US01/T01 (NF-83, NF-82, NF-84, NF-112): the documents CasaZen issues for every active booking (the portals included) are
+/// cent-accurate, never issued for a booking a legacy row locked to Octorate, immutable once issued (the issuer included: the snapshot), credited never
+/// above the original, and the documents imported from Octorate are read-only.
 /// </summary>
 public class FiscalDocumentServiceProofTests
 {
@@ -61,28 +62,85 @@ public class FiscalDocumentServiceProofTests
         Assert.Equal(BookingDocumentIssuerKind.CasaZen, (await db.BookingDocumentIssuers.SingleAsync()).Issuer);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (replaces «an OTA booking is never issued by CasaZen»). A booking of a portal imported through Octorate gets a CasaZen draft
+    /// and is issued, with its number and the lock of CasaZen; a booking a legacy row locked to Octorate is still refused (it was issued there), and with
+    /// the issuance off nothing is made.
+    /// </summary>
     [Theory]
     [InlineData(BookingSource.BookingCom)]
     [InlineData(BookingSource.Airbnb)]
     [InlineData(BookingSource.OtherChannel)]
-    public async Task FiscalDocument_OtaBooking_NeverIssuedByCasazen_Test(BookingSource source)
+    public async Task FiscalDocument_PortalBooking_IsIssuedByCasazen_Test(BookingSource source)
     {
         await using var db = NewDb();
-        var ota = await SeedAsync(db, source);
-        var direct = await SeedBookingAsync(db, BookingSource.Direct);
-        db.BookingDocumentIssuers.Add(new BookingDocumentIssuer { OrgId = OrgId, BookingId = direct, Issuer = BookingDocumentIssuerKind.Octorate, LockedAt = Now.UtcDateTime });
+        var portal = await SeedAsync(db, source);
+        var legacy = await SeedBookingAsync(db, BookingSource.Direct);
+        db.BookingDocumentIssuers.Add(new BookingDocumentIssuer { OrgId = OrgId, BookingId = legacy, Issuer = BookingDocumentIssuerKind.Octorate, LockedAt = Now.UtcDateTime });
         await db.SaveChangesAsync();
-        var service = Service(db);
-
-        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => service.CreateDraftAsync(ota, null));
-        Assert.Equal(FiscalDocumentErrors.BookingNotDirect, refused.Code);
-        var locked = await Assert.ThrowsAsync<DomainConflictException>(() => service.CreateDraftAsync(direct, null));
-        Assert.Equal(FiscalDocumentErrors.IssuerConflict, locked.Code);
 
         var off = Service(db, flags: new TestFeatureFlags());
-        var notAvailable = await Assert.ThrowsAsync<DomainRuleException>(() => off.CreateDraftAsync(ota, null));
-        Assert.Equal(FiscalDocumentErrors.BookingNotDirect, notAvailable.Code);
+        var notAvailable = await Assert.ThrowsAsync<DomainRuleException>(() => off.CreateDraftAsync(portal, null));
+        Assert.Equal(FiscalDocumentErrors.IssuanceNotAvailable, notAvailable.Code);
         Assert.Empty(await db.FiscalDocuments.ToListAsync());
+
+        var service = Service(db);
+        var locked = await Assert.ThrowsAsync<DomainConflictException>(() => service.CreateDraftAsync(legacy, null));
+        Assert.Equal(FiscalDocumentErrors.IssuerConflict, locked.Code);
+
+        var draft = await service.CreateDraftAsync(portal, "auth0|host");
+        Assert.Equal(362.00m, draft.Total);
+        var issued = await service.IssueAsync(draft.Id, confirm: true);
+
+        Assert.Equal(FiscalDocumentStatus.Issued, issued.Status);
+        Assert.Equal("2026/1", issued.Number);
+        Assert.Equal(BookingDocumentIssuerKind.CasaZen, (await db.BookingDocumentIssuers.SingleAsync(i => i.BookingId == portal)).Issuer);
+        Assert.Single(await db.FiscalDocuments.Where(d => d.BookingId == legacy || d.BookingId == portal).ToListAsync());
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule. An issued document keeps the issuer it was issued with: renaming the issuer (and moving it) after the issue changes neither
+    /// the stored snapshot nor what the PDF of the document shows, while a new draft shows the issuer of today. The document also keeps its purpose, its
+    /// property, its period, the version of its rule and its payment channel.
+    /// </summary>
+    [Fact]
+    public async Task FiscalDocument_IssuedPdfUsesSnapshot_Test()
+    {
+        await using var db = NewDb();
+        var booking = await SeedAsync(db, BookingSource.Direct);
+        var second = await SeedBookingAsync(db, BookingSource.Manual);
+        var service = Service(db);
+        var issued = await service.IssueAsync((await service.CreateDraftAsync(booking, null)).Id, confirm: true);
+
+        var stored = await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == issued.Id);
+        var snapshot = FiscalIssuerSnapshot.FromJson(stored.IssuerSnapshot);
+        Assert.NotNull(snapshot);
+        Assert.Equal("TEST Casa Vacanze Srl", snapshot.LegalName);
+        Assert.Equal("01234567897", snapshot.VatNumber);
+        Assert.Equal(FiscalDocumentPurpose.GuestStay, stored.Purpose);
+        Assert.Equal(FiscalPaymentChannel.Unknown, stored.PaymentChannel);
+        Assert.False(string.IsNullOrWhiteSpace(stored.RuleVersion));
+        Assert.Equal(await db.Bookings.Where(b => b.Id == booking).Select(b => b.PropertyId).SingleAsync(), stored.PropertyId);
+        Assert.Equal(new DateOnly(2026, 11, 1), stored.ServicePeriodFrom);
+        Assert.Equal(new DateOnly(2026, 11, 4), stored.ServicePeriodTo);
+
+        // The issuer is renamed and moves.
+        var profile = await db.OrgFiscalIssuerProfiles.SingleAsync();
+        profile.LegalName = "TEST Nuovo Nome Srl";
+        profile.AddressStreet = "Via Nuova";
+        await db.SaveChangesAsync();
+
+        var issuedPdf = TextOf(await service.PdfContentAsync(issued.Id, "it"));
+        Assert.Contains("TEST Casa Vacanze Srl", issuedPdf, StringComparison.Ordinal);
+        Assert.Contains("Via di Test", issuedPdf, StringComparison.Ordinal);
+        Assert.DoesNotContain("TEST Nuovo Nome Srl", issuedPdf, StringComparison.Ordinal);
+        Assert.DoesNotContain("Via Nuova", issuedPdf, StringComparison.Ordinal);
+        Assert.Equal(stored.IssuerSnapshot, (await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == issued.Id)).IssuerSnapshot);
+
+        // A draft has no snapshot yet: it shows the issuer of today.
+        var draft = await service.CreateDraftAsync(second, null);
+        Assert.Null(draft.IssuerSnapshot);
+        Assert.Contains("TEST Nuovo Nome Srl", TextOf(await service.PdfContentAsync(draft.Id, "it")), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -237,8 +295,20 @@ public class FiscalDocumentServiceProofTests
     }
 
     private static string Snapshot(FiscalDocument d) =>
-        string.Join('|', d.Number, d.Status, d.TaxableBase, d.VatAmount, d.StampDuty, d.Total, d.RecipientName, d.RecipientFiscalCode,
-            string.Join(',', d.Lines.OrderBy(l => l.LineNumber).Select(l => $"{l.LineNumber}:{l.Description}:{l.TotalPrice}:{l.VatRatePercent}")));
+        string.Join('|', d.Number, d.Status, d.TaxableBase, d.VatAmount, d.StampDuty, d.Total, d.RecipientName, d.RecipientFiscalCode, d.IssuerSnapshot, d.RuleVersion,
+            string.Join(',', d.Lines.OrderBy(l => l.LineNumber).Select(l => $"{l.LineNumber}:{l.LineType}:{l.Description}:{l.TotalPrice}:{l.VatRatePercent}")));
+
+    /// <summary>Every text of a PDF content: headings, paragraphs and the cells of the tables, one per line.</summary>
+    private static string TextOf(Casazen.Core.Documents.PdfDocumentContent content) =>
+        string.Join('\n', new[] { content.Title }.Concat(content.Blocks.SelectMany(TextsOf)));
+
+    private static IEnumerable<string> TextsOf(Casazen.Core.Documents.PdfBlock block) => block switch
+    {
+        Casazen.Core.Documents.PdfHeading heading => new[] { heading.Text },
+        Casazen.Core.Documents.PdfParagraph paragraph => new[] { paragraph.Text },
+        Casazen.Core.Documents.PdfTable table => table.Columns.Select(c => c.Header).Concat(table.Rows.SelectMany(r => r)),
+        _ => Array.Empty<string>(),
+    };
 
     private static FiscalDocumentService Service(AppDbContext db, IFeatureFlags? flags = null)
     {
@@ -302,7 +372,7 @@ public class FiscalDocumentServiceProofTests
         db.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile
         {
             OrgId = OrgId,
-            IssuerMode = DocumentIssuerMode.CasaZenDirectOnly,
+            IssuerMode = DocumentIssuerMode.CasaZen,
             DocumentRegime = regime,
             LegalName = "TEST Casa Vacanze Srl",
             AddressStreet = "Via di Test",

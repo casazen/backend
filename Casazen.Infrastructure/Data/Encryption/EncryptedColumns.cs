@@ -130,11 +130,18 @@ public static class EncryptedColumns
     public const string OtaMessageTextPurpose = "Casazen.Message.Content";
 
     /// <summary>
-    /// Purpose of the fiscal documents (NF-83, E06/F01/US02/T01): the recipient snapshot of <see cref="FiscalDocument"/> (name, fiscal code, VAT
-    /// number, address, recipient code, PEC) and its FatturaPA XML, which repeats them. Kept ten years for the legal retention; nothing is searched in
-    /// them. Never change it: stored values would become unreadable.
+    /// Purpose of the fiscal documents (NF-83, E06/F01/US02/T01, E11/F01/US01/T01): the recipient snapshot of <see cref="FiscalDocument"/> (name, fiscal
+    /// code, VAT number, address, recipient code, PEC), the snapshot of its issuer and its FatturaPA XML, which repeats them. Kept ten years for the legal
+    /// retention; nothing is searched in them. Never change it: stored values would become unreadable.
     /// </summary>
     public const string FiscalDocumentPurpose = "Casazen.FiscalDocument";
+
+    /// <summary>
+    /// Purpose of the bank accounts of the issuer of an organization (E11/F01/US01/T01): the IBAN and the QR-IBAN of <see cref="OrgFiscalIssuerProfile"/>.
+    /// Read by the settings of the organization and by the documents that name them (masked); never searched or logged. Never change it: stored values
+    /// would become unreadable.
+    /// </summary>
+    public const string OrgFiscalIssuerPurpose = "Casazen.OrgFiscalIssuerProfile";
 
     /// <summary>
     /// Purpose of the fiscal profiles of the owners (ADR-012, NF-109, E06/F05/US02/T01): the legal name, the legal address, the fiscal code, the VAT number,
@@ -305,7 +312,7 @@ public static class EncryptedColumns
         new EncryptedEntity<OtaMessage>(
             OtaMessageTextPurpose,
             nameof(OtaMessage.Text)),
-        // NF-83: the recipient snapshot of a fiscal document and its XML (E06/F01/US02/T01).
+        // NF-83: the recipient snapshot of a fiscal document and its XML (E06/F01/US02/T01), and the snapshot of its issuer (E11/F01/US01/T01).
         new EncryptedEntity<FiscalDocument>(
             FiscalDocumentPurpose,
             nameof(FiscalDocument.RecipientName),
@@ -319,7 +326,13 @@ public static class EncryptedColumns
             nameof(FiscalDocument.RecipientCountryCode),
             nameof(FiscalDocument.RecipientSdiCode),
             nameof(FiscalDocument.RecipientPec),
-            nameof(FiscalDocument.FatturaPaXml)),
+            nameof(FiscalDocument.FatturaPaXml),
+            nameof(FiscalDocument.IssuerSnapshot)),
+        // E11/F01/US01/T01: the bank accounts of the issuer of an organization.
+        new EncryptedEntity<OrgFiscalIssuerProfile>(
+            OrgFiscalIssuerPurpose,
+            nameof(OrgFiscalIssuerProfile.Iban),
+            nameof(OrgFiscalIssuerProfile.QrIban)),
         // ADR-012, NF-109: the identifiers, the address and the bank account of the fiscal profile of an owner (E06/F05/US02/T01).
         new EncryptedEntity<OwnerFiscalProfile>(
             OwnerFiscalProfilePurpose,

@@ -1,18 +1,64 @@
-# Fiscal documents of guests and direct bookings (epic E06)
+# Fiscal documents (epics E06 and E11)
 
 What CasaZen issues, how the numbers, the amounts and the FatturaPA XML are made, and where the official schema comes from. Requirements NF-83,
-NF-84, NF-87; ADR-019 (amended), ADR-033-R7 (retention).
+NF-84, NF-87, NF-112, NF-113; ADR-019 (amended twice), ADR-033-R7 (retention).
 
 ## Boundary
 
-- **Only guest and direct-booking documents.** CasaZen issues documents only for the direct bookings of an organization whose issuer is CasaZen
-  (`IDocumentIssuerService`, mode `CasaZenDirectOnly`, flag `Features:FiscalDocumentIssuance`, off by default). Never for an OTA booking, never where
-  Octorate is the issuer (its documents are imported read-only).
+- **CasaZen is the only issuer (decision of the PO of 2026-11-14, E11/F01/US01/T01).** CasaZen issues the document of every active booking of
+  every source: direct, manual, local and the portals imported through Octorate (`IDocumentIssuerService`, flag `Features:FiscalDocumentIssuance`, off
+  by default, on in test). A booking that is not active (a request, a hold, cancelled, a no-show: the one definition of the code) gets no document.
+  Nobody issues outside CasaZen; the accountant only receives the exports.
+- **Retired modes.** `DocumentIssuerMode` keeps its numbers for the stored rows: `CasaZen = 2` (formerly `CasaZenDirectOnly`) is the only mode;
+  `Octorate = 1` and `Accountant = 3` are `[Obsolete]`, the migration `AddSoleIssuerModel` moved every profile to 2 and `PUT api/fiscal/documents/settings`
+  answers 422 `issuer_mode_retired` for them (the old name `CasaZenDirectOnly` is still read as `CasaZen`).
+- **Octorate documents never block.** The import of the documents Octorate issued stores them read-only and links them to their booking; it never
+  locks the issuer of a booking and never raises `two_issuers_detected`. Its job selects no organization unless `FiscalDocuments:ImportOctorateDocuments`
+  is `true` (default `false`), so it never runs by accident. A booking a legacy row locked to Octorate before the decision keeps that lock (Octorate
+  issued it, CasaZen never issues it twice: 409 `document_issuer_conflict`, reason `issuer_locked_octorate`). The write-back of the billing data to
+  Octorate is unchanged and inert: it runs only for such a booking.
 - **Owner statements are not fiscal documents.** A rendiconto (owner statement) is a management report: it has no fiscal series or number, never
-  draws from the counter of the fiscal numbers and never produces FatturaPA XML. **No agency-to-owner XML is generated**: an invoice from the agency
-  to an owner is issued by the agency's external fiscal system and only referenced (E06/F01/US02/T05, `docs/runbooks/owner-accounting.md`).
+  draws from the counter of the fiscal numbers and never produces FatturaPA XML. The invoice of the agency to an owner, with lines, is a fiscal
+  document of CasaZen again (purpose `OwnerInvoice`, epic E14): the model already has its owner, statement version, period and the unique index of one
+  live invoice per owner and period.
 - **No real SDI sending.** No intermediary is chosen (PO-06): an issued invoice has the state `to_send` and its XML can be downloaded; nothing is
   transmitted by CasaZen.
+
+## Issuer (`OrgFiscalIssuerProfile`, E11/F01/US01/T01)
+
+One profile per organization, saved by the wizard (`PUT api/fiscal/documents/settings`, the whole org, `payment.read` + `property.write`):
+
+- **Country and regime.** `CountryCode` `IT` (default) or `CH` decides the valid regimes: `PrivatePerson`, `VatOrdinary`, `VatFlatRate` in Italy,
+  `SwissVatRegistered`, `SwissNotRegistered` in Switzerland; a regime of the other country is 422 `issuer_regime_country_mismatch`. `VatRegistered`
+  follows the regime (a contradicting value is 422 on `vatRegistered`).
+- **Italy** keeps its checks: province, the FatturaPA regime code and the VAT number of the organization (VAT regimes) or its fiscal code (private person).
+  **Switzerland** needs no Italian tax id: a registered issuer gives its UID, `SwissVatNumber`, accepted with or without separators or the suffix
+  `MWST`/`TVA`/`IVA` and stored as `CHE-123.456.789`; the format and the check digit are verified (eCH-0097 v5.2.0 § 2.4.2: weights 5, 4, 3, 2, 7, 6,
+  5, 4, modulus 11, a result of 10 is never assigned; example `CHE-109.322.551`). The Italian codes of a Swiss profile and the UID of an Italian one are
+  dropped.
+- **Bank accounts** `Iban` (mod 97, not a QR-IBAN) and `QrIban` (an IBAN of CH or LI whose institution id is 30000 to 31999), **encrypted at rest**
+  (`Casazen.OrgFiscalIssuerProfile`).
+- **Treatments** (⚖, prudent configurable defaults): `StayVatTreatment` `Standard` (default) or `ExemptArt10` (I1); `CleaningFeeTreatment` `FollowsStay`
+  (default, C2) or `Service`.
+- **Series** `GuestDocumentSeries` (default: the year) and `OwnerInvoiceSeries` (default `PM{year}`): at most 10 characters, letters, digits, `. _ / -`
+  and the placeholder `{year}`.
+- **Issue and delivery** `AutoIssueGuestDocuments` and `EmailGuestDocuments` (both off); `PlatformCollectedTouristTaxChannels` (the `BookingSource`
+  names whose portal collects the tourist tax, jsonb; empty for Italy).
+- **Italian reminders** `StampDutyReference` (the authorization of the virtual stamp or the number of the physical stamp, ⚖ I4),
+  `ConservationAgreementConfirmed`, `VirtualStampConfirmed`.
+- **Draft or confirmed.** Every save needs the flag on (422 `document_issuance_not_available`). A profile that cannot issue yet is saved as a draft and
+  `missingFields` says what is left; `confirmed: true` with something missing is 422 `issuer_profile_incomplete`, and `ConfirmedAt` is set only when
+  nothing is missing.
+
+## The issuer as it was (`FiscalDocument.IssuerSnapshot`)
+
+At the issue the document keeps the issuer as JSON (`FiscalIssuerSnapshot`: legal name, structured address, Italian VAT number and fiscal code of the
+organization, Swiss VAT number, regime, country, FatturaPA regime code, IBAN masked), **encrypted at rest** like the recipient, and the version of its
+rule (`RuleVersion`). The PDF and the XML of an issued document read the issuer from the snapshot; only a draft, and a document issued before the
+snapshot existed, show the profile of today. The document also keeps its `Purpose` (`GuestStay`, `OwnerInvoice`, `SelfBilling`), its property, the
+period of the stay (`ServicePeriodFrom`/`To`, from the check-in and the check-out) and its `PaymentChannel` (`Unknown` until E12 fills it). Its lines
+carry a `LineType` (`Accommodation`, `Cleaning`, `ExtraService`, `TouristTax`, `Commission`, `Recharge`, `AdvancedExpense`, `Other`); the stored lines
+were migrated (the tourist tax line, recognized by its fixed description, became `TouristTax`; the others `Accommodation`).
 
 ## Official schema (precondition of the XML)
 
@@ -92,6 +138,7 @@ are read with the DTD prohibited and no resolver (`XsdValidator`): no external e
 
 ## Retention and privacy
 
-- A fiscal document is kept ten years (ADR-033-R7): the booking, the credited and the replaced document are restrict foreign keys; the erasure of a
-  guest leaves the recipient snapshot of an issued document in place.
-- The recipient snapshot and the XML are encrypted at rest (`Casazen.FiscalDocument`, `docs/runbooks/encryption.md`).
+- A fiscal document is kept ten years (ADR-033-R7): the booking, the property, the owner, the statement version, the credited and the replaced document
+  are restrict foreign keys; the erasure of a guest leaves the recipient snapshot of an issued document in place.
+- The recipient snapshot, the issuer snapshot and the XML are encrypted at rest (`Casazen.FiscalDocument`, `docs/runbooks/encryption.md`); so are the
+  IBAN and the QR-IBAN of the issuer (`Casazen.OrgFiscalIssuerProfile`). The logs carry ids, codes and field names, never a value.

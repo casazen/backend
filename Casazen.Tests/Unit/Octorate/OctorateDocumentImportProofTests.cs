@@ -19,9 +19,10 @@ using DocumentKind = Casazen.Core.Entities.Enums.FiscalDocumentKind;
 namespace Casazen.Tests.Unit.Octorate;
 
 /// <summary>
-/// E06/F03/US02/T01 (NF-84, FIS-04): the documents Octorate issued are imported only into the org of the connection and linked only to its own
-/// bookings, their rejected SDI state and their amount to collect become "To do" items that close when the state changes, a booking CasaZen already
-/// issued for raises <c>two_issuers_detected</c> instead of hiding the document, and nothing is read while the import is off.
+/// E06/F03/US02/T01, E11/F01/US01/T01 (NF-84, FIS-04): the documents Octorate issued are imported only into the org of the connection and linked only to
+/// its own bookings, their rejected SDI state and their amount to collect become "To do" items that close when the state changes, an imported document
+/// never locks the issuer of its booking nor raises <c>two_issuers_detected</c> (CasaZen is the only issuer), and nothing is read while the import is
+/// off: its two flags, and the option <c>FiscalDocuments:ImportOctorateDocuments</c> (false by default).
 /// </summary>
 public class OctorateDocumentImportProofTests
 {
@@ -88,27 +89,43 @@ public class OctorateDocumentImportProofTests
         activities.Verify(a => a.CloseAsync(openPayment.Id, InternalActivity.ClosedBySystem, It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (replaces «two issuers detected»). A booking CasaZen issued for, and one nobody issued for yet: the imported documents are
+    /// stored and linked, the lock of CasaZen stays as it was, no booking is locked to Octorate and no "To do" of two issuers is raised, so CasaZen still
+    /// issues the second booking.
+    /// </summary>
     [Fact]
-    public async Task Import_BookingCasazenIssuedFor_StoresTheDocumentAndRaisesTwoIssuers()
+    public async Task Import_NeverLocksTheIssuer_NorRaisesTwoIssuers_Test()
     {
         await using var db = NewDb();
-        var (_, booking) = await SeedOrgAsync(db, OrgA, "ACC-A", "R-100");
-        var issuers = new Mock<IDocumentIssuerService>();
-        issuers.Setup(i => i.LockIssuerAsync(booking, BookingDocumentIssuerKind.Octorate, It.IsAny<Guid?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new DomainConflictException(DocumentIssuerErrorCodes.IssuerConflict, "DocumentIssuerConflict"));
+        var (_, issuedByCasazen) = await SeedOrgAsync(db, OrgA, "ACC-A", "R-100");
+        var notIssued = await AddBookingAsync(db, OrgA, "R-101");
+        db.BookingDocumentIssuers.Add(new BookingDocumentIssuer
+        {
+            OrgId = OrgA,
+            BookingId = issuedByCasazen,
+            Issuer = BookingDocumentIssuerKind.CasaZen,
+            LockedAt = Now.UtcDateTime,
+        });
+        await db.SaveChangesAsync();
         var activities = Activities();
 
-        var result = await Service(db, Client(("ACC-A", [Document("D-3", "R-100")])).Object, issuers.Object, activities.Object).ImportAsync(OrgA, since: null);
+        var result = await Service(db, Client(("ACC-A", [Document("D-3", "R-100"), Document("D-4", "R-101")])).Object, activities.Object)
+            .ImportAsync(OrgA, since: null);
 
-        Assert.Equal(1, result.TwoIssuers);
-        Assert.Single(await db.FiscalDocuments.IgnoreQueryFilters().ToListAsync());
-        activities.Verify(a => a.CreateAsync(
-            It.Is<CreateTodoRequest>(r => r.Reason == OctorateDocumentImport.TwoIssuersReason && r.EntityId == booking && r.Urgency == ActivityUrgency.High),
-            It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(2, result.Created);
+        var rows = await db.FiscalDocuments.IgnoreQueryFilters().AsNoTracking().ToListAsync();
+        Assert.Equal(issuedByCasazen, rows.Single(r => r.OctorateDocumentId == "D-3").BookingId);
+        Assert.Equal(notIssued, rows.Single(r => r.OctorateDocumentId == "D-4").BookingId);
+        var locks = await db.BookingDocumentIssuers.IgnoreQueryFilters().AsNoTracking().ToListAsync();
+        Assert.Equal(BookingDocumentIssuerKind.CasaZen, Assert.Single(locks).Issuer);
+        activities.Verify(
+            a => a.CreateAsync(It.Is<CreateTodoRequest>(r => r.Reason == "two_issuers_detected" || r.EntityType == "BookingIssuers"), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
-    public async Task Import_OffOrNotOctorateIssuer_ReadsNothing_AndAFailedReadIsCountedNotThrown()
+    public async Task Import_OffOrOptionFalse_ReadsNothing_AndAFailedReadIsCountedNotThrown()
     {
         await using var db = NewDb();
         await SeedOrgAsync(db, OrgA, "ACC-A", "R-100");
@@ -117,8 +134,15 @@ public class OctorateDocumentImportProofTests
         var off = Service(db, client.Object, flags: new TestFeatureFlags(FeatureFlags.OctorateConnector));
         Assert.Empty(await off.OrgsToImportAsync());
         Assert.Equal(0, (await off.ImportAsync(OrgA, since: null)).Created);
-        client.Verify(c => c.GetDocumentsAsync(It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
 
+        // The two flags on and the option FiscalDocuments:ImportOctorateDocuments false (the default): the job selects nobody and reads nothing.
+        var optionOff = Service(db, client.Object, importOctorateDocuments: false);
+        Assert.Empty(await optionOff.OrgsToImportAsync());
+        Assert.Equal(0, (await optionOff.ImportAsync(OrgA, since: null)).Created);
+        client.Verify(c => c.GetDocumentsAsync(It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.False(new Casazen.Core.Options.FiscalDocumentRulesOptions().ImportOctorateDocuments);
+
+        // With the option: the connected orgs, whatever their profile says.
         Assert.Equal(new[] { OrgA }, await Service(db, client.Object).OrgsToImportAsync());
 
         var failing = new Mock<IOctorateApiClient>();
@@ -240,10 +264,10 @@ public class OctorateDocumentImportProofTests
     private static OctorateDocumentImportService Service(
         AppDbContext db,
         IOctorateApiClient client,
-        IDocumentIssuerService? issuers = null,
         IInternalActivityService? activities = null,
         IFeatureFlags? flags = null,
-        FakeTimeProvider? clock = null)
+        FakeTimeProvider? clock = null,
+        bool importOctorateDocuments = true)
     {
         var scope = new Mock<IOctorateOrgScope>();
         scope.Setup(s => s.Use(It.IsAny<Guid>())).Returns(Mock.Of<IDisposable>());
@@ -253,12 +277,33 @@ public class OctorateDocumentImportProofTests
             db,
             client,
             scope.Object,
-            issuers ?? Mock.Of<IDocumentIssuerService>(),
             activities ?? Activities().Object,
             flags ?? new TestFeatureFlags(FeatureFlags.OctorateConnector, FeatureFlags.OctorateDocumentImport),
+            Microsoft.Extensions.Options.Options.Create(new Casazen.Core.Options.FiscalDocumentRulesOptions { ImportOctorateDocuments = importOctorateDocuments }),
             environment.Object,
             clock ?? new FakeTimeProvider(Now),
             NullLogger<OctorateDocumentImportService>.Instance);
+    }
+
+    /// <summary>One more booking of a reservation, on the first property of the org.</summary>
+    private static async Task<Guid> AddBookingAsync(AppDbContext db, Guid orgId, string reservation)
+    {
+        var first = await db.Bookings.IgnoreQueryFilters().FirstAsync(b => b.OrgId == orgId);
+        var booking = new Booking
+        {
+            OrgId = orgId,
+            PropertyId = first.PropertyId,
+            GuestId = first.GuestId,
+            CheckInDate = new DateTime(2026, 10, 24),
+            CheckOutDate = new DateTime(2026, 10, 26),
+            NumberOfGuests = 2,
+            Status = BookingStatus.CheckedOut,
+            Source = BookingSource.Airbnb,
+            OctorateReservationId = reservation,
+        };
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+        return booking.Id;
     }
 
     /// <summary>A second structure of an org that is already connected: its mapping, its property and a booking of one reservation.</summary>
@@ -331,7 +376,7 @@ public class OctorateDocumentImportProofTests
             PropertyId = property.Id,
             Status = OctorateMappingStatus.Confirmed,
         });
-        db.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile { OrgId = orgId, IssuerMode = DocumentIssuerMode.Octorate });
+        db.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile { OrgId = orgId, IssuerMode = DocumentIssuerMode.CasaZen });
         db.Properties.Add(property);
         db.Guests.Add(guest);
         db.Bookings.Add(booking);

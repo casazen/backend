@@ -3295,6 +3295,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid?>("CreditedDocumentId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("CreditedInFull")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Currency")
                         .IsRequired()
                         .HasMaxLength(3)
@@ -3305,6 +3308,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateOnly?>("IssueDate")
                         .HasColumnType("date");
+
+                    b.Property<string>("IssuerSnapshot")
+                        .HasColumnType("text");
 
                     b.Property<int>("Kind")
                         .HasColumnType("integer");
@@ -3331,7 +3337,25 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("OwnerStatementVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("PaymentChannel")
+                        .HasColumnType("integer");
+
                     b.Property<int>("PaymentState")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("PeriodMonth")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("PeriodYear")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Purpose")
                         .HasColumnType("integer");
 
                     b.Property<string>("RecipientAddressCivic")
@@ -3354,6 +3378,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<string>("RecipientName")
                         .HasColumnType("text");
+
+                    b.Property<Guid?>("RecipientOwnerId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("RecipientPec")
                         .HasColumnType("text");
@@ -3378,6 +3405,10 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("xid")
                         .HasColumnName("xmin");
+
+                    b.Property<string>("RuleVersion")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<string>("SdiErrorCode")
                         .HasMaxLength(20)
@@ -3406,6 +3437,12 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<DateOnly?>("ServicePeriodFrom")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("ServicePeriodTo")
+                        .HasColumnType("date");
 
                     b.Property<int>("Source")
                         .HasColumnType("integer");
@@ -3446,6 +3483,12 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("CreditedDocumentId");
 
+                    b.HasIndex("OwnerStatementVersionId");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("RecipientOwnerId");
+
                     b.HasIndex("ReplacesDocumentId");
 
                     b.HasIndex("OrgId", "BookingId");
@@ -3461,6 +3504,11 @@ namespace Casazen.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("UIX_FiscalDocuments_OrgId_Series_SequenceNumber")
                         .HasFilter("\"SequenceNumber\" IS NOT NULL");
+
+                    b.HasIndex("OrgId", "RecipientOwnerId", "PeriodYear", "PeriodMonth")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_FiscalDocuments_OrgId_RecipientOwnerId_Period")
+                        .HasFilter("\"Purpose\" = 2 AND \"Status\" <> 3 AND \"Kind\" <> 3 AND NOT \"CreditedInFull\" AND \"RecipientOwnerId\" IS NOT NULL");
 
                     b.ToTable("FiscalDocuments", t =>
                         {
@@ -3487,6 +3535,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("LineNumber")
                         .HasColumnType("integer");
 
+                    b.Property<int>("LineType")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
 
@@ -3499,6 +3550,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("numeric(18,2)");
 
                     b.Property<decimal>("UnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal?>("VatAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
@@ -6898,28 +6953,43 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<bool>("AutoIssueGuestDocuments")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("City")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<int>("CleaningFeeTreatment")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("ConfirmedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("ConservationAgreementConfirmed")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("CountryCode")
                         .IsRequired()
                         .HasMaxLength(2)
                         .HasColumnType("character varying(2)");
 
-                    b.Property<string>("DefaultSeries")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
                     b.Property<int?>("DocumentRegime")
                         .HasColumnType("integer");
+
+                    b.Property<bool>("EmailGuestDocuments")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("FatturaPaRegimeCode")
                         .HasMaxLength(4)
                         .HasColumnType("character varying(4)");
+
+                    b.Property<string>("GuestDocumentSeries")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Iban")
+                        .HasColumnType("text");
 
                     b.Property<int>("IssuerMode")
                         .HasColumnType("integer");
@@ -6939,6 +7009,14 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("OwnerInvoiceSeries")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("PlatformCollectedTouristTaxChannelsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("PlatformCollectedTouristTaxChannels");
+
                     b.Property<string>("PostalCode")
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
@@ -6947,12 +7025,32 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(2)
                         .HasColumnType("character varying(2)");
 
+                    b.Property<string>("QrIban")
+                        .HasColumnType("text");
+
+                    b.Property<string>("StampDutyReference")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<int>("StayVatTreatment")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SwissVatNumber")
+                        .HasMaxLength(15)
+                        .HasColumnType("character varying(15)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("UpdatedByUserId")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
+
+                    b.Property<bool>("VatRegistered")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("VirtualStampConfirmed")
+                        .HasColumnType("boolean");
 
                     b.HasKey("Id");
 
@@ -17670,6 +17768,21 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasOne("Casazen.Core.Entities.FiscalDocument", null)
                         .WithMany()
                         .HasForeignKey("CreditedDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Casazen.Core.Entities.OwnerStatementVersion", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerStatementVersionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Casazen.Core.Entities.PropertyOwner", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientOwnerId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Casazen.Core.Entities.FiscalDocument", null)

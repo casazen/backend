@@ -20,6 +20,10 @@ namespace Casazen.Infrastructure.Services;
 /// <inheritdoc cref="IFiscalDocumentService"/>
 /// <remarks>
 /// <list type="bullet">
+/// <item><b>Every active booking.</b> CasaZen issues for every source (direct, manual, the portals through Octorate) since 2026-11-14 (E11/F01/US01/T01);
+/// a booking that is not active (the one definition of the code) gets no document.</item>
+/// <item><b>The issuer as it was.</b> The issue writes the snapshot of the issuer and the version of the rule on the document; the PDF and the XML of an
+/// issued document read the issuer from the snapshot, never from the profile of today.</item>
 /// <item><b>Payment state.</b> A document is <c>Paid</c> when the completed payments of its booking, net of the refunds, reach its total; else <c>ToCollect</c>.</item>
 /// <item><b>Logs</b> carry ids, codes and counts: never a value of the recipient or an amount.</item>
 /// </list>
@@ -129,6 +133,15 @@ public sealed class FiscalDocumentService(
         {
             OrgId = original.OrgId,
             BookingId = original.BookingId,
+            PropertyId = original.PropertyId,
+            Purpose = original.Purpose,
+            RecipientOwnerId = original.RecipientOwnerId,
+            OwnerStatementVersionId = original.OwnerStatementVersionId,
+            PeriodYear = original.PeriodYear,
+            PeriodMonth = original.PeriodMonth,
+            ServicePeriodFrom = original.ServicePeriodFrom,
+            ServicePeriodTo = original.ServicePeriodTo,
+            PaymentChannel = original.PaymentChannel,
             Source = FiscalDocumentSource.CasaZen,
             Kind = DocumentKind.CreditNote,
             Status = FiscalDocumentStatus.Draft,
@@ -314,19 +327,36 @@ public sealed class FiscalDocumentService(
         return document.FatturaPaXml;
     }
 
-    public async Task<byte[]> GetPdfAsync(Guid documentId, string language, CancellationToken ct = default)
+    public async Task<byte[]> GetPdfAsync(Guid documentId, string language, CancellationToken ct = default) =>
+        pdfRenderer.Render(await PdfContentAsync(documentId, language, ct));
+
+    /// <summary>
+    /// What the PDF of a CasaZen document shows (<see cref="GetPdfAsync"/> renders it): the issuer of the snapshot for an issued document, the profile of
+    /// today only for a draft and for a document issued before the snapshot existed; the current payment state; the name of the property.
+    /// </summary>
+    internal async Task<PdfDocumentContent> PdfContentAsync(Guid documentId, string language, CancellationToken ct = default)
     {
         var document = await db.FiscalDocuments.AsNoTracking().Include(d => d.Lines).FirstOrDefaultAsync(d => d.Id == documentId, ct)
             ?? throw NotFound(documentId);
         if (document.Source != FiscalDocumentSource.CasaZen)
             throw ReadOnly();
 
-        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.OrgId == document.OrgId, ct);
-        var org = await db.Orgs.AsNoTracking().FirstAsync(o => o.Id == document.OrgId, ct);
+        await ApplyCurrentPaymentStateAsync(db, [document], ct);
+        var issuer = document.Status == FiscalDocumentStatus.Issued ? FiscalIssuerSnapshot.FromJson(document.IssuerSnapshot) : null;
+        if (issuer is null)
+        {
+            var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.OrgId == document.OrgId, ct);
+            var org = await db.Orgs.AsNoTracking().FirstAsync(o => o.Id == document.OrgId, ct);
+            issuer = FiscalIssuerSnapshot.From(profile, org);
+        }
+
         var credited = document.CreditedDocumentId is { } creditedId
             ? await db.FiscalDocuments.AsNoTracking().FirstOrDefaultAsync(d => d.Id == creditedId, ct)
             : null;
-        return pdfRenderer.Render(FiscalDocumentPdfs.Pdf(document, profile, org, texts, language, credited));
+        var propertyName = document.PropertyId is { } propertyId
+            ? await db.Properties.AsNoTracking().IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]).Where(p => p.Id == propertyId).Select(p => p.Name).FirstOrDefaultAsync(ct)
+            : null;
+        return FiscalDocumentPdfs.Pdf(document, issuer, texts, language, credited, propertyName);
     }
 
     // ---------------------------------------------------------------- draft
@@ -355,6 +385,10 @@ public sealed class FiscalDocumentService(
         var amounts = FiscalDocumentTotals.FromGross(GrossLinesOf(booking, rule, kind), Stamp());
 
         draft.OrgId = booking.OrgId;
+        draft.PropertyId = booking.PropertyId;
+        draft.Purpose = FiscalDocumentPurpose.GuestStay;
+        draft.ServicePeriodFrom = DateOnly.FromDateTime(booking.CheckIn);
+        draft.ServicePeriodTo = DateOnly.FromDateTime(booking.CheckOut);
         draft.Kind = kind;
         draft.Currency = StayCurrency.Normalize(booking.Currency);
         CopyRecipient(recipient!, draft);
@@ -383,13 +417,18 @@ public sealed class FiscalDocumentService(
         var lines = new List<FiscalDocumentGrossLine>();
         var lodging = booking.BasePrice - booking.CleaningFee;
         if (lodging > 0m)
-            lines.Add(new FiscalDocumentGrossLine(texts.Get(LodgingKey, language, booking.Nights), 1m, lodging, rate, nature));
+            lines.Add(new FiscalDocumentGrossLine(texts.Get(LodgingKey, language, booking.Nights), 1m, lodging, rate, nature, FiscalLineType.Accommodation));
         if (booking.CleaningFee > 0m)
-            lines.Add(new FiscalDocumentGrossLine(texts.Get(CleaningKey, language), 1m, booking.CleaningFee, rate, nature));
+            lines.Add(new FiscalDocumentGrossLine(texts.Get(CleaningKey, language), 1m, booking.CleaningFee, rate, nature, FiscalLineType.Cleaning));
         if (booking.TouristTax > 0m)
         {
             lines.Add(new FiscalDocumentGrossLine(
-                texts.Get(TouristTaxKey, language), 1m, booking.TouristTax, 0m, kind == DocumentKind.Receipt ? null : rule.TouristTaxNatureCode));
+                texts.Get(TouristTaxKey, language),
+                1m,
+                booking.TouristTax,
+                0m,
+                kind == DocumentKind.Receipt ? null : rule.TouristTaxNatureCode,
+                FiscalLineType.TouristTax));
         }
 
         return lines;
@@ -408,7 +447,8 @@ public sealed class FiscalDocumentService(
                     ? l.TotalPrice + Math.Round(document.VatAmount * l.TotalPrice / taxedNet, 2, MidpointRounding.AwayFromZero)
                     : l.TotalPrice,
                 l.VatRatePercent,
-                l.VatNatureCode))
+                l.VatNatureCode,
+                l.LineType))
             .ToList();
 
         // The cent of difference of the shares of the VAT goes to the largest taxed line, so the lines add up to what the guest paid.
@@ -431,6 +471,7 @@ public sealed class FiscalDocumentService(
                 OrgId = document.OrgId,
                 DocumentId = document.Id,
                 LineNumber = line.LineNumber,
+                LineType = line.LineType,
                 Description = line.Description,
                 Quantity = line.Quantity,
                 UnitPrice = line.UnitPrice,
@@ -484,6 +525,10 @@ public sealed class FiscalDocumentService(
             var remaining = credited.Total - await CreditedSoFarAsync(credited.Id, ct);
             if (document.Total <= 0m || document.Total > remaining)
                 throw new DomainRuleException(FiscalDocumentErrors.CreditAmountExceeds, "FiscalDocumentCreditAmountExceeds", remaining);
+
+            // The credit note that completes the credit marks the original: an owner invoice credited in full frees its owner and period (E14).
+            if (document.Total == remaining)
+                credited.CreditedInFull = true;
         }
 
         document.Series = number.Series;
@@ -491,9 +536,14 @@ public sealed class FiscalDocumentService(
         document.Number = number.Display;
         document.IssueDate = today;
 
+        // The issuer as it is now, kept with the document: its PDF and its XML read it from here from now on.
+        var issuer = FiscalIssuerSnapshot.From(profile, org, rule.FatturaPaRegimeCode);
+        document.IssuerSnapshot = issuer.ToJson();
+        document.RuleVersion ??= FiscalDocumentTotals.RuleVersion;
+
         if (document.Kind is DocumentKind.Invoice or DocumentKind.CreditNote)
         {
-            document.FatturaPaXml = xmlBuilder.Build(FatturaPaInputOf(document, profile, org, rule, credited));
+            document.FatturaPaXml = xmlBuilder.Build(FatturaPaInputOf(document, issuer, rule, credited));
             document.SdiStatus = FiscalDocumentSdiStatuses.ToSend;
         }
         else
@@ -519,7 +569,8 @@ public sealed class FiscalDocumentService(
             await transaction.CommitAsync(ct);
     }
 
-    private static FatturaPaInput FatturaPaInputOf(FiscalDocument document, OrgFiscalIssuerProfile profile, Org org, FiscalDocumentRule rule, FiscalDocument? credited)
+    /// <summary>The input of the XML of an issued document: the issuer from its snapshot, the recipient from the document, the stored lines and amounts.</summary>
+    private static FatturaPaInput FatturaPaInputOf(FiscalDocument document, FiscalIssuerSnapshot issuerSnapshot, FiscalDocumentRule rule, FiscalDocument? credited)
     {
         var lines = document.Lines.OrderBy(l => l.LineNumber).ToList();
         var groups = lines.GroupBy(l => (l.VatRatePercent, Nature: l.VatRatePercent == 0m ? l.VatNatureCode : null)).ToList();
@@ -536,16 +587,22 @@ public sealed class FiscalDocumentService(
             .OrderByDescending(s => s.VatRatePercent)
             .ToList();
 
-        var vatNumber = DigitsOf(org.PartitaIvaNumber);
-        var issuerCountry = string.IsNullOrWhiteSpace(profile.CountryCode) ? OrgFiscalIssuerProfile.DefaultCountryCode : profile.CountryCode;
+        var vatNumber = DigitsOf(issuerSnapshot.VatNumber);
+        var issuerCountry = string.IsNullOrWhiteSpace(issuerSnapshot.CountryCode) ? OrgFiscalIssuerProfile.DefaultCountryCode : issuerSnapshot.CountryCode;
         var issuer = new FatturaPaParty(
             vatNumber is null ? null : new FatturaPaId(issuerCountry, vatNumber),
-            org.FiscalCode,
-            profile.LegalName,
+            issuerSnapshot.FiscalCode,
+            issuerSnapshot.LegalName,
             null,
             null,
-            new FatturaPaAddress(profile.AddressStreet ?? string.Empty, profile.AddressCivic, profile.PostalCode ?? string.Empty, profile.City ?? string.Empty, profile.Province, issuerCountry),
-            profile.FatturaPaRegimeCode ?? rule.FatturaPaRegimeCode);
+            new FatturaPaAddress(
+                issuerSnapshot.AddressStreet ?? string.Empty,
+                issuerSnapshot.AddressCivic,
+                issuerSnapshot.PostalCode ?? string.Empty,
+                issuerSnapshot.City ?? string.Empty,
+                issuerSnapshot.Province,
+                issuerCountry),
+            issuerSnapshot.FatturaPaRegimeCode ?? rule.FatturaPaRegimeCode);
 
         var recipientCountry = document.RecipientCountryCode ?? "IT";
         var (first, last) = SplitName(document.RecipientName);
@@ -566,7 +623,7 @@ public sealed class FiscalDocumentService(
                 recipientCountry));
 
         return new FatturaPaInput(
-            new FatturaPaId(issuerCountry, org.FiscalCode ?? vatNumber ?? string.Empty),
+            new FatturaPaId(issuerCountry, issuerSnapshot.FiscalCode ?? vatNumber ?? string.Empty),
             document.Id.ToString("N")[..10].ToUpperInvariant(),
             issuer,
             recipient,
@@ -585,12 +642,13 @@ public sealed class FiscalDocumentService(
 
     // ---------------------------------------------------------------- rules
 
+    /// <summary>
+    /// CasaZen issues for every active booking of every source (direct, manual, local, the portals through Octorate) while the issuance is on
+    /// (E11/F01/US01/T01): the source is no longer a gate. A booking that is not active, the issuance switched off, and a booking a legacy row locked to
+    /// Octorate are refused.
+    /// </summary>
     private async Task RequireCasazenIssuesAsync(BookingFacts booking, CancellationToken ct)
     {
-        // The one definition of a direct booking first: never an OTA booking, whatever the setting says.
-        if (!FiscalDocumentRules.IsDirectSource(booking.Source))
-            throw new DomainRuleException(FiscalDocumentErrors.BookingNotDirect, DocumentIssuerErrorCodes.MessageKeyOf(DocumentIssuerErrorCodes.BookingNotDirect));
-
         // A booking that is not active (a request, a hold, a cancelled booking, a no-show) owes no document: no draft, no number, no lock of the issuer. «Active»
         // is the one definition of the code (AlloggiatiStatusRules), never a list of its own.
         if (!AlloggiatiStatusRules.ActiveBookingStatuses.Contains(booking.Status) || booking.NoShowAt is not null)
@@ -601,10 +659,8 @@ public sealed class FiscalDocumentService(
         {
             case IssuerDecisionKind.CasaZen:
                 return;
-            case IssuerDecisionKind.None when decision.Reason == IssuerReasons.IssuanceOff:
+            case IssuerDecisionKind.None:
                 throw new DomainRuleException(FiscalDocumentErrors.IssuanceNotAvailable, DocumentIssuerErrorCodes.MessageKeyOf(DocumentIssuerErrorCodes.IssuanceNotAvailable));
-            case IssuerDecisionKind.None when decision.Reason == IssuerReasons.BookingNotDirect:
-                throw new DomainRuleException(FiscalDocumentErrors.BookingNotDirect, DocumentIssuerErrorCodes.MessageKeyOf(DocumentIssuerErrorCodes.BookingNotDirect));
             default:
                 throw new DomainConflictException(FiscalDocumentErrors.IssuerConflict, DocumentIssuerErrorCodes.MessageKeyOf(DocumentIssuerErrorCodes.IssuerConflict))
                 {
@@ -679,8 +735,9 @@ public sealed class FiscalDocumentService(
         return missing;
     }
 
-    private string SeriesOf(OrgFiscalIssuerProfile profile, FiscalDocumentRule rule, DateOnly today) =>
-        FiscalNumberFormat.SeriesFor(string.IsNullOrWhiteSpace(profile.DefaultSeries) ? rule.SeriesPattern : profile.DefaultSeries, today);
+    /// <summary>The series of a guest document: the pattern of the profile (<c>GuestDocumentSeries</c>), else the rule's (the year).</summary>
+    private static string SeriesOf(OrgFiscalIssuerProfile profile, FiscalDocumentRule rule, DateOnly today) =>
+        FiscalNumberFormat.SeriesFor(string.IsNullOrWhiteSpace(profile.GuestDocumentSeries) ? rule.SeriesPattern : profile.GuestDocumentSeries, today);
 
     private async Task<FiscalDocumentPaymentState> PaymentStateAsync(Guid bookingId, decimal total, CancellationToken ct)
     {
@@ -742,7 +799,7 @@ public sealed class FiscalDocumentService(
             .AsNoTracking()
             .Where(b => b.Id == id)
             .Select(b => new BookingFacts(
-                b.Id, b.OrgId, b.Source, b.BasePrice, b.CleaningFee, b.TouristTax, b.Property.Currency, b.CheckInDate, b.CheckOutDate, b.Status, b.NoShowAt))
+                b.Id, b.OrgId, b.PropertyId, b.Source, b.BasePrice, b.CleaningFee, b.TouristTax, b.Property.Currency, b.CheckInDate, b.CheckOutDate, b.Status, b.NoShowAt))
             .FirstOrDefaultAsync(ct)
             ?? throw new NotFoundException($"Booking {id} was not found") { Code = "booking_not_found", MessageKey = "BookingNotFound" };
     }
@@ -784,12 +841,14 @@ public sealed class FiscalDocumentService(
         OrgId = document.OrgId,
         DocumentId = document.Id,
         LineNumber = line.LineNumber,
+        LineType = line.LineType,
         Description = line.Description,
         Quantity = line.Quantity,
         UnitPrice = line.UnitPrice,
         TotalPrice = line.TotalPrice,
         VatRatePercent = line.VatRatePercent,
         VatNatureCode = line.VatNatureCode,
+        VatAmount = line.VatAmount,
     };
 
     /// <summary>The VAT id of a recipient: its VAT number (the country prefix taken off), or, abroad without one, the code of a foreign party.</summary>
@@ -839,6 +898,7 @@ public sealed class FiscalDocumentService(
     private sealed record BookingFacts(
         Guid Id,
         Guid OrgId,
+        Guid PropertyId,
         BookingSource Source,
         decimal BasePrice,
         decimal CleaningFee,

@@ -1,3 +1,4 @@
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 
 namespace Casazen.Core.Services;
@@ -67,7 +68,8 @@ public static class FiscalDocumentTotals
                     line.Quantity == 1m ? net : Math.Round(net / line.Quantity, 8, MidpointRounding.AwayFromZero),
                     net,
                     rate,
-                    rate == 0m ? line.NatureCode : null);
+                    rate == 0m ? line.NatureCode : null,
+                    line.LineType);
             }
 
             summary.Add(new FiscalDocumentVatSummary(rate, group.Key.Nature, taxable, gross - taxable));
@@ -120,7 +122,14 @@ public static class FiscalDocumentTotals
 /// <param name="GrossAmount">The amount of the line, VAT included.</param>
 /// <param name="VatRatePercent">The VAT rate of the line in percent; 0 for an operation without VAT.</param>
 /// <param name="NatureCode">The nature code of an operation without VAT.</param>
-public sealed record FiscalDocumentGrossLine(string Description, decimal Quantity, decimal GrossAmount, decimal VatRatePercent, string? NatureCode);
+/// <param name="LineType">What the line is: the tax rule gives its rate by type.</param>
+public sealed record FiscalDocumentGrossLine(
+    string Description,
+    decimal Quantity,
+    decimal GrossAmount,
+    decimal VatRatePercent,
+    string? NatureCode,
+    FiscalLineType LineType = FiscalLineType.Accommodation);
 
 /// <summary>A computed line, net of VAT.</summary>
 public sealed record FiscalDocumentLineAmounts(
@@ -130,7 +139,8 @@ public sealed record FiscalDocumentLineAmounts(
     decimal UnitPrice,
     decimal TotalPrice,
     decimal VatRatePercent,
-    string? NatureCode);
+    string? NatureCode,
+    FiscalLineType LineType = FiscalLineType.Accommodation);
 
 /// <summary>One row of the VAT summary: the taxable amount and the VAT of a rate (and nature code).</summary>
 public sealed record FiscalDocumentVatSummary(decimal VatRatePercent, string? NatureCode, decimal TaxableAmount, decimal Tax);

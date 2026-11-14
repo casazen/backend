@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -21,14 +22,16 @@ internal sealed class BookingInvoiceDataConfiguration : IEntityTypeConfiguration
 }
 
 /// <summary>
-/// The profile of the issuer of the documents of an organization (FIS-02, NF-82, E06/F02/US02/T01): one row for each organization, so a second
-/// profile of the same org is refused by the database, whoever writes it. The fiscal identity (VAT number, fiscal code) is on <c>Org</c>.
+/// The profile of the issuer of the documents of an organization (FIS-02, NF-82, E06/F02/US02/T01, E11/F01/US01/T01): one row for each organization, so
+/// a second profile of the same org is refused by the database, whoever writes it. The Italian fiscal identity (VAT number, fiscal code) is on <c>Org</c>;
+/// the IBAN and the QR-IBAN get their converter from <c>EncryptedColumns</c> (no length), the channels whose portal collects the tourist tax are jsonb.
 /// </summary>
 internal sealed class OrgFiscalIssuerProfileConfiguration : IEntityTypeConfiguration<OrgFiscalIssuerProfile>
 {
     public void Configure(EntityTypeBuilder<OrgFiscalIssuerProfile> entity)
     {
         entity.HasIndex(p => p.OrgId).IsUnique().HasDatabaseName(OrgFiscalIssuerProfile.OrgIndexName);
+        entity.Ignore(p => p.PlatformCollectedTouristTaxChannels);
     }
 }
 
@@ -47,19 +50,31 @@ internal sealed class BookingDocumentIssuerConfiguration : IEntityTypeConfigurat
 }
 
 /// <summary>
-/// The fiscal documents (NF-83, NF-84, E06/F01/US02/T01). Kept ten years (ADR-033-R7): the booking, the credited and the replaced document are
-/// <b>restrict</b> foreign keys, so neither the removal of a booking nor anything else can delete a document by cascade. The database refuses two
-/// documents with the same number in one org and series and two imported rows of one Octorate document, and accepts only the known SDI states.
-/// The recipient columns and the XML get their converter from <c>EncryptedColumns</c> (no length); <c>xmin</c> is the concurrency token.
+/// The fiscal documents (NF-83, NF-84, E06/F01/US02/T01, E11/F01/US01/T01). Kept ten years (ADR-033-R7): the booking, the property, the owner, the
+/// statement version, the credited and the replaced document are <b>restrict</b> foreign keys, so neither the removal of a booking nor anything else can
+/// delete a document by cascade. The database refuses two documents with the same number in one org and series, two imported rows of one Octorate
+/// document and two live owner invoices of one owner and period, and accepts only the known SDI states. The recipient columns, the issuer snapshot and
+/// the XML get their converter from <c>EncryptedColumns</c> (no length); <c>xmin</c> is the concurrency token.
 /// </summary>
 internal sealed class FiscalDocumentConfiguration : IEntityTypeConfiguration<FiscalDocument>
 {
     public void Configure(EntityTypeBuilder<FiscalDocument> entity)
     {
         entity.HasOne<Booking>().WithMany().HasForeignKey(d => d.BookingId).OnDelete(DeleteBehavior.Restrict);
+        entity.HasOne<Property>().WithMany().HasForeignKey(d => d.PropertyId).OnDelete(DeleteBehavior.Restrict);
+        entity.HasOne<PropertyOwner>().WithMany().HasForeignKey(d => d.RecipientOwnerId).OnDelete(DeleteBehavior.Restrict);
+        entity.HasOne<OwnerStatementVersion>().WithMany().HasForeignKey(d => d.OwnerStatementVersionId).OnDelete(DeleteBehavior.Restrict);
         entity.HasOne<FiscalDocument>().WithMany().HasForeignKey(d => d.CreditedDocumentId).OnDelete(DeleteBehavior.Restrict);
         entity.HasOne<FiscalDocument>().WithMany().HasForeignKey(d => d.ReplacesDocumentId).OnDelete(DeleteBehavior.Restrict);
         entity.HasMany(d => d.Lines).WithOne().HasForeignKey(l => l.DocumentId).OnDelete(DeleteBehavior.Cascade);
+
+        // One live owner invoice per owner and period (E14): neither a discarded draft, nor a credit note, nor an invoice credited in full holds it.
+        entity.HasIndex(d => new { d.OrgId, d.RecipientOwnerId, d.PeriodYear, d.PeriodMonth })
+            .IsUnique()
+            .HasFilter(
+                $"\"Purpose\" = {(int)FiscalDocumentPurpose.OwnerInvoice} AND \"Status\" <> {(int)FiscalDocumentStatus.Discarded} "
+                + $"AND \"Kind\" <> {(int)FiscalDocumentKind.CreditNote} AND NOT \"CreditedInFull\" AND \"RecipientOwnerId\" IS NOT NULL")
+            .HasDatabaseName(FiscalDocument.OwnerPeriodIndexName);
 
         entity.HasIndex(d => new { d.OrgId, d.Series, d.SequenceNumber })
             .IsUnique()

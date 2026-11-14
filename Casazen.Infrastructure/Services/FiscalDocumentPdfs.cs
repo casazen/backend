@@ -2,17 +2,20 @@ using System.Globalization;
 using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Services;
 using DocumentKind = Casazen.Core.Entities.Enums.FiscalDocumentKind;
 
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// The PDF of a guest or direct-booking fiscal document (FIS-03, FIS-07, NF-83, NF-87, ADR-019-R10, E06/F01/US02/T04), in the style of
+/// The PDF of a fiscal document CasaZen issues (FIS-03, FIS-07, NF-83, NF-87, ADR-019-R10, E06/F01/US02/T04, E11/F01/US01/T01), in the style of
 /// <see cref="FiscalReportDocuments"/>: A4, laid out by <see cref="IPdfDocumentRenderer"/> (the header of the lines table repeated on every page), labels
 /// from the resource files in Italian or English. It is never used for an owner statement, which has its own non-fiscal layout.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
+/// <item><b>The issuer as it was.</b> The issuer is the snapshot of the document (<see cref="FiscalIssuerSnapshot"/>): for an issued document the one kept
+/// at the issue, for a draft the profile of today. A Swiss issuer gets the Swiss layout (<see cref="SwissFiscalDocumentPdf"/>).</item>
 /// <item><b>Stored, never recomputed.</b> The lines, the taxable base, the VAT, the stamp duty and the total are printed as the document stores them; the
 /// VAT summary adds up the stored lines of each rate and prints the stored VAT of the document against its one rate (a document with several rates prints
 /// its VAT in the total only).</item>
@@ -23,16 +26,30 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public static class FiscalDocumentPdfs
 {
+    /// <summary>The PDF of <paramref name="document"/> with the issuer as <paramref name="issuer"/> and <paramref name="org"/> say now (a draft).</summary>
     public static PdfDocumentContent Pdf(
         FiscalDocument document,
         OrgFiscalIssuerProfile? issuer,
         Org org,
         IDocumentTexts texts,
         string language,
-        FiscalDocument? credited = null)
+        FiscalDocument? credited = null) =>
+        Pdf(document, FiscalIssuerSnapshot.From(issuer, org), texts, language, credited);
+
+    /// <summary>
+    /// The PDF of <paramref name="document"/> issued by <paramref name="issuer"/> (the snapshot of the document, or the profile of today for a draft);
+    /// <paramref name="propertyName"/> is the name of the property of the stay, when there is one.
+    /// </summary>
+    public static PdfDocumentContent Pdf(
+        FiscalDocument document,
+        FiscalIssuerSnapshot issuer,
+        IDocumentTexts texts,
+        string language,
+        FiscalDocument? credited = null,
+        string? propertyName = null)
     {
         ArgumentNullException.ThrowIfNull(document);
-        ArgumentNullException.ThrowIfNull(org);
+        ArgumentNullException.ThrowIfNull(issuer);
         ArgumentNullException.ThrowIfNull(texts);
 
         var currency = document.Currency;
@@ -54,7 +71,7 @@ public static class FiscalDocumentPdfs
         }
 
         blocks.Add(new PdfHeading(texts.Get("FiscalDocPdfIssuer", language), 3));
-        blocks.Add(new PdfParagraph(string.Join('\n', IssuerLines(issuer, org, texts, language))));
+        blocks.Add(new PdfParagraph(string.Join('\n', IssuerLines(issuer, texts, language))));
         blocks.Add(new PdfHeading(texts.Get("FiscalDocPdfRecipient", language), 3));
         blocks.Add(new PdfParagraph(string.Join('\n', RecipientLines(document, texts, language))));
 
@@ -127,24 +144,21 @@ public static class FiscalDocumentPdfs
         };
     }
 
-    private static IEnumerable<string> IssuerLines(OrgFiscalIssuerProfile? issuer, Org org, IDocumentTexts texts, string language)
+    private static IEnumerable<string> IssuerLines(FiscalIssuerSnapshot issuer, IDocumentTexts texts, string language)
     {
-        yield return issuer?.LegalName is { Length: > 0 } legal ? legal : org.Name;
-        if (issuer is not null)
-        {
-            var street = string.Join(' ', new[] { issuer.AddressStreet, issuer.AddressCivic }.Where(s => !string.IsNullOrWhiteSpace(s)));
-            if (street.Length > 0)
-                yield return street;
-            var city = string.Join(' ', new[] { issuer.PostalCode, issuer.City, issuer.Province is { Length: > 0 } p ? $"({p})" : null }
-                .Where(s => !string.IsNullOrWhiteSpace(s)));
-            if (city.Length > 0)
-                yield return $"{city} {issuer.CountryCode}".Trim();
-        }
+        yield return issuer.DisplayName;
+        var street = string.Join(' ', new[] { issuer.AddressStreet, issuer.AddressCivic }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        if (street.Length > 0)
+            yield return street;
+        var city = string.Join(' ', new[] { issuer.PostalCode, issuer.City, issuer.Province is { Length: > 0 } p ? $"({p})" : null }
+            .Where(s => !string.IsNullOrWhiteSpace(s)));
+        if (city.Length > 0)
+            yield return $"{city} {issuer.CountryCode}".Trim();
 
-        if (org.HasPartitaIva && !string.IsNullOrWhiteSpace(org.PartitaIvaNumber))
-            yield return texts.Get("FiscalDocPdfVatNumber", language, org.PartitaIvaNumber);
-        if (!string.IsNullOrWhiteSpace(org.FiscalCode))
-            yield return texts.Get("FiscalDocPdfFiscalCode", language, org.FiscalCode);
+        if (!string.IsNullOrWhiteSpace(issuer.VatNumber))
+            yield return texts.Get("FiscalDocPdfVatNumber", language, issuer.VatNumber);
+        if (!string.IsNullOrWhiteSpace(issuer.FiscalCode))
+            yield return texts.Get("FiscalDocPdfFiscalCode", language, issuer.FiscalCode);
     }
 
     private static IEnumerable<string> RecipientLines(FiscalDocument document, IDocumentTexts texts, string language)

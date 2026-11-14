@@ -1,13 +1,14 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using DocumentKind = Casazen.Core.Entities.Enums.FiscalDocumentKind;
 
 namespace Casazen.Infrastructure.Octorate;
@@ -18,7 +19,8 @@ namespace Casazen.Infrastructure.Octorate;
 /// <item><b>Which accommodations.</b> The confirmed mappings of the org (<see cref="OctorateBookingRuns.ListMappedPropertiesAsync"/>, the same list the
 /// bookings are read from), each accommodation once, under the Octorate scope of the org.</item>
 /// <item><b>Upsert.</b> By (org, Octorate id); the unique index refuses a second row, and a lost race reads the row that won. The document is always
-/// <see cref="FiscalDocumentStatus.Issued"/> and read-only in CasaZen: only this import changes it, from what Octorate says.</item>
+/// <see cref="FiscalDocumentStatus.Issued"/> and read-only in CasaZen: only this import changes it, from what Octorate says. It is linked to its booking
+/// and never locks the issuer of the booking (E11/F01/US01/T01): CasaZen issues every booking.</item>
 /// <item><b>SDI state.</b> <c>fiscalInvoiceGroup</c> mapped to <see cref="FiscalDocumentSdiStatuses"/> (<c>unknown</c> when Octorate gives none) and written
 /// on the row: the service of the SDI outcomes (E06/F03/US01) does not exist yet.</item>
 /// <item><b>Failures.</b> A refused or failing call is logged with ids and the error type only, counted, and read again by the next run; a refusal of
@@ -29,9 +31,9 @@ public sealed class OctorateDocumentImportService(
     AppDbContext db,
     IOctorateApiClient client,
     IOctorateOrgScope orgScope,
-    IDocumentIssuerService issuers,
     IInternalActivityService activities,
     IFeatureFlags featureFlags,
+    IOptions<FiscalDocumentRulesOptions> options,
     IHostEnvironment hostEnvironment,
     TimeProvider timeProvider,
     ILogger<OctorateDocumentImportService> logger) : IOctorateDocumentImportService
@@ -42,15 +44,11 @@ public sealed class OctorateDocumentImportService(
             return [];
 
         var environment = OctorateEnvironments.Of(hostEnvironment);
-        var connected = db.OctorateConnections
-            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .Where(c => c.Environment == environment && c.Status == OctorateConnectionStatus.Connected)
-            .Select(c => c.OrgId);
-        return await db.OrgFiscalIssuerProfiles
+        return await db.OctorateConnections
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
-            .Where(p => p.IssuerMode == DocumentIssuerMode.Octorate && connected.Contains(p.OrgId))
-            .Select(p => p.OrgId)
+            .Where(c => c.Environment == environment && c.Status == OctorateConnectionStatus.Connected)
+            .Select(c => c.OrgId)
             .Distinct()
             .ToListAsync(ct);
     }
@@ -67,7 +65,7 @@ public sealed class OctorateDocumentImportService(
         if (!Enabled)
         {
             logger.LogInformation("Octorate documents of org {OrgId} not imported: the import is switched off", orgId);
-            return new OctorateDocumentImportResult(0, 0, 0, 0, 0);
+            return new OctorateDocumentImportResult(0, 0, 0, 0);
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -82,7 +80,7 @@ public sealed class OctorateDocumentImportService(
             .Select(p => new { p.Id, p.Currency })
             .ToDictionaryAsync(p => p.Id, p => StayCurrency.Normalize(p.Currency), ct);
 
-        int created = 0, updated = 0, skipped = 0, failed = 0, twoIssuers = 0;
+        int created = 0, updated = 0, skipped = 0, failed = 0;
         using (orgScope.Use(orgId))
         {
             foreach (var accommodation in mapped.GroupBy(m => m.AccommodationId))
@@ -114,8 +112,6 @@ public sealed class OctorateDocumentImportService(
                     {
                         case Outcome.Created: created++; break;
                         case Outcome.Updated: updated++; break;
-                        case Outcome.CreatedTwoIssuers: created++; twoIssuers++; break;
-                        case Outcome.UpdatedTwoIssuers: updated++; twoIssuers++; break;
                         default: skipped++; break;
                     }
                 }
@@ -123,13 +119,16 @@ public sealed class OctorateDocumentImportService(
         }
 
         logger.LogInformation(
-            "Octorate documents of org {OrgId}: {Created} created, {Updated} updated, {Skipped} skipped, {Failed} reads failed, {TwoIssuers} with two issuers",
-            orgId, created, updated, skipped, failed, twoIssuers);
-        return new OctorateDocumentImportResult(created, updated, skipped, failed, twoIssuers);
+            "Octorate documents of org {OrgId}: {Created} created, {Updated} updated, {Skipped} skipped, {Failed} reads failed",
+            orgId, created, updated, skipped, failed);
+        return new OctorateDocumentImportResult(created, updated, skipped, failed);
     }
 
+    /// <summary>The two flags and the option <c>FiscalDocuments:ImportOctorateDocuments</c> (off by default): the import never runs by accident.</summary>
     private bool Enabled =>
-        featureFlags.IsEnabled(FeatureFlags.OctorateConnector) && featureFlags.IsEnabled(FeatureFlags.OctorateDocumentImport);
+        options.Value.ImportOctorateDocuments
+        && featureFlags.IsEnabled(FeatureFlags.OctorateConnector)
+        && featureFlags.IsEnabled(FeatureFlags.OctorateDocumentImport);
 
     /// <summary>The last time a document of this accommodation was imported (<c>null</c> when none was: the accommodation is read from the first-read window).</summary>
     private async Task<DateTime?> LastImportedAtAsync(Guid orgId, string accommodationId, CancellationToken ct) =>
@@ -206,55 +205,10 @@ public sealed class OctorateDocumentImportService(
             return Outcome.Skipped;
         }
 
-        var twoIssuers = booking is not null && await LockOrFlagTwoIssuersAsync(orgId, booking.Id, booking.PropertyId, row.Id, ct);
+        // The document is linked to its booking and nothing more: it never locks the issuer of the booking (CasaZen issues every booking).
         await SyncTodosAsync(orgId, row, booking?.PropertyId, ct);
 
-        return (isNew, twoIssuers) switch
-        {
-            (true, true) => Outcome.CreatedTwoIssuers,
-            (true, false) => Outcome.Created,
-            (false, true) => Outcome.UpdatedTwoIssuers,
-            _ => Outcome.Updated,
-        };
-    }
-
-    /// <summary>
-    /// Locks the booking to Octorate as its issuer. When CasaZen issued for it (the lock answers a conflict, or a CasaZen document is there), the
-    /// imported document is kept and an urgent "To do" is raised: CasaZen never hides a double issuance.
-    /// </summary>
-    private async Task<bool> LockOrFlagTwoIssuersAsync(Guid orgId, Guid bookingId, Guid propertyId, Guid documentId, CancellationToken ct)
-    {
-        var conflict = false;
-        try
-        {
-            await issuers.LockIssuerAsync(bookingId, BookingDocumentIssuerKind.Octorate, documentId, save: true, ct);
-        }
-        catch (DomainConflictException)
-        {
-            conflict = true;
-        }
-
-        conflict |= await db.FiscalDocuments
-            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .AnyAsync(d => d.OrgId == orgId && d.BookingId == bookingId && d.Source == FiscalDocumentSource.CasaZen && d.Status == FiscalDocumentStatus.Issued, ct);
-        if (!conflict)
-            return false;
-
-        logger.LogWarning("Booking {BookingId} of org {OrgId} has documents of two issuers: a To do is raised", bookingId, orgId);
-        await activities.CreateAsync(
-            new CreateTodoRequest
-            {
-                Type = ActivityType.FiscalDocument,
-                Action = ActivityAction.ReviewFiscalDocument,
-                EntityType = OctorateDocumentImport.IssuersEntityType,
-                EntityId = bookingId,
-                Urgency = ActivityUrgency.High,
-                PropertyId = propertyId,
-                OrgId = orgId,
-                Reason = OctorateDocumentImport.TwoIssuersReason,
-            },
-            ct);
-        return true;
+        return isNew ? Outcome.Created : Outcome.Updated;
     }
 
     /// <summary>The "To do" of a rejected SDI state and of a document to collect, raised while the state holds and closed when it changes.</summary>
@@ -319,7 +273,5 @@ public sealed class OctorateDocumentImportService(
         Skipped,
         Created,
         Updated,
-        CreatedTwoIssuers,
-        UpdatedTwoIssuers,
     }
 }

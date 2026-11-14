@@ -139,7 +139,7 @@ public class FiscalDocumentCreditPostgresTests
         db.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile
         {
             OrgId = orgId,
-            IssuerMode = DocumentIssuerMode.CasaZenDirectOnly,
+            IssuerMode = DocumentIssuerMode.CasaZen,
             DocumentRegime = DocumentRegime.VatOrdinary,
             LegalName = "TEST Casa Vacanze Srl",
             AddressStreet = "Via di Test",
