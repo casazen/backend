@@ -76,17 +76,17 @@ public sealed class MessagesFlowProvider(AppDbContext db, FlowPrerequisiteReader
 
 /// <summary>
 /// The documents flow (E10/F01/US04/T01, NF-106, E06, E11/F01/US01/T01): the fiscal documents of the stays. CasaZen issues them (decision of
-/// 2026-11-14), so the flow needs the profile of the issuer the organization saved (<see cref="OrgFiscalIssuerProfile"/>) and the issuance switched on;
-/// it needs no connection to the channel manager.
+/// 2026-11-14), so the flow needs the profile of the issuer the organization saved (<see cref="OrgFiscalIssuerProfile"/>) complete enough to issue and the
+/// issuance switched on; it needs no connection to the channel manager.
 /// </summary>
 /// <remarks>
-/// <para>No profile, or the issuance off (<see cref="IssuerChoice.Effective"/>), is <see cref="OnboardingFlowReasons.IssuerMissing"/> with the action
-/// <see cref="OnboardingFlowActions.ChooseIssuer"/>: nobody issues then, as the issuer service says for the bookings. A stored profile counts as CasaZen
-/// whatever its retired mode said.</para>
+/// <para>No profile, a draft that still lacks something to issue, or the issuance off (<see cref="IssuerChoice.Effective"/>), is
+/// <see cref="OnboardingFlowReasons.IssuerMissing"/> with the action <see cref="OnboardingFlowActions.ChooseIssuer"/>: nobody can issue then, as the
+/// issuer service says for the bookings. A stored profile counts as CasaZen whatever its retired mode said.</para>
 /// <para><b>Reach.</b> The choice is the organization's: it is the same for every property asked about. Only those are answered, an empty list is an
-/// empty answer, and the row is read by org.</para>
+/// empty answer, and the profile is read by org (<see cref="IDocumentIssuerService.GetSettingsAsync"/>: the one definition of what is missing).</para>
 /// </remarks>
-public sealed class DocumentsFlowProvider(AppDbContext db, IFeatureFlags featureFlags) : IFlowReadinessProvider
+public sealed class DocumentsFlowProvider(IDocumentIssuerService issuers, IFeatureFlags featureFlags) : IFlowReadinessProvider
 {
     public OnboardingFlow Flow => OnboardingFlow.Documents;
 
@@ -103,14 +103,11 @@ public sealed class DocumentsFlowProvider(AppDbContext db, IFeatureFlags feature
         if (ids.Count == 0)
             return readiness;
 
-        var stored = await db.OrgFiscalIssuerProfiles
-            .AsNoTracking()
-            .Where(p => p.OrgId == orgId)
-            .Select(p => (DocumentIssuerMode?)p.IssuerMode)
-            .FirstOrDefaultAsync(ct);
+        var settings = await issuers.GetSettingsAsync(orgId, ct);
 
-        // CasaZen issues once the profile is there and the issuance is on; no profile, or the issuance off, leads the host to the wizard that asks it.
-        var prerequisite = IssuerChoice.Effective(stored, featureFlags) == DocumentIssuerMode.CasaZen
+        // CasaZen issues once the profile can issue (nothing is missing) and the issuance is on; no profile, a draft that is not complete, or the issuance
+        // off, leads the host to the wizard that asks it.
+        var prerequisite = IssuerChoice.Effective(settings, featureFlags) == DocumentIssuerMode.CasaZen
             ? FlowPrerequisite.Holds(OnboardingPrerequisiteKeys.Issuer)
             : FlowPrerequisite.Lacks(OnboardingPrerequisiteKeys.Issuer, OnboardingFlowReasons.IssuerMissing);
         foreach (var id in ids)
@@ -256,16 +253,17 @@ public sealed class MessagesAiPartEvaluator(AppDbContext db, IFeatureFlags featu
 }
 
 /// <summary>
-/// The part «Fiscal documents» (E10/F01/US04/T01, NF-104, E06, E11/F01/US01/T01): done when the organization saved the profile of its issuer
-/// (<see cref="OrgFiscalIssuerProfile"/>) and the issuance is on: CasaZen issues (decision of 2026-11-14). No profile, or the issuance off, is
-/// <see cref="OnboardingPartReasons.IssuerMissing"/>.
+/// The part «Fiscal documents» (E10/F01/US04/T01, NF-104, E06, E11/F01/US01/T01): done when the organization completed the profile of its issuer
+/// (<see cref="OrgFiscalIssuerProfile"/>: nothing is missing and the wizard was confirmed, <c>ConfirmedAt</c>) and the issuance is on: CasaZen issues
+/// (decision of 2026-11-14). No profile, a draft that is not complete or not confirmed, or the issuance off, is <see cref="OnboardingPartReasons.IssuerMissing"/>.
 /// </summary>
 /// <remarks>
 /// The choice belongs to the organization, not to some of its properties: it is the same for every caller, as <c>GET api/fiscal/documents/settings</c>
-/// is readable by a caller who reaches only some of the properties. One row is read, by org; the data of the issuer is never read
-/// (<see cref="IssuerChoice.Effective"/>, as for the flow «Documents»).
+/// is readable by a caller who reaches only some of the properties. The profile is read by org through the issuer service
+/// (<see cref="IDocumentIssuerService.GetSettingsAsync"/>: the one definition of what is missing); its data is never returned (<see cref="IssuerChoice"/>,
+/// as for the flow «Documents»).
 /// </remarks>
-public sealed class FiscalDocumentsPartEvaluator(AppDbContext db, IFeatureFlags featureFlags) : IOnboardingPartEvaluator
+public sealed class FiscalDocumentsPartEvaluator(IDocumentIssuerService issuers, IFeatureFlags featureFlags) : IOnboardingPartEvaluator
 {
     public OnboardingPartKey Part => OnboardingPartKey.FiscalDocuments;
 
@@ -275,13 +273,9 @@ public sealed class FiscalDocumentsPartEvaluator(AppDbContext db, IFeatureFlags 
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        var stored = await db.OrgFiscalIssuerProfiles
-            .AsNoTracking()
-            .Where(p => p.OrgId == context.OrgId)
-            .Select(p => (DocumentIssuerMode?)p.IssuerMode)
-            .FirstOrDefaultAsync(ct);
+        var settings = await issuers.GetSettingsAsync(context.OrgId, ct);
 
-        return IssuerChoice.Effective(stored, featureFlags) == DocumentIssuerMode.CasaZen
+        return IssuerChoice.IsDone(settings, featureFlags)
             ? PartFacts.Counted(1, 1, null)
             : PartFacts.Counted(0, 1, OnboardingPartReasons.IssuerMissing);
     }
@@ -324,13 +318,24 @@ public sealed class PartnersPartEvaluator(IFeatureFlags featureFlags, IMarketpla
 internal static class IssuerChoice
 {
     /// <summary>
-    /// <see cref="DocumentIssuerMode.CasaZen"/> for any stored profile while <see cref="FeatureFlags.FiscalDocumentIssuance"/> is on, whatever mode the
-    /// row says (the retired modes Octorate and accountant were moved to CasaZen on 2026-11-14); <c>null</c> without a profile, or while the flag is off,
-    /// because nobody issues then (<c>DocumentIssuerService.ResolveIssuerAsync</c> answers <c>IssuanceOff</c> for every booking).
+    /// <see cref="DocumentIssuerMode.CasaZen"/> for a stored profile that can issue (nothing is missing: a draft that is not complete does not count) while
+    /// <see cref="FeatureFlags.FiscalDocumentIssuance"/> is on, whatever mode the row says (the retired modes Octorate and accountant were moved to CasaZen
+    /// on 2026-11-14); <c>null</c> without a profile, with one that cannot issue yet, or while the flag is off, because nobody issues then
+    /// (<c>DocumentIssuerService.ResolveIssuerAsync</c> answers <c>IssuanceOff</c> for every booking, and issuing refuses an incomplete profile).
     /// </summary>
-    public static DocumentIssuerMode? Effective(DocumentIssuerMode? stored, IFeatureFlags featureFlags)
+    public static DocumentIssuerMode? Effective(IssuerSettingsView settings, IFeatureFlags featureFlags)
     {
+        ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(featureFlags);
-        return stored is not null && featureFlags.IsEnabled(FeatureFlags.FiscalDocumentIssuance) ? DocumentIssuerMode.CasaZen : null;
+        return settings.Mode is not null && settings.MissingFields.Count == 0 && featureFlags.IsEnabled(FeatureFlags.FiscalDocumentIssuance)
+            ? DocumentIssuerMode.CasaZen
+            : null;
     }
+
+    /// <summary>
+    /// The part is done only when the profile can issue (<see cref="Effective"/>) and the wizard was completed with it (<c>ConfirmedAt</c>, set only with nothing
+    /// missing): a draft, even a complete one nobody confirmed, is not «done».
+    /// </summary>
+    public static bool IsDone(IssuerSettingsView settings, IFeatureFlags featureFlags) =>
+        Effective(settings, featureFlags) == DocumentIssuerMode.CasaZen && settings.ConfirmedAt is not null;
 }

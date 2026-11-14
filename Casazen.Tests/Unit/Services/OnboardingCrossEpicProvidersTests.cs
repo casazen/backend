@@ -163,7 +163,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
     [Fact]
     public async Task DocumentsFlow_FollowsTheIssuerTheOrganizationChose()
     {
-        var provider = new DocumentsFlowProvider(_db, _flags.Object);
+        var provider = new DocumentsFlowProvider(Issuers(), _flags.Object);
         var ids = new[] { _world.Granted.Id, _world.Hidden.Id };
         _flags.Setup(f => f.IsEnabled(FeatureFlags.FiscalDocumentIssuance)).Returns(true);
         _db.OrgFiscalIssuerProfiles.Add(Issuer(DocumentIssuerMode.CasaZen, _world.OtherOrgId));
@@ -191,6 +191,51 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         _flags.Setup(f => f.IsEnabled(FeatureFlags.FiscalDocumentIssuance)).Returns(false);
         var switchedOff = await provider.EvaluateAsync(_world.OrgId, ids, Ct);
         Assert.All(ids, id => Assert.Equal(issuerMissing, switchedOff[id].Prerequisites.Select(p => (p.Key, p.Met, p.Reason))));
+    }
+
+    /// <summary>
+    /// PROOF TEST (data): a draft is never shown as done. A profile saved while something is still missing (a draft, nothing confirmed) is neither a
+    /// prerequisite met for the flow «Documents» nor the part «Fiscal documents» done, although the row is there; a complete profile nobody confirmed lets the
+    /// flow run (issuing works) but leaves the part to do; only a complete and confirmed one is done. The same with the issuance off: nothing is.
+    /// </summary>
+    [Fact]
+    public async Task FiscalDocuments_ADraftIsNeitherReadyNorDone_Test()
+    {
+        _flags.Setup(f => f.IsEnabled(FeatureFlags.FiscalDocumentIssuance)).Returns(true);
+        var flow = new DocumentsFlowProvider(Issuers(), _flags.Object);
+        var part = new FiscalDocumentsPartEvaluator(Issuers(), _flags.Object);
+        var context = new OnboardingPartContext(_world.OrgWide, [_world.Granted.Id]);
+        Guid[] ids = [_world.Granted.Id];
+        (string Key, bool Met, string? Reason)[] issuerMissing = [(OnboardingPrerequisiteKeys.Issuer, false, OnboardingFlowReasons.IssuerMissing)];
+        (string Key, bool Met, string? Reason)[] issuerMet = [(OnboardingPrerequisiteKeys.Issuer, true, null)];
+
+        // A draft: the regime and a name, but no address yet, nothing confirmed.
+        var profile = Issuer(DocumentIssuerMode.CasaZen);
+        profile.AddressStreet = null;
+        profile.PostalCode = null;
+        profile.City = null;
+        profile.ConfirmedAt = null;
+        _db.OrgFiscalIssuerProfiles.Add(profile);
+        await _db.SaveChangesAsync();
+        Assert.Equal(issuerMissing, (await flow.EvaluateAsync(_world.OrgId, ids, Ct))[_world.Granted.Id].Prerequisites.Select(p => (p.Key, p.Met, p.Reason)));
+        Assert.Equal(PartFacts.Counted(0, 1, OnboardingPartReasons.IssuerMissing), await part.EvaluateAsync(context, Ct));
+
+        // Complete, but nobody confirmed the wizard: the profile can issue, the part is still to do.
+        profile.AddressStreet = "Via Nassa";
+        profile.PostalCode = "6900";
+        profile.City = "Lugano";
+        await _db.SaveChangesAsync();
+        Assert.Equal(issuerMet, (await flow.EvaluateAsync(_world.OrgId, ids, Ct))[_world.Granted.Id].Prerequisites.Select(p => (p.Key, p.Met, p.Reason)));
+        Assert.Equal(PartFacts.Counted(0, 1, OnboardingPartReasons.IssuerMissing), await part.EvaluateAsync(context, Ct));
+
+        // Complete and confirmed: done. Switched off, nothing is.
+        profile.ConfirmedAt = HostScopeScenario.Now.UtcDateTime;
+        await _db.SaveChangesAsync();
+        Assert.Equal(issuerMet, (await flow.EvaluateAsync(_world.OrgId, ids, Ct))[_world.Granted.Id].Prerequisites.Select(p => (p.Key, p.Met, p.Reason)));
+        Assert.Equal(PartFacts.Counted(1, 1, null), await part.EvaluateAsync(context, Ct));
+        _flags.Setup(f => f.IsEnabled(FeatureFlags.FiscalDocumentIssuance)).Returns(false);
+        Assert.Equal(issuerMissing, (await flow.EvaluateAsync(_world.OrgId, ids, Ct))[_world.Granted.Id].Prerequisites.Select(p => (p.Key, p.Met, p.Reason)));
+        Assert.Equal(PartFacts.Counted(0, 1, OnboardingPartReasons.IssuerMissing), await part.EvaluateAsync(context, Ct));
     }
 
     /// <summary>
@@ -268,7 +313,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         await AddBookingAsync(_world.Granted, BookingStatus.Confirmed);
         await AddBookingAsync(_world.Hidden, BookingStatus.Confirmed);
 
-        IFlowReadinessProvider[] providers = [new MessagesFlowProvider(_db, reader), new DocumentsFlowProvider(_db, _flags.Object), new ReportsFlowProvider(_db, reader)];
+        IFlowReadinessProvider[] providers = [new MessagesFlowProvider(_db, reader), new DocumentsFlowProvider(Issuers(), _flags.Object), new ReportsFlowProvider(_db, reader)];
         foreach (var provider in providers)
         {
             Assert.Empty(await provider.EvaluateAsync(_world.OrgId, [], Ct));
@@ -291,14 +336,14 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
     /// <summary>
     /// Proof (data, AC-NF104-9..11): the parts «Messages and AI», «Fiscal documents» and «Partners» show their progress from the stored facts of E05, E06
     /// and E09, and none is done without them. The preferences of a collaborator, and the row the alert router makes with the defaults, are not a save
-    /// of an administrator; the issuer is done once its profile is saved and the issuance is on (CasaZen issues); the assistant counts only while its flag
-    /// is on.
+    /// of an administrator; the issuer is done once its profile is complete and confirmed and the issuance is on (CasaZen issues; a draft is not done, see
+    /// <see cref="FiscalDocuments_ADraftIsNeitherReadyNorDone_Test"/>); the assistant counts only while its flag is on.
     /// </summary>
     [Fact]
     public async Task OnboardingCrossEpicParts_StateComesFromStoredFacts_Test()
     {
         var messages = new MessagesAiPartEvaluator(_db, _flags.Object);
-        var fiscal = new FiscalDocumentsPartEvaluator(_db, _flags.Object);
+        var fiscal = new FiscalDocumentsPartEvaluator(Issuers(), _flags.Object);
         var partners = new PartnersPartEvaluator(_flags.Object, Catalog());
         var context = new OnboardingPartContext(_world.OrgWide, [_world.Granted.Id, _world.Hidden.Id]);
 
@@ -331,7 +376,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         var onlyPreferences = await messages.EvaluateAsync(context, Ct);
         Assert.Equal((1, 1, true), (onlyPreferences.Done, onlyPreferences.Total, onlyPreferences.IsComplete));
 
-        // The issuer (E11/F01/US01/T01): CasaZen issues once the profile is saved, but only while the issuance is on; switched off, nobody issues and the
+        // The issuer (E11/F01/US01/T01): CasaZen issues once the profile is complete and confirmed, but only while the issuance is on; switched off, nobody issues and the
         // part is to do again. A profile that still says a retired mode (accountant, Octorate) is CasaZen too: no part says «the accountant handles» any more.
         var profile = Issuer(DocumentIssuerMode.CasaZen);
         _db.OrgFiscalIssuerProfiles.Add(profile);
@@ -559,7 +604,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         IOnboardingPartEvaluator[] evaluators =
         [
             new MessagesAiPartEvaluator(_db, _flags.Object),
-            new FiscalDocumentsPartEvaluator(_db, _flags.Object),
+            new FiscalDocumentsPartEvaluator(Issuers(), _flags.Object),
             new PartnersPartEvaluator(_flags.Object, Catalog()),
         ];
         var plans = new OnboardingPlanService(
@@ -685,7 +730,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         IFlowReadinessProvider[] flows =
         [
             new MessagesFlowProvider(_db, reader),
-            new DocumentsFlowProvider(_db, _flags.Object),
+            new DocumentsFlowProvider(Issuers(), _flags.Object),
             new ReportsFlowProvider(_db, reader),
         ];
         Assert.Equal(CrossEpicFlows, flows.Select(p => p.Flow));
@@ -693,7 +738,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         IOnboardingPartEvaluator[] parts =
         [
             new MessagesAiPartEvaluator(_db, _flags.Object),
-            new FiscalDocumentsPartEvaluator(_db, _flags.Object),
+            new FiscalDocumentsPartEvaluator(Issuers(), _flags.Object),
             new PartnersPartEvaluator(_flags.Object, Catalog()),
         ];
         Assert.Equal([OnboardingPartKey.MessagesAi, OnboardingPartKey.FiscalDocuments, OnboardingPartKey.Partners], parts.Select(p => p.Part));
@@ -737,7 +782,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
 
     private OnboardingFlowStatusService FlowStatus(FlowPrerequisiteReader reader)
     {
-        IFlowReadinessProvider[] providers = [new MessagesFlowProvider(_db, reader), new DocumentsFlowProvider(_db, _flags.Object), new ReportsFlowProvider(_db, reader)];
+        IFlowReadinessProvider[] providers = [new MessagesFlowProvider(_db, reader), new DocumentsFlowProvider(Issuers(), _flags.Object), new ReportsFlowProvider(_db, reader)];
         return new OnboardingFlowStatusService(_db, providers);
     }
 
@@ -784,11 +829,30 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         };
     }
 
+    /// <summary>
+    /// A complete profile of the issuer that the wizard confirmed (a Swiss issuer that is not registered needs no tax id, only its name and its address),
+    /// whatever mode the row says.
+    /// </summary>
     private OrgFiscalIssuerProfile Issuer(DocumentIssuerMode mode, Guid? orgId = null) => new()
     {
         OrgId = orgId ?? _world.OrgId,
         IssuerMode = mode,
+        CountryCode = "CH",
+        DocumentRegime = DocumentRegime.SwissNotRegistered,
+        LegalName = "TEST Quokka Sagl",
+        AddressStreet = "Via Nassa",
+        PostalCode = "6900",
+        City = "Lugano",
+        ConfirmedAt = HostScopeScenario.Now.UtcDateTime,
     };
+
+    /// <summary>The real issuer service over the same database: the profile the flow «Documents» and the part «Fiscal documents» read, what is missing included.</summary>
+    private DocumentIssuerService Issuers()
+    {
+        var environment = new Mock<IHostEnvironment>();
+        environment.SetupGet(e => e.EnvironmentName).Returns("Testing");
+        return new DocumentIssuerService(_db, _flags.Object, TaxRuleCatalogs.Resolver(), environment.Object, TimeProvider.System, NullLogger<DocumentIssuerService>.Instance);
+    }
 
     /// <summary>A member of an org with its own account: the row of the team and the user it belongs to. Returns the id of the user.</summary>
     private async Task<string> AddMemberAsync(Guid orgId, OrgRole role, OrgMemberStatus status)
