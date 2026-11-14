@@ -526,6 +526,7 @@ public sealed class TouristTaxCollectionService(
         var figures = FiscalDocumentRules.IsSwiss(booking.Property.Country)
             ? await SwissFiguresAsync(booking, ct)
             : await ItalianFiguresAsync(booking, record, tax, ct);
+        figures = figures with { IncludedInBooking = await IncludedInBookingAsync(booking, ct) };
 
         var due = TouristTaxCollectionRules.Evaluate(new TouristTaxCollectionFacts(
             AlloggiatiStatusRules.IsDue(booking),
@@ -533,11 +534,36 @@ public sealed class TouristTaxCollectionService(
             figures.Collector,
             figures.AmountDue,
             figures.ConfirmedAmountDue,
-            Math.Max(0m, booking.TouristTaxAmount),
+            figures.IncludedInBooking,
             record?.CollectionStatus ?? TouristTaxCollectionStatus.ToCollect,
             record?.CollectedAmount ?? 0m,
             record?.RefundedAmount ?? 0m));
         return (due, figures);
+    }
+
+    /// <summary>
+    /// The tax CasaZen already collected with the price of the booking (decision O12: «per le dirette già pagate»): <c>Booking.TouristTaxAmount</c> of a
+    /// <see cref="BookingSource.Direct"/> booking that has a payment through CasaZen that went through (completed, or completed and partly refunded); 0 for any
+    /// other booking. The amount is written on every booking, so it proves nothing by itself: the quote of a host's manual booking, the figure of an OTA
+    /// reservation, a direct booking paid at the property or at the deadline are no tax collected by CasaZen. For a channel stay the double charge is the
+    /// business of <see cref="TouristTaxChannelRule"/> and of the host's declaration (<see cref="CollectorAsync"/>), decided before this amount counts.
+    /// </summary>
+    private async Task<decimal> IncludedInBookingAsync(Booking booking, CancellationToken ct)
+    {
+        var amount = Math.Max(0m, booking.TouristTaxAmount);
+        if (amount <= 0m || booking.Source != BookingSource.Direct)
+            return 0m;
+
+        var paidThroughCasaZen = await db.Payments
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .AnyAsync(
+                p => p.BookingId == booking.Id
+                     && p.OrgId == booking.OrgId
+                     && (p.Status == PaymentStatus.Completed || p.Status == PaymentStatus.PartiallyRefunded)
+                     && (p.StripePaymentIntentId != null || p.TransactionId.StartsWith("pi_")),
+                ct);
+        return paidThroughCasaZen ? amount : 0m;
     }
 
     /// <summary>
@@ -758,7 +784,7 @@ public sealed class TouristTaxCollectionService(
         due.OnlinePayable,
         due.RefundDue,
         figures.AmountDue,
-        Math.Max(0m, booking.TouristTaxAmount),
+        figures.IncludedInBooking,
         record?.CollectedAmount ?? 0m,
         record?.RefundedAmount ?? 0m,
         record?.Currency ?? figures.Currency,
@@ -821,12 +847,13 @@ public sealed class TouristTaxCollectionService(
     private static NotFoundException BookingNotFound() =>
         new("Booking not found") { Code = "booking_not_found", MessageKey = "BookingNotFound" };
 
-    /// <summary>The figures the collection of a stay is decided from.</summary>
+    /// <summary>The figures the collection of a stay is decided from (<see cref="IncludedInBooking"/> is set by <see cref="EvaluateAsync"/>).</summary>
     private sealed record TaxFigures(
         TouristTaxCollector? Collector,
         decimal? AmountDue,
         decimal? ConfirmedAmountDue,
         string Currency,
         IReadOnlyList<TouristTaxGuestLine> Lines,
-        TouristTaxQuoteStatus QuoteStatus);
+        TouristTaxQuoteStatus QuoteStatus,
+        decimal IncludedInBooking = 0m);
 }

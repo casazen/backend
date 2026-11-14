@@ -39,6 +39,7 @@ public class TouristTaxCollectionTests
 {
     private const string Account = "acct_test_tourist_tax";
     private const string PublishableKey = "pk_test_casazen";
+    private const string SwissMunicipalityCode = "5192";
 
     private static readonly FixedTimeProvider Clock = new(DateTimeOffset.Parse("2026-11-06T09:00:00Z", CultureInfo.InvariantCulture));
     private static readonly DateTime CheckIn = new(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc);
@@ -299,6 +300,85 @@ public class TouristTaxCollectionTests
         await Assert.ThrowsAsync<DomainConflictException>(() => rig.Service.CreatePaymentIntentAsync(world.Token));
     }
 
+    // ─── What the price included: only what CasaZen collected with it ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task TouristTaxDue_IncludedInThePrice_OnlyForADirectBookingThatCasaZenWasPaidFor_Test()
+    {
+        await using var db = NewDb();
+        var paid = await SeedAsync(db, source: BookingSource.Direct, touristTaxAmount: 12.00m, payment: PaymentStatus.Completed);
+        var partlyRefunded = await SeedAsync(db, source: BookingSource.Direct, touristTaxAmount: 12.00m, payment: PaymentStatus.PartiallyRefunded);
+        var deferred = await SeedAsync(
+            db, source: BookingSource.Direct, touristTaxAmount: 12.00m, paymentOption: PaymentOption.OnCancellationDeadline, payment: PaymentStatus.Pending);
+        var refunded = await SeedAsync(db, source: BookingSource.Direct, touristTaxAmount: 12.00m, payment: PaymentStatus.Refunded);
+        var atTheProperty = await SeedAsync(db, source: BookingSource.Direct, touristTaxAmount: 12.00m, paymentOption: PaymentOption.OnSite);
+        var manual = await SeedAsync(db, source: BookingSource.Manual, touristTaxAmount: 12.00m, payment: PaymentStatus.Completed);
+        var cases = new (StayWorld World, decimal Payable, decimal Included)[]
+        {
+            // The price of a direct booking that went through CasaZen included 12.00: only the part of the confirmed 15.00 above it is payable.
+            (paid, 3.00m, 12.00m),
+            (partlyRefunded, 3.00m, 12.00m),
+
+            // Not collected by CasaZen: the charge of the deadline not taken yet, a payment given back, a booking paid at the property, the quote of a host's
+            // manual booking. The amount written on the booking is no tax paid: the whole 15.00 is payable and nothing is owed back.
+            (deferred, 15.00m, 0m),
+            (refunded, 15.00m, 0m),
+            (atTheProperty, 15.00m, 0m),
+            (manual, 15.00m, 0m),
+        };
+        foreach (var (world, _, _) in cases)
+            await SeedStayRecordAsync(db, world.Booking, confirmedAmount: 15.00m);
+
+        var rig = Rig(db, cases.Select(c => (c.World.Booking.Id, Calculated(c.World.Booking.Id, 7.50m, 7.50m))).ToArray());
+
+        foreach (var (world, payable, included) in cases)
+        {
+            Assert.Equal(payable, (await rig.Service.GetForGuestAsync(world.Token))!.Payable);
+            Assert.Equal(included, (await rig.Service.GetForHostAsync(world.Booking.Id, null)).IncludedInBooking);
+        }
+    }
+
+    [Fact]
+    public async Task TouristTaxDue_ChannelStay_TheChannelRuleAndTheHostsDeclarationDecideWhoCollects_NotTheFigureOfTheChannel_Test()
+    {
+        await using var db = NewDb();
+        var ruled = await SeedAsync(db, source: BookingSource.Airbnb, touristTaxAmount: 8.00m);
+        var unknown = await SeedAsync(db, source: BookingSource.BookingCom, touristTaxAmount: 8.00m);
+        var declared = await SeedAsync(db, source: BookingSource.Expedia, touristTaxAmount: 8.00m);
+        db.TouristTaxChannelRules.Add(new TouristTaxChannelRule
+        {
+            Channel = BookingSource.Airbnb,
+            IstatCode = "013075",
+            Collector = TouristTaxCollector.Channel,
+            SourceUrl = "https://example.test/airbnb-como",
+        });
+        await db.SaveChangesAsync();
+        await SeedStayRecordAsync(db, declared.Booking, declaredCollector: TouristTaxCollector.Host);
+        var rig = Rig(
+            db,
+            (ruled.Booking.Id, Calculated(ruled.Booking.Id, 7.50m, 7.50m)),
+            (unknown.Booking.Id, Calculated(unknown.Booking.Id, 7.50m, 7.50m)),
+            (declared.Booking.Id, Calculated(declared.Booking.Id, 7.50m, 7.50m)));
+
+        // The channel collects it (the active rule of the channel in the comune): nothing to pay whatever the stay owes, and no intent is ever asked for.
+        var viaChannel = (await rig.Service.GetForGuestAsync(ruled.Token))!;
+        Assert.Equal(
+            (TouristTaxCollectionStatus.CollectedByChannel, TouristTaxNotPayableReason.ChannelCollects, 0m),
+            (viaChannel.Status, viaChannel.Reason, viaChannel.Payable));
+        var refused = await Assert.ThrowsAsync<DomainConflictException>(() => rig.Service.CreatePaymentIntentAsync(ruled.Token));
+        Assert.Equal(TouristTaxCharges.NothingToPayCode, refused.Code);
+
+        // Nobody knows who collected it (no rule, no declaration): never charged, the channel may have charged it already.
+        var notKnown = (await rig.Service.GetForGuestAsync(unknown.Token))!;
+        Assert.Equal((TouristTaxNotPayableReason.CollectorUnknown, 0m), (notKnown.Reason, notKnown.Payable));
+        await Assert.ThrowsAsync<DomainConflictException>(() => rig.Service.CreatePaymentIntentAsync(unknown.Token));
+
+        // The host declared that it collects: the whole tax is payable, and the figure the channel reported (8.00) is not «already paid with the booking».
+        var hostCollects = (await rig.Service.GetForGuestAsync(declared.Token))!;
+        Assert.Equal((TouristTaxCollectionStatus.ToCollect, 15.00m), (hostCollects.Status, hostCollects.Payable));
+        Assert.Equal(0m, (await rig.Service.GetForHostAsync(declared.Booking.Id, null)).IncludedInBooking);
+    }
+
     // ─── A stay that ends: the refund, never a Payment row ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -482,7 +562,13 @@ public class TouristTaxCollectionTests
         DateTime? cancelledAt = null,
         DateTime? arrivedAt = null,
         DateTime? sessionExpiresAt = null,
-        bool offered = true)
+        bool offered = true,
+        BookingSource source = BookingSource.Manual,
+        decimal touristTaxAmount = 0m,
+        PaymentOption paymentOption = PaymentOption.Immediate,
+        PaymentStatus? payment = null,
+        bool swiss = false,
+        DateTime? noShowAt = null)
     {
         var orgId = Guid.NewGuid();
         db.Orgs.Add(new OrgEntity
@@ -502,9 +588,12 @@ public class TouristTaxCollectionTests
             OwnerId = "auth0|host",
             Name = "Casa Test",
             Address = "Via Test 1",
-            City = "Como",
-            ComuneIstatCode = "013075",
-            PostalCode = "22100",
+            City = swiss ? "Lugano" : "Como",
+            ComuneIstatCode = swiss ? null : "013075",
+            Country = swiss ? "CH" : "IT",
+            Currency = swiss ? "CHF" : "EUR",
+            SwissMunicipalityCode = swiss ? SwissMunicipalityCode : null,
+            PostalCode = swiss ? "6900" : "22100",
             NightlyRate = 100m,
             MaxGuests = 4,
         };
@@ -520,15 +609,33 @@ public class TouristTaxCollectionTests
             CheckInDate = CheckIn,
             CheckOutDate = CheckIn.AddDays(3),
             Status = status,
-            Source = BookingSource.Manual,
+            Source = source,
+            PaymentOption = paymentOption,
             NumberOfGuests = 2,
             BasePrice = 300m,
-            TotalPrice = 300m,
+            TouristTaxAmount = touristTaxAmount,
+            TotalPrice = 300m + touristTaxAmount,
             CancelledAt = cancelledAt,
             ArrivedAt = arrivedAt,
+            NoShowAt = noShowAt,
         };
         var token = $"token-{Guid.NewGuid():N}";
         db.AddRange(property, guest, booking);
+        if (payment is { } paymentStatus)
+        {
+            // A payment of the checkout through CasaZen (Stripe) in the state asked: the tax of the price is collected only when it went through.
+            db.Payments.Add(new Payment
+            {
+                BookingId = booking.Id,
+                OrgId = orgId,
+                Amount = booking.TotalPrice,
+                Status = paymentStatus,
+                StripePaymentIntentId = $"pi_booking_{booking.Id:N}",
+                TransactionId = $"pi_booking_{booking.Id:N}",
+                RefundedAmount = paymentStatus == PaymentStatus.Refunded ? booking.TotalPrice : 0m,
+            });
+        }
+
         db.GuestCheckInSessions.Add(new GuestCheckInSession
         {
             BookingId = booking.Id,
@@ -565,13 +672,53 @@ public class TouristTaxCollectionTests
         return record;
     }
 
+    /// <summary>The record of the stay with no intent: confirmed by the host for <paramref name="confirmedAmount"/> when given, with the collector the host declared when given.</summary>
+    private static async Task<StayTouristTax> SeedStayRecordAsync(
+        AppDbContext db,
+        Booking booking,
+        decimal? confirmedAmount = null,
+        TouristTaxCollector? declaredCollector = null)
+    {
+        var record = new StayTouristTax
+        {
+            OrgId = booking.OrgId,
+            BookingId = booking.Id,
+            Status = TouristTaxQuoteStatus.Calculated,
+            Nights = 3,
+            RetainUntil = StayTouristTax.RetentionFor(DateOnly.FromDateTime(booking.CheckOutDate)),
+            Currency = StayCurrency.Euro,
+            DeclaredCollector = declaredCollector,
+        };
+        if (confirmedAmount is { } amount)
+        {
+            record.TaxableNights = 3;
+            record.Total = amount;
+            record.AmountDue = amount;
+            record.Collector = TouristTaxCollector.Host;
+            record.CalculationHash = new string('a', 64);
+            record.ConfirmedAt = Clock.GetUtcNow().UtcDateTime;
+            record.ConfirmedByUserId = "auth0|host";
+        }
+
+        db.StayTouristTaxes.Add(record);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        return record;
+    }
+
     private static async Task<StayTouristTax> ReloadAsync(AppDbContext db, Guid recordId)
     {
         db.ChangeTracker.Clear();
         return await db.StayTouristTaxes.AsNoTracking().SingleAsync(t => t.Id == recordId);
     }
 
-    private static TestRig Rig(AppDbContext db, params (Guid BookingId, StayTouristTaxView View)[] calculations)
+    private static TestRig Rig(AppDbContext db, params (Guid BookingId, StayTouristTaxView View)[] calculations) =>
+        RigWith(db, new RigOptions(), calculations);
+
+    /// <summary>What a test changes in the rig: the flag, the cantonal rules and the channels whose portal collects the tax of a Swiss stay.</summary>
+    private sealed record RigOptions(bool FlagOn = true, SwissTouristTaxOptions? Swiss = null, IReadOnlyList<BookingSource>? PlatformCollected = null);
+
+    private static TestRig RigWith(AppDbContext db, RigOptions options, params (Guid BookingId, StayTouristTaxView View)[] calculations)
     {
         var tax = new Mock<IStayTouristTaxService>();
         foreach (var (bookingId, view) in calculations)
@@ -582,16 +729,20 @@ public class TouristTaxCollectionTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["Stripe:PublishableKey"] = PublishableKey })
             .Build();
+        var lines = new Mock<IGuestDocumentLineBuilder>();
+        lines
+            .Setup(l => l.PlatformCollectedChannelsOf(It.IsAny<OrgFiscalIssuerProfile>()))
+            .Returns(options.PlatformCollected ?? []);
         var service = new TouristTaxCollectionService(
             db,
             tax.Object,
             stripe.Object,
-            new TestFeatureFlags(FeatureFlags.TouristTaxOnlinePayment),
+            options.FlagOn ? new TestFeatureFlags(FeatureFlags.TouristTaxOnlinePayment) : new TestFeatureFlags(),
             configuration,
             new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, Clock),
             new KeyTexts(),
-            Mock.Of<IGuestDocumentLineBuilder>(),
-            Microsoft.Extensions.Options.Options.Create(new SwissTouristTaxOptions()),
+            lines.Object,
+            Microsoft.Extensions.Options.Options.Create(options.Swiss ?? new SwissTouristTaxOptions()),
             NullLogger<TouristTaxCollectionService>.Instance,
             pushes,
             Clock);
