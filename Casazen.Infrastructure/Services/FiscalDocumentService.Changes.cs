@@ -300,6 +300,19 @@ public sealed partial class FiscalDocumentService
         return stored.Count == current.Count && stored.All(pair => current.TryGetValue(pair.Key, out var net) && net == pair.Value);
     }
 
+    /// <summary>The booking bills what the document says: the lines it bills now make the same total and the same net for every type of line (a booking that bills nothing any more does not).</summary>
+    private static bool BillsWhatTheDocumentSays(FiscalDocument document, IReadOnlyList<FiscalDocumentGrossLine> lines, FiscalTaxRule rule)
+    {
+        try
+        {
+            return Matches(document, FiscalDocumentTotals.FromGross(lines, rule.StampDuty));
+        }
+        catch (DomainException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>The key of the reason printed on a correction: what happened to the booking as it is now.</summary>
     private static string ReasonKeyOf(BookingFacts booking, BookingChange change)
     {

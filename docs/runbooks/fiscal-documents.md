@@ -295,7 +295,12 @@ over: the booking may have its next one (the new draft of a date change).
   other sections, a series or the automatic issue not confirmed yet, never hold back a draft); one session advisory lock per organization (`FiscalDocumentsDueRun`, 1_602) keeps a retry or a manual trigger from running over it. With `AutoIssueGuestDocuments` on
   the draft (the one the event made too) is issued through the same path as the API (the whole point of the profile setting); with it off the drafts wait for the host. A stay whose
   data is missing is skipped and counted (`skipped`), read again at the next run: never a failure, never a stop of the others. An organization that fails does not stop the others. Idempotent:
-  the second run finds nothing to do. The log carries ids and counts.
+  the second run finds nothing to do. The log carries ids and counts. **A draft made earlier is made again right before the automatic issue** (under the lock of the booking): the tourist
+  tax confirmed, the collector declared or the data of the invoice changed since the check-out are no change of the booking that the corrections follow, and nobody checks a document
+  issued by the run. **The changes of a portal stay after its end:** the import records no event for a stay that is over, so the run also compares the issued document (invoice or receipt, not
+  credited in full, no correction waiting) of each portal stay that ended inside the look-back with the lines the booking bills now (`Matches`, the comparison of the corrections); when it
+  bills something else, or the stay is no longer on, the host gets the «To do» `fiscal_document_booking_changed`, **once for each document** (an item the host closed is not raised again).
+  Nothing is credited or rewritten by the run: the host decides. A stay of CasaZen is not compared (its changes are events).
 
 **Bulk issue.** `POST api/fiscal/documents/issue-batch` (`payment.write` + the flag): `{ documentIds?, from?, to?, propertyIds? }`; at most 200 documents; **an empty selection is 422
 `document_batch_selection_required`, never «all»** (nothing, `[]`, an empty `propertyIds` alone); more than 200 ids is 422 `document_batch_too_large`; a period that ends before it starts is 422

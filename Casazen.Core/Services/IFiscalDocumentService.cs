@@ -94,7 +94,9 @@ public interface IFiscalDocumentService
     /// <paramref name="lookbackDays"/> days gets its draft when it has no live document; with <c>AutoIssueGuestDocuments</c> on the draft is issued through the same path as the
     /// API (without it the drafts wait for the host). At most <paramref name="limit"/> bookings, the most recent first, the rest at the next run; idempotent. Nothing runs while
     /// <c>Features:FiscalDocumentIssuance</c> is off, while the profile misses an item the documents need, or while another run of the same organization holds the lock.
-    /// A booking that cannot get its document now (data missing, rule not configured) is skipped and read again at the next run.
+    /// A booking that cannot get its document now (data missing, rule not configured) is skipped and read again at the next run. A draft made earlier is made again right before the
+    /// automatic issue, so what is issued is what the booking bills now. The issued document of a stay of a portal that ended and then changed on the portal (the import records no event
+    /// for a stay that is over) is compared with the lines the booking bills now: the host gets the «To do» <see cref="FiscalDocumentTodos.BookingChangedReason"/>, once for the document.
     /// </summary>
     Task<FiscalDocumentsDueResult> ProcessDueDocumentsAsync(Guid orgId, int limit, int lookbackDays, CancellationToken ct = default);
 
@@ -124,7 +126,8 @@ public enum EnsureDraftOutcome
 /// <param name="DraftsCreated">The drafts made.</param>
 /// <param name="DocumentsIssued">The documents issued (the automatic issue).</param>
 /// <param name="Skipped">The bookings that could not get their document now (a refusal of the rules): they are read again at the next run.</param>
-public sealed record FiscalDocumentsDueResult(string? NotRunReason, int Examined, int DraftsCreated, int DocumentsIssued, int Skipped)
+/// <param name="ChangesTold">The issued documents of the stays of a portal that ended and changed on the portal afterwards, for which the host got the «To do» of a change.</param>
+public sealed record FiscalDocumentsDueResult(string? NotRunReason, int Examined, int DraftsCreated, int DocumentsIssued, int Skipped, int ChangesTold = 0)
 {
     /// <summary>True when the run looked at the organization.</summary>
     public bool Ran => NotRunReason is null;

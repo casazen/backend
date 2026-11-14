@@ -135,15 +135,99 @@ public sealed partial class FiscalDocumentService
             }
         }
 
+        // The stays of a portal that ended and then changed on the portal: the import records no event for a stay that is over.
+        var changesTold = await TellTheChangesOfEndedPortalStaysAsync(orgId, todayStart, since, limit, ct);
+
         logger.LogInformation(
-            "Fiscal documents due of org {OrgId}: {Examined} stays looked at, {Created} drafts made, {Issued} documents issued, {Skipped} skipped",
+            "Fiscal documents due of org {OrgId}: {Examined} stays looked at, {Created} drafts made, {Issued} documents issued, {Skipped} skipped, {Changes} changes of portal stays told",
             orgId,
             examined,
             created,
             issued,
-            skipped);
-        return new FiscalDocumentsDueResult(null, examined, created, issued, skipped);
+            skipped,
+            changesTold);
+        return new FiscalDocumentsDueResult(null, examined, created, issued, skipped, changesTold);
     }
+
+    /// <summary>
+    /// The issued documents of the stays of a portal that ended and then changed on the portal. The import records no event for a stay that is over, so the corrections of a change never
+    /// hear of it, and the document of a portal stay is made after its check-out: each issued document of such a stay is compared with what the booking bills now (the comparison of the
+    /// correction of a change) and, when the booking bills something else or is not on any more, the host gets the «To do» of a change (a credit note may be needed), once for each
+    /// document and never while a correction is waiting for it. Nothing is credited or rewritten here.
+    /// </summary>
+    private async Task<int> TellTheChangesOfEndedPortalStaysAsync(Guid orgId, DateTime todayStart, DateTime since, int limit, CancellationToken ct)
+    {
+        var portals = Enum.GetValues<BookingSource>().Where(FiscalCopy.IsOtaBookingSource).ToArray();
+        var documents = await db.FiscalDocuments
+            .AsNoTracking()
+            .Include(d => d.Lines)
+            .Where(d => d.OrgId == orgId
+                        && d.Source == FiscalDocumentSource.CasaZen
+                        && d.Purpose == FiscalDocumentPurpose.GuestStay
+                        && d.Status == FiscalDocumentStatus.Issued
+                        && (d.Kind == DocumentKind.Invoice || d.Kind == DocumentKind.Receipt)
+                        && !d.CreditedInFull
+                        && d.BookingId != null
+                        && db.Bookings.Any(b => b.Id == d.BookingId && portals.Contains(b.Source) && b.CheckOutDate < todayStart && b.CheckOutDate >= since))
+            .OrderByDescending(d => d.IssueDate)
+            .ThenBy(d => d.Id)
+            .Take(Math.Max(0, limit))
+            .ToListAsync(ct);
+        if (documents.Count == 0)
+            return 0;
+
+        OrgFiscalIssuerProfile profile;
+        try
+        {
+            (profile, _) = await RequireIssuerAsync(orgId, ct);
+        }
+        catch (DomainException)
+        {
+            return 0;
+        }
+
+        var platformCollected = _lines.PlatformCollectedChannelsOf(profile);
+        var told = 0;
+        foreach (var document in documents)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                if (await TodoOfChangeWasRaisedAsync(document.Id, ct) || await PlannedCreditAsync(document.Id, ct) > 0m)
+                    continue;
+
+                var booking = await BookingOfAsync(document.BookingId, ct);
+                var changed = !IsActive(booking);
+                if (!changed)
+                {
+                    var rule = RuleOf(profile, booking);
+                    var built = await _lines.BuildAsync(booking.Id, rule, platformCollected, ct);
+                    changed = !BillsWhatTheDocumentSays(document, built.Lines, rule);
+                }
+
+                if (changed)
+                    told += (await TellTheHostAsync(booking, document.Id, FiscalDocumentTodos.BookingChangedReason, ct)).TodosRaised;
+            }
+            catch (Exception ex) when (ex is DomainException or NotFoundException)
+            {
+                // The rules refuse the comparison now (no tax rule), or the booking is gone: the document is looked at again at the next run.
+                db.ChangeTracker.Clear();
+                logger.LogInformation(
+                    "Document {DocumentId} of org {OrgId} not compared with its booking now ({Code})",
+                    document.Id,
+                    orgId,
+                    ex is DomainException refusal ? refusal.Code : "booking_not_found");
+            }
+        }
+
+        return told;
+    }
+
+    /// <summary>The host was told that the booking of the document changed (<see cref="FiscalDocumentTodos.BookingChangedReason"/>), whatever became of the item since: it is told once.</summary>
+    private Task<bool> TodoOfChangeWasRaisedAsync(Guid documentId, CancellationToken ct) =>
+        db.InternalActivities
+            .AsNoTracking()
+            .AnyAsync(a => a.EntityType == FiscalDocumentTodos.EntityType && a.EntityId == documentId && a.Reason == FiscalDocumentTodos.BookingChangedReason, ct);
 
     /// <summary>The draft made again from the booking, under the lock of the booking as the corrections of a change are: a change handled at the same moment never rewrites it too.</summary>
     private async Task MakeDraftAgainAsync(Guid bookingId, Guid draftId, CancellationToken ct)

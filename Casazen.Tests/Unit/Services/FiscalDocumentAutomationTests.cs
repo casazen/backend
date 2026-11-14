@@ -218,6 +218,49 @@ public class FiscalDocumentAutomationTests
     }
 
     /// <summary>
+    /// PROOF TEST: data rule (T01 point 4). The import records no event for a stay that is over, so the daily run compares the issued document of a portal stay that ended with the lines the
+    /// booking bills now and tells the host with the «To do» of a change (a price changed, a stay cancelled), once for each document even when the host closed the item; a stay that did
+    /// not change and a stay of CasaZen (whose changes are events) are left alone, and nothing is credited or rewritten.
+    /// </summary>
+    [Fact]
+    public async Task DueJob_TellsTheHostWhenTheIssuedDocumentOfAPortalStayChangedAfterItEnded_OncePerDocument()
+    {
+        await using var db = NewDb();
+        await SeedOrgAsync(db);
+        var property = await AddPropertyAsync(db, "auth0|host");
+        var repriced = await AddBookingAsync(db, property, BookingStatus.CheckedOut, BookingSource.Airbnb, checkOut: new DateTime(2026, 11, 16));
+        var unchanged = await AddBookingAsync(db, property, BookingStatus.CheckedOut, BookingSource.Airbnb, checkOut: new DateTime(2026, 11, 17));
+        var cancelled = await AddBookingAsync(db, property, BookingStatus.CheckedOut, BookingSource.BookingCom, checkOut: new DateTime(2026, 11, 18));
+        var own = await AddBookingAsync(db, property, BookingStatus.CheckedOut, BookingSource.Direct, checkOut: new DateTime(2026, 11, 19));
+        var service = ServiceOf(db);
+        var repricedDocument = await IssueAsync(service, repriced);
+        await IssueAsync(service, unchanged);
+        var cancelledDocument = await IssueAsync(service, cancelled);
+        await IssueAsync(service, own);
+
+        // After the end the portal changes the price of one stay and cancels another; the price of a stay of CasaZen changes too (an event of the booking, not of this run).
+        await ChangeBookingAsync(db, repriced, b => b.BasePrice = 420m);
+        await ChangeBookingAsync(db, cancelled, b => b.Status = BookingStatus.Cancelled);
+        await ChangeBookingAsync(db, own, b => b.BasePrice = 420m);
+
+        var first = await service.ProcessDueDocumentsAsync(OrgId, 500, 31);
+
+        Assert.Equal(2, first.ChangesTold);
+        var todos = await db.InternalActivities.AsNoTracking().Where(a => a.Action != null).ToListAsync();
+        Assert.Equal(new[] { repricedDocument.Id, cancelledDocument.Id }.Order().ToList(), todos.Select(t => t.EntityId!.Value).Order().ToList());
+        Assert.All(todos, t => Assert.Equal(FiscalDocumentTodos.BookingChangedReason, t.Reason));
+        Assert.Equal(4, await db.FiscalDocuments.CountAsync());
+
+        // Once for each document: the item the host closed is not raised again, and the open one is not raised twice.
+        var activities = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, new FakeTimeProvider(Now));
+        await activities.CloseAsync(todos[0].Id, InternalActivity.ClosedBySystem, CancellationToken.None);
+        var second = await service.ProcessDueDocumentsAsync(OrgId, 500, 31);
+
+        Assert.Equal(0, second.ChangesTold);
+        Assert.Equal(2, await db.InternalActivities.CountAsync(a => a.Action != null));
+    }
+
+    /// <summary>
     /// PROOF TEST (T02 point 1): the check-out event makes the draft once, and never the problem of the check-out: delivered twice it is one draft; a refusal of the rules (the data of the
     /// guest is missing) is an answer logged with its code, not a failure; any other failure is thrown again so the outbox delivers the event again; nothing happens for another event or
     /// with the issuance off.
@@ -730,6 +773,9 @@ public class FiscalDocumentAutomationTests
             },
         };
     }
+
+    private static async Task<FiscalDocument> IssueAsync(FiscalDocumentService service, Guid bookingId) =>
+        await service.IssueAsync((await service.CreateDraftAsync(bookingId, null)).Id, confirm: true);
 
     private static async Task ChangeBookingAsync(AppDbContext db, Guid bookingId, Action<Booking> change)
     {
