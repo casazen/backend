@@ -54,6 +54,64 @@ One profile per organization, saved by the wizard (`PUT api/fiscal/documents/set
   `missingFields` says what is left; `confirmed: true` with something missing is 422 `issuer_profile_incomplete`, and `ConfirmedAt` is set only when
   nothing is missing.
 
+## Billing setup (the wizard «Fatturazione», E11/F01/US01/T04)
+
+Every invoicing setting is set in one place, the wizard «Fatturazione» of the onboarding guide, through one endpoint: `GET api/billing-setup` returns the
+setup as **sections**, each with its `values` and its `missing` items; `PUT api/billing-setup/{section}` saves one section (`payment.read` to read, `property.write`
+and a scope over the whole organization to save, 403 `fiscal_settings_need_whole_org` otherwise; both are 404 while `Features:FiscalDocumentIssuance` is off).
+There is no migration: the sections are views over `OrgFiscalIssuerProfile` (`IDocumentIssuerService` is still the only store and the only validation: the field
+codes of a refusal are the ones of the issuer setting, `issuer_field_invalid` with the `field` and the list of `errors`), and over the contributors of the other
+epics.
+
+| Section | Step | Fields saved by the PUT | Items (`key`, reason) |
+|---|---|---|---|
+| `issuer` | «Chi emette» | `countryCode`, `legalName`, `addressStreet`, `addressCivic`, `postalCode`, `city`, `province`, `swissVatNumber` | `country_missing` (nothing saved yet), `legal_name_missing`, `address_missing` (street, postal code, city and, in Italy, the province), `vat_number_missing` (Italy, a VAT regime), `fiscal_code_missing` (Italy, private person), `swiss_uid_missing` (a registered Swiss issuer): reason `required` |
+| `vat` | «IVA» | `regime`, `vatRegistered`, `swissVatNumber`, `fatturaPaRegimeCode`, `stayVatTreatment`, `cleaningFeeTreatment` | `regime_missing`, `regime_code_missing` (Italy, a VAT regime without a code): `required`; `tax_rule_missing`: `unavailable` (no rule of `FiscalDocuments:TaxRules` is in force today for the regime: nothing is issued with a rate nobody approved) |
+| `numbering` | «Numerazione» | `guestDocumentSeries`, `ownerInvoiceSeries` | `guest_series_unconfirmed`, `owner_series_unconfirmed`: `unconfirmed` (the default is shown in `defaultGuestDocumentSeries` and `defaultOwnerInvoiceSeries`; the step saves the series explicitly) |
+| `touristTax` | «Tassa di soggiorno» | `platformCollectedTouristTaxChannels` | Switzerland only: `tourist_tax_channels_unconfirmed` |
+| `channels`, `mandates` | «Commissioni dei canali», «Mandato standard» | none: saved by the endpoints of the owner ledger | added by E13 (`channel_commissions_unconfirmed`, `owners_without_mandate`) |
+| `automation` | «Emissione» | `autoIssueGuestDocuments`, `emailGuestDocuments` | `auto_issue_unconfirmed`: `unconfirmed` |
+| `italy` | «Italia» | `stampDutyReference`, `conservationAgreementConfirmed`, `virtualStampConfirmed` | Italy only: `conservation_agreement_unconfirmed`, `stamp_duty_unconfirmed` (neither the stamp reference nor the confirmation of the virtual stamp); E17 adds `owner_issuer_missing` |
+
+- **Draft and idempotent.** A partial body is a draft: a field that is absent or `null` keeps its value, a text sent empty clears it, a list (even an empty one)
+  is sent; the same answers saved twice change nothing and a body with no field saves nothing. A field of another section is 422
+  `billing_setup_field_not_in_section` (the one exception is the Swiss UID, a tax id and the VAT registration at once: `issuer` and `vat` both take it); an unknown section is 404
+  `billing_setup_section_unknown`, `channels` and `mandates` are 422 `billing_setup_section_not_writable`. A refused save changes nothing. The save is the
+  setting as it is now with the fields of the body laid over it, saved whole by `SaveSettingsAsync`: the bank accounts and the other sections go back as they were.
+- **A regime follows the country.** Changing the country drops what only made sense in the other one: its regime (the step «IVA» asks again), the postal code and
+  the province (asked again, unless the same save carries them; the street and the city stay). The VAT registration tells the
+  regime where only one fits: `vatRegistered` alone gives `SwissVatRegistered`/`SwissNotRegistered` to a Swiss issuer and `PrivatePerson` to an Italian one that is
+  not registered; an Italian issuer that is registered chooses between `VatOrdinary` and `VatFlatRate`, and a `vatRegistered` that contradicts the regime is 422 on
+  its field.
+- **The Italian VAT number and fiscal code live on the organization.** They are read (`vatNumber`, `fiscalCode` in the values of `issuer`) and saved in its tax
+  profile (`PUT api/fiscal/tax-profile`), never copied into the profile of the issuer, so the items `vat_number_missing` and `fiscal_code_missing` are cleared
+  there.
+- **«Confirmed» without a new column.** A choice that has a default cannot be told from «never made» by its value, so: the **series** count as confirmed when
+  they are saved (a `null` series is the default, not yet confirmed); the **tourist tax** channels are confirmed when the column
+  `PlatformCollectedTouristTaxChannels` is not `null`, and an empty list is stored as `[]` («no portal collects it», `PlatformCollectedTouristTaxChannelsConfirmed`),
+  so no other save turns an unconfirmed choice into a confirmed one and none loses a confirmed `[]`; the **emission** is confirmed by saving the step while the
+  profile can issue (`ConfirmedAt`, which the issuer service clears whenever the profile stops being complete: the item comes back and the step is saved again).
+  A save of `automation` while the profile cannot issue yet is kept as a draft.
+- **A section that does not apply** (`applies: false`: the Swiss tourist tax of an Italian issuer, the Italian reminders of a Swiss one, `channels` and
+  `mandates` until E13 registers its contributors) has no item and is not counted.
+
+### The guide and the flow
+
+- **Part «Fatturazione»** (`OnboardingPartKey.FiscalDocuments`, key unchanged; label IT «Fatturazione», EN «Invoicing», `OnboardingPartFiscalDocuments`) is
+  `FiscalDocumentsPartEvaluator`: `PartFacts.Counted(done, total, reason)` over the sections that apply (`total`) and have nothing missing (`done`); it is done
+  only when no item is missing and its `reason` is the key of the first missing item, in the order of the wizard, so the guide reopens the wizard at that step.
+  With `Features:FiscalDocumentIssuance` off the part is to do (`issuer_missing`): nobody issues.
+- **Flow «Documents»** (`DocumentsFlowProvider`): the prerequisite `issuer` holds when the sections `issuer` and `vat` have no missing item and the issuance is on.
+  The other sections never stop the flow. `accountant_handles` is never produced again (the constant stays for the old rows).
+
+### Adding items (other epics)
+
+An epic that owns a piece of the setup implements `IBillingSetupContributor` (`Section`, `EvaluateAsync(orgId, ct)`: **only the missing items**, a read for that
+organization, codes and counts only, no personal data) and registers it in `AddCasazenFiscalDocuments`, next to the six of the setup; it never touches
+`BillingSetupService`. A section may have several contributors (the items follow the order of registration); an item is attributed to the section of its
+contributor; a section with at least one contributor that applies is counted by the part. `BillingSetupItem.Count` carries a number when the item counts
+something. Keys are `snake_case` and never renamed: the client maps every key to its wizard step and fails a test on an unknown one.
+
 ## The issuer as it was (`FiscalDocument.IssuerSnapshot`)
 
 At the issue the document keeps the issuer as JSON (`FiscalIssuerSnapshot`: legal name, structured address, Italian VAT number and fiscal code of the
