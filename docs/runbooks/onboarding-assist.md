@@ -132,12 +132,13 @@ channel manager for another one), outside the lock of the request:
 
 A request of a whole part has no step: `done` records `declared`. After the commit every administrator of the org (the owner and the `Admin`s, who
 alone can ask for help) gets a push, an entry of the bell (the request as its entity) and the live update, so the open page reads the request again and
-shows the pop-up (`OnboardingAssistOutcomeNotice`; key `assist-request:{id}:done:{instant}:{user}`, one per «Fatto» and person). Best effort: a failure is
-logged and never fails the update.
+shows the pop-up (`OnboardingAssistOutcomeNotice`; key `assist-request:{id}:done:{instant}:{user}`, one per «Fatto» and person). Best effort: each administrator
+is told on its own, so a failure for one (its bell entry, its push) is logged and never stops the others nor fails the update.
 
 **«Non funziona».** `POST /api/onboarding/assist-requests/{id}/reopen` (`OrgBillingAdmin` + `HostScope`), body `{ "note": "…" }` (required, at most 500
 characters, no e-mail address: 422 `assist_reopen_note_required`). Only a request `Done` (409 `assist_request_not_done`), and not while another request
 of the same part, property and channel is open (409 `assist_request_already_open`); a request of another org or of a property the caller does not reach
 is the 404 of a request that does not exist. The request goes back to `Requested` with `hostNote` and `reopenedAt` (the outcome, the completion and the
-assignee are cleared), its step goes back to support (`assistRequested`, what «Fatto» recorded on it cleared), the host's "To do" comes back, the line
+assignee are cleared), its step goes back to support (`assistRequested`, what «Fatto» recorded on it cleared), the host's "To do" comes back (the request names none, `ActivityId` cleared in the same save,
+until the new one is raised after the commit: if that fails, the next «Fallo per me» of the host finds the request open with no "To do" and raises it), the line
 `OnboardingAssistRequested` (status `requested`, the host as the actor) is written and the platform staff is told live (`assist-reopened`).
