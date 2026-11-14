@@ -33,6 +33,9 @@ public static class RecurringJobsRegistration
             recurringJobManager,
             featureFlags.IsEnabled(FeatureFlags.OctorateConnector) && featureFlags.IsEnabled(FeatureFlags.OctorateDocumentImport));
 
+        // E12/F01/US01/T02: the drafts of the stays that ended and their automatic issue, only while the issuance of the fiscal documents is on.
+        ConfigureFiscalDocumentJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.FiscalDocumentIssuance));
+
         // E10/F01/US01/T04: the "To do" of the flows to complete and of a lost connection, only while the activation with Octorate is on.
         ConfigureOnboardingJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateOnboarding));
 
@@ -425,6 +428,26 @@ public static class RecurringJobsRegistration
             job => job.RunDueAsync(CancellationToken.None),
             CalendarChangeProcessJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The documents of the stays that ended (E12/F01/US01/T02, NF-83, NF-112): the drafts, and their issue when the profile issues without a person, every day at 05:10
+    /// Europe/Rome, only with <see cref="FeatureFlags.FiscalDocumentIssuance"/> on. With the flag off nothing is drafted or issued by time and the schedule of an earlier deploy is
+    /// removed (<c>RemoveIfExists</c>).
+    /// </summary>
+    private static void ConfigureFiscalDocumentJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(FiscalDocumentsDueJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<FiscalDocumentsDueJob>(
+            FiscalDocumentsDueJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            FiscalDocumentsDueJob.Cron,
+            new RecurringJobOptions { TimeZone = RomeCalendar.TimeZone });
     }
 
     /// <summary>

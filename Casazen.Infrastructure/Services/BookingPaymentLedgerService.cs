@@ -189,7 +189,7 @@ public sealed class BookingPaymentLedgerService(
             .AsNoTracking()
             .Where(d => d.BookingId != null && bookingIds.Contains(d.BookingId.Value)
                         && d.Kind != DocumentKind.CreditNote && d.Status != FiscalDocumentStatus.Discarded)
-            .Select(d => new { BookingId = d.BookingId!.Value, d.Id, d.Number, d.Kind, d.Status, d.PaymentState, d.CreatedAt, d.Source, d.Total })
+            .Select(d => new { BookingId = d.BookingId!.Value, d.Id, d.Number, d.Kind, d.Status, d.PaymentState, d.CreatedAt, d.Source, d.Total, d.PaymentChannel })
             .ToListAsync(ct);
 
         // The state of a document CasaZen issued is the current one (what was collected for the booking, net of the refunds), as the document API gives it: the
@@ -205,7 +205,9 @@ public sealed class BookingPaymentLedgerService(
                         d.Number,
                         d.Kind.ToString(),
                         d.Status.ToString(),
-                        (d.Source == FiscalDocumentSource.CasaZen ? FiscalDocumentService.PaymentStateOf(collected.GetValueOrDefault(d.BookingId), d.Total) : d.PaymentState)
+                        (FiscalDocumentService.IsPaymentStateReadFromPayments(d.Source, d.Kind, d.BookingId, d.PaymentChannel)
+                            ? FiscalDocumentService.PaymentStateOf(collected.GetValueOrDefault(d.BookingId), d.Total)
+                            : d.PaymentState)
                         .ToString())).First());
     }
 

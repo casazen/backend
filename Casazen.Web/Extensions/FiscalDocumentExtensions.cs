@@ -52,6 +52,14 @@ public static class FiscalDocumentExtensions
         services.AddScoped<IEventHandler<DomainEvent>, InvoiceDataFromOctorateHandler>();
         services.AddScoped<IEventHandler<DomainEvent>, OctorateBillingWriteBackHandler>();
 
+        // The draft of the document of a stay at its check-out (E12/F01/US01/T02), the consumer of CheckOutCompleted, run by the outbox dispatcher so it can never fail the
+        // check-out; behind Features:FiscalDocumentIssuance (the daily run fiscal-documents-due makes the drafts the event did not).
+        services.AddScoped<IEventHandler<DomainEvent>, FiscalDocumentCheckOutHandler>();
+
+        // The correction of the documents of a stay when its booking changes (E12/F01/US01/T03): the consumer of BookingModified, BookingCancelled, BookingNoShowMarked and PaymentRefunded
+        // (a credit note, or the reversal receipt of a receipt, and the new draft), also behind Features:FiscalDocumentIssuance; idempotent per event.
+        services.AddScoped<IEventHandler<DomainEvent>, FiscalDocumentBookingChangeHandler>();
+
         // The labels of the generated documents, read from SharedResources in the language the caller names (E06/F01/US01/T02).
         services.AddSingleton<IDocumentTexts, ResxDocumentTexts>();
 
@@ -72,6 +80,16 @@ public static class FiscalDocumentExtensions
         // The import of the documents Octorate issued, read-only, behind Features:OctorateConnector and Features:OctorateDocumentImport
         // (E06/F03/US02/T01, NF-84); run by the job octorate-document-import.
         services.AddScoped<IOctorateDocumentImportService, OctorateDocumentImportService>();
+
+        // The tourist tax of the Swiss cantons and who collects it by default (E12/F01/US01/T01, ⚖ C4, C5), SwissTouristTax, validated at startup: a malformed canton, a
+        // rate that is not positive, a rule without its source, overlapping ranges or a channel that is not a portal stop the application with a clear message. Empty is
+        // valid: a Swiss booking then gets no tourist tax line of its own.
+        services.AddOptions<SwissTouristTaxOptions>().Bind(configuration.GetSection(SwissTouristTaxOptions.SectionName)).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<SwissTouristTaxOptions>, SwissTouristTaxOptionsValidator>();
+
+        // The lines of the document of a booking, whatever its source: the amounts of a portal, the tourist tax only when the host collects it, who collected the money
+        // (E12/F01/US01/T01).
+        services.AddScoped<IGuestDocumentLineBuilder, GuestDocumentLineBuilder>();
 
         // The fiscal documents CasaZen issues for its direct bookings and the reading of every document (E06/F01/US01/T01, NF-83); the changes are
         // behind Features:FiscalDocumentIssuance.

@@ -248,7 +248,7 @@ internal sealed class OwnerInvoiceRig : IAsyncDisposable
             rules,
             clock,
             NullLogger<FiscalDocumentService>.Instance,
-            accounting);
+            ownerAccounting: accounting);
         var invoices = new OwnerInvoiceService(
             db, documents, issuers, rules, new PortalAccountHolderResolver(db), new ResxDocumentTexts(), clock, NullLogger<OwnerInvoiceService>.Instance);
         return (documents, invoices);

@@ -28,3 +28,12 @@ public sealed record PaymentEventPayload(
         return new PaymentEventPayload(payment.Id, payment.BookingId, payment.Amount, StayCurrency.Normalize(currency), payment.Method);
     }
 }
+
+/// <summary>
+/// The payload of <c>PaymentRefunded</c> (E12/F01/US01/T03, ADR-022-R21): a refund of a payment of a booking succeeded. Ids and the amount only: never the payer. A consumer reads
+/// the rest from the payment and the booking, in its own org.
+/// </summary>
+/// <param name="PaymentId">The payment (also the <c>EntityId</c> of the event).</param>
+/// <param name="BookingId">The booking it pays.</param>
+/// <param name="RefundedAmount">What was refunded of the payment in all, once this refund succeeded (the currency of the stay).</param>
+public sealed record PaymentRefundedPayload(Guid PaymentId, Guid BookingId, decimal RefundedAmount);

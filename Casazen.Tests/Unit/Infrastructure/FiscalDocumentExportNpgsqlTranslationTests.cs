@@ -49,8 +49,9 @@ public class FiscalDocumentExportNpgsqlTranslationTests
 
         var rows = await Service(db).ListForExportAsync(Restricted, criteria, 500);
 
-        // The three statements of the export: the documents, the bookings of the rows (code and property), the payments of those bookings.
-        Assert.Equal(["FiscalDocuments", "Bookings", "Payments"], statements.Select(MainTable));
+        // The four statements of the export: the documents, the bookings of the rows (code and property), the payments of those bookings, and what the channel manager reports paid
+        // for the stays of those bookings (the money of a portal stay the host collects from, which has no payment of CasaZen).
+        Assert.Equal(["FiscalDocuments", "Bookings", "Payments", "Bookings"], statements.Select(MainTable));
         var row = Assert.Single(rows);
         Assert.Equal(("ABCDEFGHJK", "Trullo"), (row.BookingCode, row.PropertyName));
         Assert.Equal(FiscalDocumentPaymentState.ToCollect, row.PaymentState);
@@ -73,6 +74,13 @@ public class FiscalDocumentExportNpgsqlTranslationTests
         Assert.Contains("\"OrgId\"", bookings, StringComparison.Ordinal);
         Assert.Contains("ANY", bookings, StringComparison.Ordinal);
         Assert.DoesNotContain("\"IsDeleted\"", bookings, StringComparison.Ordinal);
+
+        // What the channel manager reports paid: only for the bookings of the rows, only the stays whose portal does not collect, and for a deleted booking too (its document is still listed).
+        var channel = statements[3];
+        Assert.Contains("\"OtaPaidAmount\"", channel, StringComparison.Ordinal);
+        Assert.Contains("\"OtaCompanyCollect\"", channel, StringComparison.Ordinal);
+        Assert.Contains("ANY", channel, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"IsDeleted\"", channel, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -116,17 +124,21 @@ public class FiscalDocumentExportNpgsqlTranslationTests
     /// <summary>The table a statement reads from first (its main table): the first <c>FROM</c> of the statement.</summary>
     private static string MainTable(string sql) => Regex.Match(sql, "\\sFROM\\s+\"(?<table>\\w+)\"").Groups["table"].Value;
 
-    /// <summary>One row for the documents and one for the bookings, so the statements that come after the first are compiled too; the payments answer nothing.</summary>
+    /// <summary>
+    /// One row for the documents and one for the bookings, so the statements that come after the first are compiled too; the payments and the figures of the channel manager (the second
+    /// statement on the bookings, the only one that reads <c>OtaPaidAmount</c>) answer nothing.
+    /// </summary>
     private static DataTable? Rows(string sql) => MainTable(sql) switch
     {
+        "Bookings" when sql.Contains("\"OtaPaidAmount\"", StringComparison.Ordinal) => null,
         "FiscalDocuments" => Table(
             [
                 ("Id", typeof(Guid)), ("BookingId", typeof(Guid)), ("Kind", typeof(int)), ("Number", typeof(string)), ("IssueDate", typeof(DateOnly)),
                 ("RecipientName", typeof(string)), ("TaxableBase", typeof(decimal)), ("VatAmount", typeof(decimal)), ("StampDuty", typeof(decimal)),
-                ("Total", typeof(decimal)), ("Currency", typeof(string)), ("PaymentState", typeof(int)), ("SdiStatus", typeof(string)), ("Source", typeof(int)),
+                ("Total", typeof(decimal)), ("Currency", typeof(string)), ("PaymentState", typeof(int)), ("SdiStatus", typeof(string)), ("Source", typeof(int)), ("PaymentChannel", typeof(int)),
             ],
             Guid.NewGuid(), BookingId, (int)DocumentKind.Invoice, "2026/1", new DateOnly(2026, 10, 5), "TEST Cliente Srl", 330.18m, 31.82m, 0m, 362m, "EUR",
-            (int)FiscalDocumentPaymentState.Unknown, FiscalDocumentSdiStatuses.ToSend, (int)FiscalDocumentSource.CasaZen),
+            (int)FiscalDocumentPaymentState.Unknown, FiscalDocumentSdiStatuses.ToSend, (int)FiscalDocumentSource.CasaZen, (int)FiscalPaymentChannel.CasaZen),
         "Bookings" => Table([("Id", typeof(Guid)), ("BookingCode", typeof(string)), ("Name", typeof(string))], BookingId, "ABCDEFGHJK", "Trullo"),
         _ => null,
     };
