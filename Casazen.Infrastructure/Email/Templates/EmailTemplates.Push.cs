@@ -191,6 +191,18 @@ public static partial class EmailTemplates
     public static PushText CheckoutReminderPush(CultureInfo culture, string propertyName) =>
         Push(culture, "Push_CheckoutReminder", propertyName);
 
+    /// <summary>
+    /// Support marked a «Fallo per me» request done and CasaZen read the result on the panel (E20/F03/US01/T02), to the administrators of the org: «Il
+    /// collegamento è attivo». No supplier, no property, no person.
+    /// </summary>
+    public static PushText AssistVerifiedPush(CultureInfo culture) => Push(culture, "Push_AssistVerified");
+
+    /// <summary>
+    /// Support marked a «Fallo per me» request done and the panel could not be read (E20/F03/US01/T02), to the administrators of the org: support declares
+    /// it did the connection, and the host can reopen the request.
+    /// </summary>
+    public static PushText AssistDeclaredPush(CultureInfo culture) => Push(culture, "Push_AssistDeclared");
+
     private static PushText Push(CultureInfo culture, string prefix, params object[] values) =>
         new(
             EmailTexts.Get($"{prefix}_Title", culture),
