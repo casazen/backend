@@ -2019,7 +2019,7 @@ pushed back), for a booking of a channel, for a booking that is not confirmed or
 #### Marketplace (epic E09, NF-54 to NF-59)
 
 One catalog of five groups and the Active tab, read from CasaZen's own database: nothing here calls Octorate while a page loads (the portals are the
-daily cache of `GET /rest/v1/meta/portals`, refreshed by the `marketplace-portal-refresh` job, [hangfire.md](runbooks/hangfire.md)). Policy
+daily cache of `GET /rest/v1/meta/portals`, refreshed by the `marketplace-portal-refresh` job, [hangfire.md](runbooks/hangfire.md); a start that finds the cache with no listed portal, with `Features:OctorateConnector` on, queues one run of that job at once (`MarketplacePortalBootstrapHostedService`, fire and forget on Hangfire), so a new environment does not list no portal until 03:30 UTC). Policy
 `CasazenPolicies.BookingRead` (`booking.read`); the org and the `HostScope` come from the caller's membership, never from the request. Not behind
 `Features:OctorateConnector` as a whole: the partners and the home services never depend on Octorate. No name of a portal or of a partner is in the
 code: they are rows, and the words of the cards are rows and resource keys (`Marketplace.*`, Italian and English). `kind` is `Channel`, `Tool`,
