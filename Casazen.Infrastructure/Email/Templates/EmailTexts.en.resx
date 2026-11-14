@@ -2727,4 +2727,37 @@
   <data name="OwnerStatementPublished_LinkFallback" xml:space="preserve">
     <value>If the button doesn't work, copy and paste this link into your browser:</value>
   </data>
+  <data name="FiscalDocumentDelivery_Subject" xml:space="preserve">
+    <value>{0} no. {1} from {2}</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Greeting" xml:space="preserve">
+    <value>Hello {0},</value>
+  </data>
+  <data name="FiscalDocumentDelivery_GreetingNoName" xml:space="preserve">
+    <value>Hello,</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; has sent you the document &lt;strong&gt;{1} no. {2}&lt;/strong&gt; of {3}. You can view it and download it as a PDF from the link below.</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Cta" xml:space="preserve">
+    <value>View the document</value>
+  </data>
+  <data name="FiscalDocumentDelivery_LinkFallback" xml:space="preserve">
+    <value>If the button doesn't work, copy and paste this link into your browser:</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Validity" xml:space="preserve">
+    <value>The link is valid until {0}.</value>
+  </data>
+  <data name="FiscalDocumentDelivery_NotYou" xml:space="preserve">
+    <value>If you were not expecting this message, you can ignore it.</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Kind_Invoice" xml:space="preserve">
+    <value>Invoice</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Kind_Receipt" xml:space="preserve">
+    <value>Receipt</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Kind_CreditNote" xml:space="preserve">
+    <value>Credit note</value>
+  </data>
 </root>

@@ -213,6 +213,17 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     }
 
     /// <summary>
+    /// Public page of the web app where the guest reads the document of the stay that was e-mailed (route <c>/documents/view/:id</c>, E12/F01/US02/T01; the page is a frontend task): it asks
+    /// <c>POST api/public/fiscal-documents/{id}</c> for the summary and <c>…/pdf</c> for the file, both with the token in the <b>body</b>. Only the document id and the signed token (no name, no
+    /// address, no amount) are in the link; the token is a time-limited Data Protection payload (<c>Casazen.FiscalDocument.Link</c>, 30 days).
+    /// </summary>
+    public string FiscalDocumentView(Guid documentId, string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return Build($"/documents/view/{documentId:D}?token={Uri.EscapeDataString(token)}");
+    }
+
+    /// <summary>
     /// Settings page of the supplier console (route <c>/app/supplier/settings</c> of the web app), where the supplier's Stripe
     /// Connect onboarding starts and ends (SP-14). The supplier has no plan or billing page, so it is not one of
     /// <see cref="BillingReturnPagePaths"/> (those are the pages of the Stripe Checkout and billing portal of the plans).
