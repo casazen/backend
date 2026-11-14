@@ -455,6 +455,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<BiometricModelStore>();
         services.AddSingleton<IBiometricModelStore>(serviceProvider => serviceProvider.GetRequiredService<BiometricModelStore>());
         services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<BiometricModelStore>());
+        // E22/F01/US01/T01: what the models are doing, read by the non-blocking health entry "biometrics" and by GET api/admin/biometrics/status.
+        services.AddSingleton<IBiometricModelStatusReader, BiometricModelStatusReader>();
         services.AddSingleton<IFaceDetector, FaceDetector>();
         services.AddSingleton<IFaceEmbedder, FaceEmbedder>();
         services.AddScoped<IAntiSpoofingService, AntiSpoofingService>();
