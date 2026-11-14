@@ -56,7 +56,8 @@ public interface IRoutineService
     /// Resume a routine execution after a Wait action (AC-NF26-10, ADR-022-R10).
     /// Called by the Hangfire job at the scheduled resume time. It continues from the action the execution saved, with the payload it saved, and does
     /// nothing for an execution that is not waiting (a second job for the same wait, or one that comes after the execution ended): the actions after a
-    /// wait run once. A routine deactivated meanwhile ends the execution <c>Failed</c> with <see cref="RoutineCodes.Inactive"/>.
+    /// wait run once. A routine deactivated meanwhile ends the execution <c>Failed</c> with <see cref="RoutineCodes.Inactive"/>; with <c>Features:Routines</c> off it
+    /// does nothing at all (the execution stays as it is).
     /// </summary>
     /// <param name="executionId">Execution to resume.</param>
     /// <param name="cancellationToken">Cancellation token.</param>

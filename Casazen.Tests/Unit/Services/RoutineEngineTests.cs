@@ -713,27 +713,36 @@ public class RoutineEngineTests
         Assert.Empty(rig.Scheduled);
     }
 
-    /// <summary>A wait that comes due while the module is closed does not continue: the execution ends, and says why, instead of waiting for ever.</summary>
+    /// <summary>
+    /// A wait that comes due while the module is closed changes nothing: the job reads and writes nothing, the execution stays as it was (waiting, with its
+    /// saved payload) and no action runs. Its job is spent, so a job again (a manual run, a new schedule) continues it once the module is on.
+    /// </summary>
     [Fact]
-    public async Task RoutinesFlagOff_AWaitThatComesDue_EndsTheExecutionFailed()
+    public async Task RoutinesFlagOff_AWaitThatComesDue_LeavesTheExecutionAsItIs()
     {
         var rig = new RoutineRig();
         var booking = await rig.SeedBookingAsync(OrgA);
         await rig.SeedRoutineAsync(
             OrgA,
             RoutineEventType.BookingConfirmed,
-            RoutineRig.Actions(("Wait", """{"hours":1}"""), ("NotifyOwner", null)));
+            RoutineRig.Actions(("Wait", """{"hours":1}"""), ("CreateActivity", """{"text":"Dopo l'attesa"}""")));
         await rig.TriggerAsync(OrgA, RoutineEventType.BookingConfirmed, RoutineRig.PayloadOf(booking));
         var waiting = await rig.SingleExecutionAsync();
+        var due = new FixedTimeProvider(RoutineRig.Now.AddHours(1));
         rig.Flags.Set(Casazen.Core.Features.FeatureFlags.Routines, false);
 
-        await rig.ResumeAsync(waiting.Id, new FixedTimeProvider(RoutineRig.Now.AddHours(1)));
+        await rig.ResumeAsync(waiting.Id, due);
 
-        var ended = await rig.ExecutionAsync(waiting.Id);
-        Assert.Equal(RoutineExecutionOutcomes.Failed, ended.Outcome);
-        var result = RoutineRig.ResultOf(ended);
-        Assert.Equal(RoutineCodes.Inactive, result.Code);
-        Assert.Single(result.Actions);
+        var unchanged = await rig.ExecutionAsync(waiting.Id);
+        Assert.Equal(RoutineExecutionOutcomes.Waiting, unchanged.Outcome);
+        Assert.Equal(waiting.ResultJson, unchanged.ResultJson);
+        Assert.Equal(waiting.ResumeAt, unchanged.ResumeAt);
+        Assert.Null(unchanged.CompletedAt);
+        Assert.Single(rig.Scheduled);
+
+        rig.Flags.Set(Casazen.Core.Features.FeatureFlags.Routines, true);
+        await rig.ResumeAsync(waiting.Id, due);
+        Assert.Equal(RoutineExecutionOutcomes.Success, (await rig.ExecutionAsync(waiting.Id)).Outcome);
     }
 
     // ─── The job ─────────────────────────────────────────────────────────────────

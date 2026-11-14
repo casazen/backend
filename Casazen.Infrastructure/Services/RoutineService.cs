@@ -29,11 +29,14 @@ namespace Casazen.Infrastructure.Services;
 /// <c>simulated</c>. The switch of <see cref="ExecuteActionAsync"/> has one case for each action, owned by the task that makes it real; what has no case
 /// fails with <see cref="RoutineCodes.ActionNotAvailable"/>, it never pretends.</item>
 /// <item><b>Wait</b> saves the payload and the next action in <c>ResultJson</c>, sets <c>ResumeAt</c> and schedules
-/// <see cref="RoutineDelayJob.ResumeRoutineAsync"/> at that time; <see cref="ResumeAsync"/> continues from what was saved, once.</item>
+/// <see cref="RoutineDelayJob.ResumeRoutineAsync"/> at that time; <see cref="ResumeAsync"/> continues from what was saved, once: the job of an earlier wait
+/// that comes again finds the execution waiting for a time far away and does nothing, and after the wait a stay that was cancelled or marked as a
+/// no-show meanwhile gets no action (each one is <c>blocked</c> with <see cref="RoutineCodes.BookingNotActive"/>), but for the routines of a cancellation.</item>
 /// <item><b>Failures</b>: an expected one is the <c>failed</c> result of an action; an unexpected one closes the execution with
 /// <see cref="RoutineCodes.ActionError"/> and is rethrown, so the dispatcher records it on the event (ADR-022-R5).</item>
-/// <item><b>The flag</b> <c>Features:Routines</c> closes the module (E01/F04/US01/T03): the events start nothing, and a wait that comes due ends its
-/// execution <c>Failed</c> with <see cref="RoutineCodes.Inactive"/>.</item>
+/// <item><b>The flag</b> <c>Features:Routines</c> closes the module (E01/F04/US01/T03): the events start nothing, and a wait that comes due changes
+/// nothing: nothing is read or written and the execution stays as it is (waiting). A routine deactivated while it waits is another case: its execution ends
+/// <c>Failed</c> with <see cref="RoutineCodes.Inactive"/>.</item>
 /// <item>The org is the one of the routine in every query (the tenant filter of the scope is a second wall); the job that resumes a wait has no tenant
 /// and relies on the first.</item>
 /// </list>
@@ -108,6 +111,14 @@ public class RoutineService(
 
     public async Task ResumeAsync(Guid executionId, CancellationToken cancellationToken = default)
     {
+        // The module is closed (Features:Routines): a wait that comes due changes nothing. Nothing is read or written, the execution stays as it is
+        // (waiting), and the host finds it as it was when the module is on again.
+        if (!featureFlags.IsEnabled(FeatureFlags.Routines))
+        {
+            logger.LogDebug("Routines are off: execution {ExecutionId} is not resumed and stays as it is", executionId);
+            return;
+        }
+
         // The job has no tenant: the execution is found by its id, and everything after it reads in the org of the execution.
         var execution = await db.RoutineExecutions
             .Include(e => e.Routine)
@@ -147,11 +158,11 @@ public class RoutineService(
         if (waited >= 0)
             results[waited] = results[waited] with { Outcome = RoutineActionOutcomes.Done };
 
-        // A routine deactivated meanwhile, or the module closed (Features:Routines), does not continue: the execution ends and says so.
-        if (!featureFlags.IsEnabled(FeatureFlags.Routines) || execution.Routine is not { Active: true } routine)
+        // A routine deactivated meanwhile does not continue: the execution ends and says so.
+        if (execution.Routine is not { Active: true } routine)
         {
             logger.LogInformation(
-                "Routine {RoutineId} is not active any more (or routines are off): execution {ExecutionId} ends instead of continuing",
+                "Routine {RoutineId} is not active any more: execution {ExecutionId} ends instead of continuing",
                 execution.RoutineId, executionId);
             await EndAsync(
                 execution,
