@@ -243,6 +243,15 @@ public static class FeatureFlags
     /// </summary>
     public const string OwnerInvoicing = "OwnerInvoicing";
 
+    /// <summary>
+    /// E15/F01/US01/T01 (NF-101, NF-87, NF-115, D11, D15): the accountant package, one ZIP of a month or a year in a fixed structure and the agency summary, <b>off by
+    /// default</b> and turned on only in the test environment until the accountant confirms the ⚖ choices that shape the files (the Swiss purchase tax on the portal
+    /// commissions, the Italian register of the sales). Off, <c>GET api/accountant-package</c> and <c>GET api/accountant-package/agency-summary</c> answer 404 before
+    /// authentication. It needs no variable to start; the caps of the ZIP are the ones of the document archive (<c>DocumentArchive:MaxExportFiles</c>,
+    /// <c>DocumentArchive:MaxExportBytes</c>). The frontend reads the key <c>accountantPackage</c>.
+    /// </summary>
+    public const string AccountantPackage = "AccountantPackage";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -268,5 +277,6 @@ public static class FeatureFlags
         OctorateDocumentImport,
         MessageAssistant,
         OwnerInvoicing,
+        AccountantPackage,
     ];
 }
