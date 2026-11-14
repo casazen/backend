@@ -220,6 +220,12 @@ public sealed record IssuerData(
     /// <summary>The channels whose portal collects the tourist tax itself.</summary>
     public IReadOnlyList<BookingSource> PlatformCollectedTouristTaxChannels { get; init; } = [];
 
+    /// <summary>
+    /// The issuer confirmed those channels, even to say that none collects it (E11/F01/US01/T04). In the setting of an organization: they were
+    /// confirmed at least once; in the data of a save: the save carried the list, so it is written (an empty one as «none»), otherwise the saved choice stays.
+    /// </summary>
+    public bool PlatformCollectedTouristTaxChannelsConfirmed { get; init; }
+
     /// <summary>The authorization of the virtual stamp duty or the number of the physical stamp (Italy).</summary>
     public string? StampDutyReference { get; init; }
 
@@ -311,7 +317,10 @@ public sealed record SaveIssuerSettingsCommand
 
     public bool EmailGuestDocuments { get; init; }
 
-    /// <summary>The names of the <see cref="BookingSource"/> whose portal collects the tourist tax; <c>null</c> or empty = none.</summary>
+    /// <summary>
+    /// The names of the <see cref="BookingSource"/> whose portal collects the tourist tax. <c>null</c> = not given: the choice already saved stays as it
+    /// is (the one exception to «a save replaces the setting as a whole», E11/F01/US01/T04); an empty list is given and confirms that no portal collects it.
+    /// </summary>
     public IReadOnlyList<string>? PlatformCollectedTouristTaxChannels { get; init; }
 
     public string? StampDutyReference { get; init; }

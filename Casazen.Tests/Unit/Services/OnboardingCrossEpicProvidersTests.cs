@@ -163,7 +163,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
     [Fact]
     public async Task DocumentsFlow_FollowsTheIssuerTheOrganizationChose()
     {
-        var provider = new DocumentsFlowProvider(Issuers(), _flags.Object);
+        var provider = new DocumentsFlowProvider(Billing(), _flags.Object);
         var ids = new[] { _world.Granted.Id, _world.Hidden.Id };
         _flags.Setup(f => f.IsEnabled(FeatureFlags.FiscalDocumentIssuance)).Returns(true);
         _db.OrgFiscalIssuerProfiles.Add(Issuer(DocumentIssuerMode.CasaZen, _world.OtherOrgId));
@@ -194,22 +194,29 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// PROOF TEST (data): a draft is never shown as done. A profile saved while something is still missing (a draft, nothing confirmed) is neither a
-    /// prerequisite met for the flow «Documents» nor the part «Fiscal documents» done, although the row is there; a complete profile nobody confirmed lets the
-    /// flow run (issuing works) but leaves the part to do; only a complete and confirmed one is done. The same with the issuance off: nothing is.
+    /// PROOF TEST (data, E11/F01/US01/T04): the part «Fatturazione» is done only when nothing is missing in the billing setup. A draft (no address yet) is neither a
+    /// prerequisite met for the flow «Documents» nor a part done, although the row is there; a profile that can issue lets the flow run, but the part keeps
+    /// asking, one step after the other, with the key of the first missing item as its reason (so the guide reopens the wizard at that step) and the sections
+    /// that apply counted; only a profile with every step confirmed is done, and an item that goes missing again reopens it. With the issuance off nothing is.
     /// </summary>
     [Fact]
-    public async Task FiscalDocuments_ADraftIsNeitherReadyNorDone_Test()
+    public async Task OnboardingFiscalPart_DoneOnlyWhenNothingMissing_Test()
     {
         _flags.Setup(f => f.IsEnabled(FeatureFlags.FiscalDocumentIssuance)).Returns(true);
-        var flow = new DocumentsFlowProvider(Issuers(), _flags.Object);
-        var part = new FiscalDocumentsPartEvaluator(Issuers(), _flags.Object);
+        var flow = new DocumentsFlowProvider(Billing(), _flags.Object);
+        var part = new FiscalDocumentsPartEvaluator(Billing(), _flags.Object);
         var context = new OnboardingPartContext(_world.OrgWide, [_world.Granted.Id]);
         Guid[] ids = [_world.Granted.Id];
         (string Key, bool Met, string? Reason)[] issuerMissing = [(OnboardingPrerequisiteKeys.Issuer, false, OnboardingFlowReasons.IssuerMissing)];
         (string Key, bool Met, string? Reason)[] issuerMet = [(OnboardingPrerequisiteKeys.Issuer, true, null)];
+        async Task<IEnumerable<(string Key, bool Met, string? Reason)>> FlowAsync() =>
+            (await flow.EvaluateAsync(_world.OrgId, ids, Ct))[_world.Granted.Id].Prerequisites.Select(p => (p.Key, p.Met, p.Reason));
 
-        // A draft: the regime and a name, but no address yet, nothing confirmed.
+        // Nothing saved: the issuer has not even said where it issues from (the sections that apply to an Italian default: issuer, VAT, numbering, emission, Italy).
+        Assert.Equal(issuerMissing, await FlowAsync());
+        Assert.Equal(PartFacts.Counted(0, 5, BillingSetupItemKeys.CountryMissing), await part.EvaluateAsync(context, Ct));
+
+        // A draft: the regime and a name, but no address yet. The VAT section is done, the issuer one is not.
         var profile = Issuer(DocumentIssuerMode.CasaZen);
         profile.AddressStreet = null;
         profile.PostalCode = null;
@@ -217,24 +224,51 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         profile.ConfirmedAt = null;
         _db.OrgFiscalIssuerProfiles.Add(profile);
         await _db.SaveChangesAsync();
-        Assert.Equal(issuerMissing, (await flow.EvaluateAsync(_world.OrgId, ids, Ct))[_world.Granted.Id].Prerequisites.Select(p => (p.Key, p.Met, p.Reason)));
-        Assert.Equal(PartFacts.Counted(0, 1, OnboardingPartReasons.IssuerMissing), await part.EvaluateAsync(context, Ct));
+        Assert.Equal(issuerMissing, await FlowAsync());
+        Assert.Equal(PartFacts.Counted(1, 5, BillingSetupItemKeys.AddressMissing), await part.EvaluateAsync(context, Ct));
 
-        // Complete, but nobody confirmed the wizard: the profile can issue, the part is still to do.
+        // Complete to issue: the flow runs; the part asks the next step, the numbering.
         profile.AddressStreet = "Via Nassa";
         profile.PostalCode = "6900";
         profile.City = "Lugano";
         await _db.SaveChangesAsync();
-        Assert.Equal(issuerMet, (await flow.EvaluateAsync(_world.OrgId, ids, Ct))[_world.Granted.Id].Prerequisites.Select(p => (p.Key, p.Met, p.Reason)));
-        Assert.Equal(PartFacts.Counted(0, 1, OnboardingPartReasons.IssuerMissing), await part.EvaluateAsync(context, Ct));
+        Assert.Equal(issuerMet, await FlowAsync());
+        Assert.Equal(PartFacts.Counted(2, 5, BillingSetupItemKeys.GuestSeriesUnconfirmed), await part.EvaluateAsync(context, Ct));
 
-        // Complete and confirmed: done. Switched off, nothing is.
+        // The steps are done one by one, in the order of the wizard: the series, the tourist tax, the emission.
+        profile.GuestDocumentSeries = "{year}";
+        profile.OwnerInvoiceSeries = "PM{year}";
+        await _db.SaveChangesAsync();
+        Assert.Equal(PartFacts.Counted(3, 5, BillingSetupItemKeys.TouristTaxChannelsUnconfirmed), await part.EvaluateAsync(context, Ct));
+        profile.ConfirmPlatformCollectedTouristTaxChannels([]);
+        await _db.SaveChangesAsync();
+        Assert.Equal(PartFacts.Counted(4, 5, BillingSetupItemKeys.AutoIssueUnconfirmed), await part.EvaluateAsync(context, Ct));
+
+        // Nothing is missing: done.
         profile.ConfirmedAt = HostScopeScenario.Now.UtcDateTime;
         await _db.SaveChangesAsync();
-        Assert.Equal(issuerMet, (await flow.EvaluateAsync(_world.OrgId, ids, Ct))[_world.Granted.Id].Prerequisites.Select(p => (p.Key, p.Met, p.Reason)));
-        Assert.Equal(PartFacts.Counted(1, 1, null), await part.EvaluateAsync(context, Ct));
+        var done = await part.EvaluateAsync(context, Ct);
+        Assert.Equal(PartFacts.Counted(5, 5, null), done);
+        Assert.True(done.IsComplete);
+        Assert.Equal(issuerMet, await FlowAsync());
+
+        // An item that goes missing again reopens the part with its key, wherever it is; the flow needs only the issuer and the VAT.
+        profile.OwnerInvoiceSeries = null;
+        await _db.SaveChangesAsync();
+        Assert.Equal(PartFacts.Counted(4, 5, BillingSetupItemKeys.OwnerSeriesUnconfirmed), await part.EvaluateAsync(context, Ct));
+        Assert.Equal(issuerMet, await FlowAsync());
+        profile.LegalName = null;
+        await _db.SaveChangesAsync();
+        Assert.Equal(PartFacts.Counted(3, 5, BillingSetupItemKeys.LegalNameMissing), await part.EvaluateAsync(context, Ct));
+        Assert.Equal(issuerMissing, await FlowAsync());
+
+        // The issuance is switched off: nobody issues, so nothing is ready and nothing is done, whatever is set.
+        profile.LegalName = "TEST Quokka Sagl";
+        profile.OwnerInvoiceSeries = "PM{year}";
+        await _db.SaveChangesAsync();
+        Assert.Equal(PartFacts.Counted(5, 5, null), await part.EvaluateAsync(context, Ct));
         _flags.Setup(f => f.IsEnabled(FeatureFlags.FiscalDocumentIssuance)).Returns(false);
-        Assert.Equal(issuerMissing, (await flow.EvaluateAsync(_world.OrgId, ids, Ct))[_world.Granted.Id].Prerequisites.Select(p => (p.Key, p.Met, p.Reason)));
+        Assert.Equal(issuerMissing, await FlowAsync());
         Assert.Equal(PartFacts.Counted(0, 1, OnboardingPartReasons.IssuerMissing), await part.EvaluateAsync(context, Ct));
     }
 
@@ -313,7 +347,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         await AddBookingAsync(_world.Granted, BookingStatus.Confirmed);
         await AddBookingAsync(_world.Hidden, BookingStatus.Confirmed);
 
-        IFlowReadinessProvider[] providers = [new MessagesFlowProvider(_db, reader), new DocumentsFlowProvider(Issuers(), _flags.Object), new ReportsFlowProvider(_db, reader)];
+        IFlowReadinessProvider[] providers = [new MessagesFlowProvider(_db, reader), new DocumentsFlowProvider(Billing(), _flags.Object), new ReportsFlowProvider(_db, reader)];
         foreach (var provider in providers)
         {
             Assert.Empty(await provider.EvaluateAsync(_world.OrgId, [], Ct));
@@ -334,16 +368,16 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
     // ---------------------------------------------------------------- the parts
 
     /// <summary>
-    /// Proof (data, AC-NF104-9..11): the parts «Messages and AI», «Fiscal documents» and «Partners» show their progress from the stored facts of E05, E06
+    /// Proof (data, AC-NF104-9..11): the parts «Messages and AI», «Fatturazione» and «Partners» show their progress from the stored facts of E05, E06
     /// and E09, and none is done without them. The preferences of a collaborator, and the row the alert router makes with the defaults, are not a save
-    /// of an administrator; the issuer is done once its profile is complete and confirmed and the issuance is on (CasaZen issues; a draft is not done, see
-    /// <c>FiscalDocuments_ADraftIsNeitherReadyNorDone_Test</c>); the assistant counts only while its flag is on.
+    /// of an administrator; the invoicing is done once every step of the billing setup is confirmed and the issuance is on (CasaZen issues; a draft is not
+    /// done, see <c>OnboardingFiscalPart_DoneOnlyWhenNothingMissing_Test</c>); the assistant counts only while its flag is on.
     /// </summary>
     [Fact]
     public async Task OnboardingCrossEpicParts_StateComesFromStoredFacts_Test()
     {
         var messages = new MessagesAiPartEvaluator(_db, _flags.Object);
-        var fiscal = new FiscalDocumentsPartEvaluator(Issuers(), _flags.Object);
+        var fiscal = new FiscalDocumentsPartEvaluator(Billing(), _flags.Object);
         var partners = new PartnersPartEvaluator(_flags.Object, Catalog());
         var context = new OnboardingPartContext(_world.OrgWide, [_world.Granted.Id, _world.Hidden.Id]);
 
@@ -376,9 +410,10 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         var onlyPreferences = await messages.EvaluateAsync(context, Ct);
         Assert.Equal((1, 1, true), (onlyPreferences.Done, onlyPreferences.Total, onlyPreferences.IsComplete));
 
-        // The issuer (E11/F01/US01/T01): CasaZen issues once the profile is complete and confirmed, but only while the issuance is on; switched off, nobody issues and the
+        // The invoicing (E11/F01/US01/T04): done once every step of the setup is confirmed, but only while the issuance is on; switched off, nobody issues and the
         // part is to do again. A profile that still says a retired mode (accountant, Octorate) is CasaZen too: no part says «the accountant handles» any more.
         var profile = Issuer(DocumentIssuerMode.CasaZen);
+        FullySetUp(profile);
         _db.OrgFiscalIssuerProfiles.Add(profile);
         await _db.SaveChangesAsync();
         Assert.Equal(PartFacts.Counted(0, 1, OnboardingPartReasons.IssuerMissing), await fiscal.EvaluateAsync(context, Ct));
@@ -388,7 +423,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
             profile.IssuerMode = stored;
             await _db.SaveChangesAsync();
             var done = await fiscal.EvaluateAsync(context, Ct);
-            Assert.Equal(PartFacts.Counted(1, 1, null), done);
+            Assert.Equal(PartFacts.Counted(5, 5, null), done);
             Assert.True(done.IsComplete);
         }
 
@@ -604,7 +639,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         IOnboardingPartEvaluator[] evaluators =
         [
             new MessagesAiPartEvaluator(_db, _flags.Object),
-            new FiscalDocumentsPartEvaluator(Issuers(), _flags.Object),
+            new FiscalDocumentsPartEvaluator(Billing(), _flags.Object),
             new PartnersPartEvaluator(_flags.Object, Catalog()),
         ];
         var plans = new OnboardingPlanService(
@@ -628,14 +663,23 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
                 .Select(part => (part.State, part.Reason)));
 
         _db.UserNotificationChannelSettings.Add(ChannelSetting(_world.OwnerUserId));
-        _db.OrgFiscalIssuerProfiles.Add(Issuer(DocumentIssuerMode.CasaZen));
+        var profile = Issuer(DocumentIssuerMode.CasaZen);
+        _db.OrgFiscalIssuerProfiles.Add(profile);
         _flags.Setup(f => f.IsEnabled(FeatureFlags.FiscalDocumentIssuance)).Returns(true);
         _db.MarketplaceActivations.Add(Activation(null, MarketplaceActivationKind.Partner, MarketplaceActivationStatus.Active, declared: true));
         await _db.SaveChangesAsync();
         var after = await plans.GetPlanAsync(_world.OrgId, _world.OrgWide, Ct);
         Assert.All(
-            new[] { OnboardingPartKey.MessagesAi, OnboardingPartKey.FiscalDocuments, OnboardingPartKey.Partners },
+            new[] { OnboardingPartKey.MessagesAi, OnboardingPartKey.Partners },
             key => Assert.Equal((OnboardingPartStates.Done, (string?)null, 1, 1), After(after, key)));
+
+        // The invoicing shows its progress by sections and the key of the first missing item as its reason (the profile can issue and its emission was confirmed:
+        // issuer, VAT and emission are done); it is done once every step is confirmed.
+        Assert.Equal((OnboardingPartStates.Open, BillingSetupItemKeys.GuestSeriesUnconfirmed, 3, 5), After(after, OnboardingPartKey.FiscalDocuments));
+        FullySetUp(profile);
+        await _db.SaveChangesAsync();
+        var complete = await plans.GetPlanAsync(_world.OrgId, _world.OrgWide, Ct);
+        Assert.Equal((OnboardingPartStates.Done, (string?)null, 5, 5), After(complete, OnboardingPartKey.FiscalDocuments));
 
         Assert.Empty(OnboardingPartCatalog.RequiredBy(OnboardingPartKey.Partners));
         Assert.True(OnboardingPartCatalog.IsDeferrable(OnboardingPartKey.Partners));
@@ -730,7 +774,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         IFlowReadinessProvider[] flows =
         [
             new MessagesFlowProvider(_db, reader),
-            new DocumentsFlowProvider(Issuers(), _flags.Object),
+            new DocumentsFlowProvider(Billing(), _flags.Object),
             new ReportsFlowProvider(_db, reader),
         ];
         Assert.Equal(CrossEpicFlows, flows.Select(p => p.Flow));
@@ -738,7 +782,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         IOnboardingPartEvaluator[] parts =
         [
             new MessagesAiPartEvaluator(_db, _flags.Object),
-            new FiscalDocumentsPartEvaluator(Issuers(), _flags.Object),
+            new FiscalDocumentsPartEvaluator(Billing(), _flags.Object),
             new PartnersPartEvaluator(_flags.Object, Catalog()),
         ];
         Assert.Equal([OnboardingPartKey.MessagesAi, OnboardingPartKey.FiscalDocuments, OnboardingPartKey.Partners], parts.Select(p => p.Part));
@@ -782,7 +826,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
 
     private OnboardingFlowStatusService FlowStatus(FlowPrerequisiteReader reader)
     {
-        IFlowReadinessProvider[] providers = [new MessagesFlowProvider(_db, reader), new DocumentsFlowProvider(Issuers(), _flags.Object), new ReportsFlowProvider(_db, reader)];
+        IFlowReadinessProvider[] providers = [new MessagesFlowProvider(_db, reader), new DocumentsFlowProvider(Billing(), _flags.Object), new ReportsFlowProvider(_db, reader)];
         return new OnboardingFlowStatusService(_db, providers);
     }
 
@@ -846,7 +890,22 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         ConfirmedAt = HostScopeScenario.Now.UtcDateTime,
     };
 
-    /// <summary>The real issuer service over the same database: the profile the flow «Documents» and the part «Fiscal documents» read, what is missing included.</summary>
+    /// <summary>
+    /// The real billing setup over the same database: the setup the flow «Documents» and the part «Fatturazione» read, with the six contributors of the setup
+    /// (E11/F01/US01/T04).
+    /// </summary>
+    private BillingSetupService Billing() => BillingSetupTestServices.Create(Issuers());
+
+    /// <summary>Every step of the billing setup confirmed on a profile that can issue: both series, the tourist tax (a Swiss issuer; no portal collects it) and the emission.</summary>
+    private static void FullySetUp(OrgFiscalIssuerProfile profile)
+    {
+        profile.GuestDocumentSeries = "{year}";
+        profile.OwnerInvoiceSeries = "PM{year}";
+        profile.ConfirmPlatformCollectedTouristTaxChannels([]);
+        profile.ConfirmedAt = HostScopeScenario.Now.UtcDateTime;
+    }
+
+    /// <summary>The real issuer service over the same database: the profile the billing setup reads, what is missing included.</summary>
     private DocumentIssuerService Issuers()
     {
         var environment = new Mock<IHostEnvironment>();
