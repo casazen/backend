@@ -3959,6 +3959,45 @@
   <data name="RoutineNotFound" xml:space="preserve">
     <value>Routine not found among those of your organization.</value>
   </data>
+  <data name="RoutineNameInvalid" xml:space="preserve">
+    <value>The routine name must be 1 to {0} characters.</value>
+  </data>
+  <data name="RoutineEventTypeInvalid" xml:space="preserve">
+    <value>The event type of the routine is not valid.</value>
+  </data>
+  <data name="RoutineEventNotAvailable" xml:space="preserve">
+    <value>This event is not available for routines yet.</value>
+  </data>
+  <data name="RoutineEventConfigInvalid" xml:space="preserve">
+    <value>The event configuration is not valid: for the events tied to dates, days and hours are whole numbers from 0 to {0}; the other events take no configuration.</value>
+  </data>
+  <data name="RoutineConditionInvalid" xml:space="preserve">
+    <value>The routine condition is not valid.</value>
+  </data>
+  <data name="RoutineActionsInvalid" xml:space="preserve">
+    <value>A routine has 1 to {0} actions, each of a type that exists.</value>
+  </data>
+  <data name="RoutineActionConfigInvalid" xml:space="preserve">
+    <value>The configuration of action {0} ({1}) is not valid.</value>
+  </data>
+  <data name="RoutineActionNotAvailable" xml:space="preserve">
+    <value>An active routine can only have available actions. Not available yet: {0}. You can try them in test mode.</value>
+  </data>
+  <data name="RoutineLimitReached" xml:space="preserve">
+    <value>You already have {0} routines, the most an organization can have.</value>
+  </data>
+  <data name="RoutinePayloadInvalid" xml:space="preserve">
+    <value>The test event must be a JSON object.</value>
+  </data>
+  <data name="RoutineNeedsOrgScope" xml:space="preserve">
+    <value>Routines act on every property of the organization: they need access to the whole organization.</value>
+  </data>
+  <data name="RoutineActiveRequired" xml:space="preserve">
+    <value>Say whether the routine is active.</value>
+  </data>
+  <data name="RoutineTestModeRequired" xml:space="preserve">
+    <value>Say whether the routine is in test mode.</value>
+  </data>
   <data name="Only campaigns waiting for approval can be approved" xml:space="preserve">
     <value>Only campaigns waiting for approval can be approved.</value>
   </data>

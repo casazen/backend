@@ -1,3 +1,4 @@
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Models;
 
 namespace Casazen.Core.Services;
@@ -59,6 +60,23 @@ public static class RoutineActionRules
 
         text = written;
         return true;
+    }
+
+    /// <summary>
+    /// Whether the configuration of <paramref name="action"/> is one its type accepts: a <c>Wait</c> with a delay <see cref="WaitDelay"/> reads, a
+    /// <c>CreateActivity</c> that <see cref="TryReadActivity"/> reads; the other types take any object (their own rules arrive with their implementation).
+    /// What the API saves is what the engine can run.
+    /// </summary>
+    public static bool IsValidConfig(RoutineAction action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+
+        return action.Type switch
+        {
+            RoutineActionType.Wait => WaitDelay(action) is not null,
+            RoutineActionType.CreateActivity => TryReadActivity(action, out _, out _),
+            _ => true,
+        };
     }
 
     /// <summary>A member that is missing counts 0; one that is there must be a whole number of 0 or more.</summary>

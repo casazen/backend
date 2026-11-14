@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -35,6 +36,7 @@ namespace Casazen.Infrastructure.Jobs;
 /// created after it) is not emitted late.</item>
 /// <item><b>Never twice</b>: the dedup key names the due hour (<see cref="TimeTrigger.DedupKey"/>); a run skips the keys already
 /// written, and the unique index of the org refuses a key another run wrote meanwhile.</item>
+/// <item><b>Behind <c>Features:Routines</c></b> (E01/F04/US01/T03): with the module closed a run writes nothing.</item>
 /// <item>A system job over every org (<c>IgnoreQueryFilters([TenantQueryFilter])</c>): each event carries the org of its booking.
 /// The payload holds ids, the kind and the offset, no personal data (ADR-022-R21).</item>
 /// </list>
@@ -44,6 +46,7 @@ public class TimeEventEmitterJob(
     AppDbContext db,
     IDomainEventRecorder recorder,
     IOptions<RoutineOptions> options,
+    IFeatureFlags featureFlags,
     TimeProvider timeProvider,
     ILogger<TimeEventEmitterJob> logger)
 {
@@ -60,6 +63,13 @@ public class TimeEventEmitterJob(
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
     public async Task ExecuteAsync(CancellationToken cancellationToken)
     {
+        // The module is closed (Features:Routines): nothing is written to the outbox, whatever routines the orgs have saved.
+        if (!featureFlags.IsEnabled(FeatureFlags.Routines))
+        {
+            logger.LogDebug("Routines are off (Features:Routines): no time trigger is written");
+            return;
+        }
+
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var twoIntervals = TimeSpan.FromMinutes(2 * options.Value.EffectiveEvaluationIntervalMinutes);
         var windowStart = now - (twoIntervals > CatchUpWindow ? twoIntervals : CatchUpWindow);

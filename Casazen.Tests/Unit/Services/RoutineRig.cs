@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Models;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -41,8 +42,8 @@ internal sealed class RoutineRig
 
     public Mock<IBackgroundJobClient> Jobs { get; }
 
-    /// <summary>The feature flags the engine reads: all off until a test turns one on.</summary>
-    public TestFeatureFlags Flags { get; } = new();
+    /// <summary>The feature flags the engine reads: the module is on (<see cref="FeatureFlags.Routines"/>), every other flag off until a test turns it on.</summary>
+    public TestFeatureFlags Flags { get; } = new(FeatureFlags.Routines);
 
     /// <summary>The jobs the engine scheduled, in order.</summary>
     public IReadOnlyList<(Job Job, IState State)> Scheduled => _scheduled;
@@ -61,6 +62,10 @@ internal sealed class RoutineRig
             time,
             NullLogger<RoutineService>.Instance);
     }
+
+    /// <summary>The management of the routines (the API's service) over <paramref name="db"/>, with the flags of the rig.</summary>
+    public RoutineManagementService Management(AppDbContext db) =>
+        new(db, new ConditionEvaluator(NullLogger<ConditionEvaluator>.Instance), Flags, NullLogger<RoutineManagementService>.Instance);
 
     /// <summary>Triggers the routines of <paramref name="eventType"/> for an event in its own unit of work.</summary>
     public async Task TriggerAsync(Guid orgId, RoutineEventType eventType, object payload, string? eventId = null, TimeProvider? clock = null)

@@ -272,11 +272,11 @@ public class RoutineActionsTests
         Assert.Empty(await TodosAsync(rig));
     }
 
-    /// <summary>The number of a member is never stored (the rows keep the name) but two members never share one: 90 is the number of its own.</summary>
+    /// <summary>The number of a member is never stored (the rows keep the name) but two members never share one: 100 is the number of its own (90 is taken by the tourist tax refunds of E25).</summary>
     [Fact]
     public void ActivityType_RoutineTask_HasANumberOfItsOwn()
     {
-        Assert.Equal(90, (int)ActivityType.RoutineTask);
+        Assert.Equal(100, (int)ActivityType.RoutineTask);
         var numbers = Enum.GetValues<ActivityType>().Select(type => (int)type).ToList();
         Assert.Equal(numbers.Count, numbers.Distinct().Count());
     }

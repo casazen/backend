@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Events;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Events;
@@ -202,7 +203,7 @@ public class RoutineEventHandlerTests
                 new ConditionEvaluator(NullLogger<ConditionEvaluator>.Instance),
                 new InternalActivityService(db, NullLogger<InternalActivityService>.Instance),
                 Mock.Of<IBackgroundJobClient>(),
-                new TestFeatureFlags(),
+                new TestFeatureFlags(FeatureFlags.Routines),
                 TimeProvider.System,
                 NullLogger<RoutineService>.Instance),
             NullLogger<RoutineEventHandler>.Instance);

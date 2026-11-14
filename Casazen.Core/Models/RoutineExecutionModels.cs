@@ -35,6 +35,30 @@ public static class RoutineCodes
     /// <summary><c>CreateActivity</c> needs the booking of the event: the event names none, or the org has no such booking.</summary>
     public const string ActivityNeedsBooking = "routine_activity_needs_booking";
 
+    /// <summary>API, 422: the name of a routine is empty or longer than <see cref="RoutineLimits.MaxNameLength"/>.</summary>
+    public const string NameInvalid = "routine_name_invalid";
+
+    /// <summary>API, 422: the event type is not a member of <see cref="Casazen.Core.Entities.Enums.RoutineEventType"/>.</summary>
+    public const string EventTypeInvalid = "routine_event_type_invalid";
+
+    /// <summary>API, 422: the event type exists but nothing starts a routine on it yet (<c>WeeklyRecurrence</c>: no job writes it).</summary>
+    public const string EventNotAvailable = "routine_event_not_available";
+
+    /// <summary>API, 422: the configuration of the event is not valid for its type (days and hours 0 to 365 for the time triggers, nothing for the others).</summary>
+    public const string EventConfigInvalid = "routine_event_config_invalid";
+
+    /// <summary>API, 422: the configuration of an action is not valid for its type (a wait out of range, a To do with no text…).</summary>
+    public const string ActionConfigInvalid = "routine_action_config_invalid";
+
+    /// <summary>API, 409: the org already has <see cref="RoutineLimits.MaxRoutinesPerOrg"/> routines.</summary>
+    public const string LimitReached = "routine_limit_reached";
+
+    /// <summary>API, 422: the sample payload of a simulation is not a JSON object.</summary>
+    public const string SimulationPayloadInvalid = "routine_payload_invalid";
+
+    /// <summary>API, 403: a routine acts on every property of the org, so who changes one reaches the whole org.</summary>
+    public const string NeedsOrgScope = "routines_need_org_scope";
+
     /// <summary>Guardrail (ADR-022-R11): an access code goes out only once the identity of the guest is verified.</summary>
     public const string AccessCodeNeedsIdVerification = "access_code_needs_id_verification";
 

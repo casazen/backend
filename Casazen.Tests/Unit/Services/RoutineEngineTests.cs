@@ -635,6 +635,46 @@ public class RoutineEngineTests
         Assert.Equal(RoutineCodes.NotFound, error.Code);
     }
 
+    // ─── The flag (E01/F04/US01/T03) ─────────────────────────────────────────────
+
+    /// <summary>With <c>Features:Routines</c> off the module is closed: the events of the bus start no routine and nothing is recorded.</summary>
+    [Fact]
+    public async Task RoutinesFlagOff_TheEventsStartNothing()
+    {
+        var rig = new RoutineRig();
+        rig.Flags.Set(Casazen.Core.Features.FeatureFlags.Routines, false);
+        var booking = await rig.SeedBookingAsync(OrgA);
+        await rig.SeedRoutineAsync(OrgA, RoutineEventType.BookingConfirmed, WaitAnHour);
+
+        await rig.TriggerAsync(OrgA, RoutineEventType.BookingConfirmed, RoutineRig.PayloadOf(booking));
+
+        Assert.Empty(await rig.ExecutionsAsync());
+        Assert.Empty(rig.Scheduled);
+    }
+
+    /// <summary>A wait that comes due while the module is closed does not continue: the execution ends, and says why, instead of waiting for ever.</summary>
+    [Fact]
+    public async Task RoutinesFlagOff_AWaitThatComesDue_EndsTheExecutionFailed()
+    {
+        var rig = new RoutineRig();
+        var booking = await rig.SeedBookingAsync(OrgA);
+        await rig.SeedRoutineAsync(
+            OrgA,
+            RoutineEventType.BookingConfirmed,
+            RoutineRig.Actions(("Wait", """{"hours":1}"""), ("NotifyOwner", null)));
+        await rig.TriggerAsync(OrgA, RoutineEventType.BookingConfirmed, RoutineRig.PayloadOf(booking));
+        var waiting = await rig.SingleExecutionAsync();
+        rig.Flags.Set(Casazen.Core.Features.FeatureFlags.Routines, false);
+
+        await rig.ResumeAsync(waiting.Id, new FixedTimeProvider(RoutineRig.Now.AddHours(1)));
+
+        var ended = await rig.ExecutionAsync(waiting.Id);
+        Assert.Equal(RoutineExecutionOutcomes.Failed, ended.Outcome);
+        var result = RoutineRig.ResultOf(ended);
+        Assert.Equal(RoutineCodes.Inactive, result.Code);
+        Assert.Single(result.Actions);
+    }
+
     // ─── The job ─────────────────────────────────────────────────────────────────
 
     [Fact]

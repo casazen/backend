@@ -486,6 +486,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICampaignService, CampaignService>();
         // NF-26: Automation routines (ADR-022).
         services.AddScoped<IRoutineService, RoutineService>();
+        // E01/F04/US01/T03: the routines of an org for the routines page (api/routines, behind Features:Routines); the engine above runs them.
+        services.AddScoped<IRoutineManagementService, RoutineManagementService>();
         // ADR-022: domain events are recorded in the outbox of the current unit of work (R1) and published by the dispatcher on the
         // in-process bus, which runs each handler in its own scope under the event's org (R3, R6).
         services.AddScoped<IDomainEventRecorder, DomainEventRecorder>();

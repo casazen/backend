@@ -1,6 +1,7 @@
 using System.Reflection;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Options;
 using Casazen.Infrastructure.Data;
@@ -8,6 +9,7 @@ using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Jobs;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit.BackgroundJobs;
+using Casazen.Tests.Unit.Services;
 using Casazen.Web.BackgroundJobs;
 using Hangfire;
 using Hangfire.Common;
@@ -70,6 +72,21 @@ public class TimeEventEmitterJobTests
         Assert.Equal(
             $$"""{"kind":"BeforeCheckIn","offset":48,"entityId":"{{stay.Id}}","bookingId":"{{stay.Id}}","propertyId":"{{stay.PropertyId}}"}""",
             events.OrderBy(e => e.OccurredAt).First().PayloadJson);
+    }
+
+    /// <summary>E01/F04/US01/T03: with <c>Features:Routines</c> off the module is closed and a run writes nothing, whatever routines the orgs saved.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WithTheRoutinesFlagOff_WritesNothing()
+    {
+        await SeedRoutineAsync(OrgA, RoutineEventType.BeforeCheckin, """{ "days": 2 }""");
+        await SeedBookingAsync(OrgA, BookingStatus.Confirmed);
+
+        await using (var db = NewDb())
+            await Job(db, TwoDaysBeforeCheckIn.AddMinutes(2), routinesOn: false).ExecuteAsync(CancellationToken.None);
+        Assert.Empty(await EventsAsync());
+
+        await RunAsync(TwoDaysBeforeCheckIn.AddMinutes(2));
+        Assert.Single(await EventsAsync());
     }
 
     [Fact]
@@ -324,13 +341,14 @@ public class TimeEventEmitterJobTests
         await Job(db, utcNow).ExecuteAsync(CancellationToken.None);
     }
 
-    private static TimeEventEmitterJob Job(AppDbContext db, DateTime utcNow)
+    private static TimeEventEmitterJob Job(AppDbContext db, DateTime utcNow, bool routinesOn = true)
     {
         var clock = new FixedTimeProvider(new DateTimeOffset(utcNow, TimeSpan.Zero));
         return new TimeEventEmitterJob(
             db,
             new DomainEventRecorder(db, NullTenantContext.Instance, clock),
             Options.Create(new RoutineOptions()),
+            routinesOn ? new TestFeatureFlags(FeatureFlags.Routines) : new TestFeatureFlags(),
             clock,
             NullLogger<TimeEventEmitterJob>.Instance);
     }

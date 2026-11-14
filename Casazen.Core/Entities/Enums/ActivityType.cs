@@ -151,7 +151,7 @@ public enum ActivityType
     /// A task a routine of the host raised (E01/F04/US01/T02, NF-21): the action <c>CreateActivity</c> of a routine, about the booking of the event (entity
     /// type <c>Booking</c>), leading to the booking (<see cref="ActivityAction.ReviewBooking"/>), with the words the host wrote in the routine as its
     /// reason. One open task for each booking, whatever the number of routines and events that ask for it; it closes when the host closes it. The number
-    /// 90 keeps clear of the values the tasks that run in parallel append after 80.
+    /// 100 keeps clear of the values the tasks that run in parallel append after 80 (the tourist tax refunds of E25 take the numbers from 90).
     /// </summary>
-    RoutineTask = 90,
+    RoutineTask = 100,
 }

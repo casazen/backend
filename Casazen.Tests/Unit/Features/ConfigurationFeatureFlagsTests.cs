@@ -101,6 +101,8 @@ public class ConfigurationFeatureFlagsTests
                 "MessageAssistant",
                 // E14/F01/US01/T01: the invoices of the property manager to the owners made from the statement versions, off until the accountant confirms the ⚖ choices.
                 "OwnerInvoicing",
+                // E01/F04/US01/T03: the automation routines (API, engine, time triggers), off until the actions a host needs are real.
+                "Routines",
             },
             FeatureFlags.All);
     }

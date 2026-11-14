@@ -32,6 +32,8 @@ namespace Casazen.Infrastructure.Services;
 /// <see cref="RoutineDelayJob.ResumeRoutineAsync"/> at that time; <see cref="ResumeAsync"/> continues from what was saved, once.</item>
 /// <item><b>Failures</b>: an expected one is the <c>failed</c> result of an action; an unexpected one closes the execution with
 /// <see cref="RoutineCodes.ActionError"/> and is rethrown, so the dispatcher records it on the event (ADR-022-R5).</item>
+/// <item><b>The flag</b> <c>Features:Routines</c> closes the module (E01/F04/US01/T03): the events start nothing, and a wait that comes due ends its
+/// execution <c>Failed</c> with <see cref="RoutineCodes.Inactive"/>.</item>
 /// <item>The org is the one of the routine in every query (the tenant filter of the scope is a second wall); the job that resumes a wait has no tenant
 /// and relies on the first.</item>
 /// </list>
@@ -74,6 +76,13 @@ public class RoutineService(
     {
         ArgumentNullException.ThrowIfNull(routineFilter);
         ArgumentException.ThrowIfNullOrWhiteSpace(eventId);
+
+        // The module is closed (Features:Routines): the events of the bus start nothing.
+        if (!featureFlags.IsEnabled(FeatureFlags.Routines))
+        {
+            logger.LogDebug("Routines are off: event {EventId} of org {OrgId} starts no routine", eventId, orgId);
+            return;
+        }
 
         var data = RoutinePayload.Normalize(payload);
 
@@ -124,10 +133,11 @@ public class RoutineService(
         if (waited >= 0)
             results[waited] = results[waited] with { Outcome = RoutineActionOutcomes.Done };
 
-        if (execution.Routine is not { Active: true } routine)
+        // A routine deactivated meanwhile, or the module closed (Features:Routines), does not continue: the execution ends and says so.
+        if (!featureFlags.IsEnabled(FeatureFlags.Routines) || execution.Routine is not { Active: true } routine)
         {
             logger.LogInformation(
-                "Routine {RoutineId} is not active any more: execution {ExecutionId} ends instead of continuing",
+                "Routine {RoutineId} is not active any more (or routines are off): execution {ExecutionId} ends instead of continuing",
                 execution.RoutineId, executionId);
             await EndAsync(
                 execution,
