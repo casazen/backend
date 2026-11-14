@@ -48,12 +48,22 @@ public sealed class FiscalDocumentSettingsDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public TaxRuleDto? Rule { get; init; }
 
+    /// <param name="view">The setting.</param>
+    /// <param name="casazenIssuanceEnabled">The flag <c>Features:FiscalDocumentIssuance</c>.</param>
+    /// <param name="octorateIssuesAllBookings">The answer to D34.</param>
+    /// <param name="sdiProviderConfigured">The SDI channel is configured in this environment.</param>
+    /// <param name="sdiProviderName">The name of the SDI channel.</param>
+    /// <param name="bankAccountsInClear">
+    /// The caller may change the setting (the whole organization and <c>property.write</c>): it gets the IBAN and the QR-IBAN in full. Any other caller who
+    /// may read the setting gets them masked (<c>ibanMasked</c>, <c>qrIbanMasked</c>).
+    /// </param>
     public static FiscalDocumentSettingsDto From(
         IssuerSettingsView view,
         bool casazenIssuanceEnabled,
         bool octorateIssuesAllBookings,
         bool sdiProviderConfigured,
-        string? sdiProviderName)
+        string? sdiProviderName,
+        bool bankAccountsInClear)
     {
         ArgumentNullException.ThrowIfNull(view);
 
@@ -61,7 +71,7 @@ public sealed class FiscalDocumentSettingsDto
         {
             Mode = view.Mode?.ToString(),
             Regime = view.Regime?.ToString(),
-            Issuer = IssuerDataDto.From(view),
+            Issuer = IssuerDataDto.From(view, bankAccountsInClear),
             ConfirmedAt = view.ConfirmedAt,
             CasazenIssuanceEnabled = casazenIssuanceEnabled,
             OctorateIssuesAllBookings = octorateIssuesAllBookings,
@@ -123,13 +133,24 @@ public sealed class IssuerDataDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? SwissVatNumber { get; init; }
 
-    /// <summary>The IBAN the issuer is paid on (encrypted at rest; shown to the organization, printed on its documents).</summary>
+    /// <summary>
+    /// The IBAN the issuer is paid on (encrypted at rest). In full only for the caller who may change the setting (the whole organization and
+    /// <c>property.write</c>); the others get <see cref="IbanMasked"/>.
+    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Iban { get; init; }
 
-    /// <summary>The QR-IBAN of a Swiss issuer.</summary>
+    /// <summary>The IBAN with only its country, its check digits and its last four characters visible; absent without an IBAN.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? IbanMasked { get; init; }
+
+    /// <summary>The QR-IBAN of a Swiss issuer. In full only for the caller who may change the setting; the others get <see cref="QrIbanMasked"/>.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? QrIban { get; init; }
+
+    /// <summary>The QR-IBAN masked as <see cref="IbanMasked"/>; absent without a QR-IBAN.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? QrIbanMasked { get; init; }
 
     /// <summary><c>Standard</c> or <c>ExemptArt10</c> (⚖ I1).</summary>
     public string StayVatTreatment { get; init; } = nameof(Casazen.Core.Entities.Enums.StayVatTreatment.Standard);
@@ -160,7 +181,8 @@ public sealed class IssuerDataDto
 
     public bool VirtualStampConfirmed { get; init; }
 
-    public static IssuerDataDto From(IssuerSettingsView view)
+    /// <summary>The data of the setting; the IBAN and the QR-IBAN in full only when <paramref name="bankAccountsInClear"/>, masked otherwise.</summary>
+    public static IssuerDataDto From(IssuerSettingsView view, bool bankAccountsInClear)
     {
         var issuer = view.Issuer;
         return new IssuerDataDto
@@ -180,8 +202,10 @@ public sealed class IssuerDataDto
             FiscalCode = view.FiscalCode,
             VatRegistered = issuer.VatRegistered,
             SwissVatNumber = issuer.SwissVatNumber,
-            Iban = issuer.Iban,
-            QrIban = issuer.QrIban,
+            Iban = bankAccountsInClear ? issuer.Iban : null,
+            IbanMasked = IssuerBankAccounts.Mask(issuer.Iban),
+            QrIban = bankAccountsInClear ? issuer.QrIban : null,
+            QrIbanMasked = IssuerBankAccounts.Mask(issuer.QrIban),
             StayVatTreatment = issuer.StayVatTreatment.ToString(),
             CleaningFeeTreatment = issuer.CleaningFeeTreatment.ToString(),
             GuestDocumentSeries = issuer.GuestDocumentSeries,

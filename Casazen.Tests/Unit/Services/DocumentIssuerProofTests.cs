@@ -202,6 +202,73 @@ public class DocumentIssuerProofTests
     }
 
     /// <summary>
+    /// PROOF TEST: privacy rule. The IBAN and the QR-IBAN of the issuer are shown in full only to the caller who may change the setting (the whole
+    /// organization and <c>property.write</c>): a collaborator who reaches only some of the properties and a role of the whole organization that cannot write
+    /// read the setting with the accounts masked, and nothing of the full numbers is in their answer.
+    /// </summary>
+    [Fact]
+    public async Task FiscalDocumentSettings_BankAccounts_AreInClearOnlyForWhoMayChangeTheSetting_Test()
+    {
+        const string iban = "CH9300762011623852957";
+        const string qrIban = "CH4431999123000889012";
+        var databaseName = $"document-issuer-bank-{Guid.NewGuid()}";
+        await using (var system = NewDb(databaseName, tenant: null))
+        {
+            system.Orgs.Add(NewOrg(OrgA, "casa-rossi"));
+            var profile = NewProfile(OrgA, DocumentIssuerMode.CasaZen, "Casa Rossi S.r.l.");
+            profile.Iban = iban;
+            profile.QrIban = qrIban;
+            system.OrgFiscalIssuerProfiles.Add(profile);
+            await system.SaveChangesAsync();
+        }
+
+        await using var db = NewDb(databaseName, new FixedTenantContext(OrgA));
+        var sut = Service(db, issuanceOn: true);
+        var resolver = new Mock<IOrgContextResolver>();
+        resolver.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(OrgA);
+        var lookup = new Mock<IHostResourceLookup>();
+
+        // A collaborator who reaches only some of the properties reads the setting, the accounts masked.
+        var staff = Controller(sut, resolver, lookup, HostAuthorizationTestHarness.User("auth0|staff-a", "Staff"));
+        var partial = Assert.IsType<FiscalDocumentSettingsDto>(Assert.IsType<OkObjectResult>((await staff.GetSettings(CancellationToken.None)).Result).Value);
+        AssertMasked(partial);
+
+        // A role of the whole organization that cannot write reads them masked too.
+        var readOnly = Controller(
+            sut, resolver, lookup, HostAuthorizationTestHarness.User("auth0|manager-a", "PropertyManager"), (_, permission) => permission != "property.write");
+        AssertMasked(Assert.IsType<FiscalDocumentSettingsDto>(Assert.IsType<OkObjectResult>((await readOnly.GetSettings(CancellationToken.None)).Result).Value));
+
+        // The manager of the whole organization, who may change the setting, reads them in full and gets them back when it saves.
+        var manager = Controller(sut, resolver, lookup, HostAuthorizationTestHarness.User("auth0|manager-a", "PropertyManager"));
+        var full = Assert.IsType<FiscalDocumentSettingsDto>(Assert.IsType<OkObjectResult>((await manager.GetSettings(CancellationToken.None)).Result).Value);
+        Assert.Equal(iban, full.Issuer.Iban);
+        Assert.Equal(qrIban, full.Issuer.QrIban);
+        Assert.Equal("CH93…2957", full.Issuer.IbanMasked);
+        var saved = await manager.PutSettings(
+            new SaveFiscalDocumentSettingsRequest
+            {
+                Regime = "VatOrdinary",
+                Issuer = new SaveIssuerDataRequest { LegalName = "Casa Rossi S.r.l.", Iban = iban, QrIban = qrIban },
+            },
+            CancellationToken.None);
+        var answer = Assert.IsType<FiscalDocumentSettingsDto>(Assert.IsType<OkObjectResult>(saved.Result).Value);
+        Assert.Equal(iban, answer.Issuer.Iban);
+        Assert.Equal(qrIban, answer.Issuer.QrIban);
+
+        void AssertMasked(FiscalDocumentSettingsDto settings)
+        {
+            Assert.Equal("Casa Rossi S.r.l.", settings.Issuer.LegalName);
+            Assert.Null(settings.Issuer.Iban);
+            Assert.Null(settings.Issuer.QrIban);
+            Assert.Equal("CH93…2957", settings.Issuer.IbanMasked);
+            Assert.Equal("CH44…9012", settings.Issuer.QrIbanMasked);
+            var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            Assert.DoesNotContain("00762011623852", json, StringComparison.Ordinal);
+            Assert.DoesNotContain("31999123000889", json, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
     /// PROOF TEST: data rule. The modes Octorate and accountant were retired on 2026-11-14: a PUT that asks for either answers 422
     /// <c>issuer_mode_retired</c> and changes nothing of the stored profile; the old name of the mode CasaZen is still read as CasaZen.
     /// </summary>
@@ -394,7 +461,8 @@ public class DocumentIssuerProofTests
         DocumentIssuerService service,
         Mock<IOrgContextResolver> resolver,
         Mock<IHostResourceLookup> lookup,
-        System.Security.Claims.ClaimsPrincipal user)
+        System.Security.Claims.ClaimsPrincipal user,
+        Func<string, string, bool>? hasPermission = null)
     {
         var sdi = new Mock<ISdiEInvoiceProvider>();
         sdi.SetupGet(p => p.IsConfigured).Returns(false);
@@ -405,7 +473,7 @@ public class DocumentIssuerProofTests
             resolver.Object,
             HostAuthorizationTestHarness.ScopeResolver(),
             lookup.Object,
-            HostAuthorizationTestHarness.Create(OrgA),
+            HostAuthorizationTestHarness.Create(OrgA, hasPermission),
             new ConfigurationFeatureFlags(configuration),
             Microsoft.Extensions.Options.Options.Create(new FiscalDocumentRulesOptions()),
             sdi.Object,

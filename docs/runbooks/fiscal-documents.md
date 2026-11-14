@@ -37,7 +37,9 @@ One profile per organization, saved by the wizard (`PUT api/fiscal/documents/set
   5, 4, modulus 11, a result of 10 is never assigned; example `CHE-109.322.551`). The Italian codes of a Swiss profile and the UID of an Italian one are
   dropped.
 - **Bank accounts** `Iban` (mod 97, not a QR-IBAN) and `QrIban` (an IBAN of CH or LI whose institution id is 30000 to 31999), **encrypted at rest**
-  (`Casazen.OrgFiscalIssuerProfile`).
+  (`Casazen.OrgFiscalIssuerProfile`). The answer of `GET api/fiscal/documents/settings` carries them in full only for the caller who may change the setting
+  (the whole organization and `property.write`; so does the answer of the save): any other caller who reads it, a collaborator «Solo alcuni» or a role that
+  cannot write, gets `ibanMasked` and `qrIbanMasked` (`CH93…2957`) and no part of the full numbers.
 - **Treatments** (⚖, prudent configurable defaults): `StayVatTreatment` `Standard` (default) or `ExemptArt10` (I1); `CleaningFeeTreatment` `FollowsStay`
   (default, C2) or `Service`.
 - **Series** `GuestDocumentSeries` (default: the year) and `OwnerInvoiceSeries` (default `PM{year}`): at most 10 characters, letters, digits, `. _ / -`

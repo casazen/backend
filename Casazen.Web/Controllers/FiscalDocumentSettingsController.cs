@@ -40,7 +40,9 @@ public class FiscalDocumentSettingsController(
     /// <summary>
     /// The setting of the organization: <c>mode</c> (absent until it chooses), <c>regime</c>, the data of the issuer, <c>confirmedAt</c>,
     /// <c>casazenIssuanceEnabled</c> (the flag), <c>octorateIssuesAllBookings</c> (D34), <c>octorateConnected</c>, <c>sdi</c>
-    /// (<c>providerConfigured</c>, <c>providerName</c>), the <c>missingFields</c> the mode CasaZen would still need and the <c>rule</c> of the regime.
+    /// (<c>providerConfigured</c>, <c>providerName</c>), the <c>missingFields</c> the mode CasaZen would still need and the <c>rule</c> of the regime. The
+    /// IBAN and the QR-IBAN come in full only for the caller who may change the setting (the whole organization and <c>property.write</c>); for any other
+    /// they are masked (<c>ibanMasked</c>, <c>qrIbanMasked</c>).
     /// </summary>
     [HttpGet("settings")]
     [ProducesResponseType(typeof(FiscalDocumentSettingsDto), StatusCodes.Status200OK)]
@@ -50,7 +52,11 @@ public class FiscalDocumentSettingsController(
         if (orgId is null)
             return Unauthorized();
 
-        return Ok(ToDto(await issuer.GetSettingsAsync(orgId.Value, cancellationToken)));
+        // A caller who may read the setting sees who the issuer is; the bank accounts of the organization (IBAN, QR-IBAN) in full only the one who may change
+        // the setting (the whole organization and property.write): any other, a collaborator «Solo alcuni» or a read-only role included, gets them masked.
+        var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
+        var bankAccountsInClear = scope is { IsOrgWide: true } && (await authorizationService.AuthorizeAsync(User, CasazenPolicies.PropertyWrite)).Succeeded;
+        return Ok(ToDto(await issuer.GetSettingsAsync(orgId.Value, cancellationToken), bankAccountsInClear));
     }
 
     /// <summary>
@@ -83,8 +89,9 @@ public class FiscalDocumentSettingsController(
                 DocumentIssuerErrorCodes.MessageKeyOf(DocumentIssuerErrorCodes.NeedsWholeOrg));
         }
 
+        // The caller changes the setting (the whole organization and property.write): it gets the bank accounts back as it saved them.
         var saved = await issuer.SaveSettingsAsync(orgId.Value, request.ToCommand(), User.GetUserId(), cancellationToken);
-        return Ok(ToDto(saved));
+        return Ok(ToDto(saved, bankAccountsInClear: true));
     }
 
     /// <summary>
@@ -130,11 +137,12 @@ public class FiscalDocumentSettingsController(
         return Ok(new IssuerPreviewDto(bookingId, decision.Kind.ToString(), decision.Reason, settings.Rule is null ? null : TaxRuleDto.From(settings.Rule)));
     }
 
-    private FiscalDocumentSettingsDto ToDto(IssuerSettingsView view) =>
+    private FiscalDocumentSettingsDto ToDto(IssuerSettingsView view, bool bankAccountsInClear) =>
         FiscalDocumentSettingsDto.From(
             view,
             featureFlags.IsEnabled(FeatureFlags.FiscalDocumentIssuance),
             options.Value.OctorateIssuesAllBookings,
             sdiProvider.IsConfigured,
-            sdiProvider.Name);
+            sdiProvider.Name,
+            bankAccountsInClear);
 }
