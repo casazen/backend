@@ -4,9 +4,10 @@ namespace Casazen.Core.Services;
 
 /// <summary>
 /// The import of the listings that already exist on OTAs or in another channel manager, the <c>onOtas</c> scenario of the connect wizard
-/// (E02/F01/US03, D6, ADR-023, ADR-027). It guides the access to each channel through the Octorate panel, imports the existing inventory
-/// keeping its identifiers, hands the imported listings to <see cref="IChannelMappingService"/> and goes on with the reservations and the
-/// calendars. It never creates or publishes a replacement listing on Octorate or on an OTA.
+/// (E02/F01/US03, D6, ADR-023, ADR-027). It guides the access to each channel through the Octorate panel, or connects the channel from CasaZen
+/// when the portal needs only the id of the property on it («Collega da CasaZen», <see cref="ConnectChannelAsync"/>), imports the existing
+/// inventory keeping its identifiers, hands the imported listings to <see cref="IChannelMappingService"/> and goes on with the reservations and
+/// the calendars. It never creates or publishes a replacement listing on Octorate or on an OTA.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -17,8 +18,12 @@ namespace Casazen.Core.Services;
 /// <see cref="OctorateInventoryImportStatus.NeedsAttention"/> or <see cref="OctorateInventoryImportStatus.Failed"/> with a stable code
 /// (<c>OctorateInventoryErrorCodes</c>). An operation not verified on a real property for the channel (<c>Octorate:ExistingInventory</c>) is
 /// not called and stops with <c>d6_operation_unverified</c>. There is no fallback to <see cref="OctorateInventoryScenario.NewInventory"/>.</item>
-/// <item><b>No secret.</b> The access to a channel is given in the Octorate panel: no username, password, cookie or OTA token enters CasaZen,
-/// and no response carries one, nor the address of the panel once the access has started.</item>
+/// <item><b>One creation, on the host's word.</b> The only thing this service ever creates is the connection of a channel on an accommodation
+/// that the host asks for with «Collega», for a portal that needs only the id of the property on it, and never a second connection of the same
+/// channel on an accommodation. No state, error or retry of the import creates a property, a listing or a replacement connection.</item>
+/// <item><b>No secret.</b> The access to a channel is given in the Octorate panel, or on the extranet of the OTA after «Collega»: no username,
+/// password, cookie or OTA token enters CasaZen, and no response carries one, nor the address of the panel once the access has started. The id
+/// of a property on a portal is not a secret (the portal shows it to the host): it goes to Octorate in the create and is not kept.</item>
 /// <item><b>One org, and the reach of the caller.</b> Every method reads only rows of the caller's org. A batch is within the reach of its
 /// caller: the whole inventory needs a caller who reaches the whole org, and the properties of a batch (or of its group) must be reachable
 /// by whoever acts on it. An id of another org is the same 404 as an unknown one. A caller who does not reach the whole org sees, decides and
@@ -52,6 +57,29 @@ public interface IExistingInventoryImportService
     /// <see cref="OctorateInventoryImportStatus.AwaitingChannelAccess"/>. CasaZen accepts no credential.
     /// </summary>
     Task<ChannelAccessStartResult> StartChannelAccessAsync(ExistingInventoryCaller caller, Guid batchId, string channelCode, CancellationToken ct);
+
+    /// <summary>
+    /// «Collega da CasaZen» (decision of the product owner, 14/11/2026): for a portal whose connection needs only the id of the property on it
+    /// (<see cref="MarketplaceCardRules.ConnectsByPropertyId"/>), creates on Octorate, on the host's explicit request, the connection of the
+    /// channel on each accommodation of <paramref name="accommodations"/> that has none (the pulls off, no content pushed), records on the channel
+    /// of the batch every accommodation connected or found already connected, then starts the access step as
+    /// <see cref="StartChannelAccessAsync"/> does. The host's only step left is to approve Octorate on the extranet of the OTA: the step is verified
+    /// when Octorate shows one of those connections <c>ENABLED</c>. An accommodation that already has a connection of the channel never gets a
+    /// second one. A channel whose access is already given is returned as it is.
+    /// </summary>
+    /// <remarks>
+    /// 422 <c>existing_inventory_connect_empty</c> (no accommodation, or more than 50), <c>existing_inventory_hotel_id_invalid</c> (an id of 1 to 64
+    /// letters, digits, dots, underscores or hyphens is needed, and each accommodation once), <c>existing_inventory_accommodation_unknown</c> (not one
+    /// of the org's accommodations CasaZen knows, a listing the person rejected, or, for a batch of named properties or of a group, not confirmed to
+    /// one of its properties) and <c>existing_inventory_connect_not_supported</c> (the portal needs more than the id); 404 for a batch or a channel
+    /// the caller does not have. A refusal of Octorate is its own error, as for every other call, and the connections made before it stay recorded.
+    /// </remarks>
+    Task<ExistingInventoryBatchView> ConnectChannelAsync(
+        ExistingInventoryCaller caller,
+        Guid batchId,
+        string channelCode,
+        IReadOnlyCollection<ExistingInventoryConnectTarget> accommodations,
+        CancellationToken ct);
 
     /// <summary>
     /// The person says the access was given. Accepted only after the check stored «could not tell» for the channel; refused (409
@@ -107,6 +135,14 @@ public interface IExistingInventoryImportService
 /// <param name="UserId">The caller's id.</param>
 /// <param name="TokenRoles">The roles of the caller's token, exactly as the web layer decided them; <c>null</c> = none.</param>
 public sealed record ExistingInventoryCaller(Guid OrgId, string UserId, IReadOnlySet<string>? TokenRoles = null);
+
+/// <summary>One accommodation of a «Collega da CasaZen»: where the connection is created and the id of the property on the portal.</summary>
+/// <param name="AccommodationId">The Octorate accommodation the connection of the channel is created on: one of the org's that CasaZen knows.</param>
+/// <param name="HotelId">
+/// The id of the property on the portal (<c>hotelId</c>: the «ID struttura» of Booking.com), 1 to 64 letters, digits, dots, underscores or hyphens
+/// once trimmed. Not a secret: the portal shows it to the host on its extranet. It goes to Octorate in the create and is not kept.
+/// </param>
+public sealed record ExistingInventoryConnectTarget(string? AccommodationId, string? HotelId);
 
 /// <summary>
 /// The guard that keeps existing inventory from being created again (E02/F01/US03, consumed by E02/F03/US01/T06): a listing is created on
@@ -214,7 +250,10 @@ public sealed record ExistingInventoryBatchView(
     DateTime? CompletedAt,
     IReadOnlyList<ExistingInventoryChannelView> Channels);
 
-/// <summary>A channel of a batch: where it stands, the counts of its listings and the listings themselves.</summary>
+/// <summary>
+/// A channel of a batch: where it stands, the counts of its listings and the listings themselves. <see cref="ConnectedAccommodationIds"/> are the
+/// Octorate accommodations «Collega da CasaZen» connected to the channel for the batch, or found already connected (ordered, empty when none).
+/// </summary>
 public sealed record ExistingInventoryChannelView(
     string ChannelCode,
     OctorateInventoryImportStatus Status,
@@ -225,7 +264,8 @@ public sealed record ExistingInventoryChannelView(
     DateTime? CompletedAt,
     ExistingInventoryCounts Counts,
     ExistingInventoryCapabilities Capabilities,
-    IReadOnlyList<ExistingInventoryItemView> Items);
+    IReadOnlyList<ExistingInventoryItemView> Items,
+    IReadOnlyList<string> ConnectedAccommodationIds);
 
 /// <summary>The counts of the listings of a channel.</summary>
 /// <param name="Found">Listings with a connection to the channel.</param>

@@ -65,9 +65,10 @@ internal sealed class OnboardingPanelStepConfiguration : IEntityTypeConfiguratio
 
 /// <summary>
 /// A «Do it for me» request (NF-107, UX-15): going with its property (cascade, when it has one) and carrying the org (TN-2, restrict). The
-/// partial unique index holds one OPEN request (Requested or InProgress) for each org, part and property, with null-equal semantics, so a
-/// request about the whole org is held once too; a closed request (Done, Cancelled) is left out of it and a new one can follow. The filter
-/// repeats the numbers of <see cref="OnboardingAssistStatus"/>, which never change.
+/// partial unique index holds one OPEN request (Requested or InProgress) for each org, part, property and channel, with null-equal semantics, so
+/// a request about the whole org, or of a context with no channel, is held once too, and each portal of a channel access has its own; a closed
+/// request (Done, Cancelled) is left out of it and a new one can follow. The filter repeats the numbers of <see cref="OnboardingAssistStatus"/>,
+/// which never change.
 /// </summary>
 internal sealed class OnboardingAssistRequestConfiguration : IEntityTypeConfiguration<OnboardingAssistRequest>
 {
@@ -79,7 +80,7 @@ internal sealed class OnboardingAssistRequestConfiguration : IEntityTypeConfigur
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Cascade);
         entity.HasOne<Org>().WithMany().HasForeignKey(r => r.OrgId).OnDelete(DeleteBehavior.Restrict);
-        entity.HasIndex(r => new { r.OrgId, r.PartKey, r.PropertyId })
+        entity.HasIndex(r => new { r.OrgId, r.PartKey, r.PropertyId, r.ChannelCode })
             .IsUnique()
             .AreNullsDistinct(false)
             .HasFilter(

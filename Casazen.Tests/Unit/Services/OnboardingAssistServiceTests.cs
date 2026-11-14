@@ -164,11 +164,12 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal(("compliance", OnboardingAssistContexts.PanelPolice, _world.Granted.Name, _world.Granted.City), (item.PartCode, item.Context, item.PropertyName, item.Comune));
         Assert.Equal((_world.OrgId, (Guid?)_world.Granted.Id), (item.OrgId, item.PropertyId));
 
-        // The shape is closed: the view of staff, as a record and as the DTO of the API, has exactly these members.
+        // The shape is closed: the view of staff, as a record and as the DTO of the API, has exactly these members (ChannelCode, 14/11/2026: the
+        // portal of a channel access request, so support knows which one to connect).
         string[] members =
         [
-            "Id", "OrgId", "PartCode", "PropertyId", "PropertyName", "Comune", "Context", "Status", "RequestedAt", "UpdatedAt", "CompletedAt",
-            "AssignedToUserId", "StaffNote", "DraftWizardType", "DraftEntityId",
+            "Id", "OrgId", "PartCode", "PropertyId", "PropertyName", "Comune", "Context", "ChannelCode", "Status", "RequestedAt", "UpdatedAt",
+            "CompletedAt", "AssignedToUserId", "StaffNote", "DraftWizardType", "DraftEntityId",
         ];
         Assert.Equal(members.Order(), typeof(AssistQueueItem).GetProperties().Select(p => p.Name).Order());
         Assert.Equal(
@@ -363,6 +364,34 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         var step = await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync();
         Assert.Equal(("booking_xml", PanelStepKind.ChannelAccess, PanelStepStatus.AssistRequested), (step.ChannelCode, step.Kind, step.Status));
         Assert.Equal(OnboardingAssistContexts.PanelChannelAccess, ok.Context);
+    }
+
+    /// <summary>
+    /// Proof (data): «Fallo per me» on the access to a channel is per portal. Two portals of the same part and property each get their own open
+    /// request (before, one request stood for every portal and the second was a 409), the same portal again is 409, the host reads the channel of
+    /// each, and support closing the request of one portal settles the step of that portal only.
+    /// </summary>
+    [Fact]
+    public async Task Request_ForAChannelAccess_IsOnePerPortal_AndDoneSettlesTheStepOfItsPortalOnly()
+    {
+        var service = HostService();
+        AssistRequestInput Portal(string code) => new(OnboardingPartKey.Channels, OnboardingAssistContexts.PanelChannelAccess, null, code);
+
+        var booking = await service.RequestAsync(_world.OrgWide, _world.OwnerUserId, Portal("142"), Ct);
+        var airbnb = await service.RequestAsync(_world.OrgWide, _world.OwnerUserId, Portal("274"), Ct);
+
+        Assert.NotEqual(booking.Id, airbnb.Id);
+        Assert.Equal(("142", "274"), (booking.ChannelCode, airbnb.ChannelCode));
+        var again = await Assert.ThrowsAsync<DomainConflictException>(() => service.RequestAsync(_world.OrgWide, _world.OwnerUserId, Portal("142"), Ct));
+        Assert.Equal(OnboardingAssistCodes.AlreadyOpen, again.Code);
+        Assert.Equal(["142", "274"], (await service.ListAsync(_world.OrgWide, Ct)).Select(r => r.ToDto().ChannelCode).Order());
+
+        // Support connects the first portal: its step is confirmed, the step of the other one stays with support.
+        await StaffService().UpdateAsync(Staff, booking.Id, OnboardingAssistStatus.Done, null, Ct);
+
+        var steps = await _db.OnboardingPanelSteps.AsNoTracking().ToDictionaryAsync(s => s.ChannelCode!);
+        Assert.Equal((PanelStepStatus.Confirmed, PanelStepStatus.AssistRequested), (steps["142"].Status, steps["274"].Status));
+        Assert.Equal("274", Assert.Single((await StaffService().ListQueueAsync(OnboardingAssistStatus.Requested, 1, 25, Ct)).Items).ChannelCode);
     }
 
     [Fact]

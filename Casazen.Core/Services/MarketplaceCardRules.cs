@@ -1,3 +1,4 @@
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
@@ -11,6 +12,41 @@ public readonly record struct MarketplaceAction(bool CanActivate, string? Reason
 /// </summary>
 public static class MarketplaceCardRules
 {
+    /// <summary>The longest portal code CasaZen sends to the channel manager as the number it calls <c>channelId</c>.</summary>
+    public const int MaxPortalCodeDigits = 18;
+
+    /// <summary>
+    /// «Collega da CasaZen» (decision of the product owner, 14/11/2026): the host types in CasaZen the id of its property on the portal, CasaZen
+    /// creates the connection on the channel manager, and the host's only step left is to approve the channel manager on the extranet of the OTA.
+    /// True only for a sales channel (an OTA) of the catalog that is listed and enabled, that the channel manager lets be created through its API
+    /// with a portal code that is a number, and whose connection needs the id of the property and nothing else: no username and password
+    /// (<see cref="MarketplacePortal.RequiresPassword"/>) and no access given on the channel manager's own panel
+    /// (<see cref="MarketplacePortal.RequiresTokenAuthentication"/>, as for Airbnb). Every other portal keeps the hand-over to the panel.
+    /// </summary>
+    /// <remarks>
+    /// One rule for the catalog (<c>connectByPropertyId</c> of a card) and for the import (<c>POST .../channels/{code}/connect</c>), so the button
+    /// and the endpoint never disagree. The code must be a number because the channel manager takes it as one: a code that is not cannot be sent.
+    /// </remarks>
+    public static bool ConnectsByPropertyId(MarketplacePortal portal)
+    {
+        ArgumentNullException.ThrowIfNull(portal);
+        return portal.Category == MarketplacePortalCategory.Ota
+               && portal.IsListed
+               && portal.Enabled
+               && portal.Creatable
+               && portal.RequiresHotelId
+               && !portal.RequiresPassword
+               && !portal.RequiresTokenAuthentication
+               && IsNumericPortalCode(portal.PortalCode);
+    }
+
+    /// <summary>
+    /// A portal code the channel manager takes as the number it calls <c>channelId</c>: 1 to <see cref="MaxPortalCodeDigits"/> ASCII digits, nothing
+    /// else (no sign, no space). Only such a code may name a portal in a call or in the address of its page on the panel.
+    /// </summary>
+    public static bool IsNumericPortalCode(string? portalCode) =>
+        portalCode is { Length: > 0 and <= MaxPortalCodeDigits } && portalCode.All(char.IsAsciiDigit);
+
     /// <summary>
     /// How the card shows an activation: Active as Active, Requested and Pending as Pending, To fix as To fix, and Deactivated as Not active.
     /// </summary>

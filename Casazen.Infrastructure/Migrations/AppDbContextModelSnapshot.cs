@@ -5825,6 +5825,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ConnectedAccommodationIdsJson")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -6235,6 +6238,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<string>("ChannelCode")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -6282,12 +6289,12 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("PropertyId");
 
-                    b.HasIndex("OrgId", "PartKey", "PropertyId")
+                    b.HasIndex("OrgId", "PartKey", "PropertyId", "ChannelCode")
                         .IsUnique()
-                        .HasDatabaseName("UIX_OnboardingAssistRequests_OpenPerPartAndProperty")
+                        .HasDatabaseName("UIX_OnboardingAssistRequests_OpenPerPartPropertyAndChannel")
                         .HasFilter("\"Status\" IN (1, 2)");
 
-                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("OrgId", "PartKey", "PropertyId"), false);
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("OrgId", "PartKey", "PropertyId", "ChannelCode"), false);
 
                     b.ToTable("OnboardingAssistRequests");
                 });

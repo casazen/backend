@@ -24,10 +24,11 @@ namespace Casazen.Core.Services;
 public interface IOnboardingAssistService
 {
     /// <summary>
-    /// The host asks for help. Stores the request with the reference to the draft, marks the panel step (a panel context) as asked for, raises the
-    /// "To do" and writes the line of the log. 409 <see cref="OnboardingAssistCodes.AlreadyOpen"/> when a request of the same part and property is
-    /// open (one that a failed call left without its "To do" gets it on that answer); 409 <see cref="OnboardingAssistCodes.StepAlreadyDone"/> when
-    /// the panel step is already done; 422 for a context that does not fit.
+    /// The host asks for help. Stores the request with the reference to the draft (and the channel of a channel access), marks the panel step (a
+    /// panel context) as asked for, raises the "To do" and writes the line of the log. 409 <see cref="OnboardingAssistCodes.AlreadyOpen"/> when a
+    /// request of the same part, property and channel is open (one that a failed call left without its "To do" gets it on that answer): each portal
+    /// of a channel access has its own request; 409 <see cref="OnboardingAssistCodes.StepAlreadyDone"/> when the panel step is already done; 422 for a
+    /// context that does not fit.
     /// </summary>
     Task<AssistRequestView> RequestAsync(HostScope scope, string userId, AssistRequestInput input, CancellationToken ct);
 
@@ -43,7 +44,8 @@ public interface IOnboardingAssistService
     /// <summary>
     /// Staff takes (<see cref="OnboardingAssistStatus.InProgress"/>), completes (<see cref="OnboardingAssistStatus.Done"/>) or closes
     /// (<see cref="OnboardingAssistStatus.Cancelled"/>) a request, with an optional note. <c>Done</c> on a panel context confirms the matching panel
-    /// step with the staff user as who completed it and closes the host's "To do". Every update writes the line of the log in the org of the request.
+    /// step (of the request's channel, for a channel access) with the staff user as who completed it and closes the host's "To do". Every update
+    /// writes the line of the log in the org of the request.
     /// 422 <see cref="OnboardingAssistCodes.NoteInvalid"/> for a note over 500 characters or with an e-mail address; 409
     /// <see cref="OnboardingAssistCodes.Closed"/> for a request already done or cancelled; 404 <see cref="OnboardingAssistCodes.NotFound"/>.
     /// </summary>
@@ -57,7 +59,10 @@ public interface IOnboardingAssistService
 /// <param name="ChannelCode">The channel of a <see cref="OnboardingAssistContexts.PanelChannelAccess"/> request; refused for the others.</param>
 public sealed record AssistRequestInput(OnboardingPartKey Part, string Context, Guid? PropertyId = null, string? ChannelCode = null);
 
-/// <summary>A request as the host reads it: codes, ids, instants and the note of support. No draft, no person.</summary>
+/// <summary>
+/// A request as the host reads it: codes, ids, instants and the note of support. No draft, no person. <see cref="ChannelCode"/> is the portal of a
+/// channel access request (<c>null</c> for the other contexts), so each portal row of the wizard shows its own request.
+/// </summary>
 public sealed record AssistRequestView(
     Guid Id,
     OnboardingPartKey Part,
@@ -69,11 +74,13 @@ public sealed record AssistRequestView(
     DateTime UpdatedAt,
     DateTime? CompletedAt,
     string? StaffNote,
-    Guid? ActivityId);
+    Guid? ActivityId,
+    string? ChannelCode);
 
 /// <summary>
-/// A request as staff reads it in the queue: ids, context codes, the property and its comune. The reference to the draft is the type of the wizard
-/// and what it edits; <b>never the draft itself</b>, never a credential, never the person who asked.
+/// A request as staff reads it in the queue: ids, context codes (with the portal of a channel access, <see cref="ChannelCode"/>), the property and
+/// its comune. The reference to the draft is the type of the wizard and what it edits; <b>never the draft itself</b>, never a credential, never the
+/// person who asked.
 /// </summary>
 public sealed record AssistQueueItem(
     Guid Id,
@@ -90,7 +97,8 @@ public sealed record AssistQueueItem(
     string? AssignedToUserId,
     string? StaffNote,
     WizardType? DraftWizardType,
-    Guid? DraftEntityId);
+    Guid? DraftEntityId,
+    string? ChannelCode);
 
 /// <summary>A page of the staff queue.</summary>
 public sealed record AssistQueuePage(IReadOnlyList<AssistQueueItem> Items, int TotalCount, int Page, int PageSize);
@@ -98,7 +106,7 @@ public sealed record AssistQueuePage(IReadOnlyList<AssistQueueItem> Items, int T
 /// <summary>The stable codes of the «Do it for me» requests: errors, the "To do" entity and its reason. Never rename one.</summary>
 public static class OnboardingAssistCodes
 {
-    /// <summary>409: a request of the same part and property is open.</summary>
+    /// <summary>409: a request of the same part, property and channel is open.</summary>
     public const string AlreadyOpen = "assist_request_already_open";
 
     /// <summary>404: no such request.</summary>

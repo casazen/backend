@@ -4673,6 +4673,18 @@
   <data name="ExistingInventoryNotReady" xml:space="preserve">
     <value>No channel is ready yet: the rooms are imported first.</value>
   </data>
+  <data name="ExistingInventoryConnectNotSupported" xml:space="preserve">
+    <value>This portal cannot be connected from CasaZen: give the access in the channel manager panel.</value>
+  </data>
+  <data name="ExistingInventoryConnectEmpty" xml:space="preserve">
+    <value>Name 1 to {0} listings to connect, each with the property ID on the portal.</value>
+  </data>
+  <data name="ExistingInventoryHotelIdInvalid" xml:space="preserve">
+    <value>Check the property ID on the portal: 1 to {0} characters among letters, digits, dots, hyphens and underscores, one for each listing.</value>
+  </data>
+  <data name="ExistingInventoryAccommodationUnknown" xml:space="preserve">
+    <value>One of the listings is not part of this connection: reload the page and try again.</value>
+  </data>
   <data name="ChannelAccessVerificationRequired" xml:space="preserve">
     <value>CasaZen must first try to verify the access: confirm only if it cannot.</value>
   </data>

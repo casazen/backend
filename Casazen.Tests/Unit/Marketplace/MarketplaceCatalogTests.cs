@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -6,6 +7,7 @@ using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.DTOs;
 using Casazen.Web.Resources;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
@@ -114,6 +116,34 @@ public class MarketplaceCatalogTests
         await Assert.ThrowsAsync<ArgumentException>(() => service.GetCatalogAsync(orgA, new HostScope(orgB), null, "it"));
     }
 
+    [Fact]
+    public async Task MarketplaceCatalog_ConnectByPropertyId_OnlyForASalesChannelThatNeedsTheIdAlone_Test()
+    {
+        // «Collega da CasaZen» (14/11/2026): the card says it for a sales channel whose connection needs only the id of the property on the portal
+        // (Booking.com), never for one that needs the access on the panel (Airbnb, token authentication), a username and a password, or for a tool.
+        await using var db = NewDb();
+        var org = await AddOrgAsync(db, PlanTier.Pro, "IT");
+        AddPortal(db, "142", requiresHotelId: true);
+        AddPortal(db, "274", requiresHotelId: true, requiresToken: true);
+        AddPortal(db, "235", requiresHotelId: true, requiresPassword: true);
+        AddPortal(db, "900", requiresHotelId: true, category: MarketplacePortalCategory.ExternalTool);
+        AddPortal(db, "901");
+        await db.SaveChangesAsync();
+
+        var catalog = await NewService(db).GetCatalogAsync(org, new HostScope(org), null, "it");
+
+        var entries = catalog.Groups.SelectMany(group => group.Entries).Where(entry => entry.Kind != MarketplaceActivationKind.LicensedFunction).ToList();
+        Assert.Equal(
+            new[] { ("142", true), ("235", false), ("274", false), ("900", false), ("901", false) },
+            entries.Select(entry => (entry.Code, entry.ConnectByPropertyId)).OrderBy(pair => pair.Code, StringComparer.Ordinal).ToArray());
+
+        // The API names it connectByPropertyId.
+        var json = JsonSerializer.Serialize(
+            MarketplaceCatalogEntryDto.From(entries.Single(entry => entry.Code == "142")),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Contains("\"connectByPropertyId\":true", json, StringComparison.Ordinal);
+    }
+
     private static async Task<List<string>> PartnerCodesAsync(MarketplaceCatalogService service, Guid orgId)
     {
         var catalog = await service.GetCatalogAsync(orgId, new HostScope(orgId), null, "it");
@@ -176,14 +206,23 @@ public class MarketplaceCatalogTests
         return partner;
     }
 
-    private static void AddPortal(AppDbContext db, string code) =>
+    private static void AddPortal(
+        AppDbContext db,
+        string code,
+        bool requiresHotelId = false,
+        bool requiresToken = false,
+        bool requiresPassword = false,
+        MarketplacePortalCategory category = MarketplacePortalCategory.Ota) =>
         db.MarketplacePortals.Add(new MarketplacePortal
         {
             PortalCode = code,
             Name = "Portale " + code,
-            Category = MarketplacePortalCategory.Ota,
+            Category = category,
             Creatable = true,
             Enabled = true,
+            RequiresHotelId = requiresHotelId,
+            RequiresTokenAuthentication = requiresToken,
+            RequiresPassword = requiresPassword,
         });
 
     private static void AddActivation(

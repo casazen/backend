@@ -378,6 +378,16 @@ internal static class PostgresAdvisoryLocks
         OctorateCheckInSync = 20_133,
 
         /// <summary>
+        /// «Collega da CasaZen» on one OTA channel of one org (key: org id and channel code, <c>orgId.ToString("N") + ":" + code</c>, E02/F01/US03,
+        /// decision of 14/11/2026): the read of the connections of the org and the creates of the connections of the channel run one request at a
+        /// time, held until the commit, the calls to Octorate included. Two clicks, two batches or two instances never create two connections of the
+        /// same channel on one accommodation: the request that waits reads the connections again and finds the ones the first made. Not the session
+        /// lock of <see cref="OctorateInventoryImport"/>: that one leaves the channel to whoever holds it, while a «Collega» waits for its turn. The
+        /// values 20_131 to 20_133 belong to other scopes of the Octorate connector, so this one is 20_134.
+        /// </summary>
+        OctorateInventoryConnect = 20_134,
+
+        /// <summary>
         /// The CRM profile of one guest (key: the guest id, <c>guestId.ToString("N")</c>, E07/F01/US02/T03): the sync of the booker run by the event
         /// handler and the one run by the job can reach the same guest, with no profile yet, at the same moment. The profile is made and the guest
         /// linked to it one sync at a time, and the second reads the link again inside the lock and uses the profile the first made, so no profile is

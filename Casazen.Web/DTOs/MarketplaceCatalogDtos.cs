@@ -41,7 +41,9 @@ public sealed record MarketplaceCostDto(string? Text, MarketplaceCostInvoicer In
 /// A card. <c>status</c> is <c>Active</c>, <c>NotActive</c>, <c>Pending</c> or <c>ToFix</c>; <c>statusScope</c> says whether it is the org's or a
 /// property's; <c>propertyCount</c> is how many properties have it on, only for a channel or a tool asked about without a property and
 /// active on some. <c>reason</c> is a code, not a sentence. <c>job</c>, <c>websiteUrl</c>, <c>serviceCategories</c> and
-/// <c>octoratePortalCode</c> are the partner's own and <c>null</c> on every other card.
+/// <c>octoratePortalCode</c> are the partner's own and <c>null</c> on every other card. <c>connectByPropertyId</c> is true for a sales channel whose
+/// connection CasaZen creates from the id of the property on the portal («Collega da CasaZen»: the host types the id, then approves the channel
+/// manager on the extranet of the OTA), and false on every other card, which keeps the hand-over to the panel of the channel manager.
 /// </summary>
 public sealed record MarketplaceCatalogEntryDto(
     MarketplaceActivationKind Kind,
@@ -58,7 +60,8 @@ public sealed record MarketplaceCatalogEntryDto(
     MarketplacePartnerJob? Job,
     string? WebsiteUrl,
     IReadOnlyList<string>? ServiceCategories,
-    string? OctoratePortalCode)
+    string? OctoratePortalCode,
+    bool ConnectByPropertyId)
 {
     public static MarketplaceCatalogEntryDto From(MarketplaceCatalogEntry entry)
     {
@@ -78,7 +81,8 @@ public sealed record MarketplaceCatalogEntryDto(
             entry.Job,
             entry.WebsiteUrl,
             entry.ServiceCategories,
-            entry.OctoratePortalCode);
+            entry.OctoratePortalCode,
+            entry.ConnectByPropertyId);
     }
 }
 

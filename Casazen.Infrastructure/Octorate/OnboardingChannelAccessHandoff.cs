@@ -20,15 +20,18 @@ namespace Casazen.Infrastructure.Octorate;
 /// <remarks>
 /// <para><b>Written before it is returned.</b> <see cref="StartAsync"/> saves the step, the single hand-over and the resume point (the batch
 /// and the channel the person comes back to) before it returns the address of the panel, so a person who closes the tab, reloads or changes
-/// device finds the exact step. The address is the configured panel address (<c>Octorate:FrontendBaseUrl</c>) as it is: absolute https, no
-/// query and no fragment, so it carries no organization, property or person data.</para>
+/// device finds the exact step. The address is the page of the connection of the portal on the panel (<see cref="PanelUrlOf"/>:
+/// <c>{Octorate:FrontendBaseUrl}/user/channelmanager/edit.xhtml?portal={code}</c>, verified by the product owner for Booking.com only on
+/// 14/11/2026), or the configured base as it is when the channel code is not a number: absolute https, no fragment, and no query but the portal
+/// code, so it carries no organization, property or person data.</para>
 /// <para><b>How the access is checked.</b> The panel offers no callback for the login to a channel, so the handoff is
 /// <see cref="PanelHandoffMode.ManagedWindow"/> and CasaZen reads, at most once for each backoff window, the connections the org's token
-/// sees: a connection of the channel that is authorized (<see cref="OctorateConnectionSummary.IsAuthorized"/>) is the proof, and completes
-/// the step, when it is new to this hand-over: the person logged in on it after the hand-over began, or it belongs to an accommodation the
-/// batch is about (<see cref="IsProofAsync"/>). A connection the org already had working for another property is no proof. When the checks
-/// run out (<see cref="OctorateExistingInventoryOptions.AccessCheckMaxAttempts"/>) without that proof the outcome is stored as «could not
-/// tell» and only then may the person confirm: the confirmation is the fallback, never the normal path.</para>
+/// sees: a connection of the channel that is authorized (<see cref="OctorateConnectionSummary.IsAuthorized"/>: <c>ENABLED</c>, never
+/// <c>userLogged</c> alone) is the proof, and completes the step, when it is new to this hand-over: the person logged in on it after the hand-over
+/// began, or it belongs to an accommodation the batch is about, that is one confirmed to a property of the batch or one CasaZen connected to the
+/// channel for the batch on the host's «Collega» (<see cref="IsProofAsync"/>). A connection the org already had working for another property is no
+/// proof. When the checks run out (<see cref="OctorateExistingInventoryOptions.AccessCheckMaxAttempts"/>) without that proof the outcome is stored
+/// as «could not tell» and only then may the person confirm: the confirmation is the fallback, never the normal path.</para>
 /// <para>No credential is ever stored or logged: the nonce column stays empty (no callback), the log lines carry ids and codes.</para>
 /// </remarks>
 public sealed class OnboardingChannelAccessHandoff(
@@ -42,6 +45,12 @@ public sealed class OnboardingChannelAccessHandoff(
     /// <summary>The step of the wizard the person comes back to, stored as the resume point of the panel step.</summary>
     public const string ResumeStepCode = "existingInventoryAccess";
 
+    /// <summary>
+    /// The page of the connection of one portal on the panel, after the configured base, with the portal code as its only query
+    /// (<c>?portal={code}</c>). Verified by the product owner for Booking.com (<c>portal=142</c>) on 14/11/2026, and for no other portal yet.
+    /// </summary>
+    public const string PortalPagePath = "user/channelmanager/edit.xhtml";
+
     public async Task<ChannelAccessHandoffStart> StartAsync(
         Guid orgId,
         string channelCode,
@@ -50,7 +59,7 @@ public sealed class OnboardingChannelAccessHandoff(
     {
         ArgumentNullException.ThrowIfNull(resume);
         var code = CheckedChannel(channelCode);
-        var panelUrl = ParsePanelUrl(options.Value.FrontendBaseUrl)
+        var panelUrl = PanelUrlOf(options.Value.FrontendBaseUrl, code)
             ?? throw new DomainConflictException("octorate_panel_url_missing", "OctoratePanelUrlMissing");
 
         // A parallel start of the same step loses on the unique index of the steps: it reads the winner's row and applies the same update.
@@ -181,6 +190,23 @@ public sealed class OnboardingChannelAccessHandoff(
             : null;
     }
 
+    /// <summary>
+    /// The address a person is sent to for the access to a channel: the page of the connection of that portal on the panel
+    /// (<c>{base}/<see cref="PortalPagePath"/>?portal={code}</c>, joined with one slash whatever the base ends with) when the channel code is a number
+    /// the channel manager knows the portal by (<see cref="MarketplaceCardRules.IsNumericPortalCode"/>); otherwise the configured base as it is. A
+    /// step of another kind has no channel code and gets the base. <c>null</c> when the base is not a valid address of the panel
+    /// (<see cref="ParsePanelUrl"/>). The portal code is the only thing added: no organization, property or person data.
+    /// </summary>
+    internal static string? PanelUrlOf(string? baseUrl, string? channelCode)
+    {
+        var panel = ParsePanelUrl(baseUrl);
+        var code = channelCode?.Trim();
+        if (panel is null || !MarketplaceCardRules.IsNumericPortalCode(code))
+            return panel;
+
+        return $"{panel.TrimEnd('/')}/{PortalPagePath}?portal={code}";
+    }
+
     /// <summary>The state the import shows for a step: what the stored status and the last check say.</summary>
     internal static ChannelAccessState StateOf(OnboardingPanelStep step) => step.Status switch
     {
@@ -244,7 +270,9 @@ public sealed class OnboardingChannelAccessHandoff(
     /// Whether an authorized connection of the channel proves the access was given for THIS hand-over. One that was already authorized before the
     /// person was sent to the panel (the org has a working connection of the channel for another property) says nothing about it, or the step
     /// would be verified at the first check without the person giving anything. It is a proof when the person logged in on it after the
-    /// hand-over began (<see cref="OctorateConnectionSummary.LoginAt"/>), or when it belongs to an accommodation the batch is about.
+    /// hand-over began (<see cref="OctorateConnectionSummary.LoginAt"/>), or when it belongs to an accommodation the batch is about
+    /// (<see cref="BatchAccommodationsAsync"/>): in particular one CasaZen connected to the channel on the host's «Collega», whose connection is
+    /// enabled once the host approved the channel manager on the extranet of the OTA.
     /// </summary>
     private async Task<bool> IsProofAsync(OnboardingPanelStep step, IReadOnlyList<OctorateConnectionSummary> authorized, CancellationToken ct)
     {
@@ -256,14 +284,24 @@ public sealed class OnboardingChannelAccessHandoff(
     }
 
     /// <summary>
-    /// The accommodations of Octorate the batch of the hand-over is about: the ones its properties are confirmed to. The batch is the resume
-    /// point of the step. The whole inventory names no property, so no accommodation stands for it: only a login after the hand-over proves it.
+    /// The accommodations of Octorate the batch of the hand-over is about, the batch being the resume point of the step: the ones CasaZen
+    /// connected to the channel of the step for the batch on the host's «Collega» (recorded on the channel of the batch, whatever its scope), and
+    /// the ones the properties of the batch are confirmed to. The whole inventory names no property, so no confirmed accommodation stands for it:
+    /// there only a connection CasaZen made for it, or a login after the hand-over, proves the access.
     /// </summary>
     private async Task<HashSet<string>> BatchAccommodationsAsync(OnboardingPanelStep step, CancellationToken ct)
     {
         var accommodations = new HashSet<string>(StringComparer.Ordinal);
         if (step.ResumeDraftEntityId is not { } batchId)
             return accommodations;
+
+        // A connection CasaZen created on the host's «Collega» is new to this hand-over by construction (the batch asked for it).
+        var connected = await db.OctorateInventoryImportChannels
+            .AsNoTracking()
+            .Where(c => c.OrgId == step.OrgId && c.BatchId == batchId && c.ChannelCode == step.ChannelCode)
+            .Select(c => c.ConnectedAccommodationIdsJson)
+            .FirstOrDefaultAsync(ct);
+        accommodations.UnionWith(ExistingInventoryImportService.ParseAccommodationIds(connected));
 
         var batch = await db.OctorateInventoryImportBatches
             .AsNoTracking()
@@ -274,15 +312,7 @@ public sealed class OnboardingChannelAccessHandoff(
             return accommodations;
 
         var propertyIds = ExistingInventoryImportService.ParseIds(batch.ScopePropertyIdsJson);
-        if (propertyIds.Count == 0)
-            return accommodations;
-
-        var confirmed = await db.OctorateListingMappings
-            .AsNoTracking()
-            .Where(m => m.OrgId == step.OrgId && m.Status == OctorateMappingStatus.Confirmed && m.PropertyId != null && propertyIds.Contains(m.PropertyId.Value))
-            .Select(m => m.OctorateAccommodationId)
-            .ToListAsync(ct);
-        accommodations.UnionWith(confirmed);
+        accommodations.UnionWith(await ExistingInventoryImportService.ConfirmedAccommodationsAsync(db, step.OrgId, propertyIds, ct));
         return accommodations;
     }
 
