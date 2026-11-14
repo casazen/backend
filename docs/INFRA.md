@@ -2,7 +2,7 @@
 
 > Zero-cost production stack: **Supabase** (PostgreSQL) + **Railway** (.NET API) + **Vercel** (React SPA)
 
-> **Hosting in revisione (2026-10-02):** il PO ha cancellato l'abbonamento Railway e non vuole costi. Il database resta su Supabase; l'hosting gratuito del backend è in analisi (task HOSTING, `docs/runbooks/free-hosting-analysis.md`). Ogni riferimento a Railway in questo file è **storico** finché quell'analisi non è chiusa: non usarlo per configurare nuovi ambienti.
+> **Hosting (aggiornato il 5/11/2026):** Railway è l'host in uso per test e produzione (ultimo deploy di produzione il 2/11, di test il 3/11, letti dall'API di Railway); la revisione del 2/10 (abbonamento cancellato, task HOSTING) non ha cambiato l'host e `docs/runbooks/free-hosting-analysis.md` resta un'analisi di alternative. Gli IP statici in uscita sono una funzione del piano Pro, oggi spenta.
 
 ---
 
@@ -348,7 +348,7 @@ Add a scheduled GitHub Actions ping or use the Supabase dashboard to configure t
 
 ## Railway Setup (Backend API)
 
-> Hosting in revisione: Railway è stato cancellato dal PO (2026-10-02), vedi la nota in cima e `docs/runbooks/free-hosting-analysis.md`. Questa sezione è storica.
+> Hosting: Railway è in uso (vedi la nota in cima); questa sezione descrive la configurazione corrente.
 
 ### Create project
 

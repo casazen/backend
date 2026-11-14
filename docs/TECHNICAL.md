@@ -3099,7 +3099,7 @@ The migration is `AddOnboardingActivation`. The tables are not part of the demo 
 | `PaymentProviderFeeJob` (`payment-provider-fees`) | Every 15 minutes, never two runs at once | E06/F04/US01/T02 (FIS-05, NF-85): for the settled card payments (completed or refunded) settled more than 10 minutes ago without provider figures and with fewer than 5 attempts, 50 a run, reads the balance transaction of the charge (`latest_charge.balance_transaction`, on the connected account of a direct charge, without it for an intent on the platform) and stores `ProviderFeeAmount`, `ProviderNetAmount`, `ProviderBalanceCurrency`, `ProviderBalanceTransactionId`, `ProviderAvailableOn`, `ProviderFeeFetchedAt`. Idempotent, never changes `Amount`, `RefundedAmount` or `Status`; a miss or a Stripe error counts an attempt (`ProviderFeeFetchAttempts`, at most 5, then one log line with the payment id). Without `Stripe__SecretKey` it reads nothing and counts no attempt |
 
 ### Deployment
-- **Containerisation**: `Dockerfile` at repo root. Local API uses PostgreSQL/Supabase per `docs/INFRA.md`. Hosting in revisione: Railway è stato cancellato dal PO (2026-10-02), vedi `docs/runbooks/free-hosting-analysis.md` (task HOSTING).
+- **Containerisation**: `Dockerfile` at repo root. Local API uses PostgreSQL/Supabase per `docs/INFRA.md`. Hosting: Railway è in uso per test e produzione (verificato il 5/11/2026, v. `docs/INFRA.md`).
 - **CI/CD**: GitHub Actions — build + test on push (`.github/workflows/ci-cd.yml`); deploys are not run by Actions and tags `v*` do not deploy (see `docs/INFRA.md`, deploy model in revision)
 - **Environments**: Development (local), staging, production
 
