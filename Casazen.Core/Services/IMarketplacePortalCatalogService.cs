@@ -14,6 +14,13 @@ public interface IMarketplacePortalCatalogService
     /// Octorate is thrown as its typed error, for the job to retry.
     /// </summary>
     Task<MarketplacePortalRefreshResult> RefreshAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Whether the cache holds at least one portal the marketplace lists (listed and enabled: the rule the catalog reads). <c>false</c> is a cache that
+    /// no refresh ever filled, or that Octorate emptied: the portal list of the marketplace and of the wizard «Collega i tuoi canali» is empty
+    /// until a refresh runs. Reads CasaZen's own database only.
+    /// </summary>
+    Task<bool> HasListedPortalsAsync(CancellationToken ct);
 }
 
 /// <summary>What a refresh of the portal cache did.</summary>

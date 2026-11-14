@@ -291,6 +291,10 @@ builder.Services.AddHostedService<SeoBootstrapHostedService>();
 builder.Services.AddHostedService<LegalDocumentsStartupCheck>();
 // The provider an admin saved, so the first request does not still see only the server configuration.
 builder.Services.AddHostedService<AiSettingsWarmupHostedService>();
+// E09/F01/US01/T02: with the connector on and the cache of the portal catalog still empty (a new environment), one run of the daily refresh is queued
+// at start, so the portal list does not wait for 03:30 UTC. Only where Hangfire is (it queues a job), and it never holds or stops the start.
+if (hangfireStorage is not null)
+    builder.Services.AddHostedService<MarketplacePortalBootstrapHostedService>();
 
 // API
 builder.Services.AddControllers(options => options.Filters.Add<ProblemDetailsResultFilter>())
