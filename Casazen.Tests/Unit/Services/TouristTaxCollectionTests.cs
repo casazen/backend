@@ -816,6 +816,36 @@ public class TouristTaxCollectionTests
         Assert.Equal((TouristTaxNotPayableReason.NotComputable, 0m, (decimal?)null), (unknown.Reason, unknown.Payable, unknown.AmountDue));
     }
 
+    /// <summary>
+    /// E17/F01/US01/T01: the owners who issue have their issuer profiles in the same table as the organization's. The portals that collect the Swiss tax are the
+    /// choice of the organization itself, never the one of an owner's profile saved before it.
+    /// </summary>
+    [Fact]
+    public async Task TouristTaxDue_Switzerland_ThePortalsAreTheOrganizations_NeverTheProfileOfAnOwner()
+    {
+        await using var db = NewDb();
+        db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = SwissMunicipalityCode, CantonCode = "TI", OfficialName = "Lugano" });
+        await db.SaveChangesAsync();
+        var swiss = new SwissTouristTaxOptions
+        {
+            Rules = [new SwissTouristTaxRuleOptions { Canton = "TI", RatePerPersonPerNight = 2.00m, ValidFrom = new DateOnly(2025, 1, 1), SourceUrl = "https://example.test/ti" }],
+        };
+        var portalCollects = await SeedAsync(db, swiss: true, source: BookingSource.Airbnb);
+        var orgId = portalCollects.Booking.OrgId;
+        var owner = new PropertyOwner { OrgId = orgId, FirstName = "TEST", LastName = "Proprietario", Email = "owner@example.com" };
+        db.PropertyOwners.Add(owner);
+        db.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile { OrgId = orgId, PropertyOwnerId = owner.Id, CountryCode = FiscalDocumentRules.Switzerland });
+        await db.SaveChangesAsync();
+        db.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile { OrgId = orgId, CountryCode = FiscalDocumentRules.Switzerland });
+        await db.SaveChangesAsync();
+
+        // The organization says Airbnb collects the tax itself; the owner's profile says nothing.
+        var rig = RigWith(db, new RigOptions(Swiss: swiss, ChannelsOf: profile => profile.PropertyOwnerId is null ? [BookingSource.Airbnb] : []));
+
+        var viaPortal = (await rig.Service.GetForGuestAsync(portalCollects.Token))!;
+        Assert.Equal((TouristTaxCollectionStatus.CollectedByChannel, 0m), (viaPortal.Status, viaPortal.Payable));
+    }
+
     [Fact]
     public async Task TouristTaxPaidAtProperty_AfterTheOnlinePaymentWasGivenBackInFull_IsRecorded_ButNotWhileThePaymentStands_Test()
     {
@@ -1102,12 +1132,16 @@ public class TouristTaxCollectionTests
     private static TestRig Rig(AppDbContext db, params (Guid BookingId, StayTouristTaxView View)[] calculations) =>
         RigWith(db, new RigOptions(), calculations);
 
-    /// <summary>What a test changes in the rig: the flag, the cantonal rules and the channels whose portal collects the tax of a Swiss stay.</summary>
+    /// <summary>
+    /// What a test changes in the rig: the flag, the cantonal rules and the channels whose portal collects the tax of a Swiss stay (the same for every profile, or
+    /// <see cref="ChannelsOf"/> the profile read).
+    /// </summary>
     private sealed record RigOptions(
         bool FlagOn = true,
         SwissTouristTaxOptions? Swiss = null,
         IReadOnlyList<BookingSource>? PlatformCollected = null,
-        bool PublishableKeyIsSet = true);
+        bool PublishableKeyIsSet = true,
+        Func<OrgFiscalIssuerProfile, IReadOnlyList<BookingSource>>? ChannelsOf = null);
 
     private static TestRig RigWith(AppDbContext db, RigOptions options, params (Guid BookingId, StayTouristTaxView View)[] calculations)
     {
@@ -1123,7 +1157,7 @@ public class TouristTaxCollectionTests
         var lines = new Mock<IGuestDocumentLineBuilder>();
         lines
             .Setup(l => l.PlatformCollectedChannelsOf(It.IsAny<OrgFiscalIssuerProfile>()))
-            .Returns(options.PlatformCollected ?? []);
+            .Returns((OrgFiscalIssuerProfile profile) => options.ChannelsOf?.Invoke(profile) ?? options.PlatformCollected ?? []);
         var service = new TouristTaxCollectionService(
             db,
             tax.Object,
