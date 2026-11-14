@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -51,29 +52,28 @@ public sealed class StatementService(AppDbContext db) : IStatementService
             throw new NotFoundException($"Property {propertyId} not found");
         }
 
-        // Get the active mandate for this ownership (most recent EffectiveFrom where EffectiveUntil is null or in the future)
-        var mandate = await db.Set<OwnerMandate>()
-            .Where(om => om.PropertyOwnershipId == ownership.Id && (om.EffectiveUntil == null || om.EffectiveUntil > DateTime.UtcNow))
-            .OrderByDescending(om => om.EffectiveFrom)
-            .FirstOrDefaultAsync(cancellationToken);
-
         // For co-ownership: ensure all co-owners have the same commission rate (ADR-017-R4 requirement)
         // Mixed commission rates would break the "last owner gets remainder" logic
         var allOwnerships = await db.Set<PropertyOwnership>()
             .Where(po => po.PropertyId == propertyId && po.OwnershipEnd == null)
             .ToListAsync(cancellationToken);
 
+        // The mandate in force today of each share: the one of the ownership (before E13) or the owner's own (E13/F01/US01/T01), the one definition of
+        // OwnerMandateRules.InForce.
+        var today = DateOnly.FromDateTime(RomeCalendar.TodayAt(DateTimeOffset.UtcNow));
+        var ownerIds = allOwnerships.Select(po => po.PropertyOwnerId).Append(propertyOwnerId).Distinct().ToList();
+        var ownershipIds = allOwnerships.Select(po => po.Id).Append(ownership.Id).Distinct().ToList();
+        var mandates = await db.Set<OwnerMandate>()
+            .Where(om => om.OrgId == property.OrgId
+                && (ownerIds.Contains(om.PropertyOwnerId) || (om.PropertyOwnershipId != null && ownershipIds.Contains(om.PropertyOwnershipId.Value))))
+            .ToListAsync(cancellationToken);
+        var mandate = OwnerMandateRules.InForce(mandates, propertyOwnerId, ownership.Id, today);
+
         if (allOwnerships.Count > 1)
         {
             var commissionRates = new List<decimal?>();
             foreach (var own in allOwnerships)
-            {
-                var m = await db.Set<OwnerMandate>()
-                    .Where(om => om.PropertyOwnershipId == own.Id && (om.EffectiveUntil == null || om.EffectiveUntil > DateTime.UtcNow))
-                    .OrderByDescending(om => om.EffectiveFrom)
-                    .FirstOrDefaultAsync(cancellationToken);
-                commissionRates.Add(m?.CommissionPercent);
-            }
+                commissionRates.Add(OwnerMandateRules.InForce(mandates, own.PropertyOwnerId, own.Id, today)?.CommissionPercent);
 
             if (commissionRates.Distinct().Count() > 1)
             {

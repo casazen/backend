@@ -42,6 +42,27 @@ public class DemoShowcaseTests
         }
     }
 
+    /// <summary>
+    /// E13/F01/US01/T01: the commission rules of the channels of the demo are rules the API would save: a portal each, a percent from 0 to 100 with two
+    /// decimals, one rule per channel and first day, so the demo shows a rule replacing a default and a rule for a portal without one.
+    /// </summary>
+    [Fact]
+    public void ChannelCommissionRules_AreValidRulesOfPortals()
+    {
+        var rules = DemoShowcaseCatalog.ChannelCommissionRules;
+        Assert.NotEmpty(rules);
+        Assert.Equal(rules.Count, rules.Select(r => r.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(rules.Count, rules.Select(r => (r.Channel, r.ValidFrom)).Distinct().Count());
+        Assert.All(rules, r =>
+        {
+            Assert.True(FiscalCopy.IsOtaBookingSource(r.Channel), $"{r.Key}: not a portal");
+            Assert.InRange(r.Percent, 0m, 100m);
+            Assert.Equal(decimal.Round(r.Percent, 2), r.Percent);
+            Assert.True(Enum.IsDefined(r.Base));
+            Assert.Equal(DemoShowcaseCatalog.Scenario.OwnerChannelCommission, r.Scenario);
+        });
+    }
+
     [Fact]
     public void Document_IsARealPdf_AndSaysItIsTestData()
     {
@@ -123,6 +144,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.AdministratorStatementPdfExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.FiscalDocumentExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.PaymentLedgerExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.ChannelCommissionRules.Select(rule => rule.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));

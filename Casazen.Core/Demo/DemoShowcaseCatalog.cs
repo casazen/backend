@@ -266,6 +266,13 @@ public static class DemoShowcaseCatalog
         public const string PaymentLedger = "payment-ledger";
 
         /// <summary>
+        /// The commission rules of the channels of the agency (E13/F01/US01/T01, ⚖ R2): a rule of its own for Booking.com that replaces the configured
+        /// default, and one for a portal that has no default (Agoda) on the gross without the tourist tax and the cleaning. Invented figures; a template of
+        /// what <c>api/owner-accounting/channel-commission-rules</c> answers, the stays of a portal without a commission in the reservation use them.
+        /// </summary>
+        public const string OwnerChannelCommission = "owner-channel-commission";
+
+        /// <summary>
         /// The collections report (E07/F03/US02/T01, NF-97): the demo stays of Villa del Lago gain the payments a host sees come in: cash at the property, a bank
         /// transfer and cards (one with a refund, one that failed and never counts), a direct stay paid in part (a card deposit, the rest to collect) and a stay of
         /// a channel with a balance still to collect whose check-out is past (overdue). The card payments carry the commission and the net the provider
@@ -361,6 +368,7 @@ public static class DemoShowcaseCatalog
         Scenario.AdministratorStatementPdf,
         Scenario.FiscalDocumentsDirect,
         Scenario.PaymentLedger,
+        Scenario.OwnerChannelCommission,
         Scenario.ReportCollections,
         Scenario.ReportChannelCosts,
     ];
@@ -470,6 +478,16 @@ public static class DemoShowcaseCatalog
         new("carta-soggiorno-diretto", "Card", 450.00m, 6.55m, 443.45m, "Host", "EUR", Scenario.PaymentLedger),
         new("contanti-soggiorno-manuale", "Cash", 120.00m, null, null, "Host", "EUR", Scenario.PaymentLedger),
         new("incasso-canale-booking", "Ota", 380.00m, null, null, "Channel", "EUR", Scenario.PaymentLedger),
+    ];
+
+    /// <summary>
+    /// The commission rules of the channels of the agency demo (E13/F01/US01/T01): Booking.com at 16% from the first of the year (it replaces the configured
+    /// default of 15%) and Agoda, which has no default, at 17% of the gross without the tourist tax and the cleaning. Invented figures.
+    /// </summary>
+    public static IReadOnlyList<DemoChannelCommissionRuleTemplate> ChannelCommissionRules { get; } =
+    [
+        new("booking-16", BookingSource.BookingCom, 16m, CommissionBase.GrossExclTouristTax, new DateOnly(2026, 1, 1), Scenario.OwnerChannelCommission),
+        new("agoda-17", BookingSource.Agoda, 17m, CommissionBase.GrossExclTouristTaxAndCleaning, new DateOnly(2026, 1, 1), Scenario.OwnerChannelCommission),
     ];
 
     /// <summary>
@@ -2053,6 +2071,9 @@ public sealed record DemoDeclaredTouristTaxRate(
     int? MaxNights,
     int MinimumAge,
     string SourceNote);
+
+/// <summary>A commission rule of a channel of the agency demo (E13/F01/US01/T01): a portal, a percent of a base, from a first check-out day.</summary>
+public sealed record DemoChannelCommissionRuleTemplate(string Key, BookingSource Channel, decimal Percent, CommissionBase Base, DateOnly ValidFrom, string Scenario);
 
 /// <summary>
 /// A channel rule of the tourist tax written by the showcase (NF-46, ADR-037-R3): platform data, for the comune of the demo house

@@ -69,9 +69,9 @@ public sealed partial class OwnerAccountingService
             .ToListAsync(ct);
         foreach (var group in ownerships.GroupBy(o => o.PropertyOwnerId))
             plan.OwnerProperties[group.Key] = group.Select(o => o.PropertyId).ToHashSet();
-        var ownershipIds = ownerships.Select(o => o.Id).ToList();
+        // The mandates of the owners (E13/F01/US01/T01) and those of single ownerships of before: OwnerMandateRules.InForce picks the one of a share.
         var mandates = await db.OwnerMandates.AsNoTracking()
-            .Where(m => ownershipIds.Contains(m.PropertyOwnershipId))
+            .Where(m => m.OrgId == orgId)
             .ToListAsync(ct);
 
         var earliest = payments.Select(p => DateOnly.FromDateTime(p.PaidAt)).Append(period.First).Min().AddDays(-FxMaxAgeDays);
@@ -122,7 +122,7 @@ public sealed partial class OwnerAccountingService
                     payment.PropertyId, currency, payment.Net, DateOnly.FromDateTime(payment.CheckIn), recognized, paidOn, paidOn);
                 builder.Add(source, share, revenue[i], context);
 
-                var mandate = MandateOn(mandates, share.OwnershipId, recognized);
+                var mandate = OwnerMandateRules.InForce(mandates, share.OwnerId, share.OwnershipId, recognized);
                 if (mandate is { CommissionPercent: > 0m })
                     builder.Add(source with { Type = OwnerLedgerEntryType.AgencyCommission }, share, -Round(revenue[i] * mandate.CommissionPercent / 100m), context);
 
@@ -284,15 +284,6 @@ public sealed partial class OwnerAccountingService
         parts[^1] = amount - assigned;
         return parts;
     }
-
-    /// <summary>The mandate of the ownership in force on the day, the latest first.</summary>
-    private static OwnerMandate? MandateOn(IReadOnlyList<OwnerMandate> mandates, Guid? ownershipId, DateOnly day) =>
-        ownershipId is null
-            ? null
-            : mandates
-                .Where(m => m.PropertyOwnershipId == ownershipId && DateOnly.FromDateTime(m.EffectiveFrom) <= day
-                    && (m.EffectiveUntil == null || DateOnly.FromDateTime(m.EffectiveUntil.Value) > day))
-                .MaxBy(m => m.EffectiveFrom);
 
     /// <summary>The day a charge is posted in the month: its first day for a one-time charge, the first day of the month (or its own) for a monthly one.</summary>
     private static DateOnly? OccurrenceIn(OwnerCharge charge, Period period)

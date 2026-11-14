@@ -160,3 +160,17 @@ public enum OwnerChargeStatus
     /// <summary>Cancelled: what it posted is reversed.</summary>
     Cancelled = 3,
 }
+
+/// <summary>
+/// What a commission is a percentage of (E13/F01/US01/T01): the commission of the agency under the mandate of an owner (<see cref="OwnerMandate.CommissionBase"/>,
+/// ⚖ R3) and the commission of a channel (<see cref="OrgChannelCommissionRule.Base"/>, ⚖ R2). The tourist tax is never part of it. Stored as its number: never
+/// renumber.
+/// </summary>
+public enum CommissionBase
+{
+    /// <summary>The gross of the stay without the tourist tax, the cleaning included (<see cref="Booking.BasePrice"/>): the default.</summary>
+    GrossExclTouristTax = 1,
+
+    /// <summary>The gross of the stay without the tourist tax and without the cleaning fee (<see cref="Booking.BasePrice"/> less <see cref="Booking.CleaningFee"/>).</summary>
+    GrossExclTouristTaxAndCleaning = 2,
+}

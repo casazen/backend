@@ -392,6 +392,9 @@ public class AppDbContext(
     public DbSet<OwnerCharge> OwnerCharges { get; set; } = null!;
     public DbSet<OwnerFxRate> OwnerFxRates { get; set; } = null!;
 
+    // The commission rules of the channels of an agency, when a reservation brings none (E13/F01/US01/T01, ⚖ R2)
+    public DbSet<OrgChannelCommissionRule> OrgChannelCommissionRules { get; set; } = null!;
+
     // The links from the owner statement versions to the invoices of the agency's external fiscal system (E06/F01/US02/T05): ids, numbers, hashes
     public DbSet<OwnerExternalDocumentReference> OwnerExternalDocumentReferences { get; set; } = null!;
 
@@ -2061,6 +2064,10 @@ public class AppDbContext(
         // The owner accounting (NF-109, NF-110, E06/F05/US02): the rule sets of the agency and the effective-dated fiscal profiles of the owners.
         modelBuilder.ApplyConfiguration(new OwnerAccountingPolicyConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerFiscalProfileConfiguration());
+
+        // The versioned mandates of the owners and the commission rules of the channels (E13/F01/US01/T01).
+        modelBuilder.ApplyConfiguration(new OwnerMandateConfiguration());
+        modelBuilder.ApplyConfiguration(new OrgChannelCommissionRuleConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerLedgerEntryConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerStatementVersionConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerClosePeriodConfiguration());

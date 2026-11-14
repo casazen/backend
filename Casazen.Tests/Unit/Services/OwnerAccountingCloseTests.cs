@@ -538,10 +538,11 @@ public class OwnerAccountingCloseTests
             Db.OwnerMandates.Add(new OwnerMandate
             {
                 OrgId = OrgId,
+                PropertyOwnerId = owner,
                 PropertyOwnershipId = ownership.Id,
                 CommissionPercent = commission,
                 MandatePdfUrl = "https://example.com/mandato-test.pdf",
-                EffectiveFrom = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                ValidFrom = new DateOnly(2026, 1, 1),
             });
             await Db.SaveChangesAsync();
         }

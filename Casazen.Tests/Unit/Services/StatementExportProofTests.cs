@@ -223,9 +223,10 @@ public class StatementExportProofTests
         var mandate = new OwnerMandate
         {
             OrgId = OrgId,
+            PropertyOwnerId = owner.Id,
             PropertyOwnershipId = ownership.Id,
             CommissionPercent = 20m,
-            EffectiveFrom = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            ValidFrom = new DateOnly(2026, 1, 1),
         };
         var guest = new Guest { OrgId = OrgId, FirstName = "Test", LastName = "Guest", Email = "guest.export@example.com", PhoneNumber = "+39000000000" };
         var booking = new Booking
