@@ -76,6 +76,8 @@ and write what is still missing (at most three rounds, then Hangfire retries). R
 | `service-request-cancelled` | the other party: the hosts of the property when the supplier cancels, the supplier org when the host or the customer of its showcase cancels; both when nobody answered in time | service request |
 | `service-request-created`, `-paid`, `-reminder`, `-proposal-accepted`, `-proposal-rejected`, `-rescheduled` | the supplier org | service request |
 | `assist-requested` | the platform staff (`PushAudience.PlatformStaff`, see § 1), each under its own org: a host asked «Fallo per me» (`OnboardingAssistService.RequestAsync`, a new request only, § 10). Bell and live update only, no push on a phone | the «Fallo per me» request |
+| `assist-reopened` | the platform staff, as `assist-requested`: the host reopened a request support had marked done («Non funziona», `OnboardingAssistService.ReopenAsync`, E20/F03/US01/T02; key `assist-request:{id:N}:reopened:{instant}`) | the «Fallo per me» request |
+| `assist-verified`, `assist-declared` | each administrator of the org of the request (the owner and the `Admin`s, `HostNotificationAudience.AdministratorsToTell`): support marked the request done and CasaZen read it on the panel (`verified`: «Il collegamento è attivo») or the panel could not be read (`declared`: «Il supporto dichiara di aver collegato …»). A push to the phone of each (`PushAudience.User`, text `Push_AssistVerified_*` / `Push_AssistDeclared_*`, route `/properties`) and the entry of the bell written with it and published live by `OnboardingAssistOutcomeNotice` (E20/F03/US01/T02; key `assist-request:{id:N}:done:{instant}:{user}`, one per «Fatto» and person) | the «Fallo per me» request |
 
 A new value of `PushTypes` gives a notification with no change here; the client shows a generic sentence for a type it does not know.
 
@@ -190,6 +192,8 @@ route of the same screen (the links the e-mails use are built in `PublicSiteLink
 | `service-request-taken`, `-started`, `-completed`, `-rejected`, `-time-proposed`, `-cancelled` (host side) | service request | `/bookings/{bookingId}` when the request has a booking, else `/properties` | the service request of the host (by `entityId`) |
 | `service-request-created`, `-auto-accepted`, `-paid`, `-reminder`, `-proposal-accepted`, `-proposal-rejected`, `-rescheduled`, `-cancelled` (supplier side) | service request | `/properties` | supplier inbox, `/app/supplier/inbox` (the request by `entityId`) |
 | `assist-requested` | «Fallo per me» request | none: no push on a phone (the app has no screen of the staff) | the staff queue, `/app/admin/onboarding-assist` (the request by `entityId`) |
+| `assist-reopened` | «Fallo per me» request | none: no push on a phone (the app has no screen of the staff) | the staff queue, `/app/admin/onboarding-assist` (the request by `entityId`) |
+| `assist-verified`, `assist-declared` | «Fallo per me» request | `/properties` | the activation of the host, where its «Fallo per me» requests are listed (the request by `entityId`); the page reads the requests and the panel steps again |
 
 Notes: an in-app row has no booking id for the `service-request-*` types (its `entityId` is the **service request**); the booking
 of the request is only in the push. A client that needs it reads the request. A type the client does not know opens the list of

@@ -37,6 +37,12 @@ public class OnboardingAssistRequest : ITenantOwned
     /// <summary>Longest user id: the column length of <c>User.Id</c>, the Auth0 subject.</summary>
     public const int UserIdMaxLength = 255;
 
+    /// <summary>Longest <see cref="Outcome"/>.</summary>
+    public const int OutcomeMaxLength = 20;
+
+    /// <summary>Longest <see cref="HostNote"/>.</summary>
+    public const int HostNoteMaxLength = 500;
+
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
@@ -90,6 +96,31 @@ public class OnboardingAssistRequest : ITenantOwned
 
     /// <summary>The host's "To do" item (<c>InternalActivity</c>) that stands for the request; a reference, not a foreign key.</summary>
     public Guid? ActivityId { get; set; }
+
+    /// <summary>
+    /// What «Fatto» recorded (E20/F03/US01/T02): <see cref="OnboardingAssistOutcomes.Verified"/> when CasaZen read the result on the panel,
+    /// <see cref="OnboardingAssistOutcomes.Declared"/> when the panel could not be read and the support person declared it, with its id in
+    /// <see cref="AssignedToUserId"/>. Never a silent success: <c>null</c> while the request is open or after it was cancelled.
+    /// </summary>
+    [MaxLength(OutcomeMaxLength)]
+    public string? Outcome { get; set; }
+
+    /// <summary>What the host wrote when it reopened the request («Non funziona»): at most 500 characters, no e-mail address.</summary>
+    [MaxLength(HostNoteMaxLength)]
+    public string? HostNote { get; set; }
+
+    /// <summary>When the host last reopened the request (UTC); <c>null</c> when it never did.</summary>
+    public DateTime? ReopenedAt { get; set; }
+}
+
+/// <summary>Stable values of <see cref="OnboardingAssistRequest.Outcome"/>: what «Fatto» recorded. Never rename one.</summary>
+public static class OnboardingAssistOutcomes
+{
+    /// <summary>CasaZen read the result on the panel (for the police, <c>policeAccount.valid</c>): the connection is active.</summary>
+    public const string Verified = "verified";
+
+    /// <summary>The panel could not be read (a structure created through the API exposes no police account, ISTAT is never readable): support declared it.</summary>
+    public const string Declared = "declared";
 }
 
 /// <summary>Stable values of <see cref="OnboardingAssistRequest.Context"/>: what the host asked help with. Never rename one.</summary>
