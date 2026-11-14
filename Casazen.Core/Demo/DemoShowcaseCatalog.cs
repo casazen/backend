@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-07.1";
+    public const string Version = "2026-11-14.1";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -1517,12 +1517,32 @@ public static class DemoShowcaseCatalog
     ];
 
     /// <summary>
-    /// Automation routines demo: one active and one test-mode routine to demonstrate the routine engine.
+    /// Automation routines demo (E01/F04/US01/T03, NF-21): two routines the API would save, marked as showcase rows. One is active: two days before a
+    /// check-in it raises a To do for the stay (<c>CreateActivity</c>, an action that runs). The other is in test mode: a day before a check-out it
+    /// waits two hours and then raises the To do, simulated, so the log of the routine shows runs that changed nothing. Both only hold actions the engine
+    /// can run (<c>RoutineActionCatalog</c>), so the active one is a routine the activation accepts; the texts say DEMO or TEST.
     /// </summary>
     public static IReadOnlyList<DemoRoutineTemplate> Routines { get; } =
     [
-        new("welcome-message", "Messaggio di benvenuto (DEMO)", RoutineEventType.BeforeCheckin, 1, RoutineActionType.MessageToGuest, false, Scenario.RoutineActive),
-        new("checkout-reminder", "Promemoria checkout (TEST)", RoutineEventType.BeforeCheckout, 1, RoutineActionType.MessageToGuest, true, Scenario.RoutineTestMode),
+        new(
+            "checkin-todo",
+            "Controlla l'arrivo (DEMO)",
+            RoutineEventType.BeforeCheckin,
+            2,
+            [new DemoRoutineAction(RoutineActionType.CreateActivity, """{"text":"Controlla l'arrivo e le chiavi (DEMO)","dueInDays":1}""")],
+            false,
+            Scenario.RoutineActive),
+        new(
+            "checkout-followup",
+            "Dopo il check-out (TEST)",
+            RoutineEventType.BeforeCheckout,
+            1,
+            [
+                new DemoRoutineAction(RoutineActionType.Wait, """{"hours":2}"""),
+                new DemoRoutineAction(RoutineActionType.CreateActivity, """{"text":"Controlla la casa dopo la partenza (TEST)","dueInDays":1}"""),
+            ],
+            true,
+            Scenario.RoutineTestMode),
     ];
 
     /// <summary>
@@ -2380,15 +2400,22 @@ public sealed record DemoWireBatchTemplate(
     decimal TotalAmount,
     string Scenario);
 
-/// <summary>An automation routine demo (NF-26): demonstrates active and test-mode routines.</summary>
+/// <summary>
+/// An automation routine demo (NF-21, NF-26): demonstrates an active routine and one in test mode. It becomes a <c>Routine</c> row marked as showcase data
+/// (<c>TestDataEntities.Routine</c>): active in both cases, <paramref name="IsTestMode"/> says whether it simulates its actions. The event is a time trigger
+/// of <paramref name="DaysBefore"/> days (<c>{ "days": N }</c>).
+/// </summary>
 public sealed record DemoRoutineTemplate(
     string Key,
     string Name,
     RoutineEventType EventType,
     int DaysBefore,
-    RoutineActionType ActionType,
+    IReadOnlyList<DemoRoutineAction> Actions,
     bool IsTestMode,
     string Scenario);
+
+/// <summary>An action of a demo routine: its type and its configuration as the JSON object the editor writes (<c>{ "text": "…", "dueInDays": 1 }</c>).</summary>
+public sealed record DemoRoutineAction(RoutineActionType Type, string ConfigJson);
 
 /// <summary>Which of the two sources of the hub of messages a demo conversation is kept in, and what it is about.</summary>
 public enum DemoMessageThreadKind

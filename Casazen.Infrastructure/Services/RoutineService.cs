@@ -1,20 +1,53 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
+using Casazen.Core.Features;
+using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Jobs;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Npgsql;
-using System.Text.Json;
 
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// Implementation of routine automation service (NF-26, ADR-022).
-/// Handles routine triggering, execution, guardrails, and test mode simulation.
+/// The routine engine (NF-21, NF-26, ADR-022): runs the active routines of an org for an event of the bus, with real conditions, guardrails that read
+/// the booking, scheduled waits and a structured result (E01/F04/US01/T01).
 /// </summary>
+/// <remarks>
+/// <list type="bullet">
+/// <item><b>Condition</b>: <c>ConditionJson</c> is read as a condition of ADR-014 and evaluated by <see cref="IConditionEvaluator"/> on the facts of the
+/// booking the payload names, org-wide as the jobs do. Not met: nothing is recorded. Invalid: an execution <c>Failed</c> with
+/// <see cref="RoutineCodes.ConditionInvalid"/>, which the host sees in the log.</item>
+/// <item><b>Guardrails</b> (ADR-022-R11) run before every action, also in test mode, on facts read from the booking and never from the payload: what
+/// cannot be read is not a pass.</item>
+/// <item><b>Actions</b> run in order and stop at the first one that fails; a blocked action does not stop the next ones. In test mode none runs: each is
+/// <c>simulated</c>. The switch of <see cref="ExecuteActionAsync"/> has one case for each action, owned by the task that makes it real; what has no case
+/// fails with <see cref="RoutineCodes.ActionNotAvailable"/>, it never pretends.</item>
+/// <item><b>Wait</b> saves the payload and the next action in <c>ResultJson</c>, sets <c>ResumeAt</c> and schedules
+/// <see cref="RoutineDelayJob.ResumeRoutineAsync"/> at that time; <see cref="ResumeAsync"/> continues from what was saved, once: the job of an earlier wait
+/// that comes again finds the execution waiting for a time far away and does nothing, and after the wait a stay that was cancelled or marked as a
+/// no-show meanwhile gets no action (each one is <c>blocked</c> with <see cref="RoutineCodes.BookingNotActive"/>), but for the routines of a cancellation.</item>
+/// <item><b>Failures</b>: an expected one is the <c>failed</c> result of an action; an unexpected one closes the execution with
+/// <see cref="RoutineCodes.ActionError"/> and is rethrown, so the dispatcher records it on the event (ADR-022-R5).</item>
+/// <item><b>The flag</b> <c>Features:Routines</c> closes the module (E01/F04/US01/T03): the events start nothing, and a wait that comes due changes
+/// nothing: nothing is read or written and the execution stays as it is (waiting). A routine deactivated while it waits is another case: its execution ends
+/// <c>Failed</c> with <see cref="RoutineCodes.Inactive"/>.</item>
+/// <item>The org is the one of the routine in every query (the tenant filter of the scope is a second wall); the job that resumes a wait has no tenant
+/// and relies on the first.</item>
+/// </list>
+/// </remarks>
 public class RoutineService(
-    AppDbContext dbContext,
+    AppDbContext db,
+    IConditionEvaluator conditionEvaluator,
+    IInternalActivityService activities,
+    IBackgroundJobClient jobs,
+    IFeatureFlags featureFlags,
+    TimeProvider timeProvider,
     ILogger<RoutineService> logger) : IRoutineService
 {
     /// <summary>
@@ -22,6 +55,12 @@ public class RoutineService(
     /// a routine for the same event is refused by the database (ADR-022-R7).
     /// </summary>
     internal const string ExecutionPerEventIndexName = "IX_RoutineExecutions_RoutineId_EventId";
+
+    /// <summary>The code of a <see cref="NotFoundException"/> that names none: the generic one of the API.</summary>
+    private const string GenericNotFoundCode = "not_found";
+
+    /// <summary>How much earlier than its <c>ResumeAt</c> a job may find a waiting execution (the clocks of the machines): the job of an earlier wait is far earlier than that.</summary>
+    private static readonly TimeSpan ResumeClockTolerance = TimeSpan.FromMinutes(5);
 
     public Task TriggerAsync(
         Guid orgId,
@@ -42,9 +81,19 @@ public class RoutineService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(routineFilter);
+        ArgumentException.ThrowIfNullOrWhiteSpace(eventId);
+
+        // The module is closed (Features:Routines): the events of the bus start nothing.
+        if (!featureFlags.IsEnabled(FeatureFlags.Routines))
+        {
+            logger.LogDebug("Routines are off: event {EventId} of org {OrgId} starts no routine", eventId, orgId);
+            return;
+        }
+
+        var data = RoutinePayload.Normalize(payload);
 
         // Find all active routines for this event type and org (TN-1: tenant isolation), then the ones the caller asks for
-        var routines = (await dbContext.Routines
+        var routines = (await db.Routines
                 .Where(r => r.OrgId == orgId && r.Active && r.EventType == eventType)
                 .ToListAsync(cancellationToken))
             .Where(routineFilter)
@@ -56,13 +105,22 @@ public class RoutineService(
 
         foreach (var routine in routines)
         {
-            await ExecuteRoutineAsync(routine, eventId, payload, cancellationToken);
+            await ExecuteRoutineAsync(routine, eventId, data, cancellationToken);
         }
     }
 
     public async Task ResumeAsync(Guid executionId, CancellationToken cancellationToken = default)
     {
-        var execution = await dbContext.RoutineExecutions
+        // The module is closed (Features:Routines): a wait that comes due changes nothing. Nothing is read or written, the execution stays as it is
+        // (waiting), and the host finds it as it was when the module is on again.
+        if (!featureFlags.IsEnabled(FeatureFlags.Routines))
+        {
+            logger.LogDebug("Routines are off: execution {ExecutionId} is not resumed and stays as it is", executionId);
+            return;
+        }
+
+        // The job has no tenant: the execution is found by its id, and everything after it reads in the org of the execution.
+        var execution = await db.RoutineExecutions
             .Include(e => e.Routine)
             .FirstOrDefaultAsync(e => e.Id == executionId, cancellationToken);
 
@@ -72,74 +130,108 @@ public class RoutineService(
             return;
         }
 
-        if (execution.Routine == null)
+        // A second job for the same wait, or one that comes after the execution ended: nothing to continue (ADR-022-R10).
+        if (execution.Outcome != RoutineExecutionOutcomes.Waiting)
         {
-            logger.LogWarning(
-                "Routine execution {ExecutionId} has no associated routine",
-                executionId);
+            logger.LogInformation(
+                "Routine execution {ExecutionId} is {Outcome}, not waiting: nothing to resume",
+                executionId, execution.Outcome);
+            return;
+        }
+
+        // The job of an earlier wait that comes again (the queue delivers a job twice after a crash) finds the execution waiting at the NEXT wait: it is not
+        // its job, so it does nothing, and the job of that wait continues the execution at its time. The tolerance covers the clocks of two machines; the
+        // shortest wait is an hour.
+        if (execution.ResumeAt is { } due && due - ResumeClockTolerance > Now())
+        {
+            logger.LogInformation(
+                "Routine execution {ExecutionId} waits until {ResumeAt}, it is not time yet: the job that came is not the one of this wait",
+                executionId, due);
+            return;
+        }
+
+        var saved = RoutineExecutionResult.Parse(execution.ResultJson);
+        var results = saved.Actions.ToList();
+
+        // The wait that brought the execution here is over.
+        var waited = results.FindLastIndex(r => r.Outcome == RoutineActionOutcomes.Waiting);
+        if (waited >= 0)
+            results[waited] = results[waited] with { Outcome = RoutineActionOutcomes.Done };
+
+        // A routine deactivated meanwhile does not continue: the execution ends and says so.
+        if (execution.Routine is not { Active: true } routine)
+        {
+            logger.LogInformation(
+                "Routine {RoutineId} is not active any more: execution {ExecutionId} ends instead of continuing",
+                execution.RoutineId, executionId);
+            await EndAsync(
+                execution,
+                RoutineExecutionOutcomes.Failed,
+                new RoutineExecutionResult(results, null, saved.NextActionIndex, RoutineCodes.Inactive),
+                cancellationToken);
             return;
         }
 
         logger.LogInformation(
-            "Resuming routine execution {ExecutionId} for routine {RoutineId}",
-            executionId, execution.RoutineId);
+            "Resuming routine execution {ExecutionId} for routine {RoutineId} at action {NextActionIndex}",
+            executionId, execution.RoutineId, saved.NextActionIndex);
 
-        // Parse the result to get where we left off
-        var result = JsonSerializer.Deserialize<RoutineExecutionResult>(execution.ResultJson)
-                    ?? new RoutineExecutionResult();
-
-        // Continue executing actions from where we stopped
-        await ContinueActionsAsync(execution, result, cancellationToken);
+        var run = new Run(db, execution.OrgId, RoutinePayload.FromJson(saved.PayloadJson));
+        await RunAsync(routine, execution, run, results, saved.NextActionIndex, resumed: true, cancellationToken);
     }
 
-    public async Task<object> SimulateAsync(
+    public async Task<RoutineSimulationResult> SimulateAsync(
+        Guid orgId,
         Guid routineId,
         object sampleEventPayload,
         CancellationToken cancellationToken = default)
     {
-        var routine = await dbContext.Routines
-            .FirstOrDefaultAsync(r => r.Id == routineId, cancellationToken);
+        var routine = await db.Routines
+                          .AsNoTracking()
+                          .FirstOrDefaultAsync(r => r.Id == routineId && r.OrgId == orgId, cancellationToken)
+                      ?? throw new NotFoundException($"Routine {routineId} not found")
+                      {
+                          Code = RoutineCodes.NotFound,
+                          MessageKey = "RoutineNotFound",
+                      };
 
-        if (routine == null)
+        var run = new Run(db, orgId, RoutinePayload.Normalize(sampleEventPayload));
+
+        // The same evaluation as a real event: a condition the engine would refuse is reported, not guessed at.
+        var verdict = await EvaluateConditionAsync(routine, run, cancellationToken);
+        var actionsValid = RoutineAction.TryParseList(routine.ActionsJson, out var actions);
+
+        var simulated = new List<RoutineSimulatedAction>();
+        for (var index = 0; index < actions.Count; index++)
         {
-            throw new InvalidOperationException($"Routine {routineId} not found");
+            var action = actions[index];
+
+            // What stops it for real: a guardrail, or no implementation (the routine in test mode may hold any action; live it would fail).
+            var reason = await CheckGuardrailsAsync(run, action, cancellationToken)
+                         ?? (RoutineActionCatalog.IsAvailable(action.Type, featureFlags) ? null : RoutineCodes.ActionNotAvailable);
+            simulated.Add(new RoutineSimulatedAction(index, action.Type, action.ConfigElement, reason is not null, reason));
         }
 
-        // Evaluate conditions (would need condition evaluator from ADR-014)
-        var conditionsMatched = EvaluateConditions(routine.ConditionJson, sampleEventPayload);
-
-        // Parse actions
-        var actions = JsonSerializer.Deserialize<List<RoutineAction>>(routine.ActionsJson)
-                     ?? new List<RoutineAction>();
-
-        return new
-        {
-            RoutineId = routine.Id,
-            RoutineName = routine.Name,
-            ConditionsMatched = conditionsMatched,
-            WouldExecute = conditionsMatched,
-            Actions = actions.Select(a => new
-            {
-                Type = a.Type,
-                Config = a.Config,
-                WouldBlock = WouldActionBeBlocked(a, sampleEventPayload)
-            }).ToList()
-        };
+        var matched = verdict == ConditionVerdict.Met;
+        var code = verdict == ConditionVerdict.Invalid
+            ? RoutineCodes.ConditionInvalid
+            : actionsValid ? null : RoutineCodes.ActionsInvalid;
+        return new RoutineSimulationResult(routine.Id, routine.Name, matched, matched && actionsValid, simulated, code);
     }
 
     private async Task ExecuteRoutineAsync(
         Routine routine,
         string eventId,
-        object payload,
+        IReadOnlyDictionary<string, object?> payload,
         CancellationToken cancellationToken)
     {
         // Check for idempotence: has this routine already executed for this event?
-        var existingExecution = await dbContext.RoutineExecutions
-            .FirstOrDefaultAsync(
-                e => e.RoutineId == routine.Id && e.EventId == eventId,
+        var alreadyExecuted = await db.RoutineExecutions
+            .AnyAsync(
+                e => e.OrgId == routine.OrgId && e.RoutineId == routine.Id && e.EventId == eventId,
                 cancellationToken);
 
-        if (existingExecution != null)
+        if (alreadyExecuted)
         {
             logger.LogInformation(
                 "Routine {RoutineId} already executed for event {EventId}, skipping (idempotence)",
@@ -147,8 +239,9 @@ public class RoutineService(
             return;
         }
 
-        // Evaluate conditions
-        if (!EvaluateConditions(routine.ConditionJson, payload))
+        var run = new Run(db, routine.OrgId, payload);
+        var verdict = await EvaluateConditionAsync(routine, run, cancellationToken);
+        if (verdict == ConditionVerdict.NotMet)
         {
             logger.LogInformation(
                 "Routine {RoutineId} conditions not met for event {EventId}",
@@ -162,300 +255,515 @@ public class RoutineService(
             RoutineId = routine.Id,
             OrgId = routine.OrgId,
             EventId = eventId,
-            StartedAt = DateTime.UtcNow,
-            Outcome = "Running"
+            StartedAt = Now(),
+            Outcome = RoutineExecutionOutcomes.Running,
         };
 
-        dbContext.RoutineExecutions.Add(execution);
+        db.RoutineExecutions.Add(execution);
         try
         {
-            await dbContext.SaveChangesAsync(cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException ex) when (IsDuplicateExecution(ex))
         {
             // A parallel delivery of the same event claimed this routine first: the unique index refused this second claim
             // (ADR-022-R7). The routine has run once; nothing failed.
-            dbContext.Entry(execution).State = EntityState.Detached;
+            db.Entry(execution).State = EntityState.Detached;
             logger.LogInformation(
                 "Routine {RoutineId} already executed for event {EventId} by a parallel delivery, skipping (idempotence)",
                 routine.Id, eventId);
             return;
         }
 
-        var result = new RoutineExecutionResult();
+        if (verdict == ConditionVerdict.Invalid)
+        {
+            logger.LogWarning(
+                "Routine {RoutineId} has a condition that cannot be evaluated: execution {ExecutionId} failed",
+                routine.Id, execution.Id);
+            await EndAsync(
+                execution,
+                RoutineExecutionOutcomes.Failed,
+                new RoutineExecutionResult([], null, 0, RoutineCodes.ConditionInvalid),
+                cancellationToken);
+            return;
+        }
 
+        await RunAsync(routine, execution, run, [], 0, resumed: false, cancellationToken);
+    }
+
+    /// <summary>
+    /// Runs the actions of <paramref name="routine"/> from <paramref name="startIndex"/> and closes the execution: <c>Success</c>, <c>Failed</c>, or
+    /// <c>Waiting</c> at a Wait. <paramref name="results"/> holds what the actions before it did (a resumed execution). After a wait
+    /// (<paramref name="resumed"/>) a stay that was cancelled, or marked as a no-show, meanwhile gets nothing more: each action left is recorded
+    /// <c>blocked</c> with <see cref="RoutineCodes.BookingNotActive"/>, but for the routines of a cancellation, which are about exactly that.
+    /// </summary>
+    private async Task RunAsync(
+        Routine routine,
+        RoutineExecution execution,
+        Run run,
+        List<RoutineActionResult> results,
+        int startIndex,
+        bool resumed,
+        CancellationToken cancellationToken)
+    {
         try
         {
-            // Parse and execute actions
-            await ExecuteActionsAsync(routine, execution, payload, result, cancellationToken);
+            if (!RoutineAction.TryParseList(routine.ActionsJson, out var actions))
+            {
+                logger.LogWarning("Routine {RoutineId}: its actions cannot be read, execution {ExecutionId} failed", routine.Id, execution.Id);
+                await EndAsync(
+                    execution,
+                    RoutineExecutionOutcomes.Failed,
+                    new RoutineExecutionResult(results, null, startIndex, RoutineCodes.ActionsInvalid),
+                    cancellationToken);
+                return;
+            }
 
-            execution.CompletedAt = DateTime.UtcNow;
-            execution.Outcome = "Success";
-            execution.ResultJson = JsonSerializer.Serialize(result);
+            var bookingGone = resumed
+                              && routine.EventType != RoutineEventType.BookingCanceled
+                              && await run.BookingIsGoneAsync(cancellationToken);
+
+            var next = startIndex;
+            for (var index = startIndex; index < actions.Count; index++)
+            {
+                var action = actions[index];
+                next = index + 1;
+
+                if (bookingGone)
+                {
+                    logger.LogInformation(
+                        "Routine {RoutineId} execution {ExecutionId}: the stay was cancelled or marked as a no-show while it waited, action {ActionType} is not run",
+                        routine.Id, execution.Id, action.Type);
+                    results.Add(RoutineActionResult.Blocked(index, action.Type, RoutineCodes.BookingNotActive));
+                    continue;
+                }
+
+                // Apply guardrails (AC-NF26-4, AC-NF26-5, AC-NF26-6, ADR-022-R11): a blocked action is not run, and the next ones go on
+                var guardrail = await CheckGuardrailsAsync(run, action, cancellationToken);
+                if (guardrail is not null)
+                {
+                    logger.LogWarning(
+                        "Routine {RoutineId} action {ActionType} blocked by guardrail: {Reason}",
+                        routine.Id, action.Type, guardrail);
+                    results.Add(RoutineActionResult.Blocked(index, action.Type, guardrail));
+                    continue;
+                }
+
+                // Test mode (AC-NF26-7): no case runs, no wait is scheduled
+                if (routine.TestMode)
+                {
+                    logger.LogInformation(
+                        "Routine {RoutineId} test mode: would execute {ActionType}",
+                        routine.Id, action.Type);
+                    results.Add(RoutineActionResult.Simulated(index, action.Type));
+                    continue;
+                }
+
+                if (action.Type == RoutineActionType.Wait)
+                {
+                    // Handle Wait action (AC-NF26-10, ADR-022-R10): the execution is suspended until the job resumes it
+                    await WaitAsync(execution, run, results, index, action, cancellationToken);
+                    return;
+                }
+
+                var result = await ExecuteActionAsync(routine, execution, index, action, run.Payload, cancellationToken);
+                results.Add(result);
+                if (result.Outcome == RoutineActionOutcomes.Failed)
+                    break;
+            }
+
+            var failed = results.Any(r => r.Outcome == RoutineActionOutcomes.Failed);
+            await EndAsync(
+                execution,
+                failed ? RoutineExecutionOutcomes.Failed : RoutineExecutionOutcomes.Success,
+                new RoutineExecutionResult(results, null, next),
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            logger.LogError(ex,
-                "Routine {RoutineId} execution failed for event {EventId}",
-                routine.Id, eventId);
-
-            execution.CompletedAt = DateTime.UtcNow;
-            execution.Outcome = "Failed";
-            result.Errors.Add($"Execution failed: {ex.Message}");
-            execution.ResultJson = JsonSerializer.Serialize(result);
-        }
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-    }
-
-    private async Task ExecuteActionsAsync(
-        Routine routine,
-        RoutineExecution execution,
-        object payload,
-        RoutineExecutionResult result,
-        CancellationToken cancellationToken)
-    {
-        var actions = JsonSerializer.Deserialize<List<RoutineAction>>(routine.ActionsJson)
-                     ?? new List<RoutineAction>();
-
-        await ContinueActionsFromIndexAsync(
-            routine, execution, payload, result, actions, 0, cancellationToken);
-    }
-
-    private async Task ContinueActionsAsync(
-        RoutineExecution execution,
-        RoutineExecutionResult result,
-        CancellationToken cancellationToken)
-    {
-        if (execution.Routine == null)
-        {
-            throw new InvalidOperationException("Routine not loaded");
-        }
-
-        var actions = JsonSerializer.Deserialize<List<RoutineAction>>(execution.Routine.ActionsJson)
-                     ?? new List<RoutineAction>();
-
-        var nextIndex = result.ExecutedActions.Count;
-
-        await ContinueActionsFromIndexAsync(
-            execution.Routine,
-            execution,
-            new { }, // Payload already used during initial execution
-            result,
-            actions,
-            nextIndex,
-            cancellationToken);
-    }
-
-    private async Task ContinueActionsFromIndexAsync(
-        Routine routine,
-        RoutineExecution execution,
-        object payload,
-        RoutineExecutionResult result,
-        List<RoutineAction> actions,
-        int startIndex,
-        CancellationToken cancellationToken)
-    {
-        for (int i = startIndex; i < actions.Count; i++)
-        {
-            var action = actions[i];
-
-            // Apply guardrails (AC-NF26-4, AC-NF26-5, AC-NF26-6, ADR-022-R11)
-            var guardrailViolation = CheckGuardrails(action, payload);
-            if (guardrailViolation != null)
-            {
-                logger.LogWarning(
-                    "Routine {RoutineId} action {ActionType} blocked by guardrail: {Reason}",
-                    routine.Id, action.Type, guardrailViolation);
-
-                result.Errors.Add($"Action {action.Type} blocked: {guardrailViolation}");
-                continue;
-            }
-
-            if (action.Type == RoutineActionType.Wait)
-            {
-                // Handle Wait action (AC-NF26-10, ADR-022-R10)
-                var waitConfig = JsonSerializer.Deserialize<WaitActionConfig>(
-                    JsonSerializer.Serialize(action.Config)) ?? new WaitActionConfig();
-
-                var resumeAt = DateTime.UtcNow.AddDays(waitConfig.Days);
-                execution.ResumeAt = resumeAt;
-                execution.Outcome = "Waiting";
-                result.ExecutedActions.Add($"Wait: resume at {resumeAt:yyyy-MM-dd HH:mm:ss} UTC");
-
-                await dbContext.SaveChangesAsync(cancellationToken);
-
-                // In a real implementation, schedule Hangfire job here
-                logger.LogInformation(
-                    "Routine {RoutineId} waiting until {ResumeAt}",
-                    routine.Id, resumeAt);
-
-                return; // Stop processing actions until resume
-            }
-
-            // Execute action (or simulate in test mode)
-            if (routine.TestMode)
-            {
-                result.ExecutedActions.Add($"[TEST MODE] {action.Type}: {JsonSerializer.Serialize(action.Config)}");
-                logger.LogInformation(
-                    "Routine {RoutineId} test mode: would execute {ActionType}",
-                    routine.Id, action.Type);
-            }
-            else
-            {
-                await ExecuteActionAsync(action, payload, result, cancellationToken);
-            }
+            logger.LogError(
+                ex,
+                "Routine {RoutineId} execution {ExecutionId} failed on an unexpected error ({Code})",
+                routine.Id, execution.Id, run.FailureCode);
+            await RecordFailureAsync(execution.Id, run.FailureCode);
+            throw;
         }
     }
 
-    private async Task ExecuteActionAsync(
+    /// <summary>
+    /// A Wait: the payload and the next action are saved with the execution, which becomes <c>Waiting</c> until <c>ResumeAt</c>, and the job that resumes it
+    /// is scheduled. A wait that is out of range (the API refuses it, a routine saved some other way may not) fails the action.
+    /// </summary>
+    private async Task WaitAsync(
+        RoutineExecution execution,
+        Run run,
+        List<RoutineActionResult> results,
+        int index,
         RoutineAction action,
-        object payload,
-        RoutineExecutionResult result,
         CancellationToken cancellationToken)
     {
-        // Actual action execution would go here
-        // For now, log the action
-        logger.LogInformation("Executing action {ActionType}", action.Type);
+        if (RoutineActionRules.WaitDelay(action) is not { } delay)
+        {
+            results.Add(RoutineActionResult.Failed(index, action.Type, RoutineCodes.ActionsInvalid));
+            await EndAsync(
+                execution,
+                RoutineExecutionOutcomes.Failed,
+                new RoutineExecutionResult(results, null, index + 1),
+                cancellationToken);
+            return;
+        }
 
+        var resumeAt = timeProvider.GetUtcNow().Add(delay);
+        results.Add(RoutineActionResult.Waiting(index, action.Type));
+        execution.Outcome = RoutineExecutionOutcomes.Waiting;
+        execution.ResumeAt = resumeAt.UtcDateTime;
+        execution.CompletedAt = null;
+        execution.ResultJson = new RoutineExecutionResult(results, RoutinePayload.ToJson(run.Payload), index + 1).ToJson();
+        await db.SaveChangesAsync(cancellationToken);
+
+        // Scheduling is the one call outside the database: when it fails the wait can never end, so the execution says so and the failure goes on.
+        var executionId = execution.Id;
+        run.FailureCode = RoutineCodes.WaitNotScheduled;
+        jobs.Schedule<RoutineDelayJob>(job => job.ResumeRoutineAsync(executionId, CancellationToken.None), resumeAt);
+        run.FailureCode = RoutineCodes.ActionError;
+
+        logger.LogInformation(
+            "Routine {RoutineId} waiting until {ResumeAt}: execution {ExecutionId}",
+            execution.RoutineId, resumeAt, executionId);
+    }
+
+    /// <summary>
+    /// The one place that runs an action: a case for each action, owned by the task that makes it real (<c>CreateActivity</c>: E01/F04/US01/T02).
+    /// What the catalog does not list as available, and what has no case yet, fails with <see cref="RoutineCodes.ActionNotAvailable"/>: nothing here
+    /// pretends to have done what it did not.
+    /// </summary>
+    private async Task<RoutineActionResult> ExecuteActionAsync(
+        Routine routine,
+        RoutineExecution execution,
+        int actionIndex,
+        RoutineAction action,
+        IReadOnlyDictionary<string, object?> payload,
+        CancellationToken cancellationToken)
+    {
+        // The catalog is the one source of what can run: an action it does not list as available never reaches its case.
+        if (RoutineActionCatalog.IsAvailable(action.Type, featureFlags))
+        {
+            switch (action.Type)
+            {
+                case RoutineActionType.CreateActivity:
+                    return await CreateActivityAsync(routine, actionIndex, action, payload, cancellationToken);
+            }
+        }
+
+        logger.LogWarning(
+            "Routine {RoutineId} execution {ExecutionId}: action {ActionType} is not available",
+            routine.Id, execution.Id, action.Type);
+        return RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ActionNotAvailable);
+    }
+
+    /// <summary>
+    /// <c>CreateActivity</c> (E01/F04/US01/T02): a To do for the booking of the event, in the org of the routine, with the words the host wrote as its
+    /// reason (<c>text</c>, never guest data) and a deadline of <c>dueInDays</c> days from now when it says so. The booking is read in the org of the
+    /// routine, and its property is the one of the To do. The activity service raises one open To do for each type, entity type and entity id, so a
+    /// redelivered event, a resume or another routine asking for the same booking creates no second one. A booking the event does not name, or the org
+    /// does not have, fails the action; so does a property that is gone (the code the activity service answers).
+    /// </summary>
+    private async Task<RoutineActionResult> CreateActivityAsync(
+        Routine routine,
+        int actionIndex,
+        RoutineAction action,
+        IReadOnlyDictionary<string, object?> payload,
+        CancellationToken cancellationToken)
+    {
+        if (!RoutinePayload.TryGetId(payload, "bookingId", out var bookingId))
+            return RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ActivityNeedsBooking);
+
+        var booking = await db.Bookings
+            .AsNoTracking()
+            .Where(b => b.Id == bookingId && b.OrgId == routine.OrgId)
+            .Select(b => new { b.Id, b.PropertyId })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (booking is null)
+            return RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ActivityNeedsBooking);
+
+        if (!RoutineActionRules.TryReadActivity(action, out var text, out var dueInDays))
+            return RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ActionsInvalid);
+
+        var request = new CreateTodoRequest
+        {
+            Type = ActivityType.RoutineTask,
+            Action = ActivityAction.ReviewBooking,
+            EntityType = InternalActivity.BookingEntityType,
+            EntityId = booking.Id,
+            Urgency = ActivityUrgency.Medium,
+            PropertyId = booking.PropertyId,
+            OrgId = routine.OrgId,
+            Deadline = dueInDays is { } days ? Now().AddDays(days) : null,
+            Reason = text,
+        };
+
+        try
+        {
+            await activities.CreateAsync(request, cancellationToken);
+        }
+        catch (NotFoundException ex)
+        {
+            // The property of the booking is gone (deleted since): there is nothing to raise the To do on, and a retry would find the same.
+            logger.LogWarning(
+                "Routine {RoutineId}: no To do for booking {BookingId} of org {OrgId}: {Code}",
+                routine.Id, booking.Id, routine.OrgId, ex.Code ?? GenericNotFoundCode);
+            return RoutineActionResult.Failed(actionIndex, action.Type, ex.Code ?? GenericNotFoundCode);
+        }
+
+        return RoutineActionResult.Done(actionIndex, action.Type);
+    }
+
+    /// <summary>
+    /// The guardrails of ADR-022-R11 (AC-NF26-4, AC-NF26-5, AC-NF26-6): the code of the one that stops <paramref name="action"/>, or <c>null</c>. They
+    /// read the booking of the event, never its payload, and they fail closed: with no booking (or one of another org) the guarded actions are blocked.
+    /// </summary>
+    private static async Task<string?> CheckGuardrailsAsync(Run run, RoutineAction action, CancellationToken cancellationToken)
+    {
         switch (action.Type)
         {
-            case RoutineActionType.MessageToGuest:
-                // Would send email via IEmailService
-                result.ExecutedActions.Add($"MessageToGuest: (email sent)");
-                break;
-
-            case RoutineActionType.NotifyOwner:
-            case RoutineActionType.NotifyStaff:
-            case RoutineActionType.NotifyTeam:
-                // Would create in-app notification
-                result.ExecutedActions.Add($"{action.Type}: (notification created)");
-                break;
-
-            case RoutineActionType.CreateActivity:
-                // Would create InternalActivity via service
-                result.ExecutedActions.Add($"CreateActivity: (activity created)");
-                break;
-
             case RoutineActionType.SendAccessCode:
-                // Would send access code (after ID verification check)
-                result.ExecutedActions.Add($"SendAccessCode: (code sent)");
-                break;
+                // Access code only after the identity of the guest was verified: the latest verification of the booking is an Accept.
+                return await run.IdentityVerifiedAsync(cancellationToken) ? null : RoutineCodes.AccessCodeNeedsIdVerification;
 
-            case RoutineActionType.RequestReview:
-                // Would request review from guest
-                result.ExecutedActions.Add($"RequestReview: (review requested)");
-                break;
+            case RoutineActionType.MessageToGuest:
+                // No Airbnb contact before the booking is confirmed.
+                var booking = await run.BookingAsync(cancellationToken);
+                if (booking is null || (booking.Source == BookingSource.Airbnb && !IsConfirmed(booking.Status)))
+                    return RoutineCodes.AirbnbNotConfirmed;
 
-            case RoutineActionType.AddTag:
-                // Would add tag to guest CRM profile
-                result.ExecutedActions.Add($"AddTag: (tag added)");
-                break;
+                // Campaigns only with the marketing consent the campaigns themselves read (Guest.MarketingConsent). The marker is read closed: any value
+                // but false (a text, a number, null) marks a campaign, so a marker that is not spelled as a JSON true never lets a message through.
+                if (action.IsOnUnlessFalse("isCampaign") && !await run.MarketingConsentAsync(cancellationToken))
+                    return RoutineCodes.CampaignNeedsConsent;
+
+                return null;
 
             default:
-                throw new NotImplementedException($"Action type {action.Type} not implemented");
+                return null;
         }
-
-        await Task.CompletedTask;
     }
 
-    private bool EvaluateConditions(string conditionJson, object payload)
+    private static bool IsConfirmed(BookingStatus status) =>
+        status is BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut;
+
+    /// <summary>
+    /// Reads the condition of <paramref name="routine"/> and evaluates it on the facts of the booking of the event. No condition is met; a condition
+    /// the evaluator or the routines refuse is invalid; a rule on a fact that is not known is not met.
+    /// </summary>
+    private async Task<ConditionVerdict> EvaluateConditionAsync(Routine routine, Run run, CancellationToken cancellationToken)
     {
-        // Placeholder: would use condition evaluator from ADR-014
-        // For now, always return true if no specific conditions
-        if (string.IsNullOrWhiteSpace(conditionJson) || conditionJson == "{}")
+        var parsed = RoutineConditions.Parse(routine.ConditionJson);
+        if (!parsed.Valid)
+            return ConditionVerdict.Invalid;
+
+        if (parsed.Condition is not { } condition)
+            return ConditionVerdict.Met;
+
+        var errors = conditionEvaluator.ValidateCondition(condition)
+            .Concat(RoutineConditions.UnsupportedFieldErrors(condition))
+            .Concat(RoutineConditions.ValueErrors(condition))
+            .ToList();
+        if (errors.Count > 0)
         {
-            return true;
+            logger.LogWarning(
+                "Routine {RoutineId} of org {OrgId} has an invalid condition: {Errors}",
+                routine.Id, routine.OrgId, string.Join("; ", errors));
+            return ConditionVerdict.Invalid;
         }
 
-        // Real implementation would evaluate conditions against payload
-        return true;
+        // No rule at all (the {} of a routine with no condition): nothing to prove, nothing to read.
+        if (condition.Groups.All(group => group.Rules.Count == 0))
+            return ConditionVerdict.Met;
+
+        var facts = await run.FactsAsync(cancellationToken);
+        var met = await conditionEvaluator.EvaluateAsync(condition, facts, new HostScope(routine.OrgId), cancellationToken);
+        return met ? ConditionVerdict.Met : ConditionVerdict.NotMet;
     }
 
-    private string? CheckGuardrails(RoutineAction action, object payload)
+    private async Task EndAsync(
+        RoutineExecution execution,
+        string outcome,
+        RoutineExecutionResult result,
+        CancellationToken cancellationToken)
     {
-        // AC-NF26-4: Access code only after ID verification (ADR-022-R11)
-        if (action.Type == RoutineActionType.SendAccessCode)
-        {
-            var payloadDict = JsonSerializer.Deserialize<Dictionary<string, object>>(
-                JsonSerializer.Serialize(payload));
-
-            if (payloadDict != null &&
-                payloadDict.TryGetValue("IdVerified", out var idVerified) &&
-                idVerified is JsonElement element &&
-                element.ValueKind == JsonValueKind.False)
-            {
-                return "Access code can only be sent after ID verification is completed";
-            }
-        }
-
-        // AC-NF26-5: No Airbnb contact before booking confirmation (ADR-022-R11)
-        if (action.Type == RoutineActionType.MessageToGuest)
-        {
-            var payloadDict = JsonSerializer.Deserialize<Dictionary<string, object>>(
-                JsonSerializer.Serialize(payload));
-
-            if (payloadDict != null &&
-                payloadDict.TryGetValue("Channel", out var channel) &&
-                channel is JsonElement channelElement &&
-                channelElement.GetString() == "Airbnb" &&
-                payloadDict.TryGetValue("BookingConfirmed", out var confirmed) &&
-                confirmed is JsonElement confirmedElement &&
-                confirmedElement.ValueKind == JsonValueKind.False)
-            {
-                return "Cannot contact Airbnb guests before booking is confirmed";
-            }
-        }
-
-        // AC-NF26-6: Campaigns only with consent (ADR-022-R11)
-        if (action.Type == RoutineActionType.MessageToGuest)
-        {
-            var actionConfig = JsonSerializer.Deserialize<Dictionary<string, object>>(
-                JsonSerializer.Serialize(action.Config));
-
-            if (actionConfig != null &&
-                actionConfig.TryGetValue("IsCampaign", out var isCampaign) &&
-                isCampaign is JsonElement campaignElement &&
-                campaignElement.ValueKind == JsonValueKind.True)
-            {
-                var payloadDict = JsonSerializer.Deserialize<Dictionary<string, object>>(
-                    JsonSerializer.Serialize(payload));
-
-                if (payloadDict != null &&
-                    payloadDict.TryGetValue("MarketingConsent", out var consent) &&
-                    consent is JsonElement consentElement &&
-                    consentElement.ValueKind == JsonValueKind.False)
-                {
-                    return "Marketing campaigns require guest consent";
-                }
-            }
-        }
-
-        return null;
+        execution.Outcome = outcome;
+        execution.CompletedAt = Now();
+        execution.ResultJson = result.ToJson();
+        await db.SaveChangesAsync(cancellationToken);
     }
 
-    private bool WouldActionBeBlocked(RoutineAction action, object payload)
+    /// <summary>
+    /// Closes an execution as <c>Failed</c> with <paramref name="code"/> after an unexpected error (the code is all the host needs: no message of the
+    /// exception is kept). The unit of work may hold the change that failed, so it starts again from what the database says; if even this cannot be
+    /// saved, it is logged and the original error goes on.
+    /// </summary>
+    private async Task RecordFailureAsync(Guid executionId, string code)
     {
-        return CheckGuardrails(action, payload) != null;
+        try
+        {
+            db.ChangeTracker.Clear();
+            var execution = await db.RoutineExecutions.FirstOrDefaultAsync(e => e.Id == executionId, CancellationToken.None);
+            if (execution is null)
+                return;
+
+            execution.Outcome = RoutineExecutionOutcomes.Failed;
+            execution.CompletedAt = Now();
+            execution.ResultJson = (RoutineExecutionResult.Parse(execution.ResultJson) with { PayloadJson = null, Code = code }).ToJson();
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+        catch (Exception recordingError)
+        {
+            logger.LogError(recordingError, "Routine execution {ExecutionId} could not be marked as failed", executionId);
+        }
     }
+
+    private DateTime Now() => timeProvider.GetUtcNow().UtcDateTime;
 
     private static bool IsDuplicateExecution(DbUpdateException exception) =>
         exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: ExecutionPerEventIndexName };
 
-    private class RoutineAction
+    private enum ConditionVerdict
     {
-        public RoutineActionType Type { get; set; }
-        public Dictionary<string, object> Config { get; set; } = new();
+        Met,
+        NotMet,
+        Invalid,
     }
 
-    private class RoutineExecutionResult
-    {
-        public List<string> ExecutedActions { get; set; } = new();
-        public List<string> Errors { get; set; } = new();
-    }
+    /// <summary>The columns of the booking an event is about that the engine reads, never the guest or the prices.</summary>
+    private sealed record BookingFacts(
+        Guid Id,
+        Guid PropertyId,
+        Guid GuestId,
+        BookingSource Source,
+        BookingStatus Status,
+        DateTime CheckInDate,
+        DateTime CheckOutDate,
+        int NumberOfGuests,
+        DateTime CreatedAt,
+        DateTime? NoShowAt);
 
-    private class WaitActionConfig
+    /// <summary>
+    /// One run of a routine: the payload of the event, and the facts of its booking read once, on first use, in the org of the routine. A resumed
+    /// execution gets a new one, so it reads the booking as it is when the wait ends.
+    /// </summary>
+    private sealed class Run(AppDbContext db, Guid orgId, IReadOnlyDictionary<string, object?> payload)
     {
-        public int Days { get; set; }
+        private bool _bookingRead;
+        private BookingFacts? _booking;
+        private bool? _identityVerified;
+        private bool? _marketingConsent;
+
+        public IReadOnlyDictionary<string, object?> Payload { get; } = payload;
+
+        /// <summary>The code an unexpected error is recorded with: <see cref="RoutineCodes.ActionError"/>, or the one of the call that was being made.</summary>
+        public string FailureCode { get; set; } = RoutineCodes.ActionError;
+
+        /// <summary>The booking the payload names (<c>bookingId</c>), in the org of the routine; <c>null</c> when it names none or the org has no such booking.</summary>
+        public async Task<BookingFacts?> BookingAsync(CancellationToken cancellationToken)
+        {
+            if (_bookingRead)
+                return _booking;
+
+            _bookingRead = true;
+            if (!RoutinePayload.TryGetId(Payload, "bookingId", out var bookingId))
+                return null;
+
+            _booking = await db.Bookings
+                .AsNoTracking()
+                .Where(b => b.Id == bookingId && b.OrgId == orgId)
+                .Select(b => new BookingFacts(
+                    b.Id,
+                    b.PropertyId,
+                    b.GuestId,
+                    b.Source,
+                    b.Status,
+                    b.CheckInDate,
+                    b.CheckOutDate,
+                    b.NumberOfGuests,
+                    b.CreatedAt,
+                    b.NoShowAt))
+                .FirstOrDefaultAsync(cancellationToken);
+            return _booking;
+        }
+
+        /// <summary>
+        /// The booking the payload names was cancelled, or marked as a no-show (it stays <c>Confirmed</c> with <c>NoShowAt</c> set): a stay that does not
+        /// happen. <c>false</c> when the payload names no booking the org has, or the stay is on (a request that waits for an answer is).
+        /// </summary>
+        public async Task<bool> BookingIsGoneAsync(CancellationToken cancellationToken) =>
+            await BookingAsync(cancellationToken) is { } booking && (booking.Status == BookingStatus.Cancelled || booking.NoShowAt is not null);
+
+        /// <summary>The facts a condition is evaluated on: those of the booking, none when there is none.</summary>
+        public async Task<RoutineConditionFacts> FactsAsync(CancellationToken cancellationToken)
+        {
+            var booking = await BookingAsync(cancellationToken);
+            return booking is null
+                ? RoutineConditionFacts.None
+                : RoutineConditionFacts.OfBooking(
+                    booking.PropertyId,
+                    booking.Source,
+                    booking.CheckInDate,
+                    booking.CheckOutDate,
+                    booking.NumberOfGuests,
+                    booking.CreatedAt);
+        }
+
+        /// <summary>
+        /// The verification gate of the access code (AC-NF13-6, AC-NF26-4): the latest <see cref="BiometricVerificationLog"/> of the booking is an
+        /// <see cref="BiometricOutcome.Accept"/>, written by the agent or by an operator's approval; the same gate as <c>AccessCodeService</c>.
+        /// </summary>
+        public async Task<bool> IdentityVerifiedAsync(CancellationToken cancellationToken)
+        {
+            if (_identityVerified is { } known)
+                return known;
+
+            var booking = await BookingAsync(cancellationToken);
+            if (booking is null)
+                return (_identityVerified = false).Value;
+
+            var latest = await db.BiometricVerificationLogs
+                .AsNoTracking()
+                .Where(v => v.OrgId == orgId && v.BookingId == booking.Id)
+                .OrderByDescending(v => v.CreatedAt)
+                .ThenByDescending(v => v.Id)
+                .Select(v => (BiometricOutcome?)v.Outcome)
+                .FirstOrDefaultAsync(cancellationToken);
+            return (_identityVerified = latest == BiometricOutcome.Accept).Value;
+        }
+
+        /// <summary>
+        /// The marketing consent of the guest of the booking, the flag the campaigns read (<c>Guest.MarketingConsent</c>, set once the e-mail is
+        /// confirmed): a guest who was erased or anonymized has none.
+        /// </summary>
+        public async Task<bool> MarketingConsentAsync(CancellationToken cancellationToken)
+        {
+            if (_marketingConsent is { } known)
+                return known;
+
+            var booking = await BookingAsync(cancellationToken);
+            if (booking is null)
+                return (_marketingConsent = false).Value;
+
+            var consented = await db.Guests
+                .AsNoTracking()
+                .AnyAsync(
+                    g => g.Id == booking.GuestId
+                         && g.OrgId == orgId
+                         && g.MarketingConsent
+                         && !g.IsDeleted
+                         && !g.ErasureRequested
+                         && g.DataAnonymizedDate == null,
+                    cancellationToken);
+            return (_marketingConsent = consented).Value;
+        }
     }
 }
