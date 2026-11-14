@@ -85,8 +85,10 @@ owner's own series (the *sezionale*) and numbering. The profiles live in the sam
   clear before (the legal name and address of the organizations' profiles) are rewritten encrypted by `EncryptedColumns.EncryptLegacyPlaintextAsync` at the first
   start. The province, the country and the SDI code are no personal data and stay readable.
 - **Billing setup.** The section `italy` gets the item `owner_issuer_missing` (reason `required`, with `count`): the owners with an ownership of an **Italian property**
-  (`Property.Country` `IT`) not ended on the Rome day of today and **no profile that can issue** (none, or one that misses a field), anonymized owners excluded
-  (`OwnerIssuerSetupContributor`). It reads for the organization whatever its own country (a Swiss agency with Italian properties needs its owners' profiles too).
+  (`Property.Country` `IT`) not ended on the Rome day of today and **no profile that can issue** (none, one that misses a field, or a Swiss one), anonymized owners
+  excluded (`OwnerIssuerSetupContributor`). It reads for the organization whatever its own country (a Swiss agency with Italian properties needs its owners'
+  profiles too); without such owners it has nothing to look at (`IBillingSetupContributor.AppliesAsync`), so the section `italy` of a Swiss agency without Italian
+  properties does not apply.
 
 The migration of the slice is `AddOwnerIssuerProfiles` (see *Numbers* for what it moves).
 
@@ -322,23 +324,30 @@ the host gets a «To do» (`ReviewFiscalDocument`, reason `fiscal_document_booki
 |---|---|
 | **Italian property** (`Property.Country` `IT`) with ownerships in force on the day | **The owner issues the stay**, on its issuer profile: a private owner's rule gives a **receipt** (the stamp duty of the rule, 2.00 above 77.47 of amounts without VAT, borne by the issuer, ⚖ I4), a company's a **FatturaPA invoice** in its own sezionale, with the VAT of its `StayVatTreatment` (⚖ I1) and the agency as third-party issuer (TZ, T03). Several co-owners: **one** document, issued on the profile of the co-owner whose mandate is in force on the day (several, or none: the largest share, then the oldest ownership, then the smallest id), listing every co-owner with its share (⚖ I6). |
 | the same, with the agency's services | **A second document of the organization** (`ForAgencyServices`): the cleaning when the organization's `CleaningFeeTreatment` is `Service`, and the extras (the model has no extras of a booking yet), with the agency's VAT. The owner's document then leaves them out. A cleaning that follows the stay stays in the owner's document. |
-| an owner **without an issuer profile that can issue** (none, or incomplete) | **No document at all**: 422 `owner_issuer_missing`, and the «Da fare» of the owner (`ReviewFiscalDocument`, entity `PropertyOwner`, reason `owner_issuer_missing`, about the property; one open item per owner). The daily run skips the stay until the profile is complete. |
+| an owner **without an issuer profile that can issue** (none, incomplete, or a Swiss one: the stay of an Italian property follows the Italian rules) | **No document at all**: 422 `owner_issuer_missing`, and the «Da fare» of the owner (`ReviewFiscalDocument`, entity `PropertyOwner`, reason `owner_issuer_missing`, about the property; one open item per owner). The daily run skips the stay until the profile is complete. |
 | **Swiss property** (`CH`) | The organization issues everything, as E11/E12 do, **unless** the owner has a Swiss issuer profile on which the agency chose «emette il proprietario» (`StayIssuedByOwner`, ⚖ C1): then the owner issues. |
 | a property without owners in force, a property of another country | The organization issues one document with everything, as before. |
 
-- **Never two documents of the same issuer and purpose.** A booking may now have several documents (one per issuer), but never two live documents of the same issuer:
-  the draft and the issue ask again with the issuer of the document (409 `document_already_issued`); a document imported from Octorate still holds the whole
-  booking. `BookingDocumentIssuers` has **one row per document issued** (unique on `LockedByDocumentId`, the booking only indexed); a legacy row locked to Octorate
-  still keeps CasaZen off the booking (409 `document_issuer_conflict`).
+- **Never two documents that bill the same part of a stay.** A booking may now have several documents (the owner's stay, the agency's services), but never two live
+  documents that bill the same part: an owner's document bills the **stay**, the agency's document of its services the **services**, the organization's own
+  document (and one imported from Octorate, or without an issuer) **both**. The draft and the issue ask again with the part of the document (409
+  `document_already_issued`), whoever issued the live one: a stay the agency billed in full before its owner was recorded gets no document of the owner until the
+  agency's is credited in full. `BookingDocumentIssuers` has **one row per document issued** (unique on `LockedByDocumentId`, the booking only indexed); a legacy
+  row locked to Octorate still keeps CasaZen off the booking (409 `document_issuer_conflict`).
 - **Drafts follow the plan.** The draft endpoint makes (or makes again) every document of the plan and answers with the document of the stay; a draft the plan has no
   place for any more (the agency's services once the cleaning follows the stay again) is discarded; a document that is issued is left alone. The check-out event
   and the daily run make the missing drafts of a booking that has none, and with the automatic issue they issue them in the order of the plan (the stay first).
-- **Issuer of each step.** The issue, the credit notes (and the reversal receipts) and the corrections use the profile the document was made on: an owner's credit
-  note is the owner's, in the owner's series. The issuer snapshot of an owner's document keeps the owner's own fiscal code and VAT number, the agency as
-  `intermediary`, the co-owners and the stamp reference.
+- **Issuer of each step.** A draft is issued (one document, the bulk issue, the daily run) only while it is the document the plan wants: an owner whose profile
+  cannot issue gets its «Da fare» (422 `owner_issuer_missing`), a draft of another issuer or with a line its part does not bill (made before the owner, the
+  ownership or the mandate of today, or before this change and moved to the organization by the migration) is 409 `document_draft_outdated`; refreshed, it
+  follows the plan. The credit notes (and the reversal receipts) and the corrections use the profile the document was made on: an owner's credit note is the
+  owner's, in the owner's series. The issuer snapshot of an owner's document keeps the owner's own fiscal code and VAT number, the agency as `intermediary`, the
+  co-owners and the stamp reference.
 - **PDF.** An owner's document shows the owner as issuer, the co-owners with their shares (`Comproprietari: … (50%)`) and «Emessa tramite <agenzia> per conto del
-  proprietario» (EN «Issued through … on behalf of the owner»); a document with a stamp duty prints the stamp reference of its issuer («Imposta di bollo assolta:
-  …») or «Imposta di bollo da assolvere» (⚖ I4). Resources `FiscalDocPdfIssuedOnBehalf`, `FiscalDocPdfCoOwners`, `FiscalDocPdfStampDutyReference`,
+  proprietario» (EN «Issued through … on behalf of the owner»); a document with a stamp duty says how it is paid (⚖ I4): the stamp reference of its issuer
+  («Imposta di bollo assolta: …»), «Imposta di bollo assolta in modo virtuale» when the issuer confirmed the virtual stamp without a reference
+  (`virtualStampConfirmed` in the snapshot), else «Imposta di bollo da assolvere»; a snapshot written before this change prints nothing, so an old document stays
+  as it was issued. Resources `FiscalDocPdfIssuedOnBehalf`, `FiscalDocPdfCoOwners`, `FiscalDocPdfStampDutyReference`, `FiscalDocPdfStampDutyVirtual`,
   `FiscalDocPdfStampDutyToPay`, Italian and English.
 
 ## Drafts and bulk issue (E12/F01/US01/T02)

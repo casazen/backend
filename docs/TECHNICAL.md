@@ -3114,7 +3114,7 @@ Who issues the fiscal documents of an organization and with which data (the wiza
 
 #### `BookingDocumentIssuer` (NF-82, E06/F02/US02/T01, E17/F01/US01/T02)
 
-Who issued a document of a booking: one row for each document CasaZen issues, written in the transaction of its issue and never changed. Since E17/F01/US01/T02 a booking may have documents of several issuers (the receipt of its owner, the invoice of the agency for its services): the document service refuses two documents of the same issuer and purpose for the same booking. A legacy row locked to Octorate still keeps CasaZen off the booking.
+Who issued a document of a booking: one row for each document CasaZen issues, written in the transaction of its issue and never changed. Since E17/F01/US01/T02 a booking may have documents of several issuers (the receipt of its owner, the invoice of the agency for its services): the document service refuses two live documents that bill the same part of the booking (the stay, the services of the agency; the organization's own document bills both), whoever issued them. A legacy row locked to Octorate still keeps CasaZen off the booking.
 
 | Field | Type | Constraints | Description |
 |---|---|---|---|
