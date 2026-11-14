@@ -13,8 +13,21 @@ E25/F01/US01/T01 (NF-119, decision O12 of `operazioni/analisi-tecnica.md`). The 
 
 A guest pays only with the flag on, the setting of the organization on and its connected account taking payments (`Org.CanTakeDirectPayments`):
 otherwise the guest endpoints answer 409 `tourist_tax_payment_not_available` (404 when the flag is off). `Stripe__PublishableKey` is needed for the
-Payment Element (409 without it). The lock code is never held back unless the organization turns on `RequiredBeforeAccessCode`; the guest page reads it
-(`requiredBeforeAccessCode`) and keeps the step mandatory.
+Payment Element (409 without it).
+
+### The lock code is held back by the server (`RequiredBeforeAccessCode`)
+
+The lock code is never held back unless the organization turns on `RequiredBeforeAccessCode`. With it on, the payment offered, the account ready and
+`Stripe__PublishableKey` set, **the server** holds the code back, not only the page: `IAccessCodeService.ReleaseToGuestAsync`, the one gate of every release of the
+code to a guest, returns no code while the stay owes a tourist tax that the guest can pay online now (due, not paid online, not exempt, not recorded as «Pagata in
+struttura», not collected by the channel). A guest who cannot pay (setting off, account not ready, no key, nothing payable online) is never kept out.
+
+- The selfie step (`POST api/public/checkin/{token}/selfie`) answers `result: ok` with **no `lockCode`** and `lockCodeHeld: "tourist_tax_due"`. The guest pays on the tourist
+  tax endpoints and sends the step again (a passed verification is not run again): the code comes with that answer.
+- Every exit of the code to a guest goes through that gate and is held back the same way: the check-in screen and the e-mail after a passed selfie
+  (`IdentityVerificationFlowService`), the e-mail after an operator's approval (`VerificationQueueService`; nothing is e-mailed while it is held back, and it is not
+  sent again after the payment). The guest page reads `requiredBeforeAccessCode` of the tourist tax answer to show the step first.
+- Not held back: the host's own read of the code (`GET api/bookings/{id}/access-code`, with its scope), which is the host's.
 
 ## Endpoints
 

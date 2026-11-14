@@ -485,6 +485,22 @@ public sealed class TouristTaxCollectionService(
         }
     }
 
+    public async Task<bool> IsAccessCodeHeldBackAsync(Guid bookingId, CancellationToken ct = default)
+    {
+        if (!featureFlags.IsEnabled(FeatureFlags.TouristTaxOnlinePayment))
+            return false;
+
+        // Through the tenant filter of the caller (the guest of a link and a job have none, the operator's org is the booking's).
+        var booking = await LoadBookingAsync(bookingId, ct);
+        if (booking is null || !booking.Org.TouristTaxRequiredBeforeAccessCode || !CanPayOnline(booking.Org))
+            return false;
+
+        // What the guest can pay online now: due, and neither paid online, nor exempt (nothing due), nor marked «Pagata in struttura», nor collected by the channel.
+        var record = await RecordAsync(booking, tracked: false, ct);
+        var (due, _) = await EvaluateAsync(booking, record, null, ct);
+        return due.OnlinePayable > 0m;
+    }
+
     /// <summary>
     /// The booking of a check-in link that can pay: the link is known, not expired, and its stay is confirmed or in progress (like the check-in page; a
     /// completed check-in still pays its tax). <c>null</c> otherwise. Read without the tenant filter, with the org of the link as an explicit predicate.
@@ -793,6 +809,9 @@ public sealed class TouristTaxCollectionService(
 
     /// <summary>The org offers the payment and its account takes payments (<see cref="Org.CanTakeDirectPayments"/>).</summary>
     private static bool IsOffered(Org org) => org.TouristTaxOnlinePaymentEnabled && org.CanTakeDirectPayments;
+
+    /// <summary>A guest can pay now: the org offers the payment and the platform's publishable key of the Payment Element is there.</summary>
+    private bool CanPayOnline(Org org) => IsOffered(org) && !string.IsNullOrWhiteSpace(configuration["Stripe:PublishableKey"]);
 
     private TouristTaxCollectionView ViewOf(Booking booking, StayTouristTax? record, TouristTaxCollectionDue due, TaxFigures figures) => new(
         due.Status,

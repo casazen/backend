@@ -432,6 +432,7 @@ public class PublicGuestCheckInController(
                 AttemptsRemaining = result.AttemptsRemaining,
                 OperatorPathOpen = result.OperatorPathOpen,
                 LockCode = result.LockCode,
+                LockCodeHeld = result.LockCodeHeld,
             }),
         };
     }

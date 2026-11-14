@@ -143,8 +143,9 @@ public class Org
     public bool TouristTaxOnlinePaymentEnabled { get; set; }
 
     /// <summary>
-    /// Whether the guest page asks for the tourist tax before the lock code (E25/F01/US01/T01, <c>RequiredBeforeAccessCode</c>). <b>Off by default</b>:
-    /// without it the tax never holds the code back. Read only while <see cref="TouristTaxOnlinePaymentEnabled"/> is on.
+    /// Whether the lock code is held back until the tourist tax is paid (E25/F01/US01/T01, <c>RequiredBeforeAccessCode</c>): the server holds it back
+    /// (<c>IAccessCodeService.ReleaseToGuestAsync</c>) while the stay owes a tax the guest can pay online and has not paid, and the guest page asks for the tax
+    /// first. <b>Off by default</b>: without it the tax never holds the code back. Read only while <see cref="TouristTaxOnlinePaymentEnabled"/> is on.
     /// </summary>
     public bool TouristTaxRequiredBeforeAccessCode { get; set; }
 

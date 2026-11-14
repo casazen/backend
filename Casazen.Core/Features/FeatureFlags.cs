@@ -260,7 +260,9 @@ public static class FeatureFlags
     /// <c>collection</c> block and the consumer of the booking events (the refund of a cancelled stay, the «To do» of a difference) does nothing. On, a guest
     /// pays only where the organization turned its own setting on and its account takes payments (409 <c>tourist_tax_payment_not_available</c> otherwise).
     /// <b>Not behind it</b>: the Stripe webhooks of a payment already made (it is recorded). It needs no variable to start. The frontend reads the key
-    /// <c>touristTaxOnlinePayment</c>. The lock code is never held back unless the organization turns on <c>TouristTaxRequiredBeforeAccessCode</c>.
+    /// <c>touristTaxOnlinePayment</c>. The lock code is never held back unless the organization turns on <c>TouristTaxRequiredBeforeAccessCode</c>: then the server
+    /// holds it back (<c>IAccessCodeService.ReleaseToGuestAsync</c>, the gate of every release to a guest) while the stay owes a tax the guest can pay online and has
+    /// not paid; the selfie step answers <c>lockCodeHeld: tourist_tax_due</c> instead of the code.
     /// </summary>
     public const string TouristTaxOnlinePayment = "TouristTaxOnlinePayment";
 

@@ -522,6 +522,59 @@ public class TouristTaxCollectionTests
         Assert.Equal(TouristTaxCharges.NothingToPayCode, refused.Code);
     }
 
+    // ─── The lock code: held back only while the guest owes a tax it can pay online ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task TouristTaxAccessCode_HeldBackOnlyWhileTheGuestOwesATaxItCanPayOnline_Test()
+    {
+        await using var db = NewDb();
+        var due = await SeedAsync(db, requireTaxBeforeCode: true);
+        var notAsked = await SeedAsync(db);
+        var paidOnline = await SeedAsync(db, requireTaxBeforeCode: true);
+        await SeedRecordAsync(db, paidOnline.Booking, intentId: "pi_tax_code_paid", collected: 15.00m);
+        var paidAtTheProperty = await SeedAsync(db, requireTaxBeforeCode: true);
+        await SeedStayRecordAsync(db, paidAtTheProperty.Booking, paidAtProperty: true);
+        var exempt = await SeedAsync(db, requireTaxBeforeCode: true);
+        var viaChannel = await SeedAsync(db, requireTaxBeforeCode: true, source: BookingSource.Airbnb);
+        var notComputable = await SeedAsync(db, requireTaxBeforeCode: true);
+        var accountNotReady = await SeedAsync(db, requireTaxBeforeCode: true, chargesEnabled: false);
+        db.TouristTaxChannelRules.Add(new TouristTaxChannelRule
+        {
+            Channel = BookingSource.Airbnb,
+            IstatCode = "013075",
+            Collector = TouristTaxCollector.Channel,
+            SourceUrl = "https://example.test/airbnb-como",
+        });
+        await db.SaveChangesAsync();
+        var rig = Rig(
+            db,
+            (due.Booking.Id, Calculated(due.Booking.Id, 7.50m, 7.50m)),
+            (notAsked.Booking.Id, Calculated(notAsked.Booking.Id, 7.50m, 7.50m)),
+            (paidOnline.Booking.Id, Calculated(paidOnline.Booking.Id, 7.50m, 7.50m)),
+            (paidAtTheProperty.Booking.Id, Calculated(paidAtTheProperty.Booking.Id, 7.50m, 7.50m)),
+            (exempt.Booking.Id, Calculated(exempt.Booking.Id, 0m, 0m)),
+            (viaChannel.Booking.Id, Calculated(viaChannel.Booking.Id, 7.50m, 7.50m)),
+            (accountNotReady.Booking.Id, Calculated(accountNotReady.Booking.Id, 7.50m, 7.50m)));
+
+        // The tax is due, unpaid, and the guest can pay it online now: the code is held back.
+        Assert.True(await rig.Service.IsAccessCodeHeldBackAsync(due.Booking.Id));
+
+        // Every other case lets the code go: the organization does not ask for it, it is paid online, it is recorded as paid at the property, every guest is
+        // exempt (nothing is due), the channel collects it, nobody can calculate it, the account of the organization cannot take the payment.
+        foreach (var world in new[] { notAsked, paidOnline, paidAtTheProperty, exempt, viaChannel, notComputable, accountNotReady })
+            Assert.False(await rig.Service.IsAccessCodeHeldBackAsync(world.Booking.Id));
+
+        // A guest who has no way to pay is never kept out: no platform key, or the flag off.
+        var withoutKey = RigWith(db, new RigOptions(PublishableKeyIsSet: false), (due.Booking.Id, Calculated(due.Booking.Id, 7.50m, 7.50m)));
+        Assert.False(await withoutKey.Service.IsAccessCodeHeldBackAsync(due.Booking.Id));
+        var flagOff = RigWith(db, new RigOptions(FlagOn: false), (due.Booking.Id, Calculated(due.Booking.Id, 7.50m, 7.50m)));
+        Assert.False(await flagOff.Service.IsAccessCodeHeldBackAsync(due.Booking.Id));
+
+        // Recorded as paid at the property by the host: the code is released at the next ask.
+        await rig.Service.RecordPaidAtPropertyAsync(due.Booking.Id, "auth0|host");
+        Assert.False(await rig.Service.IsAccessCodeHeldBackAsync(due.Booking.Id));
+    }
+
     // ─── The refunds: what the charge says, what the provider refuses ──────────────────────────────────────────────────────────────
 
     [Fact]
@@ -779,7 +832,9 @@ public class TouristTaxCollectionTests
         PaymentOption paymentOption = PaymentOption.Immediate,
         PaymentStatus? payment = null,
         bool swiss = false,
-        DateTime? noShowAt = null)
+        DateTime? noShowAt = null,
+        bool requireTaxBeforeCode = false,
+        bool chargesEnabled = true)
     {
         var orgId = Guid.NewGuid();
         db.Orgs.Add(new OrgEntity
@@ -789,8 +844,9 @@ public class TouristTaxCollectionTests
             Slug = $"org-{orgId:N}",
             DisplayName = "Org",
             StripeConnectedAccountId = Account,
-            ConnectChargesEnabled = true,
+            ConnectChargesEnabled = chargesEnabled,
             TouristTaxOnlinePaymentEnabled = offered,
+            TouristTaxRequiredBeforeAccessCode = requireTaxBeforeCode,
         });
         var property = new Property
         {
@@ -888,7 +944,8 @@ public class TouristTaxCollectionTests
         AppDbContext db,
         Booking booking,
         decimal? confirmedAmount = null,
-        TouristTaxCollector? declaredCollector = null)
+        TouristTaxCollector? declaredCollector = null,
+        bool paidAtProperty = false)
     {
         var record = new StayTouristTax
         {
@@ -899,6 +956,8 @@ public class TouristTaxCollectionTests
             RetainUntil = StayTouristTax.RetentionFor(DateOnly.FromDateTime(booking.CheckOutDate)),
             Currency = StayCurrency.Euro,
             DeclaredCollector = declaredCollector,
+            CollectionStatus = paidAtProperty ? TouristTaxCollectionStatus.PaidAtProperty : TouristTaxCollectionStatus.ToCollect,
+            CollectedAt = paidAtProperty ? Clock.GetUtcNow().UtcDateTime : null,
         };
         if (confirmedAmount is { } amount)
         {
@@ -927,7 +986,11 @@ public class TouristTaxCollectionTests
         RigWith(db, new RigOptions(), calculations);
 
     /// <summary>What a test changes in the rig: the flag, the cantonal rules and the channels whose portal collects the tax of a Swiss stay.</summary>
-    private sealed record RigOptions(bool FlagOn = true, SwissTouristTaxOptions? Swiss = null, IReadOnlyList<BookingSource>? PlatformCollected = null);
+    private sealed record RigOptions(
+        bool FlagOn = true,
+        SwissTouristTaxOptions? Swiss = null,
+        IReadOnlyList<BookingSource>? PlatformCollected = null,
+        bool PublishableKeyIsSet = true);
 
     private static TestRig RigWith(AppDbContext db, RigOptions options, params (Guid BookingId, StayTouristTaxView View)[] calculations)
     {
@@ -938,7 +1001,7 @@ public class TouristTaxCollectionTests
         var stripe = new Mock<IStripeService>();
         var pushes = new RecordingPushQueue();
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["Stripe:PublishableKey"] = PublishableKey })
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Stripe:PublishableKey"] = options.PublishableKeyIsSet ? PublishableKey : null })
             .Build();
         var lines = new Mock<IGuestDocumentLineBuilder>();
         lines

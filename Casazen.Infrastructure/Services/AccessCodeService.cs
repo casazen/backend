@@ -16,11 +16,13 @@ public class AccessCodeService : IAccessCodeService
 {
     private readonly AppDbContext _db;
     private readonly ILogger<AccessCodeService> _logger;
+    private readonly ITouristTaxCollectionService? _touristTax;
 
-    public AccessCodeService(AppDbContext db, ILogger<AccessCodeService> logger)
+    public AccessCodeService(AppDbContext db, ILogger<AccessCodeService> logger, ITouristTaxCollectionService? touristTax = null)
     {
         _db = db;
         _logger = logger;
+        _touristTax = touristTax;
     }
 
     public async Task SetAccessCodeAsync(Guid propertyId, string code, string userId, CancellationToken ct = default)
@@ -144,6 +146,14 @@ public class AccessCodeService : IAccessCodeService
             return null;
         }
 
+        // E25/F01/US01/T01: an organization that asks for the tourist tax before the code holds it back while the tax is due and not paid. This is the one gate
+        // of every release to a guest (the screen, the e-mail, the operator's approval), so no channel gets the code around it; nothing is logged as released.
+        if (await GetHoldReasonAsync(bookingId, ct) is { } hold)
+        {
+            _logger.LogInformation("Access code release held back for booking {BookingId} via {Channel}: {Reason}", bookingId, channel, hold);
+            return null;
+        }
+
         var accessCode = await _db.Set<PropertyAccessCode>()
             .FirstOrDefaultAsync(ac => ac.PropertyId == booking.PropertyId, ct);
 
@@ -168,6 +178,9 @@ public class AccessCodeService : IAccessCodeService
         // EF converter handles decryption
         return accessCode.EncryptedCode;
     }
+
+    public async Task<string?> GetHoldReasonAsync(Guid bookingId, CancellationToken ct = default) =>
+        _touristTax is not null && await _touristTax.IsAccessCodeHeldBackAsync(bookingId, ct) ? AccessCodeHoldReasons.TouristTaxDue : null;
 
     public async Task<AccessCodeStatusPage> GetStatusAsync(
         HostScope scope,

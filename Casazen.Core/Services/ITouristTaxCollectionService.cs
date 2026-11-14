@@ -92,6 +92,15 @@ public interface ITouristTaxCollectionService
     /// of the host is saved, what fails here is logged with ids, and the state is read again at the next event and shown at once in the host's block.
     /// </summary>
     Task ReconcileAfterChangeAsync(Guid bookingId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Whether the lock code of the stay is held back from the guest until the tourist tax is paid (brief point 7, <c>RequiredBeforeAccessCode</c>). True only
+    /// while <c>Features:TouristTaxOnlinePayment</c> is on, the organization offers the online payment and asks for the tax before the code, its account takes
+    /// payments (and the platform key is there: a guest who cannot pay is never kept out), and the stay owes a tax that the guest can pay online now: due, not
+    /// paid online, not exempt (nothing to pay), not marked «Pagata in struttura», not collected by the channel. The read of <c>IAccessCodeService</c>, the one
+    /// gate of every release of the code to a guest.
+    /// </summary>
+    Task<bool> IsAccessCodeHeldBackAsync(Guid bookingId, CancellationToken ct = default);
 }
 
 /// <summary>The markers of the PaymentIntent of a tourist tax (its metadata) and the problem codes of the collection.</summary>
