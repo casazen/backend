@@ -28,6 +28,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -378,6 +379,45 @@ public class FiscalDocumentDeliveryTests
         var refused = await SeedAsync(refusing);
         var notSent = await Assert.ThrowsAsync<DomainRuleException>(() => refusing.Service.SendAutomaticallyAsync(refused.DocumentId));
         Assert.Equal("document_email_not_sent", notSent.Code);
+    }
+
+    /// <summary>
+    /// The event of the issue is delivered at least once: when another consumer of it fails, or the dispatcher stops before it saves, it comes back to this consumer. The second delivery queues nothing, so the
+    /// guest is told once; what a queue that refused, a guest with no address or an issuer that did not ask left undone is remembered by nobody, so the next delivery tries again; and the host's own send is
+    /// never held back («send again»).
+    /// </summary>
+    [Fact]
+    public async Task SendAutomatically_AnEventDeliveredAgain_QueuesTheEmailOnce_AndWhatWasNotQueuedIsTriedAgain()
+    {
+        await using var kit = NewKit(emailGuestDocuments: true);
+        var issued = await SeedAsync(kit);
+        var other = await SeedAsync(kit, document: d => d.Number = "2026/13");
+
+        Assert.Equal(FiscalDocumentSendOutcome.Queued, await kit.Service.SendAutomaticallyAsync(issued.DocumentId));
+        Assert.Equal(FiscalDocumentSendOutcome.AlreadyQueued, await kit.Service.SendAutomaticallyAsync(issued.DocumentId));
+        Assert.Equal(FiscalDocumentSendOutcome.AlreadyQueued, await kit.Service.SendAutomaticallyAsync(issued.DocumentId));
+        Assert.Single(kit.Sent);
+
+        // Another document is another e-mail, and the memory of the automatic send never holds back the host's own («send again»).
+        Assert.Equal(FiscalDocumentSendOutcome.Queued, await kit.Service.SendAutomaticallyAsync(other.DocumentId));
+        await kit.Service.SendToGuestAsync(issued.DocumentId);
+        Assert.Equal(3, kit.Sent.Count);
+
+        // A guest with no address, an issuer that did not ask and a queue that refused are not remembered: every delivery of the event asks the queue, or the rules, again.
+        var noAddress = await SeedAsync(kit, guest => guest.Email = string.Empty);
+        Assert.Equal(FiscalDocumentSendOutcome.NoAddress, await kit.Service.SendAutomaticallyAsync(noAddress.DocumentId));
+        Assert.Equal(FiscalDocumentSendOutcome.NoAddress, await kit.Service.SendAutomaticallyAsync(noAddress.DocumentId));
+
+        await using var notAsking = NewKit(emailGuestDocuments: false);
+        var waiting = await SeedAsync(notAsking);
+        Assert.Equal(FiscalDocumentSendOutcome.NotAsked, await notAsking.Service.SendAutomaticallyAsync(waiting.DocumentId));
+        Assert.Equal(FiscalDocumentSendOutcome.NotAsked, await notAsking.Service.SendAutomaticallyAsync(waiting.DocumentId));
+
+        await using var refusing = NewKit(emailGuestDocuments: true, queueAccepts: false);
+        var refused = await SeedAsync(refusing);
+        await Assert.ThrowsAsync<DomainRuleException>(() => refusing.Service.SendAutomaticallyAsync(refused.DocumentId));
+        await Assert.ThrowsAsync<DomainRuleException>(() => refusing.Service.SendAutomaticallyAsync(refused.DocumentId));
+        Assert.Equal(2, refusing.Sent.Count);
     }
 
     [Fact]
@@ -748,6 +788,7 @@ public class FiscalDocumentDeliveryTests
             Keys = new EphemeralDataProtectionProvider();
             Db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalDelivery_{Guid.NewGuid()}").Options, new NoTenant(), Keys);
             Tokens = new FiscalDocumentLinkTokens(Keys);
+            Memory = new MemoryCache(new MemoryCacheOptions());
             Log = new CapturingLogger<FiscalDocumentDeliveryService>();
             Queue = new Mock<IEmailQueue>();
             Queue
@@ -771,6 +812,7 @@ public class FiscalDocumentDeliveryTests
                 links,
                 Tokens,
                 _provider.GetRequiredService<IServiceScopeFactory>(),
+                Memory,
                 new FakeTimeProvider(Now),
                 Log);
         }
@@ -780,6 +822,9 @@ public class FiscalDocumentDeliveryTests
         public AppDbContext Db { get; }
 
         public FiscalDocumentLinkTokens Tokens { get; }
+
+        /// <summary>The memory of the process: what the automatic send remembers of the documents it queued.</summary>
+        public MemoryCache Memory { get; }
 
         public CapturingLogger<FiscalDocumentDeliveryService> Log { get; }
 
@@ -800,6 +845,7 @@ public class FiscalDocumentDeliveryTests
         {
             await Db.DisposeAsync();
             await _provider.DisposeAsync();
+            Memory.Dispose();
         }
     }
 }

@@ -20,8 +20,9 @@ namespace Casazen.Infrastructure.Services;
 /// document, the environment has no e-mail provider or no public address of the web app, a refusal of the rules) is logged with its ids and not delivered again: the document stays in CasaZen and the host
 /// sends it from its booking. A queue that refuses while it could send (<c>document_email_not_sent</c>) and any other failure (the database) are failures of the send: logged with the code or the type of the
 /// error and ids, and thrown again, so the outbox delivers the event again (nothing was queued, so nothing is sent twice).</item>
-/// <item><b>At least once.</b> The event is delivered again when another consumer of it fails, so the guest may be told twice in that case: the link is the same kind of link and harmless, and no state
-/// of ours says «sent» (no column, no migration), so the second delivery cannot know.</item>
+/// <item><b>At least once.</b> The event is delivered again when another consumer of it fails, or when the dispatcher stops before it saves. The second delivery does not e-mail the guest again:
+/// <see cref="IFiscalDocumentDeliveryService.SendAutomaticallyAsync"/> remembers in memory, for an hour, the documents whose e-mail it queued (<see cref="FiscalDocumentSendOutcome.AlreadyQueued"/>); no state of ours
+/// says «sent» (no column, no migration). The limit: another replica, or a restart within the hour, does not know it, and the guest may then get a second e-mail, with a link of its own and as harmless as the first.</item>
 /// <item>Nothing while <c>Features:FiscalDocumentIssuance</c> is off. No log carries a value of the guest or of the document.</item>
 /// </list>
 /// </remarks>

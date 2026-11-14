@@ -36,7 +36,8 @@ public interface IFiscalDocumentDeliveryService
     /// <see cref="SendToGuestAsync"/> when the profile has «e-mail to the guest» on, nothing otherwise. A guest with no usable address, a document that is not a guest document that
     /// CasaZen issued and an environment with no e-mail provider or no public address of the web app are answers, not failures (<see cref="FiscalDocumentSendOutcome"/>): the document stays in
     /// CasaZen. A queue that refuses while both are configured is a failure of the send and is thrown as <see cref="SendToGuestAsync"/> does (422 <c>document_email_not_sent</c>), so the consumer
-    /// lets the outbox deliver the event again.
+    /// lets the outbox deliver the event again. The event is delivered at least once, so a document whose e-mail an earlier delivery already queued is not queued again
+    /// (<see cref="FiscalDocumentSendOutcome.AlreadyQueued"/>: remembered in memory for an hour, nothing is stored).
     /// </summary>
     Task<FiscalDocumentSendOutcome> SendAutomaticallyAsync(Guid documentId, CancellationToken ct = default);
 
@@ -76,6 +77,12 @@ public enum FiscalDocumentSendOutcome
     /// <c>document_email_not_sent</c>). Outside Development and Testing the startup refuses such a configuration, so this is the state of a development machine.
     /// </summary>
     NotConfigured = 5,
+
+    /// <summary>
+    /// An earlier delivery of the same event already queued the e-mail (this process remembers it for an hour): nothing is queued again, so the guest is told once. The event comes back when another
+    /// consumer of it fails or the dispatcher stops before it saves; another replica, or a restart within the hour, does not know and can queue a second e-mail.
+    /// </summary>
+    AlreadyQueued = 6,
 }
 
 /// <summary>What the public page shows of the document its link opens: the kind, the number, the day of the issue, the total and its currency, and no more.</summary>

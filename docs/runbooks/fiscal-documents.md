@@ -377,8 +377,12 @@ The guest gets the document of the stay as an **e-mail with a signed link**, nev
 - **A queue that says no is not a success.** Without the e-mail provider or `App:PublicSiteBaseUrl`, or with the queue down, the host's send answers 422 `document_email_not_sent`. The automatic send tells the two cases apart: an
   environment that cannot send at all (no provider, no public address: a development machine, since the startup refuses it elsewhere) is an answer, `FiscalDocumentSendOutcome.NotConfigured`, logged with the ids and not delivered again;
   a queue that refuses while it could send is a failure, thrown again by `FiscalDocumentEmailHandler`, so the outbox delivers the event again (nothing was queued, so nothing is sent twice). A guest with no usable address and a
-  document that is not a guest document are answers too: the document stays in CasaZen and the host sends it from the booking. The event is delivered at least once, so when another consumer of it fails the guest may get the same
-  e-mail twice (no state says «sent»: no column).
+  document that is not a guest document are answers too: the document stays in CasaZen and the host sends it from the booking.
+- **The event is delivered at least once, the e-mail once.** When another consumer of the event fails (or the dispatcher stops before it saves) the outbox delivers it again to every consumer, this one included. The service
+  remembers **in memory, for an hour** (`FiscalDocumentDeliveryService.AutomaticSendMemory`, like `MessageReplyService.EmailKeyMemory`) the documents whose e-mail it queued by itself, and answers
+  `FiscalDocumentSendOutcome.AlreadyQueued` to a later delivery: nothing is queued again. Only a queued e-mail is remembered, so a queue that refused, a guest with no address and an issuer that did not ask are asked again
+  at the next delivery. **The limit:** nothing is stored (no «sent» column, no migration), so another replica, or a restart within the hour, does not know it and can queue a second e-mail, with a link of its own. The host's
+  own send (`send-email`) is never held back: every call sends again.
 
 **The public page** (`/documents/view/:id?token=`, a frontend task) reads two anonymous endpoints: `POST api/public/fiscal-documents/{id}` (the summary: kind, number, day, total, currency) and `…/pdf`, with `{ token }` in the **body**
 and the rate limit `PublicFiscalDocumentDownload` per client IP (20 a minute). A wrong, expired or foreign token (made for another document or another purpose), a missing one and a document that is not an issued guest document of

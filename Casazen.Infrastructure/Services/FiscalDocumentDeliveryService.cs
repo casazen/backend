@@ -6,6 +6,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -24,6 +25,11 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>The public reads are tenant-free on purpose.</b> The document is found by the signed id with the tenant filter ignored (the visitor has no org, and a signed-in person of another org who
 /// opens a link must see what the guest sees), and the PDF is drawn by <see cref="IFiscalDocumentService"/> in a scope of its own entered under the org of the document, as the jobs and the event bus do.</item>
 /// <item><b>The language of the e-mail</b> is the one of the guest by country (<see cref="MessageReplyService.EmailCultureOf"/>): Italian for Italy and for no country, English for everybody else.</item>
+/// <item><b>The automatic send is queued once for each delivery of its event.</b> The event reaches the consumer at least once: another consumer of it that fails, or a stop of the dispatcher before it saves,
+/// delivers it again, and the second delivery would queue a second e-mail. This process therefore remembers for an hour (<see cref="AutomaticSendMemory"/>, in memory, like <see cref="MessageReplyService.EmailKeyMemory"/>:
+/// nothing is stored, no column, no migration) the documents whose e-mail it queued by itself, and answers <see cref="FiscalDocumentSendOutcome.AlreadyQueued"/> to a later delivery. What a queue that refuses, or an
+/// error, left undone is never remembered, so it is tried again. <b>The limit</b>: another replica, or a restart within the hour, does not know it and can queue a second e-mail (with a link of its own). The host's
+/// own send is never held back: every call sends again.</item>
 /// </list>
 /// </remarks>
 public sealed class FiscalDocumentDeliveryService(
@@ -33,6 +39,7 @@ public sealed class FiscalDocumentDeliveryService(
     PublicSiteLinks links,
     FiscalDocumentLinkTokens tokens,
     IServiceScopeFactory scopeFactory,
+    IMemoryCache cache,
     TimeProvider timeProvider,
     ILogger<FiscalDocumentDeliveryService> logger) : IFiscalDocumentDeliveryService
 {
@@ -41,6 +48,9 @@ public sealed class FiscalDocumentDeliveryService(
     /// one). The names that are only for tests and documentation (<c>example.com</c>, <c>.test</c>) stay addresses: the data of a demo is e-mailed like any other.
     /// </summary>
     private static readonly string[] NeverDeliveredSuffixes = [".invalid", ".localhost", ".local"];
+
+    /// <summary>How long this process remembers that it queued the e-mail of a document by itself, so that a second delivery of the issue event queues nothing (see the remarks).</summary>
+    public static readonly TimeSpan AutomaticSendMemory = TimeSpan.FromHours(1);
 
     public async Task<FiscalDocumentDeliveryResult> SendToGuestAsync(Guid documentId, CancellationToken ct = default)
     {
@@ -51,6 +61,15 @@ public sealed class FiscalDocumentDeliveryService(
 
     public async Task<FiscalDocumentSendOutcome> SendAutomaticallyAsync(Guid documentId, CancellationToken ct = default)
     {
+        // The event reaches the consumer at least once: this process remembers the documents whose e-mail it queued by itself, so that a second delivery (another consumer of the event failed, or the
+        // dispatcher stopped before it saved) queues nothing. Only a queued e-mail is remembered: what a refusing queue or an error left undone is tried again by the next delivery.
+        var memory = new AutomaticSendKey(documentId);
+        if (cache.TryGetValue(memory, out _))
+        {
+            logger.LogInformation("Fiscal document {DocumentId} was already e-mailed to the guest by an earlier delivery of its event: nothing is queued again", documentId);
+            return FiscalDocumentSendOutcome.AlreadyQueued;
+        }
+
         var document = await ReadAsync(documentId, ct);
         if (!IsSendable(document))
             return FiscalDocumentSendOutcome.NotSendable;
@@ -74,6 +93,7 @@ public sealed class FiscalDocumentDeliveryService(
         try
         {
             await QueueAsync(document, ct);
+            cache.Set(memory, true, AutomaticSendMemory);
             return FiscalDocumentSendOutcome.Queued;
         }
         catch (DomainRuleException ex) when (ex.Code == FiscalDocumentDeliveryErrors.RecipientEmailInvalid)
@@ -269,6 +289,9 @@ public sealed class FiscalDocumentDeliveryService(
         string? IssuerSnapshot);
 
     private sealed record GuestFacts(string FirstName, string Email, string Country, DateTime? AnonymizedAt);
+
+    /// <summary>The key of the memory of the documents whose e-mail was queued by the automatic send (see <see cref="AutomaticSendMemory"/>).</summary>
+    private sealed record AutomaticSendKey(Guid DocumentId);
 
     private sealed record LinkFacts(Guid Id, Guid OrgId, FiscalDocumentKind Kind, string? Number, DateOnly? IssueDate, decimal Total, string Currency);
 }
