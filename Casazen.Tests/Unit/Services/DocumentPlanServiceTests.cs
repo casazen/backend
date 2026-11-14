@@ -152,6 +152,31 @@ public class DocumentPlanServiceTests
     }
 
     /// <summary>
+    /// PROOF TEST: money rule («doppia fattura»). The agency billed the whole stay while the property had no owner in force; the owner recorded afterwards, with a
+    /// profile that can issue, never gets a second document of the same stay (409 <c>document_already_issued</c>, no draft): the guest is never billed twice. Only
+    /// once the agency's document is credited in full is the owner's document of the stay made, in the owner's own series.
+    /// </summary>
+    [Fact]
+    public async Task DocumentPlan_StayBilledByTheAgency_NoSecondDocumentOfTheOwner_DoubleInvoice_Test()
+    {
+        var world = await World.CreateAsync(CleaningFeeTreatment.FollowsStay);
+        var booking = await world.BookingAsync();
+        var agency = await world.Service.IssueAsync((await world.Service.CreateDraftAsync(booking, null)).Id, confirm: true);
+        Assert.Equal((world.OrganizationProfile, 362.00m), (agency.IssuerProfileId!.Value, agency.Total));
+
+        var company = await world.OwnerAsync("TEST Immobiliare Lago Srl", 100m, mandate: true, OwnerProfile.Company);
+        Assert.Equal(world.ProfileOf(company), Assert.Single((await world.Plans.PlanAsync(booking)).Documents).IssuerProfileId);
+
+        var refused = await Assert.ThrowsAsync<DomainConflictException>(() => world.Service.CreateDraftAsync(booking, null));
+        Assert.Equal(FiscalDocumentErrors.AlreadyIssued, refused.Code);
+        Assert.False(await world.Db.FiscalDocuments.AnyAsync(d => d.BookingId == booking && d.Status == FiscalDocumentStatus.Draft));
+
+        await world.Service.CreateCreditNoteAsync(agency.Id, null, "TEST storno", confirm: true, null);
+        var owner = await world.Service.IssueAsync((await world.Service.CreateDraftAsync(booking, null)).Id, confirm: true);
+        Assert.Equal((world.ProfileOf(company), "SRL2026/1"), (owner.IssuerProfileId!.Value, owner.Number));
+    }
+
+    /// <summary>
     /// An owner without an issuer profile that can issue: no draft at all (never a document in the agency's name in its place), 422 <c>owner_issuer_missing</c> for
     /// the draft and for the check-out path, and the «Da fare» of the owner.
     /// </summary>

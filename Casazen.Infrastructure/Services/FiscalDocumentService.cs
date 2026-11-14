@@ -86,8 +86,8 @@ public sealed partial class FiscalDocumentService(
 
     /// <summary>
     /// The drafts of the documents the booking needs (<see cref="IDocumentPlanService"/>), in the order of the plan: a draft of the same part (the stay, or the
-    /// services of the agency) is made again from the booking (left as it is with <paramref name="onlyMissing"/>: the check-out event, the daily run); a document
-    /// of the part whose issuer already has a live one (issued, or issued elsewhere) is left alone; otherwise the draft is made. A draft the plan has no place for
+    /// services of the agency) is made again from the booking (left as it is with <paramref name="onlyMissing"/>: the check-out event, the daily run); a part that a
+    /// live document already bills, whoever issued it (<see cref="RequireNoOtherDocumentAsync"/>), is left alone; otherwise the draft is made. A draft the plan has no place for
     /// any more (the services of the agency once the cleaning follows the stay again) is discarded: it has no number. An owner with no issuer profile that can
     /// issue: nothing at all, its «Da fare», 422 <c>owner_issuer_missing</c>.
     /// </summary>
@@ -117,7 +117,7 @@ public sealed partial class FiscalDocumentService(
                 continue;
             }
 
-            if (await HasBlockingDocumentAsync(booking.Id, Guid.Empty, planned.IssuerProfileId, countPlannedCredit: true, ct))
+            if (await HasBlockingDocumentAsync(booking.Id, Guid.Empty, PartOf(planned.ForAgencyServices, planned.IssuerOwnerId is not null), countPlannedCredit: true, ct))
                 continue;
 
             var draft = new FiscalDocument
@@ -250,7 +250,7 @@ public sealed partial class FiscalDocumentService(
         var profile = await IssuerProfileAsync(booking, organization, document.IssuerProfileId, requireComplete: true, ct);
         var rule = RuleOf(profile, booking);
         RequireDraftOfTheRule(document, rule);
-        await RequireNoOtherDocumentAsync(booking.Id, document.Id, profile.Id, ct);
+        await RequireNoOtherDocumentAsync(booking.Id, document.Id, PartOf(document.ForAgencyServices, profile.IsOwnerProfile), ct);
 
         var today = timeProvider.TodayInRomeAsDateOnly();
         var series = SeriesOf(profile, today);
@@ -776,7 +776,7 @@ public sealed partial class FiscalDocumentService(
         var profile = await IssuerProfileAsync(booking, organization, planned.IssuerProfileId, requireComplete: true, ct);
         var rule = RuleOf(profile, booking);
         if (isNew)
-            await RequireNoOtherDocumentAsync(booking.Id, draft.Id, profile.Id, ct, countPlannedCredit: true);
+            await RequireNoOtherDocumentAsync(booking.Id, draft.Id, PartOf(planned.ForAgencyServices, profile.IsOwnerProfile), ct, countPlannedCredit: true);
 
         var kind = rule.DocumentKind == RuleDocumentKind.Receipt ? DocumentKind.Receipt : DocumentKind.Invoice;
         var recipient = await invoiceData.GetAsync(booking.Id, ct);
@@ -947,7 +947,7 @@ public sealed partial class FiscalDocumentService(
         if (credited is null)
         {
             if (bookingId is { } booking)
-                await RequireNoOtherDocumentAsync(booking, document.Id, document.IssuerProfileId.Value, ct);
+                await RequireNoOtherDocumentAsync(booking, document.Id, PartOf(document.ForAgencyServices, profile.IsOwnerProfile), ct);
         }
         else
         {
@@ -1165,30 +1165,65 @@ public sealed partial class FiscalDocumentService(
     }
 
     /// <summary>
-    /// Never two documents of the same issuer and purpose for one booking (E17/F01/US01/T02), unless the first was credited in full: 409 <c>document_already_issued</c>.
-    /// The documents of the other issuers of the booking do not count (the owner's receipt and the agency's invoice of one stay live side by side); a document
-    /// imported from Octorate (issued elsewhere) and a document without an issuer hold the whole booking, so CasaZen never issues a second document for the stay; a
-    /// proforma is not a document.
+    /// What a document of a stay bills (E17/F01/US01/T02), the ground of «never two documents for one stay»: the document of an owner bills the stay, the document of
+    /// the services of the agency bills its services, and the one document of the organization (or a document issued elsewhere, or without an issuer) bills both.
     /// </summary>
-    private async Task RequireNoOtherDocumentAsync(Guid bookingId, Guid exceptId, Guid issuerProfileId, CancellationToken ct, bool countPlannedCredit = false)
+    [Flags]
+    private enum BilledPart
     {
-        if (await HasBlockingDocumentAsync(bookingId, exceptId, issuerProfileId, countPlannedCredit, ct))
+        Stay = 1,
+        Services = 2,
+        Everything = Stay | Services,
+    }
+
+    /// <summary>The part a document of a stay bills: the services of the agency; else the stay when an owner issues it; else everything.</summary>
+    private static BilledPart PartOf(bool forAgencyServices, bool ownerIssues) =>
+        forAgencyServices ? BilledPart.Services : ownerIssues ? BilledPart.Stay : BilledPart.Everything;
+
+    /// <summary>
+    /// Never two documents that bill the same part of one booking (E17/F01/US01/T02), unless the first was credited in full: 409 <c>document_already_issued</c>. The
+    /// owner's document of the stay and the agency's document of its services live side by side; a document that billed the whole stay (the organization's: every
+    /// one of before the owners issued, or one made while the property had no owner in force) holds both parts, and a document of the stay holds every new document
+    /// of the stay, whoever issues it, so the guest is never billed twice. A document imported from Octorate (issued elsewhere) and a document without an issuer hold
+    /// the whole booking; a proforma is not a document.
+    /// </summary>
+    private async Task RequireNoOtherDocumentAsync(Guid bookingId, Guid exceptId, BilledPart part, CancellationToken ct, bool countPlannedCredit = false)
+    {
+        if (await HasBlockingDocumentAsync(bookingId, exceptId, part, countPlannedCredit, ct))
             throw new DomainConflictException(FiscalDocumentErrors.AlreadyIssued, "FiscalDocumentAlreadyIssued");
     }
 
-    /// <summary>The booking has an issued document of <paramref name="issuerProfileId"/> (or issued elsewhere) that is not credited in full (see <see cref="RequireNoOtherDocumentAsync"/>).</summary>
-    private async Task<bool> HasBlockingDocumentAsync(Guid bookingId, Guid exceptId, Guid issuerProfileId, bool countPlannedCredit, CancellationToken ct)
+    /// <summary>The booking has an issued document that bills some of <paramref name="part"/> and is not credited in full (see <see cref="RequireNoOtherDocumentAsync"/>).</summary>
+    private async Task<bool> HasBlockingDocumentAsync(Guid bookingId, Guid exceptId, BilledPart part, bool countPlannedCredit, CancellationToken ct)
     {
         var issued = await db.FiscalDocuments
             .AsNoTracking()
             .Where(d => d.BookingId == bookingId && d.Id != exceptId && d.Status == FiscalDocumentStatus.Issued
                         && d.Purpose == FiscalDocumentPurpose.GuestStay
-                        && d.Kind != DocumentKind.CreditNote && d.Kind != DocumentKind.Proforma
-                        && (d.Source != FiscalDocumentSource.CasaZen || d.IssuerProfileId == null || d.IssuerProfileId == issuerProfileId))
-            .Select(d => new { d.Id, d.Total })
+                        && d.Kind != DocumentKind.CreditNote && d.Kind != DocumentKind.Proforma)
+            .Select(d => new { d.Id, d.Total, d.Source, d.IssuerProfileId, d.ForAgencyServices })
             .ToListAsync(ct);
+        if (issued.Count == 0)
+            return false;
+
+        // The documents an owner issued (on a profile with an owner) bill the stay only.
+        var profileIds = issued.Where(d => d.IssuerProfileId is not null).Select(d => d.IssuerProfileId!.Value).Distinct().ToList();
+        var ownerProfiles = profileIds.Count == 0
+            ? []
+            : (await db.OrgFiscalIssuerProfiles
+                .AsNoTracking()
+                .Where(p => profileIds.Contains(p.Id) && p.PropertyOwnerId != null)
+                .Select(p => p.Id)
+                .ToListAsync(ct)).ToHashSet();
+
         foreach (var document in issued)
         {
+            var billed = document.Source != FiscalDocumentSource.CasaZen || document.IssuerProfileId is not { } issuer
+                ? BilledPart.Everything
+                : PartOf(document.ForAgencyServices, ownerProfiles.Contains(issuer));
+            if ((billed & part) == 0)
+                continue;
+
             // A draft is allowed beside a document whose credit note is only a draft (the correction of a date change makes the new draft with the credit note), but never issued: the
             // issue asks again with only the credit notes issued (E12/F01/US01/T03).
             var credited = await CreditedSoFarAsync(document.Id, ct) + (countPlannedCredit ? await PlannedCreditAsync(document.Id, ct) : 0m);
