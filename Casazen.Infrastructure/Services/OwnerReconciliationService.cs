@@ -47,7 +47,7 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
 
         var bookingIds = lines.Select(BookingOf).Where(id => id is not null).Select(id => id!.Value).Distinct().ToList();
         var bookings = await BookingsAsync(orgId, bookingIds, ct);
-        var paid = await PaymentsAsync(orgId, bookingIds, ct);
+        var paid = await PaymentsAsync(orgId, bookingIds, bookings, ct);
 
         var differences = new List<ReconciliationDifference>();
         var channels = ChannelRows(live, bookings, paid, differences);
@@ -347,13 +347,17 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
         var rows = await db.Bookings.AsNoTracking()
             .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(b => b.OrgId == orgId && ids.Contains(b.Id))
-            .Select(b => new BookingInfo(b.Id, b.Source, b.OtaNetAmount, b.OtaCompanyCollect))
+            .Select(b => new BookingInfo(b.Id, b.Source, b.OtaNetAmount, b.OtaCompanyCollect, b.TouristTax, b.TotalPrice))
             .ToListAsync(ct);
         return rows.ToDictionary(b => b.Id);
     }
 
-    /// <summary>What the payments collected in CasaZen for each booking come to, net of their refunds (the payment ledger's paid lines recorded here, by hand or by card).</summary>
-    private async Task<Dictionary<Guid, decimal>> PaymentsAsync(Guid orgId, List<Guid> bookingIds, CancellationToken ct)
+    /// <summary>
+    /// What the payments collected in CasaZen for each booking come to (the payment ledger's paid lines recorded here, by hand or by card), as the owner ledger posts them: each payment
+    /// net of its refunds and without its part of the tourist tax (<see cref="OwnerLedgerRules.RevenueOfPayment"/>, the one definition), so it is compared with an expected payout that has
+    /// no tourist tax in it. A payment refunded in full counts 0.
+    /// </summary>
+    private async Task<Dictionary<Guid, decimal>> PaymentsAsync(Guid orgId, List<Guid> bookingIds, IReadOnlyDictionary<Guid, BookingInfo> bookings, CancellationToken ct)
     {
         if (bookingIds.Count == 0)
             return [];
@@ -363,7 +367,10 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
             .Where(p => p.OrgId == orgId && bookingIds.Contains(p.BookingId) && CollectedStatuses.Contains(p.Status))
             .Select(p => new { p.BookingId, Net = p.Amount - p.RefundedAmount })
             .ToListAsync(ct);
-        return rows.GroupBy(p => p.BookingId).ToDictionary(g => g.Key, g => g.Sum(p => p.Net));
+        return rows
+            .Where(p => bookings.ContainsKey(p.BookingId))
+            .GroupBy(p => p.BookingId)
+            .ToDictionary(g => g.Key, g => g.Sum(p => OwnerLedgerRules.RevenueOfPayment(p.Net, bookings[p.BookingId].TouristTax, bookings[p.BookingId].TotalPrice)));
     }
 
     /// <summary>
@@ -392,7 +399,7 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
         Guid? ReversesEntryId,
         DateTime PostedAt);
 
-    private sealed record BookingInfo(Guid Id, BookingSource Source, decimal? OtaNet, bool? OtaCompanyCollect);
+    private sealed record BookingInfo(Guid Id, BookingSource Source, decimal? OtaNet, bool? OtaCompanyCollect, decimal TouristTax, decimal TotalPrice);
 
     private sealed record PublishedVersion(Guid Id, Guid OwnerId, int Number, string Currency, DateTime CutoffAt, decimal Total);
 

@@ -360,7 +360,8 @@ agree. **Read only, no entity, and a difference blocks nothing: the agency decid
   `difference` are `null`, not 0 and not minus the expected (a row with some figures compares only the stays that have one, and counts the others in
   `staysWithoutRecordedPayout`).
 - **What is «recorded».** Read from the database like the payment ledger (`IBookingPaymentLedgerService`), without a call to the channel manager: the payments collected in
-  CasaZen for the booking (recorded by hand, net of refunds: a refunded one counts 0) and, when there is none, the net the channel manager reported
+  CasaZen for the booking (recorded by hand: each payment net of its refunds and **without its part of the tourist tax**, as the owner ledger posts it,
+  `OwnerLedgerRules.RevenueOfPayment`; a payment refunded in full counts 0) and, when there is none, the net the channel manager reported
   (`Booking.OtaNetAmount`; **never derived** from the amount paid and the commission, ADR-033). **Today that is no figure at all for a stay of a portal:** the Octorate import
   gives no net (`Booking.OtaNetAmount` stays `null`, `BookingStateMapper.ToOtaAmounts`) and a portal stay takes no payment by hand (`payment_booking_from_portal`), so every stay
   the portal collected is told as `payout_source_unavailable` until a source of the payouts exists (the amount the guest paid, `Booking.OtaPaidAmount`, is not the payout and is

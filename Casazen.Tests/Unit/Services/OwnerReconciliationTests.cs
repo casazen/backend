@@ -195,6 +195,51 @@ public class OwnerReconciliationTests
     }
 
     /// <summary>
+    /// Money: what is recorded for a stay from the payments collected in CasaZen is what the owner ledger posts for them: each payment net of its refunds and without its part of the
+    /// tourist tax (so it is compared with an expected payout that has none in it), a payment refunded in full counts 0, and the payments win over a net the channel manager reported.
+    /// </summary>
+    [Fact]
+    public async Task Reconciliation_PaymentsCollectedInCasaZenAreRecordedWithoutTheTouristTaxAndNetOfRefunds_Test()
+    {
+        var world = await OwnerMonthEndWorld.CreateAsync();
+        var owner = await world.OwnerAsync();
+        var property = await world.PropertyAsync("CHF", (owner, 100m));
+        await world.MandateAsync(owner, 20m);
+
+        // Three portal stays of 100 plus 10 of tourist tax, with 15 of commission in the reservation and a net of 85 reported.
+        // Paid in full: 110 collected, 10 of them tourist tax: 100 are recorded, and the net reported does not count (the payments win).
+        var full = await world.StayAsync(property, BookingSource.BookingCom, 100m, Day(10, 2), Day(10, 4), touristTax: 10m, otaCommission: 15m, otaNet: 85m);
+        await world.PaymentAsync(full, 110m, Day(10, 1));
+
+        // Half of it refunded: 55 are left, 5 of them tourist tax: 50 are recorded.
+        var halfRefunded = await world.StayAsync(property, BookingSource.Expedia, 100m, Day(10, 5), Day(10, 7), touristTax: 10m, otaCommission: 15m, otaNet: 85m);
+        await RefundAsync(world, await world.PaymentAsync(halfRefunded, 110m, Day(10, 1)), 55m);
+
+        // A payment refunded in full counts 0: of the two payments of this stay only the one of 55 keeps its money (5 of tourist tax): 50 are recorded.
+        var refundedInFull = await world.StayAsync(property, BookingSource.Airbnb, 100m, Day(10, 8), Day(10, 10), touristTax: 10m, otaCommission: 15m, otaNet: 85m);
+        await RefundAsync(world, await world.PaymentAsync(refundedInFull, 110m, Day(10, 1)), 110m);
+        await world.PaymentAsync(refundedInFull, 55m, Day(10, 2));
+        var posted = await world.Service.PostPeriodAsync(world.OrgId, 2026, 10, UserId);
+        Assert.DoesNotContain(posted.Issues, i => i.Blocking);
+
+        var result = await world.Reconciliation.GetAsync(world.OrgId, 2026, 10);
+
+        // Expected is what the ledger posted (the revenue of the payments, without the tourist tax) less the commission of the reservation; recorded is the payments as posted.
+        var checks = new[] { (Stay: full, Expected: 85m, Recorded: 100m), (halfRefunded, 35m, 50m), (refundedInFull, 35m, 50m) };
+        foreach (var check in checks)
+        {
+            var difference = Assert.Single(result.Differences, d => d.Id == check.Stay && d.Reason == OwnerReconciliationReasons.PayoutDiffers);
+            Assert.Equal(check.Expected, difference.Expected);
+            Assert.Equal(check.Recorded, difference.Recorded);
+            Assert.Equal(check.Recorded - check.Expected, difference.Difference);
+        }
+
+        Assert.Equal(100m, Assert.Single(result.Channels, r => r.Channel == BookingSource.BookingCom).RecordedPayouts);
+        Assert.Equal(50m, Assert.Single(result.Channels, r => r.Channel == BookingSource.Expedia).RecordedPayouts);
+        Assert.Equal(50m, Assert.Single(result.Channels, r => r.Channel == BookingSource.Airbnb).RecordedPayouts);
+    }
+
+    /// <summary>
     /// Money: amounts of different currencies are never summed: a channel has one row for each currency, the statements one row for each statement currency, and every
     /// difference carries its own currency.
     /// </summary>
@@ -309,6 +354,15 @@ public class OwnerReconciliationTests
         var served = Assert.IsType<OkObjectResult>((await wholeOrg.Reconciliation(2026, 10, service.Object)).Result);
         Assert.Same(result, served.Value);
         Assert.NotEmpty(typeof(OwnerAccountingController).GetMethod(nameof(OwnerAccountingController.Reconciliation))!.GetCustomAttributes(typeof(PrivateAnswerAttribute), false));
+    }
+
+    /// <summary>A payment recorded by hand that was refunded: part of it (<c>PartiallyRefunded</c>) or all of it (<c>Refunded</c>), as the refunds of CasaZen leave it.</summary>
+    private static async Task RefundAsync(OwnerMonthEndWorld world, Guid paymentId, decimal refunded)
+    {
+        var payment = await world.Db.Payments.SingleAsync(p => p.Id == paymentId);
+        payment.RefundedAmount = refunded;
+        payment.Status = refunded >= payment.Amount ? PaymentStatus.Refunded : PaymentStatus.PartiallyRefunded;
+        await world.Db.SaveChangesAsync();
     }
 
     private static OwnerAccountingController Controller(Guid org, HostScope scope)
