@@ -358,7 +358,7 @@ public sealed class WireTransferService(
                 owner?.BillingCountry);
 
             // The Swiss file writes the structured address; the SEPA file of before writes the name alone, and so asks for it only.
-            var complete = swiss ? Pain001V09Writer.IsComplete(party) : Pain001Text.Clean(party.Name, Pain001V09Writer.Max70).Length > 0;
+            var complete = swiss ? Pain001V09Writer.IsComplete(party) : Pain001Text.HasContent(party.Name, Pain001V09Writer.Max70);
             if (!complete)
             {
                 withoutAddress.Add(ownerId);

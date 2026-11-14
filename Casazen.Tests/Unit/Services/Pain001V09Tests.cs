@@ -350,6 +350,17 @@ public class Pain001V09Tests
         Assert.False(Pain001V09Writer.IsComplete(complete with { Town = string.Empty }));
         Assert.False(Pain001V09Writer.IsComplete(complete with { Country = "Svizzera" }));
         Assert.False(Pain001V09Writer.IsComplete(complete with { Name = "\t" }));
+
+        // A text in an alphabet the message does not have is only points: it is no name and no address.
+        Assert.True(Pain001Text.HasContent("É", 70));
+        Assert.True(Pain001Text.HasContent("Via 3", 70));
+        Assert.False(Pain001Text.HasContent("日本", 70));
+        Assert.False(Pain001Text.HasContent("Иван Петров", 70));
+        Assert.False(Pain001Text.HasContent(" / - . ", 70));
+        Assert.False(Pain001Text.HasContent(null, 70));
+        Assert.False(Pain001V09Writer.IsComplete(complete with { Name = "Иван Петров" }));
+        Assert.False(Pain001V09Writer.IsComplete(complete with { Street = "улица" }));
+        Assert.True(Pain001V09Writer.IsComplete(complete with { Name = "Müller & Söhne AG" }));
     }
 
     // ---- the owners and the account ----------------------------------------------------------------------------------------------------------------------------
@@ -481,6 +492,30 @@ public class Pain001V09Tests
 
         Assert.Equal(code, refused.Code);
         Assert.Empty(refused.MessageArgs);
+        AssertNoSecret(refused, logger);
+        await AssertNothingSavedAsync(db);
+    }
+
+    /// <summary>
+    /// Data rule: an owner whose name is only in an alphabet the message cannot write (Cyrillic, Greek, Chinese: it would go to the bank as points) is refused for the
+    /// batch like an owner with no name, with the owner id (422 <c>wire_owner_address_missing</c>), in both files, and nothing is saved.
+    /// </summary>
+    [Theory]
+    [InlineData("CHF", SwissIban)]
+    [InlineData("EUR", ItalianIban)]
+    public async Task WireBatch_OwnerWithANameInAnotherAlphabet_IsRefusedWithTheOwnerId_Test(string currency, string iban)
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = NewDb(orgId);
+        await AddIssuerAsync(db, orgId);
+        var owner = await AddOwnerAsync(db, orgId, "Иван", "Петров", iban);
+        var payout = await AddPayoutAsync(db, orgId, owner, 500.00m, currency);
+        var logger = new CapturingLogger<WireTransferService>();
+
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => NewService(db, logger).CreateBatchAsync(orgId, [payout], ExecutionDate));
+
+        Assert.Equal(WireTransferErrors.OwnerAddressMissing, refused.Code);
+        Assert.Equal(owner, Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<Guid>>(refused.Extensions["ownerIds"])));
         AssertNoSecret(refused, logger);
         await AssertNothingSavedAsync(db);
     }

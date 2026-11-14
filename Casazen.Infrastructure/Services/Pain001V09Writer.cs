@@ -77,15 +77,16 @@ internal static class Pain001V09Writer
 
     /// <summary>
     /// True when <paramref name="party"/> can be written as a creditor or a debtor of the message: a name, a street, a postal code, a town and a country of two
-    /// letters, all of them left after the characters and the lengths of the message are applied. The building number is optional.
+    /// letters, each of the texts with a letter or a digit left after the characters and the lengths of the message are applied (<see cref="Pain001Text.HasContent"/>:
+    /// a name in an alphabet the message does not have would be written as points and say nothing). The building number is optional.
     /// </summary>
     public static bool IsComplete(Pain001Party party)
     {
         ArgumentNullException.ThrowIfNull(party);
-        return Pain001Text.Clean(party.Name, Max70).Length > 0
-               && Pain001Text.Clean(party.Street, Max70).Length > 0
-               && Pain001Text.Clean(party.PostalCode, Max16).Length > 0
-               && Pain001Text.Clean(party.Town, Max35).Length > 0
+        return Pain001Text.HasContent(party.Name, Max70)
+               && Pain001Text.HasContent(party.Street, Max70)
+               && Pain001Text.HasContent(party.PostalCode, Max16)
+               && Pain001Text.HasContent(party.Town, Max35)
                && Pain001Text.Country(party.Country) is not null;
     }
 
@@ -249,6 +250,15 @@ internal static class Pain001Text
 
         var collapsed = string.Join(' ', text.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
         return collapsed.Length <= maxLength ? collapsed : collapsed[..maxLength].TrimEnd();
+    }
+
+    /// <summary>
+    /// True when what <paramref name="value"/> becomes in the file (<see cref="Clean"/>) holds a letter or a digit: a text that is nothing but points and signs
+    /// (the replacement of a name or a street in Cyrillic, Greek or Chinese, which the message cannot write) says nothing and is not a name or an address.
+    /// </summary>
+    public static bool HasContent(string? value, int maxLength)
+    {
+        return Clean(value, maxLength).Any(char.IsLetterOrDigit);
     }
 
     /// <summary>The two letters of a country in upper case, or <c>null</c> when it is not two letters (a country code of ISO 3166-1 alpha-2).</summary>

@@ -59,7 +59,8 @@ surrounds the wires, and the payout a wire pays, are in [`owner-accounting.md`](
   the postal code, the town and the country (two letters) are there; the building number is optional.
 - **Texts:** every text is brought to the characters the Swiss messages accept (letters of Latin-1, digits, space and `/ - ? : ( ) . , ' + &`; other accented letters lose
   their accent, signs become spaces, what has no equivalent a point) and cut to the length of its element (`Nm` and `StrtNm` 70, `BldgNb` and `PstCd` 16, `TwnNm` 35,
-  `Ustrd` 140). The XML escaping is the writer's.
+  `Ustrd` 140). The XML escaping is the writer's. A name, a street, a postal code or a town that is nothing but points and signs after that (a name in Cyrillic, Greek or
+  Chinese, which the message cannot write) is not a name or an address (`Pain001Text.HasContent`): the owner is refused like one with no name, in both files.
 - **Amounts** are exact decimals (never a floating point number), invariant culture, two decimals; the control sum is a sum of the amounts as written.
 - The element order of the message follows the ISO 20022 sequences; `Pain001V09_ChfFile_IsTheSwissMessageWithStructuredAddresses_Test` keeps it checked while the
   official schema is not in the build.
