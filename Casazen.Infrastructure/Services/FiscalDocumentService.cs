@@ -29,7 +29,7 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Logs</b> carry ids, codes and counts: never a value of the recipient or an amount.</item>
 /// </list>
 /// </remarks>
-public sealed class FiscalDocumentService(
+public sealed partial class FiscalDocumentService(
     AppDbContext db,
     IDocumentIssuerService issuers,
     IInvoiceDataService invoiceData,
@@ -40,14 +40,19 @@ public sealed class FiscalDocumentService(
     IDocumentTexts texts,
     IFiscalTaxRuleResolver taxRules,
     TimeProvider timeProvider,
-    ILogger<FiscalDocumentService> logger) : IFiscalDocumentService
+    ILogger<FiscalDocumentService> logger,
+    IGuestDocumentLineBuilder? lineBuilder = null,
+    IInternalActivityService? activities = null) : IFiscalDocumentService
 {
-    /// <summary>The descriptions of the lines: fixed words of the document, never personal data.</summary>
-    private const string LodgingKey = "FiscalDocLineLodging";
-    private const string CleaningKey = "FiscalDocLineCleaning";
-    private const string TouristTaxKey = "FiscalDocLineTouristTax";
-    private const string SwissTouristTaxKey = "FiscalDocLineTouristTaxCh";
+    /// <summary>The description of the lines of a credit note: fixed words of the document, never personal data.</summary>
     private const string CreditKey = "FiscalDocLineCredit";
+
+    /// <summary>
+    /// The lines of the draft of a booking (E12/F01/US01/T01). The container gives the registered builder; a service built by hand without one (a test) gets a builder
+    /// with no Swiss rule and no default portal, which makes nothing up.
+    /// </summary>
+    private readonly IGuestDocumentLineBuilder _lines = lineBuilder
+        ?? new GuestDocumentLineBuilder(db, texts, Options.Create(new FiscalDocumentRulesOptions()), Options.Create(new SwissTouristTaxOptions()));
 
     private DateTime UtcNow => timeProvider.GetUtcNow().UtcDateTime;
 
@@ -222,7 +227,8 @@ public sealed class FiscalDocumentService(
         var documents = await InListOrder(Matching(scope, criteria with { Status = FiscalDocumentStatus.Issued }))
             .Take(limit)
             .Select(d => new ExportSource(
-                d.Id, d.BookingId, d.Kind, d.Number, d.IssueDate, d.RecipientName, d.TaxableBase, d.VatAmount, d.StampDuty, d.Total, d.Currency, d.PaymentState, d.SdiStatus, d.Source))
+                d.Id, d.BookingId, d.Kind, d.Number, d.IssueDate, d.RecipientName, d.TaxableBase, d.VatAmount, d.StampDuty, d.Total, d.Currency, d.PaymentState, d.SdiStatus, d.Source,
+                d.PaymentChannel))
             .ToListAsync(ct);
         if (documents.Count == 0)
             return [];
@@ -236,7 +242,7 @@ public sealed class FiscalDocumentService(
             .ToDictionaryAsync(b => b.Id, ct);
         var collected = await CollectedByBookingAsync(
             db,
-            documents.Where(d => IsPaymentStateReadFromPayments(d.Source, d.Kind, d.BookingId)).Select(d => d.BookingId!.Value).Distinct().ToList(),
+            documents.Where(d => IsPaymentStateReadFromPayments(d.Source, d.Kind, d.BookingId, d.PaymentChannel)).Select(d => d.BookingId!.Value).Distinct().ToList(),
             ct);
 
         return documents
@@ -256,7 +262,7 @@ public sealed class FiscalDocumentService(
                     d.StampDuty,
                     d.Total,
                     d.Currency,
-                    IsPaymentStateReadFromPayments(d.Source, d.Kind, d.BookingId) ? PaymentStateOf(collected.GetValueOrDefault(d.BookingId!.Value), d.Total) : d.PaymentState,
+                    IsPaymentStateReadFromPayments(d.Source, d.Kind, d.BookingId, d.PaymentChannel) ? PaymentStateOf(collected.GetValueOrDefault(d.BookingId!.Value), d.Total) : d.PaymentState,
                     d.SdiStatus,
                     d.Source);
             })
@@ -318,7 +324,8 @@ public sealed class FiscalDocumentService(
         string Currency,
         FiscalDocumentPaymentState PaymentState,
         string SdiStatus,
-        FiscalDocumentSource Source);
+        FiscalDocumentSource Source,
+        FiscalPaymentChannel PaymentChannel);
 
     public async Task<string> GetXmlAsync(Guid documentId, CancellationToken ct = default)
     {
@@ -388,7 +395,9 @@ public sealed class FiscalDocumentService(
             };
         }
 
-        var amounts = FiscalDocumentTotals.FromGross(GrossLinesOf(booking, rule), rule.StampDuty);
+        // The lines of the stay whatever its source (E12/F01/US01/T01): the amounts of the portal, the tourist tax only when the host collects it, who collected the money.
+        var built = await _lines.BuildAsync(booking.Id, rule, profile.PlatformCollectedTouristTaxChannels, ct);
+        var amounts = FiscalDocumentTotals.FromGross(built.Lines, rule.StampDuty);
 
         draft.OrgId = booking.OrgId;
         draft.PropertyId = booking.PropertyId;
@@ -403,7 +412,12 @@ public sealed class FiscalDocumentService(
             db.FiscalDocumentLines.Remove(line);
         draft.Lines.Clear();
         ApplyAmounts(draft, amounts);
-        draft.PaymentState = await PaymentStateAsync(booking.Id, draft.Total, ct);
+
+        // The money of a booking of a portal is the portal's: the document is paid through it. Any other document is paid or to collect by what CasaZen collected.
+        draft.PaymentChannel = built.PaymentChannel;
+        draft.PaymentState = built.PaymentChannel == FiscalPaymentChannel.Portal
+            ? FiscalDocumentPaymentState.Paid
+            : await PaymentStateAsync(booking.Id, draft.Total, ct);
         draft.UpdatedAt = UtcNow;
         if (isNew)
             db.FiscalDocuments.Add(draft);
@@ -413,32 +427,6 @@ public sealed class FiscalDocumentService(
 
         await db.SaveChangesAsync(ct);
         return draft;
-    }
-
-    /// <summary>
-    /// The lines of a booking as the guest pays them, each at the VAT the rule gives its type: the stay (<c>BasePrice - CleaningFee</c>), the cleaning
-    /// (with the stay or as a service, as the profile says) and the tourist tax (outside the VAT: <c>N1</c> in Italy, no nature in Switzerland, where it is
-    /// labelled as the cantonal tax).
-    /// </summary>
-    private List<FiscalDocumentGrossLine> GrossLinesOf(BookingFacts booking, FiscalTaxRule rule)
-    {
-        var language = DocumentLanguages.Italian;
-        var lines = new List<FiscalDocumentGrossLine>();
-        var lodging = booking.BasePrice - booking.CleaningFee;
-        if (lodging > 0m)
-            lines.Add(Line(texts.Get(LodgingKey, language, booking.Nights), lodging, FiscalLineType.Accommodation));
-        if (booking.CleaningFee > 0m)
-            lines.Add(Line(texts.Get(CleaningKey, language), booking.CleaningFee, FiscalLineType.Cleaning));
-        if (booking.TouristTax > 0m)
-            lines.Add(Line(texts.Get(rule.IsSwiss ? SwissTouristTaxKey : TouristTaxKey, language), booking.TouristTax, FiscalLineType.TouristTax));
-
-        return lines;
-
-        FiscalDocumentGrossLine Line(string description, decimal gross, FiscalLineType type)
-        {
-            var rate = rule.RateOf(type);
-            return new FiscalDocumentGrossLine(description, 1m, gross, rate.Percent, rate.NatureCode, type);
-        }
     }
 
     /// <summary>
@@ -836,7 +824,7 @@ public sealed class FiscalDocumentService(
     /// </summary>
     internal static async Task ApplyCurrentPaymentStateAsync(AppDbContext db, IReadOnlyCollection<FiscalDocument> documents, CancellationToken ct)
     {
-        var own = documents.Where(d => IsPaymentStateReadFromPayments(d.Source, d.Kind, d.BookingId)).ToList();
+        var own = documents.Where(d => IsPaymentStateReadFromPayments(d.Source, d.Kind, d.BookingId, d.PaymentChannel)).ToList();
         if (own.Count == 0)
             return;
 
@@ -847,10 +835,11 @@ public sealed class FiscalDocumentService(
 
     /// <summary>
     /// Whether the payment state of a document is read from the payments of its booking: the documents CasaZen issued for a booking, except a credit note
-    /// (which credits money and is not collected). Any other document keeps the state it was given. The one rule of the list, the detail and the export.
+    /// (which credits money and is not collected) and the document of a booking whose portal collected the money (paid through the portal: CasaZen sees none of
+    /// its payments). Any other document keeps the state it was given. The one rule of the list, the detail and the export.
     /// </summary>
-    internal static bool IsPaymentStateReadFromPayments(FiscalDocumentSource source, DocumentKind kind, Guid? bookingId) =>
-        source == FiscalDocumentSource.CasaZen && kind != DocumentKind.CreditNote && bookingId is not null;
+    internal static bool IsPaymentStateReadFromPayments(FiscalDocumentSource source, DocumentKind kind, Guid? bookingId, FiscalPaymentChannel channel) =>
+        source == FiscalDocumentSource.CasaZen && kind != DocumentKind.CreditNote && bookingId is not null && channel != FiscalPaymentChannel.Portal;
 
     // ---------------------------------------------------------------- reads
 

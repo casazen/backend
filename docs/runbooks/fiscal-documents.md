@@ -180,6 +180,41 @@ Italian layout's) and `FiscalDocPdfCh*`, in Italian and English. The Italian lay
   only a starting point. A document Octorate issued keeps the state Octorate gave it.
 - The series: the pattern of the profile (`GuestDocumentSeries`, `{year}` is the year of the issue), the year when it has none.
 
+## Righe del documento e tassa di soggiorno (`GuestDocumentLineBuilder`, E12/F01/US01/T01)
+
+The one place that says what a guest is billed for, whatever the source of the booking (`IGuestDocumentLineBuilder`, used by the draft and by the refresh of a
+draft). The amounts are gross (VAT included), in the currency of the property; the VAT of each line is the one of the tax rule (see *Tax rules*).
+
+| Line | Amount | Notes |
+|---|---|---|
+| `Accommodation` | `BasePrice - CleaningFee` | `BasePrice` is «nightly rate × nights + cleaning» for a booking made in CasaZen (direct, manual). For a booking of a **portal** it is the room price Octorate reports (`roomGross`, the price of the host); the import never writes `CleaningFee`, so the whole price is the stay. The service fee the portal charges the guest is never in it. The cleaning is clamped to the price and the two add up to `BasePrice`: it is never billed twice |
+| `Cleaning` | `CleaningFee` when > 0 | follows the stay or is a service, as the profile says (`CleaningFeeTreatment`) |
+| `ExtraService` | — | the model has no extras of a booking (no add-on table), so no such line is made yet |
+| `TouristTax` | see below | out of VAT: `N1` in Italy, no nature in Switzerland |
+
+**Tourist tax, Italy.** The amount of the stay's confirmed `StayTouristTax` (per guest, with the exemptions the host confirmed), else `Booking.TouristTax`, **only when the host
+or the agency collects it** (`TouristTaxCollectorRules`: a booking that is not of a channel, the active `TouristTaxChannelRule` of the comune and the channel, then the
+host's declaration). If the portal collects it there is no line (never a double charge to the guest); a channel stay whose collector nobody has declared yet has none either.
+
+**Tourist tax, Switzerland.** No line for a channel in the profile's `PlatformCollectedTouristTaxChannels`; else `Booking.TouristTax` when it is > 0; else the canton rule of
+`SwissTouristTax:Rules` (the canton comes from `SwissMunicipalities` through `Property.SwissMunicipalityCode`): `guests × nights × rate`, each night at the rate in force on
+that night. Shipped: Ticino, CHF 2.00 per person and night from 2025-01-01, no age exemption (⚖ C4: all the guests of `Booking.NumberOfGuests`), source
+`https://www.ticino.ch/en/hospitality/opportunita/tasse/alloggio.html`. A canton without a rule gives no line. `SwissTouristTax:PlatformCollected` (⚖ C5, `Airbnb`) is the default
+copied into the profile of a Swiss issuer **when the profile is created** without an answer for it; the issuer's own list is the one the documents follow afterwards.
+Example: 2 guests × 3 nights × CHF 2.00 = CHF 12.00, out of VAT.
+
+**Who collected the money** (`FiscalDocument.PaymentChannel`, written with the draft):
+
+| Channel | When | Payment state |
+|---|---|---|
+| `Portal` | a booking of a portal that collects: `Booking.OtaCompanyCollect` (Octorate `companyCollect`), else `OtaCommissionIncludedInPayments` (the portal catalog), else the portal is in `FiscalDocuments:PortalCollectedChannels` (⚖: Airbnb, Booking.com «Payments by Booking», Expedia Collect, Vrbo) | **Paid** (stored: CasaZen sees none of its payments) |
+| `CasaZen` | any other booking with a payment that went through CasaZen (Stripe) | the current one, from the payments (`Paid` / `ToCollect`) |
+| `Outside` | the agency's own site, pay at the property, manual bookings, a portal the host collects from | «to collect» until the host records a manual payment (`ManualPaymentService`) |
+
+**When the booking changes.** `IFiscalDocumentService.ApplyBookingChangeAsync` follows a change of the booking: a **draft** is made again from it (or discarded when the booking is no
+longer active and nothing was collected for it; kept with a «To do» when money was collected or when it cannot be made again); an **issued** document is **never** rewritten: the host
+gets a «To do» (`ReviewFiscalDocument`, reason `fiscal_document_booking_changed`, about the document and its property, no personal data) that a credit note may be needed.
+
 ## XML (`FatturaPaXmlBuilder`)
 
 - Written with `XDocument`/`XmlWriter`, never by concatenation: every text is escaped; decimals in invariant culture (two places, unit prices and

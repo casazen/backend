@@ -62,6 +62,16 @@ public static class FiscalDocumentExtensions
         // (E06/F03/US02/T01, NF-84); run by the job octorate-document-import.
         services.AddScoped<IOctorateDocumentImportService, OctorateDocumentImportService>();
 
+        // The tourist tax of the Swiss cantons and who collects it by default (E12/F01/US01/T01, ⚖ C4, C5), SwissTouristTax, validated at startup: a malformed canton, a
+        // rate that is not positive, a rule without its source, overlapping ranges or a channel that is not a portal stop the application with a clear message. Empty is
+        // valid: a Swiss booking then gets no tourist tax line of its own.
+        services.AddOptions<SwissTouristTaxOptions>().Bind(configuration.GetSection(SwissTouristTaxOptions.SectionName)).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<SwissTouristTaxOptions>, SwissTouristTaxOptionsValidator>();
+
+        // The lines of the document of a booking, whatever its source: the amounts of a portal, the tourist tax only when the host collects it, who collected the money
+        // (E12/F01/US01/T01).
+        services.AddScoped<IGuestDocumentLineBuilder, GuestDocumentLineBuilder>();
+
         // The fiscal documents CasaZen issues for its direct bookings and the reading of every document (E06/F01/US01/T01, NF-83); the changes are
         // behind Features:FiscalDocumentIssuance.
         services.AddScoped<IFiscalDocumentService, FiscalDocumentService>();

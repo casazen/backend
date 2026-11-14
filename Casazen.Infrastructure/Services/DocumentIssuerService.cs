@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
+using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -11,6 +12,7 @@ using Casazen.Infrastructure.Octorate;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -38,7 +40,8 @@ public sealed class DocumentIssuerService(
     IFiscalTaxRuleResolver taxRules,
     IHostEnvironment hostEnvironment,
     TimeProvider timeProvider,
-    ILogger<DocumentIssuerService> logger) : IDocumentIssuerService
+    ILogger<DocumentIssuerService> logger,
+    IOptions<SwissTouristTaxOptions>? swissTouristTax = null) : IDocumentIssuerService
 {
     /// <summary>Attempts of a save when another writer made the same row at the same moment.</summary>
     private const int MaxAttempts = 3;
@@ -134,7 +137,7 @@ public sealed class DocumentIssuerService(
 
             profile.IssuerMode = DocumentIssuerMode.CasaZen;
             profile.DocumentRegime = command.Regime;
-            Apply(profile, data);
+            Apply(profile, created ? WithSwissDefaults(data, command) : data);
             if (missing.Count > 0)
                 profile.ConfirmedAt = null;
             else if (command.Confirmed)
@@ -239,6 +242,17 @@ public sealed class DocumentIssuerService(
             }
         }
     }
+
+    /// <summary>
+    /// A Swiss profile that is being created, whose wizard said nothing about the channels that collect the tourist tax, starts from the shipped default
+    /// (<c>SwissTouristTax:PlatformCollected</c>, ⚖ C5, E12/F01/US01/T01); an answer, even an empty one, is kept as it is, and the profile it creates is the issuer's own from then on.
+    /// </summary>
+    private IssuerData WithSwissDefaults(IssuerData data, SaveIssuerSettingsCommand command) =>
+        FiscalDocumentRules.IsSwiss(data.CountryCode)
+        && command.PlatformCollectedTouristTaxChannels is null
+        && swissTouristTax?.Value.PlatformCollected is { Count: > 0 } channels
+            ? data with { PlatformCollectedTouristTaxChannels = channels.Distinct().ToList() }
+            : data;
 
     /// <summary>The tax rule in force today (a Europe/Rome calendar day) for a country, a regime and the treatments, or <c>null</c> when none applies.</summary>
     private FiscalTaxRule? RuleInForceToday(string? countryCode, DocumentRegime? regime, StayVatTreatment stay, CleaningFeeTreatment cleaning) =>

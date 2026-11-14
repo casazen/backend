@@ -66,6 +66,64 @@ public interface IFiscalDocumentService
 
     /// <summary>The PDF of a CasaZen document in <paramref name="language"/>.</summary>
     Task<byte[]> GetPdfAsync(Guid documentId, string language, CancellationToken ct = default);
+
+    /// <summary>
+    /// What the documents of a booking need after the booking changed (E12/F01/US01/T01): the draft is made again from the booking (or discarded when the booking is
+    /// no longer active and nothing was collected), and an issued document is <b>never</b> changed: the host is told with a «To do»
+    /// (<see cref="FiscalDocumentTodos.BookingChangedReason"/>, no personal data) that a credit note may be needed. Idempotent: a change delivered again raises no second item.
+    /// A booking that is not found, and one with no document, change nothing.
+    /// </summary>
+    Task<BookingChangeOutcome> ApplyBookingChangeAsync(Guid bookingId, BookingChange change, CancellationToken ct = default);
+}
+
+/// <summary>What happened to a booking that its documents have to follow (<see cref="IFiscalDocumentService.ApplyBookingChangeAsync"/>).</summary>
+public enum BookingChange
+{
+    /// <summary>The dates, the guests, the amounts or the property changed.</summary>
+    Modified = 1,
+
+    /// <summary>The booking was cancelled.</summary>
+    Cancelled = 2,
+
+    /// <summary>The host marked the stay as a no-show.</summary>
+    NoShow = 3,
+
+    /// <summary>A refund of a payment of the booking succeeded.</summary>
+    Refunded = 4,
+}
+
+/// <summary>What <see cref="IFiscalDocumentService.ApplyBookingChangeAsync"/> did: counts only, nothing personal.</summary>
+/// <param name="DraftsRefreshed">Drafts made again from the changed booking.</param>
+/// <param name="DraftsDiscarded">Drafts of a booking that bills nothing any more, discarded.</param>
+/// <param name="CreditNotesPrepared">Credit notes (or reversal receipts) made as drafts for the issued documents the change leaves wrong.</param>
+/// <param name="DocumentsIssued">Documents issued at once because the profile issues without a person (the corrections of an automatic issue).</param>
+/// <param name="TodosRaised">«To do» items raised for the host (an item already open counts as raised).</param>
+public sealed record BookingChangeOutcome(int DraftsRefreshed, int DraftsDiscarded, int CreditNotesPrepared, int DocumentsIssued, int TodosRaised)
+{
+    /// <summary>Nothing was done.</summary>
+    public static BookingChangeOutcome None { get; } = new(0, 0, 0, 0, 0);
+
+    /// <summary>The outcomes of two steps added up.</summary>
+    public BookingChangeOutcome Plus(BookingChangeOutcome other) =>
+        new(
+            DraftsRefreshed + other.DraftsRefreshed,
+            DraftsDiscarded + other.DraftsDiscarded,
+            CreditNotesPrepared + other.CreditNotesPrepared,
+            DocumentsIssued + other.DocumentsIssued,
+            TodosRaised + other.TodosRaised);
+}
+
+/// <summary>The «To do» items of the fiscal documents the service raises (no personal data: a code, the document and its property).</summary>
+public static class FiscalDocumentTodos
+{
+    /// <summary>The kind of entity of the item: the document (the frontend opens it from the id).</summary>
+    public const string EntityType = "FiscalDocument";
+
+    /// <summary>A booking changed after its document was issued: a credit note may be needed. The document is never rewritten.</summary>
+    public const string BookingChangedReason = "fiscal_document_booking_changed";
+
+    /// <summary>«Controlla ed emetti la nota di credito»: the credit note (or reversal receipt) of a correction is waiting as a draft for the host to check and issue.</summary>
+    public const string CreditNoteToIssueReason = "fiscal_document_credit_note_to_issue";
 }
 
 /// <summary>The filters of the list of the documents; the days are Europe/Rome calendar days of the issue (of the creation for a draft).</summary>
