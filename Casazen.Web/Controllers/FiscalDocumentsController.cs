@@ -152,6 +152,49 @@ public class FiscalDocumentsController(
         return CreatedAtAction(nameof(Get), new { id = note.Id }, FiscalDocumentDto.From(note));
     }
 
+    /// <summary>
+    /// The bulk issue (E12/F01/US01/T02): <c>{ documentIds?, from?, to?, propertyIds? }</c>. At most 200 documents, each draft through the issue path of the API in its own
+    /// transaction; the answer has one row per document <c>{ id, issued, number?, errorCode? }</c> and the counts, and never says «all issued» while one failed. A caller restricted
+    /// to some properties issues only the documents of the properties it reaches: any other id is a row <c>fiscal_document_not_found</c>. 422
+    /// <c>document_batch_selection_required</c> for an empty selection (never «all»), <c>document_batch_too_large</c>, <c>document_batch_period_invalid</c>.
+    /// </summary>
+    [HttpPost("issue-batch")]
+    [Authorize(Policy = CasazenPolicies.PaymentWrite)]
+    [FeatureGate(FeatureFlags.FiscalDocumentIssuance)]
+    [ProducesResponseType(typeof(FiscalDocumentBatchResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<FiscalDocumentBatchResultDto>> IssueBatch([FromBody] IssueFiscalDocumentsBatchRequest request)
+    {
+        var ct = HttpContext.RequestAborted;
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
+        if (orgId is null || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct) is not { } scope)
+            return Unauthorized();
+
+        var result = await documents.IssueBatchAsync(scope, new FiscalDocumentBatchRequest(request.DocumentIds, request.From, request.To, request.PropertyIds), ct);
+        return Ok(FiscalDocumentBatchResultDto.From(result));
+    }
+
+    /// <summary>
+    /// The documents of a booking (E12/F01/US01/T02): number, kind, status, total, currency and the current payment state of each, newest first; a discarded draft is not one. The
+    /// booking card reads it. The booking is authorized like its payments: 404 for a booking the caller may not read.
+    /// </summary>
+    [HttpGet("~/api/bookings/{bookingId:guid}/fiscal-documents")]
+    [ProducesResponseType(typeof(IReadOnlyList<BookingFiscalDocumentDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<BookingFiscalDocumentDto>>> ForBooking(Guid bookingId)
+    {
+        var ct = HttpContext.RequestAborted;
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
+        if (orgId is null || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct) is not { } scope)
+            return Unauthorized();
+
+        if (!await CanOnBookingAsync(bookingId, PaymentOperations.Read, ct))
+            return NotFound();
+
+        var page = await documents.ListAsync(scope, new FiscalDocumentCriteria(BookingId: bookingId), 1, FiscalDocumentPage.MaxPageSize, ct);
+        return Ok(page.Items.Where(d => d.Status != FiscalDocumentStatus.Discarded).Select(BookingFiscalDocumentDto.From).ToList());
+    }
+
     /// <summary>The draft discarded (no number consumed). 422 <c>document_not_draft</c>, <c>document_read_only</c>.</summary>
     [HttpDelete("{id:guid}")]
     [Authorize(Policy = CasazenPolicies.PaymentWrite)]

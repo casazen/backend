@@ -89,7 +89,10 @@ public class FiscalDocumentServiceProofTests
         Assert.Equal(FiscalDocumentErrors.IssuerConflict, locked.Code);
 
         var draft = await service.CreateDraftAsync(portal, "auth0|host");
-        Assert.Equal(362.00m, draft.Total);
+
+        // The price of the host (350.00: 300.00 for the stay and 50.00 for the cleaning), without the tourist tax of the reservation: nobody has said that the host collects it
+        // for this channel (E12/F01/US01/T01), so the guest is never charged it twice.
+        Assert.Equal(350.00m, draft.Total);
         var issued = await service.IssueAsync(draft.Id, confirm: true);
 
         Assert.Equal(FiscalDocumentStatus.Issued, issued.Status);
@@ -118,7 +121,7 @@ public class FiscalDocumentServiceProofTests
         Assert.Equal("TEST Casa Vacanze Srl", snapshot.LegalName);
         Assert.Equal("01234567897", snapshot.VatNumber);
         Assert.Equal(FiscalDocumentPurpose.GuestStay, stored.Purpose);
-        Assert.Equal(FiscalPaymentChannel.Unknown, stored.PaymentChannel);
+        Assert.Equal(FiscalPaymentChannel.Outside, stored.PaymentChannel);
         Assert.False(string.IsNullOrWhiteSpace(stored.RuleVersion));
         Assert.Equal(await db.Bookings.Where(b => b.Id == booking).Select(b => b.PropertyId).SingleAsync(), stored.PropertyId);
         Assert.Equal(new DateOnly(2026, 11, 1), stored.ServicePeriodFrom);

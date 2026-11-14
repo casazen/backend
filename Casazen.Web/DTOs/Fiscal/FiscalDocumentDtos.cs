@@ -121,6 +121,73 @@ public sealed record IssueFiscalDocumentRequest
     public bool Confirm { get; init; }
 }
 
+/// <summary>
+/// <c>POST api/fiscal/documents/issue-batch</c> (E12/F01/US01/T02): the drafts to issue. <see cref="DocumentIds"/> names them; <see cref="From"/>/<see cref="To"/> (Europe/Rome
+/// days of the check-out of the stay, both ends included) and <see cref="PropertyIds"/> select the drafts of a period and of some properties. At most 200 documents; an empty
+/// selection is a 422, never «all».
+/// </summary>
+public sealed record IssueFiscalDocumentsBatchRequest
+{
+    public IReadOnlyList<Guid>? DocumentIds { get; init; }
+
+    public DateOnly? From { get; init; }
+
+    public DateOnly? To { get; init; }
+
+    public IReadOnlyList<Guid>? PropertyIds { get; init; }
+}
+
+/// <summary>One document of a bulk issue: issued with its number, or not with the stable code of why (<c>errorCode</c>).</summary>
+public sealed record FiscalDocumentBatchRowDto(Guid Id, bool Issued, string? Number, string? ErrorCode);
+
+/// <summary>
+/// The answer of a bulk issue: one row per document, how many were issued and how many were not (never «all issued» while one failed), and how many more drafts the selection
+/// matched beyond the 200 of the request.
+/// </summary>
+public sealed record FiscalDocumentBatchResultDto(IReadOnlyList<FiscalDocumentBatchRowDto> Rows, int Issued, int Failed, int Remaining)
+{
+    public static FiscalDocumentBatchResultDto From(Casazen.Core.Services.FiscalDocumentBatchResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return new FiscalDocumentBatchResultDto(
+            result.Rows.Select(r => new FiscalDocumentBatchRowDto(r.Id, r.Issued, r.Number, r.ErrorCode)).ToList(),
+            result.Issued,
+            result.Failed,
+            result.Remaining);
+    }
+}
+
+/// <summary>
+/// One document of a booking as its card shows it (<c>GET api/bookings/{id}/fiscal-documents</c>, E12/F01/US01/T02): number, kind, status, total, currency and payment state
+/// (the current one), with the day of the issue and, for a credit note, the document it credits. No recipient and no line.
+/// </summary>
+public sealed record BookingFiscalDocumentDto(
+    Guid Id,
+    string Kind,
+    string Status,
+    string? Number,
+    decimal Total,
+    string Currency,
+    string PaymentState,
+    DateOnly? IssueDate,
+    Guid? CreditedDocumentId)
+{
+    public static BookingFiscalDocumentDto From(FiscalDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        return new BookingFiscalDocumentDto(
+            document.Id,
+            document.Kind.ToString(),
+            document.Status.ToString(),
+            document.Number,
+            document.Total,
+            document.Currency,
+            document.PaymentState.ToString(),
+            document.IssueDate,
+            document.CreditedDocumentId);
+    }
+}
+
 /// <summary><c>POST api/fiscal/documents/{id}/credit-note</c>: the amount (the whole document when left out), the reason and the confirmation.</summary>
 public sealed record CreateCreditNoteRequest
 {

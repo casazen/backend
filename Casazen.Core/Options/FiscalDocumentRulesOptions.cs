@@ -22,6 +22,21 @@ public class FiscalDocumentRulesOptions
     /// locks the issuer of a booking, but it is a document issued elsewhere: CasaZen issues no second document for that booking (409).
     /// </summary>
     public bool ImportOctorateDocuments { get; set; }
+
+    /// <summary>
+    /// The portals that collect the payment of their bookings themselves (E12/F01/US01/T01, ⚖): the channels whose document is «paid through the portal» when the
+    /// reservation does not say who collects (<c>Booking.OtaCompanyCollect</c>, then the portal catalog). The names of <c>BookingSource</c>; a portal that is not
+    /// listed is taken for one the host collects from (the document is «to collect» until the host records the payment). Shipped: Airbnb, Booking.com
+    /// («Payments by Booking»), Expedia (Expedia Collect) and Vrbo.
+    /// </summary>
+    public List<Casazen.Core.Entities.BookingSource> PortalCollectedChannels { get; set; } = [];
+
+    /// <summary>
+    /// How many days back the daily run <c>fiscal-documents-due</c> looks for stays that ended without a document (E12/F01/US01/T02): a stay that ended earlier than this is never
+    /// made a draft by the run (the host makes it by hand, or with the bulk issue), so the first run after the issuance is switched on never drafts, or issues, the whole history of
+    /// the organization (a channel import brings years of past stays). At least 1; a smaller value is taken as 1.
+    /// </summary>
+    public int DueLookbackDays { get; set; } = 31;
 }
 
 /// <summary>What kind of document the issuer of a regime gives (<see cref="FiscalTaxRuleSetOptions.DocumentKind"/>).</summary>

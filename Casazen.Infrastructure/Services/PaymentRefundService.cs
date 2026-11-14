@@ -5,6 +5,7 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -34,7 +35,8 @@ public sealed class PaymentRefundService(
     IPaymentRefundRetryScheduler retryScheduler,
     IEmailQueue emailQueue,
     ILogger<PaymentRefundService> logger,
-    TimeProvider? timeProvider = null) : IPaymentRefundService
+    TimeProvider? timeProvider = null,
+    IDomainEventRecorder? domainEvents = null) : IPaymentRefundService
 {
     /// <summary>Metadata key that links a Stripe refund to its <see cref="PaymentRefund"/> row.</summary>
     internal const string RefundIdMetadataKey = "paymentRefundId";
@@ -492,6 +494,7 @@ public sealed class PaymentRefundService(
         var refunds = await LoadRefundsAsync(payment.Id, cancellationToken);
         var refunded = refunds.Where(r => r.Status == PaymentRefundStatus.Succeeded).Sum(r => r.Amount);
 
+        var previouslyRefunded = payment.RefundedAmount;
         payment.RefundedAmount = refunded;
         if (payment.Status is PaymentStatus.Completed or PaymentStatus.PartiallyRefunded or PaymentStatus.Refunded)
         {
@@ -501,6 +504,11 @@ public sealed class PaymentRefundService(
         }
 
         payment.UpdatedAt = UtcNow;
+
+        // More was refunded than before (E12/F01/US01/T03): saved with the payment, once for each amount refunded in all, so the fiscal documents of the booking can follow
+        // (the credit note of a cancelled booking is the amount refunded).
+        if (refunded > previouslyRefunded)
+            await PaymentEvents.RecordRefundedAsync(domainEvents, db, payment, refunded, cancellationToken);
     }
 
     /// <summary>Refunds of the payment, including the ones added to this context and not saved yet.</summary>

@@ -71,6 +71,9 @@ public sealed class StayLifecycleService(
 
             booking.NoShowAt = UtcNow();
             booking.UpdatedAt = UtcNow();
+
+            // The mark, saved with it, once per booking (E12/F01/US01/T03): the fiscal documents of the stay follow it (what the guest is charged is the consideration).
+            await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingNoShowMarked, booking, BookingEventOrigin.Host, cancellationToken);
             await SaveAsync(transaction, cancellationToken);
         }
 
