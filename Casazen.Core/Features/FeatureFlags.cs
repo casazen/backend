@@ -244,6 +244,15 @@ public static class FeatureFlags
     public const string OwnerInvoicing = "OwnerInvoicing";
 
     /// <summary>
+    /// E15/F01/US01/T01 (NF-101, NF-87, NF-115, D11, D15): the accountant package, one ZIP of a month or a year in a fixed structure and the agency summary, <b>off by
+    /// default</b> and turned on only in the test environment until the accountant confirms the ⚖ choices that shape the files (the Swiss purchase tax on the portal
+    /// commissions, the Italian register of the sales). Off, <c>GET api/accountant-package</c> and <c>GET api/accountant-package/agency-summary</c> answer 404 before
+    /// authentication. It needs no variable to start; the caps of the ZIP are the ones of the document archive (<c>DocumentArchive:MaxExportFiles</c>,
+    /// <c>DocumentArchive:MaxExportBytes</c>). The frontend reads the key <c>accountantPackage</c>.
+    /// </summary>
+    public const string AccountantPackage = "AccountantPackage";
+
+    /// <summary>
     /// E25/F01/US01/T01 (NF-119, decision O12): the tourist tax paid online in the guest check-in, on the organization's own connected account, <b>off by
     /// default</b> and turned on only in the test environment after the merge. Off, the endpoints of the guest (<c>GET api/public/checkin/{token}/tourist-tax</c>,
     /// <c>POST …/tourist-tax/payment-intent</c>), the host's «Pagata in struttura» (<c>POST api/bookings/{id}/tourist-tax/paid-at-property</c>) and the setting of
@@ -280,6 +289,7 @@ public static class FeatureFlags
         OctorateDocumentImport,
         MessageAssistant,
         OwnerInvoicing,
+        AccountantPackage,
         TouristTaxOnlinePayment,
     ];
 }

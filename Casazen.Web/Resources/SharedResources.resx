@@ -7113,4 +7113,394 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="TouristTaxTodoRefundFailed" xml:space="preserve">
     <value>Rimborsa la tassa all'ospite: il rimborso automatico del soggiorno annullato non è riuscito.</value>
   </data>
+  <data name="AccPkgGuestRegisterTitle" xml:space="preserve">
+    <value>Documenti emessi agli ospiti, dal {1} al {2}, per data di emissione; le note di credito sono in negativo. Emittente: {0}</value>
+  </data>
+  <data name="AccPkgOwnerRegisterTitle" xml:space="preserve">
+    <value>Fatture emesse ai proprietari, dal {0} al {1}, per data di emissione; le note di credito sono in negativo</value>
+  </data>
+  <data name="AccPkgRateDetailTitle" xml:space="preserve">
+    <value>Dettaglio per aliquota di ogni documento</value>
+  </data>
+  <data name="AccPkgRateTotalsTitle" xml:space="preserve">
+    <value>Totali per aliquota (note di credito in negativo)</value>
+  </data>
+  <data name="AccPkgColPaymentChannel" xml:space="preserve">
+    <value>Incasso</value>
+  </data>
+  <data name="AccPkgColPeriod" xml:space="preserve">
+    <value>Periodo</value>
+  </data>
+  <data name="AccPkgColRate" xml:space="preserve">
+    <value>Aliquota (%)</value>
+  </data>
+  <data name="AccPkgColNature" xml:space="preserve">
+    <value>Natura</value>
+  </data>
+  <data name="AccPkgColDocuments" xml:space="preserve">
+    <value>Documenti</value>
+  </data>
+  <data name="AccPkgColAmount" xml:space="preserve">
+    <value>Importo</value>
+  </data>
+  <data name="AccPkgColChannel" xml:space="preserve">
+    <value>Canale</value>
+  </data>
+  <data name="AccPkgColIssuer" xml:space="preserve">
+    <value>Emittente</value>
+  </data>
+  <data name="AccPkgChannelCasaZen" xml:space="preserve">
+    <value>Pagato con CasaZen</value>
+  </data>
+  <data name="AccPkgChannelPortal" xml:space="preserve">
+    <value>Incassato dal portale</value>
+  </data>
+  <data name="AccPkgChannelOutside" xml:space="preserve">
+    <value>Incassato fuori da CasaZen</value>
+  </data>
+  <data name="AccPkgChannelUnknown" xml:space="preserve">
+    <value>Non indicato</value>
+  </data>
+  <data name="AccPkgRateUnknown" xml:space="preserve">
+    <value>n.d.</value>
+  </data>
+  <data name="AccPkgVatSwissTitle" xml:space="preserve">
+    <value>Base della dichiarazione IVA trimestrale per aliquota (cifra d'affari imponibile e IVA dovuta dei documenti emessi, note di credito in negativo). Emittente: {0}</value>
+  </data>
+  <data name="AccPkgVatOutsideTitle" xml:space="preserve">
+    <value>Importi fuori campo IVA, per tipo</value>
+  </data>
+  <data name="AccPkgVatPortalTitle" xml:space="preserve">
+    <value>Commissioni dei portali sui conti intestati all'agenzia, solo informativo (possibile base dell'imposta sull'acquisto: da verificare con il commercialista, non è sommata all'IVA dovuta)</value>
+  </data>
+  <data name="AccPkgVatItalyTitle" xml:space="preserve">
+    <value>Registro delle vendite, riepilogo mensile per classe di documento e aliquota (note di credito in negativo). Emittente: {0}</value>
+  </data>
+  <data name="AccPkgVatOwnerInvoicesOmittedTitle" xml:space="preserve">
+    <value>Fatture emesse ai proprietari non incluse in questo file</value>
+  </data>
+  <data name="AccPkgVatOwnerInvoicesOmittedReason" xml:space="preserve">
+    <value>Le fatture ai proprietari non appartengono a un immobile: per leggerle serve l'accesso a tutta l'organizzazione. Le cifre di questo file sono quindi quelle dei soli documenti degli immobili raggiunti.</value>
+  </data>
+  <data name="AccPkgColTurnover" xml:space="preserve">
+    <value>Cifra d'affari imponibile</value>
+  </data>
+  <data name="AccPkgColVatDue" xml:space="preserve">
+    <value>IVA dovuta</value>
+  </data>
+  <data name="AccPkgColClass" xml:space="preserve">
+    <value>Classe</value>
+  </data>
+  <data name="AccPkgClassOrdinary" xml:space="preserve">
+    <value>Fatture ordinarie</value>
+  </data>
+  <data name="AccPkgClassFlatRate" xml:space="preserve">
+    <value>Fatture in regime forfettario</value>
+  </data>
+  <data name="AccPkgClassReceipt" xml:space="preserve">
+    <value>Ricevute</value>
+  </data>
+  <data name="AccPkgOutsideTouristTax" xml:space="preserve">
+    <value>Tassa o imposta di soggiorno riscossa</value>
+  </data>
+  <data name="AccPkgOutsideExpenses" xml:space="preserve">
+    <value>Spese anticipate in nome del proprietario (art. 15)</value>
+  </data>
+  <data name="AccPkgOutsideOther" xml:space="preserve">
+    <value>Altre operazioni senza IVA</value>
+  </data>
+  <data name="AccPkgStatementsTitle" xml:space="preserve">
+    <value>Rendiconti pubblicati ai proprietari, per mese di competenza (ultima versione pubblicata)</value>
+  </data>
+  <data name="AccPkgColOwner" xml:space="preserve">
+    <value>Proprietario</value>
+  </data>
+  <data name="AccPkgColVersion" xml:space="preserve">
+    <value>Versione</value>
+  </data>
+  <data name="AccPkgColPublishedOn" xml:space="preserve">
+    <value>Pubblicato il</value>
+  </data>
+  <data name="AccPkgColRevenue" xml:space="preserve">
+    <value>Ricavi</value>
+  </data>
+  <data name="AccPkgColChannelFees" xml:space="preserve">
+    <value>Commissioni dei canali</value>
+  </data>
+  <data name="AccPkgColCommission" xml:space="preserve">
+    <value>Provvigione</value>
+  </data>
+  <data name="AccPkgColCharges" xml:space="preserve">
+    <value>Riaddebiti e spese</value>
+  </data>
+  <data name="AccPkgColPayments" xml:space="preserve">
+    <value>Pagamenti</value>
+  </data>
+  <data name="AccPkgColClosingBalance" xml:space="preserve">
+    <value>Saldo finale</value>
+  </data>
+  <data name="AccPkgColSha" xml:space="preserve">
+    <value>SHA-256 del file pubblicato</value>
+  </data>
+  <data name="AccPkgWithholdingTitle" xml:space="preserve">
+    <value>Ritenute applicate ai proprietari sui pagamenti, per mese e proprietario, in euro (le rettifiche sono righe con importi opposti)</value>
+  </data>
+  <data name="AccPkgF24Title" xml:space="preserve">
+    <value>Dati dell'F24 della ritenuta, per mese: non è l'F24 compilato né presentato</value>
+  </data>
+  <data name="AccPkgCuTitle" xml:space="preserve">
+    <value>Dati della Certificazione Unica {0}, per proprietario: non è la Certificazione Unica ufficiale</value>
+  </data>
+  <data name="AccPkgColPayoutCount" xml:space="preserve">
+    <value>Pagamenti ai proprietari</value>
+  </data>
+  <data name="AccPkgColGrossBase" xml:space="preserve">
+    <value>Base lorda</value>
+  </data>
+  <data name="AccPkgColWithheld" xml:space="preserve">
+    <value>Ritenuta</value>
+  </data>
+  <data name="AccPkgColTaxCode" xml:space="preserve">
+    <value>Codice tributo</value>
+  </data>
+  <data name="AccPkgColDueDate" xml:space="preserve">
+    <value>Scadenza</value>
+  </data>
+  <data name="AccPkgColPaidOn" xml:space="preserve">
+    <value>Pagato il</value>
+  </data>
+  <data name="AccPkgColFilingState" xml:space="preserve">
+    <value>Stato</value>
+  </data>
+  <data name="AccPkgColRuleVersion" xml:space="preserve">
+    <value>Versione della regola</value>
+  </data>
+  <data name="AccPkgColEvidence" xml:space="preserve">
+    <value>Decisioni di ritenuta</value>
+  </data>
+  <data name="AccPkgSwissTouristTaxTitle" xml:space="preserve">
+    <value>Tassa di soggiorno svizzera riscossa nei documenti emessi, per cantone (note di credito in negativo); il versamento all'ufficio cantonale non è registrato in CasaZen</value>
+  </data>
+  <data name="AccPkgColCanton" xml:space="preserve">
+    <value>Cantone</value>
+  </data>
+  <data name="AccPkgColCollected" xml:space="preserve">
+    <value>Riscossa</value>
+  </data>
+  <data name="AccPkgCantonUnknown" xml:space="preserve">
+    <value>Non indicato</value>
+  </data>
+  <data name="AccPkgIndexTitle" xml:space="preserve">
+    <value>Indice del pacchetto per il commercialista, periodo {0}</value>
+  </data>
+  <data name="AccPkgIndexColDescription" xml:space="preserve">
+    <value>Descrizione</value>
+  </data>
+  <data name="AccPkgIndexColRows" xml:space="preserve">
+    <value>Righe</value>
+  </data>
+  <data name="AccPkgIndexOmittedTitle" xml:space="preserve">
+    <value>Cartelle non incluse per mancanza di permesso</value>
+  </data>
+  <data name="AccPkgIndexColFolder" xml:space="preserve">
+    <value>Cartella</value>
+  </data>
+  <data name="AccPkgIndexColReason" xml:space="preserve">
+    <value>Motivo</value>
+  </data>
+  <data name="AccPkgOmittedOwnerAccounting" xml:space="preserve">
+    <value>Servono il permesso di lettura dei rendiconti dei proprietari (agency.statement.view) e l'accesso a tutta l'organizzazione.</value>
+  </data>
+  <data name="AccPkgSummaryTitle" xml:space="preserve">
+    <value>Riepilogo dell'agenzia, periodo {0}</value>
+  </data>
+  <data name="AccPkgSumStaysTitle" xml:space="preserve">
+    <value>Soggiorni, per competenza: notti dei soggiorni confermati nel periodo, tassa di soggiorno esclusa</value>
+  </data>
+  <data name="AccPkgSumOccupiedNights" xml:space="preserve">
+    <value>Notti occupate</value>
+  </data>
+  <data name="AccPkgSumAvailableNights" xml:space="preserve">
+    <value>Notti disponibili</value>
+  </data>
+  <data name="AccPkgSumOccupancy" xml:space="preserve">
+    <value>Occupazione (%)</value>
+  </data>
+  <data name="AccPkgSumRevenue" xml:space="preserve">
+    <value>Ricavo per competenza</value>
+  </data>
+  <data name="AccPkgSumStays" xml:space="preserve">
+    <value>Soggiorni</value>
+  </data>
+  <data name="AccPkgSumAdr" xml:space="preserve">
+    <value>Ricavo medio per notte (ADR)</value>
+  </data>
+  <data name="AccPkgSumRevPar" xml:space="preserve">
+    <value>Ricavo per notte disponibile (RevPAR)</value>
+  </data>
+  <data name="AccPkgSumGeneratedOn" xml:space="preserve">
+    <value>Letto il</value>
+  </data>
+  <data name="AccPkgSumCollectionsTitle" xml:space="preserve">
+    <value>Incassato nel periodo, per cassa e al netto dei rimborsi</value>
+  </data>
+  <data name="AccPkgSumBalancesTitle" xml:space="preserve">
+    <value>Saldi ancora da incassare, per valuta, al giorno in cui il riepilogo è letto</value>
+  </data>
+  <data name="AccPkgSumCollected" xml:space="preserve">
+    <value>Incassato</value>
+  </data>
+  <data name="AccPkgSumPayments" xml:space="preserve">
+    <value>Pagamenti</value>
+  </data>
+  <data name="AccPkgSumToCollect" xml:space="preserve">
+    <value>Da incassare</value>
+  </data>
+  <data name="AccPkgSumGuestDocsTitle" xml:space="preserve">
+    <value>Documenti emessi agli ospiti, per emittente e tipo (note di credito in negativo)</value>
+  </data>
+  <data name="AccPkgSumPortalCostsTitle" xml:space="preserve">
+    <value>Costi dei canali, per competenza, come nel rapporto sui costi dei canali</value>
+  </data>
+  <data name="AccPkgSumCostKind" xml:space="preserve">
+    <value>Tipo di costo</value>
+  </data>
+  <data name="AccPkgSumGross" xml:space="preserve">
+    <value>Lordo</value>
+  </data>
+  <data name="AccPkgSumNetPaid" xml:space="preserve">
+    <value>Netto pagato</value>
+  </data>
+  <data name="AccPkgSumCost" xml:space="preserve">
+    <value>Costo</value>
+  </data>
+  <data name="AccPkgSumNet" xml:space="preserve">
+    <value>Netto</value>
+  </data>
+  <data name="AccPkgSumCostRate" xml:space="preserve">
+    <value>Costo sul lordo (%)</value>
+  </data>
+  <data name="AccPkgSumTotalRow" xml:space="preserve">
+    <value>Totale</value>
+  </data>
+  <data name="AccPkgSumTouristTaxTitle" xml:space="preserve">
+    <value>Imposta di soggiorno riscossa e da versare</value>
+  </data>
+  <data name="AccPkgSumArea" xml:space="preserve">
+    <value>Ambito</value>
+  </data>
+  <data name="AccPkgSumAreaItaly" xml:space="preserve">
+    <value>Italia (per comune)</value>
+  </data>
+  <data name="AccPkgSumAreaSwitzerland" xml:space="preserve">
+    <value>Svizzera, cantone {0}</value>
+  </data>
+  <data name="AccPkgSumTaxCollected" xml:space="preserve">
+    <value>Riscossa</value>
+  </data>
+  <data name="AccPkgSumTaxRemitted" xml:space="preserve">
+    <value>Versata</value>
+  </data>
+  <data name="AccPkgSumTaxToRemit" xml:space="preserve">
+    <value>Da versare</value>
+  </data>
+  <data name="AccPkgSumTaxIncomplete" xml:space="preserve">
+    <value>Soggiorni senza importo</value>
+  </data>
+  <data name="AccPkgSumCommissionsTitle" xml:space="preserve">
+    <value>Provvigioni per proprietario, dalle fatture emesse nel periodo (note di credito in negativo)</value>
+  </data>
+  <data name="AccPkgSumCommissionTaxable" xml:space="preserve">
+    <value>Provvigione, imponibile</value>
+  </data>
+  <data name="AccPkgSumCommissionVat" xml:space="preserve">
+    <value>Provvigione, IVA</value>
+  </data>
+  <data name="AccPkgSumCommissionTotal" xml:space="preserve">
+    <value>Provvigione, totale</value>
+  </data>
+  <data name="AccPkgSumRechargeTaxable" xml:space="preserve">
+    <value>Riaddebiti, imponibile</value>
+  </data>
+  <data name="AccPkgSumRechargeVat" xml:space="preserve">
+    <value>Riaddebiti, IVA</value>
+  </data>
+  <data name="AccPkgSumRechargeTotal" xml:space="preserve">
+    <value>Riaddebiti, totale</value>
+  </data>
+  <data name="AccPkgSumAdvanced" xml:space="preserve">
+    <value>Spese anticipate (fuori campo IVA)</value>
+  </data>
+  <data name="AccPkgSumInvoiced" xml:space="preserve">
+    <value>Totale fatturato</value>
+  </data>
+  <data name="AccPkgSumOwnerInvoicesTitle" xml:space="preserve">
+    <value>Fatture ai proprietari emesse nel periodo: numero</value>
+  </data>
+  <data name="AccPkgSumOwnerInvoicesRatesTitle" xml:space="preserve">
+    <value>Fatture ai proprietari emesse nel periodo: totali per aliquota (note di credito in negativo)</value>
+  </data>
+  <data name="AccPkgSumInvoices" xml:space="preserve">
+    <value>Fatture</value>
+  </data>
+  <data name="AccPkgSumCreditNotes" xml:space="preserve">
+    <value>Note di credito</value>
+  </data>
+  <data name="AccPkgSumPayoutsTitle" xml:space="preserve">
+    <value>Pagamenti ai proprietari confermati nel periodo (non stornati)</value>
+  </data>
+  <data name="AccPkgSumPayouts" xml:space="preserve">
+    <value>Pagamenti</value>
+  </data>
+  <data name="AccPkgSumWithholding" xml:space="preserve">
+    <value>Ritenuta</value>
+  </data>
+  <data name="AccPkgSumWiresTitle" xml:space="preserve">
+    <value>Bonifici ai proprietari: lotti creati nel periodo</value>
+  </data>
+  <data name="AccPkgSumBatches" xml:space="preserve">
+    <value>Lotti</value>
+  </data>
+  <data name="AccPkgSumTransfers" xml:space="preserve">
+    <value>Bonifici</value>
+  </data>
+  <data name="AccPkgWireGenerated" xml:space="preserve">
+    <value>Generato</value>
+  </data>
+  <data name="AccPkgWireDownloaded" xml:space="preserve">
+    <value>Scaricato</value>
+  </data>
+  <data name="AccPkgWirePaid" xml:space="preserve">
+    <value>Pagato</value>
+  </data>
+  <data name="AccPkgSumPortalBorneTitle" xml:space="preserve">
+    <value>Commissioni dei portali sui conti intestati all'agenzia, per mese di competenza (dal libro dei proprietari)</value>
+  </data>
+  <data name="AccPkgSumMarginTitle" xml:space="preserve">
+    <value>Margine = provvigioni e riaddebiti fatturati (imponibile) meno le commissioni dei portali a carico dell'agenzia</value>
+  </data>
+  <data name="AccPkgSumMargin" xml:space="preserve">
+    <value>Margine</value>
+  </data>
+  <data name="AccPkgSumPortalBorne" xml:space="preserve">
+    <value>Commissioni dei portali a carico dell'agenzia</value>
+  </data>
+  <data name="AccPkgSumOwnersTitle" xml:space="preserve">
+    <value>Report per proprietario: ricavo e occupazione degli immobili, per competenza</value>
+  </data>
+  <data name="AccPkgSumOwnersUnassigned" xml:space="preserve">
+    <value>Immobili senza proprietario</value>
+  </data>
+  <data name="AccPkgSumProperties" xml:space="preserve">
+    <value>Immobili</value>
+  </data>
+  <data name="AccPkgSumOwnerAccountingOmitted" xml:space="preserve">
+    <value>Le cifre della contabilità dei proprietari non sono incluse</value>
+  </data>
+  <data name="AccountantPackageTooLarge" xml:space="preserve">
+    <value>Il pacchetto avrebbe {0} file di documenti: il limite è {1} file e {2} MB (ogni file conta {3} KB). Scegli un mese invece dell'anno, oppure chiedi di alzare il limite.</value>
+  </data>
+  <data name="AccountantPackageInvalidPeriod" xml:space="preserve">
+    <value>Periodo non valido: indica un mese (period=2026-10) oppure un anno (period=2026), tra il 2000 e il 2100.</value>
+  </data>
 </root>
