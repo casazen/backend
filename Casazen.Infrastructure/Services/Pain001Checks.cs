@@ -2,13 +2,14 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
+using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// What a schema cannot say about a pain.001 wire file (E06/F05/US01/T01, E16/F01/US01/T01, NF-25): that the file is what its lines say. The schema checks the
-/// shape; this checks the money, in exact decimals and never in a floating point number, and answers with the name of the ISO element that is broken, never
-/// with a value of the file (an IBAN, a name, an amount).
+/// What a schema cannot say about a pain.001 wire file (E06/F05/US01/T01, E16/F01/US01/T01, E16/F01/US02/T01, NF-25): that the file is what its lines say, and that
+/// the EUR file follows the rules of the SEPA credit transfer. The schema checks the shape; this checks the money, in exact decimals and never in a floating point
+/// number, and the rules of the scheme, and answers with the name of the ISO element that is broken, never with a value of the file (an IBAN, a name, an amount).
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -19,10 +20,13 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>CtrlSum.</b> The control sum of the header, and of each payment, is exactly the sum of its amounts; the one of the header is also the total the
 /// batch says.</item>
 /// <item><b>EndToEndId.</b> Every transfer has one and it is unique in the file.</item>
+/// <item><b>SvcLvl, ChrgBr, PstlAdr (EUR only).</b> The SEPA rules of the EPC that the ISO schema leaves open: every payment has the service level <c>SEPA</c> and the
+/// charge bearer <c>SLEV</c>, and every debtor and creditor has a postal address that is structured or hybrid (a town and a country, with at most two free lines),
+/// never one made of free lines alone. The BIC is optional, so its absence is no violation.</item>
 /// </list>
-/// The elements are read in the namespace of the message of the currency (<see cref="Pain001SchemaProvider.NamespaceOf"/>: <c>pain.001.001.09</c> for CHF,
-/// <c>pain.001.001.03</c> for EUR), the same for the two messages: a file written in another namespace has no initiation message at all. The document is read
-/// with the DTD prohibited and no resolver: no external entity and no network, as in the validation against the schema.
+/// The elements are read in the namespace of the message of the currency (<see cref="Pain001SchemaProvider.NamespaceOf"/>: <c>pain.001.001.09</c> for EUR and for CHF
+/// alike): a file written in another namespace has no initiation message at all. The document is read with the DTD prohibited and no resolver: no external entity
+/// and no network, as in the validation against the schema.
 /// </remarks>
 internal static class Pain001Checks
 {
@@ -44,12 +48,25 @@ internal static class Pain001Checks
     /// <summary>A transfer has no end-to-end id, or two of them have the same.</summary>
     public const string EndToEndId = "EndToEndId";
 
+    /// <summary>A payment of the EUR file has not the service level of the SEPA credit transfer (<c>PmtTpInf/SvcLvl/Cd</c> is not <c>SEPA</c>).</summary>
+    public const string ServiceLevel = "SvcLvl";
+
+    /// <summary>A payment of the EUR file has not the charge bearer of the SEPA credit transfer (<c>ChrgBr</c> is not <c>SLEV</c>).</summary>
+    public const string ChargeBearer = "ChrgBr";
+
+    /// <summary>A debtor or a creditor of the EUR file has no structured or hybrid postal address (a town and a country, at most two free lines).</summary>
+    public const string PostalAddress = "PstlAdr";
+
+    /// <summary>The most free lines of a hybrid address (<c>AdrLine</c>).</summary>
+    private const int MaxAddressLines = 2;
+
     // \z, not $: a text that ends with a line break is not an amount.
     private static readonly Regex AmountText = new(@"^\d{1,16}\.\d{2}\z", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>
     /// The names of the elements whose rule <paramref name="xml"/> breaks, in the order they were found and each once; empty when the file is what its lines
-    /// say. <paramref name="expectedTotal"/> and <paramref name="expectedCount"/> are the total and the number of transfers of the batch the file was written for.
+    /// say and follows the rules of its message. <paramref name="expectedTotal"/> and <paramref name="expectedCount"/> are the total and the number of transfers of
+    /// the batch the file was written for.
     /// </summary>
     public static IReadOnlyList<string> Violations(string xml, string currency, decimal expectedTotal, int expectedCount)
     {
@@ -73,11 +90,15 @@ internal static class Pain001Checks
             return violations;
         }
 
+        var sepa = string.Equals(currency, WireTransferErrors.SepaCurrency, StringComparison.Ordinal);
         var endToEndIds = new HashSet<string>(StringComparer.Ordinal);
         var total = 0m;
         var count = 0;
         foreach (var payment in payments)
         {
+            if (sepa)
+                SepaRules(payment, ns, Broken);
+
             var paymentTotal = 0m;
             var paymentCount = 0;
             foreach (var transfer in payment.Elements(ns + "CdtTrfTxInf"))
@@ -114,6 +135,37 @@ internal static class Pain001Checks
             Broken(ControlSum);
 
         return violations;
+    }
+
+    /// <summary>
+    /// The rules of the SEPA credit transfer of the EPC for one payment of the EUR file (the file CasaZen writes has the service level and the charge bearer in
+    /// the payment, never in a transfer): the service level <c>SEPA</c>, the charge bearer <c>SLEV</c>, and a structured or hybrid address for the debtor and for every
+    /// creditor.
+    /// </summary>
+    private static void SepaRules(XElement payment, XNamespace ns, Action<string> broken)
+    {
+        var serviceLevels = payment.Element(ns + "PmtTpInf")?.Elements(ns + "SvcLvl").Select(s => s.Element(ns + "Cd")?.Value) ?? [];
+        if (!serviceLevels.Any(code => string.Equals(code, Pain001V09Writer.SepaServiceLevel, StringComparison.Ordinal)))
+            broken(ServiceLevel);
+
+        if (!string.Equals(payment.Element(ns + "ChrgBr")?.Value, Pain001V09Writer.SepaChargeBearer, StringComparison.Ordinal))
+            broken(ChargeBearer);
+
+        var parties = payment.Elements(ns + "Dbtr").Concat(payment.Elements(ns + "CdtTrfTxInf").Elements(ns + "Cdtr"));
+        if (parties.Any(party => !IsStructuredOrHybrid(party.Element(ns + "PstlAdr"), ns)))
+            broken(PostalAddress);
+    }
+
+    /// <summary>
+    /// True for a postal address that is structured or hybrid: a town and a country, and at most two free lines (an address made of free lines alone, the
+    /// unstructured form, has neither a town nor a country of its own).
+    /// </summary>
+    private static bool IsStructuredOrHybrid(XElement? address, XNamespace ns)
+    {
+        return address is not null
+               && !string.IsNullOrWhiteSpace(address.Element(ns + "TwnNm")?.Value)
+               && !string.IsNullOrWhiteSpace(address.Element(ns + "Ctry")?.Value)
+               && address.Elements(ns + "AdrLine").Count() <= MaxAddressLines;
     }
 
     /// <summary>True for a plain decimal number with exactly two decimals (digits, a point, two digits: no sign, no exponent, no group separator).</summary>

@@ -45,14 +45,14 @@ public sealed record CreateBatchResponse
     /// <summary>The day the file asks the bank to execute the transfers.</summary>
     public DateOnly? ExecutionDate { get; init; }
 
-    /// <summary>The message of the file: <c>pain.001.001.09.ch.03</c> for CHF, <c>pain.001.001.03</c> for EUR.</summary>
+    /// <summary>The message of the file: <c>pain.001.001.09.ch.03</c> for CHF, <c>pain.001.001.09</c> for EUR.</summary>
     public string? Format { get; init; }
 }
 
 /// <summary>
 /// A batch in the list of the wires (<c>GET api/wire-transfers/batches</c>): the state, the currency, how many transfers and how much, when it was made,
-/// downloaded and paid, and the message and the date it asks of the bank. <b>Never an IBAN, a name or the file.</b> <see cref="Format"/> is <c>null</c> for a batch of
-/// before the Swiss message, which was a <c>pain.001.001.03</c> file.
+/// downloaded and paid, and the message and the date it asks of the bank. <b>Never an IBAN, a name or the file.</b> <see cref="Format"/> is <c>pain.001.001.03</c> for a
+/// EUR batch made before the EUR file moved to <c>pain.001.001.09</c>, and <c>null</c> for a batch of before the Swiss message, which was a <c>pain.001.001.03</c> file.
 /// </summary>
 public sealed record WireBatchListItemResponse(
     Guid Id,
