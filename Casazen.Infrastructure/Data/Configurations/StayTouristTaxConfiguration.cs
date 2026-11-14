@@ -28,6 +28,12 @@ internal sealed class StayTouristTaxConfiguration : IEntityTypeConfiguration<Sta
             .IsRequired(false)
             .OnDelete(DeleteBehavior.SetNull);
         entity.Property(t => t.CalculationHash).IsFixedLength();
+
+        // E25/F01/US01/T01: an intent is the payment of one stay; the webhooks find the stay by it.
+        entity.HasIndex(t => t.StripePaymentIntentId)
+            .IsUnique()
+            .HasFilter("\"StripePaymentIntentId\" IS NOT NULL")
+            .HasDatabaseName(StayTouristTax.PaymentIntentIndexName);
         entity.HasMany(t => t.Guests)
             .WithOne()
             .HasForeignKey(g => g.StayTouristTaxId)
@@ -40,6 +46,11 @@ internal sealed class StayTouristTaxConfiguration : IEntityTypeConfiguration<Sta
             t.HasCheckConstraint(
                 "CK_StayTouristTaxes_ConfirmedHasHash",
                 "\"ConfirmedAt\" IS NULL OR (\"CalculationHash\" IS NOT NULL AND \"ConfirmedByUserId\" IS NOT NULL)");
+
+            // E25/F01/US01/T01: what is refunded of the tax paid online is never more than what was paid, and neither is negative.
+            t.HasCheckConstraint(
+                "CK_StayTouristTaxes_RefundedWithinCollected",
+                "\"CollectedAmount\" >= 0 AND \"RefundedAmount\" >= 0 AND \"RefundedAmount\" <= \"CollectedAmount\"");
         });
     }
 }

@@ -103,6 +103,10 @@ public class ConfigurationFeatureFlagsTests
                 "OwnerInvoicing",
                 // E15/F01/US01/T01: the accountant package (ZIP of a month or a year) and the agency summary, off until the accountant confirms the ⚖ choices.
                 "AccountantPackage",
+                // E25/F01/US01/T01: the tourist tax paid online in the guest check-in on the organization's account, off until it is tried in the test environment.
+                "TouristTaxOnlinePayment",
+                // E01/F04/US01/T03: the automation routines (API, engine, time triggers), off until the actions a host needs are real.
+                "Routines",
             },
             FeatureFlags.All);
     }

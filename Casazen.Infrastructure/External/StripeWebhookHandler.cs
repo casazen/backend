@@ -41,7 +41,8 @@ public class StripeWebhookHandler(
     IShowcaseBookingService? showcaseBookings = null,
     IServiceRequestOfferCompletion? offerCompletion = null,
     IDomainEventRecorder? domainEvents = null,
-    IBankLinkService? bankLinks = null)
+    IBankLinkService? bankLinks = null,
+    ITouristTaxCollectionService? touristTaxCollection = null)
 {
     private const string DirectBookingKind = "direct-booking";
 
@@ -115,6 +116,8 @@ public class StripeWebhookHandler(
         ShowcaseHoldCompletion? holdCompletion = null;
         // A supplier that has just become able to receive payments (SP-15b): the payment requests that waited for it go out once the event is committed.
         Guid? readySupplierOrgId = null;
+        // The tourist tax a guest paid online (E25/F01/US01/T01): the hosts are told once the event is committed.
+        TouristTaxPaidNotice? touristTaxPaid = null;
         try
         {
             switch (stripeEvent.Type)
@@ -153,6 +156,23 @@ public class StripeWebhookHandler(
                 case "payment_intent.canceled" when IsRentCharge(stripeEvent.Data.Object as PaymentIntent):
                     rentNotice = await HandleRentChargeAsync(
                         (PaymentIntent)stripeEvent.Data.Object, stripeEvent.Type, source, stripeEvent.Account);
+                    break;
+                // The tourist tax a guest paid online in the check-in (E25/F01/US01/T01, kind = tourist-tax): BEFORE the generic payment_intent events, which
+                // drop every kind but direct-booking on the Connect endpoint and would look for a booking payment on the platform one. Recorded on the stay's
+                // tourist tax with the amount and the currency of the intent, once; never a Payment row. A failed, canceled or processing intent changes
+                // nothing: the stay stays to collect and the guest can pay again.
+                case "payment_intent.succeeded" when IsTouristTax(stripeEvent.Data.Object as PaymentIntent):
+                    touristTaxPaid = await HandleTouristTaxPaymentAsync((PaymentIntent)stripeEvent.Data.Object, stripeEvent);
+                    break;
+                case "payment_intent.processing" when IsTouristTax(stripeEvent.Data.Object as PaymentIntent):
+                case "payment_intent.payment_failed" when IsTouristTax(stripeEvent.Data.Object as PaymentIntent):
+                case "payment_intent.canceled" when IsTouristTax(stripeEvent.Data.Object as PaymentIntent):
+                    logger.LogInformation(
+                        "Tourist tax payment intent {PaymentIntentId}: {EventType} (source={Source}, account={AccountId}), nothing to record",
+                        ((PaymentIntent)stripeEvent.Data.Object).Id,
+                        stripeEvent.Type,
+                        source,
+                        stripeEvent.Account ?? "none");
                     break;
                 case "payment_intent.succeeded" when IsBankLink(stripeEvent.Data.Object as PaymentIntent):
                 case "payment_intent.processing" when IsBankLink(stripeEvent.Data.Object as PaymentIntent):
@@ -222,6 +242,8 @@ public class StripeWebhookHandler(
                             servicePaymentNotices = serviceRefund.Notices;
                         else if (cfRefund)
                             await CfPayments.HandleRefundAsync(charge!);
+                        else if (await HandleTouristTaxRefundAsync(charge, stripeEvent.Account))
+                            logger.LogInformation("Charge {ChargeId} refunded: a tourist tax paid online (E25/F01/US01/T01)", charge!.Id);
                         else
                             succeededRefunds = await HandleChargeRefundedAsync(charge, source, stripeEvent.Account);
                         break;
@@ -334,6 +356,10 @@ public class StripeWebhookHandler(
 
         if (readySupplierOrgId is { } supplierOrgId)
             supplierPayments.ScheduleSendPendingRequests(supplierOrgId);
+
+        // The bell, the pop-up and the open pages of the hosts hear of the tourist tax paid online; it never throws.
+        if (touristTaxPaid is not null && touristTaxCollection is not null)
+            await touristTaxCollection.CompletePaidAsync(touristTaxPaid);
     }
 
     private async Task<IDbContextTransaction?> BeginEventTransactionAsync()
@@ -1030,6 +1056,39 @@ public class StripeWebhookHandler(
         paymentIntent is not null &&
         TryGetMetadataKind(paymentIntent, out var kind) &&
         string.Equals(kind, BankLinkCharges.Kind, StringComparison.Ordinal);
+
+    private static bool IsTouristTax(PaymentIntent? paymentIntent) =>
+        paymentIntent is not null &&
+        TryGetMetadataKind(paymentIntent, out var kind) &&
+        string.Equals(kind, TouristTaxCharges.Kind, StringComparison.Ordinal);
+
+    /// <summary>
+    /// <c>payment_intent.succeeded</c> of a tourist tax (E25/F01/US01/T01), from the Connect endpoint or the platform endpoint listening to connected accounts
+    /// (the event's <c>account</c>): recorded on the stay with what the intent received, in the transaction of the event. Never consumed with no effect when
+    /// the collection is not registered: the event is delivered again.
+    /// </summary>
+    private async Task<TouristTaxPaidNotice?> HandleTouristTaxPaymentAsync(PaymentIntent paymentIntent, Event stripeEvent)
+    {
+        if (touristTaxCollection is null)
+            throw new InvalidOperationException("The tourist tax collection is not registered.");
+
+        logger.LogInformation(
+            "Tourist tax payment intent {PaymentIntentId} succeeded (account={AccountId})", paymentIntent.Id, stripeEvent.Account ?? "none");
+        return await touristTaxCollection.ApplyPaymentSucceededAsync(new TouristTaxIntentEvent(
+            paymentIntent.Id,
+            stripeEvent.Account,
+            paymentIntent.Metadata ?? new Dictionary<string, string>(),
+            paymentIntent.AmountReceived > 0 ? paymentIntent.AmountReceived : paymentIntent.Amount,
+            paymentIntent.Currency,
+            EventTime(stripeEvent)));
+    }
+
+    /// <summary>A refund of the charge of a tourist tax paid online (E25/F01/US01/T01): <c>true</c> when the charge is one, and the stay follows it.</summary>
+    private async Task<bool> HandleTouristTaxRefundAsync(Charge? charge, string? account) =>
+        touristTaxCollection is not null
+        && charge is not null
+        && !string.IsNullOrWhiteSpace(charge.PaymentIntentId)
+        && await touristTaxCollection.ApplyChargeRefundedAsync(new TouristTaxChargeRefund(charge.PaymentIntentId, account, charge.AmountRefunded));
 
     private static bool IsRentCharge(PaymentIntent? paymentIntent) =>
         paymentIntent is not null &&
