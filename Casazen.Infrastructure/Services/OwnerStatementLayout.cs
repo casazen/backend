@@ -15,8 +15,9 @@ namespace Casazen.Infrastructure.Services;
 /// <list type="bullet">
 /// <item><b>The parts, in this order:</b> «Soggiorni» (the gross of each stay without the tourist tax), «Commissioni dei canali» (labelled by who holds the portal
 /// account of the listing: <c>V1</c> the owner, <c>V2</c> the agency), «Ritenuta» (only when present), «Provvigione del PM» (with the number of the owner invoice
-/// when one is linked), «Riaddebiti e spese», «Rettifiche» (only when present) and «Netto» (the opening balance, the total of the period, the payments and the
-/// closing balance). The box «Tassa di soggiorno» follows, for information only: it is never added to or taken from the net.</item>
+/// when one is linked, and the VAT that invoice adds on top of the commission and the recharges, a line of its own: <see cref="OwnerLedgerEntryType.AgencyVat"/>,
+/// which the version counts with the commission), «Riaddebiti e spese», «Rettifiche» (only when present) and «Netto» (the opening balance, the total of the period,
+/// the payments and the closing balance). The box «Tassa di soggiorno» follows, for information only: it is never added to or taken from the net.</item>
 /// <item><b>Stored, never recomputed.</b> The amounts are the signed amounts of the ledger lines, the balances the ones the version stores; nothing here works a
 /// commission, a fee or a tax out.</item>
 /// <item><b>Money.</b> The PDF writes amounts in the number format of the currency of the statement: <c>it-CH</c> (<c>1'234.50</c>) for the Swiss franc,
@@ -45,7 +46,7 @@ public static class OwnerStatementLayout
         "StatementFileColProperty", "StatementFileColStay", "StatementFileColChannel", "StatementFileColShare", "StatementFileColDate",
         "StatementFileColDescription", "StatementFileColAmount", "StatementFileColAmountPlain", "StatementFileColGross", "StatementFileColItem", "StatementFileColSection",
         "StatementFileChannelFeesOwner", "StatementFileChannelFeesAgency", "StatementFileChannelFeesAgencyInvoice", "StatementFileCommissionInvoice",
-        "StatementFileRechargeCleaning", "StatementFileRechargeLinen", "StatementFileRechargeCardFee", "StatementFileRechargeCharge",
+        "StatementFileCommissionVat", "StatementFileCommissionVatInvoice", "StatementFileRechargeCleaning", "StatementFileRechargeLinen", "StatementFileRechargeCardFee", "StatementFileRechargeCharge",
         "StatementFileRechargeExpense", "StatementFileWithholdingLine", "StatementFileCorrectionLine", "StatementFilePaymentToOwner",
         "StatementFilePaymentFromOwner", "StatementFileReversal", "StatementFileNetOpening", "StatementFileNetPeriod", "StatementFileNetPayments",
         "StatementFileNetClosing", "StatementFileLinesHash", "StatementFileChannelDirect", "StatementFileChannelManual", "StatementFileChannelOther",
@@ -59,7 +60,7 @@ public static class OwnerStatementLayout
             OwnerLedgerEntryType.BookingRevenue => OwnerStatementSection.Stays,
             OwnerLedgerEntryType.ChannelFee => OwnerStatementSection.ChannelFees,
             OwnerLedgerEntryType.Withholding => OwnerStatementSection.Withholding,
-            OwnerLedgerEntryType.AgencyCommission => OwnerStatementSection.Commission,
+            OwnerLedgerEntryType.AgencyCommission or OwnerLedgerEntryType.AgencyVat => OwnerStatementSection.Commission,
             OwnerLedgerEntryType.OwnerCharge or OwnerLedgerEntryType.OwnerExpense => OwnerStatementSection.Recharges,
             OwnerLedgerEntryType.Correction => OwnerStatementSection.Corrections,
             OwnerLedgerEntryType.OwnerPayment or OwnerLedgerEntryType.AgencyPayment => OwnerStatementSection.Payments,
@@ -328,8 +329,9 @@ public static class OwnerStatementLayout
             return;
         }
 
+        // The VAT of the owner invoice has no property: its line says what it is (with the number of the invoice) where the property would be.
         var rows = lines
-            .Select(line => Row(line.PropertyName ?? string.Empty, StayLabel(line, texts, language), Money(line.Amount, content.Currency)))
+            .Select(line => Row(line.Type == OwnerLedgerEntryType.AgencyVat ? DescriptionOf(line, content, texts) : line.PropertyName ?? string.Empty, StayLabel(line, texts, language), Money(line.Amount, content.Currency)))
             .ToList();
         rows.Add(Row(texts.Get("StatementFileTotal", language), string.Empty, Money(lines.Sum(line => line.Amount), content.Currency)));
         blocks.Add(new PdfTable(
@@ -482,10 +484,17 @@ public static class OwnerStatementLayout
             OwnerLedgerEntryType.OwnerPayment => line.Description is { Length: > 0 } ? line.Description : texts.Get("StatementFilePaymentToOwner", language),
             OwnerLedgerEntryType.AgencyPayment => line.Description is { Length: > 0 } ? line.Description : texts.Get("StatementFilePaymentFromOwner", language),
             OwnerLedgerEntryType.OwnerCharge or OwnerLedgerEntryType.OwnerExpense => RechargeLabel(line, texts, language),
+            OwnerLedgerEntryType.AgencyVat => VatLabel(line, texts, language),
             _ => line.Description ?? string.Empty,
         };
         return line.Reversal ? $"{texts.Get("StatementFileReversal", language)}: {text}" : text;
     }
+
+    /// <summary>The VAT an owner invoice adds on top of the commission and the recharges (E14): the words, with the number of the invoice (or of the credit note that gives it back) when the line has it.</summary>
+    private static string VatLabel(OwnerStatementLine line, IDocumentTexts texts, string language) =>
+        line.Reference is { Length: > 0 } number
+            ? texts.Get("StatementFileCommissionVatInvoice", language, number)
+            : texts.Get("StatementFileCommissionVat", language);
 
     private static string RechargeLabel(OwnerStatementLine line, IDocumentTexts texts, string language)
     {

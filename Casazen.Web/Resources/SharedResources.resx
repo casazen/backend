@@ -7023,6 +7023,12 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="StatementFileCommissionInvoice" xml:space="preserve">
     <value>Fattura del gestore n. {0}</value>
   </data>
+  <data name="StatementFileCommissionVat" xml:space="preserve">
+    <value>IVA sulla provvigione e sui riaddebiti</value>
+  </data>
+  <data name="StatementFileCommissionVatInvoice" xml:space="preserve">
+    <value>IVA sulla provvigione e sui riaddebiti (fattura n. {0})</value>
+  </data>
   <data name="StatementFileRechargeCleaning" xml:space="preserve">
     <value>Pulizie</value>
   </data>

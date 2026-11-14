@@ -224,7 +224,9 @@ The invoice of the property manager to an owner (NF-114, D9): a `FiscalDocument`
 - **Payment.** An issued invoice is `offset` when the statement covers it, else `to_pay` with how much the debt of the owner grew in the month (the ledger before
   the month and at its end, the VAT included), never more than what is left of the invoice after its credit notes (`OwnerInvoiceSettlements`).
 - **The statement names the invoice.** The PDF and the CSV of the statement (`IStatementExportService`) print «Fattura n. PM2026/1» next to the commission of
-  the ledger once the owner invoice of the month is issued. The statement PDF of the version (E13/F02) reads the same number.
+  the ledger once the owner invoice of the month is issued. The statement PDF of the version (E13/F02) reads the same number, and has a line for the VAT the invoice
+  added on top (`AgencyVat`, and the line that gives it back with a credit note) in the part «Provvigione del PM»: «IVA sulla provvigione e sui riaddebiti (fattura n.
+  PM2026/1)»; the part counts it because the commission of the version does, so the parts of the file give the totals the version stores.
 
 ### QR-bill of a Swiss owner invoice (E14/F01/US01/T02, NF-113)
 
