@@ -95,6 +95,9 @@ public sealed class MarketplacePortalCatalogService(
         return new MarketplacePortalRefreshResult(true, received.Length, offered.Count, created, hidden, withoutCategory);
     }
 
+    public Task<bool> HasListedPortalsAsync(CancellationToken ct) =>
+        db.MarketplacePortals.AsNoTracking().AnyAsync(p => p.IsListed && p.Enabled, ct);
+
     /// <summary>The category the marketplace shows for what Octorate calls <paramref name="portalCategory"/>; <c>null</c> for any other.</summary>
     internal static MarketplacePortalCategory? CategoryOf(string? portalCategory)
     {
