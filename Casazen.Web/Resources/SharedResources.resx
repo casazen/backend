@@ -6807,4 +6807,184 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerAttachmentNotFound" xml:space="preserve">
     <value>Allegato non trovato.</value>
   </data>
+  <data name="StatementFileTitle" xml:space="preserve">
+    <value>Rendiconto del proprietario {0}</value>
+  </data>
+  <data name="StatementFileDocumentTitle" xml:space="preserve">
+    <value>Rendiconto {0} - versione {1}</value>
+  </data>
+  <data name="StatementFileAgency" xml:space="preserve">
+    <value>Agenzia: {0}</value>
+  </data>
+  <data name="StatementFileOwner" xml:space="preserve">
+    <value>Proprietario: {0}</value>
+  </data>
+  <data name="StatementFilePeriod" xml:space="preserve">
+    <value>Periodo: {0}</value>
+  </data>
+  <data name="StatementFileVersion" xml:space="preserve">
+    <value>Versione: {0}</value>
+  </data>
+  <data name="StatementFileCurrency" xml:space="preserve">
+    <value>Valuta: {0}</value>
+  </data>
+  <data name="StatementFilePublished" xml:space="preserve">
+    <value>Pubblicato il {0}</value>
+  </data>
+  <data name="StatementFileDraft" xml:space="preserve">
+    <value>Bozza non pubblicata: non è ancora il rendiconto consegnato al proprietario.</value>
+  </data>
+  <data name="StatementFileWatermarkDraft" xml:space="preserve">
+    <value>BOZZA</value>
+  </data>
+  <data name="StatementFileNotInvoice" xml:space="preserve">
+    <value>Il rendiconto non è una fattura.</value>
+  </data>
+  <data name="StatementFileNone" xml:space="preserve">
+    <value>Nessuna voce nel periodo.</value>
+  </data>
+  <data name="StatementFileTotal" xml:space="preserve">
+    <value>Totale</value>
+  </data>
+  <data name="StatementFileStaysHeading" xml:space="preserve">
+    <value>Soggiorni</value>
+  </data>
+  <data name="StatementFileChannelFeesHeading" xml:space="preserve">
+    <value>Commissioni dei canali</value>
+  </data>
+  <data name="StatementFileWithholdingHeading" xml:space="preserve">
+    <value>Ritenuta</value>
+  </data>
+  <data name="StatementFileCommissionHeading" xml:space="preserve">
+    <value>Provvigione del PM</value>
+  </data>
+  <data name="StatementFileRechargesHeading" xml:space="preserve">
+    <value>Riaddebiti e spese</value>
+  </data>
+  <data name="StatementFileCorrectionsHeading" xml:space="preserve">
+    <value>Rettifiche</value>
+  </data>
+  <data name="StatementFileNetHeading" xml:space="preserve">
+    <value>Netto</value>
+  </data>
+  <data name="StatementFilePaymentsHeading" xml:space="preserve">
+    <value>Pagamenti</value>
+  </data>
+  <data name="StatementFileTouristTaxHeading" xml:space="preserve">
+    <value>Tassa di soggiorno (informativa)</value>
+  </data>
+  <data name="StatementFileTouristTaxNote" xml:space="preserve">
+    <value>Imposta di soggiorno incassata dall'agenzia per i soggiorni del periodo, da versare al comune o all'ente del turismo. Non fa parte del netto.</value>
+  </data>
+  <data name="StatementFileTouristTaxNone" xml:space="preserve">
+    <value>Nessuna imposta di soggiorno incassata dall'agenzia nel periodo.</value>
+  </data>
+  <data name="StatementFileColProperty" xml:space="preserve">
+    <value>Immobile</value>
+  </data>
+  <data name="StatementFileColStay" xml:space="preserve">
+    <value>Soggiorno</value>
+  </data>
+  <data name="StatementFileColChannel" xml:space="preserve">
+    <value>Canale</value>
+  </data>
+  <data name="StatementFileColShare" xml:space="preserve">
+    <value>Quota</value>
+  </data>
+  <data name="StatementFileColDate" xml:space="preserve">
+    <value>Data</value>
+  </data>
+  <data name="StatementFileColDescription" xml:space="preserve">
+    <value>Descrizione</value>
+  </data>
+  <data name="StatementFileColAmount" xml:space="preserve">
+    <value>Importo ({0})</value>
+  </data>
+  <data name="StatementFileColAmountPlain" xml:space="preserve">
+    <value>Importo</value>
+  </data>
+  <data name="StatementFileColGross" xml:space="preserve">
+    <value>Lordo senza tassa di soggiorno ({0})</value>
+  </data>
+  <data name="StatementFileColItem" xml:space="preserve">
+    <value>Voce</value>
+  </data>
+  <data name="StatementFileColSection" xml:space="preserve">
+    <value>Sezione</value>
+  </data>
+  <data name="StatementFileChannelFeesOwner" xml:space="preserve">
+    <value>Trattenuta dal portale (fattura del portale a tuo nome)</value>
+  </data>
+  <data name="StatementFileChannelFeesAgency" xml:space="preserve">
+    <value>Commissioni del portale riaddebitate dal gestore</value>
+  </data>
+  <data name="StatementFileChannelFeesAgencyInvoice" xml:space="preserve">
+    <value>Commissioni del portale riaddebitate dal gestore (fattura n. {0})</value>
+  </data>
+  <data name="StatementFileCommissionInvoice" xml:space="preserve">
+    <value>Fattura del gestore n. {0}</value>
+  </data>
+  <data name="StatementFileRechargeCleaning" xml:space="preserve">
+    <value>Pulizie</value>
+  </data>
+  <data name="StatementFileRechargeLinen" xml:space="preserve">
+    <value>Biancheria</value>
+  </data>
+  <data name="StatementFileRechargeCardFee" xml:space="preserve">
+    <value>Commissioni sui pagamenti con carta</value>
+  </data>
+  <data name="StatementFileRechargeCharge" xml:space="preserve">
+    <value>Addebito del gestore</value>
+  </data>
+  <data name="StatementFileRechargeExpense" xml:space="preserve">
+    <value>Spesa anticipata</value>
+  </data>
+  <data name="StatementFileWithholdingLine" xml:space="preserve">
+    <value>Ritenuta sul pagamento</value>
+  </data>
+  <data name="StatementFileCorrectionLine" xml:space="preserve">
+    <value>Rettifica</value>
+  </data>
+  <data name="StatementFilePaymentToOwner" xml:space="preserve">
+    <value>Pagamento al proprietario</value>
+  </data>
+  <data name="StatementFilePaymentFromOwner" xml:space="preserve">
+    <value>Pagamento dal proprietario</value>
+  </data>
+  <data name="StatementFileReversal" xml:space="preserve">
+    <value>storno</value>
+  </data>
+  <data name="StatementFileNetOpening" xml:space="preserve">
+    <value>Saldo iniziale</value>
+  </data>
+  <data name="StatementFileNetPeriod" xml:space="preserve">
+    <value>Totale del periodo</value>
+  </data>
+  <data name="StatementFileNetPayments" xml:space="preserve">
+    <value>Pagamenti</value>
+  </data>
+  <data name="StatementFileNetClosing" xml:space="preserve">
+    <value>Saldo finale</value>
+  </data>
+  <data name="StatementFileLinesHash" xml:space="preserve">
+    <value>Impronta SHA-256 delle righe: {0}</value>
+  </data>
+  <data name="StatementFileChannelDirect" xml:space="preserve">
+    <value>Diretta</value>
+  </data>
+  <data name="StatementFileChannelManual" xml:space="preserve">
+    <value>Inserita a mano</value>
+  </data>
+  <data name="StatementFileChannelOther" xml:space="preserve">
+    <value>Altro portale</value>
+  </data>
+  <data name="OwnerStatementPdfNotAvailable" xml:space="preserve">
+    <value>Il PDF di questo rendiconto non è disponibile.</value>
+  </data>
+  <data name="OwnerStatementFileImmutable" xml:space="preserve">
+    <value>Il PDF di un rendiconto pubblicato non può essere sostituito né avere nuove versioni.</value>
+  </data>
+  <data name="OwnerPortalInvoiceNotFound" xml:space="preserve">
+    <value>Fattura non trovata.</value>
+  </data>
 </root>

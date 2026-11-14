@@ -55,6 +55,8 @@ public class FiscalDocumentsRegistrationTests
             (typeof(IBillingSetupContributor), typeof(TouristTaxSectionContributor), ServiceLifetime.Scoped),
             (typeof(IBillingSetupContributor), typeof(AutomationSectionContributor), ServiceLifetime.Scoped),
             (typeof(IBillingSetupContributor), typeof(ItalySectionContributor), ServiceLifetime.Scoped),
+            (typeof(IBillingSetupContributor), typeof(ChannelCommissionsSectionContributor), ServiceLifetime.Scoped),
+            (typeof(IBillingSetupContributor), typeof(OwnerMandatesSectionContributor), ServiceLifetime.Scoped),
 
             // The two consumers of the sync with Octorate (E06/F02/US01/T04): the pre-fill on BookingCreated, then the write-back on InvoiceDataSaved.
             (typeof(IEventHandler<DomainEvent>), typeof(InvoiceDataFromOctorateHandler), ServiceLifetime.Scoped),
@@ -84,6 +86,7 @@ public class FiscalDocumentsRegistrationTests
             // with their withholding evidence and the filing states (T03).
             (typeof(IOwnerFiscalProfileService), typeof(OwnerFiscalProfileService), ServiceLifetime.Scoped),
             (typeof(IOwnerAccountingService), typeof(OwnerAccountingService), ServiceLifetime.Scoped),
+            (typeof(IOwnerStatementDocuments), typeof(OwnerStatementDocuments), ServiceLifetime.Scoped),
             (typeof(IOwnerPayoutService), typeof(OwnerPayoutService), ServiceLifetime.Scoped),
 
             // The mandates of the owners, their billing address and the channel commission rules (E13/F01/US01/T01).

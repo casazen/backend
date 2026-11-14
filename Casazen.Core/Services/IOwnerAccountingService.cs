@@ -46,7 +46,8 @@ public interface IOwnerAccountingService
 
     /// <summary>
     /// Publishes an approved version (<c>agency.statement.publish</c>): its file (the JSON of the version and of its lines) and its SHA-256 are stored and never
-    /// change. 422 <c>owner_statement_not_approved</c>; 409 <c>owner_period_dirty</c>.
+    /// change, and so is its PDF, an owner document of type statement stored in the same save (E13/F01/US02/T01); the owner is told by e-mail after it
+    /// (E13/F01/US02/T02, no amount in it). 422 <c>owner_statement_not_approved</c>; 409 <c>owner_period_dirty</c>.
     /// </summary>
     Task<OwnerStatementVersion> PublishVersionAsync(Guid orgId, Guid versionId, string? userId, CancellationToken ct = default);
 

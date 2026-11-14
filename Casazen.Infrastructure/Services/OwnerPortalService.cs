@@ -1,5 +1,7 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -17,7 +19,19 @@ namespace Casazen.Infrastructure.Services;
 /// The Home's numbers (NF-96): the occupancy of the property list and the overview and trend read them. The dependency injection always
 /// passes it; it is optional only so that the places that build this service for the three older reads keep compiling.
 /// </param>
-public sealed class OwnerPortalService(AppDbContext db, TimeProvider timeProvider, IHostDashboardService? dashboard = null) : IOwnerPortalService
+/// <param name="featureFlags">
+/// The flag of the agency tier, behind which the statements and the invoices of the owner are shown (E13/F01/US02/T02). Optional for the same reason as
+/// <paramref name="dashboard"/>: the places that build this service for the older reads keep compiling; the dependency injection always passes it.
+/// </param>
+/// <param name="accessResolver">What the caller reaches now (its ownerships and the permissions a delegation gave): who may read the accounting.</param>
+/// <param name="statementDocuments">The statements as the PDF has them, the stored PDF and the PDF of an invoice.</param>
+public sealed class OwnerPortalService(
+    AppDbContext db,
+    TimeProvider timeProvider,
+    IHostDashboardService? dashboard = null,
+    IFeatureFlags? featureFlags = null,
+    IOwnerPortalAccessResolver? accessResolver = null,
+    IOwnerStatementDocuments? statementDocuments = null) : IOwnerPortalService
 {
     /// <summary>
     /// Gets properties owned by the owner with occupancy and revenue summaries (ADR-011-R2, ADR-011-R8).
@@ -91,29 +105,234 @@ public sealed class OwnerPortalService(AppDbContext db, TimeProvider timeProvide
         return properties;
     }
 
-    /// <summary>
-    /// Gets published monthly statements for the owner's properties (ADR-011-R2).
-    /// Returns empty list for now (statements feature not yet implemented).
-    /// </summary>
-    public Task<IReadOnlyList<OwnerPortalStatementInfo>> GetOwnerStatementsAsync(
+    // ---------------------------------------------------------------- E13/F01/US02/T02: the statements and the invoices of the owner
+
+    public async Task<IReadOnlyList<OwnerPortalStatementInfo>> GetOwnerStatementsAsync(
         Guid ownerUserId,
         CancellationToken cancellationToken = default)
     {
-        // Placeholder: statements feature not yet implemented
-        return Task.FromResult<IReadOnlyList<OwnerPortalStatementInfo>>([]);
+        if (await AccountingAccessAsync(ownerUserId, cancellationToken) is not { } access)
+            return [];
+
+        // The published versions of the owner profiles the caller reads the accounting of; the newest first. The filter on the grants is in memory: the owner profile
+        // ids are the caller's, and a contact that holds the permission on some of an owner's properties reads the statements of that owner profile.
+        var ownerIds = access.With(OwnerPortalPermission.AccountingRead).Select(g => g.PropertyOwnerId).Distinct().ToList();
+        var versions = (await StatementVersions()
+                .Where(v => ownerIds.Contains(v.PropertyOwnerId) && v.PublishedAt != null)
+                .OrderByDescending(v => v.PeriodYear)
+                .ThenByDescending(v => v.PeriodMonth)
+                .ThenByDescending(v => v.VersionNumber)
+                .Take(OwnerCollaborationRules.MaxList)
+                .ToListAsync(cancellationToken))
+            .Where(v => access.Covers(v.OrgId, v.PropertyOwnerId, OwnerPortalPermission.AccountingRead))
+            .ToList();
+        return await StatementSummariesAsync(versions, cancellationToken);
+    }
+
+    public async Task<OwnerPortalStatementDetailInfo> GetOwnerStatementAsync(
+        Guid ownerUserId,
+        Guid statementId,
+        CancellationToken cancellationToken = default)
+    {
+        var version = await ReachedStatementAsync(ownerUserId, statementId, cancellationToken);
+        var summary = (await StatementSummariesAsync([version], cancellationToken))[0];
+        var content = await StatementFiles().GetContentAsync(version.OrgId, version.Id, null, cancellationToken);
+        return new OwnerPortalStatementDetailInfo(summary, content);
+    }
+
+    public async Task<OwnerFileContent> OpenOwnerStatementPdfAsync(
+        Guid ownerUserId,
+        Guid statementId,
+        CancellationToken cancellationToken = default)
+    {
+        var version = await ReachedStatementAsync(ownerUserId, statementId, cancellationToken);
+        return await StatementFiles().OpenPublishedPdfAsync(version.OrgId, version.Id, ownerUserId, cancellationToken)
+            ?? throw new NotFoundException($"The PDF of owner statement {statementId} is not available")
+            {
+                Code = OwnerStatementFileErrors.PdfNotAvailable,
+                MessageKey = OwnerStatementFileErrors.PdfNotAvailableMessageKey,
+            };
+    }
+
+    public async Task<IReadOnlyList<OwnerPortalInvoiceInfo>> GetOwnerInvoicesAsync(
+        Guid ownerUserId,
+        CancellationToken cancellationToken = default)
+    {
+        if (await AccountingAccessAsync(ownerUserId, cancellationToken) is not { } access)
+            return [];
+
+        // The issued documents the property manager made out to the owner profiles of the caller. The recipient snapshot (an address, a tax id) is never read.
+        var ownerIds = access.With(OwnerPortalPermission.AccountingRead).Select(g => g.PropertyOwnerId).Distinct().ToList();
+        var rows = (await db.FiscalDocuments
+                .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+                .AsNoTracking()
+                .Where(d => d.Purpose == FiscalDocumentPurpose.OwnerInvoice && d.Status == FiscalDocumentStatus.Issued && d.Kind != FiscalDocumentKind.Proforma
+                    && d.Number != null && d.IssueDate != null && d.RecipientOwnerId != null && ownerIds.Contains(d.RecipientOwnerId.Value))
+                .OrderByDescending(d => d.IssueDate)
+                .ThenByDescending(d => d.Number)
+                .Take(OwnerCollaborationRules.MaxList)
+                .Select(d => new
+                {
+                    d.Id,
+                    d.OrgId,
+                    Owner = d.RecipientOwnerId!.Value,
+                    d.Number,
+                    d.IssueDate,
+                    d.Kind,
+                    d.Total,
+                    d.Currency,
+                    d.PeriodYear,
+                    d.PeriodMonth,
+                    d.OwnerStatementVersionId,
+                    d.CreditedInFull,
+                })
+                .ToListAsync(cancellationToken))
+            .Where(d => access.Covers(d.OrgId, d.Owner, OwnerPortalPermission.AccountingRead))
+            .ToList();
+        var agencies = await AgencyNamesAsync(rows.Select(d => d.OrgId), cancellationToken);
+
+        return rows
+            .Select(d => new OwnerPortalInvoiceInfo(
+                d.Id,
+                d.OrgId,
+                agencies.GetValueOrDefault(d.OrgId, string.Empty),
+                d.Number!,
+                d.IssueDate!.Value,
+                d.Kind,
+                d.Total,
+                d.Currency,
+                d.PeriodYear,
+                d.PeriodMonth,
+                d.OwnerStatementVersionId,
+                d.CreditedInFull))
+            .ToList();
+    }
+
+    public async Task<OwnerFileContent> OpenOwnerInvoicePdfAsync(
+        Guid ownerUserId,
+        Guid invoiceId,
+        string? language = null,
+        CancellationToken cancellationToken = default)
+    {
+        // One 404 for an invoice that is not the caller's, of another owner, not issued, not an owner invoice or missing.
+        var access = await AccountingAccessAsync(ownerUserId, cancellationToken) ?? throw InvoiceNotFound(invoiceId);
+        var document = await db.FiscalDocuments
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(d => d.Id == invoiceId && d.Purpose == FiscalDocumentPurpose.OwnerInvoice && d.Status == FiscalDocumentStatus.Issued)
+            .Select(d => new { d.OrgId, d.RecipientOwnerId })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (document?.RecipientOwnerId is not { } owner || !access.Covers(document.OrgId, owner, OwnerPortalPermission.AccountingRead))
+            throw InvoiceNotFound(invoiceId);
+
+        var file = await StatementFiles().GetOwnerInvoicePdfAsync(document.OrgId, invoiceId, language, cancellationToken) ?? throw InvoiceNotFound(invoiceId);
+        return new OwnerFileContent(new MemoryStream(file.Content, writable: false), file.FileName, file.ContentType);
     }
 
     /// <summary>
-    /// Gets invoices received by the owner (ADR-011-R2).
-    /// Returns empty list for now (invoices feature not yet implemented).
+    /// What the caller reads of the accounting. <c>null</c> when there is nothing to show: <c>Features:AgencyTier</c> is off (the lists stay empty as they were), or the
+    /// caller has no ownership in force and no delegation. A caller that has some and holds <c>accounting.read</c> on none of them (a delegated contact the owner did not
+    /// give it to) is refused, 403.
     /// </summary>
-    public Task<IReadOnlyList<OwnerPortalInvoiceInfo>> GetOwnerInvoicesAsync(
-        Guid ownerUserId,
-        CancellationToken cancellationToken = default)
+    private async Task<OwnerPortalAccess?> AccountingAccessAsync(Guid ownerUserId, CancellationToken cancellationToken)
     {
-        // Placeholder: invoices feature not yet implemented
-        return Task.FromResult<IReadOnlyList<OwnerPortalInvoiceInfo>>([]);
+        if (!Features().IsEnabled(FeatureFlags.AgencyTier))
+            return null;
+
+        var access = await AccessResolver().ResolveAsync(ownerUserId, cancellationToken);
+        if (access.Grants.Count == 0)
+            return null;
+
+        access.Require(OwnerPortalPermission.AccountingRead);
+        return access;
     }
+
+    /// <summary>A published version of the statements of an owner profile the caller reads the accounting of; the same 404 for one that is not published, not the caller's, of another owner or missing.</summary>
+    private async Task<OwnerStatementVersion> ReachedStatementAsync(Guid ownerUserId, Guid statementId, CancellationToken cancellationToken)
+    {
+        var access = await AccountingAccessAsync(ownerUserId, cancellationToken) ?? throw StatementNotFound(statementId);
+        var version = await StatementVersions().FirstOrDefaultAsync(v => v.Id == statementId && v.PublishedAt != null, cancellationToken);
+        if (version is null || !access.Covers(version.OrgId, version.PropertyOwnerId, OwnerPortalPermission.AccountingRead))
+            throw StatementNotFound(statementId);
+
+        return version;
+    }
+
+    /// <summary>The statements as the list shows them: the agency, whether the PDF is stored, and the version that replaced it when that one is published too.</summary>
+    private async Task<IReadOnlyList<OwnerPortalStatementInfo>> StatementSummariesAsync(IReadOnlyList<OwnerStatementVersion> versions, CancellationToken cancellationToken)
+    {
+        if (versions.Count == 0)
+            return [];
+
+        var ids = versions.Select(v => v.Id).ToList();
+        var laterIds = versions.Where(v => v.SupersededByVersionId != null).Select(v => v.SupersededByVersionId!.Value).Distinct().ToList();
+        var agencies = await AgencyNamesAsync(versions.Select(v => v.OrgId), cancellationToken);
+        var withPdf = (await db.OwnerDocuments
+                .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+                .AsNoTracking()
+                .Where(d => ids.Contains(d.Id) && d.Type == OwnerDocumentType.Statement && d.RevokedAt == null)
+                .Select(d => d.Id)
+                .ToListAsync(cancellationToken))
+            .ToHashSet();
+        var laterPublished = (await StatementVersions()
+                .Where(v => laterIds.Contains(v.Id) && v.PublishedAt != null)
+                .Select(v => v.Id)
+                .ToListAsync(cancellationToken))
+            .ToHashSet();
+
+        // For the owner a statement is replaced only when the version that replaces it is published too: the agency marks the published one as superseded as soon as it
+        // generates a correction, but until that one is published (a draft, or approved and not yet given) the published statement is still the one the owner was given.
+        Guid? ReplacementOf(OwnerStatementVersion version) => version.SupersededByVersionId is { } later && laterPublished.Contains(later) ? later : null;
+
+        return versions
+            .Select(v => new OwnerPortalStatementInfo(
+                v.Id,
+                v.OrgId,
+                agencies.GetValueOrDefault(v.OrgId, string.Empty),
+                v.PeriodYear,
+                v.PeriodMonth,
+                v.VersionNumber,
+                v.Currency,
+                v.PublishedAt!.Value,
+                ReplacementOf(v) is not null,
+                ReplacementOf(v),
+                withPdf.Contains(v.Id),
+                OwnerStatementTotals.Of(v)))
+            .ToList();
+    }
+
+    private async Task<Dictionary<Guid, string>> AgencyNamesAsync(IEnumerable<Guid> orgIds, CancellationToken cancellationToken)
+    {
+        var ids = orgIds.Distinct().ToList();
+        return await db.Orgs.AsNoTracking().Where(o => ids.Contains(o.Id)).Select(o => new { o.Id, o.Name }).ToDictionaryAsync(o => o.Id, o => o.Name, cancellationToken);
+    }
+
+    /// <summary>The statement versions of every org: the caller of the portal has no org of its own, so what it reaches is named by its grants in each predicate.</summary>
+    private IQueryable<OwnerStatementVersion> StatementVersions() =>
+        db.OwnerStatementVersions.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking();
+
+    private IFeatureFlags Features() =>
+        featureFlags ?? throw new InvalidOperationException("The owner portal accounting needs the feature flags, which the dependency injection provides.");
+
+    private IOwnerPortalAccessResolver AccessResolver() =>
+        accessResolver ?? throw new InvalidOperationException("The owner portal accounting needs the access resolver, which the dependency injection provides.");
+
+    private IOwnerStatementDocuments StatementFiles() =>
+        statementDocuments ?? throw new InvalidOperationException("The owner portal accounting needs the statement files, which the dependency injection provides.");
+
+    private static NotFoundException StatementNotFound(Guid statementId) =>
+        new($"Owner statement version {statementId} was not found")
+        {
+            Code = OwnerAccountingErrors.VersionNotFound,
+            MessageKey = "OwnerStatementVersionNotFound",
+        };
+
+    private static NotFoundException InvoiceNotFound(Guid invoiceId) =>
+        new($"Owner invoice {invoiceId} was not found")
+        {
+            Code = OwnerStatementFileErrors.InvoiceNotFound,
+            MessageKey = OwnerStatementFileErrors.InvoiceNotFoundMessageKey,
+        };
 
     /// <summary>
     /// Gets withholding tax summary for the owner (ADR-011-R2).

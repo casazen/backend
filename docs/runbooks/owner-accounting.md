@@ -173,6 +173,31 @@ booking line, and the month of the payment then posts it (the readiness says `un
   checked on the first real payload of the channel manager** (does `totalGross` include the tourist tax?): the channel commission and the commission of the
   mandate are a percentage of the same gross.
 
+## Statement files and the owner portal accounting (E13/F01/US02)
+
+- **PDF and CSV of a version** (`GET api/owner-accounting/versions/{id}/pdf` and `…/csv`, `agency.statement.view`, the whole org): made from the ledger lines the
+  version was cut from, in the order «Soggiorni», «Commissioni dei canali», «Ritenuta» (only when present), «Provvigione del PM», «Riaddebiti e spese»,
+  «Rettifiche» (only when present), «Netto» (opening balance, total of the period, payments, closing balance). The net is the one the version stores: if the lines
+  no longer give it the answer is 409 `owner_ledger_immutable` (see «Evidence»), never a file with another net. The box «Tassa di soggiorno» is for information,
+  collected by the agency and to be remitted to the municipality or the cantonal tourist office, and is never added to or taken from the net.
+- **Who holds the portal account.** The label of the commission of the channels follows it: «Trattenuta dal portale (fattura del portale a tuo nome)» when the owner
+  holds the account (V1), «Commissioni del portale riaddebitate dal gestore (fattura n. …)» when the agency does (V2). Until the owner invoice epic (E14) provides the
+  resolver every listing is read as V1.
+- **Published = stored.** Publishing a version builds its PDF once, stores it with its SHA-256 as an owner document of type statement (the id of the document is the
+  id of the version) and tells the people of the owner portal who read the statements of the owner by e-mail: the agency and the link to the page «Contabilità», never an
+  amount, a period or a line. The owner downloads exactly the stored file. A version published before this release has no stored PDF: the agency gets a PDF built
+  from its lines, the owner portal answers 404 `owner_statement_pdf_not_available`; a new version (after a correction) is published with its file. **When the owner cannot be
+  told** (the queue refuses an e-mail, the public address of the web app is not configured, or reading who to tell fails) the publication stands, the failure is logged with the
+  ids of the version, the owner and the org, and the agency gets a «To do» (type `OwnerStatementNoticeFailed`, action `ReviewOwnerStatement`, about the version, reason
+  `owner_statement_notice_failed`, one for each version) to tell the owner by hand; nothing is raised for a portal that is off or an owner nobody reaches in it. If even the
+  «To do» cannot be raised, that is an error in the log with the same ids.
+- **Language and numbers.** The files are Italian unless `lang=en` is asked (no language is kept for an owner yet); the stored PDF is Italian. Amounts in the PDF follow the
+  currency of the version: `1'234.50` for CHF, `1.234,50` for any other. The CSV uses the one CSV writer (decimal comma, no thousands separator).
+- **Owner portal** (`GET api/owner-portal/statements`, `…/statements/{id}`, `…/statements/{id}/pdf`, `…/invoices`, `…/invoices/{id}/pdf`): the owner of the `owner_id`
+  claim and the delegated contacts that hold `accounting.read` (403 otherwise); another owner's statement or invoice is the same 404 as a missing one; never a guest;
+  behind `Features:AgencyTier` (ON in test): with the flag off the lists stay empty and a statement or an invoice is not there. The invoices are the issued documents
+  with the purpose owner invoice made out to the owner profile (E14 makes them from a statement).
+
 ## External invoice references (E06/F01/US02/T05)
 
 - **No owner invoice in CasaZen.** `POST api/agency-invoices/generate` answers 410 `owner_invoice_issuance_removed`; the stored agency invoices stay

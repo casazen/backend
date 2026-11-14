@@ -108,6 +108,12 @@ public sealed partial class OwnerCollaborationService(
         if (propertyOwnerId is { } ownerId)
             query = query.Where(d => d.PropertyOwnerId == ownerId);
 
+        // The PDF of a published statement is a document of the portal too (its id is the id of the version), but the agency reads it with the statement, not among the
+        // documents it shares: one for each owner and month would push the mandates and the insurances out of a list that stops at MaxList. It is still reachable by its
+        // id (its downloads, its withdrawal). The subquery is built outside the predicate: an expression tree cannot hold the list of the filters to ignore.
+        var statementFiles = db.OwnerStatementVersions.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).Where(v => v.OrgId == orgId).Select(v => v.Id);
+        query = query.Where(d => d.Type != OwnerDocumentType.Statement || !statementFiles.Contains(d.Id));
+
         var documents = await query.OrderByDescending(d => d.UpdatedAt).Take(OwnerCollaborationRules.MaxList).ToListAsync(cancellationToken);
         return await AdminViewsAsync(documents, cancellationToken);
     }
@@ -169,6 +175,14 @@ public sealed partial class OwnerCollaborationService(
 
         var document = await Documents().FirstOrDefaultAsync(d => d.Id == documentId && d.OrgId == orgId, cancellationToken)
             ?? throw DocumentNotFound(documentId);
+
+        // The PDF of a published statement is the file that was published (the id of the document is the id of the version): it keeps that file for good, whoever asks.
+        if (document.Type == OwnerDocumentType.Statement
+            && await db.OwnerStatementVersions.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AnyAsync(v => v.Id == document.Id && v.OrgId == orgId, cancellationToken))
+        {
+            throw new DomainConflictException(OwnerStatementFileErrors.FileImmutable, OwnerStatementFileErrors.FileImmutableMessageKey);
+        }
+
         var verdict = Scan(file);
         var number = 1 + await Versions().Where(v => v.OwnerDocumentId == document.Id).Select(v => (int?)v.VersionNumber).MaxAsync(cancellationToken) ?? 1;
         var now = Now();
