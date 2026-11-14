@@ -177,3 +177,7 @@ currency, the empty list, the official schema (`WireBatch_OfficialSchema_Validat
 (`Pain001SchemaProvider_Load_CompilesTheFiles_AndSaysWhyWhenItCannot_Test`, with stand-in files: a good one, none, a broken one, one with a DTD, another schema, the schema of the
 other message) and the permission. Until the official files are in, the tests that need to get past the validation give the service a schema of their own
 (`Pain001TestSchemas`: an accepting one and a rejecting one for both messages, stand-ins that are not copies of the official schemas).
+
+`WireBatchPostgresTests` (a real PostgreSQL database, so in CI only): two requests for the same payouts at the same moment make one batch (the lock of the owner accounting),
+and a payout that another batch takes between the checks and the save of a request is refused by the unique index of `WireBatchPayouts` with 422 `payouts_already_in_batch`
+and nothing left behind; the in-memory database of the unit tests applies neither the index nor the lock.
