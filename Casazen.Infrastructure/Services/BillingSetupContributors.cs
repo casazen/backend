@@ -202,35 +202,23 @@ public sealed class ItalySectionContributor(IDocumentIssuerService issuers) : Is
 /// <remarks>
 /// It reads for the organization of the setup, whatever the country of its own profile (a Swiss agency with Italian properties needs its owners' profiles too),
 /// names the org in every query (it may run with no tenant of its own) and returns a count, never a name. A private owner and a company count alike: both issue
-/// in their own name. An organization without owners gets no item.
+/// in their own name. An organization without such owners has nothing to look at here (<see cref="AppliesAsync"/>): the section «Italia» of a Swiss agency
+/// without Italian properties does not apply because of it.
 /// </remarks>
 public sealed class OwnerIssuerSetupContributor(AppDbContext db, IFiscalTaxRuleResolver taxRules, TimeProvider time) : IBillingSetupContributor
 {
     public string Section => BillingSetupSections.Italy;
 
+    public async Task<bool> AppliesAsync(Guid orgId, CancellationToken ct) =>
+        (await OwnersOfItalianPropertiesAsync(orgId, time.TodayInRomeAsDateOnly(), ct)).Count > 0;
+
     public async Task<IReadOnlyList<BillingSetupItem>> EvaluateAsync(Guid orgId, CancellationToken ct)
     {
         var today = time.TodayInRomeAsDateOnly();
-        var ownerships = await db.PropertyOwnerships
-            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .AsNoTracking()
-            .Where(ownership => ownership.OrgId == orgId && ownership.Property.Country == FiscalDocumentRules.Italy)
-            .Select(ownership => new { ownership.PropertyOwnerId, ownership.OwnershipEnd })
-            .ToListAsync(ct);
-        var issuing = ownerships
-            .Where(ownership => ownership.OwnershipEnd is not { } end || RomeCalendar.DateInRome(end) >= today)
-            .Select(ownership => ownership.PropertyOwnerId)
-            .Distinct()
-            .ToList();
-        if (issuing.Count == 0)
+        var owners = await OwnersOfItalianPropertiesAsync(orgId, today, ct);
+        if (owners.Count == 0)
             return [];
 
-        var owners = await db.PropertyOwners
-            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .AsNoTracking()
-            .Where(owner => owner.OrgId == orgId && owner.AnonymizedAt == null && issuing.Contains(owner.Id))
-            .Select(owner => owner.Id)
-            .ToListAsync(ct);
         var profiles = await db.OrgFiscalIssuerProfiles
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -245,6 +233,31 @@ public sealed class OwnerIssuerSetupContributor(AppDbContext db, IFiscalTaxRuleR
         return without == 0
             ? []
             : [new BillingSetupItem(BillingSetupItemKeys.OwnerIssuerMissing, Section, BillingSetupReasons.Required, without)];
+    }
+
+    /// <summary>The owners, not anonymized, with an ownership of an Italian property that has not ended on <paramref name="today"/> (in force or to come).</summary>
+    private async Task<List<Guid>> OwnersOfItalianPropertiesAsync(Guid orgId, DateOnly today, CancellationToken ct)
+    {
+        var ownerships = await db.PropertyOwnerships
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(ownership => ownership.OrgId == orgId && ownership.Property.Country == FiscalDocumentRules.Italy)
+            .Select(ownership => new { ownership.PropertyOwnerId, ownership.OwnershipEnd })
+            .ToListAsync(ct);
+        var issuing = ownerships
+            .Where(ownership => ownership.OwnershipEnd is not { } end || RomeCalendar.DateInRome(end) >= today)
+            .Select(ownership => ownership.PropertyOwnerId)
+            .Distinct()
+            .ToList();
+        if (issuing.Count == 0)
+            return [];
+
+        return await db.PropertyOwners
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(owner => owner.OrgId == orgId && owner.AnonymizedAt == null && issuing.Contains(owner.Id))
+            .Select(owner => owner.Id)
+            .ToListAsync(ct);
     }
 
     /// <summary>

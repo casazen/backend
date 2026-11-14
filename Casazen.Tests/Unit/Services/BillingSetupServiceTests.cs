@@ -472,6 +472,39 @@ public class BillingSetupServiceTests
         Assert.Equal(0, channels.Calls + mandates.Calls + owners.Calls);
     }
 
+    /// <summary>
+    /// E17/F01/US01/T01: the owner issuers make the section «Italia» of a Swiss issuer apply only when it has owners of Italian properties; a Swiss agency without
+    /// any keeps the section out of its wizard and of its count.
+    /// </summary>
+    [Fact]
+    public async Task ItalianSection_OfASwissIssuer_AppliesOnlyWithOwnersOfItalianProperties()
+    {
+        var databaseName = $"billing-setup-owner-issuers-{Guid.NewGuid()}";
+        await SeedAsync(databaseName, profileOfA: Profile(OrgA, "TEST Quokka Sagl"), profileOfB: null);
+        await using var db = NewDb(databaseName, new FixedTenantContext(OrgA));
+        var service = BillingSetupTestServices.Create(Issuers(db), new OwnerIssuerSetupContributor(db, TaxRuleCatalogs.Resolver(), TimeProvider.System));
+
+        Assert.False((await service.GetAsync(OrgA, Ct)).Sections.Single(s => s.Section == BillingSetupSections.Italy).Applies);
+
+        var owner = new PropertyOwner { OrgId = OrgA, FirstName = "TEST", LastName = "Proprietario", Email = "owner@example.com" };
+        var property = new Property { OrgId = OrgA, OwnerId = "auth0|agenzia", Name = "TEST Casa Como", Address = "Via 1", City = "Como", Country = "IT" };
+        db.PropertyOwners.Add(owner);
+        db.Properties.Add(property);
+        db.PropertyOwnerships.Add(new PropertyOwnership
+        {
+            OrgId = OrgA,
+            PropertyId = property.Id,
+            PropertyOwnerId = owner.Id,
+            SharePercent = 100m,
+            OwnershipStart = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+        });
+        await db.SaveChangesAsync();
+
+        var italy = (await service.GetAsync(OrgA, Ct)).Sections.Single(s => s.Section == BillingSetupSections.Italy);
+        Assert.True(italy.Applies);
+        Assert.Equal([BillingSetupItemKeys.OwnerIssuerMissing], italy.Missing.Select(i => i.Key));
+    }
+
     private static async Task<BillingSetupSection> Section(BillingSetupService service, string section) =>
         (await service.GetAsync(OrgA, Ct)).Sections.Single(s => s.Section == section);
 
