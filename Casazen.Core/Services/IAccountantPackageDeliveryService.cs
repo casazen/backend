@@ -93,7 +93,7 @@ public static class AccountantPackageSendErrors
     /// <summary>The package could not be made (an error of the services it reads).</summary>
     public const string PackageFailed = "package_failed";
 
-    /// <summary>The package could not be put in the private storage.</summary>
+    /// <summary>The package could not be put in the private storage, or the package of the month before, which it replaces, could not be deleted.</summary>
     public const string StorageFailed = "storage_failed";
 
     /// <summary>The secret of the signed links (<c>SIGNED_LINK_SECRET</c>) or the public https address of this API (<c>App:ApiBaseUrl</c>) is not configured: no link can be made.</summary>

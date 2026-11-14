@@ -24,8 +24,9 @@ namespace Casazen.Infrastructure.Services;
 /// deletion can never remove a package that is being replaced.</item>
 /// <item><b>At least once, never lost.</b> The month is recorded in the same step as the queue: a crash between the queue and the commit sends the e-mail again at the next run rather than losing the month (the same
 /// choice as the monthly compliance summary). A queue that refuses is a failure of the send, recorded with its code, never a success.</item>
-/// <item><b>One package at a time for an org.</b> The package is kept under a key made of the org and the month; a newer package replaces the one of the month before (which is deleted), and the nightly run deletes
-/// what has outlived its link. The row says which package is in the storage, so nothing stays in the bucket that no row names.</item>
+/// <item><b>One package at a time for an org.</b> The package is kept under a key made of the org and the month; a newer package replaces the one of the month before, which is deleted first, while the row still names it:
+/// an object that cannot be deleted is a failure of the send (<c>storage_failed</c>, recorded and tried again), never swallowed. The nightly run deletes what has outlived its link. The row says which package is in the
+/// storage, so nothing stays in the bucket that no row names.</item>
 /// <item><b>Failures are recorded, never swallowed.</b> A monthly send that fails writes <c>failed</c> and its code in the settings (never replacing a send that went out) and answers
 /// <see cref="AccountantPackageMonthlyOutcome.Failed"/>; the job fails once it has tried every org. «Send a test» does not record its failures: they are the answer.</item>
 /// <item><b>Nothing personal in a log.</b> The address of the accountant is read to be queued and never written; the link is never written; the logs carry the ids of the org, the month, the counts and the codes.</item>
@@ -256,18 +257,19 @@ public sealed class AccountantPackageDelivery(
         var now = _clock.GetUtcNow().UtcDateTime;
         try
         {
+            // One package at a time for an org: the one of an older month is no longer named by any link worth keeping, and it is deleted FIRST, while the row still names it. An object that cannot be deleted is then a failure that is
+            // recorded and tried again (the row keeps naming it, so the nightly run deletes it too), never one that stays in the bucket with no row that names it.
+            if (row.StoredPackagePeriod is { } older && older != key)
+                await storage.DeleteAsync(StorageBucket.Private, StorageKeys.AccountantPackage(orgId, older), cancellationToken);
+
             buffer.Position = 0;
             await storage.PutAsync(StorageBucket.Private, StorageKeys.AccountantPackage(orgId, key), buffer, ZipContentType, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogError(ex, "The accountant package {Period} of org {OrgId} could not be stored", key, orgId);
+            logger.LogError(ex, "The accountant package {Period} of org {OrgId} could not be stored, or the older one could not be deleted", key, orgId);
             return Delivery.Failure(AccountantPackageSendErrors.StorageFailed);
         }
-
-        // One package at a time for an org: the one of an older month is no longer named by any link worth keeping.
-        if (row.StoredPackagePeriod is { } older && older != key)
-            await TryDeleteStoredAsync(orgId, older, cancellationToken);
 
         row.StoredPackagePeriod = key;
         row.StoredPackageAt = now;
@@ -361,19 +363,6 @@ public sealed class AccountantPackageDelivery(
 
         logger.LogInformation("The accountant package {Period} of org {OrgId} was deleted: its link has expired", period, orgId);
         return true;
-    }
-
-    /// <summary>Deletes the package of an older month that a newer one replaces. It never fails the send: an object that stays is a few megabytes the retention could not name, and the log says so.</summary>
-    private async Task TryDeleteStoredAsync(Guid orgId, string period, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await storage.DeleteAsync(StorageBucket.Private, StorageKeys.AccountantPackage(orgId, period), cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogWarning(ex, "The older accountant package {Period} of org {OrgId} could not be deleted when a newer one replaced it", period, orgId);
-        }
     }
 
     /// <summary>True when the row says the accountant already has the package of <paramref name="period"/>.</summary>

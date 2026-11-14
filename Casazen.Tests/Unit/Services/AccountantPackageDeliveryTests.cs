@@ -533,6 +533,39 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Equal("2026-10", (await _world.RowAsync(org)).StoredPackagePeriod);
     }
 
+    /// <summary>
+    /// An older package that cannot be deleted is a failure of the send, recorded with its code and never swallowed: nothing is queued, the row keeps naming the older package (so the nightly run can still delete it), and the
+    /// next run, with the storage back, deletes it, stores the new one and sends once.
+    /// </summary>
+    [Fact]
+    public async Task ANewerPackage_WhoseOlderOneCannotBeDeleted_IsAFailureRecorded_AndTheRowKeepsNamingTheOlderOne()
+    {
+        var org = await _world.SeedAsync();
+        var row = await _world.Db.AccountantPackageSettings.SingleAsync();
+        row.StoredPackagePeriod = "2026-09";
+        row.StoredPackageAt = new DateTime(2026, 10, 3, 5, 0, 0, DateTimeKind.Utc);
+        _world.Storage.Add(AccountantPackageDeliveryWorld.KeyOf(org, "2026-09"), [1, 2, 3]);
+        await _world.Db.SaveChangesAsync();
+        var storage = new Mock<IFileStorage>();
+        storage
+            .Setup(s => s.DeleteAsync(StorageBucket.Private, AccountantPackageDeliveryWorld.KeyOf(org, "2026-09"), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("the bucket does not answer"));
+
+        Assert.Equal(AccountantPackageMonthlyOutcome.Failed, await _world.Delivery(storage: storage.Object).SendMonthlyAsync(org, Today));
+
+        var failed = await _world.RowAsync(org);
+        Assert.Equal((AccountantPackageSendResult.Failed, AccountantPackageSendErrors.StorageFailed, "2026-09"), (failed.LastSendResult, failed.LastSendError, failed.StoredPackagePeriod));
+        Assert.Empty(_world.Emails.Snapshot());
+        storage.Verify(s => s.PutAsync(It.IsAny<StorageBucket>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // The next run, with the storage back: the older package goes, the new one is stored and named, and the month is sent once.
+        Assert.Equal(AccountantPackageMonthlyOutcome.Sent, await _world.Delivery().SendMonthlyAsync(org, Today));
+        Assert.False(await _world.Storage.ExistsAsync(StorageBucket.Private, AccountantPackageDeliveryWorld.KeyOf(org, "2026-09")));
+        Assert.True(await _world.Storage.ExistsAsync(StorageBucket.Private, AccountantPackageDeliveryWorld.KeyOf(org, "2026-10")));
+        Assert.Equal("2026-10", (await _world.RowAsync(org)).StoredPackagePeriod);
+        Assert.Single(_world.Emails.Snapshot());
+    }
+
     [Fact]
     public async Task DeleteExpiredPackages_DeletesWhatItsLinkHasOutlived_AndForgetsItInTheRow_AndKeepsTheRest()
     {
