@@ -170,6 +170,40 @@ public class FiscalTaxRuleCatalogTests
     }
 
     /// <summary>
+    /// PROOF TEST: money rule, through the service. The date that chooses the rule of a guest document is the check-out of the stay, neither its check-in nor the
+    /// day of the issue: with a new version of the Swiss rates from 2026-11-16, a stay from 11-14 to 11-18 (it starts under the old version and ends under the
+    /// new one) takes the new rate and version, and a stay that ends on 11-15 keeps the old ones, although both are issued on the same day (2026-11-20, under
+    /// the new version): the same CHF 1040 gives a VAT of 40.00 at 4.0% and of 38.07 at 3.8%, and the document stores the version it was made with.
+    /// </summary>
+    [Fact]
+    public async Task TaxRule_OfAGuestDocument_IsChosenByTheCheckOutOfTheStay_Test()
+    {
+        var catalog = new FiscalTaxRulesOptions
+        {
+            TaxRules =
+            [
+                SwissSet("ch-vat-old", new DateOnly(2024, 1, 1), new DateOnly(2026, 11, 15), stay: 3.8m, normal: 8.1m),
+                SwissSet("ch-vat-new", new DateOnly(2026, 11, 16), null, stay: 4.0m, normal: 8.5m),
+            ],
+        };
+        Assert.Empty(FiscalTaxRulesOptionsValidator.Problems(catalog));
+        await using var db = NewDb();
+        var endsUnderTheNewVersion = await SeedSwissAsync(db, DocumentRegime.SwissVatRegistered, 1040m, new DateTime(2026, 11, 14), new DateTime(2026, 11, 18));
+        var endsUnderTheOldVersion = await SeedSwissAsync(db, DocumentRegime.SwissVatRegistered, 1040m, new DateTime(2026, 11, 10), new DateTime(2026, 11, 15));
+        var service = Service(db, Mock.Of<IFatturaPaXmlBuilder>(), catalog);
+
+        var newer = await service.IssueAsync((await service.CreateDraftAsync(endsUnderTheNewVersion, null)).Id, confirm: true);
+        var older = await service.IssueAsync((await service.CreateDraftAsync(endsUnderTheOldVersion, null)).Id, confirm: true);
+
+        Assert.Equal("ch-vat-new", newer.RuleVersion);
+        Assert.Equal(40.00m, newer.VatAmount);
+        Assert.Equal("ch-vat-old", older.RuleVersion);
+        Assert.Equal(38.07m, older.VatAmount);
+        Assert.Equal(1040m, newer.Total);
+        Assert.Equal(1040m, older.Total);
+    }
+
+    /// <summary>
     /// PROOF TEST: money rule. A catalog that would issue an Italian 0% line without its nature code never starts: the validator names the rule set and the
     /// line type, and the options of the container throw at their first use (the startup, with ValidateOnStart). Overlapping versions and a missing rate stop
     /// it too.
@@ -367,12 +401,12 @@ public class FiscalTaxRuleCatalogTests
                 : new FiscalTaxRateOptions { Percent = type == FiscalLineType.Accommodation ? 10m : 22m }),
     };
 
-    private static FiscalDocumentService Service(AppDbContext db, IFatturaPaXmlBuilder xml)
+    private static FiscalDocumentService Service(AppDbContext db, IFatturaPaXmlBuilder xml, FiscalTaxRulesOptions? catalog = null)
     {
         var featureFlags = new TestFeatureFlags(FeatureFlags.FiscalDocumentIssuance);
         var environment = new Mock<IHostEnvironment>();
         environment.SetupGet(e => e.EnvironmentName).Returns("Test");
-        var resolver = TaxRuleCatalogs.Resolver();
+        var resolver = TaxRuleCatalogs.Resolver(catalog);
         var issuers = new DocumentIssuerService(db, featureFlags, resolver, environment.Object, new FakeTimeProvider(Now), NullLogger<DocumentIssuerService>.Instance);
         var invoiceData = new Mock<IInvoiceDataService>();
         invoiceData.Setup(i => i.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -401,8 +435,11 @@ public class FiscalTaxRuleCatalogTests
         new(bookingId, true, Now.UtcDateTime, InvoiceRecipientKind.Company, "TEST Cliente Srl", null, "IT09876543217", "Via del Cliente", "5",
             "00100", "Roma", "RM", "IT", "ABC1234", null, InvoiceDataSource.Host, Now.UtcDateTime);
 
-    /// <summary>An org with a Swiss profile of <paramref name="regime"/>, a property in CHF and a stay of a portal with a guest known by name only.</summary>
-    private static async Task<Guid> SeedSwissAsync(AppDbContext db, DocumentRegime regime, decimal basePrice)
+    /// <summary>
+    /// An org with a Swiss profile of <paramref name="regime"/>, a property in CHF and a stay of a portal with a guest known by name only (from 2026-11-14 to
+    /// 2026-11-18, or the days given).
+    /// </summary>
+    private static async Task<Guid> SeedSwissAsync(AppDbContext db, DocumentRegime regime, decimal basePrice, DateTime? checkIn = null, DateTime? checkOut = null)
     {
         var orgId = Guid.NewGuid();
         db.Orgs.Add(NewOrg(orgId, hasVat: false));
@@ -420,7 +457,7 @@ public class FiscalTaxRuleCatalogTests
             City = "Lugano",
             CountryCode = "CH",
         });
-        var booking = await SeedBookingAsync(db, orgId, "CHF", basePrice, cleaningFee: 0m);
+        var booking = await SeedBookingAsync(db, orgId, "CHF", basePrice, cleaningFee: 0m, checkIn, checkOut);
         Recipients[booking] = NameOnly(booking, "TEST Ospite Svizzero", "CH");
         return booking;
     }
@@ -456,7 +493,14 @@ public class FiscalTaxRuleCatalogTests
         return booking;
     }
 
-    private static async Task<Guid> SeedBookingAsync(AppDbContext db, Guid orgId, string currency, decimal basePrice, decimal cleaningFee)
+    private static async Task<Guid> SeedBookingAsync(
+        AppDbContext db,
+        Guid orgId,
+        string currency,
+        decimal basePrice,
+        decimal cleaningFee,
+        DateTime? checkIn = null,
+        DateTime? checkOut = null)
     {
         var property = new Property { OrgId = orgId, OwnerId = "auth0|host", Name = "TEST Casa", Address = "Via 1", City = "Lugano", Currency = currency };
         var guest = new Guest { OrgId = orgId, FirstName = "Test", LastName = "Guest", Email = $"{Guid.NewGuid():N}@example.com" };
@@ -465,8 +509,8 @@ public class FiscalTaxRuleCatalogTests
             OrgId = orgId,
             PropertyId = property.Id,
             GuestId = guest.Id,
-            CheckInDate = new DateTime(2026, 11, 14),
-            CheckOutDate = new DateTime(2026, 11, 18),
+            CheckInDate = checkIn ?? new DateTime(2026, 11, 14),
+            CheckOutDate = checkOut ?? new DateTime(2026, 11, 18),
             NumberOfGuests = 2,
             Status = BookingStatus.CheckedOut,
             Source = BookingSource.BookingCom,
