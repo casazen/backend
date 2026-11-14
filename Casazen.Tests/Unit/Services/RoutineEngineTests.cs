@@ -313,6 +313,53 @@ public class RoutineEngineTests
         Assert.Single(rig.Scheduled);
     }
 
+    /// <summary>
+    /// Proof (data rule): the job of the FIRST wait of a routine with two, delivered again, finds the execution waiting at the second one and does nothing: the
+    /// second wait is not skipped, it ends at its own time, once (ADR-022-R10). The two actions after the waits are real ones, so a skipped wait would show.
+    /// </summary>
+    [Fact]
+    public async Task Resume_AJobOfAnEarlierWaitThatComesAgain_DoesNotSkipTheNextWait()
+    {
+        var rig = new RoutineRig();
+        var booking = await rig.SeedBookingAsync(OrgA);
+        await rig.SeedRoutineAsync(
+            OrgA,
+            RoutineEventType.BookingConfirmed,
+            RoutineRig.Actions(
+                ("Wait", """{"hours":1}"""),
+                ("CreateActivity", """{"text":"Prima"}"""),
+                ("Wait", """{"days":1}"""),
+                ("CreateActivity", """{"text":"Dopo un giorno"}""")));
+        await rig.TriggerAsync(OrgA, RoutineEventType.BookingConfirmed, RoutineRig.PayloadOf(booking));
+        var waiting = await rig.SingleExecutionAsync();
+        await rig.ResumeAsync(waiting.Id, new FixedTimeProvider(RoutineRig.Now.AddHours(1)));
+        var atTheSecondWait = await rig.ExecutionAsync(waiting.Id);
+        Assert.Equal(RoutineExecutionOutcomes.Waiting, atTheSecondWait.Outcome);
+        Assert.Equal(RoutineRig.Now.UtcDateTime.AddHours(25), atTheSecondWait.ResumeAt);
+        Assert.Equal(2, rig.Scheduled.Count);
+
+        // The same job again, half an hour later and once more many hours before the second wait is over: nothing changes.
+        await rig.ResumeAsync(waiting.Id, new FixedTimeProvider(RoutineRig.Now.AddHours(1.5)));
+        await rig.ResumeAsync(waiting.Id, new FixedTimeProvider(RoutineRig.Now.AddHours(20)));
+
+        var unchanged = await rig.ExecutionAsync(waiting.Id);
+        Assert.Equal(atTheSecondWait.Outcome, unchanged.Outcome);
+        Assert.Equal(atTheSecondWait.ResumeAt, unchanged.ResumeAt);
+        Assert.Equal(atTheSecondWait.ResultJson, unchanged.ResultJson);
+        Assert.Equal(2, rig.Scheduled.Count);
+
+        // The job of the second wait, at its time, continues the execution, once.
+        var secondWaitOver = new FixedTimeProvider(RoutineRig.Now.AddHours(25));
+        await rig.ResumeAsync(waiting.Id, secondWaitOver);
+        await rig.ResumeAsync(waiting.Id, secondWaitOver);
+
+        var ended = await rig.ExecutionAsync(waiting.Id);
+        Assert.Equal(RoutineExecutionOutcomes.Success, ended.Outcome);
+        Assert.Equal(
+            [RoutineActionOutcomes.Done, RoutineActionOutcomes.Done, RoutineActionOutcomes.Done, RoutineActionOutcomes.Done],
+            RoutineRig.ResultOf(ended).Actions.Select(a => a.Outcome));
+    }
+
     [Fact]
     public async Task Resume_AnExecutionThatIsNotWaiting_OrDoesNotExist_DoesNothing()
     {

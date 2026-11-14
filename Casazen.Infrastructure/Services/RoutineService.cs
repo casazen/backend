@@ -56,6 +56,9 @@ public class RoutineService(
     /// <summary>The code of a <see cref="NotFoundException"/> that names none: the generic one of the API.</summary>
     private const string GenericNotFoundCode = "not_found";
 
+    /// <summary>How much earlier than its <c>ResumeAt</c> a job may find a waiting execution (the clocks of the machines): the job of an earlier wait is far earlier than that.</summary>
+    private static readonly TimeSpan ResumeClockTolerance = TimeSpan.FromMinutes(5);
+
     public Task TriggerAsync(
         Guid orgId,
         RoutineEventType eventType,
@@ -122,6 +125,17 @@ public class RoutineService(
             logger.LogInformation(
                 "Routine execution {ExecutionId} is {Outcome}, not waiting: nothing to resume",
                 executionId, execution.Outcome);
+            return;
+        }
+
+        // The job of an earlier wait that comes again (the queue delivers a job twice after a crash) finds the execution waiting at the NEXT wait: it is not
+        // its job, so it does nothing, and the job of that wait continues the execution at its time. The tolerance covers the clocks of two machines; the
+        // shortest wait is an hour.
+        if (execution.ResumeAt is { } due && due - ResumeClockTolerance > Now())
+        {
+            logger.LogInformation(
+                "Routine execution {ExecutionId} waits until {ResumeAt}, it is not time yet: the job that came is not the one of this wait",
+                executionId, due);
             return;
         }
 
