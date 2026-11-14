@@ -295,6 +295,41 @@ public class FiscalDocumentAutomationTests
     }
 
     /// <summary>
+    /// PROOF TEST: permission rule (T02 point 3). A member «Solo alcuni» (given some properties through <c>PropertyMemberAccess</c>, in one area or in both) issues only the documents of the
+    /// properties they were given, by id, by period and by property: any other id is a row «not found», and a member who works in the other area only reaches none of them.
+    /// </summary>
+    [Fact]
+    public async Task IssueBatch_MemberWithSomePropertiesIssuesOnlyTheGrantedOnes_Test()
+    {
+        await using var db = NewDb();
+        await SeedOrgAsync(db);
+        var granted = await AddPropertyAsync(db, "auth0|host");
+        var notGranted = await AddPropertyAsync(db, "auth0|host");
+        db.Set<PropertyMemberAccess>().Add(new PropertyMemberAccess { OrgId = OrgId, UserId = "auth0|member", PropertyId = granted });
+        await db.SaveChangesAsync();
+        var service = ServiceOf(db);
+        var g1 = (await service.CreateDraftAsync(await AddBookingAsync(db, granted, BookingStatus.CheckedOut, BookingSource.Direct, checkOut: new DateTime(2026, 11, 16)), null)).Id;
+        var g2 = (await service.CreateDraftAsync(await AddBookingAsync(db, granted, BookingStatus.CheckedOut, BookingSource.Direct, checkOut: new DateTime(2026, 11, 17)), null)).Id;
+        var n1 = (await service.CreateDraftAsync(await AddBookingAsync(db, notGranted, BookingStatus.CheckedOut, BookingSource.Direct, checkOut: new DateTime(2026, 11, 16)), null)).Id;
+        var member = new HostScope(OrgId, GrantedToUserId: "auth0|member");
+
+        // By id: the draft of a property the member was not given is «not found», like an id that does not exist; the one they were given is issued.
+        var byId = await service.IssueBatchAsync(member, new FiscalDocumentBatchRequest([n1, g1], null, null, null));
+        Assert.Equal([(n1, false, (string?)FiscalDocumentErrors.NotFound), (g1, true, (string?)null)], byId.Rows.Select(r => (r.Id, r.Issued, r.ErrorCode)).ToList());
+
+        // By period and by property: only what the member was given; the property out of reach selects nothing and its draft stays a draft.
+        var byPeriod = await service.IssueBatchAsync(member, new FiscalDocumentBatchRequest(null, new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 30), null));
+        Assert.Equal([g2], byPeriod.Rows.Select(r => r.Id).ToList());
+        Assert.Empty((await service.IssueBatchAsync(member, new FiscalDocumentBatchRequest(null, null, null, [notGranted]))).Rows);
+        Assert.Equal(FiscalDocumentStatus.Draft, (await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == n1)).Status);
+
+        // The same member working in the long-rent area only reaches none of the short-rent properties they were given.
+        await service.CreateDraftAsync(await AddBookingAsync(db, granted, BookingStatus.CheckedOut, BookingSource.Direct, checkOut: new DateTime(2026, 11, 15)), null);
+        var otherArea = new HostScope(OrgId, GrantedToUserId: "auth0|member", GrantedMode: RentalMode.Long);
+        Assert.Empty((await service.IssueBatchAsync(otherArea, new FiscalDocumentBatchRequest(null, new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 30), null))).Rows);
+    }
+
+    /// <summary>
     /// PROOF TEST: data rule (T02 point 3). The answer has one row per document and never says «all issued» when one failed: a draft whose booking was cancelled meanwhile, a document that
     /// is no draft any more and an id that does not exist each get their stable code, the others are issued with consecutive numbers, and what failed is left as it was (a draft with no
     /// number). An empty selection (nothing, empty lists), too many documents and a period that ends before it starts are 422, never «all».
