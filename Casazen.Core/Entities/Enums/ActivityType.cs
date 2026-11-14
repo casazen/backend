@@ -146,4 +146,13 @@ public enum ActivityType
     /// Raised once for each version, and never for a portal that is off or an owner nobody reaches in it. The number leaves room for the values the owner portal appends after 72.
     /// </summary>
     OwnerStatementNoticeFailed = 80,
+
+    /// <summary>
+    /// The guest of a stay is owed money back on the tourist tax (E25/F01/US01/T01, NF-119): the confirmed tax is lower than what the price of the booking
+    /// included or than what was paid online, the stay was cancelled after the arrival with the tax paid online, or the automatic refund of a cancelled
+    /// stay failed. Never refunded by CasaZen by itself in these cases: the host gives the difference back. About the booking, leading to it
+    /// (<see cref="ActivityAction.ReviewBooking"/>); raised once per booking. The numbers from 90 are the tourist tax collection (epic E25), apart from
+    /// the values the tasks that run in parallel append.
+    /// </summary>
+    TouristTaxRefundDue = 90,
 }

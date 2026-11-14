@@ -280,6 +280,12 @@ public static class PushDeliveryKeys
     /// so the bell and the open pages of the host read the document list and the booking again.
     /// </summary>
     public static string FiscalDocumentIssued(Guid documentId) => $"fiscal-document:{documentId:N}:issued";
+
+    /// <summary>
+    /// The guest paid the tourist tax of a stay online (E25/F01/US01/T01), to the hosts of the booking: one per paid intent of the stay's record, stable across the
+    /// retries of the webhook.
+    /// </summary>
+    public static string TouristTaxPaid(Guid stayTouristTaxId, string paymentIntentId) => $"tourist-tax:{stayTouristTaxId:N}:paid:{paymentIntentId}";
 }
 
 /// <summary><c>data.type</c> of each push, one per kind of event (the app opens <c>data.route</c>).</summary>
@@ -420,6 +426,12 @@ public static class PushTypes
     /// route its detail. The web client reads again the list of the documents and the booking when it arrives. Neither the guest nor an amount is ever in it.
     /// </summary>
     public const string FiscalDocumentIssued = "fiscal-document-issued";
+
+    /// <summary>
+    /// The guest paid the tourist tax of a stay online (E25/F01/US01/T01): pushed to the hosts of the booking, written to the bell and published live; <c>entityId</c> is the
+    /// booking, the route its detail, which the open pages read again. Neither the guest nor an amount is ever in it.
+    /// </summary>
+    public const string TouristTaxPaid = "tourist-tax-paid";
 
     /// <summary>
     /// Type of the push to the host when a service request reaches <paramref name="status"/>; <c>null</c> for a status that has
