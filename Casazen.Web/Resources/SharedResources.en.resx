@@ -4131,7 +4131,7 @@
     <value>The issuer profile has no IBAN for the account to debit: add it in the «Fatturazione» setup. No batch was saved.</value>
   </data>
   <data name="WireOwnerAddressMissing" xml:space="preserve">
-    <value>{0} owners have no complete address (street, postal code, town and country), which the Swiss wire needs: complete the data of the owners listed. No batch was saved.</value>
+    <value>{0} owners have no complete address (street, postal code, town and country), which the wire file needs: complete the data of the owners listed. No batch was saved.</value>
   </data>
   <data name="WireOwnerIbanMissing" xml:space="preserve">
     <value>{0} owners do not have an IBAN configured: complete the data of the owners listed. No batch was saved.</value>
@@ -4141,6 +4141,9 @@
   </data>
   <data name="WireOwnerIbanNotSwiss" xml:space="preserve">
     <value>{0} owners have an IBAN that is not Swiss or Liechtenstein: a CHF transfer to that account is not a domestic payment and this file does not cover it. No batch was saved.</value>
+  </data>
+  <data name="WireOwnerIbanNotSepa" xml:space="preserve">
+    <value>{0} owners have an IBAN outside the SEPA area: a EUR transfer to that account is not a SEPA credit transfer and this file does not cover it. No batch was saved.</value>
   </data>
   <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
     <value>Access code not available or verification not passed</value>

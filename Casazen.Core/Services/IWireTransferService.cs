@@ -4,11 +4,12 @@ using Casazen.Core.Entities.Enums;
 namespace Casazen.Core.Services;
 
 /// <summary>
-/// Wire transfer service (ADR-017, E16/F01/US01/T01): builds the bank file that pays the owners from their <b>confirmed payouts</b> (the net after the withholding,
-/// <see cref="OwnerPayout"/>), never from a statement. CHF is the Swiss <c>pain.001.001.09.ch.03</c> file, EUR the SEPA <c>pain.001.001.03</c> file (until its own
-/// change). One transfer for each payout, one file per currency, the debtor and the debit account those of the issuer profile of the org. A payout is paid by
-/// one batch only. IBANs are validated with check digits. A file that does not validate against the official schema of its format is never saved, and a file is
-/// never produced without its validation (<see cref="WireTransferErrors"/>).
+/// Wire transfer service (ADR-017, E16/F01/US01/T01, E16/F01/US02/T01): builds the bank file that pays the owners from their <b>confirmed payouts</b> (the net after
+/// the withholding, <see cref="OwnerPayout"/>), never from a statement. CHF is the Swiss <c>pain.001.001.09.ch.03</c> file, EUR the ISO 20022 <c>pain.001.001.09</c>
+/// file with the rules of the SEPA credit transfer of the EPC (service level <c>SEPA</c>, charge bearer <c>SLEV</c>, no BIC, structured addresses). One transfer for
+/// each payout, one file per currency, the debtor and the debit account those of the issuer profile of the org. A payout is paid by one batch only. IBANs are
+/// validated with check digits. A file that does not validate against the official schema of its format is never saved, and a file is never produced without its
+/// validation (<see cref="WireTransferErrors"/>).
 /// </summary>
 /// <remarks>
 /// Every method takes the org of the caller and filters on it explicitly: nothing relies only on the global tenant filter of the context. A batch of another org
@@ -19,9 +20,10 @@ public interface IWireTransferService
     /// <summary>
     /// Create a wire batch from the given confirmed payouts. Validates that every payout belongs to the caller's org, is confirmed (never reversed), comes from a
     /// published statement version, is in the same currency (EUR or CHF), has a net amount above zero with at most two decimals and is in no other batch; that
-    /// the issuer profile of the org has its name, structured address and a valid IBAN; that every owner has a valid IBAN (never a QR-IBAN) and a structured address;
-    /// and that the file validates against the official schema of its format: all before anything is saved (<see cref="WireTransferErrors"/>). The batch, its
-    /// payouts and its file are written by one save. Returns the batch and the XML file content.
+    /// the issuer profile of the org has its name, structured address and a valid IBAN; that every owner has a valid IBAN (never a QR-IBAN; in the area of the file:
+    /// Swiss or Liechtenstein in CHF, the SEPA area in EUR) and a structured address; and that the file validates against the official schema of its format and the
+    /// rules of its message: all before anything is saved (<see cref="WireTransferErrors"/>). The batch, its payouts and its file are written by one save. Returns
+    /// the batch and the XML file content.
     /// </summary>
     /// <param name="orgId">The caller's org ID (from tenant context).</param>
     /// <param name="payoutIds">IDs of the confirmed payouts to pay. An empty list is never «all the payouts».</param>
@@ -87,14 +89,23 @@ public static class WireMessageFormats
     /// <summary>The Swiss credit transfer of the Swiss Payment Standards, ISO 20022 <c>pain.001.001.09</c> with the Swiss implementation guidelines (CHF).</summary>
     public const string Pain001V09Ch03 = "pain.001.001.09.ch.03";
 
-    /// <summary>The ISO 20022 <c>pain.001.001.03</c> SEPA credit transfer (EUR, until the change that moves it to <c>pain.001.001.09</c>).</summary>
+    /// <summary>
+    /// The ISO 20022 <c>pain.001.001.09</c> customer credit transfer with the rules of the SEPA credit transfer of the EPC (EUR): service level <c>SEPA</c>, charge
+    /// bearer <c>SLEV</c>, IBAN only, structured addresses.
+    /// </summary>
+    public const string Pain001V09Sepa = "pain.001.001.09";
+
+    /// <summary>
+    /// The ISO 20022 <c>pain.001.001.03</c> SEPA credit transfer: the message of the EUR batches made before E16/F01/US02/T01. It is no longer written; the batches
+    /// that have it keep their stored file and are listed and downloaded as they are.
+    /// </summary>
     public const string Pain001V03Sepa = "pain.001.001.03";
 
     /// <summary>The message of the file of <paramref name="currency"/>, or <c>null</c> for a currency that has no wire file.</summary>
     public static string? Of(string? currency) => (currency ?? string.Empty).Trim().ToUpperInvariant() switch
     {
         WireTransferErrors.SwissCurrency => Pain001V09Ch03,
-        WireTransferErrors.SepaCurrency => Pain001V03Sepa,
+        WireTransferErrors.SepaCurrency => Pain001V09Sepa,
         _ => null,
     };
 }
@@ -113,7 +124,10 @@ public static class WireTransferErrors
     /// <summary>The official schema of the currency is not installed in this build: no file can be validated, so none is produced.</summary>
     public const string SchemaUnavailable = "wire_batch_schema_unavailable";
 
-    /// <summary>The file validates but is not what its lines say: the number of operations, the control sum, an amount, a currency or an end-to-end id.</summary>
+    /// <summary>
+    /// The file validates but is not what its lines say, or not what its message requires beyond the schema: the number of operations, the control sum, an amount, a
+    /// currency or an end-to-end id, and in the EUR file the service level, the charge bearer or the structure of an address.
+    /// </summary>
     public const string ContentInvalid = "wire_batch_content_invalid";
 
     /// <summary>The currency of the payouts is not one of the wire files (EUR for the SEPA file, CHF for the Swiss one).</summary>
@@ -178,6 +192,12 @@ public static class WireTransferErrors
 
     /// <summary>The IBAN of an owner is not Swiss or Liechtenstein, so a CHF transfer to it is not a domestic payment of this file. Lists the owner ids.</summary>
     public const string OwnerIbanNotSwiss = "wire_owner_iban_not_swiss";
+
+    /// <summary>
+    /// The IBAN of an owner is not in the SEPA area, so a EUR transfer to it is not a SEPA credit transfer, which is what the EUR file is (E16/F01/US02/T01). Lists the
+    /// owner ids.
+    /// </summary>
+    public const string OwnerIbanNotSepa = "wire_owner_iban_not_sepa";
 
     /// <summary>How many errors the message of <see cref="XmlInvalid"/> lists.</summary>
     public const int ListedErrors = 5;

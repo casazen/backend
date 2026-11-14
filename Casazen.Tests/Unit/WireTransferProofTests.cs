@@ -17,7 +17,7 @@ public class WireTransferProofTests
 {
     /// <summary>
     /// Money rule proof: the wire batch TotalAmount equals the sum of the net amounts of the confirmed payouts it pays. Tests that the wire batch total is computed
-    /// correctly from the included payouts (EUR, the SEPA file).
+    /// correctly from the included payouts (EUR, the SEPA file of pain.001.001.09).
     /// </summary>
     [Fact]
     public async Task WireBatch_SumEqualsPayoutNets()
@@ -43,7 +43,7 @@ public class WireTransferProofTests
         // The downloaded bytes must form a complete UTF-8 payment document.
         using var xmlStream = new MemoryStream(Encoding.UTF8.GetBytes(xml));
         var document = XDocument.Load(xmlStream);
-        XNamespace ns = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.03";
+        XNamespace ns = Pain001SchemaProvider.IsoNamespace;
         Assert.Equal(ns + "Document", document.Root!.Name);
         Assert.Equal(2, document.Descendants(ns + "CdtTrfTxInf").Count());
         Assert.Equal("2774.50", document.Descendants(ns + "CtrlSum").First().Value);
