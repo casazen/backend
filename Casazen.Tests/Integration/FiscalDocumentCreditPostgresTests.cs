@@ -217,23 +217,13 @@ public class FiscalDocumentCreditPostgresTests
     private static FiscalDocumentService Service(AppDbContext db, IFatturaPaXmlBuilder? builder = null, IDomainEventRecorder? events = null)
     {
         var featureFlags = new TestFeatureFlags(FeatureFlags.FiscalDocumentIssuance);
-        var options = Options.Create(new FiscalDocumentRulesOptions
-        {
-            Rules =
-            {
-                [DocumentRegime.VatOrdinary] = new FiscalDocumentRule
-                {
-                    DocumentKind = RuleKind.Invoice,
-                    FatturaPaRegimeCode = "RF01",
-                    VatRatePercent = 22m,
-                    TouristTaxNatureCode = "N1",
-                },
-            },
-        });
+
+        // The shipped catalog of the tax rules (FiscalDocuments:TaxRules): the Italian ordinary VAT rule in force at the check-out of the stay.
+        var rules = TaxRuleCatalogs.Resolver();
         var environment = new Mock<IHostEnvironment>();
         environment.SetupGet(e => e.EnvironmentName).Returns("Test");
         var time = new FakeTimeProvider(Now);
-        var issuers = new DocumentIssuerService(db, featureFlags, options, environment.Object, time, NullLogger<DocumentIssuerService>.Instance);
+        var issuers = new DocumentIssuerService(db, featureFlags, rules, environment.Object, time, NullLogger<DocumentIssuerService>.Instance);
         var xml = new Mock<IFatturaPaXmlBuilder>();
         xml.Setup(x => x.Build(It.IsAny<FatturaPaInput>())).Returns("<p:FatturaElettronica/>");
         return new FiscalDocumentService(
@@ -245,7 +235,7 @@ public class FiscalDocumentCreditPostgresTests
             events ?? Mock.Of<IDomainEventRecorder>(),
             new MigraDocPdfDocumentRenderer(),
             new ResxDocumentTexts(),
-            options,
+            rules,
             time,
             NullLogger<FiscalDocumentService>.Instance);
     }

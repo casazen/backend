@@ -179,6 +179,15 @@ public class DocumentIssuerProofTests
             Assert.IsType<ObjectResult>((await staff.IssuerPreview(bookingOfOrgB, CancellationToken.None)).Result).StatusCode);
         Assert.IsType<ForbidResult>((await staff.IssuerPreview(bookingOfColleague, CancellationToken.None)).Result);
 
+        // The preview of the organization (no booking): who issues (the flag of this controller is off) and the tax rule in force today for the profile
+        // of org A, with the rate of every line type (E11/F01/US01/T02).
+        var preview = Assert.IsType<IssuerPreviewDto>(Assert.IsType<OkObjectResult>((await staff.IssuerPreview(null, CancellationToken.None)).Result).Value);
+        Assert.Equal(("None", IssuerReasons.IssuanceOff), (preview.Issuer, preview.Reason));
+        Assert.NotNull(preview.Rule);
+        Assert.Equal("it-ordinary-2026.1", preview.Rule.Version);
+        Assert.Equal(Enum.GetValues<FiscalLineType>().Length, preview.Rule.Rates.Count);
+        Assert.Contains(preview.Rule.Rates, rate => rate.LineType == nameof(FiscalLineType.Accommodation) && rate.Percent == 10m);
+
         // A manager of the whole org changes the setting of its own org (a draft: the profile is not complete yet), and org B's stays as it was.
         var manager = Controller(sut, resolver, lookup, HostAuthorizationTestHarness.User("auth0|manager-a", "PropertyManager"));
         var saved = await manager.PutSettings(
@@ -290,22 +299,11 @@ public class DocumentIssuerProofTests
         Assert.Null(saved.ConfirmedAt);
         Assert.Equal(new[] { IssuerFields.VatNumber }, saved.MissingFields.ToArray());
 
-        // The rule is not configured until the accountant approves it: issuance refuses instead of guessing a rate.
-        var refusal = await Assert.ThrowsAsync<DomainRuleException>(() => on.RequireRuleAsync(OrgA));
-        Assert.Equal(DocumentIssuerErrorCodes.RuleNotConfigured, refusal.Code);
-        var approved = new FiscalDocumentRulesOptions
-        {
-            Rules =
-            {
-                [DocumentRegime.VatOrdinary] = new FiscalDocumentRule
-                {
-                    DocumentKind = FiscalDocumentKind.Invoice,
-                    VatRatePercent = 0m,
-                    VatNatureCode = "N2.2",
-                },
-            },
-        };
-        Assert.Equal(FiscalDocumentKind.Invoice, (await Service(db, issuanceOn: true, approved).RequireRuleAsync(OrgA)).DocumentKind);
+        // The setting shows the tax rule in force today for the profile (the catalog FiscalDocuments:TaxRules); with no rule for it, none is shown and
+        // nothing would be issued (document_rule_not_configured) instead of guessing a rate.
+        Assert.NotNull(saved.Rule);
+        Assert.Equal(("it-ordinary-2026.1", FiscalDocumentKind.Invoice), (saved.Rule.Version, saved.Rule.DocumentKind));
+        Assert.Null((await Service(db, issuanceOn: true, new FiscalTaxRulesOptions()).GetSettingsAsync(OrgA)).Rule);
     }
 
     /// <summary>
@@ -376,7 +374,7 @@ public class DocumentIssuerProofTests
         Assert.Null(notRegistered.Issuer.SwissVatNumber);
     }
 
-    private static DocumentIssuerService Service(AppDbContext db, bool issuanceOn, FiscalDocumentRulesOptions? rules = null)
+    private static DocumentIssuerService Service(AppDbContext db, bool issuanceOn, FiscalTaxRulesOptions? catalog = null)
     {
         var environment = new Mock<IHostEnvironment>();
         environment.SetupGet(e => e.EnvironmentName).Returns("Testing");
@@ -386,7 +384,7 @@ public class DocumentIssuerProofTests
         return new DocumentIssuerService(
             db,
             new ConfigurationFeatureFlags(configuration),
-            Microsoft.Extensions.Options.Options.Create(rules ?? new FiscalDocumentRulesOptions()),
+            TaxRuleCatalogs.Resolver(catalog),
             environment.Object,
             TimeProvider.System,
             NullLogger<DocumentIssuerService>.Instance);

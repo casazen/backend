@@ -86,14 +86,56 @@ invoice answers 422 `fatturapa_schema_unavailable`: no XML is ever produced with
 The schemas are compiled without a resolver (the import of the signature schema is satisfied by the embedded file, never fetched); the documents
 are read with the DTD prohibited and no resolver (`XsdValidator`): no external entity, no network.
 
-## Amounts (`FiscalDocumentTotals`, rule `fiscal-totals-2026.11-1`)
+## Tax rules (`FiscalDocuments:TaxRules`, E11/F01/US01/T02)
 
-- The lines come from what the guest paid for the booking, **VAT included**: lodging (`BasePrice - CleaningFee`), cleaning (`CleaningFee`) and the
-  tourist tax (`TouristTax`) as a line without VAT with the nature code of the rule (`TouristTaxNatureCode`).
+The rules of the documents are one effective-dated catalog in `appsettings.json` (`FiscalTaxRulesOptions`, D2), which replaced the rules per regime
+(`FiscalDocuments:Rules`) and the stamp duty of the section. A rule set has a `Jurisdiction` (`IT` or `CH`), a `Regime` of that country, `ValidFrom` and
+an optional `ValidTo` (both days included), a `Version` (stored on every document, `FiscalDocument.RuleVersion`), a `SourceUrl`, a `DocumentKind`
+(`Receipt` or `Invoice`), a VAT rate for **every** line type (`Rates`: `Percent` and, for an Italian 0%, its `Nature`), and in Italy the codes of
+FatturaPA (`FatturaPaRegimeCode`, `TD01`/`TD04`), the `StampDuty` (`Threshold`, `Amount`, `ChargedToRecipient`) and the nature of an exempt stay
+(`StayExemptNature`).
+
+- **Which rule.** `IFiscalTaxRuleResolver` picks the set of the country and the regime of the issuer whose range holds the date: the **check-out** of
+  the stay for a document of a guest (a stay that ended before a new version keeps the old rate), the last day of the period for an invoice to an
+  owner (E14). Then the choices of the issuer: `ExemptArt10` gives the stay the exempt nature (`N4`, Italian ordinary only), and the cleaning that
+  `FollowsStay` takes the VAT of the stay (the rate of `Cleaning` is the one of the cleaning as a service). No rule = 422 `document_rule_not_configured`.
+- **Checked at startup** (`ValidateOnStart`): overlapping ranges of one country and regime, a line type without a rate, an Italian 0% without a
+  nature, a nature with a rate above 0, a Swiss rule with a nature, a stamp duty or an exempt nature, a receipt with VAT, a repeated version, a kind
+  other than receipt or invoice: the application does not start and the message names the rule set (`FiscalDocuments:TaxRules:{index} ({version} ...)`).
+- **Adding a version** (never edit a published one: the documents keep its name): close the old set with `ValidTo` the day before, add a new set from
+  the first day with a new `Version` and its `SourceUrl`, ship it with the deploy. An empty catalog starts and nothing is issued.
+- **Shipped defaults (⚖, prudent and configurable, to be confirmed by an accountant):**
+
+  | Version | Country, regime | Document | Rates |
+  |---|---|---|---|
+  | `ch-vat-2024.1` | CH `SwissVatRegistered`, from 2024-01-01 (F1) | Invoice | stay 3.8; cleaning 3.8 with the stay (C2) or 8.1 as a service; extras, commission, recharges, other 8.1; tourist tax and advanced expenses 0, outside the VAT |
+  | `ch-novat-2024.1` | CH `SwissNotRegistered`, from 2024-01-01 | Receipt | every rate 0, no VAT shown |
+  | `it-private-2026.1` | IT `PrivatePerson`, from 2026-01-01 | Receipt | 0 `N2.2` (internal only), tourist tax and advanced expenses 0 `N1`; stamp duty 77.47 / 2.00 (I4) |
+  | `it-ordinary-2026.1` | IT `VatOrdinary`, from 2026-01-01, `RF01` | Invoice | stay 10, or 0 `N4` when exempt (I1); cleaning with the stay or 22; extras 22 (I2); commission, recharges, other 22; tourist tax 0 `N1` (I3); advanced expenses 0 `N1` (art. 15); stamp duty 77.47 / 2.00 |
+  | `it-flatrate-2026.1` | IT `VatFlatRate`, from 2026-01-01, `RF19` | Invoice | 0 `N2.2`; tourist tax and advanced expenses 0 `N1`; stamp duty 77.47 / 2.00 (I5) |
+
+  Choices of this delivery beyond the brief, to confirm with the rest of the table: the line type `Other` takes the normal rate (8.1 in CH, 22 in IT
+  ordinary); the advanced expenses are `N1` (art. 15) in every Italian regime; the Italian ordinary rule keeps the stamp duty the section had for every
+  regime (due only above 77.47 of amounts without VAT: an exempt stay, a large tourist tax). The Swiss source URL is the page of the Federal Tax
+  Administration on the VAT rates (F1: to confirm on estv.admin.ch).
+- **Recipient.** A Swiss document (any kind) and an Italian receipt need only the name of the recipient (the address is printed when there is one, an
+  Italian fiscal code is never asked); an Italian invoice keeps the checks of FatturaPA (the fiscal code of a person or the country abroad; the VAT
+  number of a company with its SDI code or PEC).
+- **Swiss documents** have no nature code, no stamp duty, no XML (`FatturaPaXml` null) and the SDI state `not_applicable`; their tourist tax line reads
+  «Tassa di soggiorno (non soggetta all'IVA)».
+- **The preview** `GET api/fiscal/documents/issuer-preview` (without `bookingId`: the organization) and `GET api/fiscal/documents/settings` return the rule
+  in force today for the profile (`rule`: version, dates, source, kind, the rate of every line type, the stamp duty): the summary of the wizard.
+
+## Amounts (`FiscalDocumentTotals`, computation `fiscal-totals-2026.11-1`)
+
+- The lines come from what the guest paid for the booking, **VAT included**, each with its type and the VAT the rule gives it: lodging
+  (`BasePrice - CleaningFee`, `Accommodation`), cleaning (`CleaningFee`, `Cleaning`) and the tourist tax (`TouristTax`, outside the VAT).
 - Per VAT rate (and nature code): taxable `T = round(G × 100 / (100 + rate), 2)` half away from zero, VAT `G − T`: the total of the document is what
-  the guest paid. The net of each line is computed the same way; a cent of difference goes to the largest line of the group.
-- Stamp duty: due when the amounts without VAT exceed `FiscalDocuments:StampDutyThreshold` (77.47), of `FiscalDocuments:StampDutyAmount` (2.00);
-  added to the total only with `FiscalDocuments:StampDutyChargedToRecipient` (off by default).
+  the guest paid. The net of each line is computed the same way; a cent of difference goes to the largest line of the group. The VAT of each line
+  (`FiscalDocumentLine.VatAmount`, its gross less its net) is stored: the summaries of the PDF and of the XML add up the stored VAT of the lines of
+  each rate (`FiscalDocumentTotals.SummaryOf`), never `taxable × rate` again, so a document with several rates adds up to its total in the XML too.
+- Stamp duty: only under a rule that has one (Italy, never a CHF document): due when the amounts without VAT exceed its `Threshold` (77.47), of its
+  `Amount` (2.00); added to the total only with `ChargedToRecipient` (off: the issuer bears it).
 - Credit notes: the amount (the whole document by default) is spread over the lines of the credited document in proportion; never more than the
   document minus what was already credited. The cap (and «one document per booking» for an invoice or a receipt) is checked once before the transaction
   (a quick refusal) and **again inside it, right after the number is reserved**, under the lock of the series (a credit note takes the series of its
@@ -104,8 +146,7 @@ are read with the DTD prohibited and no resolver (`XsdValidator`): no external e
 - The payment state (`Paid` / `ToCollect`) of a document CasaZen issued is the **current** one, computed when it is read (the completed and partially
   refunded payments of the booking, net of the refunds, against the total) by the document API and by the payment ledger; the value stored with the draft is
   only a starting point. A document Octorate issued keeps the state Octorate gave it.
-- The rule of a regime (`FiscalDocuments:Rules`): kind of document, VAT rate, nature codes, `TD01`/`TD04`, `RF01`/`RF19`, series pattern. Nothing is
-  issued with a rule the accountant did not approve (`document_rule_not_configured`).
+- The series: the pattern of the profile (`GuestDocumentSeries`, `{year}` is the year of the issue), the year when it has none.
 
 ## XML (`FatturaPaXmlBuilder`)
 

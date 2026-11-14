@@ -1,6 +1,5 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Options;
 
 namespace Casazen.Core.Services;
 
@@ -50,12 +49,6 @@ public interface IDocumentIssuerService
     /// with the document.
     /// </summary>
     Task<IssuerLock> LockIssuerAsync(Guid bookingId, BookingDocumentIssuerKind kind, Guid? documentId, bool save = true, CancellationToken ct = default);
-
-    /// <summary>
-    /// The rule of the regime of the organization, or 422 <c>document_rule_not_configured</c> when it has no regime, the configuration has no rule for
-    /// it or the rule is not complete (<see cref="FiscalDocumentRule.IsConfigured"/>): issuance never guesses a rate.
-    /// </summary>
-    Task<FiscalDocumentRule> RequireRuleAsync(Guid orgId, CancellationToken ct = default);
 }
 
 /// <summary>The kind of issuer a booking resolves to (<see cref="IssuerDecision"/>).</summary>
@@ -245,7 +238,10 @@ public sealed record IssuerData(
 /// <param name="ConfirmedAt">When the wizard was completed.</param>
 /// <param name="OctorateConnected">The organization has an active Octorate connection in this environment.</param>
 /// <param name="MissingFields">What CasaZen still needs to issue (<see cref="IssuerFields"/>); empty when the profile is complete.</param>
-/// <param name="Rule">The rule of the regime as configured, or <c>null</c> when there is none (no regime, or none configured for it).</param>
+/// <param name="Rule">
+/// The tax rule in force today for the country, the regime and the treatments of the profile (<see cref="IFiscalTaxRuleResolver"/>), or <c>null</c> when
+/// none applies (no regime, or the catalog does not cover it).
+/// </param>
 public sealed record IssuerSettingsView(
     DocumentIssuerMode? Mode,
     DocumentRegime? Regime,
@@ -256,7 +252,7 @@ public sealed record IssuerSettingsView(
     DateTime? ConfirmedAt,
     bool OctorateConnected,
     IReadOnlyList<string> MissingFields,
-    FiscalDocumentRule? Rule);
+    FiscalTaxRule? Rule);
 
 /// <summary>
 /// The answers of the wizard. A save replaces the setting as a whole: a text that is left out (<c>null</c> or blank) is cleared, and

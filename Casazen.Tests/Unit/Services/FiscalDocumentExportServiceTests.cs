@@ -235,7 +235,7 @@ public class FiscalDocumentExportServiceTests
         Mock.Of<IDomainEventRecorder>(),
         Mock.Of<IPdfDocumentRenderer>(),
         new ResxDocumentTexts(),
-        Options.Create(new FiscalDocumentRulesOptions()),
+        Mock.Of<IFiscalTaxRuleResolver>(),
         new FakeTimeProvider(Now),
         NullLogger<FiscalDocumentService>.Instance);
 

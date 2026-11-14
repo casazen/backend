@@ -44,9 +44,9 @@ public sealed class FiscalDocumentSettingsDto
     /// <summary>What the mode «CasaZen issues» would still need (the names of the fields, <c>vatNumber</c> and <c>fiscalCode</c> are those of the tax profile); empty when the profile is complete.</summary>
     public required IReadOnlyList<string> MissingFields { get; init; }
 
-    /// <summary>The rule of the regime as configured; absent while there is no regime or no rule for it.</summary>
+    /// <summary>The tax rule in force today for the profile (country, regime, treatments); absent while there is no regime or no rule covers it.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public DocumentRuleDto? Rule { get; init; }
+    public TaxRuleDto? Rule { get; init; }
 
     public static FiscalDocumentSettingsDto From(
         IssuerSettingsView view,
@@ -68,7 +68,7 @@ public sealed class FiscalDocumentSettingsDto
             OctorateConnected = view.OctorateConnected,
             Sdi = new SdiProviderDto { ProviderConfigured = sdiProviderConfigured, ProviderName = sdiProviderConfigured ? sdiProviderName : null },
             MissingFields = view.MissingFields,
-            Rule = view.Rule is null ? null : DocumentRuleDto.From(view.Rule),
+            Rule = view.Rule is null ? null : TaxRuleDto.From(view.Rule),
         };
     }
 }
@@ -205,46 +205,72 @@ public sealed class SdiProviderDto
     public string? ProviderName { get; init; }
 }
 
-/// <summary>The rule of the documents of the regime of the issuer, as configured (<c>FiscalDocuments:Rules</c>).</summary>
-public sealed class DocumentRuleDto
+/// <summary>
+/// The tax rule in force for the issuer (<c>FiscalDocuments:TaxRules</c>, E11/F01/US01/T02): the version of the catalog, its dates and source, the kind of
+/// document, the VAT of every line type (the treatments of the issuer applied) and the stamp duty. The wizard shows it as its summary.
+/// </summary>
+public sealed class TaxRuleDto
 {
-    /// <summary><c>None</c> (not decided yet), <c>Receipt</c>, <c>Invoice</c> or <c>DualHeadingInvoice</c>.</summary>
+    /// <summary><c>IT</c> or <c>CH</c>.</summary>
+    public required string Jurisdiction { get; init; }
+
+    public required string Regime { get; init; }
+
+    /// <summary>The version stored on the documents made with the rule.</summary>
+    public required string Version { get; init; }
+
+    public DateOnly ValidFrom { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateOnly? ValidTo { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SourceUrl { get; init; }
+
+    /// <summary><c>Receipt</c> or <c>Invoice</c>.</summary>
     public required string DocumentKind { get; init; }
 
-    /// <summary>The rule is complete enough to issue with; false means issuance refuses with <c>document_rule_not_configured</c>.</summary>
-    public bool Configured { get; init; }
-
+    /// <summary>The regime code of FatturaPA of the rule (Italy).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? FatturaPaRegimeCode { get; init; }
 
+    /// <summary>The VAT of every line type, in the order of the types.</summary>
+    public required IReadOnlyList<TaxRuleRateDto> Rates { get; init; }
+
+    /// <summary>The stamp duty of the documents without VAT (Italy); absent for none.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public decimal? VatRatePercent { get; init; }
+    public TaxRuleStampDutyDto? StampDuty { get; init; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? VatNatureCode { get; init; }
-
-    public required string InvoiceTypeCode { get; init; }
-
-    public required string CreditNoteTypeCode { get; init; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? TouristTaxNatureCode { get; init; }
-
-    public required string SeriesPattern { get; init; }
-
-    public static DocumentRuleDto From(FiscalDocumentRule rule) => new()
+    public static TaxRuleDto From(FiscalTaxRule rule)
     {
-        DocumentKind = rule.DocumentKind.ToString(),
-        Configured = rule.IsConfigured,
-        FatturaPaRegimeCode = string.IsNullOrWhiteSpace(rule.FatturaPaRegimeCode) ? null : rule.FatturaPaRegimeCode,
-        VatRatePercent = rule.VatRatePercent,
-        VatNatureCode = string.IsNullOrWhiteSpace(rule.VatNatureCode) ? null : rule.VatNatureCode,
-        InvoiceTypeCode = rule.InvoiceTypeCode,
-        CreditNoteTypeCode = rule.CreditNoteTypeCode,
-        TouristTaxNatureCode = string.IsNullOrWhiteSpace(rule.TouristTaxNatureCode) ? null : rule.TouristTaxNatureCode,
-        SeriesPattern = rule.SeriesPattern,
-    };
+        ArgumentNullException.ThrowIfNull(rule);
+        return new TaxRuleDto
+        {
+            Jurisdiction = rule.Jurisdiction,
+            Regime = rule.Regime.ToString(),
+            Version = rule.Version,
+            ValidFrom = rule.ValidFrom,
+            ValidTo = rule.ValidTo,
+            SourceUrl = string.IsNullOrWhiteSpace(rule.SourceUrl) ? null : rule.SourceUrl,
+            DocumentKind = rule.DocumentKind.ToString(),
+            FatturaPaRegimeCode = rule.FatturaPaRegimeCode,
+            Rates = rule.Rates
+                .OrderBy(rate => rate.Key)
+                .Select(rate => new TaxRuleRateDto(rate.Key.ToString(), rate.Value.Percent, rate.Value.NatureCode))
+                .ToList(),
+            StampDuty = rule.StampDuty is { } stamp ? new TaxRuleStampDutyDto(stamp.Threshold, stamp.Amount, stamp.ChargedToRecipient) : null,
+        };
+    }
 }
+
+/// <summary>The VAT of one line type: <c>lineType</c> (<c>Accommodation</c>, <c>Cleaning</c>...), the rate in percent and the nature code of an Italian 0%.</summary>
+public sealed record TaxRuleRateDto(
+    string LineType,
+    decimal Percent,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? NatureCode);
+
+/// <summary>The stamp duty of a rule: due above <c>threshold</c> of amounts without VAT, of <c>amount</c>; added to the total when <c>chargedToRecipient</c>.</summary>
+public sealed record TaxRuleStampDutyDto(decimal Threshold, decimal Amount, bool ChargedToRecipient);
 
 /// <summary>
 /// The answers of the wizard (<c>PUT /api/fiscal/documents/settings</c>). A save replaces the setting as a whole: an issuer text that is left out is
@@ -406,8 +432,16 @@ public sealed class SaveIssuerDataRequest
     public bool VirtualStampConfirmed { get; init; }
 }
 
-/// <summary>Who would issue the documents of a booking and why (<c>GET /api/fiscal/documents/issuer-preview</c>).</summary>
-/// <param name="BookingId">The booking.</param>
-/// <param name="Issuer"><c>None</c>, <c>Octorate</c> (a legacy lock) or <c>CasaZen</c>.</param>
-/// <param name="Reason">A stable code: <c>issuer_casazen</c>, <c>issuer_locked_octorate</c> or <c>issuance_off</c>.</param>
-public sealed record IssuerPreviewDto(Guid BookingId, string Issuer, string Reason);
+/// <summary>
+/// Who issues and with which rule (<c>GET /api/fiscal/documents/issuer-preview</c>): for a booking when one is asked, else for the organization; and the tax
+/// rule in force today for the profile of the issuer, with the VAT of every line type (the summary of the wizard).
+/// </summary>
+/// <param name="BookingId">The booking asked about; absent for the preview of the organization.</param>
+/// <param name="Issuer"><c>CasaZen</c>, <c>None</c> (the issuance is off) or <c>Octorate</c> (a booking a legacy row locked to it).</param>
+/// <param name="Reason">A stable code: <c>issuer_casazen</c>, <c>issuance_off</c> or <c>issuer_locked_octorate</c>.</param>
+/// <param name="Rule">The tax rule in force today; absent while the profile has no regime or no rule covers it.</param>
+public sealed record IssuerPreviewDto(
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? BookingId,
+    string Issuer,
+    string Reason,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] TaxRuleDto? Rule = null);

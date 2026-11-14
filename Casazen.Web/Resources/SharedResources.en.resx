@@ -5452,7 +5452,7 @@ Once active, the function works on the data the channel manager already holds.</
     <value>The documents of this booking belong to another issuer already: a booking has only one issuer.</value>
   </data>
   <data name="DocumentRuleNotConfigured" xml:space="preserve">
-    <value>The document rules for your regime have not been approved yet: nothing can be issued until they are.</value>
+    <value>There is no tax rule for the country and the regime of the issuer at the date of the stay: nothing can be issued until there is one.</value>
   </data>
   <data name="IssuerFieldInvalid" xml:space="preserve">
     <value>A field of the issuer data is not valid or is too long: check it and try again.</value>
@@ -6167,6 +6167,9 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="FiscalDocLineTouristTax" xml:space="preserve">
     <value>Tourist tax collected on behalf of the municipality</value>
+  </data>
+  <data name="FiscalDocLineTouristTaxCh" xml:space="preserve">
+    <value>Tourist tax (not subject to VAT)</value>
   </data>
   <data name="FiscalDocLineCredit" xml:space="preserve">
     <value>Credit of document {0}: {1}</value>

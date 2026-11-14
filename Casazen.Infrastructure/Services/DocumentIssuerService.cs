@@ -3,15 +3,14 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
-using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -36,7 +35,7 @@ namespace Casazen.Infrastructure.Services;
 public sealed class DocumentIssuerService(
     AppDbContext db,
     IFeatureFlags featureFlags,
-    IOptions<FiscalDocumentRulesOptions> options,
+    IFiscalTaxRuleResolver taxRules,
     IHostEnvironment hostEnvironment,
     TimeProvider timeProvider,
     ILogger<DocumentIssuerService> logger) : IDocumentIssuerService
@@ -109,7 +108,7 @@ public sealed class DocumentIssuerService(
             throw new DomainRuleException(DocumentIssuerErrorCodes.IssuanceNotAvailable, DocumentIssuerErrorCodes.MessageKeyOf(DocumentIssuerErrorCodes.IssuanceNotAvailable));
 
         var identity = await OrgIdentityAsync(orgId, ct);
-        var rule = command.Regime is { } known ? options.Value.RuleOf(known) : null;
+        var rule = RuleInForceToday(data.CountryCode, command.Regime, data.StayVatTreatment, data.CleaningFeeTreatment);
         var effectiveRegimeCode = data.FatturaPaRegimeCode ?? Empty(rule?.FatturaPaRegimeCode);
         var missing = FiscalDocumentRules.MissingIssuerFields(data, command.Regime, effectiveRegimeCode, identity.VatNumber, identity.FiscalCode);
 
@@ -241,23 +240,9 @@ public sealed class DocumentIssuerService(
         }
     }
 
-    public async Task<FiscalDocumentRule> RequireRuleAsync(Guid orgId, CancellationToken ct = default)
-    {
-        var regime = await db.OrgFiscalIssuerProfiles
-            .AsNoTracking()
-            .Where(p => p.OrgId == orgId)
-            .Select(p => p.DocumentRegime)
-            .FirstOrDefaultAsync(ct);
-
-        var rule = regime is { } known ? options.Value.RuleOf(known) : null;
-        if (rule is null || !rule.IsConfigured)
-        {
-            logger.LogInformation("Org {OrgId}: the document rule of its regime is not configured, nothing is issued", orgId);
-            throw new DomainRuleException(DocumentIssuerErrorCodes.RuleNotConfigured, DocumentIssuerErrorCodes.MessageKeyOf(DocumentIssuerErrorCodes.RuleNotConfigured));
-        }
-
-        return rule;
-    }
+    /// <summary>The tax rule in force today (a Europe/Rome calendar day) for a country, a regime and the treatments, or <c>null</c> when none applies.</summary>
+    private FiscalTaxRule? RuleInForceToday(string? countryCode, DocumentRegime? regime, StayVatTreatment stay, CleaningFeeTreatment cleaning) =>
+        taxRules.TryResolve(countryCode, regime, stay, cleaning, timeProvider.TodayInRomeAsDateOnly());
 
     private async Task<BookingFacts> BookingAsync(Guid bookingId, CancellationToken ct) =>
         await db.Bookings
@@ -301,7 +286,7 @@ public sealed class DocumentIssuerService(
         }
 
         var issuer = DataOf(profile);
-        var rule = profile.DocumentRegime is { } regime ? options.Value.RuleOf(regime) : null;
+        var rule = RuleInForceToday(profile.CountryCode, profile.DocumentRegime, profile.StayVatTreatment, profile.CleaningFeeTreatment);
         var effectiveRegimeCode = FiscalDocumentRules.IsSwiss(profile.CountryCode)
             ? null
             : Empty(profile.FatturaPaRegimeCode) ?? Empty(rule?.FatturaPaRegimeCode);

@@ -5452,7 +5452,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>I documenti di questa prenotazione sono già di un altro emittente: una prenotazione ha un solo emittente.</value>
   </data>
   <data name="DocumentRuleNotConfigured" xml:space="preserve">
-    <value>Le regole del documento per il tuo regime non sono ancora state approvate: finché non lo sono, non si può emettere.</value>
+    <value>Non c'è una regola fiscale per il paese e il regime dell'emittente alla data del soggiorno: finché non c'è, non si può emettere.</value>
   </data>
   <data name="IssuerFieldInvalid" xml:space="preserve">
     <value>Un dato dell'emittente non è valido o è troppo lungo: controllalo e riprova.</value>
@@ -6167,6 +6167,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="FiscalDocLineTouristTax" xml:space="preserve">
     <value>Imposta di soggiorno riscossa per conto del comune</value>
+  </data>
+  <data name="FiscalDocLineTouristTaxCh" xml:space="preserve">
+    <value>Tassa di soggiorno (non soggetta all'IVA)</value>
   </data>
   <data name="FiscalDocLineCredit" xml:space="preserve">
     <value>Storno del documento {0}: {1}</value>

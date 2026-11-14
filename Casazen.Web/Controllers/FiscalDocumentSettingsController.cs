@@ -88,28 +88,46 @@ public class FiscalDocumentSettingsController(
     }
 
     /// <summary>
-    /// Who would issue the documents of the booking and why: <c>issuer</c> (<c>CasaZen</c>, <c>None</c> while the issuance is off, <c>Octorate</c> for a
-    /// booking a legacy row locked to it) and <c>reason</c>, a stable code (<c>issuer_casazen</c>, <c>issuance_off</c>, <c>issuer_locked_octorate</c>).
-    /// It changes nothing. 404 for a booking of another org, 403 for one the caller may not read.
+    /// Who issues and with which rule: <c>issuer</c> (<c>CasaZen</c>, <c>None</c> while the issuance is off, <c>Octorate</c> for a booking a legacy row
+    /// locked to it), <c>reason</c> (<c>issuer_casazen</c>, <c>issuance_off</c>, <c>issuer_locked_octorate</c>) and <c>rule</c>, the tax rule in force today
+    /// for the profile of the issuer with the VAT of every line type (absent while none applies). Without <paramref name="bookingId"/> it is the preview of
+    /// the organization (the summary of the wizard); with it, of that booking: 404 for a booking of another org, 403 for one the caller may not read. It
+    /// changes nothing.
     /// </summary>
     [HttpGet("issuer-preview")]
     [ProducesResponseType(typeof(IssuerPreviewDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<IssuerPreviewDto>> IssuerPreview([FromQuery] Guid bookingId, CancellationToken cancellationToken)
+    public async Task<ActionResult<IssuerPreviewDto>> IssuerPreview([FromQuery] Guid? bookingId, CancellationToken cancellationToken)
     {
-        var resource = await hostResources.ForBookingAsync(bookingId, cancellationToken);
-        if (resource is null)
-            return this.ApiProblem(StatusCodes.Status404NotFound, "booking_not_found", "BookingNotFound");
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return Unauthorized();
 
-        if (!await authorizationService.IsAuthorizedAsync(User, resource, BookingOperations.Read))
+        IssuerDecision decision;
+        if (bookingId is { } id)
         {
-            logger.LogWarning("User {UserId} denied booking.read on the issuer preview of booking {BookingId}", User.GetUserId(), bookingId);
-            return Forbid();
+            var resource = await hostResources.ForBookingAsync(id, cancellationToken);
+            if (resource is null)
+                return this.ApiProblem(StatusCodes.Status404NotFound, "booking_not_found", "BookingNotFound");
+
+            if (!await authorizationService.IsAuthorizedAsync(User, resource, BookingOperations.Read))
+            {
+                logger.LogWarning("User {UserId} denied booking.read on the issuer preview of booking {BookingId}", User.GetUserId(), id);
+                return Forbid();
+            }
+
+            decision = await issuer.ResolveIssuerAsync(id, cancellationToken);
+        }
+        else
+        {
+            decision = featureFlags.IsEnabled(FeatureFlags.FiscalDocumentIssuance)
+                ? new IssuerDecision(IssuerDecisionKind.CasaZen, IssuerReasons.IssuerCasazen)
+                : new IssuerDecision(IssuerDecisionKind.None, IssuerReasons.IssuanceOff);
         }
 
-        var decision = await issuer.ResolveIssuerAsync(bookingId, cancellationToken);
-        return Ok(new IssuerPreviewDto(bookingId, decision.Kind.ToString(), decision.Reason));
+        var settings = await issuer.GetSettingsAsync(orgId.Value, cancellationToken);
+        return Ok(new IssuerPreviewDto(bookingId, decision.Kind.ToString(), decision.Reason, settings.Rule is null ? null : TaxRuleDto.From(settings.Rule)));
     }
 
     private FiscalDocumentSettingsDto ToDto(IssuerSettingsView view) =>

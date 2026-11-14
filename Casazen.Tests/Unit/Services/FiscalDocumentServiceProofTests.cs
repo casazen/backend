@@ -313,10 +313,10 @@ public class FiscalDocumentServiceProofTests
     private static FiscalDocumentService Service(AppDbContext db, IFeatureFlags? flags = null)
     {
         var featureFlags = flags ?? new TestFeatureFlags(FeatureFlags.FiscalDocumentIssuance);
-        var options = Options.Create(Rules());
+        var rules = TaxRuleCatalogs.Resolver();
         var environment = new Mock<IHostEnvironment>();
         environment.SetupGet(e => e.EnvironmentName).Returns("Test");
-        var issuers = new DocumentIssuerService(db, featureFlags, options, environment.Object, new FakeTimeProvider(Now), NullLogger<DocumentIssuerService>.Instance);
+        var issuers = new DocumentIssuerService(db, featureFlags, rules, environment.Object, new FakeTimeProvider(Now), NullLogger<DocumentIssuerService>.Instance);
         var invoiceData = new Mock<IInvoiceDataService>();
         invoiceData.Setup(i => i.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid bookingId, CancellationToken _) => new InvoiceDataView(
@@ -333,25 +333,10 @@ public class FiscalDocumentServiceProofTests
             Mock.Of<IDomainEventRecorder>(),
             new MigraDocPdfDocumentRenderer(),
             new ResxDocumentTexts(),
-            options,
+            rules,
             new FakeTimeProvider(Now),
             NullLogger<FiscalDocumentService>.Instance);
     }
-
-    private static FiscalDocumentRulesOptions Rules() => new()
-    {
-        Rules =
-        {
-            [DocumentRegime.VatOrdinary] = new FiscalDocumentRule
-            {
-                DocumentKind = RuleKind.Invoice,
-                FatturaPaRegimeCode = "RF01",
-                VatRatePercent = 10m,
-                TouristTaxNatureCode = "N1",
-            },
-            [DocumentRegime.PrivatePerson] = new FiscalDocumentRule { DocumentKind = RuleKind.Receipt },
-        },
-    };
 
     private static AppDbContext NewDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalDocuments_{Guid.NewGuid()}").Options, new ServiceTenant(), new EphemeralDataProtectionProvider());
