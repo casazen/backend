@@ -17,7 +17,9 @@ namespace Casazen.Web.Controllers;
 /// ones imported from Octorate included), and the drafts, issue, credit notes, XML and PDF of the documents CasaZen issues for its direct bookings.
 /// Reads need <c>payment.read</c>, every change <c>payment.write</c>; a single document is authorized through its booking like the payments of a
 /// booking, a document without a booking only for a caller who reaches the whole org; a document of another org is a 404, like a missing one. The
-/// changes are behind <c>Features:FiscalDocumentIssuance</c> (404 while off); the reads are not, because they also list the documents of Octorate.
+/// changes are behind <c>Features:FiscalDocumentIssuance</c> (404 while off); the reads are not, because they also list the documents of Octorate. The changes
+/// are those of the guest documents: an owner invoice (E14/F01/US01/T01) is read here (its PDF, its XML) but never changed (422 <c>document_owner_invoice</c>);
+/// <c>api/owner-invoices</c> makes, issues, credits and discards it, with <c>agency.statement.manage</c>.
 /// </summary>
 [ApiController]
 [Route("api/fiscal/documents")]
@@ -135,7 +137,8 @@ public class FiscalDocumentsController(
 
     /// <summary>
     /// A credit note of an issued CasaZen document, issued at once in its series: <c>{ amount?, reason, confirm }</c>, the whole document by default.
-    /// 422 <c>credit_amount_exceeds</c>, <c>document_not_creditable</c>, <c>document_read_only</c>, <c>document_confirmation_required</c>.
+    /// 422 <c>credit_amount_exceeds</c>, <c>document_not_creditable</c>, <c>document_read_only</c>, <c>document_confirmation_required</c>, <c>document_owner_invoice</c>
+    /// (an owner invoice is credited by <c>POST api/owner-invoices/{id}/credit-note</c>, with <c>agency.statement.manage</c>: its credit note writes to the owner ledger).
     /// </summary>
     [HttpPost("{id:guid}/credit-note")]
     [Authorize(Policy = CasazenPolicies.PaymentWrite)]
@@ -152,7 +155,10 @@ public class FiscalDocumentsController(
         return CreatedAtAction(nameof(Get), new { id = note.Id }, FiscalDocumentDto.From(note));
     }
 
-    /// <summary>The draft discarded (no number consumed). 422 <c>document_not_draft</c>, <c>document_read_only</c>.</summary>
+    /// <summary>
+    /// The draft discarded (no number consumed). 422 <c>document_not_draft</c>, <c>document_read_only</c>, <c>document_owner_invoice</c> (the draft of an owner invoice
+    /// is discarded by <c>DELETE api/owner-invoices/{id}</c>, with <c>agency.statement.manage</c>).
+    /// </summary>
     [HttpDelete("{id:guid}")]
     [Authorize(Policy = CasazenPolicies.PaymentWrite)]
     [FeatureGate(FeatureFlags.FiscalDocumentIssuance)]

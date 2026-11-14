@@ -34,8 +34,18 @@ public interface IFiscalDocumentService
     /// </summary>
     Task<FiscalDocument> RefreshDraftAsync(Guid documentId, CancellationToken ct = default);
 
-    /// <summary>The draft discarded: no number is consumed.</summary>
+    /// <summary>
+    /// The draft discarded: no number is consumed. 422 <c>document_owner_invoice</c> for an owner invoice, which is discarded by
+    /// <see cref="IOwnerInvoiceService.DiscardDraftAsync"/>, behind its own permission and flag.
+    /// </summary>
     Task DiscardDraftAsync(Guid documentId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The draft of an owner invoice discarded (E14/F01/US01/T01), called by <see cref="IOwnerInvoiceService.DiscardDraftAsync"/> once it checked the
+    /// organization and the purpose of the document: the same discard as <see cref="DiscardDraftAsync"/> for a document that is an owner invoice (404
+    /// <c>fiscal_document_not_found</c> for any other).
+    /// </summary>
+    Task DiscardOwnerInvoiceDraftAsync(Guid documentId, CancellationToken ct = default);
 
     /// <summary>
     /// The draft issued (see the remarks); 422 <c>document_confirmation_required</c> without <paramref name="confirm"/>, and 409 <c>document_draft_outdated</c>
@@ -55,9 +65,18 @@ public interface IFiscalDocumentService
 
     /// <summary>
     /// A credit note of an issued CasaZen document, issued at once in the same series: the whole document by default, never more than what is left
-    /// to credit (422 <c>credit_amount_exceeds</c>).
+    /// to credit (422 <c>credit_amount_exceeds</c>). 422 <c>document_owner_invoice</c> for an owner invoice: its credit note gives its VAT back to the owner
+    /// ledger, so it is made by <see cref="IOwnerInvoiceService.CreateCreditNoteAsync"/>, behind <c>agency.statement.manage</c> and its flag.
     /// </summary>
     Task<FiscalDocument> CreateCreditNoteAsync(Guid documentId, decimal? amount, string reason, bool confirm, string? userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// A credit note of an issued owner invoice (E14/F01/US01/T01), called by <see cref="IOwnerInvoiceService.CreateCreditNoteAsync"/> once it checked the
+    /// organization and the purpose of the document: the same credit note as <see cref="CreateCreditNoteAsync"/> (404 <c>fiscal_document_not_found</c> for a
+    /// document that is not an owner invoice), which gives the VAT the invoice posted back to the owner ledger in the same transaction and generates again the
+    /// draft or flagged statement version of the month.
+    /// </summary>
+    Task<FiscalDocument> CreateOwnerInvoiceCreditNoteAsync(Guid documentId, decimal? amount, string reason, bool confirm, string? userId, CancellationToken ct = default);
 
     /// <summary>One document with its lines, or <c>null</c> when it is not visible to the caller.</summary>
     Task<FiscalDocument?> GetAsync(Guid documentId, CancellationToken ct = default);

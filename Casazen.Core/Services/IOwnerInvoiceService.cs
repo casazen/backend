@@ -19,7 +19,8 @@ namespace Casazen.Core.Services;
 /// <item><b>The issue</b> goes through the issue of the fiscal documents (numbering in the series <see cref="OrgFiscalIssuerProfile.OwnerInvoiceSeries"/>, snapshot of
 /// the issuer, rule version, the Italian XML). A VAT added on top is posted to the owner ledger in the same transaction (<see cref="OwnerLedgerEntryType.AgencyVat"/>),
 /// once; the draft or flagged version of the month is generated again, an approved or published one is told by the readiness
-/// (<c>owner_invoice_after_approval</c>).</item>
+/// (<c>owner_invoice_after_approval</c>). Its credit note, and the discard of its draft, are made here too (<see cref="CreateCreditNoteAsync"/>,
+/// <see cref="DiscardDraftAsync"/>): they write to the owner ledger or free the month, so they need the same permission as the issue.</item>
 /// <item><b>Tenant.</b> Every method names the org: a version or a document of another org is 404. The web layer decides who may call (the whole organization).</item>
 /// </list>
 /// </remarks>
@@ -38,6 +39,22 @@ public interface IOwnerInvoiceService
     /// when the version, the mandate, the holders or the rule would give other amounts now (make the draft again first).
     /// </summary>
     Task<FiscalDocument> IssueAsync(Guid orgId, Guid documentId, bool confirm, string? userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// A credit note of an issued owner invoice, issued at once in its series after the confirmation (422 <c>document_confirmation_required</c>): the whole invoice by
+    /// default, never more than what is left to credit (422 <c>credit_amount_exceeds</c>). It gives the VAT the invoice posted back to the owner ledger in the same
+    /// transaction and generates again the draft or flagged statement version of the month; an invoice credited in full frees its owner and month. 404
+    /// <c>fiscal_document_not_found</c> (another org, not an owner invoice); 422 <c>document_not_creditable</c>. The one way to credit an owner invoice: the
+    /// endpoints of the guest documents refuse it (422 <c>document_owner_invoice</c>).
+    /// </summary>
+    Task<FiscalDocument> CreateCreditNoteAsync(Guid orgId, Guid documentId, decimal? amount, string reason, bool confirm, string? userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The draft of an owner invoice discarded (no number is consumed): its owner and month are free for a new draft. 404 <c>fiscal_document_not_found</c>
+    /// (another org, not an owner invoice); 422 <c>document_not_draft</c>. The one way to discard an owner invoice: the endpoints of the guest documents refuse it
+    /// (422 <c>document_owner_invoice</c>).
+    /// </summary>
+    Task DiscardDraftAsync(Guid orgId, Guid documentId, CancellationToken ct = default);
 
     /// <summary>The owner invoices of the org (drafts and issued ones, not the discarded ones nor the credit notes), the newest period first.</summary>
     Task<IReadOnlyList<OwnerInvoiceRow>> ListAsync(Guid orgId, OwnerInvoiceCriteria criteria, CancellationToken ct = default);
@@ -133,8 +150,8 @@ public static class OwnerInvoiceErrors
     public const string NothingToInvoice = "owner_invoice_nothing_to_invoice";
 
     /// <summary>
-    /// 422: an owner invoice is made again and issued from the owner invoices (<c>api/owner-invoices</c>, with <c>agency.statement.manage</c> and its flag), never
-    /// from the endpoints of the documents of the guests.
+    /// 422: an owner invoice is made again, issued, credited and discarded from the owner invoices (<c>api/owner-invoices</c>, with <c>agency.statement.manage</c>
+    /// and its flag), never from the endpoints of the documents of the guests.
     /// </summary>
     public const string UseOwnerInvoices = "document_owner_invoice";
 }

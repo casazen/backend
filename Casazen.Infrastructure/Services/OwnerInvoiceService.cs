@@ -87,6 +87,32 @@ public sealed class OwnerInvoiceService(
         return await documents.IssueOwnerInvoiceAsync(draft.Id, fresh.VatToPost, userId, ct);
     }
 
+    public async Task<FiscalDocument> CreateCreditNoteAsync(
+        Guid orgId,
+        Guid documentId,
+        decimal? amount,
+        string reason,
+        bool confirm,
+        string? userId,
+        CancellationToken ct = default)
+    {
+        if (!confirm)
+            throw new DomainRuleException(FiscalDocumentErrors.ConfirmationRequired, "FiscalDocumentConfirmationRequired");
+
+        // The document is an owner invoice of this org (the web layer decided who may call: the whole organization with agency.statement.manage); the credit note
+        // gives the VAT back to the owner ledger in its own transaction.
+        await RequireOwnerInvoiceOfAsync(orgId, documentId, ct);
+        var note = await documents.CreateOwnerInvoiceCreditNoteAsync(documentId, amount, reason, confirm, userId, ct);
+        logger.LogInformation("Credit note {CreditNoteId} of owner invoice {DocumentId} issued by {UserId}", note.Id, documentId, userId);
+        return note;
+    }
+
+    public async Task DiscardDraftAsync(Guid orgId, Guid documentId, CancellationToken ct = default)
+    {
+        await RequireOwnerInvoiceOfAsync(orgId, documentId, ct);
+        await documents.DiscardOwnerInvoiceDraftAsync(documentId, ct);
+    }
+
     public async Task<IReadOnlyList<OwnerInvoiceRow>> ListAsync(Guid orgId, OwnerInvoiceCriteria criteria, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(criteria);
@@ -563,6 +589,15 @@ public sealed class OwnerInvoiceService(
         }
 
         return profile;
+    }
+
+    /// <summary>The document is an owner invoice of the org, or its credit note: 404 <c>fiscal_document_not_found</c> otherwise (another org, a guest document), whatever its state.</summary>
+    private async Task RequireOwnerInvoiceOfAsync(Guid orgId, Guid documentId, CancellationToken ct)
+    {
+        var found = await db.FiscalDocuments.AsNoTracking()
+            .AnyAsync(d => d.Id == documentId && d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.OwnerInvoice, ct);
+        if (!found)
+            throw DocumentNotFound(documentId);
     }
 
     private string Text(string key, params object[] args) => texts.Get(key, LineLanguage, args);

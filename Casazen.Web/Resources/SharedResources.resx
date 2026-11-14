@@ -6529,7 +6529,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>Nel rendiconto non ci sono provvigioni, riaddebiti o spese da fatturare al proprietario.</value>
   </data>
   <data name="FiscalDocumentOwnerInvoice" xml:space="preserve">
-    <value>La fattura al proprietario si prepara e si emette dalle fatture ai proprietari.</value>
+    <value>La fattura al proprietario si prepara, si emette, si storna e si scarta dalle fatture ai proprietari.</value>
   </data>
   <data name="BillingChannelsInvalid" xml:space="preserve">
     <value>L'impostazione dei portali non è valida: controlla il campo indicato.</value>

@@ -180,10 +180,13 @@ The invoice of the property manager to an owner (NF-114, D9): a `FiscalDocument`
 `Features:OwnerInvoicing` (off by default, on only in the test environment; [`feature-flags.md`](feature-flags.md)).
 
 - **Endpoints** `api/owner-invoices`, the whole org only (403 for a caller restricted to some properties), 404 while the flag is off:
-  `POST drafts { versionId }` and `POST {id}/issue { confirm }` (`agency.statement.manage`), `GET ?period=yyyy-MM&ownerId=` (`agency.statement.view`: number,
-  owner, total, currency, status and, once issued, `payment`: `offset`, `to_pay` with `amountDue`, `credited`). The PDF and the XML are those of every fiscal
-  document (`GET api/fiscal/documents/{id}/pdf|xml`, a document without a booking: the whole org). The endpoints of the guest documents refuse to make an owner
-  invoice again or to issue it (422 `document_owner_invoice`); its credit note is the one of every document (`POST api/fiscal/documents/{id}/credit-note`).
+  `POST drafts { versionId }`, `POST {id}/issue { confirm }`, `POST {id}/credit-note { amount?, reason, confirm }` and `DELETE {id}` (the discard of a draft), all
+  with `agency.statement.manage`, `GET ?period=yyyy-MM&ownerId=` (`agency.statement.view`: number, owner, total, currency, status and, once issued, `payment`:
+  `offset`, `to_pay` with `amountDue`, `credited`). The PDF and the XML are those of every fiscal document (`GET api/fiscal/documents/{id}/pdf|xml`, read with
+  `payment.read`, a document without a booking: the whole org). **The endpoints of the guest documents (`api/fiscal/documents`, `payment.write`) refuse to make an
+  owner invoice again, to issue it, to credit it or to discard it (422 `document_owner_invoice`)**: the property manager of the short-rent area holds
+  `payment.write` and no agency permission (DEB-01), and the credit note writes to the owner ledger (the VAT given back, below), so it needs the permission of the
+  issue and the flag of the invoices.
 - **The drafts of a period.** `POST api/agency-invoices/generate { year, month }` (`agency.invoice.manage`, behind the same flag) no longer answers 410: it makes,
   or makes again, the draft of every owner with a version of the month that is not superseded and answers the counts (`owners`, `created`, `updated`,
   `alreadyIssued`, `nothingToInvoice`, `failed` with the owner and the code). The rows of the retired generator (`AgencyInvoices`) stay read-only, `legacy_unverified`.
@@ -213,8 +216,11 @@ The invoice of the property manager to an owner (NF-114, D9): a `FiscalDocument`
   month of the owner is closed), so the net paid to the owner is right. The month is marked dirty; a **draft or flagged** version of it is generated again at
   once; an **approved or published** one is left as it is and the readiness says `owner_invoice_after_approval` (blocking, with the invoice), so the agency
   generates it again. The `Commission` of a version counts the `AgencyVat` lines with the commission.
-- **Credit note.** A credit note of the owner invoice gives the VAT back in its own transaction: the reversal of the line when it credits the whole invoice at
-  once, else the VAT of the note (the rest of it with the note that completes the credit); an invoice credited in full frees its owner and month.
+- **Credit note** (`POST api/owner-invoices/{id}/credit-note`, `agency.statement.manage`). A credit note of the owner invoice gives the VAT back in its own
+  transaction: the reversal of the line when it credits the whole invoice at once, else the VAT of the note (the rest of it with the note that completes the
+  credit, so the cents of the partial notes are not lost); in the month of the invoice, or in the month of today when that month of the owner is closed; nothing for
+  a mandate «IVA inclusa» (it posted none). The draft or flagged version of the month is generated again. An invoice credited in full frees its owner and month.
+  The draft of an owner invoice is discarded by `DELETE api/owner-invoices/{id}` (the month is free for a new draft).
 - **Payment.** An issued invoice is `offset` when the statement covers it, else `to_pay` with how much the debt of the owner grew in the month (the ledger before
   the month and at its end, the VAT included), never more than what is left of the invoice after its credit notes (`OwnerInvoiceSettlements`).
 - **The statement names the invoice.** The PDF and the CSV of the statement (`IStatementExportService`) print «Fattura n. PM2026/1» next to the commission of

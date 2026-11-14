@@ -12,12 +12,15 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// The invoices of the property manager to the owners (E14/F01/US01/T01, NF-114): the list (<c>agency.statement.view</c>), the draft made from a statement
-/// version and its issue (<c>agency.statement.manage</c>). The PDF and the XML of an owner invoice are the ones of every fiscal document
-/// (<c>GET api/fiscal/documents/{id}/pdf</c> and <c>/xml</c>, a document without a booking: the whole org only).
+/// version, its issue, its discard and the credit note of an issued invoice (<c>agency.statement.manage</c>). The PDF and the XML of an owner invoice are the
+/// ones of every fiscal document (<c>GET api/fiscal/documents/{id}/pdf</c> and <c>/xml</c>, a document without a booking: the whole org only).
 /// </summary>
 /// <remarks>
 /// Behind <c>Features:OwnerInvoicing</c>: every endpoint answers 404 while it is off. The invoices of an owner span the properties of the owner, like the owner
 /// accounting they come from: a caller restricted to some properties is refused (403) even with the permission. A version or an invoice of another org is 404.
+/// The credit note and the discard are here and nowhere else: the endpoints of the guest documents (<c>api/fiscal/documents</c>, <c>payment.write</c>) answer 422
+/// <c>document_owner_invoice</c> for an owner invoice, since a credit note writes to the owner ledger and a role that holds <c>payment.write</c> (the property
+/// manager) holds no agency permission.
 /// </remarks>
 [ApiController]
 [Route("api/owner-invoices")]
@@ -94,6 +97,45 @@ public class OwnerInvoicesController(
 
         var issued = await invoices.IssueAsync(orgId, id, request.Confirm, User.GetUserId(), HttpContext.RequestAborted);
         return Ok(OwnerInvoiceDto.From(issued));
+    }
+
+    /// <summary>
+    /// A credit note of an issued owner invoice (<c>{ amount?, reason, confirm }</c>, the whole invoice by default), issued at once in the series of the invoice:
+    /// it gives the VAT the invoice posted back to the owner ledger in the same transaction. 404 for an invoice of another org or a document that is not an owner
+    /// invoice; 422 <c>document_confirmation_required</c>, <c>document_not_creditable</c>, <c>credit_amount_exceeds</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/credit-note")]
+    [Authorize(Policy = CasazenPolicies.AgencyStatementManage)]
+    [ProducesResponseType(typeof(OwnerInvoiceDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<OwnerInvoiceDto>> CreditNote(Guid id, [FromBody] CreateCreditNoteRequest request)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+
+        var note = await invoices.CreateCreditNoteAsync(orgId, id, request.Amount, request.Reason, request.Confirm, User.GetUserId(), HttpContext.RequestAborted);
+        return Created($"/api/fiscal/documents/{note.Id}", OwnerInvoiceDto.From(note));
+    }
+
+    /// <summary>
+    /// The draft of an owner invoice discarded (no number is consumed): its owner and month are free for a new draft. 404 for an invoice of another org or a
+    /// document that is not an owner invoice; 422 <c>document_not_draft</c>.
+    /// </summary>
+    [HttpDelete("{id:guid}")]
+    [Authorize(Policy = CasazenPolicies.AgencyStatementManage)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> Discard(Guid id)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+
+        await invoices.DiscardDraftAsync(orgId, id, HttpContext.RequestAborted);
+        return NoContent();
     }
 
     /// <summary>The caller's org, only when its reach is the whole org.</summary>
