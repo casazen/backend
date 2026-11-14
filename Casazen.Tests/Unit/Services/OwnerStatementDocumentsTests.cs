@@ -350,6 +350,34 @@ public class OwnerStatementDocumentsTests
         Assert.Equal("%PDF", Encoding.ASCII.GetString(rebuilt, 0, 4));
     }
 
+    /// <summary>
+    /// The PDF of a published statement is not among the documents the agency shares (one for each owner and month would push the mandates and the insurances out of a list
+    /// that stops at 500): the list has the shared documents only, for the org and for the owner, and the statement file stays reachable by its id.
+    /// </summary>
+    [Fact]
+    public async Task StatementPdf_IsNotAmongTheDocumentsTheAgencyShares_Test()
+    {
+        var world = await World.CreateAsync(approved: true);
+        await world.Accounting().PublishVersionAsync(world.OrgId, world.VersionId, "auth0|publisher");
+        var published = await world.Db.OwnerDocumentVersions.AsNoTracking().SingleAsync();
+        var pdf = await ReadAsync(world.Storage, published.StorageKey);
+        var collaboration = world.Collaboration();
+
+        // The agency shares a mandate with the owner: that is the one document of the list.
+        var mandate = new ShareOwnerDocument(world.OwnerId, null, OwnerDocumentType.Mandate, "Mandato di gestione", null, null);
+        var shared = await collaboration.ShareDocumentAsync(world.OrgId, mandate, new OwnerFileUpload("mandato.pdf", pdf), "auth0|agent");
+        Assert.Equal([shared.Document.Id], (await collaboration.ListDocumentsForAgencyAsync(world.OrgId, null)).Select(d => d.Document.Id));
+        Assert.Equal([shared.Document.Id], (await collaboration.ListDocumentsForAgencyAsync(world.OrgId, world.OwnerId)).Select(d => d.Document.Id));
+
+        // The statement file is still a document of the portal, reachable by its id: its downloads, its withdrawal.
+        await using (var download = (await world.Documents.OpenPublishedPdfAsync(world.OrgId, world.VersionId, Guid.NewGuid()))!.Content)
+            Assert.NotNull(download);
+
+        Assert.Single(await collaboration.ListDocumentDownloadsAsync(world.OrgId, world.VersionId));
+        var withdrawn = await collaboration.SetDocumentVisibilityAsync(world.OrgId, world.VersionId, visible: false, "auth0|agent");
+        Assert.False(withdrawn.Visible);
+    }
+
     /// <summary>The PDF stored when a save fails is removed again, and a version that is not published stores no file.</summary>
     [Fact]
     public async Task StatementPdf_AFailedSaveRemovesTheStoredFile_Test()

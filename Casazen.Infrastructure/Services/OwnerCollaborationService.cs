@@ -108,6 +108,12 @@ public sealed partial class OwnerCollaborationService(
         if (propertyOwnerId is { } ownerId)
             query = query.Where(d => d.PropertyOwnerId == ownerId);
 
+        // The PDF of a published statement is a document of the portal too (its id is the id of the version), but the agency reads it with the statement, not among the
+        // documents it shares: one for each owner and month would push the mandates and the insurances out of a list that stops at MaxList. It is still reachable by its
+        // id (its downloads, its withdrawal). The subquery is built outside the predicate: an expression tree cannot hold the list of the filters to ignore.
+        var statementFiles = db.OwnerStatementVersions.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).Where(v => v.OrgId == orgId).Select(v => v.Id);
+        query = query.Where(d => d.Type != OwnerDocumentType.Statement || !statementFiles.Contains(d.Id));
+
         var documents = await query.OrderByDescending(d => d.UpdatedAt).Take(OwnerCollaborationRules.MaxList).ToListAsync(cancellationToken);
         return await AdminViewsAsync(documents, cancellationToken);
     }

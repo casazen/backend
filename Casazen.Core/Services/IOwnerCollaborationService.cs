@@ -33,7 +33,10 @@ public interface IOwnerCollaborationService
     /// <exception cref="Exceptions.NotFoundException"><see cref="OwnerCollaborationErrors.DocumentNotFound"/>.</exception>
     Task<OwnerFileContent> OpenDocumentForOwnerAsync(OwnerPortalAccess access, Guid documentId, Guid? versionId, CancellationToken cancellationToken = default);
 
-    /// <summary>The documents of the org, or of one owner profile, with their versions and downloads.</summary>
+    /// <summary>
+    /// The documents the org shares, or the ones of one owner profile, with their versions and downloads, the latest first (at most <see cref="OwnerCollaborationRules.MaxList"/>).
+    /// The PDF of a published statement is not among them (it is read with the statement; its id is the id of the version).
+    /// </summary>
     Task<IReadOnlyList<OwnerDocumentAdminView>> ListDocumentsForAgencyAsync(Guid orgId, Guid? propertyOwnerId, CancellationToken cancellationToken = default);
 
     /// <summary>Shares a new document with its first file.</summary>
