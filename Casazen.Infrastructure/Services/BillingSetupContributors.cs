@@ -1,5 +1,10 @@
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
+using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -185,5 +190,67 @@ public sealed class ItalySectionContributor(IDocumentIssuerService issuers) : Is
             items.Add(Item(BillingSetupItemKeys.StampDutyUnconfirmed, BillingSetupReasons.Unconfirmed));
 
         return items;
+    }
+}
+
+/// <summary>
+/// The owner issuers of the section «Italia» (E17/F01/US01/T01, NF-116, D12): in Italy the owner of a property issues the document of the stay, so every owner with
+/// an ownership of an Italian property that has not ended (in force or to come, on the Rome day of today: the definition of <see cref="OwnerMandatesSectionContributor"/>)
+/// needs an issuer profile that can issue (<see cref="OwnerIssuerProfileRules.MissingFields"/>: none, or one that misses a field, does not count). The item
+/// <see cref="BillingSetupItemKeys.OwnerIssuerMissing"/> carries the count of the owners still without one; an anonymized owner is not counted.
+/// </summary>
+/// <remarks>
+/// It reads for the organization of the setup, whatever the country of its own profile (a Swiss agency with Italian properties needs its owners' profiles too),
+/// names the org in every query (it may run with no tenant of its own) and returns a count, never a name. A private owner and a company count alike: both issue
+/// in their own name. An organization without owners gets no item.
+/// </remarks>
+public sealed class OwnerIssuerSetupContributor(AppDbContext db, IFiscalTaxRuleResolver taxRules, TimeProvider time) : IBillingSetupContributor
+{
+    public string Section => BillingSetupSections.Italy;
+
+    public async Task<IReadOnlyList<BillingSetupItem>> EvaluateAsync(Guid orgId, CancellationToken ct)
+    {
+        var today = time.TodayInRomeAsDateOnly();
+        var ownerships = await db.PropertyOwnerships
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(ownership => ownership.OrgId == orgId && ownership.Property.Country == FiscalDocumentRules.Italy)
+            .Select(ownership => new { ownership.PropertyOwnerId, ownership.OwnershipEnd })
+            .ToListAsync(ct);
+        var issuing = ownerships
+            .Where(ownership => ownership.OwnershipEnd is not { } end || RomeCalendar.DateInRome(end) >= today)
+            .Select(ownership => ownership.PropertyOwnerId)
+            .Distinct()
+            .ToList();
+        if (issuing.Count == 0)
+            return [];
+
+        var owners = await db.PropertyOwners
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(owner => owner.OrgId == orgId && owner.AnonymizedAt == null && issuing.Contains(owner.Id))
+            .Select(owner => owner.Id)
+            .ToListAsync(ct);
+        var profiles = await db.OrgFiscalIssuerProfiles
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(profile => profile.OrgId == orgId && profile.PropertyOwnerId != null && owners.Contains(profile.PropertyOwnerId.Value))
+            .ToListAsync(ct);
+        var ready = profiles
+            .Where(profile => CanIssue(profile, today))
+            .Select(profile => profile.PropertyOwnerId!.Value)
+            .ToHashSet();
+
+        var without = owners.Count(owner => !ready.Contains(owner));
+        return without == 0
+            ? []
+            : [new BillingSetupItem(BillingSetupItemKeys.OwnerIssuerMissing, Section, BillingSetupReasons.Required, without)];
+    }
+
+    /// <summary>The profile has everything an issue needs today (the regime code of the rule in force when it has none of its own).</summary>
+    private bool CanIssue(OrgFiscalIssuerProfile profile, DateOnly today)
+    {
+        var rule = taxRules.TryResolve(profile.CountryCode, profile.DocumentRegime, profile.StayVatTreatment, CleaningFeeTreatment.FollowsStay, today);
+        return OwnerIssuerProfileRules.MissingFields(profile, rule?.FatturaPaRegimeCode).Count == 0;
     }
 }

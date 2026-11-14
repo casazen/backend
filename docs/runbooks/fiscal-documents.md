@@ -54,6 +54,40 @@ One profile per organization, saved by the wizard (`PUT api/fiscal/documents/set
   `missingFields` says what is left; `confirmed: true` with something missing is 422 `issuer_profile_incomplete`, and `ConfirmedAt` is set only when
   nothing is missing.
 
+## Issuer profiles of the owners (E17/F01/US01/T01, NF-116, D12)
+
+In Italy the owner of a property is the issuer of the document of the stay; CasaZen issues it **in the owner's name**, on the owner's issuer profile, with the
+owner's own series (the *sezionale*) and numbering. The profiles live in the same table as the organization's, `OrgFiscalIssuerProfiles`:
+
+- **One per organization, one per owner.** `PropertyOwnerId` is `null` for the profile of the organization (partial unique index `UIX_OrgFiscalIssuerProfiles_OrgId`
+  on `OrgId` where `PropertyOwnerId IS NULL`) and the owner for an owner's profile (partial unique index `UIX_OrgFiscalIssuerProfiles_PropertyOwnerId`). The
+  profile of an owner goes with the owner (cascade) unless a document was issued on it (the documents' foreign key is restrict). **Every reader of «the profile
+  of the org» goes through `OrgFiscalIssuerProfileQueries.OfOrganization(orgId)`** (the setting, the documents, the owner invoices, the statements, the portal
+  accounts, the wire files, the demo): an owner's profile is never taken for the organization's.
+- **What an owner's profile holds.** The legal name (name of a person, denomination of a company), its own Italian fiscal code (`FiscalCode`, 16 characters or 11
+  digits, `ItalianFiscalCode`) and VAT number (`VatNumber`, the 11 digits, checked; dropped for a private person), the FatturaPA regime code (`RFxx`, the rule's when
+  empty), the structured address, the regime (`PrivatePerson`, `VatOrdinary`, `VatFlatRate`; a Swiss owner `SwissVatRegistered`/`SwissNotRegistered` with its UID),
+  `StayVatTreatment` (⚖ I1), its own series `GuestDocumentSeries` (default the year), `StampDutyReference` (⚖ I4), its own SDI code and PEC, and for a Swiss owner
+  `StayIssuedByOwner` («emette il proprietario», ⚖ C1, off by default). The same validation as the organization's (`DocumentIssuerService.Normalize`): the
+  data of the other country is dropped. The organization's profile keeps `FiscalCode`/`VatNumber` empty (its codes are on `Org`).
+- **Complete or not.** A profile is saved as a draft and says what it misses (`missingFields`, `OwnerIssuerProfileRules.MissingFields`: the organization's rule with the
+  owner's own fiscal code and VAT number); nothing is issued on it until it is complete (`canIssue`).
+- **API.** `GET api/owners/{ownerId}/issuer-profile` (`agency.owner.view`, an owner in the caller's reach: the whole org, or an owner whose every ownership is on a
+  property the caller reaches; anything else is 404 `owner_not_found`): the profile, or the empty one (`exists: false`), with `missingFields` and the rule in force.
+  The personal data are in clear only for the whole organization with `agency.owner.financial.manage` (the read is logged with ids), masked (`••••501U`,
+  `masked: true`) for anyone else. `PUT` the same route (`agency.owner.financial.manage` **and the whole organization**, 403 `fiscal_settings_need_whole_org`
+  otherwise): the whole profile, made at the first save; 422 `issuer_field_invalid` (with `field` and `errors`), `issuer_regime_country_mismatch`,
+  `document_issuance_not_available`; 404 `owner_not_found` (another org, an anonymized owner). Both are 404 while `Features:FiscalDocumentIssuance` is off.
+- **Privacy.** The personal data of every profile (organization's and owners') are **encrypted at rest** with the purpose `Casazen.OrgFiscalIssuerProfile`: legal
+  name, fiscal code, VAT number, street, house number, postal code, city, PEC (plus the IBAN and QR-IBAN as before). The columns are `text`; the values stored in
+  clear before (the legal name and address of the organizations' profiles) are rewritten encrypted by `EncryptedColumns.EncryptLegacyPlaintextAsync` at the first
+  start. The province, the country and the SDI code are no personal data and stay readable.
+- **Billing setup.** The section `italy` gets the item `owner_issuer_missing` (reason `required`, with `count`): the owners with an ownership of an **Italian property**
+  (`Property.Country` `IT`) not ended on the Rome day of today and **no profile that can issue** (none, or one that misses a field), anonymized owners excluded
+  (`OwnerIssuerSetupContributor`). It reads for the organization whatever its own country (a Swiss agency with Italian properties needs its owners' profiles too).
+
+The migration of the slice is `AddOwnerIssuerProfiles` (see *Numbers* for what it moves).
+
 ## Billing setup (the wizard «Fatturazione», E11/F01/US01/T04)
 
 Every invoicing setting is set in one place, the wizard «Fatturazione» of the onboarding guide, through one endpoint: `GET api/billing-setup` returns the
@@ -71,7 +105,7 @@ epics.
 | `touristTax` | «Tassa di soggiorno» | `platformCollectedTouristTaxChannels` | Switzerland only: `tourist_tax_channels_unconfirmed` |
 | `channels`, `mandates` | «Commissioni dei canali», «Mandato standard» | none: saved by the endpoints of the owner ledger | added by E13/F01/US02/T03, for agencies only (plan Agency; any other organization gets no item): `channel_commissions_unconfirmed` (reason `unconfirmed`) until the organization saved its channel commission rules once, the defaults of the configuration alone do not count; `owners_without_mandate` (reason `required`, with `count`) while some owner with an ownership not ended has no mandate in force today (`OwnerMandateRules.InForce`) |
 | `automation` | «Emissione» | `autoIssueGuestDocuments`, `emailGuestDocuments` | `auto_issue_unconfirmed`: `unconfirmed` |
-| `italy` | «Italia» | `stampDutyReference`, `conservationAgreementConfirmed`, `virtualStampConfirmed` | Italy only: `conservation_agreement_unconfirmed`, `stamp_duty_unconfirmed` (neither the stamp reference nor the confirmation of the virtual stamp); E17 adds `owner_issuer_missing` |
+| `italy` | «Italia» | `stampDutyReference`, `conservationAgreementConfirmed`, `virtualStampConfirmed` | Italy only: `conservation_agreement_unconfirmed`, `stamp_duty_unconfirmed` (neither the stamp reference nor the confirmation of the virtual stamp); `owner_issuer_missing` (reason `required`, with `count`, E17/F01/US01/T01): owners of Italian properties without an issuer profile that can issue, for any organization that has them |
 
 - **Draft and idempotent.** A partial body is a draft: a field that is absent or `null` keeps its value, a text sent empty clears it, a list (even an empty one)
   is sent; the same answers saved twice change nothing and a body with no field saves nothing. A field of another section is 422
@@ -370,10 +404,21 @@ events of one change (the refund and the cancellation) and events delivered out 
 
 ## Numbers (`FiscalNumberingService`)
 
-- Per org and series, consecutive from 1, no gap, no duplicate: the counter (`FiscalNumberSequences`) is incremented under the advisory lock
-  `FiscalNumbering` (1_601) in the READ COMMITTED transaction that saves the document; a rollback gives the number back.
-- At the first use of a series the counter starts above the highest number already used in it, the legacy `AgencyInvoices` included.
+- Per **org, issuer and series** (E17/F01/US01/T01), consecutive from 1, no gap, no duplicate: the issuer is the profile the document is issued on
+  (`FiscalDocument.IssuerProfileId`: the organization's, or an owner's with its sezionale). The counter (`FiscalNumberSequences`, unique
+  `(OrgId, IssuerProfileId, Series)`) is incremented under the advisory lock `FiscalNumbering` (1_601) with the key `{orgId:N}:{issuerProfileId:N}:{series}`, in
+  the READ COMMITTED transaction that saves the document; a rollback gives the number back. The database refuses a number twice for one issuer and series
+  (`UIX_FiscalDocuments_OrgId_IssuerProfileId_Series_SequenceNumber`); two issuers of one org both have their `2026/1`. A credit note takes the issuer and the series
+  of its original.
+- At the first use of a series the counter starts above the highest number the issuer already used in it; for the **profile of the organization** the documents
+  numbered before the issuers existed and the legacy `AgencyInvoices` count too, an owner's series starts from its own documents only.
 - A series has at most 10 characters (the display `{series}/{number}` fits the 20 characters of `Numero`): longer is 422 `series_too_long`.
+- **Migration `AddOwnerIssuerProfiles`.** Adds the owner and the owner's codes to the profiles (and their partial unique indexes), encrypts the personal columns
+  (`text`), adds `FiscalDocuments.IssuerProfileId` (restrict) and `FiscalNumberSequences.IssuerProfileId`; **every existing document and counter is moved to the
+  profile of its organization** (a counter of an organization without a profile, which cannot have issued, is deleted: the next issue seeds it again above the
+  highest number used); the issuer rows of the bookings become one per document (see *Drafts and bulk issue*). **Rollback:** the down migration restores the
+  old unique indexes, so it fails once an owner has issued in a series the organization also used, or a booking has two issuer rows: roll back before any owner
+  document is issued (the flag `FiscalDocumentIssuance` off stops new ones).
 
 ## Export of the list (`FiscalDocumentExports`, `XlsxWriter`)
 
@@ -391,4 +436,5 @@ events of one change (the refund and the cancellation) and events delivered out 
 - A fiscal document is kept ten years (ADR-033-R7): the booking, the property, the owner, the statement version, the credited and the replaced document
   are restrict foreign keys; the erasure of a guest leaves the recipient snapshot of an issued document in place.
 - The recipient snapshot, the issuer snapshot and the XML are encrypted at rest (`Casazen.FiscalDocument`, `docs/runbooks/encryption.md`); so are the
-  IBAN and the QR-IBAN of the issuer (`Casazen.OrgFiscalIssuerProfile`). The logs carry ids, codes and field names, never a value.
+  IBAN and the QR-IBAN of the issuer and the personal data of every issuer profile, the owners' included (`Casazen.OrgFiscalIssuerProfile`: legal name, fiscal
+  code, VAT number, street, house number, postal code, city, PEC). The logs carry ids, codes and field names, never a value.

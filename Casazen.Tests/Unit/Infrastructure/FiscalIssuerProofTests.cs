@@ -51,8 +51,12 @@ public class FiscalIssuerProofTests
         Assert.Empty(await nobody.OrgFiscalIssuerProfiles.AsNoTracking().ToListAsync());
     }
 
+    /// <summary>
+    /// E17/F01/US01/T01, T02: one profile for each organization (no owner) and one for each owner who issues, two partial unique indexes; the issuer rows of a
+    /// booking are one for each document (a booking may have the receipt of its owner and the invoice of the agency), no longer one for each booking.
+    /// </summary>
     [Fact]
-    public void Model_OneProfileForEachOrg_OneIssuerForEachBooking_BothUniqueAndTenantOwned()
+    public void Model_OneProfileForEachOrgAndOwner_OneIssuerRowForEachDocument_UniqueAndTenantOwned()
     {
         using var db = NewDb($"fiscal-issuer-model-{Guid.NewGuid()}", tenant: null);
 
@@ -60,11 +64,17 @@ public class FiscalIssuerProofTests
         var profileIndex = Assert.Single(profile.GetIndexes(), i => i.GetDatabaseName() == OrgFiscalIssuerProfile.OrgIndexName);
         Assert.True(profileIndex.IsUnique);
         Assert.Equal([nameof(OrgFiscalIssuerProfile.OrgId)], profileIndex.Properties.Select(p => p.Name));
+        Assert.Equal("\"PropertyOwnerId\" IS NULL", profileIndex.GetFilter());
+        var ownerIndex = Assert.Single(profile.GetIndexes(), i => i.GetDatabaseName() == OrgFiscalIssuerProfile.OwnerIndexName);
+        Assert.True(ownerIndex.IsUnique);
+        Assert.Equal([nameof(OrgFiscalIssuerProfile.PropertyOwnerId)], ownerIndex.Properties.Select(p => p.Name));
+        Assert.Equal("\"PropertyOwnerId\" IS NOT NULL", ownerIndex.GetFilter());
 
         var issuer = db.Model.FindEntityType(typeof(BookingDocumentIssuer))!;
-        var issuerIndex = Assert.Single(issuer.GetIndexes(), i => i.GetDatabaseName() == BookingDocumentIssuer.BookingIndexName);
-        Assert.True(issuerIndex.IsUnique);
-        Assert.Equal([nameof(BookingDocumentIssuer.BookingId)], issuerIndex.Properties.Select(p => p.Name));
+        var documentIndex = Assert.Single(issuer.GetIndexes(), i => i.GetDatabaseName() == BookingDocumentIssuer.DocumentIndexName);
+        Assert.True(documentIndex.IsUnique);
+        Assert.Equal([nameof(BookingDocumentIssuer.LockedByDocumentId)], documentIndex.Properties.Select(p => p.Name));
+        Assert.DoesNotContain(issuer.GetIndexes(), i => i.IsUnique && i.Properties.Any(p => p.Name == nameof(BookingDocumentIssuer.BookingId)));
         Assert.Equal(DeleteBehavior.Cascade, Assert.Single(issuer.GetForeignKeys()).DeleteBehavior);
 
         Assert.True(typeof(ITenantOwned).IsAssignableFrom(typeof(OrgFiscalIssuerProfile)));

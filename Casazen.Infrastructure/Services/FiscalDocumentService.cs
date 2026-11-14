@@ -306,6 +306,9 @@ public sealed partial class FiscalDocumentService(
             BookingId = original.BookingId,
             PropertyId = original.PropertyId,
             Purpose = original.Purpose,
+
+            // A credit note is the issuer's own: the same profile, the same series and counter as the document it credits.
+            IssuerProfileId = original.IssuerProfileId,
             RecipientOwnerId = original.RecipientOwnerId,
             OwnerStatementVersionId = original.OwnerStatementVersionId,
             PeriodYear = original.PeriodYear,
@@ -534,7 +537,11 @@ public sealed partial class FiscalDocumentService(
         var issuer = document.Status == FiscalDocumentStatus.Issued ? FiscalIssuerSnapshot.FromJson(document.IssuerSnapshot) : null;
         if (issuer is null)
         {
-            var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.OrgId == document.OrgId, ct);
+            // A draft shows the issuer it will be issued on today: its own profile (an owner who issues, E17), else the profile of the organization.
+            var profiles = db.OrgFiscalIssuerProfiles.AsNoTracking();
+            var profile = document.IssuerProfileId is { } issuerProfileId
+                ? await profiles.FirstOrDefaultAsync(p => p.Id == issuerProfileId && p.OrgId == document.OrgId, ct)
+                : await profiles.OfOrganization(document.OrgId).FirstOrDefaultAsync(ct);
             var org = await db.Orgs.AsNoTracking().FirstAsync(o => o.Id == document.OrgId, ct);
             issuer = FiscalIssuerSnapshot.From(profile, org);
         }
@@ -586,6 +593,7 @@ public sealed partial class FiscalDocumentService(
         draft.OrgId = booking.OrgId;
         draft.PropertyId = booking.PropertyId;
         draft.Purpose = FiscalDocumentPurpose.GuestStay;
+        draft.IssuerProfileId = profile.Id;
         draft.ServicePeriodFrom = DateOnly.FromDateTime(booking.CheckIn);
         draft.ServicePeriodTo = DateOnly.FromDateTime(booking.CheckOut);
         draft.RuleVersion = rule.Version;
@@ -720,7 +728,10 @@ public sealed partial class FiscalDocumentService(
             ? await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct)
             : null;
 
-        var number = await numbering.ReserveNextAsync(orgId, series, ct);
+        // The number of the issuer the document is issued on (E17/F01/US01/T01): its counter, its series. A document made before the issuers existed is the
+        // organization's.
+        document.IssuerProfileId ??= profile.Id;
+        var number = await numbering.ReserveNextAsync(orgId, document.IssuerProfileId.Value, series, ct);
 
         // What the document may be is decided again here, under the lock of the series (a credit note takes the series of its original, so the same lock):
         // the checks before the transaction are quick refusals, but two parallel requests both pass them, and neither the original nor the booking changes to
@@ -888,7 +899,7 @@ public sealed partial class FiscalDocumentService(
 
     private async Task<(OrgFiscalIssuerProfile Profile, Org Org)> RequireIssuerAsync(Guid orgId, CancellationToken ct)
     {
-        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.OrgId == orgId, ct);
+        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().OfOrganization(orgId).FirstOrDefaultAsync(ct);
         var org = await db.Orgs.AsNoTracking().FirstAsync(o => o.Id == orgId, ct);
         var settings = await issuers.GetSettingsAsync(orgId, ct);
         if (profile is null || settings.MissingFields.Count > 0)

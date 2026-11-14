@@ -56,7 +56,7 @@ public sealed class DocumentIssuerService(
 
     public async Task<IssuerSettingsView> GetSettingsAsync(Guid orgId, CancellationToken ct = default)
     {
-        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.OrgId == orgId, ct);
+        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().OfOrganization(orgId).FirstOrDefaultAsync(ct);
         var identity = await OrgIdentityAsync(orgId, ct);
         var connected = await IsOctorateConnectedAsync(orgId, ct);
         return ViewOf(profile, identity, connected);
@@ -123,7 +123,7 @@ public sealed class DocumentIssuerService(
 
         for (var attempt = 1; ; attempt++)
         {
-            var profile = await db.OrgFiscalIssuerProfiles.FirstOrDefaultAsync(p => p.OrgId == orgId, ct);
+            var profile = await db.OrgFiscalIssuerProfiles.OfOrganization(orgId).FirstOrDefaultAsync(ct);
             var created = profile is null;
             var now = UtcNow;
             if (profile is null)
@@ -232,7 +232,7 @@ public sealed class DocumentIssuerService(
                 logger.LogInformation("Booking {BookingId} locked to the issuer {Issuer}", bookingId, kind);
                 return LockOf(row);
             }
-            catch (DbUpdateException ex) when (attempt < MaxAttempts && OrgTeamAccess.IsUniqueViolation(ex, BookingDocumentIssuer.BookingIndexName))
+            catch (DbUpdateException ex) when (attempt < MaxAttempts && OrgTeamAccess.IsUniqueViolation(ex, BookingDocumentIssuer.DocumentIndexName))
             {
                 // Another lock of this booking won: read it and answer as for a row that was there.
                 db.Entry(row).State = EntityState.Detached;
@@ -335,7 +335,7 @@ public sealed class DocumentIssuerService(
         };
 
     /// <summary>The normalized data written on the profile, as a whole.</summary>
-    private static void Apply(OrgFiscalIssuerProfile profile, IssuerData data)
+    internal static void Apply(OrgFiscalIssuerProfile profile, IssuerData data)
     {
         profile.LegalName = data.LegalName;
         profile.AddressStreet = data.AddressStreet;
@@ -369,7 +369,7 @@ public sealed class DocumentIssuerService(
     }
 
     /// <summary>The data of the command written the way it is stored, and the failures of the values that are not valid (nothing is stored then).</summary>
-    private static IssuerData Normalize(SaveIssuerSettingsCommand command, List<InvoiceDataFailure> failures)
+    internal static IssuerData Normalize(SaveIssuerSettingsCommand command, List<InvoiceDataFailure> failures)
     {
         var legalName = Text(command.LegalName, OrgFiscalIssuerProfile.LegalNameMaxLength, IssuerFields.LegalName, failures);
         var street = Text(command.AddressStreet, OrgFiscalIssuerProfile.AddressStreetMaxLength, IssuerFields.AddressStreet, failures);
@@ -519,7 +519,7 @@ public sealed class DocumentIssuerService(
     private static string? Collapse(string? value) =>
         Empty(value) is { } trimmed ? string.Join(' ', trimmed.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)) : null;
 
-    private static DomainRuleException FieldsInvalid(IReadOnlyList<InvoiceDataFailure> failures) =>
+    internal static DomainRuleException FieldsInvalid(IReadOnlyList<InvoiceDataFailure> failures) =>
         new(failures[0].Code, DocumentIssuerErrorCodes.MessageKeyOf(failures[0].Code))
         {
             Extensions = new Dictionary<string, object?>

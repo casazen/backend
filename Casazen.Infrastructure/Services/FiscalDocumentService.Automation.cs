@@ -41,6 +41,7 @@ public sealed partial class FiscalDocumentService
         await db.OrgFiscalIssuerProfiles
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
+            .OfOrganizations()
             .Select(p => p.OrgId)
             .Distinct()
             .ToListAsync(ct);

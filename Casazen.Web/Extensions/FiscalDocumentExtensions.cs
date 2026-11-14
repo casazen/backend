@@ -51,6 +51,9 @@ public static class FiscalDocumentExtensions
         services.AddScoped<IBillingSetupContributor, ChannelCommissionsSectionContributor>();
         services.AddScoped<IBillingSetupContributor, OwnerMandatesSectionContributor>();
 
+        // The owner issuers of the section «Italia» (E17/F01/US01/T01): the owners of Italian properties still without an issuer profile that can issue.
+        services.AddScoped<IBillingSetupContributor, OwnerIssuerSetupContributor>();
+
         // The billing data and Octorate (E06/F02/US01/T04), both behind Features:OctorateConnector and Features:OctorateBillingSync: the invoice data of a
         // booking imported from Octorate is pre-filled from its customer record (BookingCreated), and the data saved in CasaZen is written to Octorate where
         // Octorate is the issuer (InvoiceDataSaved). Run by the outbox dispatcher, so neither can fail an import or a host's save.
@@ -130,6 +133,9 @@ public static class FiscalDocumentExtensions
         services.AddScoped<IPortalAccountHolderResolver, PortalAccountHolderResolver>();
         services.AddScoped<IPortalAccountSettingsService, PortalAccountSettingsService>();
         services.AddScoped<IOwnerInvoiceService, OwnerInvoiceService>();
+
+        // The issuer profiles of the owners who issue the documents of their Italian stays, with their own series and numbering (E17/F01/US01/T01).
+        services.AddScoped<IOwnerIssuerProfileService, OwnerIssuerProfileService>();
 
         return services;
     }
