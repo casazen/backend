@@ -1,3 +1,4 @@
+using System.Globalization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Events;
@@ -62,6 +63,42 @@ public static class PaymentEvents
         }
 
         recorder.Record(DomainEventType.PaymentSucceeded, payment.Id, PaymentEventPayload.Of(payment, currency), key, payment.OrgId);
+    }
+
+    /// <summary>The dedup key of the refund that brings what was refunded of <paramref name="paymentId"/> to <paramref name="refundedAmount"/> in all.</summary>
+    public static string RefundedKeyOf(Guid paymentId, decimal refundedAmount) =>
+        string.Create(CultureInfo.InvariantCulture, $"payment-refunded:{paymentId:N}:{refundedAmount:0.00}");
+
+    /// <summary>
+    /// Records that more was refunded of <paramref name="payment"/> (E12/F01/US01/T03): <c>PaymentRefunded</c>, once for each amount refunded in all (<paramref name="refundedAmount"/>),
+    /// checking this unit of work and the outbox of its org, so a refund seen again (a webhook delivered twice, a recompute) records nothing. In the unit of work of the change of the
+    /// payment, so a rollback leaves no event. Without a recorder (the tests that build the service by hand) nothing is recorded.
+    /// </summary>
+    public static async Task RecordRefundedAsync(
+        IDomainEventRecorder? recorder,
+        AppDbContext db,
+        Payment payment,
+        decimal refundedAmount,
+        CancellationToken cancellationToken = default)
+    {
+        if (recorder is null)
+            return;
+
+        ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(payment);
+        var key = RefundedKeyOf(payment.Id, refundedAmount);
+        if (db.ChangeTracker.Entries<OutboxEvent>().Any(e =>
+                e.State == EntityState.Added && e.Entity.OrgId == payment.OrgId && e.Entity.DedupKey == key))
+        {
+            return;
+        }
+
+        var taken = await db.OutboxEvents
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .AnyAsync(e => e.OrgId == payment.OrgId && e.DedupKey == key, cancellationToken);
+        if (!taken)
+            recorder.Record(DomainEventType.PaymentRefunded, payment.Id, new PaymentRefundedPayload(payment.Id, payment.BookingId, refundedAmount), key, payment.OrgId);
     }
 
     /// <summary>The currency of the stays of the property of <paramref name="booking"/>, read across orgs (a webhook has no tenant).</summary>

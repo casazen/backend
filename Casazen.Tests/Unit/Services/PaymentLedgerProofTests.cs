@@ -153,6 +153,41 @@ public class PaymentLedgerProofTests
         Assert.Equal(PaymentLedgerKind.Card, Assert.Single(result.Lines, l => l.PaymentId == card.Id).Kind);
     }
 
+    /// <summary>
+    /// The state of the document a line belongs to is read by the same predicate as the document API and the export (E12/F01/US01/T01): the document of a portal that collected keeps the state it
+    /// was made with (paid through the portal: CasaZen sees none of its payments), and the one of a stay the host collects from reads what the channel manager reports paid.
+    /// </summary>
+    [Fact]
+    public async Task PaymentLedger_DocumentState_PortalKeepsItsStoredPaid_AndAHostCollectedStayReadsTheChannelManagersFigure()
+    {
+        await using var db = NewDb();
+        var (portalStay, _) = await SeedBookingAsync(db, "EUR", otaPaid: 380m);
+        var (hostStay, _) = await SeedBookingAsync(db, "EUR", otaPaid: 100m);
+        db.FiscalDocuments.Add(Document(portalStay, FiscalPaymentChannel.Portal, FiscalDocumentPaymentState.Paid));
+        db.FiscalDocuments.Add(Document(hostStay, FiscalPaymentChannel.Outside, FiscalDocumentPaymentState.Paid));
+        await db.SaveChangesAsync();
+
+        var portal = await Service(db).GetForBookingAsync(new HostScope(OrgId), portalStay);
+        var host = await Service(db).GetForBookingAsync(new HostScope(OrgId), hostStay);
+
+        Assert.Equal(nameof(FiscalDocumentPaymentState.Paid), Assert.Single(portal!.Lines).Document!.PaymentState);
+        Assert.Equal(nameof(FiscalDocumentPaymentState.ToCollect), Assert.Single(host!.Lines).Document!.PaymentState);
+    }
+
+    private static FiscalDocument Document(Guid booking, FiscalPaymentChannel channel, FiscalDocumentPaymentState state) => new()
+    {
+        OrgId = OrgId,
+        BookingId = booking,
+        Source = FiscalDocumentSource.CasaZen,
+        Kind = FiscalDocumentKind.Invoice,
+        Status = FiscalDocumentStatus.Issued,
+        Number = "2026/1",
+        Currency = "EUR",
+        Total = 400m,
+        PaymentChannel = channel,
+        PaymentState = state,
+    };
+
     private static BookingPaymentLedgerService Service(AppDbContext db, IOctorateApiClient? client = null)
     {
         var scope = new Mock<IOctorateOrgScope>();

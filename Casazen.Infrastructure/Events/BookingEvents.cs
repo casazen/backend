@@ -45,6 +45,7 @@ public static class BookingEvents
             DomainEventType.CheckInCompleted => $"checkin:{booking.Id}",
             DomainEventType.CheckOutCompleted => $"checkout:{booking.Id}",
             DomainEventType.PropertyReadyDeclared => $"property-ready:{booking.Id}",
+            DomainEventType.BookingNoShowMarked => $"booking-no-show:{booking.Id}",
             _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Not an event of the lifecycle of a booking."),
         };
     }

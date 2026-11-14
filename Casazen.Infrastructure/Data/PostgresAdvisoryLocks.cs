@@ -453,6 +453,19 @@ internal static class PostgresAdvisoryLocks
         OwnerAccounting = 1_603,
 
         /// <summary>
+        /// The daily run of the guest documents of one org (key: <c>{orgId:N}</c>, E12/F01/US01/T02, a session lock held for the whole run): the drafts of the stays that
+        /// ended and the automatic issue of the drafts are made by one run at a time, so two runs (a retry, a manual trigger) never make two drafts of one stay.
+        /// </summary>
+        FiscalDocumentsDueRun = 1_602,
+
+        /// <summary>
+        /// The guest documents of one booking while a change of the booking is corrected (key: <c>{bookingId:N}</c>, E12/F01/US01/T03, held until the commit): the decision
+        /// of what is left to credit and the draft of the credit note and of the new document are taken one at a time, so two events of one booking (a change and a refund
+        /// delivered together) never prepare the same credit note twice.
+        /// </summary>
+        FiscalDocumentBooking = 1_604,
+
+        /// <summary>
         /// The push of one calendar change to the channel manager (key: process id, <c>processId.ToString("N")</c>, E08/F05/US02/T01, a session lock held for the whole
         /// run): the immediate run enqueued after a change and the recurring job that picks up what is due never send the same chunk twice, because a run that finds
         /// the lock taken leaves and the other one does the work. The values 20_800 to 20_899 are the booking operations of the calendar workspace (epic E08).
