@@ -28,9 +28,9 @@ public class EmailTextsParityTests
     }
 
     /// <summary>
-    /// NF-40 (AC-NF40-4): German, French and Spanish hold exactly the texts of the two guest check-in emails (the link and the reminder), every
-    /// one of them, and nothing else: the other emails are never sent to a guest in these languages, and a German text of another email would
-    /// be a half-translated email.
+    /// NF-40 (AC-NF40-4): German, French and Spanish hold exactly the texts of the two guest check-in emails (the link and the reminder) and, since E23/F01/US01/T01
+    /// (NF-122), the one message of the portal chat that carries the check-in link (<c>GuestCheckInChat_Body</c>), every one of them, and nothing else: the other emails
+    /// are never sent to a guest in these languages, and a German text of another email would be a half-translated email.
     /// </summary>
     [Theory]
     [InlineData("EmailTexts.de.resx")]
@@ -40,12 +40,14 @@ public class EmailTextsParityTests
     {
         var guestCheckInKeys = Keys("EmailTexts.resx")
             .Where(k => k.StartsWith("GuestCheckInLink_", StringComparison.Ordinal)
-                        || k.StartsWith("GuestCheckInReminder_", StringComparison.Ordinal))
+                        || k.StartsWith("GuestCheckInReminder_", StringComparison.Ordinal)
+                        || k.StartsWith("GuestCheckInChat_", StringComparison.Ordinal))
             .Order(StringComparer.Ordinal)
             .ToList();
 
         Assert.NotEmpty(guestCheckInKeys);
         Assert.Contains("GuestCheckInReminder_Subject", guestCheckInKeys);
+        Assert.Contains("GuestCheckInChat_Body", guestCheckInKeys);
         Assert.Equal(guestCheckInKeys, Keys(fileName).Order(StringComparer.Ordinal).ToList());
     }
 

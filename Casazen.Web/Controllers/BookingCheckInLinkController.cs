@@ -30,7 +30,8 @@ public class BookingCheckInLinkController(
     IGuestCheckInLinkEmailQueue linkEmails,
     PublicSiteLinks publicSiteLinks,
     ILogger<BookingCheckInLinkController> logger,
-    TimeProvider? timeProvider = null) : ControllerBase
+    TimeProvider? timeProvider = null,
+    ICheckInLinkDeliveryService? deliveries = null) : ControllerBase
 {
     /// <summary>409: a link exists only for confirmed or checked-in bookings.</summary>
     public const string BookingNotEligibleCode = "checkin_link_booking_not_eligible";
@@ -53,6 +54,30 @@ public class BookingCheckInLinkController(
 
         var session = await checkInService.GetSessionForBookingAsync(id);
         return Ok(CheckInSessionStatusResponse.From(session, IsEligible(booking!.Status), _clock.GetUtcNow().UtcDateTime));
+    }
+
+    /// <summary>
+    /// Where the check-in link of the booking stands on its way to the guest (E23/F01/US01/T01, T02, NF-122): the channel (<c>Email</c>, <c>PortalChat</c>, <c>Manual</c>), the state
+    /// (<c>Sent</c>, a waiting state or <c>Failed</c>) with its stable error code, and the link to copy («Copia link»), which is returned <b>only</b> to a caller who can already
+    /// copy one (<c>booking.write</c> on the property, as for <c>POST .../checkin/link</c>) and only while the delivery waits or failed and the link can still be opened. A booking
+    /// with no delivery record answers 200 with an empty body of members. A booking of another org is a 404, whatever the permission.
+    /// </summary>
+    [HttpGet("{id:guid}/checkin/link-delivery")]
+    [ProducesResponseType(typeof(CheckInLinkDeliveryResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<CheckInLinkDeliveryResponse>> GetCheckInLinkDelivery(Guid id)
+    {
+        var (booking, denied) = await AuthorizeBookingAsync(id, BookingOperations.Read);
+        if (denied is not null)
+            return denied;
+
+        var service = deliveries ?? throw new InvalidOperationException("The delivery of the check-in link is not registered (AddCheckInLinkDelivery).");
+
+        // The link only to a caller who can already copy one: the same permission on the same property as the endpoint that generates it.
+        var canCopy = IsEligible(booking!.Status) && await CanAsync(booking, BookingOperations.Write);
+        var view = await service.GetAsync(booking.OrgId, booking.Id, includeLink: canCopy, HttpContext.RequestAborted);
+        return Ok(CheckInLinkDeliveryResponse.From(view));
     }
 
     /// <summary>
@@ -94,6 +119,11 @@ public class BookingCheckInLinkController(
         publicSiteLinks.EnsureConfigured();
 
         var link = await checkInService.IssueLinkAsync(booking.Id, booking.OrgId);
+
+        // E23/F01/US01/T01: the host carries the link from here, so the delivery of the link the system was trying to take to the guest ends (the previous link stopped
+        // working) and its «To do» closes. Best effort: the link is issued whatever happens to the record.
+        await EndDeliveryAsync(booking);
+
         var email = sendEmail
             ? await linkEmails.QueueAsync(link.SessionId, link.Token, HttpContext.RequestAborted)
             : new GuestCheckInLinkEmailOutcome(GuestCheckInLinkEmailStatus.NotRequested);
@@ -136,6 +166,29 @@ public class BookingCheckInLinkController(
         }
 
         return (booking, null);
+    }
+
+    /// <summary>True when the caller holds <paramref name="operation"/> on the property of the booking (the booking is already known to be visible).</summary>
+    private async Task<bool> CanAsync(Booking booking, HostOperationRequirement operation)
+    {
+        var property = await hostResources.ForPropertyAsync(booking.PropertyId, HttpContext.RequestAborted);
+        return property is not null
+               && await authorizationService.IsAuthorizedAsync(User, property with { OrgId = booking.OrgId }, operation);
+    }
+
+    private async Task EndDeliveryAsync(Booking booking)
+    {
+        if (deliveries is null)
+            return;
+
+        try
+        {
+            await deliveries.EndAsync(booking.OrgId, booking.Id, CheckInLinkEndReasons.HostLink, HttpContext.RequestAborted);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "The delivery of the check-in link of booking {BookingId} could not be ended after the host issued a link", booking.Id);
+        }
     }
 
     private static bool IsEligible(BookingStatus status) =>

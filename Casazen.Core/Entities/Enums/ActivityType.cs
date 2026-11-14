@@ -146,4 +146,14 @@ public enum ActivityType
     /// Raised once for each version, and never for a portal that is off or an owner nobody reaches in it. The number leaves room for the values the owner portal appends after 72.
     /// </summary>
     OwnerStatementNoticeFailed = 80,
+
+    /// <summary>
+    /// The check-in link of a stay from a portal has not reached the guest and the host may have to carry it (E23/F01/US01/T01, NF-122): the chat of the portal is not
+    /// available yet, the booking has no conversation, no way to the guest is on, the contact of the guest cannot be read yet, or the automatic delivery failed. About the
+    /// booking (entity type <c>Booking</c>), leading to the link to copy (<see cref="ActivityAction.CopyCheckInLink"/>); raised once per booking, only while one of the flags
+    /// <c>PortalChatCheckInLink</c> and <c>GuestContactInfo</c> is on; closed by the system when the link is sent, when the guest completes the check-in, when the booking is
+    /// cancelled or when the host issues a link itself. The numbers from 110 are the check-in link and the chat of the portal (epic E23), apart from the values the tasks that
+    /// run in parallel append.
+    /// </summary>
+    CheckInLinkToSend = 110,
 }

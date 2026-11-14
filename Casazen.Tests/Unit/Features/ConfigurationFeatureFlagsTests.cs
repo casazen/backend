@@ -103,6 +103,10 @@ public class ConfigurationFeatureFlagsTests
                 "OwnerInvoicing",
                 // E15/F01/US01/T01: the accountant package (ZIP of a month or a year) and the agency summary, off until the accountant confirms the ⚖ choices.
                 "AccountantPackage",
+                // E23/F01/US01/T01: the check-in link of a portal booking with no e-mail goes in the reservation thread of the portal chat, off until the channel manager gives the chat permission.
+                "PortalChatCheckInLink",
+                // E23/F01/US01/T02: the e-mail of the guest of a portal booking is read from the channel manager, once, for the check-in link only, off until the static IP addresses are registered.
+                "GuestContactInfo",
             },
             FeatureFlags.All);
     }

@@ -2727,4 +2727,18 @@
   <data name="OwnerStatementPublished_LinkFallback" xml:space="preserve">
     <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
   </data>
+  <!-- E23/F01/US01/T01 (NF-122): the one message of the chat of the portal that carries the check-in link (plain text, in the five languages of the guest page), the push to the host
+       when the automatic delivery failed, and the reason of its «To do». No supplier, no portal and no assistant is named. -->
+  <data name="GuestCheckInChat_Body" xml:space="preserve">
+    <value>Buongiorno! Il tuo soggiorno presso {0} inizia il {1}. Per velocizzare l'arrivo, completa il check-in online da questo link: {2} Il link è valido fino al {3}.</value>
+  </data>
+  <data name="Push_CheckInLinkFailed_Title" xml:space="preserve">
+    <value>Link del check-in non inviato</value>
+  </data>
+  <data name="Push_CheckInLinkFailed_Body" xml:space="preserve">
+    <value>{0}: il link del check-in non è arrivato all'ospite in automatico. Apri la prenotazione, copialo e invialo tu.</value>
+  </data>
+  <data name="TodoReason_CheckInLinkToSend" xml:space="preserve">
+    <value>Il link del check-in non è ancora arrivato all'ospite: copialo dalla prenotazione e invialo tu.</value>
+  </data>
 </root>

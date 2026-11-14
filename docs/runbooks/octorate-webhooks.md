@@ -146,6 +146,43 @@ be another object), makes `ReconcileRecentAsync` read the org's listings instead
 
 The log line of a handled event is `Octorate chat webhook handled: event {EventId}, type {EventType}, ...`: never the text, a name or an address.
 
+### 4d. The check-in link of a stay with no e-mail address (E23/F01/US01, NF-122, NF-63, decision O10)
+
+A stay that came from a portal has an empty e-mail address, so the link of the daily job `guest-checkin-send` used to fail in silence (`no_recipient`). With the flags
+`Features:PortalChatCheckInLink` and `Features:GuestContactInfo` (both off by default, both only while `Features:OctorateConnector` is on) CasaZen takes the link to the
+guest and, when it cannot, says why. One row per booking, `CheckInLinkDeliveries` (`CheckInLinkDelivery`, the token of the link encrypted at rest and only while it can be
+needed), is what the host sees: `GET api/bookings/{id}/checkin/link-delivery` (booking read; the link itself, «Copia link», only for a caller with `booking.write` on the
+property, only while the delivery waits or failed and the link can still be opened).
+
+| Order | Way | What it does | States |
+|---|---|---|---|
+| 0 | The booking has an address | The e-mail, as for any booking | `Sent` by `Email` |
+| 1 | The chat (`PortalChatCheckInLink`) | The reservation thread of the booking (kind Reservation, at the property of the booking, mapping confirmed): **one** message through `IMessageReplyService` with the origin `Automation`, no user, in the language of the guest (the one chosen on the check-in page, else the one of the country on the booking, else Italian and English in the same message), key = the booking and the token. A message the channel manager refused (the state `Error`, nothing left) lets the next attempt for the same link use the next key; a message whose outcome is unknown (`ManualVerify`) is never sent again | `Sent` by `PortalChat`; `WaitingChatPermission` (`chat_not_licensed`: the last pass of the copy found the chat module not in the license, or the send was refused for it; no call is made while the copy says so); `WaitingThread` (`no_conversation`); `Failed` with the code (`manual_verify`, `mapping_not_confirmed`, `octorate_not_connected`, `octorate_rate_limited`, `octorate_unavailable`, ...) |
+| 2 | The contact of the guest (`GuestContactInfo`) | Only when the chat did not deliver (the chat reads no personal data): the reservation is read (flags, no data) and, when Octorate says it holds an address, `POST /rest/v2/reservation/{acc}/{refer}/contactInfo` **once for the booking**, for this link only; the address is written on the guest and the link goes by e-mail; a phone number is kept for the host's view. One line of the activity log (`ContactInfoRead`, purpose `check_in_link`, no actor, never the address). Never in bulk, never into the CRM | `Sent` by `Email`; `WaitingStaticIps` (401 or 403: the static IP addresses are not registered; the read is repeated at most once a day, never in a loop); `WaitingContact` (the channel holds no address: an Airbnb guest has none) |
+| 3 | The host | The row says what the link waits for, with one «To do» (`CheckInLinkToSend`, action `CopyCheckInLink`, due the day of the check-in, once per booking) while one of the flags is on, and, for a failure that no retry will change, the bell and the live update (`checkin-link-failed`, once per link) | `WaitingContact` with `Manual` |
+
+**The state shown** is the chat's while the chat is on, and the contact's otherwise. **With both flags off** the job only writes the row (`WaitingContact`, `Manual`): no call, no
+«To do», no notice, no token, and the failed e-mail on the session is what the host sees, as before.
+
+**The retry.** `checkin-link-delivery-retry` runs at minute 30 of every hour, only while the connector and a flag are on. A row is tried again when the thing it waits for may
+have changed, at most once an hour: `WaitingChatPermission` when the copy of the conversations read the listing without error since the last attempt (the license probe of the sync
+runs hourly, § 4c); `WaitingThread` when the booking has its conversation; `WaitingStaticIps` and a refused contact a day after the last read; `Failed` with a limit or an outage up
+to three attempts. A row made while the flags were off holds no token and nobody has its link: when a flag is turned on the pass issues a new link for it. A row ends when the guest
+completes the check-in, the booking is cancelled or no longer takes a check-in, the link expires, or the host generates or sends a link itself; its «To do» is closed with it.
+The reminder of the missing data leaves such a stay alone (a new link would replace the one the guest already has).
+
+**An automatic message answers nobody.** `MessageOrigin.Automation` is never shown as written by a person; it marks no message of the guest as read and does not make the
+conversation «answered», so a question of the guest still waits in «Da rispondere» (the copy takes the direction of the thread from the newest message that is not automatic).
+
+**What the person has to do (static IP addresses).** Octorate gives the contact of a guest only to the static outbound IP addresses registered with it. (1) Move the Railway service
+to a plan with static outbound IP addresses (Pro; they change the outbound IP of **all** the service) and note them. (2) Ask Octorate to register them for the application (the
+`contactInfo` permission is the application's). (3) Set `Features__GuestContactInfo=true` in the environment (test first). To check: a booking of a portal with no address shows
+`WaitingStaticIps` before the registration, and `Sent` by `Email` after it (one line `ContactInfoRead` with `{"purpose":"check_in_link"}` in `OrgActivityEntries`); the log says
+`The contact of the guest of booking ... was refused by the channel manager: the static IP addresses are not registered` until then, and no address, number or name is ever in it.
+The chat needs the chat permission of the application and the `chat` module in the license of the listing (§ 4c): without them the booking shows `WaitingChatPermission`, and
+the inbox says so (`GET api/messages/channel-status`: `available`, `waiting_permission`, `error` for each listing of the caller, and the reason `chat_not_licensed` on the actions of
+a conversation, so the reply box explains instead of failing).
+
 ## 5. Rotating the secret
 
 1. Generate a new secret (§ 2) and set `Octorate__WebhookSecret` on the environment (the service redeploys).

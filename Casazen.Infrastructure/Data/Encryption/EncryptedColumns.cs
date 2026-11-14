@@ -196,6 +196,14 @@ public static class EncryptedColumns
     public const string IstatCredentialsPurpose = "Casazen.PropertyIstatCredentials";
 
     /// <summary>
+    /// Purpose of the raw token of a check-in link kept while its delivery waits (E23/F01/US01/T01, NF-122): <see cref="CheckInLinkDelivery.LinkToken"/>, the secret that
+    /// opens the guest page of a booking, which the system otherwise stores only as a hash. Kept only while the host may need it to carry the link (the «Copia link» of the
+    /// «To do», the retry that sends the same link), cleared when the link is sent or the row ends, never logged and never returned to a caller who cannot copy a link.
+    /// Its own purpose: a payload of another column never reads as a token. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string CheckInLinkTokenPurpose = "Casazen.CheckInLink.Token";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -420,6 +428,10 @@ public static class EncryptedColumns
             nameof(PropertyIstatCredentials.Username),
             nameof(PropertyIstatCredentials.Password),
             nameof(PropertyIstatCredentials.StructureCode)),
+        // E23/F01/US01/T01 (NF-122): the raw token of a check-in link whose delivery waits, so the host can copy the link and a retry sends the same one.
+        new EncryptedEntity<CheckInLinkDelivery>(
+            CheckInLinkTokenPurpose,
+            nameof(CheckInLinkDelivery.LinkToken)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

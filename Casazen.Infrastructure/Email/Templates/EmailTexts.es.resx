@@ -47,4 +47,8 @@
   <data name="GuestCheckInReminder_Validity" xml:space="preserve">
     <value>El enlace es válido hasta el {0}.</value>
   </data>
+  <!-- E23/F01/US01/T01 (NF-122): the message of the portal chat that carries the check-in link. -->
+  <data name="GuestCheckInChat_Body" xml:space="preserve">
+    <value>¡Hola! Su estancia en {0} comienza el {1}. Para agilizar su llegada, complete el check-in en línea con este enlace: {2} El enlace es válido hasta el {3}.</value>
+  </data>
 </root>
