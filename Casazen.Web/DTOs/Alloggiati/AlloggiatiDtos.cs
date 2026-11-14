@@ -1,16 +1,93 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Enums;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.DTOs.CheckIn;
 
 namespace Casazen.Web.DTOs.Alloggiati;
 
+/// <summary>
+/// The guests of a stay on the channel manager and the receipt that covers its arrival day (E20/F01/US01/T02): the block the per-stay Alloggiati
+/// status (<c>GET api/alloggiati/{bookingId}/status</c>) and the compliance of a booking (<c>GET api/bookings/{bookingId}/compliance</c>) share, built from
+/// the same facts and rules as the cockpit. No personal data: positions, states and codes.
+/// </summary>
+/// <param name="Sender">Who sends the police communication of the stay, as far as CasaZen can rely on it (<c>ChannelManager</c> only while the connector is on).</param>
+/// <param name="State">Where the guests stand on the channel manager: <c>Entrusted</c> (every guest on it for good), <c>Failed</c>, <c>InProgress</c>, <c>NothingWritten</c> or <c>NotApplicable</c>.</param>
+/// <param name="Guests">The guests written to the channel manager, by position: state, error code, the fields to correct, attempts and last attempt. Empty when it is not the sender.</param>
+/// <param name="ReceiptCoverage">Whether an archived receipt covers the arrival day. Green exists only with one.</param>
+/// <param name="Light">The light of the cockpit for the stay (<c>Yellow</c> for an entrusted stay without a receipt, never <c>Green</c> without one); <c>null</c> before the arrival day or when nothing is due.</param>
+/// <param name="Reason">The stable reason of the light (the clients translate it); <c>null</c> with no light.</param>
+/// <param name="Actions">What can help: <c>RetryOctorateWrite</c> when asking again can mend a write that failed.</param>
+public sealed record AlloggiatiChannelManagerDto(
+    ComplianceSenderType Sender,
+    ChannelManagerWriteState State,
+    IReadOnlyList<AlloggiatiChannelManagerGuestDto> Guests,
+    AlloggiatiReceiptCoverageDto ReceiptCoverage,
+    ComplianceLight? Light,
+    string? Reason,
+    IReadOnlyList<string> Actions)
+{
+    public static AlloggiatiChannelManagerDto From(ComplianceStayStatus stay)
+    {
+        ArgumentNullException.ThrowIfNull(stay);
+        return new AlloggiatiChannelManagerDto(
+            stay.Sender,
+            stay.ChannelManager,
+            stay.Guests.Select(AlloggiatiChannelManagerGuestDto.From).ToList(),
+            AlloggiatiReceiptCoverageDto.From(stay.ReceiptProof),
+            stay.Verdict?.Verdict.Light,
+            stay.Verdict?.Verdict.Reason,
+            stay.Actions);
+    }
+}
+
+/// <summary>One guest of a stay as it stands on the channel manager. No name, no document: the position, the state and the codes.</summary>
+/// <param name="Position">The position of the guest in the stay.</param>
+/// <param name="State"><c>Pending</c>, <c>Sent</c> or <c>Failed</c>.</param>
+/// <param name="SentAsDraft">Written as a draft (the sender was not the channel manager): not entrusted.</param>
+/// <param name="ErrorCode">Why the last attempt failed (<c>place_not_recognized</c>, <c>octorate_auth</c>, <c>octorate_guest_rejected</c>, ...); <c>null</c> after a success.</param>
+/// <param name="ErrorFields">The fields of the guest to correct for <c>place_not_recognized</c> (<c>birthComune</c>, <c>residenceComune</c>, <c>documentIssuePlace</c>, comma separated); <c>null</c> otherwise.</param>
+/// <param name="Attempts">The attempts of the payload last tried.</param>
+/// <param name="LastAttemptAt">When the last attempt was made (UTC).</param>
+public sealed record AlloggiatiChannelManagerGuestDto(
+    int Position,
+    OctorateSyncStatus State,
+    bool SentAsDraft,
+    string? ErrorCode,
+    string? ErrorFields,
+    int Attempts,
+    DateTime? LastAttemptAt)
+{
+    public static AlloggiatiChannelManagerGuestDto From(ChannelManagerGuestFact guest)
+    {
+        ArgumentNullException.ThrowIfNull(guest);
+        return new AlloggiatiChannelManagerGuestDto(
+            guest.Position, guest.Status, guest.SentAsDraft, guest.ErrorCode, guest.ErrorFields, guest.Attempts, guest.LastAttemptAt);
+    }
+}
+
+/// <summary>Whether an archived receipt covers the arrival day of the stay: a receipt CasaZen downloaded, or one the host uploaded.</summary>
+/// <param name="Archived"><c>true</c> when a receipt is archived: the only thing that makes the stay green.</param>
+/// <param name="Source"><c>casazen_receipt</c> or <c>manual_upload</c>; <c>null</c> when none.</param>
+/// <param name="ArchivedAt">When it was archived (UTC); <c>null</c> when none or when it has no date.</param>
+public sealed record AlloggiatiReceiptCoverageDto(bool Archived, string? Source, DateTime? ArchivedAt)
+{
+    public static AlloggiatiReceiptCoverageDto From(ComplianceProof? proof) =>
+        proof is null ? new AlloggiatiReceiptCoverageDto(false, null, null) : new AlloggiatiReceiptCoverageDto(true, proof.Source, proof.VerifiedAt);
+}
+
 public class AlloggiatiStatusDto
 {
     public Guid BookingId { get; set; }
 
-    /// <summary><see cref="AlloggiatiWebStatus.NotDue"/> for a no-show (NF-45): the guests never came, nothing is to be communicated.</summary>
+    /// <summary>
+    /// <see cref="AlloggiatiWebStatus.NotDue"/> for a no-show (NF-45): the guests never came, nothing is to be communicated. For a stay whose sender is
+    /// the channel manager, <see cref="AlloggiatiWebStatus.EntrustedToChannelManager"/> once its guests are on Octorate (yellow, never green without an
+    /// archived receipt) and <see cref="AlloggiatiWebStatus.ChannelManagerWriteFailed"/> when a guest could not be written (E20/F01/US01/T02).
+    /// </summary>
     public AlloggiatiWebStatus Status { get; set; }
 
     /// <summary>Reference of the real receipt; only with <see cref="AlloggiatiWebStatus.Inviato"/>.</summary>
@@ -30,10 +107,20 @@ public class AlloggiatiStatusDto
     public bool IsOverdue { get; set; }
     public bool DataComplete { get; set; }
 
-    public static AlloggiatiStatusDto From(AlloggiatiStatusInfo info) => new()
+    /// <summary>
+    /// The guests of the stay on the channel manager, the sender and the receipt coverage (E20/F01/US01/T02); <c>null</c> where the status is answered
+    /// without it (the declaration of a manual send).
+    /// </summary>
+    public AlloggiatiChannelManagerDto? ChannelManager { get; set; }
+
+    /// <summary>
+    /// The status of a stay. With <paramref name="stay"/> (the same facts and rules as the cockpit) the channel manager is taken into account: the
+    /// status reads «entrusted» or «write failed» where the guests say so, and the block of the guests and the receipt coverage is added.
+    /// </summary>
+    public static AlloggiatiStatusDto From(AlloggiatiStatusInfo info, ComplianceStayStatus? stay = null) => new()
     {
         BookingId = info.BookingId,
-        Status = info.Status,
+        Status = stay is null ? info.Status : AlloggiatiStatusRules.WithChannelManager(info.Status, stay.ChannelManager),
         ConfirmationNumber = info.ConfirmationNumber,
         ErrorCode = info.ErrorCode,
         ReportedAt = info.ReportedAt,
@@ -42,6 +129,7 @@ public class AlloggiatiStatusDto
         HoursUntilDeadline = info.HoursUntilDeadline,
         IsOverdue = info.IsOverdue,
         DataComplete = info.DataComplete,
+        ChannelManager = stay is null ? null : AlloggiatiChannelManagerDto.From(stay),
     };
 }
 

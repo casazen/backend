@@ -38,7 +38,9 @@ public class AlloggiatiController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver,
     IStringLocalizer<SharedResources> localizer,
-    ILogger<AlloggiatiController> logger) : ControllerBase
+    ILogger<AlloggiatiController> logger,
+    IComplianceStatusService complianceStatus,
+    ICheckInOctorateSyncService octorateSync) : ControllerBase
 {
     /// <summary>Code of a send request: CasaZen has no Alloggiati Web client (422).</summary>
     public const string TransmissionUnavailableCode = "alloggiati_transmission_unavailable";
@@ -67,6 +69,12 @@ public class AlloggiatiController(
         return Ok(summaries.Select(MapSummary));
     }
 
+    /// <summary>
+    /// The status of the communication of a stay. For a stay whose sender is the channel manager it knows where the guests are on Octorate (E20/F01/US01/T02):
+    /// <c>EntrustedToChannelManager</c> (yellow, never «to send manually») once every guest is on it, <c>ChannelManagerWriteFailed</c> when one could not be
+    /// written, with the sender, the state of each guest by position (state, error code, attempts, last attempt), the receipt coverage, the light of the cockpit
+    /// and the action <c>RetryOctorateWrite</c> when asking again can mend a failed write. A booking of another org, or one outside the caller's reach, answers 404.
+    /// </summary>
     [HttpGet("{bookingId:guid}/status")]
     public async Task<ActionResult<AlloggiatiStatusDto>> GetStatus(Guid bookingId)
     {
@@ -75,7 +83,29 @@ public class AlloggiatiController(
             return denied;
 
         var status = await alloggiatiWebService.GetStatusAsync(bookingId);
-        return Ok(AlloggiatiStatusDto.From(status));
+        return Ok(AlloggiatiStatusDto.From(status, await GetStayStatusAsync(bookingId)));
+    }
+
+    /// <summary>
+    /// The host asks to try again to write the guests of the stay to the channel manager (the action <c>RetryOctorateWrite</c> of the status): the guests whose
+    /// write failed or was left pending are sent again, attempts used up included, and the status is answered as it is afterwards. A guest held back for a place
+    /// Octorate does not know is not retried: the host corrects the guest, which sends it. Needs <c>alloggiati.submit</c> on the booking.
+    /// </summary>
+    [HttpPost("{bookingId:guid}/retry-octorate-write")]
+    [Authorize(Policy = CasazenPolicies.AlloggiatiSubmit)]
+    public async Task<ActionResult<AlloggiatiStatusDto>> RetryOctorateWrite(Guid bookingId)
+    {
+        var (_, denied) = await AuthorizeBookingAsync(bookingId, AlloggiatiOperations.Submit);
+        if (denied is not null)
+            return denied;
+
+        var result = await octorateSync.RetryGuestsNowAsync(bookingId, HttpContext.RequestAborted);
+        logger.LogInformation(
+            "User {UserId} asked to try again the write of the guests of booking {BookingId} to the channel manager: {State}",
+            User.GetUserId(), bookingId, result.State);
+
+        var status = await alloggiatiWebService.GetStatusAsync(bookingId);
+        return Ok(AlloggiatiStatusDto.From(status, await GetStayStatusAsync(bookingId)));
     }
 
     /// <summary>
@@ -306,6 +336,22 @@ public class AlloggiatiController(
         }
 
         return (booking, null);
+    }
+
+    /// <summary>
+    /// The stay as the cockpit reads it (the guests on the channel manager, the receipt coverage, the light), by the caller's reach; <c>null</c> when the org
+    /// or the reach cannot be resolved (the status is then answered as before, without the block).
+    /// </summary>
+    private async Task<ComplianceStayStatus?> GetStayStatusAsync(Guid bookingId)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null
+            || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted) is not { } scope)
+        {
+            return null;
+        }
+
+        return await complianceStatus.GetStayStatusAsync(scope, bookingId, HttpContext.RequestAborted);
     }
 
     private async Task<bool> CanAccessPropertyAsync(Guid propertyId)

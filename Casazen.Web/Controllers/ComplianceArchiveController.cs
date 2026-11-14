@@ -43,7 +43,8 @@ public sealed class ComplianceArchiveController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver,
     IAuthorizationService authorizationService,
-    IOptions<ComplianceOptions> options) : ControllerBase
+    IOptions<ComplianceOptions> options,
+    IComplianceStatusService? complianceStatus = null) : ControllerBase
 {
     /// <summary>Code of a <c>format</c> that is not <c>pdf</c> or <c>csv</c> (400).</summary>
     public const string InvalidFormatCode = "compliance_report_invalid_format";
@@ -86,7 +87,11 @@ public sealed class ComplianceArchiveController(
         return Ok(ComplianceArchivePageDto.From(result, options.Value.Archive.PortalUrl));
     }
 
-    /// <summary>The proofs of a stay (the receipts of its arrival day) and the log of what was sent for it, by whom: CasaZen, the channel manager or the host.</summary>
+    /// <summary>
+    /// The proofs of a stay (the receipts of its arrival day) and the log of what was sent for it, by whom: CasaZen, the channel manager or the host. With
+    /// them the Alloggiati status of the stay as the per-stay API reads it (<c>alloggiati</c>, E20/F01/US01/T02): the sender, where its guests stand on the
+    /// channel manager, the state of each guest, the receipt coverage, the light and the action <c>RetryOctorateWrite</c>.
+    /// </summary>
     [HttpGet("api/bookings/{bookingId:guid}/compliance")]
     [ProducesResponseType(typeof(ComplianceBookingComplianceDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -97,8 +102,9 @@ public sealed class ComplianceArchiveController(
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
         var view = await archive.GetBookingComplianceAsync(scope, bookingId, cancellationToken);
+        var stay = complianceStatus is null ? null : await complianceStatus.GetStayStatusAsync(scope, bookingId, cancellationToken);
         Response.Headers.CacheControl = "private, no-store";
-        return Ok(ComplianceBookingComplianceDto.From(view));
+        return Ok(ComplianceBookingComplianceDto.From(view, stay));
     }
 
     /// <summary>
