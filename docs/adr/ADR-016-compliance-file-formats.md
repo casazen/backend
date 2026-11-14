@@ -1,9 +1,9 @@
 # ADR-016: Compliance File Formats
 
-**Status:** Accepted  
+**Status:** Accepted (amended 2026-11-03)  
 **Date:** 2026-10-24  
 **Issue:** none (run R20261024-1925)  
-**Informs:** NF-15
+**Informs:** NF-15, NF-44, NF-47
 
 ## Context
 
@@ -128,3 +128,63 @@ Per Q-A29 answer: Ross1000 MUST NOT be implemented until official "Importa file 
 - Ross1000 format timeline unknown (deferred)
 
 **CI cost:** +5s for format validation tests
+
+## Amendment 2026-11-03 (run R20261103-1506)
+
+**Why:** NF-44 (regional ISTAT per ADR-030) and NF-47 (unified compliance archive) require extending file formats to integrate with regional configuration and Octorate.
+
+**Decision delta:**
+
+### Integration with Regional Config
+
+Per ADR-030, `MunicipalityComplianceConfig` replaced by `RegionalIstatConfig` for Italian regions:
+
+```csharp
+// For Italian regions, use RegionalIstatConfig (ADR-030)
+// MunicipalityComplianceConfig remains for Swiss municipalities
+public class MunicipalityComplianceConfig : ITenantOwned
+{
+    // ... existing fields ...
+    public string CountryCode { get; set; }  // CH for Swiss only
+}
+```
+
+Swiss municipalities use `MunicipalityComplianceConfig`. Italian regions use `RegionalIstatConfig` (ADR-030).
+
+### Octorate Format Support
+
+When Octorate supports regional ISTAT (per Q-003 regional matrix):
+
+```csharp
+public enum ComplianceFormat 
+{ 
+    None, 
+    TicinoXml, 
+    OtrCsv, 
+    StayTour,
+    OctorateManaged  // NEW: Octorate generates file
+}
+```
+
+If `RegionalIstatConfig.OctorateSupported = true`, CasaZen does not generate file; Octorate handles submission.
+
+### Unified Compliance Archive
+
+All compliance files and receipts visible in one archive:
+- Alloggiati receipts (ADR-015)
+- ISTAT proofs (ADR-030)
+- Municipality compliance files (this ADR)
+
+| ID | Priority | Requirement |
+|---|---|---|
+| ADR-016-R10 | P0 | `MunicipalityComplianceConfig.CountryCode` MUST be added; Swiss municipalities use this table, Italian regions use `RegionalIstatConfig` (ADR-030) |
+| ADR-016-R11 | P0 | `ComplianceFormat` enum MUST add `OctorateManaged` for regions where Octorate handles ISTAT |
+| ADR-016-R12 | P0 | Compliance archive endpoint `GET /api/compliance/archive` MUST return unified list: Alloggiati receipts, ISTAT proofs, municipality files |
+| ADR-016-R13 | P1 | If `OctorateSupported = true` for region, file download returns 501 `octorate_handles_submission` with instructions |
+
+**Replaces:** None (new requirements extend existing set).
+
+**Consequences delta:**
+- Backend: CountryCode field, OctorateManaged format, unified archive query
+- Frontend: Archive shows all compliance file types with source indicator
+- Octorate ISTAT handling conditional on Q-003 regional matrix verification
