@@ -8,8 +8,10 @@ using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
 using Casazen.Web.Infrastructure;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -241,6 +243,108 @@ public class OwnerMandateServiceTests
         var column = world.Db.Model.FindEntityType(typeof(PropertyOwner))!.FindProperty(nameof(PropertyOwner.BillingStreet))!;
         var stored = (string)column.GetValueConverter()!.ConvertToProvider("Via Nassa")!;
         Assert.StartsWith(Casazen.Infrastructure.Data.Encryption.EncryptedColumns.ProtectedPayloadPrefix, stored);
+    }
+
+    /// <summary>
+    /// Permission: the mandates are read, written and applied only within the reach of the caller: an owner with a property outside it, or with none, is the 404 of
+    /// an owner that does not exist, and the standard mandate without a list reaches only the owners inside (the others are neither created nor counted).
+    /// </summary>
+    [Fact]
+    public async Task Mandates_PartialScope_ListCreateAndTemplateStayWithinReach_Test()
+    {
+        var world = World.Create();
+        var inside = await world.OwnerAsync(start: new DateOnly(2025, 1, 1), propertyOwner: "auth0|solo-alcuni");
+        var alsoInside = await world.OwnerAsync(start: new DateOnly(2025, 1, 1), propertyOwner: "auth0|solo-alcuni");
+        var shared = await world.OwnerAsync(start: new DateOnly(2025, 1, 1), propertyOwner: "auth0|solo-alcuni");
+        await world.PeriodAsync(shared, new DateOnly(2025, 1, 1), propertyOwner: "auth0|agency");
+        var outside = await world.OwnerAsync(start: new DateOnly(2025, 1, 1), propertyOwner: "auth0|agency");
+        var noProperty = await world.OwnerAsync(start: null);
+        var partial = new HostScope(OrgId, OwnerId: "auth0|solo-alcuni");
+
+        // One owner, read and written: inside it works, outside it is a 404 and nothing is written.
+        var created = await world.Service.CreateVersionAsync(partial, inside, Command(new DateOnly(2026, 1, 1), 15m), "auth0|solo-alcuni");
+        Assert.Equal([created.Id], (await world.Service.ListAsync(partial, inside)).Select(v => v.Id));
+        foreach (var hidden in new[] { shared, outside, noProperty })
+        {
+            await Assert.ThrowsAsync<NotFoundException>(() => world.Service.ListAsync(partial, hidden));
+            await Assert.ThrowsAsync<NotFoundException>(() => world.Service.CreateVersionAsync(partial, hidden, Command(new DateOnly(2026, 1, 1), 15m), null));
+        }
+
+        Assert.Equal(1, await world.Db.OwnerMandates.CountAsync());
+
+        // The standard mandate without a list: the owner inside that has none gets one, the one that has a mandate is skipped, those outside are not touched.
+        var template = new OwnerMandateTemplateCommand { Template = Command(new DateOnly(2026, 1, 1), 12m) };
+        var result = await world.Service.ApplyTemplateAsync(partial, template, null);
+        Assert.Equal([alsoInside], result.CreatedOwnerIds);
+        Assert.Equal([inside], result.SkippedOwnerIds);
+        Assert.False(await world.Db.OwnerMandates.AnyAsync(m => m.PropertyOwnerId == shared || m.PropertyOwnerId == outside || m.PropertyOwnerId == noProperty));
+
+        // A list names owners inside only: one outside is the 404 of the whole call and nothing is written.
+        var before = await world.Db.OwnerMandates.CountAsync();
+        var listed = new OwnerMandateTemplateCommand { Template = Command(new DateOnly(2026, 6, 1), 9m), OwnerIds = [alsoInside, shared] };
+        await Assert.ThrowsAsync<NotFoundException>(() => world.Service.ApplyTemplateAsync(partial, listed, null));
+        Assert.Equal(before, await world.Db.OwnerMandates.CountAsync());
+    }
+
+    /// <summary>
+    /// Permission/privacy: the address is read with the finance read permission and written with the manage one (the owner view alone is not enough); the
+    /// mandates are read with the owner view and written, applied and the channel rules replaced with the manage permission; the channel rules are read with the
+    /// statement view.
+    /// </summary>
+    [Fact]
+    public void Mandates_AddressAndChannelRules_NeedTheirOwnPermission_Test()
+    {
+        static string? PolicyOf(Type controller, string action) =>
+            controller.GetMethod(action)!.GetCustomAttributes(typeof(AuthorizeAttribute), false).Cast<AuthorizeAttribute>().Select(a => a.Policy).SingleOrDefault();
+
+        static string? ClassPolicyOf(Type controller) =>
+            controller.GetCustomAttributes(typeof(AuthorizeAttribute), false).Cast<AuthorizeAttribute>().Select(a => a.Policy).SingleOrDefault();
+
+        Assert.Equal(CasazenPolicies.AgencyOwnerView, ClassPolicyOf(typeof(OwnersController)));
+        Assert.Equal(CasazenPolicies.AgencyOwnerFinancialRead, PolicyOf(typeof(OwnersController), nameof(OwnersController.GetAddress)));
+        Assert.Equal(CasazenPolicies.AgencyOwnerFinancialManage, PolicyOf(typeof(OwnersController), nameof(OwnersController.SaveAddress)));
+
+        Assert.Equal(CasazenPolicies.AgencyOwnerView, ClassPolicyOf(typeof(OwnerMandatesController)));
+        Assert.Null(PolicyOf(typeof(OwnerMandatesController), nameof(OwnerMandatesController.List)));
+        Assert.Equal(CasazenPolicies.AgencyOwnerFinancialManage, PolicyOf(typeof(OwnerMandatesController), nameof(OwnerMandatesController.Create)));
+        Assert.Equal(CasazenPolicies.AgencyOwnerFinancialManage, PolicyOf(typeof(OwnerMandatesController), nameof(OwnerMandatesController.ApplyTemplate)));
+
+        Assert.Equal(CasazenPolicies.AgencyStatementView, ClassPolicyOf(typeof(ChannelCommissionRulesController)));
+        Assert.Null(PolicyOf(typeof(ChannelCommissionRulesController), nameof(ChannelCommissionRulesController.Get)));
+        Assert.Equal(CasazenPolicies.AgencyOwnerFinancialManage, PolicyOf(typeof(ChannelCommissionRulesController), nameof(ChannelCommissionRulesController.Put)));
+    }
+
+    /// <summary>
+    /// Money: the percent of a mandate and of a channel rule is required: a request without it (or with the field misspelt) is 422 and writes nothing, never a
+    /// commission of 0% by omission; the 0% a request writes is a choice and is kept.
+    /// </summary>
+    [Fact]
+    public async Task CommissionPercent_Omitted_IsRefused_NeverZero_Test()
+    {
+        var world = World.Create();
+        var owner = await world.OwnerAsync(start: new DateOnly(2025, 1, 1));
+        var withoutPercent = new OwnerMandateCommand { ValidFrom = new DateOnly(2026, 1, 1) };
+
+        var version = await Assert.ThrowsAsync<DomainRuleException>(() => world.Service.CreateVersionAsync(OrgWide, owner, withoutPercent, null));
+        Assert.Equal(OwnerMandateErrors.MandateInvalid, version.Code);
+        Assert.Equal("commissionPercent", version.Extensions["field"]);
+
+        var template = await Assert.ThrowsAsync<DomainRuleException>(
+            () => world.Service.ApplyTemplateAsync(OrgWide, new OwnerMandateTemplateCommand { Template = withoutPercent }, null));
+        Assert.Equal(OwnerMandateErrors.MandateInvalid, template.Code);
+        Assert.Equal("commissionPercent", template.Extensions["field"]);
+
+        var rules = new[] { new ChannelCommissionRuleCommand { Channel = BookingSource.BookingCom, ValidFrom = new DateOnly(2026, 1, 1) } };
+        var rule = await Assert.ThrowsAsync<DomainRuleException>(() => world.Service.SaveChannelRulesAsync(OrgId, rules, null));
+        Assert.Equal(OwnerMandateErrors.ChannelRulesInvalid, rule.Code);
+        Assert.Equal(0, rule.Extensions["index"]);
+        Assert.Equal("percent", rule.Extensions["field"]);
+
+        Assert.False(await world.Db.OwnerMandates.AnyAsync());
+        Assert.False(await world.Db.OrgChannelCommissionRules.AnyAsync());
+
+        var zero = await world.Service.CreateVersionAsync(OrgWide, owner, withoutPercent with { CommissionPercent = 0m }, null);
+        Assert.Equal(0m, zero.CommissionPercent);
     }
 
     private static OwnerMandateCommand Command(DateOnly from, decimal percent, decimal? cleaning = null) =>

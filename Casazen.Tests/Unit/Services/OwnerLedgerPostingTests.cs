@@ -1,6 +1,7 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
@@ -305,6 +306,206 @@ public class OwnerLedgerPostingTests
         Assert.Equal(OwnerStatementVersionStatus.Draft, (await world.Service.GenerateVersionAsync(OrgId, owner, 2026, 10, null)).Status);
     }
 
+    /// <summary>
+    /// Money: a price the host agreed by hand is an amount even when it is 0 (a stay for free): no revenue, nothing to tell, and the flat fees are charged; a
+    /// booking that brought no price at all is still held back, never posted as a revenue of zero.
+    /// </summary>
+    [Fact]
+    public async Task Ledger_AgreedPriceOfZero_IsNotAMissingAmount_Test()
+    {
+        var world = await World.CreateAsync();
+        var owner = await world.OwnerAsync();
+        var property = await world.PropertyAsync((owner, 100m));
+        await world.Mandates.CreateVersionAsync(
+            OrgWide, owner, new OwnerMandateCommand { ValidFrom = new DateOnly(2026, 1, 1), CommissionPercent = 10m, CleaningFlatRate = 30m }, null);
+
+        var free = await world.StayAsync(property, BookingSource.Manual, 0m, 0m, 0m, Day(10, 5), Day(10, 7), priceOverridden: true);
+        var unknown = await world.StayAsync(property, BookingSource.Airbnb, 0m, 0m, 0m, Day(10, 10), Day(10, 12));
+
+        var result = await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
+        var missing = Assert.Single(result.Issues, i => i.Code == OwnerReadinessCodes.SourceAmountMissing);
+        Assert.Equal((unknown, true), (missing.SourceId!.Value, missing.Blocking));
+        Assert.DoesNotContain(result.Issues, i => i.SourceId == free);
+
+        var lines = await world.LiveAsync();
+        Assert.DoesNotContain(lines, e => e.EntryType == OwnerLedgerEntryType.BookingRevenue);
+        Assert.Equal(-30m, Assert.Single(lines, e => e.SourceType == OwnerLedgerSourceType.MandateFlatFee && e.SourceId == free).Amount);
+    }
+
+    /// <summary>
+    /// Money: a stay of a portal is grossed from the total of its reservation less the tourist tax (the room, the cleaning and the extras the portal charged),
+    /// never less than its room; the channel commission and the commission of the mandate are a percentage of that gross; a stay priced by CasaZen keeps its
+    /// base price whatever its total.
+    /// </summary>
+    [Fact]
+    public async Task Ledger_PortalStayGross_IsTheTotalLessTheTouristTax_Test()
+    {
+        Assert.Equal(560m, OwnerLedgerRules.GrossOfStay(true, 500m, 584m, 24m));
+        Assert.Equal(500m, OwnerLedgerRules.GrossOfStay(true, 500m, 500m, 24m));
+        Assert.Equal(500m, OwnerLedgerRules.GrossOfStay(true, 500m, 0m, 0m));
+        Assert.Equal(500m, OwnerLedgerRules.GrossOfStay(false, 500m, 584m, 24m));
+
+        var world = await World.CreateAsync();
+        var owner = await world.OwnerAsync();
+        var property = await world.PropertyAsync((owner, 100m));
+        await world.MandateAsync(owner, 10m);
+
+        // Room 500, tourist tax 24, and 60 of cleaning and extras the portal charged: the total is 584. Booking.com has no commission in the reservation: the default 15%.
+        var portal = await world.StayAsync(property, BookingSource.BookingCom, 500m, 0m, 24m, Day(10, 10), Day(10, 13), total: 584m);
+        var byHand = await world.StayAsync(property, BookingSource.Manual, 300m, 40m, 12m, Day(10, 20), Day(10, 22), total: 400m);
+
+        await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
+        var lines = await world.LiveAsync();
+        Assert.Equal(560m, Assert.Single(lines, e => e.EntryType == OwnerLedgerEntryType.BookingRevenue && e.SourceId == portal).Amount);
+        Assert.Equal(-56m, Assert.Single(lines, e => e.EntryType == OwnerLedgerEntryType.AgencyCommission && e.SourceId == portal).Amount);
+        var fee = Assert.Single(lines, e => e.EntryType == OwnerLedgerEntryType.ChannelFee && e.SourceId == portal);
+        Assert.Equal((-84m, ChannelFeeSources.Default), (fee.Amount, fee.RuleVersion));
+        Assert.Equal(300m, Assert.Single(lines, e => e.EntryType == OwnerLedgerEntryType.BookingRevenue && e.SourceId == byHand).Amount);
+    }
+
+    /// <summary>
+    /// Money/data: the flat fees of a stay are charged to the owners of the check-out day, a stay posted from its payments included; a property that has none that
+    /// day (it was sold after the payment) tells it instead of losing the fees in silence.
+    /// </summary>
+    [Fact]
+    public async Task Ledger_FlatFeesOfAPaidStayWithoutOwnersAtCheckOut_AreTold_Test()
+    {
+        var world = await World.CreateAsync();
+        var owner = await world.OwnerAsync();
+        var property = await world.PropertyAsync((owner, 100m));
+        await world.Mandates.CreateVersionAsync(
+            OrgWide, owner, new OwnerMandateCommand { ValidFrom = new DateOnly(2026, 1, 1), CommissionPercent = 0m, CleaningFlatRate = 40m }, null);
+        await world.EndOwnershipAsync(property, new DateTime(2026, 10, 10));
+        var stay = await world.StayAsync(property, BookingSource.Direct, 300m, 0m, 0m, Day(10, 8), Day(10, 12));
+        await world.PaymentAsync(stay, 300m, new DateTime(2026, 9, 20, 9, 0, 0, DateTimeKind.Utc));
+
+        var result = await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
+        var told = Assert.Single(result.Issues, i => i.Code == OwnerReadinessCodes.OwnershipMissing && i.SourceId == stay);
+        Assert.True(told.Blocking);
+        Assert.DoesNotContain(await world.LiveAsync(), e => e.SourceType == OwnerLedgerSourceType.MandateFlatFee);
+    }
+
+    /// <summary>
+    /// Money: only the active stays are posted (confirmed, checked in or checked out, never a no-show): a pending, a cancelled and a no-show booking post no
+    /// revenue, no commission and no flat fee; a stay cancelled after it was posted loses its lines at the next posting (a reversal).
+    /// </summary>
+    [Fact]
+    public async Task Ledger_OnlyActiveStaysArePosted_CancelledAfterPostingIsReversed_Test()
+    {
+        var world = await World.CreateAsync();
+        var owner = await world.OwnerAsync();
+        var property = await world.PropertyAsync((owner, 100m));
+        await world.Mandates.CreateVersionAsync(
+            OrgWide, owner, new OwnerMandateCommand { ValidFrom = new DateOnly(2026, 1, 1), CommissionPercent = 10m, CleaningFlatRate = 25m }, null);
+
+        var confirmed = await world.StayAsync(property, BookingSource.Manual, 100m, 0m, 0m, Day(10, 2), Day(10, 4));
+        var checkedOut = await world.StayAsync(property, BookingSource.Manual, 200m, 0m, 0m, Day(10, 5), Day(10, 7), status: BookingStatus.CheckedOut);
+        await world.StayAsync(property, BookingSource.Manual, 400m, 0m, 0m, Day(10, 8), Day(10, 10), status: BookingStatus.Pending);
+        await world.StayAsync(property, BookingSource.Manual, 800m, 0m, 0m, Day(10, 11), Day(10, 13), status: BookingStatus.Cancelled);
+        await world.StayAsync(property, BookingSource.Manual, 1600m, 0m, 0m, Day(10, 14), Day(10, 16), noShow: true);
+
+        await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
+        var lines = await world.LiveAsync();
+        Assert.Equal(300m, RevenueOf(lines));
+        Assert.Equal(-30m, lines.Where(e => e.EntryType == OwnerLedgerEntryType.AgencyCommission).Sum(e => e.Amount));
+        var cleaned = lines.Where(e => e.SourceType == OwnerLedgerSourceType.MandateFlatFee).Select(e => e.SourceId!.Value).Order();
+        Assert.Equal(new[] { confirmed, checkedOut }.Order(), cleaned);
+
+        // The stay cancelled after the posting: its revenue, its commission and its flat fee are reversed, nothing else moves.
+        await world.SetStatusAsync(confirmed, BookingStatus.Cancelled);
+        world.Clock.Advance(TimeSpan.FromMinutes(5));
+        var after = await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
+        Assert.Equal((0, 3), (after.Posted, after.Reversed));
+        var live = await world.LiveAsync();
+        Assert.Equal(200m, RevenueOf(live));
+        Assert.DoesNotContain(live, e => e.SourceId == confirmed);
+    }
+
+    /// <summary>
+    /// Money: the mandate in force on the day of a stay is the one that counts, for the commission and for the flat fees: of two stays of one month, the one that
+    /// checks out the day before a new version and the one that checks out on its first day are charged each by its own version.
+    /// </summary>
+    [Fact]
+    public async Task Ledger_MandateInForceOnTheDayOfTheStay_Test()
+    {
+        var world = await World.CreateAsync();
+        var owner = await world.OwnerAsync();
+        var property = await world.PropertyAsync((owner, 100m));
+        await world.Mandates.CreateVersionAsync(OrgWide, owner, new OwnerMandateCommand { ValidFrom = new DateOnly(2026, 1, 1), CommissionPercent = 10m }, null);
+        await world.Mandates.CreateVersionAsync(
+            OrgWide, owner, new OwnerMandateCommand { ValidFrom = new DateOnly(2026, 10, 15), CommissionPercent = 20m, CleaningFlatRate = 30m }, null);
+
+        var before = await world.StayAsync(property, BookingSource.Manual, 500m, 0m, 0m, Day(10, 12), Day(10, 14));
+        var onTheDay = await world.StayAsync(property, BookingSource.Manual, 500m, 0m, 0m, Day(10, 13), Day(10, 15));
+
+        await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
+        var lines = await world.LiveAsync();
+        Assert.Equal(-50m, Assert.Single(lines, e => e.EntryType == OwnerLedgerEntryType.AgencyCommission && e.SourceId == before).Amount);
+        Assert.Equal(-100m, Assert.Single(lines, e => e.EntryType == OwnerLedgerEntryType.AgencyCommission && e.SourceId == onTheDay).Amount);
+        var flat = Assert.Single(lines, e => e.SourceType == OwnerLedgerSourceType.MandateFlatFee);
+        Assert.Equal((onTheDay, -30m), (flat.SourceId!.Value, flat.Amount));
+    }
+
+    /// <summary>
+    /// Money/data: a channel rule that posted lines name is the evidence of the commission they took: it is never removed nor given another percent or base, only
+    /// closed (its last day moves) with the next rule starting after it; a rule nothing names changes and goes freely.
+    /// </summary>
+    [Fact]
+    public async Task ChannelRules_NamedByPostedLines_AreClosedNeverRemovedNorChanged_Test()
+    {
+        var world = await World.CreateAsync();
+        var owner = await world.OwnerAsync();
+        var property = await world.PropertyAsync((owner, 100m));
+        await world.MandateAsync(owner, 0m);
+        var booking = new ChannelCommissionRuleCommand { Channel = BookingSource.BookingCom, Percent = 16m, ValidFrom = new DateOnly(2026, 1, 1) };
+        var agoda = new ChannelCommissionRuleCommand { Channel = BookingSource.Agoda, Percent = 10m, ValidFrom = new DateOnly(2026, 1, 1) };
+        var saved = await world.Mandates.SaveChannelRulesAsync(OrgId, [booking, agoda], null);
+        var bookingRule = saved.Rules.Single(r => r.Channel == nameof(BookingSource.BookingCom));
+        var agodaRule = saved.Rules.Single(r => r.Channel == nameof(BookingSource.Agoda));
+
+        // October: the fee of a Booking.com stay names the Booking.com rule; nothing names the Agoda one.
+        await world.StayAsync(property, BookingSource.BookingCom, 300m, 0m, 0m, Day(10, 4), Day(10, 6));
+        await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
+        Assert.Equal(ChannelFeeSources.Rule(bookingRule.Id), Assert.Single(await world.LiveAsync(), e => e.EntryType == OwnerLedgerEntryType.ChannelFee).RuleVersion);
+
+        // Removed, or given another percent or base: refused with the id of the rule, nothing written.
+        var refusals = new[]
+        {
+            new[] { agoda },
+            new[] { booking with { Percent = 17m }, agoda },
+            new[] { booking with { Base = CommissionBase.GrossExclTouristTaxAndCleaning }, agoda },
+        };
+        foreach (var list in refusals)
+        {
+            var refused = await Assert.ThrowsAsync<DomainConflictException>(() => world.Mandates.SaveChannelRulesAsync(OrgId, list, null));
+            Assert.Equal(OwnerMandateErrors.ChannelRuleInUse, refused.Code);
+            Assert.Equal(bookingRule.Id, refused.Extensions["ruleId"]);
+        }
+
+        Assert.Equal(2, await world.Db.OrgChannelCommissionRules.CountAsync());
+        var stored = await world.Db.OrgChannelCommissionRules.AsNoTracking().SingleAsync(r => r.Id == bookingRule.Id);
+        Assert.Equal((16m, CommissionBase.GrossExclTouristTax), (stored.Percent, stored.Base));
+
+        // Closed, and the next rule from the following day: the Booking.com rule keeps its id; the Agoda one, which nothing names, is changed in the same row.
+        var closing = new[]
+        {
+            booking with { ValidTo = new DateOnly(2026, 12, 31) },
+            booking with { Percent = 17m, ValidFrom = new DateOnly(2027, 1, 1) },
+            agoda with { Percent = 12m },
+        };
+        var closed = await world.Mandates.SaveChannelRulesAsync(OrgId, closing, null);
+        Assert.Equal(3, closed.Rules.Count);
+        var kept = closed.Rules.Single(r => r.Channel == nameof(BookingSource.BookingCom) && r.ValidFrom == new DateOnly(2026, 1, 1));
+        Assert.Equal((bookingRule.Id, new DateOnly(2026, 12, 31), 16m), (kept.Id, kept.ValidTo!.Value, kept.Percent));
+        var changed = closed.Rules.Single(r => r.Channel == nameof(BookingSource.Agoda));
+        Assert.Equal((agodaRule.Id, 12m), (changed.Id, changed.Percent));
+
+        // The Agoda rule, named by nothing, can go.
+        var withoutAgoda = new[] { closing[0], closing[1] };
+        var gone = await world.Mandates.SaveChannelRulesAsync(OrgId, withoutAgoda, null);
+        Assert.DoesNotContain(gone.Rules, r => r.Channel == nameof(BookingSource.Agoda));
+    }
+
     private static DateTime Day(int month, int day) => new(2026, month, day, 0, 0, 0, DateTimeKind.Utc);
 
     private static decimal RevenueOf(IEnumerable<OwnerLedgerEntry> lines) => lines.Where(e => e.EntryType == OwnerLedgerEntryType.BookingRevenue).Sum(e => e.Amount);
@@ -406,7 +607,10 @@ public class OwnerLedgerPostingTests
             Mandates.CreateVersionAsync(
                 OrgWide, owner, new OwnerMandateCommand { ValidFrom = new DateOnly(2026, 1, 1), CommissionPercent = commission, PassthroughPaymentFees = passthrough }, null);
 
-        /// <summary>A confirmed stay: its gross without the tourist tax (the cleaning in it), the tourist tax and the total the guest owes.</summary>
+        /// <summary>
+        /// A stay, confirmed unless said otherwise: its gross without the tourist tax (the cleaning in it), the tourist tax and the total the guest owes (the gross
+        /// and the tax unless <paramref name="total"/> says another: what a portal charges for the cleaning and the extras is in it).
+        /// </summary>
         public async Task<Guid> StayAsync(
             Guid property,
             BookingSource source,
@@ -415,7 +619,11 @@ public class OwnerLedgerPostingTests
             decimal touristTax,
             DateTime checkIn,
             DateTime checkOut,
-            decimal? otaCommission = null)
+            decimal? otaCommission = null,
+            BookingStatus status = BookingStatus.Confirmed,
+            bool noShow = false,
+            decimal? total = null,
+            bool priceOverridden = false)
         {
             var guest = new Guest { OrgId = OrgId, FirstName = "Test", LastName = "Guest", Email = $"{Guid.NewGuid():N}@example.com" };
             var booking = new Booking
@@ -426,13 +634,15 @@ public class OwnerLedgerPostingTests
                 CheckInDate = checkIn,
                 CheckOutDate = checkOut,
                 NumberOfGuests = 2,
-                Status = BookingStatus.Confirmed,
+                Status = status,
+                NoShowAt = noShow ? checkOut : null,
                 Source = source,
                 BasePrice = basePrice,
                 CleaningFee = cleaning,
                 TouristTax = touristTax,
                 TouristTaxAmount = touristTax,
-                TotalPrice = basePrice + touristTax,
+                TotalPrice = total ?? basePrice + touristTax,
+                PriceOverridden = priceOverridden,
                 OtaCommission = otaCommission,
             };
             Db.Guests.Add(guest);
@@ -465,6 +675,24 @@ public class OwnerLedgerPostingTests
             Db.Payments.Add(payment);
             await Db.SaveChangesAsync();
             return payment.Id;
+        }
+
+        /// <summary>The ownership of the property ends on the day: the owners hold it until the day before.</summary>
+        public async Task EndOwnershipAsync(Guid property, DateTime end)
+        {
+            var ownership = await Db.PropertyOwnerships.SingleAsync(o => o.PropertyId == property);
+            ownership.OwnershipEnd = end;
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
+
+        /// <summary>The booking moves to another status (a cancellation after the month was posted).</summary>
+        public async Task SetStatusAsync(Guid booking, BookingStatus status)
+        {
+            var row = await Db.Bookings.SingleAsync(b => b.Id == booking);
+            row.Status = status;
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
         }
 
         /// <summary>A refund as PaymentRefundService leaves it: the refunded amount and the state that follows.</summary>

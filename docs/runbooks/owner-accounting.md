@@ -37,7 +37,8 @@ Decisions of 2026-11-14 (`fatturazione/analisi-tecnica.md` §5, ⚖ table §7): 
 accountant; every one of them is set through the «Fatturazione» wizard of the onboarding guide.
 
 - **Mandate** (`OwnerMandate`, `api/owners/{ownerId}/mandates`): `GET` the versions, the newest first (`agency.owner.view`); `POST` a new version
-  (`agency.owner.financial.manage`) with `validFrom`, `commissionPercent` (0-100, two decimals), `commissionBase` (`GrossExclTouristTax` = 1, the default,
+  (`agency.owner.financial.manage`) with `validFrom` and `commissionPercent` (0-100, two decimals; **both required**: a request without the percent is 422
+  `owner_mandate_invalid`, a mandate of 0% is a choice and never what an omitted or misspelt field turns into), `commissionBase` (`GrossExclTouristTax` = 1, the default,
   ⚖ R3: the gross of the stay without the tourist tax, cleaning included; `GrossExclTouristTaxAndCleaning` = 2), `commissionIncludesVat` (default
   `false`: the percent and the flat fees are «+ IVA», ⚖ R4; the VAT is added by the owner invoice, E14), `cleaningFlatRate` and `linenFlatRate` (per stay,
   in the settlement currency of the owner; `null` = none), `passthroughPaymentFees`, `withholdingTreatment` and the optional `documentReference` of the
@@ -51,7 +52,8 @@ accountant; every one of them is set through the «Fatturazione» wizard of the 
   `{ template, ownerIds? }`. One version from `template.validFrom` for every owner of the agency in reach (or only the listed ones) that has an ownership not
   ended and no mandate still in force on that day or later (of the owner, or of one of its ownerships); the others are skipped. Answers
   `{ created, skipped, createdOwnerIds, skippedOwnerIds }`. An empty `ownerIds` is 422 `owner_mandate_owners_empty` (never «everyone»); a listed owner
-  outside the reach is 404 `owner_not_found`. A second call creates nothing.
+  outside the reach is 404 `owner_not_found`; a template without `validFrom` or `commissionPercent` is 422 `owner_mandate_invalid` and nothing is written
+  (the template cannot be applied again to the owners that got a version: a version is corrected by a later one). A second call creates nothing.
 - **Owner address** (`GET`/`PUT api/owners/{id}/address`; `agency.owner.financial.read` / `agency.owner.financial.manage`): `street`, `buildingNumber`,
   `postalCode`, `town`, `province` (required in Italy, as the readiness), `country` (ISO 3166-1 alpha-2). It is the recipient of the owner invoice, the
   debtor of the QR-bill and the creditor of the pain.001.09 transfer. Stored **encrypted** (`Casazen.PropertyOwner.Financial`, the columns
@@ -63,8 +65,13 @@ accountant; every one of them is set through the «Fatturazione» wizard of the 
 - **Channel commission rules** (`OrgChannelCommissionRule`, `api/owner-accounting/channel-commission-rules`): `GET` (`agency.statement.view`) answers
   `{ rules, channels }`: the rules of the agency and, for each portal (`BookingCom`, `Airbnb`, `Expedia`, `Vrbo`, `TripAdvisor`, `Agoda`, `OtherChannel`),
   what applies today: the rule in force, else the configured default (`isDefault: true`), else nothing (`percent: null`). `PUT`
-  (`agency.owner.financial.manage`) replaces the rules with the whole list `[{ channel, percent, base, validFrom, validTo }]` (an empty list leaves the
-  defaults; a rule saved again as it was keeps its id, which the posted lines name); the rules of a channel never overlap. 422
+  (`agency.owner.financial.manage`) replaces the rules with the whole list `[{ channel, percent, base, validFrom, validTo }]` (the `percent` of every rule is
+  required: a rule of 0% is a choice that replaces the default, never what an omitted field turns into; an empty list leaves the defaults); the rules of a
+  channel never overlap. A rule with the channel and the first day of a stored one is that rule and keeps its id, which the posted lines name
+  (`channel-rule:{id}` in their rule version). **A rule that posted lines name is evidence of what they took: it is never removed and never given another
+  percent or base (409 `channel_commission_rule_in_use` with the `ruleId`); its `validTo` can move**: a channel that changes its commission closes the old
+  rule and adds the new one from the next day (a percent entered wrongly is not edited after lines named the rule: what was posted is corrected with a
+  correction of the ledger). A rule nothing names is changed in place (same id) or removed freely. 422
   `channel_commission_rules_invalid` with the `index` and the `field`. Both actions need a caller of the whole org (403 otherwise). Defaults
   `OwnerAccounting:ChannelCommissionDefaults` (⚖ R2: BookingCom 15, Expedia 18, Airbnb 15.5 host-only fee, Vrbo 8, on the gross without the tourist tax;
   `deploy-checklist.md` § 2.11). The writes of the mandates and of the rules run under the lock of the owner accounting of the org, as a posting.
@@ -136,8 +143,8 @@ booking line, and the month of the payment then posts it (the readiness says `un
 
 | Flow | Revenue (`BookingRevenue`) | Channel commission (`ChannelFee`) | Commission, flat fees, card fee |
 |---|---|---|---|
-| Portal (Booking.com, Airbnb, Expedia, Vrbo, the others of `FiscalCopy.IsOtaBookingSource`) collected by the portal or at the property | source `Booking`: `Booking.BasePrice` (the gross without the tourist tax, the cleaning included; never the tourist tax, never the guest fee of the portal) on the **check-out** (⚖ R1), the shares of that day | the commission of the reservation (`Booking.OtaCommission`, `RuleVersion` `payload`); without it the rule of the agency in force at the check-out (`channel-rule:{id}`) or the configured default (`channel-default`), its percent × its base; neither: `channel_commission_missing` (blocking, for every owner of the property), no fee. **Borne by the owner**, as before | commission of the mandate on its base; flat fees; no card fee |
-| The agency's own site outside CasaZen, a booking entered by hand: no payment recorded | source `Booking`: `BasePrice` on the check-out | none (not a portal) | commission; flat fees |
+| Portal (Booking.com, Airbnb, Expedia, Vrbo, the others of `FiscalCopy.IsOtaBookingSource`) collected by the portal or at the property | source `Booking`: the gross of the stay without the tourist tax, `OwnerLedgerRules.GrossOfStay` = `Booking.TotalPrice − Booking.TouristTax` (the room, the cleaning and the extras the portal charged; never the tourist tax, never the guest fee of the portal), never less than `Booking.BasePrice`, on the **check-out** (⚖ R1), the shares of that day | the commission of the reservation (`Booking.OtaCommission`, `RuleVersion` `payload`); without it the rule of the agency in force at the check-out (`channel-rule:{id}`) or the configured default (`channel-default`), its percent × its base; neither: `channel_commission_missing` (blocking, for every owner of the property), no fee. **Borne by the owner**, as before | commission of the mandate on its base; flat fees; no card fee |
+| The agency's own site outside CasaZen, a booking entered by hand: no payment recorded | source `Booking`: `Booking.BasePrice` (priced by CasaZen: the gross without the tourist tax, the cleaning included) on the check-out; a price the host agreed by hand (`Booking.PriceOverridden`) is an amount even when it is 0 (a stay for free: no revenue, nothing to tell) | none (not a portal) | commission; flat fees |
 | The same, the agency recorded the payment | source `Payment`: what it collected net of refunds and of its part of the tourist tax, on the **day of the recorded payment** (or the check-out for a profile `stay`) | none | commission; flat fees |
 | CasaZen showcase (card through Stripe) | source `Payment`, as above, on the payment day | none | commission; flat fees; `OwnerExpense` of the card fee (`Payment.ProviderFeeAmount`, in its currency) when `PassthroughPaymentFees` |
 
@@ -151,14 +158,20 @@ booking line, and the month of the payment then posts it (the readiness says `un
 - **Flat fees**: for every active stay that checks out in the month, whatever path posts its revenue, an `OwnerCharge` line per fee kind
   (`SourceType` `MandateFlatFee`, `SourceReference` `cleaning` or `linen`, the booking as source) of the mandate in force on the check-out, in the settlement
   currency of the owner, split by the shares; approved by the mandate itself, a recharge whose VAT the owner invoice applies (E14); once per stay and kind
-  (key `flat:{booking}:{kind}`).
+  (key `flat:{booking}:{kind}`). The owners are those of the **check-out day**, for a stay posted from its payments too (their revenue was shared on the day
+  of the payment): a property with none on that day, or whose shares do not make 100, is told (`ownership_missing`, `ownership_share_gap`, blocking) and the
+  fees are not posted.
 - **Card fee**: `OwnerExpense` (source the payment, key `payfee:{payment}`) only when the mandate of the share passes the payment fees through.
 - **Cancellations and no-shows**: only the active bookings are posted (a pending, cancelled or no-show booking is not); a booking cancelled after it was
   posted loses its lines at the next posting of its month (reversal), as any changed source.
 - **Keys**: `stay:{booking}` (booking path), `pay:{payment}` (payment path), `fee:{booking}` (`:rule:{id}` or `:default` when the fee does not come from the
   reservation), `flat:{booking}:{kind}`, `payfee:{payment}`.
-- **Deviation from the brief**: the brief writes `BasePrice + CleaningFee + extras`; in the code `Booking.BasePrice` already holds the cleaning (PC-07, the
-  fiscal document and the Home revenue read it so) and a booking has no extras of its own, so the gross is `BasePrice`.
+- **Gross of a stay posted from its booking** (the brief writes `BasePrice + CleaningFee + extras`): for a booking priced by CasaZen `Booking.BasePrice`
+  already holds the cleaning (PC-07, the fiscal document and the Home revenue read it so) and the booking has no extras of its own, so the gross is
+  `BasePrice`. For a booking of a portal, `BasePrice` of an imported reservation is its room only (`roomGross`, `CleaningFee` stays 0) and the cleaning and the
+  extras the portal charged are only in its total, so the gross is `TotalPrice − TouristTax`, never less than `BasePrice`. **It is a prudent choice to be
+  checked on the first real payload of the channel manager** (does `totalGross` include the tourist tax?): the channel commission and the commission of the
+  mandate are a percentage of the same gross.
 
 ## External invoice references (E06/F01/US02/T05)
 
