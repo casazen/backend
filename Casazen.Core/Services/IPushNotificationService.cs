@@ -282,6 +282,12 @@ public static class PushDeliveryKeys
     public static string FiscalDocumentIssued(Guid documentId) => $"fiscal-document:{documentId:N}:issued";
 
     /// <summary>
+    /// The guest paid the tourist tax of a stay online (E25/F01/US01/T01), to the hosts of the booking: one per paid intent of the stay's record, stable across the
+    /// retries of the webhook.
+    /// </summary>
+    public static string TouristTaxPaid(Guid stayTouristTaxId, string paymentIntentId) => $"tourist-tax:{stayTouristTaxId:N}:paid:{paymentIntentId}";
+
+    /// <summary>
     /// The automatic delivery of the check-in link of a booking failed for good (E23/F01/US01/T01), to the hosts of the booking: one per link (the check-in session), stable
     /// across retries and runs, so the bell and the open pages are told once for each link that did not reach the guest.
     /// </summary>
@@ -426,6 +432,12 @@ public static class PushTypes
     /// route its detail. The web client reads again the list of the documents and the booking when it arrives. Neither the guest nor an amount is ever in it.
     /// </summary>
     public const string FiscalDocumentIssued = "fiscal-document-issued";
+
+    /// <summary>
+    /// The guest paid the tourist tax of a stay online (E25/F01/US01/T01): pushed to the hosts of the booking, written to the bell and published live; <c>entityId</c> is the
+    /// booking, the route its detail, which the open pages read again. Neither the guest nor an amount is ever in it.
+    /// </summary>
+    public const string TouristTaxPaid = "tourist-tax-paid";
 
     /// <summary>
     /// The automatic delivery of the check-in link of a booking failed for good (E23/F01/US01/T01, NF-122): pushed to the hosts of the booking, written to the bell and published

@@ -145,6 +145,9 @@ builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
 // What the booking events start by themselves: the cleaning and special-request "To do", the alert of a booking from a channel (E08/F06)
 builder.Services.AddCasazenBookingOperations();
 
+// The tourist tax paid online in the guest check-in (epic E25, NF-119): the collection and the consumer of the booking events, behind Features:TouristTaxOnlinePayment.
+builder.Services.AddCasazenTouristTaxCollection();
+
 // Octorate connector (epic E02, ADR-023): its services, clients, handlers and jobs, all registered in AddCasazenOctorate.
 builder.Services.AddCasazenOctorate(builder.Configuration);
 

@@ -2199,7 +2199,8 @@ public class AppDbContext(
 
         // ─── Tourist tax per guest (NF-46, ADR-037) ──────────────────────────────
         // Reference data (exemption reasons, seeded; channel rules, never seeded), the host-declared rates and the confirmed stay record with
-        // its lines. The tenant query filter is applied below, to every ITenantOwned entity.
+        // its lines. The tenant query filter is applied below, to every ITenantOwned entity. Since E25/F01/US01/T01 (NF-119) the record also carries the
+        // collection of the tax (what the guest paid online, the intent, the refunds), with its unique intent and its check of the refunds: never a Payment row.
         modelBuilder.ApplyConfiguration(new TouristTaxExemptionReasonConfiguration());
         modelBuilder.ApplyConfiguration(new TouristTaxChannelRuleConfiguration());
         modelBuilder.ApplyConfiguration(new OrgTouristTaxRateConfiguration());

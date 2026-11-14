@@ -19,7 +19,8 @@ namespace Casazen.Web.Controllers;
 /// booking, a document without a booking only for a caller who reaches the whole org; a document of another org is a 404, like a missing one. The
 /// changes are behind <c>Features:FiscalDocumentIssuance</c> (404 while off); the reads are not, because they also list the documents of Octorate. The changes
 /// are those of the guest documents: an owner invoice (E14/F01/US01/T01) is read here (its PDF, its XML) but never changed (422 <c>document_owner_invoice</c>);
-/// <c>api/owner-invoices</c> makes, issues, credits and discards it, with <c>agency.statement.manage</c>.
+/// <c>api/owner-invoices</c> makes, issues, credits and discards it, with <c>agency.statement.manage</c>. <c>send-email</c> (E12/F01/US02/T01) sends an issued guest document to the guest of its booking;
+/// the page its link opens is <see cref="PublicFiscalDocumentsController"/>.
 /// </summary>
 [ApiController]
 [Route("api/fiscal/documents")]
@@ -244,6 +245,28 @@ public class FiscalDocumentsController(
 
         var pdf = await documents.GetPdfAsync(id, DocumentLanguages.Current, HttpContext.RequestAborted);
         return File(pdf, "application/pdf", $"{FileNameOf(document)}.pdf");
+    }
+
+    /// <summary>
+    /// The issued document sent to the guest of its booking by e-mail (E12/F01/US02/T01): a signed link that opens for 30 days, in an e-mail queued on Hangfire; <c>{ queued, linkExpiresAt }</c>, never
+    /// that the e-mail was delivered. The address is the one of the guest of the booking, a relay address of a portal included. 422 <c>document_not_issued</c>, <c>document_owner_invoice</c>,
+    /// <c>document_read_only</c>, <c>document_recipient_email_invalid</c> (no address, an erased guest, a placeholder), <c>document_email_not_sent</c> (nothing was queued). The e-mail is sent again at every call.
+    /// The same e-mail goes by itself at the issue when the issuer has «e-mail to the guest» on.
+    /// </summary>
+    [HttpPost("{id:guid}/send-email")]
+    [Authorize(Policy = CasazenPolicies.PaymentWrite)]
+    [FeatureGate(FeatureFlags.FiscalDocumentIssuance)]
+    [ProducesResponseType(typeof(FiscalDocumentEmailQueuedDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<FiscalDocumentEmailQueuedDto>> SendEmail(Guid id, [FromServices] IFiscalDocumentDeliveryService delivery)
+    {
+        if (await ReachableAsync(id, PaymentOperations.Write) is null)
+            return DocumentNotFound();
+
+        var sent = await delivery.SendToGuestAsync(id, HttpContext.RequestAborted);
+        logger.LogInformation("Fiscal document {DocumentId} queued by e-mail to the guest at the request of the host", id);
+        return Ok(FiscalDocumentEmailQueuedDto.From(sent));
     }
 
     /// <summary>The document when the caller reaches it: through its booking, or the whole org for a document without a booking.</summary>

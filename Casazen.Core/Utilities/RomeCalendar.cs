@@ -12,6 +12,8 @@ public static class RomeCalendar
 
     private static readonly Lazy<TimeZoneInfo> Zone = new(() => TimeZoneInfo.FindSystemTimeZoneById(TimeZoneId));
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, TimeZoneInfo> PropertyZones = new(StringComparer.Ordinal);
+
     public static TimeZoneInfo TimeZone => Zone.Value;
 
     /// <summary>
@@ -99,26 +101,58 @@ public static class RomeCalendar
     /// Every other time maps to the single instant it names. Midnight is never skipped nor repeated, so
     /// <see cref="StartOfDayUtc(DateOnly)"/> is exact.
     /// </remarks>
-    public static DateTime ToUtc(DateOnly date, TimeOnly time)
+    public static DateTime ToUtc(DateOnly date, TimeOnly time) => ToUtc(date, time, TimeZone);
+
+    /// <summary>
+    /// <see cref="ToUtc(DateOnly, TimeOnly)"/> on the clock of another zone, the one of a property (<see cref="ZoneOf"/>): the same two rules for the
+    /// time that does not exist and the time that happens twice, whatever the zone's own change days are.
+    /// </summary>
+    public static DateTime ToUtc(DateOnly date, TimeOnly time, TimeZoneInfo zone)
     {
+        ArgumentNullException.ThrowIfNull(zone);
+
         var local = date.ToDateTime(time, DateTimeKind.Unspecified);
 
-        if (TimeZone.IsInvalidTime(local))
+        if (zone.IsInvalidTime(local))
         {
             // Skipped hour: the offset the day had before the change, taken from the day before (no change happens twice
             // in 24 hours). The wall-clock time then lands after the gap.
-            var before = TimeZone.GetUtcOffset(local.AddDays(-1));
+            var before = zone.GetUtcOffset(local.AddDays(-1));
             return DateTime.SpecifyKind(local - before, DateTimeKind.Utc);
         }
 
-        if (TimeZone.IsAmbiguousTime(local))
+        if (zone.IsAmbiguousTime(local))
         {
             // Repeated hour: the first occurrence is the earlier instant, the one with the larger offset (summer time).
-            var summer = TimeZone.GetAmbiguousTimeOffsets(local).Max();
+            var summer = zone.GetAmbiguousTimeOffsets(local).Max();
             return DateTime.SpecifyKind(local - summer, DateTimeKind.Utc);
         }
 
-        return DateTime.SpecifyKind(local - TimeZone.GetUtcOffset(local), DateTimeKind.Utc);
+        return DateTime.SpecifyKind(local - zone.GetUtcOffset(local), DateTimeKind.Utc);
+    }
+
+    /// <summary>
+    /// The zone of a property from its IANA id (<c>Property.Timezone</c>): Europe/Rome for a missing id and for one the machine does not know, so a
+    /// property whose zone cannot be read keeps the clock every property had before the zone was a column.
+    /// </summary>
+    public static TimeZoneInfo ZoneOf(string? timeZoneId)
+    {
+        if (string.IsNullOrWhiteSpace(timeZoneId))
+            return TimeZone;
+
+        return PropertyZones.GetOrAdd(
+            timeZoneId.Trim(),
+            id =>
+            {
+                try
+                {
+                    return TimeZoneInfo.FindSystemTimeZoneById(id);
+                }
+                catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
+                {
+                    return TimeZone;
+                }
+            });
     }
 
     /// <summary>

@@ -2741,4 +2741,37 @@
   <data name="TodoReason_CheckInLinkToSend" xml:space="preserve">
     <value>Il link del check-in non è ancora arrivato all'ospite: copialo dalla prenotazione e invialo tu.</value>
   </data>
+  <data name="FiscalDocumentDelivery_Subject" xml:space="preserve">
+    <value>{0} n. {1} di {2}</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="FiscalDocumentDelivery_GreetingNoName" xml:space="preserve">
+    <value>Buongiorno,</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ti ha inviato il documento &lt;strong&gt;{1} n. {2}&lt;/strong&gt; del {3}. Puoi consultarlo e scaricarlo in PDF dal link qui sotto.</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Cta" xml:space="preserve">
+    <value>Vedi il documento</value>
+  </data>
+  <data name="FiscalDocumentDelivery_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Validity" xml:space="preserve">
+    <value>Il link è valido fino al {0}.</value>
+  </data>
+  <data name="FiscalDocumentDelivery_NotYou" xml:space="preserve">
+    <value>Se non aspettavi questo messaggio, puoi ignorarlo.</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Kind_Invoice" xml:space="preserve">
+    <value>Fattura</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Kind_Receipt" xml:space="preserve">
+    <value>Ricevuta</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Kind_CreditNote" xml:space="preserve">
+    <value>Nota di credito</value>
+  </data>
 </root>

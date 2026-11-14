@@ -148,6 +148,23 @@ public enum ActivityType
     OwnerStatementNoticeFailed = 80,
 
     /// <summary>
+    /// The guest of a stay is owed money back on the tourist tax (E25/F01/US01/T01, NF-119): the confirmed tax is lower than what the price of the booking
+    /// included or than what was paid online, the stay was cancelled after the arrival with the tax paid online, or the automatic refund of a cancelled
+    /// stay failed. Never refunded by CasaZen by itself in these cases: the host gives the difference back. About the booking, leading to it
+    /// (<see cref="ActivityAction.ReviewBooking"/>); raised once per booking. The numbers from 90 are the tourist tax collection (epic E25), apart from
+    /// the values the tasks that run in parallel append.
+    /// </summary>
+    TouristTaxRefundDue = 90,
+
+    /// <summary>
+    /// A task a routine of the host raised (E01/F04/US01/T02, NF-21): the action <c>CreateActivity</c> of a routine, about the booking of the event (entity
+    /// type <c>Booking</c>), leading to the booking (<see cref="ActivityAction.ReviewBooking"/>), with the words the host wrote in the routine as its
+    /// reason. One open task for each booking, whatever the number of routines and events that ask for it; it closes when the host closes it. The number
+    /// 100 keeps clear of the values the tasks that run in parallel append after 80 and of the tourist tax collection of E25, which takes the numbers from 90.
+    /// </summary>
+    RoutineTask = 100,
+
+    /// <summary>
     /// The check-in link of a stay from a portal has not reached the guest and the host may have to carry it (E23/F01/US01/T01, NF-122): the chat of the portal is not
     /// available yet, the booking has no conversation, no way to the guest is on, the contact of the guest cannot be read yet, or the automatic delivery failed. About the
     /// booking (entity type <c>Booking</c>), leading to the link to copy (<see cref="ActivityAction.CopyCheckInLink"/>); raised once per booking, only while one of the flags

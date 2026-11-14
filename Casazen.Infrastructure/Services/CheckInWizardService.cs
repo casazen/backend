@@ -37,7 +37,8 @@ public sealed class CheckInWizardService(
     IFeatureFlags featureFlags,
     IOptions<OctorateOptions> octorateOptions,
     ILogger<CheckInWizardService> logger,
-    TimeProvider? timeProvider = null) : ICheckInWizardService
+    TimeProvider? timeProvider = null,
+    ITouristTaxCollectionService? touristTaxCollection = null) : ICheckInWizardService
 {
     /// <summary>The statistical fields a region requires: none until the regional ISTAT service exists (E03/F01/US08).</summary>
     private static readonly IReadOnlyList<string> NoRequiredGuestFields = [];
@@ -216,6 +217,12 @@ public sealed class CheckInWizardService(
         try
         {
             await stayTouristTax.ConfirmAsync(bookingId, userId, cancellationToken);
+
+            // The confirmation records no event (E25/F01/US01/T01, AC2): a confirmed amount lower than what the price included or the guest paid raises the
+            // host's «To do» here, with the collection on. It never throws.
+            if (touristTaxCollection is not null)
+                await touristTaxCollection.ReconcileAfterChangeAsync(bookingId, cancellationToken);
+
             return new CheckInTaxOutcome(true, null);
         }
         catch (DomainException ex)
