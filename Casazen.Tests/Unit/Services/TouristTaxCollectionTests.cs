@@ -465,6 +465,50 @@ public class TouristTaxCollectionTests
     }
 
     [Fact]
+    public async Task TouristTaxPayment_RecordedAfterTheStayEnded_IsRefundedOrAskedBack_NeverForgotten_Test()
+    {
+        await using var db = NewDb();
+        var ended = await SeedAsync(db, status: BookingStatus.Cancelled, cancelledAt: CheckIn.AddDays(-5));
+        var endedRecord = await SeedRecordAsync(db, ended.Booking, intentId: "pi_tax_late");
+        var down = await SeedAsync(db, status: BookingStatus.Cancelled, cancelledAt: CheckIn.AddDays(-5));
+        var downRecord = await SeedRecordAsync(db, down.Booking, intentId: "pi_tax_late_down");
+        var active = await SeedAsync(db);
+        var activeRecord = await SeedRecordAsync(db, active.Booking, intentId: "pi_tax_on_time");
+        var rig = Rig(
+            db,
+            (ended.Booking.Id, Calculated(ended.Booking.Id, 7.50m, 7.50m)),
+            (down.Booking.Id, Calculated(down.Booking.Id, 7.50m, 7.50m)),
+            (active.Booking.Id, Calculated(active.Booking.Id, 7.50m, 7.50m)));
+        rig.Stripe
+            .Setup(s => s.CreateRefundAsync(It.Is<StripeRefundCreateRequest>(r => r.PaymentIntentId == "pi_tax_late"), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Refund { Id = "re_late", Status = "succeeded" });
+        rig.Stripe
+            .Setup(s => s.CreateRefundAsync(It.Is<StripeRefundCreateRequest>(r => r.PaymentIntentId == "pi_tax_late_down"), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new StripeException("Connection reset"));
+
+        // The payment lands after the stay was cancelled before any night, and the event of its end is gone: recorded, then refunded in full at once.
+        var late = await rig.Service.ApplyPaymentSucceededAsync(IntentEvent("pi_tax_late", Account, ended.Booking.Id, endedRecord.Id, 1500));
+        await rig.Service.CompletePaidAsync(late!);
+        var stored = await ReloadAsync(db, endedRecord.Id);
+        Assert.Equal((15.00m, 15.00m, TouristTaxCollectionStatus.NotDue), (stored.CollectedAmount, stored.RefundedAmount, stored.CollectionStatus));
+        Assert.Empty(await db.Payments.AsNoTracking().ToListAsync());
+
+        // The refund cannot be made now and no event will deliver it again: nothing is thrown, the host is asked to give the money back.
+        var lateDown = await rig.Service.ApplyPaymentSucceededAsync(IntentEvent("pi_tax_late_down", Account, down.Booking.Id, downRecord.Id, 1500));
+        await rig.Service.CompletePaidAsync(lateDown!);
+        Assert.Equal(15.00m, (await ReloadAsync(db, downRecord.Id)).CollectedAmount);
+        var todo = Assert.Single(await db.InternalActivities.AsNoTracking().Where(a => a.EntityId == down.Booking.Id).ToListAsync());
+        Assert.Equal(TouristTaxCollectionService.RefundFailedReason, todo.Reason);
+
+        // A stay still active keeps what was paid: no refund.
+        var onTime = await rig.Service.ApplyPaymentSucceededAsync(IntentEvent("pi_tax_on_time", Account, active.Booking.Id, activeRecord.Id, 1500));
+        await rig.Service.CompletePaidAsync(onTime!);
+        rig.Stripe.Verify(
+            s => s.CreateRefundAsync(It.Is<StripeRefundCreateRequest>(r => r.PaymentIntentId == "pi_tax_on_time"), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal(0m, (await ReloadAsync(db, activeRecord.Id)).RefundedAmount);
+    }
+
+    [Fact]
     public async Task TouristTaxCancellation_AfterTheArrival_IsTheHostsDecision_NoAutomaticRefund()
     {
         await using var db = NewDb();
@@ -667,6 +711,43 @@ public class TouristTaxCollectionTests
     }
 
     [Fact]
+    public async Task TouristTaxCancellation_ARefundThatIsNotMade_AsksTheHostToGiveTheMoneyBack_AndOneStillBeingMadeDoesNot_Test()
+    {
+        await using var db = NewDb();
+        var rig = RigWith(db, new RigOptions());
+
+        // A refund the provider answers failed, canceled or needing an action is no refund: nothing is recorded as refunded and the host is asked.
+        foreach (var status in new[] { "failed", "canceled", "requires_action" })
+        {
+            var intent = $"pi_tax_{status}";
+            var world = await SeedAsync(db, status: BookingStatus.Cancelled, cancelledAt: CheckIn.AddDays(-5));
+            var record = await SeedRecordAsync(db, world.Booking, intentId: intent, collected: 15.00m);
+            rig.Stripe
+                .Setup(s => s.CreateRefundAsync(It.Is<StripeRefundCreateRequest>(r => r.PaymentIntentId == intent), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Refund { Id = $"re_{status}", Status = status });
+
+            await rig.Service.ApplyStayEndedAsync(world.Booking.Id, CheckIn.AddDays(-5));
+
+            var todo = Assert.Single(await db.InternalActivities.AsNoTracking().Where(a => a.EntityId == world.Booking.Id).ToListAsync());
+            Assert.Equal(TouristTaxCollectionService.RefundFailedReason, todo.Reason);
+            Assert.Equal(0m, (await ReloadAsync(db, record.Id)).RefundedAmount);
+        }
+
+        // A refund the provider is still making (pending) is a refund: nobody is asked, and the amount follows the charge.refunded that comes with it.
+        var pending = await SeedAsync(db, status: BookingStatus.Cancelled, cancelledAt: CheckIn.AddDays(-5));
+        var pendingRecord = await SeedRecordAsync(db, pending.Booking, intentId: "pi_tax_pending", collected: 15.00m);
+        rig.Stripe
+            .Setup(s => s.CreateRefundAsync(It.Is<StripeRefundCreateRequest>(r => r.PaymentIntentId == "pi_tax_pending"), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Refund { Id = "re_pending", Status = "pending" });
+
+        await rig.Service.ApplyStayEndedAsync(pending.Booking.Id, CheckIn.AddDays(-5));
+
+        Assert.Empty(await db.InternalActivities.AsNoTracking().Where(a => a.EntityId == pending.Booking.Id).ToListAsync());
+        Assert.True(await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund("pi_tax_pending", Account, 1500)));
+        Assert.Equal(15.00m, (await ReloadAsync(db, pendingRecord.Id)).RefundedAmount);
+    }
+
+    [Fact]
     public async Task TouristTaxNoShow_RefundsTheOnlineTaxInFull_AndIsNotDueInEveryReader_Test()
     {
         await using var db = NewDb();
@@ -730,6 +811,39 @@ public class TouristTaxCollectionTests
         var withoutRule = RigWith(db, new RigOptions(Swiss: new SwissTouristTaxOptions()));
         var unknown = (await withoutRule.Service.GetForGuestAsync(hostCollects.Token))!;
         Assert.Equal((TouristTaxNotPayableReason.NotComputable, 0m, (decimal?)null), (unknown.Reason, unknown.Payable, unknown.AmountDue));
+    }
+
+    [Fact]
+    public async Task TouristTaxPaidAtProperty_AfterTheOnlinePaymentWasGivenBackInFull_IsRecorded_ButNotWhileThePaymentStands_Test()
+    {
+        await using var db = NewDb();
+        var givenBack = await SeedAsync(db);
+        await SeedRecordAsync(db, givenBack.Booking, intentId: "pi_tax_given_back", collected: 15.00m);
+        var stands = await SeedAsync(db);
+        await SeedRecordAsync(db, stands.Booking, intentId: "pi_tax_stands", collected: 15.00m);
+        var partly = await SeedAsync(db);
+        await SeedRecordAsync(db, partly.Booking, intentId: "pi_tax_partly", collected: 15.00m);
+        var rig = Rig(
+            db,
+            (givenBack.Booking.Id, Calculated(givenBack.Booking.Id, 7.50m, 7.50m)),
+            (stands.Booking.Id, Calculated(stands.Booking.Id, 7.50m, 7.50m)),
+            (partly.Booking.Id, Calculated(partly.Booking.Id, 7.50m, 7.50m)));
+        await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund("pi_tax_given_back", Account, 1500));
+        await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund("pi_tax_partly", Account, 500));
+
+        // Given back in full: the tax is collected at the property, and the host can record it (the intent is paid: nothing to cancel, nothing on its way).
+        var view = await rig.Service.RecordPaidAtPropertyAsync(givenBack.Booking.Id, "auth0|host");
+        Assert.Equal((TouristTaxCollectionStatus.PaidAtProperty, 0m), (view.Status, view.RefundDue));
+        rig.Stripe.Verify(s => s.GetPaymentIntentAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.Stripe.Verify(
+            s => s.CancelPaymentIntentAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // Paid online and not given back, or given back in part only: the guest's payment stands, the tax is never taken twice.
+        foreach (var world in new[] { stands, partly })
+        {
+            var refused = await Assert.ThrowsAsync<DomainConflictException>(() => rig.Service.RecordPaidAtPropertyAsync(world.Booking.Id, "auth0|host"));
+            Assert.Equal(TouristTaxCharges.PaidOnlineCode, refused.Code);
+        }
     }
 
     // ─── Registration and the consumer of the booking events ───────────────────────────────────────────────────────────────────────

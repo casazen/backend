@@ -46,8 +46,12 @@ A link reaches its own stay only (unknown, expired, cancelled: 404). A check-in 
   `SwissTouristTax:PlatformCollected` by default): **nothing to pay**, state `CollectedByChannel`.
 - Who collects is not known (a channel stay with no rule and no declaration) or the amount cannot be calculated: **nothing is charged**, the page says the
   host will tell the amount.
-- The price of the booking included the tax (`Booking.TouristTaxAmount`): only the part of the **confirmed** amount above it is paid online; before the
-  host confirms, nothing more is asked; a lower confirmed amount raises the host's «To do» `TouristTaxRefundDue` (no automatic refund).
+- CasaZen collected the tax with the price: a **direct** booking with a payment through CasaZen that went through (completed, or completed and partly refunded)
+  included `Booking.TouristTaxAmount` (decision O12, «per le dirette già pagate»). Only the part of the **confirmed** amount above it is paid online; before the
+  host confirms, nothing more is asked; a lower confirmed amount raises the host's «To do» `TouristTaxRefundDue` (no automatic refund). For **any other booking**
+  the amount written on the booking (the quote of a manual booking, the figure of an OTA reservation, a direct booking paid at the property or at the deadline)
+  is no tax collected by CasaZen and counts as 0: the whole tax is payable online. For a channel stay the double charge is the business of the channel rule of
+  the comune (`TouristTaxChannelRule`) and of the host's declaration, decided before any amount counts.
 - Otherwise the amount due less what was already paid online. One online payment per stay: what is due beyond it is collected at the property.
 - Switzerland: the rule of the canton (`SwissTouristTax:Rules`, guests × nights × rate) when the host collects; no rule: not calculated.
 - A no-show or a stay cancelled before any night owes nothing (`NotDue`) in every reader.
@@ -63,8 +67,15 @@ A link reaches its own stay only (unknown, expired, cancelled: 404). A check-in 
 - `charge.refunded`: `RefundedAmount` follows the charge (never more than what was paid). A refund of a payment not recorded yet is delivered again.
 - Cancellation or no-show (`BookingCancelled`, `BookingNoShowMarked`): the open intent is cancelled; no night spent: full refund on the connected
   account (idempotency key `tourist-tax-refund:{record}:{intent}`), state `NotDue`; cancelled after the arrival: «To do», the host decides. A refusal of
-  the provider that will not pass raises the «To do» with its code in the log; one that may pass is retried by the outbox.
-- `CheckInCompleted`, `CheckOutCompleted`, `BookingModified`: the state is evaluated again and a difference owed back raises the «To do» once per booking.
+  the provider that will not pass, or a refund the provider answers `failed`, `canceled` or `requires_action`, raises the «To do» (the code is in the log); one
+  that may pass (no answer, 429, 5xx) is retried by the outbox; a refund still being made (`pending`) follows its `charge.refunded`. A refund that fails
+  after it was created (`refund.failed`) is not listened to: the host's block keeps showing the amount owed back (`refundDue`).
+- A payment recorded **after the stay ended** (the event of its end was consumed before it, or gave up after its five attempts while the payment was on its
+  way): the webhook that records it makes the same decision as the event of its end, at once (refund in full when no night was spent, «To do» otherwise); a refund
+  the provider cannot make then raises the «To do» instead of waiting for an event that will not come.
+- `CheckInCompleted`, `CheckOutCompleted`, `BookingModified`, and the **change of the tax itself** (the confirmation of the tax, in the tax endpoints and in the
+  host check-in wizard, a host's exemption, the declaration of the collector: none of them records an event, so the collection is evaluated right after the
+  change): the state is evaluated again and a difference owed back raises the «To do» once per booking.
 
 **No `Payment` row is ever created**: the owner ledger, the balance of the booking and the revenue do not change. The collection is on
 `StayTouristTaxes` (`CollectionStatus`, `CollectedAmount`, `Currency`, `CollectedAt`, `StripePaymentIntentId`, `StripeAccountId`, `RefundedAmount`; migration

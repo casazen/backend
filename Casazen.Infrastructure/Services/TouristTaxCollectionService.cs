@@ -182,7 +182,9 @@ public sealed class TouristTaxCollectionService(
 
         if (!AlloggiatiStatusRules.IsDue(booking) || figures.Collector == TouristTaxCollector.Channel)
             throw new DomainRuleException(TouristTaxCharges.NotApplicableCode, "TouristTaxCollectionNotApplicable");
-        if (record is { CollectedAmount: > 0m })
+        // What the guest paid online and was not given back: a payment refunded in full (the host from the provider's dashboard, say) is no payment any more,
+        // and the tax is collected at the property (the guest never pays online a second time).
+        if (record is not null && record.CollectedAmount - record.RefundedAmount > 0m)
             throw new DomainConflictException(TouristTaxCharges.PaidOnlineCode, "TouristTaxAlreadyPaidOnline");
 
         var now = UtcNow();
@@ -191,9 +193,10 @@ public sealed class TouristTaxCollectionService(
             record = NewRecord(booking, figures, now);
             db.StayTouristTaxes.Add(record);
         }
-        else if (record.StripePaymentIntentId is { } openIntentId)
+        else if (record.StripePaymentIntentId is { } openIntentId && record.CollectedAmount <= 0m)
         {
-            // What the host collected can no longer be paid online too (never twice); a payment on its way is waited for.
+            // What the host collected can no longer be paid online too (never twice); a payment on its way is waited for. An intent already recorded as paid (and
+            // refunded since) is left as it is: it is paid, there is nothing to cancel, and it is not a payment on its way.
             var account = record.StripeAccountId ?? booking.Org.StripeConnectedAccountId;
             var intent = await stripe.GetPaymentIntentAsync(openIntentId, account, ct);
             if (intent.Status is { } moving && MovingIntentStatuses.Contains(moving))
@@ -374,12 +377,40 @@ public sealed class TouristTaxCollectionService(
         try
         {
             await ReconcileAsync(notice.BookingId, ct);
+            await FollowTheEndOfTheStayAsync(notice.BookingId, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // The payment is recorded: the difference owed back is evaluated again at the check-in, at the check-out and at a change of the booking.
             logger.LogError(
                 "Tourist tax of booking {BookingId}: the collection could not be reconciled after the payment ({Error})", notice.BookingId, ex.GetType().Name);
+        }
+    }
+
+    /// <summary>
+    /// A payment recorded for a stay that is over already (cancelled or marked a no-show while the payment was on its way, and the event of its end was
+    /// consumed before the payment was recorded or gave up after its attempts, <c>OutboxDispatcherJob.MaxAttempts</c>): the same decision as the event of its end
+    /// (<see cref="ApplyStayEndedAsync"/>: the refund in full when no night was spent, the host's «To do» otherwise), so money paid for a stay that ended is never
+    /// forgotten. No event will deliver this again, so a refund the provider cannot make now asks the host to give the money back instead of being thrown away.
+    /// </summary>
+    private async Task FollowTheEndOfTheStayAsync(Guid bookingId, CancellationToken ct)
+    {
+        var booking = await LoadBookingAsync(bookingId, ct);
+        if (booking is null || AlloggiatiStatusRules.IsDue(booking))
+            return;
+
+        try
+        {
+            await ApplyStayEndedAsync(bookingId, UtcNow(), ct);
+        }
+        catch (StripeException ex)
+        {
+            logger.LogError(
+                "Tourist tax of booking {BookingId}: the refund of a payment recorded after the end of the stay could not be made ({Code}, HTTP {HttpStatus}): the host gives it back",
+                bookingId,
+                ex.StripeError?.Code ?? "unknown",
+                (int)ex.HttpStatusCode);
+            await RaiseRefundTodoAsync(booking, RefundFailedReason, ct);
         }
     }
 
@@ -748,7 +779,10 @@ public sealed class TouristTaxCollectionService(
                 refund.Id,
                 paymentIntentId,
                 refund.Status);
-            return null;
+
+            // Only a refund that went through, or one the provider is still making (its charge.refunded records the amount), is a refund: a refund that failed, was
+            // canceled or needs an action leaves the money with the host, who is asked to give it back instead of nobody knowing it is held.
+            return IsRefundMade(refund.Status) ? null : RefundFailedReason;
         }
         catch (StripeException ex) when (string.Equals(ex.StripeError?.Code, "charge_already_refunded", StringComparison.Ordinal))
         {
@@ -868,6 +902,10 @@ public sealed class TouristTaxCollectionService(
         id = Guid.Empty;
         return metadata.TryGetValue(key, out var raw) && Guid.TryParse(raw, out id) && id != Guid.Empty;
     }
+
+    /// <summary>A refund the provider made (<c>succeeded</c>) or is making (<c>pending</c>: the amount follows its <c>charge.refunded</c>); any other state is no refund.</summary>
+    private static bool IsRefundMade(string? status) =>
+        string.Equals(status, "succeeded", StringComparison.Ordinal) || string.Equals(status, "pending", StringComparison.Ordinal);
 
     /// <summary>No answer, too many requests or a failure of the provider: it may pass, so the event is delivered again.</summary>
     private static bool IsTransient(StripeException ex) => (int)ex.HttpStatusCode is 0 or 429 or >= 500;
