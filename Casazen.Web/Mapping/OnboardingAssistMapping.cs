@@ -30,6 +30,9 @@ public static class OnboardingAssistMapping
         CompletedAt = request.CompletedAt,
         StaffNote = request.StaffNote,
         ActivityId = request.ActivityId,
+        Outcome = request.Outcome,
+        HostNote = request.HostNote,
+        ReopenedAt = request.ReopenedAt,
     };
 
     public static AdminAssistRequestDto ToDto(this AssistQueueItem item) => new()
@@ -50,6 +53,45 @@ public static class OnboardingAssistMapping
         StaffNote = item.StaffNote,
         DraftWizardType = item.DraftWizardType,
         DraftEntityId = item.DraftEntityId,
+        Outcome = item.Outcome,
+        HostNote = item.HostNote,
+        ReopenedAt = item.ReopenedAt,
+    };
+
+    /// <summary>One request as staff reads it, with the checklist (E20/F03/US01/T02): presence, dates and codes only.</summary>
+    public static AdminAssistRequestDetailDto ToDto(this AssistRequestDetail detail) => new()
+    {
+        Request = detail.Request.ToDto(),
+        Checklist = [.. detail.Checklist.Select(block => block.ToDto())],
+    };
+
+    public static AssistChecklistPropertyDto ToDto(this AssistChecklistProperty block) => new()
+    {
+        PropertyId = block.PropertyId,
+        PropertyName = block.PropertyName,
+        Comune = block.Comune,
+        PanelUser = new AssistPresenceDto { Present = block.PanelUser.Present, UpdatedAt = block.PanelUser.UpdatedAt },
+        PoliceCredentials = block.PoliceCredentials is { } police
+            ? new AssistPresenceDto { Present = police.Present, UpdatedAt = police.UpdatedAt }
+            : null,
+        IstatCredentials = block.IstatCredentials is { } istat
+            ? new AssistIstatPresenceDto { Present = istat.Present, UpdatedAt = istat.UpdatedAt, Requirement = istat.Requirement }
+            : null,
+        Sender = block.Sender is { } sender
+            ? new AssistSenderDto { Sender = sender.Sender, ChangedAt = sender.ChangedAt, ActivationDeclared = sender.ActivationDeclared }
+            : null,
+        Steps =
+        [
+            .. block.Steps.Select(step => new AssistChecklistStepDto
+            {
+                Kind = PanelStepCatalog.CodeOf(step.Kind),
+                ChannelCode = step.ChannelCode,
+                InstructionsKey = step.InstructionsKey,
+                State = step.State,
+                LastVerificationOutcome = step.LastVerificationOutcome,
+                CompletedAt = step.CompletedAt,
+            }),
+        ],
     };
 
     public static PagedResultDto<AdminAssistRequestDto> ToDto(this AssistQueuePage page) => new()
