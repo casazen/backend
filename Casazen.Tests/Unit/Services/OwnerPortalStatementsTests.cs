@@ -232,10 +232,11 @@ public class OwnerPortalStatementsTests
         await empty.Documents.TellOwnerPublishedAsync(empty.SecondVersion);
         Assert.Empty(empty.Queue.Sent);
 
-        // With Features:AgencyTier off the portal shows nothing: nobody is told.
+        // With Features:AgencyTier off the portal shows nothing: nobody is told, and that is not a failure to raise a To do about.
         var off = await World.CreateAsync(agencyTier: false);
         await off.Documents.TellOwnerPublishedAsync(off.SecondVersion);
         Assert.Empty(off.Queue.Sent);
+        Assert.Empty(await off.Db.InternalActivities.AsNoTracking().ToListAsync());
     }
 
     private static async Task<byte[]> ReadAsync(InMemoryFileStorage storage, string key)
@@ -281,6 +282,7 @@ public class OwnerPortalStatementsTests
                 flags,
                 Queue,
                 new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = "https://app.example.com" })),
+                new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, clock),
                 clock,
                 NullLogger<OwnerStatementDocuments>.Instance);
             Portal = new OwnerPortalService(

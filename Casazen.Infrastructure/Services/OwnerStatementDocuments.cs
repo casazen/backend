@@ -36,6 +36,9 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Who holds the portal account.</b> Until the property manager invoice of the owner exists (E14, <c>IPortalAccountHolderResolver</c>) every listing is read as
 /// V1, the owner's: the commission of a channel is «Trattenuta dal portale»; the layout already writes the V2 label for a line flagged as the agency's.</item>
 /// <item><b>Language.</b> There is no language kept for an owner yet: Italian unless the caller asks for English. The stored PDF is in Italian.</item>
+/// <item><b>The notice of the publication.</b> The e-mail that tells the owner is queued after the publication was saved. A notice that cannot be prepared or queued never
+/// turns the publication into an error, and is never silent: it is logged with its ids and the agency gets a «To do» (<see cref="ActivityType.OwnerStatementNoticeFailed"/>,
+/// once for each version) to tell the owner by hand.</item>
 /// <item><b>Logs</b> carry ids and counts: never a name, an amount or a line.</item>
 /// </list>
 /// </remarks>
@@ -48,9 +51,16 @@ public sealed class OwnerStatementDocuments(
     IFeatureFlags featureFlags,
     IEmailQueue emailQueue,
     PublicSiteLinks links,
+    IInternalActivityService activities,
     TimeProvider time,
     ILogger<OwnerStatementDocuments> logger) : IOwnerStatementDocuments
 {
+    /// <summary>The entity type of the «To do» about a statement whose owner could not be told that it was published.</summary>
+    public const string OwnerStatementVersionEntityType = "OwnerStatementVersion";
+
+    /// <summary>The line of that «To do»: a code, never a name or an amount.</summary>
+    public const string NoticeFailedReason = "owner_statement_notice_failed";
+
     public async Task<OwnerStatementContent> GetContentAsync(Guid orgId, Guid versionId, string? language = null, CancellationToken ct = default)
     {
         var version = await VersionAsync(orgId, versionId, ct);
@@ -205,12 +215,28 @@ public sealed class OwnerStatementDocuments(
             return;
         }
 
-        if (!links.IsConfigured)
+        // The statement is published whatever happens here, so a notice that fails is never turned into an error of the publication, and never left silent either: it is
+        // logged with its ids and handed to the agency as a To do, which tells the owner by hand.
+        var told = false;
+        try
         {
-            logger.LogWarning("Owner statement version {VersionId}: no e-mail, the public address of the web app is not configured", version.Id);
-            return;
+            told = await QueueNoticeAsync(version, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Owner statement version {VersionId} of owner {OwnerId} (org {OrgId}) is published, the e-mail that tells the owner could not be prepared", version.Id, version.PropertyOwnerId, version.OrgId);
         }
 
+        if (!told)
+            await RaiseNoticeFailedAsync(version, ct);
+    }
+
+    /// <summary>
+    /// Queues the e-mail for the people of the owner portal who read the statements of the owner. <c>true</c> when everyone was told or there is nobody to tell; <c>false</c>
+    /// when someone could not be (no public address to link to, or an e-mail the queue refused).
+    /// </summary>
+    private async Task<bool> QueueNoticeAsync(OwnerStatementVersion version, CancellationToken ct)
+    {
         // The people who read the statements of the owner: the owner on its ownerships in force, and the delegated contacts that hold accounting.read.
         var now = time.GetUtcNow().UtcDateTime;
         var owners = await OwnerPortalAccessResolver.InForce(db, now)
@@ -231,7 +257,13 @@ public sealed class OwnerStatementDocuments(
         if (people.Count == 0)
         {
             logger.LogInformation("Owner statement version {VersionId}: nobody in the owner portal to tell", version.Id);
-            return;
+            return true;
+        }
+
+        if (!links.IsConfigured)
+        {
+            logger.LogWarning("Owner statement version {VersionId} of owner {OwnerId} (org {OrgId}): no e-mail, the public address of the web app is not configured", version.Id, version.PropertyOwnerId, version.OrgId);
+            return false;
         }
 
         var addresses = await db.OwnerUsers.AsNoTracking()
@@ -254,6 +286,38 @@ public sealed class OwnerStatementDocuments(
         }
 
         logger.LogInformation("Owner statement version {VersionId}: {Queued} of {Addresses} e-mails queued", version.Id, queued, addresses.Count);
+        if (queued == addresses.Count)
+            return true;
+
+        logger.LogWarning(
+            "Owner statement version {VersionId} of owner {OwnerId} (org {OrgId}): {Missing} of {Addresses} e-mails could not be queued",
+            version.Id,
+            version.PropertyOwnerId,
+            version.OrgId,
+            addresses.Count - queued,
+            addresses.Count);
+        return false;
+    }
+
+    /// <summary>
+    /// The To do that tells the agency the owner could not be told that the statement was published, so it tells the owner by hand: one for each version (raising it again
+    /// finds the open one), organization-level, a code as its reason and no personal data.
+    /// </summary>
+    private async Task RaiseNoticeFailedAsync(OwnerStatementVersion version, CancellationToken ct)
+    {
+        await activities.CreateAsync(
+            new CreateTodoRequest
+            {
+                Type = ActivityType.OwnerStatementNoticeFailed,
+                Action = ActivityAction.ReviewOwnerStatement,
+                EntityType = OwnerStatementVersionEntityType,
+                EntityId = version.Id,
+                Urgency = ActivityUrgency.Medium,
+                OrgId = version.OrgId,
+                Reason = NoticeFailedReason,
+            },
+            ct);
+        logger.LogWarning("Owner statement version {VersionId} of owner {OwnerId} (org {OrgId}): the owner was not told, a To do asks the agency to tell the owner by hand", version.Id, version.PropertyOwnerId, version.OrgId);
     }
 
     public async Task<OwnerStatementFile?> GetOwnerInvoicePdfAsync(Guid orgId, Guid documentId, string? language = null, CancellationToken ct = default)

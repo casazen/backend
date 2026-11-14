@@ -65,7 +65,9 @@ public interface IOwnerStatementDocuments
     /// <summary>
     /// Queues the e-mail that tells the people of the owner portal who read the statements of the owner (the owner on its ownerships in force, the delegated contacts
     /// with <c>accounting.read</c>) that a statement was published: the agency and the link to the page «Contabilità», never an amount, a line or a guest. Called after
-    /// the publication was saved; the queue never throws.
+    /// the publication was saved. The publication is never turned into an error by it, and a notice that cannot be prepared or queued (an e-mail the queue refuses, no public
+    /// address to link to, a failure reading who to tell) is never silent: it is logged with its ids and the agency gets a «To do» (once for each version) to tell the owner
+    /// by hand. Nothing is raised for a portal that is off or an owner nobody reaches in it.
     /// </summary>
     Task TellOwnerPublishedAsync(OwnerStatementVersion version, CancellationToken ct = default);
 

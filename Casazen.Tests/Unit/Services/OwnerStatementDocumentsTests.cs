@@ -295,6 +295,61 @@ public class OwnerStatementDocumentsTests
     }
 
     /// <summary>
+    /// Privacy and data: the publication tells the owner. The e-mail is queued after the version was saved as published, to the address of the person of the portal, with
+    /// no amount in it. A queue that refuses the e-mail, or fails, never turns the publication into an error and is never silent: the agency gets a «To do» about the
+    /// version (once, even if it is raised again), and nothing is raised when nobody in the portal has to be told.
+    /// </summary>
+    [Fact]
+    public async Task OwnerStatementPublication_TellsTheOwnerAfterTheSave_AndRaisesAToDoWhenItCannot_Test()
+    {
+        // The notice goes out after the save, once, to the owner.
+        var world = await World.CreateAsync(approved: true);
+        await world.AddPortalOwnerAsync("proprietario@example.com");
+        var statusWhenQueued = OwnerStatementVersionStatus.Approved;
+        world.Queue.WhenQueued = () => statusWhenQueued = world.Db.OwnerStatementVersions.AsNoTracking().Single().Status;
+
+        var published = await world.Accounting().PublishVersionAsync(world.OrgId, world.VersionId, "auth0|publisher");
+
+        Assert.Equal(OwnerStatementVersionStatus.Published, published.Status);
+        Assert.Equal(OwnerStatementVersionStatus.Published, statusWhenQueued);
+        var sent = Assert.Single(world.Queue.Sent);
+        Assert.Equal(("proprietario@example.com", EmailTemplates.Names.OwnerStatementPublished), (sent.To, sent.Template));
+        Assert.Contains("https://app.example.com/portale-proprietari/contabilita", sent.Content.HtmlBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("280,00", sent.Content.HtmlBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("280.00", sent.Content.HtmlBody, StringComparison.Ordinal);
+        Assert.Empty(await world.Db.InternalActivities.AsNoTracking().ToListAsync());
+
+        // The queue refuses the e-mail: the publication stands and the agency gets a To do about the version, once even if it is raised again.
+        var refused = await World.CreateAsync(approved: true);
+        await refused.AddPortalOwnerAsync("proprietario@example.com");
+        refused.Queue.Accepts = false;
+        var stands = await refused.Accounting().PublishVersionAsync(refused.OrgId, refused.VersionId, "auth0|publisher");
+        Assert.Equal(OwnerStatementVersionStatus.Published, stands.Status);
+        await refused.Documents.TellOwnerPublishedAsync(refused.Version);
+        var todo = Assert.Single(await refused.Db.InternalActivities.AsNoTracking().ToListAsync());
+        Assert.Equal(nameof(ActivityType.OwnerStatementNoticeFailed), todo.ActivityType);
+        Assert.Equal(ActivityAction.ReviewOwnerStatement, todo.Action);
+        Assert.Equal(OwnerStatementDocuments.OwnerStatementVersionEntityType, todo.EntityType);
+        Assert.Equal(refused.VersionId, todo.EntityId);
+        Assert.Equal(refused.OrgId, todo.OrgId);
+        Assert.Equal(OwnerStatementDocuments.NoticeFailedReason, todo.Reason);
+
+        // The queue itself fails: the same, and the exception is not turned into an error of the publication.
+        var failing = await World.CreateAsync(approved: true);
+        await failing.AddPortalOwnerAsync("proprietario@example.com");
+        failing.Queue.Fails = new InvalidOperationException("the queue is down");
+        var survives = await failing.Accounting().PublishVersionAsync(failing.OrgId, failing.VersionId, "auth0|publisher");
+        Assert.Equal(OwnerStatementVersionStatus.Published, survives.Status);
+        Assert.Equal(failing.VersionId, Assert.Single(await failing.Db.InternalActivities.AsNoTracking().ToListAsync()).EntityId);
+
+        // Nobody in the portal to tell: no e-mail and nothing to raise.
+        var nobody = await World.CreateAsync(approved: true);
+        await nobody.Accounting().PublishVersionAsync(nobody.OrgId, nobody.VersionId, "auth0|publisher");
+        Assert.Empty(nobody.Queue.Sent);
+        Assert.Empty(await nobody.Db.InternalActivities.AsNoTracking().ToListAsync());
+    }
+
+    /// <summary>
     /// Data: the PDF stored at the publication is the file that was published, for good. The owner documents refuse a new version of it (409), a version that got there
     /// some other way is never the file handed out, and a file in the bucket that is no longer the one that was published is not handed to the owner.
     /// </summary>
@@ -587,10 +642,23 @@ public class OwnerStatementDocumentsTests
     {
         public List<(string? To, EmailContent Content, string Template)> Sent { get; } = [];
 
+        /// <summary>What the queue answers: <c>true</c> it queued the e-mail, <c>false</c> it refused it.</summary>
+        public bool Accepts { get; set; } = true;
+
+        /// <summary>A failure of the queue itself (it should never throw: that would be a bug of it).</summary>
+        public Exception? Fails { get; set; }
+
+        /// <summary>Looked at when an e-mail is queued: what the database says at that moment.</summary>
+        public Action? WhenQueued { get; set; }
+
         public bool Enqueue(string? to, EmailContent content, string template)
         {
+            if (Fails is not null)
+                throw Fails;
+
+            WhenQueued?.Invoke();
             Sent.Add((to, content, template));
-            return true;
+            return Accepts;
         }
     }
 
@@ -613,6 +681,7 @@ public class OwnerStatementDocumentsTests
                 new TestFeatureFlags(FeatureFlags.AgencyTier),
                 Queue,
                 new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = "https://app.example.com" })),
+                new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, Clock),
                 Clock,
                 NullLogger<OwnerStatementDocuments>.Instance);
         }
@@ -685,6 +754,24 @@ public class OwnerStatementDocumentsTests
             change(version);
             await db.SaveChangesAsync();
             db.ChangeTracker.Clear();
+        }
+
+        /// <summary>A person of the owner portal with an ownership in force of the owner: who the e-mail of a publication goes to.</summary>
+        public async Task AddPortalOwnerAsync(string email)
+        {
+            var user = new OwnerUser { Id = Guid.NewGuid(), Auth0Sub = $"auth0|{Guid.NewGuid():N}", Email = email, FirstName = "TEST", LastName = "Proprietario" };
+            Db.OwnerUsers.Add(user);
+            Db.PropertyOwnerships.Add(new PropertyOwnership
+            {
+                OrgId = OrgId,
+                PropertyId = PropertyId,
+                PropertyOwnerId = OwnerId,
+                OwnerUserId = user.Id,
+                SharePercent = 100m,
+                OwnershipStart = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            });
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
         }
 
         public async Task SetTouristTaxAsync(Guid bookingId, decimal tax)

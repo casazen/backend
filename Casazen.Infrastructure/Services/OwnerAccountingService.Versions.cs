@@ -353,9 +353,10 @@ public sealed partial class OwnerAccountingService
     }
 
     /// <summary>
-    /// Tells the owner that a statement was published (E13/F01/US02/T02), after the publication was saved. The statement is published whatever happens here: the
-    /// notice is read from the database and queued (the queue never throws), and a failure to prepare it is logged, never turned into an error of a publication that
-    /// already happened.
+    /// Tells the owner that a statement was published (E13/F01/US02/T02), after the publication was saved. The statement is published whatever happens here, so the
+    /// notice never turns the publication into an error: <see cref="IOwnerStatementDocuments.TellOwnerPublishedAsync"/> queues the e-mail and, when it cannot, logs the
+    /// ids and raises a «To do» for the agency, which tells the owner by hand. What is left for this last resort is that the «To do» itself could not be raised: that
+    /// is an error in the log with the ids, and the only case in which the owner is told by nobody.
     /// </summary>
     private async Task TellOwnerAsync(OwnerStatementVersion version, CancellationToken ct)
     {
@@ -368,7 +369,12 @@ public sealed partial class OwnerAccountingService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogError(ex, "Owner statement version {VersionId} is published, the e-mail to the owner could not be prepared", version.Id);
+            logger.LogError(
+                ex,
+                "Owner statement version {VersionId} of owner {OwnerId} (org {OrgId}) is published, the owner was not told and the To do for the agency could not be raised",
+                version.Id,
+                version.PropertyOwnerId,
+                version.OrgId);
         }
     }
 

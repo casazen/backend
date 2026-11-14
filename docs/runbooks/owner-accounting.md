@@ -186,7 +186,11 @@ booking line, and the month of the payment then posts it (the readiness says `un
 - **Published = stored.** Publishing a version builds its PDF once, stores it with its SHA-256 as an owner document of type statement (the id of the document is the
   id of the version) and tells the people of the owner portal who read the statements of the owner by e-mail: the agency and the link to the page «Contabilità», never an
   amount, a period or a line. The owner downloads exactly the stored file. A version published before this release has no stored PDF: the agency gets a PDF built
-  from its lines, the owner portal answers 404 `owner_statement_pdf_not_available`; a new version (after a correction) is published with its file.
+  from its lines, the owner portal answers 404 `owner_statement_pdf_not_available`; a new version (after a correction) is published with its file. **When the owner cannot be
+  told** (the queue refuses an e-mail, the public address of the web app is not configured, or reading who to tell fails) the publication stands, the failure is logged with the
+  ids of the version, the owner and the org, and the agency gets a «To do» (type `OwnerStatementNoticeFailed`, action `ReviewOwnerStatement`, about the version, reason
+  `owner_statement_notice_failed`, one for each version) to tell the owner by hand; nothing is raised for a portal that is off or an owner nobody reaches in it. If even the
+  «To do» cannot be raised, that is an error in the log with the same ids.
 - **Language and numbers.** The files are Italian unless `lang=en` is asked (no language is kept for an owner yet); the stored PDF is Italian. Amounts in the PDF follow the
   currency of the version: `1'234.50` for CHF, `1.234,50` for any other. The CSV uses the one CSV writer (decimal comma, no thousands separator).
 - **Owner portal** (`GET api/owner-portal/statements`, `…/statements/{id}`, `…/statements/{id}/pdf`, `…/invoices`, `…/invoices/{id}/pdf`): the owner of the `owner_id`
