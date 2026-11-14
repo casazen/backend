@@ -294,6 +294,47 @@ public class FiscalDocumentServiceProofTests
         await Assert.ThrowsAsync<NotFoundException>(() => service.GetXmlAsync(receipt.Id));
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule. The credit note of a receipt (an issuer without a VAT number, whose rule gives a receipt) is no electronic invoice: the XML builder
+    /// is never called, the SDI state is <c>not_applicable</c>, and its PDF keeps the nature codes (N2.2) internal and carries no courtesy copy. The credit note
+    /// of an invoice stays an electronic one (XML built, <c>to_send</c>).
+    /// </summary>
+    [Fact]
+    public async Task FiscalDocument_CreditNoteOfAReceipt_IsNoElectronicInvoice_Test()
+    {
+        await using var db = NewDb();
+        var booking = await SeedAsync(db, BookingSource.Manual, regime: DocumentRegime.PrivatePerson);
+        var xml = new Mock<IFatturaPaXmlBuilder>(MockBehavior.Strict);
+        var service = Service(db, xmlBuilder: xml.Object);
+        var receipt = await service.IssueAsync((await service.CreateDraftAsync(booking, null)).Id, confirm: true);
+        Assert.Equal(DocumentKind.Receipt, receipt.Kind);
+
+        var part = await service.CreateCreditNoteAsync(receipt.Id, 100m, "TEST rimborso parziale", confirm: true, null);
+        var rest = await service.CreateCreditNoteAsync(receipt.Id, null, "TEST storno del residuo", confirm: true, null);
+
+        Assert.Equal(receipt.Total, part.Total + rest.Total);
+        foreach (var note in new[] { part, rest })
+        {
+            Assert.Equal(DocumentKind.CreditNote, note.Kind);
+            Assert.Null(note.FatturaPaXml);
+            Assert.Equal(FiscalDocumentSdiStatuses.NotApplicable, note.SdiStatus);
+            var text = TextOf(await service.PdfContentAsync(note.Id, "it"));
+            Assert.DoesNotContain("N2.2", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("Copia di cortesia", text, StringComparison.OrdinalIgnoreCase);
+        }
+
+        xml.Verify(x => x.Build(It.IsAny<FatturaPaInput>()), Times.Never);
+
+        // The credit note of an invoice stays an electronic one.
+        await using var invoiceDb = NewDb();
+        var invoiceBooking = await SeedAsync(invoiceDb, BookingSource.Direct);
+        var invoiceService = Service(invoiceDb);
+        var invoice = await invoiceService.IssueAsync((await invoiceService.CreateDraftAsync(invoiceBooking, null)).Id, confirm: true);
+        var creditNote = await invoiceService.CreateCreditNoteAsync(invoice.Id, 100m, "TEST rimborso parziale", confirm: true, null);
+        Assert.Equal(FiscalDocumentSdiStatuses.ToSend, creditNote.SdiStatus);
+        Assert.Equal("<p:FatturaElettronica/>", creditNote.FatturaPaXml);
+    }
+
     private static string Snapshot(FiscalDocument d) =>
         string.Join('|', d.Number, d.Status, d.TaxableBase, d.VatAmount, d.StampDuty, d.Total, d.RecipientName, d.RecipientFiscalCode, d.IssuerSnapshot, d.RuleVersion,
             string.Join(',', d.Lines.OrderBy(l => l.LineNumber).Select(l => $"{l.LineNumber}:{l.LineType}:{l.Description}:{l.TotalPrice}:{l.VatRatePercent}")));
@@ -310,7 +351,7 @@ public class FiscalDocumentServiceProofTests
         _ => Array.Empty<string>(),
     };
 
-    private static FiscalDocumentService Service(AppDbContext db, IFeatureFlags? flags = null)
+    private static FiscalDocumentService Service(AppDbContext db, IFeatureFlags? flags = null, IFatturaPaXmlBuilder? xmlBuilder = null)
     {
         var featureFlags = flags ?? new TestFeatureFlags(FeatureFlags.FiscalDocumentIssuance);
         var rules = TaxRuleCatalogs.Resolver();
@@ -329,7 +370,7 @@ public class FiscalDocumentServiceProofTests
             issuers,
             invoiceData.Object,
             new FiscalNumberingService(db, new FakeTimeProvider(Now), NullLogger<FiscalNumberingService>.Instance),
-            xml.Object,
+            xmlBuilder ?? xml.Object,
             Mock.Of<IDomainEventRecorder>(),
             new MigraDocPdfDocumentRenderer(),
             new ResxDocumentTexts(),

@@ -562,8 +562,8 @@ public sealed class FiscalDocumentService(
         document.IssuerSnapshot = issuer.ToJson();
         document.RuleVersion ??= rule.Version;
 
-        // The electronic invoice is Italian: a Swiss document has no XML and nothing to send to the SDI, nor has a receipt.
-        if (!rule.IsSwiss && document.Kind is DocumentKind.Invoice or DocumentKind.CreditNote)
+        // The electronic invoice is Italian: a Swiss document has no XML and nothing to send to the SDI, nor has a receipt or the credit note of a receipt.
+        if (IsElectronicInvoice(rule, document.Kind, credited?.Kind))
         {
             document.FatturaPaXml = xmlBuilder.Build(FatturaPaInputOf(document, issuer, rule, credited));
             document.SdiStatus = FiscalDocumentSdiStatuses.ToSend;
@@ -766,6 +766,13 @@ public sealed class FiscalDocumentService(
 
     /// <summary>A Swiss document (any kind) and an Italian receipt need only the name of the recipient; an Italian invoice the whole of its data.</summary>
     internal static bool NeedsOnlyTheName(FiscalTaxRule rule, DocumentKind kind) => rule.IsSwiss || kind == DocumentKind.Receipt;
+
+    /// <summary>
+    /// An Italian invoice, or the credit note of one, is an electronic invoice (FatturaPA, to send to the SDI). A Swiss document is not, nor is a receipt or the
+    /// credit note of a receipt: a private person has no VAT number to put on an XML, and nothing is sent to the SDI.
+    /// </summary>
+    internal static bool IsElectronicInvoice(FiscalTaxRule rule, DocumentKind kind, DocumentKind? creditedKind) =>
+        !rule.IsSwiss && (kind == DocumentKind.Invoice || (kind == DocumentKind.CreditNote && creditedKind != DocumentKind.Receipt));
 
     /// <summary>The series of a guest document: the pattern of the profile (<c>GuestDocumentSeries</c>), else the default pattern (the year).</summary>
     private static string SeriesOf(OrgFiscalIssuerProfile profile, DateOnly today) =>

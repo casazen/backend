@@ -56,8 +56,8 @@ public static class FiscalDocumentPdfs
         if (issuer.IsSwiss)
             return SwissFiscalDocumentPdf.Pdf(document, issuer, texts, language, credited, propertyName);
 
-        // A receipt carries no VAT: its nature codes stay internal (E11/F01/US01/T02).
-        var showNature = document.Kind != DocumentKind.Receipt;
+        // A receipt carries no VAT: its nature codes stay internal (E11/F01/US01/T02), and so do those of the credit note of a receipt.
+        var showNature = document.Kind != DocumentKind.Receipt && !(document.Kind == DocumentKind.CreditNote && credited?.Kind == DocumentKind.Receipt);
         var currency = document.Currency;
         var kind = KindLabel(document.Kind, texts, language);
         var title = document.Number is { Length: > 0 } number
