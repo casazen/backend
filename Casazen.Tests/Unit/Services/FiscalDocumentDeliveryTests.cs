@@ -43,8 +43,12 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class FiscalDocumentDeliveryTests
 {
-    /// <summary>09:00 in Rome on 2026-11-20.</summary>
-    private static readonly DateTimeOffset Now = new(2026, 11, 20, 8, 0, 0, TimeSpan.Zero);
+    /// <summary>
+    /// The instant these tests run at, to the minute: the REAL clock, never a fixed day. The service writes the end of a link with its fake clock and Data Protection reads it against the real one (it cannot be
+    /// given another), so a fixed day would make the links of these tests expire one day and turn them red for every build after it. The words of a date are proved with fixed days in the past (see
+    /// <see cref="Email_TheDayOfTheDocumentAndTheLastDayOfTheLink_AreWrittenInRomeTime_InBothLanguages"/>), which no clock is asked about.
+    /// </summary>
+    private static readonly DateTimeOffset Now = AtTheMinute(DateTimeOffset.UtcNow);
 
     private static readonly Guid OrgId = Guid.NewGuid();
 
@@ -202,15 +206,15 @@ public class FiscalDocumentDeliveryTests
         Assert.Equal("Ricevuta n. 2026/12 di TEST Casa Vacanze Srl", first.Content.Subject);
         Assert.Equal("Receipt no. 2026/13 from TEST Casa Vacanze Srl", second.Content.Subject);
 
-        // Italian: the greeting, the issuer, the kind, the number, the day of the issue and the last day of the link in Rome time, a real value through every format of a date.
+        // Italian: the greeting, the issuer, the kind, the number, the day of the issue and the last day of the link (thirty days after Now, in Rome time; the exact words of a date are proved with fixed days below).
         Assert.Contains("Ciao Giulia,", first.Content.HtmlBody);
         Assert.Contains("<strong>TEST Casa Vacanze Srl</strong> ti ha inviato il documento <strong>Ricevuta n. 2026/12</strong> del 19/11/2026.", first.Content.HtmlBody);
-        Assert.Contains("Il link è valido fino al 20/12/2026 09:00.", first.Content.HtmlBody);
+        Assert.Contains($"Il link è valido fino al {ValidUntilInRome(Now)}.", first.Content.HtmlBody);
         Assert.Contains("<html lang=\"it\">", first.Content.HtmlBody);
         Assert.Contains("Hello Hans,", second.Content.HtmlBody);
         Assert.Contains("<html lang=\"en\">", second.Content.HtmlBody);
 
-        // The link opens the document it was made for, and only that one; it holds the id and the token, nothing else.
+        // The link opens the document it was made for, and only that one; it holds the id and the token, nothing else. Now is the real minute, so the token is read against the real clock on any day the test runs.
         var url = LinkOf(first.Content);
         var token = TokenOf(first.Content);
         Assert.StartsWith($"{BaseUrl}/documents/view/{italian.DocumentId:D}?token=", url);
@@ -457,6 +461,26 @@ public class FiscalDocumentDeliveryTests
         Assert.DoesNotContain(" ,", nameless.HtmlBody);
     }
 
+    /// <summary>
+    /// The words of a day: the day of the document and the last day of the link, in Italian and in English, a real value through every format of a date. FIXED DAYS IN THE PAST, so that no clock is asked
+    /// about them and none can ever turn the test red: one in winter, when Rome is an hour ahead of UTC, and one in summer, when it is two.
+    /// </summary>
+    [Fact]
+    public void Email_TheDayOfTheDocumentAndTheLastDayOfTheLink_AreWrittenInRomeTime_InBothLanguages()
+    {
+        var winter = new DateTime(2026, 1, 15, 8, 30, 0, DateTimeKind.Utc);
+        var summer = new DateTime(2026, 7, 20, 7, 30, 0, DateTimeKind.Utc);
+
+        string Words(string culture, DateTime lastDay) => EmailTemplates.FiscalDocumentDelivery(CultureInfo.GetCultureInfo(culture), "Giulia", "TEST Srl", DocumentKind.Invoice, "2026/7", new DateTime(2026, 1, 12), $"{BaseUrl}/documents/view/{Guid.NewGuid():D}?token=abc", lastDay).HtmlBody;
+
+        Assert.Contains("del 12/01/2026.", Words("it-IT", winter));
+        Assert.Contains("Il link è valido fino al 15/01/2026 09:30.", Words("it-IT", winter));
+        Assert.Contains("Il link è valido fino al 20/07/2026 09:30.", Words("it-IT", summer));
+        Assert.Contains("of 12 January 2026.", Words("en", winter));
+        Assert.Contains("The link is valid until 15 January 2026, 09:30.", Words("en", winter));
+        Assert.Contains("The link is valid until 20 July 2026, 09:30.", Words("en", summer));
+    }
+
     [Fact]
     public void LinkTokens_OpenOnlyForTheirDocument_AndNotForAnotherPurposeAnExpiredOrAChangedToken()
     {
@@ -543,6 +567,19 @@ public class FiscalDocumentDeliveryTests
     }
 
     // ---------------------------------------------------------------- helpers
+
+    /// <summary>The instant to the minute, in UTC.</summary>
+    private static DateTimeOffset AtTheMinute(DateTimeOffset instant) => new(instant.Year, instant.Month, instant.Day, instant.Hour, instant.Minute, 0, TimeSpan.Zero);
+
+    /// <summary>
+    /// The last day of a link queued at <paramref name="queuedAt"/> as the Italian e-mail words it: Rome time, day first, to the minute. Written from the pieces of the date, so that the test does not format
+    /// with the code it checks.
+    /// </summary>
+    private static string ValidUntilInRome(DateTimeOffset queuedAt)
+    {
+        var rome = TimeZoneInfo.ConvertTimeFromUtc(queuedAt.UtcDateTime.Add(FiscalDocumentLinkRules.Lifetime), Casazen.Core.Utilities.RomeCalendar.TimeZone);
+        return string.Create(CultureInfo.InvariantCulture, $"{rome.Day:00}/{rome.Month:00}/{rome.Year:0000} {rome.Hour:00}:{rome.Minute:00}");
+    }
 
     private static DomainEvent Event(DomainEventType type, Guid entityId) =>
         new(Guid.NewGuid(), OrgId, type, entityId, Now.UtcDateTime, "{}");
