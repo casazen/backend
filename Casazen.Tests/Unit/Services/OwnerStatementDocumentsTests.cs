@@ -129,6 +129,35 @@ public class OwnerStatementDocumentsTests
     }
 
     /// <summary>
+    /// Money: the tourist tax of a stay that owes nothing is not in the box. A cancelled booking, a request and a no-show can keep revenue (a payment the guest does not
+    /// get back), but nobody collects a tax for a stay that never took place (the one definition of an active booking). The revenue stays in the lines, the net does not move.
+    /// </summary>
+    [Fact]
+    public async Task StatementPdf_TouristTaxOfAStayThatOwesNothingIsNotInTheBox_Test()
+    {
+        var world = await World.CreateAsync();
+        var content = await world.Documents.GetContentAsync(world.OrgId, world.VersionId);
+        Assert.Equal(20m, content.TouristTax.Sum(t => t.Amount));
+
+        // A cancelled booking, then a no-show: the other stay is still in the box with its own tax.
+        await world.ChangeBookingAsync(world.DirectBookingId, b => b.Status = BookingStatus.Cancelled);
+        Assert.Equal(12m, (await world.Documents.GetContentAsync(world.OrgId, world.VersionId)).TouristTax.Sum(t => t.Amount));
+        await world.ChangeBookingAsync(world.DirectBookingId, b => { b.Status = BookingStatus.Confirmed; b.NoShowAt = World.Cutoff; });
+        Assert.Equal(12m, (await world.Documents.GetContentAsync(world.OrgId, world.VersionId)).TouristTax.Sum(t => t.Amount));
+
+        // A booking that is only a request: nothing is left, and the CSV has no row of the box either.
+        await world.ChangeBookingAsync(world.PortalBookingId, b => b.Status = BookingStatus.Pending);
+        var none = await world.Documents.GetContentAsync(world.OrgId, world.VersionId);
+        Assert.Empty(none.TouristTax);
+        var csv = Encoding.UTF8.GetString((await world.Documents.GetCsvAsync(world.OrgId, world.VersionId, "it")).Content);
+        Assert.DoesNotContain("Tassa di soggiorno (informativa);", csv, StringComparison.Ordinal);
+
+        // The revenue of those stays is still in the statement and the net is the version's.
+        Assert.Equal(content.Lines.Count, none.Lines.Count);
+        Assert.Equal(content.Totals, none.Totals);
+    }
+
+    /// <summary>
     /// Permission: a version of another organization is the 404 of one that does not exist, for the content, the PDF and the CSV, and the endpoints refuse a caller
     /// whose reach is not the whole org before anything is read.
     /// </summary>
@@ -567,8 +596,13 @@ public class OwnerStatementDocumentsTests
 
         public async Task SetTouristTaxAsync(Guid bookingId, decimal tax)
         {
+            await ChangeBookingAsync(bookingId, booking => booking.TouristTax = tax);
+        }
+
+        public async Task ChangeBookingAsync(Guid bookingId, Action<Booking> change)
+        {
             var booking = await Db.Bookings.SingleAsync(b => b.Id == bookingId);
-            booking.TouristTax = tax;
+            change(booking);
             await Db.SaveChangesAsync();
             Db.ChangeTracker.Clear();
         }

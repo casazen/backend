@@ -5,6 +5,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -296,7 +297,7 @@ public sealed class OwnerStatementDocuments(
                 .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
                 .AsNoTracking()
                 .Where(b => b.OrgId == orgId && bookingIds.Contains(b.Id))
-                .Select(b => new BookingFacts(b.Id, b.PropertyId, b.CheckInDate, b.CheckOutDate, b.Source, b.ChannelLabel, b.BookingCode, b.TouristTax))
+                .Select(b => new BookingFacts(b.Id, b.PropertyId, b.CheckInDate, b.CheckOutDate, b.Source, b.ChannelLabel, b.BookingCode, b.TouristTax, b.Status, b.NoShowAt))
                 .ToListAsync(ct))
             .ToDictionary(b => b.Id);
         var propertyIds = entries.Where(e => e.PropertyId != null).Select(e => e.PropertyId!.Value).Concat(bookings.Values.Select(b => b.PropertyId)).Distinct().ToList();
@@ -395,13 +396,18 @@ public sealed class OwnerStatementDocuments(
     private static BookingFacts? BookingOf(OwnerLedgerEntry entry, Dictionary<Guid, BookingFacts> bookings) =>
         BookingIdOf(entry) is { } id && bookings.TryGetValue(id, out var booking) ? booking : null;
 
+    /// <summary>True when the stay owes its tourist tax: an active booking (confirmed, checked in or checked out) that is not a no-show, the one definition of the code.</summary>
+    private static bool IsDue(BookingFacts booking) =>
+        AlloggiatiStatusRules.ActiveBookingStatuses.Contains(booking.Status) && booking.NoShowAt is null;
+
     private static string ChannelOf(BookingFacts booking) =>
         booking.Source == BookingSource.OtherChannel && !string.IsNullOrWhiteSpace(booking.ChannelLabel) ? booking.ChannelLabel.Trim() : booking.Source.ToString();
 
     /// <summary>
     /// The tourist tax of the stays that have revenue in the statement, collected by the agency: the tax stored on the booking, except where the channel collects
     /// it itself (a channel of the confirmed list of the issuer, or the collector the host declared for the stay). The stays whose revenue a reversal took back to
-    /// nothing are not stays of the statement.
+    /// nothing are not stays of the statement, and neither is a stay that owes nothing: a cancelled booking, a request or a no-show can keep revenue (a payment the
+    /// guest does not get back) but its tax is not due, so it is never in the box (<see cref="AlloggiatiStatusRules"/>, the one definition of an active booking).
     /// </summary>
     private async Task<IReadOnlyList<OwnerStatementTouristTax>> TouristTaxAsync(
         Guid orgId,
@@ -413,7 +419,7 @@ public sealed class OwnerStatementDocuments(
         var stays = entries
             .Where(e => e.EntryType == OwnerLedgerEntryType.BookingRevenue && BookingIdOf(e) is not null)
             .GroupBy(e => BookingIdOf(e)!.Value)
-            .Where(g => g.Sum(e => e.Amount) != 0m && bookings.TryGetValue(g.Key, out var b) && b.TouristTax > 0m)
+            .Where(g => g.Sum(e => e.Amount) != 0m && bookings.TryGetValue(g.Key, out var b) && b.TouristTax > 0m && IsDue(b))
             .Select(g => bookings[g.Key])
             .ToList();
         if (stays.Count == 0)
@@ -546,7 +552,9 @@ public sealed class OwnerStatementDocuments(
         BookingSource Source,
         string? ChannelLabel,
         string BookingCode,
-        decimal TouristTax);
+        decimal TouristTax,
+        BookingStatus Status,
+        DateTime? NoShowAt);
 
     private sealed record InvoiceFacts(string? Number, DateOnly? IssueDate, bool OfThisVersion);
 }
