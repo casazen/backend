@@ -295,6 +295,48 @@ labels of E13, the VAT summary of E15 and the TD17 of E17 are meant to read it t
   behind `Features:AgencyTier` (ON in test): with the flag off the lists stay empty and a statement or an invoice is not there. The invoices are the issued documents
   with the purpose owner invoice made out to the owner profile (E14 makes them from a statement).
 
+## Month-end in bulk (E13/F01/US03/T01)
+
+Quokka manages about 250 flats: every month-end step runs for all the owners of a month in one call (`fatturazione/analisi-tecnica.md` §5 and ⚖ §7: no flag, no
+migration, no new table).
+
+- **Endpoint** `POST api/owner-accounting/periods/{y}/{m}/bulk` with `{ action, ownerIds? }`, `action` one of `post`, `generate`, `approve`, `publish`, `close`
+  (member names, any case). The permission is the one of the single operation: `agency.statement.publish` for `publish`, `agency.statement.manage` for every other
+  step (and `agency.statement.view` of the controller); a caller restricted to some properties gets 403 before anything is read. 422 `owner_bulk_action_invalid`,
+  `owner_period_invalid`; 409 `owner_period_not_ended` for a `close` of a month that is not over (once, for every owner: never one refusal each).
+- **Which owners.** Without `ownerIds`: every owner the readiness of the month knows (a line, a source, a version or a close in it), by id. With a list: those named,
+  each once, in the order given. **An empty list is 422 `owner_bulk_owners_empty`, never «everyone»**; more than 5,000 is 422 `owner_bulk_too_many_owners`; an id that is
+  not an owner of the org (another org's included: the same row for both) is a row `owner_not_found` and nothing is run for it.
+- **One transaction and one result for each owner.** `generate`, `approve`, `publish` and `close` run owner by owner through the single operations (their rules, their
+  refusals, their lock of the org): an owner that fails leaves nothing behind (the tracked changes are dropped) and never stops the others. The answer has one row for
+  each owner `{ ownerId, ok, code?, unchanged, issues?, details? }` and the counts (`total`, `processed`, `succeeded`, `unchanged`, `failed`, `allDone`):
+  **`allDone` is true only when the run is over, every owner was answered and none failed.** `ok` is the truth (the owner is in the state the step leads to);
+  `code` is the stable code of the reason (why a step was not done, or a note on an `ok` row: `owner_period_closed`, `owner_statement_unchanged`, a version generated
+  `owner_statement_flagged`); `issues` are the blocking issue codes behind it; `details` the facts to act on (`due`, `paid`, `difference` of a close that does not
+  reconcile). A failure that is not a rule of the domain (the database, a file) is logged with the ids and is `owner_bulk_failed`, never a success.
+- **Steps.** `post` posts the ledger of the month for the owners asked for **in one transaction** (a ledger is posted from all the sources of the month under one lock;
+  the lines of the other owners are left as they are): a row fails with the first blocking issue that kept a source out of its ledger (`mandate_missing_for_stay`,
+  `ownership_share_gap`, `fx_missing`...), is done when lines were posted or reversed, unchanged when there was nothing to post. `generate` makes the version
+  (`owner_statement_flagged` with the blocking `issues` on an `ok` row when it came out flagged). `approve` approves the version in force: **a flagged version is never
+  approved in bulk, it is a failed row `owner_statement_flagged` with its blocking `issues`**; one already approved or published is unchanged. `publish` publishes the
+  approved version (its file, its PDF and the notice to the owner, as the single publication does them). `close` closes the month on the approved version reconciled to
+  the confirmed payouts or the paid wires and **never waives a difference** (that needs a reason and `agency.owner.financial.manage`, owner by owner): a difference or a
+  negative balance is a failed row `owner_close_unreconciled` with `details`.
+- **Idempotent.** An owner already where the step leads (a version generated and not changed since, with the same lines, opening balance and issues; approved;
+  published; a closed month, for every step) is an `unchanged` row and nothing is made, posted, published or closed twice: a run is repeated after a failure or a deploy.
+- **Up to 20 owners the answer is the request's** (200 with the rows); **for more it is a background job**: 202 with `jobId`, `status` `Queued`, the `Location` of the
+  progress and nothing run in the request. `GET api/owner-accounting/periods/{y}/{m}/bulk/{jobId}` (`agency.statement.view`) answers `status` (`Queued`, `Running`,
+  `Completed`, `Failed`), `total`, the counts and the rows done so far. The job (`OwnerBulkCloseJob`, Hangfire) runs under the tenant of the org and as the user who
+  asked, with the owners resolved when it was queued; **its progress is a parameter of the Hangfire job (`owner-bulk-progress`), so nothing is stored in the database**,
+  and it lasts as long as Hangfire keeps the job (a day after it succeeded by default): an expired run, one of another org or month, or an id that is not a job is the
+  same 404 `owner_bulk_job_not_found` (the org and the month are read from the arguments the job was queued with, never from the caller). No automatic retry: a run that
+  fails as a whole is `Failed` with `errorCode` (`owner_bulk_failed`, or the code of the rule that stopped it) and the rows done before it, and it is run again, which
+  finds the owners done as they are.
+- **Cost.** Each owner reads the plan of the month again inside its own step (so a source that arrives during a long run is seen by the next owner, and the close reads
+  the readiness at its own moment): 250 owners are a few minutes of background work, not seconds. The screen of the bulk close shows the reconciliation of the month
+  (below) before it asks the agency to close.
+- **Not here.** No notification when a run ends (the screen polls the progress); no waiver; no bulk correction.
+
 ## External invoice references (E06/F01/US02/T05)
 
 - **The months invoiced outside CasaZen.** Before E14 the agency invoiced its fee with its own fiscal system; the stored agency invoices of the retired

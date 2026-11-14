@@ -4,6 +4,7 @@ using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Resources;
 using Microsoft.Extensions.Options;
 
@@ -108,6 +109,11 @@ public static class FiscalDocumentExtensions
 
         // The owner ledger, the statement versions and the month-end close (E06/F05/US02/T02, NF-110).
         services.AddScoped<IOwnerAccountingService, OwnerAccountingService>();
+
+        // The month-end in bulk (E13/F01/US03/T01): a step of the month-end for more owners than a request answers for is the Hangfire job OwnerBulkCloseJob, queued and read
+        // through IOwnerBulkJobs (its progress is a parameter of the job: no table).
+        services.AddScoped<IOwnerBulkJobs, HangfireOwnerBulkJobs>();
+        services.AddScoped<OwnerBulkCloseJob>();
 
         // The files of a statement version: its PDF and CSV from the lines of the version, the PDF stored at the publication as an owner document, and the e-mail that tells
         // the owner (E13/F01/US02/T01, E13/F01/US02/T02). The accounting service takes it to publish; it takes nothing of the accounting service.

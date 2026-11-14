@@ -135,6 +135,82 @@ public interface IOwnerAccountingService
     /// it again. Returns the new version, or <c>null</c> when none was generated.
     /// </summary>
     Task<OwnerStatementVersion?> RegenerateOpenVersionAsync(Guid orgId, Guid ownerId, int year, int month, string? userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The owners one step of the month-end runs for (E13/F01/US03/T01), the one place that checks a bulk request before anything is done: the ones listed, each once in
+    /// the order given, or, with no list, every owner the readiness of the month knows (a line, a source, a version or a close in it), by id. 422
+    /// <c>owner_bulk_action_invalid</c>, <c>owner_bulk_owners_empty</c> (an empty list is never «everyone»), <c>owner_bulk_too_many_owners</c>,
+    /// <c>owner_period_invalid</c>; 409 <c>owner_period_not_ended</c> for a close of a month that is not over.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ResolveBulkOwnersAsync(Guid orgId, int year, int month, OwnerBulkAction action, IReadOnlyList<Guid>? ownerIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// Runs one step of the month-end for every owner of <paramref name="ownerIds"/> (E13/F01/US03/T01): the posting of the month, the generation, the approval, the
+    /// publication or the close of the version, each through the very operation of one owner, with the same rules and the same refusals; the permission of the step is
+    /// checked by the web layer. Each owner is its own transaction and its own result (<see cref="OwnerBulkOwnerResult"/>): an owner that fails leaves nothing behind
+    /// and never stops the others, and a run never reads as «all done» while one failed. Idempotent: an owner already in the state the step leads to (a version
+    /// already approved, a month already closed) is an <see cref="OwnerBulkOwnerResult.Unchanged"/> result and changes nothing. The posting is one transaction of the
+    /// whole org (a ledger is posted from the sources of the month under one lock) and answers each owner by what it kept out of it. A flagged version is never approved;
+    /// the close never waives a difference. <paramref name="progress"/> is told after each owner with the results so far.
+    /// </summary>
+    Task<IReadOnlyList<OwnerBulkOwnerResult>> RunBulkAsync(
+        Guid orgId,
+        int year,
+        int month,
+        OwnerBulkAction action,
+        IReadOnlyList<Guid> ownerIds,
+        string? userId,
+        OwnerBulkProgress? progress = null,
+        CancellationToken ct = default);
+}
+
+/// <summary>The steps of the month-end that run for many owners at once (E13/F01/US03/T01). Not stored: the numbers are free to be read, never to be renumbered.</summary>
+public enum OwnerBulkAction
+{
+    /// <summary>Posts the ledger lines of the month from their sources.</summary>
+    Post = 1,
+
+    /// <summary>Generates the statement version of the month.</summary>
+    Generate = 2,
+
+    /// <summary>Approves the current version, unless it is flagged.</summary>
+    Approve = 3,
+
+    /// <summary>Publishes the approved version.</summary>
+    Publish = 4,
+
+    /// <summary>Closes the month on the approved or published version, never with a waiver.</summary>
+    Close = 5,
+}
+
+/// <summary>
+/// What a bulk step did for one owner (E13/F01/US03/T01). <see cref="Ok"/> is the truth: the owner is in the state the step leads to (done now, or already so:
+/// <see cref="Unchanged"/>). <see cref="Code"/> is the stable code of the reason: why the step was not done (<c>ok</c> false), or a note on an <c>ok</c> row (a
+/// closed month, a version generated <c>owner_statement_flagged</c>). <see cref="Issues"/> are the blocking issue codes behind it, <see cref="Details"/> the facts a
+/// person needs to act on it (<c>due</c>, <c>paid</c>, <c>difference</c> of a close that does not reconcile). Never a name, an amount of the ledger or an address.
+/// </summary>
+public sealed record OwnerBulkOwnerResult(
+    Guid OwnerId,
+    bool Ok,
+    string? Code = null,
+    bool Unchanged = false,
+    IReadOnlyList<string>? Issues = null,
+    IReadOnlyDictionary<string, object?>? Details = null);
+
+/// <summary>Told after each owner of a bulk step with the results so far (E13/F01/US03/T01): the progress a long run shows.</summary>
+public delegate Task OwnerBulkProgress(IReadOnlyList<OwnerBulkOwnerResult> done, CancellationToken ct);
+
+/// <summary>The limits of a bulk step (E13/F01/US03/T01).</summary>
+public static class OwnerBulk
+{
+    /// <summary>
+    /// A step for up to this many owners answers in the request; for more it is a background job with a progress to read (<c>GET …/bulk/{jobId}</c>): 250 flats
+    /// are a few minutes of work.
+    /// </summary>
+    public const int SyncMaxOwners = 20;
+
+    /// <summary>The most owners a request can name: a list longer than any agency has is a mistake, not a selection.</summary>
+    public const int MaxListedOwners = 5_000;
 }
 
 /// <summary>The month of an owner a line of an owner invoice was posted in (E14/F01/US01/T01).</summary>
@@ -289,6 +365,15 @@ public static class OwnerAccountingErrors
     public const string ExternalDocumentDuplicate = "owner_external_document_duplicate";
     public const string ExternalDocumentNotFound = "owner_external_document_not_found";
     public const string ExternalDocumentRemoved = "owner_external_document_removed";
+
+    // The month-end in bulk (E13/F01/US03/T01).
+    public const string BulkActionInvalid = "owner_bulk_action_invalid";
+    public const string BulkOwnersEmpty = "owner_bulk_owners_empty";
+    public const string BulkTooManyOwners = "owner_bulk_too_many_owners";
+    public const string BulkJobNotFound = "owner_bulk_job_not_found";
+
+    /// <summary>The result code of an owner whose step failed for a reason that is not a rule of the domain (the database, a file): logged with the ids, run again by the next call.</summary>
+    public const string BulkFailed = "owner_bulk_failed";
 }
 
 /// <summary>The codes of the month-end readiness issues (besides the codes of the fiscal profile, <c>owner_fiscal_*</c>).</summary>

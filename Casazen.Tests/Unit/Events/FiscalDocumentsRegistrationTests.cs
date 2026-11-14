@@ -8,6 +8,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Services;
+using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Extensions;
 using Casazen.Web.Resources;
 using Microsoft.EntityFrameworkCore;
@@ -86,6 +87,10 @@ public class FiscalDocumentsRegistrationTests
             // with their withholding evidence and the filing states (T03).
             (typeof(IOwnerFiscalProfileService), typeof(OwnerFiscalProfileService), ServiceLifetime.Scoped),
             (typeof(IOwnerAccountingService), typeof(OwnerAccountingService), ServiceLifetime.Scoped),
+
+            // The month-end in bulk (E13/F01/US03/T01): the Hangfire job and the queue that reads its progress.
+            (typeof(IOwnerBulkJobs), typeof(HangfireOwnerBulkJobs), ServiceLifetime.Scoped),
+            (typeof(OwnerBulkCloseJob), typeof(OwnerBulkCloseJob), ServiceLifetime.Scoped),
             (typeof(IOwnerStatementDocuments), typeof(OwnerStatementDocuments), ServiceLifetime.Scoped),
             (typeof(IOwnerPayoutService), typeof(OwnerPayoutService), ServiceLifetime.Scoped),
 

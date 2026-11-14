@@ -198,6 +198,75 @@ public class OwnerAccountingController(
         return Ok(OwnerClosePeriodDto.From(row));
     }
 
+    /// <summary>
+    /// One step of the month-end for every owner of the month, or the ones listed (E13/F01/US03/T01): <c>{ action: post|generate|approve|publish|close, ownerIds? }</c>. The
+    /// permission is the one of the single operation: <c>agency.statement.publish</c> for the publication, <c>agency.statement.manage</c> for every other step. Each owner is its own
+    /// transaction and its own result <c>{ ownerId, ok, code?, unchanged, issues?, details? }</c>: a run never answers «all done» while one owner failed (<c>allDone</c>), a flagged
+    /// version is never approved (it is skipped with its blocking <c>issues</c>), the close never waives a difference, and running a step twice changes nothing more
+    /// (<c>unchanged</c>). Up to <see cref="OwnerBulk.SyncMaxOwners"/> owners it answers 200 with the results; for more it queues a background job and answers 202 with its
+    /// <c>jobId</c> and the progress to read at <c>…/bulk/{jobId}</c>. An empty <c>ownerIds</c> is 422 <c>owner_bulk_owners_empty</c>, never «everyone». The whole org only (403
+    /// otherwise). 422 <c>owner_bulk_action_invalid</c>, <c>owner_bulk_too_many_owners</c>, <c>owner_period_invalid</c>; 409 <c>owner_period_not_ended</c> for a close of a month that is
+    /// not over.
+    /// </summary>
+    [HttpPost("periods/{year:int}/{month:int}/bulk")]
+    [ProducesResponseType(typeof(OwnerBulkRun), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(OwnerBulkRun), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<OwnerBulkRun>> Bulk(int year, int month, [FromBody] OwnerBulkRequest request, [FromServices] IOwnerBulkJobs jobs)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+
+        // The permission of the step, as the single operation asks for it: the publication has its own, every other step is the management of the statements.
+        var policy = request.Action == OwnerBulkAction.Publish ? CasazenPolicies.AgencyStatementPublish : CasazenPolicies.AgencyStatementManage;
+        if (!(await authorizationService.AuthorizeAsync(User, policy)).Succeeded)
+            return Forbid();
+        if (request.Action is not { } action)
+            throw new DomainRuleException(OwnerAccountingErrors.BulkActionInvalid, "OwnerBulkActionInvalid");
+
+        var ct = HttpContext.RequestAborted;
+        var owners = await accounting.ResolveBulkOwnersAsync(orgId, year, month, action, request.OwnerIds, ct);
+        var userId = User.GetUserId();
+        if (owners.Count > OwnerBulk.SyncMaxOwners)
+        {
+            var jobId = jobs.Enqueue(orgId, year, month, action, owners, userId);
+            return AcceptedAtAction(nameof(BulkRun), new { year, month, jobId }, new OwnerBulkRun(jobId, action, year, month, OwnerBulkRunStatus.Queued, owners.Count, []));
+        }
+
+        var rows = await accounting.RunBulkAsync(orgId, year, month, action, owners, userId, null, ct);
+        return Ok(new OwnerBulkRun(null, action, year, month, OwnerBulkRunStatus.Completed, owners.Count, rows));
+    }
+
+    /// <summary>
+    /// How far a bulk run is (E13/F01/US03/T01): its status (<c>Queued</c>, <c>Running</c>, <c>Completed</c> or <c>Failed</c>), how many owners it was asked for, and the results of
+    /// the ones answered so far. 404 <c>owner_bulk_job_not_found</c> for a run of another org, of another month, one that does not exist or that has expired (the job keeps its
+    /// progress as long as Hangfire keeps the job).
+    /// </summary>
+    [HttpGet("periods/{year:int}/{month:int}/bulk/{jobId}")]
+    [PrivateAnswer]
+    [ProducesResponseType(typeof(OwnerBulkRun), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OwnerBulkRun>> BulkRun(int year, int month, string jobId, [FromServices] IOwnerBulkJobs jobs)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+
+        var run = await jobs.GetAsync(orgId, jobId, HttpContext.RequestAborted);
+        if (run is null || run.Year != year || run.Month != month)
+        {
+            throw new NotFoundException($"Owner bulk run {jobId} was not found")
+            {
+                Code = OwnerAccountingErrors.BulkJobNotFound,
+                MessageKey = "OwnerBulkJobNotFound",
+            };
+        }
+
+        return Ok(run);
+    }
+
     /// <summary>Sets or lifts the legal hold of the owner's month (<c>{ hold, reason }</c>). 422 <c>owner_legal_hold_reason_required</c>.</summary>
     [HttpPost("periods/{year:int}/{month:int}/owners/{ownerId:guid}/legal-hold")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
@@ -387,6 +456,12 @@ public class OwnerAccountingController(
         return scope is { IsOrgWide: true } ? orgId : null;
     }
 }
+
+/// <summary>
+/// The step of the month-end to run for many owners, and the owners it is for (E13/F01/US03/T01): <c>ownerIds</c> left out means every owner of the month, an empty list is
+/// refused (never «everyone»).
+/// </summary>
+public sealed record OwnerBulkRequest(OwnerBulkAction? Action, List<Guid>? OwnerIds);
 
 /// <summary>The removal of a mistaken link to an external invoice, with its reason.</summary>
 public sealed record OwnerExternalDocumentRemoval(string? Reason);
