@@ -25,7 +25,7 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>What is saved is what the engine can run</b>: the name (1 to 200 characters), the event type (a member of <see cref="RoutineEventType"/> that
 /// something starts a routine on, <c>WeeklyRecurrence</c> not yet), the configuration of the event (<c>days</c> and <c>hours</c> 0 to 365 for the time
 /// triggers, read by <see cref="TimeTrigger.OffsetHours"/> as the emitter does, nothing for the others), the condition (<see cref="IConditionEvaluator.ValidateCondition"/> and
-/// the fields a routine can read), 1 to 10 actions of a known type with a configuration that is an object of at most 4 KB and the rules of its type
+/// the fields a routine can read, the kind of value each operator takes, no member nobody reads), 1 to 10 actions of a known type with a configuration that is an object of at most 4 KB and the rules of its type
 /// (<see cref="RoutineActionRules"/>). Each refusal is a 422 with a stable code and a message in Italian and English.</item>
 /// <item><b>Active means it can run</b>: outside test mode a routine is active only when every action is available (<see cref="RoutineActionCatalog"/>),
 /// whichever way it gets there (the switch, test mode turned off, a change); in test mode it may hold any action.</item>
@@ -293,7 +293,7 @@ public class RoutineManagementService(
         }
     }
 
-    /// <summary>The condition read as the engine reads it and checked by the evaluator, with the fields a routine can read; 422 with the errors.</summary>
+    /// <summary>The condition read as the engine reads it and checked by the evaluator, with the fields a routine can read and the kind of value each operator takes (<see cref="RoutineConditions.ValueErrors"/>); 422 with the errors.</summary>
     private void ValidateCondition(string conditionJson)
     {
         if (Encoding.UTF8.GetByteCount(conditionJson) > RoutineLimits.MaxConditionBytes)
