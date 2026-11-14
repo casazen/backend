@@ -74,7 +74,36 @@ public interface IMessageHubService
         HostScope scope,
         Guid messageId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether the chat of each listing of the scope works (E23/F01/US01/T03, NF-61, NF-62): one row for each listing with a <b>confirmed</b> mapping to a property the
+    /// scope reaches, from what the copy of the conversations stored about it (<c>OtaMessageSyncState</c>): <see cref="MessageChannelStatuses.Available"/>,
+    /// <see cref="MessageChannelStatuses.WaitingPermission"/> (the last pass found the <c>chat</c> module not in the license) or <see cref="MessageChannelStatuses.Error"/>
+    /// (any other failure), with the instant of the last pass. It is how the inbox tells «this listing has no chat yet» from «nobody wrote»: it reads, it asks Octorate
+    /// nothing. A listing of another org, a listing of a property out of the reach of a collaborator «Solo alcuni», and a listing nobody confirmed are never in it.
+    /// Ordered by property name.
+    /// </summary>
+    Task<IReadOnlyList<MessageChannelStatus>> GetChannelStatusAsync(HostScope scope, CancellationToken cancellationToken = default);
 }
+
+/// <summary>The codes of <see cref="MessageChannelStatus.Status"/>.</summary>
+public static class MessageChannelStatuses
+{
+    /// <summary>The chat of the listing is read: nothing is known to be wrong (also a listing the copy has not reached yet).</summary>
+    public const string Available = "available";
+
+    /// <summary>The <c>chat</c> module is not in the license of the listing (<c>chat_not_licensed</c>): its messages cannot be read, and the host cannot answer in it yet.</summary>
+    public const string WaitingPermission = "waiting_permission";
+
+    /// <summary>The last pass over the listing failed for another reason (Octorate did not answer, a refusal): the next pass reads it again.</summary>
+    public const string Error = "error";
+}
+
+/// <summary>
+/// The chat of one listing, for the inbox (E23/F01/US01/T03): the property it is mapped to, <paramref name="Status"/> (<see cref="MessageChannelStatuses"/>) and
+/// <paramref name="LastCheckedAt"/>, the instant (UTC) of the last pass of the copy that reached the listing, <c>null</c> while none did. Never an address, a name of a guest or a code of Octorate.
+/// </summary>
+public sealed record MessageChannelStatus(Guid PropertyId, string PropertyName, string Status, DateTime? LastCheckedAt);
 
 /// <summary>The channel of a conversation of the hub: the direct one, or one of the four channels with an integrated chat. The numbers of the channels are those of <see cref="OtaChannel"/>.</summary>
 public enum MessageHubChannel
@@ -211,7 +240,7 @@ public sealed record MessageBookingCard(
 /// <param name="ContactDetailsAllowed">A link, an address or a number may be written.</param>
 /// <param name="AttachmentsAllowed">The channel is confirmed to take an attachment of the host (D3).</param>
 /// <param name="AutoReplyAllowed">The channel is confirmed to take an automatic answer (D4).</param>
-/// <param name="Reason">Why nothing is allowed: <see cref="MappingNotConfirmedReason"/> or <see cref="ThreadClosedReason"/>; <c>null</c> when the actions are the channel's own.</param>
+/// <param name="Reason">Why nothing is allowed: <see cref="MappingNotConfirmedReason"/>, <see cref="ThreadClosedReason"/> or <see cref="ChatNotLicensedReason"/>; <c>null</c> when the actions are the channel's own.</param>
 public sealed record MessageThreadActions(
     bool CanReply,
     bool ContactDetailsAllowed,
@@ -224,6 +253,12 @@ public sealed record MessageThreadActions(
 
     /// <summary>The direct thread is past the seventh day after the check-out (the same code the reply answers with, 409).</summary>
     public const string ThreadClosedReason = "thread_closed";
+
+    /// <summary>
+    /// The <c>chat</c> module is not in the license of the listing of the conversation (the last pass of the copy said so, <see cref="OtaMessageSyncErrorCodes.ChatNotLicensed"/>):
+    /// a reply would be refused, so the reply box says so instead of failing (E23/F01/US01/T03). The same code the refusal of a send carries.
+    /// </summary>
+    public const string ChatNotLicensedReason = OtaMessageSyncErrorCodes.ChatNotLicensed;
 
     /// <summary>Nothing is allowed because of <paramref name="reason"/>.</summary>
     public static MessageThreadActions Blocked(string reason) => new(false, false, false, false, reason);

@@ -453,6 +453,7 @@ public sealed class MessageHubService(
                 t.BookingId,
                 t.ChannelSource,
                 t.Kind,
+                t.OctorateAccommodationId,
                 t.GuestDisplayName,
                 t.LastMessageDirection,
                 t.UnreadCount,
@@ -504,7 +505,7 @@ public sealed class MessageHubService(
             .ToList();
 
         var card = await BookingCardAsync(scope, thread.BookingId, thread.PropertyId, thread.GuestDisplayName, includeAmounts, cancellationToken);
-        var actions = await OtaActionsAsync(thread.ChannelSource, thread.Kind, thread.PropertyId, cancellationToken);
+        var actions = await OtaActionsAsync(thread.ChannelSource, thread.Kind, thread.PropertyId, scope.OrgId, thread.OctorateAccommodationId, cancellationToken);
 
         return new MessageThreadView(
             key,
@@ -528,14 +529,91 @@ public sealed class MessageHubService(
 
     /// <summary>
     /// What the host may do in a conversation of a channel (OCT-04): nothing while it has no property, or while its property is in a row of the
-    /// mapping that nobody decided; otherwise what <see cref="OtaChannelCapabilities"/> says for its channel and kind.
+    /// mapping that nobody decided; nothing, with the reason <see cref="MessageThreadActions.ChatNotLicensedReason"/>, while the last pass of the copy found
+    /// the chat of its listing not in the license (a reply would be refused: the reply box explains it, E23/F01/US01/T03); otherwise what
+    /// <see cref="OtaChannelCapabilities"/> says for its channel and kind.
     /// </summary>
-    private async Task<MessageThreadActions> OtaActionsAsync(OtaChannel channel, OtaThreadKind kind, Guid? propertyId, CancellationToken cancellationToken)
+    private async Task<MessageThreadActions> OtaActionsAsync(
+        OtaChannel channel,
+        OtaThreadKind kind,
+        Guid? propertyId,
+        Guid orgId,
+        string accommodationId,
+        CancellationToken cancellationToken)
     {
         if (propertyId is not { } id || await channelMapping.IsWriteBlockedAsync(id, cancellationToken))
             return MessageThreadActions.Blocked(MessageThreadActions.MappingNotConfirmedReason);
 
+        var notLicensed = await db.OtaMessageSyncStates
+            .AsNoTracking()
+            .AnyAsync(
+                s => s.OrgId == orgId
+                     && s.OctorateAccommodationId == accommodationId
+                     && s.LastError == OtaMessageSyncErrorCodes.ChatNotLicensed,
+                cancellationToken);
+        if (notLicensed)
+            return MessageThreadActions.Blocked(MessageThreadActions.ChatNotLicensedReason);
+
         return ActionsOf(OtaChannelCapabilities.For(channel, kind));
+    }
+
+    public async Task<IReadOnlyList<MessageChannelStatus>> GetChannelStatusAsync(HostScope scope, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+
+        // The confirmed listings of the org whose property the scope reaches: the reach of a collaborator «Solo alcuni» is applied to the properties in SQL, so a listing of
+        // a house it was not given is never in the answer, and a listing nobody confirmed (no property) has no row to be joined to.
+        var properties = db.Properties
+            .AsNoTracking()
+            .Where(p => p.OrgId == scope.OrgId)
+            .InScope(scope);
+        var rows = await db.OctorateListingMappings
+            .AsNoTracking()
+            .Where(m => m.OrgId == scope.OrgId
+                        && m.Status == OctorateMappingStatus.Confirmed
+                        && m.PropertyId != null
+                        && properties.Any(p => p.Id == m.PropertyId))
+            .Select(m => new { PropertyId = m.PropertyId!.Value, m.OctorateAccommodationId })
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0)
+            return [];
+
+        var propertyIds = rows.Select(r => r.PropertyId).Distinct().ToList();
+        var names = await db.Properties
+            .AsNoTracking()
+            .Where(p => p.OrgId == scope.OrgId && propertyIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Name })
+            .ToDictionaryAsync(p => p.Id, p => p.Name, cancellationToken);
+        var listings = rows
+            .Where(r => names.ContainsKey(r.PropertyId))
+            .Select(r => new { r.PropertyId, PropertyName = names[r.PropertyId], r.OctorateAccommodationId })
+            .ToList();
+
+        var accommodationIds = listings.Select(l => l.OctorateAccommodationId).Distinct().ToList();
+        var states = (await db.OtaMessageSyncStates
+                .AsNoTracking()
+                .Where(s => s.OrgId == scope.OrgId && accommodationIds.Contains(s.OctorateAccommodationId))
+                .Select(s => new { s.OctorateAccommodationId, s.LastError, s.UpdatedAt, s.LastRecentPassAt, s.LastDeepPassAt })
+                .ToListAsync(cancellationToken))
+            .ToDictionary(s => s.OctorateAccommodationId, StringComparer.Ordinal);
+
+        return listings
+            .OrderBy(l => l.PropertyName, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(l => l.PropertyId)
+            .Select(listing =>
+            {
+                if (!states.TryGetValue(listing.OctorateAccommodationId, out var state))
+                    return new MessageChannelStatus(listing.PropertyId, listing.PropertyName, MessageChannelStatuses.Available, null);
+
+                var status = state.LastError is null
+                    ? MessageChannelStatuses.Available
+                    : state.LastError == OtaMessageSyncErrorCodes.ChatNotLicensed
+                        ? MessageChannelStatuses.WaitingPermission
+                        : MessageChannelStatuses.Error;
+                var checkedAt = new[] { state.UpdatedAt, state.LastRecentPassAt ?? DateTime.MinValue, state.LastDeepPassAt ?? DateTime.MinValue }.Max();
+                return new MessageChannelStatus(listing.PropertyId, listing.PropertyName, status, checkedAt);
+            })
+            .ToList();
     }
 
     /// <summary>The actions of a conversation as the table of capabilities says them: the one place that turns a row of it into what the screens read.</summary>
