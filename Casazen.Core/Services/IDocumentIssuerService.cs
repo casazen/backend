@@ -5,13 +5,15 @@ namespace Casazen.Core.Services;
 
 /// <summary>
 /// Who issues the fiscal documents of an organization and of each booking (FIS-02, NF-82, NF-112, E11/F01/US01/T01): CasaZen, always (decision of the
-/// PO of 2026-11-14), for every active booking whatever its source; the profile of the issuer with which it issues, and the rules of its regime.
+/// PO of 2026-11-14), for every active booking whatever its source except one that already has a document issued elsewhere; the profile of the issuer with
+/// which it issues, and the rules of its regime.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
 /// <item><b>CasaZen is the only issuer.</b> The modes Octorate and accountant are retired: a save that asks for them is 422 <c>issuer_mode_retired</c>,
-/// and a document imported from Octorate never locks a booking. A booking locked to Octorate before the decision (a legacy row) keeps that lock, so a
-/// booking Octorate already issued for is never issued twice.</item>
+/// and a document imported from Octorate never locks a booking. A booking locked to Octorate before the decision (a legacy row) keeps that lock, and a
+/// booking with a document imported from Octorate is refused by the document service (409 <c>document_already_issued</c>): a booking Octorate already
+/// issued for is never issued twice. Every other active booking is CasaZen's.</item>
 /// <item><b>Behind the flag.</b> <c>Features:FiscalDocumentIssuance</c> gates every write: while it is off nobody issues and the setting cannot be saved.</item>
 /// <item><b>Tenant.</b> The service works through the tenant query filter of its caller and names the org of every row it reads or writes. The web
 /// layer decides who may change the settings of the org (the whole org, not some of its properties).</item>

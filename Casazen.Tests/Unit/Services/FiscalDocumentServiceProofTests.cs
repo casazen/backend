@@ -350,6 +350,52 @@ public class FiscalDocumentServiceProofTests
         Assert.Single(await db.FiscalDocuments.ToListAsync());
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (never two documents for one stay). CasaZen issues for every booking of every source except one that already has a document issued
+    /// elsewhere: a document imported from Octorate (the import is off by default) refuses the draft (409 <c>document_already_issued</c>) and numbers nothing,
+    /// while a proforma imported from Octorate (no fiscal document) holds nothing and a booking with no document at all is issued. A booking a legacy row
+    /// locked to Octorate is refused too (409 <c>document_issuer_conflict</c>, see <c>FiscalDocument_PortalBooking_IsIssuedByCasazen_Test</c>).
+    /// </summary>
+    [Fact]
+    public async Task FiscalDocument_BookingWithADocumentIssuedElsewhere_IsNotIssuedAgain_Test()
+    {
+        await using var db = NewDb();
+        var imported = await SeedAsync(db, BookingSource.BookingCom);
+        var withProforma = await SeedBookingAsync(db, BookingSource.Airbnb);
+        var free = await SeedBookingAsync(db, BookingSource.Manual);
+        db.FiscalDocuments.AddRange(
+            ImportedDocument(imported, DocumentKind.Invoice, "D-1"),
+            ImportedDocument(withProforma, DocumentKind.Proforma, "D-2"));
+        await db.SaveChangesAsync();
+        var service = Service(db);
+
+        var refused = await Assert.ThrowsAsync<DomainConflictException>(() => service.CreateDraftAsync(imported, null));
+        Assert.Equal(FiscalDocumentErrors.AlreadyIssued, refused.Code);
+        Assert.Empty(await db.FiscalNumberSequences.ToListAsync());
+
+        foreach (var booking in new[] { withProforma, free })
+        {
+            var issued = await service.IssueAsync((await service.CreateDraftAsync(booking, null)).Id, confirm: true);
+            Assert.Equal(FiscalDocumentStatus.Issued, issued.Status);
+            Assert.Equal(FiscalDocumentSource.CasaZen, issued.Source);
+        }
+    }
+
+    /// <summary>A document Octorate issued, imported read-only and linked to a booking of the org.</summary>
+    private static FiscalDocument ImportedDocument(Guid bookingId, DocumentKind kind, string octorateId) => new()
+    {
+        OrgId = OrgId,
+        BookingId = bookingId,
+        Source = FiscalDocumentSource.Octorate,
+        Kind = kind,
+        Status = FiscalDocumentStatus.Issued,
+        Number = $"OCT/{octorateId}",
+        Currency = "EUR",
+        Total = 120m,
+        OctorateDocumentId = octorateId,
+        SdiStatus = FiscalDocumentSdiStatuses.Unknown,
+    };
+
     [Fact]
     public async Task Issue_WithoutConfirmation_IsRefused_AndAReceiptHasNoXml()
     {

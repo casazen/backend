@@ -337,7 +337,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
     /// Proof (data, AC-NF104-9..11): the parts «Messages and AI», «Fiscal documents» and «Partners» show their progress from the stored facts of E05, E06
     /// and E09, and none is done without them. The preferences of a collaborator, and the row the alert router makes with the defaults, are not a save
     /// of an administrator; the issuer is done once its profile is complete and confirmed and the issuance is on (CasaZen issues; a draft is not done, see
-    /// <see cref="FiscalDocuments_ADraftIsNeitherReadyNorDone_Test"/>); the assistant counts only while its flag is on.
+    /// <c>FiscalDocuments_ADraftIsNeitherReadyNorDone_Test</c>); the assistant counts only while its flag is on.
     /// </summary>
     [Fact]
     public async Task OnboardingCrossEpicParts_StateComesFromStoredFacts_Test()

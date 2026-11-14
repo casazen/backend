@@ -12,11 +12,13 @@ NF-84, NF-87, NF-112, NF-113; ADR-019 (amended twice), ADR-033-R7 (retention).
 - **Retired modes.** `DocumentIssuerMode` keeps its numbers for the stored rows: `CasaZen = 2` (formerly `CasaZenDirectOnly`) is the only mode;
   `Octorate = 1` and `Accountant = 3` are `[Obsolete]`, the migration `AddSoleIssuerModel` moved every profile to 2 and `PUT api/fiscal/documents/settings`
   answers 422 `issuer_mode_retired` for them (the old name `CasaZenDirectOnly` is still read as `CasaZen`).
-- **Octorate documents never block.** The import of the documents Octorate issued stores them read-only and links them to their booking; it never
-  locks the issuer of a booking and never raises `two_issuers_detected`. Its job selects no organization unless `FiscalDocuments:ImportOctorateDocuments`
-  is `true` (default `false`), so it never runs by accident. A booking a legacy row locked to Octorate before the decision keeps that lock (Octorate
-  issued it, CasaZen never issues it twice: 409 `document_issuer_conflict`, reason `issuer_locked_octorate`). The write-back of the billing data to
-  Octorate is unchanged and inert: it runs only for such a booking.
+- **Octorate documents never lock, and are never issued twice.** The import of the documents Octorate issued stores them read-only and links them to
+  their booking; it never locks the issuer of a booking and never raises `two_issuers_detected`. Its job selects no organization unless
+  `FiscalDocuments:ImportOctorateDocuments` is `true` (default `false`), so it never runs by accident. CasaZen issues for every active booking **except one
+  that already has a document issued elsewhere**: a booking with a document imported from Octorate is refused (409 `document_already_issued`, a proforma is
+  no document), and so is a booking a legacy row locked to Octorate before the decision (409 `document_issuer_conflict`, reason `issuer_locked_octorate`):
+  never two documents for one stay. No such document or lock exists in the test and production data (the import was never on there). The write-back of the
+  billing data to Octorate is unchanged and inert: it runs only for a booking with such a lock.
 - **Owner statements are not fiscal documents.** A rendiconto (owner statement) is a management report: it has no fiscal series or number, never
   draws from the counter of the fiscal numbers and never produces FatturaPA XML. The invoice of the agency to an owner, with lines, is a fiscal
   document of CasaZen again (purpose `OwnerInvoice`, epic E14): the model already has its owner, statement version, period and the unique index of one

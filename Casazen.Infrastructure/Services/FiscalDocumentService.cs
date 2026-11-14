@@ -21,7 +21,8 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// <list type="bullet">
 /// <item><b>Every active booking.</b> CasaZen issues for every source (direct, manual, the portals through Octorate) since 2026-11-14 (E11/F01/US01/T01);
-/// a booking that is not active (the one definition of the code) gets no document.</item>
+/// a booking that is not active (the one definition of the code) gets no document, nor does one that already has a document issued elsewhere (a document
+/// imported from Octorate, or a legacy lock to Octorate): never two documents for one stay.</item>
 /// <item><b>The issuer as it was.</b> The issue writes the snapshot of the issuer and the version of the rule on the document; the PDF and the XML of an
 /// issued document read the issuer from the snapshot, never from the profile of today.</item>
 /// <item><b>Payment state.</b> A document is <c>Paid</c> when the completed payments of its booking, net of the refunds, reach its total; else <c>ToCollect</c>.</item>
@@ -708,7 +709,10 @@ public sealed class FiscalDocumentService(
         return (profile, org);
     }
 
-    /// <summary>One invoice (or receipt) per booking, unless it was credited in full: 409 <c>document_already_issued</c>.</summary>
+    /// <summary>
+    /// One invoice (or receipt) per booking, unless it was credited in full: 409 <c>document_already_issued</c>. Whoever issued it counts: a document imported
+    /// from Octorate (a document issued elsewhere) holds the booking too, so CasaZen never issues a second document for the stay; a proforma is not a document.
+    /// </summary>
     private async Task RequireNoOtherDocumentAsync(Guid bookingId, Guid exceptId, CancellationToken ct)
     {
         var issued = await db.FiscalDocuments

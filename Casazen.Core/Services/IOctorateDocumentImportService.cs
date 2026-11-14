@@ -11,8 +11,11 @@ namespace Casazen.Core.Services;
 /// accident. The documents list is documented in the OpenAPI but never seen with content (the sandbox has no invoice module, S25), so the field names are
 /// unverified; nothing is written while any of the three is off.</item>
 /// <item><b>Tenant.</b> The import writes only the org of the connection, under its Octorate scope; a booking is linked only within that org.</item>
-/// <item><b>Never a block.</b> An imported document is stored read-only and linked to its booking, and nothing more: it never locks the issuer of the
-/// booking, so CasaZen still issues for it.</item>
+/// <item><b>Never a lock, never two documents.</b> An imported document is stored read-only and linked to its booking: it never locks the issuer of the
+/// booking and never raises <c>two_issuers_detected</c>. It is a document issued elsewhere, though: CasaZen issues for every active booking except one that
+/// already has a document issued elsewhere, so the booking of an imported document (and a booking a legacy row locked to Octorate) is not issued again by
+/// CasaZen (409 <c>document_already_issued</c> / <c>document_issuer_conflict</c>: never two documents for one stay). The import is off by default and no
+/// such document or lock exists in the test and production data.</item>
 /// </list>
 /// </remarks>
 public interface IOctorateDocumentImportService

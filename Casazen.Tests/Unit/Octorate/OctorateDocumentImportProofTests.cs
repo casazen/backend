@@ -21,8 +21,9 @@ namespace Casazen.Tests.Unit.Octorate;
 /// <summary>
 /// E06/F03/US02/T01, E11/F01/US01/T01 (NF-84, FIS-04): the documents Octorate issued are imported only into the org of the connection and linked only to
 /// its own bookings, their rejected SDI state and their amount to collect become "To do" items that close when the state changes, an imported document
-/// never locks the issuer of its booking nor raises <c>two_issuers_detected</c> (CasaZen is the only issuer), and nothing is read while the import is
-/// off: its two flags, and the option <c>FiscalDocuments:ImportOctorateDocuments</c> (false by default).
+/// never locks the issuer of its booking nor raises <c>two_issuers_detected</c> (CasaZen is the only issuer; a booking that already has a document issued
+/// elsewhere is not issued twice, which the document service decides), and nothing is read while the import is off: its two flags, and the option
+/// <c>FiscalDocuments:ImportOctorateDocuments</c> (false by default).
 /// </summary>
 public class OctorateDocumentImportProofTests
 {
@@ -91,8 +92,9 @@ public class OctorateDocumentImportProofTests
 
     /// <summary>
     /// PROOF TEST: data rule (replaces «two issuers detected»). A booking CasaZen issued for, and one nobody issued for yet: the imported documents are
-    /// stored and linked, the lock of CasaZen stays as it was, no booking is locked to Octorate and no "To do" of two issuers is raised, so CasaZen still
-    /// issues the second booking.
+    /// stored and linked, the lock of CasaZen stays as it was, no booking is locked to Octorate and no "To do" of two issuers is raised. The import only
+    /// links the documents: what CasaZen then does with a booking that has a document imported is the document service's (it issues no second document for
+    /// it, 409 <c>document_already_issued</c>: <c>FiscalDocumentServiceProofTests.FiscalDocument_BookingWithADocumentIssuedElsewhere_IsNotIssuedAgain_Test</c>).
     /// </summary>
     [Fact]
     public async Task Import_NeverLocksTheIssuer_NorRaisesTwoIssuers_Test()

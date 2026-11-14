@@ -183,7 +183,9 @@ E06/F01/US01) is unchanged.
   the VAT), made from a version of the owner statement: a `FiscalDocument` with the purpose `OwnerInvoice`, the same engine, numbering, PDF and XML. The
   rendiconto stays a non-fiscal management report; the invoice to the owner is a document of its own, linked to the version.
 - **Nobody issues outside CasaZen.** The issuer modes `Octorate` and `Accountant` are retired (kept as numbers for the stored rows, refused by the API);
-  the accountant receives the exports only. A document Octorate issued is imported read-only and never locks the issuer of a booking.
+  the accountant receives the exports only. A document Octorate issued is imported read-only and never locks the issuer of a booking; it is a document
+  issued elsewhere all the same, so CasaZen issues for every active booking except one that already has such a document (409): never two documents for one
+  stay.
 - **The port serves every issuer.** `ISdiEInvoiceProvider` is the one port toward the SDI for the documents of every issuer CasaZen issues for (the
   organization today, the owners that issue in Italy with E17); the concrete adapter stays behind its own flag (`SdiSubmission`, E17) and, without
   credentials, a document stays `to_send`.

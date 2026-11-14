@@ -20,7 +20,8 @@ namespace Casazen.Infrastructure.Octorate;
 /// bookings are read from), each accommodation once, under the Octorate scope of the org.</item>
 /// <item><b>Upsert.</b> By (org, Octorate id); the unique index refuses a second row, and a lost race reads the row that won. The document is always
 /// <see cref="FiscalDocumentStatus.Issued"/> and read-only in CasaZen: only this import changes it, from what Octorate says. It is linked to its booking
-/// and never locks the issuer of the booking (E11/F01/US01/T01): CasaZen issues every booking.</item>
+/// and never locks the issuer of the booking (E11/F01/US01/T01); it is still a document issued elsewhere, so CasaZen issues no second document for that
+/// booking (409 <c>document_already_issued</c>).</item>
 /// <item><b>SDI state.</b> <c>fiscalInvoiceGroup</c> mapped to <see cref="FiscalDocumentSdiStatuses"/> (<c>unknown</c> when Octorate gives none) and written
 /// on the row: the service of the SDI outcomes (E06/F03/US01) does not exist yet.</item>
 /// <item><b>Failures.</b> A refused or failing call is logged with ids and the error type only, counted, and read again by the next run; a refusal of
