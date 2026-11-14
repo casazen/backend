@@ -7125,4 +7125,394 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OwnerPortalInvoiceNotFound" xml:space="preserve">
     <value>Invoice not found.</value>
   </data>
+  <data name="AccPkgGuestRegisterTitle" xml:space="preserve">
+    <value>Documents issued to guests, from {1} to {2}, by issue date; credit notes are negative. Issuer: {0}</value>
+  </data>
+  <data name="AccPkgOwnerRegisterTitle" xml:space="preserve">
+    <value>Invoices issued to owners, from {0} to {1}, by issue date; credit notes are negative</value>
+  </data>
+  <data name="AccPkgRateDetailTitle" xml:space="preserve">
+    <value>Detail by VAT rate of each document</value>
+  </data>
+  <data name="AccPkgRateTotalsTitle" xml:space="preserve">
+    <value>Totals by VAT rate (credit notes negative)</value>
+  </data>
+  <data name="AccPkgColPaymentChannel" xml:space="preserve">
+    <value>Collected by</value>
+  </data>
+  <data name="AccPkgColPeriod" xml:space="preserve">
+    <value>Period</value>
+  </data>
+  <data name="AccPkgColRate" xml:space="preserve">
+    <value>VAT rate (%)</value>
+  </data>
+  <data name="AccPkgColNature" xml:space="preserve">
+    <value>Nature</value>
+  </data>
+  <data name="AccPkgColDocuments" xml:space="preserve">
+    <value>Documents</value>
+  </data>
+  <data name="AccPkgColAmount" xml:space="preserve">
+    <value>Amount</value>
+  </data>
+  <data name="AccPkgColChannel" xml:space="preserve">
+    <value>Channel</value>
+  </data>
+  <data name="AccPkgColIssuer" xml:space="preserve">
+    <value>Issuer</value>
+  </data>
+  <data name="AccPkgChannelCasaZen" xml:space="preserve">
+    <value>Paid with CasaZen</value>
+  </data>
+  <data name="AccPkgChannelPortal" xml:space="preserve">
+    <value>Collected by the portal</value>
+  </data>
+  <data name="AccPkgChannelOutside" xml:space="preserve">
+    <value>Collected outside CasaZen</value>
+  </data>
+  <data name="AccPkgChannelUnknown" xml:space="preserve">
+    <value>Not stated</value>
+  </data>
+  <data name="AccPkgRateUnknown" xml:space="preserve">
+    <value>n/a</value>
+  </data>
+  <data name="AccPkgVatSwissTitle" xml:space="preserve">
+    <value>Base of the quarterly VAT return by rate (taxable turnover and VAT due of the documents issued, credit notes negative). Issuer: {0}</value>
+  </data>
+  <data name="AccPkgVatOutsideTitle" xml:space="preserve">
+    <value>Amounts outside VAT, by type</value>
+  </data>
+  <data name="AccPkgVatPortalTitle" xml:space="preserve">
+    <value>Portal commissions on the accounts held by the agency, for information only (possible base of the purchase tax: to be confirmed by the accountant, never added to the VAT due)</value>
+  </data>
+  <data name="AccPkgVatItalyTitle" xml:space="preserve">
+    <value>Sales register, monthly summary by document class and rate (credit notes negative). Issuer: {0}</value>
+  </data>
+  <data name="AccPkgVatOwnerInvoicesOmittedTitle" xml:space="preserve">
+    <value>Invoices issued to owners not included in this file</value>
+  </data>
+  <data name="AccPkgVatOwnerInvoicesOmittedReason" xml:space="preserve">
+    <value>Invoices to owners belong to no property: reading them needs access to the whole organization. The figures of this file are therefore those of the documents of the properties reached only.</value>
+  </data>
+  <data name="AccPkgColTurnover" xml:space="preserve">
+    <value>Taxable turnover</value>
+  </data>
+  <data name="AccPkgColVatDue" xml:space="preserve">
+    <value>VAT due</value>
+  </data>
+  <data name="AccPkgColClass" xml:space="preserve">
+    <value>Class</value>
+  </data>
+  <data name="AccPkgClassOrdinary" xml:space="preserve">
+    <value>Ordinary invoices</value>
+  </data>
+  <data name="AccPkgClassFlatRate" xml:space="preserve">
+    <value>Flat-rate invoices</value>
+  </data>
+  <data name="AccPkgClassReceipt" xml:space="preserve">
+    <value>Receipts</value>
+  </data>
+  <data name="AccPkgOutsideTouristTax" xml:space="preserve">
+    <value>Tourist tax collected</value>
+  </data>
+  <data name="AccPkgOutsideExpenses" xml:space="preserve">
+    <value>Expenses advanced on behalf of the owner (art. 15)</value>
+  </data>
+  <data name="AccPkgOutsideOther" xml:space="preserve">
+    <value>Other operations without VAT</value>
+  </data>
+  <data name="AccPkgStatementsTitle" xml:space="preserve">
+    <value>Statements published to the owners, by month (latest published version)</value>
+  </data>
+  <data name="AccPkgColOwner" xml:space="preserve">
+    <value>Owner</value>
+  </data>
+  <data name="AccPkgColVersion" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="AccPkgColPublishedOn" xml:space="preserve">
+    <value>Published on</value>
+  </data>
+  <data name="AccPkgColRevenue" xml:space="preserve">
+    <value>Revenue</value>
+  </data>
+  <data name="AccPkgColChannelFees" xml:space="preserve">
+    <value>Channel fees</value>
+  </data>
+  <data name="AccPkgColCommission" xml:space="preserve">
+    <value>Commission</value>
+  </data>
+  <data name="AccPkgColCharges" xml:space="preserve">
+    <value>Recharges and expenses</value>
+  </data>
+  <data name="AccPkgColPayments" xml:space="preserve">
+    <value>Payments</value>
+  </data>
+  <data name="AccPkgColClosingBalance" xml:space="preserve">
+    <value>Closing balance</value>
+  </data>
+  <data name="AccPkgColSha" xml:space="preserve">
+    <value>SHA-256 of the published file</value>
+  </data>
+  <data name="AccPkgWithholdingTitle" xml:space="preserve">
+    <value>Withholding applied to the owners on their payouts, by month and owner, in euro (reversals are rows with opposite amounts)</value>
+  </data>
+  <data name="AccPkgF24Title" xml:space="preserve">
+    <value>F24 data of the withholding, by month: not the form filled in or filed</value>
+  </data>
+  <data name="AccPkgCuTitle" xml:space="preserve">
+    <value>Certificazione Unica data of {0}, by owner: not the official certificate</value>
+  </data>
+  <data name="AccPkgColPayoutCount" xml:space="preserve">
+    <value>Payouts to owners</value>
+  </data>
+  <data name="AccPkgColGrossBase" xml:space="preserve">
+    <value>Gross base</value>
+  </data>
+  <data name="AccPkgColWithheld" xml:space="preserve">
+    <value>Withholding</value>
+  </data>
+  <data name="AccPkgColTaxCode" xml:space="preserve">
+    <value>Tax code</value>
+  </data>
+  <data name="AccPkgColDueDate" xml:space="preserve">
+    <value>Due date</value>
+  </data>
+  <data name="AccPkgColPaidOn" xml:space="preserve">
+    <value>Paid on</value>
+  </data>
+  <data name="AccPkgColFilingState" xml:space="preserve">
+    <value>Filing state</value>
+  </data>
+  <data name="AccPkgColRuleVersion" xml:space="preserve">
+    <value>Rule version</value>
+  </data>
+  <data name="AccPkgColEvidence" xml:space="preserve">
+    <value>Withholding decisions</value>
+  </data>
+  <data name="AccPkgSwissTouristTaxTitle" xml:space="preserve">
+    <value>Swiss tourist tax collected in the documents issued, by canton (credit notes negative); the remittance to the cantonal office is not recorded in CasaZen</value>
+  </data>
+  <data name="AccPkgColCanton" xml:space="preserve">
+    <value>Canton</value>
+  </data>
+  <data name="AccPkgColCollected" xml:space="preserve">
+    <value>Collected</value>
+  </data>
+  <data name="AccPkgCantonUnknown" xml:space="preserve">
+    <value>Not stated</value>
+  </data>
+  <data name="AccPkgIndexTitle" xml:space="preserve">
+    <value>Index of the accountant package, period {0}</value>
+  </data>
+  <data name="AccPkgIndexColDescription" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="AccPkgIndexColRows" xml:space="preserve">
+    <value>Rows</value>
+  </data>
+  <data name="AccPkgIndexOmittedTitle" xml:space="preserve">
+    <value>Folders left out for lack of permission</value>
+  </data>
+  <data name="AccPkgIndexColFolder" xml:space="preserve">
+    <value>Folder</value>
+  </data>
+  <data name="AccPkgIndexColReason" xml:space="preserve">
+    <value>Reason</value>
+  </data>
+  <data name="AccPkgOmittedOwnerAccounting" xml:space="preserve">
+    <value>The permission to read the owner statements (agency.statement.view) and access to the whole organization are needed.</value>
+  </data>
+  <data name="AccPkgSummaryTitle" xml:space="preserve">
+    <value>Agency summary, period {0}</value>
+  </data>
+  <data name="AccPkgSumStaysTitle" xml:space="preserve">
+    <value>Stays, by accrual: nights of the confirmed stays in the period, tourist tax excluded</value>
+  </data>
+  <data name="AccPkgSumOccupiedNights" xml:space="preserve">
+    <value>Occupied nights</value>
+  </data>
+  <data name="AccPkgSumAvailableNights" xml:space="preserve">
+    <value>Available nights</value>
+  </data>
+  <data name="AccPkgSumOccupancy" xml:space="preserve">
+    <value>Occupancy (%)</value>
+  </data>
+  <data name="AccPkgSumRevenue" xml:space="preserve">
+    <value>Revenue by accrual</value>
+  </data>
+  <data name="AccPkgSumStays" xml:space="preserve">
+    <value>Stays</value>
+  </data>
+  <data name="AccPkgSumAdr" xml:space="preserve">
+    <value>Average daily rate (ADR)</value>
+  </data>
+  <data name="AccPkgSumRevPar" xml:space="preserve">
+    <value>Revenue per available night (RevPAR)</value>
+  </data>
+  <data name="AccPkgSumGeneratedOn" xml:space="preserve">
+    <value>Read on</value>
+  </data>
+  <data name="AccPkgSumCollectionsTitle" xml:space="preserve">
+    <value>Collected in the period, by cash and net of refunds</value>
+  </data>
+  <data name="AccPkgSumBalancesTitle" xml:space="preserve">
+    <value>Balances still to collect, by currency, as of the day the summary is read</value>
+  </data>
+  <data name="AccPkgSumCollected" xml:space="preserve">
+    <value>Collected</value>
+  </data>
+  <data name="AccPkgSumPayments" xml:space="preserve">
+    <value>Payments</value>
+  </data>
+  <data name="AccPkgSumToCollect" xml:space="preserve">
+    <value>To collect</value>
+  </data>
+  <data name="AccPkgSumGuestDocsTitle" xml:space="preserve">
+    <value>Documents issued to guests, by issuer and kind (credit notes negative)</value>
+  </data>
+  <data name="AccPkgSumPortalCostsTitle" xml:space="preserve">
+    <value>Costs of the channels, by accrual, as in the channel costs report</value>
+  </data>
+  <data name="AccPkgSumCostKind" xml:space="preserve">
+    <value>Kind of cost</value>
+  </data>
+  <data name="AccPkgSumGross" xml:space="preserve">
+    <value>Gross</value>
+  </data>
+  <data name="AccPkgSumNetPaid" xml:space="preserve">
+    <value>Net paid</value>
+  </data>
+  <data name="AccPkgSumCost" xml:space="preserve">
+    <value>Cost</value>
+  </data>
+  <data name="AccPkgSumNet" xml:space="preserve">
+    <value>Net</value>
+  </data>
+  <data name="AccPkgSumCostRate" xml:space="preserve">
+    <value>Cost over gross (%)</value>
+  </data>
+  <data name="AccPkgSumTotalRow" xml:space="preserve">
+    <value>Total</value>
+  </data>
+  <data name="AccPkgSumTouristTaxTitle" xml:space="preserve">
+    <value>Tourist tax collected and to remit</value>
+  </data>
+  <data name="AccPkgSumArea" xml:space="preserve">
+    <value>Area</value>
+  </data>
+  <data name="AccPkgSumAreaItaly" xml:space="preserve">
+    <value>Italy (by comune)</value>
+  </data>
+  <data name="AccPkgSumAreaSwitzerland" xml:space="preserve">
+    <value>Switzerland, canton {0}</value>
+  </data>
+  <data name="AccPkgSumTaxCollected" xml:space="preserve">
+    <value>Collected</value>
+  </data>
+  <data name="AccPkgSumTaxRemitted" xml:space="preserve">
+    <value>Remitted</value>
+  </data>
+  <data name="AccPkgSumTaxToRemit" xml:space="preserve">
+    <value>To remit</value>
+  </data>
+  <data name="AccPkgSumTaxIncomplete" xml:space="preserve">
+    <value>Stays without amount</value>
+  </data>
+  <data name="AccPkgSumCommissionsTitle" xml:space="preserve">
+    <value>Commissions by owner, from the invoices issued in the period (credit notes negative)</value>
+  </data>
+  <data name="AccPkgSumCommissionTaxable" xml:space="preserve">
+    <value>Commission, taxable</value>
+  </data>
+  <data name="AccPkgSumCommissionVat" xml:space="preserve">
+    <value>Commission, VAT</value>
+  </data>
+  <data name="AccPkgSumCommissionTotal" xml:space="preserve">
+    <value>Commission, total</value>
+  </data>
+  <data name="AccPkgSumRechargeTaxable" xml:space="preserve">
+    <value>Recharges, taxable</value>
+  </data>
+  <data name="AccPkgSumRechargeVat" xml:space="preserve">
+    <value>Recharges, VAT</value>
+  </data>
+  <data name="AccPkgSumRechargeTotal" xml:space="preserve">
+    <value>Recharges, total</value>
+  </data>
+  <data name="AccPkgSumAdvanced" xml:space="preserve">
+    <value>Expenses advanced (outside VAT)</value>
+  </data>
+  <data name="AccPkgSumInvoiced" xml:space="preserve">
+    <value>Total invoiced</value>
+  </data>
+  <data name="AccPkgSumOwnerInvoicesTitle" xml:space="preserve">
+    <value>Invoices issued to the owners in the period: number</value>
+  </data>
+  <data name="AccPkgSumOwnerInvoicesRatesTitle" xml:space="preserve">
+    <value>Invoices issued to the owners in the period: totals by rate (credit notes negative)</value>
+  </data>
+  <data name="AccPkgSumInvoices" xml:space="preserve">
+    <value>Invoices</value>
+  </data>
+  <data name="AccPkgSumCreditNotes" xml:space="preserve">
+    <value>Credit notes</value>
+  </data>
+  <data name="AccPkgSumPayoutsTitle" xml:space="preserve">
+    <value>Payouts to the owners confirmed in the period (not reversed)</value>
+  </data>
+  <data name="AccPkgSumPayouts" xml:space="preserve">
+    <value>Payouts</value>
+  </data>
+  <data name="AccPkgSumWithholding" xml:space="preserve">
+    <value>Withholding</value>
+  </data>
+  <data name="AccPkgSumWiresTitle" xml:space="preserve">
+    <value>Wire transfers to the owners: batches made in the period</value>
+  </data>
+  <data name="AccPkgSumBatches" xml:space="preserve">
+    <value>Batches</value>
+  </data>
+  <data name="AccPkgSumTransfers" xml:space="preserve">
+    <value>Transfers</value>
+  </data>
+  <data name="AccPkgWireGenerated" xml:space="preserve">
+    <value>Generated</value>
+  </data>
+  <data name="AccPkgWireDownloaded" xml:space="preserve">
+    <value>Downloaded</value>
+  </data>
+  <data name="AccPkgWirePaid" xml:space="preserve">
+    <value>Paid</value>
+  </data>
+  <data name="AccPkgSumPortalBorneTitle" xml:space="preserve">
+    <value>Portal commissions on the accounts held by the agency, by statement month (from the owner ledger)</value>
+  </data>
+  <data name="AccPkgSumMarginTitle" xml:space="preserve">
+    <value>Margin = commissions and recharges invoiced (taxable) less the portal commissions borne by the agency</value>
+  </data>
+  <data name="AccPkgSumMargin" xml:space="preserve">
+    <value>Margin</value>
+  </data>
+  <data name="AccPkgSumPortalBorne" xml:space="preserve">
+    <value>Portal commissions borne by the agency</value>
+  </data>
+  <data name="AccPkgSumOwnersTitle" xml:space="preserve">
+    <value>Report by owner: revenue and occupancy of the properties, by accrual</value>
+  </data>
+  <data name="AccPkgSumOwnersUnassigned" xml:space="preserve">
+    <value>Properties nobody owns</value>
+  </data>
+  <data name="AccPkgSumProperties" xml:space="preserve">
+    <value>Properties</value>
+  </data>
+  <data name="AccPkgSumOwnerAccountingOmitted" xml:space="preserve">
+    <value>The figures of the owner accounting are not included</value>
+  </data>
+  <data name="AccountantPackageTooLarge" xml:space="preserve">
+    <value>The package would hold {0} document files: the limit is {1} files and {2} MB (each file counts {3} KB). Choose a month instead of the year, or ask for the limit to be raised.</value>
+  </data>
+  <data name="AccountantPackageInvalidPeriod" xml:space="preserve">
+    <value>Invalid period: give a month (period=2026-10) or a year (period=2026), between 2000 and 2100.</value>
+  </data>
 </root>

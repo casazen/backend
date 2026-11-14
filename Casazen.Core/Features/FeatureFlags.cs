@@ -244,6 +244,15 @@ public static class FeatureFlags
     public const string OwnerInvoicing = "OwnerInvoicing";
 
     /// <summary>
+    /// E15/F01/US01/T01 (NF-101, NF-87, NF-115, D11, D15): the accountant package, one ZIP of a month or a year in a fixed structure and the agency summary, <b>off by
+    /// default</b> and turned on only in the test environment until the accountant confirms the ⚖ choices that shape the files (the Swiss purchase tax on the portal
+    /// commissions, the Italian register of the sales). Off, <c>GET api/accountant-package</c> and <c>GET api/accountant-package/agency-summary</c> answer 404 before
+    /// authentication. It needs no variable to start; the caps of the ZIP are the ones of the document archive (<c>DocumentArchive:MaxExportFiles</c>,
+    /// <c>DocumentArchive:MaxExportBytes</c>). The frontend reads the key <c>accountantPackage</c>.
+    /// </summary>
+    public const string AccountantPackage = "AccountantPackage";
+
+    /// <summary>
     /// E01/F04/US01/T03 (NF-21, DEB-06, ADR-022): the automation routines, <b>off by default</b> until the actions a host needs are real (today the To do of
     /// <c>CreateActivity</c> and the wait; the others are listed by <c>RoutineActionCatalog</c> as not available yet). It closes the whole module. Off, every
     /// endpoint of <c>RoutinesController</c> (<c>api/routines</c>: the list, one routine, its changes, its log, the simulation and the catalog of the actions)
@@ -278,6 +287,7 @@ public static class FeatureFlags
         OctorateDocumentImport,
         MessageAssistant,
         OwnerInvoicing,
+        AccountantPackage,
         Routines,
     ];
 }
