@@ -398,6 +398,11 @@ public sealed class OnboardingAssistService(
             request.HostNote = hostNote;
             request.ReopenedAt = now;
             request.UpdatedAt = now;
+
+            // The «Fatto» closed the "To do" the request names: it is not the request's any more. The new one is raised after the commit, so until it is stored
+            // the request names none, and a call that fails between the two saves is found and healed by the next ask (RequestOnceAsync), as for a request that
+            // never had one: never a reopened request standing behind a closed "To do".
+            request.ActivityId = null;
             await GiveStepBackToSupportAsync(request, ct);
 
             activityLog.Record(LogLine(request.OrgId, OrgActivityType.OnboardingAssistRequested, userId, request.PartKey, request.Context, request.Status));

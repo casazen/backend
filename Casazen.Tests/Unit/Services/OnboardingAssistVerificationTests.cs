@@ -370,6 +370,41 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         Assert.Equal((OnboardingAssistStatus.Done, OnboardingAssistOutcomes.Declared, (string?)null), (stored.Status, stored.Outcome, stored.HostNote));
     }
 
+    /// <summary>
+    /// The reopening is stored before its "To do" is raised again, as the first request is. A call that fails between the two saves leaves the request
+    /// open and naming NO "To do" (never the closed one of the «Fatto»), and the next ask of the host finds that out: it is told the request exists
+    /// (409) and the "To do" is raised and linked on that very answer.
+    /// </summary>
+    [Fact]
+    public async Task Reopen_WhenTheTodoCannotBeRaised_LeavesTheRequestWithNoTodo_AndTheNextAskRaisesIt()
+    {
+        var request = await RequestAsync(OnboardingAssistContexts.PanelPolice, _world.Granted.Id);
+        await StaffService().UpdateAsync(Staff, request.Id, OnboardingAssistStatus.Done, null, Ct);
+        var activities = new Mock<IInternalActivityService>();
+        activities
+            .Setup(a => a.CreateAsync(It.IsAny<CreateTodoRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("The To do cannot be raised."));
+        var db = Fresh(tenant: null);
+        var broken = new OnboardingAssistService(db, new ActivityLog(db, _clock), activities.Object, _push, _clock, NullLogger<OnboardingAssistService>.Instance);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => broken.ReopenAsync(_world.OrgWide, _world.OwnerUserId, request.Id, Note, Ct));
+
+        // Stored as reopened, and it names no "To do": the one of the «Fatto» is closed and is not the request's any more.
+        var reopened = await _db.OnboardingAssistRequests.AsNoTracking().SingleAsync(r => r.Id == request.Id);
+        Assert.Equal((OnboardingAssistStatus.Requested, (Guid?)null), (reopened.Status, reopened.ActivityId));
+        Assert.NotNull((await _db.InternalActivities.AsNoTracking().SingleAsync(a => a.Id == request.ActivityId)).CompletedAt);
+
+        // The host asks again: the request exists, and its "To do" is raised and linked on that answer.
+        var again = await Assert.ThrowsAsync<DomainConflictException>(() => HostService().RequestAsync(
+            _world.OrgWide, _world.OwnerUserId, new AssistRequestInput(OnboardingPartKey.Compliance, OnboardingAssistContexts.PanelPolice, _world.Granted.Id), Ct));
+        Assert.Equal(OnboardingAssistCodes.AlreadyOpen, again.Code);
+        var healed = await _db.OnboardingAssistRequests.AsNoTracking().SingleAsync(r => r.Id == request.Id);
+        Assert.NotNull(healed.ActivityId);
+        Assert.NotEqual(request.ActivityId, healed.ActivityId);
+        var todo = await _db.InternalActivities.AsNoTracking().SingleAsync(a => a.Id == healed.ActivityId);
+        Assert.Null(todo.CompletedAt);
+    }
+
     // ─── The host told live ──────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
