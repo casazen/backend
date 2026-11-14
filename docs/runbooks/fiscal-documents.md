@@ -212,8 +212,9 @@ Example: 2 guests × 3 nights × CHF 2.00 = CHF 12.00, out of VAT.
 | `Outside` | the agency's own site, pay at the property, manual bookings, a portal the host collects from | «to collect» until the host records a manual payment (`ManualPaymentService`) |
 
 **When the booking changes.** `IFiscalDocumentService.ApplyBookingChangeAsync` follows a change of the booking: a **draft** is made again from it (or discarded when the booking is no
-longer active and nothing was collected for it; kept with a «To do» when money was collected or when it cannot be made again); an **issued** document is **never** rewritten: the host
-gets a «To do» (`ReviewFiscalDocument`, reason `fiscal_document_booking_changed`, about the document and its property, no personal data) that a credit note may be needed.
+longer active and nothing was collected for it; kept with a «To do» when money was collected or when it cannot be made again); an **issued** document is **never** rewritten: it is corrected
+by a credit note (see *Corrections when a booking changes*), and when the correction cannot be prepared (the issuer's profile is incomplete, no tax rule applies, a portal collected the money)
+the host gets a «To do» (`ReviewFiscalDocument`, reason `fiscal_document_booking_changed`, about the document and its property, no personal data) that a credit note may be needed.
 
 ## Drafts and bulk issue (E12/F01/US01/T02)
 
@@ -252,6 +253,43 @@ state of each document (a discarded draft left out). The booking card reads it.
 hosts of the booking): through the decorator it is the entry of the bell and the live `notificationsChanged` that makes the open pages read the list of the documents and the booking again
 (`docs/runbooks/in-app-notifications.md`). The bulk issue and the daily run do **not** notify: a message for each of hundreds of documents helps nobody, and their answer and the list tell.
 No guest and no amount is in the text; a push that cannot be queued is logged and never fails the issue.
+
+## Corrections when a booking changes (E12/F01/US01/T03, ⚖ I12)
+
+An issued document is never rewritten. When its booking changes CasaZen prepares the **correcting document**; a booking with only a draft just refreshes or discards it (see above).
+`FiscalDocumentBookingChangeHandler` consumes the events the booking lifecycle records and calls `IFiscalDocumentService.ApplyBookingChangeAsync`:
+
+| Event (`DomainEventType`) | When | Payload |
+|---|---|---|
+| `BookingModified` (3) | the dates, the guests, the amounts or the property changed (the host's edit, the Octorate import) | `BookingEventPayload` |
+| `BookingCancelled` (4) | the booking was cancelled by the host, the guest, the system or the channel | `BookingEventPayload` |
+| `BookingNoShowMarked` (62, **new**) | the host marked a confirmed stay as a no-show (`StayLifecycleService.MarkNoShowAsync`, dedup key `booking-no-show:{id}`) | `BookingEventPayload` |
+| `PaymentRefunded` (63, **new**) | a refund of a payment of the booking succeeded (`PaymentRefundService.RecomputePaymentAsync`, once for each amount refunded in all, dedup key `payment-refunded:{paymentId}:{amount}`) | `PaymentRefundedPayload { paymentId, bookingId, refundedAmount }`: ids and an amount, nothing personal |
+
+The two new events did not exist: the cancellation records a refund only as a change of the payment, and the no-show recorded nothing. Neither starts a routine. The service decides from the
+**state** of the booking and of its documents when the event is handled (what is credited already, what the guest is charged), never from the event, so an event delivered again, the two
+events of one change (the refund and the cancellation) and events delivered out of order give one correction.
+
+- **Date change, or any change of what the booking bills** (it is still on): the lines it bills now (`GuestDocumentLineBuilder`) are compared with the document (same total, same net for each type of
+  line); when they differ, a **full credit note** of what no credit note covers yet (the document as stored) and a **new draft** with the new lines. The draft is made beside the credit note
+  but cannot be issued before it (409 `document_already_issued`): the issue of a document asks again, with only the credit notes **issued**. A change that bills nothing different (notes) corrects nothing.
+- **Cancellation, no-show, refund** (the booking is not on): **what the guest is charged is the consideration**: the document is kept when it equals what the guest paid, net of the refunds
+  (`collected = completed and partially refunded payments, amount minus refunded`); otherwise a credit note for the difference, and a full credit note when nothing was collected. A refund is
+  the credit note of the amount refunded: its **VAT split in proportion to the original lines** (`FiscalDocumentTotals.ScaleForCredit`, the cent of difference on the largest line). A refund
+  of a booking that is still on is its own price and corrects nothing. A cancelled booking whose refund is still pending is waited for: the event is delivered again
+  (`FiscalDocumentChangePendingException`, never consumed with no effect) and the refund that succeeds records `PaymentRefunded`, which prepares the credit note.
+- **A portal collected the money** (`PaymentChannel` `Portal`): CasaZen does not know what the portal kept, so it makes no credit note by guessing: the host gets the «To do»
+  `fiscal_document_booking_changed` and decides.
+- **Receipts** (the Swiss receipt of an issuer that is not registered, the Italian receipt of a private owner): the correction is a **reversal receipt**: a credit note of the same kind of
+  document, in the same series and numbering (a credit note takes the series of its original), with no XML and nothing to send to the SDI.
+- **Each correction is a draft plus a «To do»** (`ReviewFiscalDocument`, reason `fiscal_document_credit_note_to_issue`, about the credit note: «Controlla ed emetti la nota di credito», no personal
+  data). With `AutoIssueGuestDocuments` on the credit note and then the new draft are issued at once, through the same path as the API (the chain stops at the first refusal, and what is
+  still a draft is the host's «To do»); the push `fiscal-document-issued` tells the hosts. A draft credit note is not made again from the booking, can be discarded, and is issued through
+  `POST api/fiscal/documents/{id}/issue` (or by id in the bulk issue).
+- **Never more than the original.** A credit note respects the cap: it is checked when it is prepared and **again under the lock of the series when it is issued** (a credit note issued by
+  hand meanwhile leaves the draft refused with 422 `credit_amount_exceeds`). The decision and the draft are taken under the advisory lock of the booking (`FiscalDocumentBooking`, 1_604).
+- **What cannot be decided** (the issuer's profile is incomplete, no tax rule applies) is not a failure of the event: the host gets the «To do» `fiscal_document_booking_changed`, the event is
+  not delivered again, and the daily run makes the draft of a booking that has none. Any other failure (the database) is thrown again and the outbox delivers the event again.
 
 ## XML (`FatturaPaXmlBuilder`)
 

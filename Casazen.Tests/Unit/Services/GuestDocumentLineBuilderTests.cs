@@ -255,10 +255,15 @@ public class GuestDocumentLineBuilderTests
         var issued = await service.IssueAsync((await service.CreateDraftAsync(booking, null)).Id, confirm: true);
         var before = Snapshot(await db.FiscalDocuments.AsNoTracking().Include(d => d.Lines).SingleAsync(d => d.Id == issued.Id));
 
-        // The host changes the dates and the price after the issue.
+        // The host changes the dates and the price after the issue; the correction cannot be prepared now (the issuer's profile misses an item): the host is told, the document is not touched.
+        var profileOfTheIssuer = await db.OrgFiscalIssuerProfiles.SingleAsync();
+        profileOfTheIssuer.LegalName = null;
+        await db.SaveChangesAsync();
         await ChangeBookingAsync(db, booking, b => { b.BasePrice = 500m; b.TotalPrice = 500m; b.CheckOutDate = b.CheckOutDate.AddDays(2); });
         var outcome = await service.ApplyBookingChangeAsync(booking, BookingChange.Modified);
         var again = await service.ApplyBookingChangeAsync(booking, BookingChange.Modified);
+        profileOfTheIssuer.LegalName = "TEST Casa Vacanze Srl";
+        await db.SaveChangesAsync();
 
         Assert.Equal(before, Snapshot(await db.FiscalDocuments.AsNoTracking().Include(d => d.Lines).SingleAsync(d => d.Id == issued.Id)));
         Assert.Equal(1, outcome.TodosRaised);

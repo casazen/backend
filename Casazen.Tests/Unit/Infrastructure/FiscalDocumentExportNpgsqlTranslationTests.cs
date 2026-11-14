@@ -123,10 +123,10 @@ public class FiscalDocumentExportNpgsqlTranslationTests
             [
                 ("Id", typeof(Guid)), ("BookingId", typeof(Guid)), ("Kind", typeof(int)), ("Number", typeof(string)), ("IssueDate", typeof(DateOnly)),
                 ("RecipientName", typeof(string)), ("TaxableBase", typeof(decimal)), ("VatAmount", typeof(decimal)), ("StampDuty", typeof(decimal)),
-                ("Total", typeof(decimal)), ("Currency", typeof(string)), ("PaymentState", typeof(int)), ("SdiStatus", typeof(string)), ("Source", typeof(int)),
+                ("Total", typeof(decimal)), ("Currency", typeof(string)), ("PaymentState", typeof(int)), ("SdiStatus", typeof(string)), ("Source", typeof(int)), ("PaymentChannel", typeof(int)),
             ],
             Guid.NewGuid(), BookingId, (int)DocumentKind.Invoice, "2026/1", new DateOnly(2026, 10, 5), "TEST Cliente Srl", 330.18m, 31.82m, 0m, 362m, "EUR",
-            (int)FiscalDocumentPaymentState.Unknown, FiscalDocumentSdiStatuses.ToSend, (int)FiscalDocumentSource.CasaZen),
+            (int)FiscalDocumentPaymentState.Unknown, FiscalDocumentSdiStatuses.ToSend, (int)FiscalDocumentSource.CasaZen, (int)FiscalPaymentChannel.CasaZen),
         "Bookings" => Table([("Id", typeof(Guid)), ("BookingCode", typeof(string)), ("Name", typeof(string))], BookingId, "ABCDEFGHJK", "Trullo"),
         _ => null,
     };

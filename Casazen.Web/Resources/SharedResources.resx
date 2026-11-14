@@ -6195,6 +6195,18 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocumentBatchPeriodInvalid" xml:space="preserve">
     <value>Il periodo non è valido: la data finale precede quella iniziale.</value>
   </data>
+  <data name="FiscalDocCorrectionModified" xml:space="preserve">
+    <value>modifica della prenotazione</value>
+  </data>
+  <data name="FiscalDocCorrectionCancelled" xml:space="preserve">
+    <value>annullamento della prenotazione</value>
+  </data>
+  <data name="FiscalDocCorrectionNoShow" xml:space="preserve">
+    <value>mancato arrivo dell'ospite (no-show)</value>
+  </data>
+  <data name="FiscalDocCorrectionRefunded" xml:space="preserve">
+    <value>rimborso all'ospite</value>
+  </data>
   <data name="FiscalDocPushIssuedTitle" xml:space="preserve">
     <value>Documento fiscale emesso</value>
   </data>

@@ -45,6 +45,10 @@ public static class FiscalDocumentExtensions
         // check-out; behind Features:FiscalDocumentIssuance (the daily run fiscal-documents-due makes the drafts the event did not).
         services.AddScoped<IEventHandler<DomainEvent>, FiscalDocumentCheckOutHandler>();
 
+        // The correction of the documents of a stay when its booking changes (E12/F01/US01/T03): the consumer of BookingModified, BookingCancelled, BookingNoShowMarked and PaymentRefunded
+        // (a credit note, or the reversal receipt of a receipt, and the new draft), also behind Features:FiscalDocumentIssuance; idempotent per event.
+        services.AddScoped<IEventHandler<DomainEvent>, FiscalDocumentBookingChangeHandler>();
+
         // The labels of the generated documents, read from SharedResources in the language the caller names (E06/F01/US01/T02).
         services.AddSingleton<IDocumentTexts, ResxDocumentTexts>();
 

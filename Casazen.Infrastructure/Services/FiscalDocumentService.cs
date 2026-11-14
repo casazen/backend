@@ -79,6 +79,11 @@ public sealed partial class FiscalDocumentService(
     {
         var document = await RequireAsync(documentId, ct);
         RequireCasazenDraft(document);
+
+        // The draft of a credit note (a correction, E12/F01/US01/T03) is the credited document's amounts: there is nothing in the booking to make it again from.
+        if (document.Kind == DocumentKind.CreditNote)
+            return document;
+
         return await RebuildAsync(document, ct);
     }
 
@@ -107,6 +112,9 @@ public sealed partial class FiscalDocumentService(
 
         var document = await RequireAsync(documentId, ct);
         RequireCasazenDraft(document);
+        if (document.Kind == DocumentKind.CreditNote)
+            return await IssueCreditNoteDraftAsync(document, notify, ct);
+
         var booking = await BookingOfAsync(document.BookingId, ct);
         await RequireCasazenIssuesAsync(booking, ct);
         var (profile, org) = await RequireIssuerAsync(booking.OrgId, ct);
@@ -121,6 +129,33 @@ public sealed partial class FiscalDocumentService(
         if (notify)
             TellTheHostsOfTheIssue(document, org);
         return document;
+    }
+
+    /// <summary>
+    /// The issue of the draft of a credit note (a correction, E12/F01/US01/T03): the draft is the credit note of an issued document of CasaZen, issued in the series of that document under the
+    /// same lock as a credit note issued at once, so the cap (never more than what is left to credit) is checked again right after the number is reserved. A credit note is not refused for
+    /// the state of its booking (it is what is done after a cancellation).
+    /// </summary>
+    private async Task<FiscalDocument> IssueCreditNoteDraftAsync(FiscalDocument note, bool notify, CancellationToken ct)
+    {
+        var original = note.CreditedDocumentId is { } creditedId ? await RequireAsync(creditedId, ct) : null;
+        if (original is null
+            || original.Source != FiscalDocumentSource.CasaZen
+            || original.Status != FiscalDocumentStatus.Issued
+            || original.Kind is DocumentKind.CreditNote or DocumentKind.Proforma)
+        {
+            throw new DomainRuleException(FiscalDocumentErrors.NotCreditable, "FiscalDocumentNotCreditable");
+        }
+
+        var booking = await BookingOfAsync(note.BookingId, ct);
+        var (profile, org) = await RequireIssuerAsync(booking.OrgId, ct);
+        var rule = RuleOf(profile, booking);
+        var today = timeProvider.TodayInRomeAsDateOnly();
+        await IssueInTransactionAsync(note, booking, rule, profile, org, original.Series, today, original, ct);
+        logger.LogInformation("Credit note {CreditNoteId} of fiscal document {DocumentId} issued", note.Id, original.Id);
+        if (notify)
+            TellTheHostsOfTheIssue(note, org);
+        return note;
     }
 
     public async Task<FiscalDocument> CreateCreditNoteAsync(
@@ -150,6 +185,23 @@ public sealed partial class FiscalDocumentService(
         var (profile, org) = await RequireIssuerAsync(booking.OrgId, ct);
         var rule = RuleOf(profile, booking);
 
+        var note = BuildCreditNote(original, credited, value, reason, userId, rule);
+        db.FiscalDocuments.Add(note);
+        var today = timeProvider.TodayInRomeAsDateOnly();
+        await IssueInTransactionAsync(note, booking, rule, profile, org, original.Series, today, original, ct);
+        logger.LogInformation("Credit note {CreditNoteId} of fiscal document {DocumentId} issued", note.Id, original.Id);
+        TellTheHostsOfTheIssue(note, org);
+        return note;
+    }
+
+    /// <summary>
+    /// The draft credit note of <paramref name="value"/> (VAT included) of an issued document that <paramref name="credited"/> was credited of already: the whole document is its lines
+    /// and amounts as stored, never recomputed; a part is spread over the lines of the credited document in proportion (the VAT split follows the original lines). The reason goes
+    /// with every line («Storno del documento …: reason - line»): a credit note has no line of its own without an amount. Not added to the context: the caller adds it (and issues it,
+    /// or leaves it as a draft for the host).
+    /// </summary>
+    private FiscalDocument BuildCreditNote(FiscalDocument original, decimal credited, decimal value, string reason, string? userId, FiscalTaxRule rule)
+    {
         var note = new FiscalDocument
         {
             OrgId = original.OrgId,
@@ -169,11 +221,11 @@ public sealed partial class FiscalDocumentService(
             Currency = original.Currency,
             CreditedDocumentId = original.Id,
             CreatedAt = UtcNow,
+            UpdatedAt = UtcNow,
             CreatedByUserId = userId,
         };
         CopyRecipient(original, note);
 
-        // The whole document: its lines and amounts as stored, never recomputed. A part: spread over its lines in proportion.
         var language = DocumentLanguages.Italian;
         var description = texts.Get(CreditKey, language, original.Number ?? string.Empty, Truncate(reason, FiscalDocumentErrors.CreditReasonMaxLength));
         if (credited == 0m && value == original.Total)
@@ -193,15 +245,9 @@ public sealed partial class FiscalDocumentService(
             ApplyAmounts(note, amounts);
         }
 
-        // The reason goes with every line («Storno del documento …: <reason> - <line>»): a credit note has no line of its own without an amount.
         foreach (var line in note.Lines)
             line.Description = Truncate($"{description} - {line.Description}", FiscalDocumentLine.DescriptionMaxLength);
 
-        db.FiscalDocuments.Add(note);
-        var today = timeProvider.TodayInRomeAsDateOnly();
-        await IssueInTransactionAsync(note, booking, rule, profile, org, original.Series, today, original, ct);
-        logger.LogInformation("Credit note {CreditNoteId} of fiscal document {DocumentId} issued", note.Id, original.Id);
-        TellTheHostsOfTheIssue(note, org);
         return note;
     }
 
@@ -396,7 +442,7 @@ public sealed partial class FiscalDocumentService(
         var (profile, _) = await RequireIssuerAsync(booking.OrgId, ct);
         var rule = RuleOf(profile, booking);
         if (isNew)
-            await RequireNoOtherDocumentAsync(booking.Id, draft.Id, ct);
+            await RequireNoOtherDocumentAsync(booking.Id, draft.Id, ct, countPlannedCredit: true);
 
         var kind = rule.DocumentKind == RuleDocumentKind.Receipt ? DocumentKind.Receipt : DocumentKind.Invoice;
         var recipient = await invoiceData.GetAsync(booking.Id, ct);
@@ -715,7 +761,7 @@ public sealed partial class FiscalDocumentService(
     /// One invoice (or receipt) per booking, unless it was credited in full: 409 <c>document_already_issued</c>. Whoever issued it counts: a document imported
     /// from Octorate (a document issued elsewhere) holds the booking too, so CasaZen never issues a second document for the stay; a proforma is not a document.
     /// </summary>
-    private async Task RequireNoOtherDocumentAsync(Guid bookingId, Guid exceptId, CancellationToken ct)
+    private async Task RequireNoOtherDocumentAsync(Guid bookingId, Guid exceptId, CancellationToken ct, bool countPlannedCredit = false)
     {
         var issued = await db.FiscalDocuments
             .AsNoTracking()
@@ -725,7 +771,10 @@ public sealed partial class FiscalDocumentService(
             .ToListAsync(ct);
         foreach (var document in issued)
         {
-            if (await CreditedSoFarAsync(document.Id, ct) < document.Total)
+            // A draft is allowed beside a document whose credit note is only a draft (the correction of a date change makes the new draft with the credit note), but never issued: the
+            // issue asks again with only the credit notes issued (E12/F01/US01/T03).
+            var credited = await CreditedSoFarAsync(document.Id, ct) + (countPlannedCredit ? await PlannedCreditAsync(document.Id, ct) : 0m);
+            if (credited < document.Total)
                 throw new DomainConflictException(FiscalDocumentErrors.AlreadyIssued, "FiscalDocumentAlreadyIssued");
         }
     }
@@ -734,6 +783,13 @@ public sealed partial class FiscalDocumentService(
         db.FiscalDocuments
             .AsNoTracking()
             .Where(d => d.CreditedDocumentId == documentId && d.Status == FiscalDocumentStatus.Issued && d.Kind == DocumentKind.CreditNote)
+            .SumAsync(d => d.Total, ct);
+
+    /// <summary>What the credit notes still drafts of a document credit (E12/F01/US01/T03): the corrections waiting for the host to check and issue them.</summary>
+    private Task<decimal> PlannedCreditAsync(Guid documentId, CancellationToken ct) =>
+        db.FiscalDocuments
+            .AsNoTracking()
+            .Where(d => d.CreditedDocumentId == documentId && d.Status == FiscalDocumentStatus.Draft && d.Kind == DocumentKind.CreditNote)
             .SumAsync(d => d.Total, ct);
 
     private static void RequireCasazenDraft(FiscalDocument document)

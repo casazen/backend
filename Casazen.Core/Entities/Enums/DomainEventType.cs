@@ -80,6 +80,19 @@ public enum DomainEventType
     FiscalDocumentCreditNoteIssued = 61,
 
     /// <summary>
+    /// The host marked a confirmed stay as a no-show (E12/F01/US01/T03, I12): about the booking (<c>EntityId</c>), with the payload of a booking event (origin Host), recorded
+    /// in the unit of work of the mark and once per booking. The consumer of the fiscal documents prepares the correction of the document of the stay. Starts no routine.
+    /// </summary>
+    BookingNoShowMarked = 62,
+
+    /// <summary>
+    /// A refund of a payment of a booking succeeded on Stripe (E12/F01/US01/T03): about the payment (<c>EntityId</c>), with the payload <c>PaymentRefundedPayload</c> (the payment,
+    /// the booking and what was refunded of it in all; nothing personal), recorded in the unit of work that applies the refund and once for each amount refunded in all. The
+    /// consumer of the fiscal documents prepares the credit note of a cancelled booking. Starts no routine.
+    /// </summary>
+    PaymentRefunded = 63,
+
+    /// <summary>
     /// An org administrator activated a flow on a property after the server verified its prerequisites (E10/F01/US01/T04, NF-104, NF-106):
     /// about the property (<c>EntityId</c>), with the payload <c>OnboardingFlowEventPayload</c> (the property, the flow, the activation row). Recorded
     /// in the same unit of work as the activation row. Starts no routine; nothing consumes it yet. The numbers 100 to 109 are the activation of
