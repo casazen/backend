@@ -10,6 +10,7 @@ using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Mapping;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -441,6 +442,35 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         Assert.Equal((OnboardingAssistStatus.Done, OnboardingAssistOutcomes.Declared), (stored.Status, stored.Outcome));
     }
 
+    /// <summary>
+    /// Each administrator is told on its own. The bell entry of the first one to be told cannot be written (the save refuses its row): the update is
+    /// stored and answered all the same, and the other administrator is told in full (push, bell entry and live update) instead of the whole round
+    /// stopping at the first failure.
+    /// </summary>
+    [Fact]
+    public async Task Done_WhenTheBellOfOneAdministratorCannotBeWritten_TheOtherIsToldAll_AndTheUpdateIsStored()
+    {
+        // A second administrator of the org, whose id sorts before the owner's: it is the first one told.
+        var admin = HostScopeScenario.NewUser($"auth0|admin-{Guid.NewGuid():N}", _world.OrgId, UserRole.None);
+        _db.Users.Add(admin);
+        _db.OrgMembers.Add(new OrgMember { OrgId = _world.OrgId, UserId = admin.Id, Role = OrgRole.Admin });
+        await _db.SaveChangesAsync();
+        Assert.True(string.CompareOrdinal(admin.Id, _world.OwnerUserId) < 0);
+        var request = await RequestAsync(OnboardingAssistContexts.PanelIstat, _world.Granted.Id);
+        var staffDb = new AppDbContext(
+            new DbContextOptionsBuilder<AppDbContext>(_options).AddInterceptors(new RefuseTheBellOf(admin.Id)).Options,
+            new FixedTenant(_world.OtherOrgId));
+        _contexts.Add(staffDb);
+
+        var done = await ServiceOn(staffDb).UpdateAsync(Staff, request.Id, OnboardingAssistStatus.Done, null, Ct);
+
+        Assert.Equal((OnboardingAssistStatus.Done, OnboardingAssistOutcomes.Declared), (done.Status, done.Outcome));
+        var bell = Assert.Single(await _db.InAppNotifications.AsNoTracking().ToListAsync());
+        Assert.Equal((_world.OwnerUserId, PushTypes.AssistDeclared, (Guid?)request.Id), (bell.UserId, bell.Type, bell.EntityId));
+        Assert.Equal(_world.OwnerUserId, Assert.Single(_publisher.Published).UserId);
+        Assert.Contains(_push.Queued, q => q.Audience.UserId == _world.OwnerUserId && q.Key == bell.DeliveryKey);
+    }
+
     /// <summary>The verification of «Fatto» is registered with the activation, scoped, and the push types and keys are the stable ones.</summary>
     [Fact]
     public void Registration_AndTheStableCodes()
@@ -547,6 +577,24 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         {
             Published.Add((userId, type, entityId));
             return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>A save that refuses the bell row of one person, as a database that fails for that row would.</summary>
+    private sealed class RefuseTheBellOf(string userId) : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context is { } context
+                && context.ChangeTracker.Entries<InAppNotification>().Any(e => e.State == EntityState.Added && e.Entity.UserId == userId))
+            {
+                throw new DbUpdateException("The bell entry of this person cannot be saved.");
+            }
+
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
         }
     }
 }

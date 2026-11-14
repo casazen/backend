@@ -19,8 +19,10 @@ namespace Casazen.Infrastructure.Services;
 /// again is another event. The push of one person carries no bell entry of its own (<see cref="PushAudienceKind.User"/>), so the entry is written here,
 /// with the request as its entity, and published live.</para>
 /// <para>No text of the request, no property, no supplier and no person in the push or the entry. Best effort, after the update is committed: whatever
-/// goes wrong is logged with the ids and never fails the staff update. It is not one of the eight kinds of event of the notification preferences
-/// (NF-65), so it keeps the administrators of the org (<c>HostNotifyingPathsArchitectureTests</c> lists it for that reason).</para>
+/// goes wrong is logged with the ids and never fails the staff update. <b>Each administrator is told on its own</b>: a failure for one (its bell row, its
+/// push) is logged and the others are still told, so one person who cannot be reached never leaves the rest of the org unaware. It is not one of the eight
+/// kinds of event of the notification preferences (NF-65), so it keeps the administrators of the org (<c>HostNotifyingPathsArchitectureTests</c> lists it
+/// for that reason).</para>
 /// </remarks>
 internal static class OnboardingAssistOutcomeNotice
 {
@@ -36,38 +38,69 @@ internal static class OnboardingAssistOutcomeNotice
         if (request.Outcome is not { } outcome || request.CompletedAt is not { } doneAt)
             return;
 
+        var verified = outcome == OnboardingAssistOutcomes.Verified;
+        var type = verified ? PushTypes.AssistVerified : PushTypes.AssistDeclared;
+        PushText text;
+        List<string> administrators;
         try
         {
-            var verified = outcome == OnboardingAssistOutcomes.Verified;
-            var type = verified ? PushTypes.AssistVerified : PushTypes.AssistDeclared;
-            var text = verified
+            text = verified
                 ? EmailTemplates.AssistVerifiedPush(EmailTemplates.DefaultCulture)
                 : EmailTemplates.AssistDeclaredPush(EmailTemplates.DefaultCulture);
-            var administrators = await HostNotificationAudience.AdministratorsToTell(db, request.OrgId).Select(u => u.Id).ToListAsync(ct);
-
-            var told = 0;
-            foreach (var userId in administrators.Order(StringComparer.Ordinal))
-            {
-                var key = PushDeliveryKeys.AssistOutcome(request.Id, doneAt, userId);
-                pushNotifications.Enqueue(
-                    key,
-                    PushAudience.User(request.OrgId, userId),
-                    new PushNotificationPayload(text.Title, text.Body, type, BookingId: null, PushRoutes.Properties));
-                if (await WriteBellAsync(db, request, type, key, userId, doneAt, ct))
-                {
-                    told++;
-                    if (publisher is not null)
-                        await publisher.PublishAsync(userId, type, request.Id, ct);
-                }
-            }
-
-            logger.LogInformation(
-                "Assist request {RequestId} of org {OrgId} done ({Outcome}): {Count} administrator(s) told", request.Id, request.OrgId, outcome, told);
+            administrators = await HostNotificationAudience.AdministratorsToTell(db, request.OrgId).Select(u => u.Id).ToListAsync(ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogError(ex, "The administrators of org {OrgId} could not be told that assist request {RequestId} is done", request.OrgId, request.Id);
+            logger.LogError(ex, "The administrators of org {OrgId} could not be found to tell them that assist request {RequestId} is done", request.OrgId, request.Id);
+            return;
         }
+
+        // Each administrator is told on its own: a failure for one (its bell row, its push) is logged and the others are still told.
+        var told = 0;
+        var failed = 0;
+        foreach (var userId in administrators.Order(StringComparer.Ordinal))
+        {
+            try
+            {
+                if (await TellOneAsync(db, pushNotifications, publisher, request, type, text, userId, doneAt, ct))
+                    told++;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                failed++;
+                logger.LogError(ex, "An administrator of org {OrgId} could not be told that assist request {RequestId} is done", request.OrgId, request.Id);
+            }
+        }
+
+        logger.LogInformation(
+            "Assist request {RequestId} of org {OrgId} done ({Outcome}): {Count} administrator(s) told, {Failed} could not be",
+            request.Id, request.OrgId, outcome, told, failed);
+    }
+
+    /// <summary>One administrator: the push to its phone, the entry of its bell and the live update. False when its bell entry was there already.</summary>
+    private static async Task<bool> TellOneAsync(
+        AppDbContext db,
+        IPushNotificationService pushNotifications,
+        IInAppNotificationPublisher? publisher,
+        OnboardingAssistRequest request,
+        string type,
+        PushText text,
+        string userId,
+        DateTime doneAt,
+        CancellationToken ct)
+    {
+        var key = PushDeliveryKeys.AssistOutcome(request.Id, doneAt, userId);
+        pushNotifications.Enqueue(
+            key,
+            PushAudience.User(request.OrgId, userId),
+            new PushNotificationPayload(text.Title, text.Body, type, BookingId: null, PushRoutes.Properties));
+        if (!await WriteBellAsync(db, request, type, key, userId, doneAt, ct))
+            return false;
+
+        if (publisher is not null)
+            await publisher.PublishAsync(userId, type, request.Id, ct);
+
+        return true;
     }
 
     /// <summary>Writes the entry of the bell of the person, once for each «Fatto». False when it was there already.</summary>
