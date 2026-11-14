@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -521,6 +522,163 @@ public class TouristTaxCollectionTests
         Assert.Equal(TouristTaxCharges.NothingToPayCode, refused.Code);
     }
 
+    // ─── The refunds: what the charge says, what the provider refuses ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task TouristTaxChargeRefunded_FollowsTheCharge_NeverMoreThanWasPaid_AndWaitsForAPaymentNotRecordedYet_Test()
+    {
+        await using var db = NewDb();
+        var world = await SeedAsync(db);
+        var record = await SeedRecordAsync(db, world.Booking, intentId: "pi_tax_refunded", collected: 15.00m);
+        var rig = Rig(db, (world.Booking.Id, Calculated(world.Booking.Id, 7.50m, 7.50m)));
+
+        // The refunded amount of the stay is what the charge says in all (5.00 so far).
+        Assert.True(await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund("pi_tax_refunded", Account, 500)));
+        Assert.Equal(5.00m, (await ReloadAsync(db, record.Id)).RefundedAmount);
+
+        // The same event again changes nothing, and an older total never takes back what a later one recorded.
+        await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund("pi_tax_refunded", Account, 500));
+        await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund("pi_tax_refunded", Account, 300));
+        Assert.Equal(5.00m, (await ReloadAsync(db, record.Id)).RefundedAmount);
+
+        // Never more than what was paid: a total above it is capped (the check constraint of the column would refuse it).
+        await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund("pi_tax_refunded", Account, 2000));
+        Assert.Equal(15.00m, (await ReloadAsync(db, record.Id)).RefundedAmount);
+
+        // The event of another account that carries the intent of the stay is not its refund.
+        var other = await SeedRecordAsync(db, (await SeedAsync(db)).Booking, intentId: "pi_tax_other_account", collected: 15.00m);
+        Assert.True(await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund("pi_tax_other_account", "acct_someone_else", 1500)));
+        Assert.Equal(0m, (await ReloadAsync(db, other.Id)).RefundedAmount);
+
+        // A charge that is not a tourist tax's is left to its own handler (false), and a refund of a payment not recorded yet is delivered again.
+        Assert.False(await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund("pi_of_a_booking", Account, 1500)));
+        Assert.False(await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund(string.Empty, Account, 1500)));
+        await SeedRecordAsync(db, (await SeedAsync(db)).Booking, intentId: "pi_tax_not_recorded");
+        await Assert.ThrowsAsync<TouristTaxCollectionPendingException>(
+            () => rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund("pi_tax_not_recorded", Account, 500)));
+    }
+
+    [Fact]
+    public async Task TouristTaxChargeRefunded_ThroughTheWebhook_UpdatesTheStay_AndABookingRefundStillReachesItsOwnHandler_Test()
+    {
+        await using var db = NewDb();
+        var world = await SeedAsync(db);
+        var record = await SeedRecordAsync(db, world.Booking, intentId: "pi_tax_webhook_refund", collected: 15.00m);
+        var rig = Rig(db, (world.Booking.Id, Calculated(world.Booking.Id, 7.50m, 7.50m)));
+        var refunds = new Mock<IPaymentRefundService>();
+        var handler = WebhookHandler(db, rig.Service, refunds.Object);
+
+        // The refund of a tax paid online: the stay follows the charge, never a Payment row, and the refunds of the bookings are not asked.
+        await handler.HandleEventAsync(RefundedEvent("evt_tax_refund", "pi_tax_webhook_refund", 600), WebhookSource.Connected);
+
+        Assert.Equal(6.00m, (await ReloadAsync(db, record.Id)).RefundedAmount);
+        Assert.Empty(await db.Payments.AsNoTracking().ToListAsync());
+        refunds.Verify(r => r.SyncPaymentIntentRefundsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // The refund of a charge that is not a tax's still reaches the refunds of the bookings, as it did before.
+        await handler.HandleEventAsync(RefundedEvent("evt_booking_refund", "pi_of_a_booking", 1000), WebhookSource.Connected);
+        refunds.Verify(r => r.SyncPaymentIntentRefundsAsync("pi_of_a_booking", Account, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task TouristTaxCancellation_RefundRefusedByTheProvider_RaisesTheTodo_AndOneThatMayPassIsDeliveredAgain_Test()
+    {
+        await using var db = NewDb();
+        var refused = await SeedAsync(db, status: BookingStatus.Cancelled, cancelledAt: CheckIn.AddDays(-5));
+        var refusedRecord = await SeedRecordAsync(db, refused.Booking, intentId: "pi_tax_refused", collected: 15.00m);
+        var transient = await SeedAsync(db, status: BookingStatus.Cancelled, cancelledAt: CheckIn.AddDays(-5));
+        var transientRecord = await SeedRecordAsync(db, transient.Booking, intentId: "pi_tax_transient", collected: 15.00m);
+        var rig = Rig(
+            db,
+            (refused.Booking.Id, Calculated(refused.Booking.Id, 7.50m, 7.50m)),
+            (transient.Booking.Id, Calculated(transient.Booking.Id, 7.50m, 7.50m)));
+        rig.Stripe
+            .Setup(s => s.CreateRefundAsync(It.Is<StripeRefundCreateRequest>(r => r.PaymentIntentId == "pi_tax_refused"), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new StripeException(HttpStatusCode.BadRequest, new StripeError { Code = "balance_insufficient" }, "Insufficient funds"));
+        rig.Stripe
+            .Setup(s => s.CreateRefundAsync(It.Is<StripeRefundCreateRequest>(r => r.PaymentIntentId == "pi_tax_transient"), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new StripeException("Connection reset"));
+
+        // A refusal that will not pass: the event is consumed, the host is asked to give the money back, and nothing says it was refunded.
+        await rig.Service.ApplyStayEndedAsync(refused.Booking.Id, CheckIn.AddDays(-5));
+        var todo = Assert.Single(await db.InternalActivities.AsNoTracking().Where(a => a.EntityId == refused.Booking.Id).ToListAsync());
+        Assert.Equal(TouristTaxCollectionService.RefundFailedReason, todo.Reason);
+        var stored = await ReloadAsync(db, refusedRecord.Id);
+        Assert.Equal((0m, TouristTaxCollectionStatus.NotDue), (stored.RefundedAmount, stored.CollectionStatus));
+        Assert.Equal(15.00m, (await rig.Service.GetForHostAsync(refused.Booking.Id, null)).RefundDue);
+
+        // A failure that may pass (no answer): thrown again, so the outbox delivers the event again; nothing is recorded and nobody is asked yet.
+        await Assert.ThrowsAsync<StripeException>(() => rig.Service.ApplyStayEndedAsync(transient.Booking.Id, CheckIn.AddDays(-5)));
+        Assert.Equal(0m, (await ReloadAsync(db, transientRecord.Id)).RefundedAmount);
+        Assert.Empty(await db.InternalActivities.AsNoTracking().Where(a => a.EntityId == transient.Booking.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task TouristTaxNoShow_RefundsTheOnlineTaxInFull_AndIsNotDueInEveryReader_Test()
+    {
+        await using var db = NewDb();
+        var world = await SeedAsync(db, noShowAt: CheckIn.AddHours(20));
+        var record = await SeedRecordAsync(db, world.Booking, intentId: "pi_tax_noshow", collected: 15.00m);
+        var rig = Rig(db, (world.Booking.Id, Calculated(world.Booking.Id, 7.50m, 7.50m)));
+        rig.Stripe
+            .Setup(s => s.CreateRefundAsync(It.IsAny<StripeRefundCreateRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Refund { Id = "re_noshow", Status = "succeeded" });
+
+        // The guests never came: no night, the tax is not due and what was paid online goes back in full, once.
+        await rig.Service.ApplyStayEndedAsync(world.Booking.Id, CheckIn.AddHours(20));
+        await rig.Service.ApplyStayEndedAsync(world.Booking.Id, CheckIn.AddHours(20));
+
+        var stored = await ReloadAsync(db, record.Id);
+        Assert.Equal((TouristTaxCollectionStatus.NotDue, 15.00m), (stored.CollectionStatus, stored.RefundedAmount));
+        rig.Stripe.Verify(s => s.CreateRefundAsync(It.IsAny<StripeRefundCreateRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Empty(await db.Payments.AsNoTracking().ToListAsync());
+
+        // Not due in every reader: the page of the guest's link (the booking is still confirmed, with a no-show mark) and the host's block.
+        var guest = (await rig.Service.GetForGuestAsync(world.Token))!;
+        Assert.Equal((TouristTaxCollectionStatus.NotDue, 0m), (guest.Status, guest.Payable));
+        var host = await rig.Service.GetForHostAsync(world.Booking.Id, null);
+        Assert.Equal((TouristTaxCollectionStatus.NotDue, 0m, 0m), (host.Status, host.RefundDue, host.OnlinePayable));
+        await Assert.ThrowsAsync<DomainConflictException>(() => rig.Service.CreatePaymentIntentAsync(world.Token));
+    }
+
+    // ─── Switzerland: the rule of the canton, in francs, when the host collects ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task TouristTaxDue_Switzerland_TheRuleOfTheCantonInFrancs_WhenTheHostCollects_Test()
+    {
+        await using var db = NewDb();
+        db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = SwissMunicipalityCode, CantonCode = "TI", OfficialName = "Lugano" });
+        await db.SaveChangesAsync();
+        var swiss = new SwissTouristTaxOptions
+        {
+            Rules = [new SwissTouristTaxRuleOptions { Canton = "TI", RatePerPersonPerNight = 2.00m, ValidFrom = new DateOnly(2025, 1, 1), SourceUrl = "https://example.test/ti" }],
+        };
+        var hostCollects = await SeedAsync(db, swiss: true);
+        var portalCollects = await SeedAsync(db, swiss: true, source: BookingSource.Airbnb);
+        var rig = RigWith(db, new RigOptions(Swiss: swiss, PlatformCollected: [BookingSource.Airbnb]));
+        rig.Stripe
+            .Setup(s => s.CreateConnectedAccountPaymentIntentAsync(
+                Account, 1200, "chf", It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PaymentIntent { Id = "pi_chf", ClientSecret = "pi_chf_secret", Amount = 1200, Currency = "chf", Status = "requires_payment_method" });
+
+        // Two guests, three nights, CHF 2.00 a person and night: CHF 12.00, charged in francs on the connected account.
+        var page = (await rig.Service.GetForGuestAsync(hostCollects.Token))!;
+        Assert.Equal((12.00m, "CHF", 2), (page.Payable, page.Currency, page.Guests.Count));
+        Assert.All(page.Guests, line => Assert.Equal(6.00m, line.Amount));
+        var session = (await rig.Service.CreatePaymentIntentAsync(hostCollects.Token))!;
+        Assert.Equal((12.00m, "CHF"), (session.Amount, session.Currency));
+
+        // The portal that collects it itself (the default of the Swiss issuer): nothing to pay online, nothing is ever charged.
+        var viaPortal = (await rig.Service.GetForGuestAsync(portalCollects.Token))!;
+        Assert.Equal((TouristTaxCollectionStatus.CollectedByChannel, TouristTaxNotPayableReason.ChannelCollects, 0m), (viaPortal.Status, viaPortal.Reason, viaPortal.Payable));
+        await Assert.ThrowsAsync<DomainConflictException>(() => rig.Service.CreatePaymentIntentAsync(portalCollects.Token));
+
+        // A canton with no rule: not calculated, never an assumed zero and never a charge, whatever the guests owe.
+        var withoutRule = RigWith(db, new RigOptions(Swiss: new SwissTouristTaxOptions()));
+        var unknown = (await withoutRule.Service.GetForGuestAsync(hostCollects.Token))!;
+        Assert.Equal((TouristTaxNotPayableReason.NotComputable, 0m, (decimal?)null), (unknown.Reason, unknown.Payable, unknown.AmountDue));
+    }
+
     // ─── Registration and the consumer of the booking events ───────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -838,7 +996,23 @@ public class TouristTaxCollectionTests
         },
     };
 
-    private static StripeWebhookHandler WebhookHandler(AppDbContext db, ITouristTaxCollectionService collection) =>
+    private static Event RefundedEvent(string eventId, string intentId, long refundedMinor) => new()
+    {
+        Id = eventId,
+        Type = "charge.refunded",
+        Account = Account,
+        Data = new EventData
+        {
+            Object = new Charge
+            {
+                Id = $"ch_{eventId}",
+                PaymentIntentId = intentId,
+                AmountRefunded = refundedMinor,
+            },
+        },
+    };
+
+    private static StripeWebhookHandler WebhookHandler(AppDbContext db, ITouristTaxCollectionService collection, IPaymentRefundService? refunds = null) =>
         new(
             new PaymentRepository(db),
             new BookingRepository(db),
@@ -848,7 +1022,7 @@ public class TouristTaxCollectionTests
             Mock.Of<IEntitlementService>(),
             Mock.Of<IPlatformInvoiceService>(),
             Mock.Of<IRentBillingService>(),
-            Mock.Of<IPaymentRefundService>(),
+            refunds ?? Mock.Of<IPaymentRefundService>(),
             TestCheckoutPaymentSettlement.Create(db),
             TestDeferredCharges.Create(db),
             Mock.Of<ISupplierPaymentWebhookService>(),
