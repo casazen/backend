@@ -6,6 +6,7 @@ using Casazen.Web.DTOs.Fiscal;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Casazen.Web.Controllers;
 
@@ -25,7 +26,8 @@ namespace Casazen.Web.Controllers;
 /// <c>accountant_package_too_large</c>, with the number of files found, before the first byte.
 /// <para>The settings of the monthly send to the accountant (E15/F01/US02/T01, NF-101): <c>GET api/accountant-package/settings</c> with <c>payment.read</c> and <c>PUT</c> with <c>property.write</c> on top, both
 /// only for a caller whose scope reaches the whole org: the address of the accountant, the day and the folders are the organization's, never a part of it, and a caller restricted to some properties (a collaborator «Solo
-/// alcuni», an account outside the org team) is refused (403) before anything is read or written, even with the permissions.</para>
+/// alcuni», an account outside the org team) is refused (403) before anything is read or written, even with the permissions. The monthly e-mail with the signed link, and «send a test»
+/// (<c>POST api/accountant-package/send</c>), are E15/F01/US02/T02; the link is opened by <see cref="PublicAccountantPackageController"/>.</para>
 /// </remarks>
 [ApiController]
 [Route("api/accountant-package")]
@@ -35,6 +37,7 @@ public class AccountantPackageController(
     IAccountantPackageService packages,
     IAgencySummaryService summaries,
     IAccountantPackageSettingsService settings,
+    IAccountantPackageDeliveryService delivery,
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver,
     IAuthorizationService authorizationService,
@@ -132,6 +135,30 @@ public class AccountantPackageController(
             cancellationToken);
         Response.Headers.CacheControl = "private, no-store";
         return Ok(AccountantPackageSettingsDto.From(saved));
+    }
+
+    /// <summary>
+    /// «Send a test» (E15/F01/US02/T02): the package of the previous month, with the folders of the settings, is made and kept in the private storage, and the e-mail with its signed link (30 days) is queued for the address
+    /// saved in the settings: whatever the day, and whether the monthly send is on. It is the send of that month, so the monthly run does not send it again. <c>property.write</c> on top of <c>payment.read</c>, a scope that
+    /// reaches the whole org, and a limit per person (<see cref="RateLimitPolicies.AccountantPackageSend"/>). The owner accounting is in the package only when the caller holds <c>agency.statement.view</c>: a person never
+    /// shares with a third party what it may not read. 422 <c>accountant_package_recipient_missing</c> (no address saved), <c>accountant_package_too_large</c> and <c>accountant_package_not_sent</c> (the package could not
+    /// be stored or the e-mail not queued: nothing was sent, and the answer never says it was). The answer holds the month and the expiry of the link, never the address or the link.
+    /// </summary>
+    [HttpPost("send")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [EnableRateLimiting(RateLimitPolicies.AccountantPackageSend)]
+    [ProducesResponseType(typeof(AccountantPackageEmailQueuedDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> Send(CancellationToken cancellationToken)
+    {
+        if (await WholeOrgAsync(cancellationToken) is not { } orgId)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        var ownerAccounting = (await authorizationService.AuthorizeAsync(User, CasazenPolicies.AgencyStatementView)).Succeeded;
+        var sent = await delivery.SendNowAsync(orgId, new AccountantPackageAccess(ownerAccounting), cancellationToken);
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(AccountantPackageEmailQueuedDto.From(sent));
     }
 
     /// <summary>The org of the caller, only when its reach is the whole org: the settings of the send are the organization's, never a part of it (null without an org, a scope or the whole reach).</summary>

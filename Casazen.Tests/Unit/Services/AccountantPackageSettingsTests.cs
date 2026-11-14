@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -17,6 +18,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -32,6 +34,9 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class AccountantPackageSettingsTests : IDisposable
 {
+    // One provider for the whole class: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
+    private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
+
     private const string UserId = "auth0|amministratrice";
     private const string Address = "  Commercialista@Studio-Rossi.example.com ";
     private const string NormalizedAddress = "commercialista@studio-rossi.example.com";
@@ -162,8 +167,9 @@ public class AccountantPackageSettingsTests : IDisposable
     // ---------------------------------------------------------------- the privacy rule
 
     /// <summary>
-    /// PROOF TEST: privacy rule. The address of the accountant is in the list of the encrypted columns and the database holds only the payload: a context without Data Protection reads a stored text that starts with the
-    /// payload prefix and holds nothing of the address, and the context with it reads the address back.
+    /// PROOF TEST: privacy rule. The address of the accountant is in the list of the encrypted columns, with a purpose of its own, and what the converter of the column hands to the table is a Data Protection payload with
+    /// none of the address in it; only the converter of that purpose reads it back, and the service saves and reads the address through the context that has the encryption configured. The EF InMemory database keeps the
+    /// values the model hands it and not the stored text, so the proof is on the model and its converter (the same shape as the other encrypted columns).
     /// </summary>
     [Fact]
     public async Task AccountantPackageSettings_EmailEncryptedAtRest_Test()
@@ -173,26 +179,32 @@ public class AccountantPackageSettingsTests : IDisposable
             column => column.EntityType == typeof(AccountantPackageSettings)
                       && column.Property == nameof(AccountantPackageSettings.AccountantEmail)
                       && column.Purpose == EncryptedColumns.AccountantPackagePurpose);
+        Assert.Equal("Casazen.AccountantPackage.Settings", EncryptedColumns.AccountantPackagePurpose);
 
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
-        var provider = new EphemeralDataProtectionProvider();
-        Guid orgId;
-        await using (var encrypted = new AppDbContext(options, tenantContext: null, provider))
-        {
-            var org = OrgTeamTestData.AddOrg(encrypted);
-            await encrypted.SaveChangesAsync();
-            orgId = org.Id;
-            await new AccountantPackageSettingsService(encrypted, NullLogger<AccountantPackageSettingsService>.Instance, _clock).SaveAsync(orgId, Change(), UserId);
-        }
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options, tenantContext: null, Provider);
+        var column = db.Model.FindEntityType(typeof(AccountantPackageSettings))!.FindProperty(nameof(AccountantPackageSettings.AccountantEmail))!;
+        var converter = Assert.IsType<EncryptedStringConverter>(column.GetValueConverter());
+        Assert.Null(column.GetMaxLength());
+        Assert.True(EncryptedColumns.IsConfigured(db));
 
-        await using var plain = new AppDbContext(options);
-        var stored = await plain.AccountantPackageSettings.AsNoTracking().Where(s => s.OrgId == orgId).Select(s => s.AccountantEmail).SingleAsync();
-        Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, stored);
+        var stored = (string)converter.ConvertToProvider(NormalizedAddress)!;
+
+        // What the column holds: a payload, and nothing of the address in it (only values too long to turn up in random text by chance are searched for).
+        Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, stored, StringComparison.Ordinal);
+        Assert.DoesNotContain(NormalizedAddress, stored, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("studio-rossi", stored, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("commercialista", stored, StringComparison.OrdinalIgnoreCase);
 
-        await using var reader = new AppDbContext(options, tenantContext: null, provider);
-        Assert.Equal(NormalizedAddress, (await new AccountantPackageSettingsService(reader, NullLogger<AccountantPackageSettingsService>.Instance, _clock).GetAsync(orgId)).Email);
+        // Read back only through the decryption of its own purpose: the protector of another column cannot read it.
+        Assert.Equal(NormalizedAddress, converter.ConvertFromProvider(stored));
+        Assert.ThrowsAny<CryptographicException>(() => Provider.CreateProtector(EncryptedColumns.GuestDocumentPurpose).Unprotect(stored));
+
+        // The service works with the encryption configured: the address saved comes back as typed (normalized).
+        var org = OrgTeamTestData.AddOrg(db);
+        await db.SaveChangesAsync();
+        var service = new AccountantPackageSettingsService(db, NullLogger<AccountantPackageSettingsService>.Instance, _clock);
+        await service.SaveAsync(org.Id, Change(), UserId);
+        Assert.Equal(NormalizedAddress, (await service.GetAsync(org.Id)).Email);
     }
 
     // ---------------------------------------------------------------- the service
@@ -431,6 +443,7 @@ public class AccountantPackageSettingsTests : IDisposable
                 Mock.Of<IAccountantPackageService>(),
                 Mock.Of<IAgencySummaryService>(),
                 Settings.Object,
+                Mock.Of<IAccountantPackageDeliveryService>(),
                 orgs.Object,
                 scopes.Object,
                 Mock.Of<IAuthorizationService>(),

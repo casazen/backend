@@ -49,7 +49,8 @@ public class AccountantPackageControllerTests
                 User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", UserId)], "test")),
                 RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider(),
             };
-            Controller = new AccountantPackageController(Packages.Object, Summaries.Object, Mock.Of<IAccountantPackageSettingsService>(), orgs.Object, scopes.Object, Authorization.Object, Log)
+            Controller = new AccountantPackageController(
+                Packages.Object, Summaries.Object, Mock.Of<IAccountantPackageSettingsService>(), Delivery.Object, orgs.Object, scopes.Object, Authorization.Object, Log)
             {
                 ControllerContext = new ControllerContext { HttpContext = Http },
             };
@@ -60,6 +61,8 @@ public class AccountantPackageControllerTests
         public Mock<IAccountantPackageService> Packages { get; } = new();
 
         public Mock<IAgencySummaryService> Summaries { get; } = new();
+
+        public Mock<IAccountantPackageDeliveryService> Delivery { get; } = new();
 
         public Mock<IAuthorizationService> Authorization { get; } = new();
 
@@ -274,20 +277,67 @@ public class AccountantPackageControllerTests
         Assert.Equal("api/accountant-package", controller.GetCustomAttribute<RouteAttribute>()!.Template);
 
         var actions = controller.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
-        Assert.Equal(4, actions.Length);
+        Assert.Equal(5, actions.Length);
         foreach (var action in actions)
         {
             Assert.Null(action.GetCustomAttribute<AllowAnonymousAttribute>());
             Assert.Empty(action.GetCustomAttributes<FeatureGateAttribute>());
             var methods = action.GetCustomAttributes<HttpMethodAttribute>().SelectMany(a => a.HttpMethods).Distinct().ToList();
             if (methods.Contains("GET"))
-                Assert.Empty(action.GetCustomAttributes<AuthorizeAttribute>().Where(a => a.Policy != null));
+                Assert.DoesNotContain(action.GetCustomAttributes<AuthorizeAttribute>(), a => a.Policy != null);
             else
                 Assert.Equal([CasazenPolicies.PropertyWrite], action.GetCustomAttributes<AuthorizeAttribute>().Select(a => a.Policy));
         }
 
         Assert.Equal(
-            ["Download:GET", "GetAgencySummary:GET", "GetSettings:GET", "SaveSettings:PUT"],
+            ["Download:GET", "GetAgencySummary:GET", "GetSettings:GET", "SaveSettings:PUT", "Send:POST"],
             actions.Select(a => $"{a.Name}:{string.Join("/", a.GetCustomAttributes<HttpMethodAttribute>().SelectMany(m => m.HttpMethods))}").Order());
+    }
+
+    // ---------------------------------------------------------------- «send a test» (E15/F01/US02/T02)
+
+    /// <summary>
+    /// PROOF TEST: permission rule. The owner accounting is in the package a person sends to the accountant only if that person holds <c>agency.statement.view</c>: the controller evaluates the policy by its name and
+    /// turns the answer into the access the service gets, so a person never shares with a third party what it may not read. The answer says the month and the expiry of the link, never the address or the link.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Send_TheStatementPermission_BecomesTheAccessTheServiceGets_AndTheAnswerHoldsNoAddressAndNoLink(bool holdsStatementView)
+    {
+        var harness = new Harness(holdsStatementView: holdsStatementView);
+        harness.Delivery
+            .Setup(d => d.SendNowAsync(OrgId, new AccountantPackageAccess(holdsStatementView), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AccountantPackageSendNowResult("2026-10", new DateTime(2026, 12, 3, 5, 30, 0, DateTimeKind.Utc)));
+
+        var result = await harness.Controller.Send(CancellationToken.None);
+
+        var dto = Assert.IsType<AccountantPackageEmailQueuedDto>(Assert.IsType<OkObjectResult>(result).Value);
+        Assert.Equal(("2026-10", true, new DateTime(2026, 12, 3, 5, 30, 0, DateTimeKind.Utc)), (dto.Period, dto.Queued, dto.LinkExpiresAt));
+        Assert.Equal("private, no-store", harness.Http.Response.Headers.CacheControl.ToString());
+        harness.Authorization.Verify(a => a.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), CasazenPolicies.AgencyStatementView), Times.Once);
+    }
+
+    /// <summary>PROOF TEST: permission rule. Nothing is made or sent by a caller that reaches only some properties, or none, even with the permissions: the package is the organization's.</summary>
+    [Theory]
+    [InlineData("account-in-no-team")]
+    [InlineData("collaborator")]
+    [InlineData("no-scope")]
+    [InlineData("no-org")]
+    public async Task Send_ACallerThatDoesNotReachTheWholeOrg_Is403_AndNothingIsMadeOrSent(string caller)
+    {
+        var harness = caller switch
+        {
+            "account-in-no-team" => new Harness(scope: new HostScope(OrgId, OwnerId: UserId)),
+            "collaborator" => new Harness(scope: new HostScope(OrgId, GrantedToUserId: UserId)),
+            "no-scope" => new Harness(hasScope: false),
+            _ => new Harness(hasOrg: false),
+        };
+
+        var result = await harness.Controller.Send(CancellationToken.None);
+
+        Assert.Equal((StatusCodes.Status403Forbidden, ProblemCodes.Forbidden), (StatusOf(result), CodeOf(result)));
+        harness.Delivery.VerifyNoOtherCalls();
+        harness.Authorization.Verify(a => a.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), It.IsAny<string>()), Times.Never);
     }
 }

@@ -64,6 +64,19 @@ public sealed class AccountantPackageLastSendDto
 }
 
 /// <summary>
+/// <c>POST api/accountant-package/send</c> (E15/F01/US02/T02): the package of <see cref="Period"/> (the previous month) is made and kept, and the e-mail with its link is in the queue of the e-mails, never that it was
+/// delivered (the queue delivers it and retries). <see cref="LinkExpiresAt"/> is the last instant (UTC) the link in it opens; no address and no link are in the answer.
+/// </summary>
+public sealed record AccountantPackageEmailQueuedDto(string Period, bool Queued, DateTime LinkExpiresAt)
+{
+    public static AccountantPackageEmailQueuedDto From(AccountantPackageSendNowResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return new AccountantPackageEmailQueuedDto(result.Period, Queued: true, result.LinkExpiresAt);
+    }
+}
+
+/// <summary>
 /// The body of <c>PUT api/accountant-package/settings</c>: all the settings, as a whole. A field that is missing is a refusal (422 <c>accountant_package_settings_invalid</c>), never a value (a send that turns off, a
 /// day 0); an empty <c>contents</c> never means every folder (422 <c>accountant_package_contents_invalid</c>). <c>email</c> empty or <c>null</c> clears the address, and the monthly send cannot stay on without one.
 /// </summary>
