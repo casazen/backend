@@ -15,8 +15,13 @@ namespace Casazen.Core.Services;
 /// the statement rows in the statement currency of the owners.</para>
 /// <para><b>Sources.</b> The ledger side is the live lines of the owner ledger of the month (neither reversals nor reversed lines); the bookings side the bookings the lines come
 /// from; the payment side what the payment ledger (<see cref="IBookingPaymentLedgerService"/>) stores for those bookings, read from the database without a call to the channel
-/// manager: the payments collected in CasaZen (recorded by hand, net of refunds) and, when the booking has none, the net the channel manager reported for it
-/// (<see cref="Booking.OtaNetAmount"/>, never derived from another figure). The statements are the published versions (the newest of each owner for the month).</para>
+/// manager: the payments collected in CasaZen (recorded by hand, net of refunds and without their share of the tourist tax, as the owner ledger posts them) and, when the booking
+/// has none, the net the channel manager reported for it (<see cref="Booking.OtaNetAmount"/>, never derived from another figure). The statements are the published versions (the
+/// newest of each owner for the month).</para>
+/// <para><b>Not available is not zero.</b> A stay the portal collected, with an expected payout and neither a payment in CasaZen nor a reported net, has no payout figure: it is told as
+/// <see cref="OwnerReconciliationReasons.PayoutSourceUnavailable"/> with a <c>null</c> recorded figure and difference (ADR-033-R2: a screen says «not available», not zero), and a row
+/// with no figure for any of its expected payouts has a <c>null</c> recorded total and difference. The Octorate import gives no net (<see cref="Booking.OtaNetAmount"/> stays
+/// <c>null</c>) and a portal stay takes no payment by hand, so today that is the state of every stay of a portal.</para>
 /// </remarks>
 public interface IOwnerReconciliationService
 {
@@ -62,9 +67,12 @@ public sealed record ChannelCommissionSplit(decimal FromPortal, decimal FromRule
 /// <param name="LedgerGross">The gross posted for them, without the tourist tax: the sum of the revenue lines in the currency of the stays (the owners' shares add up to the whole).</param>
 /// <param name="Commissions">The commission the portal kept on them, as the ledger posted it, by where it comes from.</param>
 /// <param name="ExpectedNetPayout">What the portal is expected to have paid out for the stays it collected: their gross less their commission; <c>null</c> for a channel that is not a portal.</param>
-/// <param name="RecordedPayouts">What the payment ledger records as paid for those stays; <c>null</c> for a channel that is not a portal.</param>
-/// <param name="Difference">The recorded payouts less the expected ones (negative: less was recorded than expected); <c>null</c> for a channel that is not a portal.</param>
-/// <param name="StaysWithoutRecordedPayout">The stays the portal collected with an expected payout and nothing recorded for them; <c>null</c> for a channel that is not a portal.</param>
+/// <param name="RecordedPayouts">What CasaZen records as paid for the stays that have a payout figure; <c>null</c> for a channel that is not a portal, and <c>null</c> (not available, never
+/// zero) when the row has an expected payout and not one of its stays has a figure.</param>
+/// <param name="Difference">The recorded payouts less the expected ones of the stays that have a figure (negative: less was recorded than expected); <c>null</c> for a channel that is not a
+/// portal, and <c>null</c> when <paramref name="RecordedPayouts"/> is.</param>
+/// <param name="StaysWithoutRecordedPayout">The stays the portal collected with an expected payout and no payout figure in CasaZen (each one is a
+/// <see cref="OwnerReconciliationReasons.PayoutSourceUnavailable"/> difference); <c>null</c> for a channel that is not a portal.</param>
 /// <param name="HostCollectedStays">The stays of a portal the host collected itself: no payout is expected for them; <c>null</c> for a channel that is not a portal.</param>
 public sealed record ChannelReconciliationRow(
     BookingSource Channel,
@@ -108,7 +116,8 @@ public enum ReconciliationDifferenceKind
 }
 
 /// <summary>
-/// One difference (E13/F01/US03/T02): what it is about and why. <see cref="Difference"/> is always <see cref="Recorded"/> less <see cref="Expected"/>; what the two are depends on the
+/// One difference (E13/F01/US03/T02): what it is about and why. <see cref="Difference"/> is always <see cref="Recorded"/> less <see cref="Expected"/>, and <c>null</c> when there is no
+/// recorded figure to subtract (<see cref="OwnerReconciliationReasons.PayoutSourceUnavailable"/>: not available, never zero); what the two are depends on the
 /// <see cref="Reason"/> (<see cref="OwnerReconciliationReasons"/>). Never a name or an address.
 /// </summary>
 /// <param name="Kind">What <paramref name="Id"/> is: a booking, a ledger line or a statement version.</param>
@@ -116,8 +125,8 @@ public enum ReconciliationDifferenceKind
 /// <param name="Reason">The stable code of the reason.</param>
 /// <param name="Currency">The currency of the amounts.</param>
 /// <param name="Expected">What the reference says: the payout the ledger expects, the gross the booking says, the ledger amount.</param>
-/// <param name="Recorded">What was found: the payout the payment ledger records (<c>null</c> when none), 0 for what the ledger or the statement does not hold.</param>
-/// <param name="Difference">The recorded less the expected.</param>
+/// <param name="Recorded">What was found: the payout CasaZen records (<c>null</c> when there is no figure), 0 for what the ledger or the statement does not hold.</param>
+/// <param name="Difference">The recorded less the expected; <c>null</c> when <paramref name="Recorded"/> is not available.</param>
 /// <param name="Channel">The channel of the stay, when the difference is about a stay.</param>
 /// <param name="OwnerId">The owner whose ledger or statement it is, when it is about one owner.</param>
 public sealed record ReconciliationDifference(
@@ -127,15 +136,18 @@ public sealed record ReconciliationDifference(
     string Currency,
     decimal? Expected,
     decimal? Recorded,
-    decimal Difference,
+    decimal? Difference,
     BookingSource? Channel = null,
     Guid? OwnerId = null);
 
 /// <summary>The stable codes of the reasons of a difference (E13/F01/US03/T02).</summary>
 public static class OwnerReconciliationReasons
 {
-    /// <summary>A stay the portal collected has an expected payout and the payment ledger records none (<c>Recorded</c> is <c>null</c>).</summary>
-    public const string PayoutNotRecorded = "payout_not_recorded";
+    /// <summary>
+    /// A stay the portal collected has an expected payout and CasaZen has no figure for it: no payment collected in CasaZen and no net reported by the channel manager (the Octorate
+    /// import gives none). <c>Recorded</c> and <c>Difference</c> are <c>null</c>: the payout is not available, never zero (ADR-033-R2).
+    /// </summary>
+    public const string PayoutSourceUnavailable = "payout_source_unavailable";
 
     /// <summary>The payout recorded for a stay is not the one expected.</summary>
     public const string PayoutDiffers = "payout_differs";

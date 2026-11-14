@@ -14,8 +14,11 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>Channels.</b> From the live lines of the owner ledger of the month that come from a booking (<c>BookingRevenue</c> and <c>ChannelFee</c>; the booking is the source of a
 /// booking line and of a flat fee, and the reference of a payment line): the stays posted, their gross and their commission by where it comes from (the rule version of the line:
 /// <c>payload</c>, <c>channel-rule:{id}</c>, <c>channel-default</c>), in the currency of the stays. For a portal, a stay it collected (not <c>OtaCompanyCollect = false</c>) is expected
-/// to be paid out its gross less its commission; what the payment ledger records for it is the payments collected in CasaZen (recorded by hand, net of refunds) or, when there are
-/// none, the net the channel manager reported (<see cref="Booking.OtaNetAmount"/>), never derived. A stay whose payout is not the one expected is a difference by its booking.</para>
+/// to be paid out its gross less its commission; what CasaZen records for it is the payments collected in CasaZen (recorded by hand, net of refunds and without their share of the
+/// tourist tax, as the owner ledger posts them) or, when there are none, the net the channel manager reported (<see cref="Booking.OtaNetAmount"/>), never derived. A stay whose payout
+/// is not the one expected is a difference by its booking; a stay with neither figure has none to compare (the Octorate import gives no net): it is
+/// <see cref="OwnerReconciliationReasons.PayoutSourceUnavailable"/> with a <c>null</c> recorded figure, never a zero, and a row with no figure at all has a <c>null</c> recorded total
+/// and difference.</para>
 /// <para><b>Stays not posted.</b> An active stay of the month with no collected payment (the booking path of the ledger: a portal, the agency's own site, a booking entered by hand)
 /// and a gross to post that has no live revenue line in the ledger, in any month: told by its booking. A stay paid in CasaZen is posted by its payments, on their day, and is never
 /// told here.</para>
@@ -107,25 +110,30 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
                 hostCollected = group.Count() - collected.Count;
                 var expected = 0m;
                 var recorded = 0m;
-                var missing = 0;
+                var difference = 0m;
+                var withFigure = 0;
+                var withoutFigure = 0;
                 foreach (var stay in collected.OrderBy(s => s.Booking.Id))
                 {
                     var payout = paid.TryGetValue(stay.Booking.Id, out var collectedInCasaZen) ? collectedInCasaZen : stay.Booking.OtaNet;
                     expected += stay.Net;
                     if (payout is null)
                     {
-                        // Nothing to expect from a stay that nets nothing (a stay for free): nothing is missing.
+                        // No payment in CasaZen and no net reported: there is no figure to compare, and not available is never a zero (ADR-033-R2). Nothing to expect from a stay
+                        // that nets nothing (a stay for free): nothing is missing.
                         if (stay.Net > 0m)
                         {
-                            missing++;
+                            withoutFigure++;
                             differences.Add(new ReconciliationDifference(
-                                ReconciliationDifferenceKind.Stay, stay.Booking.Id, OwnerReconciliationReasons.PayoutNotRecorded, currency, stay.Net, null, -stay.Net, channel));
+                                ReconciliationDifferenceKind.Stay, stay.Booking.Id, OwnerReconciliationReasons.PayoutSourceUnavailable, currency, stay.Net, null, null, channel));
                         }
 
                         continue;
                     }
 
+                    withFigure++;
                     recorded += payout.Value;
+                    difference += payout.Value - stay.Net;
                     if (payout.Value != stay.Net)
                     {
                         differences.Add(new ReconciliationDifference(
@@ -133,10 +141,13 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
                     }
                 }
 
+                // The recorded payouts and their difference are the ones of the stays that have a figure (so the listed differences add up to it); a row that expects a payout and has
+                // not one figure has nothing recorded to tell: null, never a zero.
+                var noFigureAtAll = withoutFigure > 0 && withFigure == 0;
                 expectedTotal = expected;
-                recordedTotal = recorded;
-                differenceTotal = recorded - expected;
-                withoutPayout = missing;
+                recordedTotal = noFigureAtAll ? null : recorded;
+                differenceTotal = noFigureAtAll ? null : difference;
+                withoutPayout = withoutFigure;
             }
 
             rows.Add(new ChannelReconciliationRow(

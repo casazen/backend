@@ -73,8 +73,10 @@ public class OwnerReconciliationTests
         var airbnb = Assert.Single(before.Channels, r => r.Channel == BookingSource.Airbnb);
         Assert.Equal((1, 200m, 31m, 0m, 0m), (airbnb.Stays, airbnb.LedgerGross, airbnb.Commissions.FromDefault, airbnb.Commissions.FromPortal, airbnb.Commissions.FromRule));
         Assert.Equal(169m, airbnb.ExpectedNetPayout);
-        Assert.Equal(0m, airbnb.RecordedPayouts);
-        Assert.Equal(-169m, airbnb.Difference);
+
+        // No payment in CasaZen and no net reported: nothing is recorded because nothing is available, and not available is never a zero.
+        Assert.Null(airbnb.RecordedPayouts);
+        Assert.Null(airbnb.Difference);
         Assert.Equal(1, airbnb.StaysWithoutRecordedPayout);
         var expedia = Assert.Single(before.Channels, r => r.Channel == BookingSource.Expedia);
         Assert.Equal((300m, 54m), (expedia.LedgerGross, expedia.Commissions.FromPortal));
@@ -90,19 +92,21 @@ public class OwnerReconciliationTests
         Assert.Equal(4, before.Channels.Count);
 
         // The payouts that are not the ones expected, by their stay with the reason.
-        var payouts = before.Differences.Where(d => d.Reason is OwnerReconciliationReasons.PayoutNotRecorded or OwnerReconciliationReasons.PayoutDiffers).ToList();
+        var payouts = before.Differences.Where(d => d.Reason is OwnerReconciliationReasons.PayoutSourceUnavailable or OwnerReconciliationReasons.PayoutDiffers).ToList();
         Assert.Equal(2, payouts.Count);
         var missing = Assert.Single(payouts, d => d.Id == unrecorded);
-        Assert.Equal((ReconciliationDifferenceKind.Stay, OwnerReconciliationReasons.PayoutNotRecorded, "CHF", -169m), (missing.Kind, missing.Reason, missing.Currency, missing.Difference));
+        Assert.Equal((ReconciliationDifferenceKind.Stay, OwnerReconciliationReasons.PayoutSourceUnavailable, "CHF"), (missing.Kind, missing.Reason, missing.Currency));
         Assert.Equal(169m, missing.Expected);
         Assert.Equal(BookingSource.Airbnb, missing.Channel);
         Assert.Null(missing.Recorded);
+        Assert.Null(missing.Difference);
         var differs = Assert.Single(payouts, d => d.Id == short1);
-        Assert.Equal((OwnerReconciliationReasons.PayoutDiffers, -6m), (differs.Reason, differs.Difference));
+        Assert.Equal(OwnerReconciliationReasons.PayoutDiffers, differs.Reason);
+        Assert.Equal(-6m, differs.Difference);
         Assert.Equal(246m, differs.Expected);
         Assert.Equal(240m, differs.Recorded);
-        Assert.DoesNotContain(before.Differences, d => d.Id == agreed && d.Reason is OwnerReconciliationReasons.PayoutNotRecorded or OwnerReconciliationReasons.PayoutDiffers);
-        Assert.DoesNotContain(before.Differences, d => d.Id == hostCollected && d.Reason is OwnerReconciliationReasons.PayoutNotRecorded or OwnerReconciliationReasons.PayoutDiffers);
+        Assert.DoesNotContain(before.Differences, d => d.Id == agreed && d.Reason is OwnerReconciliationReasons.PayoutSourceUnavailable or OwnerReconciliationReasons.PayoutDiffers);
+        Assert.DoesNotContain(before.Differences, d => d.Id == hostCollected && d.Reason is OwnerReconciliationReasons.PayoutSourceUnavailable or OwnerReconciliationReasons.PayoutDiffers);
         Assert.DoesNotContain(before.Differences, d => d.Reason == OwnerReconciliationReasons.StayNotPosted);
 
         // Nothing is published: the whole ledger (930) is the difference, listed stay by stay (the lines of a stay together).
@@ -137,7 +141,7 @@ public class OwnerReconciliationTests
         Assert.Equal(("CHF", 1, 1, 970m, 930m, -40m), (statements.Currency, statements.LedgerOwners, statements.PublishedStatements, statements.LedgerTotal, statements.PublishedTotal, statements.Difference));
         var statementDifferences = after.Differences.Where(d => d.Reason is OwnerReconciliationReasons.StatementNotPublished or OwnerReconciliationReasons.PostedAfterPublication or OwnerReconciliationReasons.StatementTotalDiffers).ToList();
         var afterPublication = Assert.Single(statementDifferences);
-        Assert.Equal((ReconciliationDifferenceKind.Stay, late, OwnerReconciliationReasons.PostedAfterPublication, -40m), (afterPublication.Kind, afterPublication.Id, afterPublication.Reason, afterPublication.Difference));
+        Assert.Equal((ReconciliationDifferenceKind.Stay, late, OwnerReconciliationReasons.PostedAfterPublication, (decimal?)-40m), (afterPublication.Kind, afterPublication.Id, afterPublication.Reason, afterPublication.Difference));
         Assert.Equal(40m, afterPublication.Expected);
         Assert.Equal(0m, afterPublication.Recorded);
         Assert.Equal(BookingSource.Direct, afterPublication.Channel);
@@ -146,10 +150,48 @@ public class OwnerReconciliationTests
 
         // A stay of the month with a gross to post that the ledger does not hold is told by its booking.
         var notPosted = Assert.Single(after.Differences, d => d.Reason == OwnerReconciliationReasons.StayNotPosted);
-        Assert.Equal((forgotten, ReconciliationDifferenceKind.Stay, "CHF", -60m), (notPosted.Id, notPosted.Kind, notPosted.Currency, notPosted.Difference));
+        Assert.Equal((forgotten, ReconciliationDifferenceKind.Stay, "CHF", (decimal?)-60m), (notPosted.Id, notPosted.Kind, notPosted.Currency, notPosted.Difference));
         Assert.Equal(60m, notPosted.Expected);
         Assert.Equal(0m, notPosted.Recorded);
         Assert.Equal(BookingSource.Direct, notPosted.Channel);
+    }
+
+    /// <summary>
+    /// Money: a payout CasaZen has no figure for is not available, never a zero. A row with a figure for some of its stays compares only those (the listed differences add up to its
+    /// difference) and counts the others; the stay without a figure is told with its own reason and a <c>null</c> recorded figure and difference.
+    /// </summary>
+    [Fact]
+    public async Task Reconciliation_AMixedRowComparesOnlyTheStaysThatHaveAFigure_Test()
+    {
+        var world = await OwnerMonthEndWorld.CreateAsync();
+        var owner = await world.OwnerAsync();
+        var property = await world.PropertyAsync("CHF", (owner, 100m));
+        await world.MandateAsync(owner, 20m);
+        var known = await world.StayAsync(property, BookingSource.Expedia, 300m, Day(10, 2), Day(10, 5), otaCommission: 54m, otaNet: 240m);
+        var unknown = await world.StayAsync(property, BookingSource.Expedia, 100m, Day(10, 6), Day(10, 8), otaCommission: 18m);
+        var posted = await world.Service.PostPeriodAsync(world.OrgId, 2026, 10, UserId);
+        Assert.DoesNotContain(posted.Issues, i => i.Blocking);
+
+        var result = await world.Reconciliation.GetAsync(world.OrgId, 2026, 10);
+
+        var row = Assert.Single(result.Channels);
+        Assert.Equal(246m + 82m, row.ExpectedNetPayout);
+        Assert.Equal(240m, row.RecordedPayouts);
+        Assert.Equal(-6m, row.Difference);
+        Assert.Equal(1, row.StaysWithoutRecordedPayout);
+        var payouts = result.Differences.Where(d => d.Reason is OwnerReconciliationReasons.PayoutSourceUnavailable or OwnerReconciliationReasons.PayoutDiffers).ToList();
+        Assert.Equal(2, payouts.Count);
+        var differs = Assert.Single(payouts, d => d.Id == known);
+        Assert.Equal(OwnerReconciliationReasons.PayoutDiffers, differs.Reason);
+        Assert.Equal(246m, differs.Expected);
+        Assert.Equal(240m, differs.Recorded);
+        Assert.Equal(-6m, differs.Difference);
+        var unavailable = Assert.Single(payouts, d => d.Id == unknown);
+        Assert.Equal(OwnerReconciliationReasons.PayoutSourceUnavailable, unavailable.Reason);
+        Assert.Equal(82m, unavailable.Expected);
+        Assert.Null(unavailable.Recorded);
+        Assert.Null(unavailable.Difference);
+        Assert.Equal(row.Difference, payouts.Sum(d => d.Difference));
     }
 
     /// <summary>

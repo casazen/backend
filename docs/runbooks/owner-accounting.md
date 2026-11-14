@@ -352,24 +352,30 @@ agree. **Read only, no entity, and a difference blocks nothing: the agency decid
   the agency) and `fromDefault` (`channel-default`, the configured default); `total` and `onRule` (`fromRule + fromDefault`) tell how much of it rests on a rule and not on the
   portal (⚖ R2). For a **portal** (`FiscalCopy.IsOtaBookingSource`): `expectedNetPayout` is the gross less the commission of the stays **the portal collected** (a stay with
   `OtaCompanyCollect = false` is collected by the host: no payout is expected, it is counted in `hostCollectedStays`; unknown counts as collected, as the payment ledger reads
-  it), `recordedPayouts` what the payment ledger records as paid for them, `difference` the recorded less the expected (negative: less was recorded), and
-  `staysWithoutRecordedPayout` the stays with an expected payout and nothing recorded. These four are `null` for a channel that is not a portal (the agency's own site, a
-  booking entered by hand).
+  it), `recordedPayouts` what CasaZen records as paid for the stays that have a payout figure, `difference` the recorded less the expected of those stays (negative: less was
+  recorded), and `staysWithoutRecordedPayout` the stays with an expected payout and no payout figure. These four are `null` for a channel that is not a portal (the agency's own
+  site, a booking entered by hand). **Not available is never zero** (ADR-033-R2): when the row expects a payout and not one of its stays has a figure, `recordedPayouts` and
+  `difference` are `null`, not 0 and not minus the expected (a row with some figures compares only the stays that have one, and counts the others in
+  `staysWithoutRecordedPayout`).
 - **What is «recorded».** Read from the database like the payment ledger (`IBookingPaymentLedgerService`), without a call to the channel manager: the payments collected in
   CasaZen for the booking (recorded by hand, net of refunds: a refunded one counts 0) and, when there is none, the net the channel manager reported
-  (`Booking.OtaNetAmount`; **never derived** from the amount paid and the commission, ADR-033). A portal stay with neither has nothing recorded (`recorded` `null` in its
-  difference). The comparison is on the gross **without the tourist tax**: a portal that collects it (Airbnb in Ticino, ⚖ C5) is read for the rest.
+  (`Booking.OtaNetAmount`; **never derived** from the amount paid and the commission, ADR-033). **Today that is no figure at all for a stay of a portal:** the Octorate import
+  gives no net (`Booking.OtaNetAmount` stays `null`, `BookingStateMapper.ToOtaAmounts`) and a portal stay takes no payment by hand (`payment_booking_from_portal`), so every stay
+  the portal collected is told as `payout_source_unavailable` until a source of the payouts exists (the amount the guest paid, `Booking.OtaPaidAmount`, is not the payout and is
+  never used for it). The comparison is on the gross **without the tourist tax**: a portal that collects it (Airbnb in Ticino, ⚖ C5) is read for the rest.
 - **`statements`**: one row for each statement currency of the month: the owners with a line in it (`ledgerOwners`), the published statements (`publishedStatements`: the
   newest published version of each owner for the month, even superseded by one not published yet, as the owner portal reads it), `ledgerTotal` (every line of the month,
   a reversal cancelling the line it reverses), `publishedTotal` (closing less opening balance of those versions) and `difference` (published less ledger).
 - **`differences`**: every difference, by what it is about (`kind`: `Stay` with the booking, `Entry` with the ledger line, `Statement` with the version), with `reason`,
-  `currency`, `expected`, `recorded` and `difference` (**always recorded less expected**), the `channel` of a stay and the `ownerId` of an owner's ledger or statement. The
-  reasons: `payout_not_recorded` (a stay the portal collected has an expected payout and nothing recorded; `recorded` `null`), `payout_differs`, `stay_not_posted` (an
+  `currency`, `expected`, `recorded` and `difference` (**always recorded less expected**, `null` when there is no recorded figure to subtract), the `channel` of a stay and the
+  `ownerId` of an owner's ledger or statement. The reasons: `payout_source_unavailable` (a stay the portal collected has an expected payout and CasaZen has no figure for it: `recorded`
+  and `difference` are `null`, not available and never zero), `payout_differs`, `stay_not_posted` (an
   active stay of the month with no collected payment, that the ledger posts from its booking, with a gross to post and no live revenue line in any month: expected its
   gross, recorded 0; a stay paid in CasaZen is posted by its payments on their day and is never told here), `statement_not_published` (the owner has no published statement:
   its lines are in none; the lines of a booking of an owner are one difference, any other line is one by itself) and `posted_after_publication` (lines posted after the
   cut-off of the published statement, listed the same way). What is left once those are taken out (a published total that is not the total of the lines it was cut from) is
-  told by the version, `statement_total_differs`, so **the listed differences always add up to the difference of the totals**.
+  told by the version, `statement_total_differs`, so **the listed differences with a figure add up to the difference of the totals** (the payouts of a channel row, the statements
+  of a statement row); `payout_source_unavailable` has no figure and `stay_not_posted` is in no total.
 - **Scope.** Every read names the org; the lines, the bookings (also of a property deleted since) and the payments of another org are never read; nothing is written; the
   logs carry ids and counts.
 
