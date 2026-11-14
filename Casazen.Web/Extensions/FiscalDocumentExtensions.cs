@@ -46,6 +46,11 @@ public static class FiscalDocumentExtensions
         services.AddScoped<IBillingSetupContributor, AutomationSectionContributor>();
         services.AddScoped<IBillingSetupContributor, ItalySectionContributor>();
 
+        // The two pieces of the setup the owner ledger owns, for the agencies only (E13/F01/US02/T03): the commission rules of the channels saved once, and an
+        // active mandate for every owner. Registered like the others, never in the service.
+        services.AddScoped<IBillingSetupContributor, ChannelCommissionsSectionContributor>();
+        services.AddScoped<IBillingSetupContributor, OwnerMandatesSectionContributor>();
+
         // The billing data and Octorate (E06/F02/US01/T04), both behind Features:OctorateConnector and Features:OctorateBillingSync: the invoice data of a
         // booking imported from Octorate is pre-filled from its customer record (BookingCreated), and the data saved in CasaZen is written to Octorate where
         // Octorate is the issuer (InvoiceDataSaved). Run by the outbox dispatcher, so neither can fail an import or a host's save.

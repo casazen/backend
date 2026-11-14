@@ -55,6 +55,8 @@ public class FiscalDocumentsRegistrationTests
             (typeof(IBillingSetupContributor), typeof(TouristTaxSectionContributor), ServiceLifetime.Scoped),
             (typeof(IBillingSetupContributor), typeof(AutomationSectionContributor), ServiceLifetime.Scoped),
             (typeof(IBillingSetupContributor), typeof(ItalySectionContributor), ServiceLifetime.Scoped),
+            (typeof(IBillingSetupContributor), typeof(ChannelCommissionsSectionContributor), ServiceLifetime.Scoped),
+            (typeof(IBillingSetupContributor), typeof(OwnerMandatesSectionContributor), ServiceLifetime.Scoped),
 
             // The two consumers of the sync with Octorate (E06/F02/US01/T04): the pre-fill on BookingCreated, then the write-back on InvoiceDataSaved.
             (typeof(IEventHandler<DomainEvent>), typeof(InvoiceDataFromOctorateHandler), ServiceLifetime.Scoped),
