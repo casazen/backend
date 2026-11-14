@@ -423,6 +423,39 @@ events of one change (the refund and the cancellation) and events delivered out 
 - **What cannot be decided** (the issuer's profile is incomplete, no tax rule applies) is not a failure of the event: the host gets the «To do» `fiscal_document_booking_changed`, the event is
   not delivered again, and the daily run makes the draft of a booking that has none. Any other failure (the database) is thrown again and the outbox delivers the event again.
 
+## E-mail to the guest and the public page of the document (E12/F01/US02/T01, NF-83)
+
+The guest gets the document of the stay as an **e-mail with a signed link**, never as an attachment (the e-mail queue has none). `IFiscalDocumentDeliveryService` (`FiscalDocumentDeliveryService`):
+
+- **Who sends.** The host, from the booking, with `POST api/fiscal/documents/{id}/send-email` (`payment.write`, the booking authorized like its payments, behind `Features:FiscalDocumentIssuance`; every call sends again, so it is also
+  the «send again»). And CasaZen by itself when the profile of the issuer has **«e-mail to the guest»** on (`OrgFiscalIssuerProfile.EmailGuestDocuments`, the step «Emissione» of the billing setup): `FiscalDocumentEmailHandler`
+  consumes `FiscalDocumentIssued` (60) and `FiscalDocumentCreditNoteIssued` (61), the events of every way of issuing (the host's confirmation, the bulk issue, the daily run, the corrections an event makes), so the credit note of a
+  correction goes to the guest who got the invoice.
+- **What is sent.** Only an issued guest document of CasaZen: not a draft, not an owner invoice (422 `document_owner_invoice`), not a document imported from Octorate (422 `document_read_only`). The Swiss documents go like the Italian ones.
+- **The address** is the one of the guest of the booking. A relay address of a portal (`…@guest.booking.com`, which forwards to the guest) is a normal address. Refused (422 `document_recipient_email_invalid`; for the automatic send:
+  nothing is sent and the document stays in CasaZen and in the package of the accountant): empty, malformed, no dot in the domain, an erased guest (`Guest.DataAnonymizedDate`) and the domains that are never delivered
+  (`.invalid`, `.localhost`, `.local`, where the placeholder of an erased guest, `ANON-…@deleted.local`, is). `example.com` and `.test` stay addresses: the data of a demo is e-mailed like any other.
+- **The link** is `{App:PublicSiteBaseUrl}/documents/view/{id}?token=`. The token is an ASP.NET Core Data Protection time-limited payload (`FiscalDocumentLinkTokens`, purpose `Casazen.FiscalDocument.Link`, **30 days** from the
+  moment the e-mail is queued) that carries **only the document id**: no name, no address, no amount. Nothing is stored for it (no column, no migration); a new e-mail makes a new token and the older ones open until they expire;
+  the key ring is in the database, so a link outlives a redeploy.
+- **The e-mail** (`EmailTemplates.FiscalDocumentDelivery`; Italian, or English for a guest of another country, as the answers of the host by e-mail): the issuer, the kind, the number and the day, the link and its last day (Rome time);
+  **no amount, no address and no name of a portal or of a supplier**, every value HTML-encoded. Queued on Hangfire (`IEmailQueue`, retried by the job), never sent inside a request.
+- **A queue that says no is not a success.** Without the e-mail provider or `App:PublicSiteBaseUrl`, or with the queue down, the host's send answers 422 `document_email_not_sent`. The automatic send tells the two cases apart: an
+  environment that cannot send at all (no provider, no public address: a development machine, since the startup refuses it elsewhere) is an answer, `FiscalDocumentSendOutcome.NotConfigured`, logged with the ids and not delivered again;
+  a queue that refuses while it could send is a failure, thrown again by `FiscalDocumentEmailHandler`, so the outbox delivers the event again (nothing was queued, so nothing is sent twice). A guest with no usable address and a
+  document that is not a guest document are answers too: the document stays in CasaZen and the host sends it from the booking.
+- **The event is delivered at least once, the e-mail once.** When another consumer of the event fails (or the dispatcher stops before it saves) the outbox delivers it again to every consumer, this one included. The service
+  remembers **in memory, for an hour** (`FiscalDocumentDeliveryService.AutomaticSendMemory`, like `MessageReplyService.EmailKeyMemory`) the documents whose e-mail it queued by itself, and answers
+  `FiscalDocumentSendOutcome.AlreadyQueued` to a later delivery: nothing is queued again. Only a queued e-mail is remembered, so a queue that refused, a guest with no address and an issuer that did not ask are asked again
+  at the next delivery. **The limit:** nothing is stored (no «sent» column, no migration), so another replica, or a restart within the hour, does not know it and can queue a second e-mail, with a link of its own. The host's
+  own send (`send-email`) is never held back: every call sends again.
+
+**The public page** (`/documents/view/:id?token=`, a frontend task) reads two anonymous endpoints: `POST api/public/fiscal-documents/{id}` (the summary: kind, number, day, total, currency) and `…/pdf`, with `{ token }` in the **body**
+and the rate limit `PublicFiscalDocumentDownload` per client IP (20 a minute). A wrong, expired or foreign token (made for another document or another purpose), a missing one and a document that is not an issued guest document of
+CasaZen are **the same 404 `document_link_invalid`**, with no word of why. The token is never written to a log (the proof test `PublicDocumentLink_TokenNeverLogged_Test`, which also reads the source of the files that touch it).
+The document is found by the signed id with the tenant filter ignored, and the PDF is drawn by `IFiscalDocumentService.GetPdfAsync` in a scope entered under the org of the document, so a signed-in person of another org who opens
+the link sees what the guest sees. The token is in the query of the page, which is a frontend route: the access log of the web host holds it, the one of the API never does.
+
 ## XML (`FatturaPaXmlBuilder`)
 
 - Written with `XDocument`/`XmlWriter`, never by concatenation: every text is escaped; decimals in invariant culture (two places, unit prices and

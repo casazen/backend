@@ -71,8 +71,8 @@ public enum DomainEventType
 
     /// <summary>
     /// CasaZen issued a fiscal document of a booking (E06/F01/US01/T01, NF-83): about the document (<c>EntityId</c>), with the payload
-    /// <c>FiscalDocumentIssuedPayload</c> (ids and the kind, nothing personal), recorded in the unit of work of the issue. Starts no routine; nothing
-    /// consumes it yet. The numbers 60 to 69 are the fiscal documents (epic E06), so the tasks of the waves that run in parallel never pick the same one.
+    /// <c>FiscalDocumentIssuedPayload</c> (ids and the kind, nothing personal), recorded in the unit of work of the issue. Starts no routine; the consumer
+    /// that e-mails the document to the guest when the issuer asks (E12/F01/US02/T01) reads it. The numbers 60 to 69 are the fiscal documents (epic E06), so the tasks of the waves that run in parallel never pick the same one.
     /// </summary>
     FiscalDocumentIssued = 60,
 

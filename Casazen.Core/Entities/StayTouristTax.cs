@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.TouristTax;
 using Microsoft.EntityFrameworkCore;
@@ -53,6 +54,15 @@ public class StayTouristTax : ITenantOwned
 
     /// <summary>Name of the unique index on <see cref="BookingId"/>.</summary>
     public const string BookingIndexName = "UIX_StayTouristTaxes_BookingId";
+
+    /// <summary>Length of <see cref="Currency"/>: an ISO 4217 code.</summary>
+    public const int CurrencyMaxLength = 3;
+
+    /// <summary>Length of <see cref="StripePaymentIntentId"/> and <see cref="StripeAccountId"/>.</summary>
+    public const int StripeIdMaxLength = 255;
+
+    /// <summary>Name of the unique index on <see cref="StripePaymentIntentId"/>, filtered to the rows that have one: an intent is the payment of one stay.</summary>
+    public const string PaymentIntentIndexName = "UIX_StayTouristTaxes_StripePaymentIntentId";
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -112,6 +122,42 @@ public class StayTouristTax : ITenantOwned
 
     /// <summary>The record is kept until this day: the check-out date plus <see cref="RetentionYears"/> years (ADR-037-R4).</summary>
     public DateOnly RetainUntil { get; set; }
+
+    // ─── The collection of the tax (E25/F01/US01/T01, NF-119, decision O12) ─────────────────────────────────────────────────────────────────
+    // What the guest paid online is recorded here and never as a Payment row: the owner ledger, the balance of the booking and the revenue do not
+    // change. A row created by the collection before any confirmation is unconfirmed (ConfirmedAt null, no lines), like the host's declaration.
+
+    /// <summary>
+    /// The last state a write of the collection saved (<see cref="TouristTaxCollectionStatus"/>); <c>ToCollect</c> for every row written before it. Readers
+    /// show the effective one of <c>TouristTaxCollectionRules.Evaluate</c>, which also reads the stay as it is now.
+    /// </summary>
+    public TouristTaxCollectionStatus CollectionStatus { get; set; } = TouristTaxCollectionStatus.ToCollect;
+
+    /// <summary>What the guest paid online, as the payment provider received it (the amount of the PaymentIntent, never a figure of the client); 0 when nothing.</summary>
+    [Precision(18, 2)]
+    public decimal CollectedAmount { get; set; }
+
+    /// <summary>The currency of the collection (upper case): the one of the PaymentIntent once paid, else the currency of the property.</summary>
+    [MaxLength(CurrencyMaxLength)]
+    public string? Currency { get; set; }
+
+    /// <summary>When the online payment succeeded, or when the host recorded the payment at the property (UTC); null while nothing was collected.</summary>
+    public DateTime? CollectedAt { get; set; }
+
+    /// <summary>
+    /// The PaymentIntent of the guest on the organization's connected account (<c>pi_…</c>): the open one while it is not paid, then the paid one. One per
+    /// stay (<see cref="PaymentIntentIndexName"/>); a new amount cancels the open intent before another is created.
+    /// </summary>
+    [MaxLength(StripeIdMaxLength)]
+    public string? StripePaymentIntentId { get; set; }
+
+    /// <summary>The connected account (<c>acct_…</c>) the intent was created on: its refund and its events belong to it, whatever account the org has later.</summary>
+    [MaxLength(StripeIdMaxLength)]
+    public string? StripeAccountId { get; set; }
+
+    /// <summary>What was refunded of <see cref="CollectedAmount"/>, as the charge reports it; never more than it.</summary>
+    [Precision(18, 2)]
+    public decimal RefundedAmount { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

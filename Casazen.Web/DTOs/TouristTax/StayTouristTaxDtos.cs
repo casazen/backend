@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
+using Casazen.Web.DTOs.CheckIn;
 
 namespace Casazen.Web.DTOs.TouristTax;
 
@@ -48,13 +49,21 @@ public sealed class StayTouristTaxDto
     /// <summary>The confirmed tax no longer matches the stay (rates, guests, exemptions or collector changed since).</summary>
     public bool Stale { get; init; }
 
+    /// <summary>
+    /// The collection of the tax (E25/F01/US01/T01): what is still to collect, what the guest paid online, what is owed back. <c>null</c> while
+    /// <c>Features:TouristTaxOnlinePayment</c> is off, and in the answers of the check-in wizard.
+    /// </summary>
+    public TouristTaxCollectionDto? Collection { get; init; }
+
     /// <param name="view">The tax of the stay.</param>
     /// <param name="includeExemptionCodes">
     /// False for a caller who does not hold <c>guest.read</c>: the reason of an exemption can reveal a health condition (art. 9 GDPR), so its code
     /// is <c>null</c> (the kind of the exemption and the amount stay).
     /// </param>
-    public static StayTouristTaxDto From(StayTouristTaxView view, bool includeExemptionCodes) => new()
+    /// <param name="collection">The collection block, when the caller reads it.</param>
+    public static StayTouristTaxDto From(StayTouristTaxView view, bool includeExemptionCodes, TouristTaxCollectionDto? collection = null) => new()
     {
+        Collection = collection,
         BookingId = view.BookingId,
         Status = view.Status,
         RateSource = view.RateSource,
