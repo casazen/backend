@@ -91,6 +91,8 @@ public class HostNotifyingPathsArchitectureTests
             ("the push «the guest completed the online check-in»: not one of the eight kinds of event of NF-65, it keeps the hosts of the booking", "none planned (outside the eight kinds of event of NF-65)"),
         ["Casazen.Infrastructure/Services/FiscalDocumentLiveRefresh.cs"] =
             ("the push «a fiscal document was issued» (E12/F01/US01/T02): it makes the pages open on the documents and on the booking read them again, and is not one of the eight kinds of event of NF-65, it keeps the hosts of the booking", "none planned (outside the eight kinds of event of NF-65)"),
+        ["Casazen.Infrastructure/Services/TouristTaxLiveRefresh.cs"] =
+            ("the push «the guest paid the tourist tax online» (E25/F01/US01/T01): it makes the pages open on the booking read it again, and is not one of the eight kinds of event of NF-65, it keeps the hosts of the booking", "none planned (outside the eight kinds of event of NF-65)"),
         ["Casazen.Infrastructure/Services/ServiceRequestNotifier.cs"] =
             ("the push to the hosts about a request to a supplier (taken, started, completed, a time proposed, a quote): outside the eight kinds of event of NF-65", "none planned (outside the eight kinds of event of NF-65)"),
         ["Casazen.Infrastructure/Services/ServiceRequestNotifier.Backups.cs"] =

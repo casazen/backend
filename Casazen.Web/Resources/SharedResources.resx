@@ -7083,4 +7083,34 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerPortalInvoiceNotFound" xml:space="preserve">
     <value>Fattura non trovata.</value>
   </data>
+  <data name="TouristTaxPaymentNotAvailable" xml:space="preserve">
+    <value>Il pagamento online della tassa di soggiorno non è disponibile per questo soggiorno.</value>
+  </data>
+  <data name="TouristTaxNothingToPay" xml:space="preserve">
+    <value>Non c'è nulla da pagare online per la tassa di soggiorno di questo soggiorno.</value>
+  </data>
+  <data name="TouristTaxPaymentInProgress" xml:space="preserve">
+    <value>Un pagamento della tassa di soggiorno è già in corso. Attendi qualche minuto e ricarica la pagina.</value>
+  </data>
+  <data name="TouristTaxAlreadyPaidOnline" xml:space="preserve">
+    <value>L'ospite ha già pagato online la tassa di soggiorno di questo soggiorno.</value>
+  </data>
+  <data name="TouristTaxCollectionNotApplicable" xml:space="preserve">
+    <value>La tassa di soggiorno di questo soggiorno non si incassa in struttura: il soggiorno non è attivo oppure la riscuote il canale.</value>
+  </data>
+  <data name="TouristTaxPushPaidTitle" xml:space="preserve">
+    <value>Tassa di soggiorno pagata</value>
+  </data>
+  <data name="TouristTaxPushPaidBody" xml:space="preserve">
+    <value>Un ospite ha pagato online la tassa di soggiorno del suo soggiorno.</value>
+  </data>
+  <data name="TouristTaxTodoRefundDifference" xml:space="preserve">
+    <value>Rimborsa la differenza della tassa: l'importo dovuto è inferiore a quello già incassato.</value>
+  </data>
+  <data name="TouristTaxTodoPartialStay" xml:space="preserve">
+    <value>Rimborsa la differenza della tassa: il soggiorno è stato annullato dopo l'arrivo e la tassa era stata pagata online.</value>
+  </data>
+  <data name="TouristTaxTodoRefundFailed" xml:space="preserve">
+    <value>Rimborsa la tassa all'ospite: il rimborso automatico del soggiorno annullato non è riuscito.</value>
+  </data>
 </root>

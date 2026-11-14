@@ -28,7 +28,8 @@ public class PublicGuestCheckInController(
     IIdentityVerificationFlowService verificationFlow,
     IFeatureFlags featureFlags,
     IStringLocalizer<SharedResources> localizer,
-    ILogger<PublicGuestCheckInController> logger) : ControllerBase
+    ILogger<PublicGuestCheckInController> logger,
+    ITouristTaxCollectionService? touristTaxCollection = null) : ControllerBase
 {
     /// <summary>Problem code of a submit on a session the guest has already completed (409).</summary>
     public const string AlreadySubmittedCode = "checkin_already_submitted";
@@ -456,6 +457,42 @@ public class PublicGuestCheckInController(
             OperatorPathOpen = state.OperatorPathOpen,
             State = PublicIdentityVerificationStateDto.From(state),
         });
+    }
+
+    /// <summary>
+    /// The tourist tax of the stay of the link (E25/F01/US01/T01, NF-119): what the guest can pay online, the currency, the tax guest by guest by position
+    /// (no name, never the reason of an exemption) and the state of the collection. A check-in already completed still reads it. 404 for an unknown or expired
+    /// link and for a stay that is not confirmed or in progress (a link reaches its own stay only); 409 <c>tourist_tax_payment_not_available</c> while the
+    /// organization does not offer the payment or its account does not take payments. Behind <see cref="FeatureFlags.TouristTaxOnlinePayment"/>.
+    /// </summary>
+    [HttpGet("{token}/tourist-tax")]
+    [FeatureGate(FeatureFlags.TouristTaxOnlinePayment)]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
+    public async Task<ActionResult<TouristTaxGuestDto>> GetTouristTax(string token)
+    {
+        if (touristTaxCollection is null)
+            return NotFound();
+
+        var view = await touristTaxCollection.GetForGuestAsync(token, HttpContext.RequestAborted);
+        return view is null ? NotFound() : Ok(TouristTaxGuestDto.From(view));
+    }
+
+    /// <summary>
+    /// The PaymentIntent of what the guest can pay online now, on the organization's connected account (direct charge, no fee of CasaZen): one per stay and
+    /// amount, kept while it can be paid, with the platform's publishable key and the account for the Payment Element. The payment is recorded by the webhook,
+    /// never by this call. 404 like the read; 409 <c>tourist_tax_payment_not_available</c>, <c>tourist_tax_nothing_to_pay</c> or
+    /// <c>tourist_tax_payment_in_progress</c>. Behind <see cref="FeatureFlags.TouristTaxOnlinePayment"/>.
+    /// </summary>
+    [HttpPost("{token}/tourist-tax/payment-intent")]
+    [FeatureGate(FeatureFlags.TouristTaxOnlinePayment)]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckInSubmit)]
+    public async Task<ActionResult<TouristTaxPaymentIntentDto>> CreateTouristTaxPaymentIntent(string token)
+    {
+        if (touristTaxCollection is null)
+            return NotFound();
+
+        var session = await touristTaxCollection.CreatePaymentIntentAsync(token, HttpContext.RequestAborted);
+        return session is null ? NotFound() : Ok(TouristTaxPaymentIntentDto.From(session));
     }
 
     private static bool IsImage(IFormFile file) =>

@@ -6801,6 +6801,12 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<bool>("TouristTaxOnlinePaymentEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("TouristTaxRequiredBeforeAccessCode")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -14721,6 +14727,16 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid?>("ChannelRuleId")
                         .HasColumnType("uuid");
 
+                    b.Property<decimal>("CollectedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime?>("CollectedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CollectionStatus")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("Collector")
                         .HasColumnType("integer");
 
@@ -14733,6 +14749,10 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
 
                     b.Property<DateTime?>("DeclaredAt")
                         .HasColumnType("timestamp with time zone");
@@ -14750,11 +14770,23 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
 
+                    b.Property<decimal>("RefundedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
                     b.Property<DateOnly>("RetainUntil")
                         .HasColumnType("date");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
+
+                    b.Property<string>("StripeAccountId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("StripePaymentIntentId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
                     b.Property<int>("TaxableNights")
                         .HasColumnType("integer");
@@ -14776,11 +14808,18 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("OrgId");
 
+                    b.HasIndex("StripePaymentIntentId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_StayTouristTaxes_StripePaymentIntentId")
+                        .HasFilter("\"StripePaymentIntentId\" IS NOT NULL");
+
                     b.ToTable("StayTouristTaxes", t =>
                         {
                             t.HasCheckConstraint("CK_StayTouristTaxes_AmountDueWithinTotal", "\"AmountDue\" >= 0 AND \"AmountDue\" <= \"Total\"");
 
                             t.HasCheckConstraint("CK_StayTouristTaxes_ConfirmedHasHash", "\"ConfirmedAt\" IS NULL OR (\"CalculationHash\" IS NOT NULL AND \"ConfirmedByUserId\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_StayTouristTaxes_RefundedWithinCollected", "\"CollectedAmount\" >= 0 AND \"RefundedAmount\" >= 0 AND \"RefundedAmount\" <= \"CollectedAmount\"");
                         });
                 });
 

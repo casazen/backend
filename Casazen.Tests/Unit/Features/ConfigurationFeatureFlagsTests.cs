@@ -101,6 +101,8 @@ public class ConfigurationFeatureFlagsTests
                 "MessageAssistant",
                 // E14/F01/US01/T01: the invoices of the property manager to the owners made from the statement versions, off until the accountant confirms the ⚖ choices.
                 "OwnerInvoicing",
+                // E25/F01/US01/T01: the tourist tax paid online in the guest check-in on the organization's account, off until it is tried in the test environment.
+                "TouristTaxOnlinePayment",
             },
             FeatureFlags.All);
     }

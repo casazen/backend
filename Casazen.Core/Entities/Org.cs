@@ -135,6 +135,19 @@ public class Org
     /// </summary>
     public bool SupplierBackupsEnabled { get; set; } = true;
 
+    /// <summary>
+    /// Whether the guests of the org's stays may pay the tourist tax online in the check-in, on the org's own connected account (E25/F01/US01/T01,
+    /// NF-119, the setting <c>TouristTaxOnlinePayment</c>). <b>Off by default</b>; it matters only while <c>Features:TouristTaxOnlinePayment</c> is on and the
+    /// account takes payments (<see cref="CanTakeDirectPayments"/>). Written by <c>PUT api/orgs/me/tourist-tax-settings</c>.
+    /// </summary>
+    public bool TouristTaxOnlinePaymentEnabled { get; set; }
+
+    /// <summary>
+    /// Whether the guest page asks for the tourist tax before the lock code (E25/F01/US01/T01, <c>RequiredBeforeAccessCode</c>). <b>Off by default</b>:
+    /// without it the tax never holds the code back. Read only while <see cref="TouristTaxOnlinePaymentEnabled"/> is on.
+    /// </summary>
+    public bool TouristTaxRequiredBeforeAccessCode { get; set; }
+
     [MaxLength(255)]
     public string ContactEmail { get; set; } = string.Empty;
 

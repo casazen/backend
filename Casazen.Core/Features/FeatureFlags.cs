@@ -243,6 +243,18 @@ public static class FeatureFlags
     /// </summary>
     public const string OwnerInvoicing = "OwnerInvoicing";
 
+    /// <summary>
+    /// E25/F01/US01/T01 (NF-119, decision O12): the tourist tax paid online in the guest check-in, on the organization's own connected account, <b>off by
+    /// default</b> and turned on only in the test environment after the merge. Off, the endpoints of the guest (<c>GET api/public/checkin/{token}/tourist-tax</c>,
+    /// <c>POST …/tourist-tax/payment-intent</c>), the host's «Pagata in struttura» (<c>POST api/bookings/{id}/tourist-tax/paid-at-property</c>) and the setting of
+    /// the organization (<c>api/orgs/me/tourist-tax-settings</c>) answer 404 before authentication, <c>GET api/bookings/{id}/tourist-tax</c> has no
+    /// <c>collection</c> block and the consumer of the booking events (the refund of a cancelled stay, the «To do» of a difference) does nothing. On, a guest
+    /// pays only where the organization turned its own setting on and its account takes payments (409 <c>tourist_tax_payment_not_available</c> otherwise).
+    /// <b>Not behind it</b>: the Stripe webhooks of a payment already made (it is recorded). It needs no variable to start. The frontend reads the key
+    /// <c>touristTaxOnlinePayment</c>. The lock code is never held back unless the organization turns on <c>TouristTaxRequiredBeforeAccessCode</c>.
+    /// </summary>
+    public const string TouristTaxOnlinePayment = "TouristTaxOnlinePayment";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -268,5 +280,6 @@ public static class FeatureFlags
         OctorateDocumentImport,
         MessageAssistant,
         OwnerInvoicing,
+        TouristTaxOnlinePayment,
     ];
 }
