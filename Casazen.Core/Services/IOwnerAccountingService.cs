@@ -149,7 +149,8 @@ public interface IOwnerAccountingService
     /// publication or the close of the version, each through the very operation of one owner, with the same rules and the same refusals; the permission of the step is
     /// checked by the web layer. Each owner is its own transaction and its own result (<see cref="OwnerBulkOwnerResult"/>): an owner that fails leaves nothing behind
     /// and never stops the others, and a run never reads as «all done» while one failed. Idempotent: an owner already in the state the step leads to (a version
-    /// already approved, a month already closed) is an <see cref="OwnerBulkOwnerResult.Unchanged"/> result and changes nothing. The posting is one transaction of the
+    /// already approved, a month already closed; a month closed on a version that is only approved is still published) is an <see cref="OwnerBulkOwnerResult.Unchanged"/> result and
+    /// changes nothing. The posting is one transaction of the
     /// whole org (a ledger is posted from the sources of the month under one lock) and answers each owner by what it kept out of it. A flagged version is never approved;
     /// the close never waives a difference. <paramref name="progress"/> is told after each owner with the results so far.
     /// </summary>

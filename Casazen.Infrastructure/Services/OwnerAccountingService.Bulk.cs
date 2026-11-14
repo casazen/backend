@@ -19,7 +19,8 @@ namespace Casazen.Infrastructure.Services;
 /// into a success. The posting is the one exception: the ledger of a month is posted from all its sources under one lock, so it is one transaction for the owners asked
 /// for, and its rows say what was kept out of each owner's ledger.</para>
 /// <para><b>Idempotent.</b> A run that finds the owner already where the step leads (a version generated and not changed since, approved, published, a closed month) changes
-/// nothing and says so (<see cref="OwnerBulkOwnerResult.Unchanged"/>), so a run can be repeated after a failure or a deploy.</para>
+/// nothing and says so (<see cref="OwnerBulkOwnerResult.Unchanged"/>), so a run can be repeated after a failure or a deploy. A closed month is done for every step but the
+/// publication: it closes on an approved version too, and a version that is only approved is still published.</para>
 /// <para><b>Never a waiver, never a flagged approval.</b> A flagged version is skipped with its blocking issues; the close never waives a difference (that needs a reason and
 /// <c>agency.owner.financial.manage</c>: it is done owner by owner).</para>
 /// </remarks>
@@ -170,8 +171,9 @@ public sealed partial class OwnerAccountingService
         if (!known)
             return Failed(owner, OwnerFiscalErrors.OwnerNotFound);
 
-        // A closed month went through the whole way: every step is already done for it.
-        if (closed)
+        // A closed month went through the way up to its close: the generation, the approval and the close are already done for it. The publication is not: a month closes on an
+        // approved version too, so its statement may still wait to be published (the owner portal and the accountant read only the published ones).
+        if (closed && action != OwnerBulkAction.Publish)
             return Unchanged(owner, OwnerAccountingErrors.PeriodClosed);
 
         try
@@ -180,7 +182,7 @@ public sealed partial class OwnerAccountingService
             {
                 OwnerBulkAction.Generate => await GenerateForBulkAsync(orgId, period, owner, userId, ct),
                 OwnerBulkAction.Approve => await ApproveForBulkAsync(orgId, period, owner, userId, ct),
-                OwnerBulkAction.Publish => await PublishForBulkAsync(orgId, period, owner, userId, ct),
+                OwnerBulkAction.Publish => await PublishForBulkAsync(orgId, period, owner, closed, userId, ct),
                 OwnerBulkAction.Close => await CloseForBulkAsync(orgId, period, owner, userId, ct),
                 _ => throw new DomainRuleException(OwnerAccountingErrors.BulkActionInvalid, "OwnerBulkActionInvalid"),
             };
@@ -241,8 +243,11 @@ public sealed partial class OwnerAccountingService
         }
     }
 
-    /// <summary>The publication of the approved version in force (its file, its PDF and the notice to the owner, as the single publication does them); nothing to do for one already published.</summary>
-    private async Task<OwnerBulkOwnerResult> PublishForBulkAsync(Guid orgId, Period period, Guid owner, string? userId, CancellationToken ct)
+    /// <summary>
+    /// The publication of the approved version in force (its file, its PDF and the notice to the owner, as the single publication does them); nothing to do for one already published.
+    /// A month closed on a version that is only approved (the close accepts one) is not done for the publication: the version is published, as the single publication does after the close.
+    /// </summary>
+    private async Task<OwnerBulkOwnerResult> PublishForBulkAsync(Guid orgId, Period period, Guid owner, bool closed, string? userId, CancellationToken ct)
     {
         var version = await CurrentVersionAsync(orgId, owner, period, ct);
         if (version is null)
@@ -253,7 +258,7 @@ public sealed partial class OwnerAccountingService
             case OwnerStatementVersionStatus.Flagged:
                 return Failed(owner, OwnerAccountingErrors.VersionFlagged, BlockingCodesOf(version));
             case OwnerStatementVersionStatus.Published:
-                return Unchanged(owner);
+                return Unchanged(owner, closed ? OwnerAccountingErrors.PeriodClosed : null);
             case OwnerStatementVersionStatus.Approved:
                 await PublishVersionAsync(orgId, version.Id, userId, ct);
                 return Done(owner);

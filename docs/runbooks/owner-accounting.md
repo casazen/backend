@@ -323,7 +323,9 @@ migration, no new table).
   the confirmed payouts or the paid wires and **never waives a difference** (that needs a reason and `agency.owner.financial.manage`, owner by owner): a difference or a
   negative balance is a failed row `owner_close_unreconciled` with `details`.
 - **Idempotent.** An owner already where the step leads (a version generated and not changed since, with the same lines, opening balance and issues; approved;
-  published; a closed month, for every step) is an `unchanged` row and nothing is made, posted, published or closed twice: a run is repeated after a failure or a deploy.
+  published; a closed month, for every step but the publication) is an `unchanged` row and nothing is made, posted, published or closed twice: a run is repeated after a failure
+  or a deploy. **A closed month is not «published» by its close**: the close accepts an approved version too, so `publish` on a closed month publishes a version that is only
+  approved (the owner portal and the accountant read only published statements) and is `unchanged` (`owner_period_closed`) only when the version is already published.
 - **Up to 20 owners the answer is the request's** (200 with the rows); **for more it is a background job**: 202 with `jobId`, `status` `Queued`, the `Location` of the
   progress and nothing run in the request. `GET api/owner-accounting/periods/{y}/{m}/bulk/{jobId}` (`agency.statement.view`) answers `status` (`Queued`, `Running`,
   `Completed`, `Failed`), `total`, the counts and the rows done so far. The job (`OwnerBulkCloseJob`, Hangfire) runs under the tenant of the org and as the user who

@@ -215,6 +215,40 @@ public class OwnerBulkCloseTests
     }
 
     /// <summary>
+    /// Data: a month closes on an approved version too, so the publication in bulk is not done for a closed month by the close alone: the approved version is published (the owner
+    /// portal and the accountant read only the published ones) and the row says so; asked again, a month closed on a published version is the same unchanged row.
+    /// </summary>
+    [Fact]
+    public async Task Bulk_PublishOfAMonthClosedOnAnApprovedVersionPublishesIt_Test()
+    {
+        var world = await OwnerMonthEndWorld.CreateAsync();
+        var owner = await OwnerWithAStayAsync(world);
+        foreach (var action in new[] { OwnerBulkAction.Post, OwnerBulkAction.Generate, OwnerBulkAction.Approve })
+            Assert.All(await world.BulkAsync(action, owner), r => Assert.True(r.Ok && !r.Unchanged, $"{action}: {r.Code}"));
+
+        // 325 are owed and were paid: the month closes on the approved version, which was never published.
+        var property = world.Db.PropertyOwnerships.Single(o => o.PropertyOwnerId == owner).PropertyId;
+        await world.PaidWireAsync(owner, property, 325m);
+        var closed = Assert.Single(await world.BulkAsync(OwnerBulkAction.Close, owner));
+        Assert.True(closed.Ok && !closed.Unchanged, closed.Code);
+        var approved = await world.VersionAsync(owner);
+        Assert.Equal(OwnerStatementVersionStatus.Approved, approved.Status);
+        Assert.Null(approved.PublishedSnapshot);
+
+        // The close did not publish it: the publication is not «done» for the closed month, the version is published in it.
+        var published = Assert.Single(await world.BulkAsync(OwnerBulkAction.Publish, owner));
+        Assert.True(published.Ok && !published.Unchanged, published.Code);
+        var version = await world.VersionAsync(owner);
+        Assert.Equal((approved.Id, OwnerStatementVersionStatus.Published), (version.Id, version.Status));
+        Assert.NotNull(version.PublishedSnapshot);
+        Assert.Equal(OwnerClosePeriodStatus.Closed, (await world.Db.OwnerClosePeriods.AsNoTracking().SingleAsync(p => p.PropertyOwnerId == owner)).Status);
+
+        // Asked again, the month closed on a published version is where the step leads: the same unchanged row, nothing published twice.
+        var again = Assert.Single(await world.BulkAsync(OwnerBulkAction.Publish, owner));
+        Assert.Equal((true, true, OwnerAccountingErrors.PeriodClosed), (again.Ok, again.Unchanged, again.Code));
+    }
+
+    /// <summary>
     /// Data: each owner is its own transaction: one whose step fails for a reason that is not a rule (the PDF of its statement cannot be made) is a failed row, leaves nothing
     /// behind (its version is still approved, not half published) and stops nobody.
     /// </summary>
