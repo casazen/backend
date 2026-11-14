@@ -130,10 +130,13 @@ internal static class AccountantPackageFacts
         return await Documents(db, scope, period, purpose).ToListAsync(cancellationToken);
     }
 
-    /// <summary>The issuer of the org as its profile and the org say it today: the issuer of a document issued before the snapshot of the issuer existed.</summary>
+    /// <summary>
+    /// The issuer of the org as its profile and the org say it today: the issuer of a document issued before the snapshot of the issuer existed. The profile of the
+    /// org, never the one of an owner (E17/F01/US01/T01: the owners' profiles live in the same table).
+    /// </summary>
     public static async Task<FiscalIssuerSnapshot> CurrentIssuerAsync(AppDbContext db, Guid orgId, CancellationToken cancellationToken)
     {
-        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.OrgId == orgId, cancellationToken);
+        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().OfOrganization(orgId).FirstOrDefaultAsync(cancellationToken);
         var org = await db.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
         return org is null ? new FiscalIssuerSnapshot() : FiscalIssuerSnapshot.From(profile, org);
     }

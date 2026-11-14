@@ -236,6 +236,10 @@ public class OwnerIssuerProfileTests
         Assert.Equal("TEST Agenzia Srl", (await issuers.GetSettingsAsync(OrgId)).Issuer.LegalName);
         Assert.Equal(2, await world.Db.OrgFiscalIssuerProfiles.CountAsync());
         Assert.Equal("TEST Agenzia Srl", (await world.Db.OrgFiscalIssuerProfiles.OfOrganization(OrgId).SingleAsync()).LegalName);
+
+        // The accountant package and the agency summary (E15) fall back on the issuer of the organization, never on the owner's saved first.
+        var fallback = await AccountantPackageFacts.CurrentIssuerAsync(world.Db, OrgId, CancellationToken.None);
+        Assert.Equal(("TEST Agenzia Srl", "01234567897"), (fallback.DisplayName, fallback.VatNumber));
     }
 
     /// <summary>
