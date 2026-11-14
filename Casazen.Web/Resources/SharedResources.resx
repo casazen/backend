@@ -4173,7 +4173,7 @@
     <value>Nel profilo emittente manca l'IBAN del conto da addebitare: inseriscilo nella configurazione «Fatturazione». Nessun batch è stato salvato.</value>
   </data>
   <data name="WireOwnerAddressMissing" xml:space="preserve">
-    <value>{0} proprietari non hanno un indirizzo completo (via, CAP, località e paese), che il bonifico svizzero richiede: completa i dati dei proprietari indicati. Nessun batch è stato salvato.</value>
+    <value>{0} proprietari non hanno un indirizzo completo (via, CAP, località e paese), che il file di bonifico richiede: completa i dati dei proprietari indicati. Nessun batch è stato salvato.</value>
   </data>
   <data name="WireOwnerIbanMissing" xml:space="preserve">
     <value>{0} proprietari non hanno un IBAN configurato: completa i dati dei proprietari indicati. Nessun batch è stato salvato.</value>
@@ -4183,6 +4183,9 @@
   </data>
   <data name="WireOwnerIbanNotSwiss" xml:space="preserve">
     <value>{0} proprietari hanno un IBAN che non è svizzero né del Liechtenstein: un bonifico in CHF verso quel conto non è un pagamento nazionale e questo file non lo copre. Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WireOwnerIbanNotSepa" xml:space="preserve">
+    <value>{0} proprietari hanno un IBAN fuori dall'area SEPA: un bonifico in EUR verso quel conto non è un bonifico SEPA e questo file non lo copre. Nessun batch è stato salvato.</value>
   </data>
   <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
     <value>Codice di accesso non disponibile o verifica non superata</value>

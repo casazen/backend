@@ -9,9 +9,9 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Wire transfer batch management (ADR-017, E16/F01/US01/T01). Builds the bank file that pays the owners from their confirmed payouts: the Swiss
-/// <c>pain.001.001.09.ch.03</c> file for CHF, the SEPA <c>pain.001.001.03</c> file for EUR. One transfer per payout, one file per currency. Every endpoint takes the
-/// org of the caller and the service filters on it explicitly: a batch of another org is a 404.
+/// Wire transfer batch management (ADR-017, E16/F01/US01/T01, E16/F01/US02/T01). Builds the bank file that pays the owners from their confirmed payouts: the Swiss
+/// <c>pain.001.001.09.ch.03</c> file for CHF, the ISO 20022 <c>pain.001.001.09</c> file of the SEPA credit transfer for EUR. One transfer per payout, one file per
+/// currency. Every endpoint takes the org of the caller and the service filters on it explicitly: a batch of another org is a 404.
 /// </summary>
 /// <remarks>
 /// The whole controller is behind <c>agency.wire.manage</c>, held by the owner and the administrator of an org on the agency plan, who reach every property of
@@ -85,7 +85,7 @@ public class WireTransferController(
     }
 
     /// <summary>
-    /// Download the wire transfer batch file (Swiss pain.001.001.09.ch.03 or SEPA pain.001.001.03 XML).
+    /// Download the wire transfer batch file (Swiss pain.001.001.09.ch.03 for CHF, SEPA pain.001.001.09 for EUR; a EUR batch made before it has its pain.001.001.03 file).
     /// Automatically marks the batch as Downloaded on first retrieval.
     /// </summary>
     /// <param name="id">The batch ID.</param>

@@ -46,11 +46,20 @@ internal static class WireTestData
     /// <summary>A Swiss IBAN whose check digits do not match.</summary>
     public const string BadIban = "CH9300762011623852958";
 
+    /// <summary>A valid IBAN outside the SEPA area (Saudi Arabia): the creditor account of no SEPA credit transfer.</summary>
+    public const string NonSepaIban = "SA0380000000608010167519";
+
+    /// <summary>The address of the owners of Como (a street, its number, the postal code, the town and the country), where the EUR payouts go.</summary>
+    public static readonly (string Street, string Civic, string PostalCode, string City, string Country) ComoAddress = ("Via Volta", "8", "22100", "Como", "IT");
+
+    /// <summary>The address of the owners of Lugano, where the CHF payouts go (the one an owner has unless it is said otherwise).</summary>
+    public static readonly (string Street, string Civic, string PostalCode, string City, string Country) LuganoAddress = ("Via Cantonale", "12", "6900", "Lugano", "CH");
+
     /// <summary>Everything that identifies a person or an account in these tests.</summary>
     public static readonly string[] Secrets =
     [
-        SwissIban, OtherSwissIban, LiechtensteinIban, QrIban, ItalianIban, OtherItalianIban, WrongLengthItalianIban, DebitIban, BadIban,
-        "Mario", "Rossi", "Luigi", "Bianchi", "Giulia", "Verdi", "Quokka Immobiliare", "Via Nassa", "Via Cantonale",
+        SwissIban, OtherSwissIban, LiechtensteinIban, QrIban, ItalianIban, OtherItalianIban, WrongLengthItalianIban, DebitIban, BadIban, NonSepaIban,
+        "Mario", "Rossi", "Luigi", "Bianchi", "Giulia", "Verdi", "Quokka Immobiliare", "Via Nassa", "Via Cantonale", "Via Volta",
     ];
 
     /// <summary>The instant of the tests: 14 November 2026, 10:00 UTC (11:00 in Rome).</summary>
@@ -98,7 +107,10 @@ internal static class WireTestData
         await db.SaveChangesAsync();
     }
 
-    /// <summary>An owner with an IBAN and, unless <paramref name="withAddress"/> is false, a complete structured address in Lugano.</summary>
+    /// <summary>
+    /// An owner with an IBAN and, unless <paramref name="withAddress"/> is false, a complete structured address: <paramref name="address"/>, or the one of Lugano
+    /// (<see cref="LuganoAddress"/>).
+    /// </summary>
     public static async Task<Guid> AddOwnerAsync(
         AppDbContext db,
         Guid orgId,
@@ -106,8 +118,10 @@ internal static class WireTestData
         string lastName,
         string? iban,
         bool withAddress = true,
-        string? legalName = null)
+        string? legalName = null,
+        (string Street, string Civic, string PostalCode, string City, string Country)? address = null)
     {
+        var place = address ?? LuganoAddress;
         var owner = new PropertyOwner
         {
             Id = Guid.NewGuid(),
@@ -119,11 +133,11 @@ internal static class WireTestData
             Iban = iban,
             TaxRegime = OwnerTaxRegime.Private,
             CreatedAt = DateTime.UtcNow,
-            BillingStreet = withAddress ? "Via Cantonale" : null,
-            BillingCivic = withAddress ? "12" : null,
-            BillingPostalCode = withAddress ? "6900" : null,
-            BillingCity = withAddress ? "Lugano" : null,
-            BillingCountry = withAddress ? "CH" : null,
+            BillingStreet = withAddress ? place.Street : null,
+            BillingCivic = withAddress ? place.Civic : null,
+            BillingPostalCode = withAddress ? place.PostalCode : null,
+            BillingCity = withAddress ? place.City : null,
+            BillingCountry = withAddress ? place.Country : null,
         };
         db.PropertyOwners.Add(owner);
         await db.SaveChangesAsync();
@@ -179,11 +193,15 @@ internal static class WireTestData
         return payout.Id;
     }
 
-    /// <summary>Two owners of Lugano with a Swiss IBAN and a payout each: 1200.00 and 1574.50 in CHF. Returns the payout ids.</summary>
+    /// <summary>
+    /// Two owners with a payout each: 1200.00 and 1574.50, in CHF to owners of Lugano with a Swiss IBAN (the default), in EUR to owners of Como with an Italian IBAN.
+    /// Returns the payout ids.
+    /// </summary>
     public static async Task<List<Guid>> AddTwoPayoutsAsync(AppDbContext db, Guid orgId, string currency = "CHF")
     {
-        var mario = await AddOwnerAsync(db, orgId, "Mario", "Rossi", SwissIban);
-        var luigi = await AddOwnerAsync(db, orgId, "Luigi", "Bianchi", OtherSwissIban);
+        var eur = currency == "EUR";
+        var mario = await AddOwnerAsync(db, orgId, "Mario", "Rossi", eur ? ItalianIban : SwissIban, address: eur ? ComoAddress : null);
+        var luigi = await AddOwnerAsync(db, orgId, "Luigi", "Bianchi", eur ? OtherItalianIban : OtherSwissIban, address: eur ? ComoAddress : null);
         return
         [
             await AddPayoutAsync(db, orgId, mario, 1200.00m, currency),
