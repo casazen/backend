@@ -281,6 +281,33 @@ public class OwnerBulkCloseTests
         Assert.False(run.AllDone);
     }
 
+    /// <summary>
+    /// Data: a failure that is not a rule of the domain is a failed row and is logged with its exception and the ids (the cause and the stack stay for whoever looks at a row that says
+    /// only <c>owner_bulk_failed</c>).
+    /// </summary>
+    [Fact]
+    public async Task Bulk_AnOwnerThatFailsIsLoggedWithItsExceptionAndItsIds_Test()
+    {
+        var files = new Mock<IOwnerStatementDocuments>();
+        var world = await OwnerMonthEndWorld.CreateAsync(files.Object);
+        var broken = await OwnerWithAStayAsync(world);
+        foreach (var action in new[] { OwnerBulkAction.Post, OwnerBulkAction.Generate, OwnerBulkAction.Approve })
+            Assert.All(await world.BulkAsync(action, broken), r => Assert.True(r.Ok));
+        files.Setup(f => f.StorePublishedPdfAsync(It.IsAny<OwnerStatementVersion>(), It.IsAny<IReadOnlyList<OwnerLedgerEntry>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("TEST the renderer is down"));
+        var log = new Casazen.Tests.Unit.Logging.CapturingLogger<Casazen.Infrastructure.Services.OwnerAccountingService>();
+        var service = new Casazen.Infrastructure.Services.OwnerAccountingService(
+            world.Db, world.Fiscal, world.Clock, log, Microsoft.Extensions.Options.Options.Create(new Casazen.Core.Options.OwnerAccountingOptions()), files.Object);
+
+        var rows = await service.RunBulkAsync(world.OrgId, 2026, 10, OwnerBulkAction.Publish, [broken], UserId);
+
+        Assert.Equal(OwnerAccountingErrors.BulkFailed, Assert.Single(rows).Code);
+        var failure = Assert.Single(log.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Error);
+        Assert.IsType<InvalidOperationException>(failure.Exception);
+        Assert.Equal(broken, Assert.IsType<Guid>(failure.Values["OwnerId"]));
+        Assert.Equal(world.OrgId, Assert.IsType<Guid>(failure.Values["OrgId"]));
+    }
+
     /// <summary>A step is told after each owner with the results so far (the progress of a long run).</summary>
     [Fact]
     public async Task Bulk_TellsItsProgressAfterEachOwner_Test()

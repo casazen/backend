@@ -314,7 +314,8 @@ migration, no new table).
   **`allDone` is true only when the run is over, every owner was answered and none failed.** `ok` is the truth (the owner is in the state the step leads to);
   `code` is the stable code of the reason (why a step was not done, or a note on an `ok` row: `owner_period_closed`, `owner_statement_unchanged`, a version generated
   `owner_statement_flagged`); `issues` are the blocking issue codes behind it; `details` the facts to act on (`due`, `paid`, `difference` of a close that does not
-  reconcile). A failure that is not a rule of the domain (the database, a file) is logged with the ids and is `owner_bulk_failed`, never a success.
+  reconcile). A failure that is not a rule of the domain (the database, a file) is logged with the ids and its exception (its cause and stack stay in the log) and is
+  `owner_bulk_failed`, never a success.
 - **Steps.** `post` posts the ledger of the month for the owners asked for **in one transaction** (a ledger is posted from all the sources of the month under one lock;
   the lines of the other owners are left as they are): a row fails with the first blocking issue that kept a source out of its ledger (`mandate_missing_for_stay`,
   `ownership_share_gap`, `fx_missing`...), is done when lines were posted or reversed, unchanged when there was nothing to post. `generate` makes the version

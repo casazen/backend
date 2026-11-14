@@ -197,10 +197,12 @@ public sealed partial class OwnerAccountingService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Not a rule of the domain (the database, a file): the owner is not done and the run goes on; the next run finds it where it is.
+            // Not a rule of the domain (the database, a file): the owner is not done and the run goes on; the next run finds it where it is. The exception is logged with the ids, so
+            // its cause and its stack stay for whoever looks at a row that says only owner_bulk_failed.
             logger.LogError(
-                "Bulk {Action} of {Year}-{Month} of org {OrgId}: owner {OwnerId} not done ({Error})",
-                action, period.Year, period.Month, orgId, owner, ex.GetType().Name);
+                ex,
+                "Bulk {Action} of {Year}-{Month} of org {OrgId}: owner {OwnerId} not done",
+                action, period.Year, period.Month, orgId, owner);
             return Failed(owner, OwnerAccountingErrors.BulkFailed);
         }
         finally
