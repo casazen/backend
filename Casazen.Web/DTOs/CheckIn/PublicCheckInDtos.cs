@@ -710,6 +710,14 @@ public class SelfieUploadResponse
     /// <summary>The lock code of the property, only on <c>ok</c>; it is e-mailed to the guest at the same time.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? LockCode { get; set; }
+
+    /// <summary>
+    /// Why an <c>ok</c> came with no <see cref="LockCode"/> although the property has one (E25/F01/US01/T01): <c>tourist_tax_due</c> while the organization asks
+    /// for the tourist tax before the code and the stay owes it online, unpaid, not exempt and not marked «paid at the property». The guest pays on the
+    /// tourist tax endpoints and sends the selfie step again (a passed verification is not run again): the code comes with that answer. Absent otherwise.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LockCodeHeld { get; set; }
 }
 
 /// <summary>Answer of <c>POST /api/public/checkin/{token}/read-document</c>. The photo itself is never returned.</summary>

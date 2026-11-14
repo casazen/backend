@@ -461,7 +461,12 @@ public class VerificationQueueService(
         var code = await accessCodes.ReleaseToGuestAsync(session.BookingId, AccessCodeReleaseChannels.Operator, cancellationToken);
         if (code is null)
         {
-            logger.LogInformation("Booking {BookingId} approved by an operator: the property has no lock code to release", session.BookingId);
+            // Held back until the guest pays the tourist tax (E25/F01/US01/T01): nothing is e-mailed; the guest gets the code on the page once it is paid.
+            if (await accessCodes.GetHoldReasonAsync(session.BookingId, cancellationToken) is { } hold)
+                logger.LogInformation("Booking {BookingId} approved by an operator: the lock code is held back ({Reason}) and not e-mailed", session.BookingId, hold);
+            else
+                logger.LogInformation("Booking {BookingId} approved by an operator: the property has no lock code to release", session.BookingId);
+
             return;
         }
 

@@ -124,12 +124,20 @@ public static class OrgActivityDetailKeys
     /// </summary>
     public const string Fingerprint = "fingerprint";
 
+    /// <summary>
+    /// The kind of credential of the support vault CasaZen staff opened for a «Do it for me» request (<c>panel</c>, <c>police</c>, <c>regionalIstat</c>,
+    /// <c>SupportVaultRules.CodeOf</c>), a code of a closed list (E20/F03/US01/T01, decision O5). The reason: the host is told, in its own log, that
+    /// support used its credentials and which ones; the catalog is at its cap, so the opening is a line of the request's own event with this one more
+    /// key instead of an event of its own. Never a value, never the reason the staff wrote.
+    /// </summary>
+    public const string Credential = "credential";
+
     public static IReadOnlyList<string> All { get; } =
     [
         Role, FromRole, ToRole, Scope, Granted, Revoked, Released, FromTier, ToTier, Source, RequestedArea, FromMode, ToMode, EffectiveOn,
         FromAreas, ToAreas, Reminders, FromSender, ToSender, DelegationVersion,
         Topic, Booking, Period, Handoff,
-        Part, Context, Status,
+        Part, Context, Status, Credential,
         Purpose,
         Rows, Applied, Fingerprint,
     ];
@@ -259,11 +267,12 @@ public static partial class OrgActivityCatalog
             [OrgActivityDetailKeys.Topic, OrgActivityDetailKeys.Handoff, OrgActivityDetailKeys.Booking, OrgActivityDetailKeys.Period]),
 
         // «Do it for me» (E10/F01/US03/T01, NF-15): a host asks CasaZen support to do a part or a panel step, and every staff action on the request.
-        // The line says which part, which context and where the request stands: never the draft, a note, a credential or a person.
+        // The line says which part, which context and where the request stands: never the draft, a note, a credential or a person. An opening of the
+        // support vault for the request (E20/F03/US01/T01) is a staff action too: its line says which kind of credential was used, never its value.
         new(OrgActivityType.OnboardingAssistRequested, OrgActivityArea.Account, OrgActivitySubjectType.Org,
             [OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Context, OrgActivityDetailKeys.Status]),
         new(OrgActivityType.OnboardingAssistUpdated, OrgActivityArea.Account, OrgActivitySubjectType.Org,
-            [OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Context, OrgActivityDetailKeys.Status]),
+            [OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Context, OrgActivityDetailKeys.Status, OrgActivityDetailKeys.Credential]),
 
         // The read of the contact of the guest of one booking, to write to it (E05/F02/US02/T01): Octorate records every read, so CasaZen records who
         // asked and what for (the booking is the subject, the person is the actor). Never the address, the number or a word of the message.

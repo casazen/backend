@@ -260,4 +260,11 @@ public static class TestDataEntities
     /// its marker with the other showcase markers; a real payment has no marker and is never touched.
     /// </summary>
     public const string Payment = "Payment";
+
+    /// <summary>
+    /// An automation routine of the demo host (<see cref="Entities.Routine"/>, E01/F04/US01/T03, NF-21): invented, saying DEMO or TEST, with only actions the
+    /// routine engine can run. The reset deletes the marked routines (their log goes with them, by the foreign key); a routine of the host has no marker and is
+    /// never touched.
+    /// </summary>
+    public const string Routine = "Routine";
 }

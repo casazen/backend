@@ -181,6 +181,21 @@ public static class EncryptedColumns
     public const string WireBatchFilePurpose = "Casazen.WireBatch.File";
 
     /// <summary>
+    /// Purpose of the support vault (E20/F03/US01/T01, decision O5, PO-19): the user name, the password and the further code of
+    /// <see cref="SupportVaultSecret"/>, the credentials CasaZen support keeps for a host (the user of the panel of a structure CasaZen created, regional
+    /// ISTAT credentials). Opened only on an open «Do it for me» request, with a reason and an audit line; never searched, never listed, never logged.
+    /// Its own purpose: a payload of another column never reads as a credential of the vault. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string SupportVaultPurpose = "Casazen.SupportVault";
+
+    /// <summary>
+    /// Purpose of the regional ISTAT credentials of a property (E20/F03/US01/T01): the user name, the password and the code of the structure of
+    /// <see cref="PropertyIstatCredentials"/>, write-only like the Alloggiati Web credentials and read only by the controlled opening of the support vault.
+    /// Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string IstatCredentialsPurpose = "Casazen.PropertyIstatCredentials";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -394,6 +409,17 @@ public static class EncryptedColumns
             WireBatchFilePurpose,
             nameof(WireBatch.XmlContent),
             nameof(WireBatch.DebitAccount)),
+        // E20/F03/US01/T01 (decision O5, PO-19): the credentials of the support vault, and the regional ISTAT credentials the host enters (write-only).
+        new EncryptedEntity<SupportVaultSecret>(
+            SupportVaultPurpose,
+            nameof(SupportVaultSecret.Username),
+            nameof(SupportVaultSecret.Password),
+            nameof(SupportVaultSecret.ExtraCode)),
+        new EncryptedEntity<PropertyIstatCredentials>(
+            IstatCredentialsPurpose,
+            nameof(PropertyIstatCredentials.Username),
+            nameof(PropertyIstatCredentials.Password),
+            nameof(PropertyIstatCredentials.StructureCode)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

@@ -215,7 +215,7 @@ public sealed class IdentityVerificationFlowService(
             await DeleteStoredDocumentAsync(session, ct);
             await db.SaveChangesAsync(ct);
             var code = await accessCodes.ReleaseToGuestAsync(session.BookingId, AccessCodeReleaseChannels.CheckInScreen, ct);
-            return Done(IdentityVerificationGuestResults.Ok, [], Remaining(session, policy), code);
+            return Done(IdentityVerificationGuestResults.Ok, [], Remaining(session, policy), code, await HoldReasonAsync(session, code, ct));
         }
 
         // Also a new link of a booking that is with an operator (rejected, or a hand-off still open): the session is new, the decision is not.
@@ -362,7 +362,8 @@ public sealed class IdentityVerificationFlowService(
                 // The verification is over: the "To do" of an earlier hand-off of the booking (the operator asked for a new photo, and it passed
                 // on its own) has nothing left to wait for.
                 await alerts.ResolveAsync(session.OrgId, session.BookingId, ct);
-                return Done(IdentityVerificationGuestResults.Ok, [], Remaining(session, policy), await ReleaseCodeAsync(session, ct));
+                var released = await ReleaseCodeAsync(session, ct);
+                return Done(IdentityVerificationGuestResults.Ok, [], Remaining(session, policy), released, await HoldReasonAsync(session, released, ct));
 
             case IdentityVerificationResult.Review:
                 await DeleteStoredDocumentAsync(session, ct);
@@ -393,7 +394,7 @@ public sealed class IdentityVerificationFlowService(
         var code = await accessCodes.ReleaseToGuestAsync(session.BookingId, AccessCodeReleaseChannels.CheckInScreen, ct);
         if (code is null)
         {
-            logger.LogInformation("Identity verification of session {SessionId} passed: the property has no lock code to release", session.Id);
+            logger.LogInformation("Identity verification of session {SessionId} passed: no lock code was released (none set, or held back)", session.Id);
             return null;
         }
 
@@ -449,8 +450,15 @@ public sealed class IdentityVerificationFlowService(
         return Done(IdentityVerificationGuestResults.Operator, [], Remaining(session, policy), null);
     }
 
-    private static SelfieStepResult Done(string result, IReadOnlyList<string> guidance, int remaining, string? lockCode) =>
-        new(SelfieStepStatus.Done, result, guidance, remaining, lockCode);
+    private static SelfieStepResult Done(string result, IReadOnlyList<string> guidance, int remaining, string? lockCode, string? lockCodeHeld = null) =>
+        new(SelfieStepStatus.Done, result, guidance, remaining, lockCode, lockCodeHeld);
+
+    /// <summary>
+    /// Why a passed verification came with no lock code although the property has one (E25/F01/US01/T01): the code is held back until the tourist tax is paid, and
+    /// the guest is told so (<see cref="AccessCodeHoldReasons"/>) instead of seeing nothing. <c>null</c> when a code came or nothing holds it back.
+    /// </summary>
+    private async Task<string?> HoldReasonAsync(GuestCheckInSession session, string? releasedCode, CancellationToken ct) =>
+        releasedCode is null ? await accessCodes.GetHoldReasonAsync(session.BookingId, ct) : null;
 
     private static SelfieStepResult Refused(SelfieStepStatus status, GuestCheckInSession session, VerificationPolicy policy) =>
         new(status, IdentityVerificationGuestResults.Retry, [], Remaining(session, policy), null);

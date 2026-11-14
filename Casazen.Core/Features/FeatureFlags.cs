@@ -252,6 +252,30 @@ public static class FeatureFlags
     /// </summary>
     public const string AccountantPackage = "AccountantPackage";
 
+    /// <summary>
+    /// E25/F01/US01/T01 (NF-119, decision O12): the tourist tax paid online in the guest check-in, on the organization's own connected account, <b>off by
+    /// default</b> and turned on only in the test environment after the merge. Off, the endpoints of the guest (<c>GET api/public/checkin/{token}/tourist-tax</c>,
+    /// <c>POST …/tourist-tax/payment-intent</c>), the host's «Pagata in struttura» (<c>POST api/bookings/{id}/tourist-tax/paid-at-property</c>) and the setting of
+    /// the organization (<c>api/orgs/me/tourist-tax-settings</c>) answer 404 before authentication, <c>GET api/bookings/{id}/tourist-tax</c> has no
+    /// <c>collection</c> block and the consumer of the booking events (the refund of a cancelled stay, the «To do» of a difference) does nothing. On, a guest
+    /// pays only where the organization turned its own setting on and its account takes payments (409 <c>tourist_tax_payment_not_available</c> otherwise).
+    /// <b>Not behind it</b>: the Stripe webhooks of a payment already made (it is recorded). It needs no variable to start. The frontend reads the key
+    /// <c>touristTaxOnlinePayment</c>. The lock code is never held back unless the organization turns on <c>TouristTaxRequiredBeforeAccessCode</c>: then the server
+    /// holds it back (<c>IAccessCodeService.ReleaseToGuestAsync</c>, the gate of every release to a guest) while the stay owes a tax the guest can pay online and has
+    /// not paid; the selfie step answers <c>lockCodeHeld: tourist_tax_due</c> instead of the code.
+    /// </summary>
+    public const string TouristTaxOnlinePayment = "TouristTaxOnlinePayment";
+
+    /// <summary>
+    /// E01/F04/US01/T03 (NF-21, DEB-06, ADR-022): the automation routines, <b>off by default</b> until the actions a host needs are real (today the To do of
+    /// <c>CreateActivity</c> and the wait; the others are listed by <c>RoutineActionCatalog</c> as not available yet). It closes the whole module. Off, every
+    /// endpoint of <c>RoutinesController</c> (<c>api/routines</c>: the list, one routine, its changes, its log, the simulation and the catalog of the actions)
+    /// answers 404 like a route that does not exist, before authentication; no routine runs (the engine ignores the events of the bus, and a wait that
+    /// comes due changes nothing: the job reads and writes nothing and the execution stays waiting); and <c>TimeEventEmitterJob</c> writes no time trigger.
+    /// The routines already saved are kept. It needs no variable to start. The frontend reads the key <c>routines</c> (the routines page).
+    /// </summary>
+    public const string Routines = "Routines";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -278,5 +302,7 @@ public static class FeatureFlags
         MessageAssistant,
         OwnerInvoicing,
         AccountantPackage,
+        TouristTaxOnlinePayment,
+        Routines,
     ];
 }

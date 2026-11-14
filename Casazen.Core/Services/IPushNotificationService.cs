@@ -255,10 +255,37 @@ public static class PushDeliveryKeys
     public static string AssistRequested(Guid requestId) => $"assist-request:{requestId:N}:requested";
 
     /// <summary>
+    /// The host reopened a «Fallo per me» request («Non funziona», E20/F03/US01/T02), to the platform staff: a request can be reopened more than once, so
+    /// the instant of the reopening is part of the key.
+    /// </summary>
+    public static string AssistReopened(Guid requestId, DateTime reopenedAtUtc) =>
+        $"assist-request:{requestId:N}:reopened:{reopenedAtUtc.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture)}";
+
+    /// <summary>
+    /// Support marked a «Fallo per me» request done (E20/F03/US01/T02), to one administrator of the org: one per «Fatto» and person (a request reopened and
+    /// done again is another event, so the instant is part of the key). The key is also the delivery key of the in-app notification. A user id too long
+    /// for the 200 characters of a key is replaced by its SHA-256, so the key is stable and never refused.
+    /// </summary>
+    public static string AssistOutcome(Guid requestId, DateTime doneAtUtc, string userId)
+    {
+        var prefix = $"assist-request:{requestId:N}:done:{doneAtUtc.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture)}:";
+        var key = prefix + userId;
+        return key.Length <= 200
+            ? key
+            : prefix + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(userId)));
+    }
+
+    /// <summary>
     /// A fiscal document of a booking was issued (E12/F01/US01/T02), to the hosts of the booking: one per document (an invoice, a receipt or a credit note), stable across retries,
     /// so the bell and the open pages of the host read the document list and the booking again.
     /// </summary>
     public static string FiscalDocumentIssued(Guid documentId) => $"fiscal-document:{documentId:N}:issued";
+
+    /// <summary>
+    /// The guest paid the tourist tax of a stay online (E25/F01/US01/T01), to the hosts of the booking: one per paid intent of the stay's record, stable across the
+    /// retries of the webhook.
+    /// </summary>
+    public static string TouristTaxPaid(Guid stayTouristTaxId, string paymentIntentId) => $"tourist-tax:{stayTouristTaxId:N}:paid:{paymentIntentId}";
 }
 
 /// <summary><c>data.type</c> of each push, one per kind of event (the app opens <c>data.route</c>).</summary>
@@ -377,10 +404,34 @@ public static class PushTypes
     public const string AssistRequested = "assist-requested";
 
     /// <summary>
+    /// The host reopened a «Fallo per me» request that support had marked done («Non funziona», E20/F03/US01/T02): written to the bell of the platform
+    /// staff and published live, like <see cref="AssistRequested"/>; <c>entityId</c> is the request. Nothing of the org, the property, the person or the note.
+    /// </summary>
+    public const string AssistReopened = "assist-reopened";
+
+    /// <summary>
+    /// Support marked a «Fallo per me» request done and CasaZen read the result on the panel (E20/F03/US01/T02): «Il collegamento è attivo». Pushed to each
+    /// administrator of the org, written to their bell and published live; <c>entityId</c> is the request. No supplier, no property, no person.
+    /// </summary>
+    public const string AssistVerified = "assist-verified";
+
+    /// <summary>
+    /// Support marked a «Fallo per me» request done and the panel could not be read: «Il supporto dichiara di aver collegato …» (E20/F03/US01/T02). The same
+    /// audience and channels as <see cref="AssistVerified"/>.
+    /// </summary>
+    public const string AssistDeclared = "assist-declared";
+
+    /// <summary>
     /// A fiscal document of a booking was issued (E12/F01/US01/T02): pushed to the hosts of the booking, written to the bell and published live; <c>entityId</c> is the booking, the
     /// route its detail. The web client reads again the list of the documents and the booking when it arrives. Neither the guest nor an amount is ever in it.
     /// </summary>
     public const string FiscalDocumentIssued = "fiscal-document-issued";
+
+    /// <summary>
+    /// The guest paid the tourist tax of a stay online (E25/F01/US01/T01): pushed to the hosts of the booking, written to the bell and published live; <c>entityId</c> is the
+    /// booking, the route its detail, which the open pages read again. Neither the guest nor an amount is ever in it.
+    /// </summary>
+    public const string TouristTaxPaid = "tourist-tax-paid";
 
     /// <summary>
     /// Type of the push to the host when a service request reaches <paramref name="status"/>; <c>null</c> for a status that has

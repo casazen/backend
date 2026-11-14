@@ -493,6 +493,12 @@ public class AppDbContext(
     public DbSet<OnboardingPilotMember> OnboardingPilotMembers { get; set; } = null!;
     public DbSet<PropertyOnboardingData> PropertyOnboardingData { get; set; } = null!;
 
+    // The support vault of «Do it for me» (E20/F03/US01/T01, decision O5): the credentials support keeps for a host, every opening of them, and the
+    // regional ISTAT credentials the host enters (write-only); the values are encrypted at rest (EncryptedColumns)
+    public DbSet<SupportVaultSecret> SupportVaultSecrets { get; set; } = null!;
+    public DbSet<SupportVaultAccess> SupportVaultAccesses { get; set; } = null!;
+    public DbSet<PropertyIstatCredentials> PropertyIstatCredentials { get; set; } = null!;
+
     // The price and the rules of each night of a property, and the changes of the calendar the host sent to the channel manager with their chunks
     // (E08/F05/US01/T01, NF-36): dates, numbers, states and stable codes, no personal data
     public DbSet<PropertyDayRule> PropertyDayRules { get; set; } = null!;
@@ -2186,7 +2192,8 @@ public class AppDbContext(
 
         // ─── Tourist tax per guest (NF-46, ADR-037) ──────────────────────────────
         // Reference data (exemption reasons, seeded; channel rules, never seeded), the host-declared rates and the confirmed stay record with
-        // its lines. The tenant query filter is applied below, to every ITenantOwned entity.
+        // its lines. The tenant query filter is applied below, to every ITenantOwned entity. Since E25/F01/US01/T01 (NF-119) the record also carries the
+        // collection of the tax (what the guest paid online, the intent, the refunds), with its unique intent and its check of the refunds: never a Payment row.
         modelBuilder.ApplyConfiguration(new TouristTaxExemptionReasonConfiguration());
         modelBuilder.ApplyConfiguration(new TouristTaxChannelRuleConfiguration());
         modelBuilder.ApplyConfiguration(new OrgTouristTaxRateConfiguration());
@@ -2266,6 +2273,12 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new OnboardingAssistRequestConfiguration());
         modelBuilder.ApplyConfiguration(new OnboardingPilotMemberConfiguration());
         modelBuilder.ApplyConfiguration(new PropertyOnboardingDataConfiguration());
+
+        // The support vault (E20/F03/US01/T01): one credential for each org, property and kind (two NULLs are equal), the openings of each request,
+        // one ISTAT form for each property. The rows follow their org and property (cascade): the vault never outlives nor blocks their erasure.
+        modelBuilder.ApplyConfiguration(new SupportVaultSecretConfiguration());
+        modelBuilder.ApplyConfiguration(new SupportVaultAccessConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyIstatCredentialsConfiguration());
 
         // The key an agency gives its owners (E10/F02/US02/T01): unique in the org, for the owners that have one.
         modelBuilder.ApplyConfiguration(new PropertyOwnerConfiguration());
