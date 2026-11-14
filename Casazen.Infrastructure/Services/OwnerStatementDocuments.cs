@@ -7,6 +7,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
@@ -29,8 +30,9 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Facts around a line.</b> The stay of a line (a booking: from its source, or from the booking a payment is of) gives the days, the channel and the code;
 /// the property its name. A line whose booking is gone keeps the days of the ledger line.</item>
 /// <item><b>Tourist tax box.</b> The tax of the stays of the statement (the stays with revenue in it) that the agency collects: <see cref="Booking.TouristTax"/> of
-/// each, less the stays whose channel collects it itself (the confirmed list of the issuer, or the collector the host declared for the stay). For information
-/// only, in the currency of the property, never in a total.</item>
+/// each, less the stays whose channel collects it itself (a channel of the confirmed list of the issuer, or the collector of the stay as the host's tourist tax decides:
+/// the active rule of the channel in the comune, else the one the host declared, else the one confirmed with the calculation), and only for a stay that owes the tax
+/// (an active booking that is not a no-show). For information only, in the currency of the property, never in a total.</item>
 /// <item><b>Who holds the portal account.</b> Until the property manager invoice of the owner exists (E14, <c>IPortalAccountHolderResolver</c>) every listing is read as
 /// V1, the owner's: the commission of a channel is «Trattenuta dal portale»; the layout already writes the V2 label for a line flagged as the agency's.</item>
 /// <item><b>Language.</b> There is no language kept for an owner yet: Italian unless the caller asks for English. The stored PDF is in Italian.</item>
@@ -305,9 +307,9 @@ public sealed class OwnerStatementDocuments(
                 .IgnoreQueryFilters([AppDbContext.TenantQueryFilter, AppDbContext.SoftDeleteQueryFilter])
                 .AsNoTracking()
                 .Where(p => p.OrgId == orgId && propertyIds.Contains(p.Id))
-                .Select(p => new { p.Id, p.Name, p.Currency })
+                .Select(p => new { p.Id, p.Name, p.Currency, p.Country, p.ComuneIstatCode })
                 .ToListAsync(ct))
-            .ToDictionary(p => p.Id);
+            .ToDictionary(p => p.Id, p => new PropertyFacts(p.Name, p.Currency, TouristTaxComune.IsItalianCountry(p.Country) ? p.ComuneIstatCode : null));
 
         var lines = entries
             .Select(entry => LineOf(entry, BookingOf(entry, bookings), properties.GetValueOrDefault(entry.PropertyId ?? Guid.Empty)?.Name))
@@ -350,7 +352,7 @@ public sealed class OwnerStatementDocuments(
             Lines = lines,
             OwnerInvoiceNumber = invoice?.Number,
             OwnerInvoiceDate = invoice?.IssueDate,
-            TouristTax = await TouristTaxAsync(orgId, entries, bookings, properties.ToDictionary(p => p.Key, p => (p.Value.Name, p.Value.Currency)), ct),
+            TouristTax = await TouristTaxAsync(orgId, entries, bookings, properties, ct),
         };
     }
 
@@ -400,12 +402,17 @@ public sealed class OwnerStatementDocuments(
     private static bool IsDue(BookingFacts booking) =>
         AlloggiatiStatusRules.ActiveBookingStatuses.Contains(booking.Status) && booking.NoShowAt is null;
 
+    /// <summary>The ISTAT code of the comune of the property of a stay (only an Italian property has one), as the tourist tax looks its channel rule up; <c>null</c> without one.</summary>
+    private static string? ComuneOf(BookingFacts stay, Dictionary<Guid, PropertyFacts> properties) =>
+        properties.TryGetValue(stay.PropertyId, out var property) && !string.IsNullOrWhiteSpace(property.ComuneIstatCode) ? property.ComuneIstatCode.Trim() : null;
+
     private static string ChannelOf(BookingFacts booking) =>
         booking.Source == BookingSource.OtherChannel && !string.IsNullOrWhiteSpace(booking.ChannelLabel) ? booking.ChannelLabel.Trim() : booking.Source.ToString();
 
     /// <summary>
     /// The tourist tax of the stays that have revenue in the statement, collected by the agency: the tax stored on the booking, except where the channel collects
-    /// it itself (a channel of the confirmed list of the issuer, or the collector the host declared for the stay). The stays whose revenue a reversal took back to
+    /// it itself (a channel of the confirmed list of the issuer, or the collector of the stay: <see cref="TouristTaxCollectorRules.Decide"/> from the active rule of
+    /// the channel in the comune and the collector the host declared, else the one confirmed with the calculation). The stays whose revenue a reversal took back to
     /// nothing are not stays of the statement, and neither is a stay that owes nothing: a cancelled booking, a request or a no-show can keep revenue (a payment the
     /// guest does not get back) but its tax is not due, so it is never in the box (<see cref="AlloggiatiStatusRules"/>, the one definition of an active booking).
     /// </summary>
@@ -413,7 +420,7 @@ public sealed class OwnerStatementDocuments(
         Guid orgId,
         IReadOnlyList<OwnerLedgerEntry> entries,
         Dictionary<Guid, BookingFacts> bookings,
-        Dictionary<Guid, (string Name, string Currency)> properties,
+        Dictionary<Guid, PropertyFacts> properties,
         CancellationToken ct)
     {
         var stays = entries
@@ -425,14 +432,21 @@ public sealed class OwnerStatementDocuments(
         if (stays.Count == 0)
             return [];
 
+        // Who collects the tax of a stay is what the host's tourist tax says (TouristTaxCollectorRules: the active rule of the channel in the comune of the property,
+        // else the collector the host declared for the stay), else the one the host confirmed with the calculation; and any channel of the confirmed list of the
+        // issuer. A stay that nobody is known to collect for is the agency's: never an assumed 0.
         var ids = stays.Select(b => b.Id).ToList();
-        var channelCollected = (await db.StayTouristTaxes
+        var records = (await db.StayTouristTaxes
                 .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
                 .AsNoTracking()
-                .Where(t => t.OrgId == orgId && ids.Contains(t.BookingId) && t.Collector == TouristTaxCollector.Channel)
-                .Select(t => t.BookingId)
+                .Where(t => t.OrgId == orgId && ids.Contains(t.BookingId))
+                .Select(t => new StayTaxFacts(t.BookingId, t.Collector, t.DeclaredCollector))
                 .ToListAsync(ct))
-            .ToHashSet();
+            .ToDictionary(t => t.BookingId);
+        var comuni = stays.Select(b => ComuneOf(b, properties)).Where(code => code is not null).Select(code => code!).Distinct().ToList();
+        var rules = comuni.Count == 0
+            ? []
+            : await db.TouristTaxChannelRules.AsNoTracking().Where(r => r.IsActive && comuni.Contains(r.IstatCode)).ToListAsync(ct);
         var platformCollected = (await db.OrgFiscalIssuerProfiles
                 .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
                 .AsNoTracking()
@@ -440,10 +454,22 @@ public sealed class OwnerStatementDocuments(
                 .FirstOrDefaultAsync(ct))
             ?.PlatformCollectedTouristTaxChannels ?? [];
 
+        bool ChannelCollects(BookingFacts stay)
+        {
+            if (platformCollected.Contains(stay.Source))
+                return true;
+
+            var comune = ComuneOf(stay, properties);
+            var rule = comune is null ? null : rules.FirstOrDefault(r => r.Channel == stay.Source && r.IstatCode == comune);
+            records.TryGetValue(stay.Id, out var record);
+            var collector = TouristTaxCollectorRules.Decide(stay.Source, rule, record?.DeclaredCollector).Collector ?? record?.Collector;
+            return collector == TouristTaxCollector.Channel;
+        }
+
         return
         [
             .. stays
-                .Where(b => !channelCollected.Contains(b.Id) && !platformCollected.Contains(b.Source))
+                .Where(b => !ChannelCollects(b))
                 .OrderBy(b => b.CheckIn)
                 .ThenBy(b => b.Id)
                 .Select(b => new OwnerStatementTouristTax(
@@ -555,6 +581,12 @@ public sealed class OwnerStatementDocuments(
         decimal TouristTax,
         BookingStatus Status,
         DateTime? NoShowAt);
+
+    /// <summary>What a statement needs of a property: its name, its currency and, for an Italian one, the ISTAT code of its comune.</summary>
+    private sealed record PropertyFacts(string Name, string Currency, string? ComuneIstatCode);
+
+    /// <summary>What the tourist tax of a stay says about who collects: the collector confirmed with the calculation and the one the host declared.</summary>
+    private sealed record StayTaxFacts(Guid BookingId, TouristTaxCollector? Collector, TouristTaxCollector? DeclaredCollector);
 
     private sealed record InvoiceFacts(string? Number, DateOnly? IssueDate, bool OfThisVersion);
 }

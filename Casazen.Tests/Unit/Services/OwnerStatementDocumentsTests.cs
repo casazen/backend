@@ -120,12 +120,60 @@ public class OwnerStatementDocumentsTests
         Assert.Equal(content.Totals, changed.Totals);
         Assert.Equal(107m, changed.TouristTax.Sum(t => t.Amount));
 
-        // A stay whose channel collects the tax itself is not collected by the agency: the confirmed list of the issuer, or the collector declared for the stay.
+        // A stay whose channel collects the tax itself is not collected by the agency: a channel of the confirmed list of the issuer is left out, the other stay stays.
         world.Db.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile { OrgId = world.OrgId, PlatformCollectedTouristTaxChannelsJson = "[\"BookingCom\"]" });
-        world.Db.StayTouristTaxes.Add(new StayTouristTax { OrgId = world.OrgId, BookingId = world.DirectBookingId, Collector = TouristTaxCollector.Channel });
         await world.Db.SaveChangesAsync();
-        Assert.Empty((await world.Documents.GetContentAsync(world.OrgId, world.VersionId, "it")).TouristTax);
+        var direct = (await world.Documents.GetContentAsync(world.OrgId, world.VersionId, "it")).TouristTax;
+        Assert.Equal(8m, Assert.Single(direct).Amount);
         Assert.Equal(content.Totals, (await world.Documents.GetContentAsync(world.OrgId, world.VersionId, "it")).Totals);
+    }
+
+    /// <summary>
+    /// Money: who collects the tax of a channel stay is what the tourist tax of the host says: the active rule of the channel in the comune of the property, else the
+    /// collector the host declared for the stay (before any calculation was confirmed too), else the one confirmed with the calculation. A stay that nobody is known to
+    /// collect for stays in the box (never an assumed 0).
+    /// </summary>
+    [Fact]
+    public async Task StatementPdf_TouristTaxTheChannelCollectsIsNotInTheBox_Test()
+    {
+        var world = await World.CreateAsync();
+        async Task<decimal> BoxAsync() => (await world.Documents.GetContentAsync(world.OrgId, world.VersionId)).TouristTax.Sum(t => t.Amount);
+
+        // Nothing says who collects the 12 of the portal stay and the 8 of the direct one: the agency does.
+        Assert.Equal(20m, await BoxAsync());
+
+        // The host declared that the channel collects it, before any calculation was confirmed (the record holds only the declaration): the portal stay leaves the box.
+        var record = new StayTouristTax { OrgId = world.OrgId, BookingId = world.PortalBookingId, DeclaredCollector = TouristTaxCollector.Channel };
+        world.Db.StayTouristTaxes.Add(record);
+        await world.Db.SaveChangesAsync();
+        Assert.Equal(8m, await BoxAsync());
+
+        // Declared the host: it is the agency's again.
+        record.DeclaredCollector = TouristTaxCollector.Host;
+        await world.Db.SaveChangesAsync();
+        Assert.Equal(20m, await BoxAsync());
+
+        // An active rule of the channel in the comune of the property decides, whatever the host declared.
+        var property = await world.Db.Properties.SingleAsync();
+        property.ComuneIstatCode = "015146";
+        var rule = new TouristTaxChannelRule { Channel = BookingSource.BookingCom, IstatCode = "015146", Collector = TouristTaxCollector.Channel, SourceUrl = "https://example.com/regola" };
+        world.Db.TouristTaxChannelRules.Add(rule);
+        await world.Db.SaveChangesAsync();
+        Assert.Equal(8m, await BoxAsync());
+        rule.Collector = TouristTaxCollector.Host;
+        record.DeclaredCollector = TouristTaxCollector.Channel;
+        await world.Db.SaveChangesAsync();
+        Assert.Equal(20m, await BoxAsync());
+
+        // A rule that is not active does not count; the collector confirmed with the calculation does when nothing else says.
+        rule.IsActive = false;
+        record.DeclaredCollector = null;
+        record.Collector = TouristTaxCollector.Channel;
+        await world.Db.SaveChangesAsync();
+        Assert.Equal(8m, await BoxAsync());
+        record.Collector = null;
+        await world.Db.SaveChangesAsync();
+        Assert.Equal(20m, await BoxAsync());
     }
 
     /// <summary>
