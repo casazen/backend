@@ -36,12 +36,12 @@ public interface IAccountantPackageDeliveryService
 
     /// <summary>
     /// «Send a test» (<c>POST api/accountant-package/send</c>): the package of the previous month, with the folders of the settings, sent now to the saved address, whatever the day and whether the monthly send is on. It
-    /// is the send of that month: the accountant is not sent it again by the monthly run. The owner accounting is in it only if <paramref name="access"/> allows it (a person never shares what it may not read). A
-    /// failure is not recorded in the settings; it is the answer.
+    /// is the send of that month: the accountant is not sent it again by the monthly run. On an organization on the agency plan <paramref name="access"/> must allow the owner accounting, so the test is the package the monthly
+    /// send makes and never a partial one (a person never shares what it may not read). A failure is not recorded in the settings; it is the answer.
     /// </summary>
     /// <exception cref="Exceptions.DomainRuleException">
-    /// 422 <c>accountant_package_recipient_missing</c> (no address saved), <c>accountant_package_too_large</c> (the package of the month is over the caps of the archive) and <c>accountant_package_not_sent</c> (the package could
-    /// not be stored or the e-mail not queued: nothing was sent).
+    /// 422 <c>accountant_package_recipient_missing</c> (no address saved), <c>accountant_package_owner_accounting_required</c> (an agency's organization and an access without the owner accounting: nothing is made),
+    /// <c>accountant_package_too_large</c> (the package of the month is over the caps of the archive) and <c>accountant_package_not_sent</c> (the package could not be stored or the e-mail not queued: nothing was sent).
     /// </exception>
     Task<AccountantPackageSendNowResult> SendNowAsync(Guid orgId, AccountantPackageAccess access, CancellationToken cancellationToken = default);
 

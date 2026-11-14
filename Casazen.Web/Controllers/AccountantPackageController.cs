@@ -143,8 +143,8 @@ public class AccountantPackageController(
     /// <summary>
     /// «Send a test» (E15/F01/US02/T02): the package of the previous month, with the folders of the settings, is made and kept in the private storage, and the e-mail with its signed link (30 days) is queued for the address
     /// saved in the settings: whatever the day, and whether the monthly send is on. It is the send of that month, so the monthly run does not send it again. <c>property.write</c> on top of <c>payment.read</c>, a scope that
-    /// reaches the whole org, and a limit per person (<see cref="RateLimitPolicies.AccountantPackageSend"/>). The owner accounting is in the package only when the caller holds <c>agency.statement.view</c>: a person never
-    /// shares with a third party what it may not read. 422 <c>accountant_package_recipient_missing</c> (no address saved), <c>accountant_package_too_large</c> and <c>accountant_package_not_sent</c> (the package could not
+    /// reaches the whole org, and a limit per person (<see cref="RateLimitPolicies.AccountantPackageSend"/>). On an organization on the agency plan the caller must hold <c>agency.statement.view</c> (422 <c>accountant_package_owner_accounting_required</c>
+    /// otherwise): the test sends what the monthly send sends and counts as its month, and a person never shares with a third party what it may not read. 422 <c>accountant_package_recipient_missing</c> (no address saved), <c>accountant_package_too_large</c> and <c>accountant_package_not_sent</c> (the package could not
     /// be stored or the e-mail not queued: nothing was sent, and the answer never says it was). The answer holds the month and the expiry of the link, never the address or the link.
     /// </summary>
     [HttpPost("send")]

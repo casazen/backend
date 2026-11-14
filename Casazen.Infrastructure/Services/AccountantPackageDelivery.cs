@@ -215,7 +215,14 @@ public sealed class AccountantPackageDelivery(
             return Delivery.NotConfigured();
 
         // The owner accounting follows the plan, never the job: the package of an organization that is not on the agency plan holds none, whatever it chose and whoever asks (the agency.* policies ask for the same plan).
-        access = access with { OwnerAccounting = access.OwnerAccounting && AccountantPackageFolderRules.PlanHoldsOwnerAccounting(org.PlanTier, org.AgencyTierDowngraded) };
+        var ownerAccountingPlan = AccountantPackageFolderRules.PlanHoldsOwnerAccounting(org.PlanTier, org.AgencyTierDowngraded);
+
+        // A test sends what the monthly send sends and counts as the send of its month, so on an agency's organization it needs the permission to read the owner accounting: without it the package would be a partial one that the monthly
+        // run would never complete (the month is recorded as sent) and that would replace, under the same key, a complete package the accountant already has. Nothing is made, stored, queued or recorded.
+        if (!monthly && ownerAccountingPlan && !access.OwnerAccounting)
+            throw new DomainRuleException(AccountantPackageErrors.OwnerAccountingRequired, "AccountantPackageOwnerAccountingRequired");
+
+        access = access with { OwnerAccounting = access.OwnerAccounting && ownerAccountingPlan };
 
         // The package, made outside the lock.
         await using var buffer = new MemoryStream();

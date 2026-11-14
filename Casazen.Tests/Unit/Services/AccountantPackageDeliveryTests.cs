@@ -433,7 +433,7 @@ public class AccountantPackageDeliveryTests : IDisposable
     [Fact]
     public async Task SendNow_SendsThePreviousMonthWhateverTheDayAndTheSwitch_ForTheFoldersAndTheAccessItIsGiven_AndItIsTheSendOfThatMonth()
     {
-        var org = await _world.SeedAsync(enabled: false, day: 28, contents: AccountantPackageFolders.OwnerInvoices | AccountantPackageFolders.Vat);
+        var org = await _world.SeedAsync(enabled: false, day: 28, contents: AccountantPackageFolders.OwnerInvoices | AccountantPackageFolders.Vat, plan: PlanTier.Pro);
 
         var result = await _world.Delivery().SendNowAsync(org, AccountantPackageAccess.WithoutOwnerAccounting);
 
@@ -441,7 +441,7 @@ public class AccountantPackageDeliveryTests : IDisposable
         var (to, _, _) = Assert.Single(_world.Emails.Snapshot());
         Assert.Equal(AccountantPackageDeliveryWorld.Accountant, to);
 
-        // The person does not hold the owner accounting: the package has no more than it may read, and only the folders of the settings.
+        // An organization off the agency plan holds no owner accounting: the package has none, and only the folders of the settings.
         var built = Assert.Single(_world.Built);
         Assert.False(built.Access.OwnerAccounting);
         Assert.Equal(AccountantPackageFolders.OwnerInvoices | AccountantPackageFolders.Vat, built.Access.Folders);
@@ -453,6 +453,38 @@ public class AccountantPackageDeliveryTests : IDisposable
         await _world.Db.SaveChangesAsync();
         Assert.Equal(AccountantPackageMonthlyOutcome.AlreadySent, await _world.Delivery().SendMonthlyAsync(org, Today));
         Assert.Single(_world.Emails.Snapshot());
+    }
+
+    /// <summary>
+    /// A test counts as the send of the month, so on an agency's organization it needs the permission to read the owner accounting: a caller without it is refused (422) and nothing is made, stored, queued or recorded, so the
+    /// monthly run still sends the complete package once; a caller that holds the permission sends it. An organization off the agency plan has no owner accounting to read and is never refused.
+    /// </summary>
+    [Fact]
+    public async Task SendNow_OnAnAgency_WithoutTheOwnerAccounting_IsRefused_AndTheMonthIsStillSentInFullByTheMonthlyRun()
+    {
+        var org = await _world.SeedAsync();
+
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => _world.Delivery().SendNowAsync(org, AccountantPackageAccess.WithoutOwnerAccounting));
+
+        Assert.Equal(AccountantPackageErrors.OwnerAccountingRequired, refused.Code);
+        Assert.Empty(_world.Built);
+        Assert.Empty(_world.Emails.Snapshot());
+        var untouched = await _world.RowAsync(org);
+        Assert.Null(untouched.LastSendResult);
+        Assert.Null(untouched.StoredPackagePeriod);
+        Assert.False(await _world.Storage.ExistsAsync(StorageBucket.Private, AccountantPackageDeliveryWorld.KeyOf(org, "2026-10")));
+
+        // The monthly run sends the complete package, once.
+        Assert.Equal(AccountantPackageMonthlyOutcome.Sent, await _world.Delivery().SendMonthlyAsync(org, Today));
+        Assert.True(Assert.Single(_world.Built).Access.OwnerAccounting);
+        Assert.Single(_world.Emails.Snapshot());
+
+        // The caller that holds the permission sends it; the other plans have nothing to refuse.
+        var other = await _world.SeedAsync("altro@studio.example.com", enabled: false);
+        Assert.Equal("2026-10", (await _world.Delivery().SendNowAsync(other, AccountantPackageAccess.Full)).Period);
+        var pro = await _world.SeedAsync("pro@studio.example.com", enabled: false, plan: PlanTier.Pro);
+        Assert.Equal("2026-10", (await _world.Delivery().SendNowAsync(pro, AccountantPackageAccess.WithoutOwnerAccounting)).Period);
+        Assert.Equal(3, _world.Emails.Snapshot().Count);
     }
 
     [Fact]
