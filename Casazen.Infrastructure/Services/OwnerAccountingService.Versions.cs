@@ -152,8 +152,22 @@ public sealed partial class OwnerAccountingService
         version.Status = OwnerStatementVersionStatus.Published;
         version.PublishedAt = time.GetUtcNow().UtcDateTime;
         version.PublishedByUserId = userId;
-        await db.SaveChangesAsync(ct);
+
+        // The PDF the owner downloads is made now, from the same lines, and stored with the version in the same save (E13/F01/US02/T01): one file, never made again.
+        var stored = statementFiles is null ? StoredStatementPdf.None : await statementFiles.StorePublishedPdfAsync(version, entries, userId, ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch
+        {
+            if (statementFiles is not null)
+                await statementFiles.DiscardStoredPdfAsync(stored, CancellationToken.None);
+            throw;
+        }
+
         logger.LogInformation("Owner statement version {VersionId} published by {UserId}", version.Id, userId);
+        await TellOwnerAsync(version, ct);
         return version;
     }
 
@@ -323,13 +337,40 @@ public sealed partial class OwnerAccountingService
 
     /// <summary>The lines a version was made of: its owner's lines of the month posted up to its cut-off.</summary>
     private async Task<List<OwnerLedgerEntry>> EntriesOfAsync(OwnerStatementVersion version, CancellationToken ct) =>
-        (await db.OwnerLedgerEntries.AsNoTracking()
-            .Where(e => e.OrgId == version.OrgId && e.PropertyOwnerId == version.PropertyOwnerId && e.PeriodYear == version.PeriodYear
-                && e.PeriodMonth == version.PeriodMonth && e.PostedAt <= version.CutoffAt)
-            .ToListAsync(ct))
+        (await LinesOf(db.OwnerLedgerEntries.AsNoTracking(), version).ToListAsync(ct))
         .OrderBy(e => e.PostedAt)
         .ThenBy(e => e.Id)
         .ToList();
+
+    /// <summary>
+    /// The ledger lines of a version: its owner's lines of the month posted up to its cut-off, the one definition of what a version is made of (its hash, its published file and
+    /// its PDF and CSV read the lines through it).
+    /// </summary>
+    internal static IQueryable<OwnerLedgerEntry> LinesOf(IQueryable<OwnerLedgerEntry> entries, OwnerStatementVersion version)
+    {
+        return entries.Where(e => e.OrgId == version.OrgId && e.PropertyOwnerId == version.PropertyOwnerId && e.PeriodYear == version.PeriodYear
+            && e.PeriodMonth == version.PeriodMonth && e.PostedAt <= version.CutoffAt);
+    }
+
+    /// <summary>
+    /// Tells the owner that a statement was published (E13/F01/US02/T02), after the publication was saved. The statement is published whatever happens here: the
+    /// notice is read from the database and queued (the queue never throws), and a failure to prepare it is logged, never turned into an error of a publication that
+    /// already happened.
+    /// </summary>
+    private async Task TellOwnerAsync(OwnerStatementVersion version, CancellationToken ct)
+    {
+        if (statementFiles is null)
+            return;
+
+        try
+        {
+            await statementFiles.TellOwnerPublishedAsync(version, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Owner statement version {VersionId} is published, the e-mail to the owner could not be prepared", version.Id);
+        }
+    }
 
     /// <summary>A version is acted on only while it is the picture of the ledger: the month is not dirty and its lines still hash to it.</summary>
     private async Task EnsureCleanAsync(OwnerStatementVersion version, CancellationToken ct)

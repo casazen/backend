@@ -77,6 +77,7 @@ public class FiscalDocumentsRegistrationTests
             // with their withholding evidence and the filing states (T03).
             (typeof(IOwnerFiscalProfileService), typeof(OwnerFiscalProfileService), ServiceLifetime.Scoped),
             (typeof(IOwnerAccountingService), typeof(OwnerAccountingService), ServiceLifetime.Scoped),
+            (typeof(IOwnerStatementDocuments), typeof(OwnerStatementDocuments), ServiceLifetime.Scoped),
             (typeof(IOwnerPayoutService), typeof(OwnerPayoutService), ServiceLifetime.Scoped),
 
             // The mandates of the owners, their billing address and the channel commission rules (E13/F01/US01/T01).

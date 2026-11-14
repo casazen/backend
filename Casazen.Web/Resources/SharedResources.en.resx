@@ -6735,4 +6735,181 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OwnerAttachmentNotFound" xml:space="preserve">
     <value>Attachment not found.</value>
   </data>
+  <data name="StatementFileTitle" xml:space="preserve">
+    <value>Owner statement {0}</value>
+  </data>
+  <data name="StatementFileDocumentTitle" xml:space="preserve">
+    <value>Statement {0} - version {1}</value>
+  </data>
+  <data name="StatementFileAgency" xml:space="preserve">
+    <value>Agency: {0}</value>
+  </data>
+  <data name="StatementFileOwner" xml:space="preserve">
+    <value>Owner: {0}</value>
+  </data>
+  <data name="StatementFilePeriod" xml:space="preserve">
+    <value>Period: {0}</value>
+  </data>
+  <data name="StatementFileVersion" xml:space="preserve">
+    <value>Version: {0}</value>
+  </data>
+  <data name="StatementFileCurrency" xml:space="preserve">
+    <value>Currency: {0}</value>
+  </data>
+  <data name="StatementFilePublished" xml:space="preserve">
+    <value>Published on {0}</value>
+  </data>
+  <data name="StatementFileDraft" xml:space="preserve">
+    <value>Unpublished draft: this is not yet the statement given to the owner.</value>
+  </data>
+  <data name="StatementFileWatermarkDraft" xml:space="preserve">
+    <value>DRAFT</value>
+  </data>
+  <data name="StatementFileNotInvoice" xml:space="preserve">
+    <value>This statement is not an invoice.</value>
+  </data>
+  <data name="StatementFileNone" xml:space="preserve">
+    <value>No items in the period.</value>
+  </data>
+  <data name="StatementFileTotal" xml:space="preserve">
+    <value>Total</value>
+  </data>
+  <data name="StatementFileStaysHeading" xml:space="preserve">
+    <value>Stays</value>
+  </data>
+  <data name="StatementFileChannelFeesHeading" xml:space="preserve">
+    <value>Channel commissions</value>
+  </data>
+  <data name="StatementFileWithholdingHeading" xml:space="preserve">
+    <value>Withholding tax</value>
+  </data>
+  <data name="StatementFileCommissionHeading" xml:space="preserve">
+    <value>Property manager commission</value>
+  </data>
+  <data name="StatementFileRechargesHeading" xml:space="preserve">
+    <value>Recharges and expenses</value>
+  </data>
+  <data name="StatementFileCorrectionsHeading" xml:space="preserve">
+    <value>Corrections</value>
+  </data>
+  <data name="StatementFileNetHeading" xml:space="preserve">
+    <value>Net</value>
+  </data>
+  <data name="StatementFilePaymentsHeading" xml:space="preserve">
+    <value>Payments</value>
+  </data>
+  <data name="StatementFileTouristTaxHeading" xml:space="preserve">
+    <value>Tourist tax (for information)</value>
+  </data>
+  <data name="StatementFileTouristTaxNote" xml:space="preserve">
+    <value>Tourist tax collected by the agency for the stays of the period, to be remitted to the municipality or the tourist office. It is not part of the net.</value>
+  </data>
+  <data name="StatementFileTouristTaxNone" xml:space="preserve">
+    <value>No tourist tax collected by the agency in the period.</value>
+  </data>
+  <data name="StatementFileColProperty" xml:space="preserve">
+    <value>Property</value>
+  </data>
+  <data name="StatementFileColStay" xml:space="preserve">
+    <value>Stay</value>
+  </data>
+  <data name="StatementFileColChannel" xml:space="preserve">
+    <value>Channel</value>
+  </data>
+  <data name="StatementFileColShare" xml:space="preserve">
+    <value>Share</value>
+  </data>
+  <data name="StatementFileColDate" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="StatementFileColDescription" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="StatementFileColAmount" xml:space="preserve">
+    <value>Amount ({0})</value>
+  </data>
+  <data name="StatementFileColAmountPlain" xml:space="preserve">
+    <value>Amount</value>
+  </data>
+  <data name="StatementFileColGross" xml:space="preserve">
+    <value>Gross without tourist tax ({0})</value>
+  </data>
+  <data name="StatementFileColItem" xml:space="preserve">
+    <value>Item</value>
+  </data>
+  <data name="StatementFileColSection" xml:space="preserve">
+    <value>Section</value>
+  </data>
+  <data name="StatementFileChannelFeesOwner" xml:space="preserve">
+    <value>Withheld by the portal (portal invoice in your name)</value>
+  </data>
+  <data name="StatementFileChannelFeesAgency" xml:space="preserve">
+    <value>Portal commissions recharged by the property manager</value>
+  </data>
+  <data name="StatementFileChannelFeesAgencyInvoice" xml:space="preserve">
+    <value>Portal commissions recharged by the property manager (invoice no. {0})</value>
+  </data>
+  <data name="StatementFileCommissionInvoice" xml:space="preserve">
+    <value>Property manager invoice no. {0}</value>
+  </data>
+  <data name="StatementFileRechargeCleaning" xml:space="preserve">
+    <value>Cleaning</value>
+  </data>
+  <data name="StatementFileRechargeLinen" xml:space="preserve">
+    <value>Linen</value>
+  </data>
+  <data name="StatementFileRechargeCardFee" xml:space="preserve">
+    <value>Card payment fees</value>
+  </data>
+  <data name="StatementFileRechargeCharge" xml:space="preserve">
+    <value>Charge by the property manager</value>
+  </data>
+  <data name="StatementFileRechargeExpense" xml:space="preserve">
+    <value>Expense paid on your behalf</value>
+  </data>
+  <data name="StatementFileWithholdingLine" xml:space="preserve">
+    <value>Withholding on the payment</value>
+  </data>
+  <data name="StatementFileCorrectionLine" xml:space="preserve">
+    <value>Correction</value>
+  </data>
+  <data name="StatementFilePaymentToOwner" xml:space="preserve">
+    <value>Payment to the owner</value>
+  </data>
+  <data name="StatementFilePaymentFromOwner" xml:space="preserve">
+    <value>Payment from the owner</value>
+  </data>
+  <data name="StatementFileReversal" xml:space="preserve">
+    <value>reversal</value>
+  </data>
+  <data name="StatementFileNetOpening" xml:space="preserve">
+    <value>Opening balance</value>
+  </data>
+  <data name="StatementFileNetPeriod" xml:space="preserve">
+    <value>Total of the period</value>
+  </data>
+  <data name="StatementFileNetPayments" xml:space="preserve">
+    <value>Payments</value>
+  </data>
+  <data name="StatementFileNetClosing" xml:space="preserve">
+    <value>Closing balance</value>
+  </data>
+  <data name="StatementFileLinesHash" xml:space="preserve">
+    <value>SHA-256 of the lines: {0}</value>
+  </data>
+  <data name="StatementFileChannelDirect" xml:space="preserve">
+    <value>Direct</value>
+  </data>
+  <data name="StatementFileChannelManual" xml:space="preserve">
+    <value>Entered by hand</value>
+  </data>
+  <data name="StatementFileChannelOther" xml:space="preserve">
+    <value>Other portal</value>
+  </data>
+  <data name="OwnerStatementPdfNotAvailable" xml:space="preserve">
+    <value>The PDF of this statement is not available.</value>
+  </data>
+  <data name="OwnerPortalInvoiceNotFound" xml:space="preserve">
+    <value>Invoice not found.</value>
+  </data>
 </root>

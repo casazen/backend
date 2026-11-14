@@ -142,6 +142,42 @@ public class OwnerAccountingController(
     }
 
     /// <summary>
+    /// The PDF of a version (E13/F01/US02/T01): the stored file of a published version, exactly what the owner downloads, otherwise built from the lines of the version
+    /// (a draft carries the watermark of a draft). The whole org only, as every action here: a caller restricted to some properties is refused (403) before anything
+    /// is read. <c>lang=en</c> asks for English (Italian by default, no language is kept for an owner yet; a stored file keeps the language it was published in). 404
+    /// <c>owner_statement_version_not_found</c> for a version of another organization.
+    /// </summary>
+    [HttpGet("versions/{versionId:guid}/pdf")]
+    [PrivateAnswer]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> VersionPdf(Guid versionId, [FromQuery] string? lang, [FromServices] IOwnerStatementDocuments files)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        var file = await files.GetPdfAsync(orgId, versionId, lang, HttpContext.RequestAborted);
+        return File(file.Content, file.ContentType, file.FileName);
+    }
+
+    /// <summary>
+    /// The CSV of a version (E13/F01/US02/T01): the same lines, totals and tourist tax box as the PDF, written by the one CSV writer (UTF-8 with a BOM, <c>;</c>, a decimal
+    /// comma). The whole org only (403 otherwise); 404 <c>owner_statement_version_not_found</c> for a version of another organization.
+    /// </summary>
+    [HttpGet("versions/{versionId:guid}/csv")]
+    [PrivateAnswer]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> VersionCsv(Guid versionId, [FromQuery] string? lang, [FromServices] IOwnerStatementDocuments files)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        var file = await files.GetCsvAsync(orgId, versionId, lang, HttpContext.RequestAborted);
+        return File(file.Content, file.ContentType, file.FileName);
+    }
+
+    /// <summary>
     /// Closes the owner's month on its approved version, reconciled to the paid wires; a difference or a negative balance needs <c>waiverReason</c> and
     /// <c>agency.owner.financial.manage</c>. 422 <c>owner_close_unreconciled</c> (with <c>due</c>, <c>paid</c>, <c>difference</c>),
     /// <c>owner_statement_not_approved</c>; 403 <c>owner_close_waiver_forbidden</c>; 409 <c>owner_period_dirty</c>, <c>owner_period_closed</c>.

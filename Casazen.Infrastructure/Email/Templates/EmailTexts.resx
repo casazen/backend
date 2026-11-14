@@ -2703,4 +2703,16 @@
   <data name="OwnerInboxToAgency_LinkFallback" xml:space="preserve">
     <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
   </data>
+  <data name="OwnerStatementPublished_Subject" xml:space="preserve">
+    <value>Nuovo rendiconto da {0}</value>
+  </data>
+  <data name="OwnerStatementPublished_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ha pubblicato un nuovo rendiconto nel portale proprietari di CasaZen. Per vederlo apri la sezione Contabilità del portale.</value>
+  </data>
+  <data name="OwnerStatementPublished_Cta" xml:space="preserve">
+    <value>Apri la Contabilità</value>
+  </data>
+  <data name="OwnerStatementPublished_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
 </root>

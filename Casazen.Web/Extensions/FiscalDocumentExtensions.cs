@@ -86,6 +86,10 @@ public static class FiscalDocumentExtensions
         // The owner ledger, the statement versions and the month-end close (E06/F05/US02/T02, NF-110).
         services.AddScoped<IOwnerAccountingService, OwnerAccountingService>();
 
+        // The files of a statement version: its PDF and CSV from the lines of the version, the PDF stored at the publication as an owner document, and the e-mail that tells
+        // the owner (E13/F01/US02/T01, E13/F01/US02/T02). The accounting service takes it to publish; it takes nothing of the accounting service.
+        services.AddScoped<IOwnerStatementDocuments, OwnerStatementDocuments>();
+
         // The payouts to the owners with their withholding evidence, the annual tax data and the filing states (E06/F05/US02/T03).
         services.AddScoped<IOwnerPayoutService, OwnerPayoutService>();
 
