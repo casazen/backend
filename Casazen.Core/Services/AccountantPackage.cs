@@ -139,7 +139,11 @@ public sealed record AccountantPackagePeriod
 /// that does not reach the whole org (<see cref="AllowsOwnerAccounting"/>): an owner's accounts span properties the caller does not reach.
 /// </summary>
 /// <param name="OwnerAccounting">The caller may read the owner accounting.</param>
-public sealed record AccountantPackageAccess(bool OwnerAccounting)
+/// <param name="Folders">
+/// The folders the package holds (E15/F01/US02/T02): every folder for the screens, the ones the agency chose for the package it sends every month. A folder that is not here is not read nor written, and the
+/// index lists it as left out by choice. It never widens what <paramref name="OwnerAccounting"/> allows: an owner accounting folder of a caller that may not read it is omitted whatever is chosen here.
+/// </param>
+public sealed record AccountantPackageAccess(bool OwnerAccounting, AccountantPackageFolders Folders = AccountantPackageFolders.All)
 {
     /// <summary>Everything: the agency (the job that sends the package to its accountant runs with this and the whole org).</summary>
     public static AccountantPackageAccess Full { get; } = new(true);
@@ -154,6 +158,12 @@ public sealed record AccountantPackageAccess(bool OwnerAccounting)
 
         return OwnerAccounting && scope.IsOrgWide;
     }
+
+    /// <summary>The same access narrowed to <paramref name="folders"/>: the folders of the package that is sent every month (never more than this access holds).</summary>
+    public AccountantPackageAccess Narrowed(AccountantPackageFolders folders) => this with { Folders = Folders & folders };
+
+    /// <summary>True when <paramref name="folder"/> (one folder) is one of the folders the package holds.</summary>
+    public bool Includes(AccountantPackageFolders folder) => (Folders & folder) == folder;
 }
 
 /// <summary>What a package wrote: the documents it holds, the files, their size, and the folders it left out for lack of permission (for the line of the log).</summary>
@@ -208,6 +218,27 @@ public static class AccountantPackageErrors
 
     /// <summary>422: the package would hold more files than <c>DocumentArchive:MaxExportFiles</c> or more bytes than <c>DocumentArchive:MaxExportBytes</c> allow.</summary>
     public const string TooLarge = "accountant_package_too_large";
+
+    /// <summary>422 (E15/F01/US02/T01): the settings lack a field (<c>enabled</c>, <c>sendDay</c> or <c>contents</c>): a field that is missing is never taken for a value.</summary>
+    public const string SettingsInvalid = "accountant_package_settings_invalid";
+
+    /// <summary>422 (E15/F01/US02/T01): the monthly send is on, or a send is asked for, and the settings hold no address of the accountant.</summary>
+    public const string RecipientMissing = "accountant_package_recipient_missing";
+
+    /// <summary>422 (E15/F01/US02/T01): the address of the accountant is not a plain address (no name, no spaces, a host with a dot, at most 254 characters).</summary>
+    public const string RecipientInvalid = "accountant_package_recipient_invalid";
+
+    /// <summary>422 (E15/F01/US02/T01): the day of the monthly send is not 1 to 28.</summary>
+    public const string SendDayInvalid = "accountant_package_send_day_invalid";
+
+    /// <summary>422 (E15/F01/US02/T01): the folders to send are an empty list (which never means «all»), a key that is not a folder, or one that is repeated.</summary>
+    public const string ContentsInvalid = "accountant_package_contents_invalid";
+
+    /// <summary>404 (E15/F01/US02/T02): the link of the e-mail does not open: the same answer whether it is wrong, changed, expired, made for another org or month, or its package is gone.</summary>
+    public const string LinkInvalid = "accountant_package_link_invalid";
+
+    /// <summary>422 (E15/F01/US02/T02): the package could not be made, stored or queued for the accountant (the e-mail provider, the link secret or the storage is not available): nothing was sent, and the answer never says it was.</summary>
+    public const string NotSent = "accountant_package_not_sent";
 }
 
 // ---------------------------------------------------------------- the agency summary

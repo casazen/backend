@@ -17,6 +17,8 @@ public class EncryptedColumnsTests
         Assert.Equal(
             new[]
             {
+                // NF-101: the address of the accountant the package is sent to every month (E15/F01/US02/T01), personal data of a third party.
+                "AccountantPackageSettings.AccountantEmail:Casazen.AccountantPackage.Settings",
                 // ADR-032-R3: the text of an item of the approval queue (a draft of a message to a guest, a mailing) and the host's edit of it: the same purpose as the
                 // words of the conversations (E05/F04/US01/T01).
                 "ApprovalQueueItem.ContentText:Casazen.Message.Content",

@@ -23,6 +23,9 @@ namespace Casazen.Web.Controllers;
 /// <c>indice.csv</c> lists them as omitted, and the owner fields of the summary are empty. <c>period</c> is <c>yyyy-MM</c> or <c>yyyy</c> (400 <c>accountant_package_invalid_period</c>
 /// for anything else). Beyond the caps of the document archive (<c>DocumentArchive:MaxExportFiles</c>, <c>DocumentArchive:MaxExportBytes</c>) the ZIP is refused with 422
 /// <c>accountant_package_too_large</c>, with the number of files found, before the first byte.
+/// <para>The settings of the monthly send to the accountant (E15/F01/US02/T01, NF-101): <c>GET api/accountant-package/settings</c> with <c>payment.read</c> and <c>PUT</c> with <c>property.write</c> on top, both
+/// only for a caller whose scope reaches the whole org: the address of the accountant, the day and the folders are the organization's, never a part of it, and a caller restricted to some properties (a collaborator «Solo
+/// alcuni», an account outside the org team) is refused (403) before anything is read or written, even with the permissions.</para>
 /// </remarks>
 [ApiController]
 [Route("api/accountant-package")]
@@ -31,6 +34,7 @@ namespace Casazen.Web.Controllers;
 public class AccountantPackageController(
     IAccountantPackageService packages,
     IAgencySummaryService summaries,
+    IAccountantPackageSettingsService settings,
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver,
     IAuthorizationService authorizationService,
@@ -86,6 +90,59 @@ public class AccountantPackageController(
         var summary = await summaries.GetAsync(caller.Scope, caller.Access, parsed, cancellationToken);
         Response.Headers.CacheControl = "private, no-store";
         return Ok(AgencySummaryDto.Of(summary));
+    }
+
+    /// <summary>
+    /// How the package is sent to the accountant (<see cref="AccountantPackageSettingsDto"/>): the address, the monthly send, its day and its folders and what the last send ended in; the defaults for an org that saved
+    /// none. <c>payment.read</c>, and a scope that reaches the whole org (403 otherwise, before anything is read). <c>Cache-Control: private, no-store</c>: it holds the address of a third party.
+    /// </summary>
+    [HttpGet("settings")]
+    [ProducesResponseType(typeof(AccountantPackageSettingsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GetSettings(CancellationToken cancellationToken)
+    {
+        if (await WholeOrgAsync(cancellationToken) is not { } orgId)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        var view = await settings.GetAsync(orgId, cancellationToken);
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(AccountantPackageSettingsDto.From(view));
+    }
+
+    /// <summary>
+    /// Saves all the settings of the send (<see cref="SaveAccountantPackageSettingsRequest"/>) and answers them as they are. <c>property.write</c> on top of <c>payment.read</c>, and a scope that reaches the whole org: a
+    /// caller restricted to some properties cannot save, even with the permission (403, nothing saved). 422 <c>accountant_package_settings_invalid</c> (a field is missing), <c>accountant_package_recipient_invalid</c>,
+    /// <c>accountant_package_recipient_missing</c> (the send on with no address), <c>accountant_package_send_day_invalid</c>, <c>accountant_package_contents_invalid</c>; a refused save changes nothing.
+    /// </summary>
+    [HttpPut("settings")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(AccountantPackageSettingsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> SaveSettings([FromBody] SaveAccountantPackageSettingsRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (await WholeOrgAsync(cancellationToken) is not { } orgId)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        var saved = await settings.SaveAsync(
+            orgId,
+            new AccountantPackageSettingsChange(request.Enabled, request.Email, request.SendDay, request.Contents),
+            User.GetUserId(),
+            cancellationToken);
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(AccountantPackageSettingsDto.From(saved));
+    }
+
+    /// <summary>The org of the caller, only when its reach is the whole org: the settings of the send are the organization's, never a part of it (null without an org, a scope or the whole reach).</summary>
+    private async Task<Guid?> WholeOrgAsync(CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return null;
+
+        var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
+        return scope is { IsOrgWide: true } ? orgId : null;
     }
 
     private sealed record Caller(HostScope Scope, AccountantPackageAccess Access, string UserId);

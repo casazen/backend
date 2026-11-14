@@ -196,6 +196,12 @@ public static class EncryptedColumns
     public const string IstatCredentialsPurpose = "Casazen.PropertyIstatCredentials";
 
     /// <summary>
+    /// Purpose of the address of the accountant of an organization (NF-101, E15/F01/US02/T01): <see cref="AccountantPackageSettings.AccountantEmail"/>, the address the package is sent to every month. Personal data of a
+    /// third party; read by the settings of the organization and by the send, never searched (the job asks only whether there is one) and never logged. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string AccountantPackagePurpose = "Casazen.AccountantPackage.Settings";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -420,6 +426,10 @@ public static class EncryptedColumns
             nameof(PropertyIstatCredentials.Username),
             nameof(PropertyIstatCredentials.Password),
             nameof(PropertyIstatCredentials.StructureCode)),
+        // NF-101: the address the package of the accountant is sent to every month (E15/F01/US02/T01); the job asks only whether there is one (IS NOT NULL).
+        new EncryptedEntity<AccountantPackageSettings>(
+            AccountantPackagePurpose,
+            nameof(AccountantPackageSettings.AccountantEmail)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

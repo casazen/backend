@@ -728,6 +728,8 @@ public static class ServiceCollectionExtensions
         // services above and of the fiscal documents and the owner accounting; the ZIP is capped like the archive export (DocumentArchive).
         services.AddScoped<IAgencySummaryService, AgencySummaryService>();
         services.AddScoped<IAccountantPackageService, AccountantPackageService>();
+        // NF-101, E15/F01/US02/T01: how the package is sent to the accountant (the address, the monthly send, its day and folders): GET and PUT api/accountant-package/settings.
+        services.AddScoped<IAccountantPackageSettingsService, AccountantPackageSettingsService>();
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
         // AM-02: the people of an org: seats of the plan, invitations and their acceptance, the members and the hourly

@@ -7563,4 +7563,28 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="AccountantPackageInvalidPeriod" xml:space="preserve">
     <value>Periodo non valido: indica un mese (period=2026-10) oppure un anno (period=2026), tra il 2000 e il 2100.</value>
   </data>
+  <data name="AccountantPackageSettingsInvalid" xml:space="preserve">
+    <value>Le impostazioni dell'invio sono incomplete: indica se l'invio mensile è attivo, il giorno del mese e le cartelle da inviare.</value>
+  </data>
+  <data name="AccountantPackageRecipientMissing" xml:space="preserve">
+    <value>Per attivare l'invio mensile serve l'indirizzo e-mail del commercialista.</value>
+  </data>
+  <data name="AccountantPackageRecipientInvalid" xml:space="preserve">
+    <value>L'indirizzo e-mail del commercialista non è valido: scrivi solo l'indirizzo, senza nome e senza spazi.</value>
+  </data>
+  <data name="AccountantPackageSendDayInvalid" xml:space="preserve">
+    <value>Il giorno dell'invio deve essere un giorno del mese tra {0} e {1}.</value>
+  </data>
+  <data name="AccountantPackageContentsInvalid" xml:space="preserve">
+    <value>Scegli almeno una cartella da inviare, tra quelle del pacchetto, ciascuna una sola volta.</value>
+  </data>
+  <data name="AccountantPackageLinkInvalid" xml:space="preserve">
+    <value>Il link non è valido o è scaduto.</value>
+  </data>
+  <data name="AccountantPackageNotSent" xml:space="preserve">
+    <value>Non è stato possibile inviare il pacchetto al commercialista: non è stato inviato nulla. Riprova tra poco.</value>
+  </data>
+  <data name="AccPkgOmittedNotSelected" xml:space="preserve">
+    <value>Cartella non scelta nelle impostazioni dell'invio mensile.</value>
+  </data>
 </root>
