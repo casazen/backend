@@ -240,6 +240,38 @@ public class GuestDocumentLineBuilderTests
     }
 
     /// <summary>
+    /// PROOF TEST: money rule. A stay of a portal the host collects from has no payment of CasaZen (nobody can record one on it): the state of its document is read from what the channel
+    /// manager says the guest paid, «to collect» before that reaches the total and while the channel manager says nothing, «paid» once it does, and it follows the figure when it changes.
+    /// </summary>
+    [Fact]
+    public async Task PortalStayTheHostCollectsFrom_StateFollowsWhatTheChannelManagerSaysWasPaid()
+    {
+        await using var db = NewDb();
+        await SeedItalianOrgAsync(db);
+        var property = await AddPropertyAsync(db, swiss: false);
+        var service = ServiceOf(db, new SwissTouristTaxOptions());
+        var paidInFull = await AddBookingAsync(db, property, BookingSource.BookingCom, 400m, 0m, 0m, 2, companyCollect: false);
+        var paidInPart = await AddBookingAsync(db, property, BookingSource.BookingCom, 400m, 0m, 0m, 2, companyCollect: false);
+        var saysNothing = await AddBookingAsync(db, property, BookingSource.BookingCom, 400m, 0m, 0m, 2, companyCollect: false);
+        await ChangeBookingAsync(db, paidInFull, b => b.OtaPaidAmount = 400m);
+        await ChangeBookingAsync(db, paidInPart, b => b.OtaPaidAmount = 100m);
+
+        var full = await service.CreateDraftAsync(paidInFull, null);
+        var part = await service.CreateDraftAsync(paidInPart, null);
+        var nothing = await service.CreateDraftAsync(saysNothing, null);
+
+        Assert.All(new[] { full, part, nothing }, d => Assert.Equal(FiscalPaymentChannel.Outside, d.PaymentChannel));
+        Assert.Equal(FiscalDocumentPaymentState.Paid, full.PaymentState);
+        Assert.Equal(FiscalDocumentPaymentState.ToCollect, part.PaymentState);
+        Assert.Equal(FiscalDocumentPaymentState.ToCollect, nothing.PaymentState);
+
+        // The state is the one of the moment it is read: the channel manager reports the rest.
+        await ChangeBookingAsync(db, paidInPart, b => b.OtaPaidAmount = 400m);
+        Assert.Equal(FiscalDocumentPaymentState.Paid, (await service.GetAsync(part.Id))!.PaymentState);
+        Assert.Equal(FiscalDocumentPaymentState.ToCollect, (await service.GetAsync(nothing.Id))!.PaymentState);
+    }
+
+    /// <summary>
     /// PROOF TEST: data rule (T01 point 4). A booking that changes after its document was issued never rewrites it: the issued document is byte for byte what it was, and the host
     /// gets one «To do» about the document (<c>fiscal_document_booking_changed</c>, no personal data), raised once whatever the number of changes delivered. A draft follows the booking
     /// (made again from its new price), and the draft of a booking that is no longer active with nothing collected is discarded.

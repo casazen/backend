@@ -188,8 +188,10 @@ public sealed partial class FiscalDocumentService
             return;
         }
 
-        // Not on any more. A portal collected the money: CasaZen does not know what it kept, only the host does.
-        if (issued.PaymentChannel == FiscalPaymentChannel.Portal)
+        // Not on any more. A portal collected the money: CasaZen does not know what it kept, only the host does. The same for a stay of a portal the host collects from when the channel
+        // manager has not said what the guest paid (CasaZen has no payment of such a stay): what nobody knows is never «nothing paid», which would be a credit note of the whole document.
+        if (issued.PaymentChannel == FiscalPaymentChannel.Portal
+            || (FiscalCopy.IsOtaBookingSource(booking.Source) && await OtaPaidOfAsync(booking.Id, ct) is null))
         {
             plan.Todos.Add((issued.Id, FiscalDocumentTodos.BookingChangedReason));
             return;
@@ -314,9 +316,13 @@ public sealed partial class FiscalDocumentService
     private static bool IsActive(BookingFacts booking) =>
         AlloggiatiStatusRules.ActiveBookingStatuses.Contains(booking.Status) && booking.NoShowAt is null;
 
-    /// <summary>The money collected for a booking, net of the refunds.</summary>
+    /// <summary>The money collected for a booking, net of the refunds (for a stay of a portal the host collects from, what the channel manager says the guest paid).</summary>
     private async Task<decimal> CollectedOfAsync(Guid bookingId, CancellationToken ct) =>
         (await CollectedByBookingAsync(db, [bookingId], ct)).GetValueOrDefault(bookingId);
+
+    /// <summary>What the channel manager says the guest paid for a stay of a portal; <c>null</c> when it does not say.</summary>
+    private Task<decimal?> OtaPaidOfAsync(Guid bookingId, CancellationToken ct) =>
+        db.Bookings.AsNoTracking().Where(b => b.Id == bookingId).Select(b => b.OtaPaidAmount).FirstOrDefaultAsync(ct);
 
     /// <summary>A refund of a payment of the booking was asked and Stripe has not confirmed it (pending, or waiting for an action of the guest's bank).</summary>
     private Task<bool> RefundInProgressAsync(Guid bookingId, CancellationToken ct) =>

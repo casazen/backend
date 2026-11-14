@@ -287,6 +287,44 @@ public class FiscalDocumentBookingChangeTests
     }
 
     /// <summary>
+    /// PROOF TEST: money rule (⚖ I12). A stay of a portal the host collects from has no payment of CasaZen: what the guest paid is what the channel manager reports. A deposit of 100.00 of the
+    /// 350.00 credits the difference, a document paid in full is kept, and while the channel manager says nothing nobody knows what was paid, so there is no credit note of the whole
+    /// document by guessing: the host is told and decides.
+    /// </summary>
+    [Fact]
+    public async Task PortalStayTheHostCollectsFrom_IsCreditedByWhatTheChannelManagerSaysWasPaid_AndNeverByGuessing()
+    {
+        await using var db = NewDb();
+        await SeedOrgAsync(db);
+        var property = await AddPropertyAsync(db);
+        var service = ServiceOf(db);
+        var handler = HandlerOf(service);
+
+        var deposit = await AddBookingAsync(db, property, BookingSource.BookingCom, companyCollect: false);
+        var depositDocument = await IssueAsync(service, deposit);
+        Assert.Equal(FiscalPaymentChannel.Outside, depositDocument.PaymentChannel);
+        await ChangeBookingAsync(db, deposit, b => b.OtaPaidAmount = 100m);
+        await CancelAsync(db, deposit);
+        await handler.HandleAsync(BookingEvent(DomainEventType.BookingCancelled, deposit), CancellationToken.None);
+        Assert.Equal(250.00m, Assert.Single(await db.FiscalDocuments.AsNoTracking().Where(d => d.Kind == DocumentKind.CreditNote && d.BookingId == deposit).ToListAsync()).Total);
+
+        var paid = await AddBookingAsync(db, property, BookingSource.BookingCom, companyCollect: false);
+        await IssueAsync(service, paid);
+        await ChangeBookingAsync(db, paid, b => b.OtaPaidAmount = 350m);
+        await CancelAsync(db, paid);
+        await handler.HandleAsync(BookingEvent(DomainEventType.BookingCancelled, paid), CancellationToken.None);
+        Assert.Empty(await db.FiscalDocuments.AsNoTracking().Where(d => d.Kind == DocumentKind.CreditNote && d.BookingId == paid).ToListAsync());
+
+        var silent = await AddBookingAsync(db, property, BookingSource.BookingCom, companyCollect: false);
+        var silentDocument = await IssueAsync(service, silent);
+        await CancelAsync(db, silent);
+        var outcome = await service.ApplyBookingChangeAsync(silent, BookingChange.Cancelled);
+        Assert.Equal((0, 1), (outcome.CreditNotesPrepared, outcome.TodosRaised));
+        Assert.Empty(await db.FiscalDocuments.AsNoTracking().Where(d => d.Kind == DocumentKind.CreditNote && d.BookingId == silent).ToListAsync());
+        Assert.Equal(FiscalDocumentTodos.BookingChangedReason, Assert.Single(await TodosAsync(db), t => t.EntityId == silentDocument.Id).Reason);
+    }
+
+    /// <summary>
     /// A cancelled booking whose refund is still under way cannot be credited yet: the event is delivered again (never consumed with no effect), and the refund that succeeds is the event that
     /// prepares the credit note. A refund of a booking that is still on is its own price: no correction. A draft of a booking that bills nothing any more, with nothing collected, is discarded.
     /// </summary>

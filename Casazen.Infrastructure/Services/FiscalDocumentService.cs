@@ -26,7 +26,8 @@ namespace Casazen.Infrastructure.Services;
 /// imported from Octorate, or a legacy lock to Octorate): never two documents for one stay.</item>
 /// <item><b>The issuer as it was.</b> The issue writes the snapshot of the issuer and the version of the rule on the document; the PDF and the XML of an
 /// issued document read the issuer from the snapshot, never from the profile of today.</item>
-/// <item><b>Payment state.</b> A document is <c>Paid</c> when the completed payments of its booking, net of the refunds, reach its total; else <c>ToCollect</c>.</item>
+/// <item><b>Payment state.</b> A document is <c>Paid</c> when the completed payments of its booking, net of the refunds, reach its total; else <c>ToCollect</c>. For a stay of a portal
+/// the host collects from, the amount the channel manager reports paid stands for the payments (<see cref="CollectedByBookingAsync"/>).</item>
 /// <item><b>Logs</b> carry ids, codes and counts: never a value of the recipient or an amount.</item>
 /// </list>
 /// </remarks>
@@ -871,18 +872,33 @@ public sealed partial class FiscalDocumentService(
         return PaymentStateOf(collected.GetValueOrDefault(bookingId), total);
     }
 
-    /// <summary>The money collected for each booking: its completed and partially refunded payments, net of the refunds.</summary>
+    /// <summary>
+    /// The money collected for each booking: its completed and partially refunded payments, net of the refunds. A stay of a portal the host collects from has no payment of CasaZen (the
+    /// host records none on it and no link is made for it): what the guest paid is what the channel manager reports (<c>OtaPaidAmount</c>, the figure the payment ledger shows too),
+    /// and nothing is collected while it says nothing. A stay the portal collected is the portal's money, never counted here.
+    /// </summary>
     internal static async Task<Dictionary<Guid, decimal>> CollectedByBookingAsync(AppDbContext db, IReadOnlyCollection<Guid> bookingIds, CancellationToken ct)
     {
         if (bookingIds.Count == 0)
             return [];
 
-        return await db.Payments
+        var collected = await db.Payments
             .AsNoTracking()
             .Where(p => bookingIds.Contains(p.BookingId) && (p.Status == PaymentStatus.Completed || p.Status == PaymentStatus.PartiallyRefunded))
             .GroupBy(p => p.BookingId)
             .Select(g => new { BookingId = g.Key, Collected = g.Sum(p => p.Amount - p.RefundedAmount) })
             .ToDictionaryAsync(x => x.BookingId, x => x.Collected, ct);
+
+        var paidToTheHost = await db.Bookings
+            .AsNoTracking()
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
+            .Where(b => bookingIds.Contains(b.Id) && b.OtaPaidAmount != null && b.OtaCompanyCollect != true)
+            .Select(b => new { b.Id, Paid = b.OtaPaidAmount ?? 0m })
+            .ToListAsync(ct);
+        foreach (var stay in paidToTheHost)
+            collected[stay.Id] = collected.GetValueOrDefault(stay.Id) + stay.Paid;
+
+        return collected;
     }
 
     /// <summary>A document is <c>Paid</c> when what was collected for its booking reaches its total, else <c>ToCollect</c>.</summary>

@@ -234,8 +234,8 @@ Italian layout's) and `FiscalDocPdfCh*`, in Italian and English. The Italian lay
   and no no-show): a request, a hold, a cancelled booking or a no-show gets no draft, no number and no lock of the issuer (422 `booking_not_active`). A
   credit note of an issued document is not refused for the state of its booking (it is what is done after a cancellation).
 - The payment state (`Paid` / `ToCollect`) of a document CasaZen issued is the **current** one, computed when it is read (the completed and partially
-  refunded payments of the booking, net of the refunds, against the total) by the document API and by the payment ledger; the value stored with the draft is
-  only a starting point. A document Octorate issued keeps the state Octorate gave it.
+  refunded payments of the booking, net of the refunds, against the total; for a stay of a portal the host collects from, what the channel manager reports paid) by the
+  document API, the export and the payment ledger; the value stored with the draft is only a starting point. A document Octorate issued keeps the state Octorate gave it.
 - The series: the pattern of the profile (`GuestDocumentSeries`, `{year}` is the year of the issue), the year when it has none.
 
 ## Righe del documento e tassa di soggiorno (`GuestDocumentLineBuilder`, E12/F01/US01/T01)
@@ -268,7 +268,7 @@ Example: 2 guests × 3 nights × CHF 2.00 = CHF 12.00, out of VAT.
 |---|---|---|
 | `Portal` | a booking of a portal that collects: `Booking.OtaCompanyCollect` (Octorate `companyCollect`), else `OtaCommissionIncludedInPayments` (the portal catalog), else the portal is in `FiscalDocuments:PortalCollectedChannels` (⚖: Airbnb, Booking.com «Payments by Booking», Expedia Collect, Vrbo) | **Paid** (stored: CasaZen sees none of its payments) |
 | `CasaZen` | any other booking with a payment that went through CasaZen (Stripe) | the current one, from the payments (`Paid` / `ToCollect`) |
-| `Outside` | the agency's own site, pay at the property, manual bookings, a portal the host collects from | «to collect» until the host records a manual payment (`ManualPaymentService`) |
+| `Outside` | the agency's own site, pay at the property, manual bookings, a portal the host collects from | «to collect» until the host records a manual payment (`ManualPaymentService`). **A stay of a portal** has no payment of CasaZen (`ManualPaymentService` refuses it, no payment link is made for it): its collected amount is what the channel manager reports the guest paid (`Booking.OtaPaidAmount`, the figure of the payment ledger), so the document is `Paid` once that reaches the total and `ToCollect` before (and while the channel manager says nothing) |
 
 **When the booking changes.** `IFiscalDocumentService.ApplyBookingChangeAsync` follows a change of the booking: a **draft** is made again from it (or discarded when the booking is no
 longer active and nothing was collected for it; kept with a «To do» when money was collected or when it cannot be made again); an **issued** document is **never** rewritten: it is corrected
@@ -339,7 +339,8 @@ events of one change (the refund and the cancellation) and events delivered out 
   of a booking that is still on is its own price and corrects nothing. A cancelled booking whose refund is still pending is waited for: the event is delivered again
   (`FiscalDocumentChangePendingException`, never consumed with no effect) and the refund that succeeds records `PaymentRefunded`, which prepares the credit note.
 - **A portal collected the money** (`PaymentChannel` `Portal`): CasaZen does not know what the portal kept, so it makes no credit note by guessing: the host gets the «To do»
-  `fiscal_document_booking_changed` and decides.
+  `fiscal_document_booking_changed` and decides. The same for a stay of a portal the host collects from while the channel manager has not said what the guest paid
+  (`Booking.OtaPaidAmount` is `null`): no payment of CasaZen can exist on such a stay, and «nothing known» is never «nothing paid». When it says, that amount is what the guest paid.
 - **Receipts** (the Swiss receipt of an issuer that is not registered, the Italian receipt of a private owner): the correction is a **reversal receipt**: a credit note of the same kind of
   document, in the same series and numbering (a credit note takes the series of its original), with no XML and nothing to send to the SDI.
 - **Each correction is a draft plus a «To do»** (`ReviewFiscalDocument`, reason `fiscal_document_credit_note_to_issue`, about the credit note: «Controlla ed emetti la nota di credito», no personal
