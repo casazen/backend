@@ -30,7 +30,8 @@ public interface IAccountantPackageDeliveryService
     /// <summary>
     /// The package of the month before <paramref name="today"/> for <paramref name="orgId"/>, with the folders its settings chose and the whole of the owner accounting when the organization is on the agency plan (it is
     /// the organization that sends it, not a person; an organization on another plan has none to send), sent to its accountant, once: <see cref="AccountantPackageMonthlyOutcome.AlreadySent"/> when the month is already sent. A failure (the package too large, the storage, the queue, the link secret) is
-    /// recorded in the settings as <c>failed</c> with its code and answered as <see cref="AccountantPackageMonthlyOutcome.Failed"/>, never swallowed: the job fails after it has tried every org, so Hangfire runs it again.
+    /// recorded in the settings as <c>failed</c> with its code and answered as <see cref="AccountantPackageMonthlyOutcome.Failed"/>, never swallowed: the job fails after it has tried every org, so Hangfire runs it again. The package is made before the lock and the settings are read again under it: if their folders are no longer the ones it was made with,
+    /// nothing is stored or queued (<see cref="AccountantPackageMonthlyOutcome.SettingsChanged"/>).
     /// </summary>
     Task<AccountantPackageMonthlyOutcome> SendMonthlyAsync(Guid orgId, DateOnly today, CancellationToken cancellationToken = default);
 
@@ -74,6 +75,9 @@ public enum AccountantPackageMonthlyOutcome
 
     /// <summary>Nothing was sent: the failure is recorded in the settings with its code and the next run tries again.</summary>
     Failed = 5,
+
+    /// <summary>The folders of the settings changed while the package was being made: it would hold folders the organization no longer chose (or lack ones it has just chosen), so it is not stored or queued, nothing is recorded and the next run makes it again.</summary>
+    SettingsChanged = 6,
 }
 
 /// <summary>What <see cref="IAccountantPackageDeliveryService.SendNowAsync"/> sent: the month of the package, and the last instant (UTC) its link opens. No address and no link are in it.</summary>

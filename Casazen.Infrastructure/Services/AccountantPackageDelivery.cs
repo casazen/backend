@@ -19,7 +19,7 @@ namespace Casazen.Infrastructure.Services;
 /// <list type="bullet">
 /// <item><b>The order of a send.</b> What cannot be sent from this environment is known first (the secret of the signed links, the public address of this API, the e-mail provider): nothing is made for it. Then the package
 /// is made outside any lock (<see cref="IAccountantPackageService"/>, in memory: it takes a while and nobody waits for it), and everything else happens under the lock of the org
-/// (<see cref="PostgresAdvisoryLocks.Scope.AccountantPackage"/>, held until the commit): the row is read again, the package is put in the private storage, the e-mail is handed to the queue and the row says which
+/// (<see cref="PostgresAdvisoryLocks.Scope.AccountantPackage"/>, held until the commit): the row is read again (its folders must still be the ones the package was made with: a change in between stops the send, made again at the next run), the package is put in the private storage, the e-mail is handed to the queue and the row says which
 /// month was sent. A monthly send that finds its month already sent stops there, so the month is sent once however many runs reach it. The lock is held while the object is stored (a second or two) so that the nightly
 /// deletion can never remove a package that is being replaced.</item>
 /// <item><b>At least once, never lost.</b> The month is recorded in the same step as the queue: a crash between the queue and the commit sends the e-mail again at the next run rather than losing the month (the same
@@ -93,6 +93,8 @@ public sealed class AccountantPackageDelivery(
                 return AccountantPackageMonthlyOutcome.AlreadySent;
             case DeliveryState.NotConfigured:
                 return AccountantPackageMonthlyOutcome.NotConfigured;
+            case DeliveryState.Changed:
+                return AccountantPackageMonthlyOutcome.SettingsChanged;
             default:
                 if (!delivery.Recorded)
                     await RecordFailureAsync(orgId, period.Key, delivery.Error!, cancellationToken);
@@ -254,6 +256,14 @@ public sealed class AccountantPackageDelivery(
         if (monthly && IsSent(row, key))
             return Delivery.AlreadySent();
 
+        // The package was made, outside the lock, with the folders the settings had when the send began (the access is narrowed to them by the caller). If the organization changed them in between (took a folder out, for
+        // instance), that package holds folders it no longer chose: it is neither stored nor mailed, nothing is recorded, and the next run makes it again with the folders of the settings.
+        if (row.Contents != access.Folders)
+        {
+            logger.LogInformation("The folders of the accountant package {Period} of org {OrgId} changed while it was being made: it is not stored or queued", key, orgId);
+            return Delivery.Changed();
+        }
+
         var now = _clock.GetUtcNow().UtcDateTime;
         try
         {
@@ -383,6 +393,7 @@ public sealed class AccountantPackageDelivery(
         Sent,
         AlreadySent,
         NotConfigured,
+        Changed,
         Failed,
     }
 
@@ -394,6 +405,8 @@ public sealed class AccountantPackageDelivery(
         public static Delivery AlreadySent() => new(DeliveryState.AlreadySent);
 
         public static Delivery NotConfigured() => new(DeliveryState.NotConfigured);
+
+        public static Delivery Changed() => new(DeliveryState.Changed);
 
         public static Delivery Failure(string error, bool recorded = false) => new(DeliveryState.Failed, error, recorded);
     }

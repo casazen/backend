@@ -319,6 +319,46 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Single(_world.Emails.Snapshot());
     }
 
+    /// <summary>
+    /// The folders are read before the package is made and again, with the row, under the lock: an organization that changes them while the package is being made (here it takes the owner invoices out) never has the package it
+    /// did not choose stored or mailed. Nothing is recorded, and the next run makes it with the folders of the settings and sends it once.
+    /// </summary>
+    [Fact]
+    public async Task SendMonthly_WhenTheFoldersChangeWhileThePackageIsBeingMade_NothingIsStoredOrMailed_AndTheNextRunSendsTheNewFolders()
+    {
+        var org = await _world.SeedAsync();
+        var changed = false;
+        _world.Packages
+            .Setup(p => p.BuildAsync(It.IsAny<HostScope>(), It.IsAny<AccountantPackageAccess>(), It.IsAny<AccountantPackagePeriod>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .Callback<HostScope, AccountantPackageAccess, AccountantPackagePeriod, Stream, CancellationToken>((scope, access, period, destination, _) =>
+            {
+                _world.Built.Add((scope, access, period));
+                destination.Write(AccountantPackageDeliveryWorld.ZipBytes);
+                if (!changed)
+                {
+                    // The organization saves other folders while the package is being made.
+                    var row = _world.Db.AccountantPackageSettings.Single(s => s.OrgId == org);
+                    row.Contents = AccountantPackageFolders.Vat | AccountantPackageFolders.Collections;
+                    _world.Db.SaveChanges();
+                    changed = true;
+                }
+            })
+            .ReturnsAsync(new AccountantPackageResult(2, 5, 1024, []));
+
+        Assert.Equal(AccountantPackageMonthlyOutcome.SettingsChanged, await _world.Delivery().SendMonthlyAsync(org, Today));
+
+        var untouched = await _world.RowAsync(org);
+        Assert.Null(untouched.LastSendResult);
+        Assert.Null(untouched.StoredPackagePeriod);
+        Assert.Empty(_world.Emails.Snapshot());
+        Assert.False(await _world.Storage.ExistsAsync(StorageBucket.Private, AccountantPackageDeliveryWorld.KeyOf(org, "2026-10")));
+        Assert.Equal(new[] { org }, await _world.Delivery().DueOrganizationsAsync(Today));
+
+        Assert.Equal(AccountantPackageMonthlyOutcome.Sent, await _world.Delivery().SendMonthlyAsync(org, Today));
+        Assert.Equal(AccountantPackageFolders.Vat | AccountantPackageFolders.Collections, _world.Built[^1].Access.Folders);
+        Assert.Single(_world.Emails.Snapshot());
+    }
+
     [Fact]
     public async Task SendMonthly_AnErrorOfThePackage_IsAFailureWithItsCode_NotASuccessAndNotLost()
     {
