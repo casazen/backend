@@ -5,6 +5,7 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Resources;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Extensions;
 
@@ -22,9 +23,14 @@ public static class FiscalDocumentExtensions
         // Who an invoice of a booking is made out to, with the precedence of its sources (E06/F02/US01/T02).
         services.AddScoped<IInvoiceDataService, InvoiceDataService>();
 
-        // The rules of the documents of each regime, from the section FiscalDocuments. Nothing validates them at startup: a rule that is not complete
-        // only makes issuance refuse (document_rule_not_configured), it never stops the application.
+        // The switches of the section FiscalDocuments (the answer to D34, the import of the Octorate documents).
         services.AddOptions<FiscalDocumentRulesOptions>().Bind(configuration.GetSection(FiscalDocumentRulesOptions.SectionName));
+
+        // The effective-dated catalog of the tax rules, FiscalDocuments:TaxRules (E11/F01/US01/T02), validated at startup: overlapping ranges, a line type
+        // without a rate or an Italian 0% without a nature code stop the application with a clear message. An empty catalog is valid (nothing is issued).
+        services.AddOptions<FiscalTaxRulesOptions>().Bind(configuration.GetSection(FiscalTaxRulesOptions.SectionName)).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<FiscalTaxRulesOptions>, FiscalTaxRulesOptionsValidator>();
+        services.AddSingleton<IFiscalTaxRuleResolver, FiscalTaxRuleResolver>();
 
         // Who issues the documents of an organization and of each booking (E06/F02/US02/T02).
         services.AddScoped<IDocumentIssuerService, DocumentIssuerService>();

@@ -173,3 +173,21 @@ E06/F01/US01) is unchanged.
   portal only once the statement is published.
 - **Rendiconto.** The statement files print «Rendiconto gestionale - non è una fattura», the version, the period, the totals, the payouts and the
   withholding evidence; they carry no fiscal series or number.
+
+## Amendment 2026-11-14 (E11/F01/US01/T01): CasaZen issues again, also agency-to-owner invoices with lines (E14); the port serves every issuer
+
+**The amendment of 2026-11 (above) is superseded** by the decisions of the product owner of 2026-11-14 (P1, P2; `fatturazione/analisi-tecnica.md` §5).
+
+- **CasaZen is always the issuer.** It issues the document of every active booking of every source (direct, manual, the portals through Octorate) and,
+  with epic E14, the invoice of the property manager to each owner, with lines (commission, services and recharges with VAT, advanced expenses outside
+  the VAT), made from a version of the owner statement: a `FiscalDocument` with the purpose `OwnerInvoice`, the same engine, numbering, PDF and XML. The
+  rendiconto stays a non-fiscal management report; the invoice to the owner is a document of its own, linked to the version.
+- **Nobody issues outside CasaZen.** The issuer modes `Octorate` and `Accountant` are retired (kept as numbers for the stored rows, refused by the API);
+  the accountant receives the exports only. A document Octorate issued is imported read-only and never locks the issuer of a booking; it is a document
+  issued elsewhere all the same, so CasaZen issues for every active booking except one that already has such a document (409): never two documents for one
+  stay.
+- **The port serves every issuer.** `ISdiEInvoiceProvider` is the one port toward the SDI for the documents of every issuer CasaZen issues for (the
+  organization today, the owners that issue in Italy with E17); the concrete adapter stays behind its own flag (`SdiSubmission`, E17) and, without
+  credentials, a document stays `to_send`.
+- **The issuer as it was.** Every issued document keeps the snapshot of its issuer and the version of the tax rule it was made with; Switzerland is a
+  country of the issuer like Italy (MWSTG art. 26 document, no XML, no SDI, no stamp duty).

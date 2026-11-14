@@ -109,7 +109,7 @@ public class FiscalDocumentExportNpgsqlTranslationTests
         Mock.Of<IDomainEventRecorder>(),
         Mock.Of<IPdfDocumentRenderer>(),
         new ResxDocumentTexts(),
-        Options.Create(new FiscalDocumentRulesOptions()),
+        Mock.Of<IFiscalTaxRuleResolver>(),
         new FakeTimeProvider(new DateTimeOffset(2026, 11, 12, 10, 0, 0, TimeSpan.Zero)),
         NullLogger<FiscalDocumentService>.Instance);
 

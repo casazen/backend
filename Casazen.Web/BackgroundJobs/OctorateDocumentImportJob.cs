@@ -4,10 +4,11 @@ using Hangfire;
 namespace Casazen.Web.BackgroundJobs;
 
 /// <summary>
-/// The import of the documents Octorate issued (FIS-04, NF-84, E06/F03/US02/T01): every 30 minutes, one run per org whose issuer is Octorate and whose
-/// connection is connected, each accommodation from its own last import (with an overlap). Registered only while <c>Features:OctorateConnector</c> and
-/// <c>Features:OctorateDocumentImport</c> are both on (the service checks them again). Never two runs at once; an org that fails does not stop the others,
-/// and a call Octorate refuses (the static IP whitelist, S7, D24) is logged with ids only and read again at the next run.
+/// The import of the documents Octorate issued (FIS-04, NF-84, E06/F03/US02/T01): every 30 minutes, one run per org whose connection is connected, each
+/// accommodation from its own last import (with an overlap). Registered only while <c>Features:OctorateConnector</c> and
+/// <c>Features:OctorateDocumentImport</c> are both on; the service checks them again and selects no org at all while
+/// <c>FiscalDocuments:ImportOctorateDocuments</c> is false (the default since CasaZen is the only issuer, E11/F01/US01/T01). Never two runs at once; an org
+/// that fails does not stop the others, and a call Octorate refuses (the static IP whitelist, S7, D24) is logged with ids only and read again at the next run.
 /// </summary>
 public class OctorateDocumentImportJob(IOctorateDocumentImportService import, ILogger<OctorateDocumentImportJob> logger)
 {

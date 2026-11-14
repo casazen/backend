@@ -41,8 +41,9 @@ public class FiscalDocumentsRegistrationTests
             .ToList();
         var expected = new List<(Type ServiceType, Type? ImplementationType, ServiceLifetime Lifetime)>
         {
-            // The invoice data of a booking and the issuer of the documents (E06/F02/US01/T02, E06/F02/US02/T02).
+            // The invoice data of a booking, the catalog of the tax rules (E11/F01/US01/T02) and the issuer of the documents (E06/F02/US01/T02, E06/F02/US02/T02).
             (typeof(IInvoiceDataService), typeof(InvoiceDataService), ServiceLifetime.Scoped),
+            (typeof(IFiscalTaxRuleResolver), typeof(FiscalTaxRuleResolver), ServiceLifetime.Singleton),
             (typeof(IDocumentIssuerService), typeof(DocumentIssuerService), ServiceLifetime.Scoped),
 
             // The two consumers of the sync with Octorate (E06/F02/US01/T04): the pre-fill on BookingCreated, then the write-back on InvoiceDataSaved.
@@ -76,29 +77,33 @@ public class FiscalDocumentsRegistrationTests
     }
 
     [Fact]
-    public void AddCasazenFiscalDocuments_BindsTheSectionFiscalDocuments_ToTheOptionsOfTheRules()
+    public void AddCasazenFiscalDocuments_BindsTheSectionFiscalDocuments_ToTheSwitchesAndTheCatalogOfTheTaxRules()
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(
-                new Dictionary<string, string?>
-                {
-                    ["FiscalDocuments:OctorateIssuesAllBookings"] = "true",
-                    ["FiscalDocuments:StampDutyThreshold"] = "80.5",
-                    ["FiscalDocuments:Rules:VatOrdinary:DocumentKind"] = "Invoice",
-                    ["FiscalDocuments:Rules:VatOrdinary:VatRatePercent"] = "0",
-                    ["FiscalDocuments:Rules:VatOrdinary:VatNatureCode"] = "N2.2",
-                })
-            .Build();
+        var settings = new Dictionary<string, string?>
+        {
+            ["FiscalDocuments:OctorateIssuesAllBookings"] = "true",
+            ["FiscalDocuments:ImportOctorateDocuments"] = "true",
+            ["FiscalDocuments:TaxRules:0:Jurisdiction"] = "CH",
+            ["FiscalDocuments:TaxRules:0:Regime"] = "SwissNotRegistered",
+            ["FiscalDocuments:TaxRules:0:ValidFrom"] = "2024-01-01",
+            ["FiscalDocuments:TaxRules:0:Version"] = "ch-novat-test.1",
+            ["FiscalDocuments:TaxRules:0:DocumentKind"] = "Receipt",
+        };
+        foreach (var type in Enum.GetValues<FiscalLineType>())
+            settings[$"FiscalDocuments:TaxRules:0:Rates:{type}:Percent"] = "0";
         var services = new ServiceCollection();
-        services.AddCasazenFiscalDocuments(configuration);
+        services.AddCasazenFiscalDocuments(new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
 
         using var provider = services.BuildServiceProvider();
         var options = provider.GetRequiredService<IOptions<FiscalDocumentRulesOptions>>().Value;
-
         Assert.True(options.OctorateIssuesAllBookings);
-        Assert.Equal(80.5m, options.StampDutyThreshold);
-        Assert.True(options.RuleOf(DocumentRegime.VatOrdinary)?.IsConfigured);
-        Assert.Null(options.RuleOf(DocumentRegime.PrivatePerson));
+        Assert.True(options.ImportOctorateDocuments);
+
+        var rule = provider.GetRequiredService<IFiscalTaxRuleResolver>()
+            .Resolve("CH", DocumentRegime.SwissNotRegistered, StayVatTreatment.Standard, CleaningFeeTreatment.FollowsStay, new DateOnly(2026, 11, 18));
+        Assert.Equal(("ch-novat-test.1", Casazen.Core.Options.FiscalDocumentKind.Receipt), (rule.Version, rule.DocumentKind));
+        Assert.Null(provider.GetRequiredService<IFiscalTaxRuleResolver>()
+            .TryResolve("IT", DocumentRegime.VatOrdinary, StayVatTreatment.Standard, CleaningFeeTreatment.FollowsStay, new DateOnly(2026, 11, 18)));
     }
 
     [Fact]

@@ -5446,16 +5446,22 @@ Once active, the function works on the data the channel manager already holds.</
     <value>Some data of the issuer is missing to issue with CasaZen: complete it and try again.</value>
   </data>
   <data name="DocumentBookingNotDirect" xml:space="preserve">
-    <value>CasaZen does not issue documents for bookings that come from a portal, only for direct ones.</value>
+    <value>This document is not linked to a booking: CasaZen prepares and issues it only from a booking.</value>
   </data>
   <data name="DocumentIssuerConflict" xml:space="preserve">
     <value>The documents of this booking belong to another issuer already: a booking has only one issuer.</value>
   </data>
   <data name="DocumentRuleNotConfigured" xml:space="preserve">
-    <value>The document rules for your regime have not been approved yet: nothing can be issued until they are.</value>
+    <value>There is no tax rule for the country and the regime of the issuer at the date of the stay: nothing can be issued until there is one.</value>
   </data>
   <data name="IssuerFieldInvalid" xml:space="preserve">
     <value>A field of the issuer data is not valid or is too long: check it and try again.</value>
+  </data>
+  <data name="IssuerModeRetired" xml:space="preserve">
+    <value>This mode is no longer available: CasaZen always issues the fiscal documents. The accountant receives the exports.</value>
+  </data>
+  <data name="IssuerRegimeCountryMismatch" xml:space="preserve">
+    <value>The regime chosen is not one of the country of the issuer: choose a Swiss regime for Switzerland and an Italian one for Italy.</value>
   </data>
   <data name="FiscalSettingsNeedWholeOrg" xml:space="preserve">
     <value>Only someone who manages every property of the organization can change who issues the documents.</value>
@@ -6120,6 +6126,30 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="FiscalDocPdfCourtesyCopy" xml:space="preserve">
     <value>Courtesy copy of the electronic invoice: the document valid for tax purposes is the XML file sent to the Exchange System.</value>
   </data>
+  <data name="FiscalDocPdfChVatNumber" xml:space="preserve">
+    <value>VAT no. {0} VAT</value>
+  </data>
+  <data name="FiscalDocPdfChStayPeriod" xml:space="preserve">
+    <value>Stay from {0} to {1}</value>
+  </data>
+  <data name="FiscalDocPdfChProperty" xml:space="preserve">
+    <value>Accommodation: {0}</value>
+  </data>
+  <data name="FiscalDocPdfChColRate" xml:space="preserve">
+    <value>VAT rate</value>
+  </data>
+  <data name="FiscalDocPdfChNotVatRegistered" xml:space="preserve">
+    <value>Not subject to VAT</value>
+  </data>
+  <data name="FiscalDocPdfChPaidPortal" xml:space="preserve">
+    <value>Paid through the portal</value>
+  </data>
+  <data name="FiscalDocPdfChPaid" xml:space="preserve">
+    <value>Paid</value>
+  </data>
+  <data name="FiscalDocPdfChToCollect" xml:space="preserve">
+    <value>To be collected</value>
+  </data>
   <data name="FiscalDocumentNotFound" xml:space="preserve">
     <value>Fiscal document not found.</value>
   </data>
@@ -6137,6 +6167,9 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="FiscalDocumentAlreadyIssued" xml:space="preserve">
     <value>This booking already has an issued document: issuing another one needs a full credit note first.</value>
+  </data>
+  <data name="FiscalDocumentDraftOutdated" xml:space="preserve">
+    <value>The tax rules or the data of the issuer have changed since the draft was prepared: refresh it and check the amounts again before issuing.</value>
   </data>
   <data name="FiscalDocumentBookingNotActive" xml:space="preserve">
     <value>The booking is not active (a request, cancelled or a no-show): no fiscal document is issued for it.</value>
@@ -6161,6 +6194,9 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="FiscalDocLineTouristTax" xml:space="preserve">
     <value>Tourist tax collected on behalf of the municipality</value>
+  </data>
+  <data name="FiscalDocLineTouristTaxCh" xml:space="preserve">
+    <value>Tourist tax (not subject to VAT)</value>
   </data>
   <data name="FiscalDocLineCredit" xml:space="preserve">
     <value>Credit of document {0}: {1}</value>

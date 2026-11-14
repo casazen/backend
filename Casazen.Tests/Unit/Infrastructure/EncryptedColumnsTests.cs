@@ -37,8 +37,9 @@ public class EncryptedColumnsTests
                 "BookingInvoiceData.VatNumber:Casazen.BookingInvoiceData",
                 "DocumentImage.BackImageUrl:Casazen.DocumentImage",
                 "DocumentImage.FrontImageUrl:Casazen.DocumentImage",
-                // NF-83: the recipient snapshot of a fiscal document and its FatturaPA XML (E06/F01/US02/T01).
+                // NF-83: the recipient snapshot of a fiscal document and its FatturaPA XML (E06/F01/US02/T01), and the snapshot of its issuer (E11/F01/US01/T01).
                 "FiscalDocument.FatturaPaXml:Casazen.FiscalDocument",
+                "FiscalDocument.IssuerSnapshot:Casazen.FiscalDocument",
                 "FiscalDocument.RecipientAddressCivic:Casazen.FiscalDocument",
                 "FiscalDocument.RecipientAddressStreet:Casazen.FiscalDocument",
                 "FiscalDocument.RecipientCity:Casazen.FiscalDocument",
@@ -64,6 +65,9 @@ public class EncryptedColumnsTests
                 // ADR-023-R1: the OAuth tokens of the Octorate connection of an organization.
                 "OctorateConnection.EncryptedAccessToken:Casazen.Octorate.OAuth",
                 "OctorateConnection.EncryptedRefreshToken:Casazen.Octorate.OAuth",
+                // E11/F01/US01/T01: the IBAN and the QR-IBAN of the issuer of an organization.
+                "OrgFiscalIssuerProfile.Iban:Casazen.OrgFiscalIssuerProfile",
+                "OrgFiscalIssuerProfile.QrIban:Casazen.OrgFiscalIssuerProfile",
                 "OtaIntegration.ApiKey:Casazen.OtaIntegration.Secrets",
                 "OtaIntegration.ApiSecret:Casazen.OtaIntegration.Secrets",
                 // ADR-032-R3: the words of the conversations of the guests with the channels, copied from the channel manager.

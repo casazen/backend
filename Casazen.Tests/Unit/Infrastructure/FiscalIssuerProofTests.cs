@@ -75,7 +75,7 @@ public class FiscalIssuerProofTests
     private static OrgFiscalIssuerProfile NewProfile(Guid orgId, string legalName) => new()
     {
         OrgId = orgId,
-        IssuerMode = DocumentIssuerMode.CasaZenDirectOnly,
+        IssuerMode = DocumentIssuerMode.CasaZen,
         DocumentRegime = DocumentRegime.VatOrdinary,
         LegalName = legalName,
         CountryCode = "IT",

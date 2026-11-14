@@ -5446,16 +5446,22 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>Mancano dei dati dell'emittente per emettere con CasaZen: completali e riprova.</value>
   </data>
   <data name="DocumentBookingNotDirect" xml:space="preserve">
-    <value>CasaZen non emette documenti per le prenotazioni che arrivano da un portale, solo per quelle dirette.</value>
+    <value>Questo documento non è collegato a una prenotazione: CasaZen lo prepara e lo emette solo a partire da una prenotazione.</value>
   </data>
   <data name="DocumentIssuerConflict" xml:space="preserve">
     <value>I documenti di questa prenotazione sono già di un altro emittente: una prenotazione ha un solo emittente.</value>
   </data>
   <data name="DocumentRuleNotConfigured" xml:space="preserve">
-    <value>Le regole del documento per il tuo regime non sono ancora state approvate: finché non lo sono, non si può emettere.</value>
+    <value>Non c'è una regola fiscale per il paese e il regime dell'emittente alla data del soggiorno: finché non c'è, non si può emettere.</value>
   </data>
   <data name="IssuerFieldInvalid" xml:space="preserve">
     <value>Un dato dell'emittente non è valido o è troppo lungo: controllalo e riprova.</value>
+  </data>
+  <data name="IssuerModeRetired" xml:space="preserve">
+    <value>Questa modalità non è più disponibile: i documenti fiscali li emette sempre CasaZen. Il commercialista riceve gli export.</value>
+  </data>
+  <data name="IssuerRegimeCountryMismatch" xml:space="preserve">
+    <value>Il regime scelto non è quello del paese dell'emittente: per la Svizzera scegli un regime svizzero, per l'Italia uno italiano.</value>
   </data>
   <data name="FiscalSettingsNeedWholeOrg" xml:space="preserve">
     <value>Solo chi gestisce tutti gli immobili dell'organizzazione può cambiare chi emette i documenti.</value>
@@ -6120,6 +6126,30 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocPdfCourtesyCopy" xml:space="preserve">
     <value>Copia di cortesia della fattura elettronica: il documento valido ai fini fiscali è il file XML trasmesso al Sistema di Interscambio.</value>
   </data>
+  <data name="FiscalDocPdfChVatNumber" xml:space="preserve">
+    <value>N. IVA {0} IVA</value>
+  </data>
+  <data name="FiscalDocPdfChStayPeriod" xml:space="preserve">
+    <value>Soggiorno dal {0} al {1}</value>
+  </data>
+  <data name="FiscalDocPdfChProperty" xml:space="preserve">
+    <value>Alloggio: {0}</value>
+  </data>
+  <data name="FiscalDocPdfChColRate" xml:space="preserve">
+    <value>Aliquota IVA</value>
+  </data>
+  <data name="FiscalDocPdfChNotVatRegistered" xml:space="preserve">
+    <value>Non soggetto all'IVA</value>
+  </data>
+  <data name="FiscalDocPdfChPaidPortal" xml:space="preserve">
+    <value>Pagata tramite il portale</value>
+  </data>
+  <data name="FiscalDocPdfChPaid" xml:space="preserve">
+    <value>Pagata</value>
+  </data>
+  <data name="FiscalDocPdfChToCollect" xml:space="preserve">
+    <value>Da incassare</value>
+  </data>
   <data name="FiscalDocumentNotFound" xml:space="preserve">
     <value>Documento fiscale non trovato.</value>
   </data>
@@ -6137,6 +6167,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="FiscalDocumentAlreadyIssued" xml:space="preserve">
     <value>Per questa prenotazione esiste già un documento emesso: per emetterne un altro serve prima una nota di credito totale.</value>
+  </data>
+  <data name="FiscalDocumentDraftOutdated" xml:space="preserve">
+    <value>Le regole fiscali o i dati dell'emittente sono cambiati da quando è stata preparata la bozza: aggiornala e controlla di nuovo gli importi prima di emettere.</value>
   </data>
   <data name="FiscalDocumentBookingNotActive" xml:space="preserve">
     <value>La prenotazione non è attiva (richiesta, annullata o no-show): non si emette un documento fiscale per questa prenotazione.</value>
@@ -6161,6 +6194,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="FiscalDocLineTouristTax" xml:space="preserve">
     <value>Imposta di soggiorno riscossa per conto del comune</value>
+  </data>
+  <data name="FiscalDocLineTouristTaxCh" xml:space="preserve">
+    <value>Tassa di soggiorno (non soggetta all'IVA)</value>
   </data>
   <data name="FiscalDocLineCredit" xml:space="preserve">
     <value>Storno del documento {0}: {1}</value>

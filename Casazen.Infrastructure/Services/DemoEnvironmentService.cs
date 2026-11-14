@@ -485,6 +485,7 @@ public class DemoEnvironmentService(
             Province = template.Province,
             CountryCode = OrgFiscalIssuerProfile.DefaultCountryCode,
             FatturaPaRegimeCode = template.FatturaPaRegimeCode,
+            VatRegistered = FiscalDocumentRules.IsVatRegisteredRegime(template.Regime),
             ConfirmedAt = now.AddDays(template.ConfirmedOffsetDays),
             UpdatedAt = now,
             UpdatedByUserId = ownerId,

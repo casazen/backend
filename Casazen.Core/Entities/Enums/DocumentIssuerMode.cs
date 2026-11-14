@@ -1,18 +1,21 @@
 namespace Casazen.Core.Entities.Enums;
 
 /// <summary>
-/// Who issues the fiscal documents of an organization (<see cref="OrgFiscalIssuerProfile.IssuerMode"/>, FIS-02, PO-05, E06/F02/US02/T01). A booking
-/// never has two issuers: where Octorate issues, CasaZen reads and does not issue. Stored as a number: a later task appends a value with the next
-/// number, an existing one never changes.
+/// Who issues the fiscal documents of an organization (<see cref="OrgFiscalIssuerProfile.IssuerMode"/>, FIS-02). Since the decision of the PO of
+/// 2026-11-14 (P1, P2) CasaZen is always the issuer: <see cref="CasaZen"/> is the only mode the API accepts, every stored profile was moved to it by the
+/// migration <c>AddSoleIssuerModel</c>, and the other two members are kept only so the numbers of old rows stay readable. Stored as a number: a value
+/// never changes, a new one takes the next number.
 /// </summary>
 public enum DocumentIssuerMode
 {
-    /// <summary>The channel manager issues the documents and CasaZen reads them (FIS-04). The recommended choice only when Octorate can issue every booking (D34).</summary>
+    /// <summary>The channel manager issued the documents and CasaZen read them. Retired: CasaZen issues and an Octorate document never blocks it.</summary>
+    [Obsolete("Retired 2026-11-14, kept for stored rows: CasaZen is always the issuer.")]
     Octorate = 1,
 
-    /// <summary>CasaZen issues, for the direct bookings only (the ones of the CasaZen site and of the agency's booking engine); never for an OTA booking.</summary>
-    CasaZenDirectOnly = 2,
+    /// <summary>CasaZen issues the documents of every booking, whatever its source (formerly «direct bookings only», the same number).</summary>
+    CasaZen = 2,
 
-    /// <summary>Nobody issues here: the accountant takes care of the documents.</summary>
+    /// <summary>Nobody issued in CasaZen and the accountant took care of the documents. Retired: the accountant only receives the exports.</summary>
+    [Obsolete("Retired 2026-11-14, kept for stored rows: the accountant only receives the exports.")]
     Accountant = 3,
 }

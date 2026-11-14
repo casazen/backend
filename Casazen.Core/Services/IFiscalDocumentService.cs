@@ -34,7 +34,11 @@ public interface IFiscalDocumentService
     /// <summary>The draft discarded: no number is consumed.</summary>
     Task DiscardDraftAsync(Guid documentId, CancellationToken ct = default);
 
-    /// <summary>The draft issued (see the remarks); 422 <c>document_confirmation_required</c> without <paramref name="confirm"/>.</summary>
+    /// <summary>
+    /// The draft issued (see the remarks); 422 <c>document_confirmation_required</c> without <paramref name="confirm"/>, and 409 <c>document_draft_outdated</c>
+    /// when the tax rule, the regime, the country or a treatment of the issuer changed since the draft was made (the amounts the host confirmed would not be
+    /// the ones of the rule the document is issued with): <see cref="RefreshDraftAsync"/> first.
+    /// </summary>
     Task<FiscalDocument> IssueAsync(Guid documentId, bool confirm, CancellationToken ct = default);
 
     /// <summary>
@@ -115,6 +119,10 @@ public static class FiscalDocumentErrors
     public const string BookingNotActive = "booking_not_active";
     public const string AlreadyIssued = "document_already_issued";
     public const string NotDraft = "document_not_draft";
+
+    /// <summary>409: the tax rule (or the regime, the country, a treatment of the issuer) changed since the draft was made: refresh it before issuing.</summary>
+    public const string DraftOutdated = "document_draft_outdated";
+
     public const string CreditAmountExceeds = "credit_amount_exceeds";
     public const string ConfirmationRequired = "document_confirmation_required";
     public const string ReadOnly = "document_read_only";

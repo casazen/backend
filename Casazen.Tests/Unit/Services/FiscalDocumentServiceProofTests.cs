@@ -23,8 +23,9 @@ using RuleKind = Casazen.Core.Options.FiscalDocumentKind;
 namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
-/// E06/F01/US01/T01 (NF-83, NF-82, NF-84): the documents CasaZen issues for a direct booking are cent-accurate, never issued for an OTA booking or a
-/// booking locked to Octorate, immutable once issued, credited never above the original, and the documents imported from Octorate are read-only.
+/// E06/F01/US01/T01, E11/F01/US01/T01 (NF-83, NF-82, NF-84, NF-112): the documents CasaZen issues for every active booking (the portals included) are
+/// cent-accurate, never issued for a booking a legacy row locked to Octorate, immutable once issued (the issuer included: the snapshot), credited never
+/// above the original, and the documents imported from Octorate are read-only.
 /// </summary>
 public class FiscalDocumentServiceProofTests
 {
@@ -61,28 +62,85 @@ public class FiscalDocumentServiceProofTests
         Assert.Equal(BookingDocumentIssuerKind.CasaZen, (await db.BookingDocumentIssuers.SingleAsync()).Issuer);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (replaces «an OTA booking is never issued by CasaZen»). A booking of a portal imported through Octorate gets a CasaZen draft
+    /// and is issued, with its number and the lock of CasaZen; a booking a legacy row locked to Octorate is still refused (it was issued there), and with
+    /// the issuance off nothing is made.
+    /// </summary>
     [Theory]
     [InlineData(BookingSource.BookingCom)]
     [InlineData(BookingSource.Airbnb)]
     [InlineData(BookingSource.OtherChannel)]
-    public async Task FiscalDocument_OtaBooking_NeverIssuedByCasazen_Test(BookingSource source)
+    public async Task FiscalDocument_PortalBooking_IsIssuedByCasazen_Test(BookingSource source)
     {
         await using var db = NewDb();
-        var ota = await SeedAsync(db, source);
-        var direct = await SeedBookingAsync(db, BookingSource.Direct);
-        db.BookingDocumentIssuers.Add(new BookingDocumentIssuer { OrgId = OrgId, BookingId = direct, Issuer = BookingDocumentIssuerKind.Octorate, LockedAt = Now.UtcDateTime });
+        var portal = await SeedAsync(db, source);
+        var legacy = await SeedBookingAsync(db, BookingSource.Direct);
+        db.BookingDocumentIssuers.Add(new BookingDocumentIssuer { OrgId = OrgId, BookingId = legacy, Issuer = BookingDocumentIssuerKind.Octorate, LockedAt = Now.UtcDateTime });
         await db.SaveChangesAsync();
-        var service = Service(db);
-
-        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => service.CreateDraftAsync(ota, null));
-        Assert.Equal(FiscalDocumentErrors.BookingNotDirect, refused.Code);
-        var locked = await Assert.ThrowsAsync<DomainConflictException>(() => service.CreateDraftAsync(direct, null));
-        Assert.Equal(FiscalDocumentErrors.IssuerConflict, locked.Code);
 
         var off = Service(db, flags: new TestFeatureFlags());
-        var notAvailable = await Assert.ThrowsAsync<DomainRuleException>(() => off.CreateDraftAsync(ota, null));
-        Assert.Equal(FiscalDocumentErrors.BookingNotDirect, notAvailable.Code);
+        var notAvailable = await Assert.ThrowsAsync<DomainRuleException>(() => off.CreateDraftAsync(portal, null));
+        Assert.Equal(FiscalDocumentErrors.IssuanceNotAvailable, notAvailable.Code);
         Assert.Empty(await db.FiscalDocuments.ToListAsync());
+
+        var service = Service(db);
+        var locked = await Assert.ThrowsAsync<DomainConflictException>(() => service.CreateDraftAsync(legacy, null));
+        Assert.Equal(FiscalDocumentErrors.IssuerConflict, locked.Code);
+
+        var draft = await service.CreateDraftAsync(portal, "auth0|host");
+        Assert.Equal(362.00m, draft.Total);
+        var issued = await service.IssueAsync(draft.Id, confirm: true);
+
+        Assert.Equal(FiscalDocumentStatus.Issued, issued.Status);
+        Assert.Equal("2026/1", issued.Number);
+        Assert.Equal(BookingDocumentIssuerKind.CasaZen, (await db.BookingDocumentIssuers.SingleAsync(i => i.BookingId == portal)).Issuer);
+        Assert.Single(await db.FiscalDocuments.Where(d => d.BookingId == legacy || d.BookingId == portal).ToListAsync());
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule. An issued document keeps the issuer it was issued with: renaming the issuer (and moving it) after the issue changes neither
+    /// the stored snapshot nor what the PDF of the document shows, while a new draft shows the issuer of today. The document also keeps its purpose, its
+    /// property, its period, the version of its rule and its payment channel.
+    /// </summary>
+    [Fact]
+    public async Task FiscalDocument_IssuedPdfUsesSnapshot_Test()
+    {
+        await using var db = NewDb();
+        var booking = await SeedAsync(db, BookingSource.Direct);
+        var second = await SeedBookingAsync(db, BookingSource.Manual);
+        var service = Service(db);
+        var issued = await service.IssueAsync((await service.CreateDraftAsync(booking, null)).Id, confirm: true);
+
+        var stored = await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == issued.Id);
+        var snapshot = FiscalIssuerSnapshot.FromJson(stored.IssuerSnapshot);
+        Assert.NotNull(snapshot);
+        Assert.Equal("TEST Casa Vacanze Srl", snapshot.LegalName);
+        Assert.Equal("01234567897", snapshot.VatNumber);
+        Assert.Equal(FiscalDocumentPurpose.GuestStay, stored.Purpose);
+        Assert.Equal(FiscalPaymentChannel.Unknown, stored.PaymentChannel);
+        Assert.False(string.IsNullOrWhiteSpace(stored.RuleVersion));
+        Assert.Equal(await db.Bookings.Where(b => b.Id == booking).Select(b => b.PropertyId).SingleAsync(), stored.PropertyId);
+        Assert.Equal(new DateOnly(2026, 11, 1), stored.ServicePeriodFrom);
+        Assert.Equal(new DateOnly(2026, 11, 4), stored.ServicePeriodTo);
+
+        // The issuer is renamed and moves.
+        var profile = await db.OrgFiscalIssuerProfiles.SingleAsync();
+        profile.LegalName = "TEST Nuovo Nome Srl";
+        profile.AddressStreet = "Via Nuova";
+        await db.SaveChangesAsync();
+
+        var issuedPdf = TextOf(await service.PdfContentAsync(issued.Id, "it"));
+        Assert.Contains("TEST Casa Vacanze Srl", issuedPdf, StringComparison.Ordinal);
+        Assert.Contains("Via di Test", issuedPdf, StringComparison.Ordinal);
+        Assert.DoesNotContain("TEST Nuovo Nome Srl", issuedPdf, StringComparison.Ordinal);
+        Assert.DoesNotContain("Via Nuova", issuedPdf, StringComparison.Ordinal);
+        Assert.Equal(stored.IssuerSnapshot, (await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == issued.Id)).IssuerSnapshot);
+
+        // A draft has no snapshot yet: it shows the issuer of today.
+        var draft = await service.CreateDraftAsync(second, null);
+        Assert.Null(draft.IssuerSnapshot);
+        Assert.Contains("TEST Nuovo Nome Srl", TextOf(await service.PdfContentAsync(draft.Id, "it")), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -126,6 +184,82 @@ public class FiscalDocumentServiceProofTests
         var credited = await db.FiscalDocuments.Where(d => d.CreditedDocumentId == original.Id).SumAsync(d => d.Total);
         Assert.Equal(original.Total, credited);
         await Assert.ThrowsAsync<DomainRuleException>(() => service.CreateCreditNoteAsync(original.Id, 0.01m, "TEST", confirm: true, null));
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule (E11/F01/US01/T01, E14). Only the credit note that completes the credit marks the original <c>CreditedInFull</c> (an owner invoice
+    /// credited in full frees its owner and period): a partial one does not, one refused for exceeding the original marks nothing, the last part does, and
+    /// so does a single note of the whole document.
+    /// </summary>
+    [Fact]
+    public async Task FiscalDocument_CreditNote_MarksTheOriginalCreditedInFullOnlyWhenItCompletesTheCredit_Test()
+    {
+        await using var db = NewDb();
+        var booking = await SeedAsync(db, BookingSource.Direct);
+        var wholeBooking = await SeedBookingAsync(db, BookingSource.Manual);
+        var service = Service(db);
+        var original = await service.IssueAsync((await service.CreateDraftAsync(booking, null)).Id, confirm: true);
+        var whole = await service.IssueAsync((await service.CreateDraftAsync(wholeBooking, null)).Id, confirm: true);
+        Assert.False(await IsCreditedInFullAsync(db, original.Id));
+
+        await service.CreateCreditNoteAsync(original.Id, 100m, "TEST rimborso parziale", confirm: true, null);
+        Assert.False(await IsCreditedInFullAsync(db, original.Id));
+
+        await Assert.ThrowsAsync<DomainRuleException>(() => service.CreateCreditNoteAsync(original.Id, 262.01m, "TEST", confirm: true, null));
+        Assert.False(await IsCreditedInFullAsync(db, original.Id));
+
+        await service.CreateCreditNoteAsync(original.Id, null, "TEST storno del residuo", confirm: true, null);
+        Assert.True(await IsCreditedInFullAsync(db, original.Id));
+
+        // One note of the whole document completes the credit at once; the other documents are untouched.
+        Assert.False(await IsCreditedInFullAsync(db, whole.Id));
+        await service.CreateCreditNoteAsync(whole.Id, null, "TEST storno totale", confirm: true, null);
+        Assert.True(await IsCreditedInFullAsync(db, whole.Id));
+        Assert.Equal(2, await db.FiscalDocuments.AsNoTracking().CountAsync(d => d.CreditedInFull));
+    }
+
+    private static async Task<bool> IsCreditedInFullAsync(AppDbContext db, Guid documentId) =>
+        (await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == documentId)).CreditedInFull;
+
+    /// <summary>
+    /// PROOF TEST: money and data rule. A draft is issued only with the rule it was made with: when a treatment of the issuer (the cleaning with the stay or as a
+    /// service) or its regime changes after the draft, the amounts the host confirmed are the old rule's while the XML, the snapshot and the layout would be the
+    /// new one's, so issuing is refused (409 <c>document_draft_outdated</c>, nothing is numbered); a draft that is refreshed takes the amounts of the new rule
+    /// and is issued.
+    /// </summary>
+    [Fact]
+    public async Task FiscalDocument_DraftOfAnotherRule_IsNotIssued_UntilItIsRefreshed_Test()
+    {
+        await using var db = NewDb();
+        var booking = await SeedAsync(db, BookingSource.Direct);
+        var service = Service(db);
+        var draft = await service.CreateDraftAsync(booking, null);
+        Assert.Equal("it-ordinary-2026.1", draft.RuleVersion);
+        Assert.Equal(31.82m, draft.VatAmount);
+
+        // A treatment changes: the cleaning is now a service at 22% instead of following the stay at 10%.
+        var profile = await db.OrgFiscalIssuerProfiles.SingleAsync();
+        profile.CleaningFeeTreatment = CleaningFeeTreatment.Service;
+        await db.SaveChangesAsync();
+
+        var outdated = await Assert.ThrowsAsync<DomainConflictException>(() => service.IssueAsync(draft.Id, confirm: true));
+        Assert.Equal(FiscalDocumentErrors.DraftOutdated, outdated.Code);
+        Assert.Empty(await db.FiscalNumberSequences.ToListAsync());
+        Assert.Equal(FiscalDocumentStatus.Draft, (await db.FiscalDocuments.AsNoTracking().SingleAsync()).Status);
+
+        // Refreshed, the draft has the amounts of the new rule, and it is issued with them.
+        var refreshed = await service.RefreshDraftAsync(draft.Id);
+        Assert.Equal(36.29m, refreshed.VatAmount);
+        var issued = await service.IssueAsync(draft.Id, confirm: true);
+        Assert.Equal((FiscalDocumentStatus.Issued, 36.29m, 362.00m), (issued.Status, issued.VatAmount, issued.Total));
+
+        // The regime changes after another draft: a private person gives a receipt, not the invoice the draft is.
+        var second = await SeedBookingAsync(db, BookingSource.Manual);
+        var draftOfAnInvoice = await service.CreateDraftAsync(second, null);
+        profile.DocumentRegime = DocumentRegime.PrivatePerson;
+        await db.SaveChangesAsync();
+        var changed = await Assert.ThrowsAsync<DomainConflictException>(() => service.IssueAsync(draftOfAnInvoice.Id, confirm: true));
+        Assert.Equal(FiscalDocumentErrors.DraftOutdated, changed.Code);
     }
 
     /// <summary>A booking that is not active owes no document: no draft, no number, no lock of the issuer (the one definition of an active booking).</summary>
@@ -216,6 +350,52 @@ public class FiscalDocumentServiceProofTests
         Assert.Single(await db.FiscalDocuments.ToListAsync());
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (never two documents for one stay). CasaZen issues for every booking of every source except one that already has a document issued
+    /// elsewhere: a document imported from Octorate (the import is off by default) refuses the draft (409 <c>document_already_issued</c>) and numbers nothing,
+    /// while a proforma imported from Octorate (no fiscal document) holds nothing and a booking with no document at all is issued. A booking a legacy row
+    /// locked to Octorate is refused too (409 <c>document_issuer_conflict</c>, see <c>FiscalDocument_PortalBooking_IsIssuedByCasazen_Test</c>).
+    /// </summary>
+    [Fact]
+    public async Task FiscalDocument_BookingWithADocumentIssuedElsewhere_IsNotIssuedAgain_Test()
+    {
+        await using var db = NewDb();
+        var imported = await SeedAsync(db, BookingSource.BookingCom);
+        var withProforma = await SeedBookingAsync(db, BookingSource.Airbnb);
+        var free = await SeedBookingAsync(db, BookingSource.Manual);
+        db.FiscalDocuments.AddRange(
+            ImportedDocument(imported, DocumentKind.Invoice, "D-1"),
+            ImportedDocument(withProforma, DocumentKind.Proforma, "D-2"));
+        await db.SaveChangesAsync();
+        var service = Service(db);
+
+        var refused = await Assert.ThrowsAsync<DomainConflictException>(() => service.CreateDraftAsync(imported, null));
+        Assert.Equal(FiscalDocumentErrors.AlreadyIssued, refused.Code);
+        Assert.Empty(await db.FiscalNumberSequences.ToListAsync());
+
+        foreach (var booking in new[] { withProforma, free })
+        {
+            var issued = await service.IssueAsync((await service.CreateDraftAsync(booking, null)).Id, confirm: true);
+            Assert.Equal(FiscalDocumentStatus.Issued, issued.Status);
+            Assert.Equal(FiscalDocumentSource.CasaZen, issued.Source);
+        }
+    }
+
+    /// <summary>A document Octorate issued, imported read-only and linked to a booking of the org.</summary>
+    private static FiscalDocument ImportedDocument(Guid bookingId, DocumentKind kind, string octorateId) => new()
+    {
+        OrgId = OrgId,
+        BookingId = bookingId,
+        Source = FiscalDocumentSource.Octorate,
+        Kind = kind,
+        Status = FiscalDocumentStatus.Issued,
+        Number = $"OCT/{octorateId}",
+        Currency = "EUR",
+        Total = 120m,
+        OctorateDocumentId = octorateId,
+        SdiStatus = FiscalDocumentSdiStatuses.Unknown,
+    };
+
     [Fact]
     public async Task Issue_WithoutConfirmation_IsRefused_AndAReceiptHasNoXml()
     {
@@ -236,17 +416,70 @@ public class FiscalDocumentServiceProofTests
         await Assert.ThrowsAsync<NotFoundException>(() => service.GetXmlAsync(receipt.Id));
     }
 
-    private static string Snapshot(FiscalDocument d) =>
-        string.Join('|', d.Number, d.Status, d.TaxableBase, d.VatAmount, d.StampDuty, d.Total, d.RecipientName, d.RecipientFiscalCode,
-            string.Join(',', d.Lines.OrderBy(l => l.LineNumber).Select(l => $"{l.LineNumber}:{l.Description}:{l.TotalPrice}:{l.VatRatePercent}")));
+    /// <summary>
+    /// PROOF TEST: data rule. The credit note of a receipt (an issuer without a VAT number, whose rule gives a receipt) is no electronic invoice: the XML builder
+    /// is never called, the SDI state is <c>not_applicable</c>, and its PDF keeps the nature codes (N2.2) internal and carries no courtesy copy. The credit note
+    /// of an invoice stays an electronic one (XML built, <c>to_send</c>).
+    /// </summary>
+    [Fact]
+    public async Task FiscalDocument_CreditNoteOfAReceipt_IsNoElectronicInvoice_Test()
+    {
+        await using var db = NewDb();
+        var booking = await SeedAsync(db, BookingSource.Manual, regime: DocumentRegime.PrivatePerson);
+        var xml = new Mock<IFatturaPaXmlBuilder>(MockBehavior.Strict);
+        var service = Service(db, xmlBuilder: xml.Object);
+        var receipt = await service.IssueAsync((await service.CreateDraftAsync(booking, null)).Id, confirm: true);
+        Assert.Equal(DocumentKind.Receipt, receipt.Kind);
 
-    private static FiscalDocumentService Service(AppDbContext db, IFeatureFlags? flags = null)
+        var part = await service.CreateCreditNoteAsync(receipt.Id, 100m, "TEST rimborso parziale", confirm: true, null);
+        var rest = await service.CreateCreditNoteAsync(receipt.Id, null, "TEST storno del residuo", confirm: true, null);
+
+        Assert.Equal(receipt.Total, part.Total + rest.Total);
+        foreach (var note in new[] { part, rest })
+        {
+            Assert.Equal(DocumentKind.CreditNote, note.Kind);
+            Assert.Null(note.FatturaPaXml);
+            Assert.Equal(FiscalDocumentSdiStatuses.NotApplicable, note.SdiStatus);
+            var text = TextOf(await service.PdfContentAsync(note.Id, "it"));
+            Assert.DoesNotContain("N2.2", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("Copia di cortesia", text, StringComparison.OrdinalIgnoreCase);
+        }
+
+        xml.Verify(x => x.Build(It.IsAny<FatturaPaInput>()), Times.Never);
+
+        // The credit note of an invoice stays an electronic one.
+        await using var invoiceDb = NewDb();
+        var invoiceBooking = await SeedAsync(invoiceDb, BookingSource.Direct);
+        var invoiceService = Service(invoiceDb);
+        var invoice = await invoiceService.IssueAsync((await invoiceService.CreateDraftAsync(invoiceBooking, null)).Id, confirm: true);
+        var creditNote = await invoiceService.CreateCreditNoteAsync(invoice.Id, 100m, "TEST rimborso parziale", confirm: true, null);
+        Assert.Equal(FiscalDocumentSdiStatuses.ToSend, creditNote.SdiStatus);
+        Assert.Equal("<p:FatturaElettronica/>", creditNote.FatturaPaXml);
+    }
+
+    private static string Snapshot(FiscalDocument d) =>
+        string.Join('|', d.Number, d.Status, d.TaxableBase, d.VatAmount, d.StampDuty, d.Total, d.RecipientName, d.RecipientFiscalCode, d.IssuerSnapshot, d.RuleVersion,
+            string.Join(',', d.Lines.OrderBy(l => l.LineNumber).Select(l => $"{l.LineNumber}:{l.LineType}:{l.Description}:{l.TotalPrice}:{l.VatRatePercent}")));
+
+    /// <summary>Every text of a PDF content: headings, paragraphs and the cells of the tables, one per line.</summary>
+    private static string TextOf(Casazen.Core.Documents.PdfDocumentContent content) =>
+        string.Join('\n', new[] { content.Title }.Concat(content.Blocks.SelectMany(TextsOf)));
+
+    private static IEnumerable<string> TextsOf(Casazen.Core.Documents.PdfBlock block) => block switch
+    {
+        Casazen.Core.Documents.PdfHeading heading => new[] { heading.Text },
+        Casazen.Core.Documents.PdfParagraph paragraph => new[] { paragraph.Text },
+        Casazen.Core.Documents.PdfTable table => table.Columns.Select(c => c.Header).Concat(table.Rows.SelectMany(r => r)),
+        _ => Array.Empty<string>(),
+    };
+
+    private static FiscalDocumentService Service(AppDbContext db, IFeatureFlags? flags = null, IFatturaPaXmlBuilder? xmlBuilder = null)
     {
         var featureFlags = flags ?? new TestFeatureFlags(FeatureFlags.FiscalDocumentIssuance);
-        var options = Options.Create(Rules());
+        var rules = TaxRuleCatalogs.Resolver();
         var environment = new Mock<IHostEnvironment>();
         environment.SetupGet(e => e.EnvironmentName).Returns("Test");
-        var issuers = new DocumentIssuerService(db, featureFlags, options, environment.Object, new FakeTimeProvider(Now), NullLogger<DocumentIssuerService>.Instance);
+        var issuers = new DocumentIssuerService(db, featureFlags, rules, environment.Object, new FakeTimeProvider(Now), NullLogger<DocumentIssuerService>.Instance);
         var invoiceData = new Mock<IInvoiceDataService>();
         invoiceData.Setup(i => i.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid bookingId, CancellationToken _) => new InvoiceDataView(
@@ -259,29 +492,14 @@ public class FiscalDocumentServiceProofTests
             issuers,
             invoiceData.Object,
             new FiscalNumberingService(db, new FakeTimeProvider(Now), NullLogger<FiscalNumberingService>.Instance),
-            xml.Object,
+            xmlBuilder ?? xml.Object,
             Mock.Of<IDomainEventRecorder>(),
             new MigraDocPdfDocumentRenderer(),
             new ResxDocumentTexts(),
-            options,
+            rules,
             new FakeTimeProvider(Now),
             NullLogger<FiscalDocumentService>.Instance);
     }
-
-    private static FiscalDocumentRulesOptions Rules() => new()
-    {
-        Rules =
-        {
-            [DocumentRegime.VatOrdinary] = new FiscalDocumentRule
-            {
-                DocumentKind = RuleKind.Invoice,
-                FatturaPaRegimeCode = "RF01",
-                VatRatePercent = 10m,
-                TouristTaxNatureCode = "N1",
-            },
-            [DocumentRegime.PrivatePerson] = new FiscalDocumentRule { DocumentKind = RuleKind.Receipt },
-        },
-    };
 
     private static AppDbContext NewDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalDocuments_{Guid.NewGuid()}").Options, new ServiceTenant(), new EphemeralDataProtectionProvider());
@@ -302,7 +520,7 @@ public class FiscalDocumentServiceProofTests
         db.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile
         {
             OrgId = OrgId,
-            IssuerMode = DocumentIssuerMode.CasaZenDirectOnly,
+            IssuerMode = DocumentIssuerMode.CasaZen,
             DocumentRegime = regime,
             LegalName = "TEST Casa Vacanze Srl",
             AddressStreet = "Via di Test",

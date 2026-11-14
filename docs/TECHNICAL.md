@@ -1068,6 +1068,11 @@ caller sees and may not use is 403. The accountant reads and cannot write; the c
 
 #### Issuer of the fiscal documents (FIS-02, NF-82, PO-05, E06/F02/US02)
 
+> **Superseded on 2026-11-14 (E11/F01/US01).** CasaZen is the only issuer: every active booking of every source is CasaZen's, the modes Octorate and
+> accountant are retired (422 `issuer_mode_retired`), an imported Octorate document never locks a booking nor raises `two_issuers_detected`, and the rules
+> are the effective-dated catalog `FiscalDocuments:TaxRules`. The rules of this section and of the next one that say otherwise are replaced by
+> [`runbooks/fiscal-documents.md`](runbooks/fiscal-documents.md) (§ Boundary, § Issuer, § Tax rules).
+
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/fiscal/documents/settings` | short-rent `property.read` + `payment.read` | How the documents of the organization are issued: `{ mode, regime, issuer, confirmedAt, casazenIssuanceEnabled, octorateIssuesAllBookings, octorateConnected, sdi, missingFields, rule }`. `mode` (`Octorate`\|`CasaZenDirectOnly`\|`Accountant`) and `regime` (`PrivatePerson`\|`VatOrdinary`\|`VatFlatRate`) are absent until the organization says them. `issuer` is `{ legalName, addressStreet, addressCivic, postalCode, city, province, countryCode, fatturaPaRegimeCode, effectiveRegimeCode, issuerSdiRecipientCode, issuerPec, defaultSeries, vatNumber, fiscalCode }`; the last two are read from the organization (its tax profile), never copied. `casazenIssuanceEnabled` is the flag `Features:FiscalDocumentIssuance`, `octorateIssuesAllBookings` the answer to D34, `sdi` is `{ providerConfigured, providerName }` of `ISdiEInvoiceProvider`, `missingFields` what the mode CasaZen would still need (empty when the profile is complete) and `rule` the configured rule of the regime (`documentKind`, `configured`, the codes) |

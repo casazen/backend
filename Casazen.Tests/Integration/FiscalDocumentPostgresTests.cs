@@ -94,6 +94,9 @@ public class FiscalDocumentPostgresTests
         document.RecipientPec = Pec;
         document.FatturaPaXml = Xml;
 
+        // E11/F01/US01/T01: the snapshot of the issuer is encrypted like the recipient (a column of the same list).
+        document.IssuerSnapshot = new FiscalIssuerSnapshot { LegalName = RecipientName, AddressStreet = Street, VatNumber = "01234567897" }.ToJson();
+
         await using (var db = new AppDbContext(database.CreateOptions(), tenantContext: null, Provider))
         {
             db.FiscalDocuments.Add(document);

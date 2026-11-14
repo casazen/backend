@@ -259,6 +259,13 @@ public static class DemoShowcaseCatalog
         public const string FiscalDocumentsDirect = "fiscal-documents-direct";
 
         /// <summary>
+        /// The Swiss document of a stay (E11/F01/US01/T03, MWSTG art. 26): an invoice of a registered Swiss issuer (TEST UID, 3.8% on the stay and the
+        /// cleaning, 8.1% on an extra, the tourist tax outside the VAT, CHF) and the receipt of one that is not registered. A template only: the demo
+        /// organization is Italian (one issuer profile per org), so the Swiss layout is shown by an org whose profile is in CH.
+        /// </summary>
+        public const string SwissFiscalDocument = "swiss-fiscal-document";
+
+        /// <summary>
         /// The payment ledger (E06/F04/US01/T03, FIS-05, NF-85): a card payment with the commission and the net the provider reported, a cash payment
         /// the host recorded, and a booking of a channel with the amount the channel collected (commission not given by Octorate: not shown). Invented
         /// amounts, a template of the lines the ledger answers.
@@ -367,6 +374,7 @@ public static class DemoShowcaseCatalog
         Scenario.CondominiumHistoricalImport,
         Scenario.AdministratorStatementPdf,
         Scenario.FiscalDocumentsDirect,
+        Scenario.SwissFiscalDocument,
         Scenario.PaymentLedger,
         Scenario.OwnerChannelCommission,
         Scenario.ReportCollections,
@@ -467,6 +475,16 @@ public static class DemoShowcaseCatalog
     [
         new("bozza-soggiorno-diretto", "Draft", null, "TEST Ospite Diretto", 362.00m, 12.00m, "EUR", Scenario.FiscalDocumentsDirect),
         new("ricevuta-soggiorno-diretto", "Issued", "2026/1", "TEST Ospite Diretto", 248.00m, 8.00m, "EUR", Scenario.FiscalDocumentsDirect),
+    ];
+
+    /// <summary>
+    /// The Swiss documents of a stay in Ticino (E11/F01/US01/T03): 4 nights CHF 600, cleaning 80, an extra 40 and the tourist tax of 2 guests × 4 nights ×
+    /// 2.00, issued by a registered issuer (the TEST UID of the example of eCH-0097) and by one that is not registered. Invented, a template only.
+    /// </summary>
+    public static IReadOnlyList<DemoSwissFiscalDocumentTemplate> SwissFiscalDocumentExamples { get; } =
+    [
+        new("fattura-svizzera", DocumentRegime.SwissVatRegistered, "CHE-109.322.551", "TEST Ospite Svizzero", 600.00m, 80.00m, 40.00m, 16.00m, Scenario.SwissFiscalDocument),
+        new("ricevuta-svizzera", DocumentRegime.SwissNotRegistered, null, "TEST Ospite Svizzero", 600.00m, 80.00m, 40.00m, 16.00m, Scenario.SwissFiscalDocument),
     ];
 
     /// <summary>
@@ -1684,17 +1702,17 @@ public static class DemoShowcaseCatalog
     ];
 
     /// <summary>
-    /// The profile of the issuer of the documents of the demo organization (E06/F02/US02, FIS-02, NF-82): complete, so the wizard «Come emetti i
-    /// documenti?» opens on an answered setting and the settings page has data to show. Invented like the rest (TEST in the name, a plausible address
-    /// in Milano), with the choice «the accountant takes care of the documents»: it needs neither the flag of the issuance nor an Octorate connection.
-    /// Written for the org at reset only when the org has no profile (there is one per org, and a real one is never touched), marked as showcase data
-    /// (<c>TestDataEntities.FiscalIssuerProfile</c>) and deleted by the next reset.
+    /// The profile of the issuer of the documents of the demo organization (E06/F02/US02, E11/F01/US01, FIS-02, NF-82): complete, so the wizard opens on
+    /// an answered setting and the settings page has data to show. Invented like the rest (TEST in the name, a plausible address in Milano), with CasaZen
+    /// as the issuer (the only mode since 2026-11-14) and the prudent defaults of the profile (stay at the rate of the rule, cleaning with the stay, the
+    /// default series, no automatic issue). Written for the org at reset only when the org has no profile (there is one per org, and a real one is never
+    /// touched), marked as showcase data (<c>TestDataEntities.FiscalIssuerProfile</c>) and deleted by the next reset.
     /// </summary>
     public static IReadOnlyList<DemoFiscalIssuerProfileTemplate> FiscalIssuerProfiles { get; } =
     [
         new(
             "emittente-demo",
-            DocumentIssuerMode.Accountant,
+            DocumentIssuerMode.CasaZen,
             DocumentRegime.VatOrdinary,
             "Casa Demo S.r.l. (TEST)",
             "Via Brera",
@@ -2006,6 +2024,21 @@ public sealed record DemoPaymentLedgerTemplate(
     decimal? Net,
     string CollectedBy,
     string Currency,
+    string Scenario);
+
+/// <summary>
+/// A Swiss document of a demo stay in CHF: the regime of the issuer, its TEST UID when it is registered, the TEST recipient and what the guest paid for the
+/// stay, the cleaning, an extra and the tourist tax.
+/// </summary>
+public sealed record DemoSwissFiscalDocumentTemplate(
+    string Key,
+    DocumentRegime Regime,
+    string? SwissVatNumber,
+    string RecipientName,
+    decimal Stay,
+    decimal Cleaning,
+    decimal Extra,
+    decimal TouristTax,
     string Scenario);
 
 /// <summary>A fiscal document of a direct demo stay: its status, the number of an issued one, the TEST recipient, the total and the tourist tax in it.</summary>

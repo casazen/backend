@@ -143,6 +143,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.CondominiumHistoricalImportExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.AdministratorStatementPdfExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.FiscalDocumentExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.SwissFiscalDocumentExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.PaymentLedgerExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.ChannelCommissionRules.Select(rule => rule.Scenario))
             .ToHashSet(StringComparer.Ordinal);
@@ -926,7 +927,7 @@ public class DemoShowcaseTests
     }
 
     [Fact]
-    public void FiscalIssuerProfile_TheDemoOrgHasACompleteProfileOfItsIssuer_InventedAndNeedingNeitherTheFlagNorAConnection()
+    public void FiscalIssuerProfile_TheDemoOrgHasACompleteProfileOfItsIssuer_InventedAndIssuedByCasazen()
     {
         // FIS-02, NF-82: a scenario without template data fails (the coverage test above), and the profile is complete and obviously test data.
         Assert.Contains(DemoShowcaseCatalog.Scenario.FiscalIssuerProfile, DemoShowcaseCatalog.Scenarios);
@@ -935,9 +936,11 @@ public class DemoShowcaseTests
         Assert.Contains("TEST", profile.LegalName, StringComparison.Ordinal);
         Assert.True(profile.ConfirmedOffsetDays <= 0);
 
-        // The accountant is the one mode that needs no flag and no Octorate connection, so the demo works in every environment.
-        Assert.Equal(DocumentIssuerMode.Accountant, profile.Mode);
+        // CasaZen is the only issuer since 2026-11-14 (E11/F01/US01/T01): the demo profile says so, never a retired mode, with an Italian regime.
+        Assert.Equal(DocumentIssuerMode.CasaZen, profile.Mode);
+        Assert.False(FiscalDocumentRules.IsRetiredMode(profile.Mode));
         Assert.True(Enum.IsDefined(profile.Regime));
+        Assert.True(FiscalDocumentRules.IsRegimeOfCountry(profile.Regime, "IT"));
         var issuer = new IssuerData(
             profile.LegalName, profile.AddressStreet, profile.AddressCivic, profile.PostalCode, profile.City, profile.Province, "IT",
             profile.FatturaPaRegimeCode, null, null, null);
@@ -1042,6 +1045,39 @@ public class DemoShowcaseTests
             Assert.True(StayCurrency.IsSupported(e.Currency));
         });
         Assert.Equal("FiscalDocument", TestDataEntities.FiscalDocument);
+    }
+
+    /// <summary>
+    /// E11/F01/US01/T03: the Swiss demo documents are a registered issuer (a valid UID, TEST) and one that is not, for a TEST guest; with the shipped tax
+    /// rules the invoice is exact to the cent (3.8% on the stay and the cleaning, 8.1% on the extra, the tourist tax outside) and the receipt has no VAT.
+    /// </summary>
+    [Fact]
+    public void SwissFiscalDocument_TheExamplesAreValidAndExactToTheCent()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.SwissFiscalDocument, DemoShowcaseCatalog.Scenarios);
+        var examples = DemoShowcaseCatalog.SwissFiscalDocumentExamples;
+        var invoice = Assert.Single(examples, e => e.Regime == DocumentRegime.SwissVatRegistered);
+        var receipt = Assert.Single(examples, e => e.Regime == DocumentRegime.SwissNotRegistered);
+        Assert.True(Casazen.Core.Regulatory.SwissUid.IsValid(invoice.SwissVatNumber));
+        Assert.Null(receipt.SwissVatNumber);
+        Assert.All(examples, e => Assert.StartsWith("TEST", e.RecipientName, StringComparison.Ordinal));
+
+        var resolver = Casazen.Tests.Unit.Services.TaxRuleCatalogs.Resolver();
+        foreach (var example in examples)
+        {
+            var rule = resolver.Resolve("CH", example.Regime, StayVatTreatment.Standard, CleaningFeeTreatment.FollowsStay, new DateOnly(2026, 11, 18));
+            var lines = new[]
+            {
+                (example.Stay, FiscalLineType.Accommodation),
+                (example.Cleaning, FiscalLineType.Cleaning),
+                (example.Extra, FiscalLineType.ExtraService),
+                (example.TouristTax, FiscalLineType.TouristTax),
+            }.Select(l => new FiscalDocumentGrossLine("TEST", 1m, l.Item1, rule.RateOf(l.Item2).Percent, rule.RateOf(l.Item2).NatureCode, l.Item2)).ToList();
+            var amounts = FiscalDocumentTotals.FromGross(lines, rule.StampDuty);
+            Assert.Equal(736.00m, amounts.Total);
+            Assert.Equal(0m, amounts.StampDuty);
+            Assert.Equal(example == invoice ? 27.89m : 0m, amounts.VatAmount);
+        }
     }
 
     /// <summary>
