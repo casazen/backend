@@ -133,6 +133,9 @@ public class EncryptedColumnsTests
                 "StayGuest.TaxExemptionCode:Casazen.Guest.Document",
                 // NF-46: the same reason on the confirmed tax of the stay (kept 10 years, cleared with the guest's data).
                 "StayTouristTaxGuest.ExemptionCode:Casazen.Guest.Document",
+                // NF-25, NF-113: the wire file of the agency (the IBAN, the name and the address of every owner) and the IBAN of the agency that pays (E16/F01/US01/T01).
+                "WireBatch.DebitAccount:Casazen.WireBatch.File",
+                "WireBatch.XmlContent:Casazen.WireBatch.File",
                 // ADR-024: the personal half of a wizard draft (the fields that name a person, split off what the person typed).
                 "WizardDraft.EncryptedFieldsJson:Casazen.WizardDraft.PII",
             },

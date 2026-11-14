@@ -6,9 +6,9 @@ using System.Xml.Linq;
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// What a schema cannot say about a pain.001 wire file (E06/F05/US01/T01, NF-25): that the file is what its lines say. The schema checks the shape; this
-/// checks the money, in exact decimals and never in a floating point number, and answers with the name of the ISO element that is broken, never with a
-/// value of the file (an IBAN, a name, an amount).
+/// What a schema cannot say about a pain.001 wire file (E06/F05/US01/T01, E16/F01/US01/T01, NF-25): that the file is what its lines say. The schema checks the
+/// shape; this checks the money, in exact decimals and never in a floating point number, and answers with the name of the ISO element that is broken, never
+/// with a value of the file (an IBAN, a name, an amount).
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -20,7 +20,9 @@ namespace Casazen.Infrastructure.Services;
 /// batch says.</item>
 /// <item><b>EndToEndId.</b> Every transfer has one and it is unique in the file.</item>
 /// </list>
-/// The document is read with the DTD prohibited and no resolver: no external entity and no network, as in the validation against the schema.
+/// The elements are read in the namespace of the message of the currency (<see cref="Pain001SchemaProvider.NamespaceOf"/>: <c>pain.001.001.09</c> for CHF,
+/// <c>pain.001.001.03</c> for EUR), the same for the two messages: a file written in another namespace has no initiation message at all. The document is read
+/// with the DTD prohibited and no resolver: no external entity and no network, as in the validation against the schema.
 /// </remarks>
 internal static class Pain001Checks
 {
@@ -61,7 +63,7 @@ internal static class Pain001Checks
                 violations.Add(rule);
         }
 
-        var ns = XNamespace.Get(Pain001SchemaProvider.Namespace);
+        var ns = XNamespace.Get(Pain001SchemaProvider.NamespaceOf(currency));
         var initiation = Read(xml).Root?.Element(ns + "CstmrCdtTrfInitn");
         var header = initiation?.Element(ns + "GrpHdr");
         var payments = initiation?.Elements(ns + "PmtInf").ToList() ?? [];
