@@ -167,8 +167,9 @@ public sealed partial class OwnerMandateService(
 
         country = country.ToUpperInvariant();
 
-        // Italy needs the province (the sigla) on the documents: the same rule the readiness of the owner applies.
-        if (province is null && string.Equals(country, OwnerFieldRules.Italy, StringComparison.Ordinal))
+        // Italy needs the province (the sigla, upper case) on the documents: the same rule the readiness of the owner applies. Elsewhere it is kept as written.
+        var italian = string.Equals(country, OwnerFieldRules.Italy, StringComparison.Ordinal);
+        if (province is null && italian)
             throw AddressInvalid("province");
 
         await RequireOwnerInReachAsync(scope, ownerId, ct);
@@ -177,7 +178,7 @@ public sealed partial class OwnerMandateService(
         owner.BillingCivic = building;
         owner.BillingPostalCode = postalCode;
         owner.BillingCity = town;
-        owner.BillingProvince = province?.ToUpperInvariant();
+        owner.BillingProvince = italian ? province?.ToUpperInvariant() : province;
         owner.BillingCountry = country;
         await db.SaveChangesAsync(ct);
 
