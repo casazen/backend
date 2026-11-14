@@ -101,6 +101,8 @@ public class ConfigurationFeatureFlagsTests
                 "MessageAssistant",
                 // E14/F01/US01/T01: the invoices of the property manager to the owners made from the statement versions, off until the accountant confirms the ⚖ choices.
                 "OwnerInvoicing",
+                // E15/F01/US01/T01: the accountant package (ZIP of a month or a year) and the agency summary, off until the accountant confirms the ⚖ choices.
+                "AccountantPackage",
             },
             FeatureFlags.All);
     }
