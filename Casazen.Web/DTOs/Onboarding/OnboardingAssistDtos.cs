@@ -83,9 +83,10 @@ public class PanelStepDto
 }
 
 /// <summary>
-/// The answer of <c>POST api/onboarding/panel-steps</c>: the stored state, <c>panelUrl</c> (the address of the panel as configured: no org, property
-/// or person in it) and <c>callbackUrl</c> (only for <c>redirectCallback</c>: the CasaZen page the panel sends the person back to, with the step and
-/// the state to present).
+/// The answer of <c>POST api/onboarding/panel-steps</c>: the stored state, <c>panelUrl</c> (for a channel access whose code is a number the page of
+/// that portal's connection on the panel, <c>.../user/channelmanager/edit.xhtml?portal={code}</c>, otherwise the address of the panel as configured:
+/// no org, property or person in it) and <c>callbackUrl</c> (only for <c>redirectCallback</c>: the CasaZen page the panel sends the person back to,
+/// with the step and the state to present).
 /// </summary>
 public sealed class StartedPanelStepDto : PanelStepDto
 {
@@ -121,6 +122,12 @@ public sealed class AssistRequestDto
 
     public string Context { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The channel of a <c>panelChannelAccess</c> request (the portal code of the catalog): each portal has its own request, so the wizard shows it on
+    /// the row of that portal only. <c>null</c> for every other context.
+    /// </summary>
+    public string? ChannelCode { get; set; }
+
     public OnboardingAssistStatus Status { get; set; }
 
     public DateTime RequestedAt { get; set; }
@@ -145,8 +152,8 @@ public sealed class UpdateAssistRequestDto
 }
 
 /// <summary>
-/// A request in the staff queue: ids, context codes, the property and its comune, who has it and the note. The reference to the draft is the type
-/// of the wizard and what it edits: <b>never the draft</b>, never a credential, never the person who asked.
+/// A request in the staff queue: ids, context codes (and the portal of a channel access), the property and its comune, who has it and the note. The
+/// reference to the draft is the type of the wizard and what it edits: <b>never the draft</b>, never a credential, never the person who asked.
 /// </summary>
 public sealed class AdminAssistRequestDto
 {
@@ -163,6 +170,9 @@ public sealed class AdminAssistRequestDto
     public string? Comune { get; set; }
 
     public string Context { get; set; } = string.Empty;
+
+    /// <summary>The portal code of a <c>panelChannelAccess</c> request, so support knows which portal to connect; <c>null</c> for every other context.</summary>
+    public string? ChannelCode { get; set; }
 
     public OnboardingAssistStatus Status { get; set; }
 

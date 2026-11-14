@@ -162,7 +162,8 @@ public class ExistingInventoryImportServiceTests
         [
             typeof(OctorateInventoryIntent), typeof(OctorateInventoryImportBatch), typeof(OctorateInventoryImportChannel), typeof(OctorateInventoryImportItem),
             typeof(CreateExistingInventoryBatchRequest), typeof(RunExistingInventoryRequest), typeof(ContinueExistingInventoryRequest), typeof(InventoryIntentsRequest),
-            typeof(InventoryIntentAssignmentRequest),
+            typeof(InventoryIntentAssignmentRequest), typeof(ConnectExistingInventoryChannelRequest), typeof(ConnectExistingInventoryAccommodationRequest),
+            typeof(ExistingInventoryConnectTarget),
             typeof(ExistingInventoryBatchDto), typeof(ChannelAccessStartDto), typeof(InventoryIntentDto), typeof(ExistingInventoryBatchView),
             typeof(ExistingInventoryChannelView), typeof(ExistingInventoryItemView), typeof(ExistingInventoryCounts), typeof(ExistingInventoryCapabilities),
             typeof(ChannelAccessStartResult), typeof(OctorateConnectionSummary), typeof(OctorateConnectionActionResult),
@@ -915,8 +916,9 @@ public class ExistingInventoryImportServiceTests
         var handoff = Handoff(db);
         var start = await handoff.StartAsync(OrgA, "142", new ChannelAccessResumePoint(batchId, "142"), CancellationToken.None);
 
-        // The hand-over and the resume point are stored before the address is returned; no nonce, no credential.
-        Assert.Equal(PanelUrl, start.PanelUrl);
+        // The hand-over and the resume point are stored before the address is returned (the page of the portal's connection on the panel); no
+        // nonce, no credential.
+        Assert.Equal(PanelUrl + "/user/channelmanager/edit.xhtml?portal=142", start.PanelUrl);
         Assert.Equal(PanelHandoffMode.ManagedWindow, start.HandoffMode);
         var step = await db.OnboardingPanelSteps.AsNoTracking().SingleAsync();
         Assert.Equal(start.StepId, step.Id);
@@ -955,17 +957,36 @@ public class ExistingInventoryImportServiceTests
         connections.Add(new OctorateConnectionSummary("502", "142", "1002", "H2", "ENABLED", true));
         Assert.Equal(ChannelAccessState.Verifying, (await handoff.GetAsync(OrgA, "274", verifyIfDue: true, CancellationToken.None)).State);
         clock.Advance(TimeSpan.FromMinutes(1));
-        connections.Add(new OctorateConnectionSummary("503", "274", "1001", "H3", null, true, clock.GetUtcNow().UtcDateTime));
+        connections.Add(new OctorateConnectionSummary("503", "274", "1001", "H3", "ENABLED", true, clock.GetUtcNow().UtcDateTime));
         var verified = await handoff.GetAsync(OrgA, "274", verifyIfDue: true, CancellationToken.None);
         Assert.Equal(ChannelAccessState.Verified, verified.State);
         await handoff.ConfirmAsync(OrgA, UserA, "274", CancellationToken.None);
 
-        // The address is only ever the configured one: no query, https, a named host.
+        // The base is only ever the configured one: no query, https, a named host.
         Assert.Null(OnboardingChannelAccessHandoff.ParsePanelUrl("https://panel.example.test/octobook?org=1"));
         Assert.Null(OnboardingChannelAccessHandoff.ParsePanelUrl("http://panel.example.test/octobook"));
         Assert.Null(OnboardingChannelAccessHandoff.ParsePanelUrl("https://user:secret@panel.example.test/octobook"));
         Assert.Null(OnboardingChannelAccessHandoff.ParsePanelUrl("https://127.0.0.1/octobook"));
         Assert.Equal(PanelUrl, OnboardingChannelAccessHandoff.ParsePanelUrl(PanelUrl));
+    }
+
+    [Fact]
+    public void ChannelAccessHandoff_TheAddressIsThePageOfThePortal_OnlyForACodeThatIsANumber_Test()
+    {
+        // The page of a portal's connection on the panel, verified by the product owner for Booking.com (142) on 14/11/2026: the portal code is
+        // the only thing added to the configured base, joined with one slash whatever the base ends with.
+        const string Booking = "https://admin.octorate.com/octobook/user/channelmanager/edit.xhtml?portal=142";
+        Assert.Equal(Booking, OnboardingChannelAccessHandoff.PanelUrlOf("https://admin.octorate.com/octobook", "142"));
+        Assert.Equal(Booking, OnboardingChannelAccessHandoff.PanelUrlOf("https://admin.octorate.com/octobook/", " 142 "));
+
+        // A code that is not a number (or too long to be one Octorate knows) opens the panel itself, and so does a step with no channel.
+        Assert.Equal("https://admin.octorate.com/octobook", OnboardingChannelAccessHandoff.PanelUrlOf("https://admin.octorate.com/octobook", "booking_xml"));
+        Assert.Equal("https://admin.octorate.com/octobook", OnboardingChannelAccessHandoff.PanelUrlOf("https://admin.octorate.com/octobook", "1234567890123456789"));
+        Assert.Equal("https://admin.octorate.com/octobook", OnboardingChannelAccessHandoff.PanelUrlOf("https://admin.octorate.com/octobook", null));
+
+        // A base that is not a valid address of the panel is still refused, whatever the code.
+        Assert.Null(OnboardingChannelAccessHandoff.PanelUrlOf("https://admin.octorate.com/octobook?org=1", "142"));
+        Assert.Null(OnboardingChannelAccessHandoff.PanelUrlOf(null, "142"));
     }
 
     [Fact]
@@ -1041,10 +1062,10 @@ public class ExistingInventoryImportServiceTests
 
         // Channel 274: the person logged in before the hand-over (no proof), then after it (the proof), whatever accommodation it is.
         await handoff.StartAsync(OrgA, "274", new ChannelAccessResumePoint(named, "274"), CancellationToken.None);
-        connections.Add(new OctorateConnectionSummary("700", "274", "1010", "H10", null, true, clock.GetUtcNow().UtcDateTime.AddDays(-10)));
+        connections.Add(new OctorateConnectionSummary("700", "274", "1010", "H10", "ENABLED", true, clock.GetUtcNow().UtcDateTime.AddDays(-10)));
         Assert.Equal(ChannelAccessState.Verifying, await CheckAsync("274"));
         clock.Advance(TimeSpan.FromMinutes(1));
-        connections.Add(new OctorateConnectionSummary("701", "274", "1011", "H11", null, true, clock.GetUtcNow().UtcDateTime));
+        connections.Add(new OctorateConnectionSummary("701", "274", "1011", "H11", "ENABLED", true, clock.GetUtcNow().UtcDateTime));
         Assert.Equal(ChannelAccessState.Verified, await CheckAsync("274"));
 
         // Channel 235, batch of the whole inventory: no accommodation stands for the whole inventory, so only a login after the hand-over proves it.
@@ -1054,6 +1075,255 @@ public class ExistingInventoryImportServiceTests
         Assert.Equal(ChannelAccessState.Verifying, await CheckAsync("235"));
         connections.Add(new OctorateConnectionSummary("801", "235", "1012", "H21", "ENABLED", true, clock.GetUtcNow().UtcDateTime));
         Assert.Equal(ChannelAccessState.Verified, await CheckAsync("235"));
+    }
+
+    [Fact]
+    public void OctorateConnectionSummary_IsAuthorized_OnlyWhenTheConnectionIsEnabled_Test()
+    {
+        // The sandbox of 13/11/2026 (structure 520897): a connection created through the API with a hotel id that does not exist on Booking.com
+        // answered WAITING with userLogged true, although Booking.com accepted nothing. userLogged is no access given; only ENABLED is.
+        Assert.False(new OctorateConnectionSummary("1", "142", "520897", "FAKE-1", "WAITING", true).IsAuthorized);
+        Assert.False(new OctorateConnectionSummary("2", "142", "520897", null, null, true, DateTime.UtcNow).IsAuthorized);
+        Assert.False(new OctorateConnectionSummary("3", "142", "520897", null, "DISABLED", true).IsAuthorized);
+        Assert.True(new OctorateConnectionSummary("4", "142", "520897", null, "ENABLED", false).IsAuthorized);
+        Assert.True(new OctorateConnectionSummary("5", "142", "520897", null, " enabled ", null).IsAuthorized);
+    }
+
+    [Fact]
+    public async Task ChannelAccessHandoff_TheConnectionCasaZenMadeIsTheProofOnceItIsEnabled_Test()
+    {
+        // «Collega» connected the accommodation 520897 to the channel for a batch of the whole inventory, where no confirmed accommodation stands
+        // for the batch. Right after the create Octorate shows it WAITING with userLogged true: no proof. Once the host approved Octorate on the
+        // extranet of the OTA it is ENABLED: the proof, with no login after the hand-over. An old enabled connection of another accommodation is none.
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 14, 8, 0, 0, TimeSpan.Zero));
+        var connections = new List<OctorateConnectionSummary>
+        {
+            new("900", "142", "520897", "FAKE-1", "WAITING", true),
+            new("901", "142", "1009", "H9", "ENABLED", true, clock.GetUtcNow().UtcDateTime.AddDays(-30)),
+        };
+        var client = new Mock<IOctorateApiClient>(MockBehavior.Strict);
+        client.Setup(c => c.GetOrgConnectionsAsync(It.IsAny<CancellationToken>())).Returns(() => Task.FromResult(connections.ToArray()));
+        var database = $"channel-access-collega-{Guid.NewGuid():N}";
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(database).Options, NullTenantContext.Instance);
+        var handoff = new OnboardingChannelAccessHandoff(
+            db,
+            client.Object,
+            new OctorateOrgScope(NullTenantContext.Instance),
+            Microsoft.Extensions.Options.Options.Create(new OctorateOptions
+            {
+                FrontendBaseUrl = PanelUrl,
+                ExistingInventory = new OctorateExistingInventoryOptions { AccessCheckMaxAttempts = 6, AccessCheckBackoffSeconds = 1 },
+            }),
+            clock,
+            NullLogger<OnboardingChannelAccessHandoff>.Instance);
+
+        var whole = Guid.NewGuid();
+        db.OctorateInventoryImportBatches.Add(new OctorateInventoryImportBatch
+        {
+            Id = whole,
+            OrgId = OrgA,
+            ScopeKind = OctorateInventoryScopeKind.AllInventory,
+            CreatedByUserId = UserA,
+            Channels = { new OctorateInventoryImportChannel { OrgId = OrgA, ChannelCode = "142", ConnectedAccommodationIdsJson = """["520897"]""" } },
+        });
+        await db.SaveChangesAsync();
+
+        async Task<ChannelAccessState> CheckAsync()
+        {
+            clock.Advance(TimeSpan.FromMinutes(1));
+            return (await handoff.GetAsync(OrgA, "142", verifyIfDue: true, CancellationToken.None)).State;
+        }
+
+        await handoff.StartAsync(OrgA, "142", new ChannelAccessResumePoint(whole, "142"), CancellationToken.None);
+        Assert.Equal(ChannelAccessState.Verifying, await CheckAsync());
+        Assert.Equal(ChannelAccessState.Verifying, await CheckAsync());
+
+        connections[0] = connections[0] with { Status = "ENABLED" };
+        Assert.Equal(ChannelAccessState.Verified, await CheckAsync());
+    }
+
+    [Fact]
+    public async Task ExistingInventoryConnect_CreatesOneConnectionPerAccommodationWithTheIdOnThePortal_AndStartsTheStep_Test()
+    {
+        // Booking.com needs only the id of the property on it: the host types it, CasaZen creates the connection of the channel on each
+        // accommodation of the batch with that id (and nothing else), records them and starts the access step. Another channel's connection on
+        // the same accommodation does not count.
+        var h = new Harness();
+        await h.SeedAsync(verified: true);
+        await h.PrepareConnectAsync();
+        ExistingInventoryBatchView batch;
+        await using (var db = h.NewDb())
+            batch = await h.Service(db).CreateBatchAsync(CallerA, ["142"], ExistingInventoryScope.ForProperties(h.Properties), CancellationToken.None);
+
+        ExistingInventoryConnectTarget[] body = [new(" 1002 ", " 7654321 "), new("1001", "1234567")];
+        await using (var db = h.NewDb())
+            batch = await h.Service(db).ConnectChannelAsync(CallerA, batch.Id, "142", body, CancellationToken.None);
+
+        Assert.Equal(
+            new[] { ("1001", new OctorateConnectionCreate("142", "1234567", null, null)), ("1002", new OctorateConnectionCreate("142", "7654321", null, null)) },
+            h.Created.ToArray());
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.GetOrgConnectionsAsync)));
+        Assert.All(
+            h.Client.Invocations.Select(i => i.Method.Name),
+            name => Assert.Contains(name, new[] { nameof(IOctorateApiClient.GetOrgConnectionsAsync), nameof(IOctorateApiClient.CreateConnectionAsync) }));
+
+        var channel = batch.Channels[0];
+        Assert.Equal(new[] { "1001", "1002" }, channel.ConnectedAccommodationIds);
+        Assert.Equal((OctorateInventoryImportStatus.AwaitingChannelAccess, ChannelAccessState.Waiting), (channel.Status, channel.AccessState));
+        Assert.Equal(new ChannelAccessResumePoint(batch.Id, "142"), Assert.Single(h.Handoff.Started));
+        await using (var db = h.NewDb())
+            Assert.Equal(h.Handoff.StepId, (await db.OctorateInventoryImportChannels.AsNoTracking().SingleAsync()).PanelStepId);
+
+        // The answer of the API names them connectedAccommodationIds.
+        var json = JsonSerializer.Serialize(ExistingInventoryBatchDto.From(batch), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Contains("\"connectedAccommodationIds\":[\"1001\",\"1002\"]", json, StringComparison.Ordinal);
+
+        // A second click finds the connections in the list of Octorate: nothing new is created.
+        await using (var db = h.NewDb())
+            await h.Service(db).ConnectChannelAsync(CallerA, batch.Id, "142", body, CancellationToken.None);
+        Assert.Equal(2, h.Created.Count);
+
+        // Once the access is given, «Collega» changes nothing and calls nothing.
+        h.Handoff.State = ChannelAccessState.Verified;
+        var before = h.Client.Invocations.Count;
+        await using (var db = h.NewDb())
+            batch = await h.Service(db).ConnectChannelAsync(CallerA, batch.Id, "142", [new("1001", "999")], CancellationToken.None);
+        Assert.Equal(before, h.Client.Invocations.Count);
+        Assert.NotNull(batch.Channels[0].AccessCompletedAt);
+        Assert.Equal(2, h.Handoff.Started.Count);
+    }
+
+    [Fact]
+    public async Task ExistingInventoryConnect_NeverASecondConnectionOfTheChannelOnAnAccommodation_Test()
+    {
+        // 1001 already has a connection of the channel (waiting): it is only recorded. 1002 is created, then Octorate refuses 1003 (the quota of
+        // the minute): the refusal reaches the caller as it is, and what was made before it stays recorded.
+        var h = new Harness();
+        await h.SeedAsync(verified: true);
+        await h.PrepareConnectAsync();
+        await h.AddMappingAsync(OrgA, "1003", OctorateMappingStatus.Confirmed, h.Properties[1]);
+        h.Connections.Add(new OctorateConnectionSummary("601", "142", "1001", "H601", "WAITING", true));
+        h.CreateFailures["1003"] = new OctorateRateLimitException(null);
+        ExistingInventoryBatchView batch;
+        await using (var db = h.NewDb())
+            batch = await h.Service(db).CreateBatchAsync(CallerA, ["142"], ExistingInventoryScope.ForProperties(h.Properties), CancellationToken.None);
+
+        ExistingInventoryConnectTarget[] body = [new("1001", "111"), new("1002", "222"), new("1003", "333")];
+        await using (var db = h.NewDb())
+        {
+            await Assert.ThrowsAsync<OctorateRateLimitException>(
+                () => h.Service(db).ConnectChannelAsync(CallerA, batch.Id, "142", body, CancellationToken.None));
+        }
+
+        Assert.Equal(new[] { "1002", "1003" }, h.Created.Select(c => c.Accommodation).ToArray());
+        Assert.Empty(h.Handoff.Started);
+        await using (var db = h.NewDb())
+        {
+            var stored = await db.OctorateInventoryImportChannels.AsNoTracking().SingleAsync();
+            Assert.Equal(new[] { "1001", "1002" }, ExistingInventoryImportService.ParseAccommodationIds(stored.ConnectedAccommodationIdsJson));
+        }
+
+        // The host clicks again just after: the list of Octorate does not show 1002 yet, but the channel recorded it, so only 1003 is created.
+        h.CreateFailures.Clear();
+        h.ListShowsCreated = false;
+        h.Connections.RemoveAll(c => c.AccommodationId == "1002");
+        await using (var db = h.NewDb())
+            batch = await h.Service(db).ConnectChannelAsync(CallerA, batch.Id, "142", body, CancellationToken.None);
+
+        Assert.Equal(new[] { "1002", "1003", "1003" }, h.Created.Select(c => c.Accommodation).ToArray());
+        Assert.Equal(new[] { "1001", "1002", "1003" }, batch.Channels[0].ConnectedAccommodationIds);
+        Assert.Single(h.Handoff.Started);
+    }
+
+    [Fact]
+    public async Task ExistingInventoryConnect_RefusesAPortalThatNeedsMore_AnIdThatIsNotOne_AndAnAccommodationOutsideTheBatch_Test()
+    {
+        var h = new Harness();
+        await h.SeedAsync(verified: true);
+        await h.PrepareConnectAsync();
+        await h.AddPortalAsync("274", tokenAuthentication: true);
+        var outside = await h.AddPropertyAsync(OrgA);
+        await h.AddMappingAsync(OrgA, "1004", OctorateMappingStatus.Confirmed, outside);
+        await h.AddMappingAsync(OrgA, "1005", OctorateMappingStatus.Rejected);
+        await h.AddMappingAsync(OrgB, "2001", OctorateMappingStatus.Confirmed);
+        ExistingInventoryBatchView named;
+        ExistingInventoryBatchView whole;
+        await using (var db = h.NewDb())
+        {
+            var service = h.Service(db);
+            named = await service.CreateBatchAsync(CallerA, ["142", "274"], ExistingInventoryScope.ForProperties(h.Properties), CancellationToken.None);
+            whole = await service.CreateBatchAsync(CallerA, ["142"], ExistingInventoryScope.AllInventory, CancellationToken.None);
+        }
+
+        async Task<DomainRuleException> RefusedAsync(Guid batchId, string channel, IReadOnlyCollection<ExistingInventoryConnectTarget> body)
+        {
+            await using var db = h.NewDb();
+            return await Assert.ThrowsAsync<DomainRuleException>(() => h.Service(db).ConnectChannelAsync(CallerA, batchId, channel, body, CancellationToken.None));
+        }
+
+        // A portal whose access is given on the panel of Octorate (Airbnb) is not connected from CasaZen.
+        Assert.Equal("existing_inventory_connect_not_supported", (await RefusedAsync(named.Id, "274", [new("1001", "1234567")])).Code);
+
+        // No accommodation, or more than 50.
+        Assert.Equal("existing_inventory_connect_empty", (await RefusedAsync(named.Id, "142", [])).Code);
+        var tooMany = Enumerable.Range(0, ExistingInventoryImportService.MaxConnectionsPerRequest + 1).Select(i => new ExistingInventoryConnectTarget($"{3000 + i}", "1")).ToList();
+        Assert.Equal("existing_inventory_connect_empty", (await RefusedAsync(named.Id, "142", tooMany)).Code);
+
+        // An id on the portal that is not one, or an accommodation named twice: the accommodations concerned come with the code.
+        foreach (var bad in new[] { "", "   ", "12 34", "abc$", "id/../1", new string('9', ExistingInventoryImportService.HotelIdMaxLength + 1) })
+        {
+            var refused = await RefusedAsync(named.Id, "142", [new("1001", bad), new("1002", "7654321")]);
+            Assert.Equal("existing_inventory_hotel_id_invalid", refused.Code);
+            Assert.Equal(new[] { "1001" }, (IEnumerable<string>)refused.Extensions["accommodations"]!);
+        }
+
+        Assert.Equal("existing_inventory_hotel_id_invalid", (await RefusedAsync(named.Id, "142", [new("1001", "1"), new(" 1001", "2")])).Code);
+
+        // An accommodation CasaZen does not know, one confirmed to a property outside the batch, one the person rejected, one of another org.
+        var unknown = await RefusedAsync(named.Id, "142", [new("1001", "1"), new("9999", "2"), new("1004", "3")]);
+        Assert.Equal("existing_inventory_accommodation_unknown", unknown.Code);
+        Assert.Equal(new[] { "1004", "9999" }, (IEnumerable<string>)unknown.Extensions["accommodations"]!);
+        Assert.Equal("existing_inventory_accommodation_unknown", (await RefusedAsync(named.Id, "142", [new("", "1")])).Code);
+        foreach (var notOfTheOrg in new[] { "1005", "2001" })
+            Assert.Equal("existing_inventory_accommodation_unknown", (await RefusedAsync(whole.Id, "142", [new(notOfTheOrg, "1")])).Code);
+
+        // Nothing was asked of Octorate, nothing was recorded and no step was started.
+        Assert.Empty(h.Client.Invocations);
+        Assert.Empty(h.Handoff.Started);
+        await using (var db = h.NewDb())
+            Assert.All(await db.OctorateInventoryImportChannels.AsNoTracking().ToListAsync(), c => Assert.Null(c.ConnectedAccommodationIdsJson));
+    }
+
+    [Fact]
+    public async Task ExistingInventoryConnect_TheControllerTakesTheBodyOfTheContract_Test()
+    {
+        // The body the wizard sends, as the API reads it: { accommodations: [ { accommodationId, hotelId } ] }; the answer is private and not cached.
+        var request = JsonSerializer.Deserialize<ConnectExistingInventoryChannelRequest>(
+            """{ "accommodations": [ { "accommodationId": "520897", "hotelId": "1234567" } ] }""",
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var import = new Mock<IExistingInventoryImportService>(MockBehavior.Strict);
+        var view = new ExistingInventoryBatchView(
+            Guid.NewGuid(), OctorateInventoryScopeKind.AllInventory, null, [], OctorateInventoryImportStatus.AwaitingChannelAccess, null, DateTime.UtcNow, DateTime.UtcNow, null, []);
+        import
+            .Setup(i => i.ConnectChannelAsync(
+                It.Is<ExistingInventoryCaller>(c => c.OrgId == OrgA && c.UserId == UserA),
+                view.Id,
+                "142",
+                It.Is<IReadOnlyCollection<ExistingInventoryConnectTarget>>(a => a.SequenceEqual(new[] { new ExistingInventoryConnectTarget("520897", "1234567") })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(view);
+        var controller = new OctorateExistingInventoryController(import.Object, new FixedOrg(OrgA))
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { User = HostAuthorizationTestHarness.User(UserA, "PropertyOwner") },
+            },
+        };
+
+        var answer = await controller.Connect(view.Id, "142", request, CancellationToken.None);
+
+        Assert.Equal(view.Id, Assert.IsType<ExistingInventoryBatchDto>(Assert.IsType<OkObjectResult>(answer.Result).Value).Id);
+        Assert.Equal("private, no-store", controller.Response.Headers.CacheControl.ToString());
     }
 
     [Fact]
@@ -1254,6 +1524,82 @@ public class ExistingInventoryImportServiceTests
                     MarkConnected = true,
                 };
             }
+        }
+
+        /// <summary>The connections «Collega» asked Octorate to create, attempts that failed included, in order.</summary>
+        public List<(string Accommodation, OctorateConnectionCreate Request)> Created { get; } = [];
+
+        /// <summary>The create of a connection on an accommodation that Octorate refuses, with the error it answers.</summary>
+        public Dictionary<string, Exception> CreateFailures { get; } = [];
+
+        /// <summary>Whether the list of the connections shows a connection created a moment ago (false: the list of Octorate lags).</summary>
+        public bool ListShowsCreated { get; set; } = true;
+
+        /// <summary>
+        /// The ground of «Collega»: the portal «142» needs only the id of the property on it, the two accommodations of the batch are confirmed to
+        /// its two properties, «142» has no connection yet (the one of «274» on 1001 stays), the access was never started, and Octorate creates.
+        /// </summary>
+        public async Task PrepareConnectAsync()
+        {
+            await using (var db = NewDb())
+            {
+                var portal = await db.MarketplacePortals.SingleAsync(p => p.PortalCode == "142");
+                portal.RequiresHotelId = true;
+                portal.Creatable = true;
+                await db.SaveChangesAsync();
+            }
+
+            await AddMappingAsync(OrgA, "1001", OctorateMappingStatus.Confirmed, Properties[0]);
+            await AddMappingAsync(OrgA, "1002", OctorateMappingStatus.Confirmed, Properties[1]);
+            Connections.RemoveAll(c => c.ChannelId == "142");
+            Handoff.State = ChannelAccessState.NotStarted;
+            Client.Setup(c => c.CreateConnectionAsync(It.IsAny<string>(), It.IsAny<OctorateConnectionCreate>(), It.IsAny<CancellationToken>()))
+                .Returns((string accommodation, OctorateConnectionCreate request, CancellationToken _) =>
+                {
+                    Created.Add((accommodation, request));
+                    if (CreateFailures.TryGetValue(accommodation, out var failure))
+                        return Task.FromException<OctorateConnectionInfo>(failure);
+
+                    // What the sandbox answered on 13/11/2026: the connection waits for the OTA, and userLogged is true already.
+                    var id = "9" + accommodation;
+                    if (ListShowsCreated)
+                        Connections.Add(new OctorateConnectionSummary(id, request.PortalCode, accommodation, request.HotelId, "WAITING", true));
+
+                    return Task.FromResult(new OctorateConnectionInfo(id, request.PortalCode, "WAITING", null, null, UserLogged: true));
+                });
+        }
+
+        /// <summary>A listing of the org as the mapping knows it: the accommodation, its state and the property it is confirmed to.</summary>
+        public async Task AddMappingAsync(Guid orgId, string accommodation, OctorateMappingStatus status, Guid? propertyId = null)
+        {
+            await using var db = NewDb();
+            db.OctorateListingMappings.Add(new OctorateListingMapping
+            {
+                OrgId = orgId,
+                ConnectionId = Guid.NewGuid(),
+                OctorateAccommodationId = accommodation,
+                PropertyId = propertyId,
+                Status = status,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        /// <summary>A listed, enabled OTA of the catalog that Octorate creates through its API with the id of the property and, when said, the access on its panel.</summary>
+        public async Task AddPortalAsync(string code, bool tokenAuthentication)
+        {
+            await using var db = NewDb();
+            db.MarketplacePortals.Add(new MarketplacePortal
+            {
+                PortalCode = code,
+                Name = "Portal " + code,
+                Category = MarketplacePortalCategory.Ota,
+                Enabled = true,
+                IsListed = true,
+                Creatable = true,
+                RequiresHotelId = true,
+                RequiresTokenAuthentication = tokenAuthentication,
+            });
+            await db.SaveChangesAsync();
         }
 
         /// <summary>Creates the batch for the two properties, gets the access (already given) and runs the rooms; the view after the run.</summary>

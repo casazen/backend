@@ -236,6 +236,9 @@ public sealed class PushDeliveryJob(
             PushAudienceKind.SupplierOrg => await SupplierDevicesAsync(audience.Id, cancellationToken),
             PushAudienceKind.VerificationOperators => await VerificationOperatorDevicesAsync(audience.Id, cancellationToken),
             PushAudienceKind.User => await UserDevicesAsync(audience.Id, audience.UserId, cancellationToken),
+
+            // The app has no screen of the platform staff: HangfirePushQueue queues no push for it, and a job that names it sends to nobody.
+            PushAudienceKind.PlatformStaff => [],
             _ => throw new ArgumentOutOfRangeException(nameof(audience), audience.Kind, "Unknown push audience."),
         };
 

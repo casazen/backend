@@ -49,6 +49,30 @@ public sealed class ContinueExistingInventoryRequest
     public List<string>? RetryUnknown { get; set; }
 }
 
+/// <summary>
+/// «Collega da CasaZen» (<c>POST .../{id}/channels/{code}/connect</c>): the accommodations to connect to the channel, each with the id of the property
+/// on the portal. The service checks them (1 to 50, each once, an id of 1 to 64 letters, digits, dots, underscores or hyphens, an accommodation of
+/// the batch) and answers 422 with a stable code, never a validation error of the framework.
+/// </summary>
+public sealed class ConnectExistingInventoryChannelRequest
+{
+    /// <summary>The accommodations to connect.</summary>
+    public List<ConnectExistingInventoryAccommodationRequest?>? Accommodations { get; set; }
+}
+
+/// <summary>One accommodation of a «Collega»: the Octorate accommodation and the id of the property on the portal.</summary>
+public sealed class ConnectExistingInventoryAccommodationRequest
+{
+    /// <summary>The Octorate accommodation id (for example <c>520897</c>): one of the org's that CasaZen knows, and of the batch.</summary>
+    public string? AccommodationId { get; set; }
+
+    /// <summary>
+    /// The id of the property on the portal (for example the «ID struttura» of Booking.com): not a secret, the portal shows it to the host. It goes to
+    /// Octorate in the create of the connection and is not kept.
+    /// </summary>
+    public string? HotelId { get; set; }
+}
+
 /// <summary>The scenarios of a mixed portfolio (<c>PUT api/octorate/inventory-intents</c>, E02/F01/US03).</summary>
 public sealed class InventoryIntentsRequest
 {
@@ -74,7 +98,8 @@ public sealed class InventoryIntentAssignmentRequest
 
 /// <summary>
 /// An import batch (<c>GET api/octorate/existing-inventory/batches/{id}</c>): progress, counts, stable error codes and safe ids; never a
-/// credential, an access address once used, or a payload of Octorate.
+/// credential, an access address once used, or a payload of Octorate. Each channel carries <c>connectedAccommodationIds</c>: the Octorate
+/// accommodations «Collega da CasaZen» connected to it for the batch, or found already connected (an empty list when none).
 /// </summary>
 public sealed record ExistingInventoryBatchDto(
     Guid Id,

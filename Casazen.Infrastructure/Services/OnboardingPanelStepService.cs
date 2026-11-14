@@ -52,7 +52,9 @@ public sealed class OnboardingPanelStepService(
 
         var channelCode = CheckedChannel(request.Kind, request.ChannelCode);
         var resume = CheckedResume(request);
-        var panelUrl = OnboardingChannelAccessHandoff.ParsePanelUrl(octorateOptions.Value.FrontendBaseUrl)
+
+        // The access to a channel whose code is a number opens the page of that portal's connection on the panel; every other step opens the panel.
+        var panelUrl = OnboardingChannelAccessHandoff.PanelUrlOf(octorateOptions.Value.FrontendBaseUrl, channelCode)
             ?? throw new DomainConflictException("octorate_panel_url_missing", "OctoratePanelUrlMissing");
         await OnboardingReach.EnsureAsync(db, scope, request.PropertyId, ct);
 

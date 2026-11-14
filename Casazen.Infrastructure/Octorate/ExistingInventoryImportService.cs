@@ -15,15 +15,17 @@ namespace Casazen.Infrastructure.Octorate;
 
 /// <summary>
 /// <see cref="IExistingInventoryImportService"/> (E02/F01/US03, D6, ADR-023, ADR-027): the <c>onOtas</c> scenario of the connect wizard.
-/// It follows the access to each OTA channel (a durable handoff to the Octorate panel), the import of the rooms, the mapping of the listings
-/// that <see cref="IChannelMappingService"/> proposes, and, for the listings a person confirmed, the reservations, the calendars and
-/// «mark connected».
+/// It follows the access to each OTA channel (a durable handoff to the Octorate panel, or «Collega da CasaZen» for a portal that needs only the
+/// id of the property on it), the import of the rooms, the mapping of the listings that <see cref="IChannelMappingService"/> proposes, and, for
+/// the listings a person confirmed, the reservations, the calendars and «mark connected».
 /// </summary>
 /// <remarks>
-/// <para><b>Never a creation.</b> The only calls made to Octorate are the read of the connections and the four operations of the D6 sequence
-/// (<see cref="OctorateD6Operation"/>), plus what <see cref="IChannelMappingService.RefreshAsync"/> reads. This class does not depend on any
-/// operation that creates a property, a listing or a connection, or that publishes or pushes content, so no state, error or retry can reach
-/// one; the guard for the creation of a property on Octorate is <see cref="IInventoryScenarioGuard"/>.</para>
+/// <para><b>Never a creation to fix an import.</b> The import calls Octorate for the read of the connections and the four operations of the D6
+/// sequence (<see cref="OctorateD6Operation"/>), plus what <see cref="IChannelMappingService.RefreshAsync"/> reads. The one create is
+/// <see cref="ConnectChannelAsync"/>: the connection of a channel on an accommodation, made only on the host's explicit «Collega», with the id of
+/// the property on the portal the host typed, never a second one of the same channel on an accommodation, and never from a state, an error or a
+/// retry of the import. Nothing here creates a property or a listing, or publishes or pushes content; the guard for the creation of a property on
+/// Octorate is <see cref="IInventoryScenarioGuard"/>.</para>
 /// <para><b>Durable.</b> A step is written before it runs and its result after it, item by item; the stamps of
 /// <see cref="OctorateInventoryImportItem"/> say what is done, and nothing with a stamp is asked again. A command that finds another one
 /// working on the same channel (the session lock of the channel) leaves it alone.</para>
@@ -50,6 +52,12 @@ public sealed class ExistingInventoryImportService(
 
     /// <summary>The most assignments of one request of the intents, and the most properties of one batch.</summary>
     public const int MaxAssignmentsPerRequest = 500;
+
+    /// <summary>The most accommodations one «Collega» connects.</summary>
+    public const int MaxConnectionsPerRequest = 50;
+
+    /// <summary>The longest id of a property on a portal (<c>hotelId</c>) that «Collega» takes.</summary>
+    public const int HotelIdMaxLength = 64;
 
     private static readonly IReadOnlySet<string> NoTokenRoles = new HashSet<string>(StringComparer.Ordinal);
 
@@ -152,6 +160,48 @@ public sealed class ExistingInventoryImportService(
         var channel = ChannelOf(batch, channelCode);
 
         // The access is already given (by this batch or by an earlier one for the same channel): nothing to open.
+        if (await AccessAlreadyGivenAsync(batch, channel, ct))
+            return new ChannelAccessStartResult(channel.ChannelCode, true, null, null);
+
+        var start = await StartAccessStepAsync(batch, channel, ct);
+        Audit("access-started", batch.OrgId, batch.Id, channel.ChannelCode, 0, caller.UserId);
+        return new ChannelAccessStartResult(channel.ChannelCode, false, start.HandoffMode, start.PanelUrl);
+    }
+
+    public async Task<ExistingInventoryBatchView> ConnectChannelAsync(
+        ExistingInventoryCaller caller,
+        Guid batchId,
+        string channelCode,
+        IReadOnlyCollection<ExistingInventoryConnectTarget> accommodations,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        var targets = CheckedTargets(accommodations);
+        var batch = await LoadBatchAsync(caller.OrgId, batchId, ct);
+        await AuthorizeAsync(caller, batch, ct);
+        var channel = ChannelOf(batch, channelCode);
+
+        // The access is already given (by this batch or by an earlier one for the same channel): nothing is connected, the batch is as it is.
+        if (await AccessAlreadyGivenAsync(batch, channel, ct))
+            return await ViewAsync(caller, batch.Id, ct);
+
+        await EnsureConnectableAsync(channel.ChannelCode, ct);
+        await EnsureAccommodationsOfTheBatchAsync(batch, targets, ct);
+        var created = await ConnectAccommodationsAsync(batch.OrgId, batch.Id, channel, targets, ct);
+
+        // The connections are there: the access step starts as for the panel. It is verified once Octorate shows one of them ENABLED, that is once
+        // the host approved Octorate on the extranet of the OTA.
+        await StartAccessStepAsync(batch, channel, ct);
+        Audit("channel-connected", batch.OrgId, batch.Id, channel.ChannelCode, created, caller.UserId);
+        return await ViewAsync(caller, batch.Id, ct);
+    }
+
+    /// <summary>
+    /// Whether the access of the channel is already given, by this batch or by an earlier one for the same channel (the step is the org's, one for
+    /// each channel): a step found complete is taken into the channel and saved first.
+    /// </summary>
+    private async Task<bool> AccessAlreadyGivenAsync(OctorateInventoryImportBatch batch, OctorateInventoryImportChannel channel, CancellationToken ct)
+    {
         if (channel.AccessCompletedAt is null)
         {
             var snapshot = await handoff.GetAsync(batch.OrgId, channel.ChannelCode, verifyIfDue: false, ct);
@@ -163,11 +213,19 @@ public sealed class ExistingInventoryImportService(
             }
         }
 
-        if (channel.AccessCompletedAt is not null)
-            return new ChannelAccessStartResult(channel.ChannelCode, true, null, null);
+        return channel.AccessCompletedAt is not null;
+    }
 
-        // The step and the resume point are saved BEFORE the address is returned, and the channel's own state right after: a person who
-        // closes the tab, reloads or changes device finds the exact step.
+    /// <summary>
+    /// Starts (or reuses) the access step of the channel and moves the channel to <see cref="OctorateInventoryImportStatus.AwaitingChannelAccess"/>.
+    /// The step and the resume point are saved BEFORE anything is answered, and the channel's own state right after: a person who closes the tab,
+    /// reloads or changes device finds the exact step.
+    /// </summary>
+    private async Task<ChannelAccessHandoffStart> StartAccessStepAsync(
+        OctorateInventoryImportBatch batch,
+        OctorateInventoryImportChannel channel,
+        CancellationToken ct)
+    {
         var start = await handoff.StartAsync(batch.OrgId, channel.ChannelCode, new ChannelAccessResumePoint(batch.Id, channel.ChannelCode), ct);
         var now = Now();
         channel.PanelStepId = start.StepId;
@@ -176,10 +234,185 @@ public sealed class ExistingInventoryImportService(
         SetStatus(channel, OctorateInventoryImportStatus.AwaitingChannelAccess, null);
         ApplyBatchStatus(batch);
         await db.SaveChangesAsync(ct);
-
-        Audit("access-started", batch.OrgId, batch.Id, channel.ChannelCode, 0, caller.UserId);
-        return new ChannelAccessStartResult(channel.ChannelCode, false, start.HandoffMode, start.PanelUrl);
+        return start;
     }
+
+    /// <summary>
+    /// The connection of the channel on each accommodation that has none, made under the lock of the channel of the org, and every accommodation
+    /// connected or found recorded on the channel of the batch. Returns how many connections were created.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Never a second connection.</b> Inside the lock the connections of the org are read once, so a «Collega» that waited for another
+    /// one finds the connections that one made; an accommodation the channel of the batch already records is not connected again either (the list
+    /// of Octorate may lag just after a create). An accommodation that has a connection of the channel, whatever its state, is only recorded.</para>
+    /// <para><b>Nothing forgotten.</b> Each accommodation is saved as soon as its connection is made, without the token of the request (the
+    /// connection exists whether or not the request is still there), and what was saved is committed before a failure of Octorate, or a request
+    /// closed, is raised as it is: the next «Collega» then finds those connections and makes only the missing ones.</para>
+    /// <para>What is sent is the portal code, the id of the property on the portal and nothing else: the client creates the connection with the
+    /// pulls off and no content (<c>OctorateApiClient.ConnectionCreateBody</c>), never with a username or a password.</para>
+    /// </remarks>
+    private async Task<int> ConnectAccommodationsAsync(
+        Guid orgId,
+        Guid batchId,
+        OctorateInventoryImportChannel channel,
+        IReadOnlyList<ConnectTarget> targets,
+        CancellationToken ct)
+    {
+        var code = channel.ChannelCode;
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db,
+            ct,
+            (PostgresAdvisoryLocks.Scope.OctorateInventoryConnect, $"{orgId:N}:{code}"));
+
+        // What another «Collega» of this batch recorded while this one waited for the lock.
+        await db.Entry(channel).ReloadAsync(ct);
+        var connected = new SortedSet<string>(ParseAccommodationIds(channel.ConnectedAccommodationIdsJson), StringComparer.Ordinal);
+        var created = 0;
+        try
+        {
+            OctorateConnectionSummary[] connections;
+            using (orgScope.Use(orgId))
+                connections = await client.GetOrgConnectionsAsync(ct);
+
+            var withChannel = connections
+                .Where(c => string.Equals(c.ChannelId, code, StringComparison.Ordinal))
+                .Select(c => c.AccommodationId)
+                .ToHashSet(StringComparer.Ordinal);
+
+            foreach (var target in targets)
+            {
+                if (!withChannel.Contains(target.AccommodationId) && !connected.Contains(target.AccommodationId))
+                {
+                    using (orgScope.Use(orgId))
+                        await client.CreateConnectionAsync(target.AccommodationId, new OctorateConnectionCreate(code, target.HotelId, null, null), ct);
+
+                    created++;
+                    logger.LogInformation(
+                        "Existing inventory of org {OrgId}, batch {BatchId}, channel {ChannelCode}: connection created on accommodation {AccommodationId}",
+                        orgId, batchId, code, target.AccommodationId);
+                }
+
+                if (connected.Add(target.AccommodationId))
+                {
+                    channel.ConnectedAccommodationIdsJson = JsonSerializer.Serialize(connected, Json);
+                    channel.UpdatedAt = Now();
+                    await db.SaveChangesAsync(CancellationToken.None);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is OctorateException or OperationCanceledException)
+        {
+            if (transaction is not null)
+                await transaction.CommitAsync(CancellationToken.None);
+
+            logger.LogWarning(
+                "Existing inventory of org {OrgId}, batch {BatchId}, channel {ChannelCode}: «Collega» stopped after {Created} connections ({Error})",
+                orgId, batchId, code, created, ex is OctorateException octorate ? octorate.Code : "request_closed");
+            throw;
+        }
+
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
+
+        return created;
+    }
+
+    /// <summary>The portal of the channel is one «Collega» connects (<see cref="MarketplaceCardRules.ConnectsByPropertyId"/>), or 422.</summary>
+    private async Task EnsureConnectableAsync(string channelCode, CancellationToken ct)
+    {
+        var portal = await db.MarketplacePortals.AsNoTracking().FirstOrDefaultAsync(p => p.PortalCode == channelCode, ct);
+        if (portal is null || !MarketplaceCardRules.ConnectsByPropertyId(portal))
+            throw new DomainRuleException("existing_inventory_connect_not_supported", "ExistingInventoryConnectNotSupported");
+    }
+
+    /// <summary>
+    /// Every accommodation named is one of the batch: for the whole inventory, one of the org's accommodations CasaZen knows (a row of its mapping)
+    /// that the person did not reject as not one of its properties; for a batch of named properties or of a group, one confirmed to a property of
+    /// the batch (the rule the check of the access uses). Otherwise 422, with the ids that are not.
+    /// </summary>
+    private async Task EnsureAccommodationsOfTheBatchAsync(OctorateInventoryImportBatch batch, IReadOnlyList<ConnectTarget> targets, CancellationToken ct)
+    {
+        var named = targets.Select(t => t.AccommodationId).ToList();
+        HashSet<string> allowed;
+        if (batch.ScopeKind == OctorateInventoryScopeKind.AllInventory)
+        {
+            var known = await db.OctorateListingMappings
+                .AsNoTracking()
+                .Where(m => m.OrgId == batch.OrgId && m.Status != OctorateMappingStatus.Rejected && named.Contains(m.OctorateAccommodationId))
+                .Select(m => m.OctorateAccommodationId)
+                .ToListAsync(ct);
+            allowed = known.ToHashSet(StringComparer.Ordinal);
+        }
+        else
+        {
+            allowed = await ConfirmedAccommodationsAsync(db, batch.OrgId, PropertyIdsOf(batch), ct);
+        }
+
+        var unknown = named.Where(id => !allowed.Contains(id)).ToList();
+        if (unknown.Count > 0)
+            throw AccommodationUnknown(unknown);
+    }
+
+    /// <summary>The accommodations of Octorate confirmed to one of the properties: the listings a batch of named properties, or of a group, is about.</summary>
+    internal static async Task<HashSet<string>> ConfirmedAccommodationsAsync(
+        AppDbContext db,
+        Guid orgId,
+        IReadOnlyCollection<Guid> propertyIds,
+        CancellationToken ct)
+    {
+        if (propertyIds.Count == 0)
+            return new HashSet<string>(StringComparer.Ordinal);
+
+        var ids = propertyIds.Distinct().ToList();
+        var confirmed = await db.OctorateListingMappings
+            .AsNoTracking()
+            .Where(m => m.OrgId == orgId && m.Status == OctorateMappingStatus.Confirmed && m.PropertyId != null && ids.Contains(m.PropertyId.Value))
+            .Select(m => m.OctorateAccommodationId)
+            .ToListAsync(ct);
+        return confirmed.ToHashSet(StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// The accommodations of a «Collega», trimmed and ordered by id (two requests create in the same order): 1 to <see cref="MaxConnectionsPerRequest"/>
+    /// (422 <c>existing_inventory_connect_empty</c>), each an id Octorate could give (422 <c>existing_inventory_accommodation_unknown</c>), named once and
+    /// with the id of the property on the portal of 1 to <see cref="HotelIdMaxLength"/> letters, digits, dots, underscores or hyphens (422
+    /// <c>existing_inventory_hotel_id_invalid</c>, with the accommodations concerned).
+    /// </summary>
+    private static List<ConnectTarget> CheckedTargets(IReadOnlyCollection<ExistingInventoryConnectTarget>? accommodations)
+    {
+        if (accommodations is null || accommodations.Count is 0 or > MaxConnectionsPerRequest)
+            throw new DomainRuleException("existing_inventory_connect_empty", "ExistingInventoryConnectEmpty", MaxConnectionsPerRequest);
+
+        var targets = accommodations
+            .Select(a => new ConnectTarget(a?.AccommodationId?.Trim() ?? string.Empty, a?.HotelId?.Trim() ?? string.Empty))
+            .ToList();
+
+        var malformed = targets.Where(t => t.AccommodationId.Length is 0 or > OctorateInventoryImportItem.IdMaxLength).ToList();
+        if (malformed.Count > 0)
+            throw AccommodationUnknown([.. malformed.Select(t => Cut(t.AccommodationId, OctorateInventoryImportItem.IdMaxLength) ?? string.Empty)]);
+
+        var twice = targets.GroupBy(t => t.AccommodationId, StringComparer.Ordinal).Where(g => g.Count() > 1).Select(g => g.Key);
+        var invalid = targets.Where(t => !IsHotelId(t.HotelId)).Select(t => t.AccommodationId).Concat(twice).Distinct(StringComparer.Ordinal).ToList();
+        if (invalid.Count > 0)
+        {
+            throw new DomainRuleException("existing_inventory_hotel_id_invalid", "ExistingInventoryHotelIdInvalid", HotelIdMaxLength)
+            {
+                Extensions = new Dictionary<string, object?> { ["accommodations"] = invalid },
+            };
+        }
+
+        return [.. targets.OrderBy(t => t.AccommodationId, StringComparer.Ordinal)];
+    }
+
+    /// <summary>An id of a property on a portal: 1 to <see cref="HotelIdMaxLength"/> ASCII letters, digits, dots, underscores or hyphens.</summary>
+    private static bool IsHotelId(string value) =>
+        value.Length is > 0 and <= HotelIdMaxLength && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');
+
+    private static DomainRuleException AccommodationUnknown(IReadOnlyList<string> accommodations) =>
+        new("existing_inventory_accommodation_unknown", "ExistingInventoryAccommodationUnknown")
+        {
+            Extensions = new Dictionary<string, object?> { ["accommodations"] = accommodations },
+        };
 
     public async Task<ExistingInventoryBatchView> ConfirmChannelAccessAsync(
         ExistingInventoryCaller caller,
@@ -1447,7 +1680,8 @@ public sealed class ExistingInventoryImportService(
                 Settings.IsVerified(code, OctorateD6Operation.ImportReservations),
                 Settings.IsVerified(code, OctorateD6Operation.ImportCalendar),
                 Settings.IsVerified(code, OctorateD6Operation.MarkConnected)),
-            views);
+            views,
+            ParseAccommodationIds(channel.ConnectedAccommodationIdsJson));
     }
 
     // ─── Access state, status of the channel and of the batch ─────────────────────────────────────────────────
@@ -1643,6 +1877,33 @@ public sealed class ExistingInventoryImportService(
         }
     }
 
+    /// <summary>
+    /// The Octorate accommodation ids of a JSON array of ids (the accommodations «Collega» connected to a channel of a batch), in order and once
+    /// each; an empty or unreadable one names none.
+    /// </summary>
+    internal static List<string> ParseAccommodationIds(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return [];
+
+        try
+        {
+            var ids = JsonSerializer.Deserialize<List<string?>>(json, Json) ?? [];
+            return
+            [
+                .. ids
+                    .Where(id => !string.IsNullOrEmpty(id))
+                    .Select(id => id!)
+                    .Distinct(StringComparer.Ordinal)
+                    .Order(StringComparer.Ordinal),
+            ];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
     /// <summary>The accommodation ids of a request, trimmed and distinct; one that cannot be an Octorate id is ignored.</summary>
     private static IReadOnlySet<string> NormalizeIds(IReadOnlyCollection<string>? ids)
     {
@@ -1716,6 +1977,9 @@ public sealed class ExistingInventoryImportService(
     }
 
     private sealed record ItemPlan(ItemDecision Decision, Guid? PropertyId);
+
+    /// <summary>One accommodation of a «Collega» as checked: the Octorate accommodation and the id of the property on the portal, both trimmed.</summary>
+    private sealed record ConnectTarget(string AccommodationId, string HotelId);
 
     private sealed record Failure(string Code, OctorateInventoryImportStatus Status, bool StopsChannel);
 

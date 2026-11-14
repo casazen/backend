@@ -117,6 +117,21 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         Assert.NotEqual(row.HandoffNonceHash, (await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync()).HandoffNonceHash);
     }
 
+    /// <summary>
+    /// The access to a channel whose code is a number opens the page of that portal's connection on the panel (verified for Booking.com, 142, on
+    /// 14/11/2026): the configured base and the portal code, joined with one slash, and nothing of the org, the property or the person.
+    /// </summary>
+    [Fact]
+    public async Task Start_TheAccessToAChannelWhoseCodeIsANumber_OpensThePageOfThatPortal()
+    {
+        var propertyId = _world.Granted.Id;
+        var started = await Service().StartAsync(
+            _world.OrgWide, _world.OwnerUserId, new PanelStepStartRequest(PanelStepKind.ChannelAccess, propertyId, "142"), Ct);
+
+        Assert.Equal("https://panel.octorate.test/user/channelmanager/edit.xhtml?portal=142", started.PanelUrl);
+        Assert.Equal("142", (await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync()).ChannelCode);
+    }
+
     [Fact]
     public async Task Start_RefusesWhatIsNotValid()
     {

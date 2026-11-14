@@ -49,11 +49,20 @@ public enum PushAudienceKind
     /// push: the counter of the bell is a channel of its own, which the caller delivers when the user chose it. An explicit value, never renumbered.
     /// </summary>
     User = 11,
+
+    /// <summary>
+    /// The platform administrators, CasaZen staff (14/11/2026): the active accounts whose user role is <c>Admin</c> or that hold a membership of the
+    /// context of the platform administration (<c>admin</c>), whatever org the event belongs to. <see cref="PushAudience.Id"/> is the subject of the
+    /// event (a «Fallo per me» request), which is also the <c>entityId</c> of the notification. Each in-app row carries the staff member's own org
+    /// (its host org, else its supplier org), the one its bell reads; a staff account in no org is not told. The app has no screen of the staff, so
+    /// this audience gets no push on a phone: the bell and its live update tell them. An explicit value, never renumbered.
+    /// </summary>
+    PlatformStaff = 12,
 }
 
 /// <summary>
 /// Recipients of a push: <see cref="Kind"/> and the id of the booking, property or supplier org; for <see cref="PushAudienceKind.User"/> the id of
-/// the org and, in <see cref="UserId"/>, the user.
+/// the org and, in <see cref="UserId"/>, the user; for <see cref="PushAudienceKind.PlatformStaff"/> the subject of the event.
 /// </summary>
 public sealed record PushAudience(PushAudienceKind Kind, Guid Id, string? UserId = null)
 {
@@ -67,6 +76,9 @@ public sealed record PushAudience(PushAudienceKind Kind, Guid Id, string? UserId
     public static PushAudience SupplierOrg(Guid supplierOrgId) => new(PushAudienceKind.SupplierOrg, supplierOrgId);
 
     public static PushAudience VerificationOperators(Guid bookingId) => new(PushAudienceKind.VerificationOperators, bookingId);
+
+    /// <summary>The platform administrators, told about <paramref name="subjectId"/> (the «Fallo per me» request): the bell and its live update only.</summary>
+    public static PushAudience PlatformStaff(Guid subjectId) => new(PushAudienceKind.PlatformStaff, subjectId);
 }
 
 /// <summary>
@@ -238,6 +250,9 @@ public static class PushDeliveryKeys
     /// a repeated request of the guest is one push, and a new link of the same booking is another event.
     /// </summary>
     public static string VerificationOperatorAlert(Guid sessionId, string reasonCode) => $"verification-operator:{sessionId:N}:{reasonCode}";
+
+    /// <summary>A host asked CasaZen support for «Fallo per me», to the platform staff: one per request, stable across retries.</summary>
+    public static string AssistRequested(Guid requestId) => $"assist-request:{requestId:N}:requested";
 }
 
 /// <summary><c>data.type</c> of each push, one per kind of event (the app opens <c>data.route</c>).</summary>
@@ -347,6 +362,13 @@ public static class PushTypes
 
     /// <summary>Biometric verification requires operator decision (NF-12, ADR-013): pushed to property hosts.</summary>
     public const string VerificationRequired = "verification-required";
+
+    /// <summary>
+    /// A host asked CasaZen support for «Fallo per me» (a new request of the staff queue): written to the bell of the platform staff
+    /// (<see cref="PushAudienceKind.PlatformStaff"/>) and published live; <c>entityId</c> is the request. No push on a phone, and nothing of the
+    /// org, the property or the person in it: the staff queue shows the request.
+    /// </summary>
+    public const string AssistRequested = "assist-requested";
 
     /// <summary>
     /// Type of the push to the host when a service request reaches <paramref name="status"/>; <c>null</c> for a status that has

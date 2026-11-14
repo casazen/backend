@@ -113,7 +113,10 @@ public sealed record MarketplaceCost(string? Text, MarketplaceCostInvoicer Invoi
 
 /// <summary>
 /// One card of the catalog. <see cref="PropertyCount"/> is set only for a channel or a tool asked about without a property and active on
-/// some: the number of properties of the caller's scope that have it on. The last four members are the partner's own.
+/// some: the number of properties of the caller's scope that have it on. <see cref="Job"/>, <see cref="WebsiteUrl"/>,
+/// <see cref="ServiceCategories"/> and <see cref="OctoratePortalCode"/> are the partner's own. <see cref="ConnectByPropertyId"/> is true for a
+/// sales channel whose connection CasaZen creates from the id of the property on the portal («Collega da CasaZen»,
+/// <see cref="MarketplaceCardRules.ConnectsByPropertyId"/>), and false on every other card.
 /// </summary>
 public sealed record MarketplaceCatalogEntry(
     MarketplaceActivationKind Kind,
@@ -130,7 +133,8 @@ public sealed record MarketplaceCatalogEntry(
     MarketplacePartnerJob? Job = null,
     string? WebsiteUrl = null,
     IReadOnlyList<string>? ServiceCategories = null,
-    string? OctoratePortalCode = null);
+    string? OctoratePortalCode = null,
+    bool ConnectByPropertyId = false);
 
 /// <summary>A group of the catalog. The home services have no entries and say that their flow is unchanged (<see cref="UnchangedFlow"/>).</summary>
 public sealed record MarketplaceGroup(string Id, bool UnchangedFlow, IReadOnlyList<MarketplaceCatalogEntry> Entries);

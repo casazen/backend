@@ -7,26 +7,44 @@ what is verified and what is not, how to resume an import that stopped, and the 
 
 ## 1. The rule
 
-**An import is never solved by creating a replacement listing.** No state, error or retry of the import calls an operation that creates a
-property, a listing or a connection, or that publishes or pushes content, on Octorate or on an OTA, and none turns the scenario into
-`newInventory`. A listing that cannot be imported stays where it is: the fix is to complete the step (the access, the mapping, a retry), or to
-ask Octorate, never to publish a new copy. A new listing next to the old one risks the reviews, the ranking and the history of the old one, and
-creates a duplicate on the OTA.
+**An import is never solved by creating something to replace what is there.** No state, error or retry of the import calls an operation that
+creates a property, a listing or a replacement connection, or that publishes or pushes content, on Octorate or on an OTA, and none turns the
+scenario into `newInventory`. A listing that cannot be imported stays where it is: the fix is to complete the step (the access, the mapping, a
+retry), or to ask Octorate, never to publish a new copy or to make a new connection next to one that does not work. A new listing next to the
+old one risks the reviews, the ranking and the history of the old one, and creates a duplicate on the OTA.
+
+**The one creation allowed: «Collega da CasaZen»** (decision of the product owner, 14/11/2026). For a portal whose connection needs only the id
+of the property on the portal (`connectByPropertyId` of the catalog: an OTA that Octorate lets be created through its API, that `requiresHotelId`
+and needs neither `requiresPassword` nor `requiresTokenAuthentication`, such as Booking.com), the host types that id in the step «Portali» of the
+wizard and presses «Collega»; `POST api/octorate/existing-inventory/batches/{id}/channels/{code}/connect` then creates the connection of the
+channel on each accommodation named, with that id, the pulls off and no content pushed, and the host's only step left is to approve Octorate
+on the extranet of the OTA. Exactly this, and nothing more:
+
+- only on the host's explicit «Collega», never from a state, an error or a retry of the import;
+- only on an accommodation of the batch (one of the org's that CasaZen knows, not rejected; for a batch of named properties or of a group, one
+  confirmed to one of its properties);
+- **never a second connection of the same channel on an accommodation**: the connections of the org are read under the lock of the channel
+  (`OctorateInventoryConnect`), an accommodation that has one (whatever its state) is only recorded, and the accommodations already recorded
+  on the channel of the batch are not connected again even when the list of Octorate lags;
+- the portals that need more (Airbnb, token authentication; Vrbo and any portal with a username and a password) keep the hand-over to the
+  panel.
 
 - `newInventory` exists only when a person declares it (`PUT api/octorate/inventory-intents`), and the creation of a listing on Octorate
   (E02/F03/US01/T06) is refused for any property whose declared scenario is not explicitly `newInventory`
   (`IInventoryScenarioGuard`, 409 `octorate_existing_inventory_must_import`). A missing declaration, a missing mapping or an empty import
   never stand for «new».
-- The access to a channel is given in the Octorate panel. CasaZen accepts no username, password, cookie or OTA token, in any field, draft,
-  query string or log.
+- The access to a channel is given in the Octorate panel, or on the extranet of the OTA after «Collega». CasaZen accepts no username,
+  password, cookie or OTA token, in any field, draft, query string or log. The id of the property on a portal is not a secret (the portal
+  shows it to the host): «Collega» sends it to Octorate in the create of the connection and does not keep it.
 
 ## 2. The flow
 
 | Step | What happens | Who | State of the channel |
 |---|---|---|---|
 | 1 | The host chooses the OTAs and the properties (all, some, or a group of the mixed portfolio) and the batch is created | host | `Draft` |
-| 2 | `access/start`: the step, the hand-over and the resume point are saved, then the address of the Octorate panel is returned; the host gives the access on the panel | host, in the panel | `AwaitingChannelAccess` |
-| 3 | CasaZen reads the connections of the org (at most once for each backoff window) and finds an authorized connection of the channel that is new to this hand-over (the host logged in on it after the hand-over began, or it belongs to an accommodation confirmed to a property of the batch; one the org already had working for another property proves nothing): the access is **verified** and the channel moves on by itself. Only if the checks run out (`AccessCheckMaxAttempts`) the host may **confirm** it (`access/confirm`), never before | CasaZen | `ImportingRooms` |
+| 2 | `access/start`: the step, the hand-over and the resume point are saved, then the address of the Octorate panel is returned: the page of the portal's connection, `{Octorate__FrontendBaseUrl}/user/channelmanager/edit.xhtml?portal={code}` when the code is a number (verified by the product owner for Booking.com, `portal=142`, on 14/11/2026, and for no other portal yet), otherwise the panel itself; the host gives the access on the panel | host, in the panel | `AwaitingChannelAccess` |
+| 2 bis | `connect` («Collega da CasaZen», only for a portal with `connectByPropertyId`): the host types the id of the property on the portal for each accommodation; CasaZen creates the missing connections of the channel (§ 1), records the accommodations connected or found in `connectedAccommodationIds` of the channel, then starts the step as `access/start` does. The host approves Octorate on the extranet of the OTA | host, then the OTA | `AwaitingChannelAccess` |
+| 3 | CasaZen reads the connections of the org (at most once for each backoff window) and finds an authorized connection of the channel (`status` `ENABLED`: `userLogged` alone is no proof, see § 3) that is new to this hand-over (the host logged in on it after the hand-over began, or it belongs to an accommodation of the batch: confirmed to one of its properties, or connected by «Collega» for it; one the org already had working for another property proves nothing): the access is **verified** and the channel moves on by itself. Only if the checks run out (`AccessCheckMaxAttempts`) the host may **confirm** it (`access/confirm`), never before | CasaZen | `ImportingRooms` |
 | 4 | `run`: `IMPORT_ROOMS` on each connection of the channel that Octorate shows as authorized, then the listings of the org are read again and the matcher proposes a property for each | CasaZen | `AwaitingMapping` |
 | 5 | The host confirms each listing to a property, chooses another, imports it as a CasaZen property (the local record only, inactive and «to check»; nothing is created on the OTA), rejects it, or leaves it for later | host | `AwaitingMapping` |
 | 6 | `continue`: for the confirmed listings, `IMPORT_RESERVATIONS` and the import of the reservations into CasaZen, then `IMPORT_CALENDAR`, then `MARK_CONNECTED`. A listing left for later stays write-blocked and is not marked connected; the others go on | CasaZen | `ImportingReservations`, `ImportingCalendar`, `MarkingConnected`, `Completed` |
@@ -91,13 +109,29 @@ The codes above are the ones the sandbox showed on reservations (`kb/plan/octora
 `PortalCode` of the portal catalog (`MarketplacePortals`), which is also where a channel must be listed, enabled and of category OTA to be
 chosen at all.
 
+**Sandbox evidence of 13/11/2026** (the user's Octorate test account, structure `520897`), which decided «Collega da CasaZen» and the rule of
+the access:
+
+- `POST /rest/v1/connection/520897` with exactly the body of `OctorateApiClient.ConnectionCreateBody` (portal `142`, pulls off, no content)
+  plus a `hotelId` that does **not** exist on Booking.com answered 200 with a connection `status: "WAITING"`, `userLogged: true` and
+  `lastPortalAcceptLog: {}`, although Booking.com never approved anything. So `userLogged` is true right after a create through the API and is
+  **no proof that the OTA accepted** (the specification says it «means if user has logged in and this portal connection is authorized»):
+  CasaZen takes only `status` `ENABLED` (the enum is `DISABLED` | `WAITING` | `ENABLED`) as the access given
+  (`OctorateConnectionSummary.IsAuthorized`).
+- `DELETE /rest/v1/connection/520897/{id}` answered 200 (the test connection was removed).
+- The same create for Airbnb (`274`) without a `hotelId` answered 500 (a `NullPointerException` of Octorate on `getHotelId`): a portal that
+  needs the access on the panel cannot be created this way, which is why it keeps the hand-over to the panel.
+- What is not proven yet: the moment a real `hotelId` turns the connection to `ENABLED` once the host approves Octorate on the extranet of
+  Booking.com, and how long that takes. The pilot records it in the column «Access check».
+
 What the pilot must record, for each channel, before its flags are turned on:
 
-1. The access: after the host gives the access in the panel, does `GET /rest/v1/connection` show the connection with `userLogged` true or
-   `status` `ENABLED`, and does it carry `loginAt` (the time of the host's login)? CasaZen takes as «verified» an authorized connection whose
-   `loginAt` is after the hand-over, or that belongs to an accommodation confirmed to a property of the batch; where `loginAt` is not there (and
-   in a batch of the whole inventory) a first access is confirmed by the host after the checks run out. Does a connection exist on an
-   accommodation the org's token sees? If Octorate
+1. The access: after the host gives the access in the panel (or approves Octorate on the extranet after «Collega»), does
+   `GET /rest/v1/connection` show the connection with `status` `ENABLED`, and does it carry `loginAt` (the time of the host's login)? CasaZen
+   takes as «verified» an `ENABLED` connection whose `loginAt` is after the hand-over, or that belongs to an accommodation of the batch
+   (confirmed to one of its properties, or connected by «Collega» for it); `userLogged` alone never counts (see the sandbox evidence above).
+   Where `loginAt` is not there (and in a batch of the whole inventory that did not use «Collega») a first access is confirmed by the host after
+   the checks run out. Does a connection exist on an accommodation the org's token sees? If Octorate
    needs a technical structure to hold the channel (D6 note), who creates it and how: **CasaZen does not create it in this task**, and until
    someone does the import stops at `channel_connection_not_found`.
 2. Each operation: the exact answer, whether it is complete when the call returns, how long it takes, whether repeating it is harmless, and
@@ -138,6 +172,14 @@ access (doubling up to 600 seconds); see the checklist.
 | `octorate_not_connected`, `octorate_auth_failed`, `octorate_wrong_environment` | The org's connection to Octorate is missing, refused or of the other environment | Reconnect the account (`api/octorate/connect/*`), then repeat. These stop the whole channel for that command |
 | `octorate_rate_limited` | The org used its calls of the minute | Wait a minute and repeat: the stamps keep what is done |
 | `octorate_request_rejected`, `octorate_not_found`, `octorate_conflict` | Octorate refused the operation for that item | Read the item in the batch, check it in the panel, repeat; ask Octorate if it stays |
+| `existing_inventory_connect_not_supported` (422) | «Collega» on a portal that needs more than the id of the property (the access on the panel, a username and a password) or that Octorate does not let be created through its API | Use `access/start` and the panel for that portal |
+| `existing_inventory_connect_empty` (422) | «Collega» with no accommodation, or more than 50 | Name 1 to 50 accommodations |
+| `existing_inventory_hotel_id_invalid` (422) | An id of the property on the portal that is empty, longer than 64, or with a character other than letters, digits, `.`, `_`, `-`; or an accommodation named twice. `accommodations` lists the ones concerned | Correct the id the host typed |
+| `existing_inventory_accommodation_unknown` (422) | An accommodation that is not of the batch: not one of the org's CasaZen knows, one the person rejected, or, for a batch of named properties or of a group, not confirmed to one of its properties. `accommodations` lists them | Reload the mapping (`run` or the mapping endpoints) and name only the accommodations of the batch |
+
+After a «Collega» that stopped on an error of Octorate (`octorate_rate_limited`, `octorate_unavailable`...), the connections made before it
+are already recorded in `connectedAccommodationIds`: repeat the same «Collega» and only the missing ones are created. Never create a
+connection by hand in the panel for an accommodation that is in that list.
 
 ## 6. Resuming an import
 

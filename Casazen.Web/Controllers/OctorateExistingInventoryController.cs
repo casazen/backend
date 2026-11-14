@@ -13,18 +13,21 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// The import of the listings that already exist on OTAs or in another channel manager, the <c>onOtas</c> scenario of the connect wizard
-/// (E02/F01/US03, D6, ADR-023): create the batch, give the access to each channel in the Octorate panel, import the rooms, then go on for the
-/// listings a person confirmed; and the declaration of the scenario of each property or group in a mixed portfolio. Nothing here creates or
-/// publishes a listing on Octorate or on an OTA.
+/// (E02/F01/US03, D6, ADR-023): create the batch, give the access to each channel in the Octorate panel (or connect it from CasaZen with the id
+/// of the property on the portal, «Collega da CasaZen»), import the rooms, then go on for the listings a person confirmed; and the declaration of
+/// the scenario of each property or group in a mixed portfolio. Nothing here creates or publishes a listing on Octorate or on an OTA: the one
+/// thing created is the connection of a channel the host asks for with <c>connect</c>.
 /// </summary>
 /// <remarks>
 /// <para><b>Policy.</b> Every endpoint needs <see cref="CasazenPolicies.OtaWrite"/> and <c>Features:OctorateConnector</c> (404 while it is off,
 /// before authentication). The service then checks the org and the reach of the caller on the batch: the whole inventory needs a caller who
 /// reaches the whole org, and the properties of a batch must be the ones the caller reaches (a property of another org is the same 404 as
 /// an unknown one).</para>
-/// <para><b>No secret.</b> The access to a channel is given in the Octorate panel: no endpoint takes a username, a password, a cookie or an OTA
-/// token, and only <c>access/start</c> returns the address of the panel (https, with no organization, property or person data). Every answer
-/// is <c>private, no-store</c>.</para>
+/// <para><b>No secret.</b> The access to a channel is given in the Octorate panel, or, after <c>connect</c>, on the extranet of the OTA: no endpoint
+/// takes a username, a password, a cookie or an OTA token. <c>connect</c> takes the id of the property on the portal (<c>hotelId</c>), which is not a
+/// secret (the portal shows it to the host): it goes to Octorate in the create of the connection and is not kept. Only <c>access/start</c> returns
+/// the address of the panel: https, the page of the portal's connection (<c>?portal={code}</c>, verified for Booking.com) or the panel itself, with
+/// no organization, property or person data. Every answer is <c>private, no-store</c>.</para>
 /// </remarks>
 [ApiController]
 [Route("api/octorate")]
@@ -90,8 +93,9 @@ public sealed class OctorateExistingInventoryController(
 
     /// <summary>
     /// Starts (or reuses) the handoff to the Octorate panel for the access to a channel. The step and the resume point are saved before the
-    /// answer, which carries the handoff mode and the address of the panel; a channel whose access is already given answers
-    /// <c>alreadyComplete</c> and no address. The person gives the access on the panel: CasaZen takes no credential.
+    /// answer, which carries the handoff mode and the address of the panel (the page of the portal's connection when its code is a number); a
+    /// channel whose access is already given answers <c>alreadyComplete</c> and no address. The person gives the access on the panel: CasaZen takes
+    /// no credential.
     /// </summary>
     /// <response code="200">How and where to open the panel.</response>
     /// <response code="404">The batch is not the org's or the channel is not in it.</response>
@@ -108,6 +112,40 @@ public sealed class OctorateExistingInventoryController(
         var result = await import.StartChannelAccessAsync(caller, id, code, cancellationToken);
         NoStore();
         return Ok(ChannelAccessStartDto.From(result));
+    }
+
+    /// <summary>
+    /// «Collega da CasaZen»: for a portal that needs only the id of the property on it (<c>connectByPropertyId</c> of the catalog), CasaZen creates on
+    /// Octorate the connection of the channel on each accommodation named, with that id, records the accommodations connected (or found already
+    /// connected: never a second connection of the channel on one) in <c>connectedAccommodationIds</c> of the channel, and starts the access step.
+    /// The host's only step left is to approve Octorate on the extranet of the OTA; the access is verified when the connection is enabled. A
+    /// channel whose access is already given is answered as it is. A refusal of Octorate answers with its own code, as for the other calls, and the
+    /// connections made before it stay recorded.
+    /// </summary>
+    /// <response code="200">The batch, with the channel waiting for the access.</response>
+    /// <response code="404">The batch is not the org's, the caller does not reach it, or the channel is not in it.</response>
+    /// <response code="409"><c>octorate_panel_url_missing</c>: the panel address is not configured.</response>
+    /// <response code="422"><c>existing_inventory_connect_not_supported</c> (the portal needs more than the id), <c>existing_inventory_connect_empty</c> (1 to 50 accommodations), <c>existing_inventory_hotel_id_invalid</c> (1 to 64 letters, digits, dots, underscores or hyphens, each accommodation once), <c>existing_inventory_accommodation_unknown</c> (not an accommodation of the batch); the last two carry <c>accommodations</c>, the ids concerned.</response>
+    [HttpPost("existing-inventory/batches/{id:guid}/channels/{code}/connect")]
+    [ProducesResponseType(typeof(ExistingInventoryBatchDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ExistingInventoryBatchDto>> Connect(
+        Guid id,
+        string code,
+        [FromBody] ConnectExistingInventoryChannelRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (await CallerAsync(cancellationToken) is not { } caller)
+            return NoOrg();
+
+        var accommodations = (request?.Accommodations ?? [])
+            .Select(a => new ExistingInventoryConnectTarget(a?.AccommodationId, a?.HotelId))
+            .ToList();
+        var batch = await import.ConnectChannelAsync(caller, id, code, accommodations, cancellationToken);
+        NoStore();
+        return Ok(ExistingInventoryBatchDto.From(batch));
     }
 
     /// <summary>

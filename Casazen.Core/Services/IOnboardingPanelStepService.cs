@@ -109,8 +109,10 @@ public sealed record PanelStepView(
     DateTime? CompletedAt);
 
 /// <summary>
-/// A step that was started: its stored state and the addresses to go to. <paramref name="PanelUrl"/> is the configured address of the panel as it is
-/// (no org, property or person in it); <paramref name="CallbackUrl"/> is set only for <see cref="PanelHandoffMode.RedirectCallback"/>.
+/// A step that was started: its stored state and the addresses to go to. <paramref name="PanelUrl"/> is, for the access to a channel whose code is a
+/// number, the page of that portal's connection on the panel (<c>{base}/user/channelmanager/edit.xhtml?portal={code}</c>, verified for Booking.com
+/// only), and otherwise the configured address of the panel as it is: no org, property or person in it, the portal code at most;
+/// <paramref name="CallbackUrl"/> is set only for <see cref="PanelHandoffMode.RedirectCallback"/>.
 /// </summary>
 public sealed record PanelStepStart(PanelStepView Step, string PanelUrl, string? CallbackUrl);
 

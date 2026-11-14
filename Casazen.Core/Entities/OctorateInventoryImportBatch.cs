@@ -13,9 +13,12 @@ namespace Casazen.Core.Entities;
 /// <remarks>
 /// <para><b>Ids and codes only.</b> Nothing here is a credential, a token, an access address or a payload of Octorate: the batch holds ids
 /// of CasaZen, the codes of the channels, the states and stable error codes. The access to a channel is given in the Octorate panel and
-/// never reaches CasaZen.</para>
-/// <para><b>Never a creation.</b> No state of a batch, no error and no retry calls an operation that creates or publishes a listing on
-/// Octorate or on an OTA, and none falls back to the scenario <see cref="OctorateInventoryScenario.NewInventory"/>.</para>
+/// never reaches CasaZen; for a portal that needs only the id of the property on it, the host gives that id with «Collega» and it goes to
+/// Octorate without being kept.</para>
+/// <para><b>Never a creation to fix an import.</b> No state of a batch, no error and no retry calls an operation that creates or publishes a
+/// listing on Octorate or on an OTA, and none falls back to the scenario <see cref="OctorateInventoryScenario.NewInventory"/>. The one thing
+/// ever created is the connection of a channel the host asks for with «Collega», never a second one of the same channel on an
+/// accommodation.</para>
 /// <para><see cref="Status"/> is the summary of the channels (the earliest step one still has to do, <c>NeedsAttention</c> when a person
 /// has to act, <c>Completed</c> when all are); the channels are the truth.</para>
 /// </remarks>

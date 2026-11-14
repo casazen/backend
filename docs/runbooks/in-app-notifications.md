@@ -26,6 +26,12 @@ service (BookingNotifier, ServiceRequestNotifier, ShowcaseBookingNotifier, Notif
   charge and the org's administrators, active and not deactivated; the active users linked to the supplier org
   for the supplier's inbox). An audience with nobody in it (a booking that is gone, every member deactivated) writes nothing and is
   not an error.
+* **The platform staff** (`PushAudience.PlatformStaff(subjectId)`, `PushAudienceKind.PlatformStaff` = 12, 14/11/2026) is the active
+  accounts whose `User.Role` is `Admin` or that hold a `UserContextMemberships` row with `ContextKey` `admin` (`PlatformAdministrators`, the
+  same query the acceptance of an invitation uses to keep staff out of a customer's org). Each row carries the staff member's **own** org
+  (`User.OrgId`, else `User.SupplierOrgId`), the one its bell reads (`OwnNotifications`), never the org of the event; a staff account in no
+  org is not told. The app has no screen of the staff, so `HangfirePushQueue` queues **no push to a phone** for this audience (it answers
+  `false`, with an information line) and `PushDeliveryJob` resolves no device for it: the bell and its live update (§ 9) are the channel.
 * **The notification does not depend on the push being queued**: a push refused for its route, or a Hangfire that took one job and
   failed the other, leave the other alone. The answer of `Enqueue` is always the push's.
 
@@ -36,7 +42,7 @@ service (BookingNotifier, ServiceRequestNotifier, ShowcaseBookingNotifier, Notif
 | `Id`, `UserId` | The notification and the user who is told (`Users.Id`, the Auth0 subject). **Foreign key to `Users` `ON DELETE CASCADE`** |
 | `OrgId` | The org the event belongs to: the host org of the booking or property, or the **supplier org** for the supplier's inbox. `ITenantOwned`. **Foreign key to `Orgs` `ON DELETE CASCADE`** |
 | `Type` | A value of `PushTypes` (`new-booking`, `service-request-completed`, …), at most 64 characters |
-| `EntityId` | The **service request** for the `service-request-*` types, the **booking** for every other one; `null` if the event names none. Not a foreign key |
+| `EntityId` | The **service request** for the `service-request-*` types, the **«Fallo per me» request** for `assist-requested`, the **booking** for every other one; `null` if the event names none. Not a foreign key |
 | `DeliveryKey` | The key of the push of the same event (`PushDeliveryKeys`), at most 200 characters. Never sent to a client |
 | `CreatedAt`, `ReadAt` | UTC instants (whole microseconds). `CreatedAt` is the instant of the event (taken when the push was queued, so a late run or a retry does not move it); `ReadAt` is `NULL` while unread |
 
@@ -68,6 +74,7 @@ and write what is still missing (at most three rounds, then Hangfire retries). R
 | `service-request-taken`, `-started`, `-completed`, `-rejected`, `-time-proposed` | hosts of the property | service request |
 | `service-request-cancelled` | the other party: the hosts of the property when the supplier cancels, the supplier org when the host or the customer of its showcase cancels; both when nobody answered in time | service request |
 | `service-request-created`, `-paid`, `-reminder`, `-proposal-accepted`, `-proposal-rejected`, `-rescheduled` | the supplier org | service request |
+| `assist-requested` | the platform staff (`PushAudience.PlatformStaff`, see § 1), each under its own org: a host asked «Fallo per me» (`OnboardingAssistService.RequestAsync`, a new request only, § 10). Bell and live update only, no push on a phone | the «Fallo per me» request |
 
 A new value of `PushTypes` gives a notification with no change here; the client shows a generic sentence for a type it does not know.
 
@@ -180,6 +187,7 @@ route of the same screen (the links the e-mails use are built in `PublicSiteLink
 | `guest-checkin-completed` | booking | `/bookings/{bookingId}` | `/app/short-rent/bookings/{bookingId}?tab=guest` |
 | `service-request-taken`, `-started`, `-completed`, `-rejected`, `-time-proposed`, `-cancelled` (host side) | service request | `/bookings/{bookingId}` when the request has a booking, else `/properties` | the service request of the host (by `entityId`) |
 | `service-request-created`, `-auto-accepted`, `-paid`, `-reminder`, `-proposal-accepted`, `-proposal-rejected`, `-rescheduled`, `-cancelled` (supplier side) | service request | `/properties` | supplier inbox, `/app/supplier/inbox` (the request by `entityId`) |
+| `assist-requested` | «Fallo per me» request | none: no push on a phone (the app has no screen of the staff) | the staff queue, `/app/admin/onboarding-assist` (the request by `entityId`) |
 
 Notes: an in-app row has no booking id for the `service-request-*` types (its `entityId` is the **service request**); the booking
 of the request is only in the push. A client that needs it reads the request. A type the client does not know opens the list of
@@ -251,6 +259,15 @@ and nobody is told twice.
 the same ownership rules as the bell) and, when some changed, publish the new count (§ 9). Only the caller's rows: a colleague keeps
 theirs until they read the thread themselves.
 
+**«Fallo per me» to the staff** (14/11/2026). A host who asks CasaZen support for help (`OnboardingAssistService.RequestAsync`, after the new
+request is saved, never when the request of the same part, property and channel is open already: that is the 409 and tells nobody again)
+queues `IPushNotificationService.Enqueue` with type `assist-requested`, delivery key `assist-request:{requestId:N}:requested` (one per
+request) and `PushAudience.PlatformStaff(requestId)`. The payload carries no text, no route and no id but the request: nothing of the org,
+the property or the person (the privacy rule of the staff view). Through the decorator it is the entry of the bell of every platform
+administrator, under its own org, and the live `notificationsChanged` (§ 9) of its open sessions, so the staff queue
+(`/app/admin/onboarding-assist`) can refresh without a reload. Best effort: a failure is logged with the ids of the request and never fails
+the host's request.
+
 **Badges per booking.** `GET /api/messages/unread` (same policy `booking.read` and host scope as `GET /api/messages`):
 `{ "items": [ { "bookingId": "<guid>", "unreadCount": 2 } ] }`, only open threads with something unread, the latest guest message first,
 at most 200 (`GuestMessageRules.UnreadThreadsMax`). Never any text. Use it for the badges of the calendar and the lists, and refetch it on
@@ -265,12 +282,14 @@ at most 200 (`GuestMessageRules.UnreadThreadsMax`). Never any text. Use it for t
 `Casazen.Core/Services/IInAppNotificationPublisher.cs`, `Casazen.Web/Hubs/NotificationsHub.cs`,
 `Casazen.Web/Infrastructure/{SignalRInAppNotificationPublisher,HubAccessToken}.cs`; guest messages:
 `Casazen.Infrastructure/Services/GuestMessageService.cs`, `Casazen.Web/Controllers/HostMessagesController.cs`; online check-in:
-`Casazen.Infrastructure/Services/GuestCheckInService.cs` (`PushToHosts`).
+`Casazen.Infrastructure/Services/GuestCheckInService.cs` (`PushToHosts`); «Fallo per me» to the staff:
+`Casazen.Infrastructure/Services/OnboardingAssistService.cs` (`TellStaff`), `Casazen.Infrastructure/Services/PlatformAdministrators.cs`.
 Tests: `InAppNotificationPushDecoratorTests`, `InAppNotificationJobTests`, `InAppNotificationServiceTests`,
 `MeNotificationsControllerTests`, `InAppNotificationRetentionJobTests`,
 `InAppNotificationSqlShapeTests`, `InAppNotificationsIntegrationTests` (HTTP, the chain from a push to the
 notification), and on PostgreSQL `InAppNotificationsPostgresTests` (schema, the race on the unique index, the single-statement
 updates and the retention, whose rows a user reaches, the cascades), `InAppNotificationJobPublishTests`, `NotificationsHubTests`,
 `GuestMessagePushTests`, `HostMessagesControllerTests`, `GuestCheckInCompletedPushTests`, `GuestCheckInServiceTests` (the hosts are told),
-`GuestCheckInNotificationIntegrationTests` (from the guest's submit to the bell), `CorsPolicyTests` (hub), and on PostgreSQL `GuestMessageNotificationsPostgresTests`. The architecture tests list the entity
+`GuestCheckInNotificationIntegrationTests` (from the guest's submit to the bell), `CorsPolicyTests` (hub), `OnboardingAssistServiceTests`
+(the staff is told once per new request, a failure never fails the request), and on PostgreSQL `GuestMessageNotificationsPostgresTests`. The architecture tests list the entity
 (`TenantQueryFilterArchitectureTests`) and the four actions (`EndpointAuthorizationArchitectureTests`).

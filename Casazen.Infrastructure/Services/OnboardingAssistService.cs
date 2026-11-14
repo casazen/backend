@@ -21,11 +21,15 @@ namespace Casazen.Infrastructure.Services;
 /// people never close the same request in two ways.</para>
 /// <para><b>Privacy.</b> The staff view is made of ids, codes, the property and its comune; the request holds only the reference to the draft, and the
 /// note of staff is refused when it holds an e-mail address. Nothing here reads a draft.</para>
+/// <para><b>Staff told live.</b> A new request (never one that was open already) tells the platform staff, after it is saved: an entry of their bell
+/// and its live update (<see cref="PushTypes.AssistRequested"/>, <see cref="PushAudienceKind.PlatformStaff"/>), with the request as its only reference.
+/// Best effort: a failure is logged and never fails the host's request.</para>
 /// </remarks>
 public sealed class OnboardingAssistService(
     AppDbContext db,
     IActivityLog activityLog,
     IInternalActivityService activities,
+    IPushNotificationService pushNotifications,
     TimeProvider timeProvider,
     ILogger<OnboardingAssistService> logger) : IOnboardingAssistService
 {
@@ -59,7 +63,7 @@ public sealed class OnboardingAssistService(
             }
             catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, OnboardingAssistRequest.OpenRequestIndexName))
             {
-                // A parallel request of the same part and property saved first (the partial unique index): nothing of this one was saved.
+                // A parallel request of the same part, property and channel saved first (the partial unique index): nothing of this one was saved.
                 db.ChangeTracker.Clear();
                 throw AlreadyOpen();
             }
@@ -81,8 +85,15 @@ public sealed class OnboardingAssistService(
         string? channelCode,
         CancellationToken ct)
     {
+        // One open request for each part, property and channel: «Fallo per me» on one portal never stands for, nor blocks, another portal.
         var open = await db.OnboardingAssistRequests
-            .FirstOrDefaultAsync(r => r.OrgId == orgId && r.PartKey == part && r.PropertyId == propertyId && OpenStatuses.Contains(r.Status), ct);
+            .FirstOrDefaultAsync(
+                r => r.OrgId == orgId
+                     && r.PartKey == part
+                     && r.PropertyId == propertyId
+                     && r.ChannelCode == channelCode
+                     && OpenStatuses.Contains(r.Status),
+                ct);
         if (open is not null)
         {
             // A request saved without its "To do" (the call failed between the two saves) gets it now: the host that asks again is told the request
@@ -145,6 +156,7 @@ public sealed class OnboardingAssistService(
             PartKey = part,
             PropertyId = propertyId,
             Context = context,
+            ChannelCode = channelCode,
             Status = OnboardingAssistStatus.Requested,
             DraftWizardType = hasDraft ? WizardType.OnboardingActivation : null,
             DraftEntityId = hasDraft ? propertyId : null,
@@ -156,12 +168,35 @@ public sealed class OnboardingAssistService(
         activityLog.Record(LogLine(orgId, OrgActivityType.OnboardingAssistRequested, userId, part, context, OnboardingAssistStatus.Requested));
         await db.SaveChangesAsync(ct);
 
+        // The request is stored: the staff learns of it now, before the host's "To do", so a failure of the "To do" does not leave them unaware.
+        TellStaff(request);
         await RaiseTodoAsync(request, ct);
 
         logger.LogInformation(
-            "Assist request {RequestId} of org {OrgId} for part {Part} ({Context}) stored, To do {ActivityId}",
-            request.Id, orgId, OnboardingPartCatalog.Of(part).Code, context, request.ActivityId);
+            "Assist request {RequestId} of org {OrgId} for part {Part} ({Context}, channel {ChannelCode}) stored, To do {ActivityId}",
+            request.Id, orgId, OnboardingPartCatalog.Of(part).Code, context, channelCode, request.ActivityId);
         return ViewOf(request);
+    }
+
+    /// <summary>
+    /// Tells the platform staff that a new request waits in their queue: an entry of their bell and its live update, once per request (the delivery
+    /// key is the request's), with the request as the only reference. Nothing of the org, the property or the person goes in it, and there is no text
+    /// of a push: the staff has no screen in the app, so no phone is told, and the bell writes its sentence from the type. Best effort: whatever goes
+    /// wrong is logged and never fails the host's request.
+    /// </summary>
+    private void TellStaff(OnboardingAssistRequest request)
+    {
+        try
+        {
+            pushNotifications.Enqueue(
+                PushDeliveryKeys.AssistRequested(request.Id),
+                PushAudience.PlatformStaff(request.Id),
+                new PushNotificationPayload(string.Empty, string.Empty, PushTypes.AssistRequested, BookingId: null, Route: string.Empty));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "The staff could not be told about assist request {RequestId} of org {OrgId}", request.Id, request.OrgId);
+        }
     }
 
     /// <summary>The host's "To do" of a request (codes and ids only), found again when it exists, and its id stored on the request (saved here).</summary>
@@ -288,7 +323,9 @@ public sealed class OnboardingAssistService(
     /// <summary>
     /// What a request that is closed does to the panel step it was about (a panel context). <c>Done</c>: support did the step, so the step is
     /// confirmed with the staff user as who completed it and its own "To do" is closed. <c>Cancelled</c>: the step is the host's again, with a fresh
-    /// window of checks. Only a step the request had marked as asked for (<see cref="PanelStepStatus.AssistRequested"/>) is touched.
+    /// window of checks. Only a step the request had marked as asked for (<see cref="PanelStepStatus.AssistRequested"/>) is touched, and for a
+    /// channel access only the step of the request's channel: closing the request of one portal never settles the step of another. A request
+    /// stored before the channel was kept (no channel) settles the steps of its kind, as it always did.
     /// </summary>
     private async Task SettleStepAsync(
         OnboardingAssistRequest request,
@@ -300,11 +337,13 @@ public sealed class OnboardingAssistService(
         if (!PanelStepCatalog.TryOfContext(request.Context, out var info))
             return;
 
+        var channelCode = request.ChannelCode;
         var steps = await db.OnboardingPanelSteps
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(s => s.OrgId == request.OrgId
                         && s.PropertyId == request.PropertyId
                         && s.Kind == info.Kind
+                        && (channelCode == null || s.ChannelCode == channelCode)
                         && s.Status == PanelStepStatus.AssistRequested)
             .ToListAsync(ct);
 
@@ -379,7 +418,8 @@ public sealed class OnboardingAssistService(
             r.UpdatedAt,
             r.CompletedAt,
             r.StaffNote,
-            r.ActivityId);
+            r.ActivityId,
+            r.ChannelCode);
 
     private static AssistQueueItem QueueItemOf(OnboardingAssistRequest r, PropertyLine? property) =>
         new(
@@ -397,7 +437,8 @@ public sealed class OnboardingAssistService(
             r.AssignedToUserId,
             r.StaffNote,
             r.DraftWizardType,
-            r.DraftEntityId);
+            r.DraftEntityId,
+            r.ChannelCode);
 
     /// <summary>The line of the activity log of the org: the part, the context and the status as short codes; never a note, a draft or a person.</summary>
     private static OrgActivity LogLine(

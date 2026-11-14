@@ -4,7 +4,7 @@ namespace Casazen.Core.Services;
 
 /// <summary>
 /// A connection of an accommodation to a channel, as the org's Octorate token sees it (<c>GET /rest/v1/connection</c>, E02/F01/US03): the
-/// ids that tie a channel to an accommodation, and whether the person gave the access on the channel. Only what the import needs: the
+/// ids that tie a channel to an accommodation, and whether the channel took it (<see cref="IsAuthorized"/>). Only what the import needs: the
 /// portal username and password of a connection are never asked for.
 /// </summary>
 /// <param name="Id">The connection id (a number, as Octorate gives it).</param>
@@ -12,7 +12,10 @@ namespace Casazen.Core.Services;
 /// <param name="AccommodationId">The accommodation the connection belongs to.</param>
 /// <param name="ExternalId">The id of the listing on the channel (<c>hotelId</c>), when Octorate has it.</param>
 /// <param name="Status">The state of the connection as Octorate gives it (<c>DISABLED</c>, <c>WAITING</c>, <c>ENABLED</c>).</param>
-/// <param name="UserLogged">Octorate's flag that the person logged in and the connection is authorized to operate; <c>null</c> when not said.</param>
+/// <param name="UserLogged">
+/// Octorate's flag <c>userLogged</c>, kept as Octorate gives it; <c>null</c> when not said. The specification says it means that the person logged
+/// in and the connection is authorized, but it is no proof of an access: see <see cref="IsAuthorized"/>.
+/// </param>
 /// <param name="LoginAt">When the person logged in on the channel, as Octorate says it (<c>loginAt</c>, UTC); <c>null</c> when not said. It tells a
 /// login made after a hand-over to the panel from an authorization that was there before it.</param>
 public sealed record OctorateConnectionSummary(
@@ -28,11 +31,16 @@ public sealed record OctorateConnectionSummary(
     public const string EnabledStatus = "ENABLED";
 
     /// <summary>
-    /// The access on the channel was given: Octorate says the person logged in, or the connection is enabled. A connection that is only
-    /// waiting, disabled or silent is not an access given.
+    /// The access on the channel was given: the connection is <c>ENABLED</c> (the status is read trimmed and without regard to case), and nothing
+    /// else counts. A connection that is waiting, disabled or silent is not an access given, whatever <c>userLogged</c> says.
     /// </summary>
-    public bool IsAuthorized =>
-        UserLogged == true || string.Equals(Status?.Trim(), EnabledStatus, StringComparison.OrdinalIgnoreCase);
+    /// <remarks>
+    /// <c>userLogged</c> is not taken for the access because the sandbox showed it is true when the OTA accepted nothing. On 13/11/2026 a connection
+    /// was created through the API on the test structure 520897, with exactly the body CasaZen sends (<c>OctorateApiClient.ConnectionCreateBody</c>)
+    /// and a <c>hotelId</c> that does not exist on Booking.com: Octorate answered 200 with <c>status: "WAITING"</c>, <c>userLogged: true</c> and an empty
+    /// <c>lastPortalAcceptLog</c>, although Booking.com never approved anything. Only <c>ENABLED</c> says the channel took the connection.
+    /// </remarks>
+    public bool IsAuthorized => string.Equals(Status?.Trim(), EnabledStatus, StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>

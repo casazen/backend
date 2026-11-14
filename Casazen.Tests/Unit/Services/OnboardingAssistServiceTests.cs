@@ -45,6 +45,7 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
 
     private readonly AppDbContext _db;
     private readonly Casazen.Tests.Unit.FakeTimeProvider _clock = new(HostScopeScenario.Now);
+    private readonly RecordingPush _push = new();
     private AppDbContext _staffDb = null!;
     private HostScopeWorld _world = null!;
 
@@ -164,11 +165,12 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal(("compliance", OnboardingAssistContexts.PanelPolice, _world.Granted.Name, _world.Granted.City), (item.PartCode, item.Context, item.PropertyName, item.Comune));
         Assert.Equal((_world.OrgId, (Guid?)_world.Granted.Id), (item.OrgId, item.PropertyId));
 
-        // The shape is closed: the view of staff, as a record and as the DTO of the API, has exactly these members.
+        // The shape is closed: the view of staff, as a record and as the DTO of the API, has exactly these members (ChannelCode, 14/11/2026: the
+        // portal of a channel access request, so support knows which one to connect).
         string[] members =
         [
-            "Id", "OrgId", "PartCode", "PropertyId", "PropertyName", "Comune", "Context", "Status", "RequestedAt", "UpdatedAt", "CompletedAt",
-            "AssignedToUserId", "StaffNote", "DraftWizardType", "DraftEntityId",
+            "Id", "OrgId", "PartCode", "PropertyId", "PropertyName", "Comune", "Context", "ChannelCode", "Status", "RequestedAt", "UpdatedAt",
+            "CompletedAt", "AssignedToUserId", "StaffNote", "DraftWizardType", "DraftEntityId",
         ];
         Assert.Equal(members.Order(), typeof(AssistQueueItem).GetProperties().Select(p => p.Name).Order());
         Assert.Equal(
@@ -363,6 +365,73 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         var step = await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync();
         Assert.Equal(("booking_xml", PanelStepKind.ChannelAccess, PanelStepStatus.AssistRequested), (step.ChannelCode, step.Kind, step.Status));
         Assert.Equal(OnboardingAssistContexts.PanelChannelAccess, ok.Context);
+    }
+
+    /// <summary>
+    /// Proof (data): «Fallo per me» on the access to a channel is per portal. Two portals of the same part and property each get their own open
+    /// request (before, one request stood for every portal and the second was a 409), the same portal again is 409, the host reads the channel of
+    /// each, and support closing the request of one portal settles the step of that portal only.
+    /// </summary>
+    [Fact]
+    public async Task Request_ForAChannelAccess_IsOnePerPortal_AndDoneSettlesTheStepOfItsPortalOnly()
+    {
+        var service = HostService();
+        AssistRequestInput Portal(string code) => new(OnboardingPartKey.Channels, OnboardingAssistContexts.PanelChannelAccess, null, code);
+
+        var booking = await service.RequestAsync(_world.OrgWide, _world.OwnerUserId, Portal("142"), Ct);
+        var airbnb = await service.RequestAsync(_world.OrgWide, _world.OwnerUserId, Portal("274"), Ct);
+
+        Assert.NotEqual(booking.Id, airbnb.Id);
+        Assert.Equal(("142", "274"), (booking.ChannelCode, airbnb.ChannelCode));
+        var again = await Assert.ThrowsAsync<DomainConflictException>(() => service.RequestAsync(_world.OrgWide, _world.OwnerUserId, Portal("142"), Ct));
+        Assert.Equal(OnboardingAssistCodes.AlreadyOpen, again.Code);
+        Assert.Equal(["142", "274"], (await service.ListAsync(_world.OrgWide, Ct)).Select(r => r.ToDto().ChannelCode).Order());
+
+        // Support connects the first portal: its step is confirmed, the step of the other one stays with support.
+        await StaffService().UpdateAsync(Staff, booking.Id, OnboardingAssistStatus.Done, null, Ct);
+
+        var steps = await _db.OnboardingPanelSteps.AsNoTracking().ToDictionaryAsync(s => s.ChannelCode!);
+        Assert.Equal((PanelStepStatus.Confirmed, PanelStepStatus.AssistRequested), (steps["142"].Status, steps["274"].Status));
+        Assert.Equal("274", Assert.Single((await StaffService().ListQueueAsync(OnboardingAssistStatus.Requested, 1, 25, Ct)).Items).ChannelCode);
+    }
+
+    /// <summary>
+    /// Proof (data, privacy): a new request tells the platform staff once, live (the bell of the staff and its update): the type
+    /// <c>assist-requested</c>, the key and the audience of the request, and nothing of the org, the property or the person. A second request while
+    /// the first is open is the 409 it always was and tells nobody again.
+    /// </summary>
+    [Fact]
+    public async Task Request_ANewRequestTellsTheStaffOnce_AnOpenOneDoesNotTellAgain()
+    {
+        var service = HostService();
+        var input = Input(OnboardingPartKey.Compliance, OnboardingAssistContexts.PanelPolice, _world.Granted.Id);
+
+        var request = await service.RequestAsync(_world.OrgWide, _world.OwnerUserId, input, Ct);
+        await Assert.ThrowsAsync<DomainConflictException>(() => service.RequestAsync(_world.OrgWide, _world.OwnerUserId, input, Ct));
+
+        var (key, audience, payload) = Assert.Single(_push.Queued);
+        Assert.Equal(PushDeliveryKeys.AssistRequested(request.Id), key);
+        Assert.Equal(PushAudience.PlatformStaff(request.Id), audience);
+        Assert.Equal(PushTypes.AssistRequested, payload.Type);
+        Assert.True(payload is { BookingId: null, ServiceRequestId: null, ApprovalItemId: null }, "The notification of the staff names no other entity.");
+        var json = JsonSerializer.Serialize(payload);
+        foreach (var personal in new[] { _world.OrgId.ToString(), _world.Granted.Id.ToString(), _world.Granted.Name, _world.OwnerUserId })
+            Assert.DoesNotContain(personal, json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Proof (data): the staff cannot be told (the queue fails): the host's request is stored, with its "To do" and its line, and answered all the same.</summary>
+    [Fact]
+    public async Task Request_WhenTheStaffCannotBeTold_TheRequestIsStoredAndAnsweredAllTheSame()
+    {
+        var failing = new RecordingPush { Failure = new InvalidOperationException("The queue is down.") };
+
+        var request = await ServiceOn(_db, failing).RequestAsync(
+            _world.OrgWide, _world.OwnerUserId, Input(OnboardingPartKey.Channels, OnboardingAssistContexts.Part, null), Ct);
+
+        var stored = await _db.OnboardingAssistRequests.AsNoTracking().SingleAsync();
+        Assert.Equal((request.Id, OnboardingAssistStatus.Requested), (stored.Id, stored.Status));
+        Assert.NotNull(stored.ActivityId);
+        Assert.Single(await _db.OrgActivityEntries.ToListAsync());
     }
 
     [Fact]
@@ -658,11 +727,12 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
     /// <summary>The service as a platform administrator reaches it: the context of the request is under the tenant of ANOTHER org.</summary>
     private OnboardingAssistService StaffService() => ServiceOn(_staffDb);
 
-    private OnboardingAssistService ServiceOn(AppDbContext db) =>
+    private OnboardingAssistService ServiceOn(AppDbContext db, IPushNotificationService? push = null) =>
         new(
             db,
             new ActivityLog(db, _clock),
             new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, _clock),
+            push ?? _push,
             _clock,
             NullLogger<OnboardingAssistService>.Instance);
 
@@ -715,5 +785,22 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         public Guid? OrgId { get; } = orgId;
 
         public bool FilterEnabled => true;
+    }
+
+    /// <summary>The push queue as the request sees it: what was asked is kept; <see cref="Failure"/>, when set, is thrown instead.</summary>
+    private sealed class RecordingPush : IPushNotificationService
+    {
+        public List<(string Key, PushAudience Audience, PushNotificationPayload Payload)> Queued { get; } = [];
+
+        public Exception? Failure { get; set; }
+
+        public bool Enqueue(string deliveryKey, PushAudience audience, PushNotificationPayload payload)
+        {
+            if (Failure is not null)
+                throw Failure;
+
+            Queued.Add((deliveryKey, audience, payload));
+            return true;
+        }
     }
 }

@@ -25,7 +25,10 @@ public sealed class QueuedInAppNotification
     /// <summary>A value of <c>PushTypes</c>.</summary>
     public string Type { get; set; } = string.Empty;
 
-    /// <summary>The service request for the <c>service-request-*</c> types, else the booking; <c>null</c> when there is none.</summary>
+    /// <summary>
+    /// The service request for the <c>service-request-*</c> types, the subject of the event for the platform staff (a «Fallo per me» request),
+    /// else the booking; <c>null</c> when there is none.
+    /// </summary>
     public Guid? EntityId { get; set; }
 
     /// <summary>UTC instant of the event (when the push was queued), so a late run or a retry does not move it.</summary>
@@ -38,7 +41,9 @@ public sealed class QueuedInAppNotification
         AudienceKind = audience.Kind,
         AudienceId = audience.Id,
         Type = payload.Type,
-        EntityId = payload.ServiceRequestId ?? payload.BookingId,
+
+        // The audience of the platform staff names the subject of the event itself (PushAudience.PlatformStaff): that is what the bell opens.
+        EntityId = audience.Kind == PushAudienceKind.PlatformStaff ? audience.Id : payload.ServiceRequestId ?? payload.BookingId,
         OccurredAt = UtcDateTime.Normalize(occurredAtUtc),
     };
 }
@@ -59,7 +64,9 @@ public sealed class QueuedInAppNotification
 /// <para><b>Who.</b> Exactly the people the push tells, with the same rules (<see cref="HostNotificationAudience"/> for the hosts
 /// of a booking or a property, the active users linked to the supplier org for the supplier's inbox), so the bell and the phone
 /// cannot disagree. A user without a registered device still gets the notification: the bell does not depend on a phone. An
-/// audience with nobody in it (a booking that is gone, an org whose members are all deactivated) writes nothing and is not an error.</para>
+/// audience with nobody in it (a booking that is gone, an org whose members are all deactivated) writes nothing and is not an error.
+/// The platform staff (<see cref="PushAudienceKind.PlatformStaff"/>, <see cref="PlatformAdministrators"/>) has no push on a phone: the
+/// bell is its only channel, and each of its rows carries the staff member's own org, the one its bell reads, never the org of the event.</para>
 /// <para>Runs without a tenant (no HTTP request): every read states the org it means. Logs carry the key, the type, the
 /// audience and counts, never a user id or a push text.</para>
 /// </remarks>
@@ -103,7 +110,10 @@ public sealed class InAppNotificationJob(
                 .Select(n => n.UserId)
                 .ToListAsync(cancellationToken))
             .ToHashSet(StringComparer.Ordinal);
-        var toTell = recipients.Users.Where(userId => !alreadyTold.Contains(userId)).Order(StringComparer.Ordinal).ToList();
+        var toTell = recipients.Users
+            .Where(recipient => !alreadyTold.Contains(recipient.UserId))
+            .OrderBy(recipient => recipient.UserId, StringComparer.Ordinal)
+            .ToList();
         if (toTell.Count == 0)
         {
             logger.LogInformation(
@@ -121,14 +131,14 @@ public sealed class InAppNotificationJob(
         // that won has committed, so the next attempt is the unique violation (23505) and is skipped.
         var written = 0;
         var writtenUsers = new List<string>();
-        foreach (var userId in toTell)
+        foreach (var recipient in toTell)
         {
             for (var attempt = 1; ; attempt++)
             {
                 db.InAppNotifications.Add(new InAppNotification
                 {
-                    OrgId = recipients.OrgId,
-                    UserId = userId,
+                    OrgId = recipient.OrgId,
+                    UserId = recipient.UserId,
                     Type = notification.Type,
                     EntityId = notification.EntityId,
                     DeliveryKey = deliveryKey,
@@ -139,7 +149,7 @@ public sealed class InAppNotificationJob(
                 {
                     await db.SaveChangesAsync(cancellationToken);
                     written++;
-                    writtenUsers.Add(userId);
+                    writtenUsers.Add(recipient.UserId);
                     break;
                 }
                 catch (Exception ex) when (IsRaceOrVanishedUser(ex))
@@ -198,12 +208,19 @@ public sealed class InAppNotificationJob(
         return null;
     }
 
-    private sealed record Recipients(Guid OrgId, IReadOnlyList<string> Users)
+    /// <summary>One user to tell, with the org its row belongs to (the org its bell reads it under).</summary>
+    private sealed record Recipient(string UserId, Guid OrgId);
+
+    private sealed record Recipients(IReadOnlyList<Recipient> Users)
     {
-        public static Recipients None { get; } = new(Guid.Empty, []);
+        public static Recipients None { get; } = new([]);
+
+        /// <summary>Users of the org the event belongs to, each once.</summary>
+        public static Recipients Of(Guid orgId, IEnumerable<string> userIds) =>
+            new([.. userIds.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Select(userId => new Recipient(userId, orgId))]);
     }
 
-    /// <summary>The org the event belongs to and the ids of the users of the audience, each once.</summary>
+    /// <summary>The users of the audience, each once, with the org of each row: the org the event belongs to, or the staff member's own one.</summary>
     private async Task<Recipients> ResolveRecipientsAsync(QueuedInAppNotification notification, CancellationToken cancellationToken)
     {
         switch (notification.AudienceKind)
@@ -216,6 +233,8 @@ public sealed class InAppNotificationJob(
                 return await SupplierUsersAsync(notification.AudienceId, cancellationToken);
             case PushAudienceKind.VerificationOperators:
                 return await VerificationOperatorsAsync(notification.AudienceId, cancellationToken);
+            case PushAudienceKind.PlatformStaff:
+                return await PlatformStaffAsync(cancellationToken);
             default:
                 // A new kind of audience the push knows and this job does not: nothing to retry, the log says which.
                 logger.LogError(
@@ -289,7 +308,29 @@ public sealed class InAppNotificationJob(
         var users = await VerificationOperatorAudience.UsersToTell(db, booking.OrgId, booking.PropertyId, booking.OwnerId)
             .Select(u => u.Id)
             .ToListAsync(cancellationToken);
-        return new Recipients(booking.OrgId, users.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList());
+        return Recipients.Of(booking.OrgId, users);
+    }
+
+    /// <summary>
+    /// The platform administrators (<see cref="PlatformAdministrators"/>: the user role <c>Admin</c> or a membership of the administration context),
+    /// active, each with its <b>own</b> org: its host org, else its supplier org. The bell lists only the rows of the user's own org
+    /// (<c>InAppNotificationService.OwnNotifications</c>), so a row under the org of the event (the host who asked) would never show; a staff account
+    /// in no org has no bell to write to and is left out.
+    /// </summary>
+    private async Task<Recipients> PlatformStaffAsync(CancellationToken cancellationToken)
+    {
+        var staff = await PlatformAdministrators.Of(db)
+            .AsNoTracking()
+            .Where(u => u.IsActive && (u.OrgId != null || u.SupplierOrgId != null))
+            .Select(u => new { u.Id, OrgId = u.OrgId ?? u.SupplierOrgId })
+            .ToListAsync(cancellationToken);
+        return new Recipients(
+        [
+            .. staff
+                .DistinctBy(u => u.Id, StringComparer.Ordinal)
+                .OrderBy(u => u.Id, StringComparer.Ordinal)
+                .Select(u => new Recipient(u.Id, u.OrgId!.Value)),
+        ]);
     }
 
     private async Task<Recipients> HostsAsync(
@@ -302,7 +343,7 @@ public sealed class InAppNotificationJob(
         var users = await HostNotificationAudience.UsersToTell(db, orgId, propertyId, responsibleUserId, ownerId)
             .Select(u => u.Id)
             .ToListAsync(cancellationToken);
-        return new Recipients(orgId, users.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList());
+        return Recipients.Of(orgId, users);
     }
 
     /// <summary>
@@ -316,6 +357,6 @@ public sealed class InAppNotificationJob(
             .Where(u => u.IsActive && (u.SupplierOrgId == supplierOrgId || u.OrgId == supplierOrgId))
             .Select(u => u.Id)
             .ToListAsync(cancellationToken);
-        return new Recipients(supplierOrgId, users.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList());
+        return Recipients.Of(supplierOrgId, users);
     }
 }
