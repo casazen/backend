@@ -170,6 +170,7 @@ public class IdentityTwoSidedDocumentTests
                 Assert.Equal(2, world.Storage.Objects.Count);
                 await world.SetSettingsAsync(enabled: true, maxAttempts: 1);
                 Assert.Equal(IdentityVerificationGuestResults.Operator, (await world.SelfieAsync(session)).Result);
+                Assert.Equal(VerificationAlertReasons.AttemptsExhausted, Assert.Single(world.Alerts).Reason);
                 break;
         }
 
@@ -201,6 +202,61 @@ public class IdentityTwoSidedDocumentTests
         Assert.Equal(IdentityVerificationGuestResults.Operator, selfie.Result);
         Assert.Equal(0, world.Agent.Calls);
         Assert.Equal(VerificationAlertReasons.MinorExcluded, Assert.Single(world.Alerts).Reason);
+    }
+
+    /// <summary>
+    /// The attempts are the organization's to change (E22/F01/US01/T03). A guest in the middle of his attempts finds the maximum lowered to the ones he made
+    /// and no operator was told: the hand-off is made at his next step, once, so the alert, the "To do" and the queue of the operators exist (the next test:
+    /// a hand-off that is open already is not told again).
+    /// </summary>
+    [Fact]
+    public async Task TwoSided_AttemptsLoweredToTheOnesMade_HandOverToTheOperatorWithTheAlert_Once()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        await world.DocumentAsync(session, Pic("FACE", 1), DocumentSide.Front);
+        await world.DocumentAsync(session, Pic("MRZ", 2), DocumentSide.Back);
+        world.Agent.Next(Outcome(IdentityVerificationResult.NotOk));
+        Assert.Equal(IdentityVerificationGuestResults.Retry, (await world.SelfieAsync(session)).Result);
+        Assert.Null(session.OperatorRequestedAt);
+        Assert.Empty(world.Alerts);
+
+        await world.SetSettingsAsync(enabled: true, maxAttempts: 1);
+        var handedOver = await world.SelfieAsync(session);
+
+        Assert.Equal(IdentityVerificationGuestResults.Operator, handedOver.Result);
+        Assert.Equal(0, handedOver.AttemptsRemaining);
+        var alert = Assert.Single(world.Alerts);
+        Assert.Equal(session.Id, alert.SessionId);
+        Assert.Equal(VerificationAlertReasons.AttemptsExhausted, alert.Reason);
+        Assert.NotNull(session.OperatorRequestedAt);
+        Assert.True(VerificationOperatorRules.NeedsOperator.Compile()(session), "the queue of the operators lists the session");
+        Assert.True(await VerificationHandOff.HasOpenHandOffAsync(world.Db, session.BookingId, CancellationToken.None));
+
+        // The next step finds the hand-off open: no second alert, and the answer is the same.
+        Assert.Equal(IdentityVerificationGuestResults.Operator, (await world.SelfieAsync(session)).Result);
+        Assert.Single(world.Alerts);
+        Assert.Equal(1, world.Agent.Calls);
+    }
+
+    /// <summary>A guest who asked for a person was told already: lowering the attempts later does not raise a second alert for his hand-off.</summary>
+    [Fact]
+    public async Task TwoSided_AttemptsLowered_AfterTheGuestAskedForAPerson_NoSecondAlert()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        await world.DocumentAsync(session, Pic("FACE", 1), DocumentSide.Front);
+        await world.DocumentAsync(session, Pic("MRZ", 2), DocumentSide.Back);
+        world.Agent.Next(Outcome(IdentityVerificationResult.NotOk));
+        await world.SelfieAsync(session);
+        await world.Flow().RequestOperatorAsync(session, CancellationToken.None);
+        Assert.Equal(VerificationAlertReasons.GuestRequest, Assert.Single(world.Alerts).Reason);
+
+        await world.SetSettingsAsync(enabled: true, maxAttempts: 1);
+        var next = await world.SelfieAsync(session);
+
+        Assert.Equal(IdentityVerificationGuestResults.Operator, next.Result);
+        Assert.Single(world.Alerts);
     }
 
     /// <summary>

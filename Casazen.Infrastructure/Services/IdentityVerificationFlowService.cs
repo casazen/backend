@@ -547,13 +547,34 @@ public sealed class IdentityVerificationFlowService(
     /// <summary>
     /// The verification is on the operator path already (<see cref="InOperatorPath"/>): the pictures kept for the comparison go, both sides of a document, as on
     /// every other way to a person (an administrator of the organization can switch the face check off or lower the attempts while a guest is between the
-    /// document and the selfie, E22/F01/US01/T03).
+    /// document and the selfie, E22/F01/US01/T03). And when that is only because the attempts already made reach a maximum that was lowered since
+    /// (<see cref="OnlyTheAttemptsReachTheMax"/>), nobody was told yet: the hand-off is made now, so the alert, the "To do" and the queue of the operators exist
+    /// (a request already open, a refusal, a review or a booking with an operator were told before and are not told again).
     /// </summary>
     private async Task CloseOperatorPathAsync(GuestCheckInSession session, FlowContext context, CancellationToken ct)
     {
         await DeleteStoredDocumentAsync(session, ct);
+        if (OnlyTheAttemptsReachTheMax(session, context))
+        {
+            await ToOperatorAsync(session, VerificationAlertReasons.AttemptsExhausted, ct);
+            return;
+        }
+
         await db.SaveChangesAsync(ct);
     }
+
+    /// <summary>
+    /// The operator path is the verification's only because the attempts made reach the maximum in force: no request to an operator, no refused consent, no
+    /// review and no hand-off of the booking, and the verification was not accepted. The maximum of the attempts is the organization's to change, so a session
+    /// in the middle of its attempts can find itself there with no one told.
+    /// </summary>
+    private static bool OnlyTheAttemptsReachTheMax(GuestCheckInSession session, FlowContext context) =>
+        !context.BookingWithOperator
+        && session.OperatorRequestedAt is null
+        && session.BiometricConsentRefusedAt is null
+        && session.BiometricOutcome != BiometricOutcome.Escalate
+        && session.BiometricOutcome != BiometricOutcome.Accept
+        && session.BiometricAttempts >= context.Policy.MaxAttempts;
 
     private static SelfieStepResult Done(string result, IReadOnlyList<string> guidance, int remaining, string? lockCode, string? lockCodeHeld = null) =>
         new(SelfieStepStatus.Done, result, guidance, remaining, lockCode, lockCodeHeld);
