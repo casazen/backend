@@ -10,10 +10,11 @@ namespace Casazen.Web.DTOs.CheckIn;
 /// </summary>
 /// <remarks>
 /// <c>Channel</c> is <c>Email</c>, <c>PortalChat</c> (one message in the reservation thread of the portal) or <c>Manual</c> (the host carries the link). <c>State</c> is
-/// <c>Sent</c>, <c>WaitingChatPermission</c> (the chat of the portal is not in the license of the listing yet), <c>WaitingThread</c> (the booking has no conversation yet),
-/// <c>WaitingContact</c> (no way to the guest is on, or none has an address), <c>WaitingStaticIps</c> (the contact of the guest cannot be read until the static IP addresses
-/// are registered) or <c>Failed</c>, with <c>LastErrorCode</c> the stable code of why (<c>chat_not_licensed</c>, <c>no_conversation</c>, <c>manual_verify</c>,
-/// <c>octorate_unavailable</c>, ...). <c>Ended</c> is true once the guest completed the check-in, the booking was cancelled, the link expired or the host issued another
+/// <c>Sent</c> (the message is sent: a message that is only created, or waits for the authorization of the channel, is not), <c>Sending</c> (the message of the chat is with the channel
+/// manager and has not been sent yet: nothing to do, the state is read again every hour), <c>WaitingChatPermission</c> (the chat of the portal is not in the license of the listing yet),
+/// <c>WaitingThread</c> (the booking has no conversation yet), <c>WaitingContact</c> (no way to the guest is on, or none has an address), <c>WaitingStaticIps</c> (the contact of the guest
+/// cannot be read until the static IP addresses are registered) or <c>Failed</c>, with <c>LastErrorCode</c> the stable code of why (<c>chat_not_licensed</c>, <c>no_conversation</c>,
+/// <c>manual_verify</c>, <c>octorate_message_error</c>, <c>octorate_unavailable</c>, ...). <c>Ended</c> is true once the guest completed the check-in, the booking was cancelled, the link expired or the host issued another
 /// link, with <c>EndedReason</c> a code. <c>CheckInLink</c> is the link to copy («Copia link»): <b>only</b> for a caller who can already copy one (<c>booking.write</c> on the
 /// property), only while the delivery waits or failed, and only while the link can still be opened; <c>null</c> for everyone else.
 /// </remarks>

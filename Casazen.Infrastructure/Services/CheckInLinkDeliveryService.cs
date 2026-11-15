@@ -31,6 +31,10 @@ namespace Casazen.Infrastructure.Services;
 /// channel manager <b>refused</b> (the state <see cref="OtaMessageDeliveryState.Error"/>, nothing left) lets the next attempt use the next key of the same link; a
 /// message whose outcome is unknown (<see cref="OtaMessageDeliveryState.ManualVerify"/>) is never sent again: the row is <see cref="CheckInLinkDeliveryState.Failed"/>
 /// with <see cref="CheckInLinkDeliveryRules.ManualVerifyCode"/> and the host looks at the thread.</item>
+/// <item><b>Delivered means sent.</b> A message the channel manager has only created (<see cref="OtaMessageDeliveryState.Created"/>) or holds for the authorization of the channel
+/// (<see cref="OtaMessageDeliveryState.WaitingAuthorization"/>) is not delivered: the row is <see cref="CheckInLinkDeliveryState.Sending"/>, keeps its token and the «To do» it has, and the hourly
+/// pass reads the message again (<c>SettleSendingAsync</c>): sent, the row is <see cref="CheckInLinkDeliveryState.Sent"/> (the token is cleared and the «To do» closed); in error, it is
+/// <see cref="CheckInLinkDeliveryState.Failed"/> with <see cref="MessageReplyService.ChannelReportedErrorCode"/>, the host gets its «To do» and the notice, and «Copia link» still has the link.</item>
 /// <item><b>Nothing is swallowed.</b> What the channel manager answers is the state of the row, with its stable code; the codes of a limit and of an outage
 /// (<see cref="TransientCodes"/>) are tried again by the hourly pass up to <see cref="CheckInLinkDeliveryRules.MaxAttempts"/> attempts, the others wait for the thing
 /// that changes them (the sync of the chat, a thread, a day) or for the host. An exception that is not an answer of the channel manager reaches the caller.</item>
@@ -246,6 +250,16 @@ public sealed class CheckInLinkDeliveryService(
                 await SaveAndTellHostAsync(delivery, booking, now, ct);
                 return;
             }
+
+            if (chat.State == CheckInLinkDeliveryState.Sending)
+            {
+                // The message is with the channel manager and has not been sent yet: the link is not delivered. The row stays open with its token (an error, or the host, may need it),
+                // the contact of the guest is not asked for (the chat has the link), and the hourly pass reads the message again.
+                Settle(delivery, CheckInLinkChannel.PortalChat, CheckInLinkDeliveryState.Sending, null);
+                delivery.OtaMessageId = chat.MessageId;
+                await SaveAndTellHostAsync(delivery, booking, now, ct);
+                return;
+            }
         }
 
         string? contactError = null;
@@ -355,8 +369,12 @@ public sealed class CheckInLinkDeliveryService(
 
         switch (result.State)
         {
-            case OtaMessageDeliveryState.Created or OtaMessageDeliveryState.WaitingAuthorization or OtaMessageDeliveryState.Sent:
+            case OtaMessageDeliveryState.Sent:
                 return ChatAttempt.Done(result.Message?.Id);
+            case OtaMessageDeliveryState.Created or OtaMessageDeliveryState.WaitingAuthorization:
+                // With the channel manager, which has not sent it yet (or waits for the authorization of the channel): the link is not delivered, and the message may still end in
+                // error. The row stays open; the hourly pass reads the message again.
+                return ChatAttempt.OnItsWay(result.Message?.Id);
             case OtaMessageDeliveryState.ManualVerify:
                 // It may have left: never sent again, and never shown as sent.
                 return ChatAttempt.Failed(CheckInLinkDeliveryRules.ManualVerifyCode);
@@ -475,6 +493,10 @@ public sealed class CheckInLinkDeliveryService(
             return false;
         }
 
+        // A message the channel manager had not sent yet is read again, never sent again.
+        if (delivery.State == CheckInLinkDeliveryState.Sending)
+            return await SettleSendingAsync(delivery, booking, now, ct);
+
         if (!await IsDueAsync(delivery, booking, now, ct))
             return false;
 
@@ -497,6 +519,43 @@ public sealed class CheckInLinkDeliveryService(
         }
 
         await AttemptAsync(delivery, booking, token, expiresAt, language, now, ct);
+        return true;
+    }
+
+    /// <summary>
+    /// A row whose message the channel manager had not sent yet (<see cref="CheckInLinkDeliveryState.Sending"/>): the message is read again from the copy of the conversation (the sync stores
+    /// the state the channel manager reached; nothing is asked of it here). <b>Sent</b>: the link is delivered (the token is cleared and the «To do» closed). <b>Error</b>: the link did not reach
+    /// the guest, so the row fails with the code of a message the channel manager reports as failed, the host gets its «To do» and the notice, and the token is still there for «Copia link».
+    /// Any other state (an outcome nobody knows, a message that is gone) fails the same way with the code of an outcome nobody knows. Still on its way: nothing changes. True when the row changed.
+    /// </summary>
+    private async Task<bool> SettleSendingAsync(CheckInLinkDelivery delivery, Booking booking, DateTime now, CancellationToken ct)
+    {
+        var messageId = delivery.OtaMessageId;
+        OtaMessageDeliveryState? state = messageId is { } id
+            ? await db.OtaMessages
+                .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+                .AsNoTracking()
+                .Where(m => m.Id == id && m.OrgId == delivery.OrgId)
+                .Select(m => (OtaMessageDeliveryState?)m.DeliveryState)
+                .FirstOrDefaultAsync(ct)
+            : null;
+
+        switch (state)
+        {
+            case OtaMessageDeliveryState.Created or OtaMessageDeliveryState.WaitingAuthorization:
+                return false;
+            case OtaMessageDeliveryState.Sent:
+                MarkSent(delivery, CheckInLinkChannel.PortalChat, messageId, now);
+                break;
+            case OtaMessageDeliveryState.Error:
+                Settle(delivery, CheckInLinkChannel.PortalChat, CheckInLinkDeliveryState.Failed, MessageReplyService.ChannelReportedErrorCode);
+                break;
+            default:
+                Settle(delivery, CheckInLinkChannel.PortalChat, CheckInLinkDeliveryState.Failed, CheckInLinkDeliveryRules.ManualVerifyCode);
+                break;
+        }
+
+        await SaveAndTellHostAsync(delivery, booking, now, ct);
         return true;
     }
 
@@ -814,10 +873,12 @@ public sealed class CheckInLinkDeliveryService(
 
     private DateTime Now() => _clock.GetUtcNow().UtcDateTime;
 
-    /// <summary>What the chat of the portal answered for the link: delivered, waiting for something, or failed with a code.</summary>
+    /// <summary>What the chat of the portal answered for the link: delivered, on its way (with the channel manager, not sent yet), waiting for something, or failed with a code.</summary>
     private sealed record ChatAttempt(bool Delivered, CheckInLinkDeliveryState State, string? ErrorCode, Guid? MessageId)
     {
         public static ChatAttempt Done(Guid? messageId) => new(true, CheckInLinkDeliveryState.Sent, null, messageId);
+
+        public static ChatAttempt OnItsWay(Guid? messageId) => new(false, CheckInLinkDeliveryState.Sending, null, messageId);
 
         public static ChatAttempt Waiting(CheckInLinkDeliveryState state, string code) => new(false, state, code, null);
 

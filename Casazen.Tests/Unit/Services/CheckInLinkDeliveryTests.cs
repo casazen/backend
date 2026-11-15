@@ -226,6 +226,100 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// PROOF TEST: data rule (the review of S010, fix 2). A message the channel manager has only created, or holds for the authorization of the channel, is not delivered: the row is
+    /// <c>Sending</c>, keeps its token and the «To do» it already has, and nothing is sent again; when the channel manager sends it, the next pass delivers the link (the token is cleared
+    /// and the «To do» closed by the system).
+    /// </summary>
+    [Theory]
+    [InlineData(OtaMessageDeliveryState.Created)]
+    [InlineData(OtaMessageDeliveryState.WaitingAuthorization)]
+    public async Task LinkDelivery_AMessageNotSentYet_IsNotDelivered_AndTheNextPassDeliversItWhenTheChannelSendsIt_Test(OtaMessageDeliveryState onItsWay)
+    {
+        var stay = await AddStayAsync(withThread: false);
+        var rig = new Rig(_db, _world, _clock, FeatureFlags.PortalChatCheckInLink);
+        rig.Messages.Client
+            .Setup(c => c.SendChatMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctorateChatSendResult("90001", onItsWay));
+        await rig.Service.DeliverAsync(stay.Booking.Id, stay.Link);
+        Assert.Equal(CheckInLinkDeliveryState.WaitingThread, (await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync()).State);
+        _db.OtaMessageThreads.Add(NewThread(stay.Booking, "T-ITS-WAY"));
+        await _db.SaveChangesAsync();
+
+        Assert.Equal(1, await rig.Service.RetryWaitingAsync(IssueNothing));
+
+        // Handed to the channel manager, not sent: the link is not delivered. The row is open with its token, the «To do» the host already had is still open, nobody is told.
+        var sending = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync();
+        Assert.Equal((CheckInLinkChannel.PortalChat, CheckInLinkDeliveryState.Sending), (sending.Channel, sending.State));
+        Assert.Equal(stay.Token, sending.LinkToken);
+        Assert.Null(sending.SentAt);
+        Assert.Null(sending.EndedAt);
+        Assert.NotNull(sending.OtaMessageId);
+        Assert.Null(Assert.Single(await _db.InternalActivities.AsNoTracking().ToListAsync()).CompletedAt);
+        Assert.Empty(rig.Pushes);
+
+        // Still on its way an hour later: the message is read again, nothing changes and nothing is sent again.
+        _clock.Advance(TimeSpan.FromHours(1));
+        Assert.Equal(0, await rig.Service.RetryWaitingAsync(IssueNothing));
+        Assert.Equal(CheckInLinkDeliveryState.Sending, (await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync()).State);
+
+        // The channel manager sends it (the copy of the conversation stores the state it reached): the link is delivered, the token is cleared, the «To do» is closed by the system.
+        await SetMessageStateAsync(sending.OtaMessageId!.Value, OtaMessageDeliveryState.Sent);
+        Assert.Equal(1, await rig.Service.RetryWaitingAsync(IssueNothing));
+
+        var sent = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync();
+        Assert.Equal((CheckInLinkChannel.PortalChat, CheckInLinkDeliveryState.Sent), (sent.Channel, sent.State));
+        Assert.Null(sent.LinkToken);
+        Assert.NotNull(sent.SentAt);
+        var closed = Assert.Single(await _db.InternalActivities.AsNoTracking().ToListAsync());
+        Assert.NotNull(closed.CompletedAt);
+        Assert.Equal(InternalActivity.ClosedBySystem, closed.ClosedBy);
+        rig.Messages.Client.Verify(
+            c => c.SendChatMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule (the review of S010, fix 2). A message the channel manager accepted and then reports as failed is a link that did not reach the guest: the row fails with the code
+    /// of a message that ended in error, the host gets ONE «To do» and the notice, the link is still there to copy («Copia link»), and the message is never sent again.
+    /// </summary>
+    [Fact]
+    public async Task LinkDelivery_AMessageThatEndsInError_FailsTheRow_TheHostIsToldAndCanStillCopyTheLink_Test()
+    {
+        var stay = await AddStayAsync();
+        var rig = new Rig(_db, _world, _clock, FeatureFlags.PortalChatCheckInLink);
+        rig.Messages.Client
+            .Setup(c => c.SendChatMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctorateChatSendResult("90001", OtaMessageDeliveryState.Created));
+
+        var sending = await rig.Service.DeliverAsync(stay.Booking.Id, stay.Link);
+
+        // On its way: nothing for the host to do yet.
+        Assert.Equal(CheckInLinkDeliveryState.Sending, sending.State);
+        Assert.Empty(await _db.InternalActivities.AsNoTracking().ToListAsync());
+        var messageId = (await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync()).OtaMessageId!.Value;
+
+        await SetMessageStateAsync(messageId, OtaMessageDeliveryState.Error);
+        Assert.Equal(1, await rig.Service.RetryWaitingAsync(IssueNothing));
+
+        var failed = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync();
+        Assert.Equal((CheckInLinkChannel.PortalChat, CheckInLinkDeliveryState.Failed, MessageReplyService.ChannelReportedErrorCode), (failed.Channel, failed.State, failed.LastErrorCode));
+        Assert.Equal(stay.Token, failed.LinkToken);
+        var todo = Assert.Single(await _db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.CheckInLinkToSend)).ToListAsync());
+        Assert.Null(todo.CompletedAt);
+        var push = Assert.Single(rig.Pushes);
+        Assert.Equal(PushDeliveryKeys.CheckInLinkFailed(stay.Session.Id), push.Key);
+        var view = await rig.Service.GetAsync(_world.Scope.OrgId, stay.Booking.Id, includeLink: true);
+        Assert.Equal($"https://public.test/checkin/{stay.Token}", view!.Link);
+
+        // Never sent again, however long it waits.
+        _clock.Advance(TimeSpan.FromDays(1));
+        Assert.Equal(0, await rig.Service.RetryWaitingAsync(IssueNothing));
+        rig.Messages.Client.Verify(
+            c => c.SendChatMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
     /// A refusal of the channel manager that nothing was sent behind (the chat is not licensed, the send was refused) spends the key of that message and no more: the next attempt
     /// for the same link uses the next key and sends, once, when the listing reads its chat again.
     /// </summary>
@@ -588,6 +682,15 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
     {
         var row = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync(d => d.BookingId == bookingId);
         return (row.Channel, row.State);
+    }
+
+    /// <summary>The copy of the conversation stores the state the channel manager reached for a message CasaZen wrote.</summary>
+    private async Task SetMessageStateAsync(Guid messageId, OtaMessageDeliveryState state)
+    {
+        var message = await _db.OtaMessages.SingleAsync(m => m.Id == messageId);
+        message.DeliveryState = state;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
     }
 
     private async Task SetSyncStateAsync(string? lastError, DateTime updatedAt)

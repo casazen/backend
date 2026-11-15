@@ -55,7 +55,7 @@ internal sealed class CheckInLinkDeliveryConfiguration : IEntityTypeConfiguratio
                 "CK_CheckInLinkDeliveries_State",
                 $"\"State\" IN ({(int)CheckInLinkDeliveryState.Sent}, {(int)CheckInLinkDeliveryState.WaitingChatPermission}, "
                 + $"{(int)CheckInLinkDeliveryState.WaitingThread}, {(int)CheckInLinkDeliveryState.WaitingContact}, "
-                + $"{(int)CheckInLinkDeliveryState.WaitingStaticIps}, {(int)CheckInLinkDeliveryState.Failed})");
+                + $"{(int)CheckInLinkDeliveryState.WaitingStaticIps}, {(int)CheckInLinkDeliveryState.Failed}, {(int)CheckInLinkDeliveryState.Sending})");
         });
     }
 }

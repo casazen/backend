@@ -22,11 +22,15 @@ public enum CheckInLinkChannel
 /// <summary>
 /// Where the delivery of the check-in link of a booking stands (<see cref="CheckInLinkDelivery.State"/>, E23/F01/US01/T01, T02). The four waiting states say
 /// what the link waits for, which is never something the guest does: the permission of the chat, the conversation of the booking, a way to reach the guest,
-/// the registration of the static IP addresses. Stored as an integer: a member is never renumbered.
+/// the registration of the static IP addresses. <see cref="Sending"/> is the message of the chat that the channel manager has not sent yet. Stored as an integer: a
+/// member is never renumbered.
 /// </summary>
 public enum CheckInLinkDeliveryState
 {
-    /// <summary>The link was handed over: the message is with the channel manager, or the e-mail is with the queue of the e-mails. Final for that link.</summary>
+    /// <summary>
+    /// The link was handed over: the message is <b>sent</b> (the channel manager says so), or the e-mail is with the queue of the e-mails. Final for that link. A message that is only
+    /// created, or waits for the authorization of the channel, is <see cref="Sending"/>, never this.
+    /// </summary>
     Sent = 1,
 
     /// <summary>The chat of the portal is not in the license of the listing (<c>chat_not_licensed</c>): tried again when the listing reads its chat.</summary>
@@ -43,4 +47,11 @@ public enum CheckInLinkDeliveryState
 
     /// <summary>The automatic delivery failed with <see cref="CheckInLinkDelivery.LastErrorCode"/>: the host carries the link and is told.</summary>
     Failed = 6,
+
+    /// <summary>
+    /// The message of the chat is with the channel manager (<c>CREATED</c>, or <c>WAIT_AUTH</c> while the channel authorizes it) and has not been sent yet: the link is not delivered, the
+    /// row stays open with its token, and the hourly pass reads the message again: <see cref="Sent"/> when the channel manager sends it, <see cref="Failed"/> with
+    /// <c>octorate_message_error</c> when it ends in error. The host has nothing to do while it is here, and a «To do» it already has stays open.
+    /// </summary>
+    Sending = 7,
 }
