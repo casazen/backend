@@ -95,6 +95,10 @@ public class CleaningAutomationTests
             return setup;
         }
 
+        /// <summary>The automation over other services than the scenario's real ones (a service that fails with something that is not a rule); everything else is the rig's.</summary>
+        public CleaningAutomationService AutomationWith(IServiceRequestService requests, IInternalActivityService? staffWork = null) =>
+            new(Scenario.Db, requests, staffWork ?? Activities, Alerts.Object, Scenario.Flags, Scenario.Clock, NullLogger<CleaningAutomationService>.Instance);
+
         public async Task ChangeStayAsync(Action<Booking> change)
         {
             Scenario.Db.ChangeTracker.Clear();
@@ -448,6 +452,95 @@ public class CleaningAutomationTests
         Assert.Empty(await rig.RequestsAsync());
         Assert.Empty(rig.Scenario.Db.StayCleanings);
         Assert.Single(await rig.TodosAsync(nameof(ActivityType.CleaningDue)));
+    }
+
+    /// <summary>
+    /// Proof (money): an unexpected error while the request is made (the service fails with something that is not a rule: a database error, a timeout) is a failure of the cleaning like any
+    /// other, and it never waits for the bus to deliver the event again (the engine runs a routine once for each event, so a second delivery would run nothing): the outcome is Failed with
+    /// the generic code, what the failed attempt left in the unit of work is forgotten (not saved with the «To do»), the host is told at once with the «To do» of a stay without a cleaning
+    /// (once) and an alert, and no key is left behind.
+    /// </summary>
+    [Fact]
+    public async Task CleaningAutomation_UnexpectedErrorFailsTheCleaningAndTheHostIsTold_Test()
+    {
+        using var rig = await Rig.CreateAsync();
+        await rig.SupplierSetupAsync();
+        var requests = new Mock<IServiceRequestService>(MockBehavior.Strict);
+        requests
+            .Setup(s => s.CreateAsync(It.IsAny<CreateServiceRequestCommand>(), It.IsAny<CancellationToken>()))
+            .Returns<CreateServiceRequestCommand, CancellationToken>((command, _) =>
+            {
+                // What a save that failed halfway leaves in the unit of work: a request that was added and never written.
+                rig.Scenario.Db.ServiceRequests.Add(new ServiceRequest
+                {
+                    OrgId = command.OrgId,
+                    PropertyId = command.PropertyId,
+                    BookingId = command.BookingId,
+                    SupplierOrgId = command.SupplierOrgId,
+                    Category = ServiceCategories.Cleaning,
+                    RentalContext = ServiceRequestRentalContext.ShortRent,
+                });
+                throw new InvalidOperationException("the database does not answer");
+            });
+        var automation = rig.AutomationWith(requests.Object);
+
+        var failed = await automation.CreateForStayAsync(rig.OrgId, rig.BookingId);
+        var again = await automation.CreateForStayAsync(rig.OrgId, rig.BookingId);
+
+        Assert.All([failed, again], result => Assert.Equal((CleaningAutomationOutcome.Failed, CleaningAutomationCodes.CreationFailed), (result.Outcome, result.Code)));
+        Assert.Empty(await rig.RequestsAsync());
+        Assert.Empty(rig.Scenario.Db.StayCleanings);
+        Assert.Single(await rig.TodosAsync(nameof(ActivityType.CleaningDue)));
+        rig.VerifyAlerts(Times.Exactly(2));
+    }
+
+    /// <summary>The same for the staff path: an unexpected error while the activity of the member is made fails the cleaning, tells the host, and leaves nothing.</summary>
+    [Fact]
+    public async Task AnUnexpectedErrorWhileTheStaffActivityIsMade_FailsTheCleaningToo()
+    {
+        using var rig = await Rig.CreateAsync();
+        await rig.StaffSetupAsync();
+        var staffWork = new Mock<IInternalActivityService>(MockBehavior.Strict);
+        staffWork
+            .Setup(a => a.CreateActivityAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<decimal?>(),
+                It.IsAny<bool>(),
+                It.IsAny<Guid?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>()))
+            .ThrowsAsync(new TimeoutException("the database does not answer"));
+        staffWork
+            .Setup(a => a.CreateAsync(It.IsAny<CreateTodoRequest>(), It.IsAny<CancellationToken>()))
+            .Returns<CreateTodoRequest, CancellationToken>((request, token) => rig.Activities.CreateAsync(request, token));
+
+        var result = await rig.AutomationWith(rig.Scenario.Service, staffWork.Object).CreateForStayAsync(rig.OrgId, rig.BookingId);
+
+        Assert.Equal((CleaningAutomationOutcome.Failed, CleaningAutomationCodes.CreationFailed), (result.Outcome, result.Code));
+        Assert.Empty(await rig.StaffWorkAsync());
+        Assert.Empty(rig.Scenario.Db.StayCleanings);
+        Assert.Single(await rig.TodosAsync(nameof(ActivityType.CleaningDue)));
+        rig.VerifyAlerts(Times.Once());
+    }
+
+    /// <summary>A call that is cancelled is the cancellation it is, never a failure of the cleaning: it is thrown, and the host is told nothing.</summary>
+    [Fact]
+    public async Task ACancelledCall_IsNotAFailureOfTheCleaning()
+    {
+        using var rig = await Rig.CreateAsync();
+        await rig.SupplierSetupAsync();
+        var requests = new Mock<IServiceRequestService>(MockBehavior.Strict);
+        requests
+            .Setup(s => s.CreateAsync(It.IsAny<CreateServiceRequestCommand>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OperationCanceledException());
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => rig.AutomationWith(requests.Object).CreateForStayAsync(rig.OrgId, rig.BookingId));
+
+        Assert.Empty(await rig.TodosAsync(nameof(ActivityType.CleaningDue)));
+        rig.VerifyAlerts(Times.Never());
     }
 
     /// <summary>The staff path: an activity of type Cleaning for the member, at the same time, with its cost as the rate and the recharge to the owner, and the key.</summary>

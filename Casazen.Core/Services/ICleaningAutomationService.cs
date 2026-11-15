@@ -91,6 +91,12 @@ public static class CleaningAutomationCodes
 
     /// <summary>The setup is not one the automation can run (a supplier with no price, a cleaner that is not the one its kind says): it is saved by the API, so this is a row written by hand.</summary>
     public const string SetupInvalid = "cleaning_setup_invalid";
+
+    /// <summary>
+    /// The cleaning could not be created because of an error that is not a rule (a database error, a timeout, a queue that refuses): nothing was saved, and the host is told like for any other
+    /// failure. The code says no more than that, because the routine engine runs a routine once for each event and the event is not delivered to it again.
+    /// </summary>
+    public const string CreationFailed = "cleaning_creation_failed";
 }
 
 /// <summary>
@@ -111,7 +117,9 @@ public interface ICleaningAutomationService
     /// the agreed price as its estimated amount and a note «prezzo concordato») that the supplier takes with the existing flow; for staff a staff activity of
     /// type Cleaning assigned to the member, at the same time, with the cost and the recharge to the owner. A stay that does not happen, a property with no active
     /// setup and a stay that has a cleaning already create nothing (see <see cref="CleaningAutomationOutcome"/>). A cleaning that cannot be created
-    /// (<see cref="CleaningAutomationOutcome.Failed"/>) leaves the "To do" of the stay without a cleaning and an alert to the people of the property.
+    /// (<see cref="CleaningAutomationOutcome.Failed"/>) leaves the "To do" of the stay without a cleaning and an alert to the people of the property: whether a rule
+    /// refused it (the code of the rule) or an unexpected error stopped it (<see cref="CleaningAutomationCodes.CreationFailed"/>, nothing saved); it never counts on the event
+    /// being delivered again. Only a cancelled call throws.
     /// </summary>
     Task<CleaningAutomationResult> CreateForStayAsync(Guid orgId, Guid bookingId, CancellationToken cancellationToken = default);
 

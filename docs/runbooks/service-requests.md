@@ -76,7 +76,9 @@ behind `Features:Routines`, which is off by default.
 
 **When the cleaning cannot be created** (supplier suspended or busy, member left) nothing is saved, the action `fails` with the code of the rule (for example `service_request_supplier_inactive`,
 `supplier_commitment_conflict`, `cleaning_staff_unavailable`), the existing «To do» `CleaningDue` is raised for the stay (once) and a popup alert goes to the people the notifications of the
-property go to. An unexpected error is not caught: the engine closes the execution as failed and the bus delivers the event again.
+property go to. An **unexpected** error (a database error, a timeout) is a failure of the cleaning too: the action `fails` with `cleaning_creation_failed`, what the attempt left in the
+unit of work is forgotten, and the host is told in the same way. It is never left to the bus to deliver the event again: the engine runs a routine once for each event (the execution is kept even
+when it failed), so a second delivery would run nothing. Only a cancelled call is thrown.
 
 ### How the cleaning follows the stay (`CleaningBookingChangesHandler`)
 

@@ -26,7 +26,9 @@ namespace Casazen.Infrastructure.Services;
 /// as the internal rate (none when the setup has no price) and the recharge to the owner, always: a cost entered later is recharged too. The member is checked again: one deactivated, or who lost the property, gets nothing.</item>
 /// <item><b>When it cannot be created</b> (a supplier suspended or busy, a member who left) nothing is saved and the outcome is <see cref="CleaningAutomationOutcome.Failed"/> with
 /// the code of the rule that stopped it; the host is told at once: the "To do" of a stay that ended without a cleaning (<see cref="ActivityType.CleaningDue"/>, the item the host
-/// already knows) and a popup alert to the people of the property. An unexpected error is not caught: the engine records it and the bus delivers the event again.</item>
+/// already knows) and a popup alert to the people of the property. An unexpected error (a database error, a timeout) is a failure too, with the code
+/// <see cref="CleaningAutomationCodes.CreationFailed"/>, and the host is told the same way: the routine engine runs a routine once for each event, so a delivery of the event
+/// again would run nothing. Only a cancelled call is not a failure of the cleaning: it goes on as the cancellation it is.</item>
 /// <item><b>Changes of the stay</b> move the cleaning (a staff activity not started; a request nobody answered, with no backup, no proposal and no quote), or leave it to the
 /// host (a "To do" <see cref="ActivityType.CleaningDateChanged"/> and an alert) when the supplier took it or has an offer waiting; a cancelled stay cancels it unless the work
 /// started, and the supplier is told by the notice of a cancellation. A cleaning started, done or cancelled is left alone. The request they act on is the one the host follows:
@@ -122,11 +124,23 @@ public sealed class CleaningAutomationService(
             {
                 failureCode = ex.Code ?? "not_found";
             }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Not a rule: a database error, a timeout, a queue that refuses. It is a failure of the cleaning like any other, told to the host below, and it never waits for the bus to
+                // deliver the event again: the routine engine runs a routine once for each event (its execution is kept even when it failed), so a second delivery would run nothing and
+                // the stay would stay without a cleaning and without a word. Only the type of the error is logged (its message may carry data).
+                logger.LogError(
+                    "The automatic cleaning of stay {BookingId} of org {OrgId} failed on an unexpected error ({Error})",
+                    bookingId, orgId, ex.GetType().Name);
+                failureCode = CleaningAutomationCodes.CreationFailed;
+            }
         }
 
         if (failureCode is not null)
         {
-            // Nothing was saved (the transaction is gone, or the rule refused before any write). The host is told, and the event is consumed: a retry would be refused the same way.
+            // Nothing is left of the attempt (the transaction is gone, or the rule refused before any write): what it added to the unit of work is forgotten, so the save of the
+            // "To do" below is not a second try of the creation. The host is told, and the event is consumed: a retry would be refused the same way.
+            DiscardPendingChanges();
             logger.LogWarning(
                 "No automatic cleaning for stay {BookingId} of org {OrgId}: {Code}",
                 bookingId, orgId, failureCode);
@@ -439,6 +453,16 @@ public sealed class CleaningAutomationService(
     }
 
     // ─── Reads and helpers ───────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Forgets the rows a failed attempt added to, changed in or removed from the unit of work and never saved, or saved in the transaction that was rolled back: they are detached, so
+    /// the next save writes only what the caller adds after it. What the routine engine tracks for its own execution is saved before the action runs, so it is never among them.
+    /// </summary>
+    private void DiscardPendingChanges()
+    {
+        foreach (var entry in db.ChangeTracker.Entries().Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted).ToList())
+            entry.State = EntityState.Detached;
+    }
 
     /// <summary>The stay and its property, in the org: <c>null</c> when the booking is not the org's, or its property is gone.</summary>
     private Task<StayFacts?> ReadStayAsync(Guid orgId, Guid bookingId, CancellationToken cancellationToken) =>
