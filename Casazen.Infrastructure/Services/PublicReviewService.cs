@@ -1,4 +1,6 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -13,13 +15,15 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// Anonymous: the tenant filter is off, so every query names the org. A link that cannot be read, that is for another booking, that is
 /// expired or whose booking is gone gets the same answer (422 <c>review_link_invalid</c>): the page does not tell a stranger which one it
-/// was. The review is published when it is saved; nothing else is written, and nothing is sent to the guest.
+/// was. The review is published when it is saved, and <see cref="DomainEventType.ReviewReceived"/> is recorded in the same save (E26/F01/US01/T01, once for
+/// each review, ids only: the routines of the host that wait for a review start from it); nothing is sent to the guest.
 /// </remarks>
 public sealed class PublicReviewService(
     AppDbContext db,
     ReviewLinkTokens tokens,
     ILogger<PublicReviewService> logger,
-    TimeProvider? timeProvider = null) : IPublicReviewService
+    TimeProvider? timeProvider = null,
+    IDomainEventRecorder? domainEvents = null) : IPublicReviewService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -115,14 +119,25 @@ public sealed class PublicReviewService(
         };
 
         db.Reviews.Add(review);
+
+        // In the unit of work of the review, so a review that is refused leaves no event and one that is saved leaves exactly one: ids only (ADR-022-R21).
+        domainEvents?.Record(
+            DomainEventType.ReviewReceived,
+            review.Id,
+            new ReviewReceivedPayload(review.Id, booking.Id, booking.PropertyId),
+            ReviewReceivedPayload.DedupKeyOf(review.Id),
+            booking.OrgId);
         try
         {
             await db.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            // The same link opened twice: the other submission committed first.
+            // The same link opened twice: the other submission committed first. Neither the review nor its event stays in the unit of work.
             db.Entry(review).State = EntityState.Detached;
+            foreach (var entry in db.ChangeTracker.Entries<OutboxEvent>().Where(e => e.State == EntityState.Added && e.Entity.EntityId == review.Id).ToList())
+                entry.State = EntityState.Detached;
+
             throw AlreadySubmitted();
         }
 

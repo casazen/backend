@@ -8,8 +8,10 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// The invitation of a guest to review a stay (DB-12a), at the host's explicit request: <c>POST</c> sends the one email with the signed
-/// link, <c>GET</c> tells the host whether it can and what already happened. Nothing else sends it: no job, no reminder, no event. The
-/// booking is authorized as a row of its property (<c>booking.read</c> to look, <c>booking.write</c> to send).
+/// link, <c>GET</c> tells the host whether it can and what already happened. The only other thing that sends it is the action
+/// <c>RequestReview</c> of a routine the host switched on (E26/F01/US01/T01), through the same service and the same mark, so the guest gets it once
+/// whoever asks; no job and no reminder of its own. The booking is authorized as a row of its property (<c>booking.read</c> to look,
+/// <c>booking.write</c> to send).
 /// </summary>
 [ApiController]
 [Route("api/bookings/{id:guid}/review-invite")]
@@ -37,8 +39,8 @@ public class BookingReviewInviteController(
     /// <summary>
     /// Sends the guest the one email with the link to write the review: only for a booking made through the site, not cancelled, whose
     /// stay ended no more than 14 days ago, with the guest's address (422 <c>review_invite_not_allowed</c> otherwise), once per booking
-    /// (409 <c>review_invite_already_sent</c>) and not when the review exists (409 <c>review_already_submitted</c>). Answers the state
-    /// after the call. This email leaves from this call only.
+    /// (409 <c>review_invite_already_sent</c>, also when a routine sent it) and not when the review exists (409 <c>review_already_submitted</c>).
+    /// Answers the state after the call. This email leaves from this call or from the routine action <c>RequestReview</c> only.
     /// </summary>
     [HttpPost]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]

@@ -6,14 +6,15 @@ public static partial class EmailTemplates
 {
     public static partial class Names
     {
-        /// <summary>Invitation to review a stay, to the guest, sent only when the host asks for it (DB-12a).</summary>
+        /// <summary>Invitation to review a stay, to the guest, sent only when the host asks for it, by hand or through a routine (DB-12a, E26/F01/US01/T01).</summary>
         public const string ReviewInvite = "review-invite";
     }
 
     /// <summary>
     /// The one email that asks a guest for the review of a stay (DB-12a), with the signed link to the page where the review is written.
-    /// It is sent when the host asks, once per booking, never by a job or an event. It names the property and the dates and nothing else
-    /// of the booking: no amount, no code, no address of the guest.
+    /// It is sent when the host asks, or by the action <c>RequestReview</c> of a routine the host switched on (E26/F01/US01/T01), once per booking in
+    /// both cases, never by a job or a reminder of its own. It names the property and the dates and nothing else of the booking: no amount, no code,
+    /// no address of the guest.
     /// </summary>
     /// <param name="expiresAtUtc">End of validity of the signed link (shown in Italian time): the end of the review window.</param>
     public static EmailContent ReviewInvite(

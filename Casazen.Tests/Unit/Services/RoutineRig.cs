@@ -5,9 +5,11 @@ using Casazen.Core.Features;
 using Casazen.Core.Models;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Email;
 using Hangfire;
 using Hangfire.Common;
 using Hangfire.States;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -31,6 +33,9 @@ internal sealed class RoutineRig
     private readonly string _database = $"routine-rig-{Guid.NewGuid()}";
     private readonly List<(Job Job, IState State)> _scheduled = [];
 
+    // One key ring for the rig, so a link made by one service is read by another.
+    private readonly EphemeralDataProtectionProvider _keys = new();
+
     public RoutineRig()
     {
         Jobs = new Mock<IBackgroundJobClient>();
@@ -48,6 +53,12 @@ internal sealed class RoutineRig
     /// <summary>The jobs the engine scheduled, in order.</summary>
     public IReadOnlyList<(Job Job, IState State)> Scheduled => _scheduled;
 
+    /// <summary>The e-mails the invitation of a review handed to the queue (the action <c>RequestReview</c>, E26/F01/US01/T01), in order.</summary>
+    public RecordingEmailQueue Emails { get; } = new();
+
+    /// <summary>The signed links of the invitation of a review, with the key ring of the rig: the links the services of the rig make open here.</summary>
+    public ReviewLinkTokens Tokens => new(_keys);
+
     public AppDbContext NewDb() => new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options);
 
     public RoutineService Service(AppDbContext db, TimeProvider? clock = null)
@@ -60,8 +71,13 @@ internal sealed class RoutineRig
             Jobs.Object,
             Flags,
             time,
-            NullLogger<RoutineService>.Instance);
+            NullLogger<RoutineService>.Instance,
+            Reviews(db, time));
     }
+
+    /// <summary>The service of the invitation of the reviews (the host's button and the action of a routine) over <paramref name="db"/>, queuing into <see cref="Emails"/>.</summary>
+    public HostReviewService Reviews(AppDbContext db, TimeProvider? clock = null) =>
+        new(db, Tokens, Emails, EmailTestHelpers.Links(), NullLogger<HostReviewService>.Instance, clock ?? new FixedTimeProvider(Now));
 
     /// <summary>The management of the routines (the API's service) over <paramref name="db"/>, with the flags of the rig.</summary>
     public RoutineManagementService Management(AppDbContext db) =>

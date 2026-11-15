@@ -1,5 +1,6 @@
 using System.Text;
 using Casazen.Core.Entities;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Utilities;
 
 namespace Casazen.Core.Services;
@@ -58,7 +59,8 @@ public static class ReviewRules
         if (source != BookingSource.Direct)
             return ReviewEligibility.NotDirectBooking;
 
-        if (status is not (BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut))
+        // The statuses of a stay that happens are the one definition of the product (a request, a hold and a cancelled booking are not): never a list of its own.
+        if (!AlloggiatiStatusRules.ActiveBookingStatuses.Contains(status))
             return ReviewEligibility.BookingNotConfirmed;
 
         var checkOutDay = RomeCalendar.DateInRome(checkOutDate);

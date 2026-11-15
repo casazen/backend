@@ -25,6 +25,12 @@ public enum DomainEventType
     PaymentSucceeded = 12,
     PaymentFailed = 13,
     GuestMessageReceived = 14,
+
+    /// <summary>
+    /// A guest sent the review of a stay of the booking site (E26/F01/US01/T01): about the review (<c>EntityId</c>), with the payload <c>ReviewReceivedPayload</c> (the
+    /// review, the stay and the property: ids only), recorded by <c>PublicReviewService.SubmitAsync</c> in the same save as the review and once for each review. It starts
+    /// the routines of the host on <c>RoutineEventType.ReviewReceived</c>.
+    /// </summary>
     ReviewReceived = 15,
 
     /// <summary>A scheduled trigger of a stay ("2 days before check-in"), written by <c>TimeEventEmitterJob</c> (ADR-022-R8).</summary>

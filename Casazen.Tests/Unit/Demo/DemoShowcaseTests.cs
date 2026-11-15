@@ -198,6 +198,13 @@ public class DemoShowcaseTests
         Assert.Contains(RoutineActionType.Wait, test.Actions.Select(a => a.Type));
         Assert.Contains(DemoShowcaseCatalog.Scenario.RoutineActive, DemoShowcaseCatalog.Scenarios);
         Assert.Contains(DemoShowcaseCatalog.Scenario.RoutineTestMode, DemoShowcaseCatalog.Scenarios);
+
+        // E26/F01/US01/T01: the ready routine «Richiesta di recensione», a day after the check-out, in test mode (the guests of the showcase are invented).
+        var review = Assert.Single(routines, r => r.Scenario == DemoShowcaseCatalog.Scenario.RoutineReviewRequest);
+        Assert.True(review.IsTestMode);
+        Assert.Equal((RoutineEventType.AfterCheckout, 1), (review.EventType, review.DaysBefore));
+        Assert.Equal([RoutineActionType.RequestReview], review.Actions.Select(a => a.Type));
+        Assert.Contains(DemoShowcaseCatalog.Scenario.RoutineReviewRequest, DemoShowcaseCatalog.Scenarios);
     }
 
     /// <summary>The routines of the demo are marked rows of the reset, like the other invented rows of the org.</summary>
