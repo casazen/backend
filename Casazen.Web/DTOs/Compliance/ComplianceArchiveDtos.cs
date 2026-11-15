@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Core.Services;
+using Casazen.Web.DTOs.Alloggiati;
 
 namespace Casazen.Web.DTOs.Compliance;
 
@@ -109,13 +110,18 @@ public sealed record ComplianceSendLogLineDto(
 /// <param name="PropertyId">Its property.</param>
 /// <param name="Proofs">The proofs of its arrival day, newest first.</param>
 /// <param name="SendLog">What was sent for it, newest first.</param>
+/// <param name="Alloggiati">
+/// The Alloggiati status of the stay as the per-stay API reads it (E20/F01/US01/T02): the sender, where the guests stand on the channel manager, the state of
+/// each guest, the receipt coverage, the light and the action <c>RetryOctorateWrite</c>, so the booking page can show it. <c>null</c> only where it could not be worked out.
+/// </param>
 public sealed record ComplianceBookingComplianceDto(
     Guid BookingId,
     Guid PropertyId,
     IReadOnlyList<ComplianceArchiveEntryDto> Proofs,
-    IReadOnlyList<ComplianceSendLogLineDto> SendLog)
+    IReadOnlyList<ComplianceSendLogLineDto> SendLog,
+    AlloggiatiChannelManagerDto? Alloggiati = null)
 {
-    public static ComplianceBookingComplianceDto From(ComplianceBookingCompliance view)
+    public static ComplianceBookingComplianceDto From(ComplianceBookingCompliance view, ComplianceStayStatus? stay = null)
     {
         ArgumentNullException.ThrowIfNull(view);
 
@@ -123,7 +129,8 @@ public sealed record ComplianceBookingComplianceDto(
             view.BookingId,
             view.PropertyId,
             view.Proofs.Select(ComplianceArchiveEntryDto.From).ToList(),
-            view.SendLog.Select(ComplianceSendLogLineDto.From).ToList());
+            view.SendLog.Select(ComplianceSendLogLineDto.From).ToList(),
+            stay is null ? null : AlloggiatiChannelManagerDto.From(stay));
     }
 }
 

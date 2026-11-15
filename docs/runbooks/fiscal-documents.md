@@ -1,14 +1,16 @@
-# Fiscal documents (epics E06 and E11)
+# Fiscal documents (epics E06, E11, E12 and E17)
 
 What CasaZen issues, how the numbers, the amounts and the FatturaPA XML are made, and where the official schema comes from. Requirements NF-83,
-NF-84, NF-87, NF-112, NF-113; ADR-019 (amended twice), ADR-033-R7 (retention).
+NF-84, NF-87, NF-112, NF-113, NF-116; ADR-019 (amended twice), ADR-033-R7 (retention).
 
 ## Boundary
 
 - **CasaZen is the only issuer (decision of the PO of 2026-11-14, E11/F01/US01/T01).** CasaZen issues the document of every active booking of
   every source: direct, manual, local and the portals imported through Octorate (`IDocumentIssuerService`, flag `Features:FiscalDocumentIssuance`, off
   by default, on in test). A booking that is not active (a request, a hold, cancelled, a no-show: the one definition of the code) gets no document.
-  Nobody issues outside CasaZen; the accountant only receives the exports.
+  Nobody issues outside CasaZen; the accountant only receives the exports. **In whose name** (E17/F01/US01/T02): in Italy the document of a stay is issued
+  in the name of the owner of the property, on the owner's issuer profile, and the agency's own services to the guest are a document of the agency (see
+  *Document plan of a booking*); in Switzerland the agency issues, unless it chose «emette il proprietario» for an owner (⚖ C1).
 - **Retired modes.** `DocumentIssuerMode` keeps its numbers for the stored rows: `CasaZen = 2` (formerly `CasaZenDirectOnly`) is the only mode;
   `Octorate = 1` and `Accountant = 3` are `[Obsolete]`, the migration `AddSoleIssuerModel` moved every profile to 2 and `PUT api/fiscal/documents/settings`
   answers 422 `issuer_mode_retired` for them (the old name `CasaZenDirectOnly` is still read as `CasaZen`).
@@ -54,6 +56,42 @@ One profile per organization, saved by the wizard (`PUT api/fiscal/documents/set
   `missingFields` says what is left; `confirmed: true` with something missing is 422 `issuer_profile_incomplete`, and `ConfirmedAt` is set only when
   nothing is missing.
 
+## Issuer profiles of the owners (E17/F01/US01/T01, NF-116, D12)
+
+In Italy the owner of a property is the issuer of the document of the stay; CasaZen issues it **in the owner's name**, on the owner's issuer profile, with the
+owner's own series (the *sezionale*) and numbering. The profiles live in the same table as the organization's, `OrgFiscalIssuerProfiles`:
+
+- **One per organization, one per owner.** `PropertyOwnerId` is `null` for the profile of the organization (partial unique index `UIX_OrgFiscalIssuerProfiles_OrgId`
+  on `OrgId` where `PropertyOwnerId IS NULL`) and the owner for an owner's profile (partial unique index `UIX_OrgFiscalIssuerProfiles_PropertyOwnerId`). The
+  profile of an owner goes with the owner (cascade) unless a document was issued on it (the documents' foreign key is restrict). **Every reader of «the profile
+  of the org» goes through `OrgFiscalIssuerProfileQueries.OfOrganization(orgId)`** (the setting, the documents, the owner invoices, the statements, the portal
+  accounts, the wire files, the demo): an owner's profile is never taken for the organization's.
+- **What an owner's profile holds.** The legal name (name of a person, denomination of a company), its own Italian fiscal code (`FiscalCode`, 16 characters or 11
+  digits, `ItalianFiscalCode`) and VAT number (`VatNumber`, the 11 digits, checked; dropped for a private person), the FatturaPA regime code (`RFxx`, the rule's when
+  empty), the structured address, the regime (`PrivatePerson`, `VatOrdinary`, `VatFlatRate`; a Swiss owner `SwissVatRegistered`/`SwissNotRegistered` with its UID),
+  `StayVatTreatment` (⚖ I1), its own series `GuestDocumentSeries` (default the year), `StampDutyReference` (⚖ I4), its own SDI code and PEC, and for a Swiss owner
+  `StayIssuedByOwner` («emette il proprietario», ⚖ C1, off by default). The same validation as the organization's (`DocumentIssuerService.Normalize`): the
+  data of the other country is dropped. The organization's profile keeps `FiscalCode`/`VatNumber` empty (its codes are on `Org`).
+- **Complete or not.** A profile is saved as a draft and says what it misses (`missingFields`, `OwnerIssuerProfileRules.MissingFields`: the organization's rule with the
+  owner's own fiscal code and VAT number); nothing is issued on it until it is complete (`canIssue`).
+- **API.** `GET api/owners/{ownerId}/issuer-profile` (`agency.owner.view`, an owner in the caller's reach: the whole org, or an owner whose every ownership is on a
+  property the caller reaches; anything else is 404 `owner_not_found`): the profile, or the empty one (`exists: false`), with `missingFields` and the rule in force.
+  The personal data are in clear only for the whole organization with `agency.owner.financial.manage` (the read is logged with ids), masked (`••••501U`,
+  `masked: true`) for anyone else. `PUT` the same route (`agency.owner.financial.manage` **and the whole organization**, 403 `fiscal_settings_need_whole_org`
+  otherwise): the whole profile, made at the first save; 422 `issuer_field_invalid` (with `field` and `errors`), `issuer_regime_country_mismatch`,
+  `document_issuance_not_available`; 404 `owner_not_found` (another org, an anonymized owner). Both are 404 while `Features:FiscalDocumentIssuance` is off.
+- **Privacy.** The personal data of every profile (organization's and owners') are **encrypted at rest** with the purpose `Casazen.OrgFiscalIssuerProfile`: legal
+  name, fiscal code, VAT number, street, house number, postal code, city, PEC (plus the IBAN and QR-IBAN as before). The columns are `text`; the values stored in
+  clear before (the legal name and address of the organizations' profiles) are rewritten encrypted by `EncryptedColumns.EncryptLegacyPlaintextAsync` at the first
+  start. The province, the country and the SDI code are no personal data and stay readable.
+- **Billing setup.** The section `italy` gets the item `owner_issuer_missing` (reason `required`, with `count`): the owners with an ownership of an **Italian property**
+  (`Property.Country` `IT`) not ended on the Rome day of today and **no profile that can issue** (none, one that misses a field, or a Swiss one), anonymized owners
+  excluded (`OwnerIssuerSetupContributor`). It reads for the organization whatever its own country (a Swiss agency with Italian properties needs its owners'
+  profiles too); without such owners it has nothing to look at (`IBillingSetupContributor.AppliesAsync`), so the section `italy` of a Swiss agency without Italian
+  properties does not apply.
+
+The migration of the slice is `AddOwnerIssuerProfiles` (see *Numbers* for what it moves).
+
 ## Billing setup (the wizard «Fatturazione», E11/F01/US01/T04)
 
 Every invoicing setting is set in one place, the wizard «Fatturazione» of the onboarding guide, through one endpoint: `GET api/billing-setup` returns the
@@ -71,7 +109,7 @@ epics.
 | `touristTax` | «Tassa di soggiorno» | `platformCollectedTouristTaxChannels` | Switzerland only: `tourist_tax_channels_unconfirmed` |
 | `channels`, `mandates` | «Commissioni dei canali», «Mandato standard» | none: saved by the endpoints of the owner ledger | added by E13/F01/US02/T03, for agencies only (plan Agency; any other organization gets no item): `channel_commissions_unconfirmed` (reason `unconfirmed`) until the organization saved its channel commission rules once, the defaults of the configuration alone do not count; `owners_without_mandate` (reason `required`, with `count`) while some owner with an ownership not ended has no mandate in force today (`OwnerMandateRules.InForce`) |
 | `automation` | «Emissione» | `autoIssueGuestDocuments`, `emailGuestDocuments` | `auto_issue_unconfirmed`: `unconfirmed` |
-| `italy` | «Italia» | `stampDutyReference`, `conservationAgreementConfirmed`, `virtualStampConfirmed` | Italy only: `conservation_agreement_unconfirmed`, `stamp_duty_unconfirmed` (neither the stamp reference nor the confirmation of the virtual stamp); E17 adds `owner_issuer_missing` |
+| `italy` | «Italia» | `stampDutyReference`, `conservationAgreementConfirmed`, `virtualStampConfirmed` | Italy only: `conservation_agreement_unconfirmed`, `stamp_duty_unconfirmed` (neither the stamp reference nor the confirmation of the virtual stamp); `owner_issuer_missing` (reason `required`, with `count`, E17/F01/US01/T01): owners of Italian properties without an issuer profile that can issue, for any organization that has them |
 
 - **Draft and idempotent.** A partial body is a draft: a field that is absent or `null` keeps its value, a text sent empty clears it, a list (even an empty one)
   is sent; the same answers saved twice change nothing and a body with no field saves nothing. A field of another section is 422
@@ -130,28 +168,29 @@ the snapshot and the layout would be the new one's: the issue answers 409 `docum
 ## Official schema (precondition of the XML)
 
 The XML is validated against the official FatturaPA schema before it is stored (ADR-019-R6). The schema files are **not** written or rebuilt by
-hand: they are the files the Agenzia delle Entrate publishes, committed as they are under `Casazen.Infrastructure/Fiscal/Schemas/` and embedded
-in the assembly (`Casazen.Infrastructure.csproj`, logical names `Casazen.Infrastructure.Fiscal.Schemas.<file>`).
+hand: they are the files their publishers give, committed as they are under `Casazen.Infrastructure/Fiscal/Schemas/` and embedded
+in the assembly (`Casazen.Infrastructure.csproj`, logical names `Casazen.Infrastructure.Fiscal.Schemas.<file>`; `FatturaPaSchemaProvider.OfficialFiles`).
 
-| File | Source | SHA-256 |
-|---|---|---|
-| The FatturaPA schema in force, format FPR12 (namespace `http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2`) | Agenzia delle Entrate, site of the electronic invoice (fatturapa.gov.it), page «Formato FatturaPA» | to record when the file is added |
-| The XML signature schema it imports (`xmldsig-core-schema.xsd`) | the same publication | to record when the file is added |
+| File | Version | Source (taken on 2026-11-14) | SHA-256 |
+|---|---|---|---|
+| `Schema_VFPR12_v1.2.3.xsd`: the FatturaPA schema of the ordinary invoice, format FPR12 (namespace `http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2`) | 1.2.3, the documentation valid from 2025-04-01 (Specifiche tecniche del formato FatturaPA 1.4) | Agenzia delle Entrate, fatturapa.gov.it, page «Formato FatturaPA» (`https://www.fatturapa.gov.it/it/norme-e-regole/documentazione-fattura-elettronica/formato-fatturapa/`), file `https://www.fatturapa.gov.it/export/documenti/fatturapa/v1.4/Schema_VFPR12_v1.2.3.xsd` | `152944f6eef9f5d69ef6e955ee173b32142b00a8c1c5222fc97dfab5910e8a8c` (68,619 bytes) |
+| `xmldsig-core-schema.xsd`: the XML signature schema the FatturaPA schema imports (its `schemaLocation`) | W3C Recommendation of 2002-02-12 | W3C, `https://www.w3.org/TR/2002/REC-xmldsig-core-20020212/xmldsig-core-schema.xsd` | `35cf8197da812c85e40d57891b35c94187569ed474a2dac813ce5090dafcd35c` (10,293 bytes) |
 
-**State of this build: the files are not in the repository yet.** They could not be taken from the publication while this change was written (no
-network access was allowed to the delivery). Until they are added, `FatturaPaSchemaProvider.HasOfficialSchema` is false and every issue of an
-invoice answers 422 `fatturapa_schema_unavailable`: no XML is ever produced without the validation. Issuance is off anyway (`Features:FiscalDocumentIssuance`).
+**State of this build: the files are in the repository** (E17/F01/US01/T03). `.gitattributes` marks `Casazen.Infrastructure/Fiscal/Schemas/*.xsd` as `-text`, so
+the bytes, and the checksums, are the same on every machine; `FatturaPaSchemaProvider_EmbeddedSchemas_AreTheOfficialFiles_Test` fails when an embedded file is
+not the one recorded here. The Italian invoices and their credit notes are now issued with their XML; 422 `fatturapa_schema_unavailable` remains only for a build
+without the files. Every test of the builder validates what it writes against the real schema (`FatturaPaProofTests`).
 
-**Adding or updating the schema (operator):**
+**Updating the schema (operator):**
 
-1. Download the schema files from the publication of the Agenzia delle Entrate (the page above), never from a mirror.
-2. Put them in `Casazen.Infrastructure/Fiscal/Schemas/` unchanged (no reformatting: the checksum must be the one of the published file).
-3. Record in the table above the exact URL of each file, the version and the SHA-256 (`sha256sum <file>`).
-4. Run `FatturaPaProofTests`: with the files, `FatturaPa_Xml_ValidatesAgainstOfficialSchema_Test` builds a document and validates it, and checks that
-   an altered one fails.
+1. Download the new files from the publication of the Agenzia delle Entrate (the page above) and the signature schema from the address its `schemaLocation`
+   names, never from a mirror.
+2. Put them in `Casazen.Infrastructure/Fiscal/Schemas/` unchanged (no reformatting, no change of line endings), removing the old version.
+3. Record in the table above and in `FatturaPaSchemaProvider.OfficialFiles` the exact URL of each file, the version and the SHA-256 (`sha256sum <file>`).
+4. Run `FatturaPaProofTests`: every document of the builder is validated against the new files; if one does not validate, the builder is what changes.
 
-The schemas are compiled without a resolver (the import of the signature schema is satisfied by the embedded file, never fetched); the documents
-are read with the DTD prohibited and no resolver (`XsdValidator`): no external entity, no network.
+The schemas are compiled without a resolver (the import of the signature schema is satisfied by the embedded file, never fetched; the internal DTD of the W3C
+file is parsed, its external one never read); the documents are read with the DTD prohibited and no resolver (`XsdValidator`): no external entity, no network.
 
 ## Tax rules (`FiscalDocuments:TaxRules`, E11/F01/US01/T02)
 
@@ -275,6 +314,42 @@ longer active and nothing was collected for it; kept with a «To do» when money
 by a credit note (see *Corrections when a booking changes*), and when the correction cannot be prepared (the issuer's profile is incomplete, no tax rule applies, a portal collected the money)
 the host gets a «To do» (`ReviewFiscalDocument`, reason `fiscal_document_booking_changed`, about the document and its property, no personal data) that a credit note may be needed.
 
+## Document plan of a booking (`IDocumentPlanService`, E17/F01/US01/T02, NF-116, D12)
+
+`IDocumentPlanService.PlanAsync(bookingId)` says which documents a booking needs and who issues each; every draft CasaZen makes goes through it (the manual draft
+`POST api/fiscal/documents/drafts`, the check-out event, the daily run `fiscal-documents-due`, the corrections of a change). The day of the stay is its **check-out**
+(the day of the tax rule and of the owner ledger).
+
+| Booking | Documents |
+|---|---|
+| **Italian property** (`Property.Country` `IT`) with ownerships in force on the day | **The owner issues the stay**, on its issuer profile: a private owner's rule gives a **receipt** (the stamp duty of the rule, 2.00 above 77.47 of amounts without VAT, borne by the issuer, ⚖ I4), a company's a **FatturaPA invoice** in its own sezionale, with the VAT of its `StayVatTreatment` (⚖ I1) and the agency as third-party issuer (TZ, T03). Several co-owners: **one** document, issued on the profile of the co-owner whose mandate is in force on the day (several, or none: the largest share, then the oldest ownership, then the smallest id), listing every co-owner with its share (⚖ I6). |
+| the same, with the agency's services | **A second document of the organization** (`ForAgencyServices`): the cleaning when the organization's `CleaningFeeTreatment` is `Service`, and the extras (the model has no extras of a booking yet), with the agency's VAT. The owner's document then leaves them out. A cleaning that follows the stay stays in the owner's document. |
+| an owner **without an issuer profile that can issue** (none, incomplete, or a Swiss one: the stay of an Italian property follows the Italian rules) | **No document at all**: 422 `owner_issuer_missing`, and the «Da fare» of the owner (`ReviewFiscalDocument`, entity `PropertyOwner`, reason `owner_issuer_missing`, about the property; one open item per owner). The daily run skips the stay until the profile is complete. |
+| **Swiss property** (`CH`) | The organization issues everything, as E11/E12 do, **unless** the owner has a Swiss issuer profile on which the agency chose «emette il proprietario» (`StayIssuedByOwner`, ⚖ C1): then the owner issues. |
+| a property without owners in force, a property of another country | The organization issues one document with everything, as before. |
+
+- **Never two documents that bill the same part of a stay.** A booking may now have several documents (the owner's stay, the agency's services), but never two live
+  documents that bill the same part: an owner's document bills the **stay**, the agency's document of its services the **services**, the organization's own
+  document (and one imported from Octorate, or without an issuer) **both**. The draft and the issue ask again with the part of the document (409
+  `document_already_issued`), whoever issued the live one: a stay the agency billed in full before its owner was recorded gets no document of the owner until the
+  agency's is credited in full. `BookingDocumentIssuers` has **one row per document issued** (unique on `LockedByDocumentId`, the booking only indexed); a legacy
+  row locked to Octorate still keeps CasaZen off the booking (409 `document_issuer_conflict`).
+- **Drafts follow the plan.** The draft endpoint makes (or makes again) every document of the plan and answers with the document of the stay; a draft the plan has no
+  place for any more (the agency's services once the cleaning follows the stay again) is discarded; a document that is issued is left alone. The check-out event
+  and the daily run make the missing drafts of a booking that has none, and with the automatic issue they issue them in the order of the plan (the stay first).
+- **Issuer of each step.** A draft is issued (one document, the bulk issue, the daily run) only while it is the document the plan wants: an owner whose profile
+  cannot issue gets its «Da fare» (422 `owner_issuer_missing`), a draft of another issuer or with a line its part does not bill (made before the owner, the
+  ownership or the mandate of today, or before this change and moved to the organization by the migration) is 409 `document_draft_outdated`; refreshed, it
+  follows the plan. The credit notes (and the reversal receipts) and the corrections use the profile the document was made on: an owner's credit note is the
+  owner's, in the owner's series. The issuer snapshot of an owner's document keeps the owner's own fiscal code and VAT number, the agency as `intermediary`, the
+  co-owners and the stamp reference.
+- **PDF.** An owner's document shows the owner as issuer, the co-owners with their shares (`Comproprietari: … (50%)`) and «Emessa tramite <agenzia> per conto del
+  proprietario» (EN «Issued through … on behalf of the owner»); a document with a stamp duty says how it is paid (⚖ I4): the stamp reference of its issuer
+  («Imposta di bollo assolta: …»), «Imposta di bollo assolta in modo virtuale» when the issuer confirmed the virtual stamp without a reference
+  (`virtualStampConfirmed` in the snapshot), else «Imposta di bollo da assolvere»; a snapshot written before this change prints nothing, so an old document stays
+  as it was issued. Resources `FiscalDocPdfIssuedOnBehalf`, `FiscalDocPdfCoOwners`, `FiscalDocPdfStampDutyReference`, `FiscalDocPdfStampDutyVirtual`,
+  `FiscalDocPdfStampDutyToPay`, Italian and English.
+
 ## Drafts and bulk issue (E12/F01/US01/T02)
 
 **One draft for every stay that ended, never two.** A booking has a *live document* when it has one that is not discarded, not a credit note, not a proforma and **not credited in
@@ -394,19 +469,42 @@ the link sees what the guest sees. The token is in the query of the page, which 
 
 - Written with `XDocument`/`XmlWriter`, never by concatenation: every text is escaped; decimals in invariant culture (two places, unit prices and
   quantities up to eight); days as `yyyy-MM-dd` (Europe/Rome calendar days).
-- `IdTrasmittente`: the issuer's own fiscal id (no intermediary configured). `CodiceDestinatario`: the recipient's code; `0000000` with the PEC or
-  with nothing (the recipient's fiscal drawer); `XXXXXXX` for a recipient outside Italy.
-- `CedentePrestatore` from the issuer profile (`OrgFiscalIssuerProfile`) and the organization (VAT number, fiscal code); `CessionarioCommittente`
-  from the recipient snapshot of the document (a company with `Denominazione`, a person with `Nome` and `Cognome`).
+- `IdTrasmittente` (E17/F01/US01/T03): the subject whose channel sends the file to the SDI, by its fiscal code (else its VAT number): the agency, both for a
+  document it issues in its own name and for one it issues on behalf of an owner. No provider of the SDI exists yet: E17/F01/US02 replaces it with the
+  provider's when one is configured (`FiscalDocumentService.TransmitterOf`, the one place). A Swiss agency has no Italian code: the invoice of an Italian owner
+  company needs that provider.
+- `CodiceDestinatario`: the recipient's code; `0000000` with the PEC or with nothing (the recipient's fiscal drawer); `XXXXXXX` for a recipient outside
+  Italy. A recipient abroad without a VAT number (a private guest, B2C) has `IdFiscaleIVA` with its country and `99999999999`; every address abroad has the `CAP`
+  `00000` and no `Provincia`.
+- `CedentePrestatore` from the snapshot of the issuer: the organization (its VAT number and fiscal code from `Org`) or **the owner company** that issues the
+  document of its stay (its own VAT number, fiscal code and regime code); `CessionarioCommittente` from the recipient snapshot of the document (a company
+  with `Denominazione`, a person with `Nome` and `Cognome`).
+- **Third-party issuer (TZ).** The invoice of an owner company issued through the agency carries `TerzoIntermediarioOSoggettoEmittente` with the agency
+  (`IdFiscaleIVA` IT + its VAT number, its fiscal code, its `Denominazione`, from `FiscalIssuerSnapshot.Intermediary`, as at the issue) and `SoggettoEmittente`
+  `TZ`; the credit note of such an invoice too. An invoice of the organization names no third party.
+- **TD17 (for E17/F01/US03).** The builder writes a self-billed invoice issued by its recipient (`FatturaPaInput.IssuedBy` `Recipient`: `SoggettoEmittente`
+  `CC`) with a foreign supplier as cedente (its country and VAT number, `RF18`, an address abroad) and the supplier's invoice as `DatiFattureCollegate`; the
+  type code comes from the caller. Nothing in this slice makes one yet.
 - A document that does not validate is 422 `fatturapa_xml_invalid`: the message names the number of errors and the line:position of the first ones,
   never a value of the document; the log carries ids and counts only.
 
 ## Numbers (`FiscalNumberingService`)
 
-- Per org and series, consecutive from 1, no gap, no duplicate: the counter (`FiscalNumberSequences`) is incremented under the advisory lock
-  `FiscalNumbering` (1_601) in the READ COMMITTED transaction that saves the document; a rollback gives the number back.
-- At the first use of a series the counter starts above the highest number already used in it, the legacy `AgencyInvoices` included.
+- Per **org, issuer and series** (E17/F01/US01/T01), consecutive from 1, no gap, no duplicate: the issuer is the profile the document is issued on
+  (`FiscalDocument.IssuerProfileId`: the organization's, or an owner's with its sezionale). The counter (`FiscalNumberSequences`, unique
+  `(OrgId, IssuerProfileId, Series)`) is incremented under the advisory lock `FiscalNumbering` (1_601) with the key `{orgId:N}:{issuerProfileId:N}:{series}`, in
+  the READ COMMITTED transaction that saves the document; a rollback gives the number back. The database refuses a number twice for one issuer and series
+  (`UIX_FiscalDocuments_OrgId_IssuerProfileId_Series_SequenceNumber`); two issuers of one org both have their `2026/1`. A credit note takes the issuer and the series
+  of its original.
+- At the first use of a series the counter starts above the highest number the issuer already used in it; for the **profile of the organization** the documents
+  numbered before the issuers existed and the legacy `AgencyInvoices` count too, an owner's series starts from its own documents only.
 - A series has at most 10 characters (the display `{series}/{number}` fits the 20 characters of `Numero`): longer is 422 `series_too_long`.
+- **Migration `AddOwnerIssuerProfiles`.** Adds the owner and the owner's codes to the profiles (and their partial unique indexes), encrypts the personal columns
+  (`text`), adds `FiscalDocuments.IssuerProfileId` (restrict) and `FiscalNumberSequences.IssuerProfileId`; **every existing document and counter is moved to the
+  profile of its organization** (a counter of an organization without a profile, which cannot have issued, is deleted: the next issue seeds it again above the
+  highest number used); the issuer rows of the bookings become one per document (see *Drafts and bulk issue*). **Rollback:** the down migration restores the
+  old unique indexes, so it fails once an owner has issued in a series the organization also used, or a booking has two issuer rows: roll back before any owner
+  document is issued (the flag `FiscalDocumentIssuance` off stops new ones).
 
 ## Export of the list (`FiscalDocumentExports`, `XlsxWriter`)
 
@@ -475,4 +573,5 @@ agency holds is now «Commissioni del portale riaddebitate dal gestore (fattura 
 - A fiscal document is kept ten years (ADR-033-R7): the booking, the property, the owner, the statement version, the credited and the replaced document
   are restrict foreign keys; the erasure of a guest leaves the recipient snapshot of an issued document in place.
 - The recipient snapshot, the issuer snapshot and the XML are encrypted at rest (`Casazen.FiscalDocument`, `docs/runbooks/encryption.md`); so are the
-  IBAN and the QR-IBAN of the issuer (`Casazen.OrgFiscalIssuerProfile`). The logs carry ids, codes and field names, never a value.
+  IBAN and the QR-IBAN of the issuer and the personal data of every issuer profile, the owners' included (`Casazen.OrgFiscalIssuerProfile`: legal name, fiscal
+  code, VAT number, street, house number, postal code, city, PEC). The logs carry ids, codes and field names, never a value.

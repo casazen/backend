@@ -657,10 +657,12 @@ public sealed class TouristTaxCollectionService(
     private async Task<TaxFigures> SwissFiguresAsync(Booking booking, CancellationToken ct)
     {
         var currency = StayCurrency.ForProperty(booking.Property);
+        // The choice of the organization itself, never the profile of one of its owners (E17/F01/US01/T01: they live in the same table).
         var profile = await db.OrgFiscalIssuerProfiles
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
-            .FirstOrDefaultAsync(p => p.OrgId == booking.OrgId, ct);
+            .OfOrganization(booking.OrgId)
+            .FirstOrDefaultAsync(ct);
         var platformCollected = documentLines.PlatformCollectedChannelsOf(
             profile ?? new OrgFiscalIssuerProfile { OrgId = booking.OrgId, CountryCode = FiscalDocumentRules.Switzerland });
         if (platformCollected.Contains(booking.Source))

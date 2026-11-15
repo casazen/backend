@@ -382,6 +382,9 @@ public class AppDbContext(
     public DbSet<FiscalDocumentLine> FiscalDocumentLines { get; set; } = null!;
     public DbSet<FiscalNumberSequence> FiscalNumberSequences { get; set; } = null!;
 
+    // How the package of the accountant is sent to the accountant, one row for each org, the address encrypted (NF-101, E15/F01/US02/T01)
+    public DbSet<AccountantPackageSettings> AccountantPackageSettings { get; set; } = null!;
+
     // The owner accounting of the agencies: the approved rule sets and the effective-dated fiscal profiles of the owners (NF-109, NF-110, E06/F05/US02/T01)
     public DbSet<OwnerAccountingPolicy> OwnerAccountingPolicies { get; set; } = null!;
     public DbSet<OwnerFiscalProfile> OwnerFiscalProfiles { get; set; } = null!;
@@ -2070,6 +2073,10 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new FiscalDocumentConfiguration());
         modelBuilder.ApplyConfiguration(new FiscalDocumentLineConfiguration());
         modelBuilder.ApplyConfiguration(new FiscalNumberSequenceConfiguration());
+
+        // How the package of the accountant is sent (NF-101, E15/F01/US02/T01): one row for each org (unique OrgId), the address encrypted by EncryptedColumns, the day, the folders and
+        // the result bounded by check constraints. The tenant query filter is applied below, as to every ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new AccountantPackageSettingsConfiguration());
 
         // The owner accounting (NF-109, NF-110, E06/F05/US02): the rule sets of the agency and the effective-dated fiscal profiles of the owners.
         modelBuilder.ApplyConfiguration(new OwnerAccountingPolicyConfiguration());

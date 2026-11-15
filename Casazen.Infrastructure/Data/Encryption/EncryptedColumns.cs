@@ -137,9 +137,10 @@ public static class EncryptedColumns
     public const string FiscalDocumentPurpose = "Casazen.FiscalDocument";
 
     /// <summary>
-    /// Purpose of the bank accounts of the issuer of an organization (E11/F01/US01/T01): the IBAN and the QR-IBAN of <see cref="OrgFiscalIssuerProfile"/>.
-    /// Read by the settings of the organization and by the documents that name them (masked); never searched or logged. Never change it: stored values
-    /// would become unreadable.
+    /// Purpose of the profiles of the issuers (E11/F01/US01/T01, E17/F01/US01/T01): the bank accounts (IBAN, QR-IBAN) and the personal data of
+    /// <see cref="OrgFiscalIssuerProfile"/> (the legal name, the fiscal code, the VAT number, the street, the house number, the postal code, the city and the
+    /// PEC), since an owner who issues is often a private person; the profile of an organization gets the same treatment. Read by the settings and by the
+    /// documents that print them; never searched or logged. Never change it: stored values would become unreadable.
     /// </summary>
     public const string OrgFiscalIssuerPurpose = "Casazen.OrgFiscalIssuerProfile";
 
@@ -194,6 +195,12 @@ public static class EncryptedColumns
     /// Never change it: stored values would become unreadable.
     /// </summary>
     public const string IstatCredentialsPurpose = "Casazen.PropertyIstatCredentials";
+
+    /// <summary>
+    /// Purpose of the address of the accountant of an organization (NF-101, E15/F01/US02/T01): <see cref="AccountantPackageSettings.AccountantEmail"/>, the address the package is sent to every month. Personal data of a
+    /// third party; read by the settings of the organization and by the send, never searched (the job asks only whether there is one) and never logged. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string AccountantPackagePurpose = "Casazen.AccountantPackage.Settings";
 
     /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
@@ -357,11 +364,20 @@ public static class EncryptedColumns
             nameof(FiscalDocument.RecipientPec),
             nameof(FiscalDocument.FatturaPaXml),
             nameof(FiscalDocument.IssuerSnapshot)),
-        // E11/F01/US01/T01: the bank accounts of the issuer of an organization.
+        // E11/F01/US01/T01: the bank accounts of the issuer of an organization; E17/F01/US01/T01: the personal data of an issuer (an owner who issues is often a
+        // private person: the same treatment for every profile). The province, the country and the SDI code are no personal data.
         new EncryptedEntity<OrgFiscalIssuerProfile>(
             OrgFiscalIssuerPurpose,
             nameof(OrgFiscalIssuerProfile.Iban),
-            nameof(OrgFiscalIssuerProfile.QrIban)),
+            nameof(OrgFiscalIssuerProfile.QrIban),
+            nameof(OrgFiscalIssuerProfile.LegalName),
+            nameof(OrgFiscalIssuerProfile.FiscalCode),
+            nameof(OrgFiscalIssuerProfile.VatNumber),
+            nameof(OrgFiscalIssuerProfile.AddressStreet),
+            nameof(OrgFiscalIssuerProfile.AddressCivic),
+            nameof(OrgFiscalIssuerProfile.PostalCode),
+            nameof(OrgFiscalIssuerProfile.City),
+            nameof(OrgFiscalIssuerProfile.IssuerPec)),
         // ADR-012, NF-109: the identifiers, the address and the bank account of the fiscal profile of an owner (E06/F05/US02/T01).
         new EncryptedEntity<OwnerFiscalProfile>(
             OwnerFiscalProfilePurpose,
@@ -420,6 +436,10 @@ public static class EncryptedColumns
             nameof(PropertyIstatCredentials.Username),
             nameof(PropertyIstatCredentials.Password),
             nameof(PropertyIstatCredentials.StructureCode)),
+        // NF-101: the address the package of the accountant is sent to every month (E15/F01/US02/T01); the job asks only whether there is one (IS NOT NULL).
+        new EncryptedEntity<AccountantPackageSettings>(
+            AccountantPackagePurpose,
+            nameof(AccountantPackageSettings.AccountantEmail)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

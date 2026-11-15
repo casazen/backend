@@ -58,13 +58,25 @@ public sealed partial class OwnerAccountingService(
 
     public async Task<OwnerPostingResult> PostPeriodAsync(Guid orgId, int year, int month, string? userId, CancellationToken ct = default)
     {
-        var period = Period.Of(year, month);
+        var outcome = await PostCoreAsync(orgId, Period.Of(year, month), null, userId, ct);
+        return outcome.Result;
+    }
+
+    /// <summary>
+    /// The posting of a month, for every owner or only for <paramref name="onlyOwners"/> (the bulk posting of E13/F01/US03/T01: the lines and the stale lines of the other
+    /// owners are left as they are). The result and the plan it was made from, so the bulk step can tell each owner what was kept out of its ledger.
+    /// </summary>
+    private async Task<PostOutcome> PostCoreAsync(Guid orgId, Period period, IReadOnlySet<Guid>? onlyOwners, string? userId, CancellationToken ct)
+    {
+        var year = period.Year;
+        var month = period.Month;
         await using var tx = await LockAsync(orgId, ct);
         var plan = await PlanAsync(orgId, period, ct);
         var now = time.GetUtcNow().UtcDateTime;
 
+        bool Wanted(Guid owner) => onlyOwners is null || onlyOwners.Contains(owner);
         var live = await LiveEntriesAsync(orgId, period, ct);
-        var automated = live.Where(e => PostedSources.Contains(e.SourceType) && !plan.ClosedOwners.Contains(e.PropertyOwnerId)).ToList();
+        var automated = live.Where(e => PostedSources.Contains(e.SourceType) && !plan.ClosedOwners.Contains(e.PropertyOwnerId) && Wanted(e.PropertyOwnerId)).ToList();
         var liveKeys = automated.Select(e => BaseKey(e.IdempotencyKey)).ToHashSet(StringComparer.Ordinal);
         var plannedKeys = plan.Entries.Select(e => e.IdempotencyKey).ToHashSet(StringComparer.Ordinal);
 
@@ -80,7 +92,7 @@ public sealed partial class OwnerAccountingService(
 
         var touched = new HashSet<Guid>();
         int posted = 0, reversed = 0, unchanged = 0;
-        foreach (var entry in plan.OpenEntries)
+        foreach (var entry in plan.OpenEntries.Where(e => Wanted(e.PropertyOwnerId)))
         {
             if (liveKeys.Contains(entry.IdempotencyKey) || liveElsewhere.Contains(entry.IdempotencyKey))
             {
@@ -116,8 +128,11 @@ public sealed partial class OwnerAccountingService(
         logger.LogInformation(
             "Owner ledger {Year}-{Month} of org {OrgId} posted by {UserId}: {Posted} posted, {Reversed} reversed, {Unchanged} unchanged, {Issues} issues",
             year, month, orgId, userId, posted, reversed, unchanged, issues.Count);
-        return new OwnerPostingResult(year, month, posted, reversed, unchanged, issues);
+        return new PostOutcome(new OwnerPostingResult(year, month, posted, reversed, unchanged, issues), plan, touched);
     }
+
+    /// <summary>What a posting did, and the plan it followed: the owners it posted or reversed lines of, and the issues of every owner.</summary>
+    private sealed record PostOutcome(OwnerPostingResult Result, Plan Plan, IReadOnlySet<Guid> Touched);
 
     public async Task<OwnerCloseReadiness> GetReadinessAsync(Guid orgId, int year, int month, CancellationToken ct = default)
     {
@@ -208,16 +223,7 @@ public sealed partial class OwnerAccountingService(
     /// </summary>
     private static List<OwnerReadinessIssue> LedgerIssues(Plan plan, IReadOnlyList<OwnerLedgerEntry> live, Guid owner)
     {
-        var issues = plan.Issues.Where(i => i.OwnerId == owner).ToList();
-
-        // The issues of a property (a share gap, no owner on the day, a payment without an amount) have no owner of their own: they hold back the statement of
-        // every owner of that property, since a source left out of the ledger is a line missing from their accounts (and a line already posted is reversed).
-        if (plan.OwnerProperties.TryGetValue(owner, out var properties))
-        {
-            issues.AddRange(plan.Issues
-                .Where(i => i.OwnerId is null && i.PropertyId is { } property && properties.Contains(property))
-                .Select(i => i with { OwnerId = owner }));
-        }
+        var issues = PlanIssuesOf(plan, owner);
 
         var ownLive = live.Where(e => e.PropertyOwnerId == owner).ToList();
         var liveKeys = ownLive.Select(e => BaseKey(e.IdempotencyKey)).ToHashSet(StringComparer.Ordinal);
@@ -233,6 +239,24 @@ public sealed partial class OwnerAccountingService(
             issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.DuplicateEntry, owner, duplicate.First().PropertyId, duplicate.Key.SourceId));
         if (ownLive.Select(e => e.StatementCurrency).Distinct(StringComparer.Ordinal).Count() > 1)
             issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.CurrencyMixed, owner));
+        return issues;
+    }
+
+    /// <summary>
+    /// The issues the sources of the month raise for an owner: its own (the fiscal profile, a rate, a mandate) and those of a property it owns that have no owner of
+    /// their own (a share gap, no owner on the day, a payment without an amount): they hold back the statement of every owner of that property, since a source left
+    /// out of the ledger is a line missing from their accounts (and a line already posted is reversed).
+    /// </summary>
+    private static List<OwnerReadinessIssue> PlanIssuesOf(Plan plan, Guid owner)
+    {
+        var issues = plan.Issues.Where(i => i.OwnerId == owner).ToList();
+        if (plan.OwnerProperties.TryGetValue(owner, out var properties))
+        {
+            issues.AddRange(plan.Issues
+                .Where(i => i.OwnerId is null && i.PropertyId is { } property && properties.Contains(property))
+                .Select(i => i with { OwnerId = owner }));
+        }
+
         return issues;
     }
 

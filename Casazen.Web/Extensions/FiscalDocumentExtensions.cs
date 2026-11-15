@@ -4,6 +4,7 @@ using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Resources;
 using Microsoft.Extensions.Options;
 
@@ -50,6 +51,9 @@ public static class FiscalDocumentExtensions
         // active mandate for every owner. Registered like the others, never in the service.
         services.AddScoped<IBillingSetupContributor, ChannelCommissionsSectionContributor>();
         services.AddScoped<IBillingSetupContributor, OwnerMandatesSectionContributor>();
+
+        // The owner issuers of the section «Italia» (E17/F01/US01/T01): the owners of Italian properties still without an issuer profile that can issue.
+        services.AddScoped<IBillingSetupContributor, OwnerIssuerSetupContributor>();
 
         // The billing data and Octorate (E06/F02/US01/T04), both behind Features:OctorateConnector and Features:OctorateBillingSync: the invoice data of a
         // booking imported from Octorate is pre-filled from its customer record (BookingCreated), and the data saved in CasaZen is written to Octorate where
@@ -103,6 +107,9 @@ public static class FiscalDocumentExtensions
         // (E12/F01/US01/T01).
         services.AddScoped<IGuestDocumentLineBuilder, GuestDocumentLineBuilder>();
 
+        // The documents a booking needs and who issues each: the owner of an Italian property its stay, the agency its services (E17/F01/US01/T02).
+        services.AddScoped<IDocumentPlanService, DocumentPlanService>();
+
         // The fiscal documents CasaZen issues for its direct bookings and the reading of every document (E06/F01/US01/T01, NF-83); the changes are
         // behind Features:FiscalDocumentIssuance.
         services.AddScoped<IFiscalDocumentService, FiscalDocumentService>();
@@ -115,6 +122,12 @@ public static class FiscalDocumentExtensions
 
         // The owner ledger, the statement versions and the month-end close (E06/F05/US02/T02, NF-110).
         services.AddScoped<IOwnerAccountingService, OwnerAccountingService>();
+
+        // The month-end in bulk and the reconciliation of the month (E13/F01/US03): a step of the month-end for more owners than a request answers for is the Hangfire job
+        // OwnerBulkCloseJob, queued and read through IOwnerBulkJobs (its progress is a parameter of the job: no table); the reconciliation is read only.
+        services.AddScoped<IOwnerBulkJobs, HangfireOwnerBulkJobs>();
+        services.AddScoped<OwnerBulkCloseJob>();
+        services.AddScoped<IOwnerReconciliationService, OwnerReconciliationService>();
 
         // The files of a statement version: its PDF and CSV from the lines of the version, the PDF stored at the publication as an owner document, and the e-mail that tells
         // the owner (E13/F01/US02/T01, E13/F01/US02/T02). The accounting service takes it to publish; it takes nothing of the accounting service.
@@ -137,6 +150,9 @@ public static class FiscalDocumentExtensions
         services.AddScoped<IPortalAccountHolderResolver, PortalAccountHolderResolver>();
         services.AddScoped<IPortalAccountSettingsService, PortalAccountSettingsService>();
         services.AddScoped<IOwnerInvoiceService, OwnerInvoiceService>();
+
+        // The issuer profiles of the owners who issue the documents of their Italian stays, with their own series and numbering (E17/F01/US01/T01).
+        services.AddScoped<IOwnerIssuerProfileService, OwnerIssuerProfileService>();
 
         return services;
     }

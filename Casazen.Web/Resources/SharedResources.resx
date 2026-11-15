@@ -1081,6 +1081,9 @@
   <data name="AlloggiatiTransmissionUnavailable" xml:space="preserve">
     <value>CasaZen non trasmette ancora ad Alloggiati Web: invia la schedina dal portale della Questura con il riepilogo dati e segna l'invio come manuale.</value>
   </data>
+  <data name="AlloggiatiChannelManagerWriteInProgress" xml:space="preserve">
+    <value>Gli ospiti di questo soggiorno sono già in corso di invio: riprova tra qualche istante.</value>
+  </data>
   <data name="AlloggiatiRecordFileNotReady" xml:space="preserve">
     <value>Il file per il portale Alloggiati Web non può essere generato: i dati degli ospiti sono incompleti oppure manca qualche codice ufficiale. Completa la scheda Alloggiati dell'ospite.</value>
   </data>
@@ -4173,7 +4176,7 @@
     <value>Nel profilo emittente manca l'IBAN del conto da addebitare: inseriscilo nella configurazione «Fatturazione». Nessun batch è stato salvato.</value>
   </data>
   <data name="WireOwnerAddressMissing" xml:space="preserve">
-    <value>{0} proprietari non hanno un indirizzo completo (via, CAP, località e paese), che il bonifico svizzero richiede: completa i dati dei proprietari indicati. Nessun batch è stato salvato.</value>
+    <value>{0} proprietari non hanno un indirizzo completo (via, CAP, località e paese), che il file di bonifico richiede: completa i dati dei proprietari indicati. Nessun batch è stato salvato.</value>
   </data>
   <data name="WireOwnerIbanMissing" xml:space="preserve">
     <value>{0} proprietari non hanno un IBAN configurato: completa i dati dei proprietari indicati. Nessun batch è stato salvato.</value>
@@ -4183,6 +4186,9 @@
   </data>
   <data name="WireOwnerIbanNotSwiss" xml:space="preserve">
     <value>{0} proprietari hanno un IBAN che non è svizzero né del Liechtenstein: un bonifico in CHF verso quel conto non è un pagamento nazionale e questo file non lo copre. Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WireOwnerIbanNotSepa" xml:space="preserve">
+    <value>{0} proprietari hanno un IBAN fuori dall'area SEPA: un bonifico in EUR verso quel conto non è un bonifico SEPA e questo file non lo copre. Nessun batch è stato salvato.</value>
   </data>
   <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
     <value>Codice di accesso non disponibile o verifica non superata</value>
@@ -6207,6 +6213,21 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocPdfFiscalCode" xml:space="preserve">
     <value>Codice fiscale: {0}</value>
   </data>
+  <data name="FiscalDocPdfIssuedOnBehalf" xml:space="preserve">
+    <value>Emessa tramite {0} per conto del proprietario</value>
+  </data>
+  <data name="FiscalDocPdfCoOwners" xml:space="preserve">
+    <value>Comproprietari: {0}</value>
+  </data>
+  <data name="FiscalDocPdfStampDutyReference" xml:space="preserve">
+    <value>Imposta di bollo assolta: {0}</value>
+  </data>
+  <data name="FiscalDocPdfStampDutyToPay" xml:space="preserve">
+    <value>Imposta di bollo da assolvere</value>
+  </data>
+  <data name="FiscalDocPdfStampDutyVirtual" xml:space="preserve">
+    <value>Imposta di bollo assolta in modo virtuale</value>
+  </data>
   <data name="FiscalDocPdfLinesHeading" xml:space="preserve">
     <value>Dettaglio</value>
   </data>
@@ -6314,6 +6335,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="FiscalDocumentAlreadyIssued" xml:space="preserve">
     <value>Per questa prenotazione esiste già un documento emesso: per emetterne un altro serve prima una nota di credito totale.</value>
+  </data>
+  <data name="FiscalDocumentOwnerIssuerMissing" xml:space="preserve">
+    <value>Il proprietario dell'immobile non ha ancora un profilo di emittente completo: nessun documento viene preparato finché non lo completi.</value>
   </data>
   <data name="FiscalDocumentDraftOutdated" xml:space="preserve">
     <value>Le regole fiscali o i dati dell'emittente sono cambiati da quando è stata preparata la bozza: aggiornala e controlla di nuovo gli importi prima di emettere.</value>
@@ -6626,6 +6650,18 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="OwnerPeriodNotEnded" xml:space="preserve">
     <value>Il mese non è ancora finito: si chiude dal giorno dopo l'ultimo giorno del mese.</value>
+  </data>
+  <data name="OwnerBulkActionInvalid" xml:space="preserve">
+    <value>L'operazione in blocco non è valida: scegli tra registra, genera, approva, pubblica e chiudi.</value>
+  </data>
+  <data name="OwnerBulkOwnersEmpty" xml:space="preserve">
+    <value>L'elenco dei proprietari è vuoto: indica almeno un proprietario, oppure ometti l'elenco per includerli tutti.</value>
+  </data>
+  <data name="OwnerBulkTooManyOwners" xml:space="preserve">
+    <value>L'elenco indica troppi proprietari: al massimo {0} per volta.</value>
+  </data>
+  <data name="OwnerBulkJobNotFound" xml:space="preserve">
+    <value>Operazione in blocco non trovata o scaduta.</value>
   </data>
   <data name="OwnerCloseWaiverForbidden" xml:space="preserve">
     <value>Solo chi gestisce le finanze dei proprietari può chiudere il mese con una deroga.</value>
@@ -7604,5 +7640,32 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="AccountantPackageInvalidPeriod" xml:space="preserve">
     <value>Periodo non valido: indica un mese (period=2026-10) oppure un anno (period=2026), tra il 2000 e il 2100.</value>
+  </data>
+  <data name="AccountantPackageSettingsInvalid" xml:space="preserve">
+    <value>Le impostazioni dell'invio sono incomplete: indica se l'invio mensile è attivo, il giorno del mese e le cartelle da inviare.</value>
+  </data>
+  <data name="AccountantPackageRecipientMissing" xml:space="preserve">
+    <value>Per attivare l'invio mensile serve l'indirizzo e-mail del commercialista.</value>
+  </data>
+  <data name="AccountantPackageRecipientInvalid" xml:space="preserve">
+    <value>L'indirizzo e-mail del commercialista non è valido: scrivi solo l'indirizzo, senza nome e senza spazi.</value>
+  </data>
+  <data name="AccountantPackageSendDayInvalid" xml:space="preserve">
+    <value>Il giorno dell'invio deve essere un giorno del mese tra {0} e {1}.</value>
+  </data>
+  <data name="AccountantPackageContentsInvalid" xml:space="preserve">
+    <value>Scegli almeno una cartella da inviare, tra quelle del pacchetto, ciascuna una sola volta.</value>
+  </data>
+  <data name="AccountantPackageLinkInvalid" xml:space="preserve">
+    <value>Il link non è valido o è scaduto.</value>
+  </data>
+  <data name="AccountantPackageNotSent" xml:space="preserve">
+    <value>Non è stato possibile inviare il pacchetto al commercialista: non è stato inviato nulla. Riprova tra poco.</value>
+  </data>
+  <data name="AccPkgOmittedNotSelected" xml:space="preserve">
+    <value>Cartella non scelta nelle impostazioni dell'invio mensile.</value>
+  </data>
+  <data name="AccountantPackageOwnerAccountingRequired" xml:space="preserve">
+    <value>Le cartelle con la contabilità dei proprietari (fatture ai proprietari, rendiconti, ritenute, riepilogo dell'agenzia, IVA) si scelgono, e se ne invia una prova, solo con il permesso di leggere i rendiconti dei proprietari.</value>
   </data>
 </root>

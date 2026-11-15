@@ -72,7 +72,9 @@ public static class OctorateCheckInMapper
     /// <summary>
     /// The guest as Octorate receives it: names, sex, birth, citizenship and residence (Italy as <c>IT</c> with the comune by name, abroad the
     /// state as entered), the document only for a single guest or a head (the police code of its type), the dates of the stay, the draft rule of
-    /// the sender and the tax values when they may travel. No image, no stream, no bytes: the upsert has no member for them.
+    /// the sender and the tax values when they may travel. No image, no stream, no bytes: the upsert has no member for them. With
+    /// <paramref name="places"/> (E20/F01/US01/T01, decision O2) the Italian comuni and the place of issue of the document go with the exact names of
+    /// Octorate's table, the only ones it recognizes; without it they go as the guest typed them.
     /// </summary>
     public static OctorateCheckInGuestUpsert Map(
         StayGuest guest,
@@ -80,7 +82,8 @@ public static class OctorateCheckInMapper
         DateOnly checkOut,
         bool draft,
         string? octorateGuestId,
-        OctorateCityTaxValues? tax)
+        OctorateCityTaxValues? tax,
+        OctorateGuestPlaces? places = null)
     {
         ArgumentNullException.ThrowIfNull(guest);
         var withDocument = AlloggiatiRecordRules.RequiresDocument(guest.Type);
@@ -105,7 +108,7 @@ public static class OctorateCheckInMapper
                 false => NullIfBlank(guest.BirthCountryName),
                 _ => null,
             },
-            BirthCity = guest.BornInItaly == true ? NullIfBlank(guest.BirthComuneName) : null,
+            BirthCity = guest.BornInItaly == true ? places?.BirthCity ?? NullIfBlank(guest.BirthComuneName) : null,
             Citizenship = IsItaly(guest.CitizenshipCode, guest.CitizenshipName) ? ItalyCountry : NullIfBlank(guest.CitizenshipName),
             ResidenceCountry = guest.ResidenceInItaly switch
             {
@@ -113,10 +116,10 @@ public static class OctorateCheckInMapper
                 false => NullIfBlank(guest.ResidenceCountryName),
                 _ => null,
             },
-            ResidenceCity = guest.ResidenceInItaly == true ? NullIfBlank(guest.ResidenceComuneName) : null,
+            ResidenceCity = guest.ResidenceInItaly == true ? places?.ResidenceCity ?? NullIfBlank(guest.ResidenceComuneName) : null,
             DocumentType = withDocument ? DocumentTypeOf(guest) : null,
             DocumentCode = withDocument ? NullIfBlank(guest.DocumentNumber) : null,
-            DocumentIssuePlace = withDocument ? NullIfBlank(guest.DocumentIssuePlaceName) : null,
+            DocumentIssuePlace = withDocument ? places?.DocumentIssuePlace ?? NullIfBlank(guest.DocumentIssuePlaceName) : null,
             DocumentIssueDate = withDocument ? guest.DocumentIssuedOn : null,
             DocumentExpire = withDocument ? guest.DocumentExpiresOn : null,
             CheckIn = checkIn,

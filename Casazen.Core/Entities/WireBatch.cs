@@ -7,11 +7,11 @@ using Microsoft.EntityFrameworkCore;
 namespace Casazen.Core.Entities;
 
 /// <summary>
-/// Wire transfer batch (ADR-017, E16/F01/US01/T01): one bank file per currency, built from the <b>confirmed payouts</b> of the owners
+/// Wire transfer batch (ADR-017, E16/F01/US01/T01, E16/F01/US02/T01): one bank file per currency, built from the <b>confirmed payouts</b> of the owners
 /// (<see cref="OwnerPayout"/>, the net after the withholding) that are not in another batch yet; the payouts of a batch are the rows of
-/// <see cref="WireBatchPayout"/>. CHF is the Swiss <c>pain.001.001.09.ch.03</c> file with structured addresses, EUR keeps the SEPA <c>pain.001.001.03</c> file
-/// until its own change (<see cref="MessageFormat"/>). A file is validated against the official schema of its format before the batch is saved, and
-/// is never produced without that validation.
+/// <see cref="WireBatchPayout"/>. CHF is the Swiss <c>pain.001.001.09.ch.03</c> file, EUR the ISO 20022 <c>pain.001.001.09</c> file with the rules of the SEPA
+/// credit transfer, both with structured addresses (<see cref="MessageFormat"/>). A file is validated against the official schema of its format before the batch
+/// is saved, and is never produced without that validation.
 /// </summary>
 /// <remarks>
 /// <b>Privacy.</b> The file holds the IBAN, the name and the address of every owner, and the debit account is the IBAN of the agency: both
@@ -81,8 +81,9 @@ public class WireBatch : ITenantOwned
     public DateOnly? ExecutionDate { get; set; }
 
     /// <summary>
-    /// The message the file is (<c>pain.001.001.09.ch.03</c> for CHF, <c>pain.001.001.03</c> for EUR, <see cref="WireMessageFormats"/>); <c>null</c> for a batch of
-    /// before E16/F01/US01/T01, which was a <c>pain.001.001.03</c> file in both currencies.
+    /// The message the file is (<c>pain.001.001.09.ch.03</c> for CHF, <c>pain.001.001.09</c> for EUR, <see cref="WireMessageFormats"/>); <c>pain.001.001.03</c> for a
+    /// EUR batch made by E16/F01/US01/T01 (before the EUR file moved to <c>pain.001.001.09</c>); <c>null</c> for a batch of before E16/F01/US01/T01, which was a
+    /// <c>pain.001.001.03</c> file in both currencies.
     /// </summary>
     [MaxLength(MessageFormatMaxLength)]
     public string? MessageFormat { get; set; }

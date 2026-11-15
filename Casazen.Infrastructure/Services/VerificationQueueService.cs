@@ -1,6 +1,7 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -30,7 +31,8 @@ public class VerificationQueueService(
     ILogger<VerificationQueueService> logger,
     TimeProvider? timeProvider = null,
     IAccessCodeService? accessCodes = null,
-    IInternalActivityService? activities = null) : IVerificationQueueService
+    IInternalActivityService? activities = null,
+    IDomainEventRecorder? domainEvents = null) : IVerificationQueueService
 {
     /// <summary>The model name of an operator row when no automatic outcome came before it (a refused consent, a request of the guest).</summary>
     internal const string OperatorModelName = "operator";
@@ -226,6 +228,17 @@ public class VerificationQueueService(
         session.BiometricOutcome = decided;
         session.UpdatedAt = now;
         await AddOperatorLogAsync(session, decided, operatorUserId, note, now, cancellationToken);
+
+        // E20/F01/US01/T01: an approval is announced on the bus in the same save as its row of the log (ids and the method, nothing else): an org that
+        // lets CasaZen write the guests to the channel manager on their own learns that the identity of the stay is verified. A rejection is not one.
+        if (outcome)
+        {
+            domainEvents?.Record(
+                DomainEventType.IdVerificationCompleted,
+                bookingId,
+                new IdVerificationCompletedPayload(bookingId, session.Booking.PropertyId, IdVerificationMethods.Operator),
+                orgId: session.OrgId);
+        }
 
         // The decision first: the gate of the code reads the latest row of the log from the database.
         await db.SaveChangesAsync(cancellationToken);

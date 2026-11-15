@@ -24,6 +24,12 @@ public interface IBillingSetupContributor
 
     /// <summary>The items still missing in the section for <paramref name="orgId"/>.</summary>
     Task<IReadOnlyList<BillingSetupItem>> EvaluateAsync(Guid orgId, CancellationToken ct);
+
+    /// <summary>
+    /// The contributor has something to look at for <paramref name="orgId"/> (E17/F01/US01/T01: the owner issuers of an agency without Italian properties have
+    /// none): when it says no it is not asked and does not make its section apply. By default it does.
+    /// </summary>
+    Task<bool> AppliesAsync(Guid orgId, CancellationToken ct) => Task.FromResult(true);
 }
 
 /// <summary>

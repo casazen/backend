@@ -86,10 +86,20 @@ public sealed class BulkApplyRequestDto
     public bool Confirmed { get; set; }
 }
 
-/// <summary>The choice to apply: the sender of the Alloggiati Web and ISTAT communications (<c>ChannelManager</c>, <c>CasaZen</c> or <c>Manual</c>).</summary>
+/// <summary>
+/// The choice to apply: the sender of the Alloggiati Web and ISTAT communications (<c>ChannelManager</c>, <c>CasaZen</c> or <c>Manual</c>) and, once for the
+/// org, whether CasaZen writes the guests to the channel manager on their own.
+/// </summary>
 public sealed class BulkChoiceDto
 {
     public ComplianceSenderType? ComplianceSender { get; set; }
+
+    /// <summary>
+    /// Optional, an org-wide setting (E20/F01/US01/T01, decision O1) written once and only by a confirmed apply: <c>true</c> lets CasaZen write the guests
+    /// of a stay to the channel manager as soon as their data is complete and the identity check passed; <c>false</c> goes back to the host's confirmation;
+    /// left out changes nothing.
+    /// </summary>
+    public bool? AutoSendGuestsToOctorate { get; set; }
 }
 
 /// <summary>
@@ -102,6 +112,9 @@ public sealed class BulkApplyResultDto
     public bool DryRun { get; set; }
 
     public ComplianceSenderType ComplianceSender { get; set; }
+
+    /// <summary>The org-wide setting the choice asked for; <c>null</c> when it did not carry one. Written only when <c>dryRun</c> is false.</summary>
+    public bool? AutoSendGuestsToOctorate { get; set; }
 
     public BulkApplySummaryDto Summary { get; set; } = new();
 

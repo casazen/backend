@@ -17,6 +17,8 @@ public class EncryptedColumnsTests
         Assert.Equal(
             new[]
             {
+                // NF-101: the address of the accountant the package is sent to every month (E15/F01/US02/T01), personal data of a third party.
+                "AccountantPackageSettings.AccountantEmail:Casazen.AccountantPackage.Settings",
                 // ADR-032-R3: the text of an item of the approval queue (a draft of a message to a guest, a mailing) and the host's edit of it: the same purpose as the
                 // words of the conversations (E05/F04/US01/T01).
                 "ApprovalQueueItem.ContentText:Casazen.Message.Content",
@@ -65,9 +67,18 @@ public class EncryptedColumnsTests
                 // ADR-023-R1: the OAuth tokens of the Octorate connection of an organization.
                 "OctorateConnection.EncryptedAccessToken:Casazen.Octorate.OAuth",
                 "OctorateConnection.EncryptedRefreshToken:Casazen.Octorate.OAuth",
-                // E11/F01/US01/T01: the IBAN and the QR-IBAN of the issuer of an organization.
+                // E11/F01/US01/T01: the IBAN and the QR-IBAN of the issuer of an organization; E17/F01/US01/T01: the personal data of an issuer (an owner who
+                // issues is often a private person): legal name, fiscal code, VAT number, street, house number, postal code, city and PEC.
+                "OrgFiscalIssuerProfile.AddressCivic:Casazen.OrgFiscalIssuerProfile",
+                "OrgFiscalIssuerProfile.AddressStreet:Casazen.OrgFiscalIssuerProfile",
+                "OrgFiscalIssuerProfile.City:Casazen.OrgFiscalIssuerProfile",
+                "OrgFiscalIssuerProfile.FiscalCode:Casazen.OrgFiscalIssuerProfile",
                 "OrgFiscalIssuerProfile.Iban:Casazen.OrgFiscalIssuerProfile",
+                "OrgFiscalIssuerProfile.IssuerPec:Casazen.OrgFiscalIssuerProfile",
+                "OrgFiscalIssuerProfile.LegalName:Casazen.OrgFiscalIssuerProfile",
+                "OrgFiscalIssuerProfile.PostalCode:Casazen.OrgFiscalIssuerProfile",
                 "OrgFiscalIssuerProfile.QrIban:Casazen.OrgFiscalIssuerProfile",
+                "OrgFiscalIssuerProfile.VatNumber:Casazen.OrgFiscalIssuerProfile",
                 "OtaIntegration.ApiKey:Casazen.OtaIntegration.Secrets",
                 "OtaIntegration.ApiSecret:Casazen.OtaIntegration.Secrets",
                 // ADR-032-R3: the words of the conversations of the guests with the channels, copied from the channel manager.

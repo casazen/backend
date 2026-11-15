@@ -338,7 +338,7 @@ public sealed class OwnerStatementDocuments(
         var issuer = FiscalIssuerSnapshot.FromJson(document.IssuerSnapshot);
         if (issuer is null)
         {
-            var profile = await db.OrgFiscalIssuerProfiles.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking().FirstOrDefaultAsync(p => p.OrgId == orgId, ct);
+            var profile = await db.OrgFiscalIssuerProfiles.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking().OfOrganization(orgId).FirstOrDefaultAsync(ct);
             var org = await db.Orgs.AsNoTracking().FirstAsync(o => o.Id == orgId, ct);
             issuer = FiscalIssuerSnapshot.From(profile, org);
         }
@@ -523,7 +523,7 @@ public sealed class OwnerStatementDocuments(
         var platformCollected = (await db.OrgFiscalIssuerProfiles
                 .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
                 .AsNoTracking()
-                .Where(p => p.OrgId == orgId)
+                .OfOrganization(orgId)
                 .FirstOrDefaultAsync(ct))
             ?.PlatformCollectedTouristTaxChannels ?? [];
 

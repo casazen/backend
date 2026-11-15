@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Xml.Linq;
 using System.Xml.Schema;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -14,17 +13,17 @@ using Microsoft.Extensions.Logging;
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// Wire transfer service (ADR-017, E16/F01/US01/T01): builds the bank file that pays the owners from their <b>confirmed payouts</b>, the net after the withholding
-/// (<see cref="OwnerPayout"/>), and never from a statement. CHF is the Swiss <c>pain.001.001.09.ch.03</c> file (<see cref="Pain001V09Writer"/>), EUR keeps the SEPA
-/// <c>pain.001.001.03</c> file until its own change. One transfer per payout, one file per currency; the debtor and the debit account are the issuer profile of the
-/// org. A payout is paid by one batch only.
+/// Wire transfer service (ADR-017, E16/F01/US01/T01, E16/F01/US02/T01): builds the bank file that pays the owners from their <b>confirmed payouts</b>, the net after
+/// the withholding (<see cref="OwnerPayout"/>), and never from a statement. CHF is the Swiss <c>pain.001.001.09.ch.03</c> file, EUR the ISO 20022
+/// <c>pain.001.001.09</c> file with the rules of the SEPA credit transfer of the EPC (both written by <see cref="Pain001V09Writer"/>). One transfer per payout,
+/// one file per currency; the debtor and the debit account are the issuer profile of the org. A payout is paid by one batch only.
 /// </summary>
 /// <remarks>
-/// <para><b>The file is validated before anything is saved</b> (E06/F05/US01/T01, NF-25, NF-113): against the official schema of its currency (EUR: SEPA, CHF: Swiss;
-/// <see cref="Pain001SchemaProvider"/>, <see cref="XsdValidator"/>: no DTD, no resolver, no network) and against what a schema cannot say, the sums
-/// (<see cref="Pain001Checks"/>). The batch, its payouts and the file are written by one <c>SaveChanges</c> after that: a file that does not validate leaves no row
-/// behind (422 <c>wire_batch_xml_invalid</c> or <c>wire_batch_content_invalid</c>), and a build without the official schema of the currency produces no file at all
-/// (422 <c>wire_batch_schema_unavailable</c>), never a file that was not validated.</para>
+/// <para><b>The file is validated before anything is saved</b> (E06/F05/US01/T01, NF-25, NF-113): against the official schema of its currency (EUR: ISO, CHF: Swiss;
+/// <see cref="Pain001SchemaProvider"/>, <see cref="XsdValidator"/>: no DTD, no resolver, no network) and against what a schema cannot say, the sums and the SEPA
+/// rules of the EUR file (<see cref="Pain001Checks"/>). The batch, its payouts and the file are written by one <c>SaveChanges</c> after that: a file that does not
+/// validate leaves no row behind (422 <c>wire_batch_xml_invalid</c> or <c>wire_batch_content_invalid</c>), and a build without the official schema of the currency
+/// produces no file at all (422 <c>wire_batch_schema_unavailable</c>), never a file that was not validated.</para>
 /// <para><b>One batch for a payout.</b> The batch is made under the lock of the owner accounting of the org, the one a payout confirmation and a reversal take, so a
 /// payout reversed while its batch is made is seen by one of them; the unique index of <see cref="WireBatchPayout"/> is the backstop of two requests that could not
 /// be told apart.</para>
@@ -127,9 +126,10 @@ public sealed class WireTransferService(
         }
 
         // The debtor and the debit account: the issuer profile of the org.
-        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.OrgId == orgId, cancellationToken);
+        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().OfOrganization(orgId).FirstOrDefaultAsync(cancellationToken);
+        var flavor = Pain001V09Writer.FlavorOf(currency);
         var debtor = new Pain001Party(profile?.LegalName, profile?.AddressStreet, profile?.AddressCivic, profile?.PostalCode, profile?.City, profile?.CountryCode);
-        if (profile is null || !Pain001V09Writer.IsComplete(debtor))
+        if (profile is null || !Pain001V09Writer.IsComplete(debtor, flavor))
         {
             throw new DomainRuleException(WireTransferErrors.DebtorIncomplete, "WireDebtorIncomplete");
         }
@@ -147,8 +147,8 @@ public sealed class WireTransferService(
             throw new DomainRuleException(WireTransferErrors.DebitAccountInvalid, "InvalidDebitAccountIban");
         }
 
-        // The creditors: every owner of the batch with a complete structured address (for the Swiss file) and an IBAN that is a creditor account of a normal transfer.
-        var creditors = await CreditorsAsync(orgId, payouts, currency, cancellationToken);
+        // The creditors: every owner of the batch with a complete structured address and an IBAN that is a creditor account of a normal transfer in the area of the file.
+        var creditors = await CreditorsAsync(orgId, payouts, flavor, cancellationToken);
 
         var now = clock.GetUtcNow().UtcDateTime;
         var ordered = payouts.OrderBy(p => p.ConfirmedAt).ThenBy(p => p.Id).ToList();
@@ -176,9 +176,9 @@ public sealed class WireTransferService(
             MessageFormat = WireMessageFormats.Of(currency),
         };
 
-        // CHF is the Swiss pain.001.001.09.ch.03 file, EUR keeps the SEPA file.
+        // CHF is the Swiss pain.001.001.09.ch.03 file, EUR the pain.001.001.09 file of the SEPA credit transfer: the writer takes the flavor from the currency.
         var message = new Pain001Message(MessageIdOf(batch.Id), RomeCalendar.ToRome(now).DateTime, currency, debtor, debitAccount, transfers);
-        var xmlContent = currency == WireTransferErrors.SwissCurrency ? Pain001V09Writer.Write(message) : WriteSepa(message);
+        var xmlContent = Pain001V09Writer.Write(message);
 
         // Validate before anything is saved: a file that does not validate leaves no batch behind, and with no schema there is no file.
         ValidateFile(xmlContent, batch);
@@ -325,13 +325,14 @@ public sealed class WireTransferService(
 
     /// <summary>
     /// The creditor and the IBAN of every owner of the batch, or the refusal that lists the owners that cannot be paid with this file (their ids, never their names): an
-    /// owner with no complete structured address (the Swiss file writes it), with no IBAN, with an IBAN that fails the check digits, with a QR-IBAN (the account of a
-    /// QR-bill, never the creditor account of a normal transfer) or, in CHF, with an IBAN that is not Swiss or Liechtenstein. One refusal at a time, in that order.
+    /// owner with no complete structured address (both files write it), with no IBAN, with an IBAN that fails the check digits, with a QR-IBAN (the account of a
+    /// QR-bill, never the creditor account of a normal transfer) or with an IBAN outside the area of the file (in CHF, one that is not Swiss or Liechtenstein, a
+    /// domestic payment; in EUR, one outside the SEPA area, which the SEPA credit transfer cannot reach). One refusal at a time, in that order.
     /// </summary>
     private async Task<Dictionary<Guid, (Pain001Party Party, string Iban)>> CreditorsAsync(
         Guid orgId,
         IReadOnlyList<OwnerPayout> payouts,
-        string currency,
+        Pain001Flavor flavor,
         CancellationToken cancellationToken)
     {
         var ownerIds = payouts.Select(p => p.PropertyOwnerId).Distinct().Order().ToList();
@@ -339,13 +340,14 @@ public sealed class WireTransferService(
             .Where(o => o.OrgId == orgId && ownerIds.Contains(o.Id))
             .ToDictionaryAsync(o => o.Id, cancellationToken);
 
-        var swiss = currency == WireTransferErrors.SwissCurrency;
+        var swiss = flavor == Pain001Flavor.Swiss;
         var creditors = new Dictionary<Guid, (Pain001Party Party, string Iban)>();
         var withoutAddress = new List<Guid>();
         var withoutIban = new List<Guid>();
         var invalidIban = new List<Guid>();
         var qrIban = new List<Guid>();
         var notSwissIban = new List<Guid>();
+        var notSepaIban = new List<Guid>();
         foreach (var ownerId in ownerIds)
         {
             owners.TryGetValue(ownerId, out var owner);
@@ -357,9 +359,8 @@ public sealed class WireTransferService(
                 owner?.BillingCity,
                 owner?.BillingCountry);
 
-            // The Swiss file writes the structured address; the SEPA file of before writes the name alone, and so asks for it only.
-            var complete = swiss ? Pain001V09Writer.IsComplete(party) : Pain001Text.HasContent(party.Name, Pain001V09Writer.Max70);
-            if (!complete)
+            // Both files write the structured address of the creditor, so both ask for it (and for a name the message can write).
+            if (!Pain001V09Writer.IsComplete(party, flavor))
             {
                 withoutAddress.Add(ownerId);
             }
@@ -380,6 +381,10 @@ public sealed class WireTransferService(
             else if (swiss && !WireIban.IsSwiss(iban))
             {
                 notSwissIban.Add(ownerId);
+            }
+            else if (!swiss && !WireIban.IsSepa(iban))
+            {
+                notSepaIban.Add(ownerId);
             }
             else
             {
@@ -410,6 +415,11 @@ public sealed class WireTransferService(
         if (notSwissIban.Count > 0)
         {
             throw OwnersRefused(WireTransferErrors.OwnerIbanNotSwiss, "WireOwnerIbanNotSwiss", notSwissIban);
+        }
+
+        if (notSepaIban.Count > 0)
+        {
+            throw OwnersRefused(WireTransferErrors.OwnerIbanNotSepa, "WireOwnerIbanNotSepa", notSepaIban);
         }
 
         return creditors;
@@ -496,66 +506,8 @@ public sealed class WireTransferService(
     }
 
     /// <summary>
-    /// The SEPA <c>pain.001.001.03</c> file for EUR transfers, as it was written before the Swiss message: the name of the creditor alone, no address, the same
-    /// debtor agent and creditor agent. EUR keeps this writer until its own change; the debtor, the transfers and the date are those of the payouts.
-    /// </summary>
-    private static string WriteSepa(Pain001Message message)
-    {
-        var ns = XNamespace.Get(Pain001SchemaProvider.SepaNamespace);
-        var payments = message.Transfers.GroupBy(t => t.ExecutionDate).OrderBy(g => g.Key).ToList();
-        var total = message.Transfers.Sum(t => t.Amount);
-        var debtorName = Pain001Text.Clean(message.Debtor.Name, Pain001V09Writer.Max70);
-
-        var initiation = new XElement(
-            ns + "CstmrCdtTrfInitn",
-            new XElement(
-                ns + "GrpHdr",
-                new XElement(ns + "MsgId", message.MessageId),
-                new XElement(ns + "CreDtTm", message.CreatedAt.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture)),
-                new XElement(ns + "NbOfTxs", message.Transfers.Count.ToString(CultureInfo.InvariantCulture)),
-                new XElement(ns + "CtrlSum", Pain001V09Writer.Amount(total)),
-                new XElement(ns + "InitgPty", new XElement(ns + "Nm", debtorName))));
-
-        for (var i = 0; i < payments.Count; i++)
-        {
-            var transfers = payments[i].ToList();
-            var payment = new XElement(
-                ns + "PmtInf",
-                new XElement(ns + "PmtInfId", Pain001V09Writer.PaymentId(message.MessageId, i + 1)),
-                new XElement(ns + "PmtMtd", "TRF"),
-                new XElement(ns + "BtchBookg", "true"),
-                new XElement(ns + "NbOfTxs", transfers.Count.ToString(CultureInfo.InvariantCulture)),
-                new XElement(ns + "CtrlSum", Pain001V09Writer.Amount(transfers.Sum(t => t.Amount))),
-                new XElement(ns + "PmtTpInf", new XElement(ns + "SvcLvl", new XElement(ns + "Cd", "SEPA"))),
-                new XElement(ns + "ReqdExctnDt", payments[i].Key.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
-                new XElement(ns + "Dbtr", new XElement(ns + "Nm", debtorName)),
-                new XElement(ns + "DbtrAcct", new XElement(ns + "Id", new XElement(ns + "IBAN", message.DebtorIban))),
-                new XElement(ns + "DbtrAgt", new XElement(ns + "FinInstnId", new XElement(ns + "BIC", "NOTPROVIDED"))));
-
-            foreach (var transfer in transfers)
-            {
-                payment.Add(
-                    new XElement(
-                        ns + "CdtTrfTxInf",
-                        new XElement(ns + "PmtId", new XElement(ns + "EndToEndId", transfer.EndToEndId)),
-                        new XElement(
-                            ns + "Amt",
-                            new XElement(ns + "InstdAmt", new XAttribute("Ccy", message.Currency), Pain001V09Writer.Amount(transfer.Amount))),
-                        new XElement(ns + "CdtrAgt", new XElement(ns + "FinInstnId", new XElement(ns + "BIC", "NOTPROVIDED"))),
-                        new XElement(ns + "Cdtr", new XElement(ns + "Nm", Pain001Text.Clean(transfer.Creditor.Name, Pain001V09Writer.Max70))),
-                        new XElement(ns + "CdtrAcct", new XElement(ns + "Id", new XElement(ns + "IBAN", transfer.CreditorIban))),
-                        new XElement(ns + "RmtInf", new XElement(ns + "Ustrd", Pain001Text.Clean(transfer.Remittance, Pain001V09Writer.Max140)))));
-            }
-
-            initiation.Add(payment);
-        }
-
-        return Pain001V09Writer.Format(new XDocument(new XDeclaration("1.0", "UTF-8", null), new XElement(ns + "Document", initiation)));
-    }
-
-    /// <summary>
-    /// Validate the file of a batch before the batch is saved (E06/F05/US01/T01, NF-25): against the official schema of its currency (EUR: SEPA,
-    /// CHF: Swiss; no DTD, no resolver, no network), then against what a schema cannot say, the sums. 422 <c>wire_batch_schema_unavailable</c> when the
+    /// Validate the file of a batch before the batch is saved (E06/F05/US01/T01, NF-25): against the official schema of its currency (EUR: ISO,
+    /// CHF: Swiss; no DTD, no resolver, no network), then against what a schema cannot say, the sums and the SEPA rules of the EUR file. 422 <c>wire_batch_schema_unavailable</c> when the
     /// official schema of the currency is not installed (the file is never produced without its validation), <c>wire_batch_xml_invalid</c> with the line and
     /// position of the first errors, <c>wire_batch_content_invalid</c> with the names of the broken rules. Never a value of the file: no IBAN, no name,
     /// neither in the answer nor in the log (the text of a schema error can quote one, so it is not used).
@@ -597,10 +549,11 @@ public sealed class WireTransferService(
 }
 
 /// <summary>
-/// The IBANs of the wire files (E16/F01/US01/T01), on the definitions the rest of CasaZen already has (the owner registry and the issuer profile): the normal form,
-/// the length of the country and the check digits of ISO 13616 (<see cref="OwnerFieldRules"/>, which is <c>BankValues.IsValidIban</c>), and the QR-IBAN of the
-/// QR-bill, never the creditor account of a normal transfer (<see cref="IssuerBankAccounts.IsQrIban"/>); the Swiss or Liechtenstein IBAN of a domestic CHF payment is
-/// the one rule that is the wire's own. None of them logs: an IBAN is never written anywhere but in the file.
+/// The IBANs of the wire files (E16/F01/US01/T01, E16/F01/US02/T01), on the definitions the rest of CasaZen already has (the owner registry and the issuer profile):
+/// the normal form, the length of the country and the check digits of ISO 13616 (<see cref="OwnerFieldRules"/>, which is <c>BankValues.IsValidIban</c>), the QR-IBAN of
+/// the QR-bill, never the creditor account of a normal transfer (<see cref="IssuerBankAccounts.IsQrIban"/>), and the SEPA area of the registry
+/// (<see cref="OwnerFieldRules.IsSepaIban"/>, where the IBAN alone is enough); the Swiss or Liechtenstein IBAN of a domestic CHF payment is the one rule that is the
+/// wire's own. None of them logs: an IBAN is never written anywhere but in the file.
 /// </summary>
 internal static class WireIban
 {
@@ -620,6 +573,12 @@ internal static class WireIban
     public static bool IsSwiss(string iban)
     {
         return iban.Length == 21 && (iban.StartsWith("CH", StringComparison.Ordinal) || iban.StartsWith("LI", StringComparison.Ordinal));
+    }
+
+    /// <summary>True for an IBAN of the SEPA area (the registry's definition): the creditor account of a SEPA credit transfer, which a bank reaches with the IBAN alone.</summary>
+    public static bool IsSepa(string iban)
+    {
+        return OwnerFieldRules.IsSepaIban(iban);
     }
 
     /// <summary>True for a QR-IBAN: a Swiss or Liechtenstein IBAN whose institution identifier (characters 5 to 9) is between 30000 and 31999.</summary>

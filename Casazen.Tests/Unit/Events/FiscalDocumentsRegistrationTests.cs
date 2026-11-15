@@ -8,6 +8,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Services;
+using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Extensions;
 using Casazen.Web.Resources;
 using Microsoft.EntityFrameworkCore;
@@ -58,6 +59,9 @@ public class FiscalDocumentsRegistrationTests
             (typeof(IBillingSetupContributor), typeof(ChannelCommissionsSectionContributor), ServiceLifetime.Scoped),
             (typeof(IBillingSetupContributor), typeof(OwnerMandatesSectionContributor), ServiceLifetime.Scoped),
 
+            // The owner issuers of the section «Italia» (E17/F01/US01/T01).
+            (typeof(IBillingSetupContributor), typeof(OwnerIssuerSetupContributor), ServiceLifetime.Scoped),
+
             // The two consumers of the sync with Octorate (E06/F02/US01/T04): the pre-fill on BookingCreated, then the write-back on InvoiceDataSaved.
             (typeof(IEventHandler<DomainEvent>), typeof(InvoiceDataFromOctorateHandler), ServiceLifetime.Scoped),
             (typeof(IEventHandler<DomainEvent>), typeof(OctorateBillingWriteBackHandler), ServiceLifetime.Scoped),
@@ -84,6 +88,7 @@ public class FiscalDocumentsRegistrationTests
             (typeof(IFatturaPaXmlBuilder), typeof(FatturaPaXmlBuilder), ServiceLifetime.Singleton),
             (typeof(IOctorateDocumentImportService), typeof(OctorateDocumentImportService), ServiceLifetime.Scoped),
             (typeof(IGuestDocumentLineBuilder), typeof(GuestDocumentLineBuilder), ServiceLifetime.Scoped),
+            (typeof(IDocumentPlanService), typeof(DocumentPlanService), ServiceLifetime.Scoped),
             (typeof(IFiscalDocumentService), typeof(FiscalDocumentService), ServiceLifetime.Scoped),
             (typeof(IBookingPaymentLedgerService), typeof(BookingPaymentLedgerService), ServiceLifetime.Scoped),
 
@@ -91,6 +96,11 @@ public class FiscalDocumentsRegistrationTests
             // with their withholding evidence and the filing states (T03).
             (typeof(IOwnerFiscalProfileService), typeof(OwnerFiscalProfileService), ServiceLifetime.Scoped),
             (typeof(IOwnerAccountingService), typeof(OwnerAccountingService), ServiceLifetime.Scoped),
+
+            // The month-end in bulk (the Hangfire job and the queue that reads its progress) and the reconciliation of the month (E13/F01/US03).
+            (typeof(IOwnerBulkJobs), typeof(HangfireOwnerBulkJobs), ServiceLifetime.Scoped),
+            (typeof(OwnerBulkCloseJob), typeof(OwnerBulkCloseJob), ServiceLifetime.Scoped),
+            (typeof(IOwnerReconciliationService), typeof(OwnerReconciliationService), ServiceLifetime.Scoped),
             (typeof(IOwnerStatementDocuments), typeof(OwnerStatementDocuments), ServiceLifetime.Scoped),
             (typeof(IOwnerPayoutService), typeof(OwnerPayoutService), ServiceLifetime.Scoped),
 
@@ -102,6 +112,9 @@ public class FiscalDocumentsRegistrationTests
             (typeof(IPortalAccountHolderResolver), typeof(PortalAccountHolderResolver), ServiceLifetime.Scoped),
             (typeof(IPortalAccountSettingsService), typeof(PortalAccountSettingsService), ServiceLifetime.Scoped),
             (typeof(IOwnerInvoiceService), typeof(OwnerInvoiceService), ServiceLifetime.Scoped),
+
+            // The issuer profiles of the owners (E17/F01/US01/T01).
+            (typeof(IOwnerIssuerProfileService), typeof(OwnerIssuerProfileService), ServiceLifetime.Scoped),
         };
 
         Assert.Equal(expected, ours);

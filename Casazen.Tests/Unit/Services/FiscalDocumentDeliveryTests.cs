@@ -382,6 +382,36 @@ public class FiscalDocumentDeliveryTests
     }
 
     /// <summary>
+    /// E17/F01/US01/T01: the owners who issue the documents of their stays have their issuer profiles in the same table as the organization's. «E-mail to the guest» is
+    /// the choice of the organization itself, never the one of an owner's profile saved before it.
+    /// </summary>
+    [Fact]
+    public async Task SendAutomatically_ReadsTheChoiceOfTheOrganization_NeverTheProfileOfAnOwner()
+    {
+        await using var kit = NewKit(emailGuestDocuments: true);
+        kit.Db.OrgFiscalIssuerProfiles.Remove(await kit.Db.OrgFiscalIssuerProfiles.SingleAsync());
+        await kit.Db.SaveChangesAsync();
+        var owner = new PropertyOwner { OrgId = OrgId, FirstName = "TEST", LastName = "Proprietario", Email = "owner@example.com" };
+        kit.Db.PropertyOwners.Add(owner);
+        kit.Db.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile { OrgId = OrgId, PropertyOwnerId = owner.Id, CountryCode = "IT", EmailGuestDocuments = false });
+        await kit.Db.SaveChangesAsync();
+        kit.Db.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile
+        {
+            OrgId = OrgId,
+            IssuerMode = DocumentIssuerMode.CasaZen,
+            DocumentRegime = DocumentRegime.VatOrdinary,
+            LegalName = "TEST Casa Vacanze Srl",
+            CountryCode = "IT",
+            EmailGuestDocuments = true,
+        });
+        await kit.Db.SaveChangesAsync();
+        var seeded = await SeedAsync(kit);
+
+        Assert.Equal(FiscalDocumentSendOutcome.Queued, await kit.Service.SendAutomaticallyAsync(seeded.DocumentId));
+        Assert.Single(kit.Sent);
+    }
+
+    /// <summary>
     /// The event of the issue is delivered at least once: when another consumer of it fails, or the dispatcher stops before it saves, it comes back to this consumer. The second delivery queues nothing, so the
     /// guest is told once; what a queue that refused, a guest with no address or an issuer that did not ask left undone is remembered by nobody, so the next delivery tries again; and the host's own send is
     /// never held back («send again»).

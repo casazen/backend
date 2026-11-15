@@ -266,6 +266,13 @@ public static class DemoShowcaseCatalog
         public const string SwissFiscalDocument = "swiss-fiscal-document";
 
         /// <summary>
+        /// The documents of the owners of the Italian demo properties (E17/F01/US01, NF-116): the receipt of two private co-owners at 50% issued on the profile of the
+        /// one who holds the mandate, in his own series, with the stamp duty above 77.47 and the TEST stamp reference; the FatturaPA of a company owner in its own
+        /// sezionale, with the agency as third-party issuer and the cleaning billed apart by the agency. A template only: the showcase has no owners.
+        /// </summary>
+        public const string OwnerIssuerDocuments = "owner-issuer-documents";
+
+        /// <summary>
         /// The payment ledger (E06/F04/US01/T03, FIS-05, NF-85): a card payment with the commission and the net the provider reported, a cash payment
         /// the host recorded, and a booking of a channel with the amount the channel collected (commission not given by Octorate: not shown). Invented
         /// amounts, a template of the lines the ledger answers.
@@ -375,6 +382,7 @@ public static class DemoShowcaseCatalog
         Scenario.AdministratorStatementPdf,
         Scenario.FiscalDocumentsDirect,
         Scenario.SwissFiscalDocument,
+        Scenario.OwnerIssuerDocuments,
         Scenario.PaymentLedger,
         Scenario.OwnerChannelCommission,
         Scenario.ReportCollections,
@@ -485,6 +493,17 @@ public static class DemoShowcaseCatalog
     [
         new("fattura-svizzera", DocumentRegime.SwissVatRegistered, "CHE-109.322.551", "TEST Ospite Svizzero", 600.00m, 80.00m, 40.00m, 16.00m, Scenario.SwissFiscalDocument),
         new("ricevuta-svizzera", DocumentRegime.SwissNotRegistered, null, "TEST Ospite Svizzero", 600.00m, 80.00m, 40.00m, 16.00m, Scenario.SwissFiscalDocument),
+    ];
+
+    /// <summary>
+    /// The documents of the owners of an Italian demo stay (E17/F01/US01): 3 nights 300, cleaning 50, tourist tax 12. Two private co-owners at 50% (the receipt of
+    /// the one who holds the mandate, in his own series P{year}, stamp duty 2.00, TEST stamp reference) and a company owner (FatturaPA in its sezionale SRL{year},
+    /// the agency as third-party issuer, the cleaning a service of the agency on its own invoice). Invented, a template only.
+    /// </summary>
+    public static IReadOnlyList<DemoOwnerIssuerDocumentTemplate> OwnerIssuerDocumentExamples { get; } =
+    [
+        new("ricevuta-comproprietari", "TEST Mario Rossi", DocumentRegime.PrivatePerson, "P{year}", [50m, 50m], "TEST-BOLLO-1", 300.00m, 50.00m, 12.00m, false, Scenario.OwnerIssuerDocuments),
+        new("fattura-societa-terzo-emittente", "TEST Immobiliare Lago Srl", DocumentRegime.VatOrdinary, "SRL{year}", [100m], null, 300.00m, 50.00m, 12.00m, true, Scenario.OwnerIssuerDocuments),
     ];
 
     /// <summary>
@@ -2059,6 +2078,23 @@ public sealed record DemoSwissFiscalDocumentTemplate(
     decimal Cleaning,
     decimal Extra,
     decimal TouristTax,
+    string Scenario);
+
+/// <summary>
+/// The document of a demo stay issued in the name of its owner (E17/F01/US01): the owner, its regime and series, the shares of the co-owners, the TEST stamp
+/// reference, what the guest paid for the stay, the cleaning and the tourist tax, and whether the agency bills the cleaning apart as its service.
+/// </summary>
+public sealed record DemoOwnerIssuerDocumentTemplate(
+    string Key,
+    string OwnerName,
+    DocumentRegime Regime,
+    string Series,
+    IReadOnlyList<decimal> CoOwnerShares,
+    string? StampDutyReference,
+    decimal Stay,
+    decimal Cleaning,
+    decimal TouristTax,
+    bool CleaningByTheAgency,
     string Scenario);
 
 /// <summary>A fiscal document of a direct demo stay: its status, the number of an issued one, the TEST recipient, the total and the tourist tax in it.</summary>
