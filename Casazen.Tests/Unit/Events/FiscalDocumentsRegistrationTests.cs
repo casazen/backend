@@ -127,6 +127,9 @@ public class FiscalDocumentsRegistrationTests
             (typeof(IEventHandler<DomainEvent>), typeof(FiscalDocumentRejectionHandler), ServiceLifetime.Scoped),
             (typeof(IBillingSetupContributor), typeof(SdiIssuerRegistrationContributor), ServiceLifetime.Scoped),
 
+            // The documents issued in the name of the owners: the list, the PDF and the XML, and the ZIP for the owner's accountant (E17/F02/US01/T01).
+            (typeof(IOwnerIssuedDocumentsExport), typeof(OwnerIssuedDocumentsExport), ServiceLifetime.Scoped),
+
             // The self-billed invoices (TD17) of the commissions of the foreign portals (E17/F01/US03/T01).
             (typeof(ISelfBillingService), typeof(SelfBillingService), ServiceLifetime.Scoped),
 

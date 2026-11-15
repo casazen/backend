@@ -6418,7 +6418,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>Il proprietario dell'immobile non ha ancora un profilo di emittente completo: nessun documento viene preparato finché non lo completi.</value>
   </data>
   <data name="FiscalDocumentDraftOutdated" xml:space="preserve">
-    <value>Le regole fiscali o i dati dell'emittente sono cambiati da quando è stata preparata la bozza: aggiornala e controlla di nuovo gli importi prima di emettere.</value>
+    <value>Le regole fiscali, i dati dell'emittente o il destinatario sono cambiati da quando è stata preparata la bozza: aggiornala e controlla di nuovo importi e destinatario prima di emettere.</value>
   </data>
   <data name="FiscalDocumentBookingNotActive" xml:space="preserve">
     <value>La prenotazione non è attiva (richiesta, annullata o no-show): non si emette un documento fiscale per questa prenotazione.</value>
@@ -7929,5 +7929,23 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="AccountantPackageOwnerAccountingRequired" xml:space="preserve">
     <value>Le cartelle con la contabilità dei proprietari (fatture ai proprietari, rendiconti, ritenute, riepilogo dell'agenzia, IVA) si scelgono, e se ne invia una prova, solo con il permesso di leggere i rendiconti dei proprietari.</value>
+  </data>
+  <data name="AccPkgOwnDocsTotalsTitle" xml:space="preserve">
+    <value>Totale del periodo per valuta: documenti, imponibile, IVA, imposta di bollo e totale (note di credito in negativo)</value>
+  </data>
+  <data name="AccPkgOwnDocsSummaryTitle" xml:space="preserve">
+    <value>Riepilogo annuale dei documenti emessi a nome del proprietario, {0}, per mese e tipo (note di credito in negativo)</value>
+  </data>
+  <data name="AccPkgOwnDocsAgencyInvoicesTitle" xml:space="preserve">
+    <value>Fatture dell'agenzia al proprietario e riaddebiti, {0}: provvigione, riaddebiti e spese anticipate per valuta (note di credito in negativo)</value>
+  </data>
+  <data name="AccPkgOwnDocsAgencyInvoiceDetailTitle" xml:space="preserve">
+    <value>Fatture dell'agenzia al proprietario: provvigione, riaddebiti e spese anticipate di ogni fattura (note di credito in negativo)</value>
+  </data>
+  <data name="OwnerIssuedDocumentNotFound" xml:space="preserve">
+    <value>Documento non trovato.</value>
+  </data>
+  <data name="OwnerIssuedDocumentsNotAvailable" xml:space="preserve">
+    <value>Non ci sono documenti emessi a tuo nome da scaricare.</value>
   </data>
 </root>

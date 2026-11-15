@@ -180,6 +180,10 @@ public static class FiscalDocumentExtensions
         services.AddScoped<IEventHandler<DomainEvent>, FiscalDocumentRejectionHandler>();
         services.AddScoped<IBillingSetupContributor, SdiIssuerRegistrationContributor>();
 
+        // The documents issued in the name of the owners for the owner portal and for the accountant of the owner: the list, their PDF and XML and the ZIP of the month or the year
+        // (E17/F02/US01/T01). The owner portal service takes it; it takes nothing of the portal.
+        services.AddScoped<IOwnerIssuedDocumentsExport, OwnerIssuedDocumentsExport>();
+
         // The self-billed invoices (TD17) of the commissions of the foreign portals (E17/F01/US03/T01), behind Features:FiscalDocumentIssuance, with the section SelfBilling (the legal
         // entities of the portals, the VAT integrated, the deadline: ⚖ defaults to be confirmed by an accountant). Not validated at startup: a portal entry that is not usable is
         // ignored and its commissions are listed as «portal not configured», an invalid VAT rate makes the generation refuse (422 self_billing_not_configured).
