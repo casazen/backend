@@ -227,6 +227,19 @@ FatturaPA (`FatturaPaRegimeCode`, `TD01`/`TD04`), the `StampDuty` (`Threshold`, 
 - **Recipient.** A Swiss document (any kind) and an Italian receipt need only the name of the recipient (the address is printed when there is one, an
   Italian fiscal code is never asked); an Italian invoice keeps the checks of FatturaPA (the fiscal code of a person or the country abroad; the VAT
   number of a company with its SDI code or PEC).
+  - **The guest's name stands in (FIX/DOC-RECIPIENT).** The portals (Booking.com, Airbnb, Expedia, Vrbo through the channel manager) and the site of the agency send no
+    invoice data, and the document is due all the same (CasaZen issues for every booking, P1). When the document needs only a name and the booking has **no invoice data**
+    (no row, or a row with no name that holds no «yes» to «Ti serve la fattura?»), the recipient is the guest of the booking: its first and last name, as a private person,
+    **and nothing else**. Never copied: address, e-mail, phone, fiscal code, VAT number, nationality, country (the PDF prints the name alone; the e-mail of the document carries no recipient
+    field, it greets the guest by first name as before). The snapshot stays in the same encrypted columns: no migration, no flag. The one place is the draft (`FiscalDocumentService.RebuildAsync`), so the
+    check-out event, the daily run `fiscal-documents-due`, the draft of the host and a draft made again all do the same, and a draft made again never keeps a field of an
+    invoice data it no longer has.
+  - **Its limits.** The invoice data of the booking wins whenever it holds a name (typed by the host, given at the check-in or read from the channel manager), with all its
+    fields, as before. An **Italian invoice** (an ordinary VAT or a flat-rate issuer) never falls back: no invoice data is still 422 `document_invoice_data_missing` with
+    `fields: ["name"]`, and the stay is skipped by the daily run and read again at the next one. A guest who **asked for an invoice** (the «yes» at the check-in) without giving
+    the data is waited for in the same way: the host asks for the data, and no document is made out to the guest's name behind their back. A guest who was **erased**
+    (anonymized: the name is the placeholder `ANONYMIZED`), **deleted** or who **asked to be erased** never gets a document made out to a name that is no longer theirs: the
+    same 422, and the stay waits for the host (who may type the invoice data of the booking, which then wins).
 - **Swiss documents** have no nature code, no stamp duty, no XML (`FatturaPaXml` null) and the SDI state `not_applicable`; their tourist tax line reads
   «Tassa di soggiorno (non soggetta all'IVA)».
 - **The preview** `GET api/fiscal/documents/issuer-preview` (without `bookingId`: the organization) and `GET api/fiscal/documents/settings` return the rule
@@ -240,7 +253,8 @@ request). It carries the data of art. 26:
 
 - **Issuer**: legal name, address and, for a registered issuer, «N. IVA CHE-123.456.789 IVA» (IT) / «VAT no. CHE-123.456.789 VAT» (EN), from the
   snapshot (the issuer as it was at the issue).
-- **Recipient**: the name, plus the address when there is one (never an Italian fiscal code or VAT number).
+- **Recipient**: the name, plus the address when there is one (never an Italian fiscal code or VAT number). A booking with no invoice data (a portal sends none) is made out to
+  the name of its guest, with no address (see the rule «Recipient» above).
 - **Title** «Fattura» / «Ricevuta» (IT), «Invoice» / «Receipt» (EN) with the number; the date of the document; the period of the stay
   (`ServicePeriodFrom`/`To`) and the property.
 - **Lines**: description, quantity, unit price, amount and VAT rate (`3.8%`, `8.1%`; `—` for a line outside the VAT); the tourist tax is always labelled
@@ -564,9 +578,11 @@ caller); an account of the agency whose commissions it does not recharge never n
 
 **What the scenario shows** (facts of the code as it is, for the decisions of the PO and of the accountant):
 
-- A Swiss document needs the name of its recipient, read from the invoice data of the booking: a stay with none (no answer at the check-in, nothing typed by the agency,
-  no pre-fill from the channel manager) gets no document from the daily run (`document_invoice_data_missing`, skipped and read again at the next run). In the scenario
-  the agency gives the name on the booking card.
+- A Swiss document needs the name of its recipient: the invoice data of the booking when it has a name, else the name of its guest (FIX/DOC-RECIPIENT, the rule «Recipient»
+  of the tax rules). A stay of a portal comes with none (no answer at the check-in, nothing typed by the agency, no pre-fill from the channel manager), so the Booking.com
+  origin of the scenario gets its document from the daily run made out to the guest of the booking, by name only (asserted, with no other field of the guest on it); the
+  other origins have the agency give the name on the booking card. Before this fix such a stay got no document from the daily run (`document_invoice_data_missing`, skipped
+  and read again at the next run).
 - The checkout of the CasaZen site in Switzerland does not collect the tourist tax yet: the document carries the line of Ticino and stays «Da incassare» although the
   stay is paid (analisi-tecnica §5bis.3, second wave).
 - A credit note for the difference (a no-show, a partial refund) is spread over the lines of the document in proportion, the tourist tax included: the part that stays

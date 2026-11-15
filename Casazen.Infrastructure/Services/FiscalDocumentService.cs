@@ -33,6 +33,10 @@ namespace Casazen.Infrastructure.Services;
 /// in the transaction of the issue; their credit note posts its reversal. The endpoints of the guest documents neither make them again, issue, credit nor
 /// discard them (422 <c>document_owner_invoice</c>): the owner invoices do, behind <c>agency.statement.manage</c> and their flag
 /// (<see cref="CreateOwnerInvoiceCreditNoteAsync"/>, <see cref="DiscardOwnerInvoiceDraftAsync"/>).</item>
+/// <item><b>The recipient.</b> The invoice data of the booking when it holds a name: it wins, as it always did. A booking with none (the portals and the site of the agency send
+/// none) is made out to its guest for a document that needs only a name (a Swiss document of any kind, an Italian receipt): the name of the guest, nothing else of the guest
+/// (<see cref="RecipientNameOfGuest"/>, FIX/DOC-RECIPIENT). An Italian invoice, a guest who asked for an invoice without giving its data and a guest who was erased never fall
+/// back: 422 <c>document_invoice_data_missing</c>, as before.</item>
 /// <item><b>Logs</b> carry ids, codes and counts: never a value of the recipient or an amount.</item>
 /// </list>
 /// </remarks>
@@ -760,7 +764,8 @@ public sealed partial class FiscalDocumentService(
     /// <summary>
     /// The draft made from the booking: the checks of the issuer and of its profile, the document of the plan it is (<paramref name="planned"/>, else the one of
     /// its part: the stay or the services of the agency, E17/F01/US01/T02) and its issuer, the tax rule of that issuer in force at the check-out of the stay, the
-    /// invoice data the kind of document needs, then the lines the document bills (one VAT per line type) and the amounts. A draft whose part the plan no longer
+    /// invoice data the kind of document needs (the name of the guest of the booking when the document needs only a name and the booking has no invoice data,
+    /// FIX/DOC-RECIPIENT), then the lines the document bills (one VAT per line type) and the amounts. A draft whose part the plan no longer
     /// has is discarded (no number was given) and returned as it is.
     /// </summary>
     private async Task<FiscalDocument> RebuildAsync(FiscalDocument draft, CancellationToken ct, bool isNew = false, PlannedDocument? planned = null)
@@ -784,8 +789,13 @@ public sealed partial class FiscalDocumentService(
             await RequireNoOtherDocumentAsync(booking.Id, draft.Id, PartOf(planned.ForAgencyServices, profile.IsOwnerProfile), ct, countPlannedCredit: true);
 
         var kind = rule.DocumentKind == RuleDocumentKind.Receipt ? DocumentKind.Receipt : DocumentKind.Invoice;
+        var nameOnly = NeedsOnlyTheName(rule, kind);
         var recipient = await invoiceData.GetAsync(booking.Id, ct);
-        var missing = MissingInvoiceData(recipient, NeedsOnlyTheName(rule, kind));
+
+        // A document that needs only a name, for a booking with no invoice data of its own (a portal sends none): the guest of the booking is the recipient, by name only
+        // (FIX/DOC-RECIPIENT). No name to use (the guest was erased or has none): the refusal below is the one of a booking with no data, as before.
+        var guestName = nameOnly && NeedsTheNameOfTheGuest(recipient) ? await GuestNameOfRecipientAsync(booking.Id, ct) : null;
+        var missing = guestName is null ? MissingInvoiceData(recipient, nameOnly) : Array.Empty<string>();
         if (missing.Count > 0)
         {
             throw new DomainRuleException(FiscalDocumentErrors.InvoiceDataMissing, "FiscalDocumentInvoiceDataMissing")
@@ -809,7 +819,10 @@ public sealed partial class FiscalDocumentService(
         draft.RuleVersion = rule.Version;
         draft.Kind = kind;
         draft.Currency = StayCurrency.Normalize(booking.Currency);
-        CopyRecipient(recipient!, draft);
+        if (guestName is not null)
+            CopyRecipientName(guestName, draft);
+        else
+            CopyRecipient(recipient!, draft);
         foreach (var line in draft.Lines.ToList())
             db.FiscalDocumentLines.Remove(line);
         draft.Lines.Clear();
@@ -1309,6 +1322,47 @@ public sealed partial class FiscalDocumentService(
     internal static bool NeedsOnlyTheName(FiscalTaxRule rule, DocumentKind kind) => rule.IsSwiss || kind == DocumentKind.Receipt;
 
     /// <summary>
+    /// The invoice data of a booking names no recipient and the guest did not ask for an invoice (FIX/DOC-RECIPIENT): there is no row at all (the portals and the site of the agency
+    /// send none), or the row holds no name and no «yes» to «Ti serve la fattura?». A row with a name wins, as it always did; a guest who asked for an invoice and gave no data is
+    /// waited for (the host asks for it), never made out as somebody else.
+    /// </summary>
+    internal static bool NeedsTheNameOfTheGuest(InvoiceDataView? data) => data is null || (!data.InvoiceRequested && string.IsNullOrWhiteSpace(data.Name));
+
+    /// <summary>
+    /// The name of the guest of the booking, the recipient of a document that needs only a name (FIX/DOC-RECIPIENT). Only the name is read: no address, e-mail, phone, fiscal code or
+    /// nationality of the guest is read or copied. <c>null</c> when the guest has no name to use (see <see cref="RecipientNameOfGuest"/>).
+    /// </summary>
+    private async Task<string?> GuestNameOfRecipientAsync(Guid bookingId, CancellationToken ct)
+    {
+        var guest = await db.Bookings
+            .AsNoTracking()
+            .Where(b => b.Id == bookingId)
+            .Select(b => new GuestNameFacts(b.Guest.FirstName, b.Guest.LastName, b.Guest.DataAnonymizedDate != null || b.Guest.IsDeleted || b.Guest.ErasureRequested))
+            .FirstOrDefaultAsync(ct);
+        return guest is null ? null : RecipientNameOfGuest(guest.FirstName, guest.LastName, guest.Erased);
+    }
+
+    /// <summary>
+    /// The name a document is made out to for a guest: the first and the last name, trimmed and joined, at most <see cref="FiscalDocument.RecipientNameMaxLength"/> characters.
+    /// <c>null</c> for a guest who was erased, anonymized, deleted or who asked to be erased (<paramref name="erased"/>: the same test the CRM and the e-mails make), for one with no
+    /// name, and for one whose name is the placeholder of the erasure (<see cref="GuestDataEraser.AnonymizedName"/>): a document is never made out to a name that is not the guest's.
+    /// </summary>
+    internal static string? RecipientNameOfGuest(string? firstName, string? lastName, bool erased)
+    {
+        if (erased)
+            return null;
+
+        var parts = new[] { firstName, lastName }.Select(part => part?.Trim() ?? string.Empty).Where(part => part.Length > 0).ToList();
+        if (parts.Count == 0 || parts.Any(part => string.Equals(part, GuestDataEraser.AnonymizedName, StringComparison.OrdinalIgnoreCase)))
+            return null;
+
+        return Truncate(string.Join(' ', parts), FiscalDocument.RecipientNameMaxLength);
+    }
+
+    /// <summary>What <see cref="GuestNameOfRecipientAsync"/> reads of the guest of a booking: the two parts of the name, and whether the guest is gone.</summary>
+    private sealed record GuestNameFacts(string? FirstName, string? LastName, bool Erased);
+
+    /// <summary>
     /// The draft was made with the tax rule the document is about to be issued with: the version of its rule, the kind of document and the VAT of each of its
     /// lines (by type, with the treatments of the issuer) are those of <paramref name="rule"/>. When the regime, the country, a treatment of the issuer or the
     /// catalog changed since the draft was made, its amounts are the old rule's while the XML, the snapshot of the issuer and the layout would be the new one's
@@ -1453,6 +1507,26 @@ public sealed partial class FiscalDocumentService(
         document.RecipientCountryCode = data.CountryCode;
         document.RecipientSdiCode = data.SdiRecipientCode;
         document.RecipientPec = data.Pec;
+    }
+
+    /// <summary>
+    /// The recipient of a document made out to the guest of the booking by name (FIX/DOC-RECIPIENT): a private person with that name and nothing else. Every other field is set to
+    /// nothing, so a draft made again never keeps the address or the codes of an invoice data it no longer has.
+    /// </summary>
+    private static void CopyRecipientName(string name, FiscalDocument document)
+    {
+        document.RecipientKind = InvoiceRecipientKind.Guest;
+        document.RecipientName = name;
+        document.RecipientFiscalCode = null;
+        document.RecipientVatNumber = null;
+        document.RecipientAddressStreet = null;
+        document.RecipientAddressCivic = null;
+        document.RecipientPostalCode = null;
+        document.RecipientCity = null;
+        document.RecipientProvince = null;
+        document.RecipientCountryCode = null;
+        document.RecipientSdiCode = null;
+        document.RecipientPec = null;
     }
 
     private static void CopyRecipient(FiscalDocument from, FiscalDocument to)
