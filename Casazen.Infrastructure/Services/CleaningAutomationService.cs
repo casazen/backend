@@ -381,7 +381,9 @@ public sealed class CleaningAutomationService(
             }
             catch (DomainException ex)
             {
-                // The supplier is busy then, or the request changed meanwhile: the host decides.
+                // The supplier is busy then, or the request changed meanwhile: the host decides. The change the service refused may still be tracked: it is forgotten, so the save of the
+                // "To do" below is not a second try of it.
+                DiscardPendingChanges();
                 logger.LogInformation(
                     "Cleaning request {RequestId} of stay {BookingId} was not moved: {Code}",
                     request.Id, stay.BookingId, ex.Code);
