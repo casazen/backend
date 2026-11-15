@@ -305,7 +305,15 @@ public class Pain001V09Tests
         Assert.Equal("Quokka Immobiliare SA", debtor.Element(Swiss + "Nm")!.Value);
         Assert.Equal(new[] { "StrtNm", "BldgNb", "PstCd", "TwnNm", "Ctry" }, Names(debtor.Element(Swiss + "PstlAdr")!));
         Assert.Equal(DebitIban, payment.Element(Swiss + "DbtrAcct")!.Element(Swiss + "Id")!.Element(Swiss + "IBAN")!.Value);
-        Assert.Equal("NOTPROVIDED", payment.Element(Swiss + "DbtrAgt")!.Element(Swiss + "FinInstnId")!.Element(Swiss + "Othr")!.Element(Swiss + "Id")!.Value);
+
+        // The Swiss schema takes the bank of the debtor as a BIC or a clearing member and no «other identification»: the file names it by the institution identifier of
+        // the debit IBAN (characters 5 to 9), a member of the Swiss bank clearing.
+        var debtorBank = payment.Element(Swiss + "DbtrAgt")!.Element(Swiss + "FinInstnId")!;
+        Assert.Equal(new[] { "ClrSysMmbId" }, Names(debtorBank));
+        var clearingMember = debtorBank.Element(Swiss + "ClrSysMmbId")!;
+        Assert.Equal(new[] { "ClrSysId", "MmbId" }, Names(clearingMember));
+        Assert.Equal("CHBCC", clearingMember.Element(Swiss + "ClrSysId")!.Element(Swiss + "Cd")!.Value);
+        Assert.Equal(DebitIban[4..9], clearingMember.Element(Swiss + "MmbId")!.Value);
 
         var transfers = payment.Elements(Swiss + "CdtTrfTxInf").ToList();
         Assert.Equal(payouts.Select(WireBatchPayout.EndToEndIdOf).Order(), transfers.Select(t => t.Element(Swiss + "PmtId")!.Element(Swiss + "EndToEndId")!.Value).Order());
@@ -325,6 +333,38 @@ public class Pain001V09Tests
         Assert.Equal(ExecutionDate, batch.ExecutionDate);
         Assert.Empty(Pain001Checks.Violations(xml, "CHF", batch.TotalAmount, batch.TransferCount));
         Assert.Empty(XsdValidator.Validate(xml, Pain001TestSchemas.Accepting()));
+    }
+
+    /// <summary>
+    /// Data rule: the debtor agent of the Swiss file validates against the OFFICIAL Swiss schema, which takes a BIC or a clearing member id there and no «other
+    /// identification»: a Swiss or a Liechtenstein debit IBAN names its bank by the institution identifier it carries (characters 5 to 9), and an IBAN that carries none
+    /// (not a Swiss or Liechtenstein one) leaves the bank unnamed, which the schema also takes. Skipped with its reason while the official Swiss file is not in the build.
+    /// </summary>
+    [OfficialPain001SchemaFact(WireTransferErrors.SwissCurrency)]
+    public void Pain001V09Writer_SwissDebtorAgent_IsTheInstitutionOfTheIban_OrNoBank_AndValidates_Test()
+    {
+        var schemas = Pain001SchemaProvider.GetSchemas(WireTransferErrors.SwissCurrency);
+        var creditor = new Pain001Party("Mario Rossi", "Via Cantonale", "12", "6900", "Lugano", "CH");
+        var debtor = new Pain001Party("Quokka Immobiliare SA", "Via Nassa", null, "6900", "Lugano", "CH");
+
+        foreach (var (debitIban, institution) in new (string Iban, string? Institution)[] { (DebitIban, "08307"), (LiechtensteinIban, "08810"), (ItalianIban, null) })
+        {
+            var message = new Pain001Message(
+                "CZ" + Guid.NewGuid().ToString("N"),
+                new DateTime(2026, 11, 14, 11, 0, 0),
+                "CHF",
+                debtor,
+                debitIban,
+                [new Pain001Transfer("CZ" + Guid.NewGuid().ToString("N"), 10.10m, creditor, SwissIban, "Rendiconto 10/2026", ExecutionDate)]);
+
+            var xml = Pain001V09Writer.Write(message);
+
+            Assert.Empty(XsdValidator.Validate(xml, schemas));
+            var bank = XDocument.Parse(xml).Descendants(Swiss + "DbtrAgt").Single().Element(Swiss + "FinInstnId")!;
+            Assert.Null(bank.Element(Swiss + "Othr"));
+            Assert.Equal(institution, bank.Element(Swiss + "ClrSysMmbId")?.Element(Swiss + "MmbId")?.Value);
+            Assert.Equal(institution is null, !bank.HasElements);
+        }
     }
 
     /// <summary>
