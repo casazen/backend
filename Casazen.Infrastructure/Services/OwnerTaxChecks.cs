@@ -141,7 +141,7 @@ public sealed class OwnerTaxChecks(
         if (string.IsNullOrEmpty(reason) || reason.Length > ShortLetTaxDecision.ReasonMaxLength || reason.Any(char.IsControl))
             throw DecisionInvalid("reason");
 
-        var stay = (await FactsAsync(scope.OrgId, [command.BookingId], scope, ct)).SingleOrDefault()
+        var stay = (await FactsAsync(scope.OrgId, [command.BookingId], scope, withDeletedProperties: false, ct)).SingleOrDefault()
                    ?? throw new NotFoundException($"Booking {command.BookingId} was not found") { Code = OwnerTaxErrors.BookingNotFound, MessageKey = "BookingNotFound" };
 
         // A regime is never recorded for a stay that needs none: it would switch the withholding off for a stay nobody questioned.
@@ -236,7 +236,7 @@ public sealed class OwnerTaxChecks(
         if (!WarningsEnabled || bookingId == Guid.Empty)
             return false;
 
-        var stay = (await FactsAsync(orgId, [bookingId], null, ct)).SingleOrDefault();
+        var stay = (await FactsAsync(orgId, [bookingId], null, withDeletedProperties: false, ct)).SingleOrDefault();
         if (stay is null)
             return false;
 
@@ -295,7 +295,10 @@ public sealed class OwnerTaxChecks(
             return [];
 
         var presumedBusiness = (await CheckUnitsAsync(orgId, [ownerId], asOf, ct)).TryGetValue(ownerId, out var check) && check.PresumedBusiness;
-        var stays = (await FactsAsync(orgId, ids, null, ct)).ToDictionary(s => s.BookingId);
+
+        // The facts of a payout read the stays of a property deleted since its check-out too (fiscal history, as OwnerPayoutFacts reads them): a stay without its
+        // regime would block the payout of the whole version for good.
+        var stays = (await FactsAsync(orgId, ids, null, withDeletedProperties: true, ct)).ToDictionary(s => s.BookingId);
         var decisions = await DecisionsAsync(orgId, [.. stays.Keys], ct);
 
         // In the order they were asked; a booking of another org, or one that does not exist, is left out.
@@ -344,15 +347,23 @@ public sealed class OwnerTaxChecks(
     // ---------------------------------------------------------------- the stays
 
     /// <summary>
-    /// The stays among <paramref name="bookingIds"/> of the org (and of the reach of <paramref name="scope"/>, when given) with whether each is one of a company tenant.
+    /// The stays among <paramref name="bookingIds"/> of the org (and of the reach of <paramref name="scope"/>, when given) with whether each is one of a company tenant;
+    /// with <paramref name="withDeletedProperties"/> the stays of a deleted property too (the soft delete of the property is ignored, never the tenant).
     /// </summary>
-    private async Task<List<StayFacts>> FactsAsync(Guid orgId, IReadOnlyCollection<Guid> bookingIds, HostScope? scope, CancellationToken ct)
+    private async Task<List<StayFacts>> FactsAsync(
+        Guid orgId,
+        IReadOnlyCollection<Guid> bookingIds,
+        HostScope? scope,
+        bool withDeletedProperties,
+        CancellationToken ct)
     {
         var ids = bookingIds.Distinct().ToList();
         if (ids.Count == 0)
             return [];
 
         var query = db.Bookings.AsNoTracking().Where(b => b.OrgId == orgId && ids.Contains(b.Id));
+        if (withDeletedProperties)
+            query = query.IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]);
         if (scope is not null)
             query = query.InScope(scope);
 

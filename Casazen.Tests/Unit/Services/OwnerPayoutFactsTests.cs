@@ -310,6 +310,35 @@ public class OwnerPayoutFactsTests
         Assert.Equal(OwnerPayoutErrors.PayoutExceedsBalance, nothingLeft.Code);
     }
 
+    /// <summary>
+    /// Money (review of S029): the stay of a house deleted after its check-out (nothing to come, so the delete is allowed) is still judged and withheld by the payout of
+    /// its statement, and the preview says the same: its regime is read with the deleted property, as the facts are, never a 422 that would block the payout of the
+    /// whole version for good.
+    /// </summary>
+    [Fact]
+    public async Task PayoutFacts_PropertyDeletedAfterCheckOut_IsStillDecided_Test()
+    {
+        var world = new FactsWorld();
+        var owner = await world.OwnerAsync();
+        var house = await world.PropertyAsync(owner);
+        var stay = await world.StayAsync(house, BookingSource.Manual, 1000m, paid: true);
+        var version = await world.ApprovedVersionAsync(owner);
+        var property = await world.Db.Properties.SingleAsync(p => p.Id == house);
+        property.IsDeleted = true;
+        property.DeletedAt = world.Clock.GetUtcNow().UtcDateTime;
+        await world.Db.SaveChangesAsync();
+        world.Db.ChangeTracker.Clear();
+
+        var preview = await world.Payouts.PreviewPayoutAsync(world.OrgId, version, PaidOn);
+        Assert.Equal(((string?)null, 210m), (preview.BlockingCode, preview.WithholdingAmount!.Value));
+
+        var result = await world.Payouts.ConfirmPayoutAsync(world.OrgId, world.Payout(owner, version, "k-deleted"), null);
+        var decision = Assert.Single(result.Evidence);
+        Assert.Equal((TaxDecision.Applicable, 1000m, 210m), (decision.Decision, decision.GrossBase!.Value, decision.Amount!.Value));
+        var fact = Assert.Single(TaxObligationEvidenceDto.FactsOf(decision.FactsJson)!.Stays);
+        Assert.Equal((stay, true, PayoutStayReasons.InBase), (fact.BookingId, fact.Qualifying, fact.Reason));
+    }
+
     /// <summary>The rules of a stay, pure: a stay longer than the short let, or of a property outside Italy, is no qualifying short let; a stay paid at the property is not the agency's.</summary>
     [Fact]
     public void PayoutFactRules_EvaluateStay_QualifyingAndCollection_Test()
