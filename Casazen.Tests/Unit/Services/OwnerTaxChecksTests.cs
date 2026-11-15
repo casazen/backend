@@ -74,6 +74,56 @@ public class OwnerTaxChecksTests
     }
 
     /// <summary>
+    /// Money: the facts the withholding reads are NOT behind <c>Features:TaxReportingExports</c>, which is off by default in production: with the flag off an owner past the limit is
+    /// still a business and a decision already recorded is still followed (the flag silences only the warnings of the UI: the readiness, the statement version, the «Da fare»).
+    /// The codes of the contract that the slices reading the checks rely on never change.
+    /// </summary>
+    [Fact]
+    public async Task Facts_AreNotBehindTheFlag_TheCodesOfTheContractNeverChange_Test()
+    {
+        var world = World.Create(flagOn: false);
+        Assert.False(world.Checks.WarningsEnabled);
+
+        // Three units the agency manages: a business whatever the screens show.
+        var owner = await world.OwnerAsync();
+        var units = await world.UnitsAsync(owner, 3);
+        var stay = await world.BookingAsync(units[0], new DateOnly(2026, 11, 10), new DateOnly(2026, 11, 13));
+        var limit = (await world.Checks.CheckUnitsAsync(OrgId, [owner], Today))[owner];
+        Assert.Equal((true, 3), (limit.PresumedBusiness, limit.TotalUnits));
+        var business = await world.TreatmentAsync(owner, stay);
+        Assert.Equal((false, ShortLetTreatmentReasons.OwnerPresumedBusiness), (business.QualifiesAsShortLet, business.Reason));
+
+        // The stay of a company tenant of another owner: a short let until a decision, and the decision recorded before the flag was turned off is followed.
+        var other = await world.OwnerAsync();
+        var company = await world.CompanyStayAsync(await world.OwnedPropertyAsync(other));
+        var waiting = await world.TreatmentAsync(other, company);
+        Assert.Equal((true, ShortLetTreatmentReasons.ShortLet, true, true), (waiting.QualifiesAsShortLet, waiting.Reason, waiting.CompanyTenant, waiting.DecisionPending));
+        world.Db.ShortLetTaxDecisions.Add(new ShortLetTaxDecision
+        {
+            OrgId = OrgId,
+            BookingId = company,
+            Regime = ShortLetTaxRegime.NotShortLet,
+            Reason = "TEST",
+            DecidedAt = World.Now.UtcDateTime,
+            DecidedByUserId = "auth0|admin",
+        });
+        await world.Db.SaveChangesAsync();
+        var decided = await world.TreatmentAsync(other, company);
+        Assert.Equal((false, ShortLetTreatmentReasons.CompanyTenantNotShortLet), (decided.QualifiesAsShortLet, decided.Reason));
+
+        // The codes of the contract: names that never change.
+        Assert.Equal(
+            ("short_let", "owner_presumed_business", "company_tenant_short_let", "company_tenant_not_short_let"),
+            (ShortLetTreatmentReasons.ShortLet, ShortLetTreatmentReasons.OwnerPresumedBusiness, ShortLetTreatmentReasons.CompanyTenantShortLet, ShortLetTreatmentReasons.CompanyTenantNotShortLet));
+        Assert.Equal(
+            ("owner_tax_decision_invalid", "owner_tax_decision_not_applicable", "owner_external_units_invalid", "booking_not_found"),
+            (OwnerTaxErrors.DecisionInvalid, OwnerTaxErrors.DecisionNotApplicable, OwnerTaxErrors.ExternalUnitsInvalid, OwnerTaxErrors.BookingNotFound));
+        Assert.Equal(
+            ("short_let_business_presumed", "short_let_business_presumed", "issuer_profile", "TaxReportingExports"),
+            (OwnerReadinessWarnings.ShortLetBusinessPresumed, OwnerReadinessCodes.ShortLetBusinessPresumed, OwnerReadinessSuggestions.IssuerProfile, FeatureFlags.TaxReportingExports));
+    }
+
+    /// <summary>
     /// Money: only the apartments that are a short let in Italy count: a long lease, a Swiss property, a deleted one, an ownership that ended or has not started do not; the
     /// property of two periods of the same owner counts once; a co-owned property counts for each co-owner, whatever its share.
     /// </summary>
