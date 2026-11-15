@@ -2,6 +2,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -230,6 +231,122 @@ public class WithholdingController(
         return dataset is null ? this.ApiProblem(StatusCodes.Status404NotFound, OwnerPayoutErrors.DatasetNotFound, "TaxDatasetNotFound") : Ok(TaxReportingDatasetDto.From(dataset));
     }
 
+    /// <summary>
+    /// The annual Certificazione Unica data of the year as a CSV or an Excel file (E18/F01/US02/T01, NF-117, ⚖ I6, T2): one row for each recipient (an owner, or the signatory of a property
+    /// of several co-owners with their shares, or each co-owner when the mandate says per share) with the name, the fiscal code and the address, the base and the withholding in euro and what
+    /// is missing; then the stays of each, with the property (address, cadastral data, CIN), the dates and the nights. It is the data the agency stored and reviewed, never recomputed and never a
+    /// telematic file: nothing is filed by CasaZen. Behind <c>Features:TaxReportingExports</c> (404 before authentication while it is off). It names the fiscal code and the address of the owners, so
+    /// it needs <c>agency.owner.financial.manage</c> on top. <c>format</c> is <c>csv</c> or <c>xlsx</c> (400 <c>fiscal_export_invalid_format</c>); 404 <c>tax_dataset_not_found</c>; 422
+    /// <c>tax_cu_dataset_outdated</c>, <c>owner_period_invalid</c>. <c>Cache-Control: no-store</c>.
+    /// </summary>
+    /// <param name="year">Reference year (e.g., 2026).</param>
+    /// <param name="format"><c>csv</c> or <c>xlsx</c>.</param>
+    [HttpGet("annual/{year:int}/export")]
+    [FeatureGate(FeatureFlags.TaxReportingExports)]
+    [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> ExportAnnual(int year, [FromQuery] string? format = null)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        if (FiscalDocumentExportFormats.Parse(format) is not { } fileFormat)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, FiscalDocumentExportsController.InvalidFormatCode, "FiscalExportInvalidFormat");
+
+        var stored = await withholdingService.GetCuDatasetAsync(orgId, year, HttpContext.RequestAborted);
+        var language = DocumentLanguages.Current;
+        var content = fileFormat == FiscalDocumentExportFormat.Xlsx
+            ? TaxReportingExports.CuXlsx(year, stored.Records, texts, language)
+            : TaxReportingExports.CuCsv(year, stored.Records, texts, language);
+        logger.LogInformation("Annual tax data of {Year} exported as {Format}: {Records} records", year, fileFormat, stored.Records.Count);
+        return Download(content, fileFormat, TaxReportingExports.CuFileName(year, FiscalDocumentExportFormats.ExtensionOf(fileFormat)));
+    }
+
+    /// <summary>
+    /// The draft «prospetto CU» of an owner for the year as a PDF (E18/F01/US02/T01): its record of the stored annual data, with a watermark that says it is a draft and never the
+    /// Certificazione Unica. Behind <c>Features:TaxReportingExports</c>; needs <c>agency.owner.financial.manage</c> on top (it prints the fiscal code and the address of the owner). 404
+    /// <c>tax_dataset_not_found</c>, <c>tax_cu_record_not_found</c> (an owner with no record, or of another org); 422 <c>tax_cu_dataset_outdated</c>. <c>Cache-Control: no-store</c>.
+    /// </summary>
+    /// <param name="year">Reference year (e.g., 2026).</param>
+    /// <param name="ownerId">The owner the record is on.</param>
+    [HttpGet("annual/{year:int}/owners/{ownerId:guid}/pdf")]
+    [FeatureGate(FeatureFlags.TaxReportingExports)]
+    [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> GetCuProspectPdf(int year, Guid ownerId)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+
+        var file = await statementExport.ExportCuProspectAsync(orgId, year, ownerId, DocumentLanguages.Current, HttpContext.RequestAborted);
+        Response.Headers.CacheControl = "no-store";
+        return File(file.Content, file.ContentType, file.FileName);
+    }
+
+    /// <summary>
+    /// The data of the 770 for the year as a CSV or an Excel file (E18/F01/US02/T02, NF-117, ⚖ T2): for each month and tax code the withholding made and the F24 it was paid with (its amount, due
+    /// date, the day it was marked as paid, its filing state and its references), from the applicable withholding evidence of the payouts paid in the month and their reversals, of an Italian rule
+    /// only. The data the accountant enters in the form: never the form and never a telematic file. Behind <c>Features:TaxReportingExports</c>. <c>format</c> is <c>csv</c> or <c>xlsx</c> (400
+    /// <c>fiscal_export_invalid_format</c>); 422 <c>tax_no_obligations</c> (no decision in the year), <c>owner_period_invalid</c>. <c>Cache-Control: no-store</c>.
+    /// </summary>
+    /// <param name="year">Reference year (e.g., 2026).</param>
+    /// <param name="format"><c>csv</c> or <c>xlsx</c>.</param>
+    [HttpGet("770/{year:int}/export")]
+    [FeatureGate(FeatureFlags.TaxReportingExports)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> Export770(int year, [FromQuery] string? format = null)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        if (FiscalDocumentExportFormats.Parse(format) is not { } fileFormat)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, FiscalDocumentExportsController.InvalidFormatCode, "FiscalExportInvalidFormat");
+
+        var data = await withholdingService.Get770DataAsync(orgId, year, HttpContext.RequestAborted);
+        var language = DocumentLanguages.Current;
+        var content = fileFormat == FiscalDocumentExportFormat.Xlsx
+            ? TaxReportingExports.Tax770Xlsx(data, texts, language)
+            : TaxReportingExports.Tax770Csv(data, texts, language);
+        logger.LogInformation("770 data of {Year} exported as {Format}: {Lines} lines", year, fileFormat, data.Lines.Count);
+        return Download(content, fileFormat, TaxReportingExports.Tax770FileName(year, FiscalDocumentExportFormats.ExtensionOf(fileFormat)));
+    }
+
+    /// <summary>
+    /// The communication of the short-let contracts of the year as a CSV or an Excel file (E18/F01/US02/T02, NF-117, ⚖ T2): every qualifying short let the agency handled and did not withhold
+    /// on (the portal already withheld, or the agency neither collected nor handled the money), with the lessor, the property (address, cadastral data and CIN when stored), the duration and the
+    /// consideration; never a stay the agency withheld on. Due by 30 June of the next year: nothing is sent by CasaZen. Behind <c>Features:TaxReportingExports</c>; needs
+    /// <c>agency.owner.financial.manage</c> on top (it prints the fiscal code and the address of the lessors). <c>format</c> is <c>csv</c> or <c>xlsx</c> (400 <c>fiscal_export_invalid_format</c>); 422
+    /// <c>owner_period_invalid</c>. <c>Cache-Control: no-store</c>.
+    /// </summary>
+    /// <param name="year">Reference year (e.g., 2026).</param>
+    /// <param name="format"><c>csv</c> or <c>xlsx</c>.</param>
+    [HttpGet("contracts-communication/{year:int}/export")]
+    [FeatureGate(FeatureFlags.TaxReportingExports)]
+    [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> ExportContractsCommunication(int year, [FromQuery] string? format = null)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        if (FiscalDocumentExportFormats.Parse(format) is not { } fileFormat)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, FiscalDocumentExportsController.InvalidFormatCode, "FiscalExportInvalidFormat");
+
+        var data = await withholdingService.GetContractsCommunicationAsync(orgId, year, HttpContext.RequestAborted);
+        var language = DocumentLanguages.Current;
+        var content = fileFormat == FiscalDocumentExportFormat.Xlsx
+            ? TaxReportingExports.ContractsXlsx(data, texts, language)
+            : TaxReportingExports.ContractsCsv(data, texts, language);
+        logger.LogInformation("Short-let contracts communication of {Year} exported as {Format}: {Contracts} contracts", year, fileFormat, data.Rows.Count);
+        return Download(content, fileFormat, TaxReportingExports.ContractsFileName(year, FiscalDocumentExportFormats.ExtensionOf(fileFormat)));
+    }
+
     /// <summary>Builds the annual data of the year from the evidence, again while it is only generated. 422 <c>tax_no_obligations</c>; 409 <c>tax_file_already_filed</c>.</summary>
     [HttpPost("annual/{year:int}")]
     [ProducesResponseType(typeof(TaxReportingDatasetDto), StatusCodes.Status200OK)]
@@ -266,6 +383,13 @@ public class WithholdingController(
         if (await OrgAsync() is not { } orgId)
             return Forbid();
         return Ok(await payouts.ReconcileAsync(orgId, year, HttpContext.RequestAborted));
+    }
+
+    /// <summary>A file of an export as the answer: the bytes with the content type of <paramref name="format"/> and <c>Cache-Control: no-store</c> (money and personal data, built on request, never stored).</summary>
+    private FileContentResult Download(byte[] content, FiscalDocumentExportFormat format, string fileName)
+    {
+        Response.Headers.CacheControl = "no-store";
+        return File(content, FiscalDocumentExportFormats.ContentTypeOf(format), fileName);
     }
 
     /// <summary>The org of the caller when it reaches the whole of it; <c>null</c> (403) for a caller restricted to some properties or without an org.</summary>
@@ -340,7 +464,10 @@ public record F24RecordDto
     };
 }
 
-/// <summary>The annual tax data with its filing state.</summary>
+/// <summary>
+/// The annual tax data with its filing state. <see cref="PayloadJson"/> holds the totals of each owner (<c>ownerId</c>, <c>grossBase</c>, <c>withheld</c>, <c>evidence</c>) and nothing else
+/// (E18/F01/US02/T01): the recipients of the Certificazione Unica (fiscal code, address) are personal data, read only by the exports that ask <c>agency.owner.financial.manage</c>.
+/// </summary>
 public sealed record TaxReportingDatasetDto(
     Guid Id,
     string Kind,
@@ -357,7 +484,7 @@ public sealed record TaxReportingDatasetDto(
     DateTime GeneratedAt)
 {
     public static TaxReportingDatasetDto From(TaxReportingDataset d) => new(
-        d.Id, d.Kind, d.Year, d.TotalGrossBase, d.TotalWithheld, d.EvidenceCount, d.EvidenceSha256, d.PayloadJson, d.FilingState, d.HandoffReference,
+        d.Id, d.Kind, d.Year, d.TotalGrossBase, d.TotalWithheld, d.EvidenceCount, d.EvidenceSha256, CuDatasetPayload.TotalsJson(d.PayloadJson), d.FilingState, d.HandoffReference,
         d.ReceiptReference, d.RejectionReason, d.GeneratedAt);
 }
 

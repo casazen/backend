@@ -623,3 +623,98 @@ withholding reads are not behind it** (an owner past the limit is a business wha
 - **Data**: migration `AddOwnerTaxChecks`: `PropertyOwners.ExternalShortLetUnits` (int, default 0, check 0 to 1000), the table `ShortLetTaxDecisions` (tenant-owned, gone with the
   org, the booking a plain id with no foreign key: the decision is tax evidence) and `OwnerMandates.CoOwnerTaxReporting` (int, default 0). Rolling it back drops the decisions: they
   are evidence, so a rollback after decisions were recorded is a decision of the operator, not a routine step.
+
+## Certificazione Unica, 770 and the 30-June list (E18/F01/US02)
+
+Decisions of 2026-11-14 (`fatturazione/analisi-tecnica.md` §5, ⚖ I6 and T2 of the table §7): prudent defaults, configurable, to be confirmed by an accountant. **Nothing is filed or
+sent by CasaZen**: the telematic record layouts of the CU, the 770 and the communication are not produced (⚖ T2), the exports carry every field the accountant's software needs, and
+every file says it is the data to fill the form with. The new exports, the view of the owner and the exports of the tourist tax at year end are behind `Features:TaxReportingExports`
+(off by default, on in the test environment: [`feature-flags.md`](feature-flags.md)); the annual data and its filing states (`api/withholding/annual`) are not. **No migration**: the
+payload column of `TaxReportingDatasets` exists, it is encrypted through `EncryptedColumns` (below).
+
+- **CU data per recipient** (E18/F01/US02/T01, NF-117). `POST api/withholding/annual/{year}` builds the annual data from the applicable evidence of the payouts paid in the year and
+  their reversals, of an Italian rule only (`OwnerPayoutService.F24EvidenceQuery`, the evidence the F24 is built from), under the lock of the owner accounting of the org, again while it is
+  only `generated` (409 `tax_file_already_filed` after). **One record per recipient** (`CuDatasetBuilder`): who it is made out to (name, first name and surname of a person, fiscal
+  code, VAT number, address: the fiscal profile in force on the day of the last payment of the year, then the registry; what is missing is listed in `missing`, never invented), the
+  properties of its stays (address, unit, comune and ISTAT code, CIN, cadastral sheet, parcel, subaltern and category when stored), its stays (check-in, check-out, nights, month of the
+  payment) and the base and the withholding in euro of each, with the tax code and the rule versions. **The records add up to the evidence to the cent** (`TaxEvidenceLines`): the
+  withholding of a payout is decided once on the whole base of its stays, so each stay carries its part in proportion to its base, the cents that are left going to the largest
+  remainders; a payout of before the facts were read from the ledger (typed facts) has one line with no stay for its whole amount; a decision and its reversal in the same month cancel
+  out and leave no line, a reversal in a later year is a line with the opposite amounts in the month of the reversal. A recipient whose withholding was reversed in the same year (in the same month or in a later one) has no
+  record. `TotalGrossBase`, `TotalWithheld`, `EvidenceCount` and the hash are the evidence's, as before, so `GET api/withholding/reconciliation/{year}` still reconciles.
+- **Co-owners** (⚖ I6, `OwnerMandate.CoOwnerTaxReporting`). Each co-owner is paid its share, so the evidence is its own. The record is the owner's own for a property of one owner on the
+  check-out day of the stay. For a property of several co-owners the signatory (`DocumentPlanRules.SignatoryOf`: the mandate in force that day, then the largest share, then the oldest
+  ownership, then the smallest id) decides by its mandate: `Signatory` (the default, «altrimenti sul firmatario») writes everything on the signatory, `attribution: "signatory"`, with
+  `shares` saying what each co-owner puts into the record (name, base, withholding), also when only a co-owner was paid in the year (the record is the signatory's, never passed for its
+  own: `attribution: "signatory"` as soon as the record carries the evidence of another owner); `PerShare` keeps each co-owner's share on its own name, `attribution: "share"`. Either way **the shares
+  add up to the signatory's totals**. The evidence of an owner that was not an owner of the property on that day is never moved.
+- **Encrypted, and never in the API of the annual data.** `PayloadJson` is encrypted at rest (`Casazen.TaxReportingDataset`, [`encryption.md`](encryption.md)): it names the fiscal code and
+  the address of every recipient. A payload stored before (the totals of each owner) is read as it is and rewritten at startup. `GET`/`POST api/withholding/annual/{year}` answer the totals
+  of each owner in `payloadJson` (`ownerId`, `grossBase`, `withheld`, `evidence`: the shape it always had, which the accountant package also reads) and never the recipients.
+- **CU exports** (`agency.withholding.manage` and `agency.owner.financial.manage`, because they print fiscal codes and addresses; `no-store`; 404 `not_found` before authentication with the
+  flag off). `GET api/withholding/annual/{year}/export?format=csv|xlsx`: the recipients (one row each: name, kind, fiscal code, VAT number, residence, address, base, withholding, tax code,
+  attribution, co-owners included, rule versions, decisions, what is missing) and the stays of each (property with address, comune, ISTAT, CIN and cadastral data, dates, nights, month, the
+  co-owner it comes from, base and withholding); the Excel file has the sheets `CU` and the stays. `GET api/withholding/annual/{year}/owners/{ownerId}/pdf`: the **draft «prospetto CU»**
+  of one owner (watermark «BOZZA»/«DRAFT», the recipient, the year, the stays, the totals, the tax code, the state of the annual data): it says on the page that it is not the
+  Certificazione Unica. They read the data as it was stored and reviewed (never recomputed): 404 `tax_dataset_not_found` without annual data, `tax_cu_record_not_found` for an owner with no
+  record (or of another org), 422 `tax_cu_dataset_outdated` for data stored before the recipients (generate it again while it is only generated), `owner_period_invalid`, 400
+  `fiscal_export_invalid_format`. The states stay as they were: generated, reviewed, submitted (with the `handoffReference`), accepted (with the receipt) or rejected (with the reason).
+- **770** (E18/F01/US02/T02). `GET api/withholding/770/{year}/export?format=csv|xlsx` (`agency.withholding.manage`): for each month and tax code of the evidence of the year the base and the
+  withholding made, the F24 of the month (its amount, due date, the day it was marked as paid, filing state and references) and the difference with what was withheld. A month with two
+  codes has two lines (an F24 has one code); an F24 never generated says `F24 non generato` and its columns stay empty (never a payment nobody recorded). 422 `tax_no_obligations` for a year
+  without a decision. The data the accountant enters in the form: never the form, never a telematic file.
+- **30-June communication** (E18/F01/US02/T02, ⚖ T2). `GET api/withholding/contracts-communication/{year}/export?format=csv|xlsx` (both permissions): the short-let contracts the agency handled
+  **without withholding on them**, from the facts of the payouts of the year (one definition of a stay, `PayoutFactRules.EvaluateStay`): a qualifying short let that is not in the base of an applicable
+  decision (`already_withheld_by_portal`, `no_collection_or_intervention`, or the reason of a decision with no withholding) with the lessor (name, fiscal code, address), the property (address,
+  comune, cadastral data and CIN when stored), the first and last day, the nights, the channel and the gross consideration without the tourist tax. **Never a stay the agency withheld on** (that is
+  in the CU and the 770), never one that is no short-let regime (a business owner, a longer stay, a property outside Italy), and a payout that was reversed decides nothing: its stays come back
+  with the payout that decides them. The lessor is the owner the CU is on (the same attribution, so a signatory's contract adds its co-owners' shares). Due by 30 June of the next year;
+  nothing is sent.
+- **Owner portal** (E18/F01/US02/T01). `GET api/owner-portal/withholding?year=` answers, for the owner profiles of the claim only (`accounting.read` for a delegated contact, 403
+  `owner_portal_permission_missing` without it; the empty summary with `Features:AgencyTier` or `Features:TaxReportingExports` off, as before): `totalWithheld` and `details` (agency, property,
+  month, base and withholding in euro: the pieces of the owner's own payouts, adding up to the total) and `cuStatements`: the record of the owner profile in the annual data of the agency
+  **once it is reviewed** (reviewed, submitted or accepted: a data still generated can change, a rejected one is not the owner's to read), as totals (base, withholding, tax code, state,
+  `attribution`). Never the recipient data, the stays or the co-owners a signatory's record adds up; nothing of another owner whatever the tenant of the caller (every read names the owner
+  profiles of the grants and ignores the tenant filter on purpose, as the statements do).
+- **Reach, logs.** Every action of `api/withholding` needs a caller of the whole org (403 before anything is read); the logs carry ids, the year and counts, never a name, a fiscal code or an
+  address.
+- **Proofs.** `CuDatasetTests` (`CuDataset_SharesSumToOwnerTotals_Test`, `CuDataset_PayloadEncrypted_Test`, `OwnerPortalWithholding_OnlyOwnClaim_Test`) and
+  `TaxReportingExportsTests` (`ContractsCommunication_ExcludesStaysWithAgencyWithholding_Test`). Every new read of the CU, the 770, the communication, the owner portal and the year-end tourist tax
+  is also translated to SQL by Npgsql with no server (`TaxReportingNpgsqlTranslationTests`, `NpgsqlTranslationProbe`): InMemory accepts what PostgreSQL cannot run.
+
+## Tourist tax at year end (E18/F01/US02/T03)
+
+Acceptance steps C9 and D3 of `pilota-flusso-completo-2026-11-14.md`: the agency collects the tourist tax and answers for it to the comune. Three exports of the year, **CSV or Excel**
+(`GET api/tourist-tax/year-end/{year}/…?format=csv|xlsx`, `payment.read` like the rest of the controller, `no-store`), behind `Features:TaxReportingExports` (404 before authentication while it is
+off). **Nothing is filed by CasaZen**, nothing is recomputed (⚖ T2: the format a comune asks varies, so the files carry every field the data has), and there is **no migration**. They need a
+scope that reaches the whole org: 403 `tourist_tax_year_end_needs_whole_org` before anything is read (a declaration of some of the properties would be false, and the payments belong to the org);
+400 `report_invalid_format` (there is no JSON of them) and `fiscal_report_period_invalid` (a year outside 2000-2100). The texts are those of the resource files, in the language of the request.
+**The stays are the ones that happened**: the one definition of an active stay (`AlloggiatiStatusRules`: confirmed, checked in or checked out, and never a no-show), which the tourist tax report
+the summary reads now applies too (it used a copy of the list that did not leave the no-shows out: a stay whose guests never came owes no tax in any reader).
+
+- **Annual declaration** (`…/declaration`, `TouristTaxSummaryService.GetDeclarationAsync`). Made of the tourist tax summary of the year (`BuildSummaryAsync`: the same report, owed from the
+  amounts the engine recorded on the stays with check-in in the year, remitted from the payments, in whole cents): per comune the stays, nights and guests, **the tax due, the tax remitted
+  with the days and references of the payments (`TouristTaxRemittance`) and the difference** (`owed - remitted`, to the cent, so the balance is always exactly their difference), its status
+  and the payments table. In addition, from what the stays store (`StayTouristTax`): the **stays with a tax** and **the stays with no amount, counted apart with the reason** (`exempt`: the tax
+  confirmed guest by guest is nothing because every guest is exempt; `collected_by_channel`: the channel collects it, by the rule of the comune or the host's declaration; `not_calculated`: never
+  confirmed or calculated, the owed amount of the comune may be incomplete; `no_tax_due`: confirmed and nothing), and **the exempt guests by reason** (a count of stays, guests and guest-nights
+  per comune and reason: `minor_age`, a code of the catalogue `TouristTaxExemptionReason`, or `erased` once the reason went with the guest's data). **A count, never a guest, a booking or a
+  name**: the reason can reveal a health condition (art. 9 GDPR) and is encrypted at rest, so it leaves only as an aggregate, as the declaration to the comune asks, **and only to a caller that
+  holds `guest.read` on the whole org** (the accountant role holds `payment.read` and not `guest.read`, as on the tax of a stay): the others get `minor_age` and one `restricted` row (text «Esenti,
+  motivo riservato») that counts the same stays, guests and guest-nights of every other exempt guest, and no reason (`TouristTaxSummaryService.GetDeclarationAsync(…, withExemptionReasons)`, the
+  controller asks the policy `guest.read`; without the authorization service the answer is the restricted one). A house abroad is left out, as
+  the summary does.
+- **Account of the agent** (`…/agent-account?by=month|quarter`, «conto giudiziale», when the comune asks it of the collecting manager). For each comune and each month (default) or quarter the
+  summary of that period (what the stays record as owed and what was remitted for it: **a payment counts in the period its declared period lies inside**), then the line of the year, and the
+  table of every payment of the year with its period, amount, day, reference and receipt. The periods add up to the year for what is owed; a payment that spans two periods is in the line of the
+  year and in the table, in no period (the file says how the periods are counted in its title). 400 `tourist_tax_account_invalid_period` for another `by`.
+- **Ticino** (`…/ticino`, `TouristTaxSummaryService.GetTicinoYearlyCountAsync`, due by **5 January** of the next year: `TouristTaxYearEndRules.TicinoCountDue`). For each property in the canton `TI`
+  (the canton of its municipality, as the accountant package tells the Swiss tourist tax; a deleted property with stays is there too, one with none is not) the stays with check-in in the year
+  (confirmed, checked in or checked out; a stay is counted whole in the year of its check-in, ⚖ like the summary), their nights, **taxed** (the tourist tax lines of the issued documents of the
+  stay add up to more than nothing, a credit note taking its amount away), **untaxed** (a document without a tax: the portal collects it, the guest is exempt, no rule), **without a document**
+  (none issued yet: told apart, never counted as untaxed) and **the francs of the documents** (`FiscalDocumentLine` of type tourist tax of the documents in the currency of the property: E12,
+  never a calculation). **A property in Switzerland whose canton is not known** (no Swiss municipality on it, or one the registry of the municipalities lacks: the field is optional) may be in
+  Ticino, so it is in the count with its stays and a note in the last column («Cantone non determinato…»), never dropped in silence (`TicinoPropertyCount.CantonUnknown`). Every query names the org.
+- **Proof.** `TouristTaxYearEndExportsTests` (`TouristTaxYearEnd_ExemptionReasonsOnlyToWhoHoldsGuestRead_Test`: the reasons with and without `guest.read`, in the data and in the file;
+  `TouristTaxYearEnd_DueMinusRemittedPerMunicipality_Test`: due less remitted per comune to the cent, the reasons and the exemptions, the quarters adding
+  up to the year, the files; the count of Ticino from the documents; the whole-org refusal and the rules).

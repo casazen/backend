@@ -856,6 +856,87 @@ caller); an account of the agency whose commissions it does not recharge never n
 - The document of a booking of a portal is always «Pagata tramite il portale», also for the line of the tourist tax of Ticino that Booking.com does not collect and
   that nobody recorded (`Origin_BookingCom_*`, the assertion is marked): left to a fix of its own (the part of the tax to collect at the property).
 
+## Acceptance scenario of Italy (E19/F01/US02/T01)
+
+`Casazen.Tests/Integration/Acceptance/ItalianAgencyScenarioTests.cs` is the twin of the Swiss scenario: the same builder (`AcceptanceScenarioBuilder.CreateItalianAsync`), each step in a
+scope of its own (a context and the services over it, as a request or a job does) on one database, in memory for every test and on PostgreSQL in CI for the main path
+(`[PostgresFact]` twin). It drives an agency of Como through the real code with two flats, from the booking to the documents of the month and of the year, and asserts every
+amount to the cent. Only the external services are stand-ins: the client of Octorate, Stripe, the e-mail queue, the police (Alloggiati), the push notifications and the SDI (no
+provider is configured: `UnconfiguredSdiEInvoiceProvider`). The XML builder is the real one, with the official schema, and every XML the scenario makes is validated against it again.
+
+**The agency** (plan Agency; the flags `FiscalDocumentIssuance`, `OwnerInvoicing`, `AccountantPackage` and `AgencyTier` as the configuration shipped in `appsettings.json` has
+them, and `SdiSubmission` and `TaxReportingExports` turned on by the scenario): an issuer of Italy with the ordinary VAT regime (RF01) saved with `SaveSettingsAsync` as the wizard «Fatturazione» saves it (its own series
+`{year}`, the invoices of the property manager `PM{year}`, the cleaning billed as a service, the automatic issue and the e-mail to the guest on, no portal collecting the
+tourist tax); two flats in Como under a mandate with representation (commission of 20% «+ IVA»):
+
+| | Flat A | Flat B |
+|---|---|---|
+| Owner | a private person (fiscal code), the issuer profile `PrivatePerson` with its sezionale `RIC{year}` and the reference of the stamp duty | a company (a Srl: VAT number and fiscal code), the issuer profile `VatOrdinary` with its sezionale `SRL{year}`; the stay at 10%, or exempt N4 in the variant |
+| Documents of a stay | the **receipt** in the owner's name (the agency issues for it), the stamp duty of 2.00 over 77.47 borne by the owner, the tourist tax on its own line (N1) | the **FatturaPA** of the company (cedente), the agency its third-party issuer (`TZ`) and transmitter, the VAT of 10% on the stay, the tourist tax N1 outside the VAT |
+| Cleaning | recharged at the cost of the cleaning request (⚖ I13: a recharge for each request, with its reference) | a flat fee of 70.00 for each stay |
+| Withholding | 21%, code 1919, when the agency collected and the portal did not withhold | none, with its reason (`not_qualifying_short_let`: a company is no short let of a private person) |
+| Booking.com account (V1) | the owner's: no TD17 (the portal charged the Italian VAT) | the company's: the TD17 of the month |
+
+The cleaning the agency bills the guest is its own invoice (22%, its own series) beside the document of the owner; the tourist tax of Como is host-collected for every channel
+(a rule of the comune), except Airbnb in its variant. Flat B's stay ends a day after flat A's in every origin and the daily run of each day makes the documents of its own
+flat, so the numbers of the invoices of the agency, which both flats share, are in a fixed order.
+
+**The four origins** (one test each, `Origin_*`, both flats in one test; the main path has the four in one month, on both flats):
+
+| Origin | Flat A (receipt) | Flat B (invoice of the company) | Statement of October, flat A: gross, channel fee, commission, VAT of the invoice, cleaning → net | Withholding of flat A, F24 |
+|---|---|---|---|---|
+| Booking.com through Octorate (450.00, commission 67.50, tax 12.00, collected by the portal) | 450.00 + 12.00 = 462.00, stamp 2.00, «Pagamento: pagato» | 409.09 + VAT 40.91 + 12.00 = 462.00 | 450.00, −67.50, −90.00, −30.80, −50.00 → 211.70 (flat B: −35.20, −70.00 → 187.30) | none (the portal pays the owner): the contract is in the communication of 30 June |
+| Agency's own site (the «direct» channel, 402.00 by bank transfer recorded by hand) | 390.00 + 12.00 = 402.00 | 354.55 + VAT 35.45 + 12.00 | 390.00, 0, −78.00, −28.16, −50.00 → 233.84 (B: 209.44) | 81.90 → paid 151.94 |
+| CasaZen site (Stripe 432.00, fee 12.48 borne by the agency) | 360.00 + 12.00 = 372.00, and the invoice of the agency for the cleaning 49.18 + VAT 10.82 = 60.00 | 327.27 + VAT 32.73 + 12.00 = 372.00, and the cleaning of the agency | 420.00, 0, −84.00, −29.48, −50.00 → 256.52 (B: 232.12) | 88.20 → paid 168.32 |
+| By hand (312.00 in cash) | 300.00 + 12.00 = 312.00 | 272.73 + VAT 27.27 + 12.00 | 300.00, 0, −60.00, −24.20, −50.00 → 165.80 (B: 141.40) | 63.00 → paid 102.80 |
+| The four in one month | `RIC2026/1`…`4`, `2026/1` and `2026/2` for the cleaning | `SRL2026/1`…`4` | 1'560.00, −67.50, −312.00, −112.64, −200.00 → 867.86 (B: −130.24, −280.00 → 770.26) | 233.10 on a base of 1'110.00 (the three stays the agency collected) → 634.76; F24 of November 233.10, due 16 December |
+
+Each document is made by the daily run of the day after the check-out and e-mailed to the guest with its signed link; its PDF is the Italian layout (the owner as issuer and the agency
+«emessa tramite … per conto del proprietario», the reference that pays the stamp duty, the courtesy copy of the e-invoice). The invoices are `to_send` to the SDI: a submission with
+no provider answers «not configured» and changes nothing, and the issuer declares what it sent by hand (`manual_declared`). The month is then posted for both owners, each version
+generated, the invoice of the property manager made from it (22%, a commission line for the flat and a recharge for each cleaning, a FatturaPA to the owner: the fiscal code of the
+private owner, the VAT number of the company) and issued, the version approved and published (its PDF in the owner portal). The TD17 of the month (`TD17-2026/1`, 67.50 + VAT 14.85 =
+82.35 for the company that holds the Booking.com account) is made on the third of November, when the month is over. The owners are paid with a `pain.001.001.09` file (euro).
+
+**The year end** (read in January 2027): the CU of the private owner (its base and its withholding, who it is made out to, the stays), the 770 (the F24 of the month with its
+figures), the communication of the contracts of 30 June (the stay nobody withheld on: Booking.com in V1, Airbnb with its reason in the variant), the declaration of the tourist tax
+per comune and the account of the agent (the stays, the tax owed, the payment of 8 January that settles it). Each is read twice: as the data (the records of the CU, the lines of the
+770, the rows of the communication, the comuni of the declaration) and as the CSV a spreadsheet set to Italian opens (`TaxReportingExports.CuCsv`, `Tax770Csv`, `ContractsCsv`,
+`TouristTaxYearEndExports.DeclarationCsv`: `;` between the cells, a decimal comma, a day as `dd/MM/yyyy`). When the agency withheld nothing there is no CU, 770 or F24 (422
+`tax_no_obligations`), never a file of zeros.
+
+**The variants**:
+- **V2** (the agency holds the Booking.com account of both flats): the commission comes from the rule of the agency (15%), the invoice of the property manager recharges it
+  («Riaddebito commissioni Booking.com») and so does the statement; the TD17 is the agency's (one for the two stays, 135.00 + VAT 29.70, the estimate accepted at the issue), none for the owners;
+  the portal now pays the agency, so the agency withholds 21% of the stay of the private owner (94.50).
+- **Airbnb** (the portal collects the tourist tax of Como and withholds for a private Italian host, ⚖ R5): no line of the tax on the receipt, nothing in the box of the statement,
+  no withholding of the agency («already withheld by the portal»: never twice), and the contract in the communication of 30 June.
+- **Flat B exempt N4** (⚖ I1): the stay N4 and the tourist tax N1 are outside the VAT and over 77.47, so the invoice of the company carries the stamp duty of 2.00 (`DatiBollo`).
+- **Co-owners 60/40** (⚖ I6): one receipt on the profile of the co-owner with the largest share, listing both with their shares; each owner has its own statement, invoice, payout and
+  withholding on its share (37.80 and 25.20, one F24 of 63.00); the mandate says the CU is per share, so there is a record for each co-owner.
+- **Company tenant** (⚖ I7): the warning is raised once; while nobody decides, the regime does not change by itself (the preview still withholds and says the decision is pending); the
+  decision of the agency (the regime and its reason, by whom) is recorded once and the payout then withholds nothing on the stay.
+- **A third unit** (⚖ I8): two apartments declared outside the agency make three, one over the limit: the statement carries the flag `short_let_business_presumed` and the payout
+  withholds nothing, the facts saying it is the owner.
+
+**The changes (B12)**: a cancellation with a full Stripe refund after the documents were issued at once: the receipt is reversed by a credit note of its own kind and series (no XML),
+the invoices of the company and of the agency by a TD04 each (linked to the credited invoice, valid against the schema), and nothing is posted for the stays in October.
+
+**The wire file** is checked against the stand-in schema of the tests; `Wire_ThePayoutFile_ValidatesAgainstTheOfficialIsoSchema` validates it against the official `pain.001.001.09.xsd`
+and is reported as skipped, with its reason, until the file is added (`docs/runbooks/wire-transfers.md`).
+
+**What the scenario shows** (facts of the code as it is, for the decisions of the PO and of the accountant):
+
+- The document of a booking of a portal is always «Pagamento: pagato», also for the line of the tourist tax of Como that Booking.com does not collect and nobody recorded (the same
+  residual defect as in Switzerland; the assertion is marked).
+- The base of the withholding of a stay is the gross of the ledger without the tourist tax, so the stay of the CasaZen site is 420.00 with the cleaning of 60.00 that the agency bills the
+  guest as its own service (a document of the agency, not of the owner): the 21% is taken on the 420.00 (⚖ R3, the base of the commission is the same).
+- The accountant package has no sales-register row for the commission of a portal the agency holds the account of in Italy (the Swiss file has one, for the purchase tax): the TD17 is
+  its document. The TD17 itself is not in the package of the month (its file is the sales documents and the invoices of the property manager).
+- The numbers of the documents of the agency that two flats share depend on the order the daily run reads two stays that ended on the same day (the id of the booking): the scenario ends
+  the stays of the two flats on different days so that the numbers are fixed.
+
+
 ## Retention and privacy
 
 - A fiscal document is kept ten years (ADR-033-R7): the booking, the property, the owner, the statement version, the credited and the replaced document
