@@ -248,9 +248,10 @@ public class OwnerPayoutFactsTests
 
     /// <summary>
     /// The world of the facts: an org in an in-memory database, the clock of 12 November 2026, the committed configuration of the owner accounting, the real services
-    /// of the ledger, the checks of the owners and the payouts. Everything is invented (TEST owners, @example.com).
+    /// of the ledger, the checks of the owners and the payouts. Everything is invented (TEST owners, @example.com). The tests of the F24 export (E18/F01/US01/T02) use
+    /// it too.
     /// </summary>
-    private sealed class FactsWorld
+    internal sealed class FactsWorld
     {
         public FactsWorld()
         {

@@ -1,13 +1,18 @@
 using System.Reflection;
 using System.Security.Claims;
 using Casazen.Core.Authorization;
+using Casazen.Core.Documents;
+using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
 using Casazen.Web.Controllers;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
 
@@ -30,15 +35,25 @@ public class OwnerAccountingScopeTests
         {
             var accounting = new Mock<IOwnerAccountingService>(MockBehavior.Strict);
             var payouts = new Mock<IOwnerPayoutService>(MockBehavior.Strict);
+            var withholding = new Mock<IWithholdingService>(MockBehavior.Strict);
+            var exports = new Mock<IStatementExportService>(MockBehavior.Strict);
+            await using var db = new AppDbContext(
+                new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OwnerAccountingScope_{Guid.NewGuid()}").Options, NullTenantContext.Instance);
 
             var checkedActions = 0;
             checkedActions += await AssertEveryActionForbiddenAsync(new OwnerAccountingController(accounting.Object, Org(), Scope(restricted), Mock.Of<IAuthorizationService>()));
             checkedActions += await AssertEveryActionForbiddenAsync(new OwnerPayoutsController(payouts.Object, Org(), Scope(restricted)));
 
-            // Every HTTP action of the two controllers was called (the reads and the writes), and none reached a service (strict mocks would have thrown).
-            Assert.True(checkedActions >= 20, $"only {checkedActions} actions were checked");
+            // E18/F01/US01/T02: the withholding of every owner (the F24 data and its export, the annual data, the filing states) needs the whole org too.
+            checkedActions += await AssertEveryActionForbiddenAsync(new WithholdingController(
+                db, withholding.Object, payouts.Object, exports.Object, Org(), Scope(restricted), Mock.Of<IDocumentTexts>(), NullLogger<WithholdingController>.Instance));
+
+            // Every HTTP action of the three controllers was called (the reads and the writes), and none reached a service (strict mocks would have thrown).
+            Assert.True(checkedActions >= 30, $"only {checkedActions} actions were checked");
             accounting.VerifyNoOtherCalls();
             payouts.VerifyNoOtherCalls();
+            withholding.VerifyNoOtherCalls();
+            exports.VerifyNoOtherCalls();
         }
     }
 

@@ -6891,6 +6891,45 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OwnerPayoutExceedsBalance" xml:space="preserve">
     <value>The payout is more than the statement version still owes the owner.</value>
   </data>
+  <data name="F24ExportTitle" xml:space="preserve">
+    <value>Data for the F24 form of the withholding, {0}: one row per tax code and period, amounts in euro (not the form filed)</value>
+  </data>
+  <data name="F24ExportBreakdownTitle" xml:space="preserve">
+    <value>Breakdown by owner and payout, {0}: the withholding in euro of each payout (reversals are rows with opposite amounts)</value>
+  </data>
+  <data name="F24ExportSheetBreakdown" xml:space="preserve">
+    <value>Breakdown</value>
+  </data>
+  <data name="F24ExportColReference" xml:space="preserve">
+    <value>Payout reference</value>
+  </data>
+  <data name="F24ExportColKind" xml:space="preserve">
+    <value>Kind</value>
+  </data>
+  <data name="F24ExportKindWithholding" xml:space="preserve">
+    <value>Withholding of the payout</value>
+  </data>
+  <data name="F24ExportKindReversal" xml:space="preserve">
+    <value>Reversal of a cancelled payout</value>
+  </data>
+  <data name="F24ExportColGrossBaseEuro" xml:space="preserve">
+    <value>Gross base (euro)</value>
+  </data>
+  <data name="F24ExportColWithheldEuro" xml:space="preserve">
+    <value>Withholding (euro)</value>
+  </data>
+  <data name="F24ExportColPayoutCurrency" xml:space="preserve">
+    <value>Payout currency</value>
+  </data>
+  <data name="F24ExportColPayoutGross" xml:space="preserve">
+    <value>Payout gross</value>
+  </data>
+  <data name="F24ExportColPayoutWithheld" xml:space="preserve">
+    <value>Withholding kept (payout currency)</value>
+  </data>
+  <data name="F24ExportColPayoutNet" xml:space="preserve">
+    <value>Net paid</value>
+  </data>
   <data name="OwnerPayoutNotFound" xml:space="preserve">
     <value>Owner payout not found.</value>
   </data>

@@ -426,10 +426,10 @@ agree. **Read only, no entity, and a difference blocks nothing: the agency decid
   `reason`) adds the opposite evidence row (in the month of the reversal) and reverses the ledger lines.
 - **Ledger**: a payout posts, in the month of `paidOn`, the net paid (`OwnerPayment`) and the withholding kept (`Withholding`), together the gross that
   settles what was owed. **A transfer is recorded once**: a month an owner settled with a confirmed payout is settled by it, so the wires of the same
-  statements are neither posted nor counted at the close (`PlanAsync`, `CloseAsync`); if the payout is reversed the wires count again. Known limit: the wire
-  batch generator still pays the `NetPayable` of the statement, which since E06/F05/US02/T03 no longer carries a withholding; until the wire amounts take the
-  net of the payout (E06/F05/US02/T04) the agency pays the net of the withholding by hand and records the payout, instead of marking the wire paid for the
-  same money. A payout in another currency than euro keeps the withholding decided in euro at the agency's rate of the payout day (⚖ R6, see «Facts of the
+  statements are neither posted nor counted at the close (`PlanAsync`, `CloseAsync`); if the payout is reversed the wires count again. **The wire pays the
+  net**: the wire batch is made from the confirmed payouts and each transfer is the payout's `netAmount`, the gross less the withholding (E16/F01/US01/T01,
+  checked again by E18/F01/US01/T02 with a payout decided on the facts of the ledger: [`wire-transfers.md`](wire-transfers.md)), never the `NetPayable` of an old
+  statement. A payout in another currency than euro keeps the withholding decided in euro at the agency's rate of the payout day (⚖ R6, see «Facts of the
   payout»); without a rate it is 422 `tax_applicability_unresolved` (`fxRate`): nothing is converted by guess. `…/payouts/{id}/reverse` posts the reversals in
   their month while it is open, else in the month of today, which must be open too (409 `owner_period_closed`: a closed month is never posted).
 - **F24** (`api/withholding/f24`, `…/f24/generate`): built from the applicable evidence of the month (and its reversals) of an **Italian** rule only (`IT` or
@@ -441,6 +441,16 @@ agree. **Read only, no entity, and a difference blocks nothing: the agency decid
   `reviewed` → `submitted` (only with the `handoffReference` of a controlled manual handoff) → `accepted` (with the `receiptReference`) or `rejected`
   (with the `reason`) through `…/filing-state` (`agency.owner.financial.manage`). Nothing is ever sent by CasaZen. `api/withholding/reconciliation/{year}`
   compares the obligations of each month with its F24 and the year with the annual data. The F24 PDF prints the filing state and the receipt.
+- **F24 export** (E18/F01/US01/T02, NF-117): `GET api/withholding/f24/{year}/{month}/export?format=csv|xlsx` (`agency.withholding.manage`, `no-store`), next to the
+  PDF of the stored record, read only (it neither generates nor changes the record): a first table with **one line per tax code and period** (tax code, reference
+  month and year, amount in euro, due date on the 16th of the next month, the decisions that make it: `1919` while the approved rule says so; two codes in a month are
+  two lines, never merged), then the **breakdown per owner and payout** (owner, payout reference and day, decision or reversal, tax code, rule version, base, rate and
+  withholding in euro, then the currency, gross, withholding kept and net of the payout; a reversal has the opposite amounts), so the breakdown adds up to the lines.
+  Built from the same evidence as the F24 (`IWithholdingService.GetF24DataAsync`, an Italian rule only), in the language of the request; the Excel file has a sheet
+  `F24` and a sheet for the breakdown. 400 `fiscal_export_invalid_format`; 422 `tax_no_obligations` (no decision in the month), `owner_period_invalid`. The data to pay
+  and file with: **payment and filing stay with the agency or its accountant**, no telematic file is produced.
+- **Reach**: every action of `api/withholding` needs a caller of the whole org since E18/F01/US01/T02 (403 for a caller restricted to some properties, before anything is
+  read), like the rest of the owner accounting: the F24 data and the breakdown name every owner of the org.
 - **Existing rows**: the F24 records created before get the state `generated`; the old `WithholdingLog` rows stay as history, nothing writes them.
 
 ### Facts of the payout (E18/F01/US01/T01)
