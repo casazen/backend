@@ -1,4 +1,5 @@
 using Casazen.Core.Authorization;
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 
 namespace Casazen.Core.Services;
@@ -63,6 +64,10 @@ public interface IBookingSearchService
 /// Also give the money that came in for each booking (<see cref="BookingRowDetails.PaidAmount"/>). It is payment data: the web layer
 /// sets it only for a caller who may read payments, so the default is to leave it out; the state of the payment is always given.
 /// </param>
+/// <param name="Origins">
+/// Only the bookings that came from one of these origins (E27/F01/US01/T01, NF-123: a portal, the site of the agency, CasaZen's own site, the host,
+/// <see cref="BookingOrigins.Matching"/>); null or empty = every origin. It narrows, like every filter: the caller's scope is applied besides it.
+/// </param>
 public sealed record BookingSearchCriteria(
     DateOnly? From = null,
     DateOnly? To = null,
@@ -78,7 +83,8 @@ public sealed record BookingSearchCriteria(
     IReadOnlyCollection<BookingChannel>? Channels = null,
     IReadOnlyCollection<HostTodayCheckInState>? CheckInStates = null,
     BookingSort? Sort = null,
-    bool IncludePaidAmount = false)
+    bool IncludePaidAmount = false,
+    IReadOnlyCollection<BookingOrigin>? Origins = null)
 {
     /// <summary>Bookings per page when the caller does not say (as the guest list).</summary>
     public const int DefaultPageSize = 20;

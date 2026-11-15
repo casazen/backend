@@ -323,9 +323,9 @@ Property record choices (PC-02):
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/api/bookings` | List bookings a page at a time (PC-14: `?propertyId&guestId&page&pageSize`, `Bookings:DefaultPageSize` = 10 when `pageSize` is missing, at most 100), answered as `{ items, totalCount, page, pageSize }`; since SR-03b the search below without a filter but these two, rows included |
-| `GET` | `/api/bookings/search` | The same list with days, status and text (SR-03, below): `?from&to&status&q&propertyId&guestId&page&pageSize`, same order, same answer, same default page size. SR-03b adds `&arrivalFrom&arrivalTo&view&channel&checkInStatus&sort` and, on each row, `channel`, `paymentState`, `paidAmount`, `alloggiatiStatus`, `respondBy` |
-| `GET` | `/api/bookings/counts` | SR-03b: how many bookings are in each chip of the list (`{ all, toConfirm, upcoming, inProgress, completed, cancelled }`), for the filters of the search but the chip, the page and the order |
-| `GET` | `/api/bookings/{id}` | Get a single booking; SR-05a adds `paymentState`, `paidAmount` and `guestDataComplete` (below); E08/F03/US03/T02 adds `otaAmounts`, `collection`, `amountSources` (money: not for a caller without `payment.read`) and `octorateSync` (see *The booking answer* in the section on the bookings of the connector). Every booking answer, the lists too, has `otaSource` and `changeOptions` |
+| `GET` | `/api/bookings/search` | The same list with days, status and text (SR-03, below): `?from&to&status&q&propertyId&guestId&page&pageSize`, same order, same answer, same default page size. SR-03b adds `&arrivalFrom&arrivalTo&view&channel&checkInStatus&sort` and, on each row, `channel`, `paymentState`, `paidAmount`, `alloggiatiStatus`, `respondBy`. E27/F01/US01/T01 (NF-123) adds `&origin` (`Portal`, `AgencySite`, `CasaZenSite`, `Manual`, repeated or separated by commas; 400 `booking_list_invalid_origin`) and, on each row, `origin` and `originChannel` |
+| `GET` | `/api/bookings/counts` | SR-03b: how many bookings are in each chip of the list (`{ all, toConfirm, upcoming, inProgress, completed, cancelled }`), for the filters of the search (`origin` included) but the chip, the page and the order |
+| `GET` | `/api/bookings/{id}` | Get a single booking; SR-05a adds `paymentState`, `paidAmount` and `guestDataComplete` (below); E08/F03/US03/T02 adds `otaAmounts`, `collection`, `amountSources` (money: not for a caller without `payment.read`) and `octorateSync` (see *The booking answer* in the section on the bookings of the connector). Every booking answer, the lists too, has `otaSource`, `changeOptions`, `origin` and `originChannel` (E27/F01/US01/T01, *Origin and attribution* below) |
 | `GET` | `/api/bookings/{id}/timeline` | SR-05a: the history of the booking, derived from its timestamps and the rows tied to it (below); `booking.read` on its property, 404 outside the caller's scope |
 | `POST` | `/api/bookings` | Create a booking (availability check + tourist tax calculation) |
 | `PUT` | `/api/bookings/{id}` | Update a booking: a booking entered by the host, or a confirmed one of the booking site, not started. Answers the booking and a `settlement` block `{ action, state, amount, offlineRefundDue, currency }` (E08/F02/US01/T01, below). 422 `booking_settlement_failed` when Stripe refuses the refund or the charge (nothing is saved), 409 `booking_edit_payment_in_progress`, 403 `booking_edit_payment_permission_required` when the edit moves money and the caller has no `payment.write` (the edits that move none need `booking.write` only), 422 `booking_tourist_tax_unavailable`, 422 `ota_booking_change_not_allowed` for a booking that came from a channel whose channel is closed (every channel unless `Octorate:ChannelActions` opens it; nothing is changed, E08/F02/US02), 422 `ota_amounts_readonly` for a changed amount of the channel (below) |
@@ -384,6 +384,10 @@ are gone). Everything below is optional and additive; nothing of the SR-03 answe
   portals have a channel of their own (`BookingListRules.ChannelOf`), so `channel=Other` no longer returns the bookings of
   Expedia, Vrbo, TripAdvisor and Agoda: ask for them by name (`channel=Other&channel=Expedia`). The `channel` of every booking
   of the list, of the search and of the calendar (`GET /api/calendar`) tells them apart.
+- `origin`, repeated or separated by commas (E27/F01/US01/T01, NF-123): `Portal` (every channel of the channel manager), `AgencySite` (a direct booking from a
+  link of the agency, or a reservation of the booking engine of the agency), `CasaZenSite` (any other direct booking), `Manual` (entered by the host), by name and
+  any case (`BookingOrigins.Matching`, the same rule as the `origin` of each row, in SQL); it narrows like every filter, the caller's scope is applied besides it.
+  400 `booking_list_invalid_origin`. `GET /api/bookings/counts` takes it too.
 - `checkInStatus`, repeated or separated by commas: the state of the online check-in link as `GET /api/dashboard/today`
   reads it (`NotSent`, `Sent`, `InProgress`, `Completed`, `Expired`), from the link alone, not from whether the guests' data are
   complete; filtered in SQL. 400 `booking_list_invalid_check_in_status`.
@@ -1765,6 +1769,18 @@ reservation of the room of a property, found through the confirmed `OctorateList
   figures and gets them too (they are no figures). Any other booking never gets them, and no endpoint writes them (`PUT /api/bookings/{id}` writes
   dates, guests and notes only, ADR-033-R3). A change of the flags alone is saved without announcing a `BookingModified`. Migration
   `AddBookingOtaCollectionFlags` (two nullable `boolean` columns).
+- *Origin and attribution* (E27/F01/US01/T01, NF-123). Four nullable columns on `Booking` (migration `AddBookingAttribution`): `AttributionSource` (40),
+  `AttributionMedium` (40), `AttributionCampaign` (80), `AttributionReferrerHost` (255). `BookingSource` is unchanged (the invoicing plan reasons per
+  channel); the origin the host reads is worked out from the source and the attribution by `BookingOrigins.Of` (`Casazen.Core/Bookings`): `Portal` for
+  every channel (`FiscalCopy.IsOtaBookingSource`), `AgencySite` for a direct booking whose attribution source is `agency-site` (a link of the agency) or
+  `octorate-booking-engine`, `CasaZenSite` for any other direct booking, `Manual` for the rest. The public checkout (`POST /api/public/bookings`) takes an optional
+  `attribution` `{ source, medium, campaign, referrer }`, kept only after `BookingAttribution.Sanitize` (lower-case tokens that fit the columns, the referrer
+  reduced to its host name; what is not valid is dropped, never an error). The import writes `octorate-booking-engine` for a reservation of the booking engine
+  of the agency (the channel `BookingStateMapper` keeps direct) when it makes the booking, and when a newer version of one it made before is read; the migration
+  gives it to the ones already imported (`AddBookingAttribution.BackfillSql`: a booking of the booking site with a reservation, no attribution and no row of the mirror); a reservation
+  CasaZen pushed itself (a booking with a row of the mirror, its echo linked by reference) is never attributed. `GET /api/bookings/search` and `/counts` filter by
+  `origin` (`BookingOrigins.Matching`, the same rule as a predicate); every booking answer has `origin` and, for a portal, `originChannel` (the name of its
+  source; the name of an `OtherChannel` portal is `channelLabel`).
 - *The booking answer* (E08/F03/US03/T02, NF-74, NF-77). Every answer that carries a booking, the lists and the actions that answer a booking included,
   has `otaSource` and `changeOptions`. `otaSource` is the channel (`Airbnb`, `BookingCom`, `Expedia`, `Vrbo`, `TripAdvisor`, `Agoda`, `OtherChannel`) of a
   *booking of a channel* (`OtaChannelActionPolicy.IsChannelBooking`) and `null` for every other: also for a booking CasaZen made and sent to Octorate (it has

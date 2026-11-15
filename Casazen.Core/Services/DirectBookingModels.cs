@@ -1,5 +1,6 @@
 namespace Casazen.Core.Services;
 
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 using Casazen.Core.TouristTax;
 
@@ -32,6 +33,10 @@ public record DirectBookingGuestInput(
 /// records that the notice was presented only when it is the configured one (<c>Gdpr:SoftOptInNoticeVersion</c>); any other is 409
 /// <see cref="DirectBookingErrorCodes.SoftOptInNoticeOutdated"/>.
 /// </param>
+/// <param name="Attribution">
+/// Where the guest came from (E27/F01/US01/T01, NF-123): the <c>utm_*</c> of the link and the page the guest came from, as the checkout sent them, <c>null</c> when
+/// it sent none. The service keeps only what passes <see cref="BookingAttribution.Sanitize"/>; a value that does not is dropped, and the booking never fails for it.
+/// </param>
 public record DirectBookingCreateInput(
     Guid PropertyId,
     DateTime CheckInDate,
@@ -48,7 +53,8 @@ public record DirectBookingCreateInput(
     string? ExpectedArrivalTime = null,
     bool MarketingConsentEmail = false,
     bool MarketingConsentWhatsApp = false,
-    string? SoftOptInNoticeVersion = null);
+    string? SoftOptInNoticeVersion = null,
+    BookingAttributionInput? Attribution = null);
 
 /// <summary>Stay to price before booking (checkout quote).</summary>
 /// <param name="ChildrenAges">Age of each minor at check-in, needed when the tourist tax depends on it.</param>

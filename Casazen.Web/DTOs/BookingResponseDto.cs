@@ -1,3 +1,4 @@
+using Casazen.Core.Bookings;
 using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs;
@@ -57,6 +58,20 @@ public class BookingResponseDto
     /// (it counts as direct). This is what the "OTA" badge reads.
     /// </summary>
     public string? OtaSource { get; set; }
+
+    /// <summary>
+    /// Where the booking came from, in the four words the host reads (E27/F01/US01/T01, NF-123, <see cref="BookingOrigin"/>): <c>Portal</c> (a channel of the
+    /// channel manager, named by <see cref="OriginChannel"/>), <c>AgencySite</c> (a booking of the booking site made from a link of the agency, or a reservation of
+    /// the booking engine of the agency), <c>CasaZenSite</c> (a booking of the booking site with no attribution of the agency) or <c>Manual</c> (entered by the host).
+    /// <see cref="Source"/> is unchanged: the invoicing reasons per channel.
+    /// </summary>
+    public string Origin { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The channel of a booking whose <see cref="Origin"/> is <c>Portal</c>: the name of its source (<c>Airbnb</c>, <c>BookingCom</c>, <c>Expedia</c>, <c>Vrbo</c>,
+    /// <c>TripAdvisor</c>, <c>Agoda</c> or <c>OtherChannel</c>, whose name is in <see cref="ChannelLabel"/>); <c>null</c> for every other origin.
+    /// </summary>
+    public string? OriginChannel { get; set; }
 
     public string SpecialRequests { get; set; } = string.Empty;
 

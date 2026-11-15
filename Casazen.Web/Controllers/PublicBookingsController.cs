@@ -207,6 +207,11 @@ public class PublicBookingsController(
     /// <c>property_not_bookable_in_long_mode</c> (the property is let long-term,
     /// PM-01); 503 <c>payment_provider_error</c>. The answer carries the
     /// <c>checkoutToken</c> of the outcome page (BK-07): the only time it is given.
+    /// <para>
+    /// E27/F01/US01/T01 (NF-123): the optional <c>attribution</c> block (<c>source</c>, <c>medium</c>, <c>campaign</c>, <c>referrer</c>) says where the guest
+    /// came from. It is recorded on the booking sanitized (lower-case tokens, the referrer reduced to its host name; what is not valid is dropped, never an
+    /// error), and <c>source = agency-site</c> makes the origin of the booking «the site of the agency».
+    /// </para>
     /// </summary>
     [HttpPost]
     [EnableRateLimiting(RateLimitPolicies.PublicBookingCreate)]
@@ -248,7 +253,8 @@ public class PublicBookingsController(
             request.ExpectedArrivalTime,
             request.MarketingConsentEmail ?? false,
             request.MarketingConsentWhatsApp ?? false,
-            request.SoftOptInNoticeVersion));
+            request.SoftOptInNoticeVersion,
+            request.Attribution?.ToInput()));
 
         return Ok(new DirectBookingResponse
         {

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 
 namespace Casazen.Web.DTOs;
@@ -34,6 +35,30 @@ public class CreateDirectBookingConsentRequest
     [Required(ErrorMessage = "ConsentVersionRequired")]
     [MaxLength(100)]
     public string ConsentVersion { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Where the guest of a checkout came from (E27/F01/US01/T01, NF-123): the <c>utm_*</c> of the link the guest followed (<c>source</c>, <c>medium</c>,
+/// <c>campaign</c>) and the page the guest came from. Every field is optional and none is ever refused: the server keeps only the values that pass
+/// <see cref="BookingAttribution.Sanitize"/> (lower-case tokens that fit the columns, the referrer reduced to its host name) and drops the others, so a stray
+/// parameter of a link never costs the guest the booking. No personal data is kept: an e-mail address, a phone number, an address of a page or a query
+/// string is dropped.
+/// </summary>
+public class CreateDirectBookingAttributionRequest
+{
+    /// <summary>The <c>utm_source</c> of the link (e.g. <c>agency-site</c> for a link the agency copied from CasaZen).</summary>
+    public string? Source { get; set; }
+
+    /// <summary>The <c>utm_medium</c> of the link (e.g. <c>link</c>).</summary>
+    public string? Medium { get; set; }
+
+    /// <summary>The <c>utm_campaign</c> of the link (e.g. <c>estate-2026</c>).</summary>
+    public string? Campaign { get; set; }
+
+    /// <summary>The page the guest came from (<c>document.referrer</c>) or its host name: only the host name is kept (e.g. <c>www.agenzia.it</c>).</summary>
+    public string? Referrer { get; set; }
+
+    public BookingAttributionInput ToInput() => new(Source, Medium, Campaign, Referrer);
 }
 
 public class CreateDirectBookingRequest : IValidatableObject
@@ -112,6 +137,13 @@ public class CreateDirectBookingRequest : IValidatableObject
     /// </summary>
     [MaxLength(32)]
     public string? ExpectedArrivalTime { get; set; }
+
+    /// <summary>
+    /// Where the guest came from (E27/F01/US01/T01, NF-123): the <c>utm_*</c> of the link and the page the guest came from, optional. Recorded on the booking
+    /// after <see cref="BookingAttribution.Sanitize"/>, and with the booking's source it tells the host the origin (<c>origin</c> of the booking: a link of
+    /// the agency, <c>utm_source=agency-site</c>, is the site of the agency). It changes no price, no check and no availability, and never refuses the checkout.
+    /// </summary>
+    public CreateDirectBookingAttributionRequest? Attribution { get; set; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) =>
         ChildrenAgesValidation.Validate(validationContext, ChildrenAges, NumberOfChildren);
