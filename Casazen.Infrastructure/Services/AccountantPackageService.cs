@@ -423,7 +423,7 @@ public sealed class AccountantPackageService(
     // ---------------------------------------------------------------- the ZIP
 
     /// <summary>Writes the generated files, then each file of a document (rendered when its turn comes), then <c>indice.csv</c>, to <paramref name="destination"/>.</summary>
-    private async Task<(int Files, long Bytes)> WriteAsync(
+    internal static async Task<(int Files, long Bytes)> WriteAsync(
         Plan plan, AccountantPackagePeriod period, IReadOnlyList<string> omitted, IReadOnlyList<string> notSelected, PackageTexts t, Stream destination, CancellationToken cancellationToken)
     {
         var entries = new List<PackageIndexEntry>();
@@ -471,7 +471,7 @@ public sealed class AccountantPackageService(
     // ---------------------------------------------------------------- the caps, the issuers, the names
 
     /// <summary>422 <c>accountant_package_too_large</c> when <paramref name="files"/> files of documents (each counted at <see cref="EstimatedFileBytes"/>) are more than the caps of the archive allow.</summary>
-    private static void CheckCaps(int files, DocumentArchiveOptions limits)
+    internal static void CheckCaps(int files, DocumentArchiveOptions limits)
     {
         if (files <= limits.MaxExportFiles && files * EstimatedFileBytes <= limits.MaxExportBytes)
             return;
@@ -494,7 +494,7 @@ public sealed class AccountantPackageService(
     }
 
     /// <summary>The issuers of the period, by key, and always the issuer of the org today (so the structure is the same for an empty period).</summary>
-    private static IReadOnlyList<AgencyIssuer> IssuersOf(
+    internal static IReadOnlyList<AgencyIssuer> IssuersOf(
         IReadOnlyList<PackageDocument> guest, IReadOnlyList<PackageDocument> owner, FiscalIssuerSnapshot fallback, AgencyIssuer current) =>
         guest.Concat(owner)
             .Select(d => AccountantPackageFacts.IssuerOf(d.IssuerSnapshot, fallback))
@@ -505,7 +505,7 @@ public sealed class AccountantPackageService(
             .ToList();
 
     /// <summary>A name for the files of each issuer: its country and tax number (else its name), safe on any file system and told apart from the others (<c>-2</c>, <c>-3</c>...); the register and the VAT file of an issuer share it.</summary>
-    private static IReadOnlyDictionary<string, string> SlugsOf(IReadOnlyList<AgencyIssuer> issuers)
+    internal static IReadOnlyDictionary<string, string> SlugsOf(IReadOnlyList<AgencyIssuer> issuers)
     {
         var taken = new HashSet<string>(StringComparer.Ordinal);
         var slugs = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -522,7 +522,7 @@ public sealed class AccountantPackageService(
         return slugs;
     }
 
-    private static int RowsOf(IReadOnlyList<ReportTable> tables) => tables.Sum(table => table.Rows.Count);
+    internal static int RowsOf(IReadOnlyList<ReportTable> tables) => tables.Sum(table => table.Rows.Count);
 
     /// <summary>The owners of the annual dataset as it was stored (a payload that cannot be read is a damaged dataset: it fails the build, never an empty file).</summary>
     private static IReadOnlyList<CuOwner> ReadCu(string payload) => JsonSerializer.Deserialize<List<CuOwner>>(payload, Web) ?? [];
@@ -530,13 +530,13 @@ public sealed class AccountantPackageService(
     private sealed record CuOwner(Guid OwnerId, decimal GrossBase, decimal Withheld, int Evidence);
 
     /// <summary>A file the package holds that was made in memory (a table as CSV or Excel, a PDF), and its rows when it is a table.</summary>
-    private sealed record GeneratedFile(string Path, string Description, byte[] Content, int? Rows);
+    internal sealed record GeneratedFile(string Path, string Description, byte[] Content, int? Rows);
 
     /// <summary>A file of a document, made when its turn comes (a PDF is rendered, an XML is read): at most one is in memory at a time.</summary>
-    private sealed record DocumentFile(string Path, string Description, Func<CancellationToken, Task<byte[]>> Load);
+    internal sealed record DocumentFile(string Path, string Description, Func<CancellationToken, Task<byte[]>> Load);
 
     /// <summary>What the package will hold, in the order it is written; the names are taken once, so no two files share a path.</summary>
-    private sealed class Plan
+    internal sealed class Plan
     {
         private readonly HashSet<string> _paths = new(StringComparer.OrdinalIgnoreCase);
 

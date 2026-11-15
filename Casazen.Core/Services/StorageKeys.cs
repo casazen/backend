@@ -62,8 +62,18 @@ public static partial class StorageKeys
     public static string PropertyDocument(Guid propertyId, string fileName) =>
         $"properties/{propertyId}/documents/{fileName}";
 
+    /// <summary>The start of the key of every guest's document (<see cref="GuestDocument"/>): the photos of identity documents a verification kept and the legacy scans.</summary>
+    public const string GuestDocumentPrefix = "guest-documents/";
+
     public static string GuestDocument(Guid orgId, Guid guestId, string fileName) =>
-        $"guest-documents/{orgId}/{guestId}/{fileName}";
+        $"{GuestDocumentPrefix}{orgId}/{guestId}/{fileName}";
+
+    /// <summary>
+    /// True for the key of a guest's document. Such a key names the org and the guest, so what deletes the object never writes it in a log line (E20/F02/US01/T02, NF-121):
+    /// the storage says that an object of the guests' documents was deleted, and nothing else.
+    /// </summary>
+    public static bool IsGuestDocument(string? key) =>
+        key is not null && key.StartsWith(GuestDocumentPrefix, StringComparison.Ordinal);
 
     /// <summary>Logo or hero image of the org's public booking site (public bucket, BK-12).</summary>
     public static string OrgBrandingImage(Guid orgId, BrandingImageKind kind, string fileName) =>

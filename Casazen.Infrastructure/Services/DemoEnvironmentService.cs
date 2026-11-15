@@ -1982,8 +1982,13 @@ public class DemoEnvironmentService(
                 UploadedAt = now.AddHours(-1),
             };
             db.ManualComplianceProofs.Add(proof);
+
+            // E20/F02/US01/T01: a receipt names the flats it covers, the one it was filed under included (the demo receipt covers its own house, as a real one does).
+            var coverage = new ManualComplianceProofProperty { OrgId = orgId, ProofId = proof.Id, PropertyId = property.Id };
+            db.ManualComplianceProofProperties.Add(coverage);
             await db.SaveChangesAsync(cancellationToken);
             await MarkAsync(orgId, TestDataEntities.ManualComplianceProof, proof.Id, TestDataOrigins.Showcase, templateKey, cancellationToken);
+            await MarkAsync(orgId, TestDataEntities.ManualComplianceProofProperty, coverage.Id, TestDataOrigins.Showcase, templateKey, cancellationToken);
 
             // NF-47: the host sent the communication on the portal on the arrival day and declared it: the line of the log of what was sent, by the owner.
             await AddSendLogLineAsync(

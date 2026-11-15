@@ -47,6 +47,17 @@ public interface IComplianceStatusService
     /// caller reaches (another org's, one outside the reach of a collaborator «Solo alcuni», or one that does not exist): the same answer for all three.
     /// </summary>
     Task<ComplianceStayStatus?> GetStayStatusAsync(HostScope scope, Guid bookingId, CancellationToken ct);
+
+    /// <summary>
+    /// Which of the stays <paramref name="bookingIds"/> of the org <paramref name="orgId"/> an archived receipt of their arrival day turns green (E20/F02/US01/T01 and T02, NF-43,
+    /// NF-121): the verdict of <see cref="ComplianceLightRules.Alloggiati"/> for each of those that owe the communication (the one definition) and whose arrival day has come,
+    /// taken with a receipt of that day as the proof, by the same facts and the same rules as the cockpit. It is the one definition of a stay «covered by a receipt» for what the
+    /// host sees and for what is deleted: the summary and the answer of an upload count the stays it returns, and the deletion of the guests' documents deletes for them alone. A
+    /// stay whose communication failed (an error, a rejection, a guest the channel manager could not take) or was only partly accepted is red whatever receipt exists, so it is
+    /// never among them. A system read of one org (a job has no caller): the caller passes the ids it is entitled to and nothing outside <paramref name="orgId"/> is read.
+    /// Nothing is read from Octorate.
+    /// </summary>
+    Task<IReadOnlySet<Guid>> GetStaysAReceiptTurnsGreenAsync(Guid orgId, IReadOnlyCollection<Guid> bookingIds, CancellationToken ct);
 }
 
 /// <summary>

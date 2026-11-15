@@ -83,6 +83,54 @@ public class OwnerIssuerProfilesController(
         return Ok(OwnerIssuerProfileDto.From(saved, full: true));
     }
 
+    /// <summary>
+    /// The export for the accountant of the owner (E17/F02/US01/T01, NF-116, acceptance steps C8 and D2): <c>GET api/owners/{ownerId}/issued-documents/export?period=2026-10</c> (or
+    /// <c>?period=2026</c>), one ZIP, <c>casazen-documenti-emessi-2026-10.zip</c>, streamed: the PDF and the XML of the documents CasaZen issued in the name of the owner in the period, their
+    /// register (CSV and Excel: the documents, the VAT of each, the totals for each rate and nature, the stamp duty) and <c>indice.csv</c> with the SHA-256 of every file; for a year also the
+    /// annual summary of those documents and the invoices of the agency to the owner with their recharges. <c>agency.statement.view</c> on top of the class, and the whole organization (403
+    /// otherwise, before anything is read): the accounts of an owner span the properties of the owner, so a caller who reaches only some of them reads none of it. 400
+    /// <c>accountant_package_invalid_period</c>; 404 <c>owner_not_found</c> for an owner of another org; 422 <c>accountant_package_too_large</c> before the first byte. The owner reads the same
+    /// ZIP in its portal (<c>GET api/owner-portal/issued-documents/export</c>).
+    /// </summary>
+    [HttpGet("~/api/owners/{ownerId:guid}/issued-documents/export")]
+    [Authorize(Policy = CasazenPolicies.AgencyStatementView)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> ExportIssuedDocuments(
+        Guid ownerId,
+        [FromQuery] string? period,
+        [FromServices] IOwnerIssuedDocumentsExport issuedDocuments,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(issuedDocuments);
+        if (!AccountantPackagePeriod.TryParse(period, out var parsed))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, AccountantPackageErrors.InvalidPeriod, "AccountantPackageInvalidPeriod");
+
+        if (await ScopeAsync() is not { IsOrgWide: true } scope)
+        {
+            logger.LogWarning("User {UserId} may not export the documents issued in the name of owner {OwnerId}: its scope is not the whole org", User.GetUserId(), ownerId);
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+        }
+
+        Response.Headers.CacheControl = "private, no-store";
+        Response.Headers.XContentTypeOptions = "nosniff";
+        ZipDownloadHeaders.WhenTheResponseStarts(Response, OwnerIssuedDocumentsStructure.FileNameOf(parsed));
+        var result = await issuedDocuments.BuildAsync([new OwnerIssuedDocumentsOwner(scope.OrgId, ownerId)], parsed, Response.Body, cancellationToken);
+
+        logger.LogInformation(
+            "Owner issued documents exported. OrgId={OrgId} OwnerId={OwnerId} UserId={UserId} Documents={Documents} Files={Files} Bytes={Bytes}",
+            scope.OrgId,
+            ownerId,
+            User.GetUserId(),
+            result.Documents,
+            result.Files,
+            result.Bytes);
+        return new EmptyResult();
+    }
+
     /// <summary>The caller's reach on its org; <c>null</c> without an org or a reach (never widened to the whole org).</summary>
     private async Task<HostScope?> ScopeAsync()
     {

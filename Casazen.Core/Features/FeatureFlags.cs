@@ -319,6 +319,15 @@ public static class FeatureFlags
     /// </summary>
     public const string TaxReportingExports = "TaxReportingExports";
 
+    /// <summary>
+    /// E20/F02/US01/T02 (NF-121, NF-16, decision O4): the deletion of the guests' documents once the stay is covered by an archived Alloggiati receipt, <b>off by default</b>: the
+    /// deletion cannot be undone, so it is turned on in the test environment after the merge and in production only after the test has shown it. Off, the daily job
+    /// <c>guest-document-purge</c> and the run queued after a receipt upload read nothing and delete nothing. On, the photos of identity documents a verification kept (the objects
+    /// and the rows) and the legacy scan of the booker of every stay that a receipt covers are deleted; the document data of the guests of the stay (<c>StayGuest</c>) are never
+    /// touched. No endpoint is behind it and it needs no variable to start. The frontend reads the key <c>purgeDocumentsAfterReceipt</c>.
+    /// </summary>
+    public const string PurgeDocumentsAfterReceipt = "PurgeDocumentsAfterReceipt";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -351,5 +360,6 @@ public static class FeatureFlags
         GuestContactInfo,
         SdiSubmission,
         TaxReportingExports,
+        PurgeDocumentsAfterReceipt,
     ];
 }

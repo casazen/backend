@@ -22,6 +22,11 @@ namespace Casazen.Web.DTOs.Compliance;
 /// <param name="RetainUntil">Until when CasaZen keeps it (UTC): five years from the upload.</param>
 /// <param name="ContentType"><c>application/pdf</c>, <c>image/jpeg</c> or <c>image/png</c>.</param>
 /// <param name="DownloadPath">The path of the download (<c>/api/compliance/archive/{id}/download</c>).</param>
+/// <param name="CoveredProperties">
+/// The flats the proof covers (E20/F02/US01/T01): the one it was filed under first, then the others by name. A proof is listed only to who reaches all of them.
+/// <c>null</c> only where the list was not read.
+/// </param>
+/// <param name="CoveredStays">Only in the answer of the upload of an Alloggiati receipt: how many stays of those flats that arrived that day it proves; <c>null</c> elsewhere.</param>
 public sealed record ComplianceArchiveEntryDto(
     Guid Id,
     ManualProofKind Kind,
@@ -33,7 +38,9 @@ public sealed record ComplianceArchiveEntryDto(
     DateTime ReceivedAt,
     DateTime RetainUntil,
     string ContentType,
-    string DownloadPath)
+    string DownloadPath,
+    IReadOnlyList<ComplianceCoveredPropertyDto>? CoveredProperties = null,
+    int? CoveredStays = null)
 {
     /// <summary>The path a proof is downloaded from.</summary>
     public static string DownloadPathOf(Guid id) => $"/api/compliance/archive/{id}/download";
@@ -53,7 +60,40 @@ public sealed record ComplianceArchiveEntryDto(
             entry.ReceivedAt,
             entry.RetainUntil,
             entry.ContentType,
-            DownloadPathOf(entry.Id));
+            DownloadPathOf(entry.Id),
+            entry.CoveredProperties?.Select(flat => new ComplianceCoveredPropertyDto(flat.Id, flat.Name)).ToList(),
+            entry.CoveredStays);
+    }
+}
+
+/// <summary>A flat a proof covers (E20/F02/US01/T01): its id and its name.</summary>
+/// <param name="Id">The flat.</param>
+/// <param name="Name">Its name.</param>
+public sealed record ComplianceCoveredPropertyDto(Guid Id, string Name);
+
+/// <summary>What a receipt of one day would prove for one flat: the stays of that flat that arrived that day and owe the communication.</summary>
+/// <param name="PropertyId">The flat.</param>
+/// <param name="PropertyName">Its name.</param>
+/// <param name="Stays">The stays that become proven; zero when none arrived that day.</param>
+public sealed record ComplianceReceiptCoveragePropertyDto(Guid PropertyId, string PropertyName, int Stays);
+
+/// <summary>
+/// What a receipt of the Alloggiati communication of a day would prove for the flats asked for (<c>GET api/compliance/archive/proofs/coverage</c>,
+/// E20/F02/US01/T01): the summary the host reads before saving, «Diventano in regola: N soggiorni».
+/// </summary>
+/// <param name="Day">The day of the communication.</param>
+/// <param name="Stays">The stays that become proven, all flats together.</param>
+/// <param name="Properties">The flats, in the order they were asked for, each with its stays.</param>
+public sealed record ComplianceReceiptCoverageDto(DateOnly Day, int Stays, IReadOnlyList<ComplianceReceiptCoveragePropertyDto> Properties)
+{
+    public static ComplianceReceiptCoverageDto From(ComplianceReceiptCoverage coverage)
+    {
+        ArgumentNullException.ThrowIfNull(coverage);
+
+        return new ComplianceReceiptCoverageDto(
+            coverage.Day,
+            coverage.Stays,
+            coverage.Properties.Select(flat => new ComplianceReceiptCoveragePropertyDto(flat.PropertyId, flat.PropertyName, flat.Stays)).ToList());
     }
 }
 
@@ -251,6 +291,26 @@ public sealed class UploadComplianceProofForm
     [Required(ErrorMessage = "ComplianceProofDayRequired")]
     public DateOnly? Day { get; set; }
 
+    /// <summary>
+    /// The other flats of the organization the receipt covers (E20/F02/US01/T01, repeat the field): only for an Alloggiati receipt, which an agency with one police
+    /// account gets once for several flats. <see cref="PropertyId"/> is always covered, so no list is that flat alone and never «every flat».
+    /// </summary>
+    public List<Guid>? PropertyIds { get; set; }
+
     /// <summary>The file.</summary>
     public IFormFile? File { get; set; }
+}
+
+/// <summary>
+/// The question of the summary before an upload (<c>GET api/compliance/archive/proofs/coverage</c>, E20/F02/US01/T01): the day of the communication and the
+/// flats the receipt would cover, <c>propertyIds</c> repeated.
+/// </summary>
+public sealed class ReceiptCoverageQuery
+{
+    /// <summary>The day of the communication (<c>yyyy-MM-dd</c>).</summary>
+    [Required(ErrorMessage = "ComplianceProofDayRequired")]
+    public DateOnly? Day { get; set; }
+
+    /// <summary>The flats the receipt would cover; at least one (an empty list is a 422, never «every flat»).</summary>
+    public List<Guid>? PropertyIds { get; set; }
 }

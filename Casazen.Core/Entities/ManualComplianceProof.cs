@@ -41,9 +41,19 @@ public class ManualComplianceProof : ITenantOwned
     /// <summary>Tenant of the row, copied from the property (TN-2).</summary>
     public Guid OrgId { get; set; }
 
+    /// <summary>
+    /// The flat the proof was filed under: the one of the page it was uploaded from. It is always one of the flats the proof covers
+    /// (<see cref="CoveredProperties"/>) and what the scope of a collaborator and the cascade of a deleted property look at first.
+    /// </summary>
     [ForeignKey(nameof(Property))]
     public Guid PropertyId { get; set; }
     public virtual Property Property { get; set; } = null!;
+
+    /// <summary>
+    /// The flats of the organization the proof covers (E20/F02/US01/T01, decision O3): for an Alloggiati receipt one or more, the flat it was filed
+    /// under included; for every other kind just that flat. Not loaded unless asked for.
+    /// </summary>
+    public virtual ICollection<ManualComplianceProofProperty> CoveredProperties { get; set; } = [];
 
     public ManualProofKind Kind { get; set; }
 

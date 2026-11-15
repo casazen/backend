@@ -614,7 +614,7 @@ public sealed partial class FiscalDocumentService(
             .Take(limit)
             .Select(d => new ExportSource(
                 d.Id, d.BookingId, d.Kind, d.Number, d.IssueDate, d.RecipientName, d.TaxableBase, d.VatAmount, d.StampDuty, d.Total, d.Currency, d.PaymentState, d.SdiStatus, d.Source,
-                d.PaymentChannel))
+                d.PaymentChannel, d.Purpose))
             .ToListAsync(ct);
         if (documents.Count == 0)
             return [];
@@ -650,7 +650,8 @@ public sealed partial class FiscalDocumentService(
                     d.Currency,
                     IsPaymentStateReadFromPayments(d.Source, d.Kind, d.BookingId, d.PaymentChannel) ? PaymentStateOf(collected.GetValueOrDefault(d.BookingId!.Value), d.Total) : d.PaymentState,
                     d.SdiStatus,
-                    d.Source);
+                    d.Source,
+                    d.Purpose);
             })
             .ToList();
     }
@@ -711,7 +712,8 @@ public sealed partial class FiscalDocumentService(
         FiscalDocumentPaymentState PaymentState,
         string SdiStatus,
         FiscalDocumentSource Source,
-        FiscalPaymentChannel PaymentChannel);
+        FiscalPaymentChannel PaymentChannel,
+        FiscalDocumentPurpose Purpose);
 
     public async Task<string> GetXmlAsync(Guid documentId, CancellationToken ct = default)
     {
@@ -1095,6 +1097,10 @@ public sealed partial class FiscalDocumentService(
     /// </summary>
     internal static FatturaPaInput FatturaPaInputOf(FiscalDocument document, FiscalIssuerSnapshot issuerSnapshot, FiscalTaxRule rule, FiscalDocument? credited)
     {
+        // The self-billed invoice (TD17, E17/F01/US03/T01) turns the parties round: the foreign supplier is the cedente and the issuer of the snapshot the cessionario.
+        if (document.Purpose == FiscalDocumentPurpose.SelfBilling)
+            return SelfBillingFatturaPaInputOf(document, issuerSnapshot);
+
         var lines = AmountsOf(document);
         var summary = FiscalDocumentTotals.SummaryOf(lines, document.VatAmount);
 
@@ -1368,6 +1374,10 @@ public sealed partial class FiscalDocumentService(
     {
         if (document.Purpose == FiscalDocumentPurpose.OwnerInvoice)
             throw new DomainRuleException(OwnerInvoiceErrors.UseOwnerInvoices, "FiscalDocumentOwnerInvoice");
+
+        // A self-billed invoice (E17/F01/US03/T01) is made again, issued and discarded from the self-billed invoices, behind their own permission and flag.
+        if (document.Purpose == FiscalDocumentPurpose.SelfBilling)
+            throw new DomainRuleException(SelfBillingErrors.UseSelfBilling, "FiscalDocumentSelfBilling");
     }
 
     /// <summary>The owner path takes only an owner invoice: any other document is not found there.</summary>
@@ -1572,21 +1582,31 @@ public sealed partial class FiscalDocumentService(
     /// host records none on it and no link is made for it): what the guest paid is what the channel manager reports (<c>OtaPaidAmount</c>, the figure the payment ledger shows too),
     /// and nothing is collected while it says nothing. A stay the portal collected is the portal's money, never counted here.
     /// </summary>
-    internal static async Task<Dictionary<Guid, decimal>> CollectedByBookingAsync(AppDbContext db, IReadOnlyCollection<Guid> bookingIds, CancellationToken ct)
+    /// <param name="db">The context.</param>
+    /// <param name="bookingIds">The bookings.</param>
+    /// <param name="ct">The cancellation token.</param>
+    /// <param name="ofOrg">The org of the bookings, for a caller that has no org of its own (the owner portal: its tenant filter matches nothing); <c>null</c> for a caller of the org, whose tenant filter applies.</param>
+    internal static async Task<Dictionary<Guid, decimal>> CollectedByBookingAsync(AppDbContext db, IReadOnlyCollection<Guid> bookingIds, CancellationToken ct, Guid? ofOrg = null)
     {
         if (bookingIds.Count == 0)
             return [];
 
-        var collected = await db.Payments
+        // A caller with no org of its own (the owner portal) has a tenant filter that matches nothing: it names the org of the bookings instead (ofOrg).
+        var payments = ofOrg is { } payOrg
+            ? db.Payments.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).Where(p => p.OrgId == payOrg)
+            : db.Payments.AsQueryable();
+        var collected = await payments
             .AsNoTracking()
             .Where(p => bookingIds.Contains(p.BookingId) && (p.Status == PaymentStatus.Completed || p.Status == PaymentStatus.PartiallyRefunded))
             .GroupBy(p => p.BookingId)
             .Select(g => new { BookingId = g.Key, Collected = g.Sum(p => p.Amount - p.RefundedAmount) })
             .ToDictionaryAsync(x => x.BookingId, x => x.Collected, ct);
 
-        var paidToTheHost = await db.Bookings
+        var stays = ofOrg is { } stayOrg
+            ? db.Bookings.IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter, AppDbContext.TenantQueryFilter]).Where(b => b.OrgId == stayOrg)
+            : db.Bookings.IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]);
+        var paidToTheHost = await stays
             .AsNoTracking()
-            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(b => bookingIds.Contains(b.Id) && b.OtaPaidAmount != null && b.OtaCompanyCollect != true)
             .Select(b => new { b.Id, Paid = b.OtaPaidAmount ?? 0m })
             .ToListAsync(ct);

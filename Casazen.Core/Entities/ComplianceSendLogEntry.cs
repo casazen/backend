@@ -65,6 +65,13 @@ public enum ComplianceSendKind
 
     /// <summary>The tourist tax declaration of a period.</summary>
     TouristTaxPeriod = 3,
+
+    /// <summary>
+    /// The documents of the guests of a stay (the photos of identity documents and the legacy scan) were deleted because the stay is covered by an archived Alloggiati receipt
+    /// (E20/F02/US01/T02, NF-121, decision O4): not a send but the line of the stay that says what CasaZen did after the receipt, written by CasaZen with the date and no
+    /// reference. The document data of the guests are not deleted by it.
+    /// </summary>
+    DocumentsDeleted = 4,
 }
 
 /// <summary>
