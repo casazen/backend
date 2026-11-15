@@ -18,6 +18,18 @@ that surrounds the wires, and the payout a wire pays, are in [`owner-accounting.
   transfers, total, execution date, message (`format`) and the creation, download and payment times. **Never an IBAN, a name or the file.**
   `GET api/wire-transfers/batch/{id}/file` downloads the file and marks the batch downloaded; `POST .../confirm-download` and `.../confirm-paid` move the state. The
   agency uploads the file to its bank. CasaZen sends nothing to a bank.
+- **The reads of the wire page** (FIX/RES-PAYOUTS): the page asks the server which payouts can still be paid and which ones a batch pays, so that after a reload a payout that
+  is already in a batch is not offered again. `GET api/wire-transfers/payable-payouts?currency=CHF` (or `EUR`) lists the payouts a file of that currency can still pay, the
+  ones `POST api/wire-transfers/batch` accepts: **confirmed** (never reversed), of a statement version **published** to the owner, with a **net amount above zero** and **in no
+  batch**, oldest first (the order of the transfers of a batch), at most 1000. **One currency per list**, never mixed (a code stored in lower case is the same currency, as a
+  batch reads it); `currency` is required, and a missing one or one with no wire file is 422 `wire_currency_not_supported`: there is no list of every currency.
+  `GET api/wire-transfers/batch/{id}/payouts` gives a batch as the list of the batches shows it (`batch`, with its state `Generated`, `Downloaded` or `Paid`) and its
+  `payouts`, with the same members, in the order of the transfers of the file; a payout reversed after its batch was made is in it and says `Reversed`, and a batch of before
+  the payouts (made from statements) has none. Each payout has `payoutId`, the owner (`ownerId`, `ownerName`), `periodYear` and `periodMonth` of its statement, `amount` (the net:
+  the amount of the transfer), `currency`, `confirmedAt`, `status` and `ownerHasIban`, **a yes or a no and never the IBAN**, no address, no debit account, no file (the
+  batch is read by the columns of the list, so the file is not even decrypted). Both reads need `agency.wire.manage` (the policy of the controller, which neither action overrides: `WireReads_AreBehindTheWireManagePolicy_Test`) **and the whole org**: a caller limited to some
+  properties gets 403 (`WireReads_PropertyLimitedCaller_IsForbidden_Test`), the org is asked on every table (a batch of another org is a 404, the payouts of another org are never
+  listed: `WireBatchPayouts_OfAnotherOrganization_AreNotFound_Test`), and the answers are not cached (`Cache-Control: no-store`: they hold the names of the owners).
 - **The organization is checked explicitly** on every endpoint above (the service filters on the org of the caller, a `Find` by key would not apply the global
   tenant filter): a batch of another org is a **404**, and its state does not move (`WireBatch_ConfirmOtherOrganization404_Test`).
 - All of it needs the agency permission `agency.wire.manage` (`WireTransferController`), held by the **owner and the administrator** of an org on the agency plan
@@ -232,3 +244,8 @@ namespace, stand-ins that are not copies of the official schemas).
 `WireBatchPostgresTests` (a real PostgreSQL database, so in CI only): two requests for the same payouts at the same moment make one batch (the lock of the owner accounting),
 and a payout that another batch takes between the checks and the save of a request is refused by the unique index of `WireBatchPayouts` with 422 `payouts_already_in_batch`
 and nothing left behind; the in-memory database of the unit tests applies neither the index nor the lock.
+
+`WirePayableReadsTests` (no database, no network): the reads of the wire page, one proof for each rule (`PayablePayouts_ExcludeThoseAlreadyInABatchAndReversedOnes_Test`,
+`PayablePayouts_AreNeverMixedAcrossCurrencies_Test`, `WireBatchPayouts_OfAnotherOrganization_AreNotFound_Test`, `WireReads_PropertyLimitedCaller_IsForbidden_Test`, `WireReads_AreBehindTheWireManagePolicy_Test`,
+`WirePayouts_ShowOnlyWhetherTheOwnerHasAnIban_Test`). `WirePayableReadsNpgsqlTranslationTests`: both reads are translated to SQL by the Npgsql provider (no server), with the
+org asked of every table.

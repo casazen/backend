@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
@@ -15,7 +16,9 @@ namespace Casazen.Web.Controllers;
 /// </summary>
 /// <remarks>
 /// The whole controller is behind <c>agency.wire.manage</c>, held by the owner and the administrator of an org on the agency plan, who reach every property of
-/// the org: there is no property scope to apply (<c>WireTransferPermission_IsHeldOnlyByTheRolesThatReachEveryProperty_Test</c>).
+/// the org: there is no property scope to apply (<c>WireTransferPermission_IsHeldOnlyByTheRolesThatReachEveryProperty_Test</c>). The two reads of the wire page
+/// (<c>payable-payouts</c> and <c>batch/{id}/payouts</c>) list the payouts of every owner of the org and ask for the whole org on top of the permission, as the owner
+/// accounting does: a caller limited to some properties gets 403 (<c>WireReads_PropertyLimitedCaller_IsForbidden_Test</c>).
 /// </remarks>
 [ApiController]
 [Route("api/wire-transfers")]
@@ -23,6 +26,7 @@ namespace Casazen.Web.Controllers;
 public class WireTransferController(
     IWireTransferService wireTransferService,
     IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
     ILogger<WireTransferController> logger) : ControllerBase
 {
     /// <summary>
@@ -82,6 +86,49 @@ public class WireTransferController(
         var batches = await wireTransferService.ListBatchesAsync(orgId.Value, HttpContext.RequestAborted);
 
         return Ok(batches.Select(WireBatchListItemResponse.From).ToList());
+    }
+
+    /// <summary>
+    /// The payouts that a wire file of one currency can still pay: confirmed (never reversed), of a statement version published to the owner and in no batch yet, oldest
+    /// first. One list per currency, EUR or CHF, never both. Each payout comes with its owner, the period of its statement, its net amount and whether the owner has an IBAN
+    /// as a yes or a no: <b>never the IBAN</b>. Needs the whole org: a caller limited to some properties gets 403.
+    /// </summary>
+    /// <param name="currency">EUR or CHF. Missing, or a currency with no wire file: 422 <c>wire_currency_not_supported</c>.</param>
+    [HttpGet("payable-payouts")]
+    [ProducesResponseType(typeof(IReadOnlyList<WirePayoutResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<IReadOnlyList<WirePayoutResponse>>> ListPayablePayouts([FromQuery] string? currency)
+    {
+        if (await OrgWideAsync() is not { } orgId)
+            return Forbid();
+
+        var payouts = await wireTransferService.ListPayablePayoutsAsync(orgId, currency, HttpContext.RequestAborted);
+
+        // The names of the owners are personal data: the answer is not kept.
+        Response.Headers.CacheControl = "no-store";
+        return Ok(payouts.Select(WirePayoutResponse.From).ToList());
+    }
+
+    /// <summary>
+    /// A batch of the org and the payouts it pays: the state of the batch (<c>Generated</c>, <c>Downloaded</c>, <c>Paid</c>) and, for each payout, the members of the payable
+    /// ones, in the order of the transfers of the file. A payout reversed after the batch was made is in the list and says <c>Reversed</c>. Needs the whole org: a caller
+    /// limited to some properties gets 403. A batch of another org is a 404.
+    /// </summary>
+    /// <param name="id">The batch ID.</param>
+    [HttpGet("batch/{id}/payouts")]
+    [ProducesResponseType(typeof(WireBatchPayoutsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<WireBatchPayoutsResponse>> GetBatchPayouts(Guid id)
+    {
+        if (await OrgWideAsync() is not { } orgId)
+            return Forbid();
+
+        var batch = await wireTransferService.GetBatchPayoutsAsync(orgId, id, HttpContext.RequestAborted);
+
+        Response.Headers.CacheControl = "no-store";
+        return Ok(WireBatchPayoutsResponse.From(batch));
     }
 
     /// <summary>
@@ -155,5 +202,20 @@ public class WireTransferController(
         await wireTransferService.ConfirmPaidAsync(orgId.Value, id, HttpContext.RequestAborted);
 
         return NoContent();
+    }
+
+    /// <summary>
+    /// The org of the caller when the caller reaches the whole org, <c>null</c> (403) when it has no org or its reach is limited to some properties (a collaborator «Solo
+    /// alcuni», an account in no org team): the payouts of the wire page are those of every owner, so a partial reach is refused before anything is read, never narrowed.
+    /// </summary>
+    private async Task<Guid?> OrgWideAsync()
+    {
+        var ct = HttpContext.RequestAborted;
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
+        if (orgId is null)
+            return null;
+
+        var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct);
+        return scope is { IsOrgWide: true } ? orgId : null;
     }
 }
