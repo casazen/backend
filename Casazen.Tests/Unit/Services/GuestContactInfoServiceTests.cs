@@ -220,6 +220,49 @@ public class GuestContactInfoServiceTests : IAsyncLifetime
         Assert.Equal(string.Empty, (await _db.Guests.AsNoTracking().SingleAsync(g => g.Id == stay.GuestId)).Email);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (the review of S010, fix 9). The number the channel manager gives is for the host's view and only where the guest had none: a number the guest already has is never
+    /// overwritten. What does not fit the columns of the guest (an address of more than 255 characters, a number of more than 20) is not written, and what fits at the limit is: the guest keeps what
+    /// it had and gets only what is valid.
+    /// </summary>
+    [Fact]
+    public async Task ContactInfo_APhoneTheGuestHasIsNeverOverwritten_AndOnlyWhatFitsTheColumnsIsWritten_Test()
+    {
+        var rig = new Rig(_db, _world);
+        var orgId = _world.Scope.OrgId;
+        var longestAddress = new string('a', 47) + "@" + string.Join(".", Enumerable.Repeat(new string('b', 50), 4)) + ".com";
+        var longestPhone = "+" + new string('1', 19);
+        Assert.Equal((255, 20), (longestAddress.Length, longestPhone.Length));
+
+        // A number the guest already has stays; the address is written.
+        var hasPhone = await AddStayAsync(guestPhone: "+39 333 7654321");
+        rig.ChannelHolds(GuestEmail, GuestPhone);
+        Assert.Equal(GuestContactInfoStatus.EmailFilled, (await rig.Service.ReadForCheckInLinkAsync(orgId, hasPhone.Id)).Status);
+        var kept = await _db.Guests.AsNoTracking().SingleAsync(g => g.Id == hasPhone.GuestId);
+        Assert.Equal((GuestEmail, "+39 333 7654321"), (kept.Email, kept.PhoneNumber));
+
+        // An address of 256 characters is no address (the guest keeps none), the number that fits is written.
+        var tooLongAddress = await AddStayAsync();
+        rig.ChannelHolds(longestAddress + "m", GuestPhone);
+        Assert.Equal(GuestContactInfoStatus.NoEmailAtChannel, (await rig.Service.ReadForCheckInLinkAsync(orgId, tooLongAddress.Id)).Status);
+        var noAddress = await _db.Guests.AsNoTracking().SingleAsync(g => g.Id == tooLongAddress.GuestId);
+        Assert.Equal((string.Empty, GuestPhone), (noAddress.Email, noAddress.PhoneNumber));
+
+        // A number of 21 characters is not kept, the address is.
+        var tooLongPhone = await AddStayAsync();
+        rig.ChannelHolds(GuestEmail, longestPhone + "1");
+        Assert.Equal(GuestContactInfoStatus.EmailFilled, (await rig.Service.ReadForCheckInLinkAsync(orgId, tooLongPhone.Id)).Status);
+        var noPhone = await _db.Guests.AsNoTracking().SingleAsync(g => g.Id == tooLongPhone.GuestId);
+        Assert.Equal((GuestEmail, string.Empty), (noPhone.Email, noPhone.PhoneNumber));
+
+        // At the limit of the columns (255 and 20 characters) both are written.
+        var atTheLimit = await AddStayAsync();
+        rig.ChannelHolds(longestAddress, longestPhone);
+        Assert.Equal(GuestContactInfoStatus.EmailFilled, (await rig.Service.ReadForCheckInLinkAsync(orgId, atTheLimit.Id)).Status);
+        var full = await _db.Guests.AsNoTracking().SingleAsync(g => g.Id == atTheLimit.GuestId);
+        Assert.Equal((longestAddress, longestPhone), (full.Email, full.PhoneNumber));
+    }
+
     // ---- The data every test runs on ----------------------------------------------------------------------------------------------------
 
     private async Task<Stay> AddStayAsync(
@@ -228,7 +271,8 @@ public class GuestContactInfoServiceTests : IAsyncLifetime
         BookingStatus status = BookingStatus.Confirmed,
         bool noShow = false,
         string guestEmail = "",
-        bool erased = false)
+        bool erased = false,
+        string guestPhone = "")
     {
         var orgId = _world.Scope.OrgId;
         var guest = new Guest
@@ -237,6 +281,7 @@ public class GuestContactInfoServiceTests : IAsyncLifetime
             FirstName = "Mei",
             LastName = "Tanaka",
             Email = guestEmail,
+            PhoneNumber = guestPhone,
             DataAnonymizedDate = erased ? HostScopeScenario.Now.UtcDateTime : null,
         };
         _db.Guests.Add(guest);
