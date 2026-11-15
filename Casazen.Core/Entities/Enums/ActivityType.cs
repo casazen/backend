@@ -163,4 +163,14 @@ public enum ActivityType
     /// 100 keeps clear of the values the tasks that run in parallel append after 80 and of the tourist tax collection of E25, which takes the numbers from 90.
     /// </summary>
     RoutineTask = 100,
+
+    /// <summary>
+    /// The check-in link of a stay from a portal has not reached the guest and the host may have to carry it (E23/F01/US01/T01, NF-122): the chat of the portal is not
+    /// available yet, the booking has no conversation, no way to the guest is on, the contact of the guest cannot be read yet, or the automatic delivery failed. About the
+    /// booking (entity type <c>Booking</c>), leading to the link to copy (<see cref="ActivityAction.CopyCheckInLink"/>); raised once per booking, only while one of the flags
+    /// <c>PortalChatCheckInLink</c> and <c>GuestContactInfo</c> is on; closed by the system when the link is sent, when the guest completes the check-in, when the booking is
+    /// cancelled or when the host issues a link itself. The numbers from 110 are the check-in link and the chat of the portal (epic E23), apart from the values the tasks that
+    /// run in parallel append.
+    /// </summary>
+    CheckInLinkToSend = 110,
 }

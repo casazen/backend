@@ -661,13 +661,25 @@ public sealed class MessageSyncService(
             .Where(m => m.OrgId == orgId && m.ThreadId == thread.Id)
             .OrderByDescending(m => m.SentAt)
             .ThenByDescending(m => m.CreatedAt)
-            .Select(m => new { m.SentAt, m.Direction })
+            .Select(m => new { m.SentAt, m.Direction, m.Origin })
             .FirstOrDefaultAsync(ct);
         thread.UnreadCount = unread;
         if (newest is not null)
         {
             thread.LastMessageAt = newest.SentAt;
-            thread.LastMessageDirection = newest.Direction;
+
+            // An automatic message of CasaZen (the check-in link) is the newest in time but answers nobody: the direction of the thread is the one of the newest message that is
+            // not automatic, so a question of the guest keeps waiting for its answer (E23/F01/US01/T01).
+            thread.LastMessageDirection = newest.Origin != MessageOrigin.Automation
+                ? newest.Direction
+                : await db.OtaMessages
+                    .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+                    .AsNoTracking()
+                    .Where(m => m.OrgId == orgId && m.ThreadId == thread.Id && m.Origin != MessageOrigin.Automation)
+                    .OrderByDescending(m => m.SentAt)
+                    .ThenByDescending(m => m.CreatedAt)
+                    .Select(m => (OtaMessageDirection?)m.Direction)
+                    .FirstOrDefaultAsync(ct);
         }
 
         foreach (var message in newInbound)

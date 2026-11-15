@@ -279,6 +279,31 @@ public sealed class AssistantDraftPipelineTests : IDisposable
         Assert.All(await _rig.Db.AssistantDecisionLogs.ToListAsync(), row => Assert.Equal(AssistantDecision.NotHandled, row.Decision));
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (E23/F01/US01/T01). The automatic message with the check-in link answers nobody: after the question of the guest and the link, the assistant still
+    /// produces the draft (it is not «the host already replied»), and the provider never reads the link, a secret that opens the guest page.
+    /// </summary>
+    [Fact]
+    public async Task TheAutomaticCheckInLink_AnswersNobody_SoTheAssistantStillDraftsTheAnswer_AndTheProviderNeverReadsTheLink_Test()
+    {
+        await _rig.SeedAsync();
+        var question = await _rig.GuestWritesAsync("Dove posso parcheggiare?", minutesAgo: 30);
+        await _rig.AutomationWritesAsync("Buongiorno! Completa il check-in online da questo link: https://public.test/checkin/AUTOMATIC-LINK-TOKEN", minutesAgo: 10);
+
+        var outcome = await _rig.Service().ProcessInboundAsync(_rig.OrgId, _rig.Key, question.Id, AssistantProcessOptions.Automatic);
+
+        Assert.Equal(AssistantDecision.Drafted, outcome.Decision);
+        Assert.NotEqual(AssistantDecisionCodes.HostAlreadyReplied, outcome.Reason);
+        Assert.Equal(1, await _rig.Db.ApprovalQueueItems.CountAsync());
+        Assert.DoesNotContain("AUTOMATIC-LINK-TOKEN", _rig.EverythingSentToTheProvider(), StringComparison.Ordinal);
+
+        // A person who answers after the link does answer: the same question is then «already replied».
+        var second = await _rig.GuestWritesAsync("E c'e una lavatrice?", minutesAgo: 8);
+        await _rig.HostWritesAsync("Si, in bagno.", minutesAgo: 5);
+        var answered = await _rig.Service().ProcessInboundAsync(_rig.OrgId, _rig.Key, second.Id, AssistantProcessOptions.Automatic);
+        Assert.Equal(AssistantDecisionCodes.HostAlreadyReplied, answered.Reason);
+    }
+
     [Fact]
     public async Task ProcessingAMessageTwice_DoesTheWorkOnce()
     {

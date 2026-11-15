@@ -40,10 +40,11 @@ public sealed class ActivityAutoCloseHandler(
     /// </summary>
     internal static readonly IReadOnlyDictionary<DomainEventType, ActivityType[]> Rules = new Dictionary<DomainEventType, ActivityType[]>
     {
-        [DomainEventType.CheckInCompleted] = [ActivityType.CheckInPending, ActivityType.BookingSpecialRequest],
+        // E23/F01/US01/T01: the check-in link a host was to carry to the guest has no use once the stay arrived or was cancelled.
+        [DomainEventType.CheckInCompleted] = [ActivityType.CheckInPending, ActivityType.BookingSpecialRequest, ActivityType.CheckInLinkToSend],
         // E03/F04/US02: the identity verification of a stay that was cancelled or is over has nobody to wait for (the queue does not list it).
         [DomainEventType.CheckOutCompleted] = [ActivityType.CheckOutPending, ActivityType.IdentityVerification],
-        [DomainEventType.BookingCancelled] = [ActivityType.BookingSpecialRequest, ActivityType.IdentityVerification],
+        [DomainEventType.BookingCancelled] = [ActivityType.BookingSpecialRequest, ActivityType.IdentityVerification, ActivityType.CheckInLinkToSend],
         [DomainEventType.PropertyReadyDeclared] = [ActivityType.CleaningDue],
         [DomainEventType.AlloggiatiReceiptArrived] = [ActivityType.AlloggiatiDeadline, ActivityType.ReceiptToRetrieve],
     };
