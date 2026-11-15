@@ -24,8 +24,8 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>The stay of a company tenant</b> is judged on the owners of the property on the check-out day (started on or before it, not ended on it: the definition of the
 /// owner ledger and of the document plan, so it is the owner the ledger credits the stay to). Only the kind of the recipient (private person or company) is read from its
 /// invoice data, never a name, a fiscal code or an address.</item>
-/// <item><b>The «Da fare»</b> is raised once for each booking (also when a person closed it) with a fixed sentence in the language of the org; it is closed by the decision, or
-/// by the cancellation or the no-show of the booking (<c>ActivityAutoCloseHandler</c>).</item>
+/// <item><b>The «Da fare»</b> is raised once for each booking (never again when a person closed it) with a fixed sentence in the language of the org; it is closed by the decision,
+/// by the cancellation or the no-show of the booking (<c>ActivityAutoCloseHandler</c>), and by the system when the stay is no case any more.</item>
 /// <item>Every query names the org; it reads through the tenant filter of its caller. The logs carry ids and counts, never the reason of a decision.</item>
 /// </list>
 /// </remarks>
@@ -237,12 +237,21 @@ public sealed class OwnerTaxChecks(
             return false;
 
         var stay = (await FactsAsync(orgId, [bookingId], null, ct)).SingleOrDefault();
-        if (stay is null || !stay.IsCase)
+        if (stay is null)
             return false;
 
-        // Decided already: nothing to ask. Raised before (open, or closed by a person): once for each booking, never again for a redelivered event.
+        // The stay is no case (any more): the invoice data became a private person's, or the dates, the status or the owners changed. There is nothing to decide, and a decision
+        // would be refused (422 owner_tax_decision_not_applicable): the item raised before is closed by the system, as the cancellation and the no-show close it.
+        if (!stay.IsCase)
+        {
+            await CloseTodoAsync(orgId, bookingId, InternalActivity.ClosedBySystem, ct);
+            return false;
+        }
+
+        // Decided already: nothing to ask. Asked before and still open, or closed by a person: once for each booking, never again for a redelivered event. An item the system
+        // closed because the stay was no case is neither: the stay is one again and nobody decided.
         if (await db.ShortLetTaxDecisions.AsNoTracking().AnyAsync(d => d.OrgId == orgId && d.BookingId == bookingId, ct)
-            || await BookingTodoItems.WasRaisedAsync(db, orgId, ActivityType.CompanyTenantDecision, bookingId, ct))
+            || await IsOpenOrAnsweredByAPersonAsync(orgId, bookingId, ct))
         {
             return false;
         }
@@ -442,6 +451,25 @@ public sealed class OwnerTaxChecks(
 
         foreach (var id in open)
             await activities.CloseAsync(id, closedBy, ct);
+    }
+
+    /// <summary>
+    /// A «Da fare» of the company tenant of the booking is open, or a person closed one (the decision closes it too): the stay was asked about, and it is not asked again. One the
+    /// system closed (the stay was no case, was cancelled or was a no-show) does not count: it says nothing about the person.
+    /// </summary>
+    private Task<bool> IsOpenOrAnsweredByAPersonAsync(Guid orgId, Guid bookingId, CancellationToken ct)
+    {
+        var type = nameof(ActivityType.CompanyTenantDecision);
+        return db.InternalActivities
+            .AsNoTracking()
+            .AnyAsync(
+                a => a.OrgId == orgId
+                     && a.Action != null
+                     && a.ActivityType == type
+                     && a.EntityType == InternalActivity.BookingEntityType
+                     && a.EntityId == bookingId
+                     && (a.CompletedAt == null || a.ClosedBy == null || a.ClosedBy != InternalActivity.ClosedBySystem),
+                ct);
     }
 
     private static NotFoundException OwnerNotFound(Guid ownerId) =>

@@ -16,7 +16,9 @@ namespace Casazen.Infrastructure.Services;
 /// so the two events cover both orders (the data saved while the booking is not yet confirmed raises nothing, the confirmation that follows does; a confirmation that comes
 /// first finds no company and raises nothing, the data that follows does). A stay that becomes a case in another way (an owner added to the property later) is not waited for:
 /// <c>GET api/owner-tax-decisions</c> reads the state on request and lists it.</item>
-/// <item><b>Once for each booking</b>: a redelivered event, a second save of the data and a decision already recorded raise nothing more (ADR-022-R7).</item>
+/// <item><b>Once for each booking</b>: a redelivered event, a second save of the data, an item a person closed and a decision already recorded raise nothing more (ADR-022-R7).
+/// The same state read closes the open item when the stay is no case any more (the data became a private person's); an item the system closed does not count, so the stay is asked
+/// about again if it becomes a case again.</item>
 /// <item><b>Only while <c>Features:TaxReportingExports</c> is on</b>: the item is a warning of the UI. A failure (the database) is not swallowed: the outbox delivers the event
 /// again. A stay that is no case, or a property gone, is not a failure and ends here.</item>
 /// <item>It runs by the outbox dispatcher, so it can never fail the save of the invoice data of a guest or of a host.</item>

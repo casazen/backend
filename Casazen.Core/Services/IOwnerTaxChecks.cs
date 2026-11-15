@@ -61,8 +61,10 @@ public interface IOwnerTaxChecks
     Task<IReadOnlyList<CompanyTenantCase>> ListCompanyTenantCasesAsync(HostScope scope, CompanyTenantCaseState? state, CancellationToken ct = default);
 
     /// <summary>
-    /// Raises the «Da fare» <c>company_tenant_decision</c> of the stay when it is one of those and has no decision: once for each booking (also after a person closed it), no
-    /// personal data in it. <c>false</c> when nothing was raised: the flag is off, the stay is not one of those, it was decided or the item was raised before.
+    /// Raises the «Da fare» <c>company_tenant_decision</c> of the stay when it is one of those and has no decision: once for each booking (never again after a person closed it),
+    /// no personal data in it. When the stay is not one of those (any more: the invoice data became a private person's, the dates or the owners changed) the open item of the
+    /// booking is closed by the system instead, and it is raised again if the stay becomes one again. <c>false</c> when nothing was raised: the flag is off, the stay is not one
+    /// of those, it was decided or the item was raised before (open, or closed by a person).
     /// </summary>
     Task<bool> RaiseCompanyTenantDecisionAsync(Guid orgId, Guid bookingId, CancellationToken ct = default);
 

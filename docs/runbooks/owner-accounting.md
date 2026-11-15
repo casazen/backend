@@ -470,7 +470,11 @@ withholding reads are not behind it** (an owner past the limit is a business wha
     property on the check-out day is a private natural person (`OwnerTaxRules.IsCompanyTenantCase`, the one definition).
   - **«Da fare»** (`ActivityType.CompanyTenantDecision`, about the booking, leading to it): raised once for each booking by the consumer of `InvoiceDataSaved` and `BookingConfirmed` (either order: the state is read when the event is handled)
     (`CompanyTenantDecisionHandler`, only while the flag is on) with a fixed sentence in the language of the org that tells the two readings in plain words (key
-    `TodoReason_CompanyTenantDecision` of `EmailTexts`); no personal data. It closes when a decision is recorded or the booking is cancelled or marked a no-show.
+    `TodoReason_CompanyTenantDecision` of `EmailTexts`, no rate in it: the rate is configuration); no personal data. It closes when a decision is recorded, when the booking is cancelled or marked a
+    no-show, and (by the system) when the consumer reads the stay and it is no case any more (the invoice data became a private person's, the dates or the owners changed: a decision
+    would be 422 `owner_tax_decision_not_applicable`); it is asked again if the stay becomes a case again, never after a person closed it or a decision was recorded. **Limit**: the
+    state is read only when one of the two events is handled, so a stay that becomes a case in another way (an owner is added to the property after its bookings: the owner import is
+    the only writer of the ownerships; the dates change) raises no «Da fare»; `GET api/owner-tax-decisions` lists it all the same.
   - **Decision** (`ShortLetTaxDecision`: booking, regime, reason, who, when; **append only**, the latest in force, the earlier ones are the history): `POST api/owner-tax-decisions`
     (`agency.owner.financial.manage`) `{ bookingId, regime, reason }` with `regime` `ShortLet` (the stay stays a short let: the intermediary withholds) or `NotShortLet` and the
     reason a note of the agency (1 to 500 characters, never logged, never in the «Da fare»). The regime is **required** (no default by omission). The same regime and reason again

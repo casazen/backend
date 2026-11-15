@@ -491,7 +491,8 @@ public class OwnerTaxChecksTests
         Assert.Equal(OrgId, item.OrgId);
         Assert.Null(item.CompletedAt);
 
-        // A cancelled booking has nothing to decide: the event of its cancellation closes the item.
+        // A cancelled booking has nothing to decide: the booking is cancelled, and the event of its cancellation closes the item.
+        await world.SetStatusAsync(booking, BookingStatus.Cancelled);
         var close = new ActivityAutoCloseHandler(world.Db, world.Activities, NullLogger<ActivityAutoCloseHandler>.Instance);
         await close.HandleAsync(new DomainEvent(Guid.NewGuid(), OrgId, DomainEventType.BookingCancelled, booking, World.Now.UtcDateTime, "{}"), CancellationToken.None);
         Assert.Equal(InternalActivity.StatusCompleted, Assert.Single(await world.TodosAsync(booking)).Status);
@@ -504,7 +505,7 @@ public class OwnerTaxChecksTests
         await close.HandleAsync(new DomainEvent(Guid.NewGuid(), OrgId, DomainEventType.BookingNoShowMarked, noShow, World.Now.UtcDateTime, "{}"), CancellationToken.None);
         Assert.Equal(InternalActivity.StatusCompleted, Assert.Single(await world.TodosAsync(noShow)).Status);
 
-        // Closed, it does not come back for the event delivered again.
+        // Closed, and the booking cancelled: it does not come back for the event delivered again.
         await handler.HandleAsync(saved with { Id = Guid.NewGuid() }, CancellationToken.None);
         Assert.Single(await world.TodosAsync(booking));
 
@@ -575,6 +576,47 @@ public class OwnerTaxChecksTests
         await world.InvoiceAsync(confirmationFirst, InvoiceRecipientKind.Company);
         await handler.HandleAsync(new DomainEvent(Guid.NewGuid(), OrgId, DomainEventType.InvoiceDataSaved, confirmationFirst, World.Now.UtcDateTime, "{}"), CancellationToken.None);
         Assert.Single(await world.TodosAsync(confirmationFirst));
+    }
+
+    /// <summary>
+    /// The «Da fare» follows the state the consumer reads: when the stay is no case any more (the invoice data became a private person's) the open item is closed, by the system, so
+    /// nobody is asked for a decision that would be refused; when it is a case again the stay is asked about again, once; an item a person closed is never raised again.
+    /// </summary>
+    [Fact]
+    public async Task CompanyTenantTodo_ClosedWhenTheStayIsNoCaseAnyMore_AskedAgainIfItIsOneAgain_Test()
+    {
+        var world = World.Create();
+        var booking = await world.CompanyStayOfAPrivateOwnerAsync();
+        var handler = new CompanyTenantDecisionHandler(world.Checks);
+        var saved = new DomainEvent(Guid.NewGuid(), OrgId, DomainEventType.InvoiceDataSaved, booking, World.Now.UtcDateTime, "{}");
+        await handler.HandleAsync(saved, CancellationToken.None);
+        Assert.Equal(InternalActivity.StatusPending, Assert.Single(await world.TodosAsync(booking)).Status);
+
+        // The data become a private person's: there is nothing to decide (a decision would be 422), so the item is closed, by the system.
+        await world.SetRecipientAsync(booking, InvoiceRecipientKind.Guest);
+        await handler.HandleAsync(saved with { Id = Guid.NewGuid() }, CancellationToken.None);
+        var closed = Assert.Single(await world.TodosAsync(booking));
+        Assert.Equal((InternalActivity.StatusCompleted, InternalActivity.ClosedBySystem), (closed.Status, closed.ClosedBy));
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => world.Checks.DecideAsync(OrgWide, Decision(booking, ShortLetTaxRegime.NotShortLet, "x"), "auth0|admin"));
+        Assert.Equal(OwnerTaxErrors.DecisionNotApplicable, refused.Code);
+
+        // A company again: the stay is asked about again (an item the system closed says nothing about a person), once for the two deliveries.
+        await world.SetRecipientAsync(booking, InvoiceRecipientKind.Company);
+        await handler.HandleAsync(saved with { Id = Guid.NewGuid() }, CancellationToken.None);
+        await handler.HandleAsync(saved with { Id = Guid.NewGuid() }, CancellationToken.None);
+        var items = await world.TodosAsync(booking);
+        Assert.Equal(2, items.Count);
+        var open = Assert.Single(items, t => t.CompletedAt is null);
+
+        // A person closes it: it is never raised again, whatever the data do after.
+        await world.Activities.CloseAsync(open.Id, "auth0|admin", CancellationToken.None);
+        await world.SetRecipientAsync(booking, InvoiceRecipientKind.Guest);
+        await handler.HandleAsync(saved with { Id = Guid.NewGuid() }, CancellationToken.None);
+        await world.SetRecipientAsync(booking, InvoiceRecipientKind.Company);
+        await handler.HandleAsync(saved with { Id = Guid.NewGuid() }, CancellationToken.None);
+        var after = await world.TodosAsync(booking);
+        Assert.Equal(2, after.Count);
+        Assert.DoesNotContain(after, t => t.CompletedAt is null);
     }
 
     // ---- the warnings -------------------------------------------------------------------------------------------------------
@@ -896,6 +938,14 @@ public class OwnerTaxChecksTests
         {
             Db.ChangeTracker.Clear();
             (await Db.BookingInvoiceData.SingleAsync(d => d.BookingId == booking)).RecipientKind = kind;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>The status of the booking as the host's action leaves the row (a cancellation), before its event is handled.</summary>
+        public async Task SetStatusAsync(Guid booking, BookingStatus status)
+        {
+            Db.ChangeTracker.Clear();
+            (await Db.Bookings.SingleAsync(b => b.Id == booking)).Status = status;
             await Db.SaveChangesAsync();
         }
 
