@@ -278,8 +278,8 @@ labels of E13, the VAT summary of E15 and the TD17 of E17 are meant to read it t
   no longer give it the answer is 409 `owner_ledger_immutable` (see «Evidence»), never a file with another net. The box «Tassa di soggiorno» is for information,
   collected by the agency and to be remitted to the municipality or the cantonal tourist office, and is never added to or taken from the net.
 - **Who holds the portal account.** The label of the commission of the channels follows it: «Trattenuta dal portale (fattura del portale a tuo nome)» when the owner
-  holds the account (V1), «Commissioni del portale riaddebitate dal gestore (fattura n. …)» when the agency does (V2). Until the owner invoice epic (E14) provides the
-  resolver every listing is read as V1.
+  holds the account (V1), «Commissioni del portale riaddebitate dal gestore (fattura n. …)» when the agency does (V2). The holder of each listing and portal is the one
+  of `IPortalAccountHolderResolver` (E14), the same the owner invoice reads, so the statement and the invoice never tell the owner two different things (E19/F01/US01/T01).
 - **Published = stored.** Publishing a version builds its PDF once, stores it with its SHA-256 as an owner document of type statement (the id of the document is the
   id of the version) and tells the people of the owner portal who read the statements of the owner by e-mail: the agency and the link to the page «Contabilità», never an
   amount, a period or a line. The owner downloads exactly the stored file. A version published before this release has no stored PDF: the agency gets a PDF built

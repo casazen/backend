@@ -33,8 +33,9 @@ namespace Casazen.Infrastructure.Services;
 /// each, less the stays whose channel collects it itself (a channel of the confirmed list of the issuer, or the collector of the stay as the host's tourist tax decides:
 /// the active rule of the channel in the comune, else the one the host declared, else the one confirmed with the calculation), and only for a stay that owes the tax
 /// (an active booking that is not a no-show). For information only, in the currency of the property, never in a total.</item>
-/// <item><b>Who holds the portal account.</b> Until the property manager invoice of the owner exists (E14, <c>IPortalAccountHolderResolver</c>) every listing is read as
-/// V1, the owner's: the commission of a channel is «Trattenuta dal portale»; the layout already writes the V2 label for a line flagged as the agency's.</item>
+/// <item><b>Who holds the portal account.</b> The channel fee of a stay is flagged as the agency's when the agency holds the account of the listing on that portal
+/// (<see cref="IPortalAccountHolderResolver"/>, E14, ⚖ I10: V2, the portal bills the agency, which recharges the commission on its invoice); otherwise it is V1, the
+/// owner's, «Trattenuta dal portale». A service built without the resolver reads every listing as V1.</item>
 /// <item><b>Language.</b> There is no language kept for an owner yet: Italian unless the caller asks for English. The stored PDF is in Italian.</item>
 /// <item><b>The notice of the publication.</b> The e-mail that tells the owner is queued after the publication was saved. A notice that cannot be prepared or queued never
 /// turns the publication into an error, and is never silent: it is logged with its ids and the agency gets a «To do» (<see cref="ActivityType.OwnerStatementNoticeFailed"/>,
@@ -53,7 +54,8 @@ public sealed class OwnerStatementDocuments(
     PublicSiteLinks links,
     IInternalActivityService activities,
     TimeProvider time,
-    ILogger<OwnerStatementDocuments> logger) : IOwnerStatementDocuments
+    ILogger<OwnerStatementDocuments> logger,
+    IPortalAccountHolderResolver? holders = null) : IOwnerStatementDocuments
 {
     /// <summary>The entity type of the «To do» about a statement whose owner could not be told that it was published.</summary>
     public const string OwnerStatementVersionEntityType = "OwnerStatementVersion";
@@ -375,8 +377,10 @@ public sealed class OwnerStatementDocuments(
                 .ToListAsync(ct))
             .ToDictionary(p => p.Id, p => new PropertyFacts(p.Name, p.Currency, TouristTaxComune.IsItalianCountry(p.Country) ? p.ComuneIstatCode : null));
 
+        // Who holds the account of each listing on each portal (E14, ⚖ I10), read once for the statement.
+        var portalAccounts = holders is null ? PortalAccountHolders.Defaults : await holders.ForOrgAsync(orgId, ct);
         var lines = entries
-            .Select(entry => LineOf(entry, BookingOf(entry, bookings), properties.GetValueOrDefault(entry.PropertyId ?? Guid.Empty)?.Name))
+            .Select(entry => LineOf(entry, BookingOf(entry, bookings), properties.GetValueOrDefault(entry.PropertyId ?? Guid.Empty)?.Name, portalAccounts))
             .OrderBy(line => line.Section)
             .ThenBy(line => line.Date)
             .ToList();
@@ -420,8 +424,11 @@ public sealed class OwnerStatementDocuments(
         };
     }
 
-    /// <summary>The line of a ledger entry: its part, its day, and the stay (days, channel, code) and property it is about.</summary>
-    private static OwnerStatementLine LineOf(OwnerLedgerEntry entry, BookingFacts? booking, string? propertyName)
+    /// <summary>
+    /// The line of a ledger entry: its part, its day, the stay (days, channel, code) and property it is about, and, for the commission a portal kept, whether the
+    /// agency holds the account of the listing on that portal (<paramref name="portalAccounts"/>).
+    /// </summary>
+    private static OwnerStatementLine LineOf(OwnerLedgerEntry entry, BookingFacts? booking, string? propertyName, PortalAccountHolders portalAccounts)
     {
         DateOnly? checkIn = booking is null ? null : DateOnly.FromDateTime(booking.CheckIn);
         DateOnly? checkOut = booking is null ? null : DateOnly.FromDateTime(booking.CheckOut);
@@ -447,8 +454,10 @@ public sealed class OwnerStatementDocuments(
             entry.Amount,
             entry.ReversesEntryId is not null,
 
-            // Until E14 (IPortalAccountHolderResolver) every listing is V1: the portal bills the owner.
-            AgencyHoldsPortalAccount: false);
+            // V2: the portal bills the agency, which recharges the commission; V1 (the default): the portal bills the owner.
+            AgencyHoldsPortalAccount: entry.EntryType == OwnerLedgerEntryType.ChannelFee
+                && booking is not null
+                && portalAccounts.Resolve(entry.PropertyId ?? booking.PropertyId, booking.Source) == PortalAccountHolder.Agency);
     }
 
     /// <summary>The booking a ledger line is about: the source of a stay line or a flat fee, the booking a payment is of (its reference, with no dashes); none for a charge, a wire or a payout.</summary>
