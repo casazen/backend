@@ -16,9 +16,10 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// <list type="bullet">
 /// <item><b>The lines are the version's.</b> They are made from the ledger lines of the owner and month posted up to the cut-off of the version (a reversal
-/// and the line it reverses cancel out), grouped: the commission of each property; one recharge for each flat fee of a stay, each approved charge, the card
-/// fees of each property passed on by the mandate and the commissions of each portal the agency holds the account of (⚖ I10, I11); one expense advanced for
-/// each expense of the owner (art. 15, outside the VAT). The VAT of each line comes from the rule of the last day of the month by line type.</item>
+/// and the line it reverses cancel out), grouped: the commission of each property; one recharge for each flat fee of a stay, each cleaning request recharged at its cost with its
+/// reference (E14/F01/US02/T01), each approved charge, the card fees of each property passed on by the mandate and the commissions of each portal the agency holds the account
+/// of (⚖ I10, I11); one expense advanced for each expense of the owner (art. 15, outside the VAT). The VAT of each line comes from the rule of the last day of the month by
+/// line type.</item>
 /// <item><b>The VAT of the mandate (⚖ R4)</b> is read from the mandate of the owner in force on the last day of the month (the default «+ IVA» without one).</item>
 /// <item><b>The issue</b> makes the lines again from the version and refuses a draft whose money is no longer the version's (409 <c>document_draft_outdated</c>);
 /// then the issue of the fiscal documents numbers it and posts its VAT on top to the ledger, once.</item>
@@ -305,9 +306,25 @@ public sealed class OwnerInvoiceService(
             Add(FiscalLineType.Recharge, 1, Dashed(kind, PropertyName(group.Key.PropertyId), StayLabel(group.Key.SourceId)), group);
         }
 
+        // The cleanings of the agency's company or staff recharged at their cost (E14/F01/US02/T01, ⚖ I13), which the mandate on the actual cost posts instead of the flat fee of the
+        // stay: a recharge for each cleaning request, with its reference (and the invoice of the supplier, when the model links one). A request changed after it was posted is its
+        // reversal and a new line of the same request: one line, the net of them.
+        foreach (var group in entries
+                     .Where(e => e.EntryType == OwnerLedgerEntryType.OwnerCharge && e.SourceType == OwnerLedgerSourceType.CleaningRequest)
+                     .GroupBy(e => (e.SourceId, e.SourceReference, e.PropertyId)))
+        {
+            var reference = group.Key.SourceReference ?? string.Empty;
+            var supplierInvoice = group.Select(e => e.AttachmentReference).FirstOrDefault(r => !string.IsNullOrWhiteSpace(r))?.Trim();
+            var request = supplierInvoice is null
+                ? Text("OwnerInvoiceCleaningRequest", reference, DayOf(group))
+                : Text("OwnerInvoiceCleaningRequestWithInvoice", reference, DayOf(group), supplierInvoice);
+            Add(FiscalLineType.Recharge, 1, Dashed(Text("OwnerInvoiceCleaningRecharge"), PropertyName(group.Key.PropertyId), request), group);
+        }
+
         // The approved charges, and the charges of any other source: a recharge for each, with its own description and day.
         foreach (var group in entries
-                     .Where(e => e.EntryType == OwnerLedgerEntryType.OwnerCharge && e.SourceType != OwnerLedgerSourceType.MandateFlatFee)
+                     .Where(e => e.EntryType == OwnerLedgerEntryType.OwnerCharge && e.SourceType != OwnerLedgerSourceType.MandateFlatFee
+                         && e.SourceType != OwnerLedgerSourceType.CleaningRequest)
                      .GroupBy(e => (e.SourceType, e.SourceId, e.PropertyId)))
         {
             Add(FiscalLineType.Recharge, 2, Dashed(DescriptionOf(group), PropertyName(group.Key.PropertyId), DayOf(group)), group);

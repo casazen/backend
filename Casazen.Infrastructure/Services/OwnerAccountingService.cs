@@ -26,6 +26,11 @@ namespace Casazen.Infrastructure.Services;
 /// is posted by its payments, one without by its booking. Each line gets a key made of its source, type, owner and amounts: a key already posted is left
 /// alone, a new key is posted, a posted key no longer planned is reversed. The shares are split in the currency of the source, rounded half to even, the
 /// last owner (by id) taking the remainder, then converted with the rate of the agency.</para>
+/// <para><b>Cleanings at their cost.</b> For an owner whose mandate asks for the actual cost (<see cref="CleaningRechargeMode.ActualCost"/>, E14/F01/US02/T01, ⚖ I13) the cleaning is
+/// not the flat fee of the stay: each cleaning completed in the month and recharged to the owner is one charge linked to its request, read only through
+/// <paramref name="cleaningCosts"/> (never the requests or the staff activities themselves); the flat fee of the stay is not posted, never both. A cleaning with no price (a request
+/// with no amount, a staff cleaning with no rate and no flat rate in the mandate) holds the statement back and, when the cost source does not say its VAT, raises the «Da fare»
+/// <see cref="ActivityType.CleaningVatToState"/> (<paramref name="activities"/>) at the posting: a VAT is never guessed.</para>
 /// <para><b>Locks.</b> Posting, generation, close and corrections of one org run one at a time (<see cref="PostgresAdvisoryLocks.Scope.OwnerAccounting"/>).</para>
 /// <para><b>Files.</b> The publication of a version stores its PDF with it, in the same save (<paramref name="statementFiles"/>, E13/F01/US02/T01), and tells the owner
 /// after it (E13/F01/US02/T02); a service built without it (a test) publishes the version and the JSON file only.</para>
@@ -39,7 +44,9 @@ public sealed partial class OwnerAccountingService(
     ILogger<OwnerAccountingService> logger,
     IOptions<OwnerAccountingOptions>? accountingOptions = null,
     IOwnerStatementDocuments? statementFiles = null,
-    IOwnerTaxChecks? taxChecks = null) : IOwnerAccountingService
+    IOwnerTaxChecks? taxChecks = null,
+    ICleaningCostSource? cleaningCosts = null,
+    IInternalActivityService? activities = null) : IOwnerAccountingService
 {
     /// <summary>A rate older than this many days before the day of the source is not used.</summary>
     public const int FxMaxAgeDays = 7;
@@ -53,7 +60,7 @@ public sealed partial class OwnerAccountingService(
     private static readonly OwnerLedgerSourceType[] PostedSources =
     [
         OwnerLedgerSourceType.Payment, OwnerLedgerSourceType.Booking, OwnerLedgerSourceType.OwnerCharge, OwnerLedgerSourceType.WireBatch,
-        OwnerLedgerSourceType.MandateFlatFee,
+        OwnerLedgerSourceType.MandateFlatFee, OwnerLedgerSourceType.CleaningRequest,
     ];
 
     /// <summary>The states of a payment that collected money: a refund moves it to <c>PartiallyRefunded</c> or <c>Refunded</c> (the revenue is the net).</summary>
@@ -123,6 +130,9 @@ public sealed partial class OwnerAccountingService(
         await db.SaveChangesAsync(ct);
         if (tx is not null)
             await tx.CommitAsync(ct);
+
+        // The «Da fare» of the cleanings whose VAT nobody states (E14/F01/US02/T01) comes once the lines are posted: the ledger never waits for it, and posting again finds the same items.
+        await SyncCleaningVatTodosAsync(orgId, plan, ct);
 
         // The issues of an owner whose month is closed are not the poster's business (nothing is posted for them), but a source that came after the close is told.
         var issues = plan.Issues

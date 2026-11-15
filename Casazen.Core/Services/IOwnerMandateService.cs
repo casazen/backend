@@ -76,8 +76,18 @@ public sealed record OwnerMandateCommand
     /// <summary>Whether the percent and the flat fees include VAT; <c>false</c> by default (⚖ R4: «+ IVA»).</summary>
     public bool CommissionIncludesVat { get; init; }
 
-    /// <summary>The flat fee of the cleaning of a stay, in the settlement currency of the owner; <c>null</c> = none.</summary>
+    /// <summary>
+    /// The flat fee of the cleaning of a stay, in the settlement currency of the owner; <c>null</c> = none. With <see cref="CleaningRechargeMode"/> on the actual cost it is only the price of a
+    /// cleaning by the agency's staff that has none.
+    /// </summary>
     public decimal? CleaningFlatRate { get; init; }
+
+    /// <summary>
+    /// How the cleaning is recharged to the owner (E14/F01/US02/T01, ⚖ I13): <see cref="Entities.Enums.CleaningRechargeMode.ActualCost"/> (the cost of each cleaning request completed in the
+    /// period, one charge for each, and no flat fee of the stay) or the flat fee of the mandate; <c>null</c> = <see cref="Entities.Enums.CleaningRechargeMode.FlatRate"/>. An undefined value
+    /// is 422 <c>owner_mandate_invalid</c>.
+    /// </summary>
+    public CleaningRechargeMode? CleaningRechargeMode { get; init; }
 
     /// <summary>The flat fee of the linen of a stay, in the settlement currency of the owner; <c>null</c> = none.</summary>
     public decimal? LinenFlatRate { get; init; }
@@ -198,6 +208,16 @@ public static class OwnerMandateRules
             ? covering.Where(m => m.PropertyOwnershipId == id).MaxBy(m => m.ValidFrom)
             : null;
         return ofOwnership ?? covering.Where(m => m.PropertyOwnershipId is null && m.PropertyOwnerId == ownerId).MaxBy(m => m.ValidFrom);
+    }
+
+    /// <summary>
+    /// How the cleaning is recharged under <paramref name="mandate"/> (E14/F01/US02/T01, ⚖ I13): the mode it stores, the flat rate for a mandate written before the field: the one
+    /// definition of the posting of the owner ledger and of the mandate API.
+    /// </summary>
+    public static CleaningRechargeMode CleaningRechargeModeOf(OwnerMandate mandate)
+    {
+        ArgumentNullException.ThrowIfNull(mandate);
+        return mandate.CleaningRechargeMode ?? CleaningRechargeMode.FlatRate;
     }
 }
 

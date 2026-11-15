@@ -156,6 +156,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.CleaningSetups.Select(setup => setup.Scenario))
             .Concat(DemoShowcaseCatalog.OwnerUnitsExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.CompanyTenantExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.CleaningRechargeExamples.Select(example => example.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -1296,6 +1297,24 @@ public class DemoShowcaseTests
         Assert.Equal(ShortLetTaxRegime.NotShortLet, decided.Decision);
         Assert.StartsWith("TEST", decided.Reason, StringComparison.Ordinal);
         Assert.InRange(decided.Reason!.Length, 1, ShortLetTaxDecision.ReasonMaxLength);
+    }
+
+    /// <summary>
+    /// E14/F01/US02/T01: the demo examples of the cleaning recharge are TEST owners and cleaners with positive amounts, one on the flat rate and the others on the actual cost: a
+    /// request with its price, and a staff cleaning with no rate that costs the flat rate of the mandate.
+    /// </summary>
+    [Fact]
+    public void CleaningRecharge_TheExamplesAreTestOnesOnTheFlatRateAndOnTheActualCost()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.CleaningRecharge, DemoShowcaseCatalog.Scenarios);
+        var examples = DemoShowcaseCatalog.CleaningRechargeExamples;
+        Assert.Equal(examples.Count, examples.Select(e => e.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(examples, e => Assert.StartsWith("TEST", e.OwnerName, StringComparison.Ordinal));
+        Assert.All(examples, e => Assert.StartsWith("TEST", e.Cleaner, StringComparison.Ordinal));
+        Assert.All(examples, e => Assert.True(e.MandateFlatRate > 0m && (e.RequestAmount is null || e.RequestAmount > 0m)));
+        Assert.Single(examples, e => e.Mode == CleaningRechargeMode.FlatRate);
+        Assert.Single(examples, e => e.Mode == CleaningRechargeMode.ActualCost && e.RequestAmount is not null);
+        Assert.Single(examples, e => e.Mode == CleaningRechargeMode.ActualCost && e.RequestAmount is null);
     }
 
     /// <summary>

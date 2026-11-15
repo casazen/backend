@@ -63,10 +63,18 @@ public class OwnerMandate : ITenantOwned
 
     /// <summary>
     /// The flat fee of the cleaning of a stay, in the settlement currency of the owner; <c>null</c> = none. Posted once per stay as a recharge
-    /// (E13/F01/US01/T02). Stored as decimal(10,2).
+    /// (E13/F01/US01/T02). With <see cref="CleaningRechargeMode"/> on the actual cost it is no longer posted for the stay: it is only the price of a cleaning by the
+    /// agency's staff that has none (E14/F01/US02/T01). Stored as decimal(10,2).
     /// </summary>
     [Column(TypeName = "decimal(10,2)")]
     public decimal? CleaningFlatRate { get; set; }
+
+    /// <summary>
+    /// How the cleaning is recharged to the owner (E14/F01/US02/T01, ⚖ I13): the flat fee of each stay (<see cref="CleaningRechargeMode.FlatRate"/>, the default) or the cost of each
+    /// cleaning request completed in the period (<see cref="CleaningRechargeMode.ActualCost"/>, the flat fee is then not posted). <c>null</c> on a mandate written before the field:
+    /// it reads as the flat rate, so no data had to change; read it only through <c>OwnerMandateRules.CleaningRechargeModeOf</c>.
+    /// </summary>
+    public CleaningRechargeMode? CleaningRechargeMode { get; set; }
 
     /// <summary>The flat fee of the linen of a stay, in the settlement currency of the owner; <c>null</c> = none. Posted like <see cref="CleaningFlatRate"/>.</summary>
     [Column(TypeName = "decimal(10,2)")]
