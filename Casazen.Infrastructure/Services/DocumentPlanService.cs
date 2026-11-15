@@ -50,7 +50,7 @@ public sealed class DocumentPlanService(AppDbContext db, IFiscalTaxRuleResolver 
             .Select(o => new { o.Id, o.PropertyOwnerId, o.SharePercent, o.OwnershipStart, o.OwnershipEnd })
             .ToListAsync(ct);
         var active = ownerships
-            .Where(o => DateOnly.FromDateTime(o.OwnershipStart) <= day && (o.OwnershipEnd is not { } end || DateOnly.FromDateTime(end) > day))
+            .Where(o => DocumentPlanRules.IsActiveOn(o.OwnershipStart, o.OwnershipEnd, day))
             .ToList();
         if (active.Count == 0)
             return everything;
@@ -60,16 +60,14 @@ public sealed class DocumentPlanService(AppDbContext db, IFiscalTaxRuleResolver 
             .AsNoTracking()
             .Where(m => m.OrgId == booking.OrgId && ownerIds.Contains(m.PropertyOwnerId))
             .ToListAsync(ct);
-        var withMandate = active.Where(o => OwnerMandateRules.InForce(mandates, o.PropertyOwnerId, o.Id, day) is not null).ToList();
-        var signatory = (withMandate.Count > 0 ? withMandate : active)
-            .OrderByDescending(o => o.SharePercent)
-            .ThenBy(o => o.OwnershipStart)
-            .ThenBy(o => o.PropertyOwnerId)
-            .First();
+        var signatoryOwnerId = DocumentPlanRules.SignatoryOf(
+            active.Select(o => new ActiveOwnership(o.Id, o.PropertyOwnerId, o.SharePercent, o.OwnershipStart)).ToList(),
+            mandates,
+            day)!.Value.OwnerId;
 
         var profile = await db.OrgFiscalIssuerProfiles
             .AsNoTracking()
-            .FirstOrDefaultAsync(p => p.OrgId == booking.OrgId && p.PropertyOwnerId == signatory.PropertyOwnerId, ct);
+            .FirstOrDefaultAsync(p => p.OrgId == booking.OrgId && p.PropertyOwnerId == signatoryOwnerId, ct);
         var ready = profile is not null && CanIssue(profile, day);
 
         if (!italian)
@@ -81,12 +79,12 @@ public sealed class DocumentPlanService(AppDbContext db, IFiscalTaxRuleResolver 
         else if (!ready || FiscalDocumentRules.IsSwiss(profile!.CountryCode))
         {
             // The stay of an Italian property is issued with the Italian rules: a Swiss profile (made for ⚖ C1) does not issue it, the owner needs an Italian one.
-            return new DocumentPlan(booking.Id, [], [signatory.PropertyOwnerId]);
+            return new DocumentPlan(booking.Id, [], [signatoryOwnerId]);
         }
 
         var coOwners = active.Count > 1 ? await CoOwnersAsync(booking.OrgId, active.Select(o => (o.PropertyOwnerId, o.SharePercent)).ToList(), ct) : [];
         var services = DocumentPlanRules.AgencyServiceLineTypes(organization.CleaningFeeTreatment);
-        var stay = new PlannedDocument(profile!.Id, signatory.PropertyOwnerId, false, DocumentPlanRules.AllLineTypes.Except(services).ToList(), coOwners);
+        var stay = new PlannedDocument(profile!.Id, signatoryOwnerId, false, DocumentPlanRules.AllLineTypes.Except(services).ToList(), coOwners);
 
         // The agency's own document only when it bills something: the cleaning of the booking as its service (the model has no extras of a booking yet).
         var cleaning = Math.Clamp(booking.CleaningFee, 0m, Math.Max(booking.BasePrice, 0m));

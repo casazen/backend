@@ -61,7 +61,11 @@ public static class FiscalDocumentPdfs
         // A receipt carries no VAT: its nature codes stay internal (E11/F01/US01/T02), and so do those of the credit note of a receipt.
         var showNature = document.Kind != DocumentKind.Receipt && !(document.Kind == DocumentKind.CreditNote && credited?.Kind == DocumentKind.Receipt);
         var currency = document.Currency;
-        var kind = KindLabel(document.Kind, texts, language);
+
+        // A self-billed invoice (TD17, E17/F01/US03/T01) is the invoice of a foreign supplier integrated by its recipient: the issuer of the snapshot is the buyer that issues it
+        // and the recipient columns hold the supplier, so the two blocks are named for what they are, and nobody pays it (the VAT is integrated, not collected).
+        var selfBilling = document.Purpose == FiscalDocumentPurpose.SelfBilling;
+        var kind = selfBilling ? texts.Get("FiscalDocPdfKindSelfBilling", language) : KindLabel(document.Kind, texts, language);
         var title = document.Number is { Length: > 0 } number
             ? texts.Get("FiscalDocPdfTitle", language, kind, number)
             : texts.Get("FiscalDocPdfTitleDraft", language, kind);
@@ -78,12 +82,14 @@ public static class FiscalDocumentPdfs
                 credited.IssueDate is { } day ? DocumentLanguages.Day(day) : string.Empty)));
         }
 
-        blocks.Add(new PdfHeading(texts.Get("FiscalDocPdfIssuer", language), 3));
+        blocks.Add(new PdfHeading(texts.Get(selfBilling ? "FiscalDocPdfSelfBillingBuyer" : "FiscalDocPdfIssuer", language), 3));
         blocks.Add(new PdfParagraph(string.Join('\n', IssuerLines(issuer, texts, language))));
-        blocks.Add(new PdfHeading(texts.Get("FiscalDocPdfRecipient", language), 3));
+        blocks.Add(new PdfHeading(texts.Get(selfBilling ? "FiscalDocPdfSelfBillingSupplier" : "FiscalDocPdfRecipient", language), 3));
         blocks.Add(new PdfParagraph(string.Join('\n', RecipientLines(document, texts, language))));
         if (OwnerInvoicePeriodLabel(document) is { } period)
             blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfOwnerPeriod", language, period)));
+        if (SelfBillingPeriodLabel(document) is { } selfBillingPeriod)
+            blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfSelfBillingPeriod", language, selfBillingPeriod)));
 
         var lines = document.Lines.OrderBy(l => l.LineNumber).ToList();
         blocks.Add(new PdfHeading(texts.Get("FiscalDocPdfLinesHeading", language)));
@@ -144,9 +150,9 @@ public static class FiscalDocumentPdfs
         if (document.StampDuty > 0m && StampDutyLine(issuer, texts, language) is { } stamp)
             blocks.Add(new PdfParagraph(stamp));
 
-        if (document.Purpose != FiscalDocumentPurpose.OwnerInvoice)
+        if (document.Purpose == FiscalDocumentPurpose.GuestStay)
             blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfPayment", language, PaymentLabel(document.PaymentState, texts, language))));
-        else if (document.Kind != DocumentKind.CreditNote && settlement is not null)
+        else if (document.Purpose == FiscalDocumentPurpose.OwnerInvoice && document.Kind != DocumentKind.CreditNote && settlement is not null)
         {
             // An Italian owner invoice has no QR-bill: offset in the statement, or to pay as the property manager says.
             blocks.AddRange(OwnerInvoicePaymentLines(document, settlement, texts, language, DocumentLanguages.Money(settlement.AmountDue, language), qrBill: false));
@@ -275,6 +281,12 @@ public static class FiscalDocumentPdfs
     /// <summary>The month of the services of an owner invoice (or of its credit note), <c>MM/yyyy</c>; <c>null</c> for any other document.</summary>
     internal static string? OwnerInvoicePeriodLabel(FiscalDocument document) =>
         document.Purpose == FiscalDocumentPurpose.OwnerInvoice && document.PeriodYear is { } year && document.PeriodMonth is { } month
+            ? PeriodLabel(year, month)
+            : null;
+
+    /// <summary>The month of the commissions a self-billed invoice integrates the VAT of, <c>MM/yyyy</c>; <c>null</c> for any other document.</summary>
+    internal static string? SelfBillingPeriodLabel(FiscalDocument document) =>
+        document.Purpose == FiscalDocumentPurpose.SelfBilling && document.PeriodYear is { } year && document.PeriodMonth is { } month
             ? PeriodLabel(year, month)
             : null;
 
