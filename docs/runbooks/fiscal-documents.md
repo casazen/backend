@@ -586,7 +586,8 @@ issued TD17 stays what it is (ten years).
   duty, total, currency, payment state, SDI state, source.
 - The amounts are the stored ones, to two places (a credit note keeps its positive amounts: its kind says what it is); the payment state is the current one, as in the
   list. The recipient is the name only: no fiscal code, VAT number or address leaves in a file. Drafts, discarded drafts, the lines and the XML are not in it, and the
-  channel manager is never named (its documents say «Emesso dal tuo channel manager»).
+  channel manager is never named (its documents say «Emesso dal tuo channel manager»). A self-billed invoice (TD17) says «Autofattura TD17» in the kind column (`Purpose = SelfBilling`):
+  its recipient column is the foreign supplier it integrates, not a customer.
 - The Excel file is written by `XlsxWriter` (no package, only `System.IO.Compression`): amounts are numbers, days are dates, every text is an inline string, so a text
   that starts with `= + - @` is never run (the CSV puts an apostrophe before it). More than 9,999 documents is 422 `csv_too_many_rows` or `xlsx_too_many_rows`: narrow the period.
 
