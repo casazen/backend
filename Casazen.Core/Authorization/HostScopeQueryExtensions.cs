@@ -67,9 +67,24 @@ public static class HostScopeQueryExtensions
     public static IQueryable<InternalActivity> InScope(this IQueryable<InternalActivity> source, HostScope scope) =>
         source.InScope(scope, activity => activity.Property);
 
-    /// <summary>The compliance proofs of the scope (those of a property it reaches, E03/F02/US03/T01, NF-47).</summary>
-    public static IQueryable<ManualComplianceProof> InScope(this IQueryable<ManualComplianceProof> source, HostScope scope) =>
-        source.InScope(scope, proof => proof.Property);
+    /// <summary>
+    /// The compliance proofs of the scope (E03/F02/US03/T01, NF-47): those whose every flat the scope reaches. A receipt of the Alloggiati communication
+    /// may cover several flats (E20/F02/US01/T01) and the file is about all of them (the guests of each), so a collaborator «Solo alcuni» reads it only when it
+    /// reaches the flat the proof was filed under <b>and</b> every flat it covers; one flat outside the reach keeps the whole proof out, whichever flat is
+    /// asked for. As one join and one <c>NOT EXISTS</c> in the same statement; an org-wide scope returns the query as it is.
+    /// </summary>
+    public static IQueryable<ManualComplianceProof> InScope(this IQueryable<ManualComplianceProof> source, HostScope scope)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(scope);
+
+        if (scope.IsOrgWide)
+            return source;
+
+        return source
+            .InScope(scope, proof => proof.Property)
+            .Where(EveryCoveredFlatInReach(scope));
+    }
 
     /// <summary>The lines of the send log of the scope (those of a property it reaches, E03/F02/US03/T01, NF-47).</summary>
     public static IQueryable<ComplianceSendLogEntry> InScope(this IQueryable<ComplianceSendLogEntry> source, HostScope scope) =>
@@ -138,6 +153,29 @@ public static class HostScopeQueryExtensions
         var predicate = PropertyPredicate(scope);
         var body = new ReplaceParameter(predicate.Parameters[0], property.Body).Visit(predicate.Body)!;
         return source.Where(Expression.Lambda<Func<T, bool>>(body, property.Parameters));
+    }
+
+    /// <summary>
+    /// «Every flat the proof covers is in the scope»: the one predicate of the properties (<see cref="PropertyPredicate"/>) moved onto the flat of each line of
+    /// <see cref="ManualComplianceProof.CoveredProperties"/> and required of all of them (<c>All</c>, which Npgsql turns into <c>NOT EXISTS</c> of a line
+    /// that fails it). A proof with no line has nothing to fail: the flat it was filed under is judged by the caller.
+    /// </summary>
+    private static Expression<Func<ManualComplianceProof, bool>> EveryCoveredFlatInReach(HostScope scope)
+    {
+        var predicate = PropertyPredicate(scope);
+        var proof = Expression.Parameter(typeof(ManualComplianceProof), "proof");
+        var link = Expression.Parameter(typeof(ManualComplianceProofProperty), "link");
+        var flat = Expression.Property(link, nameof(ManualComplianceProofProperty.Property));
+        var inReach = Expression.Lambda<Func<ManualComplianceProofProperty, bool>>(
+            new ReplaceParameter(predicate.Parameters[0], flat).Visit(predicate.Body)!,
+            link);
+        var all = Expression.Call(
+            typeof(Enumerable),
+            nameof(Enumerable.All),
+            [typeof(ManualComplianceProofProperty)],
+            Expression.Property(proof, nameof(ManualComplianceProof.CoveredProperties)),
+            inReach);
+        return Expression.Lambda<Func<ManualComplianceProof, bool>>(all, proof);
     }
 
     /// <summary>The predicate a property must satisfy to be in the scope (the one rule every <c>InScope</c> applies).</summary>

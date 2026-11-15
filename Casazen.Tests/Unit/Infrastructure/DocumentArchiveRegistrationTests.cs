@@ -19,7 +19,7 @@ namespace Casazen.Tests.Unit.Infrastructure;
 public class DocumentArchiveRegistrationTests
 {
     [Fact]
-    public void AddDocumentArchive_RegistersTheThreeSourcesTheServiceAndTheCaps_AndNothingElse()
+    public void AddDocumentArchive_RegistersTheFiveSourcesTheServiceAndTheCaps_AndNothingElse()
     {
         var services = new ServiceCollection();
 
@@ -27,7 +27,13 @@ public class DocumentArchiveRegistrationTests
 
         var sources = services.Where(d => d.ServiceType == typeof(IDocumentArchiveSource)).ToList();
         Assert.Equal(
-            [typeof(PropertyDocumentArchiveSource), typeof(LeaseDocumentArchiveSource), typeof(TouristTaxRemittanceArchiveSource)],
+            [
+                typeof(PropertyDocumentArchiveSource),
+                typeof(LeaseDocumentArchiveSource),
+                typeof(TouristTaxRemittanceArchiveSource),
+                typeof(AlloggiatiReceiptArchiveSource),
+                typeof(IstatProofArchiveSource),
+            ],
             sources.Select(s => s.ImplementationType));
         Assert.All(sources, s => Assert.Equal(ServiceLifetime.Scoped, s.Lifetime));
         var service = Assert.Single(services, d => d.ServiceType == typeof(IDocumentArchiveService));
@@ -37,7 +43,7 @@ public class DocumentArchiveRegistrationTests
     }
 
     [Fact]
-    public void TheContainer_BuildsTheService_WithTheThreeSourcesInOrder()
+    public void TheContainer_BuildsTheService_WithTheFiveSourcesInOrder()
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -51,7 +57,13 @@ public class DocumentArchiveRegistrationTests
 
         Assert.IsType<DocumentArchiveService>(scope.ServiceProvider.GetRequiredService<IDocumentArchiveService>());
         Assert.Equal(
-            [ArchiveDocumentType.PropertyDocument, ArchiveDocumentType.Contract, ArchiveDocumentType.TouristTax],
+            [
+                ArchiveDocumentType.PropertyDocument,
+                ArchiveDocumentType.Contract,
+                ArchiveDocumentType.TouristTax,
+                ArchiveDocumentType.AlloggiatiReceipt,
+                ArchiveDocumentType.IstatProof,
+            ],
             scope.ServiceProvider.GetServices<IDocumentArchiveSource>().Select(s => s.Type));
         Assert.Equal(DocumentArchiveOptions.DefaultMaxExportFiles, provider.GetRequiredService<IOptions<DocumentArchiveOptions>>().Value.MaxExportFiles);
     }
@@ -67,6 +79,8 @@ public class DocumentArchiveRegistrationTests
             new PropertyDocumentArchiveSource(db, storage),
             new LeaseDocumentArchiveSource(db, storage),
             new TouristTaxRemittanceArchiveSource(db, storage),
+            new AlloggiatiReceiptArchiveSource(db, storage),
+            new IstatProofArchiveSource(db, storage),
         ];
 
         Assert.Equal(
@@ -74,6 +88,8 @@ public class DocumentArchiveRegistrationTests
                 (ArchiveDocumentType.PropertyDocument, "short-rent|long-rent", "property.read"),
                 (ArchiveDocumentType.Contract, "long-rent", "lease.read"),
                 (ArchiveDocumentType.TouristTax, "short-rent", "payment.read"),
+                (ArchiveDocumentType.AlloggiatiReceipt, "short-rent", "guest.read"),
+                (ArchiveDocumentType.IstatProof, "short-rent", "guest.read"),
             ],
             sources.Select(s => (s.Type, s.ContextKey, s.PermissionKey)));
     }

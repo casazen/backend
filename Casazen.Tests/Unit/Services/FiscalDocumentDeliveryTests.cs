@@ -315,6 +315,7 @@ public class FiscalDocumentDeliveryTests
         var draft = await SeedAsync(kit, document: d => (d.Status, d.Number, d.IssueDate) = (FiscalDocumentStatus.Draft, null, null));
         var discarded = await SeedAsync(kit, document: d => (d.Status, d.Number, d.IssueDate) = (FiscalDocumentStatus.Discarded, null, null));
         var ownerInvoice = await SeedAsync(kit, document: d => (d.Purpose, d.BookingId) = (FiscalDocumentPurpose.OwnerInvoice, null));
+        var selfBilling = await SeedAsync(kit, document: d => (d.Purpose, d.BookingId) = (FiscalDocumentPurpose.SelfBilling, null));
         var imported = await SeedAsync(kit, document: d => d.Source = FiscalDocumentSource.Octorate);
 
         async Task<string> CodeOfAsync(Guid id) => (await Assert.ThrowsAsync<DomainRuleException>(() => kit.Service.SendToGuestAsync(id))).Code;
@@ -322,6 +323,7 @@ public class FiscalDocumentDeliveryTests
         Assert.Equal("document_not_issued", await CodeOfAsync(draft.DocumentId));
         Assert.Equal("document_not_issued", await CodeOfAsync(discarded.DocumentId));
         Assert.Equal("document_owner_invoice", await CodeOfAsync(ownerInvoice.DocumentId));
+        Assert.Equal("document_self_billing", await CodeOfAsync(selfBilling.DocumentId));
         Assert.Equal("document_read_only", await CodeOfAsync(imported.DocumentId));
         var missing = await Assert.ThrowsAsync<NotFoundException>(() => kit.Service.SendToGuestAsync(Guid.NewGuid()));
         Assert.Equal("fiscal_document_not_found", missing.Code);
