@@ -2094,6 +2094,33 @@
   <data name="TodoReason_IdentityVerification" xml:space="preserve">
     <value>The identity verification of the guest waits for an operator's decision</value>
   </data>
+  <data name="TodoReason_IdentityVerificationVideoCall" xml:space="preserve">
+    <value>Video call proposed to the guest: the identity verification waits for an operator's decision</value>
+  </data>
+  <data name="TodoReason_IdentityVerificationUseChat" xml:space="preserve">
+    <value>The identity verification waits for an operator: the guest has no e-mail address, propose the video call from the portal chat</value>
+  </data>
+  <data name="GuestVideoCall_Subject" xml:space="preserve">
+    <value>Video call for your check-in — {0}</value>
+  </data>
+  <data name="GuestVideoCall_Greeting" xml:space="preserve">
+    <value>Dear {0},</value>
+  </data>
+  <data name="GuestVideoCall_Body" xml:space="preserve">
+    <value>To complete the check-in for your stay at &lt;strong&gt;{0}&lt;/strong&gt; (arrival: &lt;strong&gt;{1}&lt;/strong&gt;), the host needs to verify your identity with a short video call.</value>
+  </data>
+  <data name="GuestVideoCall_Instructions" xml:space="preserve">
+    <value>Keep at hand the identity document you entered in the check-in and open the link below at the time agreed with the host:</value>
+  </data>
+  <data name="GuestVideoCall_Cta" xml:space="preserve">
+    <value>Join the video call</value>
+  </data>
+  <data name="GuestVideoCall_LinkFallback" xml:space="preserve">
+    <value>If the button does not work, copy and paste this link into your browser:</value>
+  </data>
+  <data name="GuestVideoCall_Hint" xml:space="preserve">
+    <value>Afterwards the host completes the identity verification. If you were not expecting this request, ignore this e-mail.</value>
+  </data>
   <data name="GuestAccessCode_Subject" xml:space="preserve">
     <value>The access code for your stay — {0}</value>
   </data>

@@ -1,8 +1,11 @@
+using System.Globalization;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
@@ -186,6 +189,105 @@ public class VerificationQueueService(
             bookingId, newLink.SessionId);
 
         return true;
+    }
+
+    /// <summary>
+    /// The operator proposes a video call (E22/F01/US01/T03): the link of the meeting goes to the guest by e-mail, in the guest's language, and is kept nowhere
+    /// (the service has no HTTP client: it is not fetched either). The booking must be one the caller reaches whose verification waits for an operator; the
+    /// verification is not decided by this, the operator decides after the call as ever. What is recorded is only that a call was proposed, when and by whom,
+    /// on the open "To do" of the verification (reason and notes), and in the log of the application with the booking and the operator, no link.
+    /// </summary>
+    public async Task<VideoCallOutcome> ProposeVideoCallAsync(
+        Guid bookingId,
+        HostScope scope,
+        string meetingUrl,
+        string? operatorUserId = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+
+        var link = VideoCallLinks.TryParse(meetingUrl);
+        if (link is null)
+            throw new DomainRuleException(VideoCallLinks.UrlInvalidCode, "VerificationVideoCallUrlInvalid", VideoCallLinks.MaxLength);
+
+        var session = await PendingSessions(scope)
+            .Include(s => s.Booking)
+                .ThenInclude(b => b.Guest)
+            .Include(s => s.Booking)
+                .ThenInclude(b => b.Property)
+            .Where(s => s.BookingId == bookingId)
+            .OrderByDescending(s => s.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (session == null)
+        {
+            logger.LogWarning("No pending verification found for booking {BookingId}: no video call proposed", bookingId);
+            return VideoCallOutcome.NotPending;
+        }
+
+        var booking = session.Booking;
+        var guest = booking.Guest;
+        if (string.IsNullOrWhiteSpace(guest.Email))
+        {
+            // Nobody to e-mail: the operator is told, and the "To do" says where else to reach the guest (the chat of the portal the booking came from).
+            await UpdateTodoAsync(session.OrgId, bookingId, "TodoReason_IdentityVerificationUseChat", null, cancellationToken);
+            logger.LogInformation("Video call for booking {BookingId} not sent: the guest has no e-mail address, the portal chat is suggested", bookingId);
+            return VideoCallOutcome.GuestUnreachable;
+        }
+
+        var culture = GuestLanguages.CultureOf(GuestLanguages.Resolve(session.Language, null));
+        var email = EmailTemplates.GuestVideoCall(
+            culture,
+            $"{guest.FirstName} {guest.LastName}".Trim(),
+            booking.Property.Name,
+            booking.CheckInDate,
+            link.AbsoluteUri);
+        if (!emailQueue.Enqueue(guest.Email, email, EmailTemplates.Names.GuestVideoCall))
+        {
+            logger.LogWarning("Video call e-mail of booking {BookingId} not queued", bookingId);
+            return VideoCallOutcome.NotSent;
+        }
+
+        // Only that a call was proposed, when and by whom: the link is in the e-mail and nowhere here.
+        var proposedAt = UtcNow().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+        var note = $"Videochiamata proposta il {proposedAt} UTC da {(string.IsNullOrWhiteSpace(operatorUserId) ? "sistema" : operatorUserId)}";
+        await UpdateTodoAsync(session.OrgId, bookingId, "TodoReason_IdentityVerificationVideoCall", note, cancellationToken);
+        logger.LogInformation("User {UserId} proposed a video call for booking {BookingId}", operatorUserId ?? "none", bookingId);
+        return VideoCallOutcome.Sent;
+    }
+
+    /// <summary>
+    /// What the open "To do" of the verification of the booking says after a video call was proposed, or could not be (the guest has no e-mail address): its
+    /// reason, in the language of the org, and, when there is a <paramref name="note"/>, a line added to its notes (the newest 2000 characters are kept). Nothing
+    /// when no "To do" is open.
+    /// </summary>
+    private async Task UpdateTodoAsync(Guid orgId, Guid bookingId, string reasonKey, string? note, CancellationToken cancellationToken)
+    {
+        var type = nameof(ActivityType.IdentityVerification);
+        var todo = await db.InternalActivities
+            .Where(a => a.OrgId == orgId
+                        && a.ActivityType == type
+                        && a.EntityType == InternalActivity.BookingEntityType
+                        && a.EntityId == bookingId
+                        && a.CompletedAt == null)
+            .OrderBy(a => a.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (todo is null)
+            return;
+
+        var language = await db.Orgs
+            .AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(o => o.Id == orgId)
+            .Select(o => o.DefaultLanguage)
+            .FirstOrDefaultAsync(cancellationToken);
+        todo.Reason = EmailTexts.Get(reasonKey, OrgInvitationEmails.CultureOf(language));
+        if (note is not null)
+        {
+            var notes = string.IsNullOrEmpty(todo.Notes) ? note : todo.Notes + "\n" + note;
+            todo.Notes = notes.Length > 2000 ? notes[^2000..] : notes;
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>

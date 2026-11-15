@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Casazen.Core.Authorization;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Web.Authorization;
@@ -96,6 +97,47 @@ public class VerificationController(
 
         logger.LogInformation("User {UserId} requested new photo for booking {BookingId}", userId, bookingId);
         return Ok();
+    }
+
+    /// <summary>
+    /// Proposes a video call to the guest (E22/F01/US01/T03), the fallback when the face check cannot decide: <c>{ url }</c> is the address of the meeting the
+    /// operator created, with any provider (absolute https, at most 500 characters, never fetched, never stored). The guest gets an e-mail «Videochiamata per il
+    /// check-in» with the link, in the language of the check-in page; the booking keeps waiting, and the decision after the call is the existing
+    /// <c>verify</c> or <c>reject</c> (the note «videochiamata»). 422 <c>video_call_url_invalid</c> for an address that is not one; 404
+    /// <c>no_pending_verification</c> when the booking is outside the caller's scope or its verification does not wait for an operator; 409
+    /// <c>guest_unreachable</c> when the guest has no e-mail address (nothing is sent and the "To do" suggests the portal chat); 409 <c>video_call_not_sent</c>
+    /// when the e-mail could not be queued. Behind <see cref="FeatureFlags.CheckInIdentityVerification"/>.
+    /// </summary>
+    [HttpPost("{bookingId:guid}/video-call")]
+    [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
+    [ProducesResponseType(typeof(VideoCallProposedDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<VideoCallProposedDto>> ProposeVideoCall(
+        Guid bookingId,
+        [FromBody] VideoCallRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var scope = await ResolveScopeAsync(userId);
+        if (scope == null)
+            return Unauthorized();
+
+        var outcome = await verificationService.ProposeVideoCallAsync(bookingId, scope, request.Url ?? string.Empty, userId, cancellationToken);
+        return outcome switch
+        {
+            VideoCallOutcome.Sent => Ok(new VideoCallProposedDto()),
+            VideoCallOutcome.NotPending =>
+                this.ApiProblem(StatusCodes.Status404NotFound, "no_pending_verification", "VerificationNoPending"),
+            VideoCallOutcome.GuestUnreachable =>
+                this.ApiProblem(StatusCodes.Status409Conflict, "guest_unreachable", "VerificationGuestUnreachable"),
+            _ => this.ApiProblem(StatusCodes.Status409Conflict, "video_call_not_sent", "VerificationVideoCallNotSent"),
+        };
     }
 
     /// <summary>

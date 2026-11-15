@@ -97,3 +97,36 @@ of the image and are not part of this delivery.
 
 Empty the `...__Sha256` variable (or switch `Features__CheckInIdentityVerification` off): the models are not used, every verification is the operator path,
 and `biometrics` is `degraded` (flag on) or `healthy` (flag off). Nothing else changes, because the operator path never needed the models.
+
+## Thresholds per organization and the operator video call (E22/F01/US01/T03)
+
+These two do not need the models: they work with the flag on and the models absent (every verification is then the operator path, and the video call is
+one way for the operator to decide).
+
+### Thresholds (`GET/PUT api/settings/biometrics`)
+
+| | |
+|---|---|
+| Who | the administrators of the organization (the org policy `OrgBillingAdmin`), only for their own org: the route has no organization in it. Behind `Features__CheckInIdentityVerification` |
+| What | `enabled`, `acceptThreshold` (from this similarity the face is accepted without a person), `escalateThreshold` (between it and the accept threshold an operator decides), `maxAttempts`. A member left out of the `PUT` keeps its value |
+| Bounds | 0.50 <= escalate < accept <= 0.95, attempts 1 to 5, checked on the whole result after rounding to four decimals; 422 `biometric_thresholds_out_of_range`, `biometric_thresholds_order_invalid` or `biometric_attempts_out_of_range` and nothing is saved |
+| No row | today's defaults: 0.85, 0.70 and 3 attempts, enabled on the Agency plan only (ADR-013-R13), provisional (`isDefault` is true) |
+| Provisional | the entity has no flag: a row is provisional while `CalibratedAt` is null. **Every change by the organization sets it back to null** (a calibration does not outlive the values it was made on); the same values again change nothing |
+| Calibration | only a platform administrator writes it: `PUT api/admin/biometrics/{orgId}/calibrated` (policy `AdminOnly`, not behind the flag), after a calibration on real data (the thresholds must be calibrated before the flag goes on in production). An org that never saved anything gets a row with today's defaults, calibrated. 404 for an org that does not exist |
+| Audit | one `OrgSettingsChanged` line in the activity log of the org for every real change and every calibration (the actor is the administrator, or the staff user; no values), and one line in the application log with the new numbers and who changed them; nothing for a repeat |
+
+The first save of an organization that has no row writes the plan's default of `enabled` into it when the administrator did not send it: from then on the row, not the plan, decides.
+The table has no unique index on the organization (the model is not changed by this task): two first saves in the same instant could write two rows, and every reader takes the oldest.
+
+### Video call (`POST api/verification/{bookingId}/video-call`)
+
+1. The operator creates a meeting with any provider (Meet, Teams, Zoom, Jitsi...) and pastes its address.
+2. CasaZen checks its shape only (absolute https, at most 500 characters, no spaces, no credentials in it; 422 `video_call_url_invalid`): **it never opens the address**.
+3. The guest gets the e-mail «Videochiamata per il check-in» with the link, in the language chosen on the check-in page (IT, EN, DE, FR, ES; Italian when none). The booking must be one the
+   operator reaches whose verification waits for an operator (404 `no_pending_verification` otherwise).
+4. **The link is not stored.** What is kept is that a call was proposed, when and by whom, on the open "To do" of the verification: its reason changes to «video call proposed» and a line of its notes
+   says when and by whom; the log of the application names the booking and the operator, never the address.
+5. A guest with no e-mail address (an OTA guest) answers 409 `guest_unreachable`: nothing is sent, and the "To do" says to propose the call from the chat of the portal the booking came from. If the e-mail
+   cannot be queued (no provider, queue down) the answer is 409 `video_call_not_sent` and nothing is recorded.
+6. After the call the operator decides with the existing approval or rejection (`POST api/verification/{bookingId}/verify` or `reject`) with the note «videochiamata»: an operator decision
+   (`Method = Operator`), which releases the lock code only on an approval, as ever.

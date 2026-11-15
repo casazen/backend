@@ -47,4 +47,25 @@
   <data name="GuestCheckInReminder_Validity" xml:space="preserve">
     <value>Der Link ist gültig bis {0}.</value>
   </data>
+  <data name="GuestVideoCall_Subject" xml:space="preserve">
+    <value>Videoanruf für Ihren Check-in — {0}</value>
+  </data>
+  <data name="GuestVideoCall_Greeting" xml:space="preserve">
+    <value>Guten Tag {0},</value>
+  </data>
+  <data name="GuestVideoCall_Body" xml:space="preserve">
+    <value>Um den Check-in für Ihren Aufenthalt in &lt;strong&gt;{0}&lt;/strong&gt; (Anreise: &lt;strong&gt;{1}&lt;/strong&gt;) abzuschließen, muss der Gastgeber Ihre Identität in einem kurzen Videoanruf überprüfen.</value>
+  </data>
+  <data name="GuestVideoCall_Instructions" xml:space="preserve">
+    <value>Halten Sie den Ausweis bereit, den Sie beim Check-in angegeben haben, und öffnen Sie den folgenden Link zu der mit dem Gastgeber vereinbarten Zeit:</value>
+  </data>
+  <data name="GuestVideoCall_Cta" xml:space="preserve">
+    <value>Am Videoanruf teilnehmen</value>
+  </data>
+  <data name="GuestVideoCall_LinkFallback" xml:space="preserve">
+    <value>Falls die Schaltfläche nicht funktioniert, kopieren Sie diesen Link und fügen Sie ihn in Ihren Browser ein:</value>
+  </data>
+  <data name="GuestVideoCall_Hint" xml:space="preserve">
+    <value>Anschließend schließt der Gastgeber die Identitätsprüfung ab. Wenn Sie diese Anfrage nicht erwartet haben, ignorieren Sie diese E-Mail.</value>
+  </data>
 </root>

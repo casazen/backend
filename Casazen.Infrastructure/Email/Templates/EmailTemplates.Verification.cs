@@ -16,6 +16,7 @@ public static partial class EmailTemplates
         public const string GuestNewPhotoRequest = "guest-new-photo-request";
         public const string VerificationOperatorAlert = "verification-operator-alert";
         public const string GuestAccessCode = "guest-access-code";
+        public const string GuestVideoCall = "guest-video-call";
     }
 
     /// <summary>
@@ -105,6 +106,29 @@ public static partial class EmailTemplates
             .Code(lockCode)
             .Muted("GuestAccessCode_Keep")
             .Build("GuestAccessCode_Subject", propertyName);
+
+    /// <summary>
+    /// An operator proposes a video call for the check-in (E22/F01/US01/T03), to the guest: «Videochiamata per il check-in». Why, what to have at hand and the
+    /// link of the meeting the operator created, as a button and as plain text for the clients that do not render one. Written in the language the guest
+    /// chose on the check-in page (Italian, English, German, French or Spanish: the five of <see cref="Casazen.Core.Utilities.GuestLanguages"/>). Every value, the
+    /// link included, is HTML-encoded by the builder; the link is not kept anywhere once the e-mail is queued.
+    /// </summary>
+    public static EmailContent GuestVideoCall(
+        CultureInfo culture,
+        string guestName,
+        string propertyName,
+        DateTime checkInDate,
+        string meetingUrl)
+    {
+        return new EmailHtmlBuilder(culture)
+            .Paragraph("GuestVideoCall_Greeting", guestName)
+            .Paragraph("GuestVideoCall_Body", propertyName, checkInDate)
+            .Paragraph("GuestVideoCall_Instructions")
+            .Button("GuestVideoCall_Cta", meetingUrl)
+            .LinkFallback("GuestVideoCall_LinkFallback", meetingUrl)
+            .Muted("GuestVideoCall_Hint")
+            .Build("GuestVideoCall_Subject", propertyName);
+    }
 
     /// <summary>
     /// The culture of <see cref="GuestAccessCode"/> for the language the guest chose on the check-in page: Italian for <c>it</c> (and when none

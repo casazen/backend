@@ -60,6 +60,23 @@ public interface IVerificationQueueService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The operator proposes a video call to the guest of a booking whose verification waits for an operator (E22/F01/US01/T03): the fallback when the face
+    /// check cannot decide. <paramref name="meetingUrl"/> is the address of the meeting the operator created, with any provider: an absolute https address of
+    /// at most 500 characters (<see cref="VideoCallLinks"/>; <see cref="Exceptions.DomainRuleException"/> 422 <c>video_call_url_invalid</c> otherwise). It is
+    /// <b>never fetched and never stored</b>: it goes to the guest in an e-mail (template «Videochiamata per il check-in», in the language of the guest's
+    /// check-in page) and the only trace is on the open "To do" of the verification: its reason says a call was proposed, and its notes when and by whom
+    /// (<paramref name="operatorUserId"/>). The verification still waits: the decision after the call is <see cref="RecordManualVerificationAsync"/> (or the
+    /// rejection) as ever, with <c>Method = Operator</c> and the note «videochiamata». A guest with no e-mail address is
+    /// <see cref="VideoCallOutcome.GuestUnreachable"/>: nothing is sent and the "To do" suggests the portal chat.
+    /// </summary>
+    Task<VideoCallOutcome> ProposeVideoCallAsync(
+        Guid bookingId,
+        Authorization.HostScope scope,
+        string meetingUrl,
+        string? operatorUserId = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The outcomes of the verifications of the bookings <paramref name="scope"/> reaches, decided from <paramref name="fromUtc"/> (included) to
     /// <paramref name="toUtc"/> (excluded): what the agent decided, what the operators decided, and the share of the concluded verifications an
     /// operator concluded (the monitoring of NF-51, E03/F04/US02/T03).
@@ -69,6 +86,56 @@ public interface IVerificationQueueService
         DateTime fromUtc,
         DateTime toUtc,
         CancellationToken cancellationToken = default);
+}
+
+/// <summary>What became of a proposed video call (<see cref="IVerificationQueueService.ProposeVideoCallAsync"/>).</summary>
+public enum VideoCallOutcome
+{
+    /// <summary>The e-mail with the link was queued for the guest.</summary>
+    Sent = 1,
+
+    /// <summary>The booking is outside the caller's scope or its verification does not wait for an operator: 404 <c>no_pending_verification</c>.</summary>
+    NotPending = 2,
+
+    /// <summary>The guest has no e-mail address: nothing was sent and the "To do" suggests the portal chat: 409 <c>guest_unreachable</c>.</summary>
+    GuestUnreachable = 3,
+
+    /// <summary>The e-mail could not be queued (no provider configured, the queue failed): nothing was recorded: 409 <c>video_call_not_sent</c>.</summary>
+    NotSent = 4,
+}
+
+/// <summary>
+/// The address of a video call (E22/F01/US01/T03): what the operator pastes from the meeting it created. Judged by its shape only, never fetched: an
+/// absolute <c>https</c> URL of at most <see cref="MaxLength"/> characters, with no white space or control character in it and no credentials.
+/// </summary>
+public static class VideoCallLinks
+{
+    /// <summary>The longest address accepted.</summary>
+    public const int MaxLength = 500;
+
+    /// <summary>The code of the 422 for an address that is not one.</summary>
+    public const string UrlInvalidCode = "video_call_url_invalid";
+
+    /// <summary>The address as an absolute <c>https</c> URI, or null when <paramref name="url"/> is not one. The input is trimmed first.</summary>
+    public static Uri? TryParse(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return null;
+
+        var value = url.Trim();
+        if (value.Length > MaxLength || value.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)))
+            return null;
+
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            || uri.Scheme != Uri.UriSchemeHttps
+            || string.IsNullOrEmpty(uri.Host)
+            || !string.IsNullOrEmpty(uri.UserInfo))
+        {
+            return null;
+        }
+
+        return uri;
+    }
 }
 
 /// <summary>

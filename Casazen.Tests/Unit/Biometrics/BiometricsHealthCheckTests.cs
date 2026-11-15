@@ -102,11 +102,15 @@ public sealed class BiometricsHealthCheckTests : IDisposable
             .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
             .Where(m => m.GetCustomAttributes<HttpMethodAttribute>(inherit: true).Any())
             .ToList();
-        var action = Assert.Single(routed);
-        Assert.Equal("GetStatus", action.Name);
-        Assert.Equal(["GET"], action.GetCustomAttribute<HttpMethodAttribute>()!.HttpMethods);
-        Assert.Empty(action.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true));
-        Assert.DoesNotContain(action.GetCustomAttributes<AuthorizeAttribute>(inherit: true), a => a.Policy != CasazenPolicies.AdminOnly);
+
+        // The status (E22/F01/US01/T01) and the calibration of the thresholds of an organization (E22/F01/US01/T03): both for the platform administrators only.
+        Assert.Equal(["GetStatus", "MarkCalibrated"], routed.Select(a => a.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(["GET", "PUT"], routed.Select(a => a.GetCustomAttribute<HttpMethodAttribute>()!.HttpMethods.Single()).Order(StringComparer.Ordinal));
+        Assert.All(routed, action =>
+        {
+            Assert.Empty(action.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true));
+            Assert.DoesNotContain(action.GetCustomAttributes<AuthorizeAttribute>(inherit: true), a => a.Policy != CasazenPolicies.AdminOnly);
+        });
 
         var services = new ServiceCollection();
         services.AddLogging();

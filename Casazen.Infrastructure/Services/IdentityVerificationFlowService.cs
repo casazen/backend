@@ -622,6 +622,9 @@ public sealed class IdentityVerificationFlowService(
             .AsNoTracking()
             .IgnoreQueryFilters()
             .Where(s => s.OrgId == orgId)
+            // The oldest row, the one BiometricSettingsService reads and writes (the table has no unique index on the org).
+            .OrderBy(s => s.CreatedAt)
+            .ThenBy(s => s.Id)
             .Select(s => new { s.Enabled, s.AcceptThreshold, s.EscalateThreshold, s.MaxAttempts, s.CalibratedAt })
             .FirstOrDefaultAsync(ct);
         if (settings is not null)
