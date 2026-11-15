@@ -154,6 +154,12 @@ public static class FiscalDocumentExtensions
         // The issuer profiles of the owners who issue the documents of their Italian stays, with their own series and numbering (E17/F01/US01/T01).
         services.AddScoped<IOwnerIssuerProfileService, OwnerIssuerProfileService>();
 
+        // The self-billed invoices (TD17) of the commissions of the foreign portals (E17/F01/US03/T01), behind Features:FiscalDocumentIssuance, with the section SelfBilling (the legal
+        // entities of the portals, the VAT integrated, the deadline: ⚖ defaults to be confirmed by an accountant). Not validated at startup: a portal entry that is not usable is
+        // ignored and its commissions are listed as «portal not configured», an invalid VAT rate makes the generation refuse (422 self_billing_not_configured).
+        services.AddOptions<SelfBillingOptions>().Bind(configuration.GetSection(SelfBillingOptions.SectionName));
+        services.AddScoped<ISelfBillingService, SelfBillingService>();
+
         return services;
     }
 }

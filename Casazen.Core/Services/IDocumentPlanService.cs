@@ -1,3 +1,4 @@
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
@@ -74,4 +75,38 @@ public static class DocumentPlanRules
     /// </summary>
     public static IReadOnlyCollection<FiscalLineType> AgencyServiceLineTypes(CleaningFeeTreatment agencyCleaning) =>
         agencyCleaning == CleaningFeeTreatment.Service ? [FiscalLineType.Cleaning, FiscalLineType.ExtraService] : [FiscalLineType.ExtraService];
+
+    /// <summary>
+    /// True when an ownership that started at <paramref name="ownershipStart"/> and ended at <paramref name="ownershipEnd"/> (<c>null</c> = still in force) is in force on
+    /// <paramref name="day"/>: started on or before it and not ended on it (the definition of the owner ledger, so the document names the owner the ledger credits the stay to).
+    /// </summary>
+    public static bool IsActiveOn(DateTime ownershipStart, DateTime? ownershipEnd, DateOnly day) =>
+        DateOnly.FromDateTime(ownershipStart) <= day && (ownershipEnd is not { } end || DateOnly.FromDateTime(end) > day);
+
+    /// <summary>
+    /// Who signs for a property of several co-owners (⚖ I6) among the ownerships in force on <paramref name="day"/>: the co-owner whose mandate is in force that day
+    /// (<see cref="OwnerMandateRules.InForce"/>); among several, or when none has one, the largest share, then the oldest ownership, then the smallest id: always the same
+    /// one. The one rule of the document of a stay and of the self-billed invoice of a portal account held by the owner (E17/F01/US03/T01). <c>null</c> without an ownership.
+    /// </summary>
+    public static ActiveOwnership? SignatoryOf(IReadOnlyCollection<ActiveOwnership> active, IEnumerable<OwnerMandate> mandates, DateOnly day)
+    {
+        ArgumentNullException.ThrowIfNull(active);
+        ArgumentNullException.ThrowIfNull(mandates);
+
+        var mandateList = mandates as IReadOnlyCollection<OwnerMandate> ?? mandates.ToList();
+        var withMandate = active.Where(o => OwnerMandateRules.InForce(mandateList, o.OwnerId, o.OwnershipId, day) is not null).ToList();
+        return (withMandate.Count > 0 ? withMandate : active)
+            .OrderByDescending(o => o.SharePercent)
+            .ThenBy(o => o.OwnershipStart)
+            .ThenBy(o => o.OwnerId)
+            .Select(o => (ActiveOwnership?)o)
+            .FirstOrDefault();
+    }
 }
+
+/// <summary>An ownership in force on a day: the one rule of who signs for several co-owners reads these (<see cref="DocumentPlanRules.SignatoryOf"/>).</summary>
+/// <param name="OwnershipId">The ownership.</param>
+/// <param name="OwnerId">The owner.</param>
+/// <param name="SharePercent">The share in percent.</param>
+/// <param name="OwnershipStart">When the ownership started.</param>
+public readonly record struct ActiveOwnership(Guid OwnershipId, Guid OwnerId, decimal SharePercent, DateTime OwnershipStart);

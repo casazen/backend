@@ -268,8 +268,9 @@ setup (`GET api/billing-setup`, wizard «Fatturazione») and are saved by the en
 the property), read and written in bulk by `GET/PUT api/billing-setup/channel-account-holders` (`[{ propertyId, channel, holder }]`, `holder: null` back to the
 default; an empty list is 422, never «all»). They are part of the billing setup: `payment.read` (`property.write` to write), the whole org, behind
 `Features:FiscalDocumentIssuance` like the rest of the setup and behind `Features:OwnerInvoicing` like the invoices that use them (404 while either is off;
-while `OwnerInvoicing` is off the section `channels` shows no values). `IPortalAccountHolderResolver` is the one reader: the owner invoice today; the statement
-labels of E13, the VAT summary of E15 and the TD17 of E17 are meant to read it too.
+while `OwnerInvoicing` is off the section `channels` shows no values). `IPortalAccountHolderResolver` is the one reader: the owner invoice and the TD17 of E17
+(`ISelfBillingService`: who needs a self-billed invoice for the commissions of a portal, see `fiscal-documents.md` § Self-billed invoices (TD17)) read it today; the statement
+labels of E13 and the VAT summary of E15 are meant to read it too.
 ## Statement files and the owner portal accounting (E13/F01/US02)
 
 - **PDF and CSV of a version** (`GET api/owner-accounting/versions/{id}/pdf` and `…/csv`, `agency.statement.view`, the whole org): made from the ledger lines the

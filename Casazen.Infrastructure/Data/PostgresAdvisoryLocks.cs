@@ -486,6 +486,12 @@ internal static class PostgresAdvisoryLocks
         /// 1_650 to 1_659 are the package of the accountant (epic E15).
         /// </summary>
         AccountantPackage = 1_650,
+
+        /// <summary>
+        /// The self-billed invoices (TD17) of one org (key: <c>orgId.ToString("N")</c>, E17/F01/US03/T01): the drafts of a month are made one request at a time and held until
+        /// the commit, so two requests (a double click, a retry) never both find «no draft yet» for a holder, a portal and a month and make two of them.
+        /// </summary>
+        SelfBilling = 1_640,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

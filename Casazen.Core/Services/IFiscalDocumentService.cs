@@ -64,6 +64,22 @@ public interface IFiscalDocumentService
     Task<FiscalDocument> IssueOwnerInvoiceAsync(Guid documentId, decimal vatToPost, string? userId, CancellationToken ct = default);
 
     /// <summary>
+    /// The issue of a self-billed invoice, a TD17 (E17/F01/US03/T01), called by <see cref="ISelfBillingService.IssueAsync"/> once it checked the draft against the ledger: the
+    /// same issue as a document of a guest (the gap-free number in the series <paramref name="seriesPattern"/> of the issuer the draft belongs to, the snapshot of that
+    /// issuer, the rule version, the Italian XML, the state <c>to_send</c>), with <paramref name="rule"/> the one the self-billing service resolved from its settings (the VAT
+    /// integrated at its rate, the type of document TD17). The XML is the invoice of the foreign supplier integrated by its recipient: the supplier is the cedente, the issuer is the
+    /// cessionario that issues it (<c>SoggettoEmittente</c> <c>CC</c>). 404 <c>fiscal_document_not_found</c> (not a self-billed invoice); 422 <c>document_not_draft</c>,
+    /// <c>issuer_profile_incomplete</c>, <c>series_too_long</c>.
+    /// </summary>
+    Task<FiscalDocument> IssueSelfBillingAsync(Guid documentId, FiscalTaxRule rule, string seriesPattern, string? userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The draft of a self-billed invoice discarded (E17/F01/US03/T01), called by <see cref="ISelfBillingService.DiscardDraftAsync"/> once it checked the organization: no number is
+    /// consumed. 404 <c>fiscal_document_not_found</c> (not a self-billed invoice); 422 <c>document_not_draft</c>. The endpoints of the guest documents refuse it (422 <c>document_self_billing</c>).
+    /// </summary>
+    Task DiscardSelfBillingDraftAsync(Guid documentId, CancellationToken ct = default);
+
+    /// <summary>
     /// A credit note of an issued CasaZen document, issued at once in the same series: the whole document by default, never more than what is left
     /// to credit (422 <c>credit_amount_exceeds</c>). 422 <c>document_owner_invoice</c> for an owner invoice: its credit note gives its VAT back to the owner
     /// ledger, so it is made by <see cref="IOwnerInvoiceService.CreateCreditNoteAsync"/>, behind <c>agency.statement.manage</c> and its flag.

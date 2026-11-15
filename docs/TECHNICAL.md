@@ -1192,6 +1192,23 @@ its `Features:FiscalDocumentIssuance` too. All of them need the whole org (403 f
   `agency.statement.manage` and behind `Features:OwnerInvoicing`.
 - `IPortalAccountHolderResolver` is the one reader of the holder (override of the listing and portal, else the default of the organization).
 
+#### Self-billed invoices, TD17 (E17/F01/US03/T01, NF-116, D4)
+
+The TD17 of the commissions that foreign portals charge an Italian account holder, prepared from the `ChannelFee` lines of the owner ledger, one for each holder, portal and month
+(`FiscalDocument` with `Purpose = SelfBilling`, no migration). All endpoints need `agency.invoice.manage` (agency plan), the whole org (403 for a caller restricted to some properties,
+reads included) and `Features:FiscalDocumentIssuance` (404 while off, before authentication). Runbook: [`fiscal-documents.md`](runbooks/fiscal-documents.md) § Self-billed invoices (TD17).
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/fiscal/self-billing?period=yyyy-MM` | `agency.invoice.manage` | The TD17 of the org (drafts and issued, not the discarded ones), the newest month first, at most 1000: `[{ id, holderKind: Agency\|Owner, holderOwnerId, holderName, portalName, portalCountry, periodYear, periodMonth, dueDate, number, issueDate, status, taxableBase, vatAmount, total, currency, sdiStatus }]`. 422 `self_billing_period_invalid` |
+| `GET` | `/api/fiscal/self-billing/{id}` | `agency.invoice.manage` | One TD17: `{ invoice, ruleVersion, vatRatePercent, hasXml, lines: [{ lineNumber, description, totalPrice, vatRatePercent, vatAmount }] }`. 404 `fiscal_document_not_found` for another org's document or one that is not a TD17 |
+| `POST` | `/api/fiscal/self-billing/drafts` | `agency.invoice.manage` | `{ period: "yyyy-MM" }`: the drafts of the month for every holder and portal that needs one, made or made again from the ledger (an issued one is left alone, a draft nothing supports any more is discarded): `{ year, month, created, updated, alreadyIssued, discarded, drafts: [{ documentId, holderKind, holderOwnerId, portalName, result: created\|updated\|already_issued, taxableBase, estimatedAmount, changedSinceIssue }], failed: [{ holderKind, holderOwnerId, portalName, code: owner_issuer_missing\|issuer_profile_incomplete, fields }], notDue: [{ reason, channel, stays, amount, currency }] }`. 422 `self_billing_period_invalid`, `self_billing_not_configured` |
+| `POST` | `/api/fiscal/self-billing/{id}/issue` | `agency.invoice.manage` | `{ confirm }`: the issue through the fiscal documents (gap-free number in the series `SelfBilling:SeriesPattern` of the holder's profile, XML `TD17` with `SoggettoEmittente` `CC`, state `to_send`), only while the draft is what the ledger gives. 404; 409 `document_draft_outdated`; 422 `document_confirmation_required`, `document_not_draft`, `self_billing_not_configured`, `fatturapa_xml_invalid`, `series_too_long` |
+| `DELETE` | `/api/fiscal/self-billing/{id}` | `agency.invoice.manage` | The draft discarded (no number consumed). 204; 404; 422 `document_not_draft` |
+
+- The PDF and the XML of a TD17 are those of every fiscal document (`/api/fiscal/documents/{id}/pdf|xml`); the endpoints of the guest documents refuse to make a TD17 again, issue it, credit it or
+  discard it (422 `document_self_billing`).
+
 #### Owner statement version files (agency, E13/F01/US02/T01, NF-110, NF-115)
 
 | Method | Path | Auth | Description |

@@ -273,6 +273,13 @@ public static class DemoShowcaseCatalog
         public const string OwnerIssuerDocuments = "owner-issuer-documents";
 
         /// <summary>
+        /// The self-billed invoice (TD17, E17/F01/US03, NF-116) of the commissions a foreign portal charged an Italian owner company that holds the account: two Booking.com
+        /// stays of the month, one line for the property, the VAT of 22% integrated on top of the sum (the rate of <c>SelfBilling:VatRatePercent</c>). A template only: the
+        /// showcase has no owner ledger to draw the commissions from, so nothing is written at reset.
+        /// </summary>
+        public const string SelfBilling = "self-billing-td17";
+
+        /// <summary>
         /// The payment ledger (E06/F04/US01/T03, FIS-05, NF-85): a card payment with the commission and the net the provider reported, a cash payment
         /// the host recorded, and a booking of a channel with the amount the channel collected (commission not given by Octorate: not shown). Invented
         /// amounts, a template of the lines the ledger answers.
@@ -383,6 +390,7 @@ public static class DemoShowcaseCatalog
         Scenario.FiscalDocumentsDirect,
         Scenario.SwissFiscalDocument,
         Scenario.OwnerIssuerDocuments,
+        Scenario.SelfBilling,
         Scenario.PaymentLedger,
         Scenario.OwnerChannelCommission,
         Scenario.ReportCollections,
@@ -504,6 +512,15 @@ public static class DemoShowcaseCatalog
     [
         new("ricevuta-comproprietari", "TEST Mario Rossi", DocumentRegime.PrivatePerson, "P{year}", [50m, 50m], "TEST-BOLLO-1", 300.00m, 50.00m, 12.00m, false, Scenario.OwnerIssuerDocuments),
         new("fattura-societa-terzo-emittente", "TEST Immobiliare Lago Srl", DocumentRegime.VatOrdinary, "SRL{year}", [100m], null, 300.00m, 50.00m, 12.00m, true, Scenario.OwnerIssuerDocuments),
+    ];
+
+    /// <summary>
+    /// The self-billed invoice of the commissions of a month (E17/F01/US03): the TEST owner company that holds the Booking.com account of Villa del Lago, two stays with
+    /// a commission of 120.00 and 80.50 euro, the TEST supplier abroad as cedente. Invented, a template only.
+    /// </summary>
+    public static IReadOnlyList<DemoSelfBillingTemplate> SelfBillingExamples { get; } =
+    [
+        new("td17-societa-booking", "TEST Immobiliare Lago Srl", "TEST Portale B.V.", "NL", [120.00m, 80.50m], Scenario.SelfBilling),
     ];
 
     /// <summary>
@@ -2095,6 +2112,18 @@ public sealed record DemoOwnerIssuerDocumentTemplate(
     decimal Cleaning,
     decimal TouristTax,
     bool CleaningByTheAgency,
+    string Scenario);
+
+/// <summary>
+/// The self-billed invoice of a demo month (E17/F01/US03): the TEST holder that issues it, the TEST portal abroad that is its cedente (name and ISO country), and the
+/// commissions of the stays of the month, euro, whose sum is the taxable amount.
+/// </summary>
+public sealed record DemoSelfBillingTemplate(
+    string Key,
+    string HolderName,
+    string PortalName,
+    string PortalCountry,
+    IReadOnlyList<decimal> Commissions,
     string Scenario);
 
 /// <summary>A fiscal document of a direct demo stay: its status, the number of an issued one, the TEST recipient, the total and the tourist tax in it.</summary>

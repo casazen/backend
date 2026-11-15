@@ -115,6 +115,9 @@ public class FiscalDocumentsRegistrationTests
 
             // The issuer profiles of the owners (E17/F01/US01/T01).
             (typeof(IOwnerIssuerProfileService), typeof(OwnerIssuerProfileService), ServiceLifetime.Scoped),
+
+            // The self-billed invoices (TD17) of the commissions of the foreign portals (E17/F01/US03/T01).
+            (typeof(ISelfBillingService), typeof(SelfBillingService), ServiceLifetime.Scoped),
         };
 
         Assert.Equal(expected, ours);
