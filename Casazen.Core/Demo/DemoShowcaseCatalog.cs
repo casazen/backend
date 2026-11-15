@@ -17,7 +17,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-15.27";
+    public const string Version = "2026-11-15.28";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -111,6 +111,13 @@ public static class DemoShowcaseCatalog
         public const string WireBatchGenerated = "wire-batch-generated";
         public const string RoutineActive = "routine-active";
         public const string RoutineTestMode = "routine-test-mode";
+
+        /// <summary>
+        /// The ready routine «Richiesta di recensione» (E26/F01/US01/T01, NF-21, NF-69): the day after the check-out, at the check-out time of the house, the
+        /// action <c>RequestReview</c> asks the guest of a direct stay for the review of the booking site, once for each booking. The demo holds it in test mode:
+        /// its log shows runs that asked nobody, because the guests of the showcase are <c>@example.com</c> and nothing is sent to them.
+        /// </summary>
+        public const string RoutineReviewRequest = "routine-review-request";
         public const string PropertyWizardFields = "property-wizard-fields";
         public const string PropertySiteProfile = "property-site-profile";
         public const string GuestAppAccount = "guest-app-account";
@@ -391,6 +398,7 @@ public static class DemoShowcaseCatalog
         Scenario.WireBatchGenerated,
         Scenario.RoutineActive,
         Scenario.RoutineTestMode,
+        Scenario.RoutineReviewRequest,
         Scenario.PropertyWizardFields,
         Scenario.PropertySiteProfile,
         Scenario.GuestAppAccount,
@@ -1702,8 +1710,10 @@ public static class DemoShowcaseCatalog
     /// <summary>
     /// Automation routines demo (E01/F04/US01/T03, NF-21): two routines the API would save, marked as showcase rows. One is active: two days before a
     /// check-in it raises a To do for the stay (<c>CreateActivity</c>, an action that runs). The other is in test mode: a day before a check-out it
-    /// waits two hours and then raises the To do, simulated, so the log of the routine shows runs that changed nothing. Both only hold actions the engine
-    /// can run (<c>RoutineActionCatalog</c>), so the active one is a routine the activation accepts; the texts say DEMO or TEST.
+    /// waits two hours and then raises the To do, simulated, so the log of the routine shows runs that changed nothing. The others are the ready routines of the
+    /// check-out: «Pulizia al check-out» (E24/F01/US01/T02, <c>CreateCleaningRequest</c>) and «Richiesta di recensione» (E26/F01/US01/T01): a day after the check-out it
+    /// asks the guest of a direct stay for a review (<c>RequestReview</c>), in test mode because the guests of the showcase are invented and nothing is sent to them.
+    /// They only hold actions the engine can run (<c>RoutineActionCatalog</c>), so the active ones are routines the activation accepts; the texts say DEMO or TEST.
     /// </summary>
     public static IReadOnlyList<DemoRoutineTemplate> Routines { get; } =
     [
@@ -1738,6 +1748,17 @@ public static class DemoShowcaseCatalog
             [new DemoRoutineAction(RoutineActionType.CreateCleaningRequest, "{}")],
             false,
             Scenario.CleaningAtCheckout),
+
+        // E26/F01/US01/T01: the ready routine «Richiesta di recensione»: an offset of one day after the check-out time of the property on its own clock; in test mode, because
+        // the guests of the showcase are invented and nothing is sent to them.
+        new(
+            "review-request",
+            "Richiesta di recensione (TEST)",
+            RoutineEventType.AfterCheckout,
+            1,
+            [new DemoRoutineAction(RoutineActionType.RequestReview, "{}")],
+            true,
+            Scenario.RoutineReviewRequest),
     ];
 
     /// <summary>
@@ -2689,7 +2710,7 @@ public sealed record DemoWireBatchTemplate(
 /// <summary>
 /// An automation routine demo (NF-21, NF-26): demonstrates an active routine and one in test mode. It becomes a <c>Routine</c> row marked as showcase data
 /// (<c>TestDataEntities.Routine</c>): active in both cases, <paramref name="IsTestMode"/> says whether it simulates its actions. The event is a time trigger
-/// of <paramref name="DaysBefore"/> days (<c>{ "days": N }</c>).
+/// of <paramref name="DaysBefore"/> days (<c>{ "days": N }</c>), before the check-in or the check-out, or after it for the events «after».
 /// </summary>
 public sealed record DemoRoutineTemplate(
     string Key,

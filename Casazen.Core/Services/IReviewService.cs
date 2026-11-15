@@ -88,11 +88,83 @@ public interface IHostReviewService
 
     /// <summary>
     /// Sends the one email with the signed link to the guest of the booking, at the host's explicit request. Written to a third party,
-    /// so it leaves from this call only, once per booking: <see cref="Exceptions.DomainRuleException"/> <c>review_invite_not_allowed</c>
+    /// so it leaves from this call or from <see cref="RequestInviteAsync"/> only, once per booking: <see cref="Exceptions.DomainRuleException"/> <c>review_invite_not_allowed</c>
     /// (422) when the booking cannot be reviewed now or the guest has no address, <see cref="Exceptions.DomainConflictException"/>
     /// <c>review_invite_already_sent</c> / <c>review_already_submitted</c> (409).
     /// </summary>
     Task SendInviteAsync(Guid bookingId, string? userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The invitation asked for by a routine of the org, the action <c>RequestReview</c> (E26/F01/US01/T01): the same email, the same link and the same rules
+    /// as <see cref="SendInviteAsync"/>, once per booking whoever asks (the host's button, a routine, two routines, an event delivered twice), for a booking of
+    /// <paramref name="orgId"/> only: nothing here reads through the tenant of a caller, a routine has none. What the invitation cannot be sent for is an answer
+    /// (<see cref="ReviewInviteRequestStatus.Skipped"/> with its <see cref="ReviewInviteSkipReasons">reason</see>), never an error that makes the caller try again.
+    /// Stricter than the host's button where nobody decides: the stay of a no-show, and a guest who was erased, asked for the erasure or has no address, get no
+    /// email. The one failure left is the email that the queue did not take (<see cref="ReviewInviteRequestStatus.NotQueued"/>): the mark is taken back, so the
+    /// host may still ask by hand.
+    /// </summary>
+    Task<ReviewInviteRequestResult> RequestInviteAsync(Guid orgId, Guid bookingId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>How a request of <see cref="IHostReviewService.RequestInviteAsync"/> ended.</summary>
+public enum ReviewInviteRequestStatus
+{
+    /// <summary>The email with the signed link was handed to the queue, and the booking is marked: it leaves once.</summary>
+    Sent = 0,
+
+    /// <summary>The booking is not to be invited (<see cref="ReviewInviteRequestResult.Reason"/> says why): nothing was written and nothing was sent.</summary>
+    Skipped = 1,
+
+    /// <summary>The org has no such booking: nothing was read of any other org.</summary>
+    BookingNotFound = 2,
+
+    /// <summary>The queue did not take the email (the provider is not configured, or it could not be queued): the booking is not marked and nothing left.</summary>
+    NotQueued = 3,
+}
+
+/// <summary>What <see cref="IHostReviewService.RequestInviteAsync"/> answers: how it ended, and the reason when the booking was skipped.</summary>
+/// <param name="Status">How it ended.</param>
+/// <param name="Reason">One of <see cref="ReviewInviteSkipReasons"/> when <paramref name="Status"/> is <see cref="ReviewInviteRequestStatus.Skipped"/>; <c>null</c> otherwise.</param>
+public sealed record ReviewInviteRequestResult(ReviewInviteRequestStatus Status, string? Reason = null)
+{
+    public static ReviewInviteRequestResult Sent { get; } = new(ReviewInviteRequestStatus.Sent);
+
+    public static ReviewInviteRequestResult BookingNotFound { get; } = new(ReviewInviteRequestStatus.BookingNotFound);
+
+    public static ReviewInviteRequestResult NotQueued { get; } = new(ReviewInviteRequestStatus.NotQueued);
+
+    public static ReviewInviteRequestResult Skipped(string reason) => new(ReviewInviteRequestStatus.Skipped, reason);
+}
+
+/// <summary>
+/// The reasons a request for a review is skipped (<see cref="ReviewInviteRequestResult.Reason"/>): stable codes that the routine log shows as the code of a
+/// <c>skipped</c> action, translated by the interface. Never a name, an address or any other personal data.
+/// </summary>
+public static class ReviewInviteSkipReasons
+{
+    /// <summary>The booking did not come from the booking site (a portal asks its own guests, the host's own entries are not asked): only direct bookings are reviewed.</summary>
+    public const string NotDirect = "not_direct";
+
+    /// <summary>The booking was cancelled, or never confirmed.</summary>
+    public const string NotConfirmed = "not_confirmed";
+
+    /// <summary>The host marked the stay as a no-show: the guest never came, so there is nothing to review.</summary>
+    public const string NoShow = "no_show";
+
+    /// <summary>The check-out day has not passed yet: the first day to review is the day after.</summary>
+    public const string TooEarly = "too_early";
+
+    /// <summary>The 14 days after the check-out day are gone: the link would be expired.</summary>
+    public const string TooLate = "too_late";
+
+    /// <summary>There is no address to write to: none was given, or the guest was erased or asked for the erasure.</summary>
+    public const string NoEmail = "no_email";
+
+    /// <summary>The guest wrote the review already.</summary>
+    public const string AlreadyReviewed = "already_reviewed";
+
+    /// <summary>The invitation of this booking was sent already (by the host or by a routine): it leaves once.</summary>
+    public const string AlreadyInvited = "already_invited";
 }
 
 /// <summary>A review as its host sees it: the first name of the guest, as the public does, and where it stands.</summary>
