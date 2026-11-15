@@ -3454,6 +3454,12 @@
   <data name="CleaningAutomationStaffUnavailable" xml:space="preserve">
     <value>La persona dello staff scelta per la pulizia non è più attiva o non ha più accesso all'immobile.</value>
   </data>
+  <data name="CleaningSetupSupplierCurrencyUnsupported" xml:space="preserve">
+    <value>I fornitori del marketplace lavorano in euro e non si converte nulla: un immobile in {0} può avere la pulizia solo a una persona dello staff.</value>
+  </data>
+  <data name="CleaningAutomationSupplierCurrencyUnsupported" xml:space="preserve">
+    <value>L'immobile è in {0} e i fornitori del marketplace lavorano in euro: la pulizia non può essere richiesta al fornitore.</value>
+  </data>
   <data name="InternalActivityCancelled" xml:space="preserve">
     <value>L'attività è stata annullata: il suo stato non può più cambiare.</value>
   </data>

@@ -72,7 +72,8 @@ public sealed class CleaningAutomationService(
         TimeOnly? CheckOutBy,
         RentalMode RentalMode,
         string OwnerId,
-        string? ResponsibleUserId);
+        string? ResponsibleUserId,
+        string? Currency);
 
     internal static (PostgresAdvisoryLocks.Scope Scope, string Key) StayLock(Guid bookingId) =>
         (PostgresAdvisoryLocks.Scope.CleaningAutomation, bookingId.ToString("N"));
@@ -242,6 +243,12 @@ public sealed class CleaningAutomationService(
     {
         if (setup is not { SupplierOrgId: { } supplierOrgId, PriceCents: { } price })
             throw new DomainRuleException(CleaningAutomationCodes.SetupInvalid, "CleaningAutomationSetupInvalid");
+
+        // The requests to the suppliers, their prices and their payments are in euro and nothing is converted: the price of the setup is in the currency of the property, so a property in
+        // another currency (it changed since the setup was saved, or the row was written by hand) gets no request.
+        var currency = StayCurrency.Normalize(stay.Currency);
+        if (!string.Equals(currency, StayCurrency.Euro, StringComparison.Ordinal))
+            throw new DomainRuleException(CleaningAutomationCodes.SupplierCurrencyUnsupported, "CleaningAutomationSupplierCurrencyUnsupported", currency);
 
         var start = CleaningSchedule.StartUtc(stay.CheckOutDate, setup.StartTime, stay.CheckOutBy, stay.Timezone);
         var request = await serviceRequests.CreateAsync(
@@ -508,7 +515,8 @@ public sealed class CleaningAutomationService(
              property.CheckOutBy,
              property.RentalMode,
              property.OwnerId,
-             property.ResponsibleUserId))
+             property.ResponsibleUserId,
+             property.Currency))
         .FirstOrDefaultAsync(cancellationToken);
 
     /// <summary>The stay happens: the one definition of a stay that is due (<see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/>, no no-show).</summary>

@@ -63,7 +63,8 @@ public sealed class PropertyCleaningSetupController(
     /// <response code="404"><c>property_not_found</c>.</response>
     /// <response code="422">
     /// One of <c>cleaning_setup_cleaner_required</c>, <c>_cleaner_mismatch</c>, <c>_price_invalid</c>, <c>_currency_required</c>, <c>_currency_mismatch</c>, <c>_start_time_invalid</c>,
-    /// <c>_duration_invalid</c>, <c>_supplier_not_found</c>, <c>_supplier_inactive</c>, <c>_supplier_outside_comune</c>, <c>_staff_invalid</c>, or <c>property_not_bookable_in_long_mode</c>.
+    /// <c>_duration_invalid</c>, <c>_supplier_not_found</c>, <c>_supplier_inactive</c>, <c>_supplier_outside_comune</c>, <c>_supplier_currency_unsupported</c> (an active supplier for a property that
+    /// is not in euro: the suppliers work in euro and nothing is converted), <c>_staff_invalid</c>, or <c>property_not_bookable_in_long_mode</c>.
     /// Nothing is saved.
     /// </response>
     [HttpPut("{propertyId:guid}/cleaning-setup")]

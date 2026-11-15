@@ -12,7 +12,7 @@ that the invoicing of the owners takes. The rest of the lifecycle of a request (
 | Event | When | Key (once per request) |
 |---|---|---|
 | `ServiceRequestCreated` | a host's request is created (`POST /api/service-requests`, the automatic cleaning) | `service-request-created:{id}` |
-| `ServiceRequestCompleted` | the supplier completes the work (any context, showcase requests included) | `service-request-completed:{id}` |
+| `ServiceRequestCompleted` | the supplier completes the work (any context, showcase requests included), or an admin decides a no-show for the supplier and the job is completed by the decision | `service-request-completed:{id}` |
 
 The payload is `ServiceRequestEventPayload`: the request id, the booking and property ids, the supplier org, the category code, the rental context and the status.
 Never a note, an address, an amount or a person. The org of the event is the org of the request (the supplier's own for a showcase request: filter on
@@ -33,7 +33,10 @@ runs; `ServiceRequestCreated` starts no routine.
   the answer says `supplierIsTrusted`) or `Staff` (an active member of the org with an active account who reaches the property: the rule of `OrgPropertyAccessService.SetResponsibleAsync`).
 - **Price.** `priceCents` is the price agreed for one cleaning, in cents of the **currency of the property**, gross as the cleaner asks it (decision D4: no VAT split); a supplier
   needs one from 1 cent, staff may have none. Every price carries its `currency`, which must be the property's (422 `cleaning_setup_currency_mismatch`): a number is never
-  applied to a currency nobody stated.
+  applied to a currency nobody stated. **The suppliers work in euro**: the requests to the suppliers, their prices and their payments are in euro and nothing is converted, so a property in another
+  currency (a Swiss house, in francs) takes no supplier: an active supplier setup is 422 `cleaning_setup_supplier_currency_unsupported` (the message names the currency), and only a member of the
+  staff can be its cleaner. A setup kept switched off is only kept. If the currency of a property changes after a supplier setup was saved, the automation makes no request: the action `fails` with
+  `cleaning_supplier_currency_unsupported` and the host is told like for any other failure.
 - **Time.** `startTime` is a wall-clock time on the clock of the property on the check-out day (default: `Property.CheckOutBy`, 10:00 when it has none); `durationMinutes`
   is 5 to 1,440 (default 120, the length a request without a catalog service gets).
 - **Active.** An inactive setup is kept and never used. Saving it as inactive skips the checks of the supplier's status and coverage and of the staff member's reach, so a supplier

@@ -625,6 +625,39 @@ public class CleaningAutomationTests
         rig.VerifyAlerts(Times.Never());
     }
 
+    /// <summary>
+    /// Proof (money): a supplier setup on a property that is not in euro (its currency changed after the setup was saved, or the row was written by hand) gets no request: the requests to the
+    /// suppliers, their prices and their payments are in euro and nothing is converted. The cleaning fails with its own code, nothing is made, and the host is told; a member of the staff
+    /// is not affected by the currency.
+    /// </summary>
+    [Fact]
+    public async Task CleaningAutomation_SupplierForAPropertyInAnotherCurrencyGetsNoRequest_Test()
+    {
+        using var rig = await Rig.CreateAsync();
+        await rig.SupplierSetupAsync();
+        await rig.ChangePropertyAsync(p => p.Currency = "CHF");
+
+        var result = await rig.Automation.CreateForStayAsync(rig.OrgId, rig.BookingId);
+
+        Assert.Equal((CleaningAutomationOutcome.Failed, CleaningAutomationCodes.SupplierCurrencyUnsupported), (result.Outcome, result.Code));
+        Assert.Empty(await rig.RequestsAsync());
+        Assert.Empty(rig.Scenario.Db.StayCleanings);
+        Assert.Single(await rig.TodosAsync(nameof(ActivityType.CleaningDue)));
+    }
+
+    [Fact]
+    public async Task TheStaffMember_OfAPropertyInAnotherCurrency_GetsItsActivity()
+    {
+        using var rig = await Rig.CreateAsync();
+        await rig.StaffSetupAsync();
+        await rig.ChangePropertyAsync(p => p.Currency = "CHF");
+
+        var result = await rig.Automation.CreateForStayAsync(rig.OrgId, rig.BookingId);
+
+        Assert.Equal(CleaningAutomationOutcome.Created, result.Outcome);
+        Assert.Single(await rig.StaffWorkAsync());
+    }
+
     /// <summary>The staff path: an activity of type Cleaning for the member, at the same time, with its cost as the rate and the recharge to the owner, and the key.</summary>
     [Fact]
     public async Task TheStaffMember_GetsAnActivityWithItsCostAndTheRecharge()

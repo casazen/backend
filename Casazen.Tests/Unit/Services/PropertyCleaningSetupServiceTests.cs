@@ -244,6 +244,54 @@ public class PropertyCleaningSetupServiceTests
         Assert.Equal("CHF", Assert.Single(swiss.MessageArgs));
     }
 
+    /// <summary>
+    /// Proof (money): the requests to the suppliers of the marketplace, their prices and their payments are in euro and nothing is converted, so a property in another currency takes no
+    /// supplier. An active supplier setup of a Swiss house is refused (422, with the currency in the message) and nothing is saved; kept switched off a supplier setup is only kept; back
+    /// in euro the supplier is accepted.
+    /// </summary>
+    [Fact]
+    public async Task CleaningSetup_SupplierForAPropertyInAnotherCurrencyRefused_Test()
+    {
+        using var scenario = await ServiceRequestScenario.CreateAsync();
+        var service = Service(scenario);
+        await ChangeAsync<Property>(scenario.Db, scenario.PropertyId, p => p.Currency = "CHF");
+
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(
+            () => service.SaveAsync(scenario.HostOrgId, scenario.PropertyId, Supplier(scenario.SupplierOrgId, currency: "CHF"), Actor));
+
+        Assert.Equal(PropertyCleaningSetupRules.SupplierCurrencyUnsupported, refused.Code);
+        Assert.Equal("CHF", Assert.Single(refused.MessageArgs));
+        Assert.Empty(await scenario.Db.PropertyCleaningSetups.ToListAsync());
+
+        var kept = await service.SaveAsync(scenario.HostOrgId, scenario.PropertyId, Supplier(scenario.SupplierOrgId, currency: "CHF", active: false), Actor);
+        Assert.False(kept.Active);
+
+        await ChangeAsync<Property>(scenario.Db, scenario.PropertyId, p => p.Currency = "EUR");
+        var saved = await service.SaveAsync(scenario.HostOrgId, scenario.PropertyId, Supplier(scenario.SupplierOrgId), Actor);
+        Assert.True(saved.Active);
+    }
+
+    /// <summary>In a bulk save a house in another currency comes back with its own code and does not stop the others.</summary>
+    [Fact]
+    public async Task Bulk_AHouseInAnotherCurrency_TakesNoSupplier_AndTheOthersAreSaved()
+    {
+        await using var db = HostScopeScenario.NewInMemoryDb();
+        var world = await HostScopeScenario.SeedAsync(db);
+        await AddProfileToWorldSupplierAsync(db, world);
+        await ChangeAsync<Property>(db, world.Hidden.Id, p => p.Currency = "CHF");
+        var service = Service(db);
+
+        var inFrancs = await service.SaveBulkAsync(world.OrgId, world.OrgWide, [world.Hidden.Id], Supplier(world.SupplierOrgId, currency: "CHF"), Actor);
+        var mixed = await service.SaveBulkAsync(world.OrgId, world.OrgWide, [world.Granted.Id, world.Hidden.Id], Supplier(world.SupplierOrgId), Actor);
+
+        var refused = Assert.Single(inFrancs);
+        Assert.Equal((false, PropertyCleaningSetupRules.SupplierCurrencyUnsupported), (refused.Saved, refused.Code));
+        Assert.Equal("CHF", Assert.Single(refused.MessageArgs));
+        Assert.Equal([true, false], mixed.Select(r => r.Saved));
+        Assert.Equal([null, PropertyCleaningSetupRules.CurrencyMismatch], mixed.Select(r => r.Code));
+        Assert.Equal([world.Granted.Id], await db.PropertyCleaningSetups.AsNoTracking().Select(s => s.PropertyId).ToListAsync());
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData(0)]
@@ -447,6 +495,8 @@ public class PropertyCleaningSetupServiceTests
             "ServiceRequestCannotReschedule",
             "CleaningAutomationSetupInvalid",
             "CleaningAutomationStaffUnavailable",
+            "CleaningAutomationSupplierCurrencyUnsupported",
+            InternalActivityErrors.CancelledMessageKey,
         ];
 
         Assert.All(keys, key =>

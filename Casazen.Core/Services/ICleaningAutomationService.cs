@@ -97,6 +97,12 @@ public static class CleaningAutomationCodes
     /// failure. The code says no more than that, because the routine engine runs a routine once for each event and the event is not delivered to it again.
     /// </summary>
     public const string CreationFailed = "cleaning_creation_failed";
+
+    /// <summary>
+    /// The setup is a supplier's and the property is not in euro (its currency changed after the setup was saved, or the row was written by hand): the requests to the suppliers, their prices and
+    /// their payments are in euro and nothing is converted, so no request is made and the host is told like for any other failure.
+    /// </summary>
+    public const string SupplierCurrencyUnsupported = "cleaning_supplier_currency_unsupported";
 }
 
 /// <summary>

@@ -3454,6 +3454,12 @@
   <data name="CleaningAutomationStaffUnavailable" xml:space="preserve">
     <value>The staff member chosen for the cleaning is no longer active or no longer has access to the property.</value>
   </data>
+  <data name="CleaningSetupSupplierCurrencyUnsupported" xml:space="preserve">
+    <value>The marketplace suppliers work in euro and nothing is converted: a property in {0} can only have its cleaning done by a member of the staff.</value>
+  </data>
+  <data name="CleaningAutomationSupplierCurrencyUnsupported" xml:space="preserve">
+    <value>The property is in {0} and the marketplace suppliers work in euro: the cleaning cannot be requested from the supplier.</value>
+  </data>
   <data name="InternalActivityCancelled" xml:space="preserve">
     <value>The activity was cancelled: its status can no longer change.</value>
   </data>

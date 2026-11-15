@@ -30,6 +30,12 @@ public static class PropertyCleaningSetupRules
     /// <summary>422: the duration is out of range (5 to 1,440 minutes).</summary>
     public const string DurationInvalid = "cleaning_setup_duration_invalid";
 
+    /// <summary>
+    /// 422: the cleaner is a supplier and the property is not in euro. The requests to the suppliers of the marketplace, their prices and their payments are in euro and nothing is converted,
+    /// so a property in another currency takes no supplier, only a member of the staff (a setup kept switched off is only kept, and is not refused for it).
+    /// </summary>
+    public const string SupplierCurrencyUnsupported = "cleaning_setup_supplier_currency_unsupported";
+
     /// <summary>422: the supplier has no supplier profile.</summary>
     public const string SupplierNotFound = "cleaning_setup_supplier_not_found";
 
@@ -56,6 +62,7 @@ public static class PropertyCleaningSetupRules
         "CleaningSetupPriceInvalid",
         "CleaningSetupCurrencyRequired",
         "CleaningSetupCurrencyMismatch",
+        "CleaningSetupSupplierCurrencyUnsupported",
         "CleaningSetupStartTimeInvalid",
         "CleaningSetupDurationInvalid",
         "CleaningSetupSupplierNotFound",

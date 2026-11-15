@@ -19,7 +19,8 @@ namespace Casazen.Infrastructure.Services;
 /// covers the comune of the property (by its ISTAT code, else by the written name). <b>The checks of the staff member</b> are the ones that let a person be put in charge of a
 /// property (<see cref="PropertyStaffReach"/>). Both are made again when the cleaning is created, because the supplier can be suspended and the member deactivated later.</para>
 /// <para><b>The price</b> is a number of cents and never a currency of its own: it is the price in the currency of the property, and a request that states another currency is
-/// refused. Nothing is converted.</para>
+/// refused. Nothing is converted. For the same reason a property that is not in euro takes no supplier (the requests to the suppliers, their prices and their payments are in euro):
+/// only a member of the staff cleans it.</para>
 /// </remarks>
 public sealed class PropertyCleaningSetupService(
     AppDbContext db,
@@ -196,6 +197,11 @@ public sealed class PropertyCleaningSetupService(
         var currency = StayCurrency.ForProperty(property);
         if (input.PriceCents is not null && !string.Equals(StayCurrency.Normalize(input.Currency), currency, StringComparison.Ordinal))
             throw new DomainRuleException(PropertyCleaningSetupRules.CurrencyMismatch, "CleaningSetupCurrencyMismatch", currency);
+
+        // The requests to the suppliers of the marketplace, their prices and their payments are in euro (ServiceCharges.Currency) and nothing is converted: a price in francs would be charged
+        // as euro. A property in another currency takes no supplier, only a member of the staff. An inactive setup is only kept, like for every other check of the cleaner.
+        if (input.CleanerKind == PropertyCleanerKind.Supplier && input.Active && !string.Equals(currency, StayCurrency.Euro, StringComparison.Ordinal))
+            throw new DomainRuleException(PropertyCleaningSetupRules.SupplierCurrencyUnsupported, "CleaningSetupSupplierCurrencyUnsupported", currency);
 
         if (input.CleanerKind == PropertyCleanerKind.Supplier)
         {
