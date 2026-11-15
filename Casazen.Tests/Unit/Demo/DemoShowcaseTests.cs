@@ -148,6 +148,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.FiscalDocumentExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.SwissFiscalDocumentExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.OwnerIssuerDocumentExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.SdiRejectedInvoiceExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.PaymentLedgerExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.ChannelCommissionRules.Select(rule => rule.Scenario))
             .Concat(DemoShowcaseCatalog.CleaningSetups.Select(setup => setup.Scenario))
@@ -1226,6 +1227,23 @@ public class DemoShowcaseTests
                 Assert.True(amounts.VatAmount > 0m);
             }
         }
+    }
+
+    /// <summary>
+    /// E17/F01/US02/T03: the demo invoice the SDI rejected is for a TEST company, has a number of the series format and an official code of the SDI list whose reason in plain words is a text of its
+    /// own (never the generic one).
+    /// </summary>
+    [Fact]
+    public void SdiRejectedInvoice_TheExampleIsATestInvoiceRejectedWithAnOfficialCode()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.SdiRejectedInvoice, DemoShowcaseCatalog.Scenarios);
+        var example = Assert.Single(DemoShowcaseCatalog.SdiRejectedInvoiceExamples);
+
+        Assert.StartsWith("TEST", example.RecipientName, StringComparison.Ordinal);
+        Assert.Matches("^[0-9]{4}/[0-9]+$", example.Number);
+        Assert.True(example.Total > 0m);
+        Assert.Equal(example.ErrorCode, Casazen.Core.Services.SdiRejectionReasons.Normalize(example.ErrorCode));
+        Assert.NotEqual(Casazen.Core.Services.SdiRejectionReasons.GenericKey, Casazen.Core.Services.SdiRejectionReasons.KeyOf(example.ErrorCode));
     }
 
     /// <summary>

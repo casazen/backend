@@ -21,6 +21,41 @@ internal static class FiscalDocumentLiveRefresh
     internal const string TitleKey = "FiscalDocPushIssuedTitle";
     internal const string BodyKey = "FiscalDocPushIssuedBody";
 
+    /// <summary>The lock-screen text of an invoice the SDI rejected (E17/F01/US02/T03): fixed words of <c>SharedResources</c>, no reason, no guest, no amount.</summary>
+    internal const string SdiRejectedTitleKey = "FiscalDocPushSdiRejectedTitle";
+    internal const string SdiRejectedBodyKey = "FiscalDocPushSdiRejectedBody";
+
+    /// <summary>
+    /// Queues the push for an invoice the SDI rejected (E17/F01/US02/T03): the hosts of the booking hear that it has to be corrected, the bell gets its entry and the open pages read the document
+    /// again; one per document, stable across the redelivery of the event. Nothing for a document without a booking (an owner invoice: its «To do» tells) or without a queue.
+    /// </summary>
+    public static void TellOfRejection(IPushNotificationService? push, IDocumentTexts texts, Guid documentId, Guid? bookingId, string? orgLanguage, ILogger logger)
+    {
+        ArgumentNullException.ThrowIfNull(texts);
+        ArgumentNullException.ThrowIfNull(logger);
+
+        if (push is null || bookingId is not { } booking)
+            return;
+
+        try
+        {
+            var language = DocumentLanguages.Normalize(orgLanguage);
+            push.Enqueue(
+                PushDeliveryKeys.FiscalDocumentSdiRejected(documentId),
+                PushAudience.BookingHosts(booking),
+                new PushNotificationPayload(
+                    texts.Get(SdiRejectedTitleKey, language),
+                    texts.Get(SdiRejectedBodyKey, language),
+                    PushTypes.FiscalDocumentSdiRejected,
+                    booking,
+                    PushRoutes.Booking(booking)));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError("Push about the rejected fiscal document {DocumentId} of booking {BookingId} could not be prepared ({Error})", documentId, booking, ex.GetType().Name);
+        }
+    }
+
     /// <summary>Queues the push for a document that was issued; nothing for a document without a booking or without a queue.</summary>
     public static void Tell(IPushNotificationService? push, IDocumentTexts texts, FiscalDocument document, Org org, ILogger logger)
     {

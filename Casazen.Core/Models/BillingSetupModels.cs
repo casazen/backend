@@ -158,6 +158,13 @@ public static class BillingSetupItemKeys
     /// or one that misses a field), so the documents of their stays are not made (reason <see cref="BillingSetupReasons.Required"/>, with the count of the owners).
     /// </summary>
     public const string OwnerIssuerMissing = "owner_issuer_missing";
+
+    /// <summary>
+    /// Italy, the SDI channel is connected (E17/F01/US02/T02): the provider refused the submission of the electronic invoices of some issuers because their VAT number is not
+    /// enabled at the provider yet (reason <see cref="BillingSetupReasons.Pending"/>, with the count of the issuers). It clears by itself when a later submission of the issuer is
+    /// accepted. Nothing is asked of the user: the registration is CasaZen's, and the documents wait as «to send» (or are declared sent by hand).
+    /// </summary>
+    public const string SdiIssuerRegistrationPending = "sdi_issuer_registration_pending";
 }
 
 /// <summary>Why a billing setup item is missing (<see cref="BillingSetupItem.Reason"/>): a small set of stable codes the client translates, never renamed.</summary>
@@ -171,6 +178,9 @@ public static class BillingSetupReasons
 
     /// <summary>The user cannot fix it: something of the installation is missing (a tax rule of the catalog).</summary>
     public const string Unavailable = "unavailable";
+
+    /// <summary>Somebody else has to do something and the user waits (the enabling of a VAT number at the SDI channel, E17/F01/US02/T02).</summary>
+    public const string Pending = "pending";
 }
 
 /// <summary>

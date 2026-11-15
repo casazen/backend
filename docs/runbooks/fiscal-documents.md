@@ -25,8 +25,10 @@ NF-84, NF-87, NF-112, NF-113, NF-116; ADR-019 (amended twice), ADR-033-R7 (reten
   draws from the counter of the fiscal numbers and never produces FatturaPA XML. The invoice of the agency to an owner, with lines, is a fiscal
   document of CasaZen again (purpose `OwnerInvoice`, epic E14): the model already has its owner, statement version, period and the unique index of one
   live invoice per owner and period.
-- **No real SDI sending.** No intermediary is chosen (PO-06): an issued invoice has the state `to_send` and its XML can be downloaded; nothing is
-  transmitted by CasaZen.
+- **SDI sending only through a provider, behind a flag.** CasaZen has no channel of its own to the SDI. An issued invoice has the state `to_send` and its
+  XML can be downloaded; it goes to the SDI only through the accredited channel of an intermediary (`Features:SdiSubmission` and `Sdi:Provider:*`, see *SDI
+  submission, outcomes and correction*, E17/F01/US02), and nothing is ever marked sent without the provider's answer or a person's declaration. With no
+  provider configured the issuer uploads the XML to the portal of the Agenzia delle Entrate and declares it sent.
 
 ## Issuer (`OrgFiscalIssuerProfile`, E11/F01/US01/T01)
 
@@ -109,7 +111,7 @@ epics.
 | `touristTax` | «Tassa di soggiorno» | `platformCollectedTouristTaxChannels` | Switzerland only: `tourist_tax_channels_unconfirmed` |
 | `channels`, `mandates` | «Commissioni dei canali», «Mandato standard» | none: saved by the endpoints of the owner ledger | added by E13/F01/US02/T03, for agencies only (plan Agency; any other organization gets no item): `channel_commissions_unconfirmed` (reason `unconfirmed`) until the organization saved its channel commission rules once, the defaults of the configuration alone do not count; `owners_without_mandate` (reason `required`, with `count`) while some owner with an ownership not ended has no mandate in force today (`OwnerMandateRules.InForce`) |
 | `automation` | «Emissione» | `autoIssueGuestDocuments`, `emailGuestDocuments` | `auto_issue_unconfirmed`: `unconfirmed` |
-| `italy` | «Italia» | `stampDutyReference`, `conservationAgreementConfirmed`, `virtualStampConfirmed` | Italy only: `conservation_agreement_unconfirmed`, `stamp_duty_unconfirmed` (neither the stamp reference nor the confirmation of the virtual stamp); `owner_issuer_missing` (reason `required`, with `count`, E17/F01/US01/T01): owners of Italian properties without an issuer profile that can issue, for any organization that has them |
+| `italy` | «Italia» | `stampDutyReference`, `conservationAgreementConfirmed`, `virtualStampConfirmed` | Italy only: `conservation_agreement_unconfirmed`, `stamp_duty_unconfirmed` (neither the stamp reference nor the confirmation of the virtual stamp); `owner_issuer_missing` (reason `required`, with `count`, E17/F01/US01/T01): owners of Italian properties without an issuer profile that can issue, for any organization that has them; `sdi_issuer_registration_pending` (reason `pending`, with `count`, E17/F01/US02/T02): the issuers whose VAT number the SDI channel has not enabled yet, only while a provider is configured and `Features:SdiSubmission` is on (see *SDI submission, outcomes and correction*) |
 
 - **Draft and idempotent.** A partial body is a draft: a field that is absent or `null` keeps its value, a text sent empty clears it, a list (even an empty one)
   is sent; the same answers saved twice change nothing and a body with no field saves nothing. A field of another section is 422
@@ -470,9 +472,11 @@ the link sees what the guest sees. The token is in the query of the page, which 
 - Written with `XDocument`/`XmlWriter`, never by concatenation: every text is escaped; decimals in invariant culture (two places, unit prices and
   quantities up to eight); days as `yyyy-MM-dd` (Europe/Rome calendar days).
 - `IdTrasmittente` (E17/F01/US01/T03): the subject whose channel sends the file to the SDI, by its fiscal code (else its VAT number): the agency, both for a
-  document it issues in its own name and for one it issues on behalf of an owner. No provider of the SDI exists yet: E17/F01/US02 replaces it with the
-  provider's when one is configured (`FiscalDocumentService.TransmitterOf`, the one place). A Swiss agency has no Italian code: the invoice of an Italian owner
-  company needs that provider.
+  document it issues in its own name and for one it issues on behalf of an owner (`FiscalDocumentService.TransmitterOf`, the one place). The XML is
+  immutable once issued, so the provider's channel sends the file **as it was issued**: the transmitter in the file is never rewritten at the submission. Whether the
+  provider needs its own transmitter code in the header is a point to check on its sandbox (see *Verifying the channel*, open point 2): if it does, `TransmitterOf`
+  is where it changes, for the files issued afterwards, never the stored XML. A Swiss agency has no Italian code: the invoice of an Italian owner company needs that
+  provider.
 - `CodiceDestinatario`: the recipient's code; `0000000` with the PEC or with nothing (the recipient's fiscal drawer); `XXXXXXX` for a recipient outside
   Italy. A recipient abroad without a VAT number (a private guest, B2C) has `IdFiscaleIVA` with its country and `99999999999`; every address abroad has the `CAP`
   `00000` and no `Provincia`.
@@ -505,6 +509,141 @@ the link sees what the guest sees. The token is in the query of the page, which 
   highest number used); the issuer rows of the bookings become one per document (see *Drafts and bulk issue*). **Rollback:** the down migration restores the
   old unique indexes, so it fails once an owner has issued in a series the organization also used, or a booking has two issuer rows: roll back before any owner
   document is issued (the flag `FiscalDocumentIssuance` off stops new ones).
+
+## SDI submission, outcomes and correction (E17/F01/US02, NF-116, NF-86, D13, D15)
+
+The Italian electronic invoices (an invoice or a credit note whose XML was issued, state `to_send`) go to the SDI through an accredited channel of an intermediary. The port
+`ISdiEInvoiceProvider` serves every issuer (the organization and the owners who issue): `IsConfigured`, `Name`, `SubmitAsync(PlatformInvoice, Org)` (the SaaS invoices, unchanged),
+`SubmitDocumentAsync`, `GetStatusAsync` and `ReadNotificationAsync`. With no provider configured `UnconfiguredSdiEInvoiceProvider` is registered and **nothing changes**.
+
+### States and who may change them
+
+`FiscalDocument.SdiStatus`: `to_send` → `submitted` → `delivered` or `rejected`; `manual_declared` for a file the issuer sent by hand. **No state says «sent» without the provider's
+answer or a person's declaration**, and the provider is never called while it is not configured or `Features:SdiSubmission` is off.
+
+| Change | Who | Rule |
+|---|---|---|
+| `to_send` → `submitted` | `IFiscalDocumentSdiService.SubmitAsync` (`POST api/fiscal/documents/{id}/sdi/submit`) | only with the provider's accepted answer **and** its id of the submission (`SdiTransmissionId`); a refusal keeps `to_send` with the code in `SdiErrorCode` (≤ 20 characters: `issuer_pending`, `provider_refused`, `provider_error`, `not_supported`) and a cleaned note in `SdiErrorDetail`; a second submission answers `AlreadySubmitted` |
+| `submitted` → `delivered` / `rejected` | `RecordOutcomeAsync`, the **one entry** of the provider's webhook, of the job `fiscal-sdi-status` and of the declaration of a rejection | idempotent; the first answer wins; «submitted» changes nothing; **a delivered invoice is never rejected afterwards** (and a rejected one is never delivered): the contradiction is ignored and logged. A rejection is also accepted from `to_send` and `manual_declared` (the issuer saw it on the portal of the Agenzia delle Entrate) |
+| `to_send` / `manual_declared` → `manual_declared` | `DeclareManuallyAsync` (`POST …/sdi/declare` `{ kind: Sent, date, reference }`) | the day (Europe/Rome, not in the future, not before the issue) and the reference are required; the reference is kept in `SdiTransmissionId`, the day in `SdiStatusUpdatedAt`. Works with no provider. A document the provider has (`submitted`) is decided by the provider (409 `sdi_not_to_send`); an answered one is final (409 `sdi_state_final`) |
+| → `rejected` by hand | `DeclareManuallyAsync` `{ kind: Rejected, errorCode, errorText? }` | goes through `RecordOutcomeAsync`: same state, same event |
+
+- **One document at a time.** A submission, an outcome, a declaration and the start of a correction run under the transaction-scoped advisory lock `FiscalDocumentSdi` (1_620, key
+  `{documentId:N}`), the state read again under it; the submission holds it across the call to the provider.
+- **Behind the flags.** `submit`, `declare` and `correct`, the webhook and the job need `Features:SdiSubmission` **and** `Features:FiscalDocumentIssuance` (404 while either is off; the job is
+  removed). `GET api/fiscal/documents/{id}/sdi` (the state, with the reason in plain words) is a read and stays. The writes need `payment.write`, the document is authorized through its
+  booking (a document without one, for the whole org), another org's document is a 404. `GET api/fiscal/sdi/issuers` (behind the issuance flag) lists the issuers that send electronic
+  invoices with their state with the channel; a caller who reaches only some properties («Solo alcuni», an owner) sees only the issuers that have a document on a booking of those
+  properties, a caller with no scope is 401 (the same rule as the list of the documents).
+- **Events** (ADR-022, recorded in the unit of work of the outcome, once for a document): `FiscalDocumentSdiDelivered` (64), `FiscalDocumentSdiRejected` (65), `FiscalDocumentCorrected` (66). Ids and codes only.
+- **The recurring job `fiscal-sdi-status`** (`SdiStatusPollJob`, every 30 minutes, never two runs at once): the fallback of the webhook. Only with both flags on and a provider configured; for every
+  `submitted` document, in a scope under its org's tenant, it asks the provider and records an outcome. A document it could not read is logged (id and type of the error) and read again at the next
+  run, and the run then **fails** (`SdiStatusPollException`): nothing is reported as done that was not.
+
+### Rejection reasons in plain words (`SdiRejectionReasons`)
+
+The map from the code of the notification of rejection (the 5-digit codes of the SDI) to the key of its text in `SharedResources` (Italian default, English). It covers the **63 codes** of the
+official list, family by family (several codes share a text where the cause and the cure are the same), plus the four codes of the channel's own refusals; any other code is the generic
+text with the raw code in it, a rejection without a code says so, and the words never name the provider (D14). What a notification says is kept only after `SdiRejectionReasons.Clean` (no e-mail
+address, fiscal code of a person or number of nine digits or more, at most 500 characters).
+
+| Source (read on 2026-11-15) | |
+|---|---|
+| Document | «Elenco dei controlli effettuati sul file fattura del Sistema di Interscambio», **versione 2.0, 31/01/2025** (valid from 15/05/2026, with the specifications of the SdI v1.8.4) |
+| Page | Agenzia delle Entrate, `https://www.fatturapa.gov.it/it/norme-e-regole/DocumentazioneSDI/` |
+| File | `https://www.fatturapa.gov.it/export/documenti/fatturapa/v1.4/Elenco-Controlli-versione-2.0.pdf` |
+| SHA-256 | `a3ec6b4b5f74c43bca8c5849f49b33d2c9b0784c5d227f32a25a81b1d7caf9f2` (1,054,977 bytes) |
+| Name of the file | «Specifiche tecniche relative al Sistema di Interscambio» versione 1.8.4: `{country}{transmitter id}_{progressive}.xml`, the progressive at most five letters and digits (`SdiFileNames`) |
+
+A new official version: read the list again, compare the codes (`SdiRejectionReasonsTests` pins the 63), add the code to the map and the text in **both** `SharedResources` files, and record the new
+file here. Two rules of the list the correction rests on: an invoice already sent and **not rejected** is a duplicate (00404), and a rejected one is not counted for it, so the same number may be sent again.
+
+### Correction of a rejected invoice (`IFiscalDocumentCorrectionService`, `POST …/sdi/correct`)
+
+- A rejection raises the «Da fare» **«Correggi la fattura»** (`FiscalDocumentRejectionHandler`, the consumer of `FiscalDocumentSdiRejected`): type `FiscalDocument`, action `CorrectInvoice` (31),
+  reason `sdi_rejected`, urgency high, entity the document, no personal data; the reason in plain words is read from `GET …/sdi`. It closes by itself when the correction starts
+  (`FiscalDocumentCorrected`) or the document is credited (`FiscalDocumentCreditNoteIssued`, for an owner invoice). The frontend adds the action to its `ACTION_ROUTE_MAP`.
+- **Told live, not only listed.** For an invoice of a booking the same consumer also queues a push to the hosts of the booking (`FiscalDocumentLiveRefresh.TellOfRejection`, type
+  `fiscal-document-sdi-rejected`, delivery key `fiscal-document:{documentId:N}:sdi-rejected`, one per document whatever the redeliveries of the event): the bell gets its entry, the pop-up appears
+  and the open pages read the documents again without a reload (the frontend maps the type in `use-notifications-realtime.ts`, like `fiscal-document-issued`). Fixed text (`FiscalDocPushSdiRejected*`
+  in both `SharedResources` files), no reason, no code, no guest, no amount; best effort after the «Da fare» is saved. An owner invoice has no booking: only its «Da fare» tells.
+- **A rejected invoice counts as not issued.** `StartCorrectionAsync` (only for `rejected`, 422 `document_not_rejected` otherwise; a document with credit notes is 422 `document_not_correctable`,
+  an imported one 422 `document_read_only`, an owner invoice 422 `document_owner_invoice`): the rejected document **keeps its display number for the history, gives up its sequence number and
+  becomes `Discarded`**, and a new **draft** (`ReplacesDocumentId`) is made with the same lines, amounts, recipient, issuer and series and **holding the number the rejected document gave up**. The host
+  fixes the data (the invoice data of the booking; the refresh or the daily run makes the draft from it again) and issues the replacement, which uses that number (and keeps the day of the
+  invoice it replaces) instead of reserving one: the next invoice of the series is the next number, so the sequence has neither a duplicate nor a hole. A second start answers the same draft.
+- **Only the replacement of that document, only because it never was delivered.** `rejected` is reached only by a document that was not delivered (a delivered one is never rejected afterwards,
+  see above). The issue checks it again under the numbering path (`document_replacement_invalid`, 422): the replaced document must be a discarded rejected one of the same issuer, series and number,
+  and no other replacement of it may be issued. A document that **was delivered** is corrected with a credit note, never replaced.
+- **A rejected invoice is never credited** (422 `document_rejected_use_correction`, also for the credit note a booking change would prepare: the host gets the «To do» that the booking changed).
+- ⚖ To be confirmed by the accountant: the reuse of the number of a rejected invoice, and that the replacement keeps its day (the Agenzia delle Entrate accepts the same number and date for a file sent again
+  shortly after a rejection; after that, or for a delivered invoice, the credit note and a new invoice are the way). A replacement that is discarded leaves its number unused: the rejected document keeps it
+  in the history.
+
+### The channel: adapter, configuration and webhook (E17/F01/US02/T02)
+
+`RestSdiEInvoiceProvider` is the adapter of **one** provider, chosen by `Sdi:Provider:Name` (⚖ T1: the choice is the product owner's); everything provider-specific stays in it, and another
+provider is another adapter and another name. It was written against the **public documentation of Invoicetronic, API v1**, read on 2026-11-15 on the official pages only:
+
+| What | Where |
+|---|---|
+| Documentation | `https://invoicetronic.com/en/docs/` (API keys, sandbox, webhooks, idempotency) |
+| API reference and OpenAPI | `https://api.invoicetronic.com/v1/docs`, `https://api.invoicetronic.com/v1/docs/swagger.json` (API **v1**, base URL `https://api.invoicetronic.com/v1/`) |
+| Webhooks | `https://invoicetronic.com/en/docs/webhooks/` (events `update.add`…, the `Event` body in PascalCase, `Invoicetronic-Signature`, 15 seconds, eight attempts) |
+| Sandbox | `https://invoicetronic.com/en/docs/sandbox/` (keys `ik_test_…` / `ik_live_…`, simulated updates every half hour, nothing reaches the SDI) |
+
+- **Authentication.** HTTP Basic: the key of the account is the user name, the password is empty. Never logged.
+- **Issuer registration.** The provider sends on behalf of many VAT numbers: each issuer is a *company* of the account. Before the first submission of an issuer the adapter looks for its VAT number (or
+  fiscal code) among the companies (`GET company?q=`) and creates it when it is not there (`POST company`: name, `vat` or `fiscal_code`). A number registered on **another** account cannot be enabled here
+  (`company_already_registered`): the submission is refused with the code `issuer_pending`, the document stays `to_send`, and the issuer is **`pending`** (`GET api/fiscal/sdi/issuers`, the item
+  `sdi_issuer_registration_pending` of the section «Italia» of the billing setup, with its count) until a later submission of it is accepted. The state is derived from the documents: the provider is never
+  asked on a read of the setup.
+- **Submission.** One call, `POST send?validate=true` with the XML in base 64 and the id of the document as `Idempotency-Key` (a second submission of one document is never sent twice by the provider,
+  for 24 hours), the provider names and signs the file itself (`SdiFileNames` is the name the specifications give, for adapters that need it). A refusal of the provider (400, 422) is `provider_refused`; the
+  credentials, the quota, a missing route and a failure of the provider are `provider_error`; a failure of the transport is `provider_error` too (never an exception of a submission). The platform's SaaS invoices
+  are **not** submitted through it (`not_supported`): with a provider configured they go `pending` and then `failed` instead of `manual_required`, and stay in the admin queue to be
+  declared issued by hand as before (`docs/runbooks/billing-tax.md`); the plan checkout gate (`BillingEntryGate`) counts a configured provider as «e-invoicing decided». Configure the
+  provider only where that is wanted (the test environment).
+- **What the SDI said.** Read from the updates of a submission (`GET update?send_id=`, the latest one): `Consegnato`, `NonConsegnato`, `ImpossibilitaDiRecapito`, `AttestazioneTrasmissioneFattura`,
+  `AccettatoDalDestinatario` and `DecorrenzaTermini` are **delivered** (the invoice is issued and available to its recipient: ⚖ to be confirmed by the accountant, in particular for the non-delivery),
+  `Scartato` is **rejected** with the codes and the words of the SDI, `Inviato` and any other state leave the document `submitted`.
+- **The webhook** `POST api/webhooks/sdi/{secret}`: the secret of the address is `Sdi:Provider:WebhookSecret` (32 characters or more, different on test and production), compared in constant time
+  (`SdiWebhookVerifier`). A wrong secret is **401** and the log line `Security: SDI webhook refused` (event `SdiWebhookSecretRefused`, with the remote address, never the secret or the body); no usable secret, or no provider, is
+  **500** `sdi_webhook_not_configured`. The body only says what changed: the adapter reads the update **again from the API** and never trusts the body; an event that is not about an update is acknowledged
+  (200) and recorded nowhere. A notification about a submission CasaZen does not know yet (the call may overtake the save) is **404** `sdi_transmission_unknown`, and a failure of the provider's API or of
+  the database is 500: the provider delivers the call again (any non-2xx is retried), the outcomes being idempotent, and the job reads the state anyway. **The secret is part of the path: the request logs must not
+  print it** (the API logs no path by itself while `Logging__LogLevel__Microsoft` is `Warning`; the error middleware logs the route template; Railway's own HTTP logs show the path to the members of the project:
+  treat access to the project as access to the secret and rotate it when a member leaves).
+- **Privacy.** Neither the file, nor a fiscal id, a name or the key of the account reaches a log (the proof test `SdiAdapter_NeverLogsInvoicePayload_Test`); a call is logged by its operation and the status of the
+  answer. The XML and the snapshot of the issuer stay encrypted at rest.
+
+| Setting | Meaning |
+|---|---|
+| `Sdi__Provider__Name` | the adapter: `invoicetronic`; empty (or an unknown name) = no provider, nothing is ever submitted |
+| `Sdi__Provider__BaseUrl` | the API address (`https`, or `http` on the machine itself); empty = `https://api.invoicetronic.com/v1/` |
+| `Sdi__Provider__ApiKey` | the key of the account at the provider: a sandbox key (`ik_test_…`) in the test environment, a live key in production. **Secret**; without it no provider |
+| `Sdi__Provider__WebhookSecret` | the secret of the address of the webhook, 32 characters or more. **Secret** |
+| `Sdi__Provider__TimeoutSeconds` | the longest a call may last (5 to 120, default 30) |
+| `Features__SdiSubmission` | the module (default off) |
+
+### Verifying the channel (test environment, sandbox key) and the open points
+
+1. Set `Sdi__Provider__Name=invoicetronic`, `Sdi__Provider__ApiKey` (a sandbox key), `Sdi__Provider__WebhookSecret` and `Features__SdiSubmission=true` on the test environment; register at the provider a webhook for
+   the event `update.add` with the address `https://<api host>/api/webhooks/sdi/<secret>`.
+2. Issue an invoice to an Italian company whose recipient code is one of the reserved values of the sandbox: `SBXRC00` (delivered), `SBXNS00` (rejected), `SBXMC00` (non-delivery); submit it
+   (`POST …/sdi/submit`): `submitted`; the sandbox answers at the next half hour (up to about two hours), the webhook or the job records the outcome.
+3. A rejected one: the «Da fare» appears, `GET …/sdi` gives the words, `POST …/sdi/correct` makes the draft with the same number, and after the fix it is issued and submitted again.
+
+Open points to settle on the sandbox before anything is turned on in production (none is verified by this change, which never called the real service): (1) the format of `vat` of a company (the adapter sends the 11 digits
+without the country prefix and reads both forms); (2) whether the transmitter in the header of the file (`IdTrasmittente`, the agency's) is accepted as it is or the provider needs its own code; (3) the
+enabling flow of a VAT number (delega) for the owners who issue through the agency; (4) the mapping of the non-delivery states to «delivered»; (5) the behaviour of the idempotency key after 24 hours.
+
+### Adding another provider
+
+1. Choose the provider (contract, sandbox, public API documentation: the table of candidates is in `.claude/context/regulations/fiscale.md`); record the official documentation URLs, the version and the date here.
+2. Write an adapter of `ISdiEInvoiceProvider` in `Casazen.Infrastructure/External/Sdi/` (all of the provider's wire format in it, no provider name outside it and its settings), give it a name in
+   `SdiProviderOptions` and choose it in the registration of `AddCasazenFiscalDocuments`; its tests use a fake HTTP handler and never the real service.
+3. Add its settings to `docs/runbooks/deploy-checklist.md` § 2 and its notifications to `ReadNotificationAsync`, so that every one goes to `RecordOutcomeAsync`.
 
 ## Export of the list (`FiscalDocumentExports`, `XlsxWriter`)
 
