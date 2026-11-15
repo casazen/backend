@@ -67,6 +67,12 @@ public class FiscalDocumentCorrectionTests
             r => r.Record(DomainEventType.FiscalDocumentCorrected, rejected.Id, It.IsAny<object>(), $"fiscal-document-corrected:{rejected.Id:N}", OrgId),
             Times.Once);
 
+        // The replacement is never discarded: the number would be lost (a hole) and the rejected invoice could not be corrected again.
+        var holding = await Assert.ThrowsAsync<DomainRuleException>(() => rig.Documents.DiscardDraftAsync(replacement.Id));
+        Assert.Equal(FiscalDocumentSdiErrors.ReplacementHoldsNumber, holding.Code);
+        var stillHeld = await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == replacement.Id);
+        Assert.Equal((FiscalDocumentStatus.Draft, (int?)1), (stillHeld.Status, stillHeld.SequenceNumber));
+
         // Issued, it keeps the number (and the day of the invoice it replaces); no other number is reserved, so the next invoice of the series is the second.
         var reissued = await rig.Documents.IssueAsync(replacement.Id, confirm: true);
         Assert.Equal(
@@ -149,6 +155,31 @@ public class FiscalDocumentCorrectionTests
         await rig.Documents.CreateCreditNoteAsync(withCredit.Id, 10m, "test", confirm: true, "auth0|host");
         await RejectedAsync(rig, withCredit.Id);
         Assert.Equal(FiscalDocumentSdiErrors.NotCorrectable, (await Assert.ThrowsAsync<DomainRuleException>(() => rig.Corrections.StartCorrectionAsync(withCredit.Id, null))).Code);
+    }
+
+    /// <summary>
+    /// The automatic runs never discard the replacement either: a booking that ends with nothing collected keeps it, with its number, and the host gets the «Da fare» of the change (the same
+    /// as when money was collected), so the number is neither lost nor left without anybody knowing.
+    /// </summary>
+    [Fact]
+    public async Task Correction_ABookingThatEnds_KeepsTheReplacementWithItsNumber_AndTellsTheHost()
+    {
+        await using var db = NewDb();
+        var activities = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, new FakeTimeProvider(Now));
+        var rig = Rig(db, Mock.Of<IDomainEventRecorder>(), activities);
+        var booking = await SeedBookingAsync(db, seedOrg: true);
+        var invoice = await rig.Documents.IssueAsync((await rig.Documents.CreateDraftAsync(booking, null)).Id, confirm: true);
+        await RejectedAsync(rig, invoice.Id);
+        var replacement = await rig.Corrections.StartCorrectionAsync(invoice.Id, "auth0|host");
+
+        (await db.Bookings.SingleAsync(b => b.Id == booking)).Status = BookingStatus.Cancelled;
+        await db.SaveChangesAsync();
+        await rig.Documents.ApplyBookingChangeAsync(booking, BookingChange.Cancelled);
+
+        var kept = await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == replacement.Id);
+        Assert.Equal((FiscalDocumentStatus.Draft, (int?)1, "2026/1"), (kept.Status, kept.SequenceNumber, kept.Number));
+        var todo = Assert.Single(await db.InternalActivities.AsNoTracking().Where(a => a.EntityId == replacement.Id && a.CompletedAt == null).ToListAsync());
+        Assert.Equal((ActivityAction.ReviewFiscalDocument, FiscalDocumentTodos.BookingChangedReason), (todo.Action!.Value, todo.Reason));
     }
 
     // ---------------------------------------------------------------- the «To do»
@@ -305,7 +336,7 @@ public class FiscalDocumentCorrectionTests
         FiscalDocumentCorrectionService Corrections,
         Mock<ISdiEInvoiceProvider> Provider);
 
-    private static TestRig Rig(AppDbContext db, IDomainEventRecorder recorder)
+    private static TestRig Rig(AppDbContext db, IDomainEventRecorder recorder, IInternalActivityService? activities = null)
     {
         var flags = new TestFeatureFlags(FeatureFlags.FiscalDocumentIssuance, FeatureFlags.SdiSubmission);
         var rules = TaxRuleCatalogs.Resolver();
@@ -331,7 +362,8 @@ public class FiscalDocumentCorrectionTests
             new ResxDocumentTexts(),
             rules,
             time,
-            NullLogger<FiscalDocumentService>.Instance);
+            NullLogger<FiscalDocumentService>.Instance,
+            activities: activities);
         var provider = new Mock<ISdiEInvoiceProvider>();
         provider.SetupGet(p => p.IsConfigured).Returns(true);
         provider.SetupGet(p => p.Name).Returns("test");

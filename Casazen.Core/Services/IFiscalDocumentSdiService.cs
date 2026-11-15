@@ -213,6 +213,9 @@ public static class FiscalDocumentSdiErrors
     /// <summary>422: a rejected invoice was never issued, so it is not credited: it is corrected.</summary>
     public const string UseCorrection = "document_rejected_use_correction";
 
+    /// <summary>422: the draft replaces a rejected invoice and holds its number: it is issued (the number goes to it and to nobody else), never discarded, so the numbering has no hole.</summary>
+    public const string ReplacementHoldsNumber = "document_replacement_holds_number";
+
     /// <summary>The key in <c>SharedResources</c> of the message of <paramref name="code"/>.</summary>
     public static string MessageKeyOf(string code) => code switch
     {
@@ -224,6 +227,7 @@ public static class FiscalDocumentSdiErrors
         NotCorrectable => "FiscalDocumentNotCorrectable",
         ReplacementInvalid => "FiscalDocumentReplacementInvalid",
         UseCorrection => "FiscalDocumentRejectedUseCorrection",
+        ReplacementHoldsNumber => "FiscalDocumentReplacementHoldsNumber",
         _ => throw new ArgumentOutOfRangeException(nameof(code), code, "Not a code of the SDI states of the documents."),
     };
 }

@@ -7684,6 +7684,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocumentReplacementInvalid" xml:space="preserve">
     <value>La bozza non sostituisce una fattura scartata dello stesso emittente: il numero non si riutilizza.</value>
   </data>
+  <data name="FiscalDocumentReplacementHoldsNumber" xml:space="preserve">
+    <value>Questa bozza sostituisce una fattura scartata dallo SDI e ne conserva il numero: va emessa, non eliminata.</value>
+  </data>
   <data name="FiscalDocumentRejectedUseCorrection" xml:space="preserve">
     <value>Una fattura scartata dallo SDI non è mai stata emessa: non si storna con una nota di credito, si corregge e si reinvia con lo stesso numero.</value>
   </data>

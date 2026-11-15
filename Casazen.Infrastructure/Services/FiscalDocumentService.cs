@@ -131,9 +131,17 @@ public sealed partial class FiscalDocumentService(
             made.Add(await RebuildAsync(draft, ct, isNew: true, planned: planned));
         }
 
-        // The drafts of a part the plan no longer has: discarded (no number was given), never issued in the name of an issuer that no longer bills it.
+        // The drafts of a part the plan no longer has: discarded (no number was given), never issued in the name of an issuer that no longer bills it. The replacement of an invoice the SDI
+        // rejected holds the number of that invoice (E17/F01/US02/T03): it is never discarded (the number would be lost), the host is told instead.
         foreach (var stale in drafts.Where(d => plan.Of(d.ForAgencyServices) is null))
         {
+            if (HoldsAReplacedNumber(stale))
+            {
+                logger.LogWarning("Draft {DocumentId} of booking {BookingId} holds the number of a rejected invoice: kept, the host is told the plan changed", stale.Id, booking.Id);
+                await TellTheHostAsync(booking, stale.Id, FiscalDocumentTodos.BookingChangedReason, ct);
+                continue;
+            }
+
             stale.Status = FiscalDocumentStatus.Discarded;
             stale.UpdatedAt = UtcNow;
             await db.SaveChangesAsync(ct);
@@ -217,6 +225,7 @@ public sealed partial class FiscalDocumentService(
             RequireOwnerInvoice(document);
         else
             RequireGuestDocument(document);
+        RequireNotAHeldNumber(document);
         document.Status = FiscalDocumentStatus.Discarded;
         document.UpdatedAt = UtcNow;
         await db.SaveChangesAsync(ct);
@@ -774,6 +783,14 @@ public sealed partial class FiscalDocumentService(
         planned ??= (await RequirePlanAsync(booking, ct)).Of(draft.ForAgencyServices);
         if (planned is null)
         {
+            // The replacement of an invoice the SDI rejected holds its number (E17/F01/US02/T03): kept as it is, the host is told the plan of the booking changed and decides.
+            if (HoldsAReplacedNumber(draft))
+            {
+                logger.LogWarning("Draft {DocumentId} of booking {BookingId} holds the number of a rejected invoice: kept, the host is told the plan changed", draft.Id, booking.Id);
+                await TellTheHostAsync(booking, draft.Id, FiscalDocumentTodos.BookingChangedReason, ct);
+                return draft;
+            }
+
             draft.Status = FiscalDocumentStatus.Discarded;
             draft.UpdatedAt = UtcNow;
             await db.SaveChangesAsync(ct);
@@ -1308,6 +1325,19 @@ public sealed partial class FiscalDocumentService(
         if (original.SdiStatus == FiscalDocumentSdiStatuses.Rejected && original.Purpose != FiscalDocumentPurpose.OwnerInvoice)
             throw new DomainRuleException(FiscalDocumentSdiErrors.UseCorrection, FiscalDocumentSdiErrors.MessageKeyOf(FiscalDocumentSdiErrors.UseCorrection));
     }
+
+    /// <summary>
+    /// The replacement of an invoice the SDI rejected (E17/F01/US02/T03) holds the number that invoice gave up: discarded, the number would be lost (a hole in the numbering) and the rejected
+    /// invoice could not be corrected again. It is issued, never discarded: 422 <c>document_replacement_holds_number</c>.
+    /// </summary>
+    private static void RequireNotAHeldNumber(FiscalDocument draft)
+    {
+        if (HoldsAReplacedNumber(draft))
+            throw new DomainRuleException(FiscalDocumentSdiErrors.ReplacementHoldsNumber, FiscalDocumentSdiErrors.MessageKeyOf(FiscalDocumentSdiErrors.ReplacementHoldsNumber));
+    }
+
+    /// <summary>The draft replaces a rejected invoice and holds its number: neither the host nor an automatic run discards it (the run tells the host instead).</summary>
+    internal static bool HoldsAReplacedNumber(FiscalDocument draft) => draft.ReplacesDocumentId is not null && draft.SequenceNumber is not null;
 
     private static void RequireCasazenDraft(FiscalDocument document)
     {

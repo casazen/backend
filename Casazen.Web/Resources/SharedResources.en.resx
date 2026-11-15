@@ -7684,6 +7684,9 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="FiscalDocumentReplacementInvalid" xml:space="preserve">
     <value>The draft does not replace a rejected invoice of the same issuer: its number is not reused.</value>
   </data>
+  <data name="FiscalDocumentReplacementHoldsNumber" xml:space="preserve">
+    <value>This draft replaces an invoice the SDI rejected and keeps its number: it is issued, never discarded.</value>
+  </data>
   <data name="FiscalDocumentRejectedUseCorrection" xml:space="preserve">
     <value>An invoice the SDI rejected was never issued: it is not reversed with a credit note, it is corrected and sent again with the same number.</value>
   </data>
