@@ -918,13 +918,17 @@ public sealed class AssistantDraftService(
                 m => m.OrgId == orgId && m.ThreadId == thread.RowId && m.Sender == GuestMessageSender.Guest && m.Id != message.Id && m.CreatedAt > message.At,
                 ct);
 
-    /// <summary>The host side wrote after this message (a message that the channel refused is not an answer).</summary>
+    /// <summary>
+    /// The host side wrote after this message (a message that the channel refused is not an answer, and neither is an automatic message of CasaZen, such as the check-in link:
+    /// <see cref="MessageOrigin.Automation"/> answers nobody, the thread still waits for its answer).
+    /// </summary>
     private Task<bool> HostAnsweredSinceAsync(Guid orgId, ThreadState thread, InboundMessage message, CancellationToken ct) =>
         thread.Source == HostMessageSource.Ota
             ? db.OtaMessages.AnyAsync(
                 m => m.OrgId == orgId
                      && m.ThreadId == thread.RowId
                      && m.Direction == OtaMessageDirection.Outbound
+                     && m.Origin != MessageOrigin.Automation
                      && m.DeliveryState != OtaMessageDeliveryState.Error
                      && m.SentAt > message.At,
                 ct)
@@ -938,10 +942,12 @@ public sealed class AssistantDraftService(
         List<(bool FromGuest, string Text)> latest;
         if (thread.Source == HostMessageSource.Ota)
         {
+            // An automatic message of CasaZen (the check-in link) is not part of the conversation: it answers nobody, and its link is a secret the provider must never read.
             var rows = await db.OtaMessages
                 .AsNoTracking()
                 .Where(m => m.OrgId == orgId
                             && m.ThreadId == thread.RowId
+                            && m.Origin != MessageOrigin.Automation
                             && (m.Direction == OtaMessageDirection.Inbound || m.DeliveryState != OtaMessageDeliveryState.Error))
                 .OrderByDescending(m => m.SentAt)
                 .ThenByDescending(m => m.CreatedAt)
