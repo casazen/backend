@@ -187,6 +187,13 @@ public static partial class EmailTemplates
     public static PushText GuestCheckInCompletedPush(CultureInfo culture, string propertyName) =>
         Push(culture, "Push_GuestCheckInCompleted", propertyName);
 
+    /// <summary>
+    /// The automatic delivery of the check-in link of a stay failed for good (E23/F01/US01/T01, NF-122), to the host: the property only, never the guest, the link or the
+    /// reason; the host opens the booking and copies the link from there.
+    /// </summary>
+    public static PushText CheckInLinkFailedPush(CultureInfo culture, string propertyName) =>
+        Push(culture, "Push_CheckInLinkFailed", propertyName);
+
     /// <summary>Check-out day of a stay, to the host (CO-10 stay alert).</summary>
     public static PushText CheckoutReminderPush(CultureInfo culture, string propertyName) =>
         Push(culture, "Push_CheckoutReminder", propertyName);

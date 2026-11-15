@@ -162,6 +162,10 @@ builder.Services.AddMessageSync();
 // ones, and the proxy of the attachments, all registered in AddMessagesHub (the next tasks of the feature add theirs there).
 builder.Services.AddMessagesHub();
 
+// The check-in link of a stay with no e-mail address (epic E23, feature F01, NF-122): the portal chat, the contact of the guest and the host's To do, behind the flags
+// PortalChatCheckInLink and GuestContactInfo, all registered in AddCheckInLinkDelivery.
+builder.Services.AddCheckInLinkDelivery();
+
 // Who is told what and how (epic E05, feature F03, NF-65): the notification preferences of the host users with their single decision point, and the alerts
 // of the new messages of the guests that already use it, all registered in AddNotificationPreferences.
 builder.Services.AddNotificationPreferences();

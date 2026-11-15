@@ -1787,6 +1787,88 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.CheckInLinkDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Channel")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ContactReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("ContactRefused")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EndedReason")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime?>("LastAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("LinkToken")
+                        .HasColumnType("text")
+                        .HasColumnName("LinkTokenEncrypted");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("OtaMessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("SessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_CheckInLinkDeliveries_BookingId");
+
+                    b.HasIndex("OtaMessageId");
+
+                    b.HasIndex("SessionId");
+
+                    b.HasIndex("OrgId", "State")
+                        .HasDatabaseName("IX_CheckInLinkDeliveries_OrgId_State_Open")
+                        .HasFilter("\"EndedAt\" IS NULL");
+
+                    b.ToTable("CheckInLinkDeliveries", t =>
+                        {
+                            t.HasCheckConstraint("CK_CheckInLinkDeliveries_Channel", "\"Channel\" IN (1, 2, 3)");
+
+                            t.HasCheckConstraint("CK_CheckInLinkDeliveries_State", "\"State\" IN (1, 2, 3, 4, 5, 6, 7)");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.CinAlertState", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7703,7 +7785,7 @@ namespace Casazen.Infrastructure.Migrations
 
                             t.HasCheckConstraint("CK_OtaMessages_Direction", "\"Direction\" IN (1, 2)");
 
-                            t.HasCheckConstraint("CK_OtaMessages_Origin", "\"Origin\" IN (1, 2, 3)");
+                            t.HasCheckConstraint("CK_OtaMessages_Origin", "\"Origin\" IN (1, 2, 3, 4)");
                         });
                 });
 
@@ -17799,6 +17881,31 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Segment");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.CheckInLinkDelivery", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Booking", null)
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.OtaMessage", null)
+                        .WithMany()
+                        .HasForeignKey("OtaMessageId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Casazen.Core.Entities.GuestCheckInSession", null)
+                        .WithMany()
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.CinAlertState", b =>

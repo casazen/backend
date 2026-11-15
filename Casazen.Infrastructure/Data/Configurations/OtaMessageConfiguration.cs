@@ -55,7 +55,7 @@ internal sealed class OtaMessageConfiguration : IEntityTypeConfiguration<OtaMess
                 + $"{(int)OtaMessageDeliveryState.Sent}, {(int)OtaMessageDeliveryState.Error}, {(int)OtaMessageDeliveryState.ManualVerify})");
             t.HasCheckConstraint(
                 "CK_OtaMessages_Origin",
-                $"\"Origin\" IN ({(int)MessageOrigin.Guest}, {(int)MessageOrigin.Person}, {(int)MessageOrigin.Assistant})");
+                $"\"Origin\" IN ({(int)MessageOrigin.Guest}, {(int)MessageOrigin.Person}, {(int)MessageOrigin.Assistant}, {(int)MessageOrigin.Automation})");
         });
     }
 }

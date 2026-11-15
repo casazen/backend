@@ -217,6 +217,10 @@ internal sealed class AssistantDraftRig : IDisposable
     public Task<OtaMessage> HostWritesAsync(string text, int minutesAgo, OtaMessageDeliveryState state = OtaMessageDeliveryState.Sent) =>
         AddMessageAsync(Thread, OtaMessageDirection.Outbound, MessageOrigin.Person, text, minutesAgo, state);
 
+    /// <summary>An automatic message of CasaZen (the check-in link, E23/F01/US01/T01) in the conversation of Giulia Verdi: no person wrote it, and it answers nobody.</summary>
+    public Task<OtaMessage> AutomationWritesAsync(string text, int minutesAgo) =>
+        AddMessageAsync(Thread, OtaMessageDirection.Outbound, MessageOrigin.Automation, text, minutesAgo, OtaMessageDeliveryState.Sent);
+
     private async Task<OtaMessage> AddMessageAsync(
         OtaMessageThread thread,
         OtaMessageDirection direction,
