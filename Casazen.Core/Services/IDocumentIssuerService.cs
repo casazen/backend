@@ -45,10 +45,10 @@ public interface IDocumentIssuerService
     Task<IssuerDecision> ResolveIssuerAsync(Guid bookingId, CancellationToken ct = default);
 
     /// <summary>
-    /// Locks CasaZen as the issuer of the booking (the rows are written with CasaZen only). Idempotent (the first document that locked it is kept); a
-    /// booking a legacy row locked to Octorate is 409 <c>document_issuer_conflict</c>, and while the flag is off it is 422
-    /// <c>document_issuance_not_available</c>. <paramref name="save"/> <c>false</c> only stages the row in the unit of work of the caller, who saves it
-    /// with the document.
+    /// Records CasaZen as the issuer of the document <paramref name="documentId"/> of the booking (the rows are written with CasaZen only): one row for each
+    /// document (E17/F01/US01/T02), idempotent for the same document (a legacy row made before any document is completed by the first one); a booking a legacy
+    /// row locked to Octorate is 409 <c>document_issuer_conflict</c>, and while the flag is off it is 422 <c>document_issuance_not_available</c>.
+    /// <paramref name="save"/> <c>false</c> only stages the row in the unit of work of the caller, who saves it with the document.
     /// </summary>
     Task<IssuerLock> LockIssuerAsync(Guid bookingId, BookingDocumentIssuerKind kind, Guid? documentId, bool save = true, CancellationToken ct = default);
 }

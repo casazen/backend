@@ -3111,14 +3111,17 @@ Who an invoice of a booking is made out to. One row for each booking; it goes wi
 | `CreatedAt`, `UpdatedAt`, `UpdatedByUserId` | `DateTime`, `DateTime`, `string?` (255) | — | UTC; the person who saved it last when it was the host |
 | `xmin` | `uint` | concurrency token (`RowVersion`) | PostgreSQL system column; no column of its own |
 
-#### `OrgFiscalIssuerProfile` (NF-82, E06/F02/US02/T01)
+#### `OrgFiscalIssuerProfile` (NF-82, E06/F02/US02/T01, E17/F01/US01/T01)
 
-Who issues the fiscal documents of an organization and with which data (the wizard «Come emetti i documenti?»). One row for each organization. The VAT number and the fiscal code of the issuer stay on `Orgs` (`PartitaIvaNumber`, `FiscalCode`): the profile never copies them.
+Who issues the fiscal documents of an organization and with which data (the wizard «Come emetti i documenti?»). One row for each organization (`PropertyOwnerId` `null`) and, since E17/F01/US01/T01, one for each owner who issues the documents of the stays of his properties. The VAT number and the fiscal code of the organization stay on `Orgs` (`PartitaIvaNumber`, `FiscalCode`): its profile never copies them; an owner's profile keeps the owner's own. The readers of the organization's profile filter `PropertyOwnerId IS NULL` (`OrgFiscalIssuerProfileQueries.OfOrganization`). The legal name, the address and the owner's codes are encrypted at rest (`docs/runbooks/encryption.md`); the full description is in `docs/runbooks/fiscal-documents.md`.
 
 | Field | Type | Constraints | Description |
 |---|---|---|---|
 | `Id` | `Guid` | PK | Auto-generated |
-| `OrgId` | `Guid` | **unique** (`UIX_OrgFiscalIssuerProfiles_OrgId`), tenant key (`ITenantOwned`) | The organization |
+| `OrgId` | `Guid` | **unique** among the organizations' profiles (`UIX_OrgFiscalIssuerProfiles_OrgId`, where `PropertyOwnerId IS NULL`), tenant key (`ITenantOwned`) | The organization (for an owner's profile, the agency of the owner) |
+| `PropertyOwnerId` | `Guid?` | FK `PropertyOwners` (CASCADE), **unique** where set (`UIX_OrgFiscalIssuerProfiles_PropertyOwnerId`) | The owner of an owner's profile; `null` for the organization's. A profile with issued documents cannot go (the documents' foreign key is restrict) |
+| `FiscalCode`, `VatNumber` | `string?` | encrypted at rest | The owner's own fiscal code and VAT number; `null` on the organization's profile |
+| `StayIssuedByOwner` | `bool` | — | Switzerland only: the agency chose «emette il proprietario» for this owner (off by default: the agency issues). In Italy the owner always issues |
 | `IssuerMode` | `int` (enum) | explicit numbers, never reused | `Octorate` 1 (the channel manager issues, CasaZen reads), `CasaZenDirectOnly` 2 (CasaZen issues, direct bookings only), `Accountant` 3 (nobody issues here) |
 | `DocumentRegime` | `int?` (enum) | explicit numbers, never reused | `PrivatePerson` 1, `VatOrdinary` 2, `VatFlatRate` 3; `null` until the issuer says it |
 | `LegalName` (200), `AddressStreet` (200), `AddressCivic` (20), `PostalCode` (10), `City` (100), `Province` (2), `CountryCode` (2, default `IT`) | `string`, nullable but the country | — | The legal name and the structured address of the issuer |
@@ -3127,18 +3130,18 @@ Who issues the fiscal documents of an organization and with which data (the wiza
 | `ConfirmedAt` | `DateTime?` | — | When the wizard was completed (UTC) |
 | `UpdatedAt`, `UpdatedByUserId` | `DateTime`, `string?` (255) | — | UTC; the person who saved it last |
 
-#### `BookingDocumentIssuer` (NF-82, E06/F02/US02/T01)
+#### `BookingDocumentIssuer` (NF-82, E06/F02/US02/T01, E17/F01/US01/T02)
 
-The single issuer of the documents of a booking, written when the first document is issued by CasaZen or found issued by Octorate, and never changed. The database itself refuses a second issuer.
+Who issued a document of a booking: one row for each document CasaZen issues, written in the transaction of its issue and never changed. Since E17/F01/US01/T02 a booking may have documents of several issuers (the receipt of its owner, the invoice of the agency for its services): the document service refuses two live documents that bill the same part of the booking (the stay, the services of the agency; the organization's own document bills both), whoever issued them. A legacy row locked to Octorate still keeps CasaZen off the booking.
 
 | Field | Type | Constraints | Description |
 |---|---|---|---|
 | `Id` | `Guid` | PK | Auto-generated |
 | `OrgId` | `Guid` | tenant key (`ITenantOwned`) | The org of the booking |
-| `BookingId` | `Guid` | FK `Bookings` (CASCADE), **unique** (`UIX_BookingDocumentIssuers_BookingId`) | The booking; at most one issuer |
+| `BookingId` | `Guid` | FK `Bookings` (CASCADE), indexed (not unique) | The booking; one row for each of its documents |
 | `Issuer` | `int` (enum) | explicit numbers, never reused | `Octorate` 1, `CasaZen` 2 |
 | `LockedAt` | `DateTime` | — | UTC |
-| `LockedByDocumentId` | `Guid?` | no foreign key | The document that locked it; the table of the documents arrives with E06/F01/US02/T01 |
+| `LockedByDocumentId` | `Guid?` | no foreign key, **unique** where set (`UIX_BookingDocumentIssuers_LockedByDocumentId`) | The document of the row; `null` for a legacy row made before any document |
 
 #### Activation of CasaZen with Octorate (NF-104..NF-107, E10/F01/US01/T01)
 

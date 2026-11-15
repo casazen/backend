@@ -255,6 +255,15 @@ public static class FiscalDocumentTodos
 
     /// <summary>«Controlla ed emetti la nota di credito»: the credit note (or reversal receipt) of a correction is waiting as a draft for the host to check and issue.</summary>
     public const string CreditNoteToIssueReason = "fiscal_document_credit_note_to_issue";
+
+    /// <summary>The kind of entity of the item about an owner (the frontend opens the owner from the id).</summary>
+    public const string OwnerEntityType = "PropertyOwner";
+
+    /// <summary>
+    /// The owner who issues the document of a stay of its Italian property has no issuer profile that can issue (E17/F01/US01/T02): no document is made until the
+    /// profile is complete. The same key as the item of the billing setup.
+    /// </summary>
+    public const string OwnerIssuerMissingReason = Casazen.Core.Models.BillingSetupItemKeys.OwnerIssuerMissing;
 }
 
 /// <summary>The filters of the list of the documents; the days are Europe/Rome calendar days of the issue (of the creation for a draft).</summary>
@@ -330,6 +339,12 @@ public static class FiscalDocumentErrors
 
     /// <summary>The code of a row of a bulk issue whose document failed for a reason that is not a rule (the database): the document stays a draft and can be issued again.</summary>
     public const string IssueFailed = "document_issue_failed";
+
+    /// <summary>
+    /// 422 (E17/F01/US01/T02): the owner who issues the document of the stay has no issuer profile that can issue (none, or one that misses a field): no document
+    /// is made, and the owner's «Da fare» is raised. The <c>ownerId</c> is in the answer.
+    /// </summary>
+    public const string OwnerIssuerMissing = Casazen.Core.Models.BillingSetupItemKeys.OwnerIssuerMissing;
 
     /// <summary>The longest reason of a credit note.</summary>
     public const int CreditReasonMaxLength = 200;

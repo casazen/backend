@@ -131,11 +131,13 @@ public sealed partial class FiscalDocumentService
         if (active && change == BookingChange.Refunded)
             return;
 
-        OrgFiscalIssuerProfile profile;
+        OrgFiscalIssuerProfile organization;
         FiscalTaxRule rule;
         try
         {
-            (profile, _) = await RequireIssuerAsync(booking.OrgId, ct);
+            // The document is corrected by its own issuer (E17/F01/US01/T02): the owner's receipt or invoice by the owner, the agency's by the agency.
+            (organization, _) = await RequireIssuerAsync(booking.OrgId, ct);
+            var profile = await IssuerProfileAsync(booking, organization, issued.IssuerProfileId, requireComplete: false, ct);
             rule = RuleOf(profile, booking);
         }
         catch (DomainException ex)
@@ -145,7 +147,7 @@ public sealed partial class FiscalDocumentService
             return;
         }
 
-        plan.AutoIssue = profile.AutoIssueGuestDocuments;
+        plan.AutoIssue = organization.AutoIssueGuestDocuments;
         var credited = await CreditedSoFarAsync(issued.Id, ct);
         var planned = await PlannedCreditAsync(issued.Id, ct);
         var uncovered = issued.Total - credited - planned;
@@ -153,12 +155,12 @@ public sealed partial class FiscalDocumentService
 
         if (active)
         {
-            // The lines the booking bills now, against what the document says.
-            var built = await _lines.BuildAsync(booking.Id, rule, _lines.PlatformCollectedChannelsOf(profile), ct);
+            // The lines the booking bills now that this document bills (its part of the plan), against what the document says.
+            var built = await _lines.BuildAsync(booking.Id, rule, _lines.PlatformCollectedChannelsOf(organization), ct);
             FiscalDocumentAmounts? now = null;
             try
             {
-                now = FiscalDocumentTotals.FromGross(built.Lines, rule.StampDuty);
+                now = FiscalDocumentTotals.FromGross(GuestDocumentLineBuilder.LinesOf(built.Lines, issued, organization), rule.StampDuty);
             }
             catch (DomainException)
             {
@@ -176,8 +178,13 @@ public sealed partial class FiscalDocumentService
 
             try
             {
-                var draft = await CreateDraftAsync(booking.Id, null, ct);
-                plan.IssueInOrder.Add(draft.Id);
+                // The new drafts of the plan; the one of this document's part follows its credit note in the automatic issue.
+                var drafts = await MakeDraftsOfThePlanAsync(booking.Id, null, onlyMissing: false, ct);
+                if (drafts.FirstOrDefault(d => d.ForAgencyServices == issued.ForAgencyServices && d.Status == FiscalDocumentStatus.Draft) is { } draft
+                    && !plan.IssueInOrder.Contains(draft.Id))
+                {
+                    plan.IssueInOrder.Add(draft.Id);
+                }
             }
             catch (DomainException ex)
             {

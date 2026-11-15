@@ -39,9 +39,10 @@ public class DocumentIssuerProofTests
     private static readonly Guid PropertyOfColleague = Guid.Parse("3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e14");
 
     /// <summary>
-    /// PROOF TEST: data rule. A booking is locked to CasaZen once (the first document is kept); the rows are written with CasaZen only, so Octorate can no
-    /// longer be locked; a booking a legacy row locked to Octorate keeps it: CasaZen cannot be locked over it (409 <c>document_issuer_conflict</c>) and
-    /// the decision says so, so a booking Octorate issued for is never issued twice.
+    /// PROOF TEST: data rule. The issuer rows of a booking are one for each document CasaZen issues (E17/F01/US01/T02: the receipt of the owner and the invoice of
+    /// the agency of one stay are two rows), the same document again changes nothing; the rows are written with CasaZen only, so Octorate can no longer be
+    /// locked; a booking a legacy row locked to Octorate keeps it: CasaZen cannot be locked over it (409 <c>document_issuer_conflict</c>) and the decision says
+    /// so, so a booking Octorate issued for is never issued twice.
     /// </summary>
     [Fact]
     public async Task DocumentIssuer_NeverTwoIssuersPerBooking_Test()
@@ -61,13 +62,15 @@ public class DocumentIssuerProofTests
         await db.SaveChangesAsync();
         var sut = Service(db, issuanceOn: true);
 
-        // CasaZen takes a booking of a portal; the same kind again changes nothing.
+        // CasaZen takes a booking of a portal; the same document again changes nothing, a second document of the booking (another issuer) has its own row.
         var firstDocument = Guid.NewGuid();
         var locked = await sut.LockIssuerAsync(ownBooking.Id, BookingDocumentIssuerKind.CasaZen, firstDocument);
         Assert.Equal(BookingDocumentIssuerKind.CasaZen, locked.Issuer);
         Assert.Equal(firstDocument, locked.LockedByDocumentId);
-        var again = await sut.LockIssuerAsync(ownBooking.Id, BookingDocumentIssuerKind.CasaZen, Guid.NewGuid());
+        var again = await sut.LockIssuerAsync(ownBooking.Id, BookingDocumentIssuerKind.CasaZen, firstDocument);
         Assert.Equal(firstDocument, again.LockedByDocumentId);
+        var secondDocument = Guid.NewGuid();
+        Assert.Equal(secondDocument, (await sut.LockIssuerAsync(ownBooking.Id, BookingDocumentIssuerKind.CasaZen, secondDocument)).LockedByDocumentId);
         Assert.Equal(new IssuerDecision(IssuerDecisionKind.CasaZen, IssuerReasons.IssuerCasazen), await sut.ResolveIssuerAsync(ownBooking.Id));
 
         // The rows are written with CasaZen only: an imported document never locks a booking to Octorate.
@@ -84,8 +87,11 @@ public class DocumentIssuerProofTests
 
         db.ChangeTracker.Clear();
         var rows = await db.BookingDocumentIssuers.AsNoTracking().ToListAsync();
-        Assert.Equal(2, rows.Count);
-        Assert.Equal(BookingDocumentIssuerKind.CasaZen, rows.Single(r => r.BookingId == ownBooking.Id).Issuer);
+        Assert.Equal(3, rows.Count);
+        Assert.Equal(
+            new[] { firstDocument, secondDocument }.Order(),
+            rows.Where(r => r.BookingId == ownBooking.Id).Select(r => r.LockedByDocumentId!.Value).Order());
+        Assert.All(rows.Where(r => r.BookingId == ownBooking.Id), row => Assert.Equal(BookingDocumentIssuerKind.CasaZen, row.Issuer));
         Assert.Equal(BookingDocumentIssuerKind.Octorate, rows.Single(r => r.BookingId == legacyBooking.Id).Issuer);
     }
 

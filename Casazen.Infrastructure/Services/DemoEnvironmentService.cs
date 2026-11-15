@@ -495,7 +495,11 @@ public class DemoEnvironmentService(
         await MarkAsync(orgId, TestDataEntities.PopupAlert, alert.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
-    /// <summary>Deletes the profile of the issuer the showcase wrote for the org, found by its marker (FIS-02). A real profile has no marker and is never touched.</summary>
+    /// <summary>
+    /// Deletes the profile of the issuer the showcase wrote for the org, found by its marker (FIS-02). A real profile has no marker and is never touched. A
+    /// profile a fiscal document was issued on is kept with its marker (E17/F01/US01/T01: a document never loses its issuer, the foreign key is restrict), and
+    /// the next reset tries again.
+    /// </summary>
     private async Task RemoveShowcaseFiscalIssuerProfilesAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var profileIds = await Markers()
@@ -505,9 +509,21 @@ public class DemoEnvironmentService(
         if (profileIds.Count == 0)
             return;
 
-        await db.OrgFiscalIssuerProfiles.IgnoreQueryFilters([Tenant]).Where(p => p.OrgId == orgId && profileIds.Contains(p.Id)).ExecuteDeleteAsync(cancellationToken);
+        var issuedOn = await db.FiscalDocuments.IgnoreQueryFilters([Tenant])
+            .Where(d => d.OrgId == orgId && d.IssuerProfileId != null && profileIds.Contains(d.IssuerProfileId.Value))
+            .Select(d => d.IssuerProfileId!.Value)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        if (issuedOn.Count > 0)
+            logger.LogInformation("Demo reset of org {OrgId}: {Count} issuer profiles kept, documents were issued on them", orgId, issuedOn.Count);
+
+        var removable = profileIds.Except(issuedOn).ToList();
+        if (removable.Count == 0)
+            return;
+
+        await db.OrgFiscalIssuerProfiles.IgnoreQueryFilters([Tenant]).Where(p => p.OrgId == orgId && removable.Contains(p.Id)).ExecuteDeleteAsync(cancellationToken);
         await Markers()
-            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.FiscalIssuerProfile)
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.FiscalIssuerProfile && removable.Contains(m.EntityId))
             .ExecuteDeleteAsync(cancellationToken);
     }
 
@@ -518,7 +534,7 @@ public class DemoEnvironmentService(
     private async Task CreateFiscalIssuerProfileAsync(
         Guid orgId, string ownerId, DemoFiscalIssuerProfileTemplate template, CancellationToken cancellationToken)
     {
-        if (await db.OrgFiscalIssuerProfiles.IgnoreQueryFilters([Tenant]).AnyAsync(p => p.OrgId == orgId, cancellationToken))
+        if (await db.OrgFiscalIssuerProfiles.IgnoreQueryFilters([Tenant]).OfOrganization(orgId).AnyAsync(cancellationToken))
         {
             logger.LogInformation("Demo issuer profile {Key} skipped: org {OrgId} already has a profile of its own", template.Key, orgId);
             return;

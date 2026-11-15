@@ -84,6 +84,38 @@ public sealed class GuestDocumentLineBuilder(
     }
 
     /// <summary>
+    /// The lines of the booking that the document of the plan bills (E17/F01/US01/T02): all of them for the one document of the organization; the stay of an owner
+    /// leaves out the services the agency bills apart (the cleaning when it is the agency's service, the extras), which make the agency's own document.
+    /// </summary>
+    public static IReadOnlyList<FiscalDocumentGrossLine> LinesOf(IReadOnlyList<FiscalDocumentGrossLine> lines, PlannedDocument planned)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+        ArgumentNullException.ThrowIfNull(planned);
+        return lines.Where(line => planned.Bills(line.LineType)).ToList();
+    }
+
+    /// <summary>
+    /// The lines of the booking that an issued document billed (E17/F01/US01/T02), to compare it with what the booking bills now: the services of the agency for its
+    /// document of the services; for a document of the stay, everything its issuer bills (the services of the agency left out when an owner issued it).
+    /// </summary>
+    public static IReadOnlyList<FiscalDocumentGrossLine> LinesOf(
+        IReadOnlyList<FiscalDocumentGrossLine> lines,
+        FiscalDocument document,
+        OrgFiscalIssuerProfile organization)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(organization);
+
+        var services = DocumentPlanRules.AgencyServiceLineTypes(organization.CleaningFeeTreatment);
+        if (document.ForAgencyServices)
+            return lines.Where(line => services.Contains(line.LineType)).ToList();
+
+        var byTheOrganization = document.IssuerProfileId is null || document.IssuerProfileId == organization.Id;
+        return byTheOrganization ? lines : lines.Where(line => !services.Contains(line.LineType)).ToList();
+    }
+
+    /// <summary>
     /// The stay and the cleaning of a price that includes the cleaning (<c>BasePrice</c>): the cleaning is at most the price, and the two add up to it, so the cleaning is never
     /// billed twice. A booking of a portal has no cleaning fee of its own: its whole price is the stay.
     /// </summary>

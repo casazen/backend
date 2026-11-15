@@ -3,25 +3,27 @@ using System.Globalization;
 namespace Casazen.Core.Services;
 
 /// <summary>
-/// The numbers of the fiscal documents (NF-83, ADR-019-R4, E06/F01/US02/T02): consecutive from the first, without gaps and without duplicates per issuer
-/// (org) and series. The documents of the guests and the owner invoices (E14/F01/US01/T01, their own series) draw from it; owner statements are not fiscal
-/// documents and never do.
+/// The numbers of the fiscal documents (NF-83, NF-116, ADR-019-R4, E06/F01/US02/T02, E17/F01/US01/T01): consecutive from the first, without gaps and without
+/// duplicates per org, issuer and series. The issuer is the profile the document is issued on: the organization, or an owner who issues the documents of its
+/// stays with its own series (the sezionale). The documents of the guests and the owner invoices (E14/F01/US01/T01, their own series) draw from it; owner
+/// statements are not fiscal documents and never do.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
 /// <item><b>The caller's transaction.</b> The caller opens a READ COMMITTED transaction that also saves the document; the reservation joins it under a
-/// transaction-scoped advisory lock of the org and series. A failure rolls the number back with the document: the next call gets the same number.</item>
-/// <item><b>Seed.</b> At the first use of a series the counter starts above the highest fiscal number already used in that org and series, the legacy
-/// agency invoices included, only so that no number is used twice.</item>
+/// transaction-scoped advisory lock of the org, the issuer and the series (<c>{orgId}:{issuerProfileId}:{series}</c>). A failure rolls the number back with
+/// the document: the next call gets the same number.</item>
+/// <item><b>Seed.</b> At the first use of a series the counter starts above the highest fiscal number the issuer already used in it (for the profile of the
+/// organization, the documents of before the issuers and the legacy agency invoices included), only so that no number is used twice.</item>
 /// </list>
 /// </remarks>
 public interface IFiscalNumberingService
 {
     /// <summary>
-    /// The next number of the series, reserved in the caller's transaction. A series longer than <see cref="FiscalNumberFormat.SeriesMaxLength"/> is
-    /// 422 <c>series_too_long</c>.
+    /// The next number of the series of the issuer <paramref name="issuerProfileId"/> (a profile of <paramref name="orgId"/>), reserved in the caller's
+    /// transaction. A series longer than <see cref="FiscalNumberFormat.SeriesMaxLength"/> is 422 <c>series_too_long</c>.
     /// </summary>
-    Task<FiscalNumber> ReserveNextAsync(Guid orgId, string series, CancellationToken ct = default);
+    Task<FiscalNumber> ReserveNextAsync(Guid orgId, Guid issuerProfileId, string series, CancellationToken ct = default);
 }
 
 /// <summary>A reserved fiscal number: the series, the integer and its display form.</summary>

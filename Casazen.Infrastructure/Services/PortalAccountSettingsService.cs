@@ -18,7 +18,7 @@ public sealed class PortalAccountSettingsService(AppDbContext db, TimeProvider t
 {
     public async Task<PortalAccountSettings> GetAsync(Guid orgId, CancellationToken ct = default)
     {
-        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.OrgId == orgId, ct);
+        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().OfOrganization(orgId).FirstOrDefaultAsync(ct);
         return profile is null
             ? new PortalAccountSettings(PortalAccountHolders.Defaults.Default, PortalAccountHolders.Defaults.RechargePortalCommissions)
             : new PortalAccountSettings(profile.PortalAccountHolder, profile.RechargePortalCommissions);
@@ -35,7 +35,7 @@ public sealed class PortalAccountSettingsService(AppDbContext db, TimeProvider t
             };
         }
 
-        var profile = await db.OrgFiscalIssuerProfiles.FirstOrDefaultAsync(p => p.OrgId == orgId, ct);
+        var profile = await db.OrgFiscalIssuerProfiles.OfOrganization(orgId).FirstOrDefaultAsync(ct);
         if (profile is null)
         {
             // An organization that never opened the wizard gets a draft profile: everything else stays empty until the wizard says it.

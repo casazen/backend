@@ -19,6 +19,9 @@ namespace Casazen.Infrastructure.Services;
 /// the number of the document's lines and of the errors only.</item>
 /// <item><b>Destination code.</b> The recipient's SDI code; <c>0000000</c> with the PEC, or with nothing (the recipient finds it in its fiscal
 /// drawer); <c>XXXXXXX</c> for a recipient outside Italy.</item>
+/// <item><b>Who issues</b> (E17/F01/US01/T03). The agency that issues on behalf of an owner is the third-party issuer: the block
+/// <c>TerzoIntermediarioOSoggettoEmittente</c> and <c>SoggettoEmittente</c> <c>TZ</c>; a self-billed TD17 is issued by its recipient (<c>CC</c>).</item>
+/// <item><b>Addresses abroad.</b> The <c>CAP</c> of an address outside Italy is <c>00000</c> and it has no <c>Provincia</c>.</item>
 /// </list>
 /// </remarks>
 public sealed class FatturaPaXmlBuilder(FatturaPaSchemaProvider schemas, ILogger<FatturaPaXmlBuilder> logger) : IFatturaPaXmlBuilder
@@ -31,6 +34,12 @@ public sealed class FatturaPaXmlBuilder(FatturaPaSchemaProvider schemas, ILogger
 
     /// <summary>The destination code of a recipient outside Italy.</summary>
     public const string ForeignRecipientCode = "XXXXXXX";
+
+    /// <summary>The value of <c>SoggettoEmittente</c> for a third party that issues on behalf of the cedente.</summary>
+    public const string ThirdPartyIssuerCode = "TZ";
+
+    /// <summary>The value of <c>SoggettoEmittente</c> for a document the recipient issues (self-billing).</summary>
+    public const string RecipientIssuerCode = "CC";
 
     private static readonly XNamespace P = FatturaPaSchemaProvider.FatturaPaNamespace;
     private static readonly XNamespace Ds = "http://www.w3.org/2000/09/xmldsig#";
@@ -58,6 +67,8 @@ public sealed class FatturaPaXmlBuilder(FatturaPaSchemaProvider schemas, ILogger
     internal static string Write(FatturaPaInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
+        if (input.IssuedBy == FatturaPaIssuedBy.ThirdParty && input.ThirdPartyIssuer is null)
+            throw new ArgumentException("A document issued by a third party names it.", nameof(input));
 
         var document = new XDocument(
             new XDeclaration("1.0", "UTF-8", null),
@@ -80,7 +91,7 @@ public sealed class FatturaPaXmlBuilder(FatturaPaSchemaProvider schemas, ILogger
     /// <summary>The destination code of the recipient (see the remarks).</summary>
     public static string DestinationCode(string? recipientCountry, string? recipientCode)
     {
-        if (!string.Equals(recipientCountry?.Trim(), "IT", StringComparison.OrdinalIgnoreCase))
+        if (!IsItaly(recipientCountry))
             return ForeignRecipientCode;
 
         return string.IsNullOrWhiteSpace(recipientCode) ? NoChannelCode : recipientCode.Trim().ToUpperInvariant();
@@ -114,7 +125,18 @@ public sealed class FatturaPaXmlBuilder(FatturaPaSchemaProvider schemas, ILogger
                     FiscalId(input.Recipient.VatId),
                     FiscalCode(input.Recipient.FiscalCode),
                     Registry(input.Recipient)),
-                Address(input.Recipient.Address)));
+                Address(input.Recipient.Address)),
+            input.IssuedBy == FatturaPaIssuedBy.ThirdParty && input.ThirdPartyIssuer is { } third
+                ? new XElement(
+                    "TerzoIntermediarioOSoggettoEmittente",
+                    new XElement("DatiAnagrafici", FiscalId(third.VatId), FiscalCode(third.FiscalCode), Registry(third)))
+                : null,
+            input.IssuedBy switch
+            {
+                FatturaPaIssuedBy.ThirdParty => new XElement("SoggettoEmittente", ThirdPartyIssuerCode),
+                FatturaPaIssuedBy.Recipient => new XElement("SoggettoEmittente", RecipientIssuerCode),
+                _ => null,
+            });
     }
 
     private static XElement Body(FatturaPaInput input) =>
@@ -167,15 +189,22 @@ public sealed class FatturaPaXmlBuilder(FatturaPaSchemaProvider schemas, ILogger
             ? new XElement("Anagrafica", new XElement("Denominazione", party.Denomination))
             : new XElement("Anagrafica", new XElement("Nome", party.FirstName), new XElement("Cognome", party.LastName));
 
-    private static XElement Address(FatturaPaAddress address) =>
-        new(
+    /// <summary>A <c>Sede</c>: abroad the <c>CAP</c> is <c>00000</c> (the foreign postal code is not an Italian CAP) and there is no <c>Provincia</c>.</summary>
+    private static XElement Address(FatturaPaAddress address)
+    {
+        var italian = IsItaly(address.CountryCode);
+        var postalCode = italian ? address.PostalCode : FatturaPaParties.ForeignPostalCode;
+        return new XElement(
             "Sede",
             new XElement("Indirizzo", address.Street),
             string.IsNullOrWhiteSpace(address.Civic) ? null : new XElement("NumeroCivico", address.Civic),
-            new XElement("CAP", address.PostalCode),
+            new XElement("CAP", postalCode),
             new XElement("Comune", address.City),
-            string.IsNullOrWhiteSpace(address.Province) ? null : new XElement("Provincia", address.Province),
+            italian && !string.IsNullOrWhiteSpace(address.Province) ? new XElement("Provincia", address.Province) : null,
             new XElement("Nazione", address.CountryCode));
+    }
+
+    private static bool IsItaly(string? countryCode) => string.Equals(countryCode?.Trim(), "IT", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>An amount with the two decimals of the schema, in invariant culture.</summary>
     private static string Amount(decimal value) => value.ToString("0.00", CultureInfo.InvariantCulture);
