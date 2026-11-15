@@ -124,8 +124,9 @@ The table has no unique index on the organization (the model is not changed by t
 2. CasaZen checks its shape only (absolute https, at most 500 characters, no spaces, no credentials in it; 422 `video_call_url_invalid`): **it never opens the address**.
 3. The guest gets the e-mail «Videochiamata per il check-in» with the link, in the language chosen on the check-in page (IT, EN, DE, FR, ES; Italian when none). The booking must be one the
    operator reaches whose verification waits for an operator (404 `no_pending_verification` otherwise).
-4. **The link is not stored.** What is kept is that a call was proposed, when and by whom, on the open "To do" of the verification: its reason changes to «video call proposed» and a line of its notes
-   says when and by whom; the log of the application names the booking and the operator, never the address.
+4. **The link is in no table and no log of CasaZen.** What is kept is that a call was proposed, and when, on the open "To do" of the verification: its reason changes to «video call proposed» and a line of its notes
+   says when (in the language of the org, without the operator); the log of the application names the booking and the operator, never the address. **It does stay in the body of the queued e-mail**: the Hangfire job
+   of `EmailDeliveryJob` holds it until the job expires, 24 hours by default after a successful send (the lifetime of the jobs is not changed here); the product owner decides whether that is acceptable.
 5. A guest with no e-mail address (an OTA guest) answers 409 `guest_unreachable`: nothing is sent, and the "To do" says to propose the call from the chat of the portal the booking came from. If the e-mail
    cannot be queued (no provider, queue down) the answer is 409 `video_call_not_sent` and nothing is recorded.
 6. After the call the operator decides with the existing approval or rejection (`POST api/verification/{bookingId}/verify` or `reject`) with the note «videochiamata»: an operator decision

@@ -192,8 +192,9 @@ public class VerificationQueueService(
     }
 
     /// <summary>
-    /// The operator proposes a video call (E22/F01/US01/T03): the link of the meeting goes to the guest by e-mail, in the guest's language, and is kept nowhere
-    /// (the service has no HTTP client: it is not fetched either). The booking must be one the caller reaches whose verification waits for an operator; the
+    /// The operator proposes a video call (E22/F01/US01/T03): the link of the meeting goes to the guest by e-mail, in the guest's language, and CasaZen keeps it
+    /// in no table and no log (it stays in the body of the queued e-mail, the Hangfire job, until that job expires; the service has no HTTP client: the link is
+    /// not fetched either). The booking must be one the caller reaches whose verification waits for an operator; the
     /// verification is not decided by this, the operator decides after the call as ever. What is recorded is only that a call was proposed, and when, on the
     /// open "To do" of the verification (its reason and a line of its notes, in the org's language, the id of the operator not in it), and in the log of the
     /// application with the booking and the operator, no link.

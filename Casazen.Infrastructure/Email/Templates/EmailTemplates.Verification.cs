@@ -111,7 +111,8 @@ public static partial class EmailTemplates
     /// An operator proposes a video call for the check-in (E22/F01/US01/T03), to the guest: «Videochiamata per il check-in». Why, what to have at hand and the
     /// link of the meeting the operator created, as a button and as plain text for the clients that do not render one. Written in the language the guest
     /// chose on the check-in page (Italian, English, German, French or Spanish: the five of <see cref="Casazen.Core.Utilities.GuestLanguages"/>). Every value, the
-    /// link included, is HTML-encoded by the builder; the link is not kept anywhere once the e-mail is queued.
+    /// link included, is HTML-encoded by the builder. CasaZen keeps the link in no table and no log; it stays only in the body of the queued message (the
+    /// Hangfire job of <c>EmailDeliveryJob</c>) until that job expires, 24 hours by default after a successful send.
     /// </summary>
     public static EmailContent GuestVideoCall(
         CultureInfo culture,

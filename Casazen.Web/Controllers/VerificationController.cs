@@ -101,7 +101,8 @@ public class VerificationController(
 
     /// <summary>
     /// Proposes a video call to the guest (E22/F01/US01/T03), the fallback when the face check cannot decide: <c>{ url }</c> is the address of the meeting the
-    /// operator created, with any provider (absolute https, at most 500 characters, never fetched, never stored). The guest gets an e-mail «Videochiamata per il
+    /// operator created, with any provider (absolute https, at most 500 characters, never fetched; in no table and no log of CasaZen, only in the body of the
+    /// queued e-mail until its job expires). The guest gets an e-mail «Videochiamata per il
     /// check-in» with the link, in the language of the check-in page; the booking keeps waiting, and the decision after the call is the existing
     /// <c>verify</c> or <c>reject</c> (the note «videochiamata»). 422 <c>video_call_url_invalid</c> for an address that is not one; 404
     /// <c>no_pending_verification</c> when the booking is outside the caller's scope or its verification does not wait for an operator; 409

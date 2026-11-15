@@ -63,12 +63,13 @@ public interface IVerificationQueueService
     /// The operator proposes a video call to the guest of a booking whose verification waits for an operator (E22/F01/US01/T03): the fallback when the face
     /// check cannot decide. <paramref name="meetingUrl"/> is the address of the meeting the operator created, with any provider: an absolute https address of
     /// at most 500 characters (<see cref="VideoCallLinks"/>; <see cref="Exceptions.DomainRuleException"/> 422 <c>video_call_url_invalid</c> otherwise). It is
-    /// <b>never fetched and never stored</b>: it goes to the guest in an e-mail (template «Videochiamata per il check-in», in the language of the guest's
-    /// check-in page) and the only trace is on the open "To do" of the verification: its reason says a call was proposed, and a line of its notes when (the
-    /// operator, <paramref name="operatorUserId"/>, is in the log of the application, not in the "To do"). The verification still waits: the decision after
-    /// the call is <see cref="RecordManualVerificationAsync"/> (or the
-    /// rejection) as ever, with <c>Method = Operator</c> and the note «videochiamata». A guest with no e-mail address is
-    /// <see cref="VideoCallOutcome.GuestUnreachable"/>: nothing is sent and the "To do" suggests the portal chat.
+    /// <b>never fetched</b> and CasaZen keeps it in <b>no table and no log</b>: it goes to the guest in an e-mail (template «Videochiamata per il check-in», in
+    /// the language of the guest's check-in page) and the only trace of CasaZen is on the open "To do" of the verification: its reason says a call was proposed,
+    /// and a line of its notes when (the operator, <paramref name="operatorUserId"/>, is in the log of the application, not in the "To do"). The link stays in
+    /// the body of the queued e-mail (the Hangfire job) until that job expires: 24 hours by default after a successful send. The verification still waits: the
+    /// decision after the call is <see cref="RecordManualVerificationAsync"/> (or the rejection) as ever, with <c>Method = Operator</c> and the note
+    /// «videochiamata». A guest with no e-mail address is <see cref="VideoCallOutcome.GuestUnreachable"/>: nothing is sent and the "To do" suggests the portal
+    /// chat.
     /// </summary>
     Task<VideoCallOutcome> ProposeVideoCallAsync(
         Guid bookingId,

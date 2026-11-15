@@ -32,7 +32,7 @@ namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
 /// E22/F01/US01/T03: the operator video call, the fallback when the face check cannot decide. The operator creates the meeting where it likes and gives CasaZen
-/// its address; CasaZen e-mails it to the guest, in the guest's language, and keeps only that a call was proposed, when and by whom, never the link. A guest
+/// its address; CasaZen e-mails it to the guest, in the guest's language, and keeps only that a call was proposed, and when (never the link, in no table or log of its own). A guest
 /// with no e-mail address is «unreachable» and the "To do" suggests the portal chat. The decision after the call is the one the queue already has.
 /// </summary>
 public class VerificationVideoCallTests : IAsyncLifetime
@@ -78,9 +78,11 @@ public class VerificationVideoCallTests : IAsyncLifetime
     // ─── The proofs of the brief ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Proof (privacy): the link is sent and not stored. The e-mail carries it, once, to the guest; no row of the database holds it (the session, the log of the
-    /// verifications, the "To do", the activity log: every column of every table is read) and no log line does; what is kept is only that a call was proposed,
-    /// when and by whom, on the "To do" that waits for the operator, which says so in its reason.
+    /// Proof (privacy): CasaZen keeps no trace of the link. The e-mail carries it, once, to the guest; no row of the model holds it (the session, the log of the
+    /// verifications, the "To do", the activity log: every column of every table is read) and no line of the application log does; what is kept is only that
+    /// a call was proposed, and when, on the "To do" that waits for the operator, which says so in its reason. <b>What it does not prove</b>: the e-mail queue is
+    /// a fake here, so the body of the queued message (the Hangfire job, which holds the link until the job expires, 24 hours by default after a successful
+    /// send) is outside it; the PR says so under its risks and its manual follow-up.
     /// </summary>
     [Fact]
     public async Task VideoCall_LinkNotPersisted_Test()
@@ -168,7 +170,7 @@ public class VerificationVideoCallTests : IAsyncLifetime
 
     // ─── The guest who cannot be reached, the stays out of reach, the language ───────────────────────────
 
-    /// <summary>A guest with no e-mail address: nothing is sent, the answer is «unreachable» and the "To do" suggests the portal chat; the link is not kept.</summary>
+    /// <summary>A guest with no e-mail address: nothing is sent, the answer is «unreachable» and the "To do" suggests the portal chat; the link is in no row of the model.</summary>
     [Theory]
     [InlineData(null)]
     [InlineData("")]
