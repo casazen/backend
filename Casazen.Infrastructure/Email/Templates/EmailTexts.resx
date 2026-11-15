@@ -2094,6 +2094,36 @@
   <data name="TodoReason_IdentityVerification" xml:space="preserve">
     <value>La verifica dell'identità dell'ospite attende la decisione di un operatore</value>
   </data>
+  <data name="TodoReason_IdentityVerificationVideoCall" xml:space="preserve">
+    <value>Videochiamata proposta all'ospite: la verifica dell'identità attende la decisione di un operatore</value>
+  </data>
+  <data name="TodoReason_IdentityVerificationUseChat" xml:space="preserve">
+    <value>La verifica dell'identità attende un operatore: l'ospite non ha un indirizzo e-mail, proponi la videochiamata dalla chat del portale</value>
+  </data>
+  <data name="TodoNote_IdentityVerificationVideoCall" xml:space="preserve">
+    <value>Videochiamata proposta il {0} (UTC)</value>
+  </data>
+  <data name="GuestVideoCall_Subject" xml:space="preserve">
+    <value>Videochiamata per il check-in — {0}</value>
+  </data>
+  <data name="GuestVideoCall_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="GuestVideoCall_Body" xml:space="preserve">
+    <value>Per completare il check-in del tuo soggiorno presso &lt;strong&gt;{0}&lt;/strong&gt; (arrivo: &lt;strong&gt;{1}&lt;/strong&gt;) l'host deve verificare la tua identità con una breve videochiamata.</value>
+  </data>
+  <data name="GuestVideoCall_Instructions" xml:space="preserve">
+    <value>Tieni a portata di mano il documento d'identità che hai indicato nel check-in e apri il link qui sotto all'orario concordato con l'host:</value>
+  </data>
+  <data name="GuestVideoCall_Cta" xml:space="preserve">
+    <value>Partecipa alla videochiamata</value>
+  </data>
+  <data name="GuestVideoCall_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="GuestVideoCall_Hint" xml:space="preserve">
+    <value>Al termine l'host conclude la verifica dell'identità. Se non ti aspettavi questa richiesta, ignora questa e-mail.</value>
+  </data>
   <data name="GuestAccessCode_Subject" xml:space="preserve">
     <value>Il codice di accesso per il tuo soggiorno — {0}</value>
   </data>
@@ -2762,5 +2792,29 @@
   </data>
   <data name="FiscalDocumentDelivery_Kind_CreditNote" xml:space="preserve">
     <value>Nota di credito</value>
+  </data>
+  <data name="AccountantPackage_Subject" xml:space="preserve">
+    <value>Pacchetto per il commercialista: {0} di {1}</value>
+  </data>
+  <data name="AccountantPackage_Greeting" xml:space="preserve">
+    <value>Buongiorno,</value>
+  </data>
+  <data name="AccountantPackage_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ha preparato con CasaZen il pacchetto di &lt;strong&gt;{1}&lt;/strong&gt;: i documenti e i riepiloghi del mese, con un indice che elenca ogni file e la sua impronta SHA-256. Lo scarichi dal link qui sotto.</value>
+  </data>
+  <data name="AccountantPackage_Cta" xml:space="preserve">
+    <value>Scarica il pacchetto</value>
+  </data>
+  <data name="AccountantPackage_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="AccountantPackage_Validity" xml:space="preserve">
+    <value>Il link è valido fino al {0}.</value>
+  </data>
+  <data name="AccountantPackage_NoAttachment" xml:space="preserve">
+    <value>Per proteggere i dati il pacchetto non è allegato a questa e-mail: si scarica solo da questo link.</value>
+  </data>
+  <data name="AccountantPackage_NotYou" xml:space="preserve">
+    <value>Il link è personale: chi lo riceve può scaricare il pacchetto fino alla scadenza. Se non aspettavi questo messaggio, ignoralo e avvisa {0}.</value>
   </data>
 </root>

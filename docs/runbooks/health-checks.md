@@ -11,7 +11,7 @@ All anonymous, no rate limit, `Cache-Control: no-store`.
 | Endpoint | Checks | HTTP |
 |---|---|---|
 | `GET /api/health/live` | none: the process answers (the [Railway deploy healthcheck](#railway-deploy-healthcheck)) | always 200 |
-| `GET /api/health/ready` | `database`, `hangfire`, `email`, `storage`, `stripe`, `einvoicing`, `auth0`, `vercel`, `api-url`, `legal`, `comuni` | 200 when `healthy` or `degraded`, **503** when `unhealthy` |
+| `GET /api/health/ready` | `database`, `hangfire`, `email`, `storage`, `stripe`, `einvoicing`, `biometrics`, `auth0`, `vercel`, `api-url`, `legal`, `comuni` | 200 when `healthy` or `degraded`, **503** when `unhealthy` |
 | `GET /api/health` | same as ready | same as ready |
 
 Body (anonymous caller):
@@ -45,6 +45,7 @@ written to the Railway logs by `Microsoft.Extensions.Diagnostics.HealthChecks.De
 | `storage` | S3 (Supabase Storage, FD-07) | local-disk provider (Development/Testing only) | invalid configuration |
 | `stripe` | the four keys below present, right prefixes, secret and publishable key in the same mode (live/test) | anything missing, a placeholder, a wrong prefix or mixed modes: payments are not fully usable | — |
 | `einvoicing` | an SDI e-invoicing provider is configured and `Billing__VatNumber` is set (PL-13) | no SDI provider (always in this build: the e-invoices of the plans are issued by hand, [billing-tax.md](billing-tax.md)); the description says whether `Sdi__ManualIssuanceAccepted` is set and whether `Billing__VatNumber` is missing | — |
+| `biometrics` | `Features__CheckInIdentityVerification` is off (no model is expected), or every model of the identity verification is ready: YuNet, MiniFASNet and the recognition model verified by SHA-256 and loaded, the OCR-B file pinned and on disk (E22/F01/US01/T01) | the flag is on and the models are still loading, or one cannot be used: the description names it with its code (`hash_not_configured`, `file_missing`, `hash_mismatch`, `download_failed`, `config_invalid`, ...) and says that every verification goes to the operator. **Never `unhealthy`**: the operator path does not need the models, so a missing model must not take the instance out of rotation. The same reading, model by model, is `GET /api/admin/biometrics/status`: [`biometric-models.md`](biometric-models.md) | — |
 | `vercel` | `Vercel__ApiToken` and `Vercel__ProjectId` set (BK-17): the platform can add a host's custom domain to the Vercel project | either missing: custom domains are not activated, the settings page says so ([`seo-domain.md`](seo-domain.md) section 10) | — |
 | `api-url` | `App__ApiBaseUrl` is an absolute https URL (DEPLOY-CFG): the base of the iCal export links | missing, a placeholder, not an absolute http(s) URL, or plain `http` outside Development/Testing: the export links hosts paste into Airbnb/Booking would point to `https://localhost:5001` | — |
 | `legal` | Terms, Privacy and DPA each have a text file (or an external copy URL) for the configured version, every value the text needs (company data, governing court: `Legal__Controller__*`, `Legal__Terms__GoverningCourt`) and a date in force, and the subprocessor list has its date and no entry "in definizione" (DEPLOY-CFG, PL-14, LEGAL-TEXTS D9) | any of those missing: pages stay "in preparazione" (fail-closed, never a placeholder), hosts accept a version nobody can read. The description names the missing file / variable / provider, never a value. Expected until the drafts are activated: [`legal-documents.md`](legal-documents.md) § 6 | — |
@@ -176,6 +177,7 @@ Product owner setup (once):
 | `hangfire: degraded` | Only another instance's server is alive (e.g. right after a deploy): it should turn `healthy` within a minute. |
 | `stripe: degraded` | Set the missing Stripe variables and create both webhook endpoints: [`docs/INFRA.md` § Stripe](../INFRA.md#stripe-keys-and-webhooks). |
 | `auth0: degraded` | Configure the M2M client ([`auth0.md`](auth0.md) §4-5). |
+| `biometrics: degraded` | With `Features__CheckInIdentityVerification` on, a model cannot be used (the admin description or `GET /api/admin/biometrics/status` says which and why) and every verification goes to the operator. Pin the SHA-256 and supply the file: [`biometric-models.md`](biometric-models.md). Expected until the product owner allows the models to be delivered. |
 | `vercel: degraded` | Set `Vercel__ApiToken` and `Vercel__ProjectId` (and `Vercel__TeamId` for a team project): [`seo-domain.md`](seo-domain.md) section 10. Until then no custom domain is activated. |
 | `api-url: degraded` | Set `App__ApiBaseUrl` to the Railway URL of this environment ([`deploy-checklist.md`](deploy-checklist.md) § 1 step 10). |
 | `legal: degraded` | Provide the texts and dates, and complete the subprocessor details: [`legal-documents.md`](legal-documents.md). Expected until the drafts `2026-10-v1` (or the texts supplied by the product owner) are activated (D14 update 2026-10-01). |

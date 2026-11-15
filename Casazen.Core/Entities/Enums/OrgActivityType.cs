@@ -68,7 +68,9 @@ public enum OrgActivityType
     /// <summary>
     /// The data of the company was changed (AM-08b-b): the legal name or the registered office of the operator, the phone or the
     /// language of the account. Subject: the org. No details: neither what changed nor the values are recorded. The contact email
-    /// is not part of it (it has never had a line: the log would carry an address).
+    /// is not part of it (it has never had a line: the log would carry an address). It is the line of the other settings of the org
+    /// too: the supplier backups, and, since E22/F01/US01/T03, the biometric settings (a change by an administrator of the org, and
+    /// the calibration of the thresholds that a platform administrator marks, whose actor is the staff user).
     /// </summary>
     OrgSettingsChanged = 24,
 

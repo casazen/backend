@@ -424,8 +424,9 @@ public class CheckInOctorateSyncServiceTests
         Assert.Equal(OctorateStayStateOutcome.Failed, first.Outcome);
         Assert.Equal(CheckInErrorCodes.Server, first.ErrorCode);
         Assert.Equal(OctorateStayStateOutcome.Failed, second.Outcome);
+        // E20/F01/US01/T01: a state of the stay that keeps failing has its own reason (the arrival and the departure share it).
         h.Activities.Verify(
-            a => a.CreateAsync(It.Is<CreateTodoRequest>(r => r.Reason == CheckInOctorateSyncService.TodoReason), It.IsAny<CancellationToken>()),
+            a => a.CreateAsync(It.Is<CreateTodoRequest>(r => r.Reason == CheckInOctorateSyncService.StayStateTodoReason), It.IsAny<CancellationToken>()),
             Times.Once);
         await using (var db = h.NewDb())
         {

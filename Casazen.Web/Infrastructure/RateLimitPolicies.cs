@@ -253,4 +253,17 @@ public static class RateLimitPolicies
     /// downloads the file a few times, and the PDF is drawn only for a token that opens, so 20 a minute leave room for that and no more than a script could waste.
     /// </summary>
     public const string PublicFiscalDocumentDownload = "PublicFiscalDocumentDownload";
+
+    /// <summary>
+    /// The link of the package that the accountant got by e-mail (<c>GET api/public/accountant-package/{orgId}/{period}</c>, E15/F01/US02/T02): anonymous, the signature in the address, and every link that does not
+    /// open answers the same 404. Per client IP, like the other anonymous policies; each valid call streams a ZIP of up to tens of MB, and an accountant opens its link a few times, so 20 in ten minutes leave
+    /// room for that and for the people of one office behind one address, and no more than a script could waste.
+    /// </summary>
+    public const string PublicAccountantPackage = "PublicAccountantPackage";
+
+    /// <summary>
+    /// «Send a test» of the package to the accountant (<c>POST api/accountant-package/send</c>, E15/F01/US02/T02): each call makes a package, keeps it in the private storage and sends an e-mail to a third party, so
+    /// it is tight and partitioned by <b>person</b>: five in ten minutes, enough for a test and its retry.
+    /// </summary>
+    public const string AccountantPackageSend = "AccountantPackageSend";
 }

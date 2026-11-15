@@ -470,11 +470,16 @@ internal static class AccountantPackageDocuments
     // ---------------------------------------------------------------- the index
 
     /// <summary>
-    /// The index of the package: every file with its description, its rows and its SHA-256, then the folders left out. A file that is not a table (a PDF, an XML) has no rows. The
-    /// index does not list itself: its hash would be the hash of the file that holds it.
+    /// The index of the package: every file with its description, its rows and its SHA-256, then the folders left out, each with its reason: the owner accounting a caller may not read
+    /// (<paramref name="omittedFolders"/>) and the folders the agency did not choose for the package it sends every month (<paramref name="notSelectedFolders"/>). A file that is not a table
+    /// (a PDF, an XML) has no rows. The index does not list itself: its hash would be the hash of the file that holds it.
     /// </summary>
     public static IReadOnlyList<ReportTable> Index(
-        AccountantPackagePeriod period, IReadOnlyList<PackageIndexEntry> entries, IReadOnlyList<string> omittedFolders, PackageTexts t)
+        AccountantPackagePeriod period,
+        IReadOnlyList<PackageIndexEntry> entries,
+        IReadOnlyList<string> omittedFolders,
+        PackageTexts t,
+        IReadOnlyList<string>? notSelectedFolders = null)
     {
         var files = new ReportTable(
             t.Get(PackageLabels.IndexTitle, period.Key),
@@ -485,6 +490,12 @@ internal static class AccountantPackageDocuments
         var omitted = new ReportTable(t[PackageLabels.IndexOmittedTitle], [t[PackageLabels.IndexColFolder], t[PackageLabels.IndexColReason]]);
         foreach (var folder in omittedFolders)
             omitted.Add(folder + "/", t[PackageLabels.OmittedOwnerAccounting]);
+
+        if (notSelectedFolders is not null)
+        {
+            foreach (var folder in notSelectedFolders)
+                omitted.Add(folder + "/", t[PackageLabels.OmittedNotSelected]);
+        }
 
         return [files, omitted];
     }

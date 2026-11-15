@@ -455,6 +455,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<BiometricModelStore>();
         services.AddSingleton<IBiometricModelStore>(serviceProvider => serviceProvider.GetRequiredService<BiometricModelStore>());
         services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<BiometricModelStore>());
+        // E22/F01/US01/T01: what the models are doing, read by the non-blocking health entry "biometrics" and by GET api/admin/biometrics/status.
+        services.AddSingleton<IBiometricModelStatusReader, BiometricModelStatusReader>();
         services.AddSingleton<IFaceDetector, FaceDetector>();
         services.AddSingleton<IFaceEmbedder, FaceEmbedder>();
         services.AddScoped<IAntiSpoofingService, AntiSpoofingService>();
@@ -468,6 +470,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IIdentityVerificationFlowService, IdentityVerificationFlowService>();
         // NF-12: Operator verification queue for manual biometric decisions (ADR-013).
         services.AddScoped<IVerificationQueueService, VerificationQueueService>();
+        // E22/F01/US01/T03: the biometric settings of an organization (the thresholds and the attempts, provisional until a platform administrator marks a
+        // calibration), read by its administrators and the staff; the flow reads the same row.
+        services.AddScoped<IBiometricSettingsService, BiometricSettingsService>();
         // E03/F04/US02/T03: the immediate alert to the operators (push, e-mail, urgent "To do") when a verification needs a person.
         services.AddScoped<IVerificationOperatorAlerts, VerificationOperatorAlerts>();
         // NF-13: Property access codes with encryption and verification gating (E06/F03/US01/T01).
@@ -730,6 +735,12 @@ public static class ServiceCollectionExtensions
         // services above and of the fiscal documents and the owner accounting; the ZIP is capped like the archive export (DocumentArchive).
         services.AddScoped<IAgencySummaryService, AgencySummaryService>();
         services.AddScoped<IAccountantPackageService, AccountantPackageService>();
+        // NF-101, E15/F01/US02/T01: how the package is sent to the accountant (the address, the monthly send, its day and folders): GET and PUT api/accountant-package/settings.
+        services.AddScoped<IAccountantPackageSettingsService, AccountantPackageSettingsService>();
+        // NF-101, E15/F01/US02/T02: the monthly e-mail of the package to the accountant: the package kept in the private storage, the signed link (AccountantPackageLinks, registered with the e-mail), POST
+        // api/accountant-package/send and the public link; the job (accountant-package-monthly) is registered only while Features:AccountantPackage is on.
+        services.AddScoped<IAccountantPackageDeliveryService, AccountantPackageDelivery>();
+        services.AddScoped<AccountantPackageMonthlyJob>();
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
         // AM-02: the people of an org: seats of the plan, invitations and their acceptance, the members and the hourly

@@ -109,6 +109,12 @@ public static class RateLimitingServiceCollectionExtensions
 
         // The page of the document the guest got by e-mail (E12/F01/US02/T01): anonymous, per client IP, the token in the body. A page asks once and the guest downloads the file a few times.
         new(RateLimitPolicies.PublicFiscalDocumentDownload, 20, OneMinute),
+
+        // The link of the package the accountant got by e-mail (E15/F01/US02/T02): anonymous, per client IP; each valid call streams a ZIP.
+        new(RateLimitPolicies.PublicAccountantPackage, 20, TimeSpan.FromMinutes(10)),
+
+        // «Send a test» of the package to the accountant (E15/F01/US02/T02): per signed-in person, since each call makes a package and sends an e-mail to a third party.
+        new(RateLimitPolicies.AccountantPackageSend, 5, TimeSpan.FromMinutes(10), PartitionByUser: true),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)

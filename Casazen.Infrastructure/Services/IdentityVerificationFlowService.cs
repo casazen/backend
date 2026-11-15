@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -26,6 +27,11 @@ namespace Casazen.Infrastructure.Services;
 /// consent, the picture is kept encrypted (Data Protection, purpose <see cref="DocumentImageContentPurpose"/>) in the private bucket with a
 /// <see cref="DocumentImage"/> row, and deleted as soon as the verification is over (passed, or with the operator) or replaced. In Ticino nothing
 /// is kept (ADR-013-R6) and the photo comes again with the selfie, recognised by its hash.</para>
+/// <para><b>Two sides</b> (E22/F01/US01/T02): the Italian electronic identity card and the other TD1 cards have the face on the front and the MRZ on the back,
+/// so the document step takes up to two pictures per attempt (<see cref="DocumentSide"/>): the face must come from the front (or a single picture), the MRZ
+/// from any side, and the step is complete when both were found across them; the guidance says which side is missing. Both pictures follow the rules of
+/// one: encrypted in the private bucket until the verification is over and then deleted, none kept in Ticino (where both come again with the selfie).
+/// A side taken again is not a new attempt: the attempts are the complete document and selfie tries.</para>
 /// <para><b>Lock code</b>: only on <c>ok</c>, through the gate of <see cref="IAccessCodeService"/> (channels <c>checkin-screen</c> and
 /// <c>email</c>); a retry, a review, a refusal, a request for the operator or an error release and send nothing.</para>
 /// <para><b>Booking, not only session</b>: a booking whose verification is with an operator (rejected by one, or a hand-off still open,
@@ -45,7 +51,8 @@ public sealed class IdentityVerificationFlowService(
     IFileStorage storage,
     IDataProtectionProvider dataProtection,
     TimeProvider clock,
-    ILogger<IdentityVerificationFlowService> logger) : IIdentityVerificationFlowService
+    ILogger<IdentityVerificationFlowService> logger,
+    IDomainEventRecorder? domainEvents = null) : IIdentityVerificationFlowService
 {
     /// <summary>Data Protection purpose of the encrypted picture of a document in the private bucket. Never change it: stored pictures would become unreadable.</summary>
     public const string DocumentImageContentPurpose = "Casazen.DocumentImage.Content";
@@ -99,19 +106,24 @@ public sealed class IdentityVerificationFlowService(
 
         if (!context.Enabled)
         {
+            await DeleteStoredDocumentAsync(session, ct);
             await ToOperatorAsync(session, VerificationAlertReasons.BiometricsDisabled, ct);
             return new BiometricConsentResult(BiometricConsentStatus.Operator, State(session, context));
         }
 
         if (context.IsMinor)
         {
+            await DeleteStoredDocumentAsync(session, ct);
             await ToOperatorAsync(session, VerificationAlertReasons.MinorExcluded, ct);
             return new BiometricConsentResult(BiometricConsentStatus.Operator, State(session, context));
         }
 
         // Already with the operator (a refusal, a request, a review): the person decides, the biometric path is not opened again.
         if (InOperatorPath(session, context))
+        {
+            await CloseOperatorPathAsync(session, context, ct);
             return new BiometricConsentResult(BiometricConsentStatus.Operator, State(session, context));
+        }
 
         session.BiometricConsentAt = now;
         session.BiometricConsentVersion = version;
@@ -122,7 +134,12 @@ public sealed class IdentityVerificationFlowService(
         return new BiometricConsentResult(BiometricConsentStatus.Recorded, State(session, context));
     }
 
-    public async Task<DocumentStepResult> SubmitDocumentAsync(GuestCheckInSession session, Stream image, CancellationToken ct)
+    public Task<DocumentStepResult> SubmitDocumentAsync(GuestCheckInSession session, Stream image, CancellationToken ct)
+    {
+        return SubmitDocumentAsync(session, image, DocumentSide.Single, ct);
+    }
+
+    public async Task<DocumentStepResult> SubmitDocumentAsync(GuestCheckInSession session, Stream image, DocumentSide side, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(image);
@@ -134,12 +151,13 @@ public sealed class IdentityVerificationFlowService(
             bytes = await ImageBytes.ReadAllAsync(image, MaxImageBytes, ct);
             var consented = context.Enabled && session.BiometricConsentAt is not null;
 
-            // The face of the document is looked for only after the consent; the MRZ hints give the guidance of the reading in any case.
+            // The face of the document is looked for only after the consent, and not on the back of a card (the photo is on the front); the MRZ
+            // hints give the guidance of the reading in any case.
             CaptureAssessment? assessment = null;
             if (consented)
             {
                 using var copy = new MemoryStream(bytes, writable: false);
-                assessment = await agent.AssessCaptureAsync(copy, CaptureKind.Document, ct);
+                assessment = await agent.AssessCaptureAsync(copy, side == DocumentSide.Back ? CaptureKind.DocumentBack : CaptureKind.Document, ct);
             }
 
             MrzReading mrzReading;
@@ -151,6 +169,11 @@ public sealed class IdentityVerificationFlowService(
             {
                 reading = FromMrz(fromMrz);
             }
+            else if (side == DocumentSide.Back)
+            {
+                // The printed fields are read on the front: the back of a card is only asked for its MRZ.
+                reading = DocumentReading.Nothing;
+            }
             else
             {
                 using var copy = new MemoryStream(bytes, writable: false);
@@ -158,17 +181,55 @@ public sealed class IdentityVerificationFlowService(
                 reading = fromOcr is null ? DocumentReading.Nothing : FromOcr(fromOcr);
             }
 
+            var now = UtcNow();
+            var picture = new StoredDocumentPicture(
+                FaceOf(assessment, side),
+                QualityOf(assessment),
+                mrzReading.Result is null ? null : Check(mrzReading.Result, context.Identity));
+
+            // The attempt keeps up to two pictures: a side sent again replaces its own and leaves the other, a single picture replaces both.
+            var kept = side == DocumentSide.Single ? null : ReadCheck(session);
+            StoredDocumentPicture? front;
+            StoredDocumentPicture? back;
+            string frontHash;
+            string? backHash;
+            switch (side)
+            {
+                case DocumentSide.Back:
+                    front = kept?.Front;
+                    frontHash = kept?.Front is null ? string.Empty : kept.PhotoSha256;
+                    back = picture;
+                    backHash = Sha256(bytes);
+                    break;
+                case DocumentSide.Front:
+                    front = picture;
+                    frontHash = Sha256(bytes);
+                    back = kept?.Back;
+                    backHash = kept?.Back is null ? null : kept.BackSha256;
+                    break;
+                default:
+                    front = picture;
+                    frontHash = Sha256(bytes);
+                    back = null;
+                    backHash = null;
+                    break;
+            }
+
+            // The face must come from the front (or the single picture), the MRZ from any side.
+            var check = CombineChecks(front?.Mrz, back?.Mrz, side);
+            var mrzRead = front?.Mrz is not null || back?.Mrz is not null;
+            var frontGood = front is not null && front.Face != false && front.QualityOk != false;
+            var backGood = back is null || back.Mrz is not null || back.QualityOk != false;
+            var acceptable = mrzRead && frontGood && backGood;
+
             var guidance = (assessment?.GuidanceCodes ?? [])
                 .Concat(CaptureGuidanceCodes.FromMrzQuality(mrzReading.Quality))
                 .ToList();
-            if (mrzReading.Result is null)
-                guidance.Add(CaptureGuidanceCodes.ShowWholeDocument);
+            AddMissingSideGuidance(guidance, side, mrzReading.Result is not null, mrzRead, frontGood);
 
-            var acceptable = mrzReading.Result is not null && (assessment is null || !assessment.Assessed || assessment.Acceptable);
-
-            var check = Check(mrzReading.Result, context.Identity);
-            var now = UtcNow();
-            session.DocumentCheckJson = JsonSerializer.Serialize(new StoredDocumentCheck(check, Sha256(bytes), now), Json);
+            session.DocumentCheckJson = JsonSerializer.Serialize(
+                new StoredDocumentCheck(check, frontHash, now, backHash, front, back, side != DocumentSide.Single),
+                Json);
             session.UpdatedAt = now;
 
             var stored = false;
@@ -178,21 +239,28 @@ public sealed class IdentityVerificationFlowService(
                 && session.BiometricOutcome != BiometricOutcome.Accept
                 && !InOperatorPath(session, context))
             {
-                await StoreDocumentAsync(session, bytes, now, ct);
+                await StoreDocumentSideAsync(session, side, bytes, now, ct);
                 stored = true;
             }
             else
             {
-                // A new picture replaces the old one: a kept picture of an earlier upload must not stay behind.
+                // A new picture replaces the old one: a kept picture of an earlier upload must not stay behind (a minor found on either side wipes both).
                 await DeleteStoredDocumentAsync(session, ct);
             }
 
             await db.SaveChangesAsync(ct);
             logger.LogInformation(
-                "Document of session {SessionId} read: method={Method} mrz={MrzRead} acceptable={Acceptable} stored={Stored}",
-                session.Id, reading.Method, check.MrzRead, acceptable, stored);
+                "Document of session {SessionId} read: side={Side} method={Method} mrz={MrzRead} acceptable={Acceptable} stored={Stored}",
+                session.Id, DocumentSides.CodeOf(side), reading.Method, mrzRead, acceptable, stored);
 
-            return new DocumentStepResult(reading, acceptable, guidance.Distinct(StringComparer.Ordinal).ToList(), stored, context.DocumentNotArchived);
+            return new DocumentStepResult(
+                reading,
+                acceptable,
+                guidance.Distinct(StringComparer.Ordinal).ToList(),
+                stored,
+                context.DocumentNotArchived,
+                side,
+                SidesOf(side != DocumentSide.Single, front, back));
         }
         finally
         {
@@ -200,7 +268,17 @@ public sealed class IdentityVerificationFlowService(
         }
     }
 
-    public async Task<SelfieStepResult> SubmitSelfieAsync(GuestCheckInSession session, Stream selfie, Stream? documentPhoto, CancellationToken ct)
+    public Task<SelfieStepResult> SubmitSelfieAsync(GuestCheckInSession session, Stream selfie, Stream? documentPhoto, CancellationToken ct)
+    {
+        return SubmitSelfieAsync(session, selfie, documentPhoto, null, ct);
+    }
+
+    public async Task<SelfieStepResult> SubmitSelfieAsync(
+        GuestCheckInSession session,
+        Stream selfie,
+        Stream? documentPhoto,
+        Stream? documentPhotoBack,
+        CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(selfie);
@@ -218,13 +296,24 @@ public sealed class IdentityVerificationFlowService(
 
         // Also a new link of a booking that is with an operator (rejected, or a hand-off still open): the session is new, the decision is not.
         if (InOperatorPath(session, context))
+        {
+            await CloseOperatorPathAsync(session, context, ct);
             return Done(IdentityVerificationGuestResults.Operator, [], Remaining(session, policy), null);
+        }
 
+        // Every way to the operator takes the pictures kept for the comparison with it (both sides of a document): an administrator of the organization can
+        // switch the face check off, or lower the attempts, while a guest is between the document and the selfie (E22/F01/US01/T03).
         if (!context.Enabled)
+        {
+            await DeleteStoredDocumentAsync(session, ct);
             return await OperatorAsync(session, VerificationAlertReasons.BiometricsDisabled, policy, ct);
+        }
 
         if (context.IsMinor)
+        {
+            await DeleteStoredDocumentAsync(session, ct);
             return await OperatorAsync(session, VerificationAlertReasons.MinorExcluded, policy, ct);
+        }
 
         if (session.BiometricConsentAt is null)
             return Refused(SelfieStepStatus.ConsentRequired, session, policy);
@@ -240,12 +329,21 @@ public sealed class IdentityVerificationFlowService(
             return await OperatorAsync(session, VerificationAlertReasons.MinorExcluded, policy, ct);
         }
 
+        // A document of two sides that still lacks its face or its MRZ does not reach the comparison: the page asks for the missing side, and no
+        // attempt is spent (the attempts are the complete document and selfie tries, E22/F01/US01/T02).
+        if (!IsComplete(stored))
+            return Refused(SelfieStepStatus.DocumentRequired, session, policy);
+
         if (session.BiometricAttempts >= policy.MaxAttempts)
+        {
+            await DeleteStoredDocumentAsync(session, ct);
             return await OperatorAsync(session, VerificationAlertReasons.AttemptsExhausted, policy, ct);
+        }
 
         var attempt = session.BiometricAttempts + 1;
         IdentityVerificationOutcome outcome;
         byte[]? documentBytes = null;
+        byte[]? backBytes = null;
         try
         {
             if (documentPhoto is not null)
@@ -267,6 +365,17 @@ public sealed class IdentityVerificationFlowService(
                     return Refused(SelfieStepStatus.DocumentRequired, session, policy);
             }
 
+            // A property in Ticino keeps nothing: the back of a two-sided document comes again too, and must be the one that was read.
+            if (context.DocumentNotArchived && stored.BackSha256 is not null)
+            {
+                if (documentPhotoBack is null)
+                    return Refused(SelfieStepStatus.DocumentPhotoRequired, session, policy);
+
+                backBytes = await ImageBytes.ReadAllAsync(documentPhotoBack, MaxImageBytes, ct);
+                if (!string.Equals(Sha256(backBytes), stored.BackSha256, StringComparison.Ordinal))
+                    return Refused(SelfieStepStatus.DocumentPhotoMismatch, session, policy);
+            }
+
             using var documentStream = new MemoryStream(documentBytes, writable: false);
             try
             {
@@ -284,6 +393,7 @@ public sealed class IdentityVerificationFlowService(
         finally
         {
             ImageBytes.Zero(documentBytes);
+            ImageBytes.Zero(backBytes);
         }
 
         return await ApplyAsync(session, outcome, attempt, policy, ct);
@@ -334,6 +444,18 @@ public sealed class IdentityVerificationFlowService(
             DurationMs = outcome.DurationMs,
             CreatedAt = now,
         });
+
+        // E20/F01/US01/T01: a passed verification is announced on the bus, in the same save as its row of the log: an org that lets CasaZen write the
+        // guests to the channel manager on their own learns that the identity of the stay is verified. Ids and the method only, never a picture or a value.
+        if (outcome.Result == IdentityVerificationResult.Ok)
+        {
+            domainEvents?.Record(
+                DomainEventType.IdVerificationCompleted,
+                session.BookingId,
+                new IdVerificationCompletedPayload(session.BookingId, session.Booking.PropertyId, IdVerificationMethods.Biometric),
+                orgId: session.OrgId);
+        }
+
         await db.SaveChangesAsync(ct);
         logger.LogInformation(
             "Identity verification of session {SessionId}: result={Result} attempt={Attempt}/{MaxAttempts} durationMs={DurationMs}",
@@ -436,6 +558,38 @@ public sealed class IdentityVerificationFlowService(
         return Done(IdentityVerificationGuestResults.Operator, [], Remaining(session, policy), null);
     }
 
+    /// <summary>
+    /// The verification is on the operator path already (<see cref="InOperatorPath"/>): the pictures kept for the comparison go, both sides of a document, as on
+    /// every other way to a person (an administrator of the organization can switch the face check off or lower the attempts while a guest is between the
+    /// document and the selfie, E22/F01/US01/T03). And when that is only because the attempts already made reach a maximum that was lowered since
+    /// (<see cref="OnlyTheAttemptsReachTheMax"/>), nobody was told yet: the hand-off is made now, so the alert, the "To do" and the queue of the operators exist
+    /// (a request already open, a refusal, a review or a booking with an operator were told before and are not told again).
+    /// </summary>
+    private async Task CloseOperatorPathAsync(GuestCheckInSession session, FlowContext context, CancellationToken ct)
+    {
+        await DeleteStoredDocumentAsync(session, ct);
+        if (OnlyTheAttemptsReachTheMax(session, context))
+        {
+            await ToOperatorAsync(session, VerificationAlertReasons.AttemptsExhausted, ct);
+            return;
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// The operator path is the verification's only because the attempts made reach the maximum in force: no request to an operator, no refused consent, no
+    /// review and no hand-off of the booking, and the verification was not accepted. The maximum of the attempts is the organization's to change, so a session
+    /// in the middle of its attempts can find itself there with no one told.
+    /// </summary>
+    private static bool OnlyTheAttemptsReachTheMax(GuestCheckInSession session, FlowContext context) =>
+        !context.BookingWithOperator
+        && session.OperatorRequestedAt is null
+        && session.BiometricConsentRefusedAt is null
+        && session.BiometricOutcome != BiometricOutcome.Escalate
+        && session.BiometricOutcome != BiometricOutcome.Accept
+        && session.BiometricAttempts >= context.Policy.MaxAttempts;
+
     private static SelfieStepResult Done(string result, IReadOnlyList<string> guidance, int remaining, string? lockCode, string? lockCodeHeld = null) =>
         new(SelfieStepStatus.Done, result, guidance, remaining, lockCode, lockCodeHeld);
 
@@ -472,6 +626,10 @@ public sealed class IdentityVerificationFlowService(
         var operatorPath = InOperatorPath(session, context);
         var passed = session.BiometricOutcome == BiometricOutcome.Accept;
 
+        // A document of one picture counts as checked as soon as it was read (the agent says what is wrong at the selfie); a document of two sides only
+        // when the face and the MRZ were found across the pictures, so a reloaded page asks for the missing side instead of the selfie.
+        var documentChecked = check is not null && IsComplete(check);
+
         string? result = passed
             ? IdentityVerificationGuestResults.Ok
             : operatorPath
@@ -483,7 +641,7 @@ public sealed class IdentityVerificationFlowService(
                 ? IdentityVerificationSteps.Operator
                 : session.BiometricConsentAt is null
                     ? IdentityVerificationSteps.Consent
-                    : check is null ? IdentityVerificationSteps.Document : IdentityVerificationSteps.Selfie;
+                    : documentChecked ? IdentityVerificationSteps.Selfie : IdentityVerificationSteps.Document;
 
         return new IdentityVerificationState(
             step,
@@ -491,11 +649,13 @@ public sealed class IdentityVerificationFlowService(
             offered,
             session.BiometricConsentAt is not null,
             session.BiometricConsentRefusedAt is not null,
-            check is not null,
+            documentChecked,
             Remaining(session, context.Policy),
             session.OperatorRequestedAt is not null || context.BookingWithOperator,
             context.DocumentNotArchived,
-            context.VerifyingGuestPosition);
+            context.VerifyingGuestPosition,
+            check is null ? null : SidesOf(check.TwoSided, check.Front, check.Back),
+            SideNeeded(check));
     }
 
     /// <summary>What every step needs: the settings of the org, the guest who verifies and whether the property keeps no document.</summary>
@@ -527,6 +687,9 @@ public sealed class IdentityVerificationFlowService(
             .AsNoTracking()
             .IgnoreQueryFilters()
             .Where(s => s.OrgId == orgId)
+            // The oldest row, the one BiometricSettingsService reads and writes (the table has no unique index on the org).
+            .OrderBy(s => s.CreatedAt)
+            .ThenBy(s => s.Id)
             .Select(s => new { s.Enabled, s.AcceptThreshold, s.EscalateThreshold, s.MaxAttempts, s.CalibratedAt })
             .FirstOrDefaultAsync(ct);
         if (settings is not null)
@@ -597,6 +760,117 @@ public sealed class IdentityVerificationFlowService(
             HolderIsMinor: IsMinor(DateOf(read.DateOfBirth)));
     }
 
+    /// <summary>
+    /// The checks of the document across its pictures (E22/F01/US01/T02): the MRZ may come from any side. When both sides carry one (a card that repeats
+    /// it) the one that is valid wins, otherwise the one just sent. A minor found on either side is a minor.
+    /// </summary>
+    private static DocumentCheck CombineChecks(DocumentCheck? front, DocumentCheck? back, DocumentSide latest)
+    {
+        if (front is null && back is null)
+            return new DocumentCheck(false, false, null, null, null, null, null, false);
+
+        DocumentCheck chosen;
+        if (front is null)
+            chosen = back!;
+        else if (back is null)
+            chosen = front;
+        else if (front.Valid != back.Valid)
+            chosen = front.Valid ? front : back;
+        else
+            chosen = latest == DocumentSide.Back ? back : front;
+
+        var minor = front?.HolderIsMinor == true || back?.HolderIsMinor == true;
+        return minor && !chosen.HolderIsMinor ? chosen with { HolderIsMinor = true } : chosen;
+    }
+
+    /// <summary>Whether a face was found on a picture where one is looked for (null: not looked for on the back, or the models could not say).</summary>
+    private static bool? FaceOf(CaptureAssessment? assessment, DocumentSide side)
+    {
+        if (side == DocumentSide.Back || assessment is not { Assessed: true })
+            return null;
+
+        return !assessment.GuidanceCodes.Contains(CaptureGuidanceCodes.ShowDocumentPhoto, StringComparer.Ordinal);
+    }
+
+    /// <summary>Whether the light, the glare and the blur of a picture were good (the face apart); null when they were not assessed.</summary>
+    private static bool? QualityOf(CaptureAssessment? assessment)
+    {
+        if (assessment is not { Assessed: true })
+            return null;
+
+        return assessment.GuidanceCodes.All(code => string.Equals(code, CaptureGuidanceCodes.ShowDocumentPhoto, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Says which side is missing after a picture of a document of two sides (E22/F01/US01/T02): a good front without any MRZ asks for the back; an MRZ
+    /// read on the back without a good front asks for the front; an MRZ that was not found on the back is shown again as the usual guidance. A single
+    /// picture keeps the guidance it always had.
+    /// </summary>
+    private static void AddMissingSideGuidance(List<string> guidance, DocumentSide side, bool mrzFoundHere, bool mrzFoundAnywhere, bool frontGood)
+    {
+        switch (side)
+        {
+            case DocumentSide.Single:
+                if (!mrzFoundHere)
+                    guidance.Add(CaptureGuidanceCodes.ShowWholeDocument);
+
+                break;
+            case DocumentSide.Front:
+                if (!mrzFoundAnywhere && frontGood)
+                {
+                    // The MRZ is not on the front of a card: «show the whole document», which the reading of this picture gave, would send the guest
+                    // after something that is not there. The back is what is missing.
+                    guidance.RemoveAll(code => string.Equals(code, CaptureGuidanceCodes.ShowWholeDocument, StringComparison.Ordinal));
+                    guidance.Add(CaptureGuidanceCodes.DocumentBackNeeded);
+                }
+
+                break;
+            default:
+                if (!mrzFoundAnywhere)
+                    guidance.Add(CaptureGuidanceCodes.ShowWholeDocument);
+                else if (!frontGood)
+                    guidance.Add(CaptureGuidanceCodes.DocumentFrontNeeded);
+
+                break;
+        }
+    }
+
+    /// <summary>
+    /// A document of one picture is complete as soon as it was read, as it always was (the agent says what is wrong at the selfie); a document of two
+    /// sides only when its front is there with a face (or no way to look for one) and the MRZ was read on a side.
+    /// </summary>
+    private static bool IsComplete(StoredDocumentCheck check) =>
+        !check.TwoSided
+        || (check.Front is { } front && front.Face != false && (front.Mrz is not null || check.Back?.Mrz is not null));
+
+    /// <summary>The side still to photograph for a document of two sides: the front when it is missing or has no face, else the back when no MRZ was read.</summary>
+    private static string? SideNeeded(StoredDocumentCheck? check)
+    {
+        if (check is null || !check.TwoSided)
+            return null;
+
+        if (check.Front is not { } front || front.Face == false)
+            return DocumentSides.Front;
+
+        return front.Mrz is null && check.Back?.Mrz is null ? DocumentSides.Back : null;
+    }
+
+    /// <summary>The pictures of the attempt as the page names them: <c>single</c>, or <c>front</c> and <c>back</c> for those that are there.</summary>
+    private static IReadOnlyList<string> SidesOf(bool twoSided, StoredDocumentPicture? front, StoredDocumentPicture? back)
+    {
+        if (!twoSided)
+            return [DocumentSides.Single];
+
+        var sides = new List<string>(2);
+        if (front is not null)
+            sides.Add(DocumentSides.Front);
+
+        if (back is not null)
+            sides.Add(DocumentSides.Back);
+
+        return sides;
+    }
+
     private static StoredDocumentCheck? ReadCheck(GuestCheckInSession session)
     {
         if (string.IsNullOrWhiteSpace(session.DocumentCheckJson))
@@ -613,11 +887,68 @@ public sealed class IdentityVerificationFlowService(
         }
     }
 
-    /// <summary>Keeps the picture encrypted in the private bucket with its <see cref="DocumentImage"/> row, replacing the one kept before.</summary>
-    private async Task StoreDocumentAsync(GuestCheckInSession session, byte[] bytes, DateTime now, CancellationToken ct)
+    /// <summary>
+    /// Keeps the picture of one side encrypted in the private bucket, in the <see cref="DocumentImage"/> row of the attempt: the front (or the single
+    /// picture) in <see cref="DocumentImage.FrontImageUrl"/>, the back in <see cref="DocumentImage.BackImageUrl"/> (E22/F01/US01/T02). A single picture
+    /// replaces everything kept before, a front or a back replaces its own picture and leaves the other. The row of an attempt that started with the
+    /// back has an empty front address until the front comes (the cleaners skip a blank address).
+    /// </summary>
+    private async Task StoreDocumentSideAsync(GuestCheckInSession session, DocumentSide side, byte[] bytes, DateTime now, CancellationToken ct)
     {
-        await DeleteStoredDocumentAsync(session, ct);
+        DocumentImage? row = null;
+        if (side == DocumentSide.Single)
+        {
+            await DeleteStoredDocumentAsync(session, ct);
+        }
+        else
+        {
+            var live = await db.DocumentImages
+                .IgnoreQueryFilters()
+                .Where(i => i.OrgId == session.OrgId && i.BookingId == session.BookingId && i.DeletedAt == null)
+                .OrderByDescending(i => i.UploadedAt)
+                .ToListAsync(ct);
+            row = live.FirstOrDefault();
 
+            // One live row per booking is what this flow writes; should there be more, only the newest stays.
+            foreach (var extra in live.Skip(1))
+            {
+                await DeleteObjectsAsync(extra, ct);
+                extra.DeletedAt = now;
+            }
+
+            // The old picture of this side goes before the new one is written, as the single picture always did, so a failure leaves nothing behind.
+            if (row is not null)
+                await DeleteObjectAsync(side == DocumentSide.Front ? row.FrontImageUrl : row.BackImageUrl, ct);
+        }
+
+        var key = await PutEncryptedAsync(session, bytes, ct);
+        if (row is null)
+        {
+            db.DocumentImages.Add(new DocumentImage
+            {
+                OrgId = session.OrgId,
+                GuestId = session.Booking.GuestId,
+                BookingId = session.BookingId,
+                FrontImageUrl = side == DocumentSide.Back ? string.Empty : key,
+                BackImageUrl = side == DocumentSide.Back ? key : null,
+                UploadedAt = now,
+                ProcessedAt = now,
+            });
+            return;
+        }
+
+        if (side == DocumentSide.Front)
+            row.FrontImageUrl = key;
+        else
+            row.BackImageUrl = key;
+
+        row.UploadedAt = now;
+        row.ProcessedAt = now;
+    }
+
+    /// <summary>Encrypts a picture (Data Protection, <see cref="DocumentImageContentPurpose"/>) and writes it to the private bucket; the key it has there.</summary>
+    private async Task<string> PutEncryptedAsync(GuestCheckInSession session, byte[] bytes, CancellationToken ct)
+    {
         var key = StorageKeys.GuestDocument(session.OrgId, session.Booking.GuestId, $"{Guid.NewGuid():N}.bin");
         var cipher = dataProtection.CreateProtector(DocumentImageContentPurpose).Protect(bytes);
         try
@@ -630,15 +961,21 @@ public sealed class IdentityVerificationFlowService(
             Array.Clear(cipher);
         }
 
-        db.DocumentImages.Add(new DocumentImage
-        {
-            OrgId = session.OrgId,
-            GuestId = session.Booking.GuestId,
-            BookingId = session.BookingId,
-            FrontImageUrl = key,
-            UploadedAt = now,
-            ProcessedAt = now,
-        });
+        return key;
+    }
+
+    /// <summary>Deletes one object of the private bucket; a blank address (a side that was never sent) is nothing to delete.</summary>
+    private async Task DeleteObjectAsync(string? key, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(key))
+            await storage.DeleteAsync(StorageBucket.Private, key, ct);
+    }
+
+    /// <summary>Deletes the objects of both sides of a kept document.</summary>
+    private async Task DeleteObjectsAsync(DocumentImage image, CancellationToken ct)
+    {
+        await DeleteObjectAsync(image.FrontImageUrl, ct);
+        await DeleteObjectAsync(image.BackImageUrl, ct);
     }
 
     /// <summary>The kept picture of the document of the booking, decrypted; null when none is kept.</summary>
@@ -669,7 +1006,7 @@ public sealed class IdentityVerificationFlowService(
         }
     }
 
-    /// <summary>Deletes the kept pictures of the booking (object and row marked deleted): the verification no longer needs them.</summary>
+    /// <summary>Deletes the kept pictures of the booking, both sides (the objects, and the rows marked deleted): the verification no longer needs them.</summary>
     private async Task DeleteStoredDocumentAsync(GuestCheckInSession session, CancellationToken ct)
     {
         var kept = await db.DocumentImages
@@ -682,7 +1019,7 @@ public sealed class IdentityVerificationFlowService(
         var now = UtcNow();
         foreach (var image in kept)
         {
-            await storage.DeleteAsync(StorageBucket.Private, image.FrontImageUrl, ct);
+            await DeleteObjectsAsync(image, ct);
             image.DeletedAt = now;
         }
     }
@@ -738,7 +1075,23 @@ public sealed class IdentityVerificationFlowService(
 }
 
 /// <summary>
-/// The checks of the document as the session keeps them (<see cref="GuestCheckInSession.DocumentCheckJson"/>): flags, the SHA-256 of the picture
-/// (to recognise it when it comes again with the selfie), when. No value read on the document.
+/// One picture of the attempt as the session keeps it (E22/F01/US01/T02): whether a face was found on it (null: not looked for, as on a back, or the models
+/// could not say), whether its light, glare and blur were good (null: not assessed) and, when its MRZ was read, the checks made on it. Flags only.
 /// </summary>
-internal sealed record StoredDocumentCheck(DocumentCheck Check, string PhotoSha256, DateTime CheckedAt);
+internal sealed record StoredDocumentPicture(bool? Face, bool? QualityOk, DocumentCheck? Mrz);
+
+/// <summary>
+/// The checks of the document as the session keeps them (<see cref="GuestCheckInSession.DocumentCheckJson"/>): the flags across the pictures
+/// (<see cref="Check"/>), the SHA-256 of the picture with the face (<see cref="PhotoSha256"/>, empty while only the back was sent) and of the back
+/// (<see cref="BackSha256"/>), to recognise them when they come again with the selfie in Ticino, when. For a document of two sides
+/// (<see cref="TwoSided"/>) what each picture showed. A record written before the two-sided document has none of the optional members and reads as a
+/// single picture. No value read on the document.
+/// </summary>
+internal sealed record StoredDocumentCheck(
+    DocumentCheck Check,
+    string PhotoSha256,
+    DateTime CheckedAt,
+    string? BackSha256 = null,
+    StoredDocumentPicture? Front = null,
+    StoredDocumentPicture? Back = null,
+    bool TwoSided = false);

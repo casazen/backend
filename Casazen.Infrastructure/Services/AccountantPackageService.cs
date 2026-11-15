@@ -75,8 +75,10 @@ public sealed class AccountantPackageService(
         var plan = new Plan();
 
         // A period with more documents than the cap allows is refused before the documents are read: each is at least one file.
-        var guestCount = await AccountantPackageFacts.IssuedDocuments(db, scope, period, FiscalDocumentPurpose.GuestStay).CountAsync(cancellationToken);
-        var ownerCount = ownerAccounting
+        var guestCount = access.Includes(AccountantPackageFolders.GuestDocuments)
+            ? await AccountantPackageFacts.IssuedDocuments(db, scope, period, FiscalDocumentPurpose.GuestStay).CountAsync(cancellationToken)
+            : 0;
+        var ownerCount = ownerAccounting && access.Includes(AccountantPackageFolders.OwnerInvoices)
             ? await AccountantPackageFacts.IssuedDocuments(db, scope, period, FiscalDocumentPurpose.OwnerInvoice).CountAsync(cancellationToken)
             : 0;
         CheckCaps(guestCount + ownerCount, limits);
@@ -95,23 +97,45 @@ public sealed class AccountantPackageService(
             : scope.IsOrgWide ? await AccountantPackageFacts.ReadAsync(db, scope, period, FiscalDocumentPurpose.OwnerInvoice, cancellationToken) : [];
 
         var slugs = SlugsOf(IssuersOf(guestDocuments, vatOwnerInvoices, fallback, current));
-        PlanGuestDocuments(plan, guestDocuments, fallback, current, slugs, period, t);
+        // The folders the access holds (every one for the screens, the ones the agency chose for the package it sends every month): a folder that is not one of them is neither read nor written. The documents of
+        // the guests and the invoices to the owners are read for the VAT and the tourist tax whatever is chosen: only their own folders are left out.
+        if (access.Includes(AccountantPackageFolders.GuestDocuments))
+            PlanGuestDocuments(plan, guestDocuments, fallback, current, slugs, period, t);
+
         if (ownerAccounting)
         {
-            PlanOwnerInvoices(plan, ownerInvoices, current, period, t);
-            await PlanStatementsAsync(plan, scope.OrgId, period, t, cancellationToken);
-            await PlanWithholdingAsync(plan, scope.OrgId, period, t, cancellationToken);
+            if (access.Includes(AccountantPackageFolders.OwnerInvoices))
+                PlanOwnerInvoices(plan, ownerInvoices, current, period, t);
+
+            if (access.Includes(AccountantPackageFolders.Statements))
+                await PlanStatementsAsync(plan, scope.OrgId, period, t, cancellationToken);
+
+            if (access.Includes(AccountantPackageFolders.Withholding))
+                await PlanWithholdingAsync(plan, scope.OrgId, period, t, cancellationToken);
         }
 
-        await PlanAgencySummaryAsync(plan, scope, access, period, t, cancellationToken);
-        await PlanVatAsync(plan, scope, ownerAccounting, guestDocuments, vatOwnerInvoices, fallback, current, slugs, period, t, cancellationToken);
-        await PlanTouristTaxAsync(plan, scope, period, guestDocuments, t, cancellationToken);
-        await PlanCollectionsAsync(plan, scope, period, cancellationToken);
+        if (access.Includes(AccountantPackageFolders.AgencySummary))
+            await PlanAgencySummaryAsync(plan, scope, access, period, t, cancellationToken);
+
+        if (access.Includes(AccountantPackageFolders.Vat))
+            await PlanVatAsync(plan, scope, ownerAccounting, guestDocuments, vatOwnerInvoices, fallback, current, slugs, period, t, cancellationToken);
+
+        if (access.Includes(AccountantPackageFolders.TouristTax))
+            await PlanTouristTaxAsync(plan, scope, period, guestDocuments, t, cancellationToken);
+
+        if (access.Includes(AccountantPackageFolders.Collections))
+            await PlanCollectionsAsync(plan, scope, period, cancellationToken);
 
         CheckCaps(plan.DocumentFiles.Count, limits);
         var omitted = ownerAccounting ? [] : AccountantPackageStructure.OwnerAccountingFolders;
 
-        var written = await WriteAsync(plan, period, omitted, t, destination, cancellationToken);
+        // The folders left out by choice are named too, with their own reason (an owner accounting folder the caller may not read is already in `omitted`): the index never hides a folder that is not there.
+        var notSelected = AccountantPackageFolderRules.Singles
+            .Where(folder => !access.Includes(folder) && (ownerAccounting || !AccountantPackageFolderRules.IsOwnerAccounting(folder)))
+            .Select(AccountantPackageFolderRules.FolderOf)
+            .ToList();
+
+        var written = await WriteAsync(plan, period, omitted, notSelected, t, destination, cancellationToken);
         logger.LogInformation(
             "Accountant package of {Period} written. OrgId={OrgId} Documents={Documents} Files={Files} Bytes={Bytes} OwnerAccounting={OwnerAccounting}",
             period.Key,
@@ -400,7 +424,7 @@ public sealed class AccountantPackageService(
 
     /// <summary>Writes the generated files, then each file of a document (rendered when its turn comes), then <c>indice.csv</c>, to <paramref name="destination"/>.</summary>
     private async Task<(int Files, long Bytes)> WriteAsync(
-        Plan plan, AccountantPackagePeriod period, IReadOnlyList<string> omitted, PackageTexts t, Stream destination, CancellationToken cancellationToken)
+        Plan plan, AccountantPackagePeriod period, IReadOnlyList<string> omitted, IReadOnlyList<string> notSelected, PackageTexts t, Stream destination, CancellationToken cancellationToken)
     {
         var entries = new List<PackageIndexEntry>();
         var sink = new DocumentArchiveExport.DeferredWriteStream(destination);
@@ -420,7 +444,7 @@ public sealed class AccountantPackageService(
                 bytes += await AddAsync(archive, entries, file.Path, file.Description, content, null, cancellationToken);
             }
 
-            var index = CsvWriter.Write(AccountantPackageDocuments.Index(period, entries, omitted, t), CsvWriter.NoLimit);
+            var index = CsvWriter.Write(AccountantPackageDocuments.Index(period, entries, omitted, t, notSelected), CsvWriter.NoLimit);
             await WriteEntryAsync(archive, AccountantPackageStructure.IndexFile, index, cancellationToken);
             bytes += index.Length;
         }
