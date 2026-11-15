@@ -27,7 +27,7 @@ that surrounds the wires, and the payout a wire pays, are in [`owner-accounting.
   `payouts`, with the same members, in the order of the transfers of the file; a payout reversed after its batch was made is in it and says `Reversed`, and a batch of before
   the payouts (made from statements) has none. Each payout has `payoutId`, the owner (`ownerId`, `ownerName`), `periodYear` and `periodMonth` of its statement, `amount` (the net:
   the amount of the transfer), `currency`, `confirmedAt`, `status` and `ownerHasIban`, **a yes or a no and never the IBAN**, no address, no debit account, no file (the
-  batch is read by the columns of the list, so the file is not even decrypted). Both reads need `agency.wire.manage` **and the whole org**: a caller limited to some
+  batch is read by the columns of the list, so the file is not even decrypted). Both reads need `agency.wire.manage` (the policy of the controller, which neither action overrides: `WireReads_AreBehindTheWireManagePolicy_Test`) **and the whole org**: a caller limited to some
   properties gets 403 (`WireReads_PropertyLimitedCaller_IsForbidden_Test`), the org is asked on every table (a batch of another org is a 404, the payouts of another org are never
   listed: `WireBatchPayouts_OfAnotherOrganization_AreNotFound_Test`), and the answers are not cached (`Cache-Control: no-store`: they hold the names of the owners).
 - **The organization is checked explicitly** on every endpoint above (the service filters on the org of the caller, a `Find` by key would not apply the global
@@ -246,6 +246,6 @@ and a payout that another batch takes between the checks and the save of a reque
 and nothing left behind; the in-memory database of the unit tests applies neither the index nor the lock.
 
 `WirePayableReadsTests` (no database, no network): the reads of the wire page, one proof for each rule (`PayablePayouts_ExcludeThoseAlreadyInABatchAndReversedOnes_Test`,
-`PayablePayouts_AreNeverMixedAcrossCurrencies_Test`, `WireBatchPayouts_OfAnotherOrganization_AreNotFound_Test`, `WireReads_PropertyLimitedCaller_IsForbidden_Test`,
+`PayablePayouts_AreNeverMixedAcrossCurrencies_Test`, `WireBatchPayouts_OfAnotherOrganization_AreNotFound_Test`, `WireReads_PropertyLimitedCaller_IsForbidden_Test`, `WireReads_AreBehindTheWireManagePolicy_Test`,
 `WirePayouts_ShowOnlyWhetherTheOwnerHasAnIban_Test`). `WirePayableReadsNpgsqlTranslationTests`: both reads are translated to SQL by the Npgsql provider (no server), with the
 org asked of every table.

@@ -5,9 +5,11 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.Payments;
 using Casazen.Web.Infrastructure;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -216,6 +218,27 @@ public class WirePayableReadsTests
         var response = Assert.IsType<WireBatchPayoutsResponse>(read.Value);
         Assert.Equal(WireBatchStatus.Generated, response.Batch.Status);
         Assert.Equal(payout.PayoutId, Assert.Single(response.Payouts).PayoutId);
+    }
+
+    /// <summary>
+    /// Permission rule proof: the two reads need the financial permission of every wire endpoint, <c>agency.wire.manage</c>, which they get from the class of the controller. The
+    /// class names that policy and is not anonymous, and neither action overrides it: no <c>AllowAnonymous</c> on the action and no other requirement beside the policy of the
+    /// class, so what a request has to pass is that policy and not a weaker one (the integration tests of the roles run in CI only).
+    /// </summary>
+    [Fact]
+    public void WireReads_AreBehindTheWireManagePolicy_Test()
+    {
+        var controller = typeof(WireTransferController);
+        Assert.Empty(controller.GetCustomAttributes(typeof(IAllowAnonymous), true));
+
+        foreach (var action in new[] { nameof(WireTransferController.ListPayablePayouts), nameof(WireTransferController.GetBatchPayouts) })
+        {
+            var method = controller.GetMethod(action)!;
+            var requirements = controller.GetCustomAttributes(typeof(AuthorizeAttribute), true).Concat(method.GetCustomAttributes(typeof(AuthorizeAttribute), true)).Cast<AuthorizeAttribute>();
+
+            Assert.Empty(method.GetCustomAttributes(typeof(IAllowAnonymous), true));
+            Assert.Equal(CasazenPolicies.AgencyWireManage, Assert.Single(requirements.Select(a => a.Policy).Distinct()));
+        }
     }
 
     /// <summary>
