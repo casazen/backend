@@ -146,6 +146,30 @@ public class S3FileStorageTests
         _s3.VerifyAll();
     }
 
+    /// <summary>
+    /// PROOF TEST: privacy rule (E20/F02/US01/T02, NF-121). The adapter that really deletes writes the key of a guest's document (<c>guest-documents/{org}/{guest}/…</c>, the ids of
+    /// the org and of the guest) in no line of its log, at no level: it says that an object of the guests' documents was deleted; the key of another object is logged as before.
+    /// </summary>
+    [Fact]
+    public async Task DeleteAsync_TheKeyOfAGuestDocument_IsNeverWrittenInTheLog_Test()
+    {
+        var log = new CapturingLogger<S3FileStorage>();
+        var storage = new S3FileStorage(_s3.Object, Options.Create(CreateOptions()), log);
+        var guestKey = StorageKeys.GuestDocument(Guid.NewGuid(), Guid.NewGuid(), $"{Guid.NewGuid():N}.bin");
+        _s3.Setup(s => s.DeleteObjectAsync("casazen-test-private", guestKey, It.IsAny<CancellationToken>())).ReturnsAsync(new DeleteObjectResponse());
+        _s3.Setup(s => s.DeleteObjectAsync("casazen-test-private", "properties/p/documents/a.pdf", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DeleteObjectResponse());
+
+        await storage.DeleteAsync(StorageBucket.Private, guestKey);
+        await storage.DeleteAsync(StorageBucket.Private, "properties/p/documents/a.pdf");
+
+        _s3.Verify(s => s.DeleteObjectAsync("casazen-test-private", guestKey, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.NotEmpty(log.Lines);
+        Assert.DoesNotContain(log.Lines, line => line.Contains(StorageKeys.GuestDocumentPrefix, StringComparison.Ordinal) || line.Contains(guestKey, StringComparison.Ordinal));
+        Assert.Contains(log.Lines, line => line.Contains("guests' documents", StringComparison.Ordinal));
+        Assert.Contains(log.Lines, line => line.Contains("properties/p/documents/a.pdf", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void GetPublicUrl_ReturnsAbsoluteUrlUnderPublicBaseUrl()
     {

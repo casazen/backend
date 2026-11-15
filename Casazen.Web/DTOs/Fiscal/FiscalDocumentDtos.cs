@@ -12,6 +12,12 @@ public sealed record FiscalDocumentDto
     public Guid? BookingId { get; init; }
     public string Source { get; init; } = string.Empty;
     public string Kind { get; init; } = string.Empty;
+
+    /// <summary>
+    /// What the document is for: <c>GuestStay</c>, <c>OwnerInvoice</c> or <c>SelfBilling</c>. A self-billed invoice (TD17) keeps the foreign supplier in the recipient fields and the
+    /// holder that issues it is the issuer (see <c>api/fiscal/self-billing</c>), so a reader that takes the recipient for a customer has to tell it by this field.
+    /// </summary>
+    public string Purpose { get; init; } = string.Empty;
     public string Status { get; init; } = string.Empty;
     public string? Series { get; init; }
     public int? SequenceNumber { get; init; }
@@ -54,6 +60,7 @@ public sealed record FiscalDocumentDto
         BookingId = document.BookingId,
         Source = document.Source.ToString(),
         Kind = document.Kind.ToString(),
+        Purpose = document.Purpose.ToString(),
         Status = document.Status.ToString(),
         Series = string.IsNullOrEmpty(document.Series) ? null : document.Series,
         SequenceNumber = document.SequenceNumber,

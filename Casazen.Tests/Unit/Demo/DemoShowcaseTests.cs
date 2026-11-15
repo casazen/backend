@@ -149,6 +149,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.SwissFiscalDocumentExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.OwnerIssuerDocumentExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.SdiRejectedInvoiceExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.SelfBillingExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.PaymentLedgerExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.ChannelCommissionRules.Select(rule => rule.Scenario))
             .Concat(DemoShowcaseCatalog.CleaningSetups.Select(setup => setup.Scenario))
@@ -1238,6 +1239,27 @@ public class DemoShowcaseTests
         Assert.True(example.Total > 0m);
         Assert.Equal(example.ErrorCode, Casazen.Core.Services.SdiRejectionReasons.Normalize(example.ErrorCode));
         Assert.NotEqual(Casazen.Core.Services.SdiRejectionReasons.GenericKey, Casazen.Core.Services.SdiRejectionReasons.KeyOf(example.ErrorCode));
+    }
+
+    /// <summary>
+    /// E17/F01/US03: the demo self-billed invoice is the TEST owner company's, the cedente a TEST portal abroad (never Italy), and the commissions of the month add up to its taxable
+    /// amount, the VAT being integrated on top at the rate of the shipped settings (22): 200.50 and 44.11.
+    /// </summary>
+    [Fact]
+    public void SelfBilling_TheExampleIsValid()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.SelfBilling, DemoShowcaseCatalog.Scenarios);
+        var example = Assert.Single(DemoShowcaseCatalog.SelfBillingExamples);
+        Assert.StartsWith("TEST", example.HolderName, StringComparison.Ordinal);
+        Assert.StartsWith("TEST", example.PortalName, StringComparison.Ordinal);
+        Assert.Equal(2, example.PortalCountry.Length);
+        Assert.NotEqual(FiscalDocumentRules.Italy, example.PortalCountry);
+
+        var settings = SelfBillingRig.Shipped();
+        var amounts = FiscalDocumentTotals.FromNet(
+            example.Commissions.Select(c => new FiscalDocumentNetLine("TEST", 1m, c, settings.VatRatePercent, null, FiscalLineType.Commission)).ToList(),
+            null);
+        Assert.Equal((200.50m, 44.11m, 244.61m), (amounts.TaxableBase, amounts.VatAmount, amounts.Total));
     }
 
     /// <summary>

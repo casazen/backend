@@ -495,6 +495,12 @@ internal static class PostgresAdvisoryLocks
         AccountantPackage = 1_650,
 
         /// <summary>
+        /// The self-billed invoices (TD17) of one org (key: <c>orgId.ToString("N")</c>, E17/F01/US03/T01): the drafts of a month are made one request at a time and held until
+        /// the commit, so two requests (a double click, a retry) never both find «no draft yet» for a holder, a portal and a month and make two of them.
+        /// </summary>
+        SelfBilling = 1_640,
+
+        /// <summary>
         /// The automatic cleaning of one stay (key: <c>bookingId.ToString("N")</c>, E24/F01/US01/T02): the check that the stay has none, the creation of the service request or
         /// of the staff activity and the <c>StayCleaning</c> row that keys it are taken one at a time and held until the commit, so the two triggers of a stay (the check-out time
         /// and the departure the host registered) create one cleaning. The supplier's calendar lock is taken inside it (by the request), never the other way round. The values

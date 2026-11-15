@@ -186,6 +186,12 @@ public static class FiscalDocumentExtensions
         // (E17/F02/US01/T01). The owner portal service takes it; it takes nothing of the portal.
         services.AddScoped<IOwnerIssuedDocumentsExport, OwnerIssuedDocumentsExport>();
 
+        // The self-billed invoices (TD17) of the commissions of the foreign portals (E17/F01/US03/T01), behind Features:FiscalDocumentIssuance, with the section SelfBilling (the legal
+        // entities of the portals, the VAT integrated, the deadline: ⚖ defaults to be confirmed by an accountant). Not validated at startup: a portal entry that is not usable is
+        // ignored and its commissions are listed as «portal not configured», an invalid VAT rate makes the generation refuse (422 self_billing_not_configured).
+        services.AddOptions<SelfBillingOptions>().Bind(configuration.GetSection(SelfBillingOptions.SectionName));
+        services.AddScoped<ISelfBillingService, SelfBillingService>();
+
         // The checks of the limit of units of an owner and of the company tenant in the property of a private owner (E18/F01/US03/T01, NF-117, ⚖ I7 and I8): the withholding
         // facts read them, the readiness of the owners and the statement versions carry their warnings, and the consumer of InvoiceDataSaved and BookingConfirmed raises the «Da fare» of a company
         // tenant. The warnings and the «Da fare» are behind Features:TaxReportingExports; run by the outbox dispatcher, the consumer can never fail the save of the invoice data.

@@ -209,6 +209,13 @@ public static class TestDataEntities
     public const string ManualComplianceProof = "ManualComplianceProof";
 
     /// <summary>
+    /// The flat the receipt of a showcase stay covers (<see cref="Entities.ManualComplianceProofProperty"/>, E20/F02/US01/T01, decision O3): the line every proof has for
+    /// the flat it was filed under. It goes with its proof and its house (cascade) and the reset deletes its marker with the other showcase markers; a real line has no
+    /// marker and is never touched.
+    /// </summary>
+    public const string ManualComplianceProofProperty = "ManualComplianceProofProperty";
+
+    /// <summary>
     /// A line of the log of what was sent to the authorities for a showcase stay (<see cref="Entities.ComplianceSendLogEntry"/>, E03/F02/US03/T01, NF-47):
     /// the one the channel manager's send of the guests, or the host's declaration, would have written. Invented like the rest and sent nowhere. It
     /// follows its house (cascade); a real line has no marker and is never touched.

@@ -676,6 +676,13 @@ public static class ServiceCollectionExtensions
         // and the exports built on request. Options: Compliance:Archive (all optional, docs/runbooks/deploy-checklist.md § 2).
         services.AddScoped<IComplianceSendLog, ComplianceSendLog>();
         services.AddScoped<IComplianceArchiveService, ComplianceArchiveService>();
+        // E20/F02/US01/T01 (NF-47, CHK-08): the proofs are kept five years from their upload; the daily job (compliance-proof-retention) deletes the file and the row of
+        // those whose time is over. Always scheduled, nothing to configure.
+        services.AddScoped<Casazen.Infrastructure.Jobs.ComplianceProofRetentionJob>();
+        // E20/F02/US01/T02 (NF-121, NF-16, decision O4): the photos of the identity documents and the legacy scan of a stay covered by an archived Alloggiati receipt are deleted by the
+        // daily job (guest-document-purge) and by a run queued after each receipt upload; behind Features:PurgeDocumentsAfterReceipt, off by default (the deletion cannot be undone).
+        services.AddScoped<IGuestDocumentPurgeService, GuestDocumentPurgeService>();
+        services.AddScoped<Casazen.Infrastructure.Jobs.GuestDocumentPurgeJob>();
         services.AddScoped<IComplianceActivityFeeder, ComplianceActivityFeeder>();
         services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
         // «Gestisci con AI» of the page of the adempimenti: asks the guests for their data (e-mail with the check-in link, chat messages the
@@ -1069,9 +1076,10 @@ public static class ServiceCollectionExtensions
 
     /// <summary>
     /// The document archive (NF-99, E07/F03/US03): the service, the sources it reads and the caps of the export (<c>DocumentArchive</c>, checked at
-    /// startup). A source is a class that knows one table and who may read it: the property documents, the files of the leases and the receipts
-    /// of the tourist tax payments are here; the Alloggiati receipts and the ISTAT proofs, and the documents of the fiscal epic, add theirs when
-    /// their tasks come. The guest identity documents and selfies are never a source.
+    /// startup). A source is a class that knows one table and who may read it: the property documents, the files of the leases, the receipts
+    /// of the tourist tax payments and the proofs of the compliance duties the host uploaded (the Alloggiati receipts and the ISTAT proofs,
+    /// «Prove di adempimento», E20/F02/US01/T01) are here; the documents of the fiscal epic add theirs when their tasks come. The guest identity
+    /// documents and selfies are never a source.
     /// </summary>
     public static IServiceCollection AddDocumentArchive(this IServiceCollection services)
     {
@@ -1084,6 +1092,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDocumentArchiveSource, PropertyDocumentArchiveSource>();
         services.AddScoped<IDocumentArchiveSource, LeaseDocumentArchiveSource>();
         services.AddScoped<IDocumentArchiveSource, TouristTaxRemittanceArchiveSource>();
+        services.AddScoped<IDocumentArchiveSource, AlloggiatiReceiptArchiveSource>();
+        services.AddScoped<IDocumentArchiveSource, IstatProofArchiveSource>();
         services.AddScoped<IDocumentArchiveService, DocumentArchiveService>();
         return services;
     }

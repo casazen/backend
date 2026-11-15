@@ -614,7 +614,7 @@ public sealed partial class FiscalDocumentService(
             .Take(limit)
             .Select(d => new ExportSource(
                 d.Id, d.BookingId, d.Kind, d.Number, d.IssueDate, d.RecipientName, d.TaxableBase, d.VatAmount, d.StampDuty, d.Total, d.Currency, d.PaymentState, d.SdiStatus, d.Source,
-                d.PaymentChannel))
+                d.PaymentChannel, d.Purpose))
             .ToListAsync(ct);
         if (documents.Count == 0)
             return [];
@@ -650,7 +650,8 @@ public sealed partial class FiscalDocumentService(
                     d.Currency,
                     IsPaymentStateReadFromPayments(d.Source, d.Kind, d.BookingId, d.PaymentChannel) ? PaymentStateOf(collected.GetValueOrDefault(d.BookingId!.Value), d.Total) : d.PaymentState,
                     d.SdiStatus,
-                    d.Source);
+                    d.Source,
+                    d.Purpose);
             })
             .ToList();
     }
@@ -711,7 +712,8 @@ public sealed partial class FiscalDocumentService(
         FiscalDocumentPaymentState PaymentState,
         string SdiStatus,
         FiscalDocumentSource Source,
-        FiscalPaymentChannel PaymentChannel);
+        FiscalPaymentChannel PaymentChannel,
+        FiscalDocumentPurpose Purpose);
 
     public async Task<string> GetXmlAsync(Guid documentId, CancellationToken ct = default)
     {
@@ -1095,6 +1097,10 @@ public sealed partial class FiscalDocumentService(
     /// </summary>
     internal static FatturaPaInput FatturaPaInputOf(FiscalDocument document, FiscalIssuerSnapshot issuerSnapshot, FiscalTaxRule rule, FiscalDocument? credited)
     {
+        // The self-billed invoice (TD17, E17/F01/US03/T01) turns the parties round: the foreign supplier is the cedente and the issuer of the snapshot the cessionario.
+        if (document.Purpose == FiscalDocumentPurpose.SelfBilling)
+            return SelfBillingFatturaPaInputOf(document, issuerSnapshot);
+
         var lines = AmountsOf(document);
         var summary = FiscalDocumentTotals.SummaryOf(lines, document.VatAmount);
 
@@ -1368,6 +1374,10 @@ public sealed partial class FiscalDocumentService(
     {
         if (document.Purpose == FiscalDocumentPurpose.OwnerInvoice)
             throw new DomainRuleException(OwnerInvoiceErrors.UseOwnerInvoices, "FiscalDocumentOwnerInvoice");
+
+        // A self-billed invoice (E17/F01/US03/T01) is made again, issued and discarded from the self-billed invoices, behind their own permission and flag.
+        if (document.Purpose == FiscalDocumentPurpose.SelfBilling)
+            throw new DomainRuleException(SelfBillingErrors.UseSelfBilling, "FiscalDocumentSelfBilling");
     }
 
     /// <summary>The owner path takes only an owner invoice: any other document is not found there.</summary>

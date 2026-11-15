@@ -163,6 +163,10 @@ public sealed class FiscalDocumentDeliveryService(
         if (document.Source != FiscalDocumentSource.CasaZen)
             throw new DomainRuleException(FiscalDocumentErrors.ReadOnly, "FiscalDocumentReadOnly");
 
+        // A self-billed invoice (TD17, E17/F01/US03) has no guest to send it to: it says so with its own code, never the one of the owner invoices.
+        if (document.Purpose == FiscalDocumentPurpose.SelfBilling)
+            throw new DomainRuleException(SelfBillingErrors.UseSelfBilling, "FiscalDocumentSelfBilling");
+
         if (document.Purpose != FiscalDocumentPurpose.GuestStay || document.BookingId is null)
             throw new DomainRuleException(OwnerInvoiceErrors.UseOwnerInvoices, "FiscalDocumentOwnerInvoice");
 

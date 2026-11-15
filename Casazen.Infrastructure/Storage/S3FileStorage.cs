@@ -100,7 +100,12 @@ public sealed class S3FileStorage(
     {
         StorageKeys.EnsureValid(key);
         await s3.DeleteObjectAsync(BucketName(bucket), key, cancellationToken);
-        logger.LogInformation("Deleted object {Key} from {Bucket} bucket", key, bucket);
+
+        // The key of a guest's document names the org and the guest: it is never written in a log (E20/F02/US01/T02, NF-121); the line says that one was deleted, without it.
+        if (StorageKeys.IsGuestDocument(key))
+            logger.LogDebug("Deleted an object of the guests' documents from {Bucket} bucket", bucket);
+        else
+            logger.LogInformation("Deleted object {Key} from {Bucket} bucket", key, bucket);
     }
 
     public string GetPublicUrl(string key) =>
