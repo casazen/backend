@@ -89,7 +89,8 @@ public sealed record CompletedCleaning(
 /// is still open), and a staff activity of type Cleaning that is completed. Each comes back once.</para>
 /// <para><b>Never an amount nobody confirmed.</b> A supplier request whose final amount is above the quote by more than the tolerance (decision D7) is a cost only once the host
 /// confirmed it: until then it is not returned. It comes back once, in the period of the confirmation (its <c>CompletedOn</c> is the day of the confirmation, not of the completion),
-/// so the statement of a period already closed never changes after it was issued and an amount confirmed late falls in the open one. <c>SourceId</c> is the request, always the same.</para>
+/// so the statement of a period already closed never changes after it was issued and an amount confirmed late falls in the open one. A request the host marked as paid by hand with the
+/// confirmation still open is settled by that payment: it counts from the day it was paid, for the same reason. <c>SourceId</c> is the request, always the same.</para>
 /// <para><b>Whose.</b> Only what belongs to <c>orgId</c>: the read is scoped by the tenant filter and by an explicit <c>orgId</c> check on each row and on its property, so a
 /// property id of another organization returns nothing. A request born from a supplier's public showcase is never a cleaning of a host.</para>
 /// </remarks>
