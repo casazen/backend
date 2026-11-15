@@ -385,6 +385,7 @@ public sealed partial class OwnerMandateService(
         LinenFlatRate = terms.LinenFlatRate,
         PassthroughPaymentFees = terms.PassthroughPaymentFees,
         WithholdingTreatment = terms.WithholdingTreatment,
+        CoOwnerTaxReporting = terms.CoOwnerTaxReporting,
         MandatePdfUrl = terms.Document ?? string.Empty,
         CreatedAt = time.GetUtcNow().UtcDateTime,
         CreatedByUserId = userId,
@@ -407,6 +408,8 @@ public sealed partial class OwnerMandateService(
             throw MandateInvalid("linenFlatRate");
         if (command.WithholdingTreatment is { } treatment && !Enum.IsDefined(treatment))
             throw MandateInvalid("withholdingTreatment");
+        if (command.CoOwnerTaxReporting is { } reporting && !Enum.IsDefined(reporting))
+            throw MandateInvalid("coOwnerTaxReporting");
 
         var document = string.IsNullOrWhiteSpace(command.DocumentReference) ? null : command.DocumentReference.Trim();
         if (document is not null && !IsDocumentReference(document))
@@ -421,6 +424,7 @@ public sealed partial class OwnerMandateService(
             command.LinenFlatRate,
             command.PassthroughPaymentFees,
             command.WithholdingTreatment ?? CommissionTreatment.Deductible,
+            command.CoOwnerTaxReporting ?? CoOwnerTaxReporting.Signatory,
             document);
     }
 
@@ -485,5 +489,6 @@ public sealed partial class OwnerMandateService(
         decimal? LinenFlatRate,
         bool PassthroughPaymentFees,
         CommissionTreatment WithholdingTreatment,
+        CoOwnerTaxReporting CoOwnerTaxReporting,
         string? Document);
 }
