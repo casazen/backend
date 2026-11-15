@@ -310,6 +310,14 @@ public static class DemoShowcaseCatalog
         /// Octorate or Stripe.
         /// </summary>
         public const string ReportChannelCosts = "report-channel-costs";
+
+        /// <summary>
+        /// The two Italian tax checks of the owners (E18/F01/US03/T01, NF-117, ⚖ I7 and I8): an owner who lets short more apartments than the limit of a private person (two
+        /// the agency manages and one it declares outside it: presumed a business, a warning and no short-let withholding), and the stay of a company tenant in the property of a
+        /// private owner (a «Da fare» until a person decides, then the withholding facts follow the decision). Invented, TEST owners: a template of what the checks answer
+        /// (<c>api/owners/{id}/tax-checks</c>, <c>api/owner-tax-decisions</c>), the showcase writes none of these rows.
+        /// </summary>
+        public const string OwnerTaxChecks = "owner-tax-checks";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -395,6 +403,7 @@ public static class DemoShowcaseCatalog
         Scenario.OwnerChannelCommission,
         Scenario.ReportCollections,
         Scenario.ReportChannelCosts,
+        Scenario.OwnerTaxChecks,
     ];
 
     /// <summary>
@@ -533,6 +542,26 @@ public static class DemoShowcaseCatalog
     [
         new("booking-16", BookingSource.BookingCom, 16m, CommissionBase.GrossExclTouristTax, new DateOnly(2026, 1, 1), Scenario.OwnerChannelCommission),
         new("agoda-17", BookingSource.Agoda, 17m, CommissionBase.GrossExclTouristTaxAndCleaning, new DateOnly(2026, 1, 1), Scenario.OwnerChannelCommission),
+    ];
+
+    /// <summary>
+    /// The limit of units of two private owners of the agency demo (E18/F01/US03/T01, ⚖ I8, limit of 2 apartments): one with two managed apartments (under the limit) and one
+    /// with two managed and one declared outside the agency (the third: presumed a business). Invented, TEST owners; a template only.
+    /// </summary>
+    public static IReadOnlyList<DemoOwnerUnitsTemplate> OwnerUnitsExamples { get; } =
+    [
+        new("due-unita-privato", "TEST Mario Rossi", 2, 0, Scenario.OwnerTaxChecks),
+        new("tre-unita-impresa-presunta", "TEST Giulia Bianchi", 2, 1, Scenario.OwnerTaxChecks),
+    ];
+
+    /// <summary>
+    /// The stay of a company tenant in the property of a private demo owner (E18/F01/US03/T01, ⚖ I7): one waiting for a decision (the «Da fare» is open, the stay stays a short
+    /// let meanwhile) and one decided <see cref="ShortLetTaxRegime.NotShortLet"/> with the note of the agency. Invented, TEST tenant and owner; a template only.
+    /// </summary>
+    public static IReadOnlyList<DemoCompanyTenantTemplate> CompanyTenantExamples { get; } =
+    [
+        new("conduttore-societa-da-decidere", "TEST Mario Rossi", "TEST Impresa Lago Srl", null, null, Scenario.OwnerTaxChecks),
+        new("conduttore-societa-non-locazione-breve", "TEST Mario Rossi", "TEST Impresa Lago Srl", ShortLetTaxRegime.NotShortLet, "TEST: deciso con il commercialista", Scenario.OwnerTaxChecks),
     ];
 
     /// <summary>
@@ -2181,6 +2210,15 @@ public sealed record DemoDeclaredTouristTaxRate(
 
 /// <summary>A commission rule of a channel of the agency demo (E13/F01/US01/T01): a portal, a percent of a base, from a first check-out day.</summary>
 public sealed record DemoChannelCommissionRuleTemplate(string Key, BookingSource Channel, decimal Percent, CommissionBase Base, DateOnly ValidFrom, string Scenario);
+
+/// <summary>The limit of units of a private demo owner (E18/F01/US03/T01): the apartments the agency manages for it and the ones it declares outside the agency.</summary>
+public sealed record DemoOwnerUnitsTemplate(string Key, string OwnerName, int ManagedUnits, int ExternalUnits, string Scenario);
+
+/// <summary>
+/// The stay of a company tenant in the property of a private demo owner (E18/F01/US03/T01): the owner, the TEST company, and the decision about its regime with the note of the
+/// agency, both <c>null</c> while nobody decided.
+/// </summary>
+public sealed record DemoCompanyTenantTemplate(string Key, string OwnerName, string TenantName, ShortLetTaxRegime? Decision, string? Reason, string Scenario);
 
 /// <summary>
 /// A channel rule of the tourist tax written by the showcase (NF-46, ADR-037-R3): platform data, for the comune of the demo house

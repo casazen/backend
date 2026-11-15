@@ -154,6 +154,12 @@ public static class FiscalDocumentExtensions
         // The issuer profiles of the owners who issue the documents of their Italian stays, with their own series and numbering (E17/F01/US01/T01).
         services.AddScoped<IOwnerIssuerProfileService, OwnerIssuerProfileService>();
 
+        // The checks of the limit of units of an owner and of the company tenant in the property of a private owner (E18/F01/US03/T01, NF-117, ⚖ I7 and I8): the withholding
+        // facts read them, the readiness of the owners and the statement versions carry their warnings, and the consumer of InvoiceDataSaved and BookingConfirmed raises the «Da fare» of a company
+        // tenant. The warnings and the «Da fare» are behind Features:TaxReportingExports; run by the outbox dispatcher, the consumer can never fail the save of the invoice data.
+        services.AddScoped<IOwnerTaxChecks, OwnerTaxChecks>();
+        services.AddScoped<IEventHandler<DomainEvent>, CompanyTenantDecisionHandler>();
+
         return services;
     }
 }
