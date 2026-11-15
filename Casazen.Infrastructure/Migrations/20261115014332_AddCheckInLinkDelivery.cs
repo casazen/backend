@@ -42,7 +42,7 @@ namespace Casazen.Infrastructure.Migrations
                 {
                     table.PrimaryKey("PK_CheckInLinkDeliveries", x => x.Id);
                     table.CheckConstraint("CK_CheckInLinkDeliveries_Channel", "\"Channel\" IN (1, 2, 3)");
-                    table.CheckConstraint("CK_CheckInLinkDeliveries_State", "\"State\" IN (1, 2, 3, 4, 5, 6)");
+                    table.CheckConstraint("CK_CheckInLinkDeliveries_State", "\"State\" IN (1, 2, 3, 4, 5, 6, 7)");
                     table.ForeignKey(
                         name: "FK_CheckInLinkDeliveries_Bookings_BookingId",
                         column: x => x.BookingId,
