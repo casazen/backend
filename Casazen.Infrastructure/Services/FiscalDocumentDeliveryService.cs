@@ -45,10 +45,16 @@ public sealed class FiscalDocumentDeliveryService(
     ILogger<FiscalDocumentDeliveryService> logger) : IFiscalDocumentDeliveryService
 {
     /// <summary>
-    /// The domains the standards keep for what is never delivered: <c>.invalid</c> (RFC 6761), <c>.localhost</c> and <c>.local</c> (the placeholder of an erased guest, <c>ANON-…@deleted.local</c>, is
-    /// one). The names that are only for tests and documentation (<c>example.com</c>, <c>.test</c>) stay addresses: the data of a demo is e-mailed like any other.
+    /// The top-level names the standards keep for what is never delivered: <c>.invalid</c>, <c>.test</c> and <c>.example</c> (RFC 2606), <c>.localhost</c>, and <c>.local</c> (the placeholder of an erased
+    /// guest, <c>ANON-…@deleted.local</c>, is one). A name that ends in one has no mailbox: an e-mail to it can only bounce (FIX/RES-DOCS).
     /// </summary>
-    private static readonly string[] NeverDeliveredSuffixes = [".invalid", ".localhost", ".local"];
+    private static readonly string[] NeverDeliveredSuffixes = [".invalid", ".localhost", ".local", ".test", ".example"];
+
+    /// <summary>
+    /// The second-level names the standards keep for examples (RFC 2606): the name itself and every subdomain of it. The guests of the demo (<c>DemoShowcaseCatalog</c>) have <c>@example.com</c> addresses, and
+    /// a send to them is a real e-mail to a domain that bounces.
+    /// </summary>
+    private static readonly string[] NeverDeliveredDomains = ["example.com", "example.org", "example.net"];
 
     /// <summary>How long this process remembers that it queued the e-mail of a document by itself, so that a second delivery of the issue event queues nothing (see the remarks).</summary>
     public static readonly TimeSpan AutomaticSendMemory = TimeSpan.FromHours(1);
@@ -177,12 +183,19 @@ public sealed class FiscalDocumentDeliveryService(
     /// <summary>The e-mail with the link of <paramref name="document"/>, queued for the guest of its booking.</summary>
     private async Task<FiscalDocumentDeliveryResult> QueueAsync(DocumentFacts document, CancellationToken ct)
     {
+        // The one place that sends: a guest of the demo (a row of the showcase seed) or an address of a reserved domain is a guest with no address, for the host's send and for the automatic one alike. Nothing
+        // is queued, nothing fails (the automatic send answers NoAddress), and the document stays on its page and in the package of the accountant.
         var guest = await db.Bookings
             .AsNoTracking()
             .Where(b => b.Id == document.BookingId)
-            .Select(b => new GuestFacts(b.Guest.FirstName, b.Guest.Email, b.Guest.Country, b.Guest.DataAnonymizedDate))
+            .Select(b => new GuestFacts(
+                b.Guest.FirstName,
+                b.Guest.Email,
+                b.Guest.Country,
+                b.Guest.DataAnonymizedDate,
+                db.TestDataMarkers.Any(m => m.EntityType == TestDataEntities.Guest && m.EntityId == b.GuestId && m.Origin == TestDataOrigins.Showcase)))
             .FirstOrDefaultAsync(ct);
-        if (guest is null || !TryUseAddress(guest.Email, guest.AnonymizedAt, out var address))
+        if (guest is null || guest.IsDemo || !TryUseAddress(guest.Email, guest.AnonymizedAt, out var address))
             throw new DomainRuleException(FiscalDocumentDeliveryErrors.RecipientEmailInvalid, "DocumentRecipientEmailInvalid");
 
         // Without the public address of the web app there is no link to write: nothing is sent, and the answer says so.
@@ -231,7 +244,8 @@ public sealed class FiscalDocumentDeliveryService(
 
     /// <summary>
     /// The address an e-mail to the guest goes to: the one of the booking, trimmed, when it is a real address. False for an erased guest, an empty or malformed address, one without a dot in its domain
-    /// and one on a domain that is never delivered (<see cref="NeverDeliveredSuffixes"/>). A relay address of a portal (<c>…@guest.booking.com</c>) is a normal address: it forwards to the guest.
+    /// and one on a domain that is never delivered or kept for examples (<see cref="NeverDeliveredSuffixes"/>, <see cref="NeverDeliveredDomains"/>). A relay address of a portal (<c>…@guest.booking.com</c>)
+    /// is a normal address: it forwards to the guest.
     /// </summary>
     internal static bool TryUseAddress(string? email, DateTime? anonymizedAt, out string address)
     {
@@ -243,13 +257,19 @@ public sealed class FiscalDocumentDeliveryService(
         if (!EmailOptions.IsValidAddress(candidate))
             return false;
 
-        var domain = candidate[(candidate.LastIndexOf('@') + 1)..].ToLowerInvariant();
-        if (!domain.Contains('.') || NeverDeliveredSuffixes.Any(suffix => domain.EndsWith(suffix, StringComparison.Ordinal)))
+        // The domain as a mail server reads it: lower case, and without the dot that ends a fully qualified name (a way round the list below otherwise).
+        var domain = candidate[(candidate.LastIndexOf('@') + 1)..].ToLowerInvariant().TrimEnd('.');
+        if (!domain.Contains('.') || IsNeverDelivered(domain))
             return false;
 
         address = candidate;
         return true;
     }
+
+    /// <summary>The domain is one the standards keep for what is never delivered or for examples (see <see cref="NeverDeliveredSuffixes"/> and <see cref="NeverDeliveredDomains"/>).</summary>
+    private static bool IsNeverDelivered(string domain) =>
+        NeverDeliveredSuffixes.Any(suffix => domain.EndsWith(suffix, StringComparison.Ordinal))
+        || NeverDeliveredDomains.Any(name => string.Equals(domain, name, StringComparison.Ordinal) || domain.EndsWith($".{name}", StringComparison.Ordinal));
 
     private static DomainRuleException NotSent() => new(FiscalDocumentDeliveryErrors.EmailNotSent, "FiscalDocumentEmailNotSent");
 
@@ -294,7 +314,8 @@ public sealed class FiscalDocumentDeliveryService(
         DateOnly? IssueDate,
         string? IssuerSnapshot);
 
-    private sealed record GuestFacts(string FirstName, string Email, string Country, DateTime? AnonymizedAt);
+    /// <param name="IsDemo">The guest is a row of the showcase seed (<c>TestDataMarkers</c>, origin <c>showcase</c>): an invented person, never e-mailed.</param>
+    private sealed record GuestFacts(string FirstName, string Email, string Country, DateTime? AnonymizedAt, bool IsDemo);
 
     /// <summary>The key of the memory of the documents whose e-mail was queued by the automatic send (see <see cref="AutomaticSendMemory"/>).</summary>
     private sealed record AutomaticSendKey(Guid DocumentId);

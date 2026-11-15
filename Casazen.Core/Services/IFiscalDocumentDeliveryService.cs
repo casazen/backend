@@ -12,8 +12,9 @@ namespace Casazen.Core.Services;
 /// credit note are, the Swiss ones like the Italian ones: nothing here depends on the country of the issuer.</item>
 /// <item><b>The link carries the document and nothing else.</b> A time-limited ASP.NET Core Data Protection token (<see cref="FiscalDocumentLinkRules.TokenPurpose"/>,
 /// <see cref="FiscalDocumentLinkRules.Lifetime"/>): no name, no address, no amount. Nothing is stored for it; a new e-mail makes a new token and the older ones stay valid until they expire.</item>
-/// <item><b>The address.</b> The e-mail of the guest of the booking. Empty, malformed, the placeholder of an erased guest and the names that are never delivered are refused; a relay address
-/// of a portal is a normal address.</item>
+/// <item><b>The address.</b> The e-mail of the guest of the booking. Empty, malformed, the placeholder of an erased guest and the names that are never delivered or are kept for examples
+/// (<c>.invalid</c>, <c>.test</c>, <c>.localhost</c>, <c>example.com</c>, <c>example.org</c>, <c>example.net</c>, with their subdomains) are refused, and so is a guest of the demo (a row of the showcase seed),
+/// as a guest with no address: nothing is queued and nothing fails. A relay address of a portal is a normal address.</item>
 /// <item><b>The public reads give nothing away.</b> Whatever makes a link not open (no token, a wrong one, an expired one, one made for another document, a document that does not exist or
 /// is not an issued guest document of CasaZen) is the same answer: <c>null</c>, which the controller turns into the same 404. The token is never written to a log.</item>
 /// <item><b>The tenant.</b> The send works through the tenant filter of its caller (the host's request, or the consumer of the event under the org of the event); the public reads have no
@@ -26,7 +27,7 @@ public interface IFiscalDocumentDeliveryService
     /// The issued document sent to the guest of its booking by e-mail, when the host asks for it (<c>POST api/fiscal/documents/{id}/send-email</c>): a signed link that lives
     /// <see cref="FiscalDocumentLinkRules.Lifetime"/> in an e-mail queued on Hangfire, never sent inside the request. 404 <c>fiscal_document_not_found</c>; 422 <c>document_not_issued</c>
     /// (a draft or a discarded document), <c>document_owner_invoice</c> (an owner invoice goes to its owner), <c>document_read_only</c> (a document imported from the channel manager),
-    /// <c>document_recipient_email_invalid</c> (no address, an erased guest, a placeholder) and <c>document_email_not_sent</c> (the queue, or the public address of the web app, is not
+    /// <c>document_recipient_email_invalid</c> (no address, an erased guest, a placeholder, a reserved domain, a guest of the demo) and <c>document_email_not_sent</c> (the queue, or the public address of the web app, is not
     /// available: nothing was sent, and the answer never says it was).
     /// </summary>
     Task<FiscalDocumentDeliveryResult> SendToGuestAsync(Guid documentId, CancellationToken ct = default);
@@ -66,7 +67,7 @@ public enum FiscalDocumentSendOutcome
     /// <summary>The issuer did not ask for it («e-mail to the guest» is off): the document waits for the host to send it, if the host wants to.</summary>
     NotAsked = 2,
 
-    /// <summary>The guest has no address to send to (empty, malformed, erased, a placeholder): the document stays in CasaZen and in the package of the accountant.</summary>
+    /// <summary>The guest has no address to send to (empty, malformed, erased, a placeholder, a reserved domain, a guest of the demo): the document stays in CasaZen and in the package of the accountant.</summary>
     NoAddress = 3,
 
     /// <summary>Not an issued guest document that CasaZen issued (an owner invoice, a draft, an imported document): there is no guest to send it to.</summary>
@@ -104,7 +105,7 @@ public static class FiscalDocumentLinkRules
 /// <summary>The stable codes of the errors of the delivery of a document, with the keys of their messages in <c>SharedResources</c>.</summary>
 public static class FiscalDocumentDeliveryErrors
 {
-    /// <summary>422: the guest has no address the document can be sent to (empty, malformed, an erased guest, a placeholder).</summary>
+    /// <summary>422: the guest has no address the document can be sent to (empty, malformed, an erased guest, a placeholder, a reserved domain, a guest of the demo).</summary>
     public const string RecipientEmailInvalid = "document_recipient_email_invalid";
 
     /// <summary>404: the link of the public page does not open: the same answer for every reason (a wrong, expired or foreign token, a document that is not there).</summary>

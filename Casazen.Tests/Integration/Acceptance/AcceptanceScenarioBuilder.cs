@@ -81,6 +81,12 @@ internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
 
     public const string OwnerEmail = "test.proprietario.lugano@example.com";
 
+    /// <summary>
+    /// The domain of the addresses of the invented guests of the direct bookings. Not <c>example.com</c>: the documents of a stay are never e-mailed to a domain the standards reserve (FIX/RES-DOCS), and
+    /// the scenarios check that the guest gets them.
+    /// </summary>
+    public const string GuestMailDomain = "ospiti-test.ch";
+
     /// <summary>The BFS number of Lugano, canton Ticino.</summary>
     public const string LuganoMunicipality = "5113";
 
@@ -457,7 +463,7 @@ internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
             UpdatedAt = Clock.GetUtcNow().UtcDateTime,
             FirstName = "TEST",
             LastName = "Ospite Sito",
-            GuestEmail = $"test.{id.ToLowerInvariant()}@example.com",
+            GuestEmail = $"test.{id.ToLowerInvariant()}@{GuestMailDomain}",
             TotalGuests = 2,
             RoomGross = price,
             TotalGross = price + touristTax,
@@ -499,7 +505,7 @@ internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
     {
         var paymentIntent = $"pi_test_{Guid.NewGuid():N}";
         var now = Clock.GetUtcNow().UtcDateTime;
-        var guest = NewGuest("Ospite Vetrina", "test.ospite.vetrina@example.com");
+        var guest = NewGuest("Ospite Vetrina", $"test.ospite.vetrina@{GuestMailDomain}");
         var booking = new Booking
         {
             OrgId = OrgId,
@@ -571,7 +577,7 @@ internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
     public async Task<Guid> EnterByHandAsync(DateOnly checkIn, DateOnly checkOut, decimal price, decimal touristTax)
     {
         var now = Clock.GetUtcNow().UtcDateTime;
-        var guest = NewGuest("Ospite Telefono", "test.ospite.telefono@example.com");
+        var guest = NewGuest("Ospite Telefono", $"test.ospite.telefono@{GuestMailDomain}");
         var booking = new Booking
         {
             OrgId = OrgId,

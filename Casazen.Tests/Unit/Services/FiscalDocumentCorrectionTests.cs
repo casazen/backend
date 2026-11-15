@@ -134,6 +134,64 @@ public class FiscalDocumentCorrectionTests
         Assert.Equal(OwnerInvoiceErrors.UseOwnerInvoices, (await Assert.ThrowsAsync<DomainRuleException>(() => rig.Corrections.StartCorrectionAsync(ownerInvoice.Id, null))).Code);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (FIX/RES-DOCS). A self-billed invoice (TD17) has no correction here: the start of a correction is refused with the code of its own (<c>self_billing_not_correctable</c>), whatever state the SDI
+    /// left it in, and nothing is made, changed, numbered or recorded; its state says it cannot be corrected; and the rejection of a TD17 raises no «Correggi la fattura» (which would lead to the correction of an invoice
+    /// to a guest), while the same rejection of an invoice to a guest still raises it.
+    /// </summary>
+    [Fact]
+    public async Task SelfBillingDocument_CorrectionRefused_Test()
+    {
+        await using var db = NewDb();
+        var activities = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, new FakeTimeProvider(Now));
+        var recorder = new Mock<IDomainEventRecorder>();
+        var rig = Rig(db, recorder.Object, activities);
+        var booking = await SeedBookingAsync(db, seedOrg: true);
+        var propertyId = (await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == booking)).PropertyId;
+
+        // A TD17 the SDI rejected, and one it delivered: the correction is refused for both, with the same code (never «not rejected»).
+        var rejected = SelfBilled(1, FiscalDocumentSdiStatuses.Rejected);
+        var delivered = SelfBilled(2, FiscalDocumentSdiStatuses.Delivered);
+        db.FiscalDocuments.AddRange(rejected, delivered);
+        await db.SaveChangesAsync();
+        foreach (var document in new[] { rejected, delivered })
+        {
+            var refused = await Assert.ThrowsAsync<DomainRuleException>(() => rig.Corrections.StartCorrectionAsync(document.Id, "auth0|host"));
+            Assert.Equal(SelfBillingErrors.NotCorrectable, refused.Code);
+        }
+
+        // Nothing was made, changed or numbered, and no event was recorded; the state says it cannot be corrected.
+        var kept = await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == rejected.Id);
+        Assert.Equal((FiscalDocumentStatus.Issued, (int?)1, "TD17-2026/1", FiscalDocumentSdiStatuses.Rejected), (kept.Status, kept.SequenceNumber, kept.Number, kept.SdiStatus));
+        Assert.Empty(await db.FiscalDocuments.AsNoTracking().Where(d => d.ReplacesDocumentId != null).ToListAsync());
+        recorder.Verify(r => r.Record(DomainEventType.FiscalDocumentCorrected, rejected.Id, It.IsAny<object>(), $"fiscal-document-corrected:{rejected.Id:N}", OrgId), Times.Never);
+        Assert.False((await rig.Sdi.GetStateAsync(rejected.Id))!.CanCorrect);
+
+        // The SDI rejected it: no generic «Correggi la fattura» for the TD17 (its page shows the rejection), while the rejection of an invoice to a guest raises it.
+        var handler = new FiscalDocumentRejectionHandler(db, activities, new ResxDocumentTexts(), NullLogger<FiscalDocumentRejectionHandler>.Instance);
+        await handler.HandleAsync(Event(DomainEventType.FiscalDocumentSdiRejected, rejected.Id, "{}"), CancellationToken.None);
+        Assert.Empty(await db.InternalActivities.AsNoTracking().Where(a => a.Action != null).ToListAsync());
+
+        var guestInvoice = new FiscalDocument
+        {
+            OrgId = OrgId,
+            BookingId = booking,
+            PropertyId = propertyId,
+            Source = FiscalDocumentSource.CasaZen,
+            Status = FiscalDocumentStatus.Issued,
+            SdiStatus = FiscalDocumentSdiStatuses.Rejected,
+            SdiErrorCode = "00417",
+            Series = "2026",
+            SequenceNumber = 1,
+            Number = "2026/1",
+        };
+        db.FiscalDocuments.Add(guestInvoice);
+        await db.SaveChangesAsync();
+        await handler.HandleAsync(Event(DomainEventType.FiscalDocumentSdiRejected, guestInvoice.Id, "{}"), CancellationToken.None);
+        var raised = Assert.Single(await db.InternalActivities.AsNoTracking().Where(a => a.Action != null).ToListAsync());
+        Assert.Equal((guestInvoice.Id, ActivityAction.CorrectInvoice), (raised.EntityId!.Value, raised.Action!.Value));
+    }
+
     /// <summary>A rejected invoice never was issued: a credit note does not correct it, and neither does the correction of its booking (the host is told, nothing is prepared).</summary>
     [Fact]
     public async Task Correction_ARejectedInvoice_IsNeverCredited()
@@ -460,6 +518,21 @@ public class FiscalDocumentCorrectionTests
     // ---------------------------------------------------------------- helpers
 
     private static DomainEvent Event(DomainEventType type, Guid entityId, string payload) => new(Guid.NewGuid(), OrgId, type, entityId, Now.UtcDateTime, payload);
+
+    /// <summary>A self-billed invoice (TD17) of CasaZen, issued, in the state the SDI left it in.</summary>
+    private static FiscalDocument SelfBilled(int number, string sdiStatus) => new()
+    {
+        OrgId = OrgId,
+        Source = FiscalDocumentSource.CasaZen,
+        Purpose = FiscalDocumentPurpose.SelfBilling,
+        Kind = FiscalDocumentKind.Invoice,
+        Status = FiscalDocumentStatus.Issued,
+        SdiStatus = sdiStatus,
+        SdiErrorCode = sdiStatus == FiscalDocumentSdiStatuses.Rejected ? "00417" : null,
+        Series = "TD17-2026",
+        SequenceNumber = number,
+        Number = $"TD17-2026/{number}",
+    };
 
     private static async Task SetIssueDayAsync(AppDbContext db, Guid documentId, DateOnly day)
     {

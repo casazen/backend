@@ -42,6 +42,11 @@ public sealed class FiscalDocumentCorrectionService(
         if (document.Purpose == FiscalDocumentPurpose.OwnerInvoice)
             throw new DomainRuleException(OwnerInvoiceErrors.UseOwnerInvoices, "FiscalDocumentOwnerInvoice");
 
+        // A self-billed invoice (TD17, E17/F01/US03) is never replaced from here, whatever its state: the replacement is the copy of an invoice to a guest that takes its number, and a TD17 has no
+        // guest and no such flow (its rejection is read on the self-billed invoices). Nothing is made or changed, and the answer says so with a code of its own.
+        if (document.Purpose == FiscalDocumentPurpose.SelfBilling)
+            throw new DomainRuleException(SelfBillingErrors.NotCorrectable, "SelfBillingNotCorrectable");
+
         // A second start (a double click, a retry) is the first: the draft the correction already made.
         if (document.Status == FiscalDocumentStatus.Discarded && document.SdiStatus == FiscalDocumentSdiStatuses.Rejected
             && await db.FiscalDocuments.Include(d => d.Lines).FirstOrDefaultAsync(d => d.ReplacesDocumentId == document.Id && d.Status == FiscalDocumentStatus.Draft, ct) is { } existing)

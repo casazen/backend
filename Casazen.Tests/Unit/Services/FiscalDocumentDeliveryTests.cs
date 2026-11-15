@@ -140,7 +140,7 @@ public class FiscalDocumentDeliveryTests
     public async Task PublicDocumentLink_TokenNeverLogged_Test()
     {
         await using var kit = NewKit();
-        var seeded = await SeedAsync(kit, guest => (guest.Email, guest.FirstName) = ("secret.guest@example.com", "Segreta"));
+        var seeded = await SeedAsync(kit, guest => (guest.Email, guest.FirstName) = ("secret.guest@ospiti-test.it", "Segreta"));
         var handlerLog = new CapturingLogger<FiscalDocumentEmailHandler>();
 
         // The e-mail carries the token: the send, and the consumer of the issue that sends it by itself, log without it.
@@ -163,7 +163,7 @@ public class FiscalDocumentDeliveryTests
         var logged = kit.Log.AllOutput + Environment.NewLine + handlerLog.AllOutput;
         Assert.Contains(seeded.DocumentId.ToString(), logged);
         Assert.Contains(seeded.DocumentId.ToString(), handlerLog.AllOutput);
-        foreach (var secret in new[] { token, Changed(token), token[..24], token[^24..], "secret.guest@example.com", "Segreta" })
+        foreach (var secret in new[] { token, Changed(token), token[..24], token[^24..], "secret.guest@ospiti-test.it", "Segreta" })
             Assert.DoesNotContain(secret, logged);
 
         // The same rule in the source: no log statement of these files names a token.
@@ -195,7 +195,7 @@ public class FiscalDocumentDeliveryTests
     {
         await using var kit = NewKit();
         var italian = await SeedAsync(kit, guest => (guest.Email, guest.FirstName) = ("abc123@guest.booking.com", "Giulia"));
-        var english = await SeedAsync(kit, guest => (guest.Email, guest.FirstName, guest.Country) = ("hans@example.com", "Hans", "Germany"), document: d => d.Number = "2026/13");
+        var english = await SeedAsync(kit, guest => (guest.Email, guest.FirstName, guest.Country) = ("hans@ospiti-test.it", "Hans", "Germany"), document: d => d.Number = "2026/13");
 
         var result = await kit.Service.SendToGuestAsync(italian.DocumentId);
         await kit.Service.SendToGuestAsync(english.DocumentId);
@@ -240,8 +240,8 @@ public class FiscalDocumentDeliveryTests
     [Theory]
     [InlineData("abc123@guest.booking.com", true)]
     [InlineData("x.y+z@guest.airbnb.com", true)]
-    [InlineData("guest@example.com", true)]
-    [InlineData("  Padded@Example.com  ", true)]
+    [InlineData("guest@ospiti-test.it", true)]
+    [InlineData("  Padded@Ospiti-Test.it  ", true)]
     [InlineData("", false)]
     [InlineData("   ", false)]
     [InlineData("not-an-address", false)]
@@ -271,12 +271,72 @@ public class FiscalDocumentDeliveryTests
     public async Task SendToGuest_AnErasedGuest_IsNeverSentTo_EvenWithAWellFormedAddress()
     {
         await using var kit = NewKit();
-        var seeded = await SeedAsync(kit, guest => (guest.Email, guest.DataAnonymizedDate) = ("erased@example.com", Now.UtcDateTime.AddDays(-1)));
+        var seeded = await SeedAsync(kit, guest => (guest.Email, guest.DataAnonymizedDate) = ("erased@ospiti-test.it", Now.UtcDateTime.AddDays(-1)));
 
         var refused = await Assert.ThrowsAsync<DomainRuleException>(() => kit.Service.SendToGuestAsync(seeded.DocumentId));
 
         Assert.Equal("document_recipient_email_invalid", refused.Code);
         Assert.Empty(kit.Sent);
+    }
+
+    /// <summary>
+    /// PROOF TEST: privacy rule (FIX/RES-DOCS). A guest document is never e-mailed to an address of a domain the standards reserve (<c>example.com</c>, <c>example.org</c>, <c>example.net</c> and every subdomain of them,
+    /// <c>.test</c>, <c>.example</c>, <c>.invalid</c>, <c>.localhost</c>) or to a guest of the demo (a row of the showcase seed, whatever its address): such a guest is a guest with no address, decided in the one place
+    /// that sends, so the host's send is the 422 of a guest with no address and the automatic send of an organization that asked for it (a demo organization with «e-mail to the guest» on) answers <c>NoAddress</c>:
+    /// nothing is queued, nothing fails and no log carries an address. An address that only looks like a reserved domain, and a guest that is not of the demo, are still sent to.
+    /// </summary>
+    [Fact]
+    public async Task GuestDocumentMail_ToReservedDomain_IsNeverSent_Test()
+    {
+        await using var kit = NewKit(emailGuestDocuments: true);
+        string[] reserved =
+        [
+            "ospite.demo@example.com",
+            "  Ospite.Demo@Example.COM  ",
+            "ospite@example.org",
+            "ospite@example.net",
+            "ospite@pec.example.com",
+            "ospite@mail.example.net",
+            "ospite@guest.test",
+            "ospite@mail.example",
+            "ospite@mail.invalid",
+            "ospite@pc.localhost",
+            "ospite@example.com.",
+        ];
+        foreach (var address in reserved)
+        {
+            var seeded = await SeedAsync(kit, guest => guest.Email = address);
+
+            // The host's send is the answer for a guest with no address, never a «queued»; the automatic send is an answer too, never a failure.
+            var refused = await Assert.ThrowsAsync<DomainRuleException>(() => kit.Service.SendToGuestAsync(seeded.DocumentId));
+            Assert.Equal(FiscalDocumentDeliveryErrors.RecipientEmailInvalid, refused.Code);
+            Assert.Equal(FiscalDocumentSendOutcome.NoAddress, await kit.Service.SendAutomaticallyAsync(seeded.DocumentId));
+        }
+
+        // A guest of the demo (a row of the showcase seed) is never e-mailed, whatever its address says.
+        var demo = await SeedAsync(kit, guest => guest.Email = "ospite.demo@guest.booking.com");
+        var demoGuestId = (await kit.Db.Bookings.AsNoTracking().SingleAsync(b => b.Id == demo.BookingId)).GuestId;
+        kit.Db.TestDataMarkers.Add(new TestDataMarker { OrgId = OrgId, EntityType = TestDataEntities.Guest, EntityId = demoGuestId, Origin = TestDataOrigins.Showcase, TemplateKey = "ospite-demo" });
+        await kit.Db.SaveChangesAsync();
+        var demoRefused = await Assert.ThrowsAsync<DomainRuleException>(() => kit.Service.SendToGuestAsync(demo.DocumentId));
+        Assert.Equal(FiscalDocumentDeliveryErrors.RecipientEmailInvalid, demoRefused.Code);
+        Assert.Equal(FiscalDocumentSendOutcome.NoAddress, await kit.Service.SendAutomaticallyAsync(demo.DocumentId));
+
+        Assert.Empty(kit.Sent);
+        Assert.DoesNotContain("ospite", kit.Log.AllOutput, StringComparison.OrdinalIgnoreCase);
+
+        // What only looks like a reserved domain is an address like any other, and so is a guest of the same organization that is not of the demo.
+        string[] ordinary = ["ospite@guest.booking.com", "ospite@myexample.com", "ospite@example.com.it", "ospite@example.co.uk", "ospite@mail.contest", "ospite@mail.tester.it"];
+        foreach (var address in ordinary)
+        {
+            var seeded = await SeedAsync(kit, guest => guest.Email = address);
+            await kit.Service.SendToGuestAsync(seeded.DocumentId);
+            Assert.Equal(address, kit.Sent[^1].To);
+        }
+
+        var other = await SeedAsync(kit);
+        Assert.Equal(FiscalDocumentSendOutcome.Queued, await kit.Service.SendAutomaticallyAsync(other.DocumentId));
+        Assert.Equal(ordinary.Length + 1, kit.Sent.Count);
     }
 
     [Theory]
@@ -290,7 +350,7 @@ public class FiscalDocumentDeliveryTests
         {
             var seeded = await SeedAsync(
                 kit,
-                guest => (guest.Email, guest.Country) = ("guest@example.com", "Germany"),
+                guest => (guest.Email, guest.Country) = ("guest@ospiti-test.it", "Germany"),
                 document: d =>
                 {
                     d.Kind = kind;
@@ -751,7 +811,7 @@ public class FiscalDocumentDeliveryTests
     private static async Task<Seeded> SeedAsync(Kit kit, Action<Guest>? guest = null, Action<FiscalDocument>? document = null)
     {
         var sequence = Interlocked.Increment(ref _sequence);
-        var person = new Guest { OrgId = OrgId, FirstName = "Test", LastName = "Guest", Email = "guest@example.com" };
+        var person = new Guest { OrgId = OrgId, FirstName = "Test", LastName = "Guest", Email = "guest@ospiti-test.it" };
         guest?.Invoke(person);
         var booking = new Booking
         {

@@ -1,10 +1,14 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.Fiscal;
 
 /// <summary>
 /// A fiscal document as the API gives it (E06/F01/US01/T01): stable codes for the kind, the status, the source, the payment and the SDI state (never a
 /// display text), the stored amounts in <see cref="Currency"/>, the recipient snapshot and the lines. The XML and the PDF are separate downloads.
+/// The answer for one document (FIX/RES-DOCS) also says who collected the money (<see cref="PaymentChannel"/>) and who issued the document as it was when
+/// it was issued (<see cref="Issuer"/>), with the type and the VAT of every line: the names are the ones the drawer of the frontend reads, and everything is
+/// data the document already holds (nothing is looked up for it).
 /// </summary>
 public sealed record FiscalDocumentDto
 {
@@ -43,6 +47,12 @@ public sealed record FiscalDocumentDto
     public decimal? VatRatePercent { get; init; }
     public string? VatNatureCode { get; init; }
     public string PaymentState { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Who collected the money of the document (<c>FiscalPaymentChannel</c>, by name): <c>Unknown</c> until it is known, <c>CasaZen</c> (the guest paid in CasaZen), <c>Portal</c> (the
+    /// portal collected the stay and pays it out) or <c>Outside</c> (the agency collected it outside CasaZen).
+    /// </summary>
+    public string PaymentChannel { get; init; } = string.Empty;
     public string SdiStatus { get; init; } = string.Empty;
     public string? SdiErrorCode { get; init; }
     public DateTime? SdiStatusUpdatedAt { get; init; }
@@ -54,7 +64,22 @@ public sealed record FiscalDocumentDto
     public DateTime UpdatedAt { get; init; }
     public IReadOnlyList<FiscalDocumentLineDto> Lines { get; init; } = [];
 
-    public static FiscalDocumentDto From(FiscalDocument document) => new()
+    /// <summary>
+    /// The issuer as the document keeps it (the snapshot written at the issue), in the answer for one document only. <c>null</c> for a draft, for a document issued before the snapshot existed (its PDF
+    /// names the issuer from the profile of today) and in the rows of the list.
+    /// </summary>
+    public FiscalDocumentIssuerDto? Issuer { get; init; }
+
+    /// <summary>The document as the answer for one document gives it: its lines and the issuer of its snapshot.</summary>
+    public static FiscalDocumentDto From(FiscalDocument document) => Build(document, withIssuer: true);
+
+    /// <summary>
+    /// A document as a row of the list: the same members without the issuer (the list does not show it, and an issuer's address and tax ids leave the API one document at a time, to a caller who
+    /// reaches that document).
+    /// </summary>
+    public static FiscalDocumentDto ForList(FiscalDocument document) => Build(document, withIssuer: false);
+
+    private static FiscalDocumentDto Build(FiscalDocument document, bool withIssuer) => new()
     {
         Id = document.Id,
         BookingId = document.BookingId,
@@ -86,6 +111,7 @@ public sealed record FiscalDocumentDto
         VatRatePercent = document.VatRatePercent,
         VatNatureCode = document.VatNatureCode,
         PaymentState = document.PaymentState.ToString(),
+        PaymentChannel = document.PaymentChannel.ToString(),
         SdiStatus = document.SdiStatus,
         SdiErrorCode = document.SdiErrorCode,
         SdiStatusUpdatedAt = document.SdiStatusUpdatedAt,
@@ -96,10 +122,15 @@ public sealed record FiscalDocumentDto
         CreatedAt = document.CreatedAt,
         UpdatedAt = document.UpdatedAt,
         Lines = document.Lines.OrderBy(l => l.LineNumber).Select(FiscalDocumentLineDto.From).ToList(),
+        Issuer = withIssuer ? FiscalDocumentIssuerDto.From(document.IssuerSnapshot) : null,
     };
 }
 
-/// <summary>A line of a fiscal document.</summary>
+/// <summary>
+/// A line of a fiscal document: what it is (<see cref="LineType"/>, the name of <c>FiscalLineType</c>: <c>Accommodation</c>, <c>Cleaning</c>, <c>ExtraService</c>, <c>TouristTax</c>, <c>Commission</c>,
+/// <c>Recharge</c>, <c>AdvancedExpense</c> or <c>Other</c>), its amounts net of VAT, its VAT rate and nature code, and the VAT of the line as it was computed (<see cref="VatAmount"/>; <c>null</c> for a line
+/// written before it was stored, which the reader then works out from its rate).
+/// </summary>
 public sealed record FiscalDocumentLineDto(
     int LineNumber,
     string Description,
@@ -107,10 +138,52 @@ public sealed record FiscalDocumentLineDto(
     decimal UnitPrice,
     decimal TotalPrice,
     decimal VatRatePercent,
-    string? VatNatureCode)
+    string? VatNatureCode,
+    string LineType,
+    decimal? VatAmount)
 {
     public static FiscalDocumentLineDto From(FiscalDocumentLine line) =>
-        new(line.LineNumber, line.Description, line.Quantity, line.UnitPrice, line.TotalPrice, line.VatRatePercent, line.VatNatureCode);
+        new(line.LineNumber, line.Description, line.Quantity, line.UnitPrice, line.TotalPrice, line.VatRatePercent, line.VatNatureCode, line.LineType.ToString(), line.VatAmount);
+}
+
+/// <summary>
+/// The issuer of a document as it was when the document was issued (FIX/RES-DOCS): the snapshot the document keeps (encrypted at rest), as the PDF and the XML print it. The name is the one the
+/// document prints for the issuer (its legal name, else the name of the organization); the tax ids are the Italian VAT number and fiscal code, and the Swiss VAT number (UID) of a Swiss issuer. The
+/// bank account (not even masked), the agency that issued on behalf of an owner and the co-owners stay in the PDF. The names are the ones the drawer of the frontend reads: <c>legalName</c>,
+/// <c>vatNumber</c> or <c>swissVatNumber</c>, <c>countryCode</c>.
+/// </summary>
+public sealed record FiscalDocumentIssuerDto(
+    string? LegalName,
+    string? AddressStreet,
+    string? AddressCivic,
+    string? PostalCode,
+    string? City,
+    string? Province,
+    string CountryCode,
+    string? VatNumber,
+    string? FiscalCode,
+    string? SwissVatNumber)
+{
+    /// <summary>The issuer of a stored snapshot; <c>null</c> when there is none or it cannot be read: nothing is looked up and nothing is made up.</summary>
+    public static FiscalDocumentIssuerDto? From(string? snapshotJson)
+    {
+        var snapshot = FiscalIssuerSnapshot.FromJson(snapshotJson);
+        if (snapshot is null)
+            return null;
+
+        var name = snapshot.DisplayName;
+        return new FiscalDocumentIssuerDto(
+            string.IsNullOrWhiteSpace(name) ? null : name,
+            snapshot.AddressStreet,
+            snapshot.AddressCivic,
+            snapshot.PostalCode,
+            snapshot.City,
+            snapshot.Province,
+            snapshot.CountryCode,
+            snapshot.VatNumber,
+            snapshot.FiscalCode,
+            snapshot.SwissVatNumber);
+    }
 }
 
 /// <summary>A page of the list of the documents.</summary>

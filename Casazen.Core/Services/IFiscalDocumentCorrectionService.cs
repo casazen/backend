@@ -22,7 +22,8 @@ public interface IFiscalDocumentCorrectionService
     /// <summary>
     /// Starts the correction of the rejected document <paramref name="documentId"/>: the replacement draft (<see cref="FiscalDocument.ReplacesDocumentId"/>), the document replaced
     /// <c>Discarded</c> without its sequence number. 404 <c>fiscal_document_not_found</c>; 422 <c>document_read_only</c> (an imported document), <c>document_owner_invoice</c>,
-    /// <c>document_not_rejected</c> (any other state of the SDI), <c>document_not_correctable</c> (it has credit notes).
+    /// <c>self_billing_not_correctable</c> (a self-billed invoice, TD17: whatever its state, nothing is made for it, FIX/RES-DOCS), <c>document_not_rejected</c> (any other state of the SDI),
+    /// <c>document_not_correctable</c> (it has credit notes).
     /// </summary>
     Task<FiscalDocument> StartCorrectionAsync(Guid documentId, string? userId, CancellationToken ct = default);
 }

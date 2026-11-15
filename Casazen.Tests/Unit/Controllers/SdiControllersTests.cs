@@ -437,6 +437,39 @@ public class SdiControllersTests
         }
     }
 
+    /// <summary>
+    /// A self-billed invoice (TD17) is sent to the SDI and declared like every electronic invoice, but it has no correction here (FIX/RES-DOCS): the endpoint answers 422 <c>self_billing_not_correctable</c> and asks the
+    /// correction service nothing; a document of another organization is still a 404 and an invoice to a guest still goes to the service.
+    /// </summary>
+    [Fact]
+    public async Task SelfBillingSdi_CorrectEndpointRefusesATd17_AndAsksTheServiceNothing()
+    {
+        var selfBilled = Guid.NewGuid();
+        var foreign = Guid.NewGuid();
+        var guest = Guid.NewGuid();
+        var documents = new Mock<IFiscalDocumentService>();
+        documents.Setup(d => d.GetAsync(selfBilled, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FiscalDocument { Id = selfBilled, OrgId = OrgId, Purpose = FiscalDocumentPurpose.SelfBilling });
+        documents.Setup(d => d.GetAsync(foreign, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FiscalDocument { Id = foreign, OrgId = Guid.NewGuid(), Purpose = FiscalDocumentPurpose.SelfBilling });
+        documents.Setup(d => d.GetAsync(guest, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FiscalDocument { Id = guest, OrgId = OrgId, Purpose = FiscalDocumentPurpose.GuestStay });
+        var corrections = new Mock<IFiscalDocumentCorrectionService>();
+        corrections.Setup(c => c.StartCorrectionAsync(guest, "auth0|collaborator", It.IsAny<CancellationToken>())).ReturnsAsync(new FiscalDocument { Id = Guid.NewGuid(), OrgId = OrgId });
+        var controller = Documents(documents.Object, Mock.Of<IFiscalDocumentSdiService>(), corrections.Object, Mock.Of<IHostResourceLookup>(), allowed: true, ScopeOf(new HostScope(OrgId)));
+
+        var refused = Assert.IsType<ObjectResult>((await controller.Correct(selfBilled)).Result);
+        Assert.Equal(StatusCodes.Status422UnprocessableEntity, refused.StatusCode);
+        Assert.Equal(SelfBillingErrors.NotCorrectable, Assert.IsType<ProblemDetails>(refused.Value).Extensions["code"]);
+        corrections.VerifyNoOtherCalls();
+
+        Assert.Equal(StatusCodes.Status404NotFound, Assert.IsType<ObjectResult>((await controller.Correct(foreign)).Result).StatusCode);
+        corrections.VerifyNoOtherCalls();
+
+        Assert.IsType<CreatedAtActionResult>((await controller.Correct(guest)).Result);
+        corrections.Verify(c => c.StartCorrectionAsync(guest, "auth0|collaborator", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static Mock<ISdiEInvoiceProvider> ConfiguredProvider()

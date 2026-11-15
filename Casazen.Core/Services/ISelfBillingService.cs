@@ -212,6 +212,12 @@ public static class SelfBillingErrors
     /// (<c>acceptEstimate</c>): the host checks the amount against the invoice of the portal first. The answer carries <c>estimatedAmount</c>.
     /// </summary>
     public const string EstimateNotConfirmed = "self_billing_estimate_unconfirmed";
+
+    /// <summary>
+    /// 422: a TD17 the SDI rejected has no correction from the endpoint of the guest documents (<c>POST api/fiscal/documents/{id}/sdi/correct</c>), whatever its state: that correction replaces an invoice
+    /// to a guest and holds its number, and a TD17 is not one (FIX/RES-DOCS). Its rejection is read on the self-billed invoices; nothing is made, changed or raised for it here.
+    /// </summary>
+    public const string NotCorrectable = "self_billing_not_correctable";
 }
 
 /// <summary>The rules of the TD17 that need no database.</summary>
