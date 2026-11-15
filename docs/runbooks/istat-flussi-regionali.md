@@ -80,6 +80,47 @@ specifica pubblica sufficiente.
 | Veneto | ROSS1000 | protocollo di famiglia | adapter ROSS1000 dopo collaudo |
 | Bolzano | ASTAT IST-00139 + TUR-031 | guide/circolari ufficiali; contratto PMS non pubblico | assistito; adapter dopo contratto ASTAT |
 
+## Tabella delle regioni in CasaZen (E21/F01/US01/T01)
+
+La matrice qui sopra è anche una tabella del database, `IstatRegionRules`: dati di piattaforma (uguali per ogni organizzazione, nessun tenant), seminati
+dalla migrazione `AddIstatRegionRules` e modificabili **solo dallo staff della piattaforma**. Nessun file ISTAT viene costruito e nulla viene inviato a
+un portale o a un channel manager: la tabella dice solo che cosa fa il portale della regione, quando scade e che cosa fa l'host dopo.
+
+| Colonna | Significato |
+|---|---|
+| `RegionIstatCode`, `ProvinceCode` | Una riga per regione (codice ISTAT a due cifre) e una per ciascuna delle due province autonome, `BZ` e `TN`, che hanno un portale proprio: il Trentino-Alto Adige (`04`) non ha una riga sua. La Provincia di Sondrio (ABIT) resta nella riga della Lombardia, nel sistema e nelle note. La riga di una struttura è quella della regione del suo comune (`Comuni.RegionIstatCode`) o, per `04`, della sua provincia. |
+| `System`, `PortalUrl` | La famiglia del portale e l'indirizzo https del portale o della sua guida. Vuoti quando la matrice non li indica (Molise: nessun sistema identificato). |
+| `DeadlineKind`, `DeadlineDay` | `Monthly` con il giorno del mese successivo (1-31), `Daily` (nessun giorno) o `Unknown`. Solo `Monthly` con il giorno genera la voce ISTAT del cruscotto e i suoi avvisi: una scadenza non si indovina. |
+| `RequiredGuestFields` | I campi statistici dell'ospite (`TourismType`, `TravelWay`, `EducationLevel`) che la regione richiede. Null = da verificare (non si chiede nulla); lista vuota = verificato, nessuno richiesto. |
+| `OctorateCoverage` | `Unknown` (default), `Covered` o `NotCovered`: se il channel manager invia l'ISTAT della regione. L'elenco delle regioni coperte non è pubblico (D15): **ogni riga seminata è `Unknown`** e nessun seme dice «coperta». |
+| `SourceUrl`, `VerifiedAt`, `Notes` | La pagina o l'atto ufficiale da cui la riga è stata letta (https, obbligatoria: il database rifiuta una riga senza fonte), il giorno in cui lo staff l'ha controllata (vuoto nel seme) e le note. |
+
+### Che cosa è seminato
+
+Le 21 righe vengono dalla matrice sopra e da `ross1000.md`; un valore che le fonti non dichiarano resta vuoto o `Unknown`. Hanno una scadenza mensile: Lombardia,
+Valle d'Aosta e Umbria il giorno 5, Basilicata il giorno 10. Hanno l'indirizzo del portale: la Lombardia (Ross1000), il Friuli-Venezia Giulia (WebTur) e la
+Sicilia (Osservatorio Turistico). **Nessuna riga richiede campi statistici**: per la Lombardia le fonti dicono che non è chiaro quali campi del tracciato siano
+obbligatori, e per le altre regioni non lo dicono. Dove una riga dice «famiglia ROSS1000» senza una pagina della regione, la fonte è la pagina della famiglia (Emilia-Romagna).
+
+### Come si usa
+
+- **Staff.** `GET api/admin/istat-regions` elenca le righe e `PUT api/admin/istat-regions` ne salva una, per territorio, con la fonte https obbligatoria: salvare dice
+  «ho letto la riga sulla fonte», quindi `VerifiedAt` diventa il giorno indicato o oggi. Ogni salvataggio lascia una riga in `RegulatoryDataAuditEntries`
+  (`EntityType = IstatRegionRule`: chi, quando, quali campi da che valore a quale) e non crea mai una riga. Solo il ruolo `AdminOnly`.
+- **Cruscotto e avvisi.** Il giorno di scadenza del mese ISTAT è il giorno mensile della riga; `Compliance:IstatDeadlineDays` resta solo come **sovrascrittura** (un giorno
+  impostato per la regione vince sulla tabella). Una regione senza giorno né in tabella né in configurazione non ha la voce ISTAT: nessuna scadenza è inventata.
+- **Pagina dell'ospite e wizard del check-in.** Chiedono solo i campi statistici della riga della regione dell'immobile; senza riga, con la riga non verificata o con lista vuota non ne chiedono nessuno
+  (minimizzazione dei dati).
+- **Per immobile.** `GET api/properties/{propertyId}/istat-coverage` (lettura dell'immobile, dietro `Features:OctorateOnboarding`) risponde regione, sistema, portale, scadenza, campi richiesti,
+  copertura, mittente ISTAT (lo stesso di Alloggiati) e il passo successivo: `ConnectInPanel` se la regione è coperta, `ManualPortal` se non lo è (guida al portale
+  regionale e prova mensile), `AskSupport` se non è verificata (contesto `panelIstat`). Un immobile fuori dall'Italia non ha regione né passo successivo.
+
+### Punto aperto: i campi statistici verso il channel manager
+
+Nel sandbox del channel manager non è stato provato **nessun membro** dell'ospite per tipo di turismo, mezzo di trasporto e titolo di studio, e i nomi non si inventano. CasaZen
+li raccoglie dall'ospite (solo dove la regione li richiede) e non li passa al channel manager; la risposta di copertura dice quando la regione li richiede. Da chiudere con il
+channel manager (nome del membro o della procedura sul pannello) prima di dire all'host che l'invio li comprende.
+
 ## Contratti tecnici verificati
 
 ### ROSS1000 / Turismo5

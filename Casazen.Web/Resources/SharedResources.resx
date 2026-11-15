@@ -8005,4 +8005,28 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerIssuedDocumentsNotAvailable" xml:space="preserve">
     <value>Non ci sono documenti emessi a tuo nome da scaricare.</value>
   </data>
+  <data name="IstatRegionFieldRequired" xml:space="preserve">
+    <value>Il campo è obbligatorio.</value>
+  </data>
+  <data name="IstatRegionFieldInvalid" xml:space="preserve">
+    <value>Il valore non è valido.</value>
+  </data>
+  <data name="IstatRegionFieldMaxLength" xml:space="preserve">
+    <value>Il valore è troppo lungo.</value>
+  </data>
+  <data name="IstatRegionSourceInvalid" xml:space="preserve">
+    <value>La fonte della regione deve essere un indirizzo https completo.</value>
+  </data>
+  <data name="IstatRegionPortalInvalid" xml:space="preserve">
+    <value>L'indirizzo del portale deve essere un indirizzo https completo.</value>
+  </data>
+  <data name="IstatRegionDeadlineInvalid" xml:space="preserve">
+    <value>Una scadenza mensile vuole un giorno da 1 a 31; le altre scadenze non ne hanno.</value>
+  </data>
+  <data name="IstatRegionFieldsInvalid" xml:space="preserve">
+    <value>I campi statistici ammessi sono solo il tipo di turismo (TourismType), il mezzo di trasporto (TravelWay) e il titolo di studio (EducationLevel).</value>
+  </data>
+  <data name="IstatRegionNotFound" xml:space="preserve">
+    <value>Questa regione o provincia autonoma non è nella tabella.</value>
+  </data>
 </root>

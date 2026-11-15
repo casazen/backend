@@ -496,6 +496,10 @@ public class AppDbContext(
     public DbSet<OrgTouristTaxRate> OrgTouristTaxRates { get; set; } = null!;
     public DbSet<StayTouristTax> StayTouristTaxes { get; set; } = null!;
 
+    // The ISTAT region table (E21/F01/US01/T01, decision O6): for each region and autonomous province the system of its portal, the deadline, the statistical
+    // fields it requires and whether the channel manager covers it. Platform reference data, edited only by the staff, every seeded row «da verificare»
+    public DbSet<IstatRegionRule> IstatRegionRules { get; set; } = null!;
+
     // The marketplace (E09/F01, NF-54): the portal catalog cached from Octorate, the partners the platform admin curates with their texts
     // (platform data, no tenant), and what each org has activated (tenant-owned)
     public DbSet<MarketplacePortal> MarketplacePortals { get; set; } = null!;
@@ -2238,6 +2242,11 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new OrgTouristTaxRateConfiguration());
         modelBuilder.ApplyConfiguration(new StayTouristTaxConfiguration());
         modelBuilder.ApplyConfiguration(new StayTouristTaxGuestConfiguration());
+
+        // ─── ISTAT region table (E21/F01/US01/T01, decision O6) ──────────────────
+        // Platform reference data, seeded with every row «da verificare» (coverage Unknown) and edited only by the staff, each change in the audit trail. One row
+        // for each region and for each autonomous province (two partial unique indexes), never without its https source: the database holds the checks.
+        modelBuilder.ApplyConfiguration(new IstatRegionRuleConfiguration());
 
         // ─── Marketplace (E09/F01, NF-54, NF-56, NF-57, NF-59) ───────────────────
         // The portals of the channel manager are platform data refreshed once a day, unique by the code Octorate gives them.

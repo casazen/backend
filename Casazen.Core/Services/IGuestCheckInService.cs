@@ -209,8 +209,8 @@ public sealed class GuestCheckInPublicView
 
     /// <summary>
     /// The statistical fields (<c>IstatGuestFieldLists</c> names) the region of the property requires, so the page asks nothing more than
-    /// the region needs (data minimization, ADR-030-R1). Empty when the comune is unknown or the region requires none; empty in this
-    /// release, where the regional coverage is deferred (E03/F01/US08).
+    /// the region needs (data minimization, ADR-030-R1). Empty when the comune is unknown, the region has no verified row in the ISTAT
+    /// region table (E21/F01/US01/T01) or it requires none.
     /// </summary>
     public IReadOnlyList<string>? RequiredGuestFields { get; init; }
 

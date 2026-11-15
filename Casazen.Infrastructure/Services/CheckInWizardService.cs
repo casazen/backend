@@ -20,8 +20,8 @@ namespace Casazen.Infrastructure.Services;
 /// <para>Composes, never re-implements: the completeness of the record is <see cref="AlloggiatiRecordRules"/> (through
 /// <see cref="CheckInReadinessRules"/>), the codes <see cref="IAlloggiatiCodeTableService"/>, the tax <see cref="IStayTouristTaxService"/>, the
 /// channel manager <see cref="ICheckInOctorateSyncService"/>, the sender <see cref="IPropertySenderStore"/> and the arrival rules
-/// <see cref="StayLifecycleRules"/>. No region requires a statistical field in this release (the regional ISTAT service, E03/F01/US08, is
-/// deferred) and CasaZen does not send to the police itself (E03/F01/US06 deferred).</para>
+/// <see cref="StayLifecycleRules"/>. The statistical fields a region requires are the ones of its row of the ISTAT region table (E21/F01/US01/T01),
+/// none where the table says none or is not verified, and CasaZen does not send to the police itself (E03/F01/US06 deferred).</para>
 /// <para>The guests are saved like the host entry of the Alloggiati page: complete data schedules the communication for the arrival day
 /// (idempotent; a failure is logged and the guests stay saved). Logs carry ids and counts, never a name or a document.</para>
 /// </remarks>
@@ -40,9 +40,6 @@ public sealed class CheckInWizardService(
     TimeProvider? timeProvider = null,
     ITouristTaxCollectionService? touristTaxCollection = null) : ICheckInWizardService
 {
-    /// <summary>The statistical fields a region requires: none until the regional ISTAT service exists (E03/F01/US08).</summary>
-    private static readonly IReadOnlyList<string> NoRequiredGuestFields = [];
-
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     public async Task<CheckInState> GetStateAsync(Guid bookingId, CancellationToken cancellationToken)
@@ -155,8 +152,13 @@ public sealed class CheckInWizardService(
 
         var checkIn = DateOnly.FromDateTime(booking.CheckInDate);
         var checkOut = DateOnly.FromDateTime(booking.CheckOutDate);
+
+        // The statistical fields the region of the property requires, from its row of the ISTAT region table: none for a comune that is not in the
+        // list, for a region without a row and for a row that is not verified, so nothing is asked that the region does not require.
+        var region = await IstatRegionService.FindForComuneAsync(db, booking.Property.ComuneIstatCode, cancellationToken);
+        var requiredGuestFields = IstatRegionResolver.RequiredFields(region?.Rule);
         var issues = CheckInReadinessRules.Evaluate(new CheckInReadinessInput(
-            saved, codes, checkIn, booking.NumberOfGuests, octorateReceivesGuests, NoRequiredGuestFields));
+            saved, codes, checkIn, booking.NumberOfGuests, octorateReceivesGuests, requiredGuestFields));
 
         StayTouristTaxView? tax = null;
         try
@@ -193,7 +195,7 @@ public sealed class CheckInWizardService(
                 booking.NoShowAt),
             attendance,
             guests,
-            NoRequiredGuestFields,
+            requiredGuestFields,
             issues,
             tax,
             sender,

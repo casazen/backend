@@ -27,7 +27,8 @@ namespace Casazen.Infrastructure.Services;
 /// here: the one definition of <see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/> and the no-show mark.</para>
 /// <para><b>Modules that are off.</b> The channel manager is a sender only while <c>Features:OctorateConnector</c> is on (otherwise nothing is
 /// entrusted to it and nothing is read from it, and the host sends); the identity items exist only while
-/// <c>Features:CheckInIdentityVerification</c> is on. An ISTAT item needs the region's deadline in <c>Compliance:IstatDeadlineDays</c>: none is
+/// <c>Features:CheckInIdentityVerification</c> is on. An ISTAT item needs the deadline of the region: the monthly day of its row of the ISTAT region
+/// table (<c>IstatRegionRules</c>, platform data), or the day set for it in <c>Compliance:IstatDeadlineDays</c>, which overrides the table: none is
 /// guessed.</para>
 /// <para><b>Cost.</b> About a dozen reads, each by the ids of the caller's stays or properties; the only call outside the database is the
 /// connection health of the channel-manager properties, which keeps its answers for a few minutes and is bounded per call
@@ -624,9 +625,9 @@ public sealed class ComplianceStatusService(
                     .ToListAsync(ct))
                 .ToDictionary(c => c.PropertyId, c => c.LastVerificationOk);
 
-        var regionOf = settings.IstatDeadlineDays.Count == 0
-            ? new Dictionary<string, string?>()
-            : await RegionsOfAsync(properties, ct);
+        // The region of each comune and its row of the ISTAT region table (platform data): the deadline of the region comes from the table, and
+        // Compliance:IstatDeadlineDays overrides it. A comune that is not in the list, or a region without a monthly day, has no deadline.
+        var territoryOf = await IstatRegionService.FindForComuniAsync(db, properties.Select(p => p.ComuneIstatCode), ct);
         var declaredRates = !propertyChecks
             ? []
             : await db.OrgTouristTaxRates
@@ -693,12 +694,10 @@ public sealed class ComplianceStatusService(
                     items.Add(PropertyItem(ComplianceItemKind.MunicipalityRate, ComplianceCockpitAction.EnterMunicipalityTaxRate, property, null, rateVerdict, null));
             }
 
-            // The ISTAT deadline of the region of the comune; a region that is not configured is «to define» and gets no item.
-            int? istatDay = regionOf.TryGetValue(property.ComuneIstatCode ?? string.Empty, out var region)
-                            && region is not null
-                            && settings.IstatDeadlineDays.TryGetValue(region, out var day)
-                ? day
-                : null;
+            // The ISTAT deadline of the region of the comune: the monthly day of its row of the table, or the one configured for the region; a region
+            // with neither is «to define» and gets no item.
+            var territory = territoryOf.GetValueOrDefault(property.ComuneIstatCode?.Trim() ?? string.Empty);
+            var istatDay = IstatRegionResolver.DeadlineDay(territory?.Rule, territory?.RegionCode, settings.IstatDeadlineDays);
 
             foreach (var month in months)
             {
@@ -787,29 +786,6 @@ public sealed class ComplianceStatusService(
         return covering is null
             ? null
             : new ComplianceProof($"tourist-tax-remittance:{covering.Id:N}", ComplianceEvidenceSources.ManualUpload, covering.CreatedAt);
-    }
-
-    /// <summary>
-    /// The regions of the properties' comuni, by ISTAT code of the comune (<see cref="ItalianRegions"/> code, <c>LOM</c>); <c>null</c> when the
-    /// comune is not in the list. Platform data: the same for every org.
-    /// </summary>
-    private async Task<Dictionary<string, string?>> RegionsOfAsync(IReadOnlyList<PropertyRow> properties, CancellationToken ct)
-    {
-        var codes = properties
-            .Select(p => p.ComuneIstatCode)
-            .Where(code => !string.IsNullOrWhiteSpace(code))
-            .Select(code => code!)
-            .Distinct()
-            .ToList();
-        if (codes.Count == 0)
-            return new Dictionary<string, string?>();
-
-        return (await db.Comuni
-                .AsNoTracking()
-                .Where(c => codes.Contains(c.IstatCode))
-                .Select(c => new { c.IstatCode, c.RegionIstatCode })
-                .ToListAsync(ct))
-            .ToDictionary(c => c.IstatCode, c => ItalianRegions.FindByIstatCode(c.RegionIstatCode)?.Code);
     }
 
     /// <summary>
