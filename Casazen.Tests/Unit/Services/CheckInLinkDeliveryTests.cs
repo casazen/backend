@@ -778,9 +778,9 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         var waiting = await AddStayAsync(daysUntilCheckIn: 0, withThread: false, withSession: false);
         var rig = new Rig(_db, _world, _clock, FeatureFlags.GuestContactInfo);
         rig.Contacts
-            .Setup(c => c.ReadForCheckInLinkAsync(It.IsAny<Guid>(), waiting.Booking.Id, It.IsAny<CancellationToken>()))
+            .Setup(c => c.ReadForCheckInLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GuestContactInfoOutcome(GuestContactInfoStatus.NoEmailAtChannel));
-        var issued = new List<IssuedCheckInLink>();
+        var issued = new Dictionary<Guid, List<IssuedCheckInLink>>();
         var checkIn = new Mock<IGuestCheckInService>();
         checkIn
             .Setup(s => s.IssueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
@@ -799,7 +799,10 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
                 _db.GuestCheckInSessions.Add(session);
                 _db.SaveChanges();
                 var link = new IssuedCheckInLink(session.Id, token, session.ExpiresAt);
-                issued.Add(link);
+                if (!issued.TryGetValue(bookingId, out var links))
+                    issued[bookingId] = links = [];
+
+                links.Add(link);
                 return link;
             });
         var stayGuests = new Mock<IStayGuestService>();
@@ -825,10 +828,10 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         await job.ExecuteAsync();
 
         // The first stage issued the link; nobody can be reached, so the row holds it for the host, with the «To do».
-        var first = Assert.Single(issued);
-        var row = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync();
+        var first = Assert.Single(issued[waiting.Booking.Id]);
+        var row = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync(d => d.BookingId == waiting.Booking.Id);
         Assert.Equal((CheckInLinkChannel.Manual, CheckInLinkDeliveryState.WaitingContact, first.Token), (row.Channel, row.State, row.LinkToken));
-        Assert.Single(await _db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.CheckInLinkToSend)).ToListAsync());
+        Assert.Single(await _db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.CheckInLinkToSend) && a.EntityId == waiting.Booking.Id).ToListAsync());
 
         // The day after: the reminder leaves the link the host copies from its «To do» where it is.
         foreach (var session in await _db.GuestCheckInSessions.ToListAsync())
@@ -836,7 +839,7 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         await _db.SaveChangesAsync();
         await job.ExecuteAsync();
 
-        Assert.Single(issued);
+        Assert.Single(issued[waiting.Booking.Id]);
         var view = await rig.Service.GetAsync(_world.Scope.OrgId, waiting.Booking.Id, includeLink: true);
         Assert.Equal($"https://public.test/checkin/{first.Token}", view!.Link);
     }
@@ -888,7 +891,14 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         var state = await _db.OtaMessageSyncStates.SingleOrDefaultAsync(s => s.OrgId == _world.Scope.OrgId && s.OctorateAccommodationId == "ACC-1");
         if (state is null)
         {
-            state = new OtaMessageSyncState { OrgId = _world.Scope.OrgId, OctorateAccommodationId = "ACC-1", ConnectionId = Guid.NewGuid() };
+            // The copy of the conversations names the property of the listing in its state at every pass (the query of the hourly pass reads it).
+            state = new OtaMessageSyncState
+            {
+                OrgId = _world.Scope.OrgId,
+                OctorateAccommodationId = "ACC-1",
+                ConnectionId = Guid.NewGuid(),
+                PropertyId = _world.Scope.Granted.Id,
+            };
             _db.OtaMessageSyncStates.Add(state);
         }
 
