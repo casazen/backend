@@ -44,7 +44,8 @@ public static class BookingAttribution
     /// The values to store for what the checkout sent (E27/F01/US01/T01): the <c>source</c>, the <c>medium</c> and the <c>campaign</c> as lower-case tokens
     /// that fit their columns, the referrer reduced to its host name (<see cref="SignupAttributionRules.SanitizeToken"/>,
     /// <see cref="SignupAttributionRules.ReferrerHostOf"/>). A value that breaks a rule is dropped, never truncated, and never makes the booking fail;
-    /// nothing is returned that holds an e-mail address, an address of a page, a phone number, a query or a name of a person's machine.
+    /// nothing is returned that holds an e-mail address, an address of a page, a phone number (also written with <c>-</c>, <c>_</c> or <c>.</c>), an Italian
+    /// fiscal code, a query or a name of a person's machine.
     /// </summary>
     /// <param name="input">What the checkout sent; <c>null</c> when it sent no attribution.</param>
     public static BookingAttributionValues Sanitize(BookingAttributionInput? input)

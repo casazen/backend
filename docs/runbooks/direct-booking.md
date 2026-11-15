@@ -927,8 +927,10 @@ migration. `GET api/public/stays` (the parameters of `stays`), `GET api/public/s
   `AttributionSource` (`varchar(40)`), `AttributionMedium` (`varchar(40)`), `AttributionCampaign` (`varchar(80)`), `AttributionReferrerHost` (`varchar(255)`);
   migration `AddBookingAttribution`, additive, **no backfill, no flag**.
 - **No personal data is kept.** `source`, `medium` and `campaign` are trimmed, put in lower case and kept only when they are a token (letters and digits, and
-  `-`, `_`, `.` inside), at most the length of the column and with no run of more than 8 digits: an e-mail address, a phone number, an address of a page, a
-  query or free text is dropped, never repaired and never truncated. The referrer is reduced to its **host name** (no scheme, credentials, port, path, query
+  `-`, `_`, `.` inside), at most the length of the column, with no more than 8 digits in a row (the separators `-`, `_`, `.` do not end the row: `333-123-4567`
+  is ten digits; a letter does) and not the form of an Italian fiscal code (six letters, two digits, a letter, two digits, a letter, three digits, a letter, with
+  the letters that stand for digits in the omocode forms; also written with separators): an e-mail address (it has an `@`), a phone number, a fiscal code, an
+  address of a page, a query or free text is dropped, never repaired and never truncated. The referrer is reduced to its **host name** (no scheme, credentials, port, path, query
   or fragment): an IP address, a name with no dot, a scheme other than http(s) or a longer name is dropped. Nothing of it goes to the logs.
 - **The origin** is what the host reads: `BookingOrigins.Of(source, attributionSource)` (`Casazen.Core/Bookings`) gives `Portal` (every channel of the
   channel manager, with its name in `originChannel`), `AgencySite` (a direct booking whose attribution source is `agency-site`, the `utm_source` of the link the

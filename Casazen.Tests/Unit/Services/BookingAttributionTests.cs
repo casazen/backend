@@ -13,10 +13,10 @@ namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
 /// The attribution and the origin of a booking (E27/F01/US01/T01, NF-123). Privacy rule: what a link or a referrer carries is kept only as a marketing
-/// token or a host name, never as an e-mail address, a phone number, an address of a page or a query, and never longer than its column. Data rule: the
-/// four origins the host reads (a portal, the site of the agency, CasaZen's own site, the host) come from the source and the attribution of the booking by one
-/// rule, the badge and the filter of the list agree, the reservation of the booking engine of the agency is attributed to it by the import, and the
-/// reservation CasaZen pushed itself never is.
+/// token or a host name, never as an e-mail address, a phone number (with or without separators), a fiscal code, an address of a page or a query, and never
+/// longer than its column. Data rule: the four origins the host reads (a portal, the site of the agency, CasaZen's own site, the host) come from the source
+/// and the attribution of the booking by one rule, the badge and the filter of the list agree, the reservation of the booking engine of the agency is
+/// attributed to it by the import, and the reservation CasaZen pushed itself never is.
 /// </summary>
 public class BookingAttributionTests
 {
@@ -42,6 +42,11 @@ public class BookingAttributionTests
         Assert.Null(dirty.Medium);
         Assert.Null(dirty.Campaign);
         Assert.Equal("www.agenzia.it", dirty.ReferrerHost);
+
+        // A phone number written with separators and an Italian fiscal code are personal data as well: nothing of them is kept, in whichever field they come.
+        var identifiers = BookingAttribution.Sanitize(new BookingAttributionInput("333-123-4567", "333.123.4567", "RSSMRA80A01H501U", null));
+        Assert.True(identifiers.IsEmpty);
+        Assert.True(BookingAttribution.Sanitize(new BookingAttributionInput("333_123_4567", "rssmra-80a01-h501u", "0039-333-1234567", null)).IsEmpty);
 
         // Whatever is kept is a token or a host: no character that an address, a query or a person's contact needs.
         var stored = BookingAttribution.Sanitize(new BookingAttributionInput(
@@ -74,6 +79,18 @@ public class BookingAttributionTests
     [InlineData("mario rossi", null)]
     [InlineData("+39 333 1234567", null)]
     [InlineData("393331234567", null)]
+    [InlineData("333-123-4567", null)]
+    [InlineData("333.123.4567", null)]
+    [InlineData("333_123_4567", null)]
+    [InlineData("0039-333-1234567", null)]
+    [InlineData("tel-333-1234567", null)]
+    [InlineData("2026-11-14-2026-11-20", null)]
+    [InlineData("RSSMRA80A01H501U", null)]
+    [InlineData("rssmra-80a01-h501u", null)]
+    [InlineData("RSSMRA80A01H50MU", null)]
+    [InlineData("estate-2026-11-14", "estate-2026-11-14")]
+    [InlineData("promo-2026-11-14-v2", "promo-2026-11-14-v2")]
+    [InlineData("newsletter-autumn", "newsletter-autumn")]
     [InlineData("-estate", null)]
     [InlineData("estate-", null)]
     [InlineData(".estate", null)]
