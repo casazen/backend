@@ -15,8 +15,9 @@ namespace Casazen.Core.Entities;
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
-/// <item><b>Numbering.</b> A number is given at the issue, gap-free per org and <see cref="Series"/> (<see cref="SequenceNumber"/>, unique with the
-/// org and the series when set: <see cref="SeriesNumberIndexName"/>); <see cref="Number"/> is the display form, or the number Octorate gave.</item>
+/// <item><b>Numbering.</b> A number is given at the issue, gap-free per org, issuer (<see cref="IssuerProfileId"/>: the organization or an owner who
+/// issues, E17/F01/US01/T01) and <see cref="Series"/> (<see cref="SequenceNumber"/>, unique with the org, the issuer and the series when set:
+/// <see cref="SeriesNumberIndexName"/>); <see cref="Number"/> is the display form, or the number Octorate gave.</item>
 /// <item><b>The issuer as it was.</b> At the issue <see cref="IssuerSnapshot"/> keeps the data of the issuer the document was made with and
 /// <see cref="RuleVersion"/> the version of the tax rule: the PDF and the XML of an issued document read the issuer from there, never from the profile
 /// of today.</item>
@@ -29,8 +30,11 @@ namespace Casazen.Core.Entities;
 [Table("FiscalDocuments")]
 public class FiscalDocument : ITenantOwned
 {
-    /// <summary>Unique (<see cref="OrgId"/>, <see cref="Series"/>, <see cref="SequenceNumber"/>) where the number is set: no number twice.</summary>
-    public const string SeriesNumberIndexName = "UIX_FiscalDocuments_OrgId_Series_SequenceNumber";
+    /// <summary>
+    /// Unique (<see cref="OrgId"/>, <see cref="IssuerProfileId"/>, <see cref="Series"/>, <see cref="SequenceNumber"/>) where the number is set: no number twice
+    /// for one issuer and series (two issuers of one org may both have <c>2026/1</c>).
+    /// </summary>
+    public const string SeriesNumberIndexName = "UIX_FiscalDocuments_OrgId_IssuerProfileId_Series_SequenceNumber";
 
     /// <summary>Unique (<see cref="OrgId"/>, <see cref="OctorateDocumentId"/>) where set: an Octorate document is imported once.</summary>
     public const string OctorateDocumentIndexName = "UIX_FiscalDocuments_OrgId_OctorateDocumentId";
@@ -85,6 +89,21 @@ public class FiscalDocument : ITenantOwned
 
     /// <summary>What the document is for: the stay of a guest (the default), an invoice to an owner, a self-billed invoice.</summary>
     public FiscalDocumentPurpose Purpose { get; set; } = FiscalDocumentPurpose.GuestStay;
+
+    /// <summary>
+    /// The issuer the document is (or will be) issued on (E17/F01/US01/T01): the profile of the organization, or the profile of an owner who issues the
+    /// document of the stay. It chooses the series and the counter of the number. Written with every draft CasaZen makes; the documents of before were moved to
+    /// the profile of their organization by the migration <c>AddOwnerIssuerProfiles</c>. <c>null</c> for an imported document of an org without a profile.
+    /// Restrict: an issued document never loses its issuer.
+    /// </summary>
+    public Guid? IssuerProfileId { get; set; }
+
+    /// <summary>
+    /// The document of the services the agency charges the guest (E17/F01/US01/T02): the cleaning when it is a service of the agency and the extras, issued by
+    /// the organization beside the document of the stay its owner issues. False for every other document (the document of a stay bills what its issuer bills;
+    /// an owner invoice, a self-billed invoice). It says which lines the document bills when the booking is made again or corrected.
+    /// </summary>
+    public bool ForAgencyServices { get; set; }
 
     /// <summary>The owner an owner invoice is made out to (E14); <c>null</c> otherwise. Restrict.</summary>
     public Guid? RecipientOwnerId { get; set; }

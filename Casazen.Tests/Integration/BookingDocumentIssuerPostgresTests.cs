@@ -9,22 +9,24 @@ using Xunit;
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// FIS-02, NF-82 (E06/F02/US02/T01) on a real PostgreSQL database, where it counts: a booking never has two issuers of its documents, and it is
-/// the database itself that refuses the second one, whoever writes it.
+/// FIS-02, NF-82, NF-116 (E06/F02/US02/T01, E17/F01/US01/T02) on a real PostgreSQL database, where it counts: the issuer rows of a booking are one for each
+/// document (the receipt of the owner and the invoice of the agency of one stay are two rows), and it is the database itself that refuses a second row of the
+/// same document, whoever writes it.
 /// </summary>
 public class BookingDocumentIssuerPostgresTests
 {
     /// <summary>
-    /// PROOF TEST: data rule. A booking locked to one issuer cannot get a second issuer row, of the same kind or of the other one: the unique
-    /// index on the booking answers with a unique violation; the first row is untouched.
+    /// PROOF TEST: data rule. A document has one issuer row: a second row of the same document, of the same kind or of the other one, is a unique violation
+    /// of the index on the document; a row of another document of the same booking is accepted; the first row is untouched.
     /// </summary>
     [PostgresFact]
-    public async Task BookingDocumentIssuer_OneRowPerBooking_Test()
+    public async Task BookingDocumentIssuer_OneRowPerDocument_Test()
     {
         await using var database = PostgresTestDatabase.CreateMigrated("docissuer");
         var at = new DateTime(2026, 11, 6, 9, 0, 0, DateTimeKind.Utc);
         var orgId = Guid.NewGuid();
         var bookingId = Guid.NewGuid();
+        var firstDocument = Guid.NewGuid();
 
         await using (var seed = database.CreateContext())
         {
@@ -64,25 +66,35 @@ public class BookingDocumentIssuerPostgresTests
                 BasePrice = 200m,
                 TotalPrice = 200m,
             });
-            seed.BookingDocumentIssuers.Add(
-                new BookingDocumentIssuer { OrgId = orgId, BookingId = bookingId, Issuer = BookingDocumentIssuerKind.Octorate, LockedAt = at });
+            seed.BookingDocumentIssuers.Add(Row(orgId, bookingId, BookingDocumentIssuerKind.CasaZen, at, firstDocument));
             await seed.SaveChangesAsync();
         }
 
         foreach (var kind in new[] { BookingDocumentIssuerKind.CasaZen, BookingDocumentIssuerKind.Octorate })
         {
             await using var second = database.CreateContext();
-            second.BookingDocumentIssuers.Add(new BookingDocumentIssuer { OrgId = orgId, BookingId = bookingId, Issuer = kind, LockedAt = at });
+            second.BookingDocumentIssuers.Add(Row(orgId, bookingId, kind, at, firstDocument));
 
             var refused = await Assert.ThrowsAsync<DbUpdateException>(() => second.SaveChangesAsync());
             var postgres = Assert.IsType<PostgresException>(refused.InnerException);
             Assert.Equal(PostgresErrorCodes.UniqueViolation, postgres.SqlState);
-            Assert.Equal(BookingDocumentIssuer.BookingIndexName, postgres.ConstraintName);
+            Assert.Equal(BookingDocumentIssuer.DocumentIndexName, postgres.ConstraintName);
         }
 
-        // The first issuer is still the only one.
+        // Another document of the same booking (the invoice of the agency beside the receipt of the owner) has its own row.
+        var secondDocument = Guid.NewGuid();
+        await using (var other = database.CreateContext())
+        {
+            other.BookingDocumentIssuers.Add(Row(orgId, bookingId, BookingDocumentIssuerKind.CasaZen, at, secondDocument));
+            await other.SaveChangesAsync();
+        }
+
         await using var read = database.CreateContext();
         var rows = await read.BookingDocumentIssuers.IgnoreQueryFilters().AsNoTracking().Where(i => i.BookingId == bookingId).ToListAsync();
-        Assert.Equal(BookingDocumentIssuerKind.Octorate, Assert.Single(rows).Issuer);
+        Assert.Equal(new[] { firstDocument, secondDocument }.Order(), rows.Select(r => r.LockedByDocumentId!.Value).Order());
+        Assert.All(rows, row => Assert.Equal(BookingDocumentIssuerKind.CasaZen, row.Issuer));
     }
+
+    private static BookingDocumentIssuer Row(Guid orgId, Guid bookingId, BookingDocumentIssuerKind kind, DateTime at, Guid documentId) =>
+        new() { OrgId = orgId, BookingId = bookingId, Issuer = kind, LockedAt = at, LockedByDocumentId = documentId };
 }

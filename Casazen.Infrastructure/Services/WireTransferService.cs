@@ -126,7 +126,7 @@ public sealed class WireTransferService(
         }
 
         // The debtor and the debit account: the issuer profile of the org.
-        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.OrgId == orgId, cancellationToken);
+        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().OfOrganization(orgId).FirstOrDefaultAsync(cancellationToken);
         var flavor = Pain001V09Writer.FlavorOf(currency);
         var debtor = new Pain001Party(profile?.LegalName, profile?.AddressStreet, profile?.AddressCivic, profile?.PostalCode, profile?.City, profile?.CountryCode);
         if (profile is null || !Pain001V09Writer.IsComplete(debtor, flavor))

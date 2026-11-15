@@ -152,6 +152,12 @@ public static class BillingSetupItemKeys
 
     /// <summary>Italy: neither the reference of the stamp duty (the authorization of the virtual stamp or the number of the physical one) nor the confirmation of the virtual stamp was given.</summary>
     public const string StampDutyUnconfirmed = "stamp_duty_unconfirmed";
+
+    /// <summary>
+    /// Italian properties (E17/F01/US01/T01): some owners with an ownership of an Italian property that has not ended have no issuer profile that can issue (none,
+    /// or one that misses a field), so the documents of their stays are not made (reason <see cref="BillingSetupReasons.Required"/>, with the count of the owners).
+    /// </summary>
+    public const string OwnerIssuerMissing = "owner_issuer_missing";
 }
 
 /// <summary>Why a billing setup item is missing (<see cref="BillingSetupItem.Reason"/>): a small set of stable codes the client translates, never renamed.</summary>

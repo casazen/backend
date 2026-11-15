@@ -1,3 +1,4 @@
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Multitenancy;
@@ -74,9 +75,10 @@ public sealed class FiscalDocumentDeliveryService(
         if (!IsSendable(document))
             return FiscalDocumentSendOutcome.NotSendable;
 
+        // The choice of the organization itself, never the profile of one of its owners (E17/F01/US01/T01: they live in the same table).
         var asked = await db.OrgFiscalIssuerProfiles
             .AsNoTracking()
-            .Where(p => p.OrgId == document.OrgId)
+            .OfOrganization(document.OrgId)
             .Select(p => p.EmailGuestDocuments)
             .FirstOrDefaultAsync(ct);
         if (!asked)

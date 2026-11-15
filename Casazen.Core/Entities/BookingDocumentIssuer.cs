@@ -6,18 +6,21 @@ using Casazen.Core.Multitenancy;
 namespace Casazen.Core.Entities;
 
 /// <summary>
-/// The single issuer of the documents of a booking (FIS-02, NF-82, E06/F02/US02/T01): written when the first document of the booking is issued by
-/// CasaZen, or found issued by Octorate, and never changed afterwards. A booking never has two issuers: the database itself refuses a second row.
+/// Who issued a document of a booking (FIS-02, NF-82, NF-116, E06/F02/US02/T01, E17/F01/US01/T02): one row for each document CasaZen issues for the booking,
+/// written in the transaction of its issue and never changed afterwards. Since the owners issue the documents of their stays (E17), a booking may have several
+/// documents of several issuers (the receipt of its owner, the invoice of the agency for its services): the rule is no longer «never two issuers» but «never two
+/// documents of the same issuer and purpose for the same booking», which the document service checks (the issuer of a document is its
+/// <see cref="FiscalDocument.IssuerProfileId"/>). A legacy row locked to Octorate (before the decision of 2026-11-14) still keeps CasaZen off the booking.
 /// </summary>
 /// <remarks>
-/// <see cref="LockedByDocumentId"/> is a plain column with no foreign key: the table of the documents arrives with E06/F01/US02/T01 and the link is
-/// made there. The row goes with its booking (cascade). <see cref="ITenantOwned"/>: <see cref="OrgId"/> is the org of the booking.
+/// <see cref="LockedByDocumentId"/> is a plain column with no foreign key, unique where set (<see cref="DocumentIndexName"/>): one row for each document. The
+/// row goes with its booking (cascade). <see cref="ITenantOwned"/>: <see cref="OrgId"/> is the org of the booking.
 /// </remarks>
 [Table("BookingDocumentIssuers")]
 public class BookingDocumentIssuer : ITenantOwned
 {
-    /// <summary>Name of the unique index on <see cref="BookingId"/>: one issuer for each booking.</summary>
-    public const string BookingIndexName = "UIX_BookingDocumentIssuers_BookingId";
+    /// <summary>Name of the unique index on <see cref="LockedByDocumentId"/> where it is set: one row for each document.</summary>
+    public const string DocumentIndexName = "UIX_BookingDocumentIssuers_LockedByDocumentId";
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -25,7 +28,7 @@ public class BookingDocumentIssuer : ITenantOwned
     /// <summary>Tenant key (TN-2). Inherited from the booking; never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The booking. Unique: it has at most one issuer. The row goes with the booking (cascade).</summary>
+    /// <summary>The booking (indexed, not unique: one row for each of its documents). The row goes with the booking (cascade).</summary>
     public Guid BookingId { get; set; }
 
     /// <summary>Who issues the documents of the booking.</summary>
@@ -34,6 +37,6 @@ public class BookingDocumentIssuer : ITenantOwned
     /// <summary>When the issuer was locked (UTC).</summary>
     public DateTime LockedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>The document that locked the issuer (the first one issued or imported); <c>null</c> when the lock was made before any document.</summary>
+    /// <summary>The document of the row (the one issued); <c>null</c> for a legacy row made before any document.</summary>
     public Guid? LockedByDocumentId { get; set; }
 }

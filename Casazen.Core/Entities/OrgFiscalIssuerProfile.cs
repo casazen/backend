@@ -7,28 +7,46 @@ using Casazen.Core.Multitenancy;
 namespace Casazen.Core.Entities;
 
 /// <summary>
-/// The issuer of the fiscal documents of an organization and its data (FIS-02, NF-82, NF-112, NF-113, E11/F01/US01/T01): CasaZen is always the issuer
-/// (decision of 2026-11-14), so the profile says with which data it issues for the organization, in Italy or in Switzerland: the regime, the legal name and
-/// the structured address, the Swiss VAT number, the bank accounts, the VAT treatments, the series, the automatic issue and the reminders of the wizard.
-/// One row for each organization (unique <see cref="OrgId"/>).
+/// An issuer of the fiscal documents and its data (FIS-02, NF-82, NF-112, NF-113, NF-116, E11/F01/US01/T01, E17/F01/US01/T01): CasaZen is always the one who
+/// issues (decision of 2026-11-14), and the profile says in whose name and with which data, in Italy or in Switzerland: the regime, the legal name and the
+/// structured address, the tax ids, the bank accounts, the VAT treatments, the series, the automatic issue and the reminders of the wizard.
+/// <list type="bullet">
+/// <item><b>The profile of the organization</b> (<see cref="PropertyOwnerId"/> <c>null</c>): one for each organization (<see cref="OrgIndexName"/>), the issuer
+/// of everything the agency issues in its own name.</item>
+/// <item><b>The profile of an owner who issues</b> (<see cref="PropertyOwnerId"/> set, E17/F01/US01/T01, D12): one for each owner (<see cref="OwnerIndexName"/>).
+/// In Italy the owner of the property is the issuer of the document of the stay (a receipt of a private owner, the FatturaPA of a company with the agency as
+/// third-party issuer); CasaZen issues it on this profile, with the owner's own series (sezionale) and numbering.</item>
+/// </list>
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
-/// <item><b>One source of truth for the Italian fiscal identity.</b> The Italian VAT number and the fiscal code of the issuer stay on <see cref="Org"/>
-/// (<c>PartitaIvaNumber</c>, <c>FiscalCode</c>): the profile never copies them. A Swiss issuer needs neither; its UID is <see cref="SwissVatNumber"/>.</item>
+/// <item><b>One source of truth for the Italian fiscal identity of the organization.</b> The Italian VAT number and the fiscal code of the organization stay on
+/// <see cref="Org"/> (<c>PartitaIvaNumber</c>, <c>FiscalCode</c>): its profile never copies them and leaves <see cref="FiscalCode"/> and <see cref="VatNumber"/>
+/// empty. An owner is no organization: its profile keeps its own. A Swiss issuer needs neither; its UID is <see cref="SwissVatNumber"/>.</item>
 /// <item><b>Partly filled while the wizard is open.</b> Every text is optional and <see cref="DocumentRegime"/> is empty until the issuer says it; what is
 /// still missing to issue is computed (<c>FiscalDocumentRules.MissingIssuerFields</c>) and <see cref="ConfirmedAt"/> is set only when the wizard is
 /// completed with nothing missing.</item>
-/// <item><b>Privacy.</b> <see cref="Iban"/> and <see cref="QrIban"/> are encrypted at rest (<c>EncryptedColumns</c>): the columns have no length, the
-/// lengths are checked on input.</item>
-/// <item><b>Tenant.</b> <see cref="ITenantOwned"/>: <see cref="OrgId"/> is the org the profile is of, and the row is read and written only there.</item>
+/// <item><b>Privacy.</b> The personal data of the issuer (an owner is often a private person) are encrypted at rest (<c>EncryptedColumns</c>): the legal name,
+/// the fiscal code, the VAT number, the street, the house number, the postal code, the city and the PEC, and the bank accounts <see cref="Iban"/> and
+/// <see cref="QrIban"/>. Those columns have no length; the lengths are checked on input (the constants below).</item>
+/// <item><b>Tenant.</b> <see cref="ITenantOwned"/>: <see cref="OrgId"/> is the org the profile is of (for an owner, the org of the owner), and the row is read
+/// and written only there. The readers of the organization's own profile go through <see cref="OrgFiscalIssuerProfileQueries.OfOrganization"/>.</item>
 /// </list>
 /// </remarks>
 [Table("OrgFiscalIssuerProfiles")]
 public class OrgFiscalIssuerProfile : ITenantOwned
 {
-    /// <summary>Name of the unique index on <see cref="OrgId"/>: one profile for each organization.</summary>
+    /// <summary>Name of the unique index on <see cref="OrgId"/> among the profiles of the organizations (<see cref="PropertyOwnerId"/> <c>null</c>): one for each.</summary>
     public const string OrgIndexName = "UIX_OrgFiscalIssuerProfiles_OrgId";
+
+    /// <summary>Name of the unique index on <see cref="PropertyOwnerId"/> where it is set: one profile for each owner who issues.</summary>
+    public const string OwnerIndexName = "UIX_OrgFiscalIssuerProfiles_PropertyOwnerId";
+
+    /// <summary>The longest <see cref="FiscalCode"/>: the 16 characters of the code of a person (a company has 11 digits).</summary>
+    public const int FiscalCodeMaxLength = 16;
+
+    /// <summary>The longest <see cref="VatNumber"/> as stored (without spaces; the country prefix of a foreign number included).</summary>
+    public const int VatNumberMaxLength = 28;
 
     public const int LegalNameMaxLength = 200;
     public const int AddressStreetMaxLength = 200;
@@ -69,8 +87,14 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant key (TN-2): the organization the profile is of. Unique.</summary>
+    /// <summary>Tenant key (TN-2): the organization the profile is of (for an owner, the agency of the owner). Unique among the profiles of the organizations.</summary>
     public Guid OrgId { get; set; }
+
+    /// <summary>
+    /// The owner whose profile this is (E17/F01/US01/T01); <c>null</c> for the profile of the organization itself. Unique where set (one profile for each
+    /// owner); the row goes with its owner (cascade), unless a document was issued on it (a document never loses its issuer: restrict).
+    /// </summary>
+    public Guid? PropertyOwnerId { get; set; }
 
     /// <summary>
     /// Who issues the documents: always <see cref="DocumentIssuerMode.CasaZen"/> (decision of 2026-11-14). The retired values are refused by the API and the
@@ -81,20 +105,31 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     /// <summary>The fiscal regime of the issuer; <c>null</c> until it says it. It must be one of its country (<see cref="CountryCode"/>).</summary>
     public DocumentRegime? DocumentRegime { get; set; }
 
-    /// <summary>The legal name of the issuer: the denomination of the company, or «First Last».</summary>
-    [MaxLength(LegalNameMaxLength)]
+    /// <summary>The legal name of the issuer: the denomination of the company, or «First Last». <b>Encrypted at rest</b> (at most <see cref="LegalNameMaxLength"/>).</summary>
     public string? LegalName { get; set; }
 
-    [MaxLength(AddressStreetMaxLength)]
+    /// <summary>
+    /// The Italian fiscal code of an owner who issues (16 characters for a person, 11 digits for a company); <c>null</c> for the profile of the organization,
+    /// whose code is on <see cref="Org"/>. <b>Encrypted at rest.</b>
+    /// </summary>
+    public string? FiscalCode { get; set; }
+
+    /// <summary>
+    /// The VAT number of an owner who issues (an Italian one is the 11 digits, without the <c>IT</c> prefix); <c>null</c> for the profile of the organization,
+    /// whose number is on <see cref="Org"/>, and for a private owner. <b>Encrypted at rest.</b>
+    /// </summary>
+    public string? VatNumber { get; set; }
+
+    /// <summary>The street of the structured address. <b>Encrypted at rest</b> (at most <see cref="AddressStreetMaxLength"/>).</summary>
     public string? AddressStreet { get; set; }
 
-    [MaxLength(AddressCivicMaxLength)]
+    /// <summary>The house number. <b>Encrypted at rest</b> (at most <see cref="AddressCivicMaxLength"/>).</summary>
     public string? AddressCivic { get; set; }
 
-    [MaxLength(PostalCodeMaxLength)]
+    /// <summary>The postal code. <b>Encrypted at rest</b> (at most <see cref="PostalCodeMaxLength"/>).</summary>
     public string? PostalCode { get; set; }
 
-    [MaxLength(CityMaxLength)]
+    /// <summary>The city or comune. <b>Encrypted at rest</b> (at most <see cref="CityMaxLength"/>).</summary>
     public string? City { get; set; }
 
     /// <summary>The two letters of the Italian province; <c>null</c> for an issuer abroad.</summary>
@@ -116,8 +151,7 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     [MaxLength(SdiRecipientCodeMaxLength)]
     public string? IssuerSdiRecipientCode { get; set; }
 
-    /// <summary>The PEC of the issuer, lower case; <c>null</c> when it has none.</summary>
-    [MaxLength(PecMaxLength)]
+    /// <summary>The PEC of the issuer, lower case; <c>null</c> when it has none. <b>Encrypted at rest</b> (at most <see cref="PecMaxLength"/>).</summary>
     public string? IssuerPec { get; set; }
 
     /// <summary>
@@ -220,6 +254,13 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     [MaxLength(StampDutyReferenceMaxLength)]
     public string? StampDutyReference { get; set; }
 
+    /// <summary>
+    /// The profile of a Swiss owner: the agency chose «emette il proprietario» for this owner (⚖ C1, direct representation, MWSTG art. 20), so the documents
+    /// of the stays of the owner's Swiss properties are issued in the owner's name. Off by default: in Switzerland the agency issues (E11/E12). Not read in
+    /// Italy, where the owner of the property always issues the document of the stay.
+    /// </summary>
+    public bool StayIssuedByOwner { get; set; }
+
     /// <summary>The issuer confirmed the agreement for the electronic conservation of its documents (Italy, a reminder of the wizard).</summary>
     public bool ConservationAgreementConfirmed { get; set; }
 
@@ -238,6 +279,10 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     /// <summary>The person who saved the profile last.</summary>
     [MaxLength(UpdatedByUserIdMaxLength)]
     public string? UpdatedByUserId { get; set; }
+
+    /// <summary>True for the profile of an owner who issues (<see cref="PropertyOwnerId"/> set), false for the profile of the organization.</summary>
+    [NotMapped]
+    public bool IsOwnerProfile => PropertyOwnerId is not null;
 
     /// <summary>The channels of a stored JSON array of <see cref="BookingSource"/> names; an unreadable value is no channel.</summary>
     public static IReadOnlyList<BookingSource> ChannelsOf(string? json)
@@ -258,5 +303,26 @@ public class OrgFiscalIssuerProfile : ITenantOwned
         {
             return [];
         }
+    }
+}
+
+/// <summary>
+/// The one way to read the profile of an organization itself (E17/F01/US01/T01): since owners have profiles in the same table, a reader that looked for «the
+/// profile of the org» by <c>OrgId</c> alone could take the profile of one of its owners.
+/// </summary>
+public static class OrgFiscalIssuerProfileQueries
+{
+    /// <summary>The profile of the organization <paramref name="orgId"/> itself: its <c>OrgId</c> and no owner.</summary>
+    public static IQueryable<OrgFiscalIssuerProfile> OfOrganization(this IQueryable<OrgFiscalIssuerProfile> profiles, Guid orgId)
+    {
+        ArgumentNullException.ThrowIfNull(profiles);
+        return profiles.Where(profile => profile.OrgId == orgId && profile.PropertyOwnerId == null);
+    }
+
+    /// <summary>The profiles of organizations only (no owner's), of every org the query reaches.</summary>
+    public static IQueryable<OrgFiscalIssuerProfile> OfOrganizations(this IQueryable<OrgFiscalIssuerProfile> profiles)
+    {
+        ArgumentNullException.ThrowIfNull(profiles);
+        return profiles.Where(profile => profile.PropertyOwnerId == null);
     }
 }

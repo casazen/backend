@@ -39,19 +39,25 @@ public class FiscalDocumentPostgresTests
     {
         await using var database = PostgresTestDatabase.CreateMigrated("fdnum");
         var orgId = Guid.NewGuid();
+        var otherOrgId = Guid.NewGuid();
+
+        // The numbers are per org, issuer and series (E17/F01/US01/T01): the issuer of each document is the profile of its organization here.
+        var issuer = new OrgFiscalIssuerProfile { OrgId = orgId };
+        var otherIssuer = new OrgFiscalIssuerProfile { OrgId = otherOrgId };
         await using (var db = new AppDbContext(database.CreateOptions(), tenantContext: null, Provider))
         {
-            db.FiscalDocuments.Add(Issued(orgId, "2026", 1));
-            db.FiscalDocuments.Add(Issued(orgId, "2026", 2));
-            db.FiscalDocuments.Add(Issued(orgId, "B", 1));
-            db.FiscalDocuments.Add(Issued(Guid.NewGuid(), "2026", 1));
+            db.OrgFiscalIssuerProfiles.AddRange(issuer, otherIssuer);
+            db.FiscalDocuments.Add(Issued(orgId, "2026", 1, issuer.Id));
+            db.FiscalDocuments.Add(Issued(orgId, "2026", 2, issuer.Id));
+            db.FiscalDocuments.Add(Issued(orgId, "B", 1, issuer.Id));
+            db.FiscalDocuments.Add(Issued(otherOrgId, "2026", 1, otherIssuer.Id));
             db.FiscalDocuments.Add(Imported(orgId, "OCT-1"));
             await db.SaveChangesAsync();
         }
 
         await using (var db = new AppDbContext(database.CreateOptions(), tenantContext: null, Provider))
         {
-            db.FiscalDocuments.Add(Issued(orgId, "2026", 2));
+            db.FiscalDocuments.Add(Issued(orgId, "2026", 2, issuer.Id));
             var duplicate = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
             Assert.Contains(FiscalDocument.SeriesNumberIndexName, duplicate.InnerException?.Message ?? string.Empty, StringComparison.Ordinal);
         }
@@ -204,9 +210,10 @@ public class FiscalDocumentPostgresTests
         Assert.True(await check.Bookings.AnyAsync(b => b.Id == bookingId));
     }
 
-    private static FiscalDocument Issued(Guid orgId, string series, int number) => new()
+    private static FiscalDocument Issued(Guid orgId, string series, int number, Guid? issuerProfileId = null) => new()
     {
         OrgId = orgId,
+        IssuerProfileId = issuerProfileId,
         Source = FiscalDocumentSource.CasaZen,
         Kind = DocumentKind.Invoice,
         Status = FiscalDocumentStatus.Issued,

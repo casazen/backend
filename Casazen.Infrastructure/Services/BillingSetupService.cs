@@ -249,6 +249,10 @@ public sealed class BillingSetupService(
                 }
                 else
                 {
+                    // A contributor of another epic with nothing to look at for this organization neither counts nor makes its section apply.
+                    if (!await contributor.AppliesAsync(orgId, ct))
+                        continue;
+
                     found = await contributor.EvaluateAsync(orgId, ct);
                 }
 
