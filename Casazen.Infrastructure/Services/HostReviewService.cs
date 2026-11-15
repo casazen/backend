@@ -24,6 +24,8 @@ namespace Casazen.Infrastructure.Services;
 /// <para>The routine's door names the org in every read (a routine has no caller and its job has no tenant) and is stricter than the button where nobody
 /// decides: the stay of a no-show, and a guest who was erased, asked for the erasure or has no address, are skipped. A booking it must not invite is an answer
 /// (<see cref="ReviewInviteRequestResult"/>), never an exception that makes the engine try again. Logs carry ids, never the address or the link.</para>
+/// <para>Both doors write the email in the language of the guest (<see cref="LanguageOfGuestAsync"/>): the one chosen on the check-in page, else the one of the country of the guest,
+/// else Italian; the invitation exists in Italian and English, so every other language reads English.</para>
 /// </remarks>
 public sealed class HostReviewService(
     AppDbContext db,
@@ -231,7 +233,8 @@ public sealed class HostReviewService(
                 b.Guest.Email,
                 b.Guest.DataAnonymizedDate,
                 b.Guest.ErasureRequested,
-                b.Guest.IsDeleted))
+                b.Guest.IsDeleted,
+                b.Guest.Country))
             .FirstOrDefaultAsync(cancellationToken);
         if (booking is null)
             return ReviewInviteRequestResult.BookingNotFound;
@@ -255,11 +258,12 @@ public sealed class HostReviewService(
         if (await db.ReviewInvites.AnyAsync(i => i.OrgId == booking.OrgId && i.BookingId == booking.Id, cancellationToken))
             return ReviewInviteRequestResult.Skipped(ReviewInviteSkipReasons.AlreadyInvited);
 
-        // The link and the email are made first: a missing public URL is a configuration error, and nothing was marked as sent yet.
+        // The link and the email are made first: a missing public URL is a configuration error, and nothing was marked as sent yet. The email is in the language of the guest.
         var expiresAt = ReviewRules.WindowEndsAtUtc(booking.CheckOutDate);
         var reviewUrl = links.GuestReview(booking.OrgSlug, booking.Id, tokens.Create(booking.Id, new DateTimeOffset(expiresAt)));
+        var language = await LanguageOfGuestAsync(booking, cancellationToken);
         var content = EmailTemplates.ReviewInvite(
-            EmailTemplates.DefaultCulture,
+            EmailTemplates.ReviewInviteCulture(language),
             booking.GuestFirstName,
             booking.PropertyName,
             booking.CheckInDate,
@@ -295,6 +299,24 @@ public sealed class HostReviewService(
         }
 
         return ReviewInviteRequestResult.Sent;
+    }
+
+    /// <summary>
+    /// The language to write to the guest of the booking, chosen the way the message with the check-in link is (<c>CheckInLinkDeliveryService</c>): the language the guest chose on the
+    /// check-in page (the latest session of the booking that holds one), else the one of the country of the guest, else <c>null</c>, and the email is then in Italian. Read in the org of
+    /// the booking, and only to pick the texts: nothing of it is logged or sent.
+    /// </summary>
+    private async Task<string?> LanguageOfGuestAsync(InviteBooking booking, CancellationToken cancellationToken)
+    {
+        var chosen = await db.GuestCheckInSessions
+            .AsNoTracking()
+            .Where(s => s.OrgId == booking.OrgId && s.BookingId == booking.Id && s.Language != null)
+            .OrderByDescending(s => s.UpdatedAt)
+            .ThenByDescending(s => s.Id)
+            .Select(s => s.Language)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return GuestLanguages.Normalize(chosen) ?? GuestLanguages.OfCountry(booking.GuestCountry);
     }
 
     /// <summary>The stable code a booking that is not to be invited is skipped with: the reason the rules of <see cref="ReviewRules"/> give.</summary>
@@ -345,7 +367,10 @@ public sealed class HostReviewService(
     private static bool HasAddress(string? email, DateTime? anonymizedAt) =>
         anonymizedAt is null && !string.IsNullOrWhiteSpace(email);
 
-    /// <summary>The columns of a booking that the invitation reads (<see cref="InviteAsync"/>): the stay, the first name and the address of the guest, never more.</summary>
+    /// <summary>
+    /// The columns of a booking that the invitation reads (<see cref="InviteAsync"/>): the stay, the first name and the address of the guest, and the country of the guest only to pick the
+    /// language of the email (<see cref="LanguageOfGuestAsync"/>), never more.
+    /// </summary>
     private sealed record InviteBooking(
         Guid Id,
         Guid OrgId,
@@ -360,7 +385,8 @@ public sealed class HostReviewService(
         string GuestEmail,
         DateTime? GuestAnonymizedAt,
         bool GuestErasureRequested,
-        bool GuestDeleted);
+        bool GuestDeleted,
+        string? GuestCountry);
 
     private sealed record HostReviewRow(
         Guid Id,

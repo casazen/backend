@@ -73,6 +73,35 @@ public class ReviewRequestRoutineTests
         await db.SaveChangesAsync();
     }
 
+    /// <summary>A check-in session of the stay in which the guest chose <paramref name="language"/> on the check-in page.</summary>
+    private static async Task SeedCheckInSessionAsync(RoutineRig rig, Booking booking, string language)
+    {
+        await using var db = rig.NewDb();
+        db.GuestCheckInSessions.Add(new GuestCheckInSession
+        {
+            OrgId = booking.OrgId,
+            BookingId = booking.Id,
+            TokenHash = new string('a', 64),
+            ExpiresAt = RoutineRig.Now.UtcDateTime.AddDays(3),
+            Language = language,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>The subject of the invitation in <paramref name="language"/>, from the same template: what the guest is expected to read.</summary>
+    private static string InvitationSubject(string language)
+    {
+        var content = EmailTemplates.ReviewInvite(
+            EmailTemplates.ReviewInviteCulture(language),
+            "Mario",
+            "Casa",
+            CheckOut.AddDays(-3),
+            CheckOut,
+            "https://example.com/review",
+            CheckOut);
+        return content.Subject;
+    }
+
     private static Task SeedRequestRoutineAsync(RoutineRig rig, bool testMode = false) =>
         rig.SeedRoutineAsync(OrgA, RoutineEventType.AfterCheckout, RequestReviewActions, testMode: testMode, eventConfig: OneDayAfter);
 
@@ -801,5 +830,50 @@ public class ReviewRequestRoutineTests
         await using var read = rig.NewDb();
         var todo = await read.InternalActivities.AsNoTracking().SingleAsync(a => a.ActivityType == nameof(ActivityType.RoutineTask));
         Assert.Equal(booking.Id, todo.EntityId);
+    }
+
+    // ─── The language of the invitation: the guest's, chosen as the message with the check-in link does ───
+
+    /// <summary>
+    /// The invitation is written in the language of the guest: the one chosen on the check-in page, else the one of the country of the guest, else Italian. It exists in Italian and
+    /// English, so every other language reads English. The English one, the choice over the country and the fallback to Italian are each proved here.
+    /// </summary>
+    [Theory]
+    [InlineData("en", "", "en")]
+    [InlineData(null, "GB", "en")]
+    [InlineData("it", "GB", "it")]
+    [InlineData("de", "", "en")]
+    [InlineData(null, "DE", "en")]
+    [InlineData(null, "", "it")]
+    public async Task RequestReview_IsWrittenInTheLanguageOfTheGuest_AndInItalianWhenNoneIsKnown(string? chosen, string country, string written)
+    {
+        var rig = new RoutineRig();
+        await SeedOrgAsync(rig, OrgA, "org-a");
+        var (booking, guest) = await SeedStayAsync(rig, OrgA);
+        await ChangeGuestAsync(rig, guest.Id, g => g.Country = country);
+        if (chosen is not null)
+            await SeedCheckInSessionAsync(rig, booking, chosen);
+        await SeedRequestRoutineAsync(rig);
+
+        await TriggerAsync(rig, booking);
+
+        Assert.Equal(RoutineActionOutcomes.Done, SingleActionOf(Assert.Single(await rig.ExecutionsAsync())).Outcome);
+        Assert.NotEqual(InvitationSubject("it"), InvitationSubject("en"));
+        Assert.Equal(InvitationSubject(written), Assert.Single(rig.Emails.Snapshot()).Content.Subject);
+    }
+
+    /// <summary>The core is the same, so the host's button writes in the language of the guest too (with the answers and the order of the checks it always had).</summary>
+    [Fact]
+    public async Task HostButton_WritesInTheLanguageOfTheGuest_Too()
+    {
+        var rig = new RoutineRig();
+        await SeedOrgAsync(rig, OrgA, "org-a");
+        var (booking, guest) = await SeedStayAsync(rig, OrgA);
+        await ChangeGuestAsync(rig, guest.Id, g => g.Country = "GB");
+
+        await using (var db = rig.NewDb())
+            await rig.Reviews(db).SendInviteAsync(booking.Id, "auth0|host");
+
+        Assert.Equal(InvitationSubject("en"), Assert.Single(rig.Emails.Snapshot()).Content.Subject);
     }
 }

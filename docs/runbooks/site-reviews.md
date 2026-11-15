@@ -15,8 +15,8 @@ stay is over (the Europe/Rome day after the check-out day or later) and the revi
 
 ## The invitation: when the host asks, by hand or through a routine
 
-`POST api/bookings/{id}/review-invite` (`booking.write`, scope of the property) sends **one email in Italian** to the guest with a signed
-link `/book/{orgSlug}/booking/{id}/review?token=…`. Nothing else writes to the guest but this call and the **routine action `RequestReview`**
+`POST api/bookings/{id}/review-invite` (`booking.write`, scope of the property) sends **one email** to the guest, in the guest's language (§ The language of the
+email), with a signed link `/book/{orgSlug}/booking/{id}/review?token=…`. Nothing else writes to the guest but this call and the **routine action `RequestReview`**
 (E26/F01/US01/T01): no job and no reminder of its own. Once per booking, whoever asks (`ReviewInvites.BookingId` is unique, written before the
 email is queued; if the email cannot be queued the mark is taken back and the host may ask again). `GET` on the same route tells the host whether
 it can ask (`canInvite`, `reason`), when it asked and whether the guest already reviewed.
@@ -40,8 +40,16 @@ ends `skipped` with a code and the execution is a success, so nothing is tried a
 | `already_reviewed` / `already_invited` | the guest reviewed already / the invitation was sent already, by hand or by a routine |
 
 Two failures are not skips: `routine_review_needs_booking` (the event names no booking of the org) and `review_invite_not_sent` (the queue did not
-take the email; the mark is taken back). In test mode the action is `simulated` and sends nothing. The email is in the default language (Italian), like
-the one of the button: no language is stored on the booking.
+take the email; the mark is taken back). In test mode the action is `simulated` and sends nothing.
+
+### The language of the email
+
+The one core writes the email for the button and for the routine alike, in the language of the guest, chosen as the message with the check-in link is
+(`CheckInLinkDeliveryService`): the language the guest chose on the check-in page (the latest session of the booking that holds one), else the language of
+the country on the guest (`GuestLanguages.OfCountry`), else Italian. No language is stored on the booking itself. The invitation exists in Italian and
+English only (`EmailTexts.resx` and `.en.resx`: German, French and Spanish hold the guest check-in emails and nothing else): a guest who speaks Italian, or whose
+language is not known, reads Italian, and every other language reads English (`EmailTemplates.ReviewInviteCulture`, the choice of the access code email). The
+answers of the button and the order of its checks are the ones it always had.
 
 The token (`ReviewLinkTokens`) is made by ASP.NET Core Data Protection, purpose `Casazen.Reviews.InviteLink.v1`, time limited to the end
 of the window, and carries only the booking id. Nothing is stored for it. A link that is not ours, is expired or is for another booking
