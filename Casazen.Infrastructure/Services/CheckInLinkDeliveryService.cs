@@ -585,7 +585,13 @@ public sealed class CheckInLinkDeliveryService(
                         .FirstOrDefaultAsync(ct);
 
                 // Recovered: the copy of the conversations read the listing without error since the last attempt.
-                return state is { LastError: null } && (delivery.LastAttemptAt is not { } at || state.UpdatedAt > at);
+                var recovered = state is { LastError: null } && (delivery.LastAttemptAt is not { } at || state.UpdatedAt > at);
+                if (!recovered)
+                    return false;
+
+                // A wait that came from the send itself (the channel manager refused an automatic message of the booking) is not one the copy can lift: it reads the listing fine and moves
+                // its state at every pass, so a pass proves nothing. The send is tried again at most once a day, never one refused message an hour in the thread of the guest.
+                return sinceLastAttempt >= CheckInLinkDeliveryRules.RefusedSendRetryInterval || !await SendWasRefusedAsync(booking, ct);
 
             case CheckInLinkDeliveryState.WaitingThread:
                 return ChatOn && await ReservationThreadAsync(booking, ct) is not null;
@@ -607,6 +613,22 @@ public sealed class CheckInLinkDeliveryService(
             default:
                 return false;
         }
+    }
+
+    /// <summary>
+    /// The channel manager refused an automatic message written in a conversation of the booking (the state <see cref="OtaMessageDeliveryState.Error"/>): the permission the link waits for is
+    /// the one the send was refused for, which the copy of the conversations does not read.
+    /// </summary>
+    private async Task<bool> SendWasRefusedAsync(Booking booking, CancellationToken ct)
+    {
+        return await db.OtaMessages
+            .AsNoTracking()
+            .AnyAsync(
+                m => m.OrgId == booking.OrgId
+                     && m.Origin == MessageOrigin.Automation
+                     && m.DeliveryState == OtaMessageDeliveryState.Error
+                     && db.OtaMessageThreads.Any(t => t.Id == m.ThreadId && t.OrgId == booking.OrgId && t.BookingId == booking.Id),
+                ct);
     }
 
     /// <summary>

@@ -343,9 +343,20 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         var refused = await _db.OtaMessages.AsNoTracking().SingleAsync(m => m.Origin == MessageOrigin.Automation);
         Assert.Equal(OtaMessageDeliveryState.Error, refused.DeliveryState);
 
-        // The listing is read without error since the refusal (the sync state is new): due, and the second key is used.
-        await SetSyncStateAsync(null, _clock.GetUtcNow().UtcDateTime.AddHours(1));
-        _clock.Advance(TimeSpan.FromHours(2));
+        // The listing reads fine and the copy moves its state at every pass, but the SEND was refused: that proves nothing, so the send is not tried again within the day (not one refused
+        // message an hour in the thread of the guest).
+        for (var hour = 1; hour <= 23; hour++)
+        {
+            _clock.Advance(TimeSpan.FromHours(1));
+            await SetSyncStateAsync(null, _clock.GetUtcNow().UtcDateTime);
+            Assert.Equal(0, await rig.Service.RetryWaitingAsync(IssueNothing));
+        }
+
+        Assert.Equal(1, calls);
+
+        // A day after the refusal it is tried again, and the second key is used.
+        _clock.Advance(TimeSpan.FromHours(1));
+        await SetSyncStateAsync(null, _clock.GetUtcNow().UtcDateTime);
         Assert.Equal(1, await rig.Service.RetryWaitingAsync(IssueNothing));
 
         Assert.Equal(CheckInLinkDeliveryState.Sent, (await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync()).State);

@@ -109,6 +109,12 @@ public static class CheckInLinkDeliveryRules
     /// <summary>The least time between two reads of the contact of a guest after a refusal: no retry storm against a channel manager that says no (T02).</summary>
     public static readonly TimeSpan ContactRetryInterval = TimeSpan.FromDays(1);
 
+    /// <summary>
+    /// The least time between two sends to the chat of a booking whose last send the channel manager refused for the chat permission: the copy of the conversations reads the listing fine and
+    /// moves its state at every pass, so it says nothing about the permission to send. One refused message a day, never one an hour (each leaves a message in the state error in the thread).
+    /// </summary>
+    public static readonly TimeSpan RefusedSendRetryInterval = TimeSpan.FromDays(1);
+
     /// <summary>The attempts of an automatic delivery that failed for a reason worth a retry (a limit, an outage), the first one included.</summary>
     public const int MaxAttempts = 3;
 

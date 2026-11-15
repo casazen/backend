@@ -166,7 +166,8 @@ property, only while the delivery waits or failed and the link can still be open
 
 **The retry.** `checkin-link-delivery-retry` runs at minute 30 of every hour, only while the connector and a flag are on. A row is tried again when the thing it waits for may
 have changed, at most once an hour: `WaitingChatPermission` when the copy of the conversations read the listing without error since the last attempt (the license probe of the sync
-runs hourly, § 4c); `WaitingThread` when the booking has its conversation; `WaitingStaticIps` and a refused contact a day after the last read; `Failed` with a limit or an outage up
+runs hourly, § 4c; a wait that came from a **refused send** (an automatic message of the booking in the state `Error`) is not lifted by the copy, which moves its state at every pass: it is tried
+again at most once a day); `WaitingThread` when the booking has its conversation; `WaitingStaticIps` and a refused contact a day after the last read; `Failed` with a limit or an outage up
 to three attempts. A row made while the flags were off holds no token and nobody has its link: when a flag is turned on the pass issues a new link for it. A row ends when the guest
 completes the check-in, the booking is cancelled or no longer takes a check-in, the link expires, or the host generates or sends a link itself; its «To do» is closed with it.
 The reminder of the missing data leaves such a stay alone (a new link would replace the one the guest already has in the chat, or the one the host copies from its «To do»: an open row
