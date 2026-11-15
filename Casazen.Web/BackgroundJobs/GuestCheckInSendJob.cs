@@ -29,6 +29,9 @@ namespace Casazen.Web.BackgroundJobs;
 /// E23/F01/US01/T01, T02 (NF-122): a stay with no e-mail address (one from a portal) is handed to <see cref="ICheckInLinkDeliveryService"/>, which tries the portal chat and the
 /// contact of the guest where their flags are on and always records where the link stands; the first stage then queues no e-mail for a link the service took over, and the
 /// reminder leaves such a stay alone (a new link would replace the one the guest already has).
+/// E23/F02/US01/T01 (NF-122): a stay confirmed while its check-in window was already open got its link in the confirmation e-mail (<see cref="BookingNotifier"/>, the same session and
+/// lifetime as here): that session is a usable link, so the first stage skips the stay and queues no second e-mail; a stay confirmed beyond the window is still sent its link here, on
+/// the day the window opens.
 /// </remarks>
 public class GuestCheckInSendJob(
     AppDbContext db,

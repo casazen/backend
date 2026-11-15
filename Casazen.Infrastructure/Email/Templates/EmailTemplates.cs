@@ -576,7 +576,9 @@ public static partial class EmailTemplates
     /// (BK-03), what was paid or how it will be paid, link to "Le mie prenotazioni" and the host's public contact.
     /// One template for every way a booking becomes confirmed (<paramref name="kind"/>): it replaces the BK-04 late
     /// payment and the BK-06 "request accepted" emails. <paramref name="paidEur"/> is what Stripe collected;
-    /// <paramref name="deferredChargeDate"/> the day of the deferred charge, when known.
+    /// <paramref name="deferredChargeDate"/> the day of the deferred charge, when known. <paramref name="checkIn"/> is what the email
+    /// says about the online check-in (E23/F02/US01/T01): the link itself when the check-in is already open, the day the link arrives, or
+    /// where to request it; <c>null</c> says nothing about it (the check-in is not needed or already done).
     /// </summary>
     public static EmailContent GuestBookingConfirmed(
         CultureInfo culture,
@@ -586,7 +588,8 @@ public static partial class EmailTemplates
         decimal paidEur,
         DateTime? deferredChargeDate,
         BookingHostContact hostContact,
-        string myBookingsUrl)
+        string myBookingsUrl,
+        BookingCheckInNotice? checkIn = null)
     {
         ArgumentNullException.ThrowIfNull(booking);
         var builder = new EmailHtmlBuilder(culture)
@@ -617,6 +620,7 @@ public static partial class EmailTemplates
                 throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown confirmation kind.");
         }
 
+        CheckInBlock(builder, checkIn);
         builder
             .Button("Booking_MyBookingsCta", myBookingsUrl)
             .LinkFallback("Booking_LinkFallback", myBookingsUrl)
@@ -626,6 +630,34 @@ public static partial class EmailTemplates
             builder.Muted("GuestBookingConfirmed_NotFiscal");
 
         return builder.Build("GuestBookingConfirmed_Subject", booking.PropertyName);
+    }
+
+    /// <summary>
+    /// What the confirmation says about the online check-in (E23/F02/US01/T01): with the link, a button «Fai il check-in online», the usual fallback link and until when the link is valid;
+    /// without it, the day the link arrives by email (the day is formatted like the other dates of the email) and where to request it, or only where to request it. Nothing when there
+    /// is no notice. The link is an absolute http(s) URL: the builder refuses any other, and encodes it.
+    /// </summary>
+    private static void CheckInBlock(EmailHtmlBuilder builder, BookingCheckInNotice? checkIn)
+    {
+        if (checkIn is null)
+            return;
+
+        if (checkIn.LinkUrl is { } link)
+        {
+            builder
+                .Paragraph("GuestBookingConfirmed_CheckInOpen")
+                .Button("GuestBookingConfirmed_CheckInCta", link)
+                .LinkFallback("Booking_LinkFallback", link);
+            if (checkIn.LinkExpiresAtUtc is { } expiresAtUtc)
+                builder.Muted("GuestCheckInLink_Validity", builder.FormatInstant(expiresAtUtc));
+
+            return;
+        }
+
+        if (checkIn.LinkArrivesOn is { } day)
+            builder.Paragraph("GuestBookingConfirmed_CheckInOn", day);
+        else
+            builder.Paragraph("GuestBookingConfirmed_CheckInRequest");
     }
 
     /// <summary>
@@ -1040,4 +1072,38 @@ public sealed record BookingEmailSummary(
 public sealed record BookingHostContact(string? Name, string? Email)
 {
     public static BookingHostContact None { get; } = new(null, null);
+}
+
+/// <summary>
+/// What the e-mail that confirms a direct booking says about the online check-in (E23/F02/US01/T01, <see cref="EmailTemplates.GuestBookingConfirmed"/>). Three ways, one factory
+/// each: <see cref="WithLink"/> (the check-in is already open and the link is issued: the e-mail carries it), <see cref="OnDay"/> (the link arrives by e-mail on a day) and
+/// <see cref="RequestOnly"/> (the link can be requested in «Le mie prenotazioni» and no day is promised). No notice at all (<c>null</c>) says nothing about the link.
+/// </summary>
+public sealed record BookingCheckInNotice
+{
+    private BookingCheckInNotice()
+    {
+    }
+
+    /// <summary>The check-in link, an absolute URL, when the e-mail carries it.</summary>
+    public string? LinkUrl { get; private init; }
+
+    /// <summary>The end of validity of <see cref="LinkUrl"/> (UTC), shown in Italian time.</summary>
+    public DateTime? LinkExpiresAtUtc { get; private init; }
+
+    /// <summary>The day the link arrives by e-mail (a date, midnight UTC of the Europe/Rome day: it is formatted like the other dates of the e-mail).</summary>
+    public DateTime? LinkArrivesOn { get; private init; }
+
+    /// <summary>The check-in is open and the e-mail carries the link (a button, the fallback link and its validity).</summary>
+    public static BookingCheckInNotice WithLink(string linkUrl, DateTime expiresAtUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(linkUrl);
+        return new BookingCheckInNotice { LinkUrl = linkUrl, LinkExpiresAtUtc = expiresAtUtc };
+    }
+
+    /// <summary>The link arrives by e-mail on <paramref name="day"/>, and from then it can also be requested in «Le mie prenotazioni».</summary>
+    public static BookingCheckInNotice OnDay(DateTime day) => new() { LinkArrivesOn = day };
+
+    /// <summary>No day is promised: the link can be requested in «Le mie prenotazioni».</summary>
+    public static BookingCheckInNotice RequestOnly { get; } = new();
 }

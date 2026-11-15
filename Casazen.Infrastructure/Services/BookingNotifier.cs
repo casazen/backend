@@ -1,10 +1,13 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -22,13 +25,24 @@ namespace Casazen.Infrastructure.Services;
 /// Italian (<see cref="EmailTemplates.DefaultCulture"/>), the English texts are ready. The emails of the "pay at the
 /// property" requests are <see cref="OnSiteRequestNotifier"/>'s, the refund confirmations
 /// <see cref="PaymentRefundService"/>'s.
+/// <para><b>The online check-in in the confirmation (E23/F02/US01/T01, NF-122, NF-63).</b> The checkout tells the guest that the link of the online check-in arrives at their address,
+/// so the confirmation says where it stands, by the rule of the guest page (<see cref="GuestCheckInAccessRules"/>: the same Europe/Rome calendar day and the same
+/// <c>CheckIn:SendWindowDays</c> as <c>GuestCheckInSendJob</c>). The check-in is open: the link is issued as the job issues it (<see cref="IGuestCheckInService.IssueLinkAsync"/>: one
+/// session, the lifetime of <c>CheckIn:SessionLifetimeDays</c>) and the e-mail carries it; the confirmation is the delivery, so no second e-mail is queued, the delivery record says «sent by
+/// e-mail» (<see cref="ICheckInLinkDeliveryService.RecordSentByEmailAsync"/>) and the next run of the job finds a usable link and sends nothing. Not open yet: the e-mail says the day the job
+/// sends the link. Not needed, or done: it says nothing. A link that cannot be issued leaves the confirmation as it is, with the day of the next run of the job, which retries as it does
+/// today; a confirmation that cannot be queued takes the link back (its session expires), so the job sends it. No token, address or other personal data in a log.</para>
 /// </remarks>
 public sealed class BookingNotifier(
     AppDbContext db,
     IEmailQueue emailQueue,
     PublicSiteLinks links,
     IPushNotificationService pushNotifications,
-    ILogger<BookingNotifier> logger)
+    ILogger<BookingNotifier> logger,
+    IGuestCheckInService? checkIn = null,
+    ICheckInLinkDeliveryService? linkDeliveries = null,
+    IOptions<GuestCheckInOptions>? checkInOptions = null,
+    TimeProvider? timeProvider = null)
 {
     /// <summary>
     /// The booking has just become confirmed (<paramref name="kind"/>): confirmation to the guest and, unless the host
@@ -63,7 +77,10 @@ public sealed class BookingNotifier(
             return;
         }
 
-        Queue(bookingId, EmailTemplates.Names.GuestBookingConfirmed, data.GuestEmail, () =>
+        // E23/F02/US01/T01: what the confirmation says about the online check-in, with the link when the check-in is already open. Never throws.
+        var confirmationCheckIn = await PrepareCheckInAsync(data, cancellationToken);
+
+        var queued = Queue(bookingId, EmailTemplates.Names.GuestBookingConfirmed, data.GuestEmail, () =>
             EmailTemplates.GuestBookingConfirmed(
                 EmailTemplates.DefaultCulture,
                 data.GuestFirstName,
@@ -72,11 +89,124 @@ public sealed class BookingNotifier(
                 data.PaidAmount,
                 data.FreeRefundDeadline,
                 data.HostContact,
-                links.GuestBookings(data.OrgSlug, data.Summary.BookingCode)));
+                links.GuestBookings(data.OrgSlug, data.Summary.BookingCode),
+                confirmationCheckIn?.Notice));
+
+        await FinishCheckInAsync(data, confirmationCheckIn, queued, cancellationToken);
 
         if (kind != BookingConfirmationKind.OnSite)
             AlertHostOfNewBooking(data, kind);
     }
+
+    /// <summary>
+    /// What the confirmation of <paramref name="data"/> says about the online check-in, by the rule of the guest page: the check-in is open, so the link is issued and the e-mail carries
+    /// it (<see cref="ConfirmationCheckIn.Link"/>); not open yet, so the e-mail says the day the daily job sends the link; completed or not needed, so <c>null</c> (nothing is said). Also
+    /// <c>null</c> without the services of the check-in, without a public site to build a link on, for a guest with no address to write to, or when the state of the check-in cannot be
+    /// read (logged): the e-mail is then what it always was and the job does what it always does. Never throws.
+    /// </summary>
+    private async Task<ConfirmationCheckIn?> PrepareCheckInAsync(BookingEmailData data, CancellationToken cancellationToken)
+    {
+        // A link is not issued for an e-mail that cannot carry it: no public site to build it on, no address to send it to (an issued link, however unsent, stops the job from sending one).
+        if (checkIn is null || linkDeliveries is null || !links.IsConfigured || string.IsNullOrWhiteSpace(data.GuestEmail))
+            return null;
+
+        try
+        {
+            var clock = timeProvider ?? TimeProvider.System;
+            var today = clock.TodayInRomeAsDateOnly();
+            var windowDays = (checkInOptions?.Value ?? new GuestCheckInOptions()).SendWindowDays;
+            var access = await GuestCheckInAccessRules.ReadAsync(
+                db,
+                data.BookingId,
+                data.Status,
+                data.Summary.CheckInDate,
+                data.Summary.CheckOutDate,
+                today,
+                clock.GetUtcNow().UtcDateTime,
+                windowDays,
+                cancellationToken);
+
+            switch (access.Status)
+            {
+                case GuestCheckInAccessStatus.NotYetOpen when access.OpensOn is { } opensOn:
+                    return new ConfirmationCheckIn(BookingCheckInNotice.OnDay(DayOf(opensOn)), null);
+                case GuestCheckInAccessStatus.Open:
+                    return await IssueLinkAsync(data, today);
+                default:
+                    // Completed (the data or the communication were sent) or not applicable: nothing to say about a link.
+                    return null;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "The state of the online check-in of booking {BookingId} could not be read for its confirmation", data.BookingId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The check-in is open: issues the link the way the daily job does (one session, the same lifetime) and makes the notice that carries it. A link that cannot be issued is logged
+    /// with the booking only, and the notice is the day of the next run of the job, which issues it as it does today.
+    /// </summary>
+    private async Task<ConfirmationCheckIn> IssueLinkAsync(BookingEmailData data, DateOnly today)
+    {
+        try
+        {
+            var issued = await checkIn!.IssueLinkAsync(data.BookingId, data.OrgId);
+            return new ConfirmationCheckIn(BookingCheckInNotice.WithLink(links.GuestCheckIn(issued.Token), issued.ExpiresAt), issued);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "The check-in link of booking {BookingId} could not be issued for its confirmation", data.BookingId);
+            return new ConfirmationCheckIn(NextRunNotice(data, today), null);
+        }
+    }
+
+    /// <summary>
+    /// What to tell a guest whose link was not issued with the confirmation although the check-in is open: the daily job runs again the next day (Europe/Rome), so the link arrives then, as
+    /// long as the job still selects the stay that day (a confirmed stay that has not started, a checked-in one that is not over); otherwise no day is promised and the link can be requested.
+    /// </summary>
+    private static BookingCheckInNotice NextRunNotice(BookingEmailData data, DateOnly today)
+    {
+        var tomorrow = today.AddDays(1);
+        var stillSelected = data.Status == BookingStatus.CheckedIn
+            ? RomeCalendar.DateInRome(data.Summary.CheckOutDate) >= tomorrow
+            : RomeCalendar.DateInRome(data.Summary.CheckInDate) >= tomorrow;
+        return stillSelected ? BookingCheckInNotice.OnDay(DayOf(tomorrow)) : BookingCheckInNotice.RequestOnly;
+    }
+
+    /// <summary>A calendar day as a date value of the emails: midnight UTC of the day (the storage convention of the dates of a stay), written without any time zone conversion.</summary>
+    private static DateTime DayOf(DateOnly day) => day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+
+    /// <summary>
+    /// After the confirmation was handed to the queue. When it carries a link: queued, the confirmation is the delivery (the delivery record says «sent by e-mail», the session says the e-mail
+    /// was handed over) and the job sends nothing more; not queued (no provider, a queue that refused it), the link is taken back (its session expires) so that the job issues and sends one at
+    /// its next run. Never throws: a failure is logged with the booking only.
+    /// </summary>
+    private async Task FinishCheckInAsync(BookingEmailData data, ConfirmationCheckIn? confirmationCheckIn, bool queued, CancellationToken cancellationToken)
+    {
+        if (confirmationCheckIn?.Link is not { } issued || checkIn is null || linkDeliveries is null)
+            return;
+
+        try
+        {
+            if (queued)
+            {
+                await linkDeliveries.RecordSentByEmailAsync(data.BookingId, issued, cancellationToken);
+                return;
+            }
+
+            await checkIn.ExpireTokenAsync(issued.Token);
+            logger.LogWarning("Check-in link of booking {BookingId} taken back: its confirmation was not queued", data.BookingId);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "The check-in link of booking {BookingId} could not be settled after its confirmation", data.BookingId);
+        }
+    }
+
+    /// <summary>What the confirmation says about the online check-in and, when it carries the link, the link just issued (its raw token exists only here).</summary>
+    private sealed record ConfirmationCheckIn(BookingCheckInNotice Notice, IssuedCheckInLink? Link);
 
     /// <summary>
     /// A booking that arrived from a channel (the channel manager) is confirmed (E08/F06/US01/T02, NF-79): the push to the hosts'
@@ -386,18 +516,23 @@ public sealed class BookingNotifier(
             Queue(data.BookingId, template, to, render);
     }
 
-    private void Queue(Guid bookingId, string template, string? to, Func<EmailContent> render)
+    /// <summary>Renders the email and hands it to the queue; true when the queue took it. Never throws.</summary>
+    private bool Queue(Guid bookingId, string template, string? to, Func<EmailContent> render)
     {
         try
         {
-            if (!emailQueue.Enqueue(to, render(), template))
-                logger.LogWarning("Email {Template} for booking {BookingId} was not queued", template, bookingId);
+            if (emailQueue.Enqueue(to, render(), template))
+                return true;
+
+            logger.LogWarning("Email {Template} for booking {BookingId} was not queued", template, bookingId);
         }
         catch (Exception ex)
         {
             // E.g. App:PublicSiteBaseUrl missing (Development/Testing only): the booking change stays.
             logger.LogError(ex, "Email {Template} for booking {BookingId} could not be prepared", template, bookingId);
         }
+
+        return false;
     }
 
     /// <summary>
@@ -469,6 +604,7 @@ public sealed class BookingNotifier(
 
         return new BookingEmailData(
             row.Id,
+            row.OrgId,
             row.Status,
             row.GuestFirstName,
             row.GuestLastName,
@@ -484,6 +620,7 @@ public sealed class BookingNotifier(
 
     private sealed record BookingEmailData(
         Guid BookingId,
+        Guid OrgId,
         BookingStatus Status,
         string GuestFirstName,
         string GuestLastName,

@@ -179,47 +179,23 @@ public sealed class GuestBookingLookupService(
     /// before the arrival, none once the data were sent or the Alloggiati Web communication is done.
     /// </summary>
     /// <remarks>
-    /// Both reads are by the id of a booking the caller already proved to be the guest's, so they do not depend on the tenant of the
-    /// request: an anonymous request has none, a guest session has the org of the booking, and the signed-in guest of the mobile app
-    /// (<see cref="GuestAccountBookingService"/>) has its own host org or none, and must read the same rows.
+    /// Read by <see cref="GuestCheckInAccessRules"/> since E23/F02/US01/T01, the one place that also decides what the e-mail that confirms the booking says about the link
+    /// (<see cref="BookingNotifier"/>): by the id of a booking the caller already proved to be the guest's, so the reads do not depend on the tenant of the request: an anonymous
+    /// request has none, a guest session has the org of the booking, and the signed-in guest of the mobile app (<see cref="GuestAccountBookingService"/>) has its own host org or
+    /// none, and must read the same rows.
     /// </remarks>
     private async Task<GuestCheckInAccess> CheckInAccessAsync(Booking booking, CancellationToken cancellationToken)
     {
-        var today = _clock.TodayInRomeAsDateOnly();
-        var checkInDate = RomeCalendar.DateInRome(booking.CheckInDate);
-        var checkOutDate = RomeCalendar.DateInRome(booking.CheckOutDate);
-        if (booking.Status is not (BookingStatus.Confirmed or BookingStatus.CheckedIn) || checkOutDate < today)
-            return new GuestCheckInAccess(GuestCheckInAccessStatus.NotApplicable, null, null);
-
-        var sessions = await db.GuestCheckInSessions
-            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .AsNoTracking()
-            .Where(s => s.BookingId == booking.Id)
-            .Select(s => new { s.Status, s.SentAt, s.ExpiresAt })
-            .ToListAsync(cancellationToken);
-        var communicationSent = await db.AlloggiatiWebReports
-            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .AnyAsync(
-                r => r.BookingId == booking.Id &&
-                     (r.Status == AlloggiatiWebStatus.Inviato || r.Status == AlloggiatiWebStatus.InviatoManualmente),
-                cancellationToken);
-        if (communicationSent ||
-            sessions.Any(s => s.Status is GuestCheckInSessionStatus.Completo or GuestCheckInSessionStatus.AlloggiatiInviato))
-        {
-            return new GuestCheckInAccess(GuestCheckInAccessStatus.Completed, null, null);
-        }
-
-        var opensOn = checkInDate.AddDays(-configuration.GetValue("CheckIn:SendWindowDays", 3));
-        if (booking.Status == BookingStatus.Confirmed && today < opensOn)
-            return new GuestCheckInAccess(GuestCheckInAccessStatus.NotYetOpen, opensOn, null);
-
-        var now = _clock.GetUtcNow().UtcDateTime;
-        var linkSentAt = sessions
-            .Where(s =>
-                (s.Status is GuestCheckInSessionStatus.Inviato or GuestCheckInSessionStatus.InCompilazione) &&
-                s.ExpiresAt > now)
-            .Max(s => s.SentAt);
-        return new GuestCheckInAccess(GuestCheckInAccessStatus.Open, null, linkSentAt);
+        return await GuestCheckInAccessRules.ReadAsync(
+            db,
+            booking.Id,
+            booking.Status,
+            booking.CheckInDate,
+            booking.CheckOutDate,
+            _clock.TodayInRomeAsDateOnly(),
+            _clock.GetUtcNow().UtcDateTime,
+            configuration.GetValue("CheckIn:SendWindowDays", 3),
+            cancellationToken);
     }
 
     private static NotFoundException NotFound() =>
