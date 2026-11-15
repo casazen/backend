@@ -29,8 +29,10 @@ namespace Casazen.Tests.Integration.Acceptance;
 /// payout. Every amount is asserted to the cent. The changes of a booking (B12: a date change, a cancellation with a refund, a no-show) produce their corrections.
 /// </summary>
 /// <remarks>
-/// The display name of each test lists the steps of the scenario it covers (A, B, C of <c>pilota-flusso-completo-2026-11-14.md</c>). The main path runs on the in-memory
-/// database and, as a <see cref="PostgresFactAttribute"/> twin, on PostgreSQL in CI.
+/// The trait <c>Scenario</c> of each test lists the steps of the scenario it covers (A, B, C of <c>pilota-flusso-completo-2026-11-14.md</c>; <c>--filter Scenario~C4</c>
+/// selects them). No test has a display name of its own: the planner of the test shards of the CI (<c>scripts/ci/test_shards.py</c>) reads the default name,
+/// <c>Namespace.Class.Method</c>, to place each test in its class. The main path runs on the in-memory database and, as a <see cref="PostgresFactAttribute"/> twin,
+/// on PostgreSQL in CI.
 /// </remarks>
 public class SwissAgencyScenarioTests
 {
@@ -45,7 +47,9 @@ public class SwissAgencyScenarioTests
 
     // ---------------------------------------------------------------- the four origins
 
-    [Fact(DisplayName = "Origine 1, Booking.com tramite Octorate (A1 A2 B7 B8a B8b C1 C2-V1 C3 C4 C6 C7 C8): documento CHF, rendiconto, fattura PM, pacchetto e bonifico")]
+    // Origine 1, Booking.com tramite Octorate: documento CHF, rendiconto, fattura PM, pacchetto e bonifico.
+    [Fact]
+    [Trait("Scenario", "A1 A2 B7 B8a B8b C1 C2-V1 C3 C4 C6 C7 C8")]
     public async Task Origin_BookingCom_ThroughOctorate_FromTheReservationToThePackageAndTheWire()
     {
         await using var world = await World.CreateAsync();
@@ -109,7 +113,9 @@ public class SwissAgencyScenarioTests
         await AssertPayoutAndWireAsync(world, month.Published, 198.73m);
     }
 
-    [Fact(DisplayName = "Origine 2, sito dell'agenzia tramite il canale diretto di Octorate (B7 B8a B8b C1 C3 C4 C6 C7 C8): incasso registrato a mano, documento CHF, rendiconto, fattura PM, pacchetto e bonifico")]
+    // Origine 2, sito dell'agenzia tramite il canale diretto di Octorate: incasso registrato a mano, documento CHF, rendiconto, fattura PM, pacchetto e bonifico.
+    [Fact]
+    [Trait("Scenario", "B7 B8a B8b C1 C3 C4 C6 C7 C8")]
     public async Task Origin_AgencySite_ThroughTheDirectChannel_PaidOutsideCasaZen_FromTheReservationToThePackageAndTheWire()
     {
         await using var world = await World.CreateAsync();
@@ -163,7 +169,9 @@ public class SwissAgencyScenarioTests
         await AssertPayoutAndWireAsync(world, month.Published, 219.20m);
     }
 
-    [Fact(DisplayName = "Origine 3, sito CasaZen pagato con Stripe (B7 B8a B8b C1 C3 C4 C6 C7 C8): commissione Stripe a carico dell'agenzia, documento CHF, rendiconto, fattura PM, pacchetto e bonifico")]
+    // Origine 3, sito CasaZen pagato con Stripe: commissione Stripe a carico dell'agenzia, documento CHF, rendiconto, fattura PM, pacchetto e bonifico.
+    [Fact]
+    [Trait("Scenario", "B7 B8a B8b C1 C3 C4 C6 C7 C8")]
     public async Task Origin_CasaZenSite_PaidWithStripe_FromTheCheckoutToThePackageAndTheWire()
     {
         await using var world = await World.CreateAsync();
@@ -213,7 +221,9 @@ public class SwissAgencyScenarioTests
         await AssertPayoutAndWireAsync(world, month.Published, 242.72m);
     }
 
-    [Fact(DisplayName = "Origine 4, prenotazione inserita a mano (B7 B8a B8b C1 C3 C4 C6 C7 C8): pagamento in contanti registrato, documento CHF, rendiconto, fattura PM, pacchetto e bonifico")]
+    // Origine 4, prenotazione inserita a mano: pagamento in contanti registrato, documento CHF, rendiconto, fattura PM, pacchetto e bonifico.
+    [Fact]
+    [Trait("Scenario", "B7 B8a B8b C1 C3 C4 C6 C7 C8")]
     public async Task Origin_Manual_PaidInCash_FromTheBookingToThePackageAndTheWire()
     {
         await using var world = await World.CreateAsync();
@@ -257,14 +267,18 @@ public class SwissAgencyScenarioTests
 
     // ---------------------------------------------------------------- the main path, in memory and on PostgreSQL
 
-    [Fact(DisplayName = "Percorso principale (A1 A2 B7 B8a B8b C1 C2 C3 C4 C6 C7 C8): le quattro origini nello stesso mese, fino al pacchetto e al bonifico")]
+    // Percorso principale: le quattro origini nello stesso mese, fino al pacchetto e al bonifico.
+    [Fact]
+    [Trait("Scenario", "A1 A2 B7 B8a B8b C1 C2 C3 C4 C6 C7 C8")]
     public async Task MainPath_TheFourOriginsInOneMonth_UpToThePackageAndTheWire()
     {
         await using var world = await World.CreateAsync();
         await RunTheMainPathAsync(world);
     }
 
-    [PostgresFact(DisplayName = "Percorso principale su PostgreSQL (A1 A2 B7 B8a B8b C1 C2 C3 C4 C6 C7 C8): le quattro origini nello stesso mese, fino al pacchetto e al bonifico")]
+    // Percorso principale su PostgreSQL: le quattro origini nello stesso mese, fino al pacchetto e al bonifico.
+    [PostgresFact]
+    [Trait("Scenario", "A1 A2 B7 B8a B8b C1 C2 C3 C4 C6 C7 C8")]
     public async Task MainPath_TheFourOriginsInOneMonth_UpToThePackageAndTheWire_Postgres()
     {
         await using var database = await PostgresTestDatabase.CreateMigratedAsync("acceptance");
@@ -377,7 +391,10 @@ public class SwissAgencyScenarioTests
 
     // ---------------------------------------------------------------- the variants
 
-    [Fact(DisplayName = "Variante V2 (C2 C4 C8, ⚖ I10 I11): l'account Booking.com dell'appartamento e' dell'agenzia: commissione dalla regola del canale, riaddebito nella fattura PM, informativa per l'imposta sull'acquisto")]
+    // Variante V2 (⚖ I10 I11): l'account Booking.com dell'appartamento e' dell'agenzia: commissione dalla regola del canale, riaddebito nella fattura PM,
+    // informativa per l'imposta sull'acquisto, e il portale del proprietario letto come lo legge il proprietario.
+    [Fact]
+    [Trait("Scenario", "C2 C4 C8")]
     public async Task Variant_V2_TheAgencyHoldsTheBookingAccount_RechargeOnThePmInvoice_AndPurchaseTaxInformation()
     {
         await using var world = await World.CreateAsync(agencyHoldsTheBookingAccount: true);
@@ -432,7 +449,10 @@ public class SwissAgencyScenarioTests
             portalCommissionRow: "Booking.com;67,50;CHF");
     }
 
-    [Fact(DisplayName = "Variante V2 senza riaddebito (C2 C4, ⚖ I10 I11): l'account Booking.com e' dell'agenzia che non riaddebita le commissioni: nessun riaddebito nella fattura PM e il rendiconto non cita la fattura per la commissione")]
+    // Variante V2 senza riaddebito (⚖ I10 I11): l'account Booking.com e' dell'agenzia che non riaddebita le commissioni: nessun riaddebito nella fattura PM e il
+    // rendiconto non cita la fattura per la commissione.
+    [Fact]
+    [Trait("Scenario", "C2 C4")]
     public async Task Variant_V2_WithoutTheRecharge_NoRechargeOnThePmInvoice_AndTheStatementNeverNamesItForTheCommission()
     {
         await using var world = await World.CreateAsync(agencyHoldsTheBookingAccount: true, rechargePortalCommissions: false);
@@ -464,7 +484,10 @@ public class SwissAgencyScenarioTests
         Assert.False(Assert.Single(detail.Sections.Single(s => s.Section == "channelFees").Lines).ChannelFeeRechargedByAgency);
     }
 
-    [Fact(DisplayName = "Variante del portale che incassa la tassa (B7 B8a B8b C1 C3 C4 C7, ⚖ C4 C5): prenotazione Airbnb tramite Octorate, nessuna riga della tassa di Ticino nel documento e nessuna nel riquadro del rendiconto")]
+    // Variante del portale che incassa la tassa (⚖ C4 C5): prenotazione Airbnb tramite Octorate, nessuna riga della tassa di Ticino nel documento e nessuna nel
+    // riquadro del rendiconto.
+    [Fact]
+    [Trait("Scenario", "B7 B8a B8b C1 C3 C4 C7")]
     public async Task Variant_ThePortalCollectsTheTouristTax_Airbnb_NoTaxLineOnTheDocument_NorInTheStatementBox()
     {
         await using var world = await World.CreateAsync();
@@ -509,7 +532,9 @@ public class SwissAgencyScenarioTests
         Assert.Empty((await world.AgencySummaryAsync(October)).TouristTax.Switzerland);
     }
 
-    [Fact(DisplayName = "QR-fattura solo con un importo dovuto (C4): un mese con il solo riaddebito di una riparazione, la fattura PM chiede il pagamento con la QR-fattura")]
+    // QR-fattura solo con un importo dovuto: un mese con il solo riaddebito di una riparazione, la fattura PM chiede il pagamento con la QR-fattura.
+    [Fact]
+    [Trait("Scenario", "C4")]
     public async Task QrBill_OnlyWhenTheOwnerOwesTheAgency()
     {
         await using var world = await World.CreateAsync();
@@ -542,7 +567,9 @@ public class SwissAgencyScenarioTests
 
     // ---------------------------------------------------------------- the changes of a booking (B12)
 
-    [Fact(DisplayName = "B12 cambio date: l'ospite resta due notti in piu', nota di credito dell'intero documento e nuovo documento emessi subito, rendiconto del soggiorno nuovo")]
+    // B12 cambio date: l'ospite resta due notti in piu', nota di credito dell'intero documento e nuovo documento emessi subito, rendiconto del soggiorno nuovo.
+    [Fact]
+    [Trait("Scenario", "B12")]
     public async Task Change_DateChange_FullCreditNoteAndNewDocument_AndTheStatementOfTheNewStay()
     {
         await using var world = await World.CreateAsync();
@@ -606,7 +633,9 @@ public class SwissAgencyScenarioTests
         Assert.Equal(new[] { 200.00m, 300.00m }, revenue);
     }
 
-    [Fact(DisplayName = "B12 cancellazione con rimborso: rimborso Stripe dell'intero pagamento, nota di credito dell'intero documento emessa subito, nessun ricavo e nessun forfait nel libro")]
+    // B12 cancellazione con rimborso: rimborso Stripe dell'intero pagamento, nota di credito dell'intero documento emessa subito, nessun ricavo e nessun forfait.
+    [Fact]
+    [Trait("Scenario", "B12")]
     public async Task Change_CancellationWithRefund_FullCreditNote_AndNothingInTheLedger()
     {
         await using var world = await World.CreateAsync();
@@ -643,7 +672,9 @@ public class SwissAgencyScenarioTests
         Assert.Empty(await world.LedgerOfAsync(2026, 10));
     }
 
-    [Fact(DisplayName = "B12 no-show: nota di credito della differenza fra il documento e l'acconto trattenuto, IVA in proporzione; nel libro solo l'acconto, senza forfait")]
+    // B12 no-show: nota di credito della differenza fra il documento e l'acconto trattenuto, IVA in proporzione; nel libro solo l'acconto, senza forfait.
+    [Fact]
+    [Trait("Scenario", "B12")]
     public async Task Change_NoShow_CreditNoteOfTheDifference_AndOnlyTheDepositInTheLedger()
     {
         await using var world = await World.CreateAsync();
@@ -695,7 +726,9 @@ public class SwissAgencyScenarioTests
 
     // ---------------------------------------------------------------- the official schema of the wire file
 
-    [SwissWireSchemaFact(DisplayName = "Bonifico (C6): il file pain.001.001.09.ch.03 del pagamento al proprietario e' valido per lo schema ufficiale svizzero")]
+    // Bonifico: il file pain.001.001.09.ch.03 del pagamento al proprietario e' valido per lo schema ufficiale svizzero.
+    [SwissWireSchemaFact]
+    [Trait("Scenario", "C6")]
     public async Task Wire_ThePayoutFile_ValidatesAgainstTheOfficialSwissSchema()
     {
         await using var world = await World.CreateAsync();
