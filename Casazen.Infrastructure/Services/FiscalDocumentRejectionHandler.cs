@@ -78,7 +78,7 @@ public sealed class FiscalDocumentRejectionHandler(
         var document = await db.FiscalDocuments
             .AsNoTracking()
             .Where(d => d.Id == documentId)
-            .Select(d => new { d.OrgId, d.PropertyId, d.BookingId, d.Source, d.Status, d.SdiStatus })
+            .Select(d => new { d.OrgId, d.PropertyId, d.BookingId, d.Source, d.Status, d.SdiStatus, d.Purpose })
             .FirstOrDefaultAsync(ct);
         if (document is null || document.Source != FiscalDocumentSource.CasaZen)
         {
@@ -92,8 +92,11 @@ public sealed class FiscalDocumentRejectionHandler(
             return;
         }
 
-        // The events are not delivered in order: an invoice credited since (an owner invoice) had its closing event delivered before this one, so an item raised now would never close.
-        if (await db.FiscalDocuments.AsNoTracking().AnyAsync(d => d.CreditedDocumentId == documentId && d.Status != FiscalDocumentStatus.Discarded, ct))
+        // The events are not delivered in order: an owner invoice credited since (its credit note issued, the way an owner invoice is corrected) had its closing event delivered before this
+        // one, so an item raised now would never close. A guest invoice is never credited once rejected: one that has a credit note issued before (while it was with the SDI) or only the
+        // draft of one still gets its item, since its correction is what the host has to see to.
+        if (document.Purpose == FiscalDocumentPurpose.OwnerInvoice
+            && await db.FiscalDocuments.AsNoTracking().AnyAsync(d => d.CreditedDocumentId == documentId && d.Status == FiscalDocumentStatus.Issued, ct))
         {
             logger.LogInformation("Event {EventId}: fiscal document {DocumentId} was credited since: no «To do» raised", domainEvent.Id, documentId);
             return;

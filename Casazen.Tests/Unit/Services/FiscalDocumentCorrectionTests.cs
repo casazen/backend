@@ -276,11 +276,12 @@ public class FiscalDocumentCorrectionTests
         Assert.Equal(told, pushes.Count);
         Assert.Contains(await db.InternalActivities.AsNoTracking().Where(a => a.EntityId == withoutBooking.Id).ToListAsync(), a => a.CompletedAt is null);
 
-        // The events are not delivered in order: an invoice credited since had its closing event delivered first, so the rejection raises no item that nothing would ever close.
+        // The events are not delivered in order: an owner invoice credited since had its closing event delivered first, so the rejection raises no item that nothing would ever close.
         var credited = new FiscalDocument
         {
             OrgId = OrgId,
             PropertyId = propertyId,
+            Purpose = FiscalDocumentPurpose.OwnerInvoice,
             Source = FiscalDocumentSource.CasaZen,
             Status = FiscalDocumentStatus.Issued,
             SdiStatus = FiscalDocumentSdiStatuses.Rejected,
@@ -304,6 +305,79 @@ public class FiscalDocumentCorrectionTests
         await db.SaveChangesAsync();
         await handler.HandleAsync(Event(DomainEventType.FiscalDocumentSdiRejected, credited.Id, "{}"), CancellationToken.None);
         Assert.Empty(await db.InternalActivities.AsNoTracking().Where(a => a.EntityId == credited.Id).ToListAsync());
+
+        // A guest invoice is never credited once rejected: the draft of a credit note (a change of its booking while it was with the SDI), or a credit note issued before, never hides its item.
+        foreach (var noteStatus in new[] { FiscalDocumentStatus.Draft, FiscalDocumentStatus.Issued })
+        {
+            var guest = new FiscalDocument
+            {
+                OrgId = OrgId,
+                PropertyId = propertyId,
+                Source = FiscalDocumentSource.CasaZen,
+                Status = FiscalDocumentStatus.Issued,
+                SdiStatus = FiscalDocumentSdiStatuses.Rejected,
+                SdiErrorCode = "00417",
+                Series = "2027",
+                SequenceNumber = noteStatus == FiscalDocumentStatus.Draft ? 1 : 2,
+                Number = noteStatus == FiscalDocumentStatus.Draft ? "2027/1" : "2027/2",
+            };
+            db.FiscalDocuments.Add(guest);
+            await db.SaveChangesAsync();
+            db.FiscalDocuments.Add(new FiscalDocument { OrgId = OrgId, Kind = FiscalDocumentKind.CreditNote, CreditedDocumentId = guest.Id, Status = noteStatus, Series = "2027" });
+            await db.SaveChangesAsync();
+
+            await handler.HandleAsync(Event(DomainEventType.FiscalDocumentSdiRejected, guest.Id, "{}"), CancellationToken.None);
+
+            Assert.Single(await db.InternalActivities.AsNoTracking().Where(a => a.EntityId == guest.Id && a.Action == ActivityAction.CorrectInvoice && a.CompletedAt == null).ToListAsync());
+        }
+    }
+
+    /// <summary>
+    /// A rejected guest invoice whose booking changed while it was with the SDI has the draft of a credit note: the correction is not refused because of it (the draft would credit an invoice that
+    /// never was issued), it discards it and closes its «Da fare», and the state says the invoice can be corrected. A credit note already issued keeps refusing the correction, and the state says so.
+    /// </summary>
+    [Fact]
+    public async Task Correction_ARejectedInvoiceWithACreditNoteDraft_IsCorrected_AndTheDraftIsDiscarded()
+    {
+        await using var db = NewDb();
+        var time = new FakeTimeProvider(Now);
+        var activities = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, time);
+        var rig = Rig(db, Mock.Of<IDomainEventRecorder>(), activities);
+        var booking = await SeedBookingAsync(db, seedOrg: true);
+        var propertyId = (await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == booking)).PropertyId;
+        var invoice = await rig.Documents.IssueAsync((await rig.Documents.CreateDraftAsync(booking, null)).Id, confirm: true);
+        var note = new FiscalDocument { OrgId = OrgId, BookingId = booking, Kind = FiscalDocumentKind.CreditNote, CreditedDocumentId = invoice.Id, Status = FiscalDocumentStatus.Draft, Series = string.Empty };
+        db.FiscalDocuments.Add(note);
+        await db.SaveChangesAsync();
+        await activities.CreateAsync(
+            new CreateTodoRequest
+            {
+                Type = ActivityType.FiscalDocument,
+                Action = ActivityAction.ReviewFiscalDocument,
+                EntityType = FiscalDocumentTodos.EntityType,
+                EntityId = note.Id,
+                Urgency = ActivityUrgency.Medium,
+                PropertyId = propertyId,
+                OrgId = OrgId,
+                Reason = FiscalDocumentTodos.CreditNoteToIssueReason,
+            },
+            CancellationToken.None);
+        await RejectedAsync(rig, invoice.Id);
+        Assert.True((await rig.Sdi.GetStateAsync(invoice.Id))!.CanCorrect);
+
+        var replacement = await rig.Corrections.StartCorrectionAsync(invoice.Id, "auth0|host");
+
+        Assert.Equal(FiscalDocumentStatus.Discarded, (await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == note.Id)).Status);
+        Assert.Empty(await db.InternalActivities.AsNoTracking().Where(a => a.EntityId == note.Id && a.CompletedAt == null).ToListAsync());
+        Assert.Equal((FiscalDocumentStatus.Draft, invoice.Id), (replacement.Status, replacement.ReplacesDocumentId));
+
+        // An issued credit note: not corrected here, and the state says it.
+        var other = await SeedBookingAsync(db);
+        var credited = await rig.Documents.IssueAsync((await rig.Documents.CreateDraftAsync(other, null)).Id, confirm: true);
+        await rig.Documents.CreateCreditNoteAsync(credited.Id, 10m, "test", confirm: true, "auth0|host");
+        await RejectedAsync(rig, credited.Id);
+        Assert.False((await rig.Sdi.GetStateAsync(credited.Id))!.CanCorrect);
+        Assert.Equal(FiscalDocumentSdiErrors.NotCorrectable, (await Assert.ThrowsAsync<DomainRuleException>(() => rig.Corrections.StartCorrectionAsync(credited.Id, null))).Code);
     }
 
     // ---------------------------------------------------------------- helpers
@@ -370,7 +444,7 @@ public class FiscalDocumentCorrectionTests
         return new TestRig(
             documents,
             new FiscalDocumentSdiService(db, provider.Object, recorder, time, NullLogger<FiscalDocumentSdiService>.Instance, flags),
-            new FiscalDocumentCorrectionService(db, recorder, time, NullLogger<FiscalDocumentCorrectionService>.Instance),
+            new FiscalDocumentCorrectionService(db, recorder, time, NullLogger<FiscalDocumentCorrectionService>.Instance, activities),
             provider);
     }
 

@@ -40,9 +40,9 @@ public sealed class FiscalDocumentSdiService(
         var document = await db.FiscalDocuments
             .AsNoTracking()
             .Where(d => d.Id == documentId)
-            .Select(d => new StateSource(d.Source, d.Status, d.Purpose, d.SdiStatus, d.SdiErrorCode, d.SdiErrorDetail, d.SdiStatusUpdatedAt))
+            .Select(d => new StateSource(d.Source, d.Status, d.Purpose, d.SdiStatus, d.SdiErrorCode, d.SdiErrorDetail, d.SdiStatusUpdatedAt, false))
             .FirstOrDefaultAsync(ct);
-        return document is null ? null : StateOf(documentId, document);
+        return document is null ? null : StateOf(documentId, document with { Credited = await HasIssuedCreditNoteAsync(documentId, ct) });
     }
 
     public async Task<SdiSubmitResult> SubmitAsync(Guid documentId, CancellationToken ct = default)
@@ -165,7 +165,10 @@ public sealed class FiscalDocumentSdiService(
         if (transaction is not null)
             await transaction.CommitAsync(ct);
 
-        return StateOf(document.Id, new StateSource(document.Source, document.Status, document.Purpose, document.SdiStatus, document.SdiErrorCode, document.SdiErrorDetail, document.SdiStatusUpdatedAt));
+        var credited = await HasIssuedCreditNoteAsync(document.Id, ct);
+        return StateOf(
+            document.Id,
+            new StateSource(document.Source, document.Status, document.Purpose, document.SdiStatus, document.SdiErrorCode, document.SdiErrorDetail, document.SdiStatusUpdatedAt, credited));
     }
 
     public async Task<IReadOnlyList<SdiSubmittedDocument>> SubmittedDocumentsAsync(int limit, CancellationToken ct = default) =>
@@ -449,8 +452,15 @@ public sealed class FiscalDocumentSdiService(
             ChannelIsOpen,
             CanSubmit: electronic && d.SdiStatus == FiscalDocumentSdiStatuses.ToSend,
             CanDeclare: electronic && d.SdiStatus is FiscalDocumentSdiStatuses.ToSend or FiscalDocumentSdiStatuses.ManualDeclared,
-            CanCorrect: electronic && d.SdiStatus == FiscalDocumentSdiStatuses.Rejected && d.Purpose == FiscalDocumentPurpose.GuestStay);
+            CanCorrect: electronic && d.SdiStatus == FiscalDocumentSdiStatuses.Rejected && d.Purpose == FiscalDocumentPurpose.GuestStay && !d.Credited);
     }
+
+    /// <summary>
+    /// The document has an issued credit note: a rejected one is then not corrected (<see cref="FiscalDocumentCorrectionService"/> refuses it, the accountant decides). The draft of a credit note
+    /// does not count: the correction discards it.
+    /// </summary>
+    private Task<bool> HasIssuedCreditNoteAsync(Guid documentId, CancellationToken ct) =>
+        db.FiscalDocuments.AsNoTracking().AnyAsync(c => c.CreditedDocumentId == documentId && c.Status == FiscalDocumentStatus.Issued, ct);
 
     private sealed record StateSource(
         FiscalDocumentSource Source,
@@ -459,7 +469,8 @@ public sealed class FiscalDocumentSdiService(
         string SdiStatus,
         string? SdiErrorCode,
         string? SdiErrorDetail,
-        DateTime? SdiStatusUpdatedAt);
+        DateTime? SdiStatusUpdatedAt,
+        bool Credited);
 
     /// <summary>The code a refused submission is stored with: one of the channel's (<see cref="SdiSubmissionErrors"/>), the generic refusal for anything else (at most 20 characters).</summary>
     private static string CodeOfRefusal(SdiSubmissionResult answer) =>

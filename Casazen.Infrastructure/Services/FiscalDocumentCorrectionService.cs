@@ -15,7 +15,8 @@ namespace Casazen.Infrastructure.Services;
 /// submissions and outcomes, so the SDI answer and a click on «Correggi» never interleave, and two clicks make one draft (the second answers the first).</item>
 /// <item><b>The number moves, in the same transaction.</b> The sequence number of the rejected document is cleared in a save of its own, before the replacement holds it: the unique index
 /// (<see cref="FiscalDocument.SeriesNumberIndexName"/>) never sees the number twice. A rejected document that never was delivered is the only one this accepts: <c>rejected</c> is reached only
-/// by a document that was not delivered (<see cref="FiscalDocumentSdiService"/> never rejects a delivered one), and a document that has credit notes is refused.</item>
+/// by a document that was not delivered (<see cref="FiscalDocumentSdiService"/> never rejects a delivered one), and a document that has an issued credit note is refused; the drafts of
+/// credit notes of it are discarded with the correction (they would credit an invoice that never was issued).</item>
 /// <item><b>What the replacement is.</b> The same kind, issuer, series, lines, amounts, recipient and period as the rejected document, as stored (never made again from the booking here: the host
 /// fixes the data, and the refresh of the draft or the daily run makes it from the booking again). It is a draft: nothing is issued or sent by the correction.</item>
 /// <item>Logs carry ids: never a value of the document.</item>
@@ -25,7 +26,8 @@ public sealed class FiscalDocumentCorrectionService(
     AppDbContext db,
     IDomainEventRecorder events,
     TimeProvider timeProvider,
-    ILogger<FiscalDocumentCorrectionService> logger) : IFiscalDocumentCorrectionService
+    ILogger<FiscalDocumentCorrectionService> logger,
+    IInternalActivityService? activities = null) : IFiscalDocumentCorrectionService
 {
     public async Task<FiscalDocument> StartCorrectionAsync(Guid documentId, string? userId, CancellationToken ct = default)
     {
@@ -48,10 +50,10 @@ public sealed class FiscalDocumentCorrectionService(
         if (document.Status != FiscalDocumentStatus.Issued || document.SdiStatus != FiscalDocumentSdiStatuses.Rejected)
             throw new DomainRuleException(FiscalDocumentSdiErrors.NotRejected, FiscalDocumentSdiErrors.MessageKeyOf(FiscalDocumentSdiErrors.NotRejected));
 
-        // A document with credit notes (issued or still drafts) is not replaced: the credit and the replacement would both bill the same operation.
+        // A document with an issued credit note is not replaced: the credit and the replacement would both bill the same operation (the accountant decides; its «Da fare» says so).
         if (document.SequenceNumber is null
             || string.IsNullOrEmpty(document.Number)
-            || await db.FiscalDocuments.AnyAsync(d => d.CreditedDocumentId == document.Id && d.Status != FiscalDocumentStatus.Discarded, ct))
+            || await db.FiscalDocuments.AnyAsync(d => d.CreditedDocumentId == document.Id && d.Status == FiscalDocumentStatus.Issued, ct))
         {
             throw new DomainRuleException(FiscalDocumentSdiErrors.NotCorrectable, FiscalDocumentSdiErrors.MessageKeyOf(FiscalDocumentSdiErrors.NotCorrectable));
         }
@@ -59,11 +61,23 @@ public sealed class FiscalDocumentCorrectionService(
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var sequenceNumber = document.SequenceNumber.Value;
 
-        // The rejected document counts as not issued: it keeps its display number for the history, gives up its sequence number and is discarded.
+        // The rejected document counts as not issued: it keeps its display number for the history, gives up its sequence number and is discarded. The drafts of credit notes of it (prepared
+        // by a change of its booking while it was with the SDI) would credit an invoice that never was issued, and could not be issued anyway: they are discarded with it, and their «Da fare»
+        // closed.
         document.SequenceNumber = null;
         document.Status = FiscalDocumentStatus.Discarded;
         document.UpdatedAt = now;
+        var plannedCredits = await db.FiscalDocuments
+            .Where(d => d.CreditedDocumentId == document.Id && d.Status == FiscalDocumentStatus.Draft)
+            .ToListAsync(ct);
+        foreach (var note in plannedCredits)
+        {
+            note.Status = FiscalDocumentStatus.Discarded;
+            note.UpdatedAt = now;
+        }
+
         await db.SaveChangesAsync(ct);
+        await CloseTodosOfAsync(document.OrgId, plannedCredits, ct);
 
         var replacement = ReplacementOf(document, sequenceNumber, userId, now);
         db.FiscalDocuments.Add(replacement);
@@ -77,8 +91,26 @@ public sealed class FiscalDocumentCorrectionService(
         if (transaction is not null)
             await transaction.CommitAsync(ct);
 
-        logger.LogInformation("Fiscal document {DocumentId} of org {OrgId} rejected by the SDI: correction started, replacement draft {ReplacementId}", document.Id, document.OrgId, replacement.Id);
+        logger.LogInformation(
+            "Fiscal document {DocumentId} of org {OrgId} rejected by the SDI: correction started, replacement draft {ReplacementId}, {Discarded} credit note drafts discarded",
+            document.Id,
+            document.OrgId,
+            replacement.Id,
+            plannedCredits.Count);
         return replacement;
+    }
+
+    /// <summary>The open «Da fare» of the credit note drafts the correction discarded («check and issue the credit note»): nothing is left to issue.</summary>
+    private async Task CloseTodosOfAsync(Guid orgId, IReadOnlyList<FiscalDocument> discarded, CancellationToken ct)
+    {
+        if (activities is null)
+            return;
+
+        foreach (var note in discarded)
+        {
+            if (await activities.FindOpenAsync(orgId, nameof(ActivityAction.ReviewFiscalDocument), FiscalDocumentTodos.EntityType, note.Id, ct) is { } open)
+                await activities.CloseAsync(open.Id, InternalActivity.ClosedBySystem, ct);
+        }
     }
 
     /// <summary>
