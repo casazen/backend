@@ -81,3 +81,52 @@ public sealed record WireBatchListItemResponse(
             batch.PaidAt);
     }
 }
+
+/// <summary>
+/// A payout on the wire page (<c>GET api/wire-transfers/payable-payouts</c> and <c>GET api/wire-transfers/batch/{id}/payouts</c>): who is paid (the owner by id and
+/// name), the period of the statement it pays, how much (<see cref="Amount"/>: the net, the amount of the transfer) in which currency, when it was confirmed, whether it is
+/// still confirmed (<c>Reversed</c> for a payout reversed after its batch was made) and whether the owner has an IBAN now, <b>as a yes or a no: never the IBAN itself</b>,
+/// never an address, never the file.
+/// </summary>
+public sealed record WirePayoutResponse(
+    Guid PayoutId,
+    Guid OwnerId,
+    string OwnerName,
+    int PeriodYear,
+    int PeriodMonth,
+    decimal Amount,
+    string Currency,
+    DateTime ConfirmedAt,
+    OwnerPayoutStatus Status,
+    bool OwnerHasIban)
+{
+    public static WirePayoutResponse From(WirePayoutSummary payout)
+    {
+        return new WirePayoutResponse(
+            payout.PayoutId,
+            payout.OwnerId,
+            payout.OwnerName,
+            payout.PeriodYear,
+            payout.PeriodMonth,
+            payout.Amount,
+            payout.Currency,
+            payout.ConfirmedAt,
+            payout.Status,
+            payout.OwnerHasIban);
+    }
+}
+
+/// <summary>
+/// A batch and the payouts it pays (<c>GET api/wire-transfers/batch/{id}/payouts</c>): <see cref="Batch"/> is the batch as the list of the batches shows it, with its state
+/// (<c>Generated</c>, <c>Downloaded</c>, <c>Paid</c>) and no IBAN, name or file; <see cref="Payouts"/> are its payouts with the members of the payable ones, in the order of
+/// the transfers of the file. A batch of before the payouts (made from statements) has none.
+/// </summary>
+public sealed record WireBatchPayoutsResponse(WireBatchListItemResponse Batch, IReadOnlyList<WirePayoutResponse> Payouts)
+{
+    public static WireBatchPayoutsResponse From(WireBatchPayoutsSummary summary)
+    {
+        return new WireBatchPayoutsResponse(
+            WireBatchListItemResponse.From(summary.Batch),
+            summary.Payouts.Select(WirePayoutResponse.From).ToList());
+    }
+}

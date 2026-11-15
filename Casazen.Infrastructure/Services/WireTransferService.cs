@@ -30,6 +30,9 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>Privacy.</b> The IBAN, the name and the address of an owner are written in the file and in no log line, message or exception: the refusals about owners
 /// list their <b>ids</b>. The errors of the validation are the line and position of the schema errors and the names of the ISO elements whose rule is broken. The file
 /// and the debit account are encrypted at rest (<c>EncryptedColumns</c>).</para>
+/// <para><b>The reads of the wire page</b> (<see cref="ListPayablePayoutsAsync"/>, <see cref="GetBatchPayoutsAsync"/>) show which payouts can still be paid and which ones a
+/// batch pays: the owner by id and name, the period, the net amount and whether the owner has an IBAN, as a yes or a no. They read the IBAN of an owner only to tell whether it
+/// is there and give it to nobody; the file and the debit account of a batch are never read by them.</para>
 /// <para><b>Tenant.</b> Every read and write filters on the org of the caller explicitly, besides the global filter of the context (a <c>Find</c> by key does not
 /// apply it): a batch or a payout of another org does not exist for the caller.</para>
 /// </remarks>
@@ -323,6 +326,110 @@ public sealed class WireTransferService(
             .ToListAsync(cancellationToken);
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<WirePayoutSummary>> ListPayablePayoutsAsync(Guid orgId, string? currency, CancellationToken cancellationToken = default)
+    {
+        // One list per currency: there is no list of every currency, and a currency with no wire file has none (the refusal of a batch of such payouts).
+        var wanted = NormalizeCurrency(currency);
+        if (wanted is not (WireTransferErrors.SepaCurrency or WireTransferErrors.SwissCurrency))
+        {
+            throw new DomainRuleException(WireTransferErrors.CurrencyNotSupported, "WireCurrencyNotSupported");
+        }
+
+        // The conditions under which CreateBatchAsync accepts a payout, as a read: confirmed (a reversed payout is never payable), of a version published to the owner, with
+        // a net amount a transfer can carry (above zero), in the currency asked for (the stored code is trimmed and in upper case, as a batch reads it) and in no batch.
+        // Every table is filtered on the org explicitly, besides the global filter of the context. Oldest first: the order of the transfers of a batch.
+        var rows = await (
+                from payout in db.OwnerPayouts.AsNoTracking()
+                join version in db.OwnerStatementVersions.AsNoTracking() on payout.OwnerStatementVersionId equals version.Id
+                join owner in db.PropertyOwners.AsNoTracking() on payout.PropertyOwnerId equals owner.Id
+                where payout.OrgId == orgId
+                    && version.OrgId == orgId
+                    && owner.OrgId == orgId
+                    && payout.Status == OwnerPayoutStatus.Confirmed
+                    && version.PublishedAt != null
+                    && payout.NetAmount > 0m
+                    && payout.Currency.Trim().ToUpper() == wanted
+                    && !db.WireBatchPayouts.Any(w => w.OrgId == orgId && w.OwnerPayoutId == payout.Id)
+                orderby payout.ConfirmedAt, payout.Id
+                select new PayoutRow
+                {
+                    PayoutId = payout.Id,
+                    OwnerId = owner.Id,
+                    OwnerLegalName = owner.LegalName,
+                    OwnerFirstName = owner.FirstName,
+                    OwnerLastName = owner.LastName,
+                    OwnerIban = owner.Iban,
+                    PeriodYear = version.PeriodYear,
+                    PeriodMonth = version.PeriodMonth,
+                    Amount = payout.NetAmount,
+                    Currency = payout.Currency,
+                    ConfirmedAt = payout.ConfirmedAt,
+                    Status = payout.Status,
+                })
+            .Take(WireTransferErrors.ListedPayablePayouts)
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(SummaryOf).ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<WireBatchPayoutsSummary> GetBatchPayoutsAsync(Guid orgId, Guid batchId, CancellationToken cancellationToken = default)
+    {
+        // The batch of the org, by the columns of the list: the file and the debit account are never read, so never decrypted. The org is checked here, in the query: a batch
+        // of another org does not exist for the caller (404, as if the id were a guess).
+        var batch = await db.WireBatches.AsNoTracking()
+            .Where(b => b.Id == batchId && b.OrgId == orgId)
+            .Select(b => new WireBatchSummary(
+                b.Id,
+                b.Currency,
+                b.Status,
+                b.TransferCount,
+                b.TotalAmount,
+                b.ExecutionDate,
+                b.MessageFormat,
+                b.CreatedAt,
+                b.DownloadedAt,
+                b.PaidAt))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (batch is null)
+        {
+            throw BatchNotFound(batchId);
+        }
+
+        // The rows of the batch and what each one pays: the amount is the one of the transfer in the file, the payout says whether it was reversed after the batch was made.
+        // The rows of a batch of before the payouts are statements, not payouts: there are none here. The order is the one of the transfers of the file.
+        var rows = await (
+                from link in db.WireBatchPayouts.AsNoTracking()
+                join payout in db.OwnerPayouts.AsNoTracking() on link.OwnerPayoutId equals payout.Id
+                join version in db.OwnerStatementVersions.AsNoTracking() on payout.OwnerStatementVersionId equals version.Id
+                join owner in db.PropertyOwners.AsNoTracking() on link.PropertyOwnerId equals owner.Id
+                where link.OrgId == orgId
+                    && link.WireBatchId == batchId
+                    && payout.OrgId == orgId
+                    && version.OrgId == orgId
+                    && owner.OrgId == orgId
+                orderby payout.ConfirmedAt, payout.Id
+                select new PayoutRow
+                {
+                    PayoutId = payout.Id,
+                    OwnerId = owner.Id,
+                    OwnerLegalName = owner.LegalName,
+                    OwnerFirstName = owner.FirstName,
+                    OwnerLastName = owner.LastName,
+                    OwnerIban = owner.Iban,
+                    PeriodYear = version.PeriodYear,
+                    PeriodMonth = version.PeriodMonth,
+                    Amount = link.Amount,
+                    Currency = payout.Currency,
+                    ConfirmedAt = payout.ConfirmedAt,
+                    Status = payout.Status,
+                })
+            .ToListAsync(cancellationToken);
+
+        return new WireBatchPayoutsSummary(batch, rows.Select(SummaryOf).ToList());
+    }
+
     /// <summary>
     /// The creditor and the IBAN of every owner of the batch, or the refusal that lists the owners that cannot be paid with this file (their ids, never their names): an
     /// owner with no complete structured address (both files write it), with no IBAN, with an IBAN that fails the check digits, with a QR-IBAN (the account of a
@@ -448,7 +555,13 @@ public sealed class WireTransferService(
         // The org is checked here, in the query: a Find by key does not apply the global filter of the context, and a batch of another org must not be reachable
         // through a guessed id (404, as if it did not exist).
         var batch = await db.WireBatches.FirstOrDefaultAsync(b => b.Id == batchId && b.OrgId == orgId, cancellationToken);
-        return batch ?? throw new NotFoundException($"Wire batch {batchId} not found");
+        return batch ?? throw BatchNotFound(batchId);
+    }
+
+    /// <summary>The refusal for a batch that is not the caller's org's, or does not exist: 404, never a 403, so that an id cannot be probed.</summary>
+    private static NotFoundException BatchNotFound(Guid batchId)
+    {
+        return new NotFoundException($"Wire batch {batchId} not found");
     }
 
     /// <summary>
@@ -490,7 +603,32 @@ public sealed class WireTransferService(
             return string.Empty;
         }
 
-        return string.IsNullOrWhiteSpace(owner.LegalName) ? $"{owner.FirstName} {owner.LastName}" : owner.LegalName;
+        return OwnerNameOf(owner.LegalName, owner.FirstName, owner.LastName);
+    }
+
+    /// <summary>The name an owner is paid under, from the columns of the registry: the legal name when there is one, else the first and last name.</summary>
+    private static string OwnerNameOf(string? legalName, string firstName, string lastName)
+    {
+        return string.IsNullOrWhiteSpace(legalName) ? $"{firstName} {lastName}" : legalName;
+    }
+
+    /// <summary>
+    /// A payout of the wire page as a row: the owner from its columns and the IBAN of the owner, which is read (decrypted) only so that the page can be told whether there is
+    /// one. Never written out: it is a class and not a record because a record prints all its members.
+    /// </summary>
+    private static WirePayoutSummary SummaryOf(PayoutRow row)
+    {
+        return new WirePayoutSummary(
+            row.PayoutId,
+            row.OwnerId,
+            OwnerNameOf(row.OwnerLegalName, row.OwnerFirstName, row.OwnerLastName),
+            row.PeriodYear,
+            row.PeriodMonth,
+            row.Amount,
+            NormalizeCurrency(row.Currency),
+            row.ConfirmedAt,
+            row.Status,
+            WireIban.Normalize(row.OwnerIban).Length > 0);
     }
 
     /// <summary>The remittance of a transfer: «Rendiconto» and the period of the statement it pays, <c>Rendiconto 10/2026</c>.</summary>
@@ -545,6 +683,34 @@ public sealed class WireTransferService(
     private static string NormalizeCurrency(string? currency)
     {
         return (currency ?? string.Empty).Trim().ToUpperInvariant();
+    }
+
+    /// <summary>What the reads of the wire page select for a payout (see <see cref="SummaryOf"/>).</summary>
+    private sealed class PayoutRow
+    {
+        public Guid PayoutId { get; set; }
+
+        public Guid OwnerId { get; set; }
+
+        public string? OwnerLegalName { get; set; }
+
+        public string OwnerFirstName { get; set; } = string.Empty;
+
+        public string OwnerLastName { get; set; } = string.Empty;
+
+        public string? OwnerIban { get; set; }
+
+        public int PeriodYear { get; set; }
+
+        public int PeriodMonth { get; set; }
+
+        public decimal Amount { get; set; }
+
+        public string Currency { get; set; } = string.Empty;
+
+        public DateTime ConfirmedAt { get; set; }
+
+        public OwnerPayoutStatus Status { get; set; }
     }
 }
 
