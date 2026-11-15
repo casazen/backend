@@ -28,6 +28,7 @@ public class DocumentArchiveSqlTests
     private static readonly string[] TablesOfTheArchive =
     [
         "PropertyDocuments", "LeaseDocuments", "TouristTaxRemittances", "Properties", "LeaseContracts", "PropertyMemberAccesses",
+        "ManualComplianceProofs", "ManualComplianceProofProperties",
     ];
 
     private static DocumentArchiveQuery Query(
@@ -39,11 +40,15 @@ public class DocumentArchiveSqlTests
         var statements = new List<string>();
         var db = NpgsqlTranslationProbe.NewContext(statements, count, rows);
         var storage = new InMemoryFileStorage();
+        // The five sources as the container registers them: the statement holds the ones of the types the access allows (the three of the documents for
+        // DocumentArchiveWorld.Everything, all five for DocumentArchiveWorld.EveryType).
         IDocumentArchiveSource[] sources =
         [
             new PropertyDocumentArchiveSource(db, storage),
             new LeaseDocumentArchiveSource(db, storage),
             new TouristTaxRemittanceArchiveSource(db, storage),
+            new AlloggiatiReceiptArchiveSource(db, storage),
+            new IstatProofArchiveSource(db, storage),
         ];
         return (new DocumentArchiveService(sources, db, Options.Create(new DocumentArchiveOptions()), NullLogger<DocumentArchiveService>.Instance), statements);
     }
@@ -113,6 +118,58 @@ public class DocumentArchiveSqlTests
         Assert.Contains("PropertyMemberAccesses", BranchOf(limited, "LeaseDocuments"), StringComparison.Ordinal);
         Assert.DoesNotContain("PropertyMemberAccesses", BranchOf(limited, "TouristTaxRemittances"), StringComparison.Ordinal);
         Assert.Contains("FALSE", BranchOf(limited, "TouristTaxRemittances"), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>The branches of the union that read <paramref name="table"/> in their FROM (the two sources of the proofs both read the proofs).</summary>
+    private static string[] BranchesOf(string statement, string table) =>
+        [.. Branches(statement).Where(branch => Regex.IsMatch(branch, $"FROM \"{table}\""))];
+
+    /// <summary>
+    /// PROOF TEST: data rule (shape of the statement, E20/F02/US01/T01). With the proofs of the compliance duties asked for, the list is ONE union of the five
+    /// sources, and no branch lifts the soft-delete filter of the model: the statement is one, so a filter lifted by one source would be lifted for all of them and the
+    /// documents of a deleted property would come back. Every branch that joins a property carries its <c>IsDeleted</c> test, the tenant filter stays in all five, and a
+    /// collaborator reads a receipt of several flats only when every flat of it is in its reach (a NOT EXISTS in the same statement).
+    /// </summary>
+    [Fact]
+    public async Task DocumentArchive_TheFiveSourcesAreOneStatement_AndNoBranchLiftsTheSoftDeleteFilter_Sql_Test()
+    {
+        async Task<List<string>> ListWithProofsAsync(HostScope scope)
+        {
+            var (service, statements) = Build();
+            await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.ListAsync(scope, DocumentArchiveWorld.EveryType, Query()));
+            return statements;
+        }
+
+        var wholeOrg = await ListWithProofsAsync(OrgWide);
+        var limited = await ListWithProofsAsync(Restricted);
+
+        Assert.Equal(2, wholeOrg.Count);
+        Assert.Equal(2, limited.Count);
+        Assert.All(wholeOrg.Concat(limited), statement => Assert.Equal(4, Regex.Matches(statement, "UNION ALL").Count));
+
+        foreach (var statement in new[] { wholeOrg[1], limited[1] })
+        {
+            // The branches that join a property: the documents, the lease files and the two kinds of proof (two branches read the proofs).
+            var withProperty = new[] { "PropertyDocuments", "LeaseDocuments", "ManualComplianceProofs" }
+                .SelectMany(table => BranchesOf(statement, table))
+                .ToList();
+            Assert.Equal(4, withProperty.Count);
+            Assert.All(withProperty, branch => Assert.Contains("\"IsDeleted\"", branch, StringComparison.Ordinal));
+
+            // The tenant filter of the context stays in the branches that read the rows of the org's properties (the receipts of the tourist tax of a collaborator are cut out in SQL).
+            Assert.Equal(5, Branches(statement).Length);
+            Assert.All(withProperty, branch => Assert.Contains("@ef_filter", branch, StringComparison.Ordinal));
+        }
+
+        // The whole org: the tenant filter is in each of the five branches.
+        Assert.All(Branches(wholeOrg[1]), branch => Assert.Contains("@ef_filter", branch, StringComparison.Ordinal));
+
+        Assert.All(BranchesOf(limited[1], "ManualComplianceProofs"), branch =>
+        {
+            Assert.Contains("PropertyMemberAccesses", branch, StringComparison.Ordinal);
+            Assert.Contains("NOT EXISTS", branch, StringComparison.Ordinal);
+            Assert.Contains("ManualComplianceProofProperties", branch, StringComparison.Ordinal);
+        });
     }
 
     [Fact]
@@ -205,10 +262,16 @@ public class DocumentArchiveSqlTests
         var (service, statements) = Build(count: 1);
         foreach (var scope in new[] { OrgWide, Restricted })
         {
-            await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.ListAsync(scope, DocumentArchiveWorld.Everything, Query("x")));
-            await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.CountByTypeAsync(scope, DocumentArchiveWorld.Everything, Query()));
-            foreach (var type in new[] { ArchiveDocumentType.PropertyDocument, ArchiveDocumentType.Contract, ArchiveDocumentType.TouristTax })
-                await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.OpenAsync(scope, DocumentArchiveWorld.Everything, type, Guid.NewGuid()));
+            await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.ListAsync(scope, DocumentArchiveWorld.EveryType, Query("x")));
+            await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.CountByTypeAsync(scope, DocumentArchiveWorld.EveryType, Query()));
+            foreach (var type in new[]
+                     {
+                         ArchiveDocumentType.PropertyDocument, ArchiveDocumentType.Contract, ArchiveDocumentType.TouristTax,
+                         ArchiveDocumentType.AlloggiatiReceipt, ArchiveDocumentType.IstatProof,
+                     })
+            {
+                await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.OpenAsync(scope, DocumentArchiveWorld.EveryType, type, Guid.NewGuid()));
+            }
         }
 
         Assert.NotEmpty(statements);
@@ -217,10 +280,11 @@ public class DocumentArchiveSqlTests
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.Subset(TablesOfTheArchive.ToHashSet(StringComparer.Ordinal), tables);
-        // And, said the other way, the three sources are all there.
+        // And, said the other way, the five sources are all there.
         Assert.Contains("PropertyDocuments", tables);
         Assert.Contains("LeaseDocuments", tables);
         Assert.Contains("TouristTaxRemittances", tables);
+        Assert.Contains("ManualComplianceProofs", tables);
         Assert.All(statements, sql =>
         {
             foreach (var forbidden in new[] { "\"Guests\"", "\"StayGuests\"", "DocumentScanUrl", "DocumentImage", "Selfie" })

@@ -69,9 +69,23 @@ internal sealed class DocumentArchiveWorld
     public static readonly DateOnly TaxWithoutReceiptDay = new(2026, 8, 16);
     public static readonly DateOnly OtherOrgTaxDay = new(2026, 8, 17);
 
-    /// <summary>Every type the three sources serve.</summary>
+    /// <summary>Every type the three sources of the documents serve: what a caller without <c>guest.read</c> may read (the statement holds those three sources only).</summary>
     public static DocumentArchiveAccess Everything { get; } = new(
         new HashSet<ArchiveDocumentType> { ArchiveDocumentType.PropertyDocument, ArchiveDocumentType.Contract, ArchiveDocumentType.TouristTax });
+
+    /// <summary>
+    /// Every type the five sources of the container serve (E20/F02/US01/T01): the three above and the proofs of the compliance duties the host uploaded. The
+    /// statement of the list, the count and the export holds all five sources.
+    /// </summary>
+    public static DocumentArchiveAccess EveryType { get; } = new(
+        new HashSet<ArchiveDocumentType>
+        {
+            ArchiveDocumentType.PropertyDocument,
+            ArchiveDocumentType.Contract,
+            ArchiveDocumentType.TouristTax,
+            ArchiveDocumentType.AlloggiatiReceipt,
+            ArchiveDocumentType.IstatProof,
+        });
 
     private DocumentArchiveWorld(AppDbContext db, HostScopeWorld hosts, InMemoryFileStorage storage)
     {
@@ -118,12 +132,14 @@ internal sealed class DocumentArchiveWorld
 
     public static byte[] Pdf(string text) => Encoding.ASCII.GetBytes($"%PDF-1.4 {text}");
 
-    /// <summary>The sources as the container registers them, over this database and this bucket.</summary>
+    /// <summary>The five sources as <c>AddDocumentArchive</c> registers them, in its order, over this database and this bucket.</summary>
     public IReadOnlyList<IDocumentArchiveSource> Sources() =>
     [
         new PropertyDocumentArchiveSource(Db, Storage),
         new LeaseDocumentArchiveSource(Db, Storage),
         new TouristTaxRemittanceArchiveSource(Db, Storage),
+        new AlloggiatiReceiptArchiveSource(Db, Storage),
+        new IstatProofArchiveSource(Db, Storage),
     ];
 
     public DocumentArchiveService Service(DocumentArchiveOptions? limits = null) =>
@@ -137,6 +153,44 @@ internal sealed class DocumentArchiveWorld
         for (var number = 0; number < count; number++)
             AddPropertyDocument(Hosts.Granted, $"extra-{Guid.NewGuid():N}.pdf", GrantedPropertyDay);
 
+        await Db.SaveChangesAsync();
+        Db.ChangeTracker.Clear();
+    }
+
+    /// <summary>
+    /// A proof the host uploaded for <paramref name="property"/> (E20/F02/US01/T01), as the archive of the proofs stores it: the row, the line of the flat it covers and
+    /// its file in the private bucket under the key the real code builds.
+    /// </summary>
+    public async Task<Guid> AddProofAsync(Property property, ManualProofKind kind, DateOnly day)
+    {
+        var id = Guid.NewGuid();
+        var key = StorageKeys.ManualComplianceProof(property.OrgId, id, $"{Guid.NewGuid():N}.pdf");
+        Db.ManualComplianceProofs.Add(new ManualComplianceProof
+        {
+            Id = id,
+            OrgId = property.OrgId,
+            PropertyId = property.Id,
+            Kind = kind,
+            Day = day,
+            FileKey = key,
+            ContentType = "application/pdf",
+            UploadedByUserId = "auth0|host",
+            UploadedAt = new DateTime(2026, 10, 8, 9, 0, 0, DateTimeKind.Utc),
+        });
+        Db.ManualComplianceProofProperties.Add(new ManualComplianceProofProperty { OrgId = property.OrgId, ProofId = id, PropertyId = property.Id });
+        Storage.Add(key, Pdf($"prova {kind}"));
+        KeysByDocument[id] = key;
+        await Db.SaveChangesAsync();
+        Db.ChangeTracker.Clear();
+        return id;
+    }
+
+    /// <summary>Deletes a property the way the host does (PC-05): softly, so its documents, its leases and its proofs stay in their tables.</summary>
+    public async Task SoftDeleteAsync(Property property)
+    {
+        var row = await Db.Properties.SingleAsync(p => p.Id == property.Id);
+        row.IsDeleted = true;
+        row.DeletedAt = new DateTime(2026, 10, 8, 10, 0, 0, DateTimeKind.Utc);
         await Db.SaveChangesAsync();
         Db.ChangeTracker.Clear();
     }

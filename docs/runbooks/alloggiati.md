@@ -613,7 +613,7 @@ The recurring job `compliance-proof-retention` (daily at 03:40 UTC, `[DisableCon
 
 ### Proofs in the document archive
 
-The Alloggiati receipts and the ISTAT proofs the host uploaded are listed in the general archive (`GET api/documents`, types `alloggiatiReceipt` and `istatProof`, «Prove di adempimento») and downloadable there, with `guest.read` (the Accountant does not hold it): a download is written in the log by id, never by a name. The receipts of a tourist tax declaration or payment are records of money with their own permission and are not in that list.
+The Alloggiati receipts and the ISTAT proofs the host uploaded are listed in the general archive (`GET api/documents`, types `alloggiatiReceipt` and `istatProof`, «Prove di adempimento») and downloadable there, with `guest.read` (the Accountant does not hold it): a download is written in the log by id, never by a name. The receipts of a tourist tax declaration or payment are records of money with their own permission and are not in that list. As for every document of that archive, what belongs to a flat deleted since is not listed, counted, exported or downloaded there (the list, the count and the export are ONE statement over all the sources, and EF applies a lifted filter to the whole statement, so these two sources lift none); the history of the proofs of a deleted flat stays in the dedicated archive (`GET api/compliance/archive`), which reads them with its own statement.
 
 ### Migration `AddReceiptCoverage`
 

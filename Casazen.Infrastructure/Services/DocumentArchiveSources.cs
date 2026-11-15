@@ -198,9 +198,11 @@ public sealed class TouristTaxRemittanceArchiveSource(AppDbContext db, IFileStor
 /// Accountant does not hold (<see cref="ArchiveDocumentTypes.IsComplianceProof"/>: a download is written in the log).</para>
 /// <para><b>The reach.</b> The one of the compliance archive (<c>InScope</c> of a proof): the proofs whose every flat the caller reaches, the flat they were filed
 /// under and every flat a receipt covers, so a collaborator «Solo alcuni» never opens the file of a receipt that is also about the guests of a flat it does not
-/// reach. The history of a flat deleted since is kept (<c>IgnoreQueryFilters([SoftDelete])</c>, the tenant filter stays), as the compliance archive keeps it. The
-/// row names the flat the receipt was filed under: a filter by property of the archive finds a receipt by that flat, the dedicated archive
-/// (<c>api/compliance/archive</c>) by any flat it covers.</para>
+/// reach. Like every other source of the archive it leaves out what belongs to a flat deleted since (the soft-delete filter of the model applies, the tenant filter
+/// too): <b>no source of this class may lift a filter of the model</b>, because EF applies <c>IgnoreQueryFilters</c> to the whole statement and the list, the
+/// count and the export concatenate all the sources in ONE statement, so a filter lifted here would be lifted for the documents of the properties and the leases too.
+/// The history of the proofs of a flat deleted since stays in the dedicated archive (<c>api/compliance/archive</c>), which reads them with its own statement. The
+/// row names the flat the receipt was filed under: a filter by property of the archive finds a receipt by that flat, the dedicated archive by any flat it covers.</para>
 /// </remarks>
 public abstract class ComplianceProofArchiveSource(AppDbContext db, IFileStorage storage, ManualProofKind kind) : IDocumentArchiveSource
 {
@@ -229,12 +231,14 @@ public abstract class ComplianceProofArchiveSource(AppDbContext db, IFileStorage
             : new ArchiveFile(content, ComplianceArchiveRules.DownloadName(proof.Kind, proof.Day, proof.ContentType), proof.ContentType);
     }
 
-    /// <summary>The proofs of this kind of the caller's org in its reach, the history of deleted flats included.</summary>
+    /// <summary>
+    /// The proofs of this kind of the caller's org in its reach, those of a flat deleted since left out like the documents of every other source. No filter of the
+    /// model is lifted here (see the remarks of the class): the statement of the list is shared with the other sources.
+    /// </summary>
     protected IQueryable<ManualComplianceProof> InReach(HostScope scope)
     {
         var orgId = scope.OrgId;
         return db.ManualComplianceProofs.AsNoTracking()
-            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(p => p.OrgId == orgId && p.Property.OrgId == orgId && p.Kind == kind)
             .InScope(scope);
     }

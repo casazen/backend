@@ -7,8 +7,9 @@ using Xunit;
 namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
-/// NF-99, E07/F03/US03/T01 and T02: the document archive over the three sources, run on the InMemory provider (the PostgreSQL translation and the
-/// time zone of the day are proved by <c>DocumentArchiveSqlTests</c> and <c>DocumentArchivePostgresTests</c>). The InMemory database has no tenant
+/// NF-99, E07/F03/US03/T01 and T02: the document archive over the sources of the container, run on the InMemory provider (these tests ask for the three types
+/// of the host's documents; the proofs of the compliance duties, which share their statement, are in <c>DocumentArchiveDeletedPropertyTests</c>). The PostgreSQL
+/// translation and the time zone of the day are proved by <c>DocumentArchiveSqlTests</c> and <c>DocumentArchivePostgresTests</c>. The InMemory database has no tenant
 /// context, so what keeps the orgs and the properties apart here is the predicates of the sources themselves.
 /// </summary>
 public class DocumentArchiveServiceTests
@@ -289,10 +290,10 @@ public class DocumentArchiveServiceTests
 
         var forbidden = await Assert.ThrowsAsync<DomainForbiddenException>(
             () => world.Service().OpenAsync(world.Hosts.OrgWide, propertiesOnly, ArchiveDocumentType.TouristTax, world.TaxReceipt));
-        // A type with no source registered (a compliance proof, for now) has no row: a 404 even if the access names it.
+        // A type with no source registered (the invoices wait for the fiscal epic) has no row: a 404 even if the access names it.
         var noSource = await Assert.ThrowsAsync<NotFoundException>(
-            () => world.Service().OpenAsync(world.Hosts.OrgWide, new DocumentArchiveAccess(new HashSet<ArchiveDocumentType> { ArchiveDocumentType.AlloggiatiReceipt }),
-                ArchiveDocumentType.AlloggiatiReceipt, Guid.NewGuid()));
+            () => world.Service().OpenAsync(world.Hosts.OrgWide, new DocumentArchiveAccess(new HashSet<ArchiveDocumentType> { ArchiveDocumentType.Invoice }),
+                ArchiveDocumentType.Invoice, Guid.NewGuid()));
 
         Assert.Equal(DocumentArchiveService.TypeForbiddenCode, forbidden.Code);
         Assert.Equal(DocumentArchiveService.DocumentNotFoundCode, noSource.Code);
