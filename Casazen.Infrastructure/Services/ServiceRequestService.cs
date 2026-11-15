@@ -196,7 +196,7 @@ public partial class ServiceRequestService(
                 backups = AttachBackupGroup(request, backupSuppliers, slotPlanned: command.DurationMinutes is null, now);
 
             // E24/F01/US01/T02: the request is on the event bus, in the save that creates it (and with it, in the same transaction, whatever else the caller keys to it).
-            RecordEvent(DomainEventType.ServiceRequestCreated, request, request.Status, "service-request-created");
+            RecordEvent(DomainEventType.ServiceRequestCreated, request, request.Status, ServiceRequestEventPayload.CreatedKeyPrefix);
             await repository.AddAsync(request, cancellationToken);
             await CommitAsync(transaction, cancellationToken);
         }
@@ -724,7 +724,7 @@ public partial class ServiceRequestService(
                     r.PaymentMode = plan.Mode;
 
                     // E24/F01/US01/T02: the completion is on the event bus, in the save of the transition, once for each request.
-                    RecordEvent(DomainEventType.ServiceRequestCompleted, r, ServiceRequestStatus.Completato, "service-request-completed");
+                    RecordEvent(DomainEventType.ServiceRequestCompleted, r, ServiceRequestStatus.Completato, ServiceRequestEventPayload.CompletedKeyPrefix);
                 },
                 cancellationToken);
         }
@@ -1214,5 +1214,5 @@ public partial class ServiceRequestService(
     /// that build the service by hand).
     /// </summary>
     private void RecordEvent(DomainEventType type, ServiceRequest request, ServiceRequestStatus status, string keyPrefix) =>
-        recorder?.Record(type, request.Id, ServiceRequestEventPayload.Of(request, status), $"{keyPrefix}:{request.Id:N}", request.OrgId);
+        recorder?.Record(type, request.Id, ServiceRequestEventPayload.Of(request, status), ServiceRequestEventPayload.KeyOf(keyPrefix, request.Id), request.OrgId);
 }

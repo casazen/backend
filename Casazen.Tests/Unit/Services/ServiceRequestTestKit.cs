@@ -106,6 +106,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
         // SP-REL: the reliability events of the suppliers are written by the real service over the same database, with the default weights.
         Reliability = new SupplierReliabilityService(
             db, Agenda, Microsoft.Extensions.Options.Options.Create(RankingOptions), NullLogger<SupplierReliabilityService>.Instance, Clock);
+        // E24/F01/US01/T02: the events of the requests go to the outbox of the same context, as the application does, for the tests that read them (the service of the requests and the
+        // payment service, which completes a job a dispute decides, record the same events).
+        DomainEventRecorder? recorder = recordEvents ? new DomainEventRecorder(db, Mock.Of<ITenantContext>(), Clock) : null;
         Payments = new SupplierPaymentService(
             db,
             Gateway,
@@ -121,7 +124,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
             PlatformGateway,
             Customers,
             Penalties,
-            Reliability);
+            Reliability,
+            recorder);
         Matcher = ComuneTestServices.Matcher(db);
 
         // SP-BKP: the choice of the backup suppliers over a plain ranking (the real one needs the whole supplier service); it is only
@@ -147,8 +151,7 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Flags,
             BackupSelector,
             Reliability,
-            // E24/F01/US01/T02: the events of the requests go to the outbox of the same context, as the application does, for the tests that read them.
-            recordEvents ? new DomainEventRecorder(db, Mock.Of<ITenantContext>(), Clock) : null);
+            recorder);
         Booking = new ShowcaseBookingService(
             db,
             Catalog,

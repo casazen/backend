@@ -31,6 +31,18 @@ public sealed record ServiceRequestEventPayload(
     [property: JsonConverter(typeof(JsonStringEnumConverter))] ServiceRequestRentalContext RentalContext,
     [property: JsonConverter(typeof(JsonStringEnumConverter))] ServiceRequestStatus Status)
 {
+    /// <summary>The prefix of the dedup key of <c>ServiceRequestCreated</c>: one event for each request.</summary>
+    public const string CreatedKeyPrefix = "service-request-created";
+
+    /// <summary>
+    /// The prefix of the dedup key of <c>ServiceRequestCompleted</c>: one event for each request, whichever way it was completed (the supplier's completion, or the decision of a dispute
+    /// that completes a job nobody marked), so every place that completes a request records it under the same key.
+    /// </summary>
+    public const string CompletedKeyPrefix = "service-request-completed";
+
+    /// <summary>The dedup key of the event of <paramref name="requestId"/> with <paramref name="prefix"/> (<see cref="CreatedKeyPrefix"/> or <see cref="CompletedKeyPrefix"/>): <c>{prefix}:{id}</c>.</summary>
+    public static string KeyOf(string prefix, Guid requestId) => $"{prefix}:{requestId:N}";
+
     /// <summary>The payload of <paramref name="request"/> as it is now, with <paramref name="status"/> as the status the event records.</summary>
     public static ServiceRequestEventPayload Of(ServiceRequest request, ServiceRequestStatus status)
     {
