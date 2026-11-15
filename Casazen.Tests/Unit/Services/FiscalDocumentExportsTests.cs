@@ -155,6 +155,7 @@ public class FiscalDocumentExportsTests
             Row(sdi: FiscalDocumentSdiStatuses.Submitted),
             Row(sdi: FiscalDocumentSdiStatuses.ToSend),
             Row(sdi: FiscalDocumentSdiStatuses.Unknown),
+            Row(recipient: "TEST Portale B.V.", purpose: FiscalDocumentPurpose.SelfBilling),
         };
 
         var italian = CsvCells(FiscalDocumentExports.Csv(rows, Texts, "it")).Skip(1).ToList();
@@ -170,6 +171,10 @@ public class FiscalDocumentExportsTests
         Assert.Equal(["Credit note", "Not stated", "Rejected", "Issued by your channel manager"], new[] { english[2][0], english[2][11], english[2][12], english[2][13] });
         Assert.Equal(["Pro forma invoice", "Sent outside CasaZen", "Issued by your channel manager"], new[] { english[3][0], english[3][12], english[3][13] });
         Assert.Equal(["Sent", "To send", "Not stated"], new[] { english[4][12], english[5][12], english[6][12] });
+
+        // A self-billed invoice (TD17) names its kind for what it is in both languages, its recipient column being the foreign supplier it integrates.
+        Assert.Equal(["Autofattura TD17", "TEST Portale B.V."], new[] { italian[7][0], italian[7][5] });
+        Assert.Equal(["Self-billed invoice TD17", "TEST Portale B.V."], new[] { english[7][0], english[7][5] });
 
         // The channel manager is never named in a file, in either format or language.
         foreach (var language in new[] { "it", "en" })
@@ -233,7 +238,7 @@ public class FiscalDocumentExportsTests
             "FiscalExportColPaymentState", "FiscalExportColSdiState", "FiscalExportColSource", "FiscalExportPaymentPaid", "FiscalExportPaymentToCollect",
             "FiscalExportPaymentUnknown", "FiscalExportSdiNotApplicable", "FiscalExportSdiToSend", "FiscalExportSdiSubmitted", "FiscalExportSdiDelivered",
             "FiscalExportSdiRejected", "FiscalExportSdiManualDeclared", "FiscalExportSdiUnknown", "FiscalExportSourceCasaZen", "FiscalExportSourceChannelManager",
-            "FiscalExportInvalidFormat", "FiscalExportInvalidRange",
+            "FiscalExportInvalidFormat", "FiscalExportInvalidRange", "FiscalExportKindSelfBilling",
         ];
 
         foreach (var key in keys)
@@ -261,8 +266,9 @@ public class FiscalDocumentExportsTests
         string currency = "EUR",
         FiscalDocumentPaymentState payment = FiscalDocumentPaymentState.ToCollect,
         string sdi = FiscalDocumentSdiStatuses.ToSend,
-        FiscalDocumentSource source = FiscalDocumentSource.CasaZen) =>
-        new(Guid.NewGuid(), kind, number, issued ?? new DateOnly(2026, 11, 12), bookingCode, property, recipient, taxable, vat, stamp, total, currency, payment, sdi, source);
+        FiscalDocumentSource source = FiscalDocumentSource.CasaZen,
+        FiscalDocumentPurpose purpose = FiscalDocumentPurpose.GuestStay) =>
+        new(Guid.NewGuid(), kind, number, issued ?? new DateOnly(2026, 11, 12), bookingCode, property, recipient, taxable, vat, stamp, total, currency, payment, sdi, source, purpose);
 
     /// <summary>The rows of a CSV file of test data (no cell holds a separator or a quote), without the byte order mark.</summary>
     private static string[][] CsvCells(byte[] file) =>

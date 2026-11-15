@@ -596,7 +596,7 @@ public sealed partial class FiscalDocumentService(
             .Take(limit)
             .Select(d => new ExportSource(
                 d.Id, d.BookingId, d.Kind, d.Number, d.IssueDate, d.RecipientName, d.TaxableBase, d.VatAmount, d.StampDuty, d.Total, d.Currency, d.PaymentState, d.SdiStatus, d.Source,
-                d.PaymentChannel))
+                d.PaymentChannel, d.Purpose))
             .ToListAsync(ct);
         if (documents.Count == 0)
             return [];
@@ -632,7 +632,8 @@ public sealed partial class FiscalDocumentService(
                     d.Currency,
                     IsPaymentStateReadFromPayments(d.Source, d.Kind, d.BookingId, d.PaymentChannel) ? PaymentStateOf(collected.GetValueOrDefault(d.BookingId!.Value), d.Total) : d.PaymentState,
                     d.SdiStatus,
-                    d.Source);
+                    d.Source,
+                    d.Purpose);
             })
             .ToList();
     }
@@ -693,7 +694,8 @@ public sealed partial class FiscalDocumentService(
         FiscalDocumentPaymentState PaymentState,
         string SdiStatus,
         FiscalDocumentSource Source,
-        FiscalPaymentChannel PaymentChannel);
+        FiscalPaymentChannel PaymentChannel,
+        FiscalDocumentPurpose Purpose);
 
     public async Task<string> GetXmlAsync(Guid documentId, CancellationToken ct = default)
     {

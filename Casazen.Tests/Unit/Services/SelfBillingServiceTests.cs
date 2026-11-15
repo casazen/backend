@@ -367,6 +367,31 @@ public class SelfBillingServiceTests
     }
 
     /// <summary>
+    /// The generic readers of the fiscal documents (the list, the detail, the export of the list) say what a TD17 is: the document carries its purpose (its recipient fields hold the foreign
+    /// supplier, not a customer, so a reader cannot take it for an invoice to the portal) and the file names its kind «Autofattura TD17», in Italian and in English.
+    /// </summary>
+    [Fact]
+    public async Task Td17_TheGenericListsSayWhatItIs_Test()
+    {
+        await using var rig = await SelfBillingRig.CreateAsync();
+        await rig.StandardMonthAsync();
+        var generation = await rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, null);
+        var id = generation.Drafts.First(d => d.PortalName == "Booking.com B.V.").DocumentId;
+        await rig.Service.IssueAsync(rig.OrgId, id, confirm: true, null);
+
+        var scope = new HostScope(rig.OrgId);
+        var listed = FiscalDocumentDto.From((await rig.Documents.ListAsync(scope, new FiscalDocumentCriteria(), 1, 20)).Items.Single(d => d.Id == id));
+        Assert.Equal(("SelfBilling", "Booking.com B.V."), (listed.Purpose, listed.RecipientName));
+        Assert.Equal("SelfBilling", FiscalDocumentDto.From((await rig.Documents.GetAsync(id))!).Purpose);
+
+        var rows = await rig.Documents.ListForExportAsync(scope, new FiscalDocumentCriteria(), 100);
+        Assert.Equal(FiscalDocumentPurpose.SelfBilling, Assert.Single(rows).Purpose);
+        var italian = Assert.Single(FiscalDocumentExports.Table(rows, new ResxDocumentTexts(), "it"));
+        var english = Assert.Single(FiscalDocumentExports.Table(rows, new ResxDocumentTexts(), "en"));
+        Assert.Equal(("TD17-2026/1", "Autofattura TD17", "Self-billed invoice TD17"), ((string?)italian[1], (string?)italian[0], (string?)english[0]));
+    }
+
+    /// <summary>
     /// PROOF TEST: permission (tenant) rule. A TD17 of another organization, or a document that is not a TD17, is not found (404): nothing is read, issued or discarded; the list of
     /// another organization is empty; and the endpoints of the guest documents refuse to make again, issue, discard or credit a TD17 (422 <c>document_self_billing</c>).
     /// </summary>

@@ -557,7 +557,9 @@ for an owner company), the Italian XML validated against the official schema and
 like every recipient; the SDI code and the PEC are the holder's: where the file is delivered) and the holder (the cessionario, who issues) as the **issuer** (`IssuerProfileId` numbers it,
 `IssuerSnapshot` keeps it as it was). The XML turns them round: `CedentePrestatore` is the supplier (`RF18`, address abroad with `CAP` `00000`), `CessionarioCommittente` the holder,
 `SoggettoEmittente` `CC`, `IdTrasmittente` the agency, no related document (CasaZen does not hold the invoice of the portal). The PDF says «Autofattura (TD17)», names the two blocks
-«Cessionario/committente (emittente)» and «Cedente/prestatore (fornitore estero)», prints the month and no payment state (nobody pays: the VAT is integrated).
+«Cessionario/committente (emittente)» and «Cedente/prestatore (fornitore estero)», prints the month and no payment state (nobody pays: the VAT is integrated). Because the supplier is in the recipient fields, the generic list and detail of the fiscal documents
+(`api/fiscal/documents`) carry the `purpose` of a document (`GuestStay`, `OwnerInvoice`, `SelfBilling`) and the export of the list names the kind of a TD17 «Autofattura TD17»: it is no invoice to the
+portal.
 
 | Endpoint (`agency.invoice.manage`, agency plan, the whole organization only, `Features:FiscalDocumentIssuance`) | What |
 |---|---|

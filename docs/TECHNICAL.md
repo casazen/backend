@@ -1207,7 +1207,10 @@ reads included) and `Features:FiscalDocumentIssuance` (404 while off, before aut
 | `DELETE` | `/api/fiscal/self-billing/{id}` | `agency.invoice.manage` | The draft discarded (no number consumed). 204; 404; 422 `document_not_draft` |
 
 - The PDF and the XML of a TD17 are those of every fiscal document (`/api/fiscal/documents/{id}/pdf|xml`); the endpoints of the guest documents refuse to make a TD17 again, issue it, credit it or
-  discard it (422 `document_self_billing`).
+  discard it (422 `document_self_billing`; `send-email` of a TD17 is 422 `document_self_billing` too).
+- The generic list and detail of the fiscal documents (`GET /api/fiscal/documents`, `/{id}`, `payment.read`, the whole org for a document without a booking) carry the `purpose` of a document
+  (`GuestStay`, `OwnerInvoice`, `SelfBilling`): a TD17 keeps the foreign supplier in the recipient fields and the SDI code and PEC of the holder that receives it, so a reader tells it by `purpose`;
+  the export of the list names its kind «Autofattura TD17» / «Self-billed invoice TD17».
 
 #### Owner statement version files (agency, E13/F01/US02/T01, NF-110, NF-115)
 

@@ -302,7 +302,8 @@ public sealed record FiscalDocumentPage(IReadOnlyList<FiscalDocument> Items, int
 /// <summary>
 /// One row of the list of the documents as a file has it (E06/F03/US03/T01): what the document stores (amounts as stored, in <see cref="Currency"/>,
 /// the day of the issue a Europe/Rome calendar day) with the code of its booking and the name of its property when it has a booking, and the payment
-/// state the current one. Only the name of the recipient is carried, never its fiscal code, VAT number or address.
+/// state the current one. Only the name of the recipient is carried, never its fiscal code, VAT number or address. <paramref name="Purpose"/> tells what the document is for: the
+/// counterparty of a self-billed invoice (TD17, E17/F01/US03) is the foreign supplier it integrates, not a customer, and the file names its kind for what it is.
 /// </summary>
 public sealed record FiscalDocumentExportRow(
     Guid Id,
@@ -319,7 +320,8 @@ public sealed record FiscalDocumentExportRow(
     string Currency,
     FiscalDocumentPaymentState PaymentState,
     string SdiStatus,
-    FiscalDocumentSource Source);
+    FiscalDocumentSource Source,
+    FiscalDocumentPurpose Purpose = FiscalDocumentPurpose.GuestStay);
 
 /// <summary>The stable codes of the errors of the fiscal documents, with the keys of their messages in <c>SharedResources</c>.</summary>
 public static class FiscalDocumentErrors

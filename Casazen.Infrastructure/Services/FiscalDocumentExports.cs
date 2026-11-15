@@ -67,7 +67,7 @@ public static class FiscalDocumentExports
 
         return rows.Select(row => (IReadOnlyList<object?>)new object?[]
             {
-                FiscalDocumentPdfs.KindLabel(row.Kind, texts, language),
+                KindLabel(row, texts, language),
                 row.Number,
                 row.IssueDate,
                 row.BookingCode is { Length: > 0 } code ? BookingCodes.Format(code) : null,
@@ -101,6 +101,15 @@ public static class FiscalDocumentExports
 
         return string.Create(CultureInfo.InvariantCulture, $"documenti-{month:yyyy-MM}.{extension}");
     }
+
+    /// <summary>
+    /// The words of the kind of a document: a self-billed invoice (TD17, E17/F01/US03) is «Autofattura TD17» whatever its kind (an invoice), because the name of its recipient column is the
+    /// foreign supplier it integrates, never a customer; any other document says its kind.
+    /// </summary>
+    private static string KindLabel(FiscalDocumentExportRow row, IDocumentTexts texts, string language) =>
+        row.Purpose == FiscalDocumentPurpose.SelfBilling
+            ? texts.Get("FiscalExportKindSelfBilling", language)
+            : FiscalDocumentPdfs.KindLabel(row.Kind, texts, language);
 
     private static string PaymentLabel(FiscalDocumentPaymentState state, IDocumentTexts texts, string language) => state switch
     {
