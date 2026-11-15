@@ -5847,6 +5847,9 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="ComplianceProofKindInvalid" xml:space="preserve">
     <value>The kind of proof is not valid: use AlloggiatiReceipt, IstatProof, TouristTaxDeclaration or TouristTaxPayment.</value>
   </data>
+  <data name="ComplianceProofCoverageInvalid" xml:space="preserve">
+    <value>The flats of the receipt are not valid: give at least one, all in Italy, and more than one only for the Alloggiati Web receipt.</value>
+  </data>
   <data name="ComplianceExportTooLarge" xml:space="preserve">
     <value>The proofs of the period are too many for a single export: choose a shorter period or a single property.</value>
   </data>
@@ -6418,7 +6421,7 @@ Once active, the function works on the data the channel manager already holds.</
     <value>The owner of the property has no complete issuer profile yet: no document is prepared until you complete it.</value>
   </data>
   <data name="FiscalDocumentDraftOutdated" xml:space="preserve">
-    <value>The tax rules or the data of the issuer have changed since the draft was prepared: refresh it and check the amounts again before issuing.</value>
+    <value>The tax rules, the data of the issuer or the recipient have changed since the draft was prepared: refresh it and check the amounts and the recipient again before issuing.</value>
   </data>
   <data name="FiscalDocumentBookingNotActive" xml:space="preserve">
     <value>The booking is not active (a request, cancelled or a no-show): no fiscal document is issued for it.</value>
@@ -6782,6 +6785,39 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="FiscalDocumentOwnerInvoice" xml:space="preserve">
     <value>An owner invoice is prepared, issued, credited and discarded from the owner invoices.</value>
+  </data>
+  <data name="SelfBillingPeriodInvalid" xml:space="preserve">
+    <value>The month is not valid: use the format YYYY-MM.</value>
+  </data>
+  <data name="FiscalExportKindSelfBilling" xml:space="preserve">
+    <value>Self-billed invoice TD17</value>
+  </data>
+  <data name="SelfBillingPeriodNotEnded" xml:space="preserve">
+    <value>The month is not over yet: a TD17 integrates the commissions of a whole month, so it is prepared and issued after the month has ended.</value>
+  </data>
+  <data name="SelfBillingEstimateNotConfirmed" xml:space="preserve">
+    <value>Part of the amount comes from an agency rule or the channel default, not from the portal's own figure: check it and confirm the issue by accepting the estimate.</value>
+  </data>
+  <data name="SelfBillingNotConfigured" xml:space="preserve">
+    <value>The TD17 self-billed invoices are not configured yet for this installation: the VAT rate or the data of the foreign portals are missing.</value>
+  </data>
+  <data name="FiscalDocumentSelfBilling" xml:space="preserve">
+    <value>A TD17 self-billed invoice is prepared, issued and discarded from the self-billed invoices.</value>
+  </data>
+  <data name="SelfBillingLineCommissions" xml:space="preserve">
+    <value>Intermediation commissions {0} - {1} - {2}</value>
+  </data>
+  <data name="FiscalDocPdfKindSelfBilling" xml:space="preserve">
+    <value>Self-billed invoice (TD17)</value>
+  </data>
+  <data name="FiscalDocPdfSelfBillingBuyer" xml:space="preserve">
+    <value>Buyer (issuer)</value>
+  </data>
+  <data name="FiscalDocPdfSelfBillingSupplier" xml:space="preserve">
+    <value>Supplier (abroad)</value>
+  </data>
+  <data name="FiscalDocPdfSelfBillingPeriod" xml:space="preserve">
+    <value>VAT integrated on services bought from abroad (art. 17 DPR 633/72), commissions of the period {0}</value>
   </data>
   <data name="BillingChannelsInvalid" xml:space="preserve">
     <value>The portal setting is not valid: check the field named.</value>
@@ -7896,5 +7932,23 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="AccountantPackageOwnerAccountingRequired" xml:space="preserve">
     <value>The folders that hold the owner accounting (invoices to the owners, statements, withholding, agency summary, VAT) can be chosen, and a test of them sent, only with the permission to read the owners' statements.</value>
+  </data>
+  <data name="AccPkgOwnDocsTotalsTitle" xml:space="preserve">
+    <value>Period total by currency: documents, taxable base, VAT, stamp duty and total (credit notes negative)</value>
+  </data>
+  <data name="AccPkgOwnDocsSummaryTitle" xml:space="preserve">
+    <value>Annual summary of the documents issued in the owner's name, {0}, by month and kind (credit notes negative)</value>
+  </data>
+  <data name="AccPkgOwnDocsAgencyInvoicesTitle" xml:space="preserve">
+    <value>Invoices of the agency to the owner and recharges, {0}: commission, recharges and expenses advanced by currency (credit notes negative)</value>
+  </data>
+  <data name="AccPkgOwnDocsAgencyInvoiceDetailTitle" xml:space="preserve">
+    <value>Invoices of the agency to the owner: commission, recharges and expenses advanced of each invoice (credit notes negative)</value>
+  </data>
+  <data name="OwnerIssuedDocumentNotFound" xml:space="preserve">
+    <value>Document not found.</value>
+  </data>
+  <data name="OwnerIssuedDocumentsNotAvailable" xml:space="preserve">
+    <value>There are no documents issued in your name to download.</value>
   </data>
 </root>

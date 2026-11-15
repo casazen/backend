@@ -212,6 +212,146 @@ public class OwnerPortalController(
     }
 
     /// <summary>
+    /// The documents CasaZen issued in the name of the owner (E17/F02/US01/T01, NF-116): the receipts of a private owner and the invoices of a company, with their credit notes, issued on the
+    /// issuer profile of an owner the caller reads the accounting of: number, day, kind, total, currency, state of the SDI and whether it has an XML, the newest first; <c>period</c>
+    /// (<c>yyyy-MM</c> or <c>yyyy</c>) narrows them to the ones issued then (400 <c>accountant_package_invalid_period</c>). Only the owner of the <c>owner_id</c> claim, and a delegated contact
+    /// that holds <c>accounting.read</c> (403 <c>owner_portal_permission_missing</c> otherwise). Behind <c>Features:AgencyTier</c> and <c>Features:FiscalDocumentIssuance</c>: with either off the
+    /// list stays empty. Nothing of a guest is in the list: the PDF and the XML hold what the document itself says.
+    /// </summary>
+    [HttpGet("issued-documents")]
+    [EnableRateLimiting(RateLimitPolicies.OwnerPortalRead)]
+    [PrivateAnswer]
+    [ProducesResponseType(typeof(IReadOnlyList<OwnerPortalIssuedDocumentDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<IReadOnlyList<OwnerPortalIssuedDocumentDto>>> GetIssuedDocuments(
+        [FromQuery] string? period,
+        CancellationToken cancellationToken)
+    {
+        var ownerUserId = User.GetOwnerUserId(_customClaimNamespace);
+        if (ownerUserId == null)
+        {
+            logger.LogWarning("Owner portal request without valid owner_id claim");
+            return Unauthorized();
+        }
+
+        AccountantPackagePeriod? asked = null;
+        if (!string.IsNullOrWhiteSpace(period))
+        {
+            if (!AccountantPackagePeriod.TryParse(period, out var parsed))
+                return this.ApiProblem(StatusCodes.Status400BadRequest, AccountantPackageErrors.InvalidPeriod, "AccountantPackageInvalidPeriod");
+
+            asked = parsed;
+        }
+
+        var documents = await ownerPortalService.GetOwnerIssuedDocumentsAsync(
+            ownerUserId.Value,
+            asked,
+            cancellationToken);
+
+        return Ok(documents.Select(OwnerPortalIssuedDocumentDto.From).ToList());
+    }
+
+    /// <summary>
+    /// The PDF of one document issued in the name of the owner, made from the document and the issuer as they were at the issue (<c>lang=en</c> for English, Italian by default). 404
+    /// <c>owner_issued_document_not_found</c> for a document that is not the caller's (another owner's, the agency's, a draft, missing) and with a flag off; 403 as the list.
+    /// </summary>
+    [HttpGet("issued-documents/{documentId:guid}/pdf")]
+    [EnableRateLimiting(RateLimitPolicies.OwnerPortalDownload)]
+    [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetIssuedDocumentPdf(
+        Guid documentId,
+        [FromQuery] string? lang,
+        CancellationToken cancellationToken)
+    {
+        var ownerUserId = User.GetOwnerUserId(_customClaimNamespace);
+        if (ownerUserId == null)
+        {
+            logger.LogWarning("Owner portal request without valid owner_id claim");
+            return Unauthorized();
+        }
+
+        return OwnerPortalFiles.Download(
+            this,
+            await ownerPortalService.OpenOwnerIssuedDocumentPdfAsync(ownerUserId.Value, documentId, lang, cancellationToken));
+    }
+
+    /// <summary>
+    /// The FatturaPA XML of one invoice or credit note issued in the name of the owner, as it was stored at the issue. 404 as the PDF, and <c>fiscal_document_xml_unavailable</c> for a document of
+    /// the owner that has none (a receipt); 403 as the list.
+    /// </summary>
+    [HttpGet("issued-documents/{documentId:guid}/xml")]
+    [EnableRateLimiting(RateLimitPolicies.OwnerPortalDownload)]
+    [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetIssuedDocumentXml(
+        Guid documentId,
+        CancellationToken cancellationToken)
+    {
+        var ownerUserId = User.GetOwnerUserId(_customClaimNamespace);
+        if (ownerUserId == null)
+        {
+            logger.LogWarning("Owner portal request without valid owner_id claim");
+            return Unauthorized();
+        }
+
+        // An XML is a file the owner keeps and hands to its accountant: never rendered from our origin, never cached.
+        var file = await ownerPortalService.OpenOwnerIssuedDocumentXmlAsync(ownerUserId.Value, documentId, cancellationToken);
+        Response.Headers.CacheControl = "private, no-store";
+        Response.Headers.XContentTypeOptions = "nosniff";
+        return File(file.Content, file.ContentType, file.FileName);
+    }
+
+    /// <summary>
+    /// The ZIP for the accountant of the owner, <c>application/zip</c>, streamed: the PDF and the XML of the documents issued in the owner's name in <c>period</c> (<c>yyyy-MM</c> or
+    /// <c>yyyy</c>), their register (CSV and Excel) and <c>indice.csv</c> with the SHA-256 of every file; for a year also their summary and the invoices of the property manager to the owner
+    /// with their recharges. <c>Cache-Control: private, no-store</c>; the headers of the ZIP are set when the first byte goes out and only for a 200. 400
+    /// <c>accountant_package_invalid_period</c>; 404 <c>owner_issued_documents_not_available</c> with a flag off or with no ownership in force; 403 as the list; 422
+    /// <c>accountant_package_too_large</c> before the first byte.
+    /// </summary>
+    [HttpGet("issued-documents/export")]
+    [EnableRateLimiting(RateLimitPolicies.OwnerPortalDownload)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> ExportIssuedDocuments(
+        [FromQuery] string? period,
+        CancellationToken cancellationToken)
+    {
+        var ownerUserId = User.GetOwnerUserId(_customClaimNamespace);
+        if (ownerUserId == null)
+        {
+            logger.LogWarning("Owner portal request without valid owner_id claim");
+            return Unauthorized();
+        }
+
+        if (!AccountantPackagePeriod.TryParse(period, out var parsed))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, AccountantPackageErrors.InvalidPeriod, "AccountantPackageInvalidPeriod");
+
+        Response.Headers.CacheControl = "private, no-store";
+        Response.Headers.XContentTypeOptions = "nosniff";
+        ZipDownloadHeaders.WhenTheResponseStarts(Response, OwnerIssuedDocumentsStructure.FileNameOf(parsed));
+        var result = await ownerPortalService.ExportOwnerIssuedDocumentsAsync(ownerUserId.Value, parsed, Response.Body, cancellationToken);
+
+        logger.LogInformation(
+            "Owner issued documents downloaded from the portal. OwnerUserId={OwnerUserId} Documents={Documents} Files={Files} Bytes={Bytes}",
+            ownerUserId.Value,
+            result.Documents,
+            result.Files,
+            result.Bytes);
+        return new EmptyResult();
+    }
+
+    /// <summary>
     /// Gets withholding tax summary for the owner (ADR-011-R2).
     /// Returns empty summary for now (withholding feature not yet implemented).
     /// </summary>

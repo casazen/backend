@@ -5847,6 +5847,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="ComplianceProofKindInvalid" xml:space="preserve">
     <value>Il tipo di prova non è valido: usa AlloggiatiReceipt, IstatProof, TouristTaxDeclaration o TouristTaxPayment.</value>
   </data>
+  <data name="ComplianceProofCoverageInvalid" xml:space="preserve">
+    <value>Gli appartamenti della ricevuta non sono validi: indicane almeno uno, tutti in Italia, e più di uno solo per la ricevuta di Alloggiati Web.</value>
+  </data>
   <data name="ComplianceExportTooLarge" xml:space="preserve">
     <value>Le prove del periodo sono troppe per una sola esportazione: scegli un periodo più breve o un solo immobile.</value>
   </data>
@@ -6418,7 +6421,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>Il proprietario dell'immobile non ha ancora un profilo di emittente completo: nessun documento viene preparato finché non lo completi.</value>
   </data>
   <data name="FiscalDocumentDraftOutdated" xml:space="preserve">
-    <value>Le regole fiscali o i dati dell'emittente sono cambiati da quando è stata preparata la bozza: aggiornala e controlla di nuovo gli importi prima di emettere.</value>
+    <value>Le regole fiscali, i dati dell'emittente o il destinatario sono cambiati da quando è stata preparata la bozza: aggiornala e controlla di nuovo importi e destinatario prima di emettere.</value>
   </data>
   <data name="FiscalDocumentBookingNotActive" xml:space="preserve">
     <value>La prenotazione non è attiva (richiesta, annullata o no-show): non si emette un documento fiscale per questa prenotazione.</value>
@@ -6782,6 +6785,39 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="FiscalDocumentOwnerInvoice" xml:space="preserve">
     <value>La fattura al proprietario si prepara, si emette, si storna e si scarta dalle fatture ai proprietari.</value>
+  </data>
+  <data name="SelfBillingPeriodInvalid" xml:space="preserve">
+    <value>Il mese indicato non è valido: usa il formato AAAA-MM.</value>
+  </data>
+  <data name="FiscalExportKindSelfBilling" xml:space="preserve">
+    <value>Autofattura TD17</value>
+  </data>
+  <data name="SelfBillingPeriodNotEnded" xml:space="preserve">
+    <value>Il mese indicato non è ancora concluso: l'autofattura TD17 integra le commissioni di un mese intero, quindi si prepara e si emette dopo la fine del mese.</value>
+  </data>
+  <data name="SelfBillingEstimateNotConfirmed" xml:space="preserve">
+    <value>Una parte dell'importo non viene dalla fattura del portale ma da una regola dell'agenzia o dal valore predefinito del canale: controllala e conferma l'emissione accettando la stima.</value>
+  </data>
+  <data name="SelfBillingNotConfigured" xml:space="preserve">
+    <value>Le autofatture TD17 non sono ancora configurate per questa installazione: mancano l'aliquota IVA o i dati dei portali esteri.</value>
+  </data>
+  <data name="FiscalDocumentSelfBilling" xml:space="preserve">
+    <value>L'autofattura TD17 si prepara, si emette e si scarta dalle autofatture.</value>
+  </data>
+  <data name="SelfBillingLineCommissions" xml:space="preserve">
+    <value>Commissioni di intermediazione {0} - {1} - {2}</value>
+  </data>
+  <data name="FiscalDocPdfKindSelfBilling" xml:space="preserve">
+    <value>Autofattura (TD17)</value>
+  </data>
+  <data name="FiscalDocPdfSelfBillingBuyer" xml:space="preserve">
+    <value>Cessionario/committente (emittente)</value>
+  </data>
+  <data name="FiscalDocPdfSelfBillingSupplier" xml:space="preserve">
+    <value>Cedente/prestatore (fornitore estero)</value>
+  </data>
+  <data name="FiscalDocPdfSelfBillingPeriod" xml:space="preserve">
+    <value>Integrazione dell'imposta per i servizi acquistati dall'estero (art. 17 DPR 633/72), commissioni del periodo {0}</value>
   </data>
   <data name="BillingChannelsInvalid" xml:space="preserve">
     <value>L'impostazione dei portali non è valida: controlla il campo indicato.</value>
@@ -7896,5 +7932,23 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="AccountantPackageOwnerAccountingRequired" xml:space="preserve">
     <value>Le cartelle con la contabilità dei proprietari (fatture ai proprietari, rendiconti, ritenute, riepilogo dell'agenzia, IVA) si scelgono, e se ne invia una prova, solo con il permesso di leggere i rendiconti dei proprietari.</value>
+  </data>
+  <data name="AccPkgOwnDocsTotalsTitle" xml:space="preserve">
+    <value>Totale del periodo per valuta: documenti, imponibile, IVA, imposta di bollo e totale (note di credito in negativo)</value>
+  </data>
+  <data name="AccPkgOwnDocsSummaryTitle" xml:space="preserve">
+    <value>Riepilogo annuale dei documenti emessi a nome del proprietario, {0}, per mese e tipo (note di credito in negativo)</value>
+  </data>
+  <data name="AccPkgOwnDocsAgencyInvoicesTitle" xml:space="preserve">
+    <value>Fatture dell'agenzia al proprietario e riaddebiti, {0}: provvigione, riaddebiti e spese anticipate per valuta (note di credito in negativo)</value>
+  </data>
+  <data name="AccPkgOwnDocsAgencyInvoiceDetailTitle" xml:space="preserve">
+    <value>Fatture dell'agenzia al proprietario: provvigione, riaddebiti e spese anticipate di ogni fattura (note di credito in negativo)</value>
+  </data>
+  <data name="OwnerIssuedDocumentNotFound" xml:space="preserve">
+    <value>Documento non trovato.</value>
+  </data>
+  <data name="OwnerIssuedDocumentsNotAvailable" xml:space="preserve">
+    <value>Non ci sono documenti emessi a tuo nome da scaricare.</value>
   </data>
 </root>

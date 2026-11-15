@@ -119,7 +119,7 @@ public class FiscalDocumentsController(
     /// <summary>
     /// The draft issued, after the host's confirmation (<c>{ confirm: true }</c>, else 422 <c>document_confirmation_required</c>): number, validated XML,
     /// state <c>to_send</c>. 422 <c>fatturapa_xml_invalid</c>, <c>fatturapa_schema_unavailable</c>, <c>series_too_long</c>; 409 <c>document_draft_outdated</c> when
-    /// the tax rule or the data of the issuer changed since the draft was made (refresh it first).
+    /// the tax rule, the data of the issuer or (for a Swiss document or an Italian receipt) the recipient changed since the draft was made (refresh it first).
     /// </summary>
     [HttpPost("{id:guid}/issue")]
     [Authorize(Policy = CasazenPolicies.PaymentWrite)]
@@ -250,7 +250,7 @@ public class FiscalDocumentsController(
 
     /// <summary>
     /// The issued document sent to the guest of its booking by e-mail (E12/F01/US02/T01): a signed link that opens for 30 days, in an e-mail queued on Hangfire; <c>{ queued, linkExpiresAt }</c>, never
-    /// that the e-mail was delivered. The address is the one of the guest of the booking, a relay address of a portal included. 422 <c>document_not_issued</c>, <c>document_owner_invoice</c>,
+    /// that the e-mail was delivered. The address is the one of the guest of the booking, a relay address of a portal included. 422 <c>document_not_issued</c>, <c>document_owner_invoice</c>, <c>document_self_billing</c> (a self-billed invoice, TD17, has no guest),
     /// <c>document_read_only</c>, <c>document_recipient_email_invalid</c> (no address, an erased guest, a placeholder), <c>document_email_not_sent</c> (nothing was queued). The e-mail is sent again at every call.
     /// The same e-mail goes by itself at the issue when the issuer has «e-mail to the guest» on.
     /// </summary>

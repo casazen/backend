@@ -216,9 +216,35 @@ public sealed class ComplianceArchiveController(
     }
 
     /// <summary>
+    /// What a receipt of the Alloggiati communication of a day would prove for the flats asked for (<c>propertyIds</c>, repeated): the stays of those flats that
+    /// arrived that day and owe the communication, in all and for each flat, so the host reads «Diventano in regola: N soggiorni» before saving (E20/F02/US01/T01).
+    /// Nothing is stored. 404 for a flat the caller does not reach (the same answer as for one that does not exist); 422 for a day in the future, no flat at all
+    /// (never «every flat»), a flat outside Italy among several or more flats than the limit.
+    /// </summary>
+    [HttpGet("api/compliance/archive/proofs/coverage")]
+    [ProducesResponseType(typeof(ComplianceReceiptCoverageDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> GetReceiptCoverage([FromQuery] ReceiptCoverageQuery query, CancellationToken cancellationToken)
+    {
+        if (await GetScopeAsync(cancellationToken) is not { } scope)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        var coverage = await archive.GetReceiptCoverageAsync(scope, query.Day!.Value, query.PropertyIds ?? [], cancellationToken);
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(ComplianceReceiptCoverageDto.From(coverage));
+    }
+
+    /// <summary>
     /// Uploads a proof: <c>multipart/form-data</c> with the property, the kind, the day and the file (a PDF, a JPEG or a PNG of at most
-    /// <c>Compliance:Archive:UploadMaxMegabytes</c>, judged on its content). Asks <c>alloggiati.submit</c>, and <c>payment.write</c> too for a tax proof. 201 with the
-    /// proof listed in the archive. 404 for a property the caller does not reach; 413, 415 and 422 for a file or a day that is not acceptable.
+    /// <c>Compliance:Archive:UploadMaxMegabytes</c>, judged on its content). An Alloggiati receipt also names, with <c>propertyIds</c> (repeated), the other flats of
+    /// the organization it covers (E20/F02/US01/T01): <c>propertyId</c> is always covered, no list is that flat alone, and the stays of the flats it names that
+    /// arrived that day are the ones it proves. Asks <c>alloggiati.submit</c>, and <c>payment.write</c> too for a tax proof. 201 with the proof listed in the
+    /// archive, the flats it covers and, for an Alloggiati receipt, how many stays it proves. 404 for a property the caller does not reach; 413, 415 and 422 for a
+    /// file or a day that is not acceptable, and 422 <c>compliance_proof_coverage_invalid</c> for flats that are not (a list for another kind of proof, a flat
+    /// outside Italy among several, too many flats).
     /// </summary>
     [HttpPost("api/compliance/archive/proofs")]
     [Consumes("multipart/form-data")]
@@ -257,7 +283,7 @@ public sealed class ComplianceArchiveController(
         await using var content = sent.OpenReadStream();
         var entry = await archive.UploadProofAsync(
             scope,
-            new UploadComplianceProofRequest(form.PropertyId!.Value, form.Kind!.Value, form.Day!.Value, userId),
+            new UploadComplianceProofRequest(form.PropertyId!.Value, form.Kind!.Value, form.Day!.Value, userId, form.PropertyIds),
             content,
             cancellationToken);
         return StatusCode(StatusCodes.Status201Created, ComplianceArchiveEntryDto.From(entry));

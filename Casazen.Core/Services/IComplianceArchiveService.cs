@@ -72,13 +72,26 @@ public interface IComplianceArchiveService
 
     /// <summary>
     /// Stores a proof the host uploaded and lists it in the archive: a PDF, a JPEG or a PNG (judged on its content, not on its name or its
-    /// declared type) of at most <c>Compliance:Archive:UploadMaxMegabytes</c>, in the private bucket under a name made by the server.
+    /// declared type) of at most <c>Compliance:Archive:UploadMaxMegabytes</c>, in the private bucket under a name made by the server. A receipt of
+    /// the Alloggiati communication names the flats it covers (<see cref="UploadComplianceProofRequest.CoveredPropertyIds"/>, the flat of the request
+    /// included): each of them is checked against the org and the reach of the caller, and the stays of those flats that arrived that day are the
+    /// ones it proves (E20/F02/US01/T01, decision O3). The content of the file is never read.
     /// </summary>
-    /// <exception cref="Exceptions.NotFoundException">The property is not the caller's or is out of its reach.</exception>
-    /// <exception cref="Exceptions.DomainRuleException">The kind or the day is not acceptable, or there is no file.</exception>
+    /// <exception cref="Exceptions.NotFoundException">The property, or one of the flats it covers, is not the caller's or is out of its reach.</exception>
+    /// <exception cref="Exceptions.DomainRuleException">The kind or the day is not acceptable, there is no file, or the flats it covers are not acceptable (422 <c>compliance_proof_coverage_invalid</c>).</exception>
     /// <exception cref="Exceptions.DomainPayloadTooLargeException">The file is larger than the limit.</exception>
     /// <exception cref="Exceptions.DomainUnsupportedMediaTypeException">The file is not a PDF, a JPEG or a PNG.</exception>
     Task<ComplianceArchiveEntry> UploadProofAsync(HostScope scope, UploadComplianceProofRequest request, Stream content, CancellationToken ct);
+
+    /// <summary>
+    /// What a receipt of the Alloggiati communication of <paramref name="day"/> would prove for the flats <paramref name="propertyIds"/>: the stays of those flats
+    /// that arrived that day, owe the communication (a request, a cancelled stay and a no-show do not) and that the receipt turns green, in all and for each flat, so the
+    /// host reads «Diventano in regola: N soggiorni» before saving (E20/F02/US01/T01). The verdict of the traffic light decides, so a stay whose communication failed
+    /// or was only partly accepted, which stays red whatever receipt exists, is not counted. It stores and changes nothing, and checks the flats exactly as the upload does.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException">A flat is not the caller's or is out of its reach.</exception>
+    /// <exception cref="Exceptions.DomainRuleException">The day or the flats are not acceptable (an empty list is never «every flat»: 422 <c>compliance_proof_coverage_invalid</c>).</exception>
+    Task<ComplianceReceiptCoverage> GetReceiptCoverageAsync(HostScope scope, DateOnly day, IReadOnlyList<Guid> propertyIds, CancellationToken ct);
 }
 
 /// <summary>Limits of the lists of the archive.</summary>
@@ -92,6 +105,12 @@ public static class ComplianceArchiveLimits
 
     /// <summary>The first year a proof may be filed under: before it is a typing mistake.</summary>
     public const int MinYear = 2000;
+
+    /// <summary>
+    /// The most flats one receipt can name (E20/F02/US01/T01): a guard on the size of the request. The real bound is the flats of the org it may cover,
+    /// each of them checked against the org and the reach of the caller; a list longer than this is refused before anything is read.
+    /// </summary>
+    public const int MaxCoveredProperties = 500;
 }
 
 /// <summary>Error codes of the archive (ProblemDetails <c>code</c>, FD-05).</summary>
@@ -120,6 +139,12 @@ public static class ComplianceArchiveErrorCodes
 
     /// <summary>422: the proofs of the period are more than one export carries; the host asks for a shorter period.</summary>
     public const string ExportTooLarge = "compliance_export_too_large";
+
+    /// <summary>
+    /// 422: the flats a receipt is asked to cover are not acceptable (E20/F02/US01/T01): a list for a kind of proof that covers one flat only, a flat outside
+    /// Italy, more flats than <see cref="ComplianceArchiveLimits.MaxCoveredProperties"/>, or no flat at all where a list is asked for.
+    /// </summary>
+    public const string ProofCoverageInvalid = "compliance_proof_coverage_invalid";
 }
 
 /// <summary>What the archive page is asked: one property, a range of days, a kind, and the page.</summary>
@@ -155,6 +180,13 @@ public sealed record ComplianceArchiveQuery(
 /// <param name="ReceivedAt">When CasaZen received it (UTC).</param>
 /// <param name="RetainUntil">Until when CasaZen keeps it (UTC).</param>
 /// <param name="ContentType"><c>application/pdf</c>, <c>image/jpeg</c> or <c>image/png</c>.</param>
+/// <param name="CoveredProperties">
+/// The flats the proof covers (E20/F02/US01/T01): the one it was filed under first, then the others by name; always the flats the caller reaches, because a
+/// proof is read only by whoever reaches all of them. <c>null</c> for an entry made without them (the export, which names the file only).
+/// </param>
+/// <param name="CoveredStays">
+/// Only in the answer of the upload of an Alloggiati receipt: how many stays of those flats arrived that day and are now proven by it; <c>null</c> elsewhere.
+/// </param>
 public sealed record ComplianceArchiveEntry(
     Guid Id,
     ManualProofKind Kind,
@@ -165,7 +197,29 @@ public sealed record ComplianceArchiveEntry(
     string Source,
     DateTime ReceivedAt,
     DateTime RetainUntil,
-    string ContentType);
+    string ContentType,
+    IReadOnlyList<ComplianceCoveredProperty>? CoveredProperties = null,
+    int? CoveredStays = null);
+
+/// <summary>A flat a proof covers: its id and its name (E20/F02/US01/T01).</summary>
+/// <param name="Id">The flat.</param>
+/// <param name="Name">Its name.</param>
+public sealed record ComplianceCoveredProperty(Guid Id, string Name);
+
+/// <summary>What a receipt of one day would prove for one flat: the stays of the flat that arrived that day and owe the communication.</summary>
+/// <param name="PropertyId">The flat.</param>
+/// <param name="PropertyName">Its name.</param>
+/// <param name="Stays">The stays that become proven (zero for a flat with no stay arriving that day).</param>
+public sealed record ComplianceReceiptCoverageProperty(Guid PropertyId, string PropertyName, int Stays);
+
+/// <summary>
+/// What a receipt of the Alloggiati communication of a day would prove for the flats asked for (E20/F02/US01/T01): the stays that arrived that day and
+/// owe the communication, in all and for each flat, the flats in the order they were asked for.
+/// </summary>
+/// <param name="Day">The day of the communication, a Europe/Rome calendar date.</param>
+/// <param name="Stays">The stays that become proven, all flats together.</param>
+/// <param name="Properties">The flats, each with its stays.</param>
+public sealed record ComplianceReceiptCoverage(DateOnly Day, int Stays, IReadOnlyList<ComplianceReceiptCoverageProperty> Properties);
 
 /// <summary>One page of the archive.</summary>
 /// <param name="Items">The proofs, newest first.</param>
@@ -192,7 +246,10 @@ public sealed record ComplianceSendLogLine(
 /// <summary>What the archive holds about one stay.</summary>
 /// <param name="BookingId">The stay.</param>
 /// <param name="PropertyId">Its property.</param>
-/// <param name="Proofs">The proofs of its arrival day, newest first.</param>
+/// <param name="Proofs">
+/// The receipts of its arrival day that cover its flat, newest first (a receipt may cover several flats, E20/F02/US01/T01); one that covers a flat the caller does
+/// not reach is not listed.
+/// </param>
 /// <param name="SendLog">What was sent for it, newest first.</param>
 public sealed record ComplianceBookingCompliance(
     Guid BookingId,
@@ -235,7 +292,17 @@ public sealed record ComplianceArchiveExportFile(Stream Content, string FileName
 /// <param name="Kind">What it proves.</param>
 /// <param name="Day">The day of the communication, or any day of the month for a period kind (filed under the first day of that month).</param>
 /// <param name="UploadedByUserId">The person who uploads it (<c>User.Id</c>).</param>
-public sealed record UploadComplianceProofRequest(Guid PropertyId, ManualProofKind Kind, DateOnly Day, string UploadedByUserId);
+/// <param name="CoveredPropertyIds">
+/// The other flats the proof covers (E20/F02/US01/T01, decision O3): only for an Alloggiati receipt, which an agency with one police account gets once
+/// for several flats. <see cref="PropertyId"/> is always covered, so no list (or an empty one) is the flat of the request alone and never «every flat»; each
+/// flat must be one of the Italian flats of the org that the caller reaches. Another kind of proof with a list is refused.
+/// </param>
+public sealed record UploadComplianceProofRequest(
+    Guid PropertyId,
+    ManualProofKind Kind,
+    DateOnly Day,
+    string UploadedByUserId,
+    IReadOnlyList<Guid>? CoveredPropertyIds = null);
 
 /// <summary>The days a coverage report looks at: Europe/Rome calendar dates, both included.</summary>
 /// <param name="From">First day.</param>

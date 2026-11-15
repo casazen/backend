@@ -229,6 +229,30 @@ FatturaPA (`FatturaPaRegimeCode`, `TD01`/`TD04`), the `StampDuty` (`Threshold`, 
 - **Recipient.** A Swiss document (any kind) and an Italian receipt need only the name of the recipient (the address is printed when there is one, an
   Italian fiscal code is never asked); an Italian invoice keeps the checks of FatturaPA (the fiscal code of a person or the country abroad; the VAT
   number of a company with its SDI code or PEC).
+  - **The guest's name stands in (FIX/DOC-RECIPIENT).** The portals (Booking.com, Airbnb, Expedia, Vrbo through the channel manager) and the site of the agency send no
+    invoice data, and the document is due all the same (CasaZen issues for every booking, P1). When the document needs only a name and the booking has **no invoice data**
+    (no row, or a row with no name that holds no «yes» to «Ti serve la fattura?»), the recipient is the guest of the booking: its first and last name, as a private person,
+    **and nothing else**. Never copied: address, e-mail, phone, fiscal code, VAT number, nationality, country (the PDF prints the name alone; the e-mail of the document carries no recipient
+    field, it greets the guest by first name as before). The snapshot stays in the same encrypted columns: no migration, no flag. The one place is the draft (`FiscalDocumentService.RebuildAsync`), so the
+    check-out event, the daily run `fiscal-documents-due`, the draft of the host and a draft made again all do the same, and a draft made again never keeps a field of an
+    invoice data it no longer has.
+  - **Its limits.** The invoice data of the booking wins whenever it holds a name (typed by the host, given at the check-in or read from the channel manager), with all its
+    fields, as before. An **Italian invoice** (an ordinary VAT or a flat-rate issuer) never falls back: no invoice data is still 422 `document_invoice_data_missing` with
+    `fields: ["name"]`, and the stay is skipped by the daily run and read again at the next one. A guest who **asked for an invoice** (the «yes» at the check-in) without giving
+    the data is waited for in the same way: the host asks for the data, and no document is made out to the guest's name behind their back. A guest who was **erased**
+    (anonymized: the name is the placeholder `ANONYMIZED`), **deleted** or who **asked to be erased** never gets a document made out to a name that is no longer theirs: the
+    same 422, and the stay waits for the host (who may type the invoice data of the booking, which then wins).
+  - **The issue reads the recipient again.** For a document that needs only a name, the issue (the one document, the bulk issue, the automatic issue) reads the recipient as the draft does
+    (`RecipientOfAsync`) and compares it with the draft: when they differ the answer is 409 `document_draft_outdated` (the same as for a changed rule: nothing is numbered, the draft stays
+    a draft, and refreshing it, `POST api/fiscal/documents/{id}/refresh`, makes it again). It differs when the booking got invoice data with a name since the draft was made out to the guest
+    (the data wins), when the invoice data the draft was made from changed or is gone, when the name of the guest changed, and when the guest was erased, deleted or asked to be erased
+    since: the draft made again is then the 422 above, so a draft made before the erasure never goes out with the name of the guest. The draft of an **Italian invoice** is not read
+    again at the issue: it never falls back and it is issued as it always was.
+  - **The first run after the deploy.** The daily run reads the last `DueLookbackDays` (31) days, so the first one after this change makes the documents of every stay of that window
+    that had been skipped for lack of invoice data (up to 500 stays a run per organization, the rest the next day) and, with `AutoIssueGuestDocuments` on, issues them at once. They are
+    numbered from the most recent stay to the oldest (the run reads the most recent first): the most recent stay takes the lowest number, and every one gets the day of the run as its
+    issue date. Where `EmailGuestDocuments` is on (it is off by default) the e-mail with the link goes to every guest of those stays. The PO decides before the automatic issue is switched
+    on for real data.
 - **Swiss documents** have no nature code, no stamp duty, no XML (`FatturaPaXml` null) and the SDI state `not_applicable`; their tourist tax line reads
   «Tassa di soggiorno (non soggetta all'IVA)».
 - **The preview** `GET api/fiscal/documents/issuer-preview` (without `bookingId`: the organization) and `GET api/fiscal/documents/settings` return the rule
@@ -242,7 +266,8 @@ request). It carries the data of art. 26:
 
 - **Issuer**: legal name, address and, for a registered issuer, «N. IVA CHE-123.456.789 IVA» (IT) / «VAT no. CHE-123.456.789 VAT» (EN), from the
   snapshot (the issuer as it was at the issue).
-- **Recipient**: the name, plus the address when there is one (never an Italian fiscal code or VAT number).
+- **Recipient**: the name, plus the address when there is one (never an Italian fiscal code or VAT number). A booking with no invoice data (a portal sends none) is made out to
+  the name of its guest, with no address (see the rule «Recipient» above).
 - **Title** «Fattura» / «Ricevuta» (IT), «Invoice» / «Receipt» (EN) with the number; the date of the document; the period of the stay
   (`ServicePeriodFrom`/`To`) and the property.
 - **Lines**: description, quantity, unit price, amount and VAT rate (`3.8%`, `8.1%`; `—` for a line outside the VAT); the tourist tax is always labelled
@@ -351,6 +376,46 @@ the host gets a «To do» (`ReviewFiscalDocument`, reason `fiscal_document_booki
   (`virtualStampConfirmed` in the snapshot), else «Imposta di bollo da assolvere»; a snapshot written before this change prints nothing, so an old document stays
   as it was issued. Resources `FiscalDocPdfIssuedOnBehalf`, `FiscalDocPdfCoOwners`, `FiscalDocPdfStampDutyReference`, `FiscalDocPdfStampDutyVirtual`,
   `FiscalDocPdfStampDutyToPay`, Italian and English.
+
+## Documents in the owner's name: portal and export (`IOwnerIssuedDocumentsExport`, E17/F02/US01/T01, NF-116)
+
+The documents CasaZen issues **in the name of an owner** (the receipt of a private owner, the FatturaPA of a company, their credit notes: see *Document plan of a booking*)
+are shown to the owner in its portal and handed to the owner's accountant. Acceptance steps C8 (a copy of the invoices issued in the name of company B for its accountant) and
+D2 (the yearly summary of the documents issued in its name and of the recharges) of `pilota-flusso-completo-2026-11-14.md`. No migration, no flag and no setting of its own.
+
+- **Which documents.** The issued documents of a stay (purpose `GuestStay`, source CasaZen, kind invoice, receipt or credit note, with a number and a day of the issue) whose
+  `IssuerProfileId` is the issuer profile of the owner (`OrgFiscalIssuerProfile.PropertyOwnerId`). Never the organization's own documents (the agency's services to the guest),
+  another owner's, a draft, a discarded one, a proforma, or an invoice of the agency to the owner. The document of several co-owners is issued on the profile of the one who signs
+  (⚖ I6): it is that co-owner's, and the others, who are listed in it with their shares, do not find it in their own list.
+- **Owner portal** (`OwnerPortal`, rate limits `OwnerPortalRead` and `OwnerPortalDownload`):
+  - `GET api/owner-portal/issued-documents[?period=yyyy-MM|yyyy]`: `{ documentId, agencyId, agencyName, number, issueDate, kind, total, currency, sdiStatus, hasXml }`, the newest
+    first, at most 500; 400 `accountant_package_invalid_period`.
+  - `GET api/owner-portal/issued-documents/{id}/pdf?lang=` and `…/{id}/xml` (404 `fiscal_document_xml_unavailable` for a receipt, which has none).
+  - `GET api/owner-portal/issued-documents/export?period=yyyy-MM|yyyy`: the ZIP of the next paragraphs.
+  - Only the owner of the `owner_id` claim (every owner profile its ownerships are on, in every agency) and a delegated contact that holds `accounting.read` (403
+    `owner_portal_permission_missing`); behind `Features:AgencyTier` **and** `Features:FiscalDocumentIssuance`: with either off the list is empty and a file is 404 (`owner_issued_document_not_found`,
+    the export `owner_issued_documents_not_available`). One 404 for a document of another owner, of the agency, a draft or missing. **Nothing of a guest is in the list** (no name, no contact,
+    no tax data): the PDF and the XML hold what the document itself says (the name and, for a company, the tax data of its recipient; never a contact), and the register of the ZIP the name of
+    the recipient.
+- **PDF.** Rendered like `GET api/fiscal/documents/{id}/pdf` (the issuer of the snapshot of the issue, the co-owners, the agency as intermediary, the stamp text). The payment state is the
+  current one, read from the payments of the booking **naming the org of the document** (`FiscalDocumentService.CollectedByBookingAsync(…, ofOrg)`): the portal has no tenant, and a
+  document that was paid is never printed «da incassare».
+- **Export for the accountant.** `GET api/owners/{ownerId}/issued-documents/export?period=yyyy-MM|yyyy` for the agency (`OwnerIssuerProfilesController`: `agency.statement.view` on top of
+  `agency.owner.view`, behind `FiscalDocumentIssuance`; **the whole organization only**, 403 `forbidden` for a caller who reaches only some properties, because the accounts of an owner span
+  all of them; 404 `owner_not_found` for an owner of another org) and the same ZIP for the owner at `GET api/owner-portal/issued-documents/export`. One ZIP, streamed,
+  `casazen-documenti-emessi-<period>.zip`, `Cache-Control: private, no-store`; 422 `accountant_package_too_large` before the first byte (the caps of `DocumentArchive`, as the accountant package).
+  - `documenti-emessi/`: the PDF and the XML (when stored) of each document issued in the month or the year (by the day of the issue), and `registro-<issuer>.csv` and `.xlsx`, made with the
+    tables of the accountant package: the register (kind, number, day, recipient, collected by, taxable, VAT, stamp duty, total, currency; credit notes negative), the VAT of each document
+    for each rate, the totals for each rate and nature and **the totals of the period for each currency** (documents, taxable, VAT, stamp duty, total), which are the sums of the rows
+    of the register.
+  - A **year** adds `riepilogo-annuale/documenti-emessi.csv` and `.xlsx` (the documents by month, kind and currency, then the totals and the VAT for each rate of the year),
+    `riepilogo-annuale/fatture-agenzia-e-riaddebiti.csv` and `.xlsx` (the invoices of the agency to the owner: commission, recharges with their VAT and expenses advanced for each currency and for each
+    invoice, from the lines of the invoices of E14; credit notes negative) and `fatture-agenzia/` (the invoices and credit notes the agency issued to the owner in the year: the PDF the owner
+    downloads in its portal, the XML when Italian, and their register).
+  - `indice.csv`, written by the writer of the accountant package: every file with its description, its rows and its SHA-256. A person who reads the accounting of more than one owner
+    profile (the owner of two agencies, a contact of two owners) gets one folder `proprietario-<n>-<issuer>/` for each.
+- **Privacy.** Reads name the org and the owner in every query (the portal has no org of its own); the log carries ids and counts. An anonymized owner keeps its documents (legal retention,
+  ADR-033-R7) and the agency can still export them; the portal reaches none (its ownerships no longer count).
 
 ## Drafts and bulk issue (E12/F01/US01/T02)
 
@@ -486,9 +551,10 @@ the link sees what the guest sees. The token is in the query of the page, which 
 - **Third-party issuer (TZ).** The invoice of an owner company issued through the agency carries `TerzoIntermediarioOSoggettoEmittente` with the agency
   (`IdFiscaleIVA` IT + its VAT number, its fiscal code, its `Denominazione`, from `FiscalIssuerSnapshot.Intermediary`, as at the issue) and `SoggettoEmittente`
   `TZ`; the credit note of such an invoice too. An invoice of the organization names no third party.
-- **TD17 (for E17/F01/US03).** The builder writes a self-billed invoice issued by its recipient (`FatturaPaInput.IssuedBy` `Recipient`: `SoggettoEmittente`
-  `CC`) with a foreign supplier as cedente (its country and VAT number, `RF18`, an address abroad) and the supplier's invoice as `DatiFattureCollegate`; the
-  type code comes from the caller. Nothing in this slice makes one yet.
+- **TD17 (E17/F01/US03/T01).** The builder writes a self-billed invoice issued by its recipient (`FatturaPaInput.IssuedBy` `Recipient`: `SoggettoEmittente`
+  `CC`) with a foreign supplier as cedente (its country and VAT number, `RF18`, an address abroad) and the supplier's invoice as `DatiFattureCollegate` when the caller has it; the
+  type code comes from the caller. `FiscalDocumentService.SelfBillingFatturaPaInputOf` makes it for a document with the purpose `SelfBilling` (see *Self-billed invoices*): the
+  type `TD17`, the supplier from the recipient columns, the holder from the issuer snapshot, no related document.
 - A document that does not validate is 422 `fatturapa_xml_invalid`: the message names the number of errors and the line:position of the first ones,
   never a value of the document; the log carries ids and counts only.
 
@@ -645,6 +711,78 @@ enabling flow of a VAT number (delega) for the owners who issue through the agen
    `SdiProviderOptions` and choose it in the registration of `AddCasazenFiscalDocuments`; its tests use a fake HTTP handler and never the real service.
 3. Add its settings to `docs/runbooks/deploy-checklist.md` § 2 and its notifications to `ReadNotificationAsync`, so that every one goes to `RecordOutcomeAsync`.
 
+## Self-billed invoices (TD17, `ISelfBillingService`, E17/F01/US03/T01, NF-116, D4)
+
+An Italian VAT holder that pays a commission to a **foreign portal** integrates the portal's invoice with a TD17 (reverse charge, art. 17 c. 2 DPR 633/72), by the 15th of
+the following month (⚖, `SelfBilling:IssueByDay`). CasaZen prepares it from the owner ledger and issues it through the normal path: a `FiscalDocument` with the purpose
+`SelfBilling`, kind invoice, type of document `TD17`, **one for each holder, portal entity and month**.
+
+**Who needs one** (`IPortalAccountHolderResolver`, ⚖ I10: the one reader of who holds the account of a listing on a portal):
+
+| Holder of the account | Who | TD17 |
+|---|---|---|
+| V1, the owner | an owner company or a professional (Italian issuer profile with a VAT number, complete) | yes, the owner's, issued by CasaZen on the owner's profile through the agency |
+| V1, the owner | a private person (the portal charged the Italian VAT 22%) | no (`holder_private_person`) |
+| V1, the owner | no issuer profile: a company or an owner with a VAT number | not yet: reported in `failed` (`owner_issuer_missing`, with the fields missing) |
+| V2, the agency | an Italian agency with a VAT number and a complete profile | yes, the agency's (and E14 recharges the commission to the owners) |
+| V2, the agency | a Swiss agency | no (`holder_not_italian`; the VAT summary of the package tells the purchase tax, E15, ⚖ not verified) |
+
+With several co-owners the owner of a V1 account is the one who **signs for the property on the check-out day**, by the rule of the document plan
+(`DocumentPlanRules.SignatoryOf`: the mandate in force, then the largest share, then the oldest ownership, then the smallest id), so the TD17 and the receipt or the invoice of the
+stay are always the same owner's.
+
+**The amounts.** The taxable amount is the sum of the `ChannelFee` lines of the owner ledger of the month (a reversal and the line it reverses cancel out; the drafts only read the ledger,
+so a month the owner accounting has not posted yet has no commissions to invoice, and the answer says so: `ledgerPosted` false), in the currency of the stay
+and **in euro only**: a commission in another currency is not converted by a guess, it is reported (`currency_not_supported`). Only the stays that are **active now** are integrated (the one
+definition, `AlloggiatiStatusRules.ActiveBookingStatuses` and no no-show): the owner ledger is posted by hand, so the line of a stay cancelled or marked no-show after the posting is alive until the
+next posting, and the drafts and the issue leave it out as `stay_not_active`. One line for each property
+(`Commissioni di intermediazione {portal} - {property} - {MM/yyyy}`); a property whose commissions net to nothing has none. The VAT is **integrated at `SelfBilling:VatRatePercent`
+(⚖, 22)** on top, through `FiscalDocumentTotals.FromNet` (cent-accurate, the cent of difference on the largest line), whatever the regime of the holder (a flat-rate regime integrates
+the VAT too): it never comes from the tax rules of the sales documents. The part of the amount that comes from a rule of the agency or from the default of the channel, not from the
+figure of the portal (`OwnerReconciliationRules.SourceOf`), is the **estimated amount** (`estimatedAmount`, in the answer of the drafts and in the detail of the draft, recomputed from the ledger as the issue does): check it against the invoice of the
+portal before issuing. The issue refuses a draft with an estimate (422 `self_billing_estimate_unconfirmed`, the figure in `estimatedAmount`, nothing numbered) until the host accepts it with
+`acceptEstimate: true`, because an issued TD17 is not corrected from here.
+
+**Portals.** The cedente is the legal entity of `SelfBilling:Portals` (channel, name, ISO country, VAT number, street, city; ⚖ verify them against a real invoice of the portal before the
+first issue). Committed: Booking.com B.V. and Airbnb Ireland UC. A channel without an entry (Expedia, Vrbo, TripAdvisor, Agoda...) is **never** invoiced by a guess: its commissions are
+in `notDue` with the reason `portal_not_configured` until the accountant gives the legal entity and an entry is added. An entry that is not usable (not a portal, in Italy, without a name,
+VAT number or address) is ignored. Two channels of one legal entity make one TD17 (the key is the country and the VAT number).
+
+**One live document for a holder, a portal and a month.** `POST api/fiscal/self-billing/drafts` makes the drafts of a month that is over (Europe/Rome, as the close of an owner's month: 422 `self_billing_period_not_ended` while it runs, for the issue too, because an issued TD17 is not
+completed afterwards), or makes them again from the ledger while they are drafts; an
+issued TD17 is left alone and the row says `changedSinceIssue` when the ledger of the month now gives another taxable amount (an issued document never changes: correct it with the
+accountant); a draft the ledger no longer supports (its commissions are gone, its holder or portal changed) is discarded (no number). The generation of a month is taken one at a time
+per organization (advisory lock `SelfBilling`, 1_640), so a double click never makes two drafts. The issue (`POST …/{id}/issue`, `{ confirm: true }`) refuses a draft that is not what the
+ledger, the holder, the portal and the settings give today (409 `document_draft_outdated`), then goes through `IFiscalDocumentService.IssueSelfBillingAsync`: the gap-free number in
+the series `SelfBilling:SeriesPattern` (⚖, `TD17-{year}`: apart from the sales documents) **of the profile of the holder**, the snapshot of the holder (with the agency as intermediary
+for an owner company), the Italian XML validated against the official schema and the state `to_send`: the SDI port sends it like every Italian electronic invoice (nothing is sent here).
+
+**Where the parties are stored.** The document keeps the foreign supplier (the cedente) in the **recipient columns** (name, VAT number with its country prefix, address, country: encrypted
+like every recipient; the SDI code and the PEC are the holder's: where the file is delivered) and the holder (the cessionario, who issues) as the **issuer** (`IssuerProfileId` numbers it,
+`IssuerSnapshot` keeps it as it was). The XML turns them round: `CedentePrestatore` is the supplier (`RF18`, address abroad with `CAP` `00000`), `CessionarioCommittente` the holder,
+`SoggettoEmittente` `CC`, `IdTrasmittente` the agency, no related document (CasaZen does not hold the invoice of the portal). The PDF says «Autofattura (TD17)», names the two blocks
+«Cessionario/committente (emittente)» and «Cedente/prestatore (fornitore estero)», prints the month and no payment state (nobody pays: the VAT is integrated). Because the supplier is in the recipient fields, the generic list and detail of the fiscal documents
+(`api/fiscal/documents`) carry the `purpose` of a document (`GuestStay`, `OwnerInvoice`, `SelfBilling`) and the export of the list names the kind of a TD17 «Autofattura TD17»: it is no invoice to the
+portal.
+
+| Endpoint (`agency.invoice.manage`, agency plan, the whole organization only, `Features:FiscalDocumentIssuance`) | What |
+|---|---|
+| `GET api/fiscal/self-billing?period=yyyy-MM` | the TD17 of the org (drafts and issued ones), the newest month first: holder, portal, month, deadline, amounts, status, state towards the SDI |
+| `GET api/fiscal/self-billing/{id}` | one TD17 with its lines and, for a draft, `estimatedAmount` |
+| `POST api/fiscal/self-billing/drafts` `{ period }` | the drafts of the month: counts, `ledgerPosted` (the owner ledger has lines for the month), one row for each TD17 (`created`, `updated`, `already_issued`, `estimatedAmount`, `changedSinceIssue`), `failed` (a holder that needs one and cannot get one: `owner_issuer_missing`, `issuer_profile_incomplete`, with the fields), `notDue` (the commissions left out and why: `portal_not_configured`, `holder_private_person`, `holder_not_italian`, `holder_not_vat_registered`, `currency_not_supported`, `not_a_portal`, `stay_not_found`, `stay_not_active`) |
+| `POST api/fiscal/self-billing/{id}/issue` `{ confirm: true, acceptEstimate? }` | the issue, after the confirmation (and the acceptance of the estimate when part of the amount is one) |
+| `DELETE api/fiscal/self-billing/{id}` | the discard of a draft |
+
+The PDF and the XML are the ones of every document (`GET api/fiscal/documents/{id}/pdf` and `/xml`, a document without a booking: the whole org only). The endpoints of the guest documents
+(`api/fiscal/documents`) neither make again, issue, credit nor discard a TD17: 422 `document_self_billing`. A caller who reaches only some properties is refused on every action (403); a
+document of another org, or one that is not a TD17, is 404.
+
+**Not in this slice** (so it is not silently missing): a credit note or a correction of an issued TD17 (it is not credited from here: the accountant decides how to correct it); the posting
+of the integrated VAT to the owner ledger (the TD17 is neutral for the holder: the VAT is due and deductible); the invoice number and date of the portal as the related document; the
+submission to the SDI (not made by the issue: the document is `to_send` and the channel of *SDI submission, outcomes and correction* above sends it like every Italian electronic invoice); the accountant package and the VAT register (E15, E19). No migration: nothing is stored beyond the existing columns of
+`FiscalDocuments`. **Rollback:** switch `Features:FiscalDocumentIssuance` off (the endpoints answer 404) or empty `SelfBilling:Portals` (nothing is made: 422 `self_billing_not_configured`); an
+issued TD17 stays what it is (ten years).
+
 ## Export of the list (`FiscalDocumentExports`, `XlsxWriter`)
 
 - `GET api/fiscal/documents/export?format=csv|xlsx`: the issued documents (CasaZen's and the imported ones) that the caller reaches, the same rows as the list, in a
@@ -652,7 +790,8 @@ enabling flow of a VAT number (delega) for the owners who issue through the agen
   duty, total, currency, payment state, SDI state, source.
 - The amounts are the stored ones, to two places (a credit note keeps its positive amounts: its kind says what it is); the payment state is the current one, as in the
   list. The recipient is the name only: no fiscal code, VAT number or address leaves in a file. Drafts, discarded drafts, the lines and the XML are not in it, and the
-  channel manager is never named (its documents say «Emesso dal tuo channel manager»).
+  channel manager is never named (its documents say «Emesso dal tuo channel manager»). A self-billed invoice (TD17) says «Autofattura TD17» in the kind column (`Purpose = SelfBilling`):
+  its recipient column is the foreign supplier it integrates, not a customer.
 - The Excel file is written by `XlsxWriter` (no package, only `System.IO.Compression`): amounts are numbers, days are dates, every text is an inline string, so a text
   that starts with `= + - @` is never run (the CSV puts an apostrophe before it). More than 9,999 documents is 422 `csv_too_many_rows` or `xlsx_too_many_rows`: narrow the period.
 
@@ -703,9 +842,11 @@ caller); an account of the agency whose commissions it does not recharge never n
 
 **What the scenario shows** (facts of the code as it is, for the decisions of the PO and of the accountant):
 
-- A Swiss document needs the name of its recipient, read from the invoice data of the booking: a stay with none (no answer at the check-in, nothing typed by the agency,
-  no pre-fill from the channel manager) gets no document from the daily run (`document_invoice_data_missing`, skipped and read again at the next run). In the scenario
-  the agency gives the name on the booking card.
+- A Swiss document needs the name of its recipient: the invoice data of the booking when it has a name, else the name of its guest (FIX/DOC-RECIPIENT, the rule «Recipient»
+  of the tax rules). A stay of a portal comes with none (no answer at the check-in, nothing typed by the agency, no pre-fill from the channel manager), so the Booking.com
+  origin of the scenario gets its document from the daily run made out to the guest of the booking, by name only (asserted, with no other field of the guest on it); the
+  other origins have the agency give the name on the booking card. Before this fix such a stay got no document from the daily run (`document_invoice_data_missing`, skipped
+  and read again at the next run).
 - The checkout of the CasaZen site in Switzerland does not collect the tourist tax yet: the document carries the line of Ticino and stays «Da incassare» although the
   stay is paid (analisi-tecnica §5bis.3, second wave).
 - A credit note for the difference (a no-show, a partial refund) is spread over the lines of the document in proportion, the tourist tax included: the part that stays
