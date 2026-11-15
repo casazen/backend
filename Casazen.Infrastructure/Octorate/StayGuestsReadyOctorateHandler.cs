@@ -17,8 +17,9 @@ namespace Casazen.Infrastructure.Octorate;
 /// <item><b>Idempotent.</b> The handler reads the stay as it is now, never what the event says, so an event delivered again, or out of order, finds the
 /// same answer: the send path keeps the hash of what it sent and sends nothing twice. There is no state to wait for in an event: when the stay is not
 /// ready yet, the fact that makes it ready brings its own event.</item>
-/// <item><b>Failures.</b> An unexpected error (the database) is not caught: the dispatcher delivers the event again. A refusal or a failure of Octorate is
-/// kept on the links of the guests by the send path, and the retry job takes it again.</item>
+/// <item><b>Failures.</b> An unexpected error (the database) is not caught: the dispatcher delivers the event again. So is a send of the same stay
+/// that holds the lock (<see cref="StayGuestsSendBusyException"/>): what the event brought may not be in that send, so the event is never consumed with
+/// no effect. A refusal or a failure of Octorate is kept on the links of the guests by the send path, and the retry job takes it again.</item>
 /// <item><b>The org is the event's</b> (ADR-022-R6): a stay of another org named by the event is never touched. Own registration:
 /// <c>AddCasazenOctorateGuestAutoSend</c>.</item>
 /// </list>

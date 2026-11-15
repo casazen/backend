@@ -42,7 +42,24 @@ public enum StayGuestsAutoSendOutcome
 /// <summary>The answer of <see cref="IStayGuestsAutoSendService.TrySendAsync"/>.</summary>
 /// <param name="Outcome">What was done.</param>
 /// <param name="Send">The send of the guests, only with <see cref="StayGuestsAutoSendOutcome.Sent"/>.</param>
-public sealed record StayGuestsAutoSendResult(StayGuestsAutoSendOutcome Outcome, OctorateCheckInSendResult? Send = null);
+public sealed record StayGuestsAutoSendResult(StayGuestsAutoSendOutcome Outcome, OctorateCheckInSendResult? Send = null)
+{
+    /// <summary>
+    /// The send path really tried the guests: something was written, kept back or failed. A stay that could not go (not ready, not on the channel
+    /// manager, nothing to send) is not an attempt: the sweep spends its places on attempts only, so such stays never take a place from a ready one.
+    /// </summary>
+    public bool Attempted =>
+        Outcome == StayGuestsAutoSendOutcome.Sent
+        && Send is { State: OctorateCheckInSendState.Sent or OctorateCheckInSendState.PartlyFailed or OctorateCheckInSendState.Failed };
+}
+
+/// <summary>
+/// Another send of the same stay holds its lock (the wizard's confirmation, the retry job, the sweep): the guests of the stay are being written by
+/// someone else. What the event brought may not be in that send, so the event is not consumed: it is delivered again by the outbox dispatcher (ids only
+/// in the message).
+/// </summary>
+public sealed class StayGuestsSendBusyException(Guid bookingId)
+    : Exception($"The guests of booking {bookingId} are being written to Octorate by another send: delivered again later.");
 
 /// <summary>
 /// The guests of a stay written to the channel manager on their own (E20/F01/US01/T01, decision O1): for an org that asked for it, the stay whose
@@ -53,15 +70,17 @@ public interface IStayGuestsAutoSendService
     /// <summary>
     /// Sends the guests of the stay if everything allows it, and does nothing otherwise (the outcome says why). Idempotent: the send path keeps the
     /// hash of what it sent, so a second call with nothing changed sends nothing. A stay of another org is never read. An unexpected error is thrown, so
-    /// the outbox delivers the event again.
+    /// the outbox delivers the event again; so is <see cref="StayGuestsSendBusyException"/>, when another send of the same stay holds the lock: the
+    /// event is never consumed with no effect.
     /// </summary>
     Task<StayGuestsAutoSendResult> TrySendAsync(Guid orgId, Guid bookingId, CancellationToken ct);
 
     /// <summary>
-    /// The stays of the orgs that asked, mirrored on Octorate and due, in the window of <see cref="StayGuestsAutoSendService.SweepLookbackDays"/> to
-    /// <see cref="StayGuestsAutoSendService.SweepLookaheadDays"/> days around today, that have a registered guest never written or changed since the
-    /// last write: the stays whose event was missed (the setting turned on later, the listing mapped later). At most <paramref name="limit"/>, by arrival.
-    /// A stay whose guests were all tried after their last change is not there again: once for each stay and change.
+    /// The stays of the orgs that asked, mirrored on Octorate and due, whose arrival is from <see cref="StayGuestsAutoSendService.SweepLookbackDays"/> days
+    /// back to <see cref="StayGuestsAutoSendService.SweepLookaheadDays"/> days ahead of today, that have a registered guest never written or changed since
+    /// the last write: the stays whose event was missed (the setting turned on later, the listing mapped later). The first <paramref name="limit"/>, by
+    /// arrival, among all of them: a stay with no registered guest, or whose guests were all tried after their last change, never takes a place. The
+    /// caller spends its budget of sends on the stays that really went (<see cref="StayGuestsAutoSendResult.Attempted"/>), not on these places.
     /// </summary>
     Task<IReadOnlyList<(Guid OrgId, Guid BookingId)>> FindStaysToSweepAsync(int limit, CancellationToken ct);
 }
@@ -92,11 +111,17 @@ public sealed class StayGuestsAutoSendService(
     /// <summary>The reason code of the "To do" raised when a guest already sent to the channel manager is corrected.</summary>
     public const string CorrectionTodoReason = "octorate_guest_corrected_after_send";
 
-    /// <summary>The days back from today the sweep looks at the stays (a stay that ended long ago is not chased).</summary>
+    /// <summary>The days back from today the sweep looks at the arrivals (a stay that arrived long ago is not chased).</summary>
     public const int SweepLookbackDays = 1;
 
-    /// <summary>The days ahead of today the sweep looks at the stays (the guests of a stay far ahead are not ready yet).</summary>
+    /// <summary>The days ahead of today the sweep looks at the arrivals (the guests of a stay far ahead are not ready yet).</summary>
     public const int SweepLookaheadDays = 14;
+
+    /// <summary>The stays the sweep reads from the database at a time: the window is read page by page, so no stay hides another.</summary>
+    public const int SweepPageSize = 200;
+
+    /// <summary>The most pages one sweep reads (a bound on the work of a run, 2,000 stays of the window).</summary>
+    public const int SweepMaxPages = 10;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -139,6 +164,11 @@ public sealed class StayGuestsAutoSendService(
         using (orgScope.Use(orgId))
             send = await sync.SendGuestsAsync(booking.Id, ct);
 
+        // Another send of the stay holds the lock (the wizard's confirmation, the retry job, the sweep): what this event brought may not be in it, and the
+        // link it leaves would then look as if it were (a change made while it ran is older than its link). The event is not consumed: it is delivered again.
+        if (send.Reason == CheckInOctorateSyncService.ReasonSendInProgress)
+            throw new StayGuestsSendBusyException(booking.Id);
+
         logger.LogInformation(
             "Guests of booking {BookingId} of org {OrgId} written to Octorate on their own: {State} {Reason}",
             booking.Id, orgId, send.State, send.Reason);
@@ -161,52 +191,69 @@ public sealed class StayGuestsAutoSendService(
         if (orgIds.Count == 0)
             return [];
 
+        // The window is the ARRIVAL: from yesterday to 14 days ahead (the dates are stored as midnight UTC of the Rome day). A stay that arrived earlier
+        // and is still in progress is not chased, and one far ahead has guests that are not ready yet.
         var today = _clock.TodayInRome();
         var from = today.AddDays(-SweepLookbackDays);
         var to = today.AddDays(SweepLookaheadDays);
-        var stays = await db.Bookings
-            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .AsNoTracking()
-            .Where(b => orgIds.Contains(b.OrgId)
-                        && b.OctorateReservationId != null
-                        && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status)
-                        && b.NoShowAt == null
-                        && b.CheckInDate <= to
-                        && b.CheckOutDate >= from)
-            .OrderBy(b => b.CheckInDate)
-            .Select(b => new { b.Id, b.OrgId })
-            .Take(limit * 4)
-            .ToListAsync(ct);
-        if (stays.Count == 0)
-            return [];
+        var found = new List<(Guid OrgId, Guid BookingId)>();
 
-        var ids = stays.Select(s => s.Id).ToList();
-        var guestRows = (await db.StayGuests
+        // The window is read page by page, in order of arrival, and each page is filtered before the next one is read: a stay with no registered guest,
+        // or whose guests were all tried after their last change, takes no place, so it never hides a stay behind it.
+        for (var page = 0; page < SweepMaxPages && found.Count < limit; page++)
+        {
+            var stays = await db.Bookings
                 .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
                 .AsNoTracking()
-                .Where(g => ids.Contains(g.BookingId))
-                .Select(g => new { g.BookingId, g.Position, g.UpdatedAt })
-                .ToListAsync(ct))
-            .ToLookup(g => g.BookingId);
-        var linkRows = (await db.StayGuestOctorateLinks
-                .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-                .AsNoTracking()
-                .Where(l => ids.Contains(l.BookingId))
-                .Select(l => new { l.BookingId, l.Position, l.UpdatedAt })
-                .ToListAsync(ct))
-            .ToLookup(l => l.BookingId);
+                .Where(b => orgIds.Contains(b.OrgId)
+                            && b.OctorateReservationId != null
+                            && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status)
+                            && b.NoShowAt == null
+                            && b.CheckInDate >= from
+                            && b.CheckInDate <= to)
+                .OrderBy(b => b.CheckInDate)
+                .ThenBy(b => b.Id)
+                .Select(b => new { b.Id, b.OrgId })
+                .Skip(page * SweepPageSize)
+                .Take(SweepPageSize)
+                .ToListAsync(ct);
+            if (stays.Count == 0)
+                break;
 
-        // A stay is to sweep when a registered guest has no link (never written) or changed after its link was last touched (a write attempt, kept
-        // or failed, is the "once": the next one waits for a new change).
-        return stays
-            .Where(s =>
+            var ids = stays.Select(s => s.Id).ToList();
+            var guestRows = (await db.StayGuests
+                    .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+                    .AsNoTracking()
+                    .Where(g => ids.Contains(g.BookingId))
+                    .Select(g => new { g.BookingId, g.Position, g.UpdatedAt })
+                    .ToListAsync(ct))
+                .ToLookup(g => g.BookingId);
+            var linkRows = (await db.StayGuestOctorateLinks
+                    .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+                    .AsNoTracking()
+                    .Where(l => ids.Contains(l.BookingId))
+                    .Select(l => new { l.BookingId, l.Position, l.UpdatedAt })
+                    .ToListAsync(ct))
+                .ToLookup(l => l.BookingId);
+
+            // A stay is to sweep when a registered guest has no link (never written) or changed after its link was last touched (a write attempt, kept
+            // or failed, is the "once": the next one waits for a new change).
+            foreach (var stay in stays)
             {
-                var links = linkRows[s.Id].ToDictionary(l => l.Position, l => l.UpdatedAt);
-                return guestRows[s.Id].Any(g => !links.TryGetValue(g.Position, out var touched) || g.UpdatedAt > touched);
-            })
-            .Take(limit)
-            .Select(s => (s.OrgId, s.Id))
-            .ToList();
+                var links = linkRows[stay.Id].ToDictionary(l => l.Position, l => l.UpdatedAt);
+                if (!guestRows[stay.Id].Any(g => !links.TryGetValue(g.Position, out var touched) || g.UpdatedAt > touched))
+                    continue;
+
+                found.Add((stay.OrgId, stay.Id));
+                if (found.Count >= limit)
+                    break;
+            }
+
+            if (stays.Count < SweepPageSize)
+                break;
+        }
+
+        return found;
     }
 
     /// <summary>The latest row of the verification log of the stay is an Accept, whoever decided it.</summary>
