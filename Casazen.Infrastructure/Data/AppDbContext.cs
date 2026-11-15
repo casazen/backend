@@ -245,6 +245,9 @@ public class AppDbContext(
     // Guest self-service check-in portal (US-020 / #296)
     public DbSet<GuestCheckInSession> GuestCheckInSessions { get; set; } = null!;
 
+    // Where the check-in link of a booking stands on its way to the guest: the portal chat, the e-mail, the host (E23/F01/US01/T01, T02, NF-122)
+    public DbSet<CheckInLinkDelivery> CheckInLinkDeliveries { get; set; } = null!;
+
     // Guest identity document images for OCR (NF-10, ADR-013-R3)
     public DbSet<DocumentImage> DocumentImages { get; set; } = null!;
 
@@ -1887,6 +1890,10 @@ public class AppDbContext(
 
         // Guest check-in session (US-020 / #296)
         modelBuilder.ApplyConfiguration(new GuestCheckInSessionConfiguration());
+
+        // E23/F01/US01/T01, T02 (NF-122): one delivery record per booking for the link of a stay that has no e-mail address; the raw token of the link is encrypted
+        // (EncryptedColumns) and the row goes with its booking.
+        modelBuilder.ApplyConfiguration(new CheckInLinkDeliveryConfiguration());
 
         // E03/F04/US02/T01: who decided a verification and why. The rows written before the columns are the agent's (Biometric = 1) with no
         // reasons; the sentinel makes EF always write the value of the entity, so a new row is never left to the default by mistake.

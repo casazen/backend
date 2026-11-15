@@ -37,6 +37,8 @@ public class EncryptedColumnsTests
                 "BookingInvoiceData.Pec:Casazen.BookingInvoiceData",
                 "BookingInvoiceData.PostalCode:Casazen.BookingInvoiceData",
                 "BookingInvoiceData.VatNumber:Casazen.BookingInvoiceData",
+                // E23/F01/US01/T01 (NF-122): the raw token of a check-in link whose delivery waits (only the hash of a link is stored otherwise).
+                "CheckInLinkDelivery.LinkToken:Casazen.CheckInLink.Token",
                 "DocumentImage.BackImageUrl:Casazen.DocumentImage",
                 "DocumentImage.FrontImageUrl:Casazen.DocumentImage",
                 // NF-83: the recipient snapshot of a fiscal document and its FatturaPA XML (E06/F01/US02/T01), and the snapshot of its issuer (E11/F01/US01/T01).

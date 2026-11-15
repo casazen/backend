@@ -149,7 +149,13 @@ public static class ContactReadPurposes
     /// <summary>The host writes to the guest of a booking that has no conversation, by e-mail (E05/F02/US02/T01).</summary>
     public const string MessageToGuest = "message_to_guest";
 
-    public static IReadOnlyList<string> All { get; } = [MessageToGuest];
+    /// <summary>
+    /// CasaZen reads the e-mail address of the guest of a booking of a portal, once, to send it the check-in link (E23/F01/US01/T02, <c>IGuestContactInfoService</c>): the
+    /// system does it, so the line has no actor, and it is never a read for the CRM.
+    /// </summary>
+    public const string CheckInLink = "check_in_link";
+
+    public static IReadOnlyList<string> All { get; } = [MessageToGuest, CheckInLink];
 }
 
 /// <summary>Who or what changed the plan of an org (the <c>source</c> detail of <see cref="OrgActivityType.PlanChanged"/>).</summary>

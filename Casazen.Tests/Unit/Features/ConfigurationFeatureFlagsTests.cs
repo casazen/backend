@@ -107,6 +107,10 @@ public class ConfigurationFeatureFlagsTests
                 "TouristTaxOnlinePayment",
                 // E01/F04/US01/T03: the automation routines (API, engine, time triggers), off until the actions a host needs are real.
                 "Routines",
+                // E23/F01/US01/T01: the check-in link of a portal booking with no e-mail goes in the reservation thread of the portal chat, off until the channel manager gives the chat permission.
+                "PortalChatCheckInLink",
+                // E23/F01/US01/T02: the e-mail of the guest of a portal booking is read from the channel manager, once, for the check-in link only, off until the static IP addresses are registered.
+                "GuestContactInfo",
                 // E18/F01/US03/T01: the Italian tax reporting of the owners (the warnings of the limit of units and of the company tenant, the exports of E18), off until the accountant confirms the ⚖ choices.
                 "TaxReportingExports",
             },

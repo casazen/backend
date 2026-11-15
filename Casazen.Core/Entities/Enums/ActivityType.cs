@@ -165,6 +165,16 @@ public enum ActivityType
     RoutineTask = 100,
 
     /// <summary>
+    /// The check-in link of a stay from a portal has not reached the guest and the host may have to carry it (E23/F01/US01/T01, NF-122): the chat of the portal is not
+    /// available yet, the booking has no conversation, no way to the guest is on, the contact of the guest cannot be read yet, or the automatic delivery failed. About the
+    /// booking (entity type <c>Booking</c>), leading to the link to copy (<see cref="ActivityAction.CopyCheckInLink"/>); raised once per booking, only while one of the flags
+    /// <c>PortalChatCheckInLink</c> and <c>GuestContactInfo</c> is on; closed by the system when the link is sent, when the guest completes the check-in, when the booking is
+    /// cancelled or when the host issues a link itself. The numbers from 110 are the check-in link and the chat of the portal (epic E23), apart from the values the tasks that
+    /// run in parallel append.
+    /// </summary>
+    CheckInLinkToSend = 110,
+
+    /// <summary>
     /// A company is the tenant of a stay in the Italian property of a private owner (E18/F01/US03/T01, ⚖ I7, NF-117): the tax agency circular and the Court of Cassation
     /// read the short-let regime differently, so a person decides whether the stay stays a short let (withholding) or not, and the decision is recorded
     /// (<c>ShortLetTaxDecision</c>). About the booking (entity type <c>Booking</c>), on its property, leading to it (<see cref="ActivityAction.ReviewBooking"/>), with the

@@ -358,4 +358,81 @@ public class MessageSyncProofTests
         Assert.Equal(new SyncResult(1, 1, 0, 0), done);
         Assert.NotNull((await h.ReadAsync(db => db.OtaMessageSyncStates.SingleAsync())).InitialImportCompletedAt);
     }
+
+    /// <summary>
+    /// PROOF TEST: data rule (E23/F01/US01/T01, the review of S010, fix 5). An automatic message of CasaZen (the check-in link) answers nobody: when it is the newest message of the thread, the
+    /// copy takes the direction of the thread from the newest message that is not automatic, so the question of the guest still waits for its answer; the row stays automatic, and a person
+    /// who writes on the channel manager after the link does answer.
+    /// </summary>
+    [Fact]
+    public async Task OtaMessageSync_AnAutomaticMessageNewerThanTheQuestion_LeavesTheThreadWaitingForItsAnswer_Test()
+    {
+        var h = new MessageSyncHarness();
+        var question = MessageSyncHarness.Inbound("70001", ThreadId);
+        h.Client.Setup(c => c.GetChatThreadAsync(MessageSyncHarness.Accommodation, ThreadId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MessageSyncHarness.Thread(ThreadId));
+        h.Client.Setup(c => c.GetChatMessagesAsync(MessageSyncHarness.Accommodation, ThreadId, It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([question]);
+        await using (var db = h.NewDb())
+            await h.Service(db).SyncThreadAsync(MessageSyncHarness.OrgA, MessageSyncHarness.Accommodation, ThreadId, null, CancellationToken.None);
+        Assert.Equal(OtaMessageDirection.Inbound, (await h.ReadAsync(db => db.OtaMessageThreads.SingleAsync())).LastMessageDirection);
+
+        // CasaZen wrote the link in the thread (the reply service stored the row with the id the channel manager gave it); the copy reads the thread again and finds the message.
+        var sentAt = MessageSyncHarness.Now.UtcDateTime.AddMinutes(-30);
+        await using (var db = h.NewDb())
+        {
+            var thread = await db.OtaMessageThreads.SingleAsync();
+            db.OtaMessages.Add(new OtaMessage
+            {
+                OrgId = MessageSyncHarness.OrgA,
+                ThreadId = thread.Id,
+                OctorateMessageId = "70002",
+                Direction = OtaMessageDirection.Outbound,
+                Text = "Completa il check-in online da questo link: https://public.test/checkin/TOKEN",
+                SentAt = sentAt,
+                DeliveryState = OtaMessageDeliveryState.Sent,
+                Origin = MessageOrigin.Automation,
+                IdempotencyKey = "cil-0123456789abcdef0123456789abcdef01234567",
+                CreatedAt = sentAt,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var link = MessageSyncHarness.Inbound("70002", ThreadId, "Completa il check-in online da questo link: https://public.test/checkin/TOKEN") with
+        {
+            Direction = OtaMessageDirection.Outbound,
+            SenderName = "Host",
+            SentAt = sentAt,
+        };
+        h.Client.Setup(c => c.GetChatMessagesAsync(MessageSyncHarness.Accommodation, ThreadId, It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([question, link]);
+        await using (var db = h.NewDb())
+            await h.Service(db).SyncThreadAsync(MessageSyncHarness.OrgA, MessageSyncHarness.Accommodation, ThreadId, null, CancellationToken.None);
+
+        var (afterLink, linkRow) = await h.ReadAsync(async db => (
+            await db.OtaMessageThreads.SingleAsync(),
+            await db.OtaMessages.SingleAsync(m => m.OctorateMessageId == "70002")));
+        Assert.Equal(sentAt, afterLink.LastMessageAt);
+        Assert.Equal(OtaMessageDirection.Inbound, afterLink.LastMessageDirection);
+        Assert.Equal(1, afterLink.UnreadCount);
+        Assert.Equal(MessageOrigin.Automation, linkRow.Origin);
+
+        // A person answers on the channel manager after the link: that is an answer.
+        var answer = MessageSyncHarness.Inbound("70003", ThreadId, "Il check-in e dalle 15.") with
+        {
+            Direction = OtaMessageDirection.Outbound,
+            SenderName = "Host",
+            SentAt = MessageSyncHarness.Now.UtcDateTime.AddMinutes(-10),
+        };
+        h.Client.Setup(c => c.GetChatMessagesAsync(MessageSyncHarness.Accommodation, ThreadId, It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([question, link, answer]);
+        await using (var db = h.NewDb())
+            await h.Service(db).SyncThreadAsync(MessageSyncHarness.OrgA, MessageSyncHarness.Accommodation, ThreadId, null, CancellationToken.None);
+
+        var (afterAnswer, answerRow) = await h.ReadAsync(async db => (
+            await db.OtaMessageThreads.SingleAsync(),
+            await db.OtaMessages.SingleAsync(m => m.OctorateMessageId == "70003")));
+        Assert.Equal(OtaMessageDirection.Outbound, afterAnswer.LastMessageDirection);
+        Assert.Equal(MessageOrigin.Person, answerRow.Origin);
+    }
 }
