@@ -23,8 +23,20 @@ public class InternalActivity : ITenantOwned
     /// <summary>The <see cref="Status"/> of an open activity.</summary>
     public const string StatusPending = "Pending";
 
+    /// <summary>The <see cref="Status"/> of an activity of the staff work that was started.</summary>
+    public const string StatusInProgress = "InProgress";
+
     /// <summary>The <see cref="Status"/> of a done activity (a closed "To do").</summary>
     public const string StatusCompleted = "Completed";
+
+    /// <summary>
+    /// The <see cref="Status"/> of an activity of the staff work that will not be done (E24/F01/US01/T02): the automatic cleaning of a stay that was cancelled
+    /// before the work started. It has no <see cref="CompletedAt"/>, so no cost is read from it.
+    /// </summary>
+    public const string StatusCancelled = "Cancelled";
+
+    /// <summary>The <see cref="ActivityType"/> of the staff work that cleans a property (the others are Maintenance and CheckIn).</summary>
+    public const string CleaningActivityType = "Cleaning";
 
     /// <summary>The <see cref="ClosedBy"/> of a "To do" closed by the system (its condition was met).</summary>
     public const string ClosedBySystem = "system";
@@ -80,7 +92,7 @@ public class InternalActivity : ITenantOwned
     /// <summary>Whether the cost should be recharged to the property owner.</summary>
     public bool RechargeToOwner { get; set; }
 
-    /// <summary>Status: Pending, InProgress, Completed.</summary>
+    /// <summary>Status: Pending, InProgress, Completed or, for the staff work only, Cancelled.</summary>
     [Required, MaxLength(20)]
     public string Status { get; set; } = StatusPending;
 

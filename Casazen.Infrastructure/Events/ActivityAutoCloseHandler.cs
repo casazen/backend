@@ -44,11 +44,12 @@ public sealed class ActivityAutoCloseHandler(
         [DomainEventType.CheckInCompleted] = [ActivityType.CheckInPending, ActivityType.BookingSpecialRequest, ActivityType.CheckInLinkToSend],
         // E03/F04/US02: the identity verification of a stay that was cancelled or is over has nobody to wait for (the queue does not list it).
         [DomainEventType.CheckOutCompleted] = [ActivityType.CheckOutPending, ActivityType.IdentityVerification],
+        // E24/F01/US01/T02: a stay that is cancelled has no cleaning left to decide on (the automation cancels it, unless the work started).
         // E18/F01/US03: a cancelled stay has no regime to decide.
-        [DomainEventType.BookingCancelled] = [ActivityType.BookingSpecialRequest, ActivityType.IdentityVerification, ActivityType.CheckInLinkToSend, ActivityType.CompanyTenantDecision],
+        [DomainEventType.BookingCancelled] = [ActivityType.BookingSpecialRequest, ActivityType.IdentityVerification, ActivityType.CheckInLinkToSend, ActivityType.CleaningDateChanged, ActivityType.CompanyTenantDecision],
         // E18/F01/US03: nor has a no-show, which the one definition of an active stay (AlloggiatiStatusRules) leaves out as well.
         [DomainEventType.BookingNoShowMarked] = [ActivityType.CompanyTenantDecision],
-        [DomainEventType.PropertyReadyDeclared] = [ActivityType.CleaningDue],
+        [DomainEventType.PropertyReadyDeclared] = [ActivityType.CleaningDue, ActivityType.CleaningDateChanged],
         [DomainEventType.AlloggiatiReceiptArrived] = [ActivityType.AlloggiatiDeadline, ActivityType.ReceiptToRetrieve],
     };
 
