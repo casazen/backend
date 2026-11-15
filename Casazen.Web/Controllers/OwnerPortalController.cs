@@ -352,12 +352,14 @@ public class OwnerPortalController(
     }
 
     /// <summary>
-    /// Gets withholding tax summary for the owner (ADR-011-R2).
-    /// Returns empty summary for now (withholding feature not yet implemented).
+    /// The withholding of the owner in the year (ADR-011-R2, E18/F01/US02/T01): what the agency withheld on the owner's payouts, by month and property, in euro, and the Certificazione Unica of the year
+    /// once the agency reviewed it. Only the owner profiles of the claim (<c>accounting.read</c> for a delegated contact: 403 <c>owner_portal_permission_missing</c> without it). Behind
+    /// <c>Features:TaxReportingExports</c> and <c>Features:AgencyTier</c>: with either off it is the empty summary it was.
     /// </summary>
     [HttpGet("withholding")]
     [ProducesResponseType(typeof(OwnerPortalWithholdingDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<OwnerPortalWithholdingDto>> GetWithholding(
         [FromQuery] int? year = null,
         CancellationToken cancellationToken = default)
@@ -377,13 +379,29 @@ public class OwnerPortalController(
         var dto = new OwnerPortalWithholdingDto
         {
             Year = withholding.Year,
+            Currency = withholding.Currency,
             TotalWithheld = withholding.TotalWithheld,
             Details = withholding.Details.Select(d => new OwnerPortalWithholdingDetailDto
             {
+                AgencyId = d.AgencyId,
+                AgencyName = d.AgencyName,
                 PropertyId = d.PropertyId,
                 PropertyName = d.PropertyName,
                 Month = d.Month,
+                GrossBase = d.GrossBase,
                 AmountWithheld = d.AmountWithheld
+            }).ToList(),
+            CuStatements = withholding.CuStatements.Select(c => new OwnerPortalCuDto
+            {
+                AgencyId = c.AgencyId,
+                AgencyName = c.AgencyName,
+                Year = c.Year,
+                State = c.State,
+                GeneratedAt = c.GeneratedAt,
+                GrossBase = c.GrossBase,
+                Withheld = c.Withheld,
+                TaxCode = c.TaxCode,
+                Attribution = c.Attribution
             }).ToList()
         };
 

@@ -33,6 +33,15 @@ public interface IWithholdingService
         int year,
         int month,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The annual Certificazione Unica data of the year as it is stored (E18/F01/US02/T01, NF-117): its filing state and its records, one for each recipient, read from the encrypted
+    /// payload, to export. Read only: it never builds the data (<see cref="IOwnerPayoutService.GenerateAnnualDatasetAsync"/> does, and only while it is generated), so a file is always the
+    /// data the accountant reviewed.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException">404 <c>tax_dataset_not_found</c> while the year has none.</exception>
+    /// <exception cref="Exceptions.DomainRuleException">422 <c>owner_period_invalid</c> (the year), <c>tax_cu_dataset_outdated</c> (data of an older shape, without recipients).</exception>
+    Task<StoredCuDataset> GetCuDatasetAsync(Guid orgId, int year, CancellationToken cancellationToken = default);
 }
 
 /// <summary>The F24 data of a month (E18/F01/US01/T02): the lines of the section Erario and the decisions of the payouts they add up.</summary>

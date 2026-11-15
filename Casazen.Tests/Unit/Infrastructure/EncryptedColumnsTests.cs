@@ -154,6 +154,8 @@ public class EncryptedColumnsTests
                 "SupportVaultSecret.ExtraCode:Casazen.SupportVault",
                 "SupportVaultSecret.Password:Casazen.SupportVault",
                 "SupportVaultSecret.Username:Casazen.SupportVault",
+                // NF-117: the annual tax data of the owners, with the recipients of the Certificazione Unica and their stays (E18/F01/US02/T01).
+                "TaxReportingDataset.PayloadJson:Casazen.TaxReportingDataset",
                 // NF-25, NF-113: the wire file of the agency (the IBAN, the name and the address of every owner) and the IBAN of the agency that pays (E16/F01/US01/T01).
                 "WireBatch.DebitAccount:Casazen.WireBatch.File",
                 "WireBatch.XmlContent:Casazen.WireBatch.File",

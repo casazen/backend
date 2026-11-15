@@ -8005,4 +8005,178 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerIssuedDocumentsNotAvailable" xml:space="preserve">
     <value>Non ci sono documenti emessi a tuo nome da scaricare.</value>
   </data>
+  <data name="TaxCuRecordNotFound" xml:space="preserve">
+    <value>Per questo proprietario non ci sono dati della Certificazione Unica nell'anno.</value>
+  </data>
+  <data name="CuDatasetOutdated" xml:space="preserve">
+    <value>I dati annuali di questo anno sono stati generati prima che contenessero i percipienti: rigenerali (finché sono solo generati) prima di esportarli.</value>
+  </data>
+  <data name="CuExportTitle" xml:space="preserve">
+    <value>Dati per la Certificazione Unica {0} della ritenuta sulle locazioni brevi: una riga per percipiente, importi in euro (non è la CU trasmessa)</value>
+  </data>
+  <data name="CuExportLinesTitle" xml:space="preserve">
+    <value>Soggiorni di ogni percipiente, {0}: base e ritenuta in euro di ogni soggiorno (gli storni sono righe con importi opposti)</value>
+  </data>
+  <data name="CuExportSheetStays" xml:space="preserve">
+    <value>Soggiorni</value>
+  </data>
+  <data name="CuColRecipient" xml:space="preserve">
+    <value>Percipiente</value>
+  </data>
+  <data name="CuColFirstName" xml:space="preserve">
+    <value>Nome</value>
+  </data>
+  <data name="CuColLastName" xml:space="preserve">
+    <value>Cognome</value>
+  </data>
+  <data name="CuColEntityKind" xml:space="preserve">
+    <value>Tipo di soggetto</value>
+  </data>
+  <data name="CuColFiscalCode" xml:space="preserve">
+    <value>Codice fiscale</value>
+  </data>
+  <data name="CuColVatNumber" xml:space="preserve">
+    <value>Partita IVA</value>
+  </data>
+  <data name="CuColResidence" xml:space="preserve">
+    <value>Paese di residenza fiscale</value>
+  </data>
+  <data name="CuColStreet" xml:space="preserve">
+    <value>Via</value>
+  </data>
+  <data name="CuColCivic" xml:space="preserve">
+    <value>Civico</value>
+  </data>
+  <data name="CuColPostalCode" xml:space="preserve">
+    <value>CAP</value>
+  </data>
+  <data name="CuColCity" xml:space="preserve">
+    <value>Comune</value>
+  </data>
+  <data name="CuColProvince" xml:space="preserve">
+    <value>Provincia</value>
+  </data>
+  <data name="CuColCountry" xml:space="preserve">
+    <value>Paese</value>
+  </data>
+  <data name="CuColLegalAddress" xml:space="preserve">
+    <value>Indirizzo del profilo fiscale</value>
+  </data>
+  <data name="CuColAttribution" xml:space="preserve">
+    <value>Attribuzione</value>
+  </data>
+  <data name="CuColShares" xml:space="preserve">
+    <value>Comproprietari inclusi (base / ritenuta, euro)</value>
+  </data>
+  <data name="CuColMissing" xml:space="preserve">
+    <value>Dati mancanti</value>
+  </data>
+  <data name="CuColProperty" xml:space="preserve">
+    <value>Immobile</value>
+  </data>
+  <data name="CuColPropertyAddress" xml:space="preserve">
+    <value>Indirizzo dell'immobile</value>
+  </data>
+  <data name="CuColPropertyCity" xml:space="preserve">
+    <value>CAP e comune dell'immobile</value>
+  </data>
+  <data name="CuColIstat" xml:space="preserve">
+    <value>Codice ISTAT del comune</value>
+  </data>
+  <data name="CuColCin" xml:space="preserve">
+    <value>Codice identificativo nazionale (CIN)</value>
+  </data>
+  <data name="CuColCadastralSheet" xml:space="preserve">
+    <value>Foglio</value>
+  </data>
+  <data name="CuColCadastralParcel" xml:space="preserve">
+    <value>Particella</value>
+  </data>
+  <data name="CuColCadastralSubaltern" xml:space="preserve">
+    <value>Subalterno</value>
+  </data>
+  <data name="CuColCadastralCategory" xml:space="preserve">
+    <value>Categoria catastale</value>
+  </data>
+  <data name="CuColCheckIn" xml:space="preserve">
+    <value>Arrivo</value>
+  </data>
+  <data name="CuColCheckOut" xml:space="preserve">
+    <value>Partenza</value>
+  </data>
+  <data name="CuColNights" xml:space="preserve">
+    <value>Notti</value>
+  </data>
+  <data name="CuColCoOwner" xml:space="preserve">
+    <value>Comproprietario (pagamento di origine)</value>
+  </data>
+  <data name="CuEntityKindNaturalPerson" xml:space="preserve">
+    <value>Persona fisica</value>
+  </data>
+  <data name="CuEntityKindLegalEntity" xml:space="preserve">
+    <value>Soggetto diverso da persona fisica</value>
+  </data>
+  <data name="CuAttributionOwner" xml:space="preserve">
+    <value>Proprietario</value>
+  </data>
+  <data name="CuAttributionSignatory" xml:space="preserve">
+    <value>Firmatario, con i comproprietari</value>
+  </data>
+  <data name="CuAttributionShare" xml:space="preserve">
+    <value>Quota del comproprietario</value>
+  </data>
+  <data name="CuMissingName" xml:space="preserve">
+    <value>denominazione</value>
+  </data>
+  <data name="CuMissingFiscalCode" xml:space="preserve">
+    <value>codice fiscale</value>
+  </data>
+  <data name="CuMissingAddress" xml:space="preserve">
+    <value>indirizzo</value>
+  </data>
+  <data name="CuProspectTitle" xml:space="preserve">
+    <value>Prospetto per la CU {0} (bozza)</value>
+  </data>
+  <data name="CuProspectWatermark" xml:space="preserve">
+    <value>BOZZA</value>
+  </data>
+  <data name="CuProspectDisclaimer" xml:space="preserve">
+    <value>Bozza di prospetto con i dati della ritenuta sulle locazioni brevi per la Certificazione Unica. Non è la Certificazione Unica: la predispone e la trasmette l'agenzia o il suo commercialista.</value>
+  </data>
+  <data name="CuProspectOrg" xml:space="preserve">
+    <value>Sostituto d'imposta e intermediario: {0}</value>
+  </data>
+  <data name="CuProspectYear" xml:space="preserve">
+    <value>Anno d'imposta: {0}</value>
+  </data>
+  <data name="CuProspectState" xml:space="preserve">
+    <value>Stato dei dati annuali: {0}</value>
+  </data>
+  <data name="CuProspectName" xml:space="preserve">
+    <value>Denominazione: {0}</value>
+  </data>
+  <data name="CuProspectFiscalCode" xml:space="preserve">
+    <value>Codice fiscale: {0}</value>
+  </data>
+  <data name="CuProspectVat" xml:space="preserve">
+    <value>Partita IVA: {0}</value>
+  </data>
+  <data name="CuProspectAddress" xml:space="preserve">
+    <value>Indirizzo: {0}</value>
+  </data>
+  <data name="CuProspectMissing" xml:space="preserve">
+    <value>Dati del percipiente da completare: {0}</value>
+  </data>
+  <data name="CuProspectCoOwners" xml:space="preserve">
+    <value>Comprende le quote dei comproprietari: {0}</value>
+  </data>
+  <data name="CuProspectSectionStays" xml:space="preserve">
+    <value>Soggiorni e ritenuta</value>
+  </data>
+  <data name="CuProspectTotals" xml:space="preserve">
+    <value>Totale: base {0} euro, ritenuta {1} euro</value>
+  </data>
+  <data name="CuProspectTaxCode" xml:space="preserve">
+    <value>Codice tributo: {0}. Regola: {1}</value>
+  </data>
 </root>

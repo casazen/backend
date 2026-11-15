@@ -140,6 +140,32 @@ public sealed class WithholdingService(AppDbContext db, TimeProvider time) : IWi
         return new F24MonthData(year, month, lines, breakdown);
     }
 
+    /// <inheritdoc />
+    /// <remarks>Reads the row of the year of the org, decrypts and parses its payload; the stored data is what the accountant reviewed, so nothing here builds or changes it.</remarks>
+    public Task<StoredCuDataset> GetCuDatasetAsync(Guid orgId, int year, CancellationToken cancellationToken = default) =>
+        ReadCuDatasetAsync(db, orgId, year, cancellationToken);
+
+    /// <summary>The stored annual data of the year with its records: the one reader of the exports and of the draft CU of an owner.</summary>
+    internal static async Task<StoredCuDataset> ReadCuDatasetAsync(AppDbContext db, Guid orgId, int year, CancellationToken cancellationToken)
+    {
+        RequireYear(year);
+
+        var dataset = await db.TaxReportingDatasets.AsNoTracking()
+            .FirstOrDefaultAsync(d => d.OrgId == orgId && d.Kind == TaxReportingDataset.CertificazioneUnica && d.Year == year, cancellationToken)
+            ?? throw new NotFoundException($"Tax dataset of {year} was not found") { Code = OwnerPayoutErrors.DatasetNotFound, MessageKey = "TaxDatasetNotFound" };
+        var records = CuDatasetPayload.Parse(dataset.PayloadJson);
+        if (!CuDatasetPayload.IsDetailed(records))
+            throw new DomainRuleException(TaxReportingErrors.CuDatasetOutdated, "CuDatasetOutdated");
+
+        return new StoredCuDataset(dataset, records);
+    }
+
+    private static void RequireYear(int year)
+    {
+        if (year is < 2000 or > 2100)
+            throw new DomainRuleException(OwnerAccountingErrors.PeriodInvalid, "OwnerPeriodInvalid");
+    }
+
     /// <summary>The F24 due date: the 16th of the month after the reference month (ADR-018-R8).</summary>
     private static DateTime CalculateDueDate(int month, int year) =>
         F24Dates.DueDateOf(year, month).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);

@@ -610,3 +610,47 @@ withholding reads are not behind it** (an owner past the limit is a business wha
 - **Data**: migration `AddOwnerTaxChecks`: `PropertyOwners.ExternalShortLetUnits` (int, default 0, check 0 to 1000), the table `ShortLetTaxDecisions` (tenant-owned, gone with the
   org, the booking a plain id with no foreign key: the decision is tax evidence) and `OwnerMandates.CoOwnerTaxReporting` (int, default 0). Rolling it back drops the decisions: they
   are evidence, so a rollback after decisions were recorded is a decision of the operator, not a routine step.
+
+## Certificazione Unica, 770 and the 30-June list (E18/F01/US02)
+
+Decisions of 2026-11-14 (`fatturazione/analisi-tecnica.md` §5, ⚖ I6 and T2 of the table §7): prudent defaults, configurable, to be confirmed by an accountant. **Nothing is filed or
+sent by CasaZen**: the telematic record layout of the CU is not produced (⚖ T2), the exports carry every field the accountant's software needs, and
+every file says it is the data to fill the form with. The new exports and the view of the owner are behind `Features:TaxReportingExports`
+(off by default, on in the test environment: [`feature-flags.md`](feature-flags.md)); the annual data and its filing states (`api/withholding/annual`) are not. **No migration**: the
+payload column of `TaxReportingDatasets` exists, it is encrypted through `EncryptedColumns` (below).
+
+- **CU data per recipient** (E18/F01/US02/T01, NF-117). `POST api/withholding/annual/{year}` builds the annual data from the applicable evidence of the payouts paid in the year and
+  their reversals, of an Italian rule only (`OwnerPayoutService.F24EvidenceQuery`, the evidence the F24 is built from), under the lock of the owner accounting of the org, again while it is
+  only `generated` (409 `tax_file_already_filed` after). **One record per recipient** (`CuDatasetBuilder`): who it is made out to (name, first name and surname of a person, fiscal
+  code, VAT number, address: the fiscal profile in force on the day of the last payment of the year, then the registry; what is missing is listed in `missing`, never invented), the
+  properties of its stays (address, unit, comune and ISTAT code, CIN, cadastral sheet, parcel, subaltern and category when stored), its stays (check-in, check-out, nights, month of the
+  payment) and the base and the withholding in euro of each, with the tax code and the rule versions. **The records add up to the evidence to the cent** (`TaxEvidenceLines`): the
+  withholding of a payout is decided once on the whole base of its stays, so each stay carries its part in proportion to its base, the cents that are left going to the largest
+  remainders; a payout of before the facts were read from the ledger (typed facts) has one line with no stay for its whole amount; a decision and its reversal in the same month cancel
+  out and leave no line, a reversal in a later year is a line with the opposite amounts in the month of the reversal. A recipient whose withholding was reversed in the same year has no
+  record. `TotalGrossBase`, `TotalWithheld`, `EvidenceCount` and the hash are the evidence's, as before, so `GET api/withholding/reconciliation/{year}` still reconciles.
+- **Co-owners** (⚖ I6, `OwnerMandate.CoOwnerTaxReporting`). Each co-owner is paid its share, so the evidence is its own. The record is the owner's own for a property of one owner on the
+  check-out day of the stay. For a property of several co-owners the signatory (`DocumentPlanRules.SignatoryOf`: the mandate in force that day, then the largest share, then the oldest
+  ownership, then the smallest id) decides by its mandate: `Signatory` (the default, «altrimenti sul firmatario») writes everything on the signatory, `attribution: "signatory"`, with
+  `shares` saying what each co-owner puts into the record (name, base, withholding); `PerShare` keeps each co-owner's share on its own name, `attribution: "share"`. Either way **the shares
+  add up to the signatory's totals**. The evidence of an owner that was not an owner of the property on that day is never moved.
+- **Encrypted, and never in the API of the annual data.** `PayloadJson` is encrypted at rest (`Casazen.TaxReportingDataset`, [`encryption.md`](encryption.md)): it names the fiscal code and
+  the address of every recipient. A payload stored before (the totals of each owner) is read as it is and rewritten at startup. `GET`/`POST api/withholding/annual/{year}` answer the totals
+  of each owner in `payloadJson` (`ownerId`, `grossBase`, `withheld`, `evidence`: the shape it always had, which the accountant package also reads) and never the recipients.
+- **CU exports** (`agency.withholding.manage` and `agency.owner.financial.manage`, because they print fiscal codes and addresses; `no-store`; 404 `not_found` before authentication with the
+  flag off). `GET api/withholding/annual/{year}/export?format=csv|xlsx`: the recipients (one row each: name, kind, fiscal code, VAT number, residence, address, base, withholding, tax code,
+  attribution, co-owners included, rule versions, decisions, what is missing) and the stays of each (property with address, comune, ISTAT, CIN and cadastral data, dates, nights, month, the
+  co-owner it comes from, base and withholding); the Excel file has the sheets `CU` and the stays. `GET api/withholding/annual/{year}/owners/{ownerId}/pdf`: the **draft «prospetto CU»**
+  of one owner (watermark «BOZZA»/«DRAFT», the recipient, the year, the stays, the totals, the tax code, the state of the annual data): it says on the page that it is not the
+  Certificazione Unica. They read the data as it was stored and reviewed (never recomputed): 404 `tax_dataset_not_found` without annual data, `tax_cu_record_not_found` for an owner with no
+  record (or of another org), 422 `tax_cu_dataset_outdated` for data stored before the recipients (generate it again while it is only generated), `owner_period_invalid`, 400
+  `fiscal_export_invalid_format`. The states stay as they were: generated, reviewed, submitted (with the `handoffReference`), accepted (with the receipt) or rejected (with the reason).
+- **Owner portal** (E18/F01/US02/T01). `GET api/owner-portal/withholding?year=` answers, for the owner profiles of the claim only (`accounting.read` for a delegated contact, 403
+  `owner_portal_permission_missing` without it; the empty summary with `Features:AgencyTier` or `Features:TaxReportingExports` off, as before): `totalWithheld` and `details` (agency, property,
+  month, base and withholding in euro: the pieces of the owner's own payouts, adding up to the total) and `cuStatements`: the record of the owner profile in the annual data of the agency
+  **once it is reviewed** (reviewed, submitted or accepted: a data still generated can change, a rejected one is not the owner's to read), as totals (base, withholding, tax code, state,
+  `attribution`). Never the recipient data, the stays or the co-owners a signatory's record adds up; nothing of another owner whatever the tenant of the caller (every read names the owner
+  profiles of the grants and ignores the tenant filter on purpose, as the statements do).
+- **Reach, logs.** Every action of `api/withholding` needs a caller of the whole org (403 before anything is read); the logs carry ids, the year and counts, never a name, a fiscal code or an
+  address.
+- **Proofs.** `CuDatasetTests` (`CuDataset_SharesSumToOwnerTotals_Test`, `CuDataset_PayloadEncrypted_Test`, `OwnerPortalWithholding_OnlyOwnClaim_Test`).
