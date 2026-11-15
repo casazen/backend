@@ -626,21 +626,23 @@ public class SwissAgencyScenarioTests
         Assert.Equal((291.27m, 10.73m), (note.TaxableBase, note.VatAmount));
         Assert.All(note.Lines, l => Assert.Contains("no-show", l.Description, StringComparison.Ordinal));
 
-        // A no-show is not an active stay in any reader: no cleaning fee and no revenue from the booking; the deposit kept is the revenue, less its tourist tax.
+        // A no-show is not an active stay in any reader: no cleaning fee and no revenue from the booking. It owes no tourist tax either, so the whole deposit kept is
+        // the revenue of the owner (none of it is tax) and the box of the tax of the statement is empty: nothing of the deposit goes missing between the two.
         var month = await world.CloseMonthAsync(2026, 10, EndOfOctober);
         await AssertMonthAsync(
             world,
             month,
             new Expected(
-                Gross: 97.01m,
+                Gross: 100.00m,
                 ChannelFees: 0m,
-                Commission: -19.40m,
-                Vat: -1.57m,
+                Commission: -20.00m,
+                Vat: -1.62m,
                 Recharges: 0m,
-                Closing: 76.04m,
-                InvoiceLines: [(FiscalLineType.Commission, 19.40m, 8.1m, 1.57m)],
-                InvoiceTotals: (19.40m, 1.57m, 20.97m)));
+                Closing: 78.38m,
+                InvoiceLines: [(FiscalLineType.Commission, 20.00m, 8.1m, 1.62m)],
+                InvoiceTotals: (20.00m, 1.62m, 21.62m)));
         Assert.Equal(OwnerLedgerSourceType.Payment, Assert.Single(await world.LedgerOfAsync(2026, 10), e => e.EntryType == OwnerLedgerEntryType.BookingRevenue).SourceType);
+        Assert.Empty((await world.StatementOfAsync(month.Published.Id)).TouristTax);
     }
 
     // ---------------------------------------------------------------- the official schema of the wire file

@@ -151,7 +151,9 @@ booking line, and the month of the payment then posts it (the readiness says `un
 
 - **Tourist tax out**: `Payment.Amount` includes `Booking.TouristTax`; a payment's part of it is `round(collected × TouristTax / TotalPrice)` half to even,
   never more than the tax or the payment (`OwnerLedgerRules.RevenueOfPayment`): a deposit, a balance and a partial refund each lose their own part, so the
-  parts of several payments can differ by a cent from the tax. The tourist tax is never in the revenue nor in a commission base.
+  parts of several payments can differ by a cent from the tax. The tourist tax is never in the revenue nor in a commission base. A stay that owes no tourist
+  tax (a booking that is not active, or a no-show: `AlloggiatiStatusRules`, as the box of the tax of the statement reads it) has no part of it: a payment it
+  keeps (the deposit of a no-show, a penalty) is all revenue, and the reconciliation of the month reads it the same way (E19/F01/US01/T01).
 - **Commission** (`AgencyCommission`): the percent of the mandate in force on the day of the revenue × its base (`GrossExclTouristTax`: the revenue;
   `GrossExclTouristTaxAndCleaning`: less its part of `Booking.CleaningFee`), the base split by the shares half to even with the remainder to the last owner.
   A share with **no mandate** in force is posted without commission and raises the blocking `mandate_missing_for_stay` (owner, stay): never a commission of

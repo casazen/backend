@@ -568,7 +568,9 @@ caller); an account of the agency whose commissions it does not recharge never n
 - The checkout of the CasaZen site in Switzerland does not collect the tourist tax yet: the document carries the line of Ticino and stays «Da incassare» although the
   stay is paid (analisi-tecnica §5bis.3, second wave).
 - A credit note for the difference (a no-show, a partial refund) is spread over the lines of the document in proportion, the tourist tax included: the part that stays
-  (the deposit kept) keeps a share of the tourist tax line (⚖ I12).
+  (the deposit kept) keeps a share of the tourist tax line (⚖ I12). The ledger of the owner does not follow it: a stay that owes no tourist tax (a booking that is
+  not active, or a no-show, `AlloggiatiStatusRules`) keeps none of a payment as tax, so the deposit kept is all revenue of the owner, as the box of the tax of the
+  statement leaves the stay out (fixed with the scenario, `OwnerAccountingService` and the reconciliation of the month).
 
 ## Retention and privacy
 
