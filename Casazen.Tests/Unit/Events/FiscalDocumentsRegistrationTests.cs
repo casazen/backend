@@ -5,6 +5,7 @@ using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.External.Sdi;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Services;
@@ -116,6 +117,16 @@ public class FiscalDocumentsRegistrationTests
             // The issuer profiles of the owners (E17/F01/US01/T01).
             (typeof(IOwnerIssuerProfileService), typeof(OwnerIssuerProfileService), ServiceLifetime.Scoped),
 
+            // The channel to the SDI (E17/F01/US02): the typed client of the provider's adapter, the verifier of its webhook, the port (the adapter when Sdi:Provider is configured), the SDI states of the
+            // electronic invoices, the correction of a rejected one, the consumer of the rejection (the «To do») and the item of the billing setup for the issuers that wait for their VAT number.
+            (typeof(RestSdiEInvoiceProvider), null, ServiceLifetime.Transient),
+            (typeof(SdiWebhookVerifier), typeof(SdiWebhookVerifier), ServiceLifetime.Singleton),
+            (typeof(ISdiEInvoiceProvider), null, ServiceLifetime.Scoped),
+            (typeof(IFiscalDocumentSdiService), typeof(FiscalDocumentSdiService), ServiceLifetime.Scoped),
+            (typeof(IFiscalDocumentCorrectionService), typeof(FiscalDocumentCorrectionService), ServiceLifetime.Scoped),
+            (typeof(IEventHandler<DomainEvent>), typeof(FiscalDocumentRejectionHandler), ServiceLifetime.Scoped),
+            (typeof(IBillingSetupContributor), typeof(SdiIssuerRegistrationContributor), ServiceLifetime.Scoped),
+
             // The documents issued in the name of the owners: the list, the PDF and the XML, and the ZIP for the owner's accountant (E17/F02/US01/T01).
             (typeof(IOwnerIssuedDocumentsExport), typeof(OwnerIssuedDocumentsExport), ServiceLifetime.Scoped),
 
@@ -181,6 +192,9 @@ public class FiscalDocumentsRegistrationTests
         // The consumer that sends the document to the guest takes the delivery service, which needs the e-mail queue, the public links and the key ring of the application.
         services.AddScoped(_ => Mock.Of<IFiscalDocumentDeliveryService>());
 
+        // The consumer of the rejection of an invoice raises a «To do» through the activity service (E17/F01/US02/T03).
+        services.AddScoped(_ => Mock.Of<IInternalActivityService>());
+
         // The consumer of the invoice data of a company takes the checks of the owners, which need the «Da fare» list, the options of the fiscal rules and the clock.
         services.AddScoped(_ => Mock.Of<IOwnerTaxChecks>());
 
@@ -192,7 +206,7 @@ public class FiscalDocumentsRegistrationTests
         Assert.Equal(
             [
                 typeof(InvoiceDataFromOctorateHandler), typeof(OctorateBillingWriteBackHandler), typeof(FiscalDocumentCheckOutHandler), typeof(FiscalDocumentBookingChangeHandler),
-                typeof(FiscalDocumentEmailHandler), typeof(CompanyTenantDecisionHandler),
+                typeof(FiscalDocumentEmailHandler), typeof(FiscalDocumentRejectionHandler), typeof(CompanyTenantDecisionHandler),
             ],
             handlers);
         Assert.IsType<InvoiceDataService>(scope.ServiceProvider.GetRequiredService<IInvoiceDataService>());

@@ -2,6 +2,8 @@ using Casazen.Core.Documents;
 using Casazen.Core.Events;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.External.Sdi;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
@@ -153,6 +155,30 @@ public static class FiscalDocumentExtensions
 
         // The issuer profiles of the owners who issue the documents of their Italian stays, with their own series and numbering (E17/F01/US01/T01).
         services.AddScoped<IOwnerIssuerProfileService, OwnerIssuerProfileService>();
+
+        // The channel to the SDI (E17/F01/US02, NF-116): the port ISdiEInvoiceProvider is the adapter of the provider (a typed HTTP client, Sdi:Provider) when Sdi__Provider__Name is an adapter that
+        // exists and its key is set, and the unconfigured one otherwise: nothing is then ever submitted, a document stays «to send» and its issuer declares it sent by hand. The secret of the address
+        // of the provider's webhook is checked in constant time by the verifier. The submission is behind Features:SdiSubmission (and the issuance), the endpoints, the webhook and the job alike.
+        services.AddOptions<SdiProviderOptions>().Bind(configuration.GetSection(SdiProviderOptions.SectionName));
+        services.AddHttpClient<RestSdiEInvoiceProvider>((sp, client) =>
+        {
+            var settings = sp.GetRequiredService<IOptions<SdiProviderOptions>>().Value;
+            if (settings.ApiAddress is { } address)
+                client.BaseAddress = address;
+
+            client.Timeout = TimeSpan.FromSeconds(Math.Clamp(settings.TimeoutSeconds, 5, 120));
+        });
+        services.AddSingleton<SdiWebhookVerifier>();
+        services.AddScoped<ISdiEInvoiceProvider>(sp => sp.GetRequiredService<IOptions<SdiProviderOptions>>().Value.IsConfigured
+            ? sp.GetRequiredService<RestSdiEInvoiceProvider>()
+            : new UnconfiguredSdiEInvoiceProvider());
+
+        // The SDI states of the electronic invoices (submission, outcomes, declaration by hand) and the correction of a rejected one (E17/F01/US02/T01, T03); the consumer of the rejection raises
+        // the «To do» «Correggi la fattura» and closes it when the invoice is corrected or credited; the item of the billing setup says which issuers wait for their VAT number to be enabled.
+        services.AddScoped<IFiscalDocumentSdiService, FiscalDocumentSdiService>();
+        services.AddScoped<IFiscalDocumentCorrectionService, FiscalDocumentCorrectionService>();
+        services.AddScoped<IEventHandler<DomainEvent>, FiscalDocumentRejectionHandler>();
+        services.AddScoped<IBillingSetupContributor, SdiIssuerRegistrationContributor>();
 
         // The documents issued in the name of the owners for the owner portal and for the accountant of the owner: the list, their PDF and XML and the ZIP of the month or the year
         // (E17/F02/US01/T01). The owner portal service takes it; it takes nothing of the portal.
