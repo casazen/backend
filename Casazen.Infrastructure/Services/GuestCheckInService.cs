@@ -35,7 +35,8 @@ public class GuestCheckInService(
     IMarketingConfirmationService? marketingConfirmation = null,
     ICrmContactIndex? contactIndex = null,
     IOptions<CrmOptions>? crmOptions = null,
-    IInvoiceDataService? invoiceDataService = null) : IGuestCheckInService
+    IInvoiceDataService? invoiceDataService = null,
+    ICheckInLinkDeliveryService? linkDeliveries = null) : IGuestCheckInService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -395,6 +396,8 @@ public class GuestCheckInService(
 
         PushToHosts(session);
 
+        await EndLinkDeliveryAsync(session);
+
         return new GuestCheckInSubmitResult
         {
             Success = true,
@@ -429,6 +432,25 @@ public class GuestCheckInService(
         {
             logger.LogError(
                 ex, "Push about the check-in of session {SessionId}, booking {BookingId} could not be prepared", session.Id, session.BookingId);
+        }
+    }
+
+    /// <summary>
+    /// The guest completed the check-in: the delivery of its link, if the booking had one that waited (E23/F01/US01/T01), is over, and the host's «To do» to carry the link is closed.
+    /// Best effort after the check-in is saved: whatever goes wrong here is logged and never fails the guest's submit.
+    /// </summary>
+    private async Task EndLinkDeliveryAsync(GuestCheckInSession session)
+    {
+        if (linkDeliveries is null)
+            return;
+
+        try
+        {
+            await linkDeliveries.EndAsync(session.OrgId, session.BookingId, CheckInLinkEndReasons.CheckInCompleted);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "The delivery of the link of session {SessionId}, booking {BookingId} could not be ended", session.Id, session.BookingId);
         }
     }
 

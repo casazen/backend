@@ -91,6 +91,8 @@ public class HostNotifyingPathsArchitectureTests
             ("the push «the guest completed the online check-in»: not one of the eight kinds of event of NF-65, it keeps the hosts of the booking", "none planned (outside the eight kinds of event of NF-65)"),
         ["Casazen.Infrastructure/Services/FiscalDocumentLiveRefresh.cs"] =
             ("the pushes «a fiscal document was issued» (E12/F01/US01/T02) and «the SDI rejected an invoice» (E17/F01/US02/T03): they make the pages open on the documents and on the booking read them again, and are not one of the eight kinds of event of NF-65, they keep the hosts of the booking", "none planned (outside the eight kinds of event of NF-65)"),
+        ["Casazen.Infrastructure/Services/CheckInLinkDeliveryService.cs"] =
+            ("the push «the check-in link could not be taken to the guest» (E23/F01/US01/T01, NF-122): the bell, the pop-up and the live update of the open pages of the hosts of the booking, once for each link that failed for good; not one of the eight kinds of event of NF-65, it keeps the hosts of the booking", "none planned (outside the eight kinds of event of NF-65)"),
         ["Casazen.Infrastructure/Services/OnboardingAssistOutcomeNotice.cs"] =
             ("«Fatto» on a «Fallo per me» request (E20/F03/US01/T02): the push, the entry of the bell and the live update «il collegamento è attivo» or «il supporto dichiara di aver collegato» to the administrators of the org, who alone can ask for help; not one of the eight kinds of event of NF-65", "none planned (outside the eight kinds of event of NF-65)"),
         ["Casazen.Infrastructure/Services/TouristTaxLiveRefresh.cs"] =

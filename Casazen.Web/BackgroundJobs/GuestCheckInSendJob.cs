@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
@@ -25,6 +26,9 @@ namespace Casazen.Web.BackgroundJobs;
 /// guest data (entered by the host). The email goes through <see cref="IGuestCheckInLinkEmailQueue"/>, which records
 /// its real outcome on the session: a failed email no longer expires the link (A5-26). A second stage sends, once per stay, the
 /// reminder of the data still missing just before arrival (NF-40, <c>CheckIn:ReminderDaysBefore</c>).
+/// E23/F01/US01/T01, T02 (NF-122): a stay with no e-mail address (one from a portal) is handed to <see cref="ICheckInLinkDeliveryService"/>, which tries the portal chat and the
+/// contact of the guest where their flags are on and always records where the link stands; the first stage then queues no e-mail for a link the service took over, and the
+/// reminder leaves such a stay alone (a new link would replace the one the guest already has).
 /// </remarks>
 public class GuestCheckInSendJob(
     AppDbContext db,
@@ -34,7 +38,8 @@ public class GuestCheckInSendJob(
     PublicSiteLinks publicSiteLinks,
     IOptions<GuestCheckInOptions> options,
     ILogger<GuestCheckInSendJob> logger,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    ICheckInLinkDeliveryService? deliveries = null)
 {
     private static readonly GuestCheckInSessionStatus[] OpenStatuses =
     [
@@ -135,6 +140,21 @@ public class GuestCheckInSendJob(
             try
             {
                 var link = await checkInService.IssueLinkAsync(booking.Id, booking.OrgId);
+
+                // E23/F01/US01/T01: a stay with no e-mail address is handed to the delivery service, which records where the link stands and, where the flags of the portal chat and of
+                // the contact of the guest are on, takes it to the guest. A link it took over needs no e-mail from here (it queues one itself when it finds an address); any other
+                // goes on as it always did, and the failed e-mail (no recipient) is what the host sees on the session.
+                if (deliveries is not null && string.IsNullOrWhiteSpace(booking.Guest?.Email))
+                {
+                    var delivery = await deliveries.DeliverAsync(booking.Id, link);
+                    if (delivery.IsAutomatic)
+                    {
+                        logger.LogInformation(
+                            "Check-in link issued for booking {BookingId}, delivery {State} by {Channel}", booking.Id, delivery.State, delivery.Channel);
+                        continue;
+                    }
+                }
+
                 var email = await linkEmails.QueueAsync(link.SessionId, link.Token);
                 logger.LogInformation(
                     "Check-in link issued for booking {BookingId}, email {EmailStatus}", booking.Id, email.Status);
@@ -214,6 +234,25 @@ public class GuestCheckInSendJob(
         candidates = candidates.Where(b => !withOperator.Contains(b.Id)).ToList();
         if (candidates.Count == 0)
             return;
+
+        // E23/F01/US01/T01: a stay with no e-mail address whose link the delivery service took over is not reminded: a new link would replace the one the guest already has
+        // (in the chat of the portal), or the one the host is about to copy, and the reminder could reach nobody. Held by the service: the row is open and the link goes by a channel
+        // of its own (the chat, the e-mail), or the row holds the token of a link that waits for the host (the one the host copies from its «To do», «Copia link»: the token is stored
+        // only for a stay from a portal while a flag of the module is on, and cleared when the link is sent or the row ends). A row with no token (made with the flags off, or for
+        // a stay that is not a portal's) has nothing to copy, and the stay is reminded as it always was.
+        if (deliveries is not null)
+        {
+            var candidateIds = candidates.Select(b => b.Id).ToList();
+            var heldByTheService = await db.CheckInLinkDeliveries
+                .Where(d => candidateIds.Contains(d.BookingId) && d.EndedAt == null && (d.Channel != CheckInLinkChannel.Manual || d.LinkToken != null))
+                .Select(d => d.BookingId)
+                .ToListAsync();
+            candidates = candidates
+                .Where(b => !heldByTheService.Contains(b.Id) || !string.IsNullOrWhiteSpace(b.Guest?.Email))
+                .ToList();
+            if (candidates.Count == 0)
+                return;
+        }
 
         var guestsByBooking = await stayGuests.GetForBookingsAsync(candidates);
         foreach (var booking in candidates)

@@ -12,7 +12,7 @@ namespace Casazen.Web.DTOs.Messages;
 /// <c>Direct</c>, <c>Airbnb</c>, <c>Booking</c>, <c>Vrbo</c> or <c>Expedia</c>, <c>Kind</c> is <c>Reservation</c> or <c>Request</c> (no booking yet),
 /// <c>State</c> is <c>Open</c>, <c>Closed</c> or <c>Archived</c>. A conversation of a channel whose listing has no confirmed mapping has no property:
 /// <c>Unassigned</c> is true and only a caller who reaches every property sees it. <c>Preview</c> is the start of the last message (plain text, for
-/// the host only, <c>null</c> for a message that is only a file); <c>LastMessageOrigin</c> is <c>Guest</c>, <c>Person</c> or <c>Assistant</c>.
+/// the host only, <c>null</c> for a message that is only a file); <c>LastMessageOrigin</c> is <c>Guest</c>, <c>Person</c>, <c>Assistant</c> or <c>Automation</c>.
 /// <c>NeedsReply</c> is the conversation of the «Da rispondere» list: open, with the guest's message last.
 /// </summary>
 public sealed class MessageHubThreadDto
@@ -96,7 +96,8 @@ public sealed class MessageAttachmentDto
 
 /// <summary>
 /// A message of a conversation. <c>Direction</c> is <c>Inbound</c> (the guest) or <c>Outbound</c> (the host side); <c>Origin</c> is <c>Guest</c>,
-/// <c>Person</c> or <c>Assistant</c>, and <c>RuleCode</c> the situation an assistant message answered. <c>DeliveryState</c> is where an outbound message
+/// <c>Person</c>, <c>Assistant</c> or <c>Automation</c> (an automatic message of CasaZen that no person wrote, such as the check-in link: never shown as
+/// a person's), and <c>RuleCode</c> the situation an assistant message answered. <c>DeliveryState</c> is where an outbound message
 /// of a channel is on its way: <c>Created</c>, <c>WaitingAuthorization</c>, <c>Sent</c>, <c>Error</c> or <c>ManualVerify</c> (a person checks on the
 /// channel before it is sent again); it is absent on the others. <c>Text</c> is plain text, to be shown as text.
 /// </summary>
@@ -208,7 +209,8 @@ public sealed class MessageCustomerDto
 
 /// <summary>
 /// What the host may do in the conversation. All false with <c>Reason</c> <c>mapping_not_confirmed</c> while the listing of a conversation of a
-/// channel has no confirmed mapping (it can be read, not answered), and with <c>thread_closed</c> for a direct thread past the seventh day after the
+/// channel has no confirmed mapping (it can be read, not answered), with <c>chat_not_licensed</c> while the chat of its listing is not in the license
+/// (a reply would be refused: the reply box says so; E23/F01/US01/T03), and with <c>thread_closed</c> for a direct thread past the seventh day after the
 /// check-out. <c>ContactDetailsAllowed</c> is false in an Airbnb request (no link, address or number before the booking); the attachments and the
 /// automatic answer are false until the policy of each channel is confirmed.
 /// </summary>
@@ -276,3 +278,21 @@ public sealed class MessageThreadDto
         HasEarlierMessages = thread.HasEarlierMessages,
     };
 }
+
+/// <summary>
+/// The chat of each listing the caller reaches (<c>GET api/messages/channel-status</c>, E23/F01/US01/T03): one item per listing with a confirmed mapping, with its property,
+/// its <c>Status</c> (<c>available</c>, <c>waiting_permission</c> when the chat module is not in the license of the listing yet, <c>error</c> for any other failure of the last
+/// pass) and <c>LastCheckedAt</c>, the instant of the last pass that reached it (<c>null</c> while none did). It is how the inbox says «this listing has no chat yet» instead of
+/// showing an empty list. No name of a guest, no address, no code of the channel manager.
+/// </summary>
+public sealed class MessageChannelStatusDto
+{
+    public IReadOnlyList<MessageChannelStatusItemDto> Items { get; init; } = [];
+
+    public static MessageChannelStatusDto From(IReadOnlyList<MessageChannelStatus> statuses) => new()
+    {
+        Items = statuses.Select(s => new MessageChannelStatusItemDto(s.PropertyId, s.PropertyName, s.Status, s.LastCheckedAt)).ToList(),
+    };
+}
+
+public sealed record MessageChannelStatusItemDto(Guid PropertyId, string PropertyName, string Status, DateTime? LastCheckedAt);

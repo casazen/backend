@@ -292,6 +292,12 @@ public static class PushDeliveryKeys
     /// retries of the webhook.
     /// </summary>
     public static string TouristTaxPaid(Guid stayTouristTaxId, string paymentIntentId) => $"tourist-tax:{stayTouristTaxId:N}:paid:{paymentIntentId}";
+
+    /// <summary>
+    /// The automatic delivery of the check-in link of a booking failed for good (E23/F01/US01/T01), to the hosts of the booking: one per link (the check-in session), stable
+    /// across retries and runs, so the bell and the open pages are told once for each link that did not reach the guest.
+    /// </summary>
+    public static string CheckInLinkFailed(Guid sessionId) => $"checkin-link:{sessionId:N}:failed";
 }
 
 /// <summary><c>data.type</c> of each push, one per kind of event (the app opens <c>data.route</c>).</summary>
@@ -444,6 +450,13 @@ public static class PushTypes
     /// booking, the route its detail, which the open pages read again. Neither the guest nor an amount is ever in it.
     /// </summary>
     public const string TouristTaxPaid = "tourist-tax-paid";
+
+    /// <summary>
+    /// The automatic delivery of the check-in link of a booking failed for good (E23/F01/US01/T01, NF-122): pushed to the hosts of the booking, written to the bell and published
+    /// live; <c>entityId</c> is the booking, the route its detail. The web client reads again the booking and its link delivery when it arrives. Neither the guest nor the link is
+    /// ever in it: the host opens the booking and copies the link from there.
+    /// </summary>
+    public const string CheckInLinkFailed = "checkin-link-failed";
 
     /// <summary>
     /// Type of the push to the host when a service request reaches <paramref name="status"/>; <c>null</c> for a status that has

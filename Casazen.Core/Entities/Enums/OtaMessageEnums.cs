@@ -65,4 +65,10 @@ public enum MessageOrigin
 
     /// <summary>The assistant of CasaZen (E05/F05): the rule that produced the message is in <c>OtaMessage.RuleCode</c>.</summary>
     Assistant = 3,
+
+    /// <summary>
+    /// An automatic message of CasaZen that no person wrote and no assistant decided on (E23/F01/US01/T01: the check-in link in the thread of the portal; E05/F07: the scheduled
+    /// messages): never shown as written by a person, and never an answer to the guest: it does not mark the conversation as answered nor the guest's messages as read.
+    /// </summary>
+    Automation = 4,
 }
