@@ -246,6 +246,11 @@ FatturaPA (`FatturaPaRegimeCode`, `TD01`/`TD04`), the `StampDuty` (`Threshold`, 
     (the data wins), when the invoice data the draft was made from changed or is gone, when the name of the guest changed, and when the guest was erased, deleted or asked to be erased
     since: the draft made again is then the 422 above, so a draft made before the erasure never goes out with the name of the guest. The draft of an **Italian invoice** is not read
     again at the issue: it never falls back and it is issued as it always was.
+  - **The first run after the deploy.** The daily run reads the last `DueLookbackDays` (31) days, so the first one after this change makes the documents of every stay of that window
+    that had been skipped for lack of invoice data (up to 500 stays a run per organization, the rest the next day) and, with `AutoIssueGuestDocuments` on, issues them at once. They are
+    numbered from the most recent stay to the oldest (the run reads the most recent first): the most recent stay takes the lowest number, and every one gets the day of the run as its
+    issue date. Where `EmailGuestDocuments` is on (it is off by default) the e-mail with the link goes to every guest of those stays. The PO decides before the automatic issue is switched
+    on for real data.
 - **Swiss documents** have no nature code, no stamp duty, no XML (`FatturaPaXml` null) and the SDI state `not_applicable`; their tourist tax line reads
   «Tassa di soggiorno (non soggetta all'IVA)».
 - **The preview** `GET api/fiscal/documents/issuer-preview` (without `bookingId`: the organization) and `GET api/fiscal/documents/settings` return the rule
