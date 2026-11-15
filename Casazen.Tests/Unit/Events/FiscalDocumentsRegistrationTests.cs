@@ -126,6 +126,11 @@ public class FiscalDocumentsRegistrationTests
             (typeof(IFiscalDocumentCorrectionService), typeof(FiscalDocumentCorrectionService), ServiceLifetime.Scoped),
             (typeof(IEventHandler<DomainEvent>), typeof(FiscalDocumentRejectionHandler), ServiceLifetime.Scoped),
             (typeof(IBillingSetupContributor), typeof(SdiIssuerRegistrationContributor), ServiceLifetime.Scoped),
+
+            // The checks of the limit of units of an owner and of the company tenant, and the consumer of InvoiceDataSaved and BookingConfirmed that raises the «Da fare» of a company tenant
+            // (E18/F01/US03/T01).
+            (typeof(IOwnerTaxChecks), typeof(OwnerTaxChecks), ServiceLifetime.Scoped),
+            (typeof(IEventHandler<DomainEvent>), typeof(CompanyTenantDecisionHandler), ServiceLifetime.Scoped),
         };
 
         Assert.Equal(expected, ours);
@@ -187,13 +192,19 @@ public class FiscalDocumentsRegistrationTests
         // The consumer of the rejection of an invoice raises a «To do» through the activity service (E17/F01/US02/T03).
         services.AddScoped(_ => Mock.Of<IInternalActivityService>());
 
+        // The consumer of the invoice data of a company takes the checks of the owners, which need the «Da fare» list, the options of the fiscal rules and the clock.
+        services.AddScoped(_ => Mock.Of<IOwnerTaxChecks>());
+
         await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         await using var scope = provider.CreateAsyncScope();
 
         var handlers = scope.ServiceProvider.GetServices<IEventHandler<DomainEvent>>().Select(handler => handler.GetType()).ToList();
 
         Assert.Equal(
-            [typeof(InvoiceDataFromOctorateHandler), typeof(OctorateBillingWriteBackHandler), typeof(FiscalDocumentCheckOutHandler), typeof(FiscalDocumentBookingChangeHandler), typeof(FiscalDocumentEmailHandler), typeof(FiscalDocumentRejectionHandler)],
+            [
+                typeof(InvoiceDataFromOctorateHandler), typeof(OctorateBillingWriteBackHandler), typeof(FiscalDocumentCheckOutHandler), typeof(FiscalDocumentBookingChangeHandler),
+                typeof(FiscalDocumentEmailHandler), typeof(FiscalDocumentRejectionHandler), typeof(CompanyTenantDecisionHandler),
+            ],
             handlers);
         Assert.IsType<InvoiceDataService>(scope.ServiceProvider.GetRequiredService<IInvoiceDataService>());
         Assert.IsType<DocumentIssuerService>(scope.ServiceProvider.GetRequiredService<IDocumentIssuerService>());

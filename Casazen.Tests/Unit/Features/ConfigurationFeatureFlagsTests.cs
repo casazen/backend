@@ -113,6 +113,8 @@ public class ConfigurationFeatureFlagsTests
                 "GuestContactInfo",
                 // E17/F01/US02/T01: the submission of the Italian electronic invoices to the SDI through the provider and the correction of the rejected ones, off until the accountant confirms the ⚖ choices.
                 "SdiSubmission",
+                // E18/F01/US03/T01: the Italian tax reporting of the owners (the warnings of the limit of units and of the company tenant, the exports of E18), off until the accountant confirms the ⚖ choices.
+                "TaxReportingExports",
             },
             FeatureFlags.All);
     }

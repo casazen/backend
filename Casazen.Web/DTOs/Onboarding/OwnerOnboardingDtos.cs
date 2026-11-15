@@ -131,7 +131,8 @@ public sealed record OwnerReadinessDto(
                 new OwnerReadinessFlagsDto(o.Ready.Registry, o.Ready.Ownership, o.Ready.Mandate, o.Ready.FiscalProfile, o.Ready.Payment, o.Ready.Portal),
                 o.AccountingReady,
                 o.PortalState,
-                [.. o.Reasons.Select(OwnerReadinessReasonDto.From)])),
+                [.. o.Reasons.Select(OwnerReadinessReasonDto.From)],
+                [.. o.Warnings.Select(OwnerReadinessWarningDto.From)])),
         ],
         [
             .. report.Properties.Select(p => new OwnerReadinessPropertyDto(
@@ -186,7 +187,8 @@ public sealed record OwnerReadinessCountDto(int Ready, int ToComplete)
 /// <summary>
 /// One owner of the readiness: <c>ready</c> says for which of the six dimensions it is ready, <c>accountingReady</c> that the first five all are,
 /// <c>portalState</c> where its invitation stands (<c>notReady</c>, <c>ready</c>, <c>invited</c>, <c>accepted</c>, <c>expired</c>, <c>revoked</c>),
-/// <c>reasons</c> every fact that is missing. <c>entityKind</c> is <c>person</c> or <c>company</c>.
+/// <c>reasons</c> every fact that is missing. <c>entityKind</c> is <c>person</c> or <c>company</c>. <c>warnings</c> (E18/F01/US03/T01, empty unless
+/// <c>Features:TaxReportingExports</c> is on) say what the agency should know without it stopping the accounting: <c>short_let_business_presumed</c>.
 /// </summary>
 public sealed record OwnerReadinessOwnerDto(
     Guid OwnerId,
@@ -196,7 +198,18 @@ public sealed record OwnerReadinessOwnerDto(
     OwnerReadinessFlagsDto Ready,
     bool AccountingReady,
     string PortalState,
-    IReadOnlyList<OwnerReadinessReasonDto> Reasons);
+    IReadOnlyList<OwnerReadinessReasonDto> Reasons,
+    IReadOnlyList<OwnerReadinessWarningDto> Warnings);
+
+/// <summary>
+/// A warning of an owner (<c>short_let_business_presumed</c>): the apartments the agency manages for it, the ones it declared outside the agency, the limit, and what it
+/// suggests (<c>issuer_profile</c>: make its issuer profile that of a business). Counts and codes: never a value.
+/// </summary>
+public sealed record OwnerReadinessWarningDto(string Code, int ManagedUnits, int ExternalUnits, int MaxUnits, string? Suggestion)
+{
+    public static OwnerReadinessWarningDto From(OwnerReadinessWarning warning) =>
+        new(warning.Code, warning.ManagedUnits, warning.ExternalUnits, warning.MaxUnits, warning.Suggestion);
+}
 
 /// <summary>For which of the six dimensions an owner is ready.</summary>
 public sealed record OwnerReadinessFlagsDto(bool Registry, bool Ownership, bool Mandate, bool FiscalProfile, bool Payment, bool Portal);

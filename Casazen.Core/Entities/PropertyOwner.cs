@@ -95,6 +95,16 @@ public class PropertyOwner : ITenantOwned
     [MaxLength(3)]
     public string? SettlementCurrency { get; set; }
 
+    /// <summary>
+    /// How many apartments the owner lets short outside the agency, as the owner declared them (E18/F01/US03/T01, ⚖ I8, NF-117): they count with the properties the
+    /// agency manages for the owner towards the limit of units per taxpayer (<c>ShortStayFiscal:MaxApartmentsPerTaxpayer</c>), beyond which the activity is presumed to
+    /// be a business. 0 when nothing was declared; at most <see cref="ExternalShortLetUnitsMax"/>. A count, never personal data.
+    /// </summary>
+    public int ExternalShortLetUnits { get; set; }
+
+    /// <summary>The highest <see cref="ExternalShortLetUnits"/> a person can declare: a larger number is a typing mistake, not a portfolio.</summary>
+    public const int ExternalShortLetUnitsMax = 1_000;
+
     // The structured billing address (E13/F01/US01/T01): the recipient of the owner invoice, the debtor of the QR-bill and the creditor of a pain.001.09
     // transfer. Encrypted at rest with the PropertyOwnerEncryptionPurpose, for a person as for a company (EncryptedColumns): the columns have no length (the
     // payload is longer than the text), the import and PUT api/owners/{id}/address check the length of the clear text. Never searched, never logged.

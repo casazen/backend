@@ -88,6 +88,12 @@ public sealed record OwnerMandateCommand
     /// <summary>The tax treatment of the commission; <c>null</c> = <see cref="CommissionTreatment.Deductible"/>.</summary>
     public CommissionTreatment? WithholdingTreatment { get; init; }
 
+    /// <summary>
+    /// How the withholding evidence and the CU of a property held by several co-owners are written (E18/F01/US03/T01, ⚖ I6): <see cref="CoOwnerTaxReporting.PerShare"/>, or
+    /// everything on the co-owner who signed the mandate; <c>null</c> = <see cref="CoOwnerTaxReporting.Signatory"/>. An undefined value is 422 <c>owner_mandate_invalid</c>.
+    /// </summary>
+    public CoOwnerTaxReporting? CoOwnerTaxReporting { get; init; }
+
     /// <summary>Where the signed mandate is (a storage key or an https address), optional: without it the readiness says <c>mandate_document_missing</c>.</summary>
     public string? DocumentReference { get; init; }
 }

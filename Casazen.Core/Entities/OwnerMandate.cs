@@ -81,6 +81,13 @@ public class OwnerMandate : ITenantOwned
     /// <summary>Tax treatment of the commission for the owner's tax calculation (ADR-012): deductible or not.</summary>
     public CommissionTreatment WithholdingTreatment { get; set; }
 
+    /// <summary>
+    /// How the withholding evidence and the CU of a property held by several co-owners are written (E18/F01/US03/T01, ⚖ I6): <see cref="CoOwnerTaxReporting.Signatory"/> by
+    /// default (everything on the co-owner who signed the mandate: «altrimenti sul firmatario»), or <see cref="CoOwnerTaxReporting.PerShare"/> (split by the share of each
+    /// co-owner). Read by the withholding facts and by the annual tax data; every mandate written before this field is <see cref="CoOwnerTaxReporting.Signatory"/>.
+    /// </summary>
+    public CoOwnerTaxReporting CoOwnerTaxReporting { get; set; } = CoOwnerTaxReporting.Signatory;
+
     /// <summary>Settlement frequency in months (ADR-012-R8): 1 = monthly, the only one the statements use.</summary>
     public int MonthlyFrequency { get; set; } = 1;
 
