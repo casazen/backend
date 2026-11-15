@@ -168,7 +168,8 @@ property, only while the delivery waits or failed and the link can still be open
 have changed, at most once an hour: `WaitingChatPermission` when the copy of the conversations read the listing without error since the last attempt (the license probe of the sync
 runs hourly, § 4c; a wait that came from a **refused send** (an automatic message of the booking in the state `Error`) is not lifted by the copy, which moves its state at every pass: it is tried
 again at most once a day); `WaitingThread` when the booking has its conversation; `WaitingStaticIps` and a refused contact a day after the last read; `Failed` with a limit or an outage up
-to three attempts. A row made while the flags were off holds no token and nobody has its link: when a flag is turned on the pass issues a new link for it. A row ends when the guest
+to three attempts (only the failures worth a retry count: a wait is not an attempt). A pass takes at most 200 rows, **chosen in the query among the ones that are due or over** (the rows that
+cannot change never change their place, so with more rows open than a pass takes they cannot crowd out the ones that are due). A row made while the flags were off holds no token and nobody has its link: when a flag is turned on the pass issues a new link for it. A row ends when the guest
 completes the check-in, the booking is cancelled or no longer takes a check-in, the link expires, or the host generates or sends a link itself; its «To do» is closed with it.
 The reminder of the missing data leaves such a stay alone (a new link would replace the one the guest already has in the chat, or the one the host copies from its «To do»: an open row
 whose link goes by a channel of its own, or that holds a token, is left alone; a row with no token has nothing to copy and the stay is reminded as it always was).

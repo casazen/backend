@@ -441,6 +441,69 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Single(rig.Pushes);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (the review of S010, fix 6). A pass takes a bounded number of rows, and the rows that cannot change never change their place: with 201 rows that wait for a
+    /// conversation that is not there, older than the one row whose conversation has arrived, the pass still takes the one that is due (the query chooses the due rows, it does not take the
+    /// oldest of all of them).
+    /// </summary>
+    [Fact]
+    public async Task RetryPass_WithMoreOpenRowsThanOnePassTakes_TakesTheDueOnesFirst_Test()
+    {
+        var rig = new Rig(_db, _world, _clock, FeatureFlags.PortalChatCheckInLink);
+        AcceptEveryMessage(rig.Messages);
+        for (var i = 0; i <= CheckInLinkDeliveryService.RetryBatchSize; i++)
+        {
+            var older = await AddStayAsync(withThread: false, reservation: $"RES-WAIT-{i}");
+            await rig.Service.DeliverAsync(older.Booking.Id, older.Link);
+            _clock.Advance(TimeSpan.FromSeconds(1));
+        }
+
+        var due = await AddStayAsync(withThread: false, reservation: "RES-DUE");
+        await rig.Service.DeliverAsync(due.Booking.Id, due.Link);
+        _db.OtaMessageThreads.Add(NewThread(due.Booking, "T-DUE"));
+        await _db.SaveChangesAsync();
+        _clock.Advance(TimeSpan.FromHours(1));
+        var waiting = await _db.CheckInLinkDeliveries.CountAsync(d => d.State == CheckInLinkDeliveryState.WaitingThread);
+        Assert.True(waiting > CheckInLinkDeliveryService.RetryBatchSize);
+
+        var tried = await rig.Service.RetryWaitingAsync(IssueNothing);
+
+        Assert.Equal(1, tried);
+        Assert.Equal(CheckInLinkDeliveryState.Sent, (await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync(d => d.BookingId == due.Booking.Id)).State);
+        Assert.Equal(waiting - 1, await _db.CheckInLinkDeliveries.CountAsync(d => d.State == CheckInLinkDeliveryState.WaitingThread));
+    }
+
+    /// <summary>
+    /// The query that chooses the rows of the hourly pass (due or over, in the statement itself, with the reservation of the channel manager, the session, the sync state and the messages
+    /// it looks at) is turned into SQL by the PostgreSQL provider: the in-memory provider accepts what Npgsql cannot translate (see <c>NpgsqlTranslationProbe</c>).
+    /// </summary>
+    [Fact]
+    public async Task RetryPass_TheQueryThatChoosesTheRows_TranslatesToSqlOnPostgres_Test()
+    {
+        var statements = new List<string>();
+        await using var db = Casazen.Tests.Unit.Infrastructure.NpgsqlTranslationProbe.NewContext(statements);
+        var flags = new TestFeatureFlags(FeatureFlags.OctorateConnector, FeatureFlags.PortalChatCheckInLink, FeatureFlags.GuestContactInfo);
+        var service = new CheckInLinkDeliveryService(
+            db,
+            Mock.Of<IGuestCheckInLinkEmailQueue>(),
+            Mock.Of<IMessageReplyService>(),
+            Mock.Of<IGuestContactInfoService>(),
+            Mock.Of<IOctorateBookingTargets>(),
+            Mock.Of<IInternalActivityService>(),
+            flags,
+            EmailTestHelpers.Links("https://public.test"),
+            NullLogger<CheckInLinkDeliveryService>.Instance,
+            _clock);
+
+        await Casazen.Tests.Unit.Infrastructure.NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.RetryWaitingAsync(IssueNothing));
+
+        var sql = Assert.Single(statements);
+        Assert.Contains("\"CheckInLinkDeliveries\"", sql, StringComparison.Ordinal);
+        Assert.Contains("EXISTS", sql, StringComparison.Ordinal);
+        Assert.Contains("\"OctorateReservationId\"", sql, StringComparison.Ordinal);
+        Assert.Contains("ORDER BY", sql, StringComparison.Ordinal);
+    }
+
     /// <summary>With both flags off the service writes the row and nothing else: no call, no «To do», no notice, no token, and the caller does what it always did.</summary>
     [Fact]
     public async Task LinkDelivery_BothFlagsOff_OnlyRecordsWhyTheLinkGoesNowhere_Test()

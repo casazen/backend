@@ -118,13 +118,7 @@ public sealed class CheckInLinkDeliveryService(
         }
 
         var now = Now();
-        var ids = await db.CheckInLinkDeliveries
-            .AsNoTracking()
-            .Where(d => d.EndedAt == null && d.State != CheckInLinkDeliveryState.Sent)
-            .OrderBy(d => d.LastAttemptAt ?? d.CreatedAt)
-            .Select(d => d.Id)
-            .Take(RetryBatchSize)
-            .ToListAsync(ct);
+        var ids = await RowsToLookAtAsync(now, ct);
 
         var tried = 0;
         ExceptionDispatchInfo? failure = null;
@@ -477,6 +471,73 @@ public sealed class CheckInLinkDeliveryService(
     // ------------------------------------------------------------------------------------------------------------------------------------
     // The hourly pass
     // ------------------------------------------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The rows one pass looks at: at most <see cref="RetryBatchSize"/>, the oldest attempt first, <b>chosen in the query among the ones that are due or over</b>. A pass takes a bounded
+    /// number of rows; the rows that cannot change (a wait for a permission still missing, for a conversation that is not there, for a day that has not passed) stay where they are and
+    /// never change their place, so taking the oldest of all of them would leave the ones that are due behind them for as long as more rows than a pass takes are open.
+    /// </summary>
+    /// <remarks>
+    /// The query is a superset of the exact rules (<see cref="IsDueAsync"/>, <see cref="EndReasonAsync"/>, <see cref="SettleSendingAsync"/>), which are still applied to each row it gives: it never
+    /// leaves out a row that is due or over, it leaves out the ones that cannot be. Over: the link of the row is not open any more, the guest completed the check-in, or the booking takes
+    /// none. Due: a stay from a portal (the booking has a reservation of the channel manager; the exact rule is <see cref="OtaChannelActionPolicy.IsChannelBooking(Booking)"/>) whose
+    /// message is on its way, whose chat waits for the permission (the copy read the listing of the property without error since the last attempt, and, for a wait that came from a refused
+    /// send, a day has passed) or for the conversation (a conversation of the booking exists), whose contact may be read again, whose link waited its hour with no way to the guest, or whose
+    /// failure is worth a retry.
+    /// </remarks>
+    private async Task<List<Guid>> RowsToLookAtAsync(DateTime now, CancellationToken ct)
+    {
+        var hourAgo = now - CheckInLinkDeliveryRules.RetryInterval;
+        var contactAgo = now - CheckInLinkDeliveryRules.ContactRetryInterval;
+        var refusedSendAgo = now - CheckInLinkDeliveryRules.RefusedSendRetryInterval;
+        var chatOn = ChatOn;
+        var contactOn = ContactOn;
+        var maxAttempts = CheckInLinkDeliveryRules.MaxAttempts;
+        string[] transient = TransientCodes;
+        BookingStatus[] active = AlloggiatiStatusRules.ActiveBookingStatuses;
+        GuestCheckInSessionStatus[] open = [GuestCheckInSessionStatus.Inviato, GuestCheckInSessionStatus.InCompilazione];
+        GuestCheckInSessionStatus[] completed = [GuestCheckInSessionStatus.Completo, GuestCheckInSessionStatus.AlloggiatiInviato];
+
+        return await db.CheckInLinkDeliveries
+            .AsNoTracking()
+            .Where(d => d.EndedAt == null && d.State != CheckInLinkDeliveryState.Sent)
+            .Where(d =>
+                !db.GuestCheckInSessions.Any(s => s.Id == d.SessionId && open.Contains(s.Status) && s.ExpiresAt >= now)
+                || db.GuestCheckInSessions.Any(s => s.BookingId == d.BookingId && s.OrgId == d.OrgId && completed.Contains(s.Status))
+                || !db.Bookings.Any(b => b.Id == d.BookingId && active.Contains(b.Status) && b.Status != BookingStatus.CheckedOut && b.NoShowAt == null)
+                || (db.Bookings.Any(b => b.Id == d.BookingId && b.OctorateReservationId != null && b.OctorateReservationId != "")
+                    && (d.State == CheckInLinkDeliveryState.Sending
+                        || (d.State == CheckInLinkDeliveryState.WaitingContact
+                            && (d.LastAttemptAt == null || d.LastAttemptAt <= hourAgo)
+                            && (chatOn || (contactOn && (d.ContactReadAt == null || (d.ContactRefused && d.ContactReadAt <= contactAgo)))))
+                        || (d.State == CheckInLinkDeliveryState.WaitingStaticIps
+                            && contactOn
+                            && (d.ContactReadAt == null || (d.ContactRefused && d.ContactReadAt <= contactAgo)))
+                        || (d.State == CheckInLinkDeliveryState.Failed
+                            && d.LastErrorCode != null
+                            && transient.Contains(d.LastErrorCode)
+                            && d.Attempts < maxAttempts
+                            && (d.LastAttemptAt == null || d.LastAttemptAt <= hourAgo))
+                        || (d.State == CheckInLinkDeliveryState.WaitingThread
+                            && chatOn
+                            && db.OtaMessageThreads.Any(t => t.OrgId == d.OrgId && t.BookingId == d.BookingId && t.Kind == OtaThreadKind.Reservation && t.AnonymizedAt == null))
+                        || (d.State == CheckInLinkDeliveryState.WaitingChatPermission
+                            && chatOn
+                            && db.OtaMessageSyncStates.Any(s => s.OrgId == d.OrgId
+                                                                && s.LastError == null
+                                                                && (d.LastAttemptAt == null || s.UpdatedAt > d.LastAttemptAt)
+                                                                && db.Bookings.Any(b => b.Id == d.BookingId && b.PropertyId == s.PropertyId))
+                            && (d.LastAttemptAt == null
+                                || d.LastAttemptAt <= refusedSendAgo
+                                || !db.OtaMessages.Any(m => m.OrgId == d.OrgId
+                                                            && m.Origin == MessageOrigin.Automation
+                                                            && m.DeliveryState == OtaMessageDeliveryState.Error
+                                                            && db.OtaMessageThreads.Any(t => t.Id == m.ThreadId && t.BookingId == d.BookingId)))))))
+            .OrderBy(d => d.LastAttemptAt ?? d.CreatedAt)
+            .Select(d => d.Id)
+            .Take(RetryBatchSize)
+            .ToListAsync(ct);
+    }
 
     /// <summary>One row of the hourly pass: ended, left alone, or tried again. True when it was tried again.</summary>
     private async Task<bool> RetryOneAsync(Guid id, Func<Guid, Guid, Task<IssuedCheckInLink>> issueLink, DateTime now, CancellationToken ct)
