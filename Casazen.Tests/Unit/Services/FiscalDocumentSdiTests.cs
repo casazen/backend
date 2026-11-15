@@ -330,11 +330,20 @@ public class FiscalDocumentSdiTests
             new[] { (organization.IssuerProfileId!.Value, (Guid?)null, "unknown"), (ownerWithVat, (Guid?)OwnerOf(db, ownerWithVat), "unknown") }.OrderBy(t => t.Item1),
             unknown.Select(i => (i.IssuerProfileId, i.PropertyOwnerId, i.State)).OrderBy(t => t.IssuerProfileId));
 
-        // The provider refuses the VAT number of the organization: pending, until a submission of it is accepted.
-        await SeedAsync(db, issuerProfileId: organization.IssuerProfileId, errorCode: SdiSubmissionErrors.IssuerPending);
+        // The provider refuses the VAT number of the organization: pending, until a submission of it is accepted after the refusal.
+        var refused = await SeedAsync(db, issuerProfileId: organization.IssuerProfileId, errorCode: SdiSubmissionErrors.IssuerPending);
+        refused.UpdatedAt = new DateTime(2026, 11, 10, 9, 0, 0, DateTimeKind.Utc);
+        await db.SaveChangesAsync();
         Assert.Equal("pending", (await service.IssuerRegistrationsAsync(new HostScope(OrgId))).Single(i => i.PropertyOwnerId is null).State);
-        db.FiscalDocuments.RemoveRange(await db.FiscalDocuments.Where(d => d.SdiErrorCode == SdiSubmissionErrors.IssuerPending).ToListAsync());
-        await SeedAsync(db, issuerProfileId: organization.IssuerProfileId, sdiStatus: FiscalDocumentSdiStatuses.Submitted, transmissionId: "42");
+
+        // A submission accepted before the refusal does not clear it; one accepted after it does, while the refused document is still «to send» (the provider enabled the number since).
+        var before = await SeedAsync(db, issuerProfileId: organization.IssuerProfileId, sdiStatus: FiscalDocumentSdiStatuses.Submitted, transmissionId: "41");
+        before.SdiStatusUpdatedAt = new DateTime(2026, 11, 10, 8, 0, 0, DateTimeKind.Utc);
+        await db.SaveChangesAsync();
+        Assert.Equal("pending", (await service.IssuerRegistrationsAsync(new HostScope(OrgId))).Single(i => i.PropertyOwnerId is null).State);
+        var after = await SeedAsync(db, issuerProfileId: organization.IssuerProfileId, sdiStatus: FiscalDocumentSdiStatuses.Submitted, transmissionId: "42");
+        after.SdiStatusUpdatedAt = new DateTime(2026, 11, 10, 10, 0, 0, DateTimeKind.Utc);
+        await db.SaveChangesAsync();
         Assert.Equal("registered", (await service.IssuerRegistrationsAsync(new HostScope(OrgId))).Single(i => i.PropertyOwnerId is null).State);
 
         provider.Verify(p => p.SubmitDocumentAsync(It.IsAny<SdiDocumentSubmission>(), It.IsAny<CancellationToken>()), Times.Never);

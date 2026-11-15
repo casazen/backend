@@ -238,27 +238,38 @@ public sealed class FiscalDocumentSdiService(
         if (issuers.Count == 0)
             return [];
 
-        var facts = await db.FiscalDocuments
+        // The last refusal of each issuer because its VAT number is not enabled (the document stays «to send»: its last change is the refusal) and the last submission the provider accepted.
+        var documentsOfTheOrg = db.FiscalDocuments
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
-            .Where(d => d.OrgId == orgId && d.Source == FiscalDocumentSource.CasaZen && d.Status == FiscalDocumentStatus.Issued && d.IssuerProfileId != null
-                        && (d.SdiStatus == FiscalDocumentSdiStatuses.Submitted
-                            || d.SdiStatus == FiscalDocumentSdiStatuses.Delivered
-                            || (d.SdiStatus == FiscalDocumentSdiStatuses.ToSend && d.SdiErrorCode == SdiSubmissionErrors.IssuerPending)))
-            .Select(d => new { Issuer = d.IssuerProfileId!.Value, d.SdiStatus })
-            .Distinct()
-            .ToListAsync(ct);
-        var pending = facts.Where(f => f.SdiStatus == FiscalDocumentSdiStatuses.ToSend).Select(f => f.Issuer).ToHashSet();
-        var registered = facts.Where(f => f.SdiStatus != FiscalDocumentSdiStatuses.ToSend).Select(f => f.Issuer).ToHashSet();
+            .Where(d => d.OrgId == orgId && d.Source == FiscalDocumentSource.CasaZen && d.Status == FiscalDocumentStatus.Issued && d.IssuerProfileId != null);
+        var refused = await documentsOfTheOrg
+            .Where(d => d.SdiStatus == FiscalDocumentSdiStatuses.ToSend && d.SdiErrorCode == SdiSubmissionErrors.IssuerPending)
+            .GroupBy(d => d.IssuerProfileId!.Value)
+            .Select(g => new { Issuer = g.Key, Last = g.Max(d => d.UpdatedAt) })
+            .ToDictionaryAsync(r => r.Issuer, r => r.Last, ct);
+        var accepted = await documentsOfTheOrg
+            .Where(d => d.SdiStatus == FiscalDocumentSdiStatuses.Submitted || d.SdiStatus == FiscalDocumentSdiStatuses.Delivered)
+            .GroupBy(d => d.IssuerProfileId!.Value)
+            .Select(g => new { Issuer = g.Key, Last = g.Max(d => d.SdiStatusUpdatedAt) })
+            .ToDictionaryAsync(a => a.Issuer, a => a.Last, ct);
 
         return issuers
-            .Select(p => new SdiIssuerRegistration(
-                p.Id,
-                p.PropertyOwnerId,
-                pending.Contains(p.Id) ? SdiIssuerRegistrationStates.Pending
-                : registered.Contains(p.Id) ? SdiIssuerRegistrationStates.Registered
-                : SdiIssuerRegistrationStates.Unknown))
+            .Select(p => new SdiIssuerRegistration(p.Id, p.PropertyOwnerId, RegistrationStateOf(p.Id, refused, accepted)))
             .ToList();
+    }
+
+    /// <summary>
+    /// Where an issuer stands: <c>pending</c> when the provider refused a submission of it because its VAT number is not enabled and accepted none after that refusal; <c>registered</c> when it
+    /// accepted one (a later acceptance clears an older refusal: the provider enabled the number since); <c>unknown</c> when nothing was submitted yet.
+    /// </summary>
+    private static string RegistrationStateOf(Guid issuer, IReadOnlyDictionary<Guid, DateTime> refused, IReadOnlyDictionary<Guid, DateTime?> accepted)
+    {
+        var hasAcceptance = accepted.TryGetValue(issuer, out var lastAccepted);
+        if (refused.TryGetValue(issuer, out var lastRefused) && (!hasAcceptance || lastAccepted is null || lastAccepted < lastRefused))
+            return SdiIssuerRegistrationStates.Pending;
+
+        return hasAcceptance ? SdiIssuerRegistrationStates.Registered : SdiIssuerRegistrationStates.Unknown;
     }
 
     // ---------------------------------------------------------------- the state machine
