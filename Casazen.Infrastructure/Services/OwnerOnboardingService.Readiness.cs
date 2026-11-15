@@ -63,10 +63,19 @@ public sealed partial class OwnerOnboardingService
         var current = owners.Where(o => !periodsByOwner[o.Id].Any() || periodsByOwner[o.Id].Any(p => IsLive(p, today))).ToList();
 
         // The warnings of the UI (E18/F01/US03/T01, behind Features:TaxReportingExports): an owner past the limit of units is presumed a business. The units are the owner's
-        // whole portfolio in the org, not the part of it inside the reach of the caller: the limit is the owner's, whoever looks.
-        var unitChecks = taxChecks is { WarningsEnabled: true } && current.Count > 0
-            ? await taxChecks.CheckUnitsAsync(scope.OrgId, [.. current.Select(o => o.Id)], today, ct)
-            : new Dictionary<Guid, OwnerUnitsCheck>();
+        // whole portfolio in the org, not the part of it inside the reach of the caller: the limit is the owner's, whoever looks. So a caller with a partial reach is told only about
+        // the owners whose every ownership it reaches (the line of GET api/owners/{id}/tax-checks, of the import and of the invitations): for the others the counts would tell it
+        // about properties it does not reach, and it could not act on the suggestion anyway (their issuer profile is outside its reach too), so they get no warning.
+        IReadOnlyDictionary<Guid, OwnerUnitsCheck> unitChecks = new Dictionary<Guid, OwnerUnitsCheck>();
+        if (taxChecks is { WarningsEnabled: true } && current.Count > 0)
+        {
+            var currentIds = current.Select(o => o.Id).ToList();
+            var outsideReach = await OwnersWithPeriodsOutsideReachAsync(db, scope, currentIds, ct);
+            var warnAbout = currentIds.Where(id => !outsideReach.Contains(id)).ToList();
+            if (warnAbout.Count > 0)
+                unitChecks = await taxChecks.CheckUnitsAsync(scope.OrgId, warnAbout, today, ct);
+        }
+
         var ownerRows = new List<OwnerReadinessOwner>(current.Count);
         foreach (var owner in current)
         {

@@ -454,7 +454,9 @@ withholding reads are not behind it** (an owner past the limit is a business wha
     regime, so no 21% withholding. The facts of E18/F01/US01 read it; this task decides nothing else about the withholding.
   - **Readiness warning**: `GET api/onboarding/owners/readiness` gives the owner `warnings: [{ code: "short_let_business_presumed", managedUnits, externalUnits, maxUnits,
     suggestion: "issuer_profile" }]`. A warning never changes `ready` or `accountingReady`. The suggestion is to make the issuer profile of the owner that of a business (a VAT
-    regime and its VAT number, `PUT api/owners/{id}/issuer-profile`): nothing is changed by itself.
+    regime and its VAT number, `PUT api/owners/{id}/issuer-profile`): nothing is changed by itself. A caller with a partial reach gets the warning only for an owner whose every
+    ownership it reaches (the line of `GET api/owners/{id}/tax-checks`, of the import and of the invitations): the counts are the whole portfolio, so for an owner with a property
+    outside the reach there is no warning, as the counts would tell about properties the caller does not reach.
   - **Statement flag**: a statement version generated for the owner records the **non-blocking** issue `short_let_business_presumed` (in `issuesJson`, the units of the last day of
     the month): the version is never `Flagged` because of it and can be approved as usual. A version generated before the owner crossed the limit does not carry it.
   - **API**: `GET api/owners/{ownerId}/tax-checks` (`agency.owner.view`) answers `{ ownerId, applies, managedUnits, externalUnits, totalUnits, maxUnits, presumedBusiness }`;

@@ -629,6 +629,33 @@ public class OwnerTaxChecksTests
         }
     }
 
+    /// <summary>
+    /// Permission: a caller with a partial reach gets the readiness warning only for an owner whose every ownership it reaches (the line of the check of an owner, of the import and of
+    /// the invitations): for an owner with a property outside its reach the counts would tell it about properties it does not reach, so there is no warning; the whole org sees both.
+    /// </summary>
+    [Fact]
+    public async Task Warnings_PartialReach_OnlyForAnOwnerEntirelyInsideTheReach_Test()
+    {
+        var world = World.Create();
+        var inside = await world.OwnerAsync();
+        await world.UnitsAsync(inside, 3, createdBy: "auth0|solo-alcuni");
+        var shared = await world.OwnerAsync();
+        await world.UnitsAsync(shared, 2, createdBy: "auth0|solo-alcuni");
+        await world.UnitsAsync(shared, 1, createdBy: "auth0|agency");
+        var onboarding = new OwnerOnboardingService(world.Db, new ActivityLog(world.Db, world.Clock), world.Clock, NullLogger<OwnerOnboardingService>.Instance, world.Checks);
+
+        var partial = await onboarding.GetReadinessAsync(new HostScope(OrgId, OwnerId: "auth0|solo-alcuni"), CancellationToken.None);
+        var whole = await onboarding.GetReadinessAsync(OrgWide, CancellationToken.None);
+
+        // Inside the reach: the warning, with the units of the owner. The owner with a property outside it is in the list (one of its properties is reached) but with no warning.
+        Assert.Equal(3, Assert.Single(partial.Owners.Single(o => o.OwnerId == inside).Warnings).ManagedUnits);
+        Assert.Empty(partial.Owners.Single(o => o.OwnerId == shared).Warnings);
+
+        // The whole org sees both, with the whole portfolio.
+        Assert.Equal(3, Assert.Single(whole.Owners.Single(o => o.OwnerId == inside).Warnings).ManagedUnits);
+        Assert.Equal(3, Assert.Single(whole.Owners.Single(o => o.OwnerId == shared).Warnings).ManagedUnits);
+    }
+
     // ---- the co-owners ------------------------------------------------------------------------------------------------------
 
     /// <summary>
