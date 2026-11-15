@@ -1501,6 +1501,12 @@ public class DemoShowcaseTests
         });
         var everyReservation = DemoShowcaseCatalog.Properties.SelectMany(h => h.Bookings).Where(b => b.Ota is not null).Select(b => b.Ota!.ReservationId).ToList();
         Assert.Equal(everyReservation.Count, everyReservation.Distinct(StringComparer.Ordinal).Count());
+
+        // Who collects and whether the commission is taken out of the payments are known for a booking of a channel only: the booking engine of the agency has the
+        // amounts Octorate gives and no flag, as the import writes it.
+        Assert.All(
+            stays.Where(s => s.Booking.Ota is not null && !OtaChannelActionPolicy.IsChannelBooking(s.Booking.Source, s.Booking.Ota.ReservationId)),
+            s => Assert.Equal((null, null), (s.Booking.Ota!.CompanyCollect, s.Booking.Ota.CommissionIncludedInPayments)));
         Assert.All(
             stays.Where(s => s.Booking.Ota is not null),
             s => Assert.True(BookingOrigins.Of(s.Booking.Source, s.Booking.Attribution?.Source) is BookingOrigin.Portal or BookingOrigin.AgencySite));

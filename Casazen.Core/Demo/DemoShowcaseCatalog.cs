@@ -1073,7 +1073,7 @@ public static class DemoShowcaseCatalog
                     BookingStatus.Confirmed,
                     Scenario.BookingFourOrigins,
                     BookingSource.Direct,
-                    Ota: new DemoOtaTemplate("TEST-OCT-7702", Paid: 200.00m, CommissionIncludedInPayments: false),
+                    Ota: new DemoOtaTemplate("TEST-OCT-7702", Paid: 200.00m),
                     Attribution: new DemoAttributionTemplate(BookingAttribution.OctorateBookingEngineSource)),
                 new(
                     "origine-sito-casazen",

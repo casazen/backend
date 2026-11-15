@@ -21,6 +21,12 @@ public static class SignupAttributionRules
     public const int MaxLandingPathLength = 200;
     public const int MaxReferrerHostLength = 253;
 
+    /// <summary>The longest text of a value that is looked at at all: a longer one cannot be a token nor an address of a site, so it is never parsed.</summary>
+    public const int MaxRawValueLength = 2048;
+
+    /// <summary>The longest run of digits a token may hold: more is a phone number or an identity number, which is personal data and not a marketing value.</summary>
+    public const int MaxDigitRunInToken = 8;
+
     /// <summary>ISTAT code of a comune: 6 digits.</summary>
     public const int ComuneCodeLength = 6;
 
@@ -48,12 +54,6 @@ public static class SignupAttributionRules
     /// <summary>Trimmed value, <c>null</c> when empty.</summary>
     public static string? Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-
-    /// <summary>The longest text of a value that is looked at at all: a longer one cannot be a token nor an address of a site, so it is never parsed.</summary>
-    public const int MaxRawValueLength = 2048;
-
-    /// <summary>The longest run of digits a token may hold: more is a phone number or an identity number, which is personal data and not a marketing value.</summary>
-    public const int MaxDigitRunInToken = 8;
 
     /// <summary>
     /// A marketing value that is a lower-case token (E27/F01/US01/T01, NF-123): the source, the medium or the campaign of the link a guest booked from.
