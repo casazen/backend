@@ -666,7 +666,8 @@ payload column of `TaxReportingDatasets` exists, it is encrypted through `Encryp
 - **Reach, logs.** Every action of `api/withholding` needs a caller of the whole org (403 before anything is read); the logs carry ids, the year and counts, never a name, a fiscal code or an
   address.
 - **Proofs.** `CuDatasetTests` (`CuDataset_SharesSumToOwnerTotals_Test`, `CuDataset_PayloadEncrypted_Test`, `OwnerPortalWithholding_OnlyOwnClaim_Test`) and
-  `TaxReportingExportsTests` (`ContractsCommunication_ExcludesStaysWithAgencyWithholding_Test`).
+  `TaxReportingExportsTests` (`ContractsCommunication_ExcludesStaysWithAgencyWithholding_Test`). Every new read of the CU, the 770, the communication, the owner portal and the year-end tourist tax
+  is also translated to SQL by Npgsql with no server (`TaxReportingNpgsqlTranslationTests`, `NpgsqlTranslationProbe`): InMemory accepts what PostgreSQL cannot run.
 
 ## Tourist tax at year end (E18/F01/US02/T03)
 
