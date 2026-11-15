@@ -9,7 +9,9 @@ namespace Casazen.Infrastructure.Services;
 /// <inheritdoc cref="IPortalAccountHolderResolver"/>
 /// <remarks>
 /// It reads the rows of the org it is asked about (the property names its org), whatever the tenant of the caller: the readers are the services of the owner
-/// accounting, which name the org themselves. A stored channel that is no longer a <see cref="BookingSource"/> is skipped.
+/// accounting, which name the org themselves. <see cref="ForOrgAsync"/> ignores the tenant filter and names the org in every predicate: the statement of an owner
+/// is read on the owner portal too, whose request has no org of its own (the filter is on and matches nothing), and there it must say what the agency's PDF and
+/// the invoice of the property manager say (E19/F01/US01/T01). A stored channel that is no longer a <see cref="BookingSource"/> is skipped.
 /// </remarks>
 public sealed class PortalAccountHolderResolver(AppDbContext db) : IPortalAccountHolderResolver
 {
@@ -33,11 +35,11 @@ public sealed class PortalAccountHolderResolver(AppDbContext db) : IPortalAccoun
 
     public async Task<PortalAccountHolders> ForOrgAsync(Guid orgId, CancellationToken ct = default)
     {
-        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking()
+        var profile = await db.OrgFiscalIssuerProfiles.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking()
             .OfOrganization(orgId)
             .Select(p => new { p.PortalAccountHolder, p.RechargePortalCommissions })
             .FirstOrDefaultAsync(ct);
-        var rows = await db.PropertyChannelAccountHolders.AsNoTracking()
+        var rows = await db.PropertyChannelAccountHolders.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking()
             .Where(h => h.OrgId == orgId)
             .Select(h => new { h.PropertyId, h.Channel, h.Holder })
             .ToListAsync(ct);

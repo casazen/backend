@@ -28,7 +28,8 @@ public sealed partial class OwnerAccountingService
             .Select(p => new PaymentSource(
                 p.Id, p.BookingId, p.Booking.PropertyId, p.Amount, p.Amount - p.RefundedAmount, p.ProcessedAt!.Value,
                 p.Booking.CheckInDate, p.Booking.CheckOutDate, p.Booking.Property.Currency,
-                p.Booking.TouristTax, p.Booking.TotalPrice, p.Booking.BasePrice, p.Booking.CleaningFee, p.ProviderFeeAmount, p.ProviderBalanceCurrency))
+                p.Booking.TouristTax, p.Booking.TotalPrice, p.Booking.BasePrice, p.Booking.CleaningFee, p.ProviderFeeAmount, p.ProviderBalanceCurrency,
+                p.Booking.Status, p.Booking.NoShowAt))
             .ToListAsync(ct);
 
         // The stays that check out in the month (E13/F01/US01/T02): the active bookings only («active» is the one definition of the code, a status that owes the
@@ -183,8 +184,9 @@ public sealed partial class OwnerAccountingService
             return;
         }
 
-        // Refunded in full, or only the tourist tax: no revenue left to share.
-        var revenueTotal = OwnerLedgerRules.RevenueOfPayment(payment.Net, payment.TouristTax, payment.StayTotal);
+        // Refunded in full, or only the tourist tax: no revenue left to share. A stay that owes no tourist tax (a booking that is not active, or a no-show: the one
+        // definition of the code, AlloggiatiStatusRules, as the box of the tax of the statement reads it) keeps none of a payment as tax: all of it is revenue.
+        var revenueTotal = OwnerLedgerRules.RevenueOfPayment(payment.Net, payment.OwesTouristTax ? payment.TouristTax : 0m, payment.StayTotal);
         if (revenueTotal <= 0m)
             return;
 
@@ -647,7 +649,10 @@ public sealed partial class OwnerAccountingService
         string? Attachment = null,
         string? RuleVersion = null);
 
-    /// <summary>A collected payment with the facts of its stay the posting needs (the tourist tax, the total, the gross and the cleaning) and the card fee.</summary>
+    /// <summary>
+    /// A collected payment with the facts of its stay the posting needs (the tourist tax, the total, the gross and the cleaning, the status and the no-show mark of
+    /// the booking) and the card fee.
+    /// </summary>
     private sealed record PaymentSource(
         Guid Id,
         Guid BookingId,
@@ -663,7 +668,16 @@ public sealed partial class OwnerAccountingService
         decimal StayGross,
         decimal StayCleaning,
         decimal? ProviderFee,
-        string? ProviderCurrency);
+        string? ProviderCurrency,
+        BookingStatus Status,
+        DateTime? NoShowAt)
+    {
+        /// <summary>
+        /// True when the stay owes its tourist tax: an active booking that is not a no-show (<see cref="AlloggiatiStatusRules"/>, the one definition, which the box of
+        /// the tax of the statement reads too). A cancelled booking or a no-show that keeps a payment owes none, so none of the payment is tax.
+        /// </summary>
+        public bool OwesTouristTax => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(Status) && NoShowAt is null;
+    }
 
     /// <summary>
     /// An active stay: its amounts (<see cref="Booking.BasePrice"/>, the gross without the tourist tax of a booking priced by CasaZen, with the cleaning in it; the

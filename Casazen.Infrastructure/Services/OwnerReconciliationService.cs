@@ -347,7 +347,7 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
         var rows = await db.Bookings.AsNoTracking()
             .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(b => b.OrgId == orgId && ids.Contains(b.Id))
-            .Select(b => new BookingInfo(b.Id, b.Source, b.OtaNetAmount, b.OtaCompanyCollect, b.TouristTax, b.TotalPrice))
+            .Select(b => new BookingInfo(b.Id, b.Source, b.OtaNetAmount, b.OtaCompanyCollect, b.TouristTax, b.TotalPrice, b.Status, b.NoShowAt))
             .ToListAsync(ct);
         return rows.ToDictionary(b => b.Id);
     }
@@ -355,7 +355,7 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
     /// <summary>
     /// What the payments collected in CasaZen for each booking come to (the payment ledger's paid lines recorded here, by hand or by card), as the owner ledger posts them: each payment
     /// net of its refunds and without its part of the tourist tax (<see cref="OwnerLedgerRules.RevenueOfPayment"/>, the one definition), so it is compared with an expected payout that has
-    /// no tourist tax in it. A payment refunded in full counts 0.
+    /// no tourist tax in it; a stay that owes no tax (not active, or a no-show) has no part of it, as the posting reads it. A payment refunded in full counts 0.
     /// </summary>
     private async Task<Dictionary<Guid, decimal>> PaymentsAsync(Guid orgId, List<Guid> bookingIds, IReadOnlyDictionary<Guid, BookingInfo> bookings, CancellationToken ct)
     {
@@ -370,7 +370,7 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
         return rows
             .Where(p => bookings.ContainsKey(p.BookingId))
             .GroupBy(p => p.BookingId)
-            .ToDictionary(g => g.Key, g => g.Sum(p => OwnerLedgerRules.RevenueOfPayment(p.Net, bookings[p.BookingId].TouristTax, bookings[p.BookingId].TotalPrice)));
+            .ToDictionary(g => g.Key, g => g.Sum(p => OwnerLedgerRules.RevenueOfPayment(p.Net, bookings[p.BookingId].OwedTouristTax, bookings[p.BookingId].TotalPrice)));
     }
 
     /// <summary>
@@ -399,7 +399,19 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
         Guid? ReversesEntryId,
         DateTime PostedAt);
 
-    private sealed record BookingInfo(Guid Id, BookingSource Source, decimal? OtaNet, bool? OtaCompanyCollect, decimal TouristTax, decimal TotalPrice);
+    private sealed record BookingInfo(
+        Guid Id,
+        BookingSource Source,
+        decimal? OtaNet,
+        bool? OtaCompanyCollect,
+        decimal TouristTax,
+        decimal TotalPrice,
+        BookingStatus Status,
+        DateTime? NoShowAt)
+    {
+        /// <summary>The tourist tax the stay owes: none for a booking that is not active or a no-show (<see cref="AlloggiatiStatusRules"/>, as the posting reads it).</summary>
+        public decimal OwedTouristTax => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(Status) && NoShowAt is null ? TouristTax : 0m;
+    }
 
     private sealed record PublishedVersion(Guid Id, Guid OwnerId, int Number, string Currency, DateTime CutoffAt, decimal Total);
 
