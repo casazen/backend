@@ -62,7 +62,7 @@ public class PublicReviewPostgresTests
 
         // The refused submission leaves nothing behind in its unit of work: neither its review nor its event.
         var loser = outcomes[0].Refused is not null ? one : other;
-        Assert.Empty(loser.ChangeTracker.Entries().Where(e => e.State == EntityState.Added));
+        Assert.DoesNotContain(loser.ChangeTracker.Entries(), e => e.State == EntityState.Added);
 
         await using var read = database.CreateContext();
         var review = Assert.Single(await read.Reviews.AsNoTracking().Where(r => r.BookingId == bookingId).ToListAsync());
