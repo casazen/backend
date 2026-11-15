@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261115023642_AddPropertyCleaningSetup")]
+    [Migration("20261115051050_AddPropertyCleaningSetup")]
     partial class AddPropertyCleaningSetup
     {
         /// <inheritdoc />
@@ -1787,6 +1787,88 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("cf_simulated_practices", t =>
                         {
                             t.HasComment("solo per ambienti di prova: pratiche del modulo simulato di ConcordatoFacile (ConcordatoFacile:FormMode=Simulated); vuota e inerte con FormMode=Real, la sola modalita di produzione");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.CheckInLinkDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Channel")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ContactReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("ContactRefused")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EndedReason")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime?>("LastAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("LinkToken")
+                        .HasColumnType("text")
+                        .HasColumnName("LinkTokenEncrypted");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("OtaMessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("SessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_CheckInLinkDeliveries_BookingId");
+
+                    b.HasIndex("OtaMessageId");
+
+                    b.HasIndex("SessionId");
+
+                    b.HasIndex("OrgId", "State")
+                        .HasDatabaseName("IX_CheckInLinkDeliveries_OrgId_State_Open")
+                        .HasFilter("\"EndedAt\" IS NULL");
+
+                    b.ToTable("CheckInLinkDeliveries", t =>
+                        {
+                            t.HasCheckConstraint("CK_CheckInLinkDeliveries_Channel", "\"Channel\" IN (1, 2, 3)");
+
+                            t.HasCheckConstraint("CK_CheckInLinkDeliveries_State", "\"State\" IN (1, 2, 3, 4, 5, 6, 7)");
                         });
                 });
 
@@ -7706,7 +7788,7 @@ namespace Casazen.Infrastructure.Migrations
 
                             t.HasCheckConstraint("CK_OtaMessages_Direction", "\"Direction\" IN (1, 2)");
 
-                            t.HasCheckConstraint("CK_OtaMessages_Origin", "\"Origin\" IN (1, 2, 3)");
+                            t.HasCheckConstraint("CK_OtaMessages_Origin", "\"Origin\" IN (1, 2, 3, 4)");
                         });
                 });
 
@@ -8896,6 +8978,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<decimal?>("CleaningFlatRate")
                         .HasColumnType("decimal(10,2)");
+
+                    b.Property<int>("CoOwnerTaxReporting")
+                        .HasColumnType("integer");
 
                     b.Property<int>("CommissionBase")
                         .HasColumnType("integer");
@@ -11552,6 +11637,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<int>("ExternalShortLetUnits")
+                        .HasColumnType("integer");
+
                     b.Property<string>("FirstName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -11605,7 +11693,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasDatabaseName("UIX_PropertyOwners_OrgId_ExternalKey")
                         .HasFilter("\"ExternalKey\" IS NOT NULL");
 
-                    b.ToTable("PropertyOwners");
+                    b.ToTable("PropertyOwners", t =>
+                        {
+                            t.HasCheckConstraint("CK_PropertyOwners_ExternalShortLetUnits", "\"ExternalShortLetUnits\" >= 0 AND \"ExternalShortLetUnits\" <= 1000");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.PropertyOwnership", b =>
@@ -14316,6 +14407,45 @@ namespace Casazen.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_ServiceRequestPaymentRefunds_Amounts", "\"AmountCents\" BETWEEN 1 AND 10000000 AND \"Sequence\" >= 1 AND (\"ApplicationFeeRefundedCents\" IS NULL OR \"ApplicationFeeRefundedCents\" >= 0)");
 
                             t.HasCheckConstraint("CK_ServiceRequestPaymentRefunds_Succeeded", "\"Status\" <> 1 OR \"CompletedAt\" IS NOT NULL");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.ShortLetTaxDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecidedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("Regime")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "BookingId")
+                        .HasDatabaseName("IX_ShortLetTaxDecisions_OrgId_BookingId");
+
+                    b.ToTable("ShortLetTaxDecisions", t =>
+                        {
+                            t.HasCheckConstraint("CK_ShortLetTaxDecisions_Regime", "\"Regime\" IN (1, 2)");
                         });
                 });
 
@@ -17916,6 +18046,31 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Segment");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.CheckInLinkDelivery", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Booking", null)
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.OtaMessage", null)
+                        .WithMany()
+                        .HasForeignKey("OtaMessageId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Casazen.Core.Entities.GuestCheckInSession", null)
+                        .WithMany()
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.CinAlertState", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Property", "Property")
@@ -20545,6 +20700,15 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("ServiceRequestPayment");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.ShortLetTaxDecision", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.ShowcaseBookingHold", b =>
