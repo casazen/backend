@@ -72,6 +72,7 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 |---|---|---|
 | [`suppliers.md`](suppliers.md) | supplier invites, self-serve registration, claim and service requests | BK-15, FD-05, FD-10, FD-14, LT-05, MO-07, MO-10, PL-01 |
 | [`service-categories.md`](service-categories.md) | service categories (one taxonomy) and data migration | FD-21, SU-03 |
+| [`service-requests.md`](service-requests.md) | service requests: the events of a request, the default cleaner of a house, the cleaning at check-out (routine, idempotency, booking changes) and the cost of the completed cleanings for invoicing | E24/F01/US01/T01, E24/F01/US01/T02, E24/F01/US01/T03 |
 
 ## Compliance e normativa
 

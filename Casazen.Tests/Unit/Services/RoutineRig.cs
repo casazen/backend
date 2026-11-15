@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Models;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Hangfire;
@@ -45,6 +46,9 @@ internal sealed class RoutineRig
     /// <summary>The feature flags the engine reads: the module is on (<see cref="FeatureFlags.Routines"/>), every other flag off until a test turns it on.</summary>
     public TestFeatureFlags Flags { get; } = new(FeatureFlags.Routines);
 
+    /// <summary>The automation of the cleaning at check-out the engine runs for <c>CreateCleaningRequest</c> (E24/F01/US01/T02): none until a test gives one.</summary>
+    public ICleaningAutomationService? Cleaning { get; set; }
+
     /// <summary>The jobs the engine scheduled, in order.</summary>
     public IReadOnlyList<(Job Job, IState State)> Scheduled => _scheduled;
 
@@ -60,7 +64,8 @@ internal sealed class RoutineRig
             Jobs.Object,
             Flags,
             time,
-            NullLogger<RoutineService>.Instance);
+            NullLogger<RoutineService>.Instance,
+            Cleaning);
     }
 
     /// <summary>The management of the routines (the API's service) over <paramref name="db"/>, with the flags of the rig.</summary>

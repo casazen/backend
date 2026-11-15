@@ -121,6 +121,35 @@ public class BookingEventConsumersTests : IAsyncLifetime
         Assert.Single(await TodosAsync(requested.Id));
     }
 
+    /// <summary>
+    /// E24/F01/US01/T02: a staff activity of type Cleaning (the automation assigns one to a member of the staff) is a cleaning planned like a request: the stay that ended raises no
+    /// «To do». A cancelled one cleans nothing, so the item is raised.
+    /// </summary>
+    [Fact]
+    public async Task Cleaning_ACleaningActivityOfTheStaff_CountsAsACleaningPlanned()
+    {
+        var ended = await StayAsync(_world.Granted, BookingStatus.CheckedOut);
+        var activity = new InternalActivity
+        {
+            OrgId = _world.OrgId,
+            PropertyId = _world.Granted.Id,
+            BookingId = ended.Id,
+            StaffUserId = _world.OwnerUserId,
+            ActivityType = InternalActivity.CleaningActivityType,
+            Status = InternalActivity.StatusPending,
+            ScheduledAt = ended.CheckOutDate.AddHours(10),
+        };
+        _db.InternalActivities.Add(activity);
+        await _db.SaveChangesAsync();
+
+        await Cleaning().HandleAsync(CheckOutCompleted(ended.Id), Ct);
+        Assert.Empty(await TodosAsync(ended.Id));
+
+        await ChangeActivityAsync(activity.Id, a => a.Status = InternalActivity.StatusCancelled);
+        await Cleaning().HandleAsync(CheckOutCompleted(ended.Id), Ct);
+        Assert.Single(await TodosAsync(ended.Id));
+    }
+
     [Fact]
     public async Task Cleaning_WithNoArrivalBooked_IsLowAndHasNoDeadline()
     {
@@ -408,12 +437,14 @@ public class BookingEventConsumersTests : IAsyncLifetime
         // In the order of registration: the three of E08/F06 (cleaning «To do», special request «To do», channel alert), then the ones
         // that write to Octorate: the booking created on confirmation (E08/F01/US01/T03), the payment recorded once paid (T04) and the
         // cancellation pushed after the local one (E08/F02/US02/T02), the edit pushed after the local one (E08/F02/US01/T02), then the one that
-        // raises the «To do» of a booking from the channel manager on taken nights (E08/F01/US02/T02).
+        // raises the «To do» of a booking from the channel manager on taken nights (E08/F01/US02/T02). The one that keeps the automatic cleaning of a stay in step with the
+        // stay (E24/F01/US01/T02) comes after the three of E08/F06.
         Assert.Equal(
             [
                 typeof(BookingCleaningActivityHandler),
                 typeof(BookingSpecialRequestActivityHandler),
                 typeof(ChannelBookingAlertHandler),
+                typeof(CleaningBookingChangesHandler),
                 typeof(OctorateBookingCreateHandler),
                 typeof(OctoratePaymentHandler),
                 typeof(OctorateBookingCancelHandler),
@@ -500,6 +531,9 @@ public class BookingEventConsumersTests : IAsyncLifetime
         Assert.Contains(ActivityType.BookingSpecialRequest, ActivityAutoCloseHandler.Rules[DomainEventType.CheckInCompleted]);
         Assert.Contains(ActivityType.BookingSpecialRequest, ActivityAutoCloseHandler.Rules[DomainEventType.BookingCancelled]);
         Assert.Contains(ActivityType.CleaningDue, ActivityAutoCloseHandler.Rules[DomainEventType.PropertyReadyDeclared]);
+        // E24/F01/US01/T02: the «To do» of a cleaning the host has to decide on closes with the stay (cancelled) or when the property is declared ready.
+        Assert.Contains(ActivityType.CleaningDateChanged, ActivityAutoCloseHandler.Rules[DomainEventType.BookingCancelled]);
+        Assert.Contains(ActivityType.CleaningDateChanged, ActivityAutoCloseHandler.Rules[DomainEventType.PropertyReadyDeclared]);
         // What E04 closed before is still closed.
         Assert.Contains(ActivityType.CheckInPending, ActivityAutoCloseHandler.Rules[DomainEventType.CheckInCompleted]);
         Assert.Contains(ActivityType.CheckOutPending, ActivityAutoCloseHandler.Rules[DomainEventType.CheckOutCompleted]);
@@ -544,6 +578,14 @@ public class BookingEventConsumersTests : IAsyncLifetime
     {
         _db.ChangeTracker.Clear();
         change(await _db.Bookings.SingleAsync(b => b.Id == bookingId));
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+    }
+
+    private async Task ChangeActivityAsync(Guid activityId, Action<InternalActivity> change)
+    {
+        _db.ChangeTracker.Clear();
+        change(await _db.InternalActivities.SingleAsync(a => a.Id == activityId));
         await _db.SaveChangesAsync();
         _db.ChangeTracker.Clear();
     }

@@ -789,6 +789,18 @@
   <data name="TodoReason_CleaningDue" xml:space="preserve">
     <value>Check-out completato senza una pulizia richiesta</value>
   </data>
+  <data name="TodoReason_CleaningDateChanged" xml:space="preserve">
+    <value>Le date del soggiorno sono cambiate: la pulizia è già stata presa in carico, decidi se spostarla o annullarla</value>
+  </data>
+  <data name="CleaningAutomation_RequestNote" xml:space="preserve">
+    <value>Pulizia automatica al check-out. Prezzo concordato.</value>
+  </data>
+  <data name="CleaningAutomation_StaffNote" xml:space="preserve">
+    <value>Pulizia automatica al check-out.</value>
+  </data>
+  <data name="CleaningAutomation_CancelReason" xml:space="preserve">
+    <value>Prenotazione annullata</value>
+  </data>
   <data name="TodoReason_BookingSpecialRequest" xml:space="preserve">
     <value>Nuova prenotazione con una richiesta speciale</value>
   </data>

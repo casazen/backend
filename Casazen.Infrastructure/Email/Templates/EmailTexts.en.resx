@@ -789,6 +789,18 @@
   <data name="TodoReason_CleaningDue" xml:space="preserve">
     <value>Check-out completed with no cleaning requested</value>
   </data>
+  <data name="TodoReason_CleaningDateChanged" xml:space="preserve">
+    <value>The stay dates changed: the cleaning is already taken, decide whether to move or cancel it</value>
+  </data>
+  <data name="CleaningAutomation_RequestNote" xml:space="preserve">
+    <value>Automatic check-out cleaning. Agreed price.</value>
+  </data>
+  <data name="CleaningAutomation_StaffNote" xml:space="preserve">
+    <value>Automatic check-out cleaning.</value>
+  </data>
+  <data name="CleaningAutomation_CancelReason" xml:space="preserve">
+    <value>Booking cancelled</value>
+  </data>
   <data name="TodoReason_BookingSpecialRequest" xml:space="preserve">
     <value>New booking with a special request</value>
   </data>

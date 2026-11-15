@@ -1,7 +1,9 @@
+using Casazen.Core.Multitenancy;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Casazen.Infrastructure.Storage;
@@ -43,7 +45,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
         TestFeatureFlags? flags = null,
         Microsoft.Extensions.Logging.ILogger<SupplierPaymentService>? paymentLogger = null,
         FakePlatformPaymentGateway? platformGateway = null,
-        IShowcaseAlternativesService? alternatives = null)
+        IShowcaseAlternativesService? alternatives = null,
+        bool recordEvents = false)
     {
         Db = db;
         Clock = clock ?? TimeProvider.System;
@@ -143,7 +146,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Payments,
             Flags,
             BackupSelector,
-            Reliability);
+            Reliability,
+            // E24/F01/US01/T02: the events of the requests go to the outbox of the same context, as the application does, for the tests that read them.
+            recordEvents ? new DomainEventRecorder(db, Mock.Of<ITenantContext>(), Clock) : null);
         Booking = new ShowcaseBookingService(
             db,
             Catalog,
