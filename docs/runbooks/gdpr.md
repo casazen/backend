@@ -86,7 +86,7 @@ that guest** is still waiting for its receipt. The document data of the guests (
 - **When:** the recurring job `guest-document-purge` (daily at 03:50 UTC, `[DisableConcurrentExecution]`, always registered) over every organization, and a run for the organization
   queued right after an Alloggiati receipt is uploaded (never inside the request; a failure to queue it is logged and the daily run does the work).
 - **Idempotent:** a second run finds nothing. For each stay that lost something one line of the log with counts only (the id of the organization and of the stay, the photos and
-  the scans deleted: never a name, a number or a storage key) and one line in the send log of the stay (`DocumentsDeleted`, «Documenti cancellati dopo la ricevuta», with the date),
+  the scans deleted: never a name, a number or a storage key, and the storage adapters themselves write no `guest-documents/…` key when they delete, `StorageKeys.IsGuestDocument`) and one line in the send log of the stay (`DocumentsDeleted`, «Documenti cancellati dopo la ricevuta», with the date),
   both only for what really left the storage: a scan whose object another guest record still points to (a snapshot of the same guest) loses its reference on this stay, which is
   saved, but is neither counted nor written as a deletion, and the object is deleted, counted and written when the last record that points to it is cleared.
 - **A failure is not hidden:** a file the storage could not delete keeps its row and its reference, the other stays go on, and the run fails at its end (Hangfire repeats it).
