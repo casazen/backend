@@ -93,7 +93,11 @@ public class ComplianceStateEntitiesModelTests
     public void ComplianceTables_AreTenantOwned_AndTheStoredNumbersOfTheEnumsNeverMove()
     {
         Assert.All(
-            new[] { typeof(ComplianceAlertState), typeof(ComplianceMonthlySummaryLog), typeof(ComplianceSendLogEntry), typeof(ManualComplianceProof) },
+            new[]
+            {
+                typeof(ComplianceAlertState), typeof(ComplianceMonthlySummaryLog), typeof(ComplianceSendLogEntry), typeof(ManualComplianceProof),
+                typeof(ManualComplianceProofProperty),
+            },
             type => Assert.True(typeof(ITenantOwned).IsAssignableFrom(type), type.Name));
 
         Assert.Equal([1, 2, 3], new[] { (int)ComplianceAlertType.IstatPeriod, (int)ComplianceAlertType.TouristTaxPeriod, (int)ComplianceAlertType.ConnectionInactive });

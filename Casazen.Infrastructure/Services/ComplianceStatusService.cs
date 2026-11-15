@@ -154,15 +154,11 @@ public sealed class ComplianceStatusService(
         foreach (var propertyId in connectionNotRead)
             connections.Remove(propertyId);
 
-        // The proofs the host uploaded, for the properties of the caller's reach and the days of the window (a month earlier, for the periods).
+        // The proofs the host uploaded, for the properties of the caller's reach and the days of the window (a month earlier, for the periods). A
+        // receipt of the Alloggiati communication may cover several flats of the org (E20/F02/US01/T01): there is one row for each flat it covers, so
+        // the stay of a flat is proven only by a receipt that names its flat (ManualProofCoverage, the one reading of it).
         var proofFrom = DateOnly.FromDateTime(windowStart).AddMonths(-1);
-        var proofRows = propertyIds.Count == 0
-            ? []
-            : await db.ManualComplianceProofs
-                .AsNoTracking()
-                .Where(p => p.OrgId == orgId && propertyIds.Contains(p.PropertyId) && p.Day >= proofFrom)
-                .Select(p => new ProofRow(p.Id, p.PropertyId, p.Kind, p.Day, p.UploadedAt))
-                .ToListAsync(ct);
+        var proofRows = await ManualProofCoverage.ReadAsync(db, orgId, propertyIds, proofFrom, null, ct);
         var proofs = proofRows.ToLookup(p => (p.PropertyId, p.Kind));
 
         var items = new List<ComplianceStatusItem>();
@@ -257,7 +253,7 @@ public sealed class ComplianceStatusService(
         List<ComplianceStatusItem> items,
         Universe universe,
         AlloggiatiReads reads,
-        ILookup<(Guid PropertyId, ManualProofKind Kind), ProofRow> proofs,
+        ILookup<(Guid PropertyId, ManualProofKind Kind), CoveredProof> proofs,
         IReadOnlyList<StayRow> dueStays,
         Func<Guid, ComplianceSenderType> senderOf,
         IReadOnlyDictionary<Guid, ComplianceConnectionHealth> connections,
@@ -305,7 +301,7 @@ public sealed class ComplianceStatusService(
     private static AlloggiatiJudgement JudgeAlloggiati(
         StayRow stay,
         AlloggiatiReads reads,
-        ILookup<(Guid PropertyId, ManualProofKind Kind), ProofRow> proofs,
+        ILookup<(Guid PropertyId, ManualProofKind Kind), CoveredProof> proofs,
         ComplianceSenderType sender,
         ConnectionHealthState? connection,
         DateTime nowUtc,
@@ -382,11 +378,7 @@ public sealed class ComplianceStatusService(
         // The same reads as the cockpit, for this stay alone: its report and receipt, its guests and their links, the proofs of its property and day.
         var reads = await ReadAlloggiatiAsync(orgId, [stay], _ => sender, ct);
         var day = RomeCalendar.DateInRome(stay.CheckInDate);
-        var proofRows = await db.ManualComplianceProofs
-            .AsNoTracking()
-            .Where(p => p.OrgId == orgId && p.PropertyId == stay.PropertyId && p.Day == day)
-            .Select(p => new ProofRow(p.Id, p.PropertyId, p.Kind, p.Day, p.UploadedAt))
-            .ToListAsync(ct);
+        var proofRows = await ManualProofCoverage.ReadAsync(db, orgId, [stay.PropertyId], day, day, ct);
         var proofs = proofRows.ToLookup(p => (p.PropertyId, p.Kind));
 
         // The connection of the channel manager, from the short memory of the health service (the cockpit reads it the same way): an inactive one is a
@@ -425,14 +417,15 @@ public sealed class ComplianceStatusService(
     }
 
     /// <summary>
-    /// The archived proof of the arrival day of a stay: the live receipt a report points to, or else a receipt the host uploaded for that
-    /// property and day. Both are real files in the private bucket; neither is a declaration.
+    /// The archived proof of the arrival day of a stay: the live receipt a report points to, or else a receipt the host uploaded that covers the
+    /// property of the stay, for that day (one receipt may cover several flats, E20/F02/US01/T01; the proofs of a flat the receipt does not name
+    /// are not here). Both are real files in the private bucket; neither is a declaration.
     /// </summary>
     private static ComplianceProof? AlloggiatiProof(
         StayRow stay,
         ReportRow? report,
         AlloggiatiReads reads,
-        ILookup<(Guid PropertyId, ManualProofKind Kind), ProofRow> proofs)
+        ILookup<(Guid PropertyId, ManualProofKind Kind), CoveredProof> proofs)
     {
         if (report?.ReceiptId is { } receiptId && reads.Receipts.TryGetValue(receiptId, out var receipt))
             return new ComplianceProof($"receipt:{receipt.Id:N}", ComplianceEvidenceSources.CasazenReceipt, receipt.RetrievedAt);
@@ -551,7 +544,7 @@ public sealed class ComplianceStatusService(
         Universe universe,
         IReadOnlyList<PropertyRow> properties,
         IReadOnlyList<StayRow> stays,
-        ILookup<(Guid PropertyId, ManualProofKind Kind), ProofRow> proofs,
+        ILookup<(Guid PropertyId, ManualProofKind Kind), CoveredProof> proofs,
         Func<Guid, ComplianceSenderType> senderOf,
         IReadOnlyDictionary<Guid, ComplianceConnectionHealth> connections,
         ComplianceOptions settings,
@@ -712,7 +705,7 @@ public sealed class ComplianceStatusService(
 
     /// <summary>The latest proof of a kind for the property and the first day of a month (the day a period proof is filed under).</summary>
     private static ComplianceProof? ProofOf(
-        ILookup<(Guid PropertyId, ManualProofKind Kind), ProofRow> proofs,
+        ILookup<(Guid PropertyId, ManualProofKind Kind), CoveredProof> proofs,
         Guid propertyId,
         ManualProofKind kind,
         DateOnly periodStart)
@@ -844,8 +837,6 @@ public sealed class ComplianceStatusService(
     private sealed record ReportRow(Guid BookingId, Guid GuestId, AlloggiatiWebStatus Status, DateTime? ReportedAt, DateTime UpdatedAt, Guid? ReceiptId);
 
     private sealed record ReceiptRow(Guid Id, DateTime RetrievedAt);
-
-    private sealed record ProofRow(Guid Id, Guid PropertyId, ManualProofKind Kind, DateOnly Day, DateTime UploadedAt);
 
     private sealed record RemittanceRow(Guid Id, string ComuneKey, DateOnly PeriodFrom, DateOnly PeriodTo, DateTime CreatedAt);
 

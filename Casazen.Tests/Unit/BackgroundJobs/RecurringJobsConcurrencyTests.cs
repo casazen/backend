@@ -34,6 +34,7 @@ public class RecurringJobsConcurrencyTests
         "lease-draft-retention",
         "supplier-showcase-media-cleanup",
         "accountant-package-monthly",
+        "compliance-proof-retention",
     ];
 
     [Fact]

@@ -4,8 +4,8 @@ namespace Casazen.Core.Services;
 
 /// <summary>
 /// The kinds of document the archive holds (NF-99, REP-04, E07/F03/US03). The enum is the contract of the archive: a source registers one of
-/// these. A type with no source registered has no rows and is offered to nobody (the Alloggiati receipts and the ISTAT proofs wait for their
-/// tasks; the invoices, the receipts and the credit notes wait for the fiscal epic).
+/// these. A type with no source registered has no rows and is offered to nobody (the invoices, the receipts and the credit notes wait for the
+/// fiscal epic; the Alloggiati receipts and the ISTAT proofs the host uploaded are «Prove di adempimento», read with <c>guest.read</c>, E20/F02/US01/T01).
 /// </summary>
 public enum ArchiveDocumentType
 {

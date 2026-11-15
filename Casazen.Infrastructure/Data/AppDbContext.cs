@@ -104,6 +104,9 @@ public class AppDbContext(
     public DbSet<ComplianceSendLogEntry> ComplianceSendLogEntries { get; set; } = null!;
     public DbSet<ManualComplianceProof> ManualComplianceProofs { get; set; } = null!;
 
+    // The flats a receipt covers: one row for each flat of the org an Alloggiati receipt is about (E20/F02/US01/T01, decision O3)
+    public DbSet<ManualComplianceProofProperty> ManualComplianceProofProperties { get; set; } = null!;
+
     // Official ISTAT list of the comuni and the log of its imports (SU-04)
     public DbSet<Comune> Comuni { get; set; } = null!;
     public DbSet<ComuneImport> ComuneImports { get; set; } = null!;
@@ -674,6 +677,9 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new ComplianceMonthlySummaryLogConfiguration());
         modelBuilder.ApplyConfiguration(new ComplianceSendLogEntryConfiguration());
         modelBuilder.ApplyConfiguration(new ManualComplianceProofConfiguration());
+
+        // E20/F02/US01/T01 (decision O3): the flats a receipt covers, one row for each, with the unique pair (proof, flat); a tenant row (TN-2).
+        modelBuilder.ApplyConfiguration(new ManualComplianceProofPropertyConfiguration());
 
         // "Le mie prenotazioni" finds a booking by the org of the site and its code (BK-11).
         modelBuilder.Entity<Booking>()

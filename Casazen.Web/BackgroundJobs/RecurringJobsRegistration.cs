@@ -156,6 +156,15 @@ public static class RecurringJobsRegistration
             ComplianceMonthlySummaryJob.Cron,
             new RecurringJobOptions { TimeZone = RomeCalendar.TimeZone });
 
+        // E20/F02/US01/T01 (NF-47, CHK-08, AC-NF52-12): the proofs of the compliance duties are kept five years from their upload; the file and the row of those whose
+        // time is over are deleted every day at 03:40 UTC, counts only in the log. Always registered: a file that exists costs money whatever a flag says, and with no
+        // proof past its time a run finds nothing.
+        recurringJobManager.AddOrUpdate<ComplianceProofRetentionJob>(
+            ComplianceProofRetentionJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ComplianceProofRetentionJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         // CO-20: daily CIN alert, after the nightly compliance check of CO-06.
         recurringJobManager.AddOrUpdate<CinDeadlineAlertJob>(
             CinDeadlineAlertJob.RecurringJobId,

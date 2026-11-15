@@ -5349,6 +5349,33 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("ManualComplianceProofs");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.ManualComplianceProofProperty", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProofId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("OrgId", "PropertyId");
+
+                    b.HasIndex("ProofId", "PropertyId")
+                        .IsUnique();
+
+                    b.ToTable("ManualComplianceProofProperties");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.MarketingConsentRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -18751,6 +18778,31 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Property");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.ManualComplianceProofProperty", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.ManualComplianceProof", "Proof")
+                        .WithMany("CoveredProperties")
+                        .HasForeignKey("ProofId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", "Property")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Proof");
+
+                    b.Navigation("Property");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.MarketingConsentRecord", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Booking", "Booking")
@@ -21153,6 +21205,11 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("RentSchedule");
 
                     b.Navigation("Signers");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.ManualComplianceProof", b =>
+                {
+                    b.Navigation("CoveredProperties");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.MarketplacePartner", b =>

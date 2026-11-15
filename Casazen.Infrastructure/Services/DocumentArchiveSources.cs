@@ -14,6 +14,8 @@ namespace Casazen.Infrastructure.Services;
 // What is NOT a source, on purpose: the identity documents and the selfies of the guests (Guest.DocumentScanUrl, the images of the stay
 // guests). They are guest data of the police and identity flows, read only through their own authenticated endpoints, and the archive has no
 // way to reach them: a new source is a class here, registered by AddDocumentArchive, and the test of the registration lists them all.
+// The proofs of the compliance duties the host uploaded (the Alloggiati receipts and the ISTAT proofs) are sources: they are the host's own
+// archive of what proves a communication (E20/F02/US01/T01), read with guest.read.
 //
 // Time zone: the day of an upload is the day in Europe/Rome. On PostgreSQL the provider turns TimeZoneInfo.ConvertTimeBySystemTimeZoneId into AT TIME ZONE,
 // so the server works the day out and the filter by days and the order are made in SQL on the same day the host sees; the InMemory provider of the
@@ -182,5 +184,111 @@ public sealed class TouristTaxRemittanceArchiveSource(AppDbContext db, IFileStor
 
         // No property to narrow by: a scope limited to some properties reaches none of these rows, decided in the same statement.
         return scope.IsOrgWide ? receipts : receipts.Where(_ => false);
+    }
+}
+
+/// <summary>
+/// The proofs of the compliance duties the host uploaded, «Prove di adempimento» (E20/F02/US01/T01, NF-47, CHK-08): the private bucket,
+/// <see cref="ManualComplianceProof.FileKey"/>. One class for each kind of the archive that has such a file (<see cref="AlloggiatiReceiptArchiveSource"/>,
+/// <see cref="IstatProofArchiveSource"/>), sharing what a proof is: the reach, the file and the permission. The receipts of a tourist tax declaration or payment
+/// are records of money with their own permission and are not here.
+/// </summary>
+/// <remarks>
+/// <para><b>Who may read it.</b> A proof carries data about guests (the receipt of the communication lists them), so the sources ask <c>guest.read</c>, which the
+/// Accountant does not hold (<see cref="ArchiveDocumentTypes.IsComplianceProof"/>: a download is written in the log).</para>
+/// <para><b>The reach.</b> The one of the compliance archive (<c>InScope</c> of a proof): the proofs whose every flat the caller reaches, the flat they were filed
+/// under and every flat a receipt covers, so a collaborator «Solo alcuni» never opens the file of a receipt that is also about the guests of a flat it does not
+/// reach. The history of a flat deleted since is kept (<c>IgnoreQueryFilters([SoftDelete])</c>, the tenant filter stays), as the compliance archive keeps it. The
+/// row names the flat the receipt was filed under: a filter by property of the archive finds a receipt by that flat, the dedicated archive
+/// (<c>api/compliance/archive</c>) by any flat it covers.</para>
+/// </remarks>
+public abstract class ComplianceProofArchiveSource(AppDbContext db, IFileStorage storage, ManualProofKind kind) : IDocumentArchiveSource
+{
+    public abstract ArchiveDocumentType Type { get; }
+
+    public string ContextKey => OrgRoleCatalog.ShortRent;
+
+    public string PermissionKey => "guest.read";
+
+    public abstract IQueryable<ArchiveRow> Query(HostScope scope);
+
+    public async Task<ArchiveFile?> OpenAsync(Guid id, HostScope scope, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+
+        var proof = await InReach(scope)
+            .Where(p => p.Id == id)
+            .Select(p => new { p.Kind, p.Day, p.FileKey, p.ContentType })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (proof is null || !StorageKeys.IsValid(proof.FileKey))
+            return null;
+
+        var content = await storage.OpenReadAsync(StorageBucket.Private, proof.FileKey, cancellationToken);
+        return content is null
+            ? null
+            : new ArchiveFile(content, ComplianceArchiveRules.DownloadName(proof.Kind, proof.Day, proof.ContentType), proof.ContentType);
+    }
+
+    /// <summary>The proofs of this kind of the caller's org in its reach, the history of deleted flats included.</summary>
+    protected IQueryable<ManualComplianceProof> InReach(HostScope scope)
+    {
+        var orgId = scope.OrgId;
+        return db.ManualComplianceProofs.AsNoTracking()
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
+            .Where(p => p.OrgId == orgId && p.Property.OrgId == orgId && p.Kind == kind)
+            .InScope(scope);
+    }
+}
+
+/// <summary>The receipts of the Alloggiati communication of a day the host uploaded (<see cref="ManualProofKind.AlloggiatiReceipt"/>).</summary>
+public sealed class AlloggiatiReceiptArchiveSource(AppDbContext db, IFileStorage storage)
+    : ComplianceProofArchiveSource(db, storage, ManualProofKind.AlloggiatiReceipt)
+{
+    public override ArchiveDocumentType Type => ArchiveDocumentType.AlloggiatiReceipt;
+
+    public override IQueryable<ArchiveRow> Query(HostScope scope)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+
+        // The title is the word the file name is made of (ComplianceArchiveRules.SlugOf); the day is the one the proof is about, the arrival day of the stays.
+        return InReach(scope).Select(p => new ArchiveRow
+        {
+            Type = ArchiveDocumentType.AlloggiatiReceipt,
+            Id = p.Id,
+            Title = "alloggiati",
+            DocumentDate = p.Day,
+            PropertyId = p.PropertyId,
+            PropertyName = p.Property.Name,
+            BookingId = null,
+            BookingCode = null,
+            ContentType = p.ContentType,
+            SizeBytes = null,
+        });
+    }
+}
+
+/// <summary>The proofs of an ISTAT communication of a period the host uploaded (<see cref="ManualProofKind.IstatProof"/>), filed under the first day of the month.</summary>
+public sealed class IstatProofArchiveSource(AppDbContext db, IFileStorage storage)
+    : ComplianceProofArchiveSource(db, storage, ManualProofKind.IstatProof)
+{
+    public override ArchiveDocumentType Type => ArchiveDocumentType.IstatProof;
+
+    public override IQueryable<ArchiveRow> Query(HostScope scope)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+
+        return InReach(scope).Select(p => new ArchiveRow
+        {
+            Type = ArchiveDocumentType.IstatProof,
+            Id = p.Id,
+            Title = "istat",
+            DocumentDate = p.Day,
+            PropertyId = p.PropertyId,
+            PropertyName = p.Property.Name,
+            BookingId = null,
+            BookingCode = null,
+            ContentType = p.ContentType,
+            SizeBytes = null,
+        });
     }
 }
