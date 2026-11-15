@@ -180,6 +180,10 @@ public static class FiscalDocumentExtensions
         services.AddScoped<IEventHandler<DomainEvent>, FiscalDocumentRejectionHandler>();
         services.AddScoped<IBillingSetupContributor, SdiIssuerRegistrationContributor>();
 
+        // The documents issued in the name of the owners for the owner portal and for the accountant of the owner: the list, their PDF and XML and the ZIP of the month or the year
+        // (E17/F02/US01/T01). The owner portal service takes it; it takes nothing of the portal.
+        services.AddScoped<IOwnerIssuedDocumentsExport, OwnerIssuedDocumentsExport>();
+
         // The checks of the limit of units of an owner and of the company tenant in the property of a private owner (E18/F01/US03/T01, NF-117, ⚖ I7 and I8): the withholding
         // facts read them, the readiness of the owners and the statement versions carry their warnings, and the consumer of InvoiceDataSaved and BookingConfirmed raises the «Da fare» of a company
         // tenant. The warnings and the «Da fare» are behind Features:TaxReportingExports; run by the outbox dispatcher, the consumer can never fail the save of the invoice data.

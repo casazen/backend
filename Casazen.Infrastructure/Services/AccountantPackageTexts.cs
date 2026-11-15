@@ -171,9 +171,17 @@ internal static class PackageLabels
     public const string SumProperties = "AccPkgSumProperties";
     public const string SumOwnerAccountingOmitted = "AccPkgSumOwnerAccountingOmitted";
 
+    // The documents issued in the name of an owner, for its accountant (E17/F02/US01/T01).
+    public const string OwnDocsTotalsTitle = "AccPkgOwnDocsTotalsTitle";
+    public const string OwnDocsSummaryTitle = "AccPkgOwnDocsSummaryTitle";
+    public const string OwnDocsAgencyInvoicesTitle = "AccPkgOwnDocsAgencyInvoicesTitle";
+    public const string OwnDocsAgencyInvoiceDetailTitle = "AccPkgOwnDocsAgencyInvoiceDetailTitle";
+
     // Errors.
     public const string TooLargeMessage = "AccountantPackageTooLarge";
     public const string InvalidPeriodMessage = "AccountantPackageInvalidPeriod";
+    public const string OwnerIssuedDocumentNotFoundMessage = "OwnerIssuedDocumentNotFound";
+    public const string OwnerIssuedDocumentsNotAvailableMessage = "OwnerIssuedDocumentsNotAvailable";
 
     /// <summary>Every key above: the test that reads the two resource files asks for each of them.</summary>
     public static IReadOnlyList<string> All { get; } =
