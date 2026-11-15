@@ -451,6 +451,217 @@ public class OctorateGuestAutoSendTests
         await Assert.ThrowsAsync<Casazen.Core.Exceptions.NotFoundException>(() => setting.SetAsync(Guid.NewGuid(), true, "auth0|admin", CancellationToken.None));
     }
 
+    // ─── After the review: the event is never lost, the places, the To do, the sweep ─────────────────────
+
+    /// <summary>
+    /// A change that arrives while another send of the stay holds the lock is not lost: the send answers «in progress», the event is not consumed
+    /// (the dispatcher keeps it, with its attempt), and it is delivered again and then goes. The change made during that send is older than its link, so
+    /// the sweep would never find it: only the redelivery does.
+    /// </summary>
+    [Fact]
+    public async Task AnEventThatFindsTheLockOfTheStayTaken_IsDeliveredAgain_AndThenGoes()
+    {
+        var w = await World.CreateAsync();
+        var handler = new StayGuestsReadyOctorateHandler(w.AutoSend(w.LockTakenOnce()), NullLogger<StayGuestsReadyOctorateHandler>.Instance);
+        var eventId = await w.AddOutboxEventAsync();
+
+        await w.RunDispatcherAsync(handler);
+
+        var kept = await w.OutboxRowAsync(eventId);
+        Assert.Equal((1, null), (kept.Attempts, kept.DispatchedAt));
+        Assert.Contains(nameof(StayGuestsSendBusyException), kept.LastError, StringComparison.Ordinal);
+        Assert.Empty(w.Sent);
+
+        await w.RunDispatcherAsync(handler);
+
+        var delivered = await w.OutboxRowAsync(eventId);
+        Assert.NotNull(delivered.DispatchedAt);
+        Assert.Equal(2, w.Sent.Count);
+    }
+
+    /// <summary>The service says it too: the lock taken is an exception, never an answer that looks like «sent», and nothing is written.</summary>
+    [Fact]
+    public async Task AutoSend_TheLockOfTheStayTaken_IsAnExceptionForTheOutboxAndTheSweep_NotAnAnswer()
+    {
+        var w = await World.CreateAsync();
+
+        await Assert.ThrowsAsync<StayGuestsSendBusyException>(() => w.AutoSend(w.LockTakenOnce()).TrySendAsync(OrgA, w.BookingId, CancellationToken.None));
+
+        Assert.Empty(w.Sent);
+        await using var db = w.NewDb();
+        Assert.Empty(await db.StayGuestOctorateLinks.ToListAsync());
+    }
+
+    /// <summary>
+    /// A table of places that cannot be read (an error of Octorate, a rate limit or a full bucket) says nothing about a guest that is on Octorate for good:
+    /// its link is not touched (no failure, no new hash, no new attempt), the answer says it was not looked at, and the change of a guest, which the sweep
+    /// finds because the guest is newer than its link, goes with the warning of a correction when the table can be read.
+    /// </summary>
+    [Fact]
+    public async Task ATableThatCannotBeRead_LeavesTheLinksOfTheGuestsOnOctorateAsTheyAre_AndTheChangeGoesWhenItCanBeRead()
+    {
+        var w = await World.CreateAsync();
+        await w.Sync().SendGuestsAsync(w.BookingId, CancellationToken.None);
+        var before = await w.LinksAsync();
+        Assert.All(before, l => Assert.Equal(OctorateSyncStatus.Sent, l.Status));
+        w.Client.Setup(c => c.GetCheckInCitiesAsync("IT", It.IsAny<CancellationToken>())).ThrowsAsync(new OctorateRateLimitException(null));
+        await w.EditGuestAsync(1, g => g.LastName = "Neri", touch: Now.UtcDateTime.AddMinutes(10));
+
+        var blocked = await w.Sync().SendGuestsAsync(w.BookingId, CancellationToken.None);
+
+        Assert.Equal(OctorateCheckInSendState.Failed, blocked.State);
+        Assert.All(blocked.Guests, g => Assert.Equal(CheckInErrorCodes.RateLimited, g.ErrorCode));
+        Assert.False(blocked.CorrectionAfterSend);
+        Assert.Equal(2, w.Sent.Count);
+        Assert.Equal(before, await w.LinksAsync());
+        w.Activities.Verify(a => a.CreateAsync(It.IsAny<CreateTodoRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // The guest is newer than its link: the sweep finds the stay, and the change goes, with the warning, once the table can be read.
+        Assert.Equal([(OrgA, w.BookingId)], await w.AutoSend().FindStaysToSweepAsync(10, CancellationToken.None));
+        w.ClientKnowsTheCities();
+        var sent = await w.AutoSend().TrySendAsync(OrgA, w.BookingId, CancellationToken.None);
+
+        Assert.True(sent.Send!.CorrectionAfterSend);
+        Assert.Equal(3, w.Sent.Count);
+        w.Activities.Verify(
+            a => a.CreateAsync(It.Is<CreateTodoRequest>(r => r.Reason == StayGuestsAutoSendService.CorrectionTodoReason), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// AC4 after a hold: a guest sent for good, edited into a place Octorate does not know (held back, its link no longer says «sent») and then corrected,
+    /// goes again with the warning of a correction: it is worked out from what was transmitted (a guest id, not a draft), never from the status.
+    /// </summary>
+    [Fact]
+    public async Task AGuestSentForGood_HeldBackForAPlace_AndThenCorrected_StillRaisesTheCorrectionWarning()
+    {
+        var w = await World.CreateAsync();
+        await w.AutoSend().TrySendAsync(OrgA, w.BookingId, CancellationToken.None);
+        Assert.Equal(2, w.Sent.Count);
+
+        await w.EditGuestAsync(1, g => g.ResidenceComuneName = "Atlantide");
+        var held = await w.AutoSend().TrySendAsync(OrgA, w.BookingId, CancellationToken.None);
+        Assert.Equal(OctorateCheckInSendState.Failed, held.Send!.State);
+        Assert.Equal(2, w.Sent.Count);
+        await using (var db = w.NewDb())
+            Assert.Equal(OctorateSyncStatus.Failed, (await db.StayGuestOctorateLinks.SingleAsync(l => l.Position == 1)).Status);
+
+        await w.EditGuestAsync(1, g => g.ResidenceComuneName = "Roma");
+        w.Activities.Invocations.Clear();
+        var corrected = await w.AutoSend().TrySendAsync(OrgA, w.BookingId, CancellationToken.None);
+
+        Assert.Equal(OctorateGuestSendOutcome.Updated, Assert.Single(corrected.Send!.Guests, g => g.Outcome != OctorateGuestSendOutcome.Unchanged).Outcome);
+        Assert.True(corrected.Send.CorrectionAfterSend);
+        Assert.Equal(3, w.Sent.Count);
+        w.Activities.Verify(
+            a => a.CreateAsync(It.Is<CreateTodoRequest>(r => r.Reason == StayGuestsAutoSendService.CorrectionTodoReason), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// One "To do" is open for each booking and several guests can hold it: it is closed only with the last of them, never while another guest is still held
+    /// back for a place, and it names the place (urgent, so a milder cause that raised it first gives way to the reason of the place).
+    /// </summary>
+    [Fact]
+    public async Task TheTodoOfTheBooking_NamesThePlace_AndIsClosedOnlyWhenNoOtherGuestStillNeedsIt()
+    {
+        var w = await World.CreateAsync();
+        await w.EditGuestAsync(0, g => g.ResidenceComuneName = "Atlantide");
+        await w.EditGuestAsync(1, g => g.ResidenceComuneName = "Narnia");
+        const string placeReason = $"{CheckInOctorateSyncService.PlaceTodoReason}:residenceComune";
+
+        var held = await w.Sync().SendGuestsAsync(w.BookingId, CancellationToken.None);
+
+        Assert.Equal(OctorateCheckInSendState.Failed, held.State);
+        w.Activities.Verify(
+            a => a.CreateAsync(It.Is<CreateTodoRequest>(r => r.Reason == placeReason && r.Urgency == ActivityUrgency.High), It.IsAny<CancellationToken>()),
+            Times.Once);
+        w.Activities.Verify(
+            a => a.RaiseUrgencyAsync(World.TodoId, ActivityUrgency.High, null, placeReason, It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+
+        // The first guest is corrected and goes: the second is still held back for a place, so the item stays open and names the place again.
+        await w.EditGuestAsync(0, g => g.ResidenceComuneName = "Como");
+        w.Activities.Invocations.Clear();
+        var oneFixed = await w.Sync().SendGuestsAsync(w.BookingId, CancellationToken.None);
+
+        Assert.Equal(OctorateCheckInSendState.PartlyFailed, oneFixed.State);
+        Assert.Equal([0], w.Sent.Select(s => s.Position));
+        w.Activities.Verify(a => a.CloseAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        w.Activities.Verify(
+            a => a.RaiseUrgencyAsync(World.TodoId, ActivityUrgency.High, null, placeReason, It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+
+        // The last guest is corrected and goes: nobody needs the item any more, so it is closed, once.
+        await w.EditGuestAsync(1, g => g.ResidenceComuneName = "Como");
+        var allFixed = await w.Sync().SendGuestsAsync(w.BookingId, CancellationToken.None);
+
+        Assert.Equal(OctorateCheckInSendState.Sent, allFixed.State);
+        w.Activities.Verify(a => a.CloseAsync(World.TodoId, InternalActivity.ClosedBySystem, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>A guest that is written does not close the item an arrival that keeps failing still needs, and the arrival that goes does not close the item of a guest still failing.</summary>
+    [Fact]
+    public async Task TheTodoOfTheBooking_IsNotClosedByAWriteWhileAnotherWriteStillNeedsIt()
+    {
+        var w = await World.CreateAsync(maxAttempts: 2);
+        w.Client
+            .Setup(c => c.SetCheckInStatusAsync(Accommodation, Reservation, OctorateCheckInStatus.CheckInEnd, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OctorateServerException(503));
+        await w.Sync().SetStayStateAsync(w.BookingId, OctorateStayState.CheckInEnd, CancellationToken.None);
+        await w.Sync().SetStayStateAsync(w.BookingId, OctorateStayState.CheckInEnd, CancellationToken.None);
+        await w.AddLinkAsync(0, OctorateSyncStatus.Failed, attempts: 2, errorCode: CheckInErrorCodes.Server, todo: World.TodoId);
+        w.Activities.Invocations.Clear();
+
+        // The guests are written (the link that held the item goes): the arrival still needs it.
+        var guests = await w.Sync().RetryGuestsNowAsync(w.BookingId, CancellationToken.None);
+
+        Assert.Equal(OctorateCheckInSendState.Sent, guests.State);
+        w.Activities.Verify(a => a.CloseAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // The arrival goes at last: nothing else needs the item, so it is closed.
+        w.Client.Setup(c => c.SetCheckInStatusAsync(Accommodation, Reservation, OctorateCheckInStatus.CheckInEnd, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        Assert.Equal(OctorateStayStateOutcome.Sent, (await w.Sync().SetStayStateAsync(w.BookingId, OctorateStayState.CheckInEnd, CancellationToken.None)).Outcome);
+        w.Activities.Verify(a => a.CloseAsync(World.TodoId, InternalActivity.ClosedBySystem, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// The sweep looks at the ARRIVAL, from yesterday to 14 days ahead, as the runbook says: a stay that arrived earlier and is still in progress is not
+    /// chased, however long it lasts, and one that arrives later than 14 days ahead has guests that are not ready.
+    /// </summary>
+    [Fact]
+    public async Task TheSweep_LooksAtTheArrivalFromYesterdayTo14DaysAhead_NotAtAStayThatIsInProgress()
+    {
+        var w = await World.CreateAsync(setting: true);
+        var yesterday = await w.AddStayAsync(-1);
+        var edge = await w.AddStayAsync(StayGuestsAutoSendService.SweepLookaheadDays);
+        await w.AddStayAsync(-2);
+        await w.AddStayAsync(-30, nights: 60);
+        await w.AddStayAsync(StayGuestsAutoSendService.SweepLookaheadDays + 1);
+
+        var found = await w.AutoSend().FindStaysToSweepAsync(100, CancellationToken.None);
+
+        Assert.Equal([yesterday, w.BookingId, edge], found.Select(f => f.BookingId));
+    }
+
+    /// <summary>
+    /// The places of the sweep are spent on the stays that really went: more stays than a run writes, arriving earlier and not ready (their guests are
+    /// incomplete), never take the place of the ready stay behind them.
+    /// </summary>
+    [Fact]
+    public async Task TheSweep_AStayThatCannotGo_NeverTakesAPlaceFromAReadyOneBehindIt()
+    {
+        var w = await World.CreateAsync(setting: true);
+        for (var i = 0; i < OctorateCheckInRetryJob.MaxSweepPerRun + 1; i++)
+            await w.AddStayAsync(1 + (i % 3), complete: false);
+
+        await w.RetryJob().ExecuteAsync(CancellationToken.None);
+
+        // The ready stay (arriving after all of them) was written; the others stay as they were, and are looked at again by the next run.
+        Assert.Equal(2, w.Sent.Count);
+        await using var db = w.NewDb();
+        Assert.Equal(2, await db.StayGuestOctorateLinks.CountAsync());
+        Assert.Equal(OctorateCheckInRetryJob.MaxSweepPerRun + 1, (await w.AutoSend().FindStaysToSweepAsync(1_000, CancellationToken.None)).Count);
+    }
+
     // ─── The world of a test ─────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -527,14 +738,14 @@ public class OctorateGuestAutoSendTests
         public StayGuestsReadyOctorateHandler Handler() =>
             new(AutoSend(), NullLogger<StayGuestsReadyOctorateHandler>.Instance);
 
-        public StayGuestsAutoSendService AutoSend()
+        public StayGuestsAutoSendService AutoSend(ICheckInOctorateSyncService? sync = null)
         {
             var db = NewDb();
             return new StayGuestsAutoSendService(
                 db,
                 new OrgGuestAutoSendSetting(db, NullLogger<OrgGuestAutoSendSetting>.Instance, new FixedTimeProvider(Now)),
                 StayGuests(db).Object,
-                SyncOver(db),
+                sync ?? SyncOver(db),
                 new OctorateOrgScope(NullTenantContext.Instance),
                 Activities.Object,
                 Flags().Object,
@@ -555,6 +766,93 @@ public class OctorateGuestAutoSendTests
                 NullLogger<OctorateCheckInRetryJob>.Instance,
                 new FixedTimeProvider(Now),
                 AutoSend());
+        }
+
+        /// <summary>
+        /// Another stay of org A on Octorate (its own reservation), arriving <paramref name="arrivalInDays"/> days from today, with a head of family and a
+        /// member, never written to Octorate. With <paramref name="complete"/> false the head has no document number: its guests are not ready.
+        /// </summary>
+        public async Task<Guid> AddStayAsync(int arrivalInDays, bool complete = true, int nights = 3)
+        {
+            await using var db = NewDb();
+            var first = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == BookingId);
+            var arrival = new DateTime(2026, 11, 6, 0, 0, 0, DateTimeKind.Utc).AddDays(arrivalInDays);
+            var booking = new Booking
+            {
+                Id = Guid.NewGuid(),
+                OrgId = OrgA,
+                PropertyId = first.PropertyId,
+                GuestId = first.GuestId,
+                CheckInDate = arrival,
+                CheckOutDate = arrival.AddDays(nights),
+                Status = BookingStatus.Confirmed,
+                Source = BookingSource.Airbnb,
+                NumberOfGuests = 2,
+                BasePrice = 300m,
+                TotalPrice = 300m,
+                OctorateReservationId = $"stay-{Guid.NewGuid():N}",
+            };
+            var head = GuestOf(booking.Id, 0, StayGuestType.HeadOfFamily, "Mario");
+            if (!complete)
+                head.DocumentNumber = string.Empty;
+            db.Bookings.Add(booking);
+            db.StayGuests.AddRange(head, GuestOf(booking.Id, 1, StayGuestType.FamilyMember, "Rita"));
+            await db.SaveChangesAsync();
+            return booking.Id;
+        }
+
+        /// <summary>The links of the stay as they are stored, in the order of the guests.</summary>
+        public async Task<List<(int Position, OctorateSyncStatus Status, string Hash, int Attempts, string? Code, string? Fields, DateTime UpdatedAt)>> LinksAsync()
+        {
+            await using var db = NewDb();
+            var links = await db.StayGuestOctorateLinks.AsNoTracking().Where(l => l.BookingId == BookingId).OrderBy(l => l.Position).ToListAsync();
+            return links.Select(l => (l.Position, l.Status, l.PayloadHash, l.Attempts, l.ErrorCode, l.ErrorFields, l.UpdatedAt)).ToList();
+        }
+
+        /// <summary>The event of the guests saved, in the outbox of the dispatcher, for this stay.</summary>
+        public async Task<Guid> AddOutboxEventAsync()
+        {
+            await using var db = NewDb();
+            var row = new OutboxEvent
+            {
+                OrgId = OrgA,
+                EventType = DomainEventType.StayGuestsChanged,
+                EntityId = BookingId,
+                OccurredAt = Now.UtcDateTime,
+                PayloadJson = "{}",
+            };
+            db.OutboxEvents.Add(row);
+            await db.SaveChangesAsync();
+            return row.Id;
+        }
+
+        /// <summary>One run of the outbox dispatcher over the events, with the bus that gives each event to <paramref name="handler"/>.</summary>
+        public async Task RunDispatcherAsync(StayGuestsReadyOctorateHandler handler)
+        {
+            await using var db = NewDb();
+            await new OutboxDispatcherJob(db, new HandlerBus(handler), new FixedTimeProvider(Now), NullLogger<OutboxDispatcherJob>.Instance)
+                .ExecuteAsync(CancellationToken.None);
+        }
+
+        public async Task<OutboxEvent> OutboxRowAsync(Guid id)
+        {
+            await using var db = NewDb();
+            return await db.OutboxEvents.AsNoTracking().SingleAsync(e => e.Id == id);
+        }
+
+        /// <summary>A send path whose first send finds the lock of the stay taken by another send, and every later one the real path.</summary>
+        public ICheckInOctorateSyncService LockTakenOnce()
+        {
+            var real = Sync();
+            var calls = 0;
+            var sync = new Mock<ICheckInOctorateSyncService>();
+            sync
+                .Setup(s => s.SendGuestsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .Returns((Guid id, CancellationToken ct) => calls++ == 0
+                    ? Task.FromResult(new OctorateCheckInSendResult(
+                        OctorateCheckInSendState.NothingToSend, CheckInOctorateSyncService.ReasonSendInProgress, false, [], false))
+                    : real.SendGuestsAsync(id, ct));
+            return sync.Object;
         }
 
         public async Task AddIdentityLogAsync(BiometricOutcome outcome, VerificationMethod method, DateTime at)
@@ -588,7 +886,7 @@ public class OctorateGuestAutoSendTests
             await db.SaveChangesAsync();
         }
 
-        public async Task AddLinkAsync(int position, OctorateSyncStatus status, int attempts, string? errorCode = null, int ageHours = 1)
+        public async Task AddLinkAsync(int position, OctorateSyncStatus status, int attempts, string? errorCode = null, int ageHours = 1, Guid? todo = null)
         {
             await using var db = NewDb();
             db.StayGuestOctorateLinks.Add(new StayGuestOctorateLink
@@ -601,6 +899,7 @@ public class OctorateGuestAutoSendTests
                 Status = status,
                 Attempts = attempts,
                 ErrorCode = errorCode,
+                TodoActivityId = todo,
                 UpdatedAt = Now.UtcDateTime.AddHours(-ageHours),
             });
             await db.SaveChangesAsync();
@@ -741,5 +1040,11 @@ public class OctorateGuestAutoSendTests
             DocumentIssuePlaceName = type == StayGuestType.HeadOfFamily ? "Como" : string.Empty,
             UpdatedAt = Now.UtcDateTime.AddDays(-1),
         };
+    }
+
+    /// <summary>The bus of a test: every event of the outbox goes to one handler, and a handler that throws fails the delivery, as the real bus does.</summary>
+    private sealed class HandlerBus(StayGuestsReadyOctorateHandler handler) : IEventBus
+    {
+        public Task PublishAsync(DomainEvent domainEvent, CancellationToken ct) => handler.HandleAsync(domainEvent, ct);
     }
 }
