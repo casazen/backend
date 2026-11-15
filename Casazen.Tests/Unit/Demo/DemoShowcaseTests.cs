@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Casazen.Core.Bookings;
 using Casazen.Core.Condominium;
 using Casazen.Core.Demo;
 using Casazen.Core.Entities;
@@ -1495,5 +1496,77 @@ public class DemoShowcaseTests
         var card = Assert.IsType<DemoPaymentProviderTemplate>(payment.Card);
         Assert.Equal(payment.Amount, card.Fee + card.Net);
         Assert.True(card.Fee > 0m && card.Fee < payment.Amount * 0.05m);
+    }
+
+    /// <summary>
+    /// E27/F01/US01/T01 (NF-123): the demo has one stay ahead for each of the four origins the host reads (a portal, the site of the agency, CasaZen's own site, the host),
+    /// the site of the agency both by a link of the agency and by a reservation of its booking engine. The origin is worked out by the real rule from the source and the
+    /// attribution of the template; the attribution is what the real checkout rule would keep (a template that would be sanitized to something else fails here); the
+    /// reservations say TEST, are unique, and only the stays that have one on the channel manager carry it; no two stays of the house overlap.
+    /// </summary>
+    [Fact]
+    public void BookingFourOrigins_TheDemoHasAStayForEachOrigin_WithAnAttributionTheRealRulesKeep_AllInvented()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.BookingFourOrigins, DemoShowcaseCatalog.Scenarios);
+        var stays = DemoShowcaseCatalog.Properties
+            .SelectMany(h => h.Bookings.Select(b => (House: h, Booking: b)))
+            .Where(s => s.Booking.Scenario == DemoShowcaseCatalog.Scenario.BookingFourOrigins)
+            .ToList();
+
+        Assert.Equal(stays.Count, stays.Select(s => s.Booking.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.Single(stays.Select(s => s.House.Key).Distinct(StringComparer.Ordinal));
+        Assert.All(stays, s => Assert.EndsWith("@example.com", s.Booking.Email, StringComparison.Ordinal));
+        Assert.All(stays, s => Assert.Equal(BookingStatus.Confirmed, s.Booking.Status));
+        Assert.All(stays, s => Assert.True(s.Booking.CheckInOffsetDays > 0, $"{s.Booking.Key}: a stay ahead"));
+
+        // The four origins are all there, the agency's both ways, and the origin is the one of the real rule.
+        var origins = stays.Select(s => BookingOrigins.Of(s.Booking.Source, s.Booking.Attribution?.Source)).ToList();
+        Assert.Equal(Enum.GetValues<BookingOrigin>().Order(), origins.Distinct().Order());
+        Assert.Equal(2, origins.Count(o => o == BookingOrigin.AgencySite));
+        Assert.Contains(stays, s => s.Booking.Attribution?.Source == BookingAttribution.AgencySiteSource);
+        Assert.Contains(stays, s => s.Booking.Attribution?.Source == BookingAttribution.OctorateBookingEngineSource);
+
+        // Every attribution is invented and is exactly what the checkout rule would store.
+        Assert.All(stays.Where(s => s.Booking.Attribution is not null), s =>
+        {
+            var template = s.Booking.Attribution!;
+            Assert.Equal(
+                new BookingAttributionValues(template.Source, template.Medium, template.Campaign, template.ReferrerHost),
+                BookingAttribution.Sanitize(new BookingAttributionInput(template.Source, template.Medium, template.Campaign, template.ReferrerHost)));
+            Assert.True(template.ReferrerHost is null || template.ReferrerHost.EndsWith(".example.com", StringComparison.Ordinal));
+        });
+
+        // The attribution is only on a booking of the booking site; a stay of a channel or of the host has none.
+        Assert.All(stays.Where(s => s.Booking.Source != BookingSource.Direct), s => Assert.Null(s.Booking.Attribution));
+
+        // The reservations on the channel manager: TEST, fitting the column, unique in the org (the whole catalog), only on the portal and on the booking engine.
+        var reservations = stays.Where(s => s.Booking.Ota is not null).Select(s => s.Booking.Ota!.ReservationId).ToList();
+        Assert.Equal(2, reservations.Count);
+        Assert.All(reservations, id =>
+        {
+            Assert.Contains("TEST", id, StringComparison.Ordinal);
+            Assert.InRange(id.Length, 1, Booking.OctorateReservationIdMaxLength);
+        });
+        var everyReservation = DemoShowcaseCatalog.Properties.SelectMany(h => h.Bookings).Where(b => b.Ota is not null).Select(b => b.Ota!.ReservationId).ToList();
+        Assert.Equal(everyReservation.Count, everyReservation.Distinct(StringComparer.Ordinal).Count());
+
+        // Who collects and whether the commission is taken out of the payments are known for a booking of a channel only: the booking engine of the agency has the
+        // amounts Octorate gives and no flag, as the import writes it.
+        Assert.All(
+            stays.Where(s => s.Booking.Ota is not null && !OtaChannelActionPolicy.IsChannelBooking(s.Booking.Source, s.Booking.Ota.ReservationId)),
+            s => Assert.Equal((null, null), (s.Booking.Ota!.CompanyCollect, s.Booking.Ota.CommissionIncludedInPayments)));
+        Assert.All(
+            stays.Where(s => s.Booking.Ota is not null),
+            s => Assert.True(BookingOrigins.Of(s.Booking.Source, s.Booking.Attribution?.Source) is BookingOrigin.Portal or BookingOrigin.AgencySite));
+
+        // The stays of the house follow one another: none holds a night of another.
+        var house = Assert.Single(DemoShowcaseCatalog.Properties, h => h.Key == stays[0].House.Key);
+        var taken = house.Bookings.Where(b => b.Status != BookingStatus.Cancelled).OrderBy(b => b.CheckInOffsetDays).ToList();
+        for (var index = 1; index < taken.Count; index++)
+        {
+            Assert.True(
+                taken[index - 1].CheckInOffsetDays + taken[index - 1].Nights <= taken[index].CheckInOffsetDays,
+                $"{taken[index - 1].Key} and {taken[index].Key} overlap.");
+        }
     }
 }

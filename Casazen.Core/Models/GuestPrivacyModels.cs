@@ -1,3 +1,4 @@
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 
@@ -78,6 +79,13 @@ public sealed record GuestExportDocument(
     string IssuingPlace,
     bool HasScan);
 
+/// <summary>
+/// A stay of the guest in the export. E27/F01/US01/T01 (NF-123, art. 15): <paramref name="AttributionSource"/>, <paramref name="AttributionMedium"/>,
+/// <paramref name="AttributionCampaign"/> and <paramref name="AttributionReferrerHost"/> are where the guest came from, as the booking holds it (the
+/// <c>utm_*</c> of the link and the host name of the site the guest came from, never an address of a page); <c>null</c> when the booking holds none. The
+/// source of a reservation of the booking engine of the agency goes as <see cref="BookingAttribution.AgencyBookingEngineExportName"/>: the stored token
+/// names the supplier of the channel manager, which no file for a guest or a host does.
+/// </summary>
 public sealed record GuestExportBooking(
     Guid Id,
     string BookingCode,
@@ -94,7 +102,11 @@ public sealed record GuestExportBooking(
     string SpecialRequests,
     DateTime CreatedAt,
     IReadOnlyList<GuestExportPayment> Payments,
-    string? ExpectedArrivalTime = null);
+    string? ExpectedArrivalTime = null,
+    string? AttributionSource = null,
+    string? AttributionMedium = null,
+    string? AttributionCampaign = null,
+    string? AttributionReferrerHost = null);
 
 public sealed record GuestExportPayment(
     decimal Amount,
