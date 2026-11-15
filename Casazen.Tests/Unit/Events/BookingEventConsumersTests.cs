@@ -542,6 +542,10 @@ public class BookingEventConsumersTests : IAsyncLifetime
         Assert.Contains(ActivityType.IdentityVerification, ActivityAutoCloseHandler.Rules[DomainEventType.BookingCancelled]);
         Assert.Contains(ActivityType.IdentityVerification, ActivityAutoCloseHandler.Rules[DomainEventType.CheckOutCompleted]);
         Assert.DoesNotContain(ActivityType.IdentityVerification, ActivityAutoCloseHandler.Rules[DomainEventType.CheckInCompleted]);
+        // E23/F01/US01/T01: the «To do» to carry the check-in link to the guest has no use once the stay arrived or was cancelled.
+        Assert.Contains(ActivityType.CheckInLinkToSend, ActivityAutoCloseHandler.Rules[DomainEventType.CheckInCompleted]);
+        Assert.Contains(ActivityType.CheckInLinkToSend, ActivityAutoCloseHandler.Rules[DomainEventType.BookingCancelled]);
+        Assert.DoesNotContain(ActivityType.CheckInLinkToSend, ActivityAutoCloseHandler.Rules[DomainEventType.CheckOutCompleted]);
     }
 
     // --- Helpers ------------------------------------------------------------------------------------------------------------------

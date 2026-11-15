@@ -47,6 +47,10 @@
   <data name="GuestCheckInReminder_Validity" xml:space="preserve">
     <value>Der Link ist gültig bis {0}.</value>
   </data>
+  <!-- E23/F01/US01/T01 (NF-122): the message of the portal chat that carries the check-in link. -->
+  <data name="GuestCheckInChat_Body" xml:space="preserve">
+    <value>Guten Tag! Ihr Aufenthalt in {0} beginnt am {1}. Damit die Ankunft schneller geht, schließen Sie den Check-in bitte vorab über diesen Link ab: {2} Der Link ist gültig bis {3}.</value>
+  </data>
   <data name="GuestVideoCall_Subject" xml:space="preserve">
     <value>Videoanruf für Ihren Check-in — {0}</value>
   </data>

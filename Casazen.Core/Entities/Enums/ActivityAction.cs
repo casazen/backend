@@ -93,4 +93,10 @@ public enum ActivityAction
     /// owner by hand. About the statement version. The numbers from 50 are the owner ledger (epic E13), apart from the owner portal operations of 40 to 49.
     /// </summary>
     ReviewOwnerStatement = 50,
+
+    /// <summary>
+    /// The check-in link of a booking waits for the host (E23/F01/US01/T01, NF-122): the booking, where <c>GET api/bookings/{id}/checkin/link-delivery</c> gives the link to copy
+    /// («Copia link») and the reason it has not gone by itself. About the booking. The numbers from 110 are the check-in link and the chat of the portal (epic E23).
+    /// </summary>
+    CopyCheckInLink = 110,
 }

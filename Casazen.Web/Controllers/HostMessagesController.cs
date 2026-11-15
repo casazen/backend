@@ -103,6 +103,25 @@ public class HostMessagesController(
         return Ok(HostUnreadThreadsDto.From(await messages.ListUnreadForHostAsync(scope, cancellationToken)));
     }
 
+    /// <summary>
+    /// Whether the chat of each listing the caller reaches works (E23/F01/US01/T03, NF-61, NF-62): one item per listing with a confirmed mapping to a property in the caller's
+    /// <see cref="HostScope"/>, with <c>status</c> <c>available</c>, <c>waiting_permission</c> (the chat module is not in the license of the listing yet) or <c>error</c>, and
+    /// <c>lastCheckedAt</c>. The inbox reads it to say why a listing has no conversations instead of showing an empty list. It reads what the copy of the conversations
+    /// stored and asks the channel manager nothing; same permission and scope as the list, so a collaborator «Solo alcuni» sees its own listings only.
+    /// </summary>
+    [HttpGet("channel-status")]
+    [ProducesResponseType(typeof(MessageChannelStatusDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<MessageChannelStatusDto>> ChannelStatus(CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        var scope = orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
+        if (scope is null)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        return Ok(MessageChannelStatusDto.From(await Hub().GetChannelStatusAsync(scope, cancellationToken)));
+    }
+
     private IMessageHubService Hub() =>
         hub ?? throw new InvalidOperationException("The hub of messages is not registered (AddMessagesHub).");
 }

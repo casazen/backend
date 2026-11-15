@@ -40,11 +40,12 @@ public sealed class ActivityAutoCloseHandler(
     /// </summary>
     internal static readonly IReadOnlyDictionary<DomainEventType, ActivityType[]> Rules = new Dictionary<DomainEventType, ActivityType[]>
     {
-        [DomainEventType.CheckInCompleted] = [ActivityType.CheckInPending, ActivityType.BookingSpecialRequest],
+        // E23/F01/US01/T01: the check-in link a host was to carry to the guest has no use once the stay arrived or was cancelled.
+        [DomainEventType.CheckInCompleted] = [ActivityType.CheckInPending, ActivityType.BookingSpecialRequest, ActivityType.CheckInLinkToSend],
         // E03/F04/US02: the identity verification of a stay that was cancelled or is over has nobody to wait for (the queue does not list it).
         [DomainEventType.CheckOutCompleted] = [ActivityType.CheckOutPending, ActivityType.IdentityVerification],
         // E24/F01/US01/T02: a stay that is cancelled has no cleaning left to decide on (the automation cancels it, unless the work started).
-        [DomainEventType.BookingCancelled] = [ActivityType.BookingSpecialRequest, ActivityType.IdentityVerification, ActivityType.CleaningDateChanged],
+        [DomainEventType.BookingCancelled] = [ActivityType.BookingSpecialRequest, ActivityType.IdentityVerification, ActivityType.CheckInLinkToSend, ActivityType.CleaningDateChanged],
         [DomainEventType.PropertyReadyDeclared] = [ActivityType.CleaningDue, ActivityType.CleaningDateChanged],
         [DomainEventType.AlloggiatiReceiptArrived] = [ActivityType.AlloggiatiDeadline, ActivityType.ReceiptToRetrieve],
     };
