@@ -3406,6 +3406,63 @@
   <data name="ServiceRequestCannotRemind" xml:space="preserve">
     <value>Only a new request that is still waiting for the supplier's answer can be reminded.</value>
   </data>
+  <data name="ServiceRequestCannotReschedule" xml:space="preserve">
+    <value>Only a new request that is still waiting for the supplier's answer, with no other time or quote pending, can be moved.</value>
+  </data>
+  <data name="CleaningSetupCleanerRequired" xml:space="preserve">
+    <value>Choose who does the cleaning: a supplier or a member of the staff.</value>
+  </data>
+  <data name="CleaningSetupCleanerMismatch" xml:space="preserve">
+    <value>The supplier or the staff member does not match the kind of cleaner chosen: give only the one that is needed.</value>
+  </data>
+  <data name="CleaningSetupPriceInvalid" xml:space="preserve">
+    <value>The agreed price must be at least 1 cent and within the allowed maximum; it is required for a supplier.</value>
+  </data>
+  <data name="CleaningSetupCurrencyRequired" xml:space="preserve">
+    <value>State the currency of the price: an amount is never applied to a currency nobody chose.</value>
+  </data>
+  <data name="CleaningSetupCurrencyMismatch" xml:space="preserve">
+    <value>The currency of the price must be the one of the property ({0}).</value>
+  </data>
+  <data name="CleaningSetupStartTimeInvalid" xml:space="preserve">
+    <value>The start time must be in whole minutes (for example 11:00).</value>
+  </data>
+  <data name="CleaningSetupDurationInvalid" xml:space="preserve">
+    <value>The cleaning must last between {0} and {1} minutes.</value>
+  </data>
+  <data name="CleaningSetupSupplierNotFound" xml:space="preserve">
+    <value>The chosen supplier does not exist.</value>
+  </data>
+  <data name="CleaningSetupSupplierInactive" xml:space="preserve">
+    <value>The chosen supplier is not active and cannot receive requests.</value>
+  </data>
+  <data name="CleaningSetupSupplierOutsideComune" xml:space="preserve">
+    <value>The chosen supplier does not operate in the comune of the property.</value>
+  </data>
+  <data name="CleaningSetupStaffInvalid" xml:space="preserve">
+    <value>The chosen person is not an active member of your organization with access to this property.</value>
+  </data>
+  <data name="CleaningSetupBulkEmpty" xml:space="preserve">
+    <value>Choose at least one property: an empty list does not mean «all of them».</value>
+  </data>
+  <data name="CleaningSetupBulkTooMany" xml:space="preserve">
+    <value>You can set at most {0} properties at a time.</value>
+  </data>
+  <data name="CleaningAutomationSetupInvalid" xml:space="preserve">
+    <value>The cleaning setup of this property is not complete: the supplier or staff member and the price do not match the kind chosen.</value>
+  </data>
+  <data name="CleaningAutomationStaffUnavailable" xml:space="preserve">
+    <value>The staff member chosen for the cleaning is no longer active or no longer has access to the property.</value>
+  </data>
+  <data name="CleaningSetupSupplierCurrencyUnsupported" xml:space="preserve">
+    <value>The marketplace suppliers work in euro and nothing is converted: a property in {0} can only have its cleaning done by a member of the staff.</value>
+  </data>
+  <data name="CleaningAutomationSupplierCurrencyUnsupported" xml:space="preserve">
+    <value>The property is in {0} and the marketplace suppliers work in euro: the cleaning cannot be requested from the supplier.</value>
+  </data>
+  <data name="InternalActivityCancelled" xml:space="preserve">
+    <value>The activity was cancelled: its status can no longer change.</value>
+  </data>
   <data name="ServiceRequestCannotAddPhotos" xml:space="preserve">
     <value>Photos of the work are added while the work is on, before the request is completed.</value>
   </data>
@@ -7673,6 +7730,148 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="AccountantPackageInvalidPeriod" xml:space="preserve">
     <value>Invalid period: give a month (period=2026-10) or a year (period=2026), between 2000 and 2100.</value>
+  </data>
+  <!-- E17/F01/US02: electronic invoices to the SDI, rejections and the correction (NF-116, NF-86). The name of the provider of the channel never appears (D14). -->
+  <data name="SdiNotElectronic" xml:space="preserve">
+    <value>This document is not an electronic invoice to send to the SDI: a receipt, a Swiss document or a draft is not sent.</value>
+  </data>
+  <data name="SdiNotToSend" xml:space="preserve">
+    <value>The invoice is no longer waiting to be sent: it was sent, declared sent or answered by the SDI already.</value>
+  </data>
+  <data name="SdiStateFinal" xml:space="preserve">
+    <value>The SDI has already answered for this invoice: its state does not change any more.</value>
+  </data>
+  <data name="SdiDeclarationInvalid" xml:space="preserve">
+    <value>The declaration is not valid: it needs the day it was sent (not in the future and not before the issue) and the reference, or the code of the rejection notice.</value>
+  </data>
+  <data name="FiscalDocumentNotRejected" xml:space="preserve">
+    <value>Only an invoice the SDI rejected is corrected this way. An invoice that was delivered is corrected with a credit note.</value>
+  </data>
+  <data name="FiscalDocumentNotCorrectable" xml:space="preserve">
+    <value>This rejected invoice cannot be corrected here: it has credit notes.</value>
+  </data>
+  <data name="FiscalDocumentReplacementInvalid" xml:space="preserve">
+    <value>The draft does not replace a rejected invoice of the same issuer: its number is not reused.</value>
+  </data>
+  <data name="FiscalDocumentReplacementHoldsNumber" xml:space="preserve">
+    <value>This draft replaces an invoice the SDI rejected and keeps its number: it is issued, never discarded.</value>
+  </data>
+  <data name="FiscalDocumentRejectedUseCorrection" xml:space="preserve">
+    <value>An invoice the SDI rejected was never issued: it is not reversed with a credit note, it is corrected and sent again with the same number.</value>
+  </data>
+  <data name="SdiWebhookNotConfigured" xml:space="preserve">
+    <value>The link to the SDI is not configured.</value>
+  </data>
+  <data name="SdiWebhookSecretInvalid" xml:space="preserve">
+    <value>The secret of the address is not valid.</value>
+  </data>
+  <data name="SdiTransmissionUnknown" xml:space="preserve">
+    <value>The submission named is not known.</value>
+  </data>
+  <data name="SdiReasonGeneric" xml:space="preserve">
+    <value>The Sistema di Interscambio (SDI) rejected the file (code {0}). Check the invoice data or ask your accountant.</value>
+  </data>
+  <data name="SdiReasonNoCode" xml:space="preserve">
+    <value>The Sistema di Interscambio (SDI) rejected the file without saying why. Check the invoice data or ask your accountant.</value>
+  </data>
+  <data name="SdiReasonFileName" xml:space="preserve">
+    <value>The name of the file is not in the format the SDI requires. It does not depend on the invoice data: fix it and send again; if it happens again, contact us.</value>
+  </data>
+  <data name="SdiReasonFileNameDuplicate" xml:space="preserve">
+    <value>The SDI has already received a file with the same name. Fix the invoice and send it again; if it happens again, contact us.</value>
+  </data>
+  <data name="SdiReasonFileSize" xml:space="preserve">
+    <value>The file is too large for the transmission channel.</value>
+  </data>
+  <data name="SdiReasonSignature" xml:space="preserve">
+    <value>The electronic signature of the file is not valid, or its certificate has expired or is not trusted. It does not depend on the invoice data: send again; if it happens again, contact us.</value>
+  </data>
+  <data name="SdiReasonFileCorrupt" xml:space="preserve">
+    <value>The file is empty or damaged. Fix the invoice and send it again.</value>
+  </data>
+  <data name="SdiReasonFormat" xml:space="preserve">
+    <value>The file does not follow the format of the electronic invoice. Check the invoice data, above all the customer's, and send again.</value>
+  </data>
+  <data name="SdiReasonNatureMissing" xml:space="preserve">
+    <value>A line with zero VAT does not say the nature of the operation (for example N1 or N4). Fix the line and send again.</value>
+  </data>
+  <data name="SdiReasonNatureNotAllowed" xml:space="preserve">
+    <value>A line says the nature of the operation but has a VAT rate other than zero. Fix the line and send again.</value>
+  </data>
+  <data name="SdiReasonNatureGeneric" xml:space="preserve">
+    <value>The generic nature code (N2, N3, N6) is no longer allowed: the specific one is needed (for example N2.2). Fix the line and send again.</value>
+  </data>
+  <data name="SdiReasonDateFuture" xml:space="preserve">
+    <value>The date of the invoice is later than the day the file reached the SDI. Fix the date and send again.</value>
+  </data>
+  <data name="SdiReasonDateBeforeRelated" xml:space="preserve">
+    <value>The date of the invoice is earlier than that of the document it refers to. Fix the date and send again.</value>
+  </data>
+  <data name="SdiReasonWithholding" xml:space="preserve">
+    <value>The lines say there is a withholding but the withholding data is missing. Fix the invoice and send again.</value>
+  </data>
+  <data name="SdiReasonRecipientIdMissing" xml:space="preserve">
+    <value>The customer has neither a VAT number nor a fiscal code: at least one is needed. Complete the customer's data and send again.</value>
+  </data>
+  <data name="SdiReasonVatSummary" xml:space="preserve">
+    <value>The VAT summaries do not match the lines of the invoice (different rates or natures). Check the lines and send again.</value>
+  </data>
+  <data name="SdiReasonAmounts" xml:space="preserve">
+    <value>The amounts do not add up: the tax, the taxable amount or the total price are not computed as required. Check the amounts and send again.</value>
+  </data>
+  <data name="SdiReasonNumber" xml:space="preserve">
+    <value>The number of the invoice has no digit in it. Fix the number and send again.</value>
+  </data>
+  <data name="SdiReasonRecipientCode" xml:space="preserve">
+    <value>The customer's recipient code is not valid, not active or of the wrong length. Fix it in the customer's data and send again.</value>
+  </data>
+  <data name="SdiReasonFormatVersion" xml:space="preserve">
+    <value>The transmission format does not match the version of the file. It does not depend on your data: send again; if it happens again, contact us.</value>
+  </data>
+  <data name="SdiReasonDiscount" xml:space="preserve">
+    <value>A discount or a surcharge says neither the percentage nor the amount. Fix the line and send again.</value>
+  </data>
+  <data name="SdiReasonDocumentType" xml:space="preserve">
+    <value>The kind of document is not compatible with who issues and who receives the invoice, or with the VAT rates of the lines. Check the invoice data and send again.</value>
+  </data>
+  <data name="SdiReasonIntentDeclaration" xml:space="preserve">
+    <value>The invoice has no VAT because of a declaration of intent that is not valid. Check the declaration and send again.</value>
+  </data>
+  <data name="SdiReasonTransmitterId" xml:space="preserve">
+    <value>The code of who transmits the file (the sending channel) is not valid in the Tax Registry. It does not depend on the customer's data: contact us.</value>
+  </data>
+  <data name="SdiReasonIssuerId" xml:space="preserve">
+    <value>The VAT number or the fiscal code of the issuer of the invoice is not valid in the Tax Registry, or the two do not match. Check the issuer's data and send again.</value>
+  </data>
+  <data name="SdiReasonRepresentativeId" xml:space="preserve">
+    <value>The VAT number or the fiscal code of the fiscal representative is not valid in the Tax Registry. Check it and send again.</value>
+  </data>
+  <data name="SdiReasonRecipientId" xml:space="preserve">
+    <value>The VAT number or the fiscal code of the customer is not valid in the Tax Registry, or the two do not match. Fix them in the customer's data and send again.</value>
+  </data>
+  <data name="SdiReasonPublicBody" xml:space="preserve">
+    <value>The code or the body named is not among the public administrations (IPA). Check the customer's data and send again.</value>
+  </data>
+  <data name="SdiReasonDuplicate" xml:space="preserve">
+    <value>An invoice with the same issuer, number and year was already sent and not rejected. Check that you did not send it already.</value>
+  </data>
+  <data name="SdiErrorIssuerPending" xml:space="preserve">
+    <value>The issuer's VAT number is not enabled at the sending channel yet: the enabling is under way. The invoice stays waiting to be sent: try again later, or upload it by hand on the portal of the Agenzia delle Entrate and declare it sent.</value>
+  </data>
+  <data name="SdiErrorProviderRefused" xml:space="preserve">
+    <value>The sending channel refused the file before sending it. The invoice stays waiting to be sent: check the data, or upload it by hand on the portal of the Agenzia delle Entrate and declare it sent.</value>
+  </data>
+  <data name="SdiErrorProviderError" xml:space="preserve">
+    <value>The sending channel did not answer or gave an error: nothing was sent. The invoice stays waiting to be sent: try again shortly.</value>
+  </data>
+  <data name="SdiErrorNotSupported" xml:space="preserve">
+    <value>The sending channel does not handle this kind of document.</value>
+  </data>
+  <data name="FiscalDocPushSdiRejectedTitle" xml:space="preserve">
+    <value>Invoice rejected by the SDI</value>
+  </data>
+  <data name="FiscalDocPushSdiRejectedBody" xml:space="preserve">
+    <value>The SDI rejected an invoice: correct it and send it again.</value>
   </data>
   <data name="AccountantPackageSettingsInvalid" xml:space="preserve">
     <value>The settings of the send are incomplete: say whether the monthly send is on, the day of the month and the folders to send.</value>

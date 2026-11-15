@@ -116,7 +116,9 @@ public class FiscalDocumentPostgresTests
             var sql = "SELECT \"" + column + "\" AS \"Value\" FROM \"FiscalDocuments\"";
             var raw = await stored.Database.SqlQueryRaw<string>(sql).SingleAsync();
             Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, raw, StringComparison.Ordinal);
-            foreach (var secret in new[] { RecipientName, "Glicine", RecipientFiscalCode, "01234567897", Street, Pec, "<FatturaElettronica>" })
+
+            // The payload is random text, so a short value (a single word, a postal code) turns up in it by chance: only values too long to be met by chance are searched for.
+            foreach (var secret in new[] { RecipientName, RecipientFiscalCode, "01234567897", Street, Pec, "<FatturaElettronica>" })
                 Assert.DoesNotContain(secret, raw, StringComparison.Ordinal);
         }
 

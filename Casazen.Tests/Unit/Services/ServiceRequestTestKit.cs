@@ -1,7 +1,9 @@
+using Casazen.Core.Multitenancy;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Casazen.Infrastructure.Storage;
@@ -43,7 +45,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
         TestFeatureFlags? flags = null,
         Microsoft.Extensions.Logging.ILogger<SupplierPaymentService>? paymentLogger = null,
         FakePlatformPaymentGateway? platformGateway = null,
-        IShowcaseAlternativesService? alternatives = null)
+        IShowcaseAlternativesService? alternatives = null,
+        bool recordEvents = false)
     {
         Db = db;
         Clock = clock ?? TimeProvider.System;
@@ -103,6 +106,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
         // SP-REL: the reliability events of the suppliers are written by the real service over the same database, with the default weights.
         Reliability = new SupplierReliabilityService(
             db, Agenda, Microsoft.Extensions.Options.Options.Create(RankingOptions), NullLogger<SupplierReliabilityService>.Instance, Clock);
+        // E24/F01/US01/T02: the events of the requests go to the outbox of the same context, as the application does, for the tests that read them (the service of the requests and the
+        // payment service, which completes a job a dispute decides, record the same events).
+        DomainEventRecorder? recorder = recordEvents ? new DomainEventRecorder(db, Mock.Of<ITenantContext>(), Clock) : null;
         Payments = new SupplierPaymentService(
             db,
             Gateway,
@@ -118,7 +124,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
             PlatformGateway,
             Customers,
             Penalties,
-            Reliability);
+            Reliability,
+            recorder);
         Matcher = ComuneTestServices.Matcher(db);
 
         // SP-BKP: the choice of the backup suppliers over a plain ranking (the real one needs the whole supplier service); it is only
@@ -143,7 +150,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Payments,
             Flags,
             BackupSelector,
-            Reliability);
+            Reliability,
+            recorder);
         Booking = new ShowcaseBookingService(
             db,
             Catalog,

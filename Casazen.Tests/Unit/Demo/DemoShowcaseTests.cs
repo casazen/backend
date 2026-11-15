@@ -10,6 +10,7 @@ using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.SiteProfile;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Events;
 using Casazen.Tests.Unit.Services;
 using Xunit;
@@ -147,8 +148,10 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.FiscalDocumentExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.SwissFiscalDocumentExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.OwnerIssuerDocumentExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.SdiRejectedInvoiceExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.PaymentLedgerExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.ChannelCommissionRules.Select(rule => rule.Scenario))
+            .Concat(DemoShowcaseCatalog.CleaningSetups.Select(setup => setup.Scenario))
             .Concat(DemoShowcaseCatalog.OwnerUnitsExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.CompanyTenantExamples.Select(example => example.Scenario))
             .ToHashSet(StringComparer.Ordinal);
@@ -200,6 +203,48 @@ public class DemoShowcaseTests
         Assert.Contains(RoutineActionType.Wait, test.Actions.Select(a => a.Type));
         Assert.Contains(DemoShowcaseCatalog.Scenario.RoutineActive, DemoShowcaseCatalog.Scenarios);
         Assert.Contains(DemoShowcaseCatalog.Scenario.RoutineTestMode, DemoShowcaseCatalog.Scenarios);
+    }
+
+    /// <summary>
+    /// E24/F01/US01 (NF-120): the demo shows the cleaning at check-out: the ready routine «Pulizia al check-out» (the time of the check-out, no offset, the action that creates the
+    /// cleaning, active) and the two kinds of default cleaner on two different houses, one with a trusted supplier at an agreed price and one with a member of the staff, each a body the
+    /// API would save for a short-rent house of the demo and a supplier or staff member of its templates.
+    /// </summary>
+    [Fact]
+    public void CleaningAtCheckout_TheDemoHasTheReadyRoutine_AndASupplierAndAStaffSetup()
+    {
+        var routine = Assert.Single(DemoShowcaseCatalog.Routines, r => r.Scenario == DemoShowcaseCatalog.Scenario.CleaningAtCheckout);
+        Assert.Equal((RoutineEventType.AfterCheckout, 0, false), (routine.EventType, routine.DaysBefore, routine.IsTestMode));
+        Assert.Equal([RoutineActionType.CreateCleaningRequest], routine.Actions.Select(a => a.Type));
+        Assert.Contains("DEMO", routine.Name, StringComparison.Ordinal);
+
+        var setups = DemoShowcaseCatalog.CleaningSetups;
+        Assert.Equal(setups.Count, setups.Select(s => s.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(setups.Count, setups.Select(s => s.PropertyKey).Distinct(StringComparer.Ordinal).Count());
+        Assert.Contains(setups, s => s.Kind == PropertyCleanerKind.Supplier);
+        Assert.Contains(setups, s => s.Kind == PropertyCleanerKind.Staff);
+        Assert.All(setups, setup =>
+        {
+            var property = Assert.Single(DemoShowcaseCatalog.Properties, p => p.Key == setup.PropertyKey);
+            Assert.Equal(RentalMode.Short, property.Mode);
+            Assert.Equal(DemoShowcaseCatalog.Scenario.CleaningAtCheckout, setup.Scenario);
+            Assert.True(ServiceRequestPricing.IsValidAmount(setup.PriceCents), $"{setup.Key}: the price is not an amount of a request");
+            Assert.True(setup.StartTime is null || setup.StartTime.Value.Ticks % TimeSpan.TicksPerMinute == 0, $"{setup.Key}: the start is not in whole minutes");
+            Assert.True(
+                setup.DurationMinutes is null or >= SupplierServiceCatalogLimits.MinDurationMinutes and <= SupplierServiceCatalogLimits.MaxDurationMinutes,
+                $"{setup.Key}: the duration is out of range");
+            if (setup.Kind == PropertyCleanerKind.Supplier)
+            {
+                var supplier = Assert.Single(DemoShowcaseCatalog.Suppliers, s => s.Key == setup.SupplierKey);
+                Assert.True(supplier.IsTrusted);
+                Assert.Null(setup.StaffKey);
+            }
+            else
+            {
+                Assert.Single(DemoShowcaseCatalog.StaffMembers, s => s.Key == setup.StaffKey);
+                Assert.Null(setup.SupplierKey);
+            }
+        });
     }
 
     /// <summary>The routines of the demo are marked rows of the reset, like the other invented rows of the org.</summary>
@@ -1175,6 +1220,23 @@ public class DemoShowcaseTests
                 Assert.True(amounts.VatAmount > 0m);
             }
         }
+    }
+
+    /// <summary>
+    /// E17/F01/US02/T03: the demo invoice the SDI rejected is for a TEST company, has a number of the series format and an official code of the SDI list whose reason in plain words is a text of its
+    /// own (never the generic one).
+    /// </summary>
+    [Fact]
+    public void SdiRejectedInvoice_TheExampleIsATestInvoiceRejectedWithAnOfficialCode()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.SdiRejectedInvoice, DemoShowcaseCatalog.Scenarios);
+        var example = Assert.Single(DemoShowcaseCatalog.SdiRejectedInvoiceExamples);
+
+        Assert.StartsWith("TEST", example.RecipientName, StringComparison.Ordinal);
+        Assert.Matches("^[0-9]{4}/[0-9]+$", example.Number);
+        Assert.True(example.Total > 0m);
+        Assert.Equal(example.ErrorCode, Casazen.Core.Services.SdiRejectionReasons.Normalize(example.ErrorCode));
+        Assert.NotEqual(Casazen.Core.Services.SdiRejectionReasons.GenericKey, Casazen.Core.Services.SdiRejectionReasons.KeyOf(example.ErrorCode));
     }
 
     /// <summary>

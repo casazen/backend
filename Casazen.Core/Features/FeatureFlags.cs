@@ -298,6 +298,17 @@ public static class FeatureFlags
     public const string GuestContactInfo = "GuestContactInfo";
 
     /// <summary>
+    /// E17/F01/US02/T01 (NF-116, NF-86, D13, D15): the submission of the Italian electronic invoices to the SDI through the accredited channel (the provider adapter) and
+    /// their correction after a rejection, <b>off by default</b> and turned on only in the test environment until the accountant confirms the ⚖ choices (the provider, the
+    /// reuse of the number of a rejected document). Off, the write endpoints of <c>api/fiscal/documents/{id}/sdi</c> (<c>submit</c>, <c>declare</c>, <c>correct</c>) and the webhook
+    /// of the provider (<c>api/webhooks/sdi/{secret}</c>) answer 404 before authentication, and the recurring job <c>fiscal-sdi-status</c> is removed; the state of a document
+    /// (<c>GET api/fiscal/documents/{id}/sdi</c>) is a read and stays. They are behind <see cref="FiscalDocumentIssuance"/> too. With no provider configured
+    /// (<c>Sdi:Provider:*</c>) a submission answers <c>NotConfigured</c> and changes nothing, and the manual declaration works all the same. The frontend reads the key
+    /// <c>sdiSubmission</c>.
+    /// </summary>
+    public const string SdiSubmission = "SdiSubmission";
+
+    /// <summary>
     /// E18/F01/US03/T01 (NF-117, D15): the Italian tax reporting of the owners (the checks of the limit of units and of the company tenant today, the exports of the later
     /// tasks of epic E18), <b>off by default</b> and turned on only in the test environment until the accountant confirms the ⚖ choices (I6, I7, I8). Off, every endpoint of
     /// <c>OwnerTaxDecisionsController</c> (<c>api/owner-tax-decisions</c>, <c>api/owners/{id}/tax-checks</c>, <c>api/owners/{id}/external-short-let-units</c>) answers 404 before
@@ -347,6 +358,7 @@ public static class FeatureFlags
         Routines,
         PortalChatCheckInLink,
         GuestContactInfo,
+        SdiSubmission,
         TaxReportingExports,
         PurgeDocumentsAfterReceipt,
     ];

@@ -111,6 +111,8 @@ public class ConfigurationFeatureFlagsTests
                 "PortalChatCheckInLink",
                 // E23/F01/US01/T02: the e-mail of the guest of a portal booking is read from the channel manager, once, for the check-in link only, off until the static IP addresses are registered.
                 "GuestContactInfo",
+                // E17/F01/US02/T01: the submission of the Italian electronic invoices to the SDI through the provider and the correction of the rejected ones, off until the accountant confirms the ⚖ choices.
+                "SdiSubmission",
                 // E18/F01/US03/T01: the Italian tax reporting of the owners (the warnings of the limit of units and of the company tenant, the exports of E18), off until the accountant confirms the ⚖ choices.
                 "TaxReportingExports",
                 // E20/F02/US01/T02: the deletion of the guests' documents once the stay is covered by an archived Alloggiati receipt, off until the test environment has shown it.

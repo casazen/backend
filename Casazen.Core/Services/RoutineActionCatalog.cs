@@ -28,13 +28,15 @@ public static class RoutineActionCatalog
     /// until then the message goes nowhere, and the access code with it: it is released only through the variables of the messages) and
     /// <c>SendCrmReminder</c> with E07/F02/US03/T01. Not available, and not listed: <c>NotifyOwner</c>, <c>NotifyStaff</c> and <c>NotifyTeam</c> (what a
     /// notification of a routine is, a To do, a push or an e-mail, is a product decision of the notification preferences of E05),
-    /// <c>SendAccessCode</c>, <c>RequestReview</c> (E26/F01/US01/T01) and <c>AddTag</c>.
+    /// <c>SendAccessCode</c>, <c>RequestReview</c> (E26/F01/US01/T01) and <c>AddTag</c>. <c>CreateCleaningRequest</c> (E24/F01/US01/T02) always is: it is the cleaning of the
+    /// stay for the default cleaner of its property, and the whole module is behind <c>Features:Routines</c>.
     /// </summary>
     private static readonly IReadOnlyDictionary<string, Func<IFeatureFlags, bool>> Runnable =
         new Dictionary<string, Func<IFeatureFlags, bool>>(StringComparer.Ordinal)
         {
             [nameof(RoutineActionType.Wait)] = static _ => true,
             [nameof(RoutineActionType.CreateActivity)] = static _ => true,
+            [nameof(RoutineActionType.CreateCleaningRequest)] = static _ => true,
             ["SendCrmReminder"] = static _ => true,
         };
 

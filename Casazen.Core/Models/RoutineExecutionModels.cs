@@ -35,6 +35,15 @@ public static class RoutineCodes
     /// <summary><c>CreateActivity</c> needs the booking of the event: the event names none, or the org has no such booking.</summary>
     public const string ActivityNeedsBooking = "routine_activity_needs_booking";
 
+    /// <summary><c>CreateCleaningRequest</c> needs the booking of the event: the event names none, or the org has no such booking.</summary>
+    public const string CleaningNeedsBooking = "routine_cleaning_needs_booking";
+
+    /// <summary>
+    /// <c>CreateCleaningRequest</c> found nothing to do for the stay: its property has no cleaner set up (or the setup is switched off), so no cleaning is made and
+    /// the "To do" of a stay that ended without one appears as it always did. Recorded as the reason of a <c>blocked</c> action; the next ones go on.
+    /// </summary>
+    public const string CleaningNotConfigured = "routine_cleaning_not_configured";
+
     /// <summary>
     /// The booking of the event was cancelled, or marked as a no-show, while the execution waited: the actions after the wait are not run (a stay that does not
     /// happen gets no To do and no message). Recorded as the reason of each action left, <c>blocked</c>; the routines of a cancellation are not stopped by it.

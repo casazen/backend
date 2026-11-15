@@ -493,6 +493,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRoutineService, RoutineService>();
         // E01/F04/US01/T03: the routines of an org for the routines page (api/routines, behind Features:Routines); the engine above runs them.
         services.AddScoped<IRoutineManagementService, RoutineManagementService>();
+        // E24/F01/US01 (NF-120, decision O11): the default cleaner of a property with the price and the time agreed (api/properties/{id}/cleaning-setup, no flag of its own), the
+        // automation of the cleaning at check-out that the routine action CreateCleaningRequest runs and the consumer of the changes of a stay follows (behind Features:Routines), and
+        // the one read of the cleanings completed with their cost that the invoicing of the owners takes (T03).
+        services.AddScoped<IPropertyCleaningSetupService, PropertyCleaningSetupService>();
+        services.AddScoped<ICleaningAutomationService, CleaningAutomationService>();
+        services.AddScoped<ICleaningCostSource, CleaningCostSource>();
         // ADR-022: domain events are recorded in the outbox of the current unit of work (R1) and published by the dispatcher on the
         // in-process bus, which runs each handler in its own scope under the event's org (R3, R6).
         services.AddScoped<IDomainEventRecorder, DomainEventRecorder>();
@@ -588,9 +594,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IEntitlementService, EntitlementService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
         services.AddScoped<IBillingCheckoutService, BillingCheckoutService>();
-        // PL-13: VAT computed by Stripe Tax (no rate in code); no SDI provider is integrated in this build, so the
-        // e-invoices are issued manually (health check "einvoicing", docs/runbooks/billing-tax.md).
-        services.AddScoped<ISdiEInvoiceProvider, UnconfiguredSdiEInvoiceProvider>();
+        // PL-13: VAT computed by Stripe Tax (no rate in code); the SaaS e-invoices are issued manually (health check "einvoicing",
+        // docs/runbooks/billing-tax.md). The port to the SDI, ISdiEInvoiceProvider, is registered with the fiscal documents
+        // (AddCasazenFiscalDocuments, E17/F01/US02): the adapter of the provider when Sdi:Provider is configured, else the unconfigured one.
         services.AddScoped<IPlatformInvoiceService, PlatformInvoiceService>();
         services.AddScoped<IBillingEntryGate, BillingEntryGate>();
         services.AddScoped<IRentBillingService, RentBillingService>();

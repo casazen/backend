@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-14.1";
+    public const string Version = "2026-11-15.1";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -273,6 +273,13 @@ public static class DemoShowcaseCatalog
         public const string OwnerIssuerDocuments = "owner-issuer-documents";
 
         /// <summary>
+        /// An electronic invoice the SDI rejected (E17/F01/US02/T03, NF-86): issued to a TEST company, rejected with an official code (the recipient's VAT number is missing), the «Da fare»
+        /// «Correggi la fattura» it raises with the reason in plain words, and the correction: a draft that keeps the number the rejected invoice gave up. A template only: the submission to
+        /// the SDI is off (<c>Features:SdiSubmission</c>) and needs a channel the demo does not have.
+        /// </summary>
+        public const string SdiRejectedInvoice = "sdi-rejected-invoice";
+
+        /// <summary>
         /// The payment ledger (E06/F04/US01/T03, FIS-05, NF-85): a card payment with the commission and the net the provider reported, a cash payment
         /// the host recorded, and a booking of a channel with the amount the channel collected (commission not given by Octorate: not shown). Invented
         /// amounts, a template of the lines the ledger answers.
@@ -303,6 +310,14 @@ public static class DemoShowcaseCatalog
         /// Octorate or Stripe.
         /// </summary>
         public const string ReportChannelCosts = "report-channel-costs";
+
+        /// <summary>
+        /// The cleaning at check-out (E24/F01/US01, NF-120): the ready routine «Pulizia al check-out» of the demo host (the time of the check-out of the property, the action
+        /// <c>CreateCleaningRequest</c>, a marked <c>Routine</c> row) and the two kinds of default cleaner a property can have: one with a trusted supplier at an agreed price and time,
+        /// one with a member of the staff and its cost to recharge to the owner. The cleaners are templates only, like the demo suppliers and staff they point at (the demo creates no
+        /// supplier org nor staff user), so no cleaning is created by the demo itself; they say what <c>api/properties/{id}/cleaning-setup</c> accepts. Invented amounts.
+        /// </summary>
+        public const string CleaningAtCheckout = "cleaning-at-checkout";
 
         /// <summary>
         /// The two Italian tax checks of the owners (E18/F01/US03/T01, NF-117, ⚖ I7 and I8): an owner who lets short more apartments than the limit of a private person (two
@@ -391,10 +406,12 @@ public static class DemoShowcaseCatalog
         Scenario.FiscalDocumentsDirect,
         Scenario.SwissFiscalDocument,
         Scenario.OwnerIssuerDocuments,
+        Scenario.SdiRejectedInvoice,
         Scenario.PaymentLedger,
         Scenario.OwnerChannelCommission,
         Scenario.ReportCollections,
         Scenario.ReportChannelCosts,
+        Scenario.CleaningAtCheckout,
         Scenario.OwnerTaxChecks,
     ];
 
@@ -513,6 +530,15 @@ public static class DemoShowcaseCatalog
     [
         new("ricevuta-comproprietari", "TEST Mario Rossi", DocumentRegime.PrivatePerson, "P{year}", [50m, 50m], "TEST-BOLLO-1", 300.00m, 50.00m, 12.00m, false, Scenario.OwnerIssuerDocuments),
         new("fattura-societa-terzo-emittente", "TEST Immobiliare Lago Srl", DocumentRegime.VatOrdinary, "SRL{year}", [100m], null, 300.00m, 50.00m, 12.00m, true, Scenario.OwnerIssuerDocuments),
+    ];
+
+    /// <summary>
+    /// The electronic invoice of a demo stay that the SDI rejected (E17/F01/US02/T03): number 2026/1 to a TEST company, 312.00 in all, rejected with the code 00417 (the VAT number or the fiscal
+    /// code of the recipient is missing). The correction is a draft that keeps that number, because an invoice the SDI rejected was never delivered. Invented, a template only.
+    /// </summary>
+    public static IReadOnlyList<DemoSdiRejectedInvoiceTemplate> SdiRejectedInvoiceExamples { get; } =
+    [
+        new("fattura-scartata", "2026/1", "TEST Immobiliare Lago Srl", 312.00m, "00417", Scenario.SdiRejectedInvoice),
     ];
 
     /// <summary>
@@ -1591,6 +1617,29 @@ public static class DemoShowcaseCatalog
             ],
             true,
             Scenario.RoutineTestMode),
+
+        // E24/F01/US01/T02: the ready routine «Pulizia al check-out»: an offset of 0 after the check-out is the check-out time of the property on its own clock, even when the
+        // host never registers the departure, and the action creates the cleaning for the default cleaner of the property (a supplier's request or a staff activity), once for each
+        // stay. A property with no cleaner set up is skipped (the action is blocked and says so in the log), so it changes nothing in the demo until a cleaner is set.
+        new(
+            "pulizia-al-checkout",
+            "Pulizia al check-out (DEMO)",
+            RoutineEventType.AfterCheckout,
+            0,
+            [new DemoRoutineAction(RoutineActionType.CreateCleaningRequest, "{}")],
+            false,
+            Scenario.CleaningAtCheckout),
+    ];
+
+    /// <summary>
+    /// The default cleaner of two demo properties (E24/F01/US01/T01, NF-120): Villa del Lago with the trusted supplier «Pulizie Express DEMO» at € 65.00 from 11:00 for two hours, Casa
+    /// Trastevere with Sofia Conte of the staff, at € 35.00 on the check-out time of the house (the cost is recharged to the owner). Templates only: the demo creates no supplier org
+    /// and no staff user (<see cref="Suppliers"/> and <see cref="StaffMembers"/> are templates too), so these are the bodies <c>PUT api/properties/{id}/cleaning-setup</c> takes, not rows.
+    /// </summary>
+    public static IReadOnlyList<DemoCleaningSetupTemplate> CleaningSetups { get; } =
+    [
+        new("villa-lago-fornitore", "villa-lago", PropertyCleanerKind.Supplier, "pulizie-express", null, 6500, new TimeOnly(11, 0), 120, Scenario.CleaningAtCheckout),
+        new("casa-trastevere-staff", "casa-trastevere", PropertyCleanerKind.Staff, null, "sofia-conte", 3500, null, null, Scenario.CleaningAtCheckout),
     ];
 
     /// <summary>
@@ -2126,6 +2175,18 @@ public sealed record DemoOwnerIssuerDocumentTemplate(
     bool CleaningByTheAgency,
     string Scenario);
 
+/// <summary>
+/// An electronic invoice of a demo stay that the SDI rejected (E17/F01/US02/T03): its number, the TEST recipient, the total and the official code of the rejection (the reason in plain words
+/// is the one <c>SdiRejectionReasons</c> gives for it).
+/// </summary>
+public sealed record DemoSdiRejectedInvoiceTemplate(
+    string Key,
+    string Number,
+    string RecipientName,
+    decimal Total,
+    string ErrorCode,
+    string Scenario);
+
 /// <summary>A fiscal document of a direct demo stay: its status, the number of an issued one, the TEST recipient, the total and the tourist tax in it.</summary>
 public sealed record DemoFiscalDocumentTemplate(
     string Key,
@@ -2490,6 +2551,21 @@ public sealed record DemoRoutineTemplate(
 
 /// <summary>An action of a demo routine: its type and its configuration as the JSON object the editor writes (<c>{ "text": "…", "dueInDays": 1 }</c>).</summary>
 public sealed record DemoRoutineAction(RoutineActionType Type, string ConfigJson);
+
+/// <summary>
+/// The default cleaner of a demo property (E24/F01/US01/T01, NF-120): who cleans (the key of a <see cref="DemoSupplierTemplate"/> or of a <see cref="DemoStaffTemplate"/>), the agreed price in
+/// cents of the property's currency, and the time and the length when the setup says them. A template only (not written as a row): it is the body of <c>PUT api/properties/{id}/cleaning-setup</c>.
+/// </summary>
+public sealed record DemoCleaningSetupTemplate(
+    string Key,
+    string PropertyKey,
+    PropertyCleanerKind Kind,
+    string? SupplierKey,
+    string? StaffKey,
+    int PriceCents,
+    TimeOnly? StartTime,
+    int? DurationMinutes,
+    string Scenario);
 
 /// <summary>Which of the two sources of the hub of messages a demo conversation is kept in, and what it is about.</summary>
 public enum DemoMessageThreadKind

@@ -20,7 +20,17 @@ public enum DomainEventType
     CheckOutCompleted = 7,
     IdVerificationCompleted = 8,
     AlloggiatiReceiptArrived = 9,
+
+    /// <summary>
+    /// A host's service request was made (E24/F01/US01/T02): about the request (<c>EntityId</c>), with the payload <c>ServiceRequestEventPayload</c> (ids and the category,
+    /// nothing else), recorded in the save that creates it. Starts no routine; the invoicing of the owners reads it.
+    /// </summary>
     ServiceRequestCreated = 10,
+
+    /// <summary>
+    /// The supplier completed the work of a service request (E24/F01/US01/T02): about the request, with the same payload, recorded in the save of the completion and once for
+    /// each request. Starts the routines of the activity completed (<c>RoutineEventType.ActivityCompleted</c>) of the org of the request.
+    /// </summary>
     ServiceRequestCompleted = 11,
     PaymentSucceeded = 12,
     PaymentFailed = 13,
@@ -91,6 +101,26 @@ public enum DomainEventType
     /// consumer of the fiscal documents prepares the credit note of a cancelled booking. Starts no routine.
     /// </summary>
     PaymentRefunded = 63,
+
+    /// <summary>
+    /// The SDI delivered a fiscal document of CasaZen (E17/F01/US02/T01, NF-116): about the document (<c>EntityId</c>), with the payload <c>FiscalDocumentSdiPayload</c> (ids, the
+    /// state and the code of the outcome, nothing personal), recorded in the unit of work that records the outcome (the provider's answer, the poll job): once for a document.
+    /// Starts no routine.
+    /// </summary>
+    FiscalDocumentSdiDelivered = 64,
+
+    /// <summary>
+    /// The SDI rejected a fiscal document of CasaZen (E17/F01/US02/T01, NF-86): about the document, with the same payload and the code of the rejection, recorded once for a
+    /// document in the unit of work of the outcome. The consumer raises the «Da fare» «Correggi la fattura» (E17/F01/US02/T03). Starts no routine.
+    /// </summary>
+    FiscalDocumentSdiRejected = 65,
+
+    /// <summary>
+    /// The host started the correction of a rejected fiscal document (E17/F01/US02/T03): about the rejected document (<c>EntityId</c>), with the payload
+    /// <c>FiscalDocumentCorrectedPayload</c> (the two documents and their booking), recorded in the unit of work of the correction. The consumer closes the «Da fare» of the
+    /// rejection. Starts no routine.
+    /// </summary>
+    FiscalDocumentCorrected = 66,
 
     /// <summary>
     /// An org administrator activated a flow on a property after the server verified its prerequisites (E10/F01/US01/T04, NF-104, NF-106):

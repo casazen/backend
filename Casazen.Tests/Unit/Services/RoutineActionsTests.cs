@@ -369,7 +369,7 @@ public class RoutineActionsTests
 
         Assert.Equal(Enum.GetValues<RoutineActionType>(), all.Select(a => a.Type));
         Assert.Equal(
-            [RoutineActionType.CreateActivity, RoutineActionType.Wait],
+            [RoutineActionType.CreateActivity, RoutineActionType.Wait, RoutineActionType.CreateCleaningRequest],
             all.Where(a => a.Available).Select(a => a.Type).Order());
         Assert.All(all.Where(a => a.Available), a => Assert.Null(a.Code));
         Assert.All(all.Where(a => !a.Available), a => Assert.Equal(RoutineCodes.ActionNotAvailable, a.Code));
@@ -412,7 +412,7 @@ public class RoutineActionsTests
     public void Catalog_AnActionFromTheEnumThatIsNotListed_IsNotAvailable()
     {
         Assert.All(
-            Enum.GetValues<RoutineActionType>().Where(t => t is not (RoutineActionType.Wait or RoutineActionType.CreateActivity)),
+            Enum.GetValues<RoutineActionType>().Where(t => t is not (RoutineActionType.Wait or RoutineActionType.CreateActivity or RoutineActionType.CreateCleaningRequest)),
             type => Assert.False(RoutineActionCatalog.IsAvailable(type, new TestFeatureFlags())));
     }
 
