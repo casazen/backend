@@ -298,6 +298,17 @@ public static class FeatureFlags
     public const string GuestContactInfo = "GuestContactInfo";
 
     /// <summary>
+    /// E18/F01/US03/T01 (NF-117, D15): the Italian tax reporting of the owners (the checks of the limit of units and of the company tenant today, the exports of the later
+    /// tasks of epic E18), <b>off by default</b> and turned on only in the test environment until the accountant confirms the ⚖ choices (I6, I7, I8). Off, every endpoint of
+    /// <c>OwnerTaxDecisionsController</c> (<c>api/owner-tax-decisions</c>, <c>api/owners/{id}/tax-checks</c>, <c>api/owners/{id}/external-short-let-units</c>) answers 404 before
+    /// authentication, and the warnings the UI shows are not made: no <c>warnings</c> in the owner readiness, no non-blocking issue on the statement versions, no «Da fare»
+    /// <c>company_tenant_decision</c>. <b>Not behind it, on purpose</b>: the facts of the withholding (<c>IOwnerTaxChecks.TreatmentOfStaysAsync</c>: an owner past the limit is a
+    /// business whatever the screens show; a decision already recorded is followed) and the field <c>coOwnerTaxReporting</c> of the mandate. It needs no variable to start.
+    /// The frontend reads the key <c>taxReportingExports</c>.
+    /// </summary>
+    public const string TaxReportingExports = "TaxReportingExports";
+
+    /// <summary>
     /// E20/F02/US01/T02 (NF-121, NF-16, decision O4): the deletion of the guests' documents once the stay is covered by an archived Alloggiati receipt, <b>off by default</b>: the
     /// deletion cannot be undone, so it is turned on in the test environment after the merge and in production only after the test has shown it. Off, the daily job
     /// <c>guest-document-purge</c> and the run queued after a receipt upload read nothing and delete nothing. On, the photos of identity documents a verification kept (the objects
@@ -336,6 +347,7 @@ public static class FeatureFlags
         Routines,
         PortalChatCheckInLink,
         GuestContactInfo,
+        TaxReportingExports,
         PurgeDocumentsAfterReceipt,
     ];
 }

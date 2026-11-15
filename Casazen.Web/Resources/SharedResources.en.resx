@@ -6612,6 +6612,15 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OwnerMandateInvalid" xml:space="preserve">
     <value>A value of the mandate is not valid: check the field shown.</value>
   </data>
+  <data name="OwnerTaxDecisionInvalid" xml:space="preserve">
+    <value>A value of the decision is not valid: check the field shown (the booking, the regime or the reason).</value>
+  </data>
+  <data name="OwnerTaxDecisionNotApplicable" xml:space="preserve">
+    <value>This stay needs no decision: it is only for a company tenant in an Italian property of a private owner.</value>
+  </data>
+  <data name="OwnerExternalUnitsInvalid" xml:space="preserve">
+    <value>The number of apartments let short outside the agency is not valid: give a whole number from 0 to 1000.</value>
+  </data>
   <data name="OwnerMandateOverlap" xml:space="preserve">
     <value>A mandate version already starts on this date or later: versions do not overlap.</value>
   </data>

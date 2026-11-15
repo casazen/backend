@@ -9003,6 +9003,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<decimal?>("CleaningFlatRate")
                         .HasColumnType("decimal(10,2)");
 
+                    b.Property<int>("CoOwnerTaxReporting")
+                        .HasColumnType("integer");
+
                     b.Property<int>("CommissionBase")
                         .HasColumnType("integer");
 
@@ -11596,6 +11599,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<int>("ExternalShortLetUnits")
+                        .HasColumnType("integer");
+
                     b.Property<string>("FirstName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -11649,7 +11655,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasDatabaseName("UIX_PropertyOwners_OrgId_ExternalKey")
                         .HasFilter("\"ExternalKey\" IS NOT NULL");
 
-                    b.ToTable("PropertyOwners");
+                    b.ToTable("PropertyOwners", t =>
+                        {
+                            t.HasCheckConstraint("CK_PropertyOwners_ExternalShortLetUnits", "\"ExternalShortLetUnits\" >= 0 AND \"ExternalShortLetUnits\" <= 1000");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.PropertyOwnership", b =>
@@ -14360,6 +14369,45 @@ namespace Casazen.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_ServiceRequestPaymentRefunds_Amounts", "\"AmountCents\" BETWEEN 1 AND 10000000 AND \"Sequence\" >= 1 AND (\"ApplicationFeeRefundedCents\" IS NULL OR \"ApplicationFeeRefundedCents\" >= 0)");
 
                             t.HasCheckConstraint("CK_ServiceRequestPaymentRefunds_Succeeded", "\"Status\" <> 1 OR \"CompletedAt\" IS NOT NULL");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.ShortLetTaxDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecidedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("Regime")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "BookingId")
+                        .HasDatabaseName("IX_ShortLetTaxDecisions_OrgId_BookingId");
+
+                    b.ToTable("ShortLetTaxDecisions", t =>
+                        {
+                            t.HasCheckConstraint("CK_ShortLetTaxDecisions_Regime", "\"Regime\" IN (1, 2)");
                         });
                 });
 
@@ -20569,6 +20617,15 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("ServiceRequestPayment");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.ShortLetTaxDecision", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.ShowcaseBookingHold", b =>

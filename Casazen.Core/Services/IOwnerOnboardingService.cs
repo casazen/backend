@@ -332,7 +332,37 @@ public sealed record OwnerReadinessOwner(
     OwnerReadinessFlags Ready,
     bool AccountingReady,
     string PortalState,
-    IReadOnlyList<OwnerReadinessReason> Reasons);
+    IReadOnlyList<OwnerReadinessReason> Reasons)
+{
+    /// <summary>
+    /// What the agency should know about the owner that does not stop its accounting (E18/F01/US03/T01): a warning never changes <see cref="Ready"/> or
+    /// <see cref="AccountingReady"/>. Empty unless <c>Features:TaxReportingExports</c> is on.
+    /// </summary>
+    public IReadOnlyList<OwnerReadinessWarning> Warnings { get; init; } = [];
+}
+
+/// <summary>The warnings the readiness gives (cross-repo contract): never rename one.</summary>
+public static class OwnerReadinessWarnings
+{
+    /// <summary>
+    /// The owner lets short more apartments than the limit allows a private person, counting the ones it declared outside the agency (⚖ I8): the activity is presumed to be a
+    /// business, the withholding facts treat the owner as one and an issuer profile as a business is suggested.
+    /// </summary>
+    public const string ShortLetBusinessPresumed = "short_let_business_presumed";
+}
+
+/// <summary>What a warning suggests doing (cross-repo contract): never rename one.</summary>
+public static class OwnerReadinessSuggestions
+{
+    /// <summary>Make the issuer profile of the owner (<c>api/owners/{id}/issuer-profile</c>) that of a business: a VAT regime and its VAT number.</summary>
+    public const string IssuerProfile = "issuer_profile";
+}
+
+/// <summary>
+/// One warning of an owner: its <paramref name="Code"/> (<see cref="OwnerReadinessWarnings"/>), the counts behind it (the apartments the agency manages, the ones the owner
+/// declared, the limit) and what it <paramref name="Suggestion"/> to do (<see cref="OwnerReadinessSuggestions"/>), when it does. Counts and codes: never a value.
+/// </summary>
+public sealed record OwnerReadinessWarning(string Code, int ManagedUnits, int ExternalUnits, int MaxUnits, string? Suggestion);
 
 /// <summary>One property of the readiness that is not ready: its owners' shares, with the days that are wrong.</summary>
 public sealed record OwnerReadinessProperty(
