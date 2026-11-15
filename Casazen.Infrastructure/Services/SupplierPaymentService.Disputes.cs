@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
@@ -304,6 +305,15 @@ public sealed partial class SupplierPaymentService
             request.PriceLinesJson = payment.LineItemsJson;
 
         request.UpdatedAt = now;
+
+        // The completion is on the event bus here too (E24/F01/US01/T02), as when the supplier completes the request: the same payload and the same key, once for each request, written
+        // by the save of the caller with the change. Nothing without a recorder (the tests that build the service by hand).
+        recorder?.Record(
+            DomainEventType.ServiceRequestCompleted,
+            request.Id,
+            ServiceRequestEventPayload.Of(request, ServiceRequestStatus.Completato),
+            ServiceRequestEventPayload.KeyOf(ServiceRequestEventPayload.CompletedKeyPrefix, request.Id),
+            request.OrgId);
     }
 
     // ─── The supplier replies ────────────────────────────────────────────────────────────────────────────────────────

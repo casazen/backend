@@ -50,6 +50,7 @@ public class RoutineService(
     IFeatureFlags featureFlags,
     TimeProvider timeProvider,
     ILogger<RoutineService> logger,
+    ICleaningAutomationService? cleaning = null,
     IHostReviewService? reviews = null) : IRoutineService
 {
     /// <summary>
@@ -440,7 +441,7 @@ public class RoutineService(
 
     /// <summary>
     /// The one place that runs an action: a case for each action, owned by the task that makes it real (<c>CreateActivity</c>: E01/F04/US01/T02,
-    /// <c>RequestReview</c>: E26/F01/US01/T01).
+    /// <c>CreateCleaningRequest</c>: E24/F01/US01/T02, <c>RequestReview</c>: E26/F01/US01/T01).
     /// What the catalog does not list as available, and what has no case yet, fails with <see cref="RoutineCodes.ActionNotAvailable"/>: nothing here
     /// pretends to have done what it did not.
     /// </summary>
@@ -459,6 +460,8 @@ public class RoutineService(
             {
                 case RoutineActionType.CreateActivity:
                     return await CreateActivityAsync(routine, actionIndex, action, payload, cancellationToken);
+                case RoutineActionType.CreateCleaningRequest:
+                    return await CreateCleaningRequestAsync(routine, actionIndex, action, payload, cancellationToken);
                 case RoutineActionType.RequestReview:
                     return await RequestReviewAsync(routine, actionIndex, action, payload, cancellationToken);
             }
@@ -525,6 +528,41 @@ public class RoutineService(
         }
 
         return RoutineActionResult.Done(actionIndex, action.Type);
+    }
+
+    /// <summary>
+    /// <c>CreateCleaningRequest</c> (E24/F01/US01/T02, NF-120): the cleaning of the stay of the event for the default cleaner of its property, once for each stay (the booking is
+    /// read in the org of the routine, by <see cref="ICleaningAutomationService"/>). A cleaning made, one the stay had already and one someone else asked for are <c>done</c>; a
+    /// property with no cleaner set up is <c>blocked</c> with <see cref="RoutineCodes.CleaningNotConfigured"/> and a stay that does not happen with
+    /// <see cref="RoutineCodes.BookingNotActive"/> (the next actions go on); a cleaning that cannot be made (the supplier is suspended or busy, the member left) <c>fails</c> with the
+    /// code of the rule, and the host has been told by a "To do" and an alert. An event that names no booking the org has fails the action.
+    /// </summary>
+    private async Task<RoutineActionResult> CreateCleaningRequestAsync(
+        Routine routine,
+        int actionIndex,
+        RoutineAction action,
+        IReadOnlyDictionary<string, object?> payload,
+        CancellationToken cancellationToken)
+    {
+        // An engine built by hand with no automation cannot run the action: it says so, it never pretends.
+        if (cleaning is null)
+            return RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ActionNotAvailable);
+
+        if (!RoutinePayload.TryGetId(payload, "bookingId", out var bookingId))
+            return RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.CleaningNeedsBooking);
+
+        var result = await cleaning.CreateForStayAsync(routine.OrgId, bookingId, cancellationToken);
+        return result.Outcome switch
+        {
+            CleaningAutomationOutcome.Created or CleaningAutomationOutcome.AlreadyCreated or CleaningAutomationOutcome.AlreadyPlanned =>
+                RoutineActionResult.Done(actionIndex, action.Type),
+            CleaningAutomationOutcome.NotConfigured => RoutineActionResult.Blocked(actionIndex, action.Type, RoutineCodes.CleaningNotConfigured),
+            CleaningAutomationOutcome.StayNotActive => RoutineActionResult.Blocked(actionIndex, action.Type, RoutineCodes.BookingNotActive),
+            CleaningAutomationOutcome.Failed when result.Code == CleaningAutomationCodes.StayNotFound =>
+                RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.CleaningNeedsBooking),
+            CleaningAutomationOutcome.Failed => RoutineActionResult.Failed(actionIndex, action.Type, result.Code ?? RoutineCodes.ActionError),
+            _ => RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ActionError),
+        };
     }
 
     /// <summary>

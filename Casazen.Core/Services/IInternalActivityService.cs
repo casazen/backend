@@ -41,7 +41,7 @@ public interface IInternalActivityService
     /// Updates the status of an activity of the staff work and optionally records completion.
     /// </summary>
     /// <param name="activityId">The activity to update.</param>
-    /// <param name="status">The new status (Pending, InProgress, Completed).</param>
+    /// <param name="status">The new status (Pending, InProgress, Completed). A cancelled activity (the automatic cleaning of a stay that was cancelled) is final: any other status is a 422 <see cref="InternalActivityErrors.Cancelled"/>.</param>
     /// <param name="notes">Optional notes to append or update.</param>
     /// <returns>The updated activity.</returns>
     Task<InternalActivity> UpdateStatusAsync(Guid activityId, string status, string? notes = null);
@@ -206,6 +206,19 @@ public sealed record CreateTodoRequest
 
     /// <summary>The user it is for, when it is for one person (kept in <see cref="InternalActivity.StaffUserId"/>, never in the list's answer).</summary>
     public string? ForUserId { get; init; }
+}
+
+/// <summary>The stable codes and the message keys (<c>SharedResources</c>, Italian and English) of the refusals of <see cref="IInternalActivityService"/> (422).</summary>
+public static class InternalActivityErrors
+{
+    /// <summary>
+    /// 422: the staff activity was cancelled (the automatic cleaning of a stay that was cancelled before the work started) and its status cannot change any more: it is never completed, so
+    /// it never comes back as a cost to recharge to the owner.
+    /// </summary>
+    public const string Cancelled = "internal_activity_cancelled";
+
+    /// <summary>The message key of <see cref="Cancelled"/>.</summary>
+    public const string CancelledMessageKey = "InternalActivityCancelled";
 }
 
 /// <summary>The limits of the "To do" list (ADR-026).</summary>

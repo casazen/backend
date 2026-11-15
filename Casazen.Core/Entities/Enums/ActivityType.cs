@@ -182,4 +182,12 @@ public enum ActivityType
     /// is on. The number 120 keeps clear of the values the tasks that run in parallel append after 100.
     /// </summary>
     CompanyTenantDecision = 120,
+
+    /// <summary>
+    /// The dates of a stay changed after the supplier took its automatic cleaning (E24/F01/US01/T02, NF-120): the cleaning stays on the old day and the host
+    /// decides whether to cancel it, ask for another or keep it. About the booking, leading to it (<see cref="ActivityAction.ReviewBooking"/>); raised once for
+    /// each stay while it is open, and closed by the system when the stay is cancelled or the property is declared ready. The numbers from 130 are the
+    /// cleaning at check-out (epic E24): they keep clear of the values the tasks that run in parallel append between 100 and 129.
+    /// </summary>
+    CleaningDateChanged = 130,
 }

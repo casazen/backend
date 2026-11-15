@@ -75,6 +75,14 @@ public class InternalActivityService(
         if (activity == null)
             throw new NotFoundException("Activity not found.");
 
+        // A cleaning cancelled with its stay (E24/F01/US01/T02) is final: it is never completed, so no cost of it is ever read as a cost to recharge to the owner. Saying «cancelled» again
+        // is not a change.
+        if (string.Equals(activity.Status, InternalActivity.StatusCancelled, StringComparison.Ordinal)
+            && !string.Equals(status, InternalActivity.StatusCancelled, StringComparison.Ordinal))
+        {
+            throw new DomainRuleException(InternalActivityErrors.Cancelled, InternalActivityErrors.CancelledMessageKey);
+        }
+
         activity.Status = status;
 
         if (notes != null)
