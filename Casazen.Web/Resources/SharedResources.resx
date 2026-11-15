@@ -3454,6 +3454,9 @@
   <data name="CleaningAutomationStaffUnavailable" xml:space="preserve">
     <value>La persona dello staff scelta per la pulizia non è più attiva o non ha più accesso all'immobile.</value>
   </data>
+  <data name="InternalActivityCancelled" xml:space="preserve">
+    <value>L'attività è stata annullata: il suo stato non può più cambiare.</value>
+  </data>
   <data name="ServiceRequestCannotAddPhotos" xml:space="preserve">
     <value>Le foto del lavoro si aggiungono mentre il lavoro è in corso, prima di completare la richiesta.</value>
   </data>

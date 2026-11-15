@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
@@ -301,6 +302,32 @@ public class CleaningAutomationTests
         Assert.Equal(cancelled ? CleaningAutomationOutcome.Cancelled : CleaningAutomationOutcome.Unchanged, result.Outcome);
         Assert.Equal(cancelled ? ServiceRequestStatus.Annullato : ServiceRequestStatus.Richiesto, request.Status);
         Assert.Equal(cancelled ? "Prenotazione annullata" : null, request.CancellationReason);
+    }
+
+    /// <summary>
+    /// Proof (money): a cleaning cancelled with its stay is final. Its status cannot change any more (422), so it can never be completed and come back as a cost to recharge to the owner;
+    /// saying «cancelled» again is not a change.
+    /// </summary>
+    [Theory]
+    [InlineData(InternalActivity.StatusPending)]
+    [InlineData(InternalActivity.StatusInProgress)]
+    [InlineData(InternalActivity.StatusCompleted)]
+    public async Task CleaningAutomation_ACancelledStaffActivityCanNeverBeCompleted_Test(string status)
+    {
+        using var rig = await Rig.CreateAsync();
+        await rig.StaffSetupAsync();
+        await rig.Automation.CreateForStayAsync(rig.OrgId, rig.BookingId);
+        await rig.ChangeStayAsync(b => b.Status = BookingStatus.Cancelled);
+        await rig.Automation.FollowStayCancellationAsync(rig.OrgId, rig.BookingId);
+        var activity = Assert.Single(await rig.StaffWorkAsync());
+
+        var error = await Assert.ThrowsAsync<DomainRuleException>(() => rig.Activities.UpdateStatusAsync(activity.Id, status));
+
+        Assert.Equal((InternalActivityErrors.Cancelled, InternalActivityErrors.CancelledMessageKey), (error.Code, error.MessageKey));
+        var after = Assert.Single(await rig.StaffWorkAsync());
+        Assert.Equal((InternalActivity.StatusCancelled, (DateTime?)null), (after.Status, after.CompletedAt));
+        var again = await rig.Activities.UpdateStatusAsync(activity.Id, InternalActivity.StatusCancelled);
+        Assert.Equal(InternalActivity.StatusCancelled, again.Status);
     }
 
     /// <summary>The same for the staff activity: a late cancellation of a stay that is due again leaves it alone; a stay that is cancelled or a no-show cancels it.</summary>
