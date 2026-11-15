@@ -232,6 +232,7 @@ public class CleaningAutomationTests
         await rig.SupplierSetupAsync();
         var created = await rig.Automation.CreateForStayAsync(rig.OrgId, rig.BookingId);
         await rig.Scenario.ChangeRequestAsync(created.ServiceRequestId!.Value, r => r.Status = status);
+        await rig.ChangeStayAsync(b => b.Status = BookingStatus.Cancelled);
 
         var result = await rig.Automation.FollowStayCancellationAsync(rig.OrgId, rig.BookingId);
 
@@ -260,6 +261,7 @@ public class CleaningAutomationTests
         await rig.Automation.CreateForStayAsync(rig.OrgId, rig.BookingId);
         var activity = Assert.Single(await rig.StaffWorkAsync());
         await rig.Activities.UpdateStatusAsync(activity.Id, status);
+        await rig.ChangeStayAsync(b => b.Status = BookingStatus.Cancelled);
 
         var result = await rig.Automation.FollowStayCancellationAsync(rig.OrgId, rig.BookingId);
 
@@ -269,6 +271,58 @@ public class CleaningAutomationTests
         // A cancelled activity is never completed: no cost is read from it.
         if (cancelled)
             Assert.Null(after.CompletedAt);
+    }
+
+    /// <summary>
+    /// Proof (money): the cancellation reads the stay as it is now. The event says the stay does not happen, but events come late and out of order: a cancellation that was undone since (the
+    /// stay is due again: confirmed, checked in or checked out) cancels nothing, while a stay that is still cancelled, or is marked as a no-show, cancels its cleaning, a request and a
+    /// staff activity alike.
+    /// </summary>
+    [Theory]
+    [InlineData(BookingStatus.Confirmed, false, false)]
+    [InlineData(BookingStatus.CheckedIn, false, false)]
+    [InlineData(BookingStatus.CheckedOut, false, false)]
+    [InlineData(BookingStatus.Cancelled, false, true)]
+    [InlineData(BookingStatus.Confirmed, true, true)]
+    public async Task CleaningAutomation_LateCancellationEventCancelsOnlyAStayThatDoesNotHappen_Test(BookingStatus status, bool noShow, bool cancelled)
+    {
+        using var rig = await Rig.CreateAsync();
+        await rig.SupplierSetupAsync();
+        var created = await rig.Automation.CreateForStayAsync(rig.OrgId, rig.BookingId);
+        await rig.ChangeStayAsync(b =>
+        {
+            b.Status = status;
+            b.NoShowAt = noShow ? new DateTime(2026, 10, 8, 18, 0, 0, DateTimeKind.Utc) : null;
+        });
+
+        var result = await rig.Automation.FollowStayCancellationAsync(rig.OrgId, rig.BookingId);
+
+        var request = await rig.Scenario.ReadAsync(created.ServiceRequestId!.Value);
+        Assert.Equal(cancelled ? CleaningAutomationOutcome.Cancelled : CleaningAutomationOutcome.Unchanged, result.Outcome);
+        Assert.Equal(cancelled ? ServiceRequestStatus.Annullato : ServiceRequestStatus.Richiesto, request.Status);
+        Assert.Equal(cancelled ? "Prenotazione annullata" : null, request.CancellationReason);
+    }
+
+    /// <summary>The same for the staff activity: a late cancellation of a stay that is due again leaves it alone; a stay that is cancelled or a no-show cancels it.</summary>
+    [Theory]
+    [InlineData(BookingStatus.Confirmed, false, false)]
+    [InlineData(BookingStatus.Cancelled, false, true)]
+    [InlineData(BookingStatus.Confirmed, true, true)]
+    public async Task ALateCancellationEvent_CancelsTheStaffActivityOnlyOfAStayThatDoesNotHappen(BookingStatus status, bool noShow, bool cancelled)
+    {
+        using var rig = await Rig.CreateAsync();
+        await rig.StaffSetupAsync();
+        await rig.Automation.CreateForStayAsync(rig.OrgId, rig.BookingId);
+        await rig.ChangeStayAsync(b =>
+        {
+            b.Status = status;
+            b.NoShowAt = noShow ? new DateTime(2026, 10, 8, 18, 0, 0, DateTimeKind.Utc) : null;
+        });
+
+        var result = await rig.Automation.FollowStayCancellationAsync(rig.OrgId, rig.BookingId);
+
+        Assert.Equal(cancelled ? CleaningAutomationOutcome.Cancelled : CleaningAutomationOutcome.Unchanged, result.Outcome);
+        Assert.Equal(cancelled ? InternalActivity.StatusCancelled : InternalActivity.StatusPending, Assert.Single(await rig.StaffWorkAsync()).Status);
     }
 
     /// <summary>
@@ -299,6 +353,7 @@ public class CleaningAutomationTests
         // A key that was tampered to point at a request of another org: the org of the request is read from the request, so nothing of it is touched.
         var strangerRequest = await rig.Scenario.SeedAsync(ServiceRequestStatus.Richiesto, r => r.OrgId = otherOrg);
         await rig.PointKeyAtAsync(strangerRequest.Id);
+        await rig.ChangeStayAsync(b => b.Status = BookingStatus.Cancelled);
         var viaKey = await rig.Automation.FollowStayCancellationAsync(rig.OrgId, rig.BookingId);
         Assert.Equal(CleaningAutomationOutcome.Unchanged, viaKey.Outcome);
         Assert.Equal(ServiceRequestStatus.Richiesto, (await rig.Scenario.ReadAsync(strangerRequest.Id)).Status);
@@ -748,6 +803,7 @@ public class CleaningAutomationTests
         var created = await rig.Automation.CreateForStayAsync(rig.OrgId, rig.BookingId);
         var primaryId = created.ServiceRequestId!.Value;
         var backup = await rig.PromoteBackupAsync(primaryId);
+        await rig.ChangeStayAsync(b => b.Status = BookingStatus.Cancelled);
 
         var result = await rig.Automation.FollowStayCancellationAsync(rig.OrgId, rig.BookingId);
 

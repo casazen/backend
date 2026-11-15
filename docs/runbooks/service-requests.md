@@ -63,9 +63,10 @@ behind `Features:Routines`, which is off by default.
 
 ### What `CreateCleaningRequest` does (`CleaningAutomationService.CreateForStayAsync`)
 
+0. Takes the advisory lock of the stay (`PostgresAdvisoryLocks.Scope.CleaningAutomation`) and reads everything that follows under it, so the stay and the setup are judged on what is there now.
 1. Reads the stay in the org of the routine and checks it happens (`AlloggiatiStatusRules`: confirmed, checked in or out, no no-show): otherwise the action is `blocked` with `routine_booking_not_active`.
 2. Reads the active setup of the property: none is `blocked` with `routine_cleaning_not_configured`, and the existing «To do» of a stay that ended without a cleaning appears as today.
-3. Takes the advisory lock of the stay (`PostgresAdvisoryLocks.Scope.CleaningAutomation`) and checks it has no cleaning yet: a `StayCleaning` row (the key, unique per org and booking), or a
+3. Checks the stay has no cleaning yet: a `StayCleaning` row (the key, unique per org and booking), or a
    cleaning someone asked for (a request of category cleaning that is not cancelled or refused, a staff activity of type Cleaning that is not cancelled). Either is `done` and nothing is created.
 4. **Supplier**: a `ServiceRequest` made by the service of the host's own requests, with all its checks: category cleaning, the booking and the property, the check-out day at the time of
    the setup, the duration, `EstimatedAmountCents` = the agreed price and the note «prezzo concordato». The supplier takes it with the existing flow (quote, backups and timeouts under their flags).
@@ -85,10 +86,13 @@ when it failed), so a second delivery would run nothing. Only a cancelled call i
 | Event | Request, not taken (`Richiesto`, no backup, no proposal, no quote) | Request taken (`PresoInCarico`) or with an offer waiting | Staff activity |
 |---|---|---|---|
 | `BookingModified` (the check-out day changed) | moved to the new day, same length (`RescheduleAsHostAsync`) | stays; «To do» `CleaningDateChanged` and an alert: the host decides | `Pending`: moved; started or done: left alone |
-| `BookingCancelled` | cancelled by the host with the reason «Prenotazione annullata»; the supplier is told by the notice of a cancellation | cancelled the same way, unless the work started | `Pending`: status `Cancelled` (no cost is read from it) |
+| `BookingCancelled`, `BookingNoShowMarked` (the stay does not happen) | cancelled by the host with the reason «Prenotazione annullata»; the supplier is told by the notice of a cancellation | cancelled the same way, unless the work started | `Pending`: status `Cancelled` (no cost is read from it) |
 
 A request that is `InCorso`, `Completato`, `Pagato`, `Annullato` or `Rifiutato` is never touched. Only the cleaning the automation made is followed (the `StayCleaning` key): a cleaning the host
-made by hand is not. The handler reads the booking when it handles the event, so events that arrive out of order give the same result. The «To do» `CleaningDateChanged` closes by itself when the
+made by hand is not. The request they act on is the one the host follows: when a backup supplier took the job in place of the primary (SP-BKP: the primary is `ReplacedPrimary`, cancelled for no
+response) it is the promoted backup, not the primary the key points at. The creation and both follow-ups take the advisory lock of the stay and read the stay, the setup and the key after it, so a
+change that comes while the cleaning is being made waits for it and finds its key; the cancellation reads the stay as it is now and cancels only if it still does not happen (a late
+`BookingCancelled` of a cancellation that was undone cancels nothing), so events that arrive out of order give the same result. The «To do» `CleaningDateChanged` closes by itself when the
 stay is cancelled or the property is declared ready.
 
 ## The cost of the completed cleanings (T03)

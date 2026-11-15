@@ -18,7 +18,8 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Which stays.</b> The ones that happen: the statuses and the no-show mark of <see cref="AlloggiatiStatusRules"/> (the one definition of a stay that is due), so a
 /// request, a hold, a cancelled stay and a no-show get no cleaning. A property with no setup, or with an inactive one, is not automated.</item>
 /// <item><b>Once for each stay.</b> The check, the request or the activity and the <see cref="StayCleaning"/> row that keys them are done under the advisory lock of the stay
-/// and in one transaction (<see cref="PostgresAdvisoryLocks.Scope.CleaningAutomation"/>): a second call finds the row and creates nothing. A cleaning someone else asked for
+/// and in one transaction (<see cref="PostgresAdvisoryLocks.Scope.CleaningAutomation"/>): a second call finds the row and creates nothing. The stay, the setup and the key are read
+/// after the lock, and the two follow-ups of the changes of the stay take the same lock first: a change that comes while the cleaning is being made waits for it and finds its key. A cleaning someone else asked for
 /// (a request or an activity of the stay that is not cancelled) counts as the cleaning of the stay: the automation never adds a second one.</item>
 /// <item><b>The supplier path</b> is the request of the host, with every check it has (the supplier active and covering the comune, the supplier's calendar, the backups and the
 /// timeouts under their flags): the time is the check-out day at the time of the setup on the clock of the property, the length the one of the setup, the price the agreed one
@@ -81,24 +82,31 @@ public sealed class CleaningAutomationService(
         if (!featureFlags.IsEnabled(FeatureFlags.Routines))
             return new CleaningAutomationResult(CleaningAutomationOutcome.ModuleOff);
 
-        var stay = await ReadStayAsync(orgId, bookingId, cancellationToken);
-        if (stay is null)
-            return new CleaningAutomationResult(CleaningAutomationOutcome.Failed, CleaningAutomationCodes.StayNotFound);
-
-        if (!IsDue(stay))
-            return new CleaningAutomationResult(CleaningAutomationOutcome.StayNotActive);
-
-        var setup = await db.PropertyCleaningSetups
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.OrgId == orgId && s.PropertyId == stay.PropertyId && s.Active, cancellationToken);
-        if (setup is null)
-            return new CleaningAutomationResult(CleaningAutomationOutcome.NotConfigured);
-
+        StayFacts stay;
+        PropertyCleaningSetup setup;
         CleaningAutomationResult? done = null;
         string? failureCode = null;
+
+        // The lock of the stay comes first and everything is read under it: whoever held it before (another trigger of the stay, a change of its dates, its cancellation) has
+        // committed, so the stay, the setup and the key are judged on what is there now, not on what they were when the event was handled.
         await using (var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken, StayLock(bookingId)))
         {
-            // Read under the lock: whoever held it before has committed, so a stay is judged on what is there now.
+            var readStay = await ReadStayAsync(orgId, bookingId, cancellationToken);
+            if (readStay is null)
+                return new CleaningAutomationResult(CleaningAutomationOutcome.Failed, CleaningAutomationCodes.StayNotFound);
+
+            if (!IsDue(readStay))
+                return new CleaningAutomationResult(CleaningAutomationOutcome.StayNotActive);
+
+            var readSetup = await db.PropertyCleaningSetups
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.OrgId == orgId && s.PropertyId == readStay.PropertyId && s.Active, cancellationToken);
+            if (readSetup is null)
+                return new CleaningAutomationResult(CleaningAutomationOutcome.NotConfigured);
+
+            stay = readStay;
+            setup = readSetup;
+
             var existing = await db.StayCleanings
                 .AsNoTracking()
                 .FirstOrDefaultAsync(c => c.OrgId == orgId && c.BookingId == bookingId, cancellationToken);
@@ -168,6 +176,10 @@ public sealed class CleaningAutomationService(
         if (!featureFlags.IsEnabled(FeatureFlags.Routines))
             return new CleaningAutomationResult(CleaningAutomationOutcome.ModuleOff);
 
+        // Under the lock of the stay, like the creation: a change that comes while the cleaning is being made waits for it and finds its key. The key, the stay and the setup are read
+        // after the lock, so the change is judged on what is there now. The services the change calls join the transaction; it is committed here.
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken, StayLock(bookingId));
+
         var cleaning = await db.StayCleanings.FirstOrDefaultAsync(c => c.OrgId == orgId && c.BookingId == bookingId, cancellationToken);
         if (cleaning is null)
             return new CleaningAutomationResult(CleaningAutomationOutcome.Unchanged);
@@ -184,9 +196,13 @@ public sealed class CleaningAutomationService(
         if (start == cleaning.ScheduledStartUtc)
             return new CleaningAutomationResult(CleaningAutomationOutcome.Unchanged);
 
-        return cleaning.CleanerKind == PropertyCleanerKind.Supplier
+        var result = cleaning.CleanerKind == PropertyCleanerKind.Supplier
             ? await MoveRequestAsync(orgId, stay, cleaning, start, setup, cancellationToken)
             : await MoveActivityAsync(orgId, cleaning, start, cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+
+        return result;
     }
 
     public async Task<CleaningAutomationResult> FollowStayCancellationAsync(Guid orgId, Guid bookingId, CancellationToken cancellationToken = default)
@@ -194,13 +210,26 @@ public sealed class CleaningAutomationService(
         if (!featureFlags.IsEnabled(FeatureFlags.Routines))
             return new CleaningAutomationResult(CleaningAutomationOutcome.ModuleOff);
 
+        // Under the lock of the stay, and everything read after it (see FollowStayDatesAsync).
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken, StayLock(bookingId));
+
         var cleaning = await db.StayCleanings.FirstOrDefaultAsync(c => c.OrgId == orgId && c.BookingId == bookingId, cancellationToken);
         if (cleaning is null)
             return new CleaningAutomationResult(CleaningAutomationOutcome.Unchanged);
 
-        return cleaning.CleanerKind == PropertyCleanerKind.Supplier
+        // The event says the stay does not happen (cancelled, or marked as a no-show), but events come late and out of order: the stay is read as it is now, and what the event says is
+        // done only if it is still true. A cancellation that was undone since (the stay is due again) cancels nothing.
+        var stay = await ReadStayAsync(orgId, bookingId, cancellationToken);
+        if (stay is not null && IsDue(stay))
+            return new CleaningAutomationResult(CleaningAutomationOutcome.Unchanged);
+
+        var result = cleaning.CleanerKind == PropertyCleanerKind.Supplier
             ? await CancelRequestAsync(orgId, cleaning, cancellationToken)
             : await CancelActivityAsync(orgId, cleaning, cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+
+        return result;
     }
 
     // ─── Creation ────────────────────────────────────────────────────────────────────────────────────────────────────

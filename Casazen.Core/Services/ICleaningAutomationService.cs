@@ -107,7 +107,8 @@ public static class CleaningAutomationCodes
 /// <remarks>
 /// <para>Everything is behind <c>Features:Routines</c>: with the module closed no call reads or writes anything (<see cref="CleaningAutomationOutcome.ModuleOff"/>).</para>
 /// <para><b>Once for each stay.</b> The creation is serialized for the stay and keyed by a <c>StayCleaning</c> row written in the same transaction as the
-/// request or the activity, so two triggers (the time of the check-out and the departure the host registered) create one cleaning.</para>
+/// request or the activity, so two triggers (the time of the check-out and the departure the host registered) create one cleaning. The creation and both follow-ups take the
+/// lock of the stay first and read the stay, the setup and the key after it, so a change that comes while the cleaning is being made waits for it and finds it.</para>
 /// </remarks>
 public interface ICleaningAutomationService
 {
@@ -131,8 +132,9 @@ public interface ICleaningAutomationService
     Task<CleaningAutomationResult> FollowStayDatesAsync(Guid orgId, Guid bookingId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The stay was cancelled: its automatic cleaning is cancelled with the reason «prenotazione annullata» unless the work started (the supplier is told by the
-    /// existing notice of a cancellation). A cleaning that is started, done or cancelled is left alone.
+    /// The stay was cancelled or marked as a no-show (it does not happen): its automatic cleaning is cancelled with the reason «prenotazione annullata» unless the work
+    /// started (the supplier is told by the existing notice of a cancellation). The stay is read as it is now, after the lock of the stay: an event that comes late, for a
+    /// cancellation that was undone since (the stay is due again), cancels nothing. A cleaning that is started, done or cancelled is left alone.
     /// </summary>
     Task<CleaningAutomationResult> FollowStayCancellationAsync(Guid orgId, Guid bookingId, CancellationToken cancellationToken = default);
 }

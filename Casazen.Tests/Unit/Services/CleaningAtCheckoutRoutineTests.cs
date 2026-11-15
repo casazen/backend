@@ -172,6 +172,24 @@ public class CleaningAtCheckoutRoutineTests
         cleaning.Verify(c => c.FollowStayCancellationAsync(orgId, bookingId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>A stay marked as a no-show does not happen: the automation follows it as it follows a cancellation (it reads the stay and cancels the cleaning if not started).</summary>
+    [Fact]
+    public async Task TheStayIsMarkedAsANoShow_TheAutomationFollowsItLikeACancellation()
+    {
+        var orgId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var cleaning = new Mock<ICleaningAutomationService>(MockBehavior.Strict);
+        cleaning
+            .Setup(c => c.FollowStayCancellationAsync(orgId, bookingId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CleaningAutomationResult(CleaningAutomationOutcome.Cancelled));
+
+        await new CleaningBookingChangesHandler(cleaning.Object, NullLogger<CleaningBookingChangesHandler>.Instance)
+            .HandleAsync(Event(DomainEventType.BookingNoShowMarked, orgId, bookingId), CancellationToken.None);
+
+        cleaning.Verify(c => c.FollowStayCancellationAsync(orgId, bookingId, It.IsAny<CancellationToken>()), Times.Once);
+        cleaning.VerifyNoOtherCalls();
+    }
+
     /// <summary>Every other event is not the handler's, and an event that names no booking is ignored.</summary>
     [Fact]
     public async Task EveryOtherEvent_AndAnEventWithNoBooking_IsIgnored()
@@ -179,11 +197,12 @@ public class CleaningAtCheckoutRoutineTests
         var strict = new Mock<ICleaningAutomationService>(MockBehavior.Strict);
         var handler = new CleaningBookingChangesHandler(strict.Object, NullLogger<CleaningBookingChangesHandler>.Instance);
 
-        foreach (var type in Enum.GetValues<DomainEventType>().Where(t => t is not (DomainEventType.BookingModified or DomainEventType.BookingCancelled)))
+        foreach (var type in Enum.GetValues<DomainEventType>().Where(t => t is not (DomainEventType.BookingModified or DomainEventType.BookingCancelled or DomainEventType.BookingNoShowMarked)))
             await handler.HandleAsync(Event(type, Guid.NewGuid(), Guid.NewGuid()), CancellationToken.None);
 
         await handler.HandleAsync(Event(DomainEventType.BookingModified, Guid.NewGuid(), Guid.Empty), CancellationToken.None);
         await handler.HandleAsync(Event(DomainEventType.BookingCancelled, Guid.NewGuid(), Guid.Empty), CancellationToken.None);
+        await handler.HandleAsync(Event(DomainEventType.BookingNoShowMarked, Guid.NewGuid(), Guid.Empty), CancellationToken.None);
 
         strict.VerifyNoOtherCalls();
     }
