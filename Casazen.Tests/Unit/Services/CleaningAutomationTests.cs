@@ -120,6 +120,38 @@ public class CleaningAutomationTests
             Scenario.Db.ChangeTracker.Clear();
         }
 
+        /// <summary>
+        /// SP-BKP: a backup supplier took the job in place of the primary the key points at, as <c>CloseGroupAfterTake</c> leaves a group: the primary is cancelled for no response and
+        /// replaced, the backup (another supplier, same stay, same time) is the request the host follows. Returns the backup.
+        /// </summary>
+        public async Task<ServiceRequest> PromoteBackupAsync(Guid primaryId)
+        {
+            var groupId = Guid.NewGuid();
+            await Scenario.ChangeRequestAsync(
+                primaryId,
+                r =>
+                {
+                    r.GroupId = groupId;
+                    r.GroupRole = ServiceRequestGroupRole.ReplacedPrimary;
+                    r.Status = ServiceRequestStatus.Annullato;
+                    r.CancelledBy = ServiceRequestActorParty.System;
+                    r.CancellationReason = ServiceRequestCancellationReasons.NoResponse;
+                });
+            var primary = await Scenario.ReadAsync(primaryId);
+            var backupSupplierOrgId = await Scenario.AddOtherSupplierAsync();
+            return await Scenario.SeedAsync(
+                ServiceRequestStatus.PresoInCarico,
+                r =>
+                {
+                    r.GroupId = groupId;
+                    r.GroupRole = ServiceRequestGroupRole.PromotedBackup;
+                    r.ScheduledStartUtc = primary.ScheduledStartUtc;
+                    r.ScheduledEndUtc = primary.ScheduledEndUtc;
+                    r.EstimatedAmountCents = primary.EstimatedAmountCents;
+                },
+                backupSupplierOrgId);
+        }
+
         public async Task<List<ServiceRequest>> RequestsAsync() =>
             await Scenario.Db.ServiceRequests.AsNoTracking().Where(r => r.BookingId == BookingId).ToListAsync();
 
@@ -609,6 +641,51 @@ public class CleaningAutomationTests
         Assert.Equal((CleaningAutomationOutcome.HostToDecide, ServiceRequestErrorCodes.CommitmentConflict), (result.Outcome, result.Code));
         Assert.Equal(CheckOutStart, (await rig.Scenario.ReadAsync(created.ServiceRequestId!.Value)).ScheduledStartUtc);
         Assert.Single(await rig.TodosAsync(nameof(ActivityType.CleaningDateChanged)));
+    }
+
+    /// <summary>
+    /// SP-BKP, proof (money): a backup took the job in place of the primary the key points at (the primary is cancelled and replaced, the backup is the request the host follows). The
+    /// cancellation of the stay cancels the backup's job, with the reason of a cancelled stay and the notice to its supplier, and never touches the primary that was replaced.
+    /// </summary>
+    [Fact]
+    public async Task CleaningAutomation_CancelledBookingCancelsThePromotedBackup_Test()
+    {
+        using var rig = await Rig.CreateAsync();
+        await rig.SupplierSetupAsync();
+        var created = await rig.Automation.CreateForStayAsync(rig.OrgId, rig.BookingId);
+        var primaryId = created.ServiceRequestId!.Value;
+        var backup = await rig.PromoteBackupAsync(primaryId);
+
+        var result = await rig.Automation.FollowStayCancellationAsync(rig.OrgId, rig.BookingId);
+
+        Assert.Equal((CleaningAutomationOutcome.Cancelled, backup.Id), (result.Outcome, result.ServiceRequestId));
+        var cancelled = await rig.Scenario.ReadAsync(backup.Id);
+        Assert.Equal((ServiceRequestStatus.Annullato, ServiceRequestActorParty.Host, "Prenotazione annullata"), (cancelled.Status, cancelled.CancelledBy, cancelled.CancellationReason));
+        var replaced = await rig.Scenario.ReadAsync(primaryId);
+        Assert.Equal((ServiceRequestStatus.Annullato, ServiceRequestActorParty.System, ServiceRequestCancellationReasons.NoResponse), (replaced.Status, replaced.CancelledBy, replaced.CancellationReason));
+        Assert.Equal(1, rig.Scenario.Emails.Snapshot().Count(e => e.Template == EmailTemplates.Names.ServiceRequestCancelledToSupplier));
+    }
+
+    /// <summary>
+    /// SP-BKP: the dates of the stay change after a backup took the job: the change acts on the request the host follows (the backup's job, which the supplier took: the host decides with a
+    /// «To do» and an alert), not on the primary that was replaced, which is left as it is.
+    /// </summary>
+    [Fact]
+    public async Task APromotedBackup_IsTheJobTheChangeOfDatesLeavesToTheHost()
+    {
+        using var rig = await Rig.CreateAsync();
+        await rig.SupplierSetupAsync();
+        var created = await rig.Automation.CreateForStayAsync(rig.OrgId, rig.BookingId);
+        var backup = await rig.PromoteBackupAsync(created.ServiceRequestId!.Value);
+        await rig.ChangeStayAsync(b => b.CheckOutDate = new DateTime(2026, 10, 14, 0, 0, 0, DateTimeKind.Utc));
+
+        var result = await rig.Automation.FollowStayDatesAsync(rig.OrgId, rig.BookingId);
+
+        Assert.Equal((CleaningAutomationOutcome.HostToDecide, backup.Id), (result.Outcome, result.ServiceRequestId));
+        Assert.Equal(CheckOutStart, (await rig.Scenario.ReadAsync(backup.Id)).ScheduledStartUtc);
+        Assert.Equal(ServiceRequestStatus.Annullato, (await rig.Scenario.ReadAsync(created.ServiceRequestId!.Value)).Status);
+        Assert.Single(await rig.TodosAsync(nameof(ActivityType.CleaningDateChanged)));
+        rig.VerifyAlerts(Times.Once());
     }
 
     /// <summary>A staff activity not started moves with the stay; one that started, or is done, is left alone.</summary>

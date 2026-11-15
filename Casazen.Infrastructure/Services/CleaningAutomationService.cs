@@ -29,7 +29,8 @@ namespace Casazen.Infrastructure.Services;
 /// already knows) and a popup alert to the people of the property. An unexpected error is not caught: the engine records it and the bus delivers the event again.</item>
 /// <item><b>Changes of the stay</b> move the cleaning (a staff activity not started; a request nobody answered, with no backup, no proposal and no quote), or leave it to the
 /// host (a "To do" <see cref="ActivityType.CleaningDateChanged"/> and an alert) when the supplier took it or has an offer waiting; a cancelled stay cancels it unless the work
-/// started, and the supplier is told by the notice of a cancellation. A cleaning started, done or cancelled is left alone.</item>
+/// started, and the supplier is told by the notice of a cancellation. A cleaning started, done or cancelled is left alone. The request they act on is the one the host follows:
+/// when a backup supplier took the job in place of the primary (SP-BKP) it is the backup, not the primary the key points at.</item>
 /// <item>Behind <c>Features:Routines</c>; the org is the caller's in every query; no personal data in the logs, the notes or the alerts.</item>
 /// </list>
 /// </remarks>
@@ -334,7 +335,7 @@ public sealed class CleaningAutomationService(
                 logger.LogInformation(
                     "Cleaning request {RequestId} of stay {BookingId} was not moved: {Code}",
                     request.Id, stay.BookingId, ex.Code);
-                return await LeaveToTheHostAsync(orgId, stay, cleaning, ex.Code, cancellationToken);
+                return await LeaveToTheHostAsync(orgId, stay, cleaning, request.Id, ex.Code, cancellationToken);
             }
 
             cleaning.ScheduledStartUtc = start;
@@ -344,7 +345,7 @@ public sealed class CleaningAutomationService(
         }
 
         // Taken by the supplier, or with an offer waiting: the host decides what happens to a job somebody agreed to.
-        return await LeaveToTheHostAsync(orgId, stay, cleaning, code: null, cancellationToken);
+        return await LeaveToTheHostAsync(orgId, stay, cleaning, request.Id, code: null, cancellationToken);
     }
 
     private async Task<CleaningAutomationResult> MoveActivityAsync(Guid orgId, StayCleaning cleaning, DateTime start, CancellationToken cancellationToken)
@@ -415,6 +416,7 @@ public sealed class CleaningAutomationService(
         Guid orgId,
         StayFacts stay,
         StayCleaning cleaning,
+        Guid? requestId,
         string? code,
         CancellationToken cancellationToken)
     {
@@ -433,7 +435,7 @@ public sealed class CleaningAutomationService(
             cancellationToken);
         await AlertAsync(orgId, stay, cleaning.ScheduledStartUtc, cancellationToken);
 
-        return new CleaningAutomationResult(CleaningAutomationOutcome.HostToDecide, code, cleaning.ServiceRequestId, cleaning.InternalActivityId);
+        return new CleaningAutomationResult(CleaningAutomationOutcome.HostToDecide, code, requestId ?? cleaning.ServiceRequestId, cleaning.InternalActivityId);
     }
 
     // ─── Reads and helpers ───────────────────────────────────────────────────────────────────────────────────────────
@@ -459,11 +461,32 @@ public sealed class CleaningAutomationService(
     /// <summary>The stay happens: the one definition of a stay that is due (<see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/>, no no-show).</summary>
     private static bool IsDue(StayFacts stay) => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(stay.Status) && stay.NoShowAt is null;
 
-    /// <summary>The request of the cleaning, as the org owns it (never another org's, whatever id the key holds).</summary>
-    private Task<ServiceRequest?> ReadRequestAsync(Guid orgId, StayCleaning cleaning, CancellationToken cancellationToken) =>
-        cleaning.ServiceRequestId is { } id
-            ? db.ServiceRequests.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id && r.OrgId == orgId, cancellationToken)
-            : Task.FromResult<ServiceRequest?>(null);
+    /// <summary>
+    /// The request the host follows for the cleaning, as the org owns it (never another org's, whatever id the key holds). The key points at the request the automation made, which
+    /// is the primary of a group of backups when the supplier has some (SP-BKP): when a backup takes the job the primary is cancelled (<see cref="ServiceRequestGroupRole.ReplacedPrimary"/>)
+    /// and the work is the backup's (<see cref="ServiceRequestGroupRole.PromotedBackup"/>), so the request to move or to cancel is the head of the group of the key's request: the
+    /// promoted backup when there is one, else the primary, in the same org.
+    /// </summary>
+    private async Task<ServiceRequest?> ReadRequestAsync(Guid orgId, StayCleaning cleaning, CancellationToken cancellationToken)
+    {
+        if (cleaning.ServiceRequestId is not { } id)
+            return null;
+
+        var request = await db.ServiceRequests.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id && r.OrgId == orgId, cancellationToken);
+        if (request?.GroupId is not { } groupId)
+            return request;
+
+        var heads = await db.ServiceRequests
+            .AsNoTracking()
+            .Where(r => r.OrgId == orgId
+                        && r.GroupId == groupId
+                        && (r.GroupRole == ServiceRequestGroupRole.Primary || r.GroupRole == ServiceRequestGroupRole.PromotedBackup))
+            .ToListAsync(cancellationToken);
+
+        return heads.FirstOrDefault(r => r.GroupRole == ServiceRequestGroupRole.PromotedBackup)
+               ?? heads.FirstOrDefault(r => r.GroupRole == ServiceRequestGroupRole.Primary)
+               ?? request;
+    }
 
     /// <summary>The staff activity of the cleaning, as the org owns it; the row is changed by the caller, which asks for it tracked.</summary>
     private async Task<InternalActivity?> ReadActivityAsync(Guid orgId, StayCleaning cleaning, bool tracked, CancellationToken cancellationToken)
