@@ -977,8 +977,6 @@ internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
                 Currency = version.Currency,
                 PaidOn = paidOn,
                 Reference = "TEST bonifico rendiconto",
-                AgencyCollected = true,
-                QualifyingShortLet = true,
             },
             AgencyUser);
         return result.Payout;
@@ -1198,7 +1196,10 @@ internal sealed class AcceptanceScope : IAsyncDisposable
             Events);
 
         Portal = new OwnerPortalService(db, clock, null, flags, new OwnerPortalAccessResolver(db, clock), StatementFiles);
-        Payouts = new OwnerPayoutService(db, OwnerFiscal, clock, NullLogger<OwnerPayoutService>.Instance);
+        var shortStay = Microsoft.Extensions.Options.Options.Create(new ShortStayFiscalOptions());
+        var taxChecks = new OwnerTaxChecks(db, activities, flags, shortStay, clock, NullLogger<OwnerTaxChecks>.Instance);
+        Payouts = new OwnerPayoutService(
+            db, OwnerFiscal, clock, NullLogger<OwnerPayoutService>.Instance, new OwnerPayoutFacts(db, taxChecks, holders, shortStay, accountingOptions));
 
         var dashboard = new HostDashboardService(db, configuration, clock);
         var collections = new HostCollectionsReportService(db, configuration, clock);

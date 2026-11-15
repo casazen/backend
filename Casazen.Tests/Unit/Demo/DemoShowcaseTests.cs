@@ -157,6 +157,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.OwnerUnitsExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.CompanyTenantExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.CleaningRechargeExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.PayoutFactsExamples.Select(example => example.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -1315,6 +1316,31 @@ public class DemoShowcaseTests
         Assert.Single(examples, e => e.Mode == CleaningRechargeMode.FlatRate);
         Assert.Single(examples, e => e.Mode == CleaningRechargeMode.ActualCost && e.RequestAmount is not null);
         Assert.Single(examples, e => e.Mode == CleaningRechargeMode.ActualCost && e.RequestAmount is null);
+    }
+
+    /// <summary>
+    /// E18/F01/US01/T01: the stays of the demo payout are TEST ones and each is where the rules of the facts put it: the stay paid with a payment the agency recorded is
+    /// in the base, the Airbnb stay on the agency's account is withheld by the portal (⚖ R5), the Booking.com stay on the owner's account is not the agency's.
+    /// </summary>
+    [Fact]
+    public void PayoutFacts_TheExamplesAreWhatTheRulesAnswer()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.PayoutFacts, DemoShowcaseCatalog.Scenarios);
+        var settings = new PayoutFactSettings(new ShortStayFiscalOptions().MaxStayNights, PayoutFactRules.PortalsOf(["Airbnb"]), true, true);
+        var examples = DemoShowcaseCatalog.PayoutFactsExamples;
+        Assert.Contains(examples, e => e.Reason == PayoutStayReasons.InBase);
+        Assert.Contains(examples, e => e.Reason == OwnerWithholdingRules.AlreadyWithheldByPortal);
+        Assert.Contains(examples, e => e.Reason == OwnerWithholdingRules.NoCollectionOrIntervention);
+        foreach (var example in examples)
+        {
+            Assert.StartsWith("TEST", example.OwnerName, StringComparison.Ordinal);
+            Assert.True(example.Gross > 0m && example.TouristTax >= 0m);
+            var treatment = new StayShortLetTreatment(Guid.NewGuid(), true, ShortLetTreatmentReasons.ShortLet, false, false, null, null);
+            var stay = new PayoutStayInput(
+                Guid.NewGuid(), Guid.NewGuid(), example.Channel, true, true, new DateOnly(2026, 10, 10), new DateOnly(2026, 10, 12), 100m, "EUR", example.Gross,
+                example.TouristTax, example.PostedFromPayments, false, true, example.AccountHolder, false, true, treatment);
+            Assert.Equal(example.Reason, PayoutFactRules.EvaluateStay(stay, settings).Reason);
+        }
     }
 
     /// <summary>

@@ -10,7 +10,8 @@ namespace Casazen.Infrastructure.Services;
 /// <summary>
 /// The F24 data of the withholding (ADR-018 amended, E06/F05/US02/T03, AC-NF110-4, AC-NF110-5): built only from the applicable withholding evidence of
 /// the confirmed payouts paid in the month (and their reversals), with the tax code and the rule versions of that evidence. No rate or tax code is
-/// written here, and no statement operation creates withholding any more (the decision is taken at the payout, <see cref="OwnerPayoutService"/>).
+/// written here, and no statement operation creates withholding any more (the decision is taken at the payout, <see cref="OwnerPayoutService"/>). The data of a
+/// month is exported with its breakdown per owner and payout (<see cref="GetF24DataAsync"/>, E18/F01/US01/T02): the same evidence, the same euro.
 /// </summary>
 public sealed class WithholdingService(AppDbContext db, TimeProvider time) : IWithholdingService
 {
@@ -71,11 +72,75 @@ public sealed class WithholdingService(AppDbContext db, TimeProvider time) : IWi
         return record;
     }
 
-    /// <summary>The F24 due date: the 16th of the month after the reference month (ADR-018-R8).</summary>
-    private static DateTime CalculateDueDate(int month, int year)
+    /// <inheritdoc />
+    /// <remarks>
+    /// The lines are the evidence of the month grouped by tax code (a month with two codes has two lines, never one merged); the breakdown is one row for each
+    /// decision and each reversal, with its owner and its payout, by owner, then day and time. Every query names the org; the owner is named as the wire names it
+    /// (the legal name, else the first and last name). Nothing is written.
+    /// </remarks>
+    public async Task<F24MonthData> GetF24DataAsync(Guid orgId, int year, int month, CancellationToken cancellationToken = default)
     {
-        var nextMonth = month == 12 ? 1 : month + 1;
-        var nextYear = month == 12 ? year + 1 : year;
-        return new DateTime(nextYear, nextMonth, 16, 0, 0, 0, DateTimeKind.Utc);
+        if (year is < 2000 or > 2100 || month is < 1 or > 12)
+            throw new DomainRuleException(OwnerAccountingErrors.PeriodInvalid, "OwnerPeriodInvalid");
+
+        var evidence = await OwnerPayoutService.F24EvidenceQuery(db, orgId)
+            .Where(e => e.PeriodYear == year && e.PeriodMonth == month)
+            .ToListAsync(cancellationToken);
+        if (evidence.Count == 0)
+            throw new DomainRuleException(OwnerPayoutErrors.NoObligations, "TaxNoObligations");
+
+        var payoutIds = evidence.Select(e => e.OwnerPayoutId).Distinct().ToList();
+        var payouts = await db.OwnerPayouts.AsNoTracking()
+            .Where(p => p.OrgId == orgId && payoutIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Reference, p.Currency, p.GrossAmount, p.WithholdingAmount, p.NetAmount })
+            .ToDictionaryAsync(p => p.Id, cancellationToken);
+        var ownerIds = evidence.Select(e => e.PropertyOwnerId).Distinct().ToList();
+        var owners = await db.PropertyOwners.AsNoTracking()
+            .Where(o => o.OrgId == orgId && ownerIds.Contains(o.Id))
+            .Select(o => new { o.Id, o.FirstName, o.LastName, o.LegalName })
+            .ToDictionaryAsync(o => o.Id, o => string.IsNullOrWhiteSpace(o.LegalName) ? $"{o.FirstName} {o.LastName}".Trim() : o.LegalName, cancellationToken);
+
+        var due = F24Dates.DueDateOf(year, month);
+        var lines = evidence
+            .GroupBy(e => e.TaxCode ?? string.Empty, StringComparer.Ordinal)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g => new F24TaxLine(g.Key, month, year, g.Sum(e => e.Amount ?? 0m), due, g.Count()))
+            .ToList();
+
+        var breakdown = evidence
+            .Select(e =>
+            {
+                // A reversal carries the opposite amounts of its decision, and so do the figures of its payout: every column adds up to what the month is.
+                var sign = e.ReversesEvidenceId is null ? 1m : -1m;
+                var payout = payouts.GetValueOrDefault(e.OwnerPayoutId);
+                return new F24PayoutLine(
+                    e.PropertyOwnerId,
+                    owners.GetValueOrDefault(e.PropertyOwnerId) ?? string.Empty,
+                    e.OwnerPayoutId,
+                    payout?.Reference,
+                    e.PaidOn,
+                    e.ReversesEvidenceId is not null,
+                    e.TaxCode ?? string.Empty,
+                    e.RuleCode + "@" + e.RuleVersion,
+                    e.GrossBase ?? 0m,
+                    e.RatePercent,
+                    e.Amount ?? 0m,
+                    payout?.Currency ?? string.Empty,
+                    sign * (payout?.GrossAmount ?? 0m),
+                    sign * (payout?.WithholdingAmount ?? 0m),
+                    sign * (payout?.NetAmount ?? 0m));
+            })
+            .OrderBy(l => l.OwnerName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(l => l.OwnerId)
+            .ThenBy(l => l.PaidOn)
+            .ThenBy(l => l.PayoutId)
+            .ThenBy(l => l.Reversal)
+            .ToList();
+
+        return new F24MonthData(year, month, lines, breakdown);
     }
+
+    /// <summary>The F24 due date: the 16th of the month after the reference month (ADR-018-R8).</summary>
+    private static DateTime CalculateDueDate(int month, int year) =>
+        F24Dates.DueDateOf(year, month).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 }

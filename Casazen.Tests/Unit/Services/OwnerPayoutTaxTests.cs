@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Multitenancy;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -14,7 +15,8 @@ namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
 /// E06/F05/US02/T03 (NF-110, AC-NF110-4, AC-NF110-5, AC-NF110-7, ADR-018 amended): only a confirmed payout decides a withholding, on the approved rule in
-/// force on the payment day and the facts of the payout; a retry never decides twice; a generated tax file is never a filed one.
+/// force on the payment day and the facts of the payout; a retry never decides twice; a generated tax file is never a filed one. Since E18/F01/US01/T01 the facts
+/// are the ledger's (<see cref="OwnerPayoutFacts"/>): the command names the version, the day and, at most, an amount below the balance.
 /// </summary>
 public class OwnerPayoutTaxTests
 {
@@ -25,25 +27,23 @@ public class OwnerPayoutTaxTests
     {
         var world = await PayoutWorld.CreateAsync();
         var italian = await world.OwnerAsync("IT", "EUR", ItalianRule("1", 21m));
-        var version = await world.ApprovedVersionAsync(italian, 1000m);
+
+        // A Booking.com stay the portal collected and pays to the owner, who holds the account (V1, the default): the agency neither collected nor intervened.
+        var version = await world.ApprovedVersionAsync(italian, 1000m, BookingSource.BookingCom);
 
         // No statement operation decided anything: the post, the version, its approval and publication made no evidence.
         await world.Accounting.PublishVersionAsync(OrgId, version, null);
         Assert.Empty(await world.Db.TaxObligationEvidence.ToListAsync());
 
-        // An unknown fact the rule needs blocks the payout: nothing is guessed, nothing is written.
-        var unknown = await Assert.ThrowsAsync<DomainRuleException>(() => world.Payouts.ConfirmPayoutAsync(OrgId, Payout(italian, version, "k-unknown") with { AgencyCollected = null }, null));
-        Assert.Equal((OwnerPayoutErrors.TaxApplicabilityUnresolved, "agencyCollected"), (unknown.Code, unknown.Extensions["field"]));
-        Assert.Empty(await world.Db.OwnerPayouts.ToListAsync());
-
-        // The agency neither collected nor intervened: an explicit not-applicable decision, no amount, no tax code, the whole gross paid.
-        var result = await world.Payouts.ConfirmPayoutAsync(OrgId, Payout(italian, version, "k-direct") with { AgencyCollected = false }, null);
+        // An explicit not-applicable decision, no amount, no tax code, the gross paid whole; the facts say why.
+        var result = await world.Payouts.ConfirmPayoutAsync(OrgId, Payout(italian, version, "k-direct"), null);
         Assert.Equal((0m, 800m), (result.Payout.WithholdingAmount, result.Payout.NetAmount));
         var decision = Assert.Single(result.Evidence);
         Assert.Equal((TaxDecision.NotApplicable, OwnerWithholdingRules.NoCollectionOrIntervention), (decision.Decision, decision.ReasonCode));
         Assert.Null(decision.Amount);
         Assert.Null(decision.TaxCode);
         Assert.Equal(("IT", "TEST-IT", "1"), (decision.Jurisdiction, decision.RuleCode, decision.RuleVersion));
+        Assert.Contains("\"collection\":\"portal_pays_owner\"", decision.FactsJson, StringComparison.Ordinal);
         var none = await Assert.ThrowsAsync<DomainRuleException>(() => world.Withholding.GenerateF24Async(OrgId, 11, 2026));
         Assert.Equal(OwnerPayoutErrors.NoObligations, none.Code);
 
@@ -61,20 +61,16 @@ public class OwnerPayoutTaxTests
     {
         var world = await PayoutWorld.CreateAsync();
         var owner = await world.OwnerAsync("IT", "EUR", ItalianRule("1", 21m), validTo: new DateOnly(2026, 10, 31));
-        var version = await world.ApprovedVersionAsync(owner, 1000m);
+        var version = await world.ApprovedVersionAsync(owner, 999.95m);
 
         // From November the owner follows version 2 of the rule (26%): the payout of the October statement, paid on 5 November, follows it.
         var next = await world.Fiscal.CreatePolicyAsync(OrgId, Policy("IT", "2", ItalianRule("2", 26m), new DateOnly(2026, 11, 1), null), null);
         await world.Fiscal.ApprovePolicyAsync(OrgId, next.Id, "TEST Commercialista", null);
         await world.Fiscal.SaveProfileAsync(OrgId, owner, Profile("IT", "EUR", next.Id, new DateOnly(2026, 11, 1)), null);
 
-        var command = Payout(owner, version, "k-applicable") with
-        {
-            Components = new Dictionary<string, decimal> { ["rent"] = 900.05m, ["cleaning"] = 99.90m, ["deposit"] = 200m },
-        };
-        var result = await world.Payouts.ConfirmPayoutAsync(OrgId, command, "auth0|finance");
+        var result = await world.Payouts.ConfirmPayoutAsync(OrgId, Payout(owner, version, "k-applicable"), "auth0|finance");
 
-        // The base is the components the rule names (the deposit is not one), the rate and rounding those of the rule in force on the payment day.
+        // The base is the gross of the stay the ledger holds, the rate and rounding those of the rule in force on the payment day.
         var decision = Assert.Single(result.Evidence);
         Assert.Equal(TaxDecision.Applicable, decision.Decision);
         Assert.Equal((999.95m, 26m, "half_up", 259.99m, "1919"), (decision.GrossBase!.Value, decision.RatePercent!.Value, decision.Rounding, decision.Amount!.Value, decision.TaxCode));
@@ -170,8 +166,10 @@ public class OwnerPayoutTaxTests
         var world = await PayoutWorld.CreateAsync();
         var owner = await world.OwnerAsync("IT", "EUR", ItalianRule("1", 21m));
         var version = await world.ApprovedVersionAsync(owner, 1000m);
+        var other = await world.OwnerAsync("IT", "EUR", ItalianRule("1", 21m));
+        var otherVersion = await world.ApprovedVersionAsync(other, 1000m);
         await world.Payouts.ConfirmPayoutAsync(OrgId, Payout(owner, version, "k-nov"), null);
-        await world.Payouts.ConfirmPayoutAsync(OrgId, Payout(owner, version, "k-dec") with { PaidOn = new DateOnly(2026, 12, 20) }, null);
+        await world.Payouts.ConfirmPayoutAsync(OrgId, Payout(other, otherVersion, "k-dec") with { PaidOn = new DateOnly(2026, 12, 20) }, null);
 
         Assert.Equal(new DateTime(2026, 12, 16, 0, 0, 0, DateTimeKind.Utc), (await world.Withholding.GenerateF24Async(OrgId, 11, 2026)).DueDate);
         Assert.Equal(new DateTime(2027, 1, 16, 0, 0, 0, DateTimeKind.Utc), (await world.Withholding.GenerateF24Async(OrgId, 12, 2026)).DueDate);
@@ -203,7 +201,8 @@ public class OwnerPayoutTaxTests
         Assert.Equal(OwnerPayoutErrors.NoObligations, (await Assert.ThrowsAsync<DomainRuleException>(() => world.Withholding.GenerateF24Async(OrgId, 11, 2026))).Code);
         Assert.Empty(await world.Db.F24Records.ToListAsync());
 
-        // The withholding is declared in euro: a payout in another currency that the rule makes applicable is not guessed into one.
+        // The withholding is declared in euro and kept from a payout in francs at the agency's rate of the payout day (⚖ R6): without a rate of that day (the one of
+        // 10 October is older than the week before the payout of 5 November) it is never guessed.
         var franc = await world.OwnerAsync("IT", "CHF", ItalianRule("1", 21m));
         world.Db.OwnerFxRates.Add(new OwnerFxRate
         {
@@ -216,8 +215,9 @@ public class OwnerPayoutTaxTests
         });
         await world.Db.SaveChangesAsync();
         var francVersion = await world.ApprovedVersionAsync(franc, 1000m);
-        var noEuro = await Assert.ThrowsAsync<DomainRuleException>(() => world.Payouts.ConfirmPayoutAsync(OrgId, Payout(franc, francVersion, "k-chf") with { Currency = "CHF" }, null));
-        Assert.Equal((OwnerPayoutErrors.TaxApplicabilityUnresolved, "currency"), (noEuro.Code, noEuro.Extensions["field"]));
+        var noRate = await Assert.ThrowsAsync<DomainRuleException>(() => world.Payouts.ConfirmPayoutAsync(OrgId, Payout(franc, francVersion, "k-chf") with { Currency = "CHF" }, null));
+        Assert.Equal((OwnerPayoutErrors.TaxApplicabilityUnresolved, "fxRate"), (noRate.Code, noRate.Extensions["field"]));
+        Assert.Empty(await world.Db.OwnerPayouts.Where(p => p.Currency == "CHF").ToListAsync());
     }
 
     /// <summary>
@@ -237,8 +237,8 @@ public class OwnerPayoutTaxTests
         await world.Accounting.PostPeriodAsync(OrgId, 2026, 11, null);
         Assert.Equal(-1000m, await world.Db.OwnerLedgerEntries.Where(e => e.SourceType == OwnerLedgerSourceType.WireBatch).SumAsync(e => e.Amount));
 
-        // The payout recorded for the same money settles the month: the wire line is reversed, and the account is debited once.
-        await world.Payouts.ConfirmPayoutAsync(OrgId, Payout(owner, version, "k-wire", 1000m) with { AgencyCollected = false }, null);
+        // The payout recorded for the same money settles the month: the wire line is reversed, and the account is debited once (the net and the withholding).
+        await world.Payouts.ConfirmPayoutAsync(OrgId, Payout(owner, version, "k-wire", 1000m), null);
         world.Clock.Advance(TimeSpan.FromMinutes(1));
         var posted = await world.Accounting.PostPeriodAsync(OrgId, 2026, 11, null);
         Assert.Equal(1, posted.Reversed);
@@ -289,7 +289,7 @@ public class OwnerPayoutTaxTests
         WithholdingTaxCode = "1919",
         RequiresAgencyCollection = true,
         RequiresQualifyingShortLet = true,
-        GrossBaseComponents = ["rent", "cleaning"],
+        GrossBaseComponents = [PayoutFactRules.StayGross],
         Rounding = version == "2" ? "half_up" : "half_even",
         RetentionYears = 10,
     };
@@ -321,7 +321,7 @@ public class OwnerPayoutTaxTests
         AccountingPolicyId = policy,
     };
 
-    /// <summary>A payout of 800 of the October version, paid on 5 November, the agency having collected the rent of a qualifying short let.</summary>
+    /// <summary>A payout of 800 (of a balance of 1000) of the October version, paid on 5 November: the facts are the ledger's.</summary>
     private static OwnerPayoutCommand Payout(Guid owner, Guid version, string key, decimal gross = 800m) => new()
     {
         IdempotencyKey = key,
@@ -331,9 +331,6 @@ public class OwnerPayoutTaxTests
         Currency = "EUR",
         PaidOn = new DateOnly(2026, 11, 5),
         Reference = "TEST-BONIFICO",
-        AgencyCollected = true,
-        QualifyingShortLet = true,
-        Components = new Dictionary<string, decimal> { ["rent"] = 900m, ["cleaning"] = 100m },
     };
 
     private sealed class PayoutWorld
@@ -344,7 +341,12 @@ public class OwnerPayoutTaxTests
             Clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 12, 10, 0, 0, TimeSpan.Zero));
             Fiscal = new OwnerFiscalProfileService(db, Clock, NullLogger<OwnerFiscalProfileService>.Instance);
             Accounting = new OwnerAccountingService(db, Fiscal, Clock, NullLogger<OwnerAccountingService>.Instance);
-            Payouts = new OwnerPayoutService(db, Fiscal, Clock, NullLogger<OwnerPayoutService>.Instance);
+            var fiscalRules = Microsoft.Extensions.Options.Options.Create(new ShortStayFiscalOptions());
+            var checks = new OwnerTaxChecks(
+                db, new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, Clock), new TestFeatureFlags(), fiscalRules, Clock, NullLogger<OwnerTaxChecks>.Instance);
+            var facts = new OwnerPayoutFacts(
+                db, checks, new PortalAccountHolderResolver(db), fiscalRules, Microsoft.Extensions.Options.Options.Create(new OwnerAccountingOptions()));
+            Payouts = new OwnerPayoutService(db, Fiscal, Clock, NullLogger<OwnerPayoutService>.Instance, facts);
             Withholding = new WithholdingService(db, Clock);
         }
 
@@ -412,9 +414,13 @@ public class OwnerPayoutTaxTests
             await Db.SaveChangesAsync();
         }
 
-        /// <summary>The approved October version of an owner with one property of its own and one payment.</summary>
-        public async Task<Guid> ApprovedVersionAsync(Guid owner, decimal paid)
+        /// <summary>
+        /// The approved October version of an owner with one property of its own (in Italy) and one stay of 2 nights: paid by a payment the agency recorded, or, for a
+        /// portal <paramref name="channel"/>, collected by the portal and posted from the booking (the owner holds the account).
+        /// </summary>
+        public async Task<Guid> ApprovedVersionAsync(Guid owner, decimal paid, BookingSource channel = BookingSource.Manual)
         {
+            var portal = FiscalCopy.IsOtaBookingSource(channel);
             var property = new Property { OrgId = OrgId, OwnerId = "auth0|agency", Name = "TEST Casa", Address = "Via 1", City = "Roma", Currency = "EUR" };
             var guest = new Guest { OrgId = OrgId, FirstName = "Test", LastName = "Guest", Email = $"{Guid.NewGuid():N}@example.com" };
             var booking = new Booking
@@ -426,6 +432,11 @@ public class OwnerPayoutTaxTests
                 CheckOutDate = new DateTime(2026, 10, 12),
                 NumberOfGuests = 2,
                 Status = BookingStatus.CheckedOut,
+                Source = channel,
+                BasePrice = portal ? paid : 0m,
+                TotalPrice = portal ? paid : 0m,
+                OtaCommission = portal ? 0m : null,
+                OtaCompanyCollect = portal ? true : null,
             };
             Db.Properties.Add(property);
             Db.PropertyOwnerships.Add(new PropertyOwnership
@@ -438,16 +449,19 @@ public class OwnerPayoutTaxTests
             });
             Db.Guests.Add(guest);
             Db.Bookings.Add(booking);
-            Db.Payments.Add(new Payment
+            if (!portal)
             {
-                OrgId = OrgId,
-                BookingId = booking.Id,
-                Amount = paid,
-                Status = PaymentStatus.Completed,
-                TransactionId = "TEST-" + Guid.NewGuid().ToString("N"),
-                Description = "TEST",
-                ProcessedAt = new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc),
-            });
+                Db.Payments.Add(new Payment
+                {
+                    OrgId = OrgId,
+                    BookingId = booking.Id,
+                    Amount = paid,
+                    Status = PaymentStatus.Completed,
+                    TransactionId = "TEST-" + Guid.NewGuid().ToString("N"),
+                    Description = "TEST",
+                    ProcessedAt = new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc),
+                });
+            }
 
             // A stay of an owner without a mandate holds its version back (E13/F01/US01/T02): the owner has one, of zero (the commission is not the point).
             if (!await Db.OwnerMandates.AnyAsync(m => m.PropertyOwnerId == owner))

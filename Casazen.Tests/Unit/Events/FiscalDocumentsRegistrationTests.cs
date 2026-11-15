@@ -105,6 +105,9 @@ public class FiscalDocumentsRegistrationTests
             (typeof(IOwnerStatementDocuments), typeof(OwnerStatementDocuments), ServiceLifetime.Scoped),
             (typeof(IOwnerPayoutService), typeof(OwnerPayoutService), ServiceLifetime.Scoped),
 
+            // The facts of a payout read from the owner ledger (E18/F01/US01/T01).
+            (typeof(OwnerPayoutFacts), typeof(OwnerPayoutFacts), ServiceLifetime.Scoped),
+
             // The mandates of the owners, their billing address and the channel commission rules (E13/F01/US01/T01).
             (typeof(IOwnerMandateService), typeof(OwnerMandateService), ServiceLifetime.Scoped),
 

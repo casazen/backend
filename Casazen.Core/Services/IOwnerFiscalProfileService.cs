@@ -24,12 +24,27 @@ public interface IOwnerFiscalProfileService
 
     /// <summary>
     /// Records the qualified accountant's approval of a rule set (once: an approved rule set never changes; 409 <c>owner_policy_already_approved</c>).
-    /// 422 <c>owner_policy_invalid</c> without the approver's name.
+    /// 422 <c>owner_policy_invalid</c> without the approver's name. A rule set whose source is not pinned yet (the seeded draft, E18/F01/US01/T01) is approved only
+    /// with the SHA-256 of the document the accountant checked (<paramref name="sourceSha256"/>, 422 <c>owner_policy_invalid</c> with <c>sourceSha256</c> without
+    /// it), which pins it; for a pinned one a hash that differs is refused the same way.
     /// </summary>
-    Task<OwnerAccountingPolicy> ApprovePolicyAsync(Guid orgId, Guid policyId, string approverName, string? userId, CancellationToken ct = default);
+    Task<OwnerAccountingPolicy> ApprovePolicyAsync(
+        Guid orgId,
+        Guid policyId,
+        string approverName,
+        string? userId,
+        string? sourceSha256 = null,
+        CancellationToken ct = default);
 
     /// <summary>The rule sets of the org, the newest first.</summary>
     Task<IReadOnlyList<OwnerAccountingPolicy>> ListPoliciesAsync(Guid orgId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Seeds the Italian short-let withholding rule of the configuration (<c>OwnerAccounting:ItalianShortLetRule</c>, ⚖ I9 and R5) as a rule set of the org that
+    /// is <b>not approved</b> (E18/F01/US01/T01): never used until the accountant approves it. Once per org and version (an org that has the rule code and version,
+    /// approved or not, gets nothing); <c>null</c> when nothing was added or the section is incomplete.
+    /// </summary>
+    Task<OwnerAccountingPolicy?> EnsureItalianShortLetDraftAsync(Guid orgId, CancellationToken ct = default);
 
     /// <summary>
     /// A new profile of the owner from <see cref="OwnerFiscalProfileCommand.ValidFrom"/>: the profile in force before it ends the day before; a profile that
@@ -118,6 +133,13 @@ public sealed record OwnerAccountingRuleParameters
     /// <summary>The years the evidence is kept (Italy at least ten, Swiss immovable-property evidence up to twenty).</summary>
     public int? RetentionYears { get; init; }
 
+    /// <summary>
+    /// The portals that withhold for an Italian private host themselves (⚖ R5, E18/F01/US01/T01: Airbnb), by the name of their <see cref="BookingSource"/>: the
+    /// payout never withholds again on their qualifying stays. <c>null</c> (a rule set that does not say, every one approved before) takes the configured default
+    /// <c>OwnerAccounting:ItalianShortLetRule:PortalsWithholding</c>; an empty list says that no portal does.
+    /// </summary>
+    public IReadOnlyList<string>? PortalsWithholding { get; init; }
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
 
     public string ToJson() => JsonSerializer.Serialize(this, Json);
@@ -147,6 +169,7 @@ public sealed record OwnerAccountingRuleParameters
             true when GrossBaseComponents.Count == 0 => "grossBaseComponents",
             _ when Rounding is not ("half_up" or "half_even") => "rounding",
             _ when RetentionYears is not (> 0 and <= 50) => "retentionYears",
+            _ when PortalsWithholding is { } portals && PayoutFactRules.PortalsOf(portals).Count != portals.Count => "portalsWithholding",
             _ => null,
         };
 }

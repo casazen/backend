@@ -1,9 +1,12 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
+using Casazen.Web.DTOs.Fiscal;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -16,7 +19,8 @@ namespace Casazen.Web.Controllers;
 /// annual Certificazione Unica data, their filing states (generated is never filed: submitted only through a controlled manual handoff, then accepted
 /// with the receipt or rejected) and the reconciliation of the obligations to the F24 and to the annual data. No rate or tax code is written here: they
 /// come from the approved rule the evidence recorded. Every action needs <c>agency.withholding.manage</c> (DEB-01); the filing states also
-/// <c>agency.owner.financial.manage</c>.
+/// <c>agency.owner.financial.manage</c>. Like the rest of the owner accounting every action needs an org-wide reach (E18/F01/US01/T02): the withholding of
+/// every owner of the org is read here, so a caller restricted to some properties gets 403 before anything is read.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -27,6 +31,8 @@ public class WithholdingController(
     IOwnerPayoutService payouts,
     IStatementExportService statementExport,
     IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
+    IDocumentTexts texts,
     ILogger<WithholdingController> logger) : ControllerBase
 {
     /// <summary>The applicable withholding evidence of a month (the payouts paid in it and their reversals), per owner.</summary>
@@ -38,20 +44,18 @@ public class WithholdingController(
         [FromQuery] int month,
         [FromQuery] int year)
     {
-        logger.LogInformation("Retrieving withholding summary for {Year}-{Month}", year, month);
-
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null)
+        if (await OrgAsync() is not { } orgId)
             return Forbid();
 
+        logger.LogInformation("Retrieving withholding summary for {Year}-{Month}", year, month);
         var evidence = await db.TaxObligationEvidence
             .AsNoTracking()
-            .Where(e => e.OrgId == orgId.Value && e.Decision == TaxDecision.Applicable && e.PeriodYear == year && e.PeriodMonth == month)
+            .Where(e => e.OrgId == orgId && e.Decision == TaxDecision.Applicable && e.PeriodYear == year && e.PeriodMonth == month)
             .ToListAsync(HttpContext.RequestAborted);
         var ownerIds = evidence.Select(e => e.PropertyOwnerId).Distinct().ToList();
         var names = await db.PropertyOwners
             .AsNoTracking()
-            .Where(o => o.OrgId == orgId.Value && ownerIds.Contains(o.Id))
+            .Where(o => o.OrgId == orgId && ownerIds.Contains(o.Id))
             .ToDictionaryAsync(o => o.Id, o => $"{o.FirstName} {o.LastName}", HttpContext.RequestAborted);
 
         var ownerSummaries = evidence
@@ -90,16 +94,14 @@ public class WithholdingController(
         [FromQuery] int month,
         [FromQuery] int year)
     {
-        logger.LogInformation("Retrieving F24 for {Year}-{Month}", year, month);
-
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null)
+        if (await OrgAsync() is not { } orgId)
             return Forbid();
 
+        logger.LogInformation("Retrieving F24 for {Year}-{Month}", year, month);
         var f24 = await db.F24Records
-            .Where(f => f.OrgId == orgId.Value && f.ReferenceMonth == month && f.ReferenceYear == year)
+            .Where(f => f.OrgId == orgId && f.ReferenceMonth == month && f.ReferenceYear == year)
             .FirstOrDefaultAsync(HttpContext.RequestAborted)
-            ?? await withholdingService.GenerateF24Async(orgId.Value, month, year, HttpContext.RequestAborted);
+            ?? await withholdingService.GenerateF24Async(orgId, month, year, HttpContext.RequestAborted);
         return Ok(F24RecordDto.From(f24));
     }
 
@@ -110,10 +112,9 @@ public class WithholdingController(
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<F24RecordDto>> RegenerateF24([FromQuery] int month, [FromQuery] int year)
     {
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null)
+        if (await OrgAsync() is not { } orgId)
             return Forbid();
-        return Ok(F24RecordDto.From(await withholdingService.GenerateF24Async(orgId.Value, month, year, HttpContext.RequestAborted)));
+        return Ok(F24RecordDto.From(await withholdingService.GenerateF24Async(orgId, month, year, HttpContext.RequestAborted)));
     }
 
     /// <summary>
@@ -128,14 +129,45 @@ public class WithholdingController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult> GetF24Pdf([FromQuery] int month, [FromQuery] int year)
     {
-        logger.LogInformation("Exporting the F24 of {Year}-{Month} as PDF", year, month);
-
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null)
+        if (await OrgAsync() is not { } orgId)
             return Forbid();
 
-        var file = await statementExport.ExportF24Async(orgId.Value, month, year, DocumentLanguages.Current, HttpContext.RequestAborted);
+        logger.LogInformation("Exporting the F24 of {Year}-{Month} as PDF", year, month);
+        var file = await statementExport.ExportF24Async(orgId, month, year, DocumentLanguages.Current, HttpContext.RequestAborted);
         return File(file.Content, file.ContentType, file.FileName);
+    }
+
+    /// <summary>
+    /// The F24 data of a month as a CSV or an Excel file (E18/F01/US01/T02, NF-117), next to the PDF of the stored record: one line per tax code and period with the
+    /// amount in euro and the due date (the 16th of the next month), then the breakdown per owner and payout (a reversal is a row with the opposite amounts), from the
+    /// applicable withholding evidence of the payouts paid in the month, of an Italian rule only. The data to pay with: never the form filed and never a telematic file
+    /// (payment and filing stay with the agency or its accountant). It neither generates nor changes the F24 record. <c>format</c> is <c>csv</c> or <c>xlsx</c> (400
+    /// <c>fiscal_export_invalid_format</c>); 422 <c>tax_no_obligations</c> for a month without any decision, <c>owner_period_invalid</c>. <c>Cache-Control: no-store</c>.
+    /// </summary>
+    /// <param name="year">Reference year (e.g., 2026).</param>
+    /// <param name="month">Reference month (1-12).</param>
+    /// <param name="format"><c>csv</c> or <c>xlsx</c>.</param>
+    [HttpGet("f24/{year:int}/{month:int}/export")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> ExportF24(int year, int month, [FromQuery] string? format = null)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        if (FiscalDocumentExportFormats.Parse(format) is not { } fileFormat)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, FiscalDocumentExportsController.InvalidFormatCode, "FiscalExportInvalidFormat");
+
+        var data = await withholdingService.GetF24DataAsync(orgId, year, month, HttpContext.RequestAborted);
+        var language = DocumentLanguages.Current;
+        var content = fileFormat == FiscalDocumentExportFormat.Xlsx ? F24Documents.Xlsx(data, texts, language) : F24Documents.Csv(data, texts, language);
+        logger.LogInformation(
+            "F24 data of {Year}-{Month} exported as {Format}: {Lines} tax codes, {Rows} rows of the breakdown", year, month, fileFormat, data.Lines.Count, data.Breakdown.Count);
+        Response.Headers.CacheControl = "no-store";
+        return File(
+            content,
+            FiscalDocumentExportFormats.ContentTypeOf(fileFormat),
+            F24Documents.ExportFileName(year, month, FiscalDocumentExportFormats.ExtensionOf(fileFormat)));
     }
 
     /// <summary>
@@ -151,10 +183,9 @@ public class WithholdingController(
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<F24RecordDto>> SetF24FilingState(Guid f24Id, [FromBody] TaxFilingCommand command)
     {
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null)
+        if (await OrgAsync() is not { } orgId)
             return Forbid();
-        var record = await payouts.SetF24FilingStateAsync(orgId.Value, f24Id, command, User.GetUserId(), HttpContext.RequestAborted);
+        var record = await payouts.SetF24FilingStateAsync(orgId, f24Id, command, User.GetUserId(), HttpContext.RequestAborted);
         return Ok(F24RecordDto.From(record));
     }
 
@@ -165,14 +196,12 @@ public class WithholdingController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult> Reconcile([FromBody] ReconcileF24Request request)
     {
-        logger.LogInformation("Reconciling F24 {F24Id}", request.F24Id);
-
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null)
+        if (await OrgAsync() is not { } orgId)
             return Forbid();
 
+        logger.LogInformation("Reconciling F24 {F24Id}", request.F24Id);
         var f24 = await db.F24Records
-            .Where(f => f.Id == request.F24Id && f.OrgId == orgId.Value)
+            .Where(f => f.Id == request.F24Id && f.OrgId == orgId)
             .FirstOrDefaultAsync(HttpContext.RequestAborted);
 
         if (f24 is null)
@@ -195,10 +224,9 @@ public class WithholdingController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<TaxReportingDatasetDto>> GetAnnual(int year)
     {
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null)
+        if (await OrgAsync() is not { } orgId)
             return Forbid();
-        var dataset = await payouts.GetAnnualDatasetAsync(orgId.Value, year, HttpContext.RequestAborted);
+        var dataset = await payouts.GetAnnualDatasetAsync(orgId, year, HttpContext.RequestAborted);
         return dataset is null ? this.ApiProblem(StatusCodes.Status404NotFound, OwnerPayoutErrors.DatasetNotFound, "TaxDatasetNotFound") : Ok(TaxReportingDatasetDto.From(dataset));
     }
 
@@ -209,10 +237,9 @@ public class WithholdingController(
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<TaxReportingDatasetDto>> GenerateAnnual(int year)
     {
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null)
+        if (await OrgAsync() is not { } orgId)
             return Forbid();
-        var dataset = await payouts.GenerateAnnualDatasetAsync(orgId.Value, year, User.GetUserId(), HttpContext.RequestAborted);
+        var dataset = await payouts.GenerateAnnualDatasetAsync(orgId, year, User.GetUserId(), HttpContext.RequestAborted);
         return Ok(TaxReportingDatasetDto.From(dataset));
     }
 
@@ -225,10 +252,9 @@ public class WithholdingController(
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<TaxReportingDatasetDto>> SetAnnualFilingState(Guid datasetId, [FromBody] TaxFilingCommand command)
     {
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null)
+        if (await OrgAsync() is not { } orgId)
             return Forbid();
-        var dataset = await payouts.SetDatasetFilingStateAsync(orgId.Value, datasetId, command, User.GetUserId(), HttpContext.RequestAborted);
+        var dataset = await payouts.SetDatasetFilingStateAsync(orgId, datasetId, command, User.GetUserId(), HttpContext.RequestAborted);
         return Ok(TaxReportingDatasetDto.From(dataset));
     }
 
@@ -237,10 +263,20 @@ public class WithholdingController(
     [ProducesResponseType(typeof(TaxReconciliation), StatusCodes.Status200OK)]
     public async Task<ActionResult<TaxReconciliation>> Reconciliation(int year)
     {
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null)
+        if (await OrgAsync() is not { } orgId)
             return Forbid();
-        return Ok(await payouts.ReconcileAsync(orgId.Value, year, HttpContext.RequestAborted));
+        return Ok(await payouts.ReconcileAsync(orgId, year, HttpContext.RequestAborted));
+    }
+
+    /// <summary>The org of the caller when it reaches the whole of it; <c>null</c> (403) for a caller restricted to some properties or without an org.</summary>
+    private async Task<Guid?> OrgAsync()
+    {
+        var ct = HttpContext.RequestAborted;
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
+        if (orgId is null)
+            return null;
+        var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct);
+        return scope is { IsOrgWide: true } ? orgId : null;
     }
 }
 

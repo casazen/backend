@@ -17,9 +17,10 @@ append-only owner ledger, the statement versions and the month-end close (T02), 
 
 - **Rule set** (`OwnerAccountingPolicy`, `api/owner-accounting/policies`): jurisdiction (`IT`, `CH`, `CH-TI`...), rule code, version, validity, the
   official source (an `https` address and the SHA-256 of the document) and the parameters (`OwnerAccountingRuleParameters`): `withholdingApplies`,
-  `withholdingRatePercent`, `withholdingTaxCode`, `requiresAgencyCollection`, `requiresQualifyingShortLet`, `grossBaseComponents`, `rounding`
-  (`half_up` or `half_even`), `retentionYears`. A rule set is used only once the approval of the qualified accountant is recorded
-  (`POST …/{id}/approve` with `approvedByName`); an approved rule set never changes: a change is a new version.
+  `withholdingRatePercent`, `withholdingTaxCode`, `requiresAgencyCollection`, `requiresQualifyingShortLet`, `grossBaseComponents` (`stay_gross` since
+  E18/F01/US01/T01), `rounding` (`half_up` or `half_even`), `retentionYears`, `portalsWithholding` (the portals that withhold themselves, ⚖ R5; omitted: the
+  configured default). A rule set is used only once the approval of the qualified accountant is recorded (`POST …/{id}/approve` with `approvedByName`, and
+  `sourceSha256` for the seeded draft whose source is not pinned); an approved rule set never changes: a change is a new version.
 - **Fiscal profile** (`OwnerFiscalProfile`, `api/owners/{id}/fiscal-profiles`): effective-dated (a new profile ends the one in force the day before;
   profiles never overlap), with the kind of the owner, legal name, tax residence, legal address, fiscal code, VAT number, foreign tax id, settlement
   currency, bank account, mandate role and dates, revenue recognition, expense and commission model, working capital rule, tax jurisdiction and the
@@ -457,26 +458,31 @@ agree. **Read only, no entity, and a difference blocks nothing: the agency decid
 
 - **Only a payout decides a withholding.** No statement operation (posting, version, approval, publication, export) creates withholding any more: the
   statement-based calculation and the 21% and `1919` literals are gone (ADR-018 amended). `POST api/owner-accounting/payouts`
-  (`agency.owner.financial.manage`) confirms a payout of an approved or published version with its facts: `idempotencyKey`, `grossAmount` (what is
-  settled, before the withholding), `currency` (the version's), `paidOn`, `agencyCollected`, `qualifyingShortLet`, `components` (gross by code) and
-  `stayIds`.
-- **Decision** (`OwnerWithholdingRules.Decide`, on the approved rule in force on `paidOn`): a rule without withholding (a Swiss rule) is
-  `not_applicable` / `rule_without_withholding`; otherwise a fact the rule needs that is unknown is 422 `tax_applicability_unresolved` with the `field`
-  (`agencyCollected`, `qualifyingShortLet`, `components.{code}`, `withholdingRatePercent`, `withholdingTaxCode`, `rounding`, `grossBaseComponents`);
-  no collection or intervention is `no_collection_or_intervention`, no qualifying short let `not_qualifying_short_let`; else `applicable`: the base is
-  the sum of the components the rule names, the amount `round(base × rate / 100)` with the rule's rounding, the tax code the rule's.
+  (`agency.owner.financial.manage`) confirms a payout of an approved or published version: `idempotencyKey`, `ownerId`, `statementVersionId`, `paidOn`,
+  `reference` and, optionally, `grossAmount` and `currency` (the version's). **Since E18/F01/US01/T01 the request carries no fact**: the gross, the
+  collection by the agency and the qualifying short lets are read from the ledger (see «Facts of the payout»); `agencyCollected`, `qualifyingShortLet`,
+  `components` and `stayIds` sent by an older client are ignored. `GET api/owner-accounting/payouts/preview?statementVersionId=&paidOn=` (`agency.statement.view`,
+  read only, `no-store`) answers what the confirmation would be: the facts, the `balance` still unpaid, the decision with the withholding in euro and in the currency
+  of the payout and the net, or the `blockingCode` (and `blockingField`) the confirmation would answer.
+- **Decision** (`PayoutFactRules.Decide` → `OwnerWithholdingRules.Decide`, on the approved rule in force on `paidOn`; a rule set that is not approved, the seeded draft
+  included, decides nothing: `owner_fiscal_policy_not_approved`): a rule without withholding (a Swiss rule) is `not_applicable` / `rule_without_withholding`; no stay
+  left to decide is `no_stays_to_decide`; every stay withheld by its portal `already_withheld_by_portal`; otherwise the stays in the base make the component
+  `stay_gross` and the decision is `applicable` (the amount `round(base × rate / 100)` with the rule's rounding, the tax code the rule's), or, with none in the base,
+  `no_collection_or_intervention` or `not_qualifying_short_let`. A fact the rule needs that cannot be read is 422 `tax_applicability_unresolved` with the `field`
+  (`stays`, `fxRate`, `components.{code}` for a rule that names another component, `withholdingRatePercent`, `withholdingTaxCode`, `rounding`,
+  `grossBaseComponents`).
 - **Evidence** (`TaxObligationEvidence`, append-only): decision, reason, jurisdiction, rule code and version, base, rate, rounding, amount and tax code
   (both `null` when not applicable: never a zero obligation), payment day and month, stays, facts, payout and statement version. A retry with the same
   key answers the same payout (no second decision); the same key with other facts is 409 `owner_payout_key_reused`. `…/payouts/{id}/reverse` (with
   `reason`) adds the opposite evidence row (in the month of the reversal) and reverses the ledger lines.
 - **Ledger**: a payout posts, in the month of `paidOn`, the net paid (`OwnerPayment`) and the withholding kept (`Withholding`), together the gross that
   settles what was owed. **A transfer is recorded once**: a month an owner settled with a confirmed payout is settled by it, so the wires of the same
-  statements are neither posted nor counted at the close (`PlanAsync`, `CloseAsync`); if the payout is reversed the wires count again. Known limit: the wire
-  batch generator still pays the `NetPayable` of the statement, which since E06/F05/US02/T03 no longer carries a withholding; until the wire amounts take the
-  net of the payout (E06/F05/US02/T04) the agency pays the net of the withholding by hand and records the payout, instead of marking the wire paid for the
-  same money. A payout in another currency than euro that the rule makes applicable is 422 `tax_applicability_unresolved` (`currency`): an F24 is in euro and
-  nothing is converted by guess. `…/payouts/{id}/reverse` posts the reversals in their month while it is open, else in the month of today, which must be
-  open too (409 `owner_period_closed`: a closed month is never posted).
+  statements are neither posted nor counted at the close (`PlanAsync`, `CloseAsync`); if the payout is reversed the wires count again. **The wire pays the
+  net**: the wire batch is made from the confirmed payouts and each transfer is the payout's `netAmount`, the gross less the withholding (E16/F01/US01/T01,
+  checked again by E18/F01/US01/T02 with a payout decided on the facts of the ledger: [`wire-transfers.md`](wire-transfers.md)), never the `NetPayable` of an old
+  statement. A payout in another currency than euro keeps the withholding decided in euro at the agency's rate of the payout day (⚖ R6, see «Facts of the
+  payout»); without a rate it is 422 `tax_applicability_unresolved` (`fxRate`): nothing is converted by guess. `…/payouts/{id}/reverse` posts the reversals in
+  their month while it is open, else in the month of today, which must be open too (409 `owner_period_closed`: a closed month is never posted).
 - **F24** (`api/withholding/f24`, `…/f24/generate`): built from the applicable evidence of the month (and its reversals) of an **Italian** rule only (`IT` or
   `IT-…`: the evidence of a Swiss or any other jurisdiction is never an F24 or a CU, whatever its parameters say), with the tax code and the rule versions of
   that evidence; 422 `tax_no_obligations` without any or when the obligations net to nothing (a payout and its reversal in the same month: a record only
@@ -486,7 +492,68 @@ agree. **Read only, no entity, and a difference blocks nothing: the agency decid
   `reviewed` → `submitted` (only with the `handoffReference` of a controlled manual handoff) → `accepted` (with the `receiptReference`) or `rejected`
   (with the `reason`) through `…/filing-state` (`agency.owner.financial.manage`). Nothing is ever sent by CasaZen. `api/withholding/reconciliation/{year}`
   compares the obligations of each month with its F24 and the year with the annual data. The F24 PDF prints the filing state and the receipt.
+- **F24 export** (E18/F01/US01/T02, NF-117): `GET api/withholding/f24/{year}/{month}/export?format=csv|xlsx` (`agency.withholding.manage`, `no-store`), next to the
+  PDF of the stored record, read only (it neither generates nor changes the record): a first table with **one line per tax code and period** (tax code, reference
+  month and year, amount in euro, due date on the 16th of the next month, the decisions that make it: `1919` while the approved rule says so; two codes in a month are
+  two lines, never merged), then the **breakdown per owner and payout** (owner, payout reference and day, decision or reversal, tax code, rule version, base, rate and
+  withholding in euro, then the currency, gross, withholding kept and net of the payout; a reversal has the opposite amounts), so the breakdown adds up to the lines.
+  Built from the same evidence as the F24 (`IWithholdingService.GetF24DataAsync`, an Italian rule only), in the language of the request; the Excel file has a sheet
+  `F24` and a sheet for the breakdown. 400 `fiscal_export_invalid_format`; 422 `tax_no_obligations` (no decision in the month), `owner_period_invalid`. The data to pay
+  and file with: **payment and filing stay with the agency or its accountant**, no telematic file is produced.
+- **Reach**: every action of `api/withholding` needs a caller of the whole org since E18/F01/US01/T02 (403 for a caller restricted to some properties, before anything is
+  read), like the rest of the owner accounting: the F24 data and the breakdown name every owner of the org. The approval of a rule set
+  (`POST api/owner-accounting/policies/{id}/approve`) too: an approved rule set decides the withholding of every owner whose profile points at it.
 - **Existing rows**: the F24 records created before get the state `generated`; the old `WithholdingLog` rows stay as history, nothing writes them.
+
+### Facts of the payout (E18/F01/US01/T01)
+
+Decisions of 2026-11-14 (`fatturazione/analisi-tecnica.md` §5, ⚖ I9, R5, R6 of the table §7): prudent defaults, configurable, to be confirmed by an accountant. No flag
+(the owner accounting is a module of the plan), no migration.
+
+- **The gross** is the balance the version still owes (`OwnerPayoutFacts.UnpaidBalanceAsync`): its closing balance less the gross of the confirmed payouts of the owner
+  in its currency that it does not count (paid in a later month or confirmed after its cut-off). Without `grossAmount` the payout pays it all; with one (a part, the
+  working capital the agency keeps) never more: 422 `owner_payout_exceeds_balance` with `balance` and `currency`, also when nothing is left. A retry with the same key
+  answers the same payout and never reads the facts again.
+- **The stays** are the owner's revenue lines of the ledger (`BookingRevenue` from a payment or from the booking) of the month of the version and of the months before,
+  posted up to its cut-off, that no confirmed payout of the owner decided yet, added up per stay: the owner's share of the gross **without the tourist tax** (the ledger
+  never posts it as revenue). A confirmed payout decided the lines it names in its facts (`decidedEntryIds`: the lines of its stays); a payout of before this release
+  (typed facts) the lines of its own version (its month and the months before, posted up to its cut-off). A line is decided once (the second payout of a version
+  decides `no_stays_to_decide`), the rest of a stay paid in two months (a deposit, then the balance) is decided with the payout that pays it, and a balance carried
+  from a month nobody paid is decided with the payout of the later version. A reversed payout decides nothing: its lines are open again and the next payout decides
+  them, also when another payout of the owner was confirmed in between (P1 of 600 withholds 210, P2 of 400 decides nothing, P1 reversed, P3 of 600 withholds the 210
+  again: never lost, never twice). A stay with nothing left to decide (cancelled, refunded) is none, and its open lines stay open (a reversal nets with the replacement
+  posted later). A stay whose booking cannot be read, or whose lines are in two currencies, is 422 `tax_applicability_unresolved` (`stays`). The regime of a stay is read
+  with its property also when the property was deleted after the check-out (fiscal history).
+- **Each stay** (`PayoutFactRules.EvaluateStay`, codes of `PayoutStayReasons`):
+  - *qualifying short let*: active (confirmed, checked in or out, no no-show: `AlloggiatiStatusRules`), in an Italian property, 1 to `ShortStayFiscal:MaxStayNights`
+    nights (30), of an owner who is a private natural person (the registry, `OwnerTaxRules.IsNaturalPrivate`, and the fiscal profile in force is not a legal entity),
+    not presumed a business and with no decision `NotShortLet` of a company tenant (`IOwnerTaxChecks.TreatmentOfStaysAsync`, E18/F01/US03, on the payout day);
+    otherwise `stay_not_active`, `property_not_italian`, `stay_length_out_of_range`, `owner_not_private`, `owner_presumed_business`, `company_tenant_not_short_let`;
+  - *collected or handled by the agency*: posted from its payments (`casazen_payment` with a Stripe payment of CasaZen, `recorded_payment` for a payment the agency
+    recorded), or a stay of a portal that collects and pays the agency because it holds the account (`portal_pays_agency`, V2, `IPortalAccountHolderResolver`); not
+    the agency's: `portal_pays_owner` (V1), `collected_at_property` (`OtaCompanyCollect = false`), `payment_not_recorded` (the agency's own site or a booking entered
+    by hand whose payment nobody recorded: record it before the payout);
+  - *already withheld by the portal* (never withheld again, AC-NF117-1): a collected payment of the stay carries the withholding of its portal
+    (`Payment.OtaWithholdingTax`, `payment`), or the stay qualifies and its portal is one that withholds for an Italian private host itself (`portal_rule`, ⚖ R5:
+    `portalsWithholding` of the rule set, else `OwnerAccounting:ItalianShortLetRule:PortalsWithholding`, committed `Airbnb`);
+  - *in the base*: what the rule requires (collection, qualifying contract) and not withheld; its `baseAmount` is in euro.
+- **Currency (⚖ R6).** The base, the withholding and the evidence are in euro (the F24). A stay in another currency is converted at the agency's rate of the payout day
+  (or of the 7 days before, `api/owner-accounting/fx-rates`); the withholding of a payout in francs is kept at the rate euro → francs of that day (half to even, as the
+  ledger converts), and the net is in francs: `Withholding` line in francs with the euro as its original amount and the rate. Without a rate: 422
+  `tax_applicability_unresolved` (`fxRate`).
+- **Evidence.** `factsJson` of the evidence (and `facts` of `TaxObligationEvidenceDto`) holds the facts with `source: "ledger"`: the gross, the balance, the currency and
+  the one of the withholding, every stay with its facts and its reason, the ledger lines it decided (`decidedEntryIds`), the components, the portals of ⚖ R5, the rate and the parameters of the rule. The evidence of
+  before this release has the facts that were typed (no `source`; `facts` is `null`). The co-owners (⚖ I6): each owner is paid its share, so the facts are its share;
+  the attribution of the Certificazione Unica to the signatory is E18/F01/US02's.
+- **The Italian rule as a draft (⚖ I9).** At every start (`OwnerWithholdingDraftSeedHostedService`) each agency with owners gets, once per version, the rule of
+  `OwnerAccounting:ItalianShortLetRule` (`deploy-checklist.md` § 2.11) as a rule set that is **not approved**: `IT-STR-WITHHOLDING` `2026.1` from 2024-01-01, 21%,
+  tax code 1919, base `stay_gross` (the gross without the tourist tax), `half_up` to the cent, 10 years, `portalsWithholding: ["Airbnb"]`, source
+  `https://www.agenziaentrate.gov.it/portale/le-regole-per-gli-intermediari`, with **no hash of the source** (`sourceSha256` empty). It decides nothing: an owner whose
+  profile points at it gets `owner_fiscal_policy_not_approved` (the payout is refused and nothing is written; the preview says it). The accountant approves it with
+  `POST api/owner-accounting/policies/{id}/approve { approvedByName, sourceSha256 }`: the SHA-256 of the document checked is **required** for a rule set whose source is
+  not pinned (422 `owner_policy_invalid`, `sourceSha256`) and pins it; for a pinned one a different hash is refused the same way. Then the profiles of the Italian owners
+  point at it. A rule set approved before this release keeps working only if its `grossBaseComponents` is `stay_gross` (else 422 `components.{code}`: approve the new
+  version).
 
 ## Limit of units, company tenant and co-owners (E18/F01/US03/T01)
 

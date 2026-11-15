@@ -6936,6 +6936,48 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerPayoutKeyReused" xml:space="preserve">
     <value>Questa chiave è già stata usata per un pagamento diverso.</value>
   </data>
+  <data name="OwnerPayoutExceedsBalance" xml:space="preserve">
+    <value>Il pagamento supera quanto la versione del rendiconto deve ancora al proprietario.</value>
+  </data>
+  <data name="F24ExportTitle" xml:space="preserve">
+    <value>Dati per il modello F24 della ritenuta, {0}: una riga per codice tributo e periodo, importi in euro (non è la delega presentata)</value>
+  </data>
+  <data name="F24ExportBreakdownTitle" xml:space="preserve">
+    <value>Dettaglio per proprietario e pagamento, {0}: la ritenuta in euro di ogni pagamento (gli storni sono righe con importi opposti)</value>
+  </data>
+  <data name="F24ExportSheetBreakdown" xml:space="preserve">
+    <value>Dettaglio</value>
+  </data>
+  <data name="F24ExportColReference" xml:space="preserve">
+    <value>Riferimento del pagamento</value>
+  </data>
+  <data name="F24ExportColKind" xml:space="preserve">
+    <value>Tipo</value>
+  </data>
+  <data name="F24ExportKindWithholding" xml:space="preserve">
+    <value>Ritenuta del pagamento</value>
+  </data>
+  <data name="F24ExportKindReversal" xml:space="preserve">
+    <value>Storno del pagamento annullato</value>
+  </data>
+  <data name="F24ExportColGrossBaseEuro" xml:space="preserve">
+    <value>Base lorda (euro)</value>
+  </data>
+  <data name="F24ExportColWithheldEuro" xml:space="preserve">
+    <value>Ritenuta (euro)</value>
+  </data>
+  <data name="F24ExportColPayoutCurrency" xml:space="preserve">
+    <value>Valuta del pagamento</value>
+  </data>
+  <data name="F24ExportColPayoutGross" xml:space="preserve">
+    <value>Lordo del pagamento</value>
+  </data>
+  <data name="F24ExportColPayoutWithheld" xml:space="preserve">
+    <value>Ritenuta trattenuta (valuta del pagamento)</value>
+  </data>
+  <data name="F24ExportColPayoutNet" xml:space="preserve">
+    <value>Netto pagato</value>
+  </data>
   <data name="OwnerPayoutNotFound" xml:space="preserve">
     <value>Pagamento al proprietario non trovato.</value>
   </data>

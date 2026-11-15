@@ -17,7 +17,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-15.28";
+    public const string Version = "2026-11-15.29";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -350,6 +350,14 @@ public static class DemoShowcaseCatalog
         public const string CleaningRecharge = "cleaning-recharge";
 
         /// <summary>
+        /// The facts of a payout read from the ledger (E18/F01/US01/T01, NF-117, ⚖ R5): the stays of the October statement of a private TEST owner of an Italian house,
+        /// one paid with a payment the agency recorded (in the base, its tourist tax left out), one of Airbnb on the agency's account (Airbnb withholds for the private host
+        /// itself: never withheld again) and one of Booking.com on the owner's account (the portal pays the owner: the agency neither collected nor intervened). A template
+        /// of what the payout dialog previews (<c>GET api/owner-accounting/payouts/preview</c>); the showcase writes none of these rows.
+        /// </summary>
+        public const string PayoutFacts = "payout-facts";
+
+        /// <summary>
         /// The origin of a booking (E27/F01/US01/T01, NF-123): Appartamento Brera has one stay ahead for each of the four origins the host reads on the booking list and
         /// the booking sheet: a portal (Airbnb, with its reservation), the site of the agency (a link of the agency, and a reservation of its booking engine), CasaZen's own
         /// site and a stay the host entered. The attribution is what the checkout and the import record (invented, TEST); the origin itself is worked out from the source and
@@ -446,6 +454,7 @@ public static class DemoShowcaseCatalog
         Scenario.CleaningAtCheckout,
         Scenario.OwnerTaxChecks,
         Scenario.CleaningRecharge,
+        Scenario.PayoutFacts,
         Scenario.BookingFourOrigins,
     ];
 
@@ -635,6 +644,17 @@ public static class DemoShowcaseCatalog
         new("forfait-per-soggiorno", "TEST Mario Rossi", CleaningRechargeMode.FlatRate, "TEST Impresa di pulizie", null, 40m, Scenario.CleaningRecharge),
         new("costo-effettivo-richiesta", "TEST Giulia Bianchi", CleaningRechargeMode.ActualCost, "TEST Impresa di pulizie", 85m, 40m, Scenario.CleaningRecharge),
         new("costo-effettivo-staff-senza-tariffa", "TEST Luca Verdi", CleaningRechargeMode.ActualCost, "TEST Personale dell'agenzia", null, 40m, Scenario.CleaningRecharge),
+    ];
+
+    /// <summary>
+    /// The stays of the demo payout (E18/F01/US01/T01, ⚖ R5): what the ledger and the booking say of each and where the facts of the payout put it. Invented amounts of a
+    /// TEST owner of an Italian house; a template only.
+    /// </summary>
+    public static IReadOnlyList<DemoPayoutStayTemplate> PayoutFactsExamples { get; } =
+    [
+        new("diretta-pagata-in-base", "TEST Mario Rossi", BookingSource.Manual, 900.00m, 18.00m, true, PortalAccountHolder.Owner, Services.PayoutStayReasons.InBase, Scenario.PayoutFacts),
+        new("airbnb-conto-agenzia", "TEST Mario Rossi", BookingSource.Airbnb, 600.00m, 0m, false, PortalAccountHolder.Agency, Services.OwnerWithholdingRules.AlreadyWithheldByPortal, Scenario.PayoutFacts),
+        new("booking-conto-proprietario", "TEST Mario Rossi", BookingSource.BookingCom, 450.00m, 0m, false, PortalAccountHolder.Owner, Services.OwnerWithholdingRules.NoCollectionOrIntervention, Scenario.PayoutFacts),
     ];
 
     /// <summary>
@@ -2433,6 +2453,21 @@ public sealed record DemoCleaningRechargeTemplate(
     string Cleaner,
     decimal? RequestAmount,
     decimal MandateFlatRate,
+    string Scenario);
+
+/// <summary>
+/// A stay of the demo payout (E18/F01/US01/T01): the owner, the channel, the owner's gross of it without the tourist tax and the tourist tax left out, whether the ledger
+/// posted it from a payment the agency recorded, who holds the account of the portal, and the reason the facts of the payout give it (<c>in_base</c> or why not).
+/// </summary>
+public sealed record DemoPayoutStayTemplate(
+    string Key,
+    string OwnerName,
+    BookingSource Channel,
+    decimal Gross,
+    decimal TouristTax,
+    bool PostedFromPayments,
+    PortalAccountHolder AccountHolder,
+    string Reason,
     string Scenario);
 
 /// <summary>

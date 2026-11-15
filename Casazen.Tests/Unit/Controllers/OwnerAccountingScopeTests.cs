@@ -1,13 +1,19 @@
 using System.Reflection;
 using System.Security.Claims;
 using Casazen.Core.Authorization;
+using Casazen.Core.Documents;
+using Casazen.Core.Entities;
+using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
 using Casazen.Web.Controllers;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
 
@@ -30,15 +36,25 @@ public class OwnerAccountingScopeTests
         {
             var accounting = new Mock<IOwnerAccountingService>(MockBehavior.Strict);
             var payouts = new Mock<IOwnerPayoutService>(MockBehavior.Strict);
+            var withholding = new Mock<IWithholdingService>(MockBehavior.Strict);
+            var exports = new Mock<IStatementExportService>(MockBehavior.Strict);
+            await using var db = new AppDbContext(
+                new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OwnerAccountingScope_{Guid.NewGuid()}").Options, NullTenantContext.Instance);
 
             var checkedActions = 0;
             checkedActions += await AssertEveryActionForbiddenAsync(new OwnerAccountingController(accounting.Object, Org(), Scope(restricted), Mock.Of<IAuthorizationService>()));
             checkedActions += await AssertEveryActionForbiddenAsync(new OwnerPayoutsController(payouts.Object, Org(), Scope(restricted)));
 
-            // Every HTTP action of the two controllers was called (the reads and the writes), and none reached a service (strict mocks would have thrown).
-            Assert.True(checkedActions >= 20, $"only {checkedActions} actions were checked");
+            // E18/F01/US01/T02: the withholding of every owner (the F24 data and its export, the annual data, the filing states) needs the whole org too.
+            checkedActions += await AssertEveryActionForbiddenAsync(new WithholdingController(
+                db, withholding.Object, payouts.Object, exports.Object, Org(), Scope(restricted), Mock.Of<IDocumentTexts>(), NullLogger<WithholdingController>.Instance));
+
+            // Every HTTP action of the three controllers was called (the reads and the writes), and none reached a service (strict mocks would have thrown).
+            Assert.True(checkedActions >= 30, $"only {checkedActions} actions were checked");
             accounting.VerifyNoOtherCalls();
             payouts.VerifyNoOtherCalls();
+            withholding.VerifyNoOtherCalls();
+            exports.VerifyNoOtherCalls();
         }
     }
 
@@ -55,6 +71,41 @@ public class OwnerAccountingScopeTests
 
         Assert.IsType<OkObjectResult>(result.Result);
         accounting.Verify(a => a.GetReadinessAsync(OrgId, 2026, 10, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// Permission (E18/F01/US01, review of S029): an approved rule set decides the withholding of every owner whose profile points at it, the seeded Italian draft
+    /// included, so a caller restricted to some properties is refused the approval before anything is read or written (403); a caller of the whole org approves it.
+    /// </summary>
+    [Fact]
+    public async Task ApprovePolicy_CallerWithoutAnOrgWideReach_GetsForbidden_Test()
+    {
+        var policyId = Guid.NewGuid();
+        var request = new ApproveOwnerPolicyRequest { ApprovedByName = "TEST Commercialista", SourceSha256 = new string('c', 64) };
+        foreach (var restricted in new[] { new HostScope(OrgId, GrantedToUserId: UserId), new HostScope(OrgId, OwnerId: UserId) })
+        {
+            var profiles = new Mock<IOwnerFiscalProfileService>(MockBehavior.Strict);
+            var controller = new OwnerFiscalProfilesController(
+                profiles.Object, Org(), Mock.Of<IAuthorizationService>(), Scope(restricted), NullLogger<OwnerFiscalProfilesController>.Instance);
+            controller.ControllerContext = Context();
+
+            var refused = await controller.ApprovePolicy(policyId, request);
+
+            Assert.IsType<ForbidResult>(refused.Result);
+            profiles.VerifyNoOtherCalls();
+        }
+
+        var approver = new Mock<IOwnerFiscalProfileService>();
+        approver.Setup(p => p.ApprovePolicyAsync(OrgId, policyId, "TEST Commercialista", UserId, request.SourceSha256, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OwnerAccountingPolicy { OrgId = OrgId, Jurisdiction = "IT", RuleCode = "IT-STR-WITHHOLDING", Version = "2026.1" });
+        var wholeOrg = new OwnerFiscalProfilesController(
+            approver.Object, Org(), Mock.Of<IAuthorizationService>(), Scope(new HostScope(OrgId)), NullLogger<OwnerFiscalProfilesController>.Instance);
+        wholeOrg.ControllerContext = Context();
+
+        var served = await wholeOrg.ApprovePolicy(policyId, request);
+
+        Assert.IsType<OkObjectResult>(served.Result);
+        approver.Verify(p => p.ApprovePolicyAsync(OrgId, policyId, "TEST Commercialista", UserId, request.SourceSha256, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     /// <summary>Calls every HTTP action of the controller with empty arguments (a refusal needs none) and checks the answer is a 403.</summary>

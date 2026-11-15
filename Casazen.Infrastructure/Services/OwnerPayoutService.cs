@@ -15,15 +15,21 @@ namespace Casazen.Infrastructure.Services;
 
 /// <inheritdoc cref="IOwnerPayoutService"/>
 /// <remarks>
-/// A confirmed payout posts its lines to the owner ledger in the month of the payment (the net paid and the withholding kept, both debits that settle
+/// <para>A confirmed payout posts its lines to the owner ledger in the month of the payment (the net paid and the withholding kept, both debits that settle
 /// what was owed) and makes that month dirty when it has a version. It runs under the lock of the owner accounting of the org
-/// (<see cref="PostgresAdvisoryLocks.Scope.OwnerAccounting"/>), so a retry that races its first call finds it.
+/// (<see cref="PostgresAdvisoryLocks.Scope.OwnerAccounting"/>), so a retry that races its first call finds it, and two payouts of the same stays are one after the
+/// other: the second sees the stays the first covered.</para>
+/// <para><b>Facts from the ledger</b> (E18/F01/US01/T01): the gross is the balance of the version still unpaid (<see cref="OwnerPayoutFacts.UnpaidBalanceAsync"/>), or
+/// the smaller amount the command names; the stays, their collection and their qualifying contract are read by <see cref="OwnerPayoutFacts"/> and decided by
+/// <see cref="PayoutFactRules.Decide"/> (which is <see cref="OwnerWithholdingRules.Decide"/> on the stays of the base). The withholding is decided in euro, the
+/// currency of the F24 and of the evidence; a payout in francs keeps it at the agency's rate of the payout day (⚖ R6) and pays its net in francs.</para>
 /// </remarks>
 public sealed class OwnerPayoutService(
     AppDbContext db,
     IOwnerFiscalProfileService fiscal,
     TimeProvider time,
-    ILogger<OwnerPayoutService> logger) : IOwnerPayoutService
+    ILogger<OwnerPayoutService> logger,
+    OwnerPayoutFacts facts) : IOwnerPayoutService
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -31,55 +37,48 @@ public sealed class OwnerPayoutService(
     {
         ArgumentNullException.ThrowIfNull(command);
         var key = command.IdempotencyKey?.Trim() ?? string.Empty;
-        var currency = command.Currency?.Trim().ToUpperInvariant() ?? string.Empty;
+        var currency = string.IsNullOrWhiteSpace(command.Currency) ? null : command.Currency.Trim().ToUpperInvariant();
         Require(key.Length is > 0 and <= OwnerPayout.KeyMaxLength, "idempotencyKey");
-        Require(command.GrossAmount > 0m && command.GrossAmount < 100_000_000m && Math.Round(command.GrossAmount, 2) == command.GrossAmount, "grossAmount");
-        Require(currency.Length == 3 && currency.All(char.IsAsciiLetterUpper), "currency");
+        Require(command.GrossAmount is not { } asked || (asked > 0m && asked < 100_000_000m && Math.Round(asked, 2) == asked), "grossAmount");
+        Require(currency is null || (currency.Length == 3 && currency.All(char.IsAsciiLetterUpper)), "currency");
         Require(command.PaidOn != default, "paidOn");
         Require(command.Reference is null || command.Reference.Length <= OwnerPayout.ReferenceMaxLength, "reference");
-        Require(command.Components is null || command.Components.All(c => c.Key.Length is > 0 and <= 32 && c.Value >= 0m && Math.Round(c.Value, 2) == c.Value), "components");
 
         await using var tx = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, ct, (PostgresAdvisoryLocks.Scope.OwnerAccounting, orgId.ToString("N")));
         var existing = await db.OwnerPayouts.AsNoTracking().FirstOrDefaultAsync(p => p.OrgId == orgId && p.IdempotencyKey == key, ct);
         if (existing is not null)
         {
-            if (existing.PropertyOwnerId != command.OwnerId || existing.OwnerStatementVersionId != command.StatementVersionId
-                || existing.GrossAmount != command.GrossAmount || existing.PaidOn != command.PaidOn || existing.Currency != currency)
+            // A retry is the same payout: the same owner, version and day, and the same amount and currency when it names them. Its facts are never read again.
+            if (existing.PropertyOwnerId != command.OwnerId || existing.OwnerStatementVersionId != command.StatementVersionId || existing.PaidOn != command.PaidOn
+                || (command.GrossAmount is { } gross && gross != existing.GrossAmount) || (currency is not null && currency != existing.Currency))
                 throw new DomainConflictException(OwnerPayoutErrors.PayoutKeyReused, "OwnerPayoutKeyReused");
             logger.LogInformation("Owner payout {PayoutId} replayed for key reuse by {UserId}", existing.Id, userId);
             return new OwnerPayoutResult(existing, await EvidenceOfAsync(existing.Id, ct), Replayed: true);
         }
 
-        var version = await db.OwnerStatementVersions.AsNoTracking()
-            .FirstOrDefaultAsync(v => v.Id == command.StatementVersionId && v.OrgId == orgId && v.PropertyOwnerId == command.OwnerId, ct)
-            ?? throw new NotFoundException($"Owner statement version {command.StatementVersionId} was not found")
-            {
-                Code = OwnerAccountingErrors.VersionNotFound,
-                MessageKey = "OwnerStatementVersionNotFound",
-            };
-        if (version.Status is not (OwnerStatementVersionStatus.Approved or OwnerStatementVersionStatus.Published))
-            throw new DomainRuleException(OwnerAccountingErrors.VersionNotApproved, "OwnerStatementNotApproved");
-        Require(string.Equals(version.Currency, currency, StringComparison.Ordinal), "currency");
+        var version = await PayableVersionAsync(orgId, command.StatementVersionId, command.OwnerId, ct);
+        Require(currency is null || string.Equals(StayCurrency.Normalize(version.Currency), currency, StringComparison.Ordinal), "currency");
         if (await IsClosedAsync(orgId, command.OwnerId, command.PaidOn.Year, command.PaidOn.Month, ct))
             throw new DomainConflictException(OwnerAccountingErrors.PeriodClosed, "OwnerPeriodClosed");
 
-        // The approved rule in force on the day of the payment decides; an unknown fact it needs blocks (never a guess).
+        // The approved rule in force on the day of the payment decides (a draft never does: ResolveAsync refuses it); an unknown fact it needs blocks.
         var resolution = await fiscal.ResolveAsync(orgId, command.OwnerId, command.PaidOn, ct);
-        var decision = OwnerWithholdingRules.Decide(resolution.Parameters, command.AgencyCollected, command.QualifyingShortLet, command.Components);
-        var withheld = decision.Amount ?? 0m;
-        Require(withheld <= command.GrossAmount, "grossAmount");
 
-        // The withholding is declared on an F24 in euro: an amount decided in another currency is not guessed into one.
-        if (decision.Decision == TaxDecision.Applicable && !string.Equals(currency, "EUR", StringComparison.Ordinal))
-        {
-            throw new DomainRuleException(OwnerPayoutErrors.TaxApplicabilityUnresolved, "TaxApplicabilityUnresolved")
-            {
-                Extensions = new Dictionary<string, object?> { ["field"] = "currency" },
-            };
-        }
+        // A payout never pays more than the version still owes: the balance by default, a smaller amount when the command names one.
+        var balance = await facts.UnpaidBalanceAsync(version, ct);
+        var paid = command.GrossAmount ?? balance;
+        if (paid <= 0m || paid > balance)
+            throw ExceedsBalance(balance, version.Currency);
+
+        var read = await facts.ReadAsync(version, command.PaidOn, resolution.Parameters, resolution.Profile, ct);
+        var decision = PayoutFactRules.Decide(resolution.Parameters, read.Stays);
+        var withheld = WithheldInPayoutCurrency(decision, read);
+        Require(withheld <= paid, "grossAmount");
 
         var now = time.GetUtcNow().UtcDateTime;
-        var stays = command.StayIds is { Count: > 0 } ids ? JsonSerializer.Serialize(ids.Distinct().ToList(), Json) : null;
+        var payoutFacts = read with { GrossAmount = paid, Balance = balance };
+        var stays = JsonSerializer.Serialize(payoutFacts.StayIds, Json);
+        var currencyOfVersion = StayCurrency.Normalize(version.Currency);
         var payout = new OwnerPayout
         {
             OrgId = orgId,
@@ -88,13 +87,13 @@ public sealed class OwnerPayoutService(
             IdempotencyKey = key,
             Reference = command.Reference?.Trim(),
             PaidOn = command.PaidOn,
-            Currency = currency,
-            GrossAmount = command.GrossAmount,
+            Currency = currencyOfVersion,
+            GrossAmount = paid,
             WithholdingAmount = withheld,
-            NetAmount = command.GrossAmount - withheld,
-            AgencyCollected = command.AgencyCollected,
-            QualifyingShortLet = command.QualifyingShortLet,
-            ComponentsJson = command.Components is null ? null : JsonSerializer.Serialize(command.Components, Json),
+            NetAmount = paid - withheld,
+            AgencyCollected = payoutFacts.AgencyCollected,
+            QualifyingShortLet = payoutFacts.QualifyingShortLet,
+            ComponentsJson = JsonSerializer.Serialize(payoutFacts.Components, Json),
             StayIdsJson = stays,
             ConfirmedAt = now,
             ConfirmedByUserId = userId,
@@ -120,8 +119,7 @@ public sealed class OwnerPayoutService(
             PeriodYear = command.PaidOn.Year,
             PeriodMonth = command.PaidOn.Month,
             StayIdsJson = stays,
-            FactsJson = JsonSerializer.Serialize(
-                new { command.AgencyCollected, command.QualifyingShortLet, command.Components, command.GrossAmount, Parameters = resolution.Parameters }, Json),
+            FactsJson = JsonSerializer.Serialize(payoutFacts, Json),
             CreatedAt = now,
             CreatedByUserId = userId,
         };
@@ -129,18 +127,78 @@ public sealed class OwnerPayoutService(
         db.TaxObligationEvidence.Add(evidence);
 
         var ruleVersion = resolution.Policy.RuleCode + "@" + resolution.Policy.Version;
-        db.OwnerLedgerEntries.Add(Line(payout, OwnerLedgerEntryType.OwnerPayment, -payout.NetAmount, version.Currency, ruleVersion, null, now, userId));
+        db.OwnerLedgerEntries.Add(Line(payout, OwnerLedgerEntryType.OwnerPayment, -payout.NetAmount, currencyOfVersion, ruleVersion, null, now, userId));
         if (withheld > 0m)
-            db.OwnerLedgerEntries.Add(Line(payout, OwnerLedgerEntryType.Withholding, -withheld, version.Currency, ruleVersion, decision.TaxCode, now, userId));
+        {
+            var line = Line(payout, OwnerLedgerEntryType.Withholding, -withheld, currencyOfVersion, ruleVersion, decision.TaxCode, now, userId);
+            db.OwnerLedgerEntries.Add(payoutFacts.Fx is { } fx && decision.Amount is { } inEuro ? InWithholdingCurrency(line, -inEuro, fx) : line);
+        }
+
         await MarkDirtyAsync(orgId, command.OwnerId, command.PaidOn.Year, command.PaidOn.Month, now, ct);
 
         await db.SaveChangesAsync(ct);
         if (tx is not null)
             await tx.CommitAsync(ct);
         logger.LogInformation(
-            "Owner payout {PayoutId} of owner {OwnerId} confirmed by {UserId}: decision {Decision} ({Reason}) on rule {RuleVersion}",
-            payout.Id, command.OwnerId, userId, decision.Decision, decision.Reason, ruleVersion);
+            "Owner payout {PayoutId} of owner {OwnerId} confirmed by {UserId}: decision {Decision} ({Reason}) on rule {RuleVersion}, {Stays} stays",
+            payout.Id, command.OwnerId, userId, decision.Decision, decision.Reason, ruleVersion, payoutFacts.StayIds.Count);
         return new OwnerPayoutResult(payout, [evidence], Replayed: false);
+    }
+
+    public async Task<OwnerPayoutPreview> PreviewPayoutAsync(Guid orgId, Guid statementVersionId, DateOnly paidOn, CancellationToken ct = default)
+    {
+        Require(paidOn != default, "paidOn");
+        var version = await PayableVersionAsync(orgId, statementVersionId, null, ct);
+        var currency = StayCurrency.Normalize(version.Currency);
+        var balance = await facts.UnpaidBalanceAsync(version, ct);
+
+        // What would refuse the confirmation, in the order the confirmation meets it: the closed month, the owner without an approved rule, the balance, the facts.
+        // The first refusal is the one told; the facts are read all the same, so the dialog shows them.
+        var refusal = new PreviewRefusal();
+        if (await IsClosedAsync(orgId, version.PropertyOwnerId, paidOn.Year, paidOn.Month, ct))
+            refusal.Note(OwnerAccountingErrors.PeriodClosed, null);
+
+        OwnerFiscalResolution? resolution = null;
+        try
+        {
+            resolution = await fiscal.ResolveAsync(orgId, version.PropertyOwnerId, paidOn, ct);
+        }
+        catch (DomainRuleException e)
+        {
+            refusal.Note(e.Code, FieldOf(e));
+        }
+
+        if (balance <= 0m)
+            refusal.Note(OwnerPayoutErrors.PayoutExceedsBalance, null);
+
+        PayoutFacts read;
+        try
+        {
+            read = (await facts.ReadAsync(version, paidOn, resolution?.Parameters, resolution?.Profile, ct)) with { Balance = balance };
+        }
+        catch (DomainRuleException e)
+        {
+            refusal.Note(e.Code, FieldOf(e));
+            return new OwnerPayoutPreview(new PayoutFacts { Currency = currency, Balance = balance }, balance, currency, null, null, refusal.Code, refusal.Field);
+        }
+
+        WithholdingDecision? decision = null;
+        decimal? withheld = null;
+        if (resolution is not null)
+        {
+            try
+            {
+                var decided = PayoutFactRules.Decide(resolution.Parameters, read.Stays);
+                withheld = WithheldInPayoutCurrency(decided, read);
+                decision = decided;
+            }
+            catch (DomainRuleException e)
+            {
+                refusal.Note(e.Code, FieldOf(e));
+            }
+        }
+
+        return new OwnerPayoutPreview(read, balance, currency, decision, withheld, refusal.Code, refusal.Field);
     }
 
     public async Task<OwnerPayoutResult> ReversePayoutAsync(Guid orgId, Guid payoutId, string? reason, string? userId, CancellationToken ct = default)
@@ -456,9 +514,81 @@ public sealed class OwnerPayoutService(
     private static NotFoundException PayoutNotFound(Guid payoutId) =>
         new($"Owner payout {payoutId} was not found") { Code = OwnerPayoutErrors.PayoutNotFound, MessageKey = "OwnerPayoutNotFound" };
 
+    /// <summary>The version a payout pays: of the org (and of the owner, when named), approved or published. 404 otherwise; 422 when it is not approved.</summary>
+    private async Task<OwnerStatementVersion> PayableVersionAsync(Guid orgId, Guid versionId, Guid? ownerId, CancellationToken ct)
+    {
+        var version = await db.OwnerStatementVersions.AsNoTracking()
+            .FirstOrDefaultAsync(v => v.Id == versionId && v.OrgId == orgId && (ownerId == null || v.PropertyOwnerId == ownerId), ct)
+            ?? throw new NotFoundException($"Owner statement version {versionId} was not found")
+            {
+                Code = OwnerAccountingErrors.VersionNotFound,
+                MessageKey = "OwnerStatementVersionNotFound",
+            };
+        if (version.Status is not (OwnerStatementVersionStatus.Approved or OwnerStatementVersionStatus.Published))
+            throw new DomainRuleException(OwnerAccountingErrors.VersionNotApproved, "OwnerStatementNotApproved");
+        return version;
+    }
+
+    /// <summary>
+    /// The withholding kept from the payout, in its currency: the amount decided in euro as it is for a payout in euro, else at the agency's rate of the payout day
+    /// (⚖ R6, half to even as the ledger converts). Without a rate a withholding cannot be kept: 422 <c>tax_applicability_unresolved</c> (<c>fxRate</c>), never a guess.
+    /// </summary>
+    private static decimal WithheldInPayoutCurrency(WithholdingDecision decision, PayoutFacts read)
+    {
+        if (decision.Amount is not { } inEuro || inEuro == 0m)
+            return 0m;
+        if (string.Equals(read.Currency, read.WithholdingCurrency, StringComparison.Ordinal))
+            return inEuro;
+        if (read.Fx is not { } fx)
+        {
+            throw new DomainRuleException(OwnerPayoutErrors.TaxApplicabilityUnresolved, "TaxApplicabilityUnresolved")
+            {
+                Extensions = new Dictionary<string, object?> { ["field"] = "fxRate" },
+            };
+        }
+
+        return Math.Round(inEuro * fx.Rate, 2, MidpointRounding.ToEven);
+    }
+
+    /// <summary>The withholding line of a payout in another currency: its amount in the currency of the version, from the euro decided and the rate of the day.</summary>
+    private static OwnerLedgerEntry InWithholdingCurrency(OwnerLedgerEntry line, decimal inEuro, PayoutFx fx)
+    {
+        line.OriginalCurrency = fx.From;
+        line.SourceAmount = inEuro;
+        line.OriginalAmount = inEuro;
+        line.FxRate = fx.Rate;
+        line.FxSource = fx.Source is { Length: > OwnerLedgerEntry.ReferenceMaxLength } source ? source[..OwnerLedgerEntry.ReferenceMaxLength] : fx.Source;
+        line.FxDate = fx.Day;
+        return line;
+    }
+
+    private static DomainRuleException ExceedsBalance(decimal balance, string currency) =>
+        new(OwnerPayoutErrors.PayoutExceedsBalance, "OwnerPayoutExceedsBalance")
+        {
+            Extensions = new Dictionary<string, object?> { ["balance"] = balance, ["currency"] = StayCurrency.Normalize(currency) },
+        };
+
+    private static string? FieldOf(DomainRuleException e) => e.Extensions.TryGetValue("field", out var field) ? field as string : null;
+
     private static void Require(bool valid, string field)
     {
         if (!valid)
             throw new DomainRuleException(OwnerPayoutErrors.PayoutInvalid, "OwnerPayoutInvalid") { Extensions = new Dictionary<string, object?> { ["field"] = field } };
+    }
+
+    /// <summary>The first refusal a preview meets: the one the confirmation would answer.</summary>
+    private sealed class PreviewRefusal
+    {
+        public string? Code { get; private set; }
+
+        public string? Field { get; private set; }
+
+        public void Note(string code, string? field)
+        {
+            if (Code is not null)
+                return;
+            Code = code;
+            Field = field;
+        }
     }
 }
