@@ -51,7 +51,9 @@ public sealed class FiscalDocumentRejectionHandler(
                     await RaiseAsync(domainEvent, ct);
                     break;
                 case DomainEventType.FiscalDocumentCorrected:
+                    // The rejected document is discarded: every «To do» still open on it is done, the one of its correction and one to look at it.
                     await CloseAsync(domainEvent, domainEvent.EntityId, ct);
+                    await CloseAsync(domainEvent, domainEvent.EntityId, ct, nameof(ActivityAction.ReviewFiscalDocument));
                     break;
                 default:
                     if (CreditedDocumentOf(domainEvent) is { } credited)
@@ -102,6 +104,14 @@ public sealed class FiscalDocumentRejectionHandler(
             return;
         }
 
+        // A «To do» is one per document while it is open, whatever its action: an item to look at the document (its booking changed) would take the place of this one, so it is closed first.
+        // The correction makes the replacement from the booking as it is now, so the change is not lost.
+        if (await activities.FindOpenAsync(document.OrgId, nameof(ActivityAction.ReviewFiscalDocument), FiscalDocumentTodos.EntityType, documentId, ct) is { } review)
+        {
+            await activities.CloseAsync(review.Id, InternalActivity.ClosedBySystem, ct);
+            logger.LogInformation("Event {EventId}: «To do» {ActivityId} to look at document {DocumentId} closed, the «To do» of its correction takes its place", domainEvent.Id, review.Id, documentId);
+        }
+
         var request = new CreateTodoRequest
         {
             Type = ActivityType.FiscalDocument,
@@ -143,14 +153,14 @@ public sealed class FiscalDocumentRejectionHandler(
         }
     }
 
-    private async Task CloseAsync(DomainEvent domainEvent, Guid documentId, CancellationToken ct)
+    private async Task CloseAsync(DomainEvent domainEvent, Guid documentId, CancellationToken ct, string action = nameof(ActivityAction.CorrectInvoice))
     {
-        var open = await activities.FindOpenAsync(domainEvent.OrgId, nameof(ActivityAction.CorrectInvoice), FiscalDocumentTodos.EntityType, documentId, ct);
+        var open = await activities.FindOpenAsync(domainEvent.OrgId, action, FiscalDocumentTodos.EntityType, documentId, ct);
         if (open is null)
             return;
 
         await activities.CloseAsync(open.Id, InternalActivity.ClosedBySystem, ct);
-        logger.LogInformation("Event {EventId} ({EventType}): «To do» «correct the invoice» of document {DocumentId} of org {OrgId} closed", domainEvent.Id, domainEvent.Type, documentId, domainEvent.OrgId);
+        logger.LogInformation("Event {EventId} ({EventType}): «To do» {Action} of document {DocumentId} of org {OrgId} closed", domainEvent.Id, domainEvent.Type, action, documentId, domainEvent.OrgId);
     }
 
     /// <summary>The document a credit note credits, from the payload of its event; <c>null</c> when the payload names none.</summary>

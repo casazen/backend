@@ -17,8 +17,9 @@ namespace Casazen.Infrastructure.Services;
 /// (<see cref="FiscalDocument.SeriesNumberIndexName"/>) never sees the number twice. A rejected document that never was delivered is the only one this accepts: <c>rejected</c> is reached only
 /// by a document that was not delivered (<see cref="FiscalDocumentSdiService"/> never rejects a delivered one), and a document that has an issued credit note is refused; the drafts of
 /// credit notes of it are discarded with the correction (they would credit an invoice that never was issued).</item>
-/// <item><b>What the replacement is.</b> The same kind, issuer, series, lines, amounts, recipient and period as the rejected document, as stored (never made again from the booking here: the host
-/// fixes the data, and the refresh of the draft or the daily run makes it from the booking again). It is a draft: nothing is issued or sent by the correction.</item>
+/// <item><b>What the replacement is.</b> The same kind, issuer, series, lines, amounts, recipient and period as the rejected document, as stored; once committed it is made again from the booking
+/// as it is now, as the refresh of a draft does (a change of the booking while the invoice was rejected, the invoice data the host fixed), and stays the copy when it cannot be made now (the
+/// host fixes the data and refreshes it). Its series and number never change. It is a draft: nothing is issued or sent by the correction.</item>
 /// <item>Logs carry ids: never a value of the document.</item>
 /// </list>
 /// </remarks>
@@ -27,7 +28,8 @@ public sealed class FiscalDocumentCorrectionService(
     IDomainEventRecorder events,
     TimeProvider timeProvider,
     ILogger<FiscalDocumentCorrectionService> logger,
-    IInternalActivityService? activities = null) : IFiscalDocumentCorrectionService
+    IInternalActivityService? activities = null,
+    IFiscalDocumentService? documents = null) : IFiscalDocumentCorrectionService
 {
     public async Task<FiscalDocument> StartCorrectionAsync(Guid documentId, string? userId, CancellationToken ct = default)
     {
@@ -90,6 +92,24 @@ public sealed class FiscalDocumentCorrectionService(
         await db.SaveChangesAsync(ct);
         if (transaction is not null)
             await transaction.CommitAsync(ct);
+
+        // The replacement follows the booking as it is now, as the refresh of a draft does: a change of the booking while the invoice was rejected (its «To do» gave way to the one of the
+        // correction) and the invoice data the host fixed are in it. When it cannot be made now (the data the SDI refused is still missing, the booking is no longer active), it stays the copy
+        // of the rejected invoice, for the host to fix and refresh. Its series and number never change.
+        if (documents is not null)
+        {
+            try
+            {
+                replacement = await documents.RefreshDraftAsync(replacement.Id, ct);
+            }
+            catch (Exception ex) when (ex is DomainException or NotFoundException)
+            {
+                logger.LogInformation(
+                    "Replacement draft {ReplacementId} not made again from its booking now ({Code}): it keeps the lines of the rejected invoice",
+                    replacement.Id,
+                    ex is DomainException refusal ? refusal.Code : "booking_not_found");
+            }
+        }
 
         logger.LogInformation(
             "Fiscal document {DocumentId} of org {OrgId} rejected by the SDI: correction started, replacement draft {ReplacementId}, {Discarded} credit note drafts discarded",

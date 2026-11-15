@@ -182,7 +182,84 @@ public class FiscalDocumentCorrectionTests
         Assert.Equal((ActivityAction.ReviewFiscalDocument, FiscalDocumentTodos.BookingChangedReason), (todo.Action!.Value, todo.Reason));
     }
 
+    /// <summary>
+    /// The booking changed while its invoice was rejected (its «Da fare» gave way to the one of the correction): the replacement is made from the booking as it is now, never the old amounts,
+    /// and keeps the series and the number of the rejected invoice.
+    /// </summary>
+    [Fact]
+    public async Task Correction_TheReplacementFollowsTheBookingAsItIsNow_AndKeepsTheNumber()
+    {
+        await using var db = NewDb();
+        var rig = Rig(db, Mock.Of<IDomainEventRecorder>());
+        var booking = await SeedBookingAsync(db, seedOrg: true);
+        var invoice = await rig.Documents.IssueAsync((await rig.Documents.CreateDraftAsync(booking, null)).Id, confirm: true);
+        var billed = invoice.Total;
+        await RejectedAsync(rig, invoice.Id);
+
+        var changed = await db.Bookings.SingleAsync(b => b.Id == booking);
+        changed.BasePrice -= 100m;
+        changed.TotalPrice -= 100m;
+        await db.SaveChangesAsync();
+
+        var replacement = await rig.Corrections.StartCorrectionAsync(invoice.Id, "auth0|host");
+
+        Assert.NotEqual(billed, replacement.Total);
+        Assert.Equal((FiscalDocumentStatus.Draft, "2026", (int?)1, "2026/1"), (replacement.Status, replacement.Series, replacement.SequenceNumber, replacement.Number));
+    }
+
     // ---------------------------------------------------------------- the «To do»
+
+    /// <summary>
+    /// A «Da fare» is one per document while it is open: the item to look at an invoice (its booking changed) gives way to the one of its correction when the SDI rejects it, and the correction
+    /// closes every item still open on the rejected invoice.
+    /// </summary>
+    [Fact]
+    public async Task Handler_AnItemToLookAtTheInvoice_GivesWayToItsCorrection_AndTheCorrectionClosesThemAll()
+    {
+        await using var db = NewDb();
+        var booking = await SeedBookingAsync(db, seedOrg: true);
+        var propertyId = (await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == booking)).PropertyId;
+        var activities = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, new FakeTimeProvider(Now));
+        var handler = new FiscalDocumentRejectionHandler(db, activities, new ResxDocumentTexts(), NullLogger<FiscalDocumentRejectionHandler>.Instance);
+        var document = new FiscalDocument
+        {
+            OrgId = OrgId,
+            BookingId = booking,
+            PropertyId = propertyId,
+            Source = FiscalDocumentSource.CasaZen,
+            Status = FiscalDocumentStatus.Issued,
+            SdiStatus = FiscalDocumentSdiStatuses.Rejected,
+            SdiErrorCode = "00417",
+            Series = "2026",
+            SequenceNumber = 1,
+            Number = "2026/1",
+        };
+        db.FiscalDocuments.Add(document);
+        await db.SaveChangesAsync();
+        var review = await activities.CreateAsync(
+            new CreateTodoRequest
+            {
+                Type = ActivityType.FiscalDocument,
+                Action = ActivityAction.ReviewFiscalDocument,
+                EntityType = FiscalDocumentTodos.EntityType,
+                EntityId = document.Id,
+                Urgency = ActivityUrgency.Medium,
+                PropertyId = propertyId,
+                OrgId = OrgId,
+                Reason = FiscalDocumentTodos.BookingChangedReason,
+            },
+            CancellationToken.None);
+
+        await handler.HandleAsync(Event(DomainEventType.FiscalDocumentSdiRejected, document.Id, "{}"), CancellationToken.None);
+
+        Assert.NotNull((await db.InternalActivities.AsNoTracking().SingleAsync(a => a.Id == review)).CompletedAt);
+        var open = Assert.Single(await db.InternalActivities.AsNoTracking().Where(a => a.EntityId == document.Id && a.CompletedAt == null).ToListAsync());
+        Assert.Equal((ActivityAction.CorrectInvoice, "sdi_rejected"), (open.Action!.Value, open.Reason));
+
+        await handler.HandleAsync(Event(DomainEventType.FiscalDocumentCorrected, document.Id, "{}"), CancellationToken.None);
+
+        Assert.Empty(await db.InternalActivities.AsNoTracking().Where(a => a.EntityId == document.Id && a.CompletedAt == null).ToListAsync());
+    }
 
     [Fact]
     public async Task Handler_ARejection_RaisesTheTodoOnce_AndTheCorrectionOrTheCreditClosesIt()
@@ -444,7 +521,7 @@ public class FiscalDocumentCorrectionTests
         return new TestRig(
             documents,
             new FiscalDocumentSdiService(db, provider.Object, recorder, time, NullLogger<FiscalDocumentSdiService>.Instance, flags),
-            new FiscalDocumentCorrectionService(db, recorder, time, NullLogger<FiscalDocumentCorrectionService>.Instance, activities),
+            new FiscalDocumentCorrectionService(db, recorder, time, NullLogger<FiscalDocumentCorrectionService>.Instance, activities, documents),
             provider);
     }
 
