@@ -70,6 +70,14 @@ public class GuestCheckInSession : ITenantOwned
     /// <summary>The version of the consent text the guest accepted (<see cref="BiometricConsentAt"/>); at most 50 characters.</summary>
     public string? BiometricConsentVersion { get; set; }
 
+    /// <summary>
+    /// The SHA-256 (hex, lower case) of the reference text, the Italian file, of the version of the registry the guest accepted (E22/F01/US02/T02,
+    /// <see cref="BiometricConsentVersion"/>): with the version it tells which text the consent was given to (GDPR art. 7(1)). Null for a consent given before the
+    /// registry existed, and while there is no consent.
+    /// </summary>
+    [MaxLength(64)]
+    public string? BiometricConsentTextHash { get; set; }
+
     /// <summary>When the guest refused the biometric consent: the identity is then verified by an operator (ADR-013-R9).</summary>
     public DateTime? BiometricConsentRefusedAt { get; set; }
 

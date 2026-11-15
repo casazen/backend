@@ -654,6 +654,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();
+        // E22/F01/US02/T01: the QR code at the door of a property: its door token and the guest who arrives (booking code or surname, and the arrival date) getting the link of its stay.
+        services.AddScoped<IDoorCheckInService, DoorCheckInService>();
         // Guests of a stay and official Alloggiati code tables (CO-12).
         services.AddScoped<IAlloggiatiCodeTableService, AlloggiatiCodeTableService>();
         services.AddHttpClient<OfficialSourceDownloader>(client =>

@@ -1468,6 +1468,9 @@
   <data name="CheckInBiometricConsentVersionRequired" xml:space="preserve">
     <value>Manca la versione del testo del consenso biometrico (al massimo 50 caratteri).</value>
   </data>
+  <data name="DoorCheckInNotFound" xml:space="preserve">
+    <value>Non troviamo un soggiorno con questi dati. Controlla il codice di prenotazione (o il cognome) e la data di arrivo, oppure chiedi aiuto alla struttura.</value>
+  </data>
   <data name="CheckInBiometricConsentRequired" xml:space="preserve">
     <value>Prima del selfie serve il tuo consenso alla verifica biometrica. Puoi anche chiedere la verifica a una persona.</value>
   </data>
