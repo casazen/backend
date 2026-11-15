@@ -4,10 +4,10 @@ namespace Casazen.Core.Services;
 
 /// <summary>
 /// The check-in of a stay from CasaZen to the channel manager (E03/F01/US01/T03, NF-41, NF-45, NF-46): the guests of a booking sent to Octorate
-/// and the NO_SHOW of the stay pushed once. The arrival and the departure (CHECKIN_END, CHECKOUT_END) are pushed by the booking-state push of
-/// E02 (<c>OctorateBookingStatePushHandler</c>), the one handler that reacts to them, so they are never sent twice for one event; this service
-/// still knows those two states (a row each, the arrival read back) but no code asks it for them. Everything goes through
-/// <see cref="IOctorateApiClient"/>, for the org of the booking (<see cref="IOctorateOrgScope.Use"/>). Only a mirrored booking is touched: a
+/// and the three states of the stay pushed once each (NO_SHOW, and since E20/F01/US01/T01 the arrival and the departure, CHECKIN_END and
+/// CHECKOUT_END, with the same row, retries and "To do"). The arrival and the departure are still queued by the one handler that reacts to them
+/// (<c>OctorateBookingStatePushHandler</c> and its job), so they are never sent twice for one event; the job asks this service to send them.
+/// Everything goes through <see cref="IOctorateApiClient"/>, for the org of the booking (<see cref="IOctorateOrgScope.Use"/>). Only a mirrored booking is touched: a
 /// reservation id on the booking, a connected Octorate connection of the org, a confirmed mapping of the property and writes not blocked;
 /// otherwise nothing is written and no row is created (absence means not mirrored, ADR-023-R4). An Octorate error never reaches the caller: it
 /// is a stable code on the row, retried by the retry job with a backoff and raised as one "To do" at the last attempt.
@@ -31,10 +31,19 @@ public interface ICheckInOctorateSyncService
     Task<OctorateCheckInSendResult> RetryGuestsAsync(Guid bookingId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Sends a state of the stay once (<see cref="OctorateStayStateOutcome.AlreadySent"/> when it was); after
-    /// <see cref="OctorateStayState.CheckInEnd"/> reads the arrival back (a failed read never fails the push). The caller today is the
-    /// NO_SHOW job: the arrival and the departure are pushed by E02, so nobody asks for those two states here. A NO_SHOW is called only while the
-    /// stay is still a no-show (<see cref="OctorateStayStateOutcome.NotApplicable"/> otherwise).
+    /// The host asked to try again now (E20/F01/US01/T02, the action <c>RetryOctorateWrite</c>): the same rules and guards as
+    /// <see cref="RetryGuestsAsync"/>, but the guests whose attempts are used up are sent again too, because a person decided. Never a guest
+    /// that was not tried before and never one held back for a place Octorate does not know (the host corrects its data, which sends it).
+    /// </summary>
+    Task<OctorateCheckInSendResult> RetryGuestsNowAsync(Guid bookingId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Sends a state of the stay once (<see cref="OctorateStayStateOutcome.AlreadySent"/> when it was), each state with a row of its own (attempts,
+    /// last error, one "To do" after the last failed attempt, closed by a later success); after <see cref="OctorateStayState.CheckInEnd"/> reads
+    /// the arrival back (a failed read never fails the push). The arrival waits for the guests of the stay (<see cref="OctorateStayStateOutcome.WaitingForGuests"/>)
+    /// while a write of theirs is still to complete. The callers are the booking-state push (the arrival and the departure the host registers,
+    /// <c>OctorateBookingStatePushJob</c>), the NO_SHOW job and the retry job. A NO_SHOW is called only while the stay is still a no-show
+    /// (<see cref="OctorateStayStateOutcome.NotApplicable"/> otherwise).
     /// </summary>
     Task<OctorateStayStateResult> SetStayStateAsync(Guid bookingId, OctorateStayState state, CancellationToken cancellationToken);
 
@@ -109,6 +118,12 @@ public enum OctorateStayStateOutcome
     /// the mark): nothing was called and the open row of the push was closed.
     /// </summary>
     NotApplicable = 4,
+
+    /// <summary>
+    /// The arrival was not sent yet: a write of the stay's guests to Octorate is still to complete, and the arrival goes after them. Nothing was called, no
+    /// attempt was used up, and the retry job asks again.
+    /// </summary>
+    WaitingForGuests = 5,
 }
 
 /// <summary>A push of a state of the stay: the outcome and, when it failed, why.</summary>
@@ -124,13 +139,23 @@ public sealed record OctorateCheckInView(
     IReadOnlyList<OctorateStayStateView> States);
 
 /// <summary>One guest as sent to Octorate. No personal data.</summary>
+/// <param name="Position">The position of the guest.</param>
+/// <param name="Status">Pending, Sent or Failed.</param>
+/// <param name="SentAsDraft">Sent as a draft (the sender is not the channel manager).</param>
+/// <param name="Attempts">The attempts of the payload last tried.</param>
+/// <param name="ErrorCode">Why the last attempt failed; <c>null</c> after a success.</param>
+/// <param name="SentAt">When Octorate last accepted the guest (UTC).</param>
+/// <param name="ErrorFields">The fields to correct when <paramref name="ErrorCode"/> is <c>place_not_recognized</c> (comma separated names); <c>null</c> otherwise.</param>
+/// <param name="LastAttemptAt">When the link last changed, the time of the last attempt (UTC).</param>
 public sealed record OctorateGuestLinkView(
     int Position,
     OctorateSyncStatus Status,
     bool SentAsDraft,
     int Attempts,
     string? ErrorCode,
-    DateTime? SentAt);
+    DateTime? SentAt,
+    string? ErrorFields = null,
+    DateTime? LastAttemptAt = null);
 
 /// <summary>One state of the stay; <paramref name="Status"/> null when it was never pushed.</summary>
 public sealed record OctorateStayStateView(

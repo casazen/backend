@@ -1081,6 +1081,9 @@
   <data name="AlloggiatiTransmissionUnavailable" xml:space="preserve">
     <value>CasaZen does not transmit to Alloggiati Web yet: send the record on the Questura portal using the data summary, then mark it as sent manually.</value>
   </data>
+  <data name="AlloggiatiChannelManagerWriteInProgress" xml:space="preserve">
+    <value>The guests of this stay are already being sent: try again in a moment.</value>
+  </data>
   <data name="AlloggiatiRecordFileNotReady" xml:space="preserve">
     <value>The file for the Alloggiati Web portal cannot be generated: the guest data is incomplete or an official code is missing. Complete the guest's Alloggiati details.</value>
   </data>

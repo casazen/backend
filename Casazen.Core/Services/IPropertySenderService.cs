@@ -182,6 +182,10 @@ public enum SenderConnectionTestOutcome
 /// <param name="DelegationTextVersion">The version of the delegation text the org has to accept; the client shows that text.</param>
 /// <param name="DeclaredAt">When the host declared the channel manager activated (UTC); <c>null</c> when it did not, or a later change of sender voided it.</param>
 /// <param name="LastChangedAt">When a person last chose the sender (UTC); <c>null</c> for a default.</param>
+/// <param name="AutoSendGuestsToOctorate">
+/// An org-wide setting, not the property's (E20/F01/US01/T01, decision O1): the org lets CasaZen write the guests of a stay to the channel manager as
+/// soon as their data is complete and the identity check passed (<see cref="IOrgGuestAutoSendSetting"/>). Off by default.
+/// </param>
 public sealed record PropertySenderView(
     Guid PropertyId,
     ComplianceSenderType Sender,
@@ -200,7 +204,8 @@ public sealed record PropertySenderView(
     bool DelegationAccepted,
     string DelegationTextVersion,
     DateTime? DeclaredAt,
-    DateTime? LastChangedAt);
+    DateTime? LastChangedAt,
+    bool AutoSendGuestsToOctorate = false);
 
 /// <summary>The result of testing the sender of a property. Nothing in it is stored.</summary>
 /// <param name="Sender">The sender that was tested.</param>

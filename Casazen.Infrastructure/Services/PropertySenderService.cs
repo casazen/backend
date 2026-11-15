@@ -35,12 +35,18 @@ public sealed class PropertySenderService(
     IFeatureFlags featureFlags,
     IHostEnvironment hostEnvironment,
     ILogger<PropertySenderService> logger,
-    TimeProvider? timeProvider = null) : IPropertySenderService
+    TimeProvider? timeProvider = null,
+    IOrgGuestAutoSendSetting? autoSendSetting = null) : IPropertySenderService
 {
     /// <summary>How long the read of a sender, and its connection test, wait for Octorate before they answer without the police fields.</summary>
     internal static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(8);
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
+    // The org-wide setting of the guests written to the channel manager on their own (E20/F01/US01/T01): the container gives the service;
+    // built by hand without it, one on the same context reads the same column.
+    private readonly IOrgGuestAutoSendSetting _autoSend = autoSendSetting
+        ?? new OrgGuestAutoSendSetting(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<OrgGuestAutoSendSetting>.Instance, timeProvider);
 
     public async Task<PropertySenderView> GetAsync(Guid propertyId, CancellationToken ct)
     {
@@ -266,7 +272,8 @@ public sealed class PropertySenderService(
             accepted,
             AlloggiatiDelegationTexts.CurrentVersion,
             declaredAt,
-            info.LastChangedAt);
+            info.LastChangedAt,
+            await _autoSend.GetAsync(info.OrgId, ct));
     }
 
     /// <summary>
