@@ -47,7 +47,11 @@ public class CheckInLinkDelivery : ITenantOwned
 
     public CheckInLinkDeliveryState State { get; set; }
 
-    /// <summary>The attempts of the automatic delivery made for the link, the first one included (the read of the contact is not one).</summary>
+    /// <summary>
+    /// The attempts of the automatic delivery for the link that failed for a reason worth a retry (a limit, an outage), the first one included: the retries stop at
+    /// <c>CheckInLinkDeliveryRules.MaxAttempts</c>. Waiting for the permission of the chat, the conversation, a way to the guest or the IP addresses is not an attempt that failed, and
+    /// the read of the contact is not one either.
+    /// </summary>
     public int Attempts { get; set; }
 
     /// <summary>The stable code of the last thing that went wrong (<c>chat_not_licensed</c>, <c>octorate_unavailable</c>, ...); <c>null</c> when nothing did.</summary>

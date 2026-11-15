@@ -242,7 +242,6 @@ public sealed class CheckInLinkDeliveryService(
         ChatAttempt? chat = null;
         if (chatOn)
         {
-            delivery.Attempts++;
             chat = await TryChatAsync(booking, token, expiresAt, sessionLanguage, ct);
             if (chat.Delivered)
             {
@@ -260,6 +259,10 @@ public sealed class CheckInLinkDeliveryService(
                 await SaveAndTellHostAsync(delivery, booking, now, ct);
                 return;
             }
+
+            // Only a failure worth a retry (a limit, an outage) counts toward the limit of retries: waiting for the permission, the conversation or a way to the guest is not an attempt that failed.
+            if (chat.State == CheckInLinkDeliveryState.Failed && IsTransient(chat.ErrorCode))
+                delivery.Attempts++;
         }
 
         string? contactError = null;
@@ -297,7 +300,9 @@ public sealed class CheckInLinkDeliveryService(
         }
         else if (contactError is not null)
         {
-            delivery.Attempts++;
+            if (IsTransient(contactError))
+                delivery.Attempts++;
+
             Settle(delivery, CheckInLinkChannel.Email, CheckInLinkDeliveryState.Failed, contactError);
         }
         else
@@ -605,8 +610,7 @@ public sealed class CheckInLinkDeliveryService(
                        && (ChatOn || (ContactOn && ContactMayBeRead(delivery, now)));
 
             case CheckInLinkDeliveryState.Failed:
-                return delivery.LastErrorCode is { } code
-                       && TransientCodes.Contains(code, StringComparer.Ordinal)
+                return IsTransient(delivery.LastErrorCode)
                        && delivery.Attempts < CheckInLinkDeliveryRules.MaxAttempts
                        && sinceLastAttempt >= CheckInLinkDeliveryRules.RetryInterval;
 
@@ -760,9 +764,10 @@ public sealed class CheckInLinkDeliveryService(
 
     /// <summary>A failure that no retry will change: not worth a retry, or the retries are used.</summary>
     private static bool IsFinalFailure(CheckInLinkDelivery delivery) =>
-        delivery.LastErrorCode is not { } code
-        || !TransientCodes.Contains(code, StringComparer.Ordinal)
-        || delivery.Attempts >= CheckInLinkDeliveryRules.MaxAttempts;
+        !IsTransient(delivery.LastErrorCode) || delivery.Attempts >= CheckInLinkDeliveryRules.MaxAttempts;
+
+    /// <summary>The code is one of a failure worth a retry (a limit, an outage: <see cref="TransientCodes"/>).</summary>
+    private static bool IsTransient(string? code) => code is not null && TransientCodes.Contains(code, StringComparer.Ordinal);
 
     /// <summary>The «To do» «Copia link»: once for the booking, however it ends (a host who closed it by hand does not get it back), due at the start of the check-in day.</summary>
     private async Task RaiseTodoAsync(CheckInLinkDelivery delivery, Booking booking, CancellationToken ct)

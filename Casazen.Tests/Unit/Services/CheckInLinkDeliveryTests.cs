@@ -399,6 +399,48 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Equal(CheckInLinkDeliveryRules.MaxAttempts, await _db.CheckInLinkDeliveries.AsNoTracking().Select(d => d.Attempts).SingleAsync());
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (the review of S010, fix 4). Waiting for the conversation or for the permission of the chat is not an attempt that failed: a link that waited twice still gets its
+    /// three attempts when the channel manager then fails for a reason worth a retry (a limit), and the host is told only after the third.
+    /// </summary>
+    [Fact]
+    public async Task LinkDelivery_WaitingIsNotAFailedAttempt_SoATransientFailureAfterTheWaitsStillGetsItsThreeAttempts_Test()
+    {
+        var stay = await AddStayAsync(withThread: false);
+        var rig = new Rig(_db, _world, _clock, FeatureFlags.PortalChatCheckInLink);
+        rig.Messages.Client
+            .Setup(c => c.SendChatMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OctorateRateLimitException(429));
+
+        // It waits for the conversation, then for the permission of the chat: two waits, no failed attempt.
+        var first = await rig.Service.DeliverAsync(stay.Booking.Id, stay.Link);
+        Assert.Equal((CheckInLinkDeliveryState.WaitingThread, 0), (first.State, first.Attempts));
+        _db.OtaMessageThreads.Add(NewThread(stay.Booking, "T-WAITS"));
+        await _db.SaveChangesAsync();
+        await SetSyncStateAsync(OtaMessageSyncErrorCodes.ChatNotLicensed, _clock.GetUtcNow().UtcDateTime);
+        Assert.Equal(1, await rig.Service.RetryWaitingAsync(IssueNothing));
+        var waiting = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync();
+        Assert.Equal((CheckInLinkDeliveryState.WaitingChatPermission, 0), (waiting.State, waiting.Attempts));
+
+        // The chat comes back and the channel manager answers with a limit: three attempts, an hour apart, and only after the third the host is told.
+        _clock.Advance(TimeSpan.FromHours(1));
+        await SetSyncStateAsync(null, _clock.GetUtcNow().UtcDateTime);
+        Assert.Equal(1, await rig.Service.RetryWaitingAsync(IssueNothing));
+        var failed = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync();
+        Assert.Equal((CheckInLinkDeliveryState.Failed, "octorate_rate_limited", 1), (failed.State, failed.LastErrorCode, failed.Attempts));
+        Assert.Empty(rig.Pushes);
+
+        _clock.Advance(TimeSpan.FromHours(1));
+        Assert.Equal(1, await rig.Service.RetryWaitingAsync(IssueNothing));
+        Assert.Equal(2, (await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync()).Attempts);
+        Assert.Empty(rig.Pushes);
+
+        _clock.Advance(TimeSpan.FromHours(1));
+        Assert.Equal(1, await rig.Service.RetryWaitingAsync(IssueNothing));
+        Assert.Equal(CheckInLinkDeliveryRules.MaxAttempts, (await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync()).Attempts);
+        Assert.Single(rig.Pushes);
+    }
+
     /// <summary>With both flags off the service writes the row and nothing else: no call, no «To do», no notice, no token, and the caller does what it always did.</summary>
     [Fact]
     public async Task LinkDelivery_BothFlagsOff_OnlyRecordsWhyTheLinkGoesNowhere_Test()
