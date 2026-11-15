@@ -615,6 +615,18 @@
   <data name="GuestBookingConfirmed_NotFiscal" xml:space="preserve">
     <value>Questa email conferma la prenotazione e il pagamento ricevuto; non è un documento fiscale.</value>
   </data>
+  <data name="GuestBookingConfirmed_CheckInOpen" xml:space="preserve">
+    <value>Il check-in online è già aperto: completalo in anticipo con il pulsante qui sotto.</value>
+  </data>
+  <data name="GuestBookingConfirmed_CheckInCta" xml:space="preserve">
+    <value>Fai il check-in online</value>
+  </data>
+  <data name="GuestBookingConfirmed_CheckInOn" xml:space="preserve">
+    <value>Il link per il check-in online ti arriverà via email il &lt;strong&gt;{0}&lt;/strong&gt;. Da quel giorno puoi anche richiederlo in «Le mie prenotazioni».</value>
+  </data>
+  <data name="GuestBookingConfirmed_CheckInRequest" xml:space="preserve">
+    <value>Puoi richiedere il link per il check-in online in «Le mie prenotazioni».</value>
+  </data>
   <data name="HostBookingConfirmed_Subject" xml:space="preserve">
     <value>Nuova prenotazione confermata - {0} ({1})</value>
   </data>

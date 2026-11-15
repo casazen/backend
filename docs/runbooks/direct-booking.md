@@ -308,6 +308,32 @@ showed "Nessuna prenotazione trovata" plus an error.
   daily job does not send a new one while an old one exists, so a link asked weeks before the arrival would be dead on
   the day.
 
+- **The link in the confirmation email (E23/F02/US01/T01, NF-122, NF-63).** The checkout tells the guest that the check-in
+  link arrives at their address, so the email that confirms the booking (`GuestBookingConfirmed`, the one template for every
+  way a direct booking becomes confirmed: paid online, late payment, saved card, request accepted by the host) says where
+  the check-in stands, by the same rule as the table above: `GuestCheckInAccessRules` is the code the guest page reads and
+  `BookingNotifier` asks (same `CheckIn:SendWindowDays`, same Europe/Rome calendar day, so the last day of the window
+  counts at any hour of the run). No new flag, no new setting, no migration: the window (3 days) and the life of the link
+  (`CheckIn:SessionLifetimeDays`, 7) are the ones the job already uses.
+
+  | `checkIn.status` when the booking is confirmed | What the email says | What the system does |
+  |---|---|---|
+  | `Open` | The button **«Fai il check-in online»** (EN: «Check in online»), the usual fallback link under it and «Il link è valido fino al …» | Issues the link the way the daily job does (`IGuestCheckInService.IssueLinkAsync`: one session, the lifetime above) and puts it in the confirmation. **No second email**: the confirmation is the delivery. Once the confirmation is queued, the session says `LinkEmailStatus = Sent` with `SentAt`, and `CheckInLinkDeliveries` has the row of the booking as `Email` / `Sent` with no token. The next run of `guest-checkin-send` finds a usable link and queues nothing |
+  | `NotYetOpen` | `Il link per il check-in online ti arriverà via email il {opensOn}. Da quel giorno puoi anche richiederlo in «Le mie prenotazioni».` (the day written like the other dates of the email) | Nothing: no link, no record. The job sends the link on that day, as it always did |
+  | `Completed` or `NotApplicable` | Nothing about the check-in | Nothing |
+
+  When the link cannot be issued (an error while the session is saved) the confirmation still goes out, with no link and the
+  sentence of the day the job runs next (tomorrow on the Europe/Rome calendar; when the job would no longer select the stay
+  that day, only `Puoi richiedere il link per il check-in online in «Le mie prenotazioni».`); no session exists, so the job
+  issues and sends the link at its next run, as it does today. When the confirmation itself cannot be queued (no email
+  provider, a queue that refuses it) the link just issued is taken back (its session expires, nothing is recorded as sent),
+  because a usable link would stop the job from sending one. Without `App:PublicSiteBaseUrl`, or for a guest with no address,
+  no link is issued at all.
+  Logs: `The check-in link of booking {BookingId} could not be issued for its confirmation`, `Check-in link of booking {BookingId} taken back: its confirmation was not queued`,
+  `The state of the online check-in of booking {BookingId} could not be read for its confirmation`, `The check-in link of booking {BookingId} could not be settled after its confirmation`
+  (the record of a link that went out, or the taking back of one that did not, failed); never the address, the name or the link.
+  The link is in the body of the queued email (Hangfire keeps the arguments of a job, as it does for the check-in link email of the job).
+
 ### 8.3 Checks
 
 1. Test mode: complete a checkout, open the confirmation email, click "Le mie prenotazioni": the page opens with the code
@@ -317,6 +343,10 @@ showed "Nessuna prenotazione trovata" plus an error.
 3. Six attempts in a row for the same email (from any IP): the sixth answers 429 with `Retry-After`.
 4. A confirmed booking arriving within 3 days: "Inviami il link" → the guest receives the check-in email; the page shows
    "link sent".
+5. Test mode, the link in the confirmation (E23/F02/US01/T01): complete a checkout for a stay that starts within 3 days → the
+   confirmation email has the button «Fai il check-in online» and the link opens the check-in; the booking page of the host
+   shows the link as sent; run `guest-checkin-send` from the Hangfire dashboard → no second email and no new session.
+   A stay that starts in 10 days → the confirmation says the day (arrival minus 3) and has no link.
 
 ```sql
 -- Bookings without a code: must be empty after the migration
@@ -332,7 +362,9 @@ per-address cool-down against mail bombing.
 
 Code: `Casazen.Core/Services/BookingCodes.cs`, `IGuestBookingLookupService.cs`,
 `Casazen.Infrastructure/Services/GuestBookingLookupService.cs`, `Casazen.Web/Infrastructure/GuestBookingEmailRateLimiter.cs`,
-`PublicBookingsController.cs`, `BookingNotifier.cs`, `PublicSiteLinks.GuestBookings`. Frontend:
+`PublicBookingsController.cs`, `BookingNotifier.cs`, `PublicSiteLinks.GuestBookings`; the link in the confirmation:
+`Casazen.Infrastructure/Services/GuestCheckInAccessRules.cs`, `CheckInLinkDeliveryService.RecordSentByEmailAsync`,
+`EmailTemplates.GuestBookingConfirmed` (`BookingCheckInNotice`), test `BookingConfirmedCheckInLinkTests`. Frontend:
 `src/features/public-booking/guest-bookings-page.tsx`, `src/lib/booking-code.ts`, `checkout-outcome-page.tsx`
 (`BookingReference`). Tests: `GuestBookingLookupPostgresTests`, `BookingCodesTests`, `DirectCheckoutIntegrationTests`,
 `BookingEmailsPostgresTests`, `BookingNotifierTests`, `PublicSiteLinksTests`; vitest `guest-bookings-page.test.tsx`,

@@ -102,6 +102,58 @@ public sealed class CheckInLinkDeliveryService(
         return ViewOf(delivery, link.ExpiresAt, link: null);
     }
 
+    public async Task RecordSentByEmailAsync(Guid bookingId, IssuedCheckInLink link, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(link);
+        var now = Now();
+        var booking = await LoadBookingAsync(bookingId, null, ct) ?? throw BookingNotFound();
+
+        var delivery = await db.CheckInLinkDeliveries
+            .FirstOrDefaultAsync(d => d.OrgId == booking.OrgId && d.BookingId == bookingId, ct);
+        if (delivery is null)
+        {
+            // DbSet.Add: the row carries its own Guid, so only Add tracks it as new.
+            delivery = new CheckInLinkDelivery { OrgId = booking.OrgId, BookingId = booking.Id, CreatedAt = now };
+            db.CheckInLinkDeliveries.Add(delivery);
+        }
+
+        // The row starts again for this link and ends where the e-mail of the link ends once it is queued: sent by e-mail, with no token (the link is in the mailbox of the guest, nobody has to
+        // carry it) and nothing to wait for. No e-mail is queued here: the one that carries the link is already with the queue of the e-mails.
+        StartAgain(delivery, link.SessionId, null, now);
+        MarkSent(delivery, CheckInLinkChannel.Email, null, now);
+        delivery.LastAttemptAt = now;
+
+        // The session of the link says the same thing the e-mail job of the link would have written: the e-mail was handed over, and when.
+        var session = await db.GuestCheckInSessions
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .FirstOrDefaultAsync(s => s.Id == link.SessionId && s.OrgId == booking.OrgId, ct);
+        if (session is not null)
+        {
+            session.LinkEmailStatus = GuestCheckInLinkEmailStatus.Sent;
+            session.LinkEmailError = null;
+            session.SentAt = now;
+            session.UpdatedAt = now;
+        }
+
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation(
+            "Check-in link of booking {BookingId} (org {OrgId}): {State} by {Channel}, inside the confirmation of the booking",
+            booking.Id,
+            booking.OrgId,
+            delivery.State,
+            delivery.Channel);
+
+        try
+        {
+            // The link is with the guest: a «To do» to carry it, if the booking had one, is over (the same as any other way that ends in «sent»).
+            await CloseTodoAsync(delivery.OrgId, booking.Id, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "The To do of the check-in link of booking {BookingId} (org {OrgId}) could not be closed", booking.Id, booking.OrgId);
+        }
+    }
+
     public async Task<int> RetryWaitingAsync(Func<Guid, Guid, Task<IssuedCheckInLink>> issueLink, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(issueLink);

@@ -16,6 +16,7 @@ public class EmailTemplatesTests
     private const string Payload = "<a href=\"https://phish.example\">Paga qui</a>";
     private const string EncodedPayload = "&lt;a href=&quot;https://phish.example&quot;&gt;Paga qui&lt;/a&gt;";
     private const string Link = "https://casazen-app.test/app/supplier/inbox";
+    private const string CheckInLinkUrl = "https://casazen-app.test/checkin/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     private static readonly DateTime CheckIn = new(2026, 10, 5);
     private static readonly BookingHostContact Host = new("Villa Rosa Srl", "info@villarosa.test");
 
@@ -27,7 +28,8 @@ public class EmailTemplatesTests
         "time-proposed", "proposal-accepted", "proposal-rejected", "paid", "invite", "checkin-link", "checkin-incomplete", "alloggiati", "refund",
         "late-payment-refunded", "rli-reminder", "rli-overdue", "questura-reminder", "questura-overdue", "onsite-received", "onsite-to-host",
         "onsite-declined", "onsite-expired", "booking-cancelled", "booking-confirmed-paid", "booking-confirmed-late",
-        "booking-confirmed-deferred", "booking-confirmed-onsite", "host-booking-confirmed", "host-booking-confirmed-deferred",
+        "booking-confirmed-deferred", "booking-confirmed-onsite", "booking-confirmed-checkin-link", "booking-confirmed-checkin-day",
+        "booking-confirmed-checkin-request", "host-booking-confirmed", "host-booking-confirmed-deferred",
         "deferred-failed-guest", "deferred-failed-host", "deferred-cancelled-guest", "deferred-cancelled-host",
         "ota-stay-removed", "ota-stay-dates-changed",
     };
@@ -393,6 +395,79 @@ public class EmailTemplatesTests
         Assert.Contains("<li>Totale: <strong>300,00 €</strong></li>", content.HtmlBody);
         Assert.Contains("Per qualsiasi domanda contatta direttamente l'host della struttura.", content.HtmlBody);
         Assert.DoesNotContain("@", content.HtmlBody);
+    }
+
+    /// <summary>E23/F02/US01/T01: the check-in is open, so the confirmation carries the link as a button, with the usual fallback link and its validity.</summary>
+    [Fact]
+    public void GuestBookingConfirmed_CheckInOpen_CarriesTheLinkAsAButtonWithTheUsualFallbackAndItsValidity()
+    {
+        var myBookings = EmailTestHelpers.Links().GuestBookings("villa-rosa");
+        var notice = BookingCheckInNotice.WithLink(CheckInLinkUrl, new DateTime(2026, 10, 16, 9, 0, 0, DateTimeKind.Utc));
+
+        var italian = EmailTemplates.GuestBookingConfirmed(
+            EmailTemplates.DefaultCulture, "Anna", Summary(), BookingConfirmationKind.PaidOnline, 1262m, null, Host, myBookings, notice);
+        var english = EmailTemplates.GuestBookingConfirmed(
+            CultureInfo.GetCultureInfo("en"), "Anna", Summary(), BookingConfirmationKind.PaidOnline, 1262m, null, Host, myBookings, notice);
+
+        Assert.Contains("Il check-in online è già aperto: completalo in anticipo con il pulsante qui sotto.", italian.HtmlBody);
+        Assert.Contains($"<a href=\"{CheckInLinkUrl}\" style=", italian.HtmlBody);
+        Assert.Contains("Fai il check-in online</a>", italian.HtmlBody);
+        Assert.Contains(
+            $"Se il pulsante non funziona, copia questo link nel browser:<br /><a href=\"{CheckInLinkUrl}\">{CheckInLinkUrl}</a>", italian.HtmlBody);
+        Assert.Contains("Il link è valido fino al 16/10/2026 11:00.", italian.HtmlBody);
+        Assert.True(
+            italian.HtmlBody.IndexOf("Fai il check-in online", StringComparison.Ordinal) < italian.HtmlBody.IndexOf("Le mie prenotazioni</a>", StringComparison.Ordinal),
+            "The check-in button comes before the one of the bookings.");
+        Assert.DoesNotContain("arriverà via email", italian.HtmlBody);
+        Assert.Contains("Online check-in is already open: complete it in advance with the button below.", english.HtmlBody);
+        Assert.Contains("Check in online</a>", english.HtmlBody);
+        Assert.Contains("The link is valid until 16 October 2026, 11:00.", english.HtmlBody);
+    }
+
+    /// <summary>E23/F02/US01/T01: the check-in is not open yet, so the confirmation says the day the link arrives (formatted like the other dates) and where to request it, with no link.</summary>
+    [Fact]
+    public void GuestBookingConfirmed_CheckInOnADay_SaysTheDayLikeTheOtherDatesAndWhereToRequestTheLink()
+    {
+        var notice = BookingCheckInNotice.OnDay(CheckIn.AddDays(-3));
+
+        var italian = EmailTemplates.GuestBookingConfirmed(
+            EmailTemplates.DefaultCulture, "Anna", Summary(), BookingConfirmationKind.PaidOnline, 1262m, null, Host, Link, notice);
+        var english = EmailTemplates.GuestBookingConfirmed(
+            CultureInfo.GetCultureInfo("en"), "Anna", Summary(), BookingConfirmationKind.PaidOnline, 1262m, null, Host, Link, notice);
+
+        Assert.Contains(
+            "Il link per il check-in online ti arriverà via email il <strong>02/10/2026</strong>. Da quel giorno puoi anche richiederlo in «Le mie prenotazioni».",
+            italian.HtmlBody);
+        Assert.Contains(
+            "The link for the online check-in will reach you by email on <strong>2 October 2026</strong>. From that day you can also request it in “My bookings”.",
+            english.HtmlBody);
+        Assert.DoesNotContain("/checkin/", italian.HtmlBody);
+        Assert.DoesNotContain("Fai il check-in online", italian.HtmlBody);
+        Assert.DoesNotContain("Il link è valido", italian.HtmlBody);
+    }
+
+    /// <summary>E23/F02/US01/T01: when no day can be promised the confirmation only says where the link can be requested.</summary>
+    [Fact]
+    public void GuestBookingConfirmed_CheckInRequestOnly_NamesNoDay()
+    {
+        var italian = EmailTemplates.GuestBookingConfirmed(
+            EmailTemplates.DefaultCulture, "Anna", Summary(), BookingConfirmationKind.PaidOnline, 1262m, null, Host, Link, BookingCheckInNotice.RequestOnly);
+
+        Assert.Contains("Puoi richiedere il link per il check-in online in «Le mie prenotazioni».", italian.HtmlBody);
+        Assert.DoesNotContain("arriverà via email", italian.HtmlBody);
+        Assert.DoesNotContain("/checkin/", italian.HtmlBody);
+    }
+
+    /// <summary>E23/F02/US01/T01: a check-in that is not needed or already done (no notice) is not mentioned, in either language.</summary>
+    [Theory]
+    [MemberData(nameof(Cultures))]
+    public void GuestBookingConfirmed_NoCheckInNotice_SaysNothingAboutTheCheckIn(string culture)
+    {
+        var content = EmailTemplates.GuestBookingConfirmed(
+            CultureInfo.GetCultureInfo(culture), "Anna", Summary(), BookingConfirmationKind.PaidOnline, 1262m, null, Host, Link);
+
+        Assert.DoesNotContain("check-in", content.HtmlBody, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("/checkin/", content.HtmlBody);
     }
 
     [Fact]
@@ -894,6 +969,12 @@ public class EmailTemplatesTests
             "booking-confirmed-late" => BookingConfirmed(culture, value, BookingConfirmationKind.PaidOnlineLate),
             "booking-confirmed-deferred" => BookingConfirmed(culture, value, BookingConfirmationKind.DeferredCharge),
             "booking-confirmed-onsite" => BookingConfirmed(culture, value, BookingConfirmationKind.OnSite),
+            "booking-confirmed-checkin-link" => BookingConfirmed(
+                culture, value, BookingConfirmationKind.PaidOnline, BookingCheckInNotice.WithLink(CheckInLinkUrl, CheckIn.AddDays(-2))),
+            "booking-confirmed-checkin-day" => BookingConfirmed(
+                culture, value, BookingConfirmationKind.PaidOnline, BookingCheckInNotice.OnDay(CheckIn.AddDays(-3))),
+            "booking-confirmed-checkin-request" => BookingConfirmed(
+                culture, value, BookingConfirmationKind.PaidOnline, BookingCheckInNotice.RequestOnly),
             "host-booking-confirmed" => EmailTemplates.HostBookingConfirmed(
                 culture, value, Summary(value), BookingConfirmationKind.PaidOnline, 1262m, null, Link),
             "host-booking-confirmed-deferred" => EmailTemplates.HostBookingConfirmed(
@@ -920,9 +1001,15 @@ public class EmailTemplatesTests
         };
     }
 
-    private static EmailContent BookingConfirmed(CultureInfo culture, string value, BookingConfirmationKind kind) =>
-        EmailTemplates.GuestBookingConfirmed(
-            culture, value, Summary(value), kind, 1262m, CheckIn.AddDays(-7), new BookingHostContact(value, value), Link);
+    private static EmailContent BookingConfirmed(
+        CultureInfo culture,
+        string value,
+        BookingConfirmationKind kind,
+        BookingCheckInNotice? checkIn = null)
+    {
+        return EmailTemplates.GuestBookingConfirmed(
+            culture, value, Summary(value), kind, 1262m, CheckIn.AddDays(-7), new BookingHostContact(value, value), Link, checkIn);
+    }
 
     /// <summary>Villa Rosa, 3 nights for 2 guests: 1,200 lodging + 50 cleaning + 12 tourist tax = 1,262.</summary>
     private static BookingEmailSummary Summary(string propertyName = "Villa Rosa", string code = "b7d3c1f0-0000-4000-8000-000000000001") =>

@@ -37,6 +37,15 @@ public interface ICheckInLinkDeliveryService
     Task<CheckInLinkDeliveryView> DeliverAsync(Guid bookingId, IssuedCheckInLink link, CancellationToken ct = default);
 
     /// <summary>
+    /// The link went to the guest inside an e-mail the caller has already queued: the confirmation of a direct booking (E23/F02/US01/T01). Writes (or starts again) the row of the
+    /// booking as <see cref="CheckInLinkDeliveryState.Sent"/> by <see cref="CheckInLinkChannel.Email"/> for <paramref name="link"/>, with no token (the link is in the guest's mailbox and
+    /// nobody has to carry it), and marks the check-in session of the link as sent (the e-mail status <c>Sent</c> and the time), as the e-mail of the link does. <b>No e-mail of its own
+    /// is queued</b>: the confirmation is the delivery, so the daily job finds a usable link and sends nothing more. A booking that does not exist is a
+    /// <see cref="Exceptions.NotFoundException"/>.
+    /// </summary>
+    Task RecordSentByEmailAsync(Guid bookingId, IssuedCheckInLink link, CancellationToken ct = default);
+
+    /// <summary>
     /// The hourly pass: tries again the rows that wait for something that may have changed (the chat of a listing that reads again, a thread that arrived, a day after
     /// a refusal of the contact, a failure worth a retry), and ends the rows whose link is no longer useful. Does nothing while both new flags are off. One row's failure
     /// never stops the others (the first one is thrown when the pass is over). Returns how many rows it tried again.
