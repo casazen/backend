@@ -51,4 +51,25 @@
   <data name="GuestCheckInChat_Body" xml:space="preserve">
     <value>Bonjour ! Votre séjour à {0} commence le {1}. Pour accélérer votre arrivée, merci de faire le check-in en ligne avec ce lien : {2} Le lien est valable jusqu'au {3}.</value>
   </data>
+  <data name="GuestVideoCall_Subject" xml:space="preserve">
+    <value>Appel vidéo pour votre enregistrement — {0}</value>
+  </data>
+  <data name="GuestVideoCall_Greeting" xml:space="preserve">
+    <value>Bonjour {0},</value>
+  </data>
+  <data name="GuestVideoCall_Body" xml:space="preserve">
+    <value>Pour finaliser l'enregistrement de votre séjour à &lt;strong&gt;{0}&lt;/strong&gt; (arrivée : &lt;strong&gt;{1}&lt;/strong&gt;), l'hôte doit vérifier votre identité lors d'un court appel vidéo.</value>
+  </data>
+  <data name="GuestVideoCall_Instructions" xml:space="preserve">
+    <value>Ayez sous la main la pièce d'identité indiquée lors de l'enregistrement et ouvrez le lien ci-dessous à l'heure convenue avec l'hôte :</value>
+  </data>
+  <data name="GuestVideoCall_Cta" xml:space="preserve">
+    <value>Rejoindre l'appel vidéo</value>
+  </data>
+  <data name="GuestVideoCall_LinkFallback" xml:space="preserve">
+    <value>Si le bouton ne fonctionne pas, copiez et collez ce lien dans votre navigateur :</value>
+  </data>
+  <data name="GuestVideoCall_Hint" xml:space="preserve">
+    <value>Ensuite, l'hôte termine la vérification d'identité. Si vous n'attendiez pas cette demande, ignorez cet e-mail.</value>
+  </data>
 </root>

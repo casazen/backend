@@ -1516,6 +1516,27 @@
   <data name="CheckInDocumentRequired" xml:space="preserve">
     <value>Il file del documento è obbligatorio.</value>
   </data>
+  <data name="CheckInDocumentSideInvalid" xml:space="preserve">
+    <value>Il lato del documento deve essere front (fronte), back (retro) o single (una sola foto).</value>
+  </data>
+  <data name="BiometricSettingsThresholdsOutOfRange" xml:space="preserve">
+    <value>La soglia di verifica manuale non può essere sotto {0} e la soglia di accettazione non può superare {1}.</value>
+  </data>
+  <data name="BiometricSettingsThresholdsOrder" xml:space="preserve">
+    <value>La soglia di verifica manuale deve essere più bassa della soglia di accettazione.</value>
+  </data>
+  <data name="BiometricSettingsAttemptsOutOfRange" xml:space="preserve">
+    <value>I tentativi devono essere da {0} a {1}.</value>
+  </data>
+  <data name="VerificationVideoCallUrlInvalid" xml:space="preserve">
+    <value>Il link della videochiamata deve essere un indirizzo https assoluto, senza spazi né credenziali e di al massimo {0} caratteri.</value>
+  </data>
+  <data name="VerificationGuestUnreachable" xml:space="preserve">
+    <value>L'ospite non ha un indirizzo e-mail: non è stato inviato nulla. Proponi la videochiamata dalla chat del portale.</value>
+  </data>
+  <data name="VerificationVideoCallNotSent" xml:space="preserve">
+    <value>Non è stato possibile mettere in coda l'e-mail con il link: riprova tra poco o contatta l'ospite dalla chat del portale.</value>
+  </data>
   <data name="CheckInDocumentPhotoTypeUnsupported" xml:space="preserve">
     <value>La foto del documento deve essere JPEG o PNG.</value>
   </data>
