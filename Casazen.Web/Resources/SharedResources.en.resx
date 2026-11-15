@@ -8179,4 +8179,58 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="CuProspectTaxCode" xml:space="preserve">
     <value>Tax code: {0}. Rule: {1}</value>
   </data>
+  <data name="Tax770ExportTitle" xml:space="preserve">
+    <value>Data for the {0} 770 form: withholdings made and paid by month and tax code, amounts in euro (not the declaration)</value>
+  </data>
+  <data name="Tax770ColWithheld" xml:space="preserve">
+    <value>Withholdings made (euro)</value>
+  </data>
+  <data name="Tax770ColF24Amount" xml:space="preserve">
+    <value>F24 amount (euro)</value>
+  </data>
+  <data name="Tax770ColPaidOn" xml:space="preserve">
+    <value>F24 paid on</value>
+  </data>
+  <data name="Tax770ColFilingState" xml:space="preserve">
+    <value>State of the F24</value>
+  </data>
+  <data name="Tax770ColHandoff" xml:space="preserve">
+    <value>Handoff reference</value>
+  </data>
+  <data name="Tax770ColReceipt" xml:space="preserve">
+    <value>Receipt</value>
+  </data>
+  <data name="Tax770ColDifference" xml:space="preserve">
+    <value>Withholdings made less F24 (euro)</value>
+  </data>
+  <data name="Tax770NoF24" xml:space="preserve">
+    <value>F24 not generated</value>
+  </data>
+  <data name="ContractsExportTitle" xml:space="preserve">
+    <value>Communication of the {0} short-let contracts: contracts handled without withholding by the agency, to communicate by 30 June (not the filing with the tax agency)</value>
+  </data>
+  <data name="ContractsExportSheet" xml:space="preserve">
+    <value>Contracts</value>
+  </data>
+  <data name="ContractsColLessor" xml:space="preserve">
+    <value>Lessor</value>
+  </data>
+  <data name="ContractsColCurrency" xml:space="preserve">
+    <value>Currency</value>
+  </data>
+  <data name="ContractsColConsideration" xml:space="preserve">
+    <value>Gross consideration</value>
+  </data>
+  <data name="ContractsColReason" xml:space="preserve">
+    <value>Why the agency did not withhold</value>
+  </data>
+  <data name="ContractsReasonAlreadyWithheldByPortal" xml:space="preserve">
+    <value>Already withheld by the portal</value>
+  </data>
+  <data name="ContractsReasonNoCollectionOrIntervention" xml:space="preserve">
+    <value>The agency neither collected nor handled the payment</value>
+  </data>
+  <data name="ContractsReasonRuleWithoutWithholding" xml:space="preserve">
+    <value>The rule applied has no withholding</value>
+  </data>
 </root>

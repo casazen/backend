@@ -42,6 +42,20 @@ public interface IWithholdingService
     /// <exception cref="Exceptions.NotFoundException">404 <c>tax_dataset_not_found</c> while the year has none.</exception>
     /// <exception cref="Exceptions.DomainRuleException">422 <c>owner_period_invalid</c> (the year), <c>tax_cu_dataset_outdated</c> (data of an older shape, without recipients).</exception>
     Task<StoredCuDataset> GetCuDatasetAsync(Guid orgId, int year, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The data of the 770 for the year (E18/F01/US02/T02, NF-117): the withholdings made, month by month and tax code, from the applicable evidence of the payouts paid in the month and
+    /// their reversals (of an Italian rule only), each with the F24 of the month they were paid with, when there is one. Read only, and never the form nor a telematic file.
+    /// </summary>
+    /// <exception cref="Exceptions.DomainRuleException">422 <c>tax_no_obligations</c> (no evidence in the year), <c>owner_period_invalid</c>.</exception>
+    Task<Withholding770Data> Get770DataAsync(Guid orgId, int year, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The contracts of the year to communicate by 30 June of the next one (E18/F01/US02/T02, NF-117): the qualifying short lets the agency handled and did not withhold on, with the
+    /// lessor, the property, the duration and the consideration. Never a stay the agency withheld on. Read only: nothing is sent.
+    /// </summary>
+    /// <exception cref="Exceptions.DomainRuleException">422 <c>owner_period_invalid</c> (the year).</exception>
+    Task<ContractsCommunication> GetContractsCommunicationAsync(Guid orgId, int year, CancellationToken cancellationToken = default);
 }
 
 /// <summary>The F24 data of a month (E18/F01/US01/T02): the lines of the section Erario and the decisions of the payouts they add up.</summary>

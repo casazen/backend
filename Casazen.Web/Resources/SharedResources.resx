@@ -8179,4 +8179,58 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="CuProspectTaxCode" xml:space="preserve">
     <value>Codice tributo: {0}. Regola: {1}</value>
   </data>
+  <data name="Tax770ExportTitle" xml:space="preserve">
+    <value>Dati per il modello 770 {0}: ritenute operate e versate per mese e codice tributo, importi in euro (non è la dichiarazione)</value>
+  </data>
+  <data name="Tax770ColWithheld" xml:space="preserve">
+    <value>Ritenute operate (euro)</value>
+  </data>
+  <data name="Tax770ColF24Amount" xml:space="preserve">
+    <value>Importo dell'F24 (euro)</value>
+  </data>
+  <data name="Tax770ColPaidOn" xml:space="preserve">
+    <value>F24 pagato il</value>
+  </data>
+  <data name="Tax770ColFilingState" xml:space="preserve">
+    <value>Stato dell'F24</value>
+  </data>
+  <data name="Tax770ColHandoff" xml:space="preserve">
+    <value>Riferimento della consegna</value>
+  </data>
+  <data name="Tax770ColReceipt" xml:space="preserve">
+    <value>Ricevuta</value>
+  </data>
+  <data name="Tax770ColDifference" xml:space="preserve">
+    <value>Ritenute operate meno F24 (euro)</value>
+  </data>
+  <data name="Tax770NoF24" xml:space="preserve">
+    <value>F24 non generato</value>
+  </data>
+  <data name="ContractsExportTitle" xml:space="preserve">
+    <value>Comunicazione dei contratti di locazione breve {0}: contratti gestiti senza ritenuta dell'agenzia, da comunicare entro il 30 giugno (non è l'invio all'Agenzia delle entrate)</value>
+  </data>
+  <data name="ContractsExportSheet" xml:space="preserve">
+    <value>Contratti</value>
+  </data>
+  <data name="ContractsColLessor" xml:space="preserve">
+    <value>Locatore</value>
+  </data>
+  <data name="ContractsColCurrency" xml:space="preserve">
+    <value>Valuta</value>
+  </data>
+  <data name="ContractsColConsideration" xml:space="preserve">
+    <value>Corrispettivo lordo</value>
+  </data>
+  <data name="ContractsColReason" xml:space="preserve">
+    <value>Perché l'agenzia non ha trattenuto</value>
+  </data>
+  <data name="ContractsReasonAlreadyWithheldByPortal" xml:space="preserve">
+    <value>Ritenuta già operata dal portale</value>
+  </data>
+  <data name="ContractsReasonNoCollectionOrIntervention" xml:space="preserve">
+    <value>L'agenzia non ha incassato né è intervenuta nel pagamento</value>
+  </data>
+  <data name="ContractsReasonRuleWithoutWithholding" xml:space="preserve">
+    <value>La regola applicata non prevede ritenuta</value>
+  </data>
 </root>

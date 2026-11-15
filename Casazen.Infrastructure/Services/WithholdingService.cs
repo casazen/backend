@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -158,6 +159,56 @@ public sealed class WithholdingService(AppDbContext db, TimeProvider time) : IWi
             throw new DomainRuleException(TaxReportingErrors.CuDatasetOutdated, "CuDatasetOutdated");
 
         return new StoredCuDataset(dataset, records);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// One line for each month and tax code of the evidence of the year (a month with two codes has two lines, never one merged), with the F24 record of the month when it has that code.
+    /// An F24 that was never generated, or one not marked as paid, has its columns empty: the 770 is told what was withheld, and never that something was paid that nobody recorded.
+    /// </remarks>
+    public async Task<Withholding770Data> Get770DataAsync(Guid orgId, int year, CancellationToken cancellationToken = default)
+    {
+        RequireYear(year);
+
+        var evidence = await OwnerPayoutService.F24EvidenceQuery(db, orgId)
+            .Where(e => e.PeriodYear == year)
+            .ToListAsync(cancellationToken);
+        if (evidence.Count == 0)
+            throw new DomainRuleException(OwnerPayoutErrors.NoObligations, "TaxNoObligations");
+
+        var records = await db.F24Records.AsNoTracking()
+            .Where(f => f.OrgId == orgId && f.ReferenceYear == year)
+            .ToListAsync(cancellationToken);
+        var lines = evidence
+            .GroupBy(e => (e.PeriodMonth, TaxCode: e.TaxCode ?? string.Empty))
+            .OrderBy(g => g.Key.PeriodMonth)
+            .ThenBy(g => g.Key.TaxCode, StringComparer.Ordinal)
+            .Select(g =>
+            {
+                var f24 = records.FirstOrDefault(f => f.ReferenceMonth == g.Key.PeriodMonth && string.Equals(f.TaxCode, g.Key.TaxCode, StringComparison.Ordinal));
+                return new Withholding770Line(
+                    g.Key.PeriodMonth,
+                    g.Key.TaxCode,
+                    g.Sum(e => e.GrossBase ?? 0m),
+                    g.Sum(e => e.Amount ?? 0m),
+                    g.Count(),
+                    f24?.TotalAmount,
+                    f24 is null ? null : DateOnly.FromDateTime(f24.DueDate),
+                    f24?.PaidAt is { } paid ? RomeCalendar.DateInRome(paid) : null,
+                    f24?.FilingState,
+                    f24?.HandoffReference,
+                    f24?.ReceiptReference);
+            })
+            .ToList();
+        return new Withholding770Data(year, lines);
+    }
+
+    /// <inheritdoc />
+    public async Task<ContractsCommunication> GetContractsCommunicationAsync(Guid orgId, int year, CancellationToken cancellationToken = default)
+    {
+        RequireYear(year);
+
+        return await ContractsCommunicationBuilder.BuildAsync(db, orgId, year, cancellationToken);
     }
 
     private static void RequireYear(int year)

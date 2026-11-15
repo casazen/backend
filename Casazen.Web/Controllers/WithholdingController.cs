@@ -287,6 +287,66 @@ public class WithholdingController(
         return File(file.Content, file.ContentType, file.FileName);
     }
 
+    /// <summary>
+    /// The data of the 770 for the year as a CSV or an Excel file (E18/F01/US02/T02, NF-117, ⚖ T2): for each month and tax code the withholding made and the F24 it was paid with (its amount, due
+    /// date, the day it was marked as paid, its filing state and its references), from the applicable withholding evidence of the payouts paid in the month and their reversals, of an Italian rule
+    /// only. The data the accountant enters in the form: never the form and never a telematic file. Behind <c>Features:TaxReportingExports</c>. <c>format</c> is <c>csv</c> or <c>xlsx</c> (400
+    /// <c>fiscal_export_invalid_format</c>); 422 <c>tax_no_obligations</c> (no decision in the year), <c>owner_period_invalid</c>. <c>Cache-Control: no-store</c>.
+    /// </summary>
+    /// <param name="year">Reference year (e.g., 2026).</param>
+    /// <param name="format"><c>csv</c> or <c>xlsx</c>.</param>
+    [HttpGet("770/{year:int}/export")]
+    [FeatureGate(FeatureFlags.TaxReportingExports)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> Export770(int year, [FromQuery] string? format = null)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        if (FiscalDocumentExportFormats.Parse(format) is not { } fileFormat)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, FiscalDocumentExportsController.InvalidFormatCode, "FiscalExportInvalidFormat");
+
+        var data = await withholdingService.Get770DataAsync(orgId, year, HttpContext.RequestAborted);
+        var language = DocumentLanguages.Current;
+        var content = fileFormat == FiscalDocumentExportFormat.Xlsx
+            ? TaxReportingExports.Tax770Xlsx(data, texts, language)
+            : TaxReportingExports.Tax770Csv(data, texts, language);
+        logger.LogInformation("770 data of {Year} exported as {Format}: {Lines} lines", year, fileFormat, data.Lines.Count);
+        return Download(content, fileFormat, TaxReportingExports.Tax770FileName(year, FiscalDocumentExportFormats.ExtensionOf(fileFormat)));
+    }
+
+    /// <summary>
+    /// The communication of the short-let contracts of the year as a CSV or an Excel file (E18/F01/US02/T02, NF-117, ⚖ T2): every qualifying short let the agency handled and did not withhold
+    /// on (the portal already withheld, or the agency neither collected nor handled the money), with the lessor, the property (address, cadastral data and CIN when stored), the duration and the
+    /// consideration; never a stay the agency withheld on. Due by 30 June of the next year: nothing is sent by CasaZen. Behind <c>Features:TaxReportingExports</c>; needs
+    /// <c>agency.owner.financial.manage</c> on top (it prints the fiscal code and the address of the lessors). <c>format</c> is <c>csv</c> or <c>xlsx</c> (400 <c>fiscal_export_invalid_format</c>); 422
+    /// <c>owner_period_invalid</c>. <c>Cache-Control: no-store</c>.
+    /// </summary>
+    /// <param name="year">Reference year (e.g., 2026).</param>
+    /// <param name="format"><c>csv</c> or <c>xlsx</c>.</param>
+    [HttpGet("contracts-communication/{year:int}/export")]
+    [FeatureGate(FeatureFlags.TaxReportingExports)]
+    [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> ExportContractsCommunication(int year, [FromQuery] string? format = null)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        if (FiscalDocumentExportFormats.Parse(format) is not { } fileFormat)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, FiscalDocumentExportsController.InvalidFormatCode, "FiscalExportInvalidFormat");
+
+        var data = await withholdingService.GetContractsCommunicationAsync(orgId, year, HttpContext.RequestAborted);
+        var language = DocumentLanguages.Current;
+        var content = fileFormat == FiscalDocumentExportFormat.Xlsx
+            ? TaxReportingExports.ContractsXlsx(data, texts, language)
+            : TaxReportingExports.ContractsCsv(data, texts, language);
+        logger.LogInformation("Short-let contracts communication of {Year} exported as {Format}: {Contracts} contracts", year, fileFormat, data.Rows.Count);
+        return Download(content, fileFormat, TaxReportingExports.ContractsFileName(year, FiscalDocumentExportFormats.ExtensionOf(fileFormat)));
+    }
+
     /// <summary>Builds the annual data of the year from the evidence, again while it is only generated. 422 <c>tax_no_obligations</c>; 409 <c>tax_file_already_filed</c>.</summary>
     [HttpPost("annual/{year:int}")]
     [ProducesResponseType(typeof(TaxReportingDatasetDto), StatusCodes.Status200OK)]

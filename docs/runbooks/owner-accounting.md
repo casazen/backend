@@ -614,7 +614,7 @@ withholding reads are not behind it** (an owner past the limit is a business wha
 ## Certificazione Unica, 770 and the 30-June list (E18/F01/US02)
 
 Decisions of 2026-11-14 (`fatturazione/analisi-tecnica.md` §5, ⚖ I6 and T2 of the table §7): prudent defaults, configurable, to be confirmed by an accountant. **Nothing is filed or
-sent by CasaZen**: the telematic record layout of the CU is not produced (⚖ T2), the exports carry every field the accountant's software needs, and
+sent by CasaZen**: the telematic record layouts of the CU, the 770 and the communication are not produced (⚖ T2), the exports carry every field the accountant's software needs, and
 every file says it is the data to fill the form with. The new exports and the view of the owner are behind `Features:TaxReportingExports`
 (off by default, on in the test environment: [`feature-flags.md`](feature-flags.md)); the annual data and its filing states (`api/withholding/annual`) are not. **No migration**: the
 payload column of `TaxReportingDatasets` exists, it is encrypted through `EncryptedColumns` (below).
@@ -645,6 +645,17 @@ payload column of `TaxReportingDatasets` exists, it is encrypted through `Encryp
   Certificazione Unica. They read the data as it was stored and reviewed (never recomputed): 404 `tax_dataset_not_found` without annual data, `tax_cu_record_not_found` for an owner with no
   record (or of another org), 422 `tax_cu_dataset_outdated` for data stored before the recipients (generate it again while it is only generated), `owner_period_invalid`, 400
   `fiscal_export_invalid_format`. The states stay as they were: generated, reviewed, submitted (with the `handoffReference`), accepted (with the receipt) or rejected (with the reason).
+- **770** (E18/F01/US02/T02). `GET api/withholding/770/{year}/export?format=csv|xlsx` (`agency.withholding.manage`): for each month and tax code of the evidence of the year the base and the
+  withholding made, the F24 of the month (its amount, due date, the day it was marked as paid, filing state and references) and the difference with what was withheld. A month with two
+  codes has two lines (an F24 has one code); an F24 never generated says `F24 non generato` and its columns stay empty (never a payment nobody recorded). 422 `tax_no_obligations` for a year
+  without a decision. The data the accountant enters in the form: never the form, never a telematic file.
+- **30-June communication** (E18/F01/US02/T02, ⚖ T2). `GET api/withholding/contracts-communication/{year}/export?format=csv|xlsx` (both permissions): the short-let contracts the agency handled
+  **without withholding on them**, from the facts of the payouts of the year (one definition of a stay, `PayoutFactRules.EvaluateStay`): a qualifying short let that is not in the base of an applicable
+  decision (`already_withheld_by_portal`, `no_collection_or_intervention`, or the reason of a decision with no withholding) with the lessor (name, fiscal code, address), the property (address,
+  comune, cadastral data and CIN when stored), the first and last day, the nights, the channel and the gross consideration without the tourist tax. **Never a stay the agency withheld on** (that is
+  in the CU and the 770), never one that is no short-let regime (a business owner, a longer stay, a property outside Italy), and a payout that was reversed decides nothing: its stays come back
+  with the payout that decides them. The lessor is the owner the CU is on (the same attribution, so a signatory's contract adds its co-owners' shares). Due by 30 June of the next year;
+  nothing is sent.
 - **Owner portal** (E18/F01/US02/T01). `GET api/owner-portal/withholding?year=` answers, for the owner profiles of the claim only (`accounting.read` for a delegated contact, 403
   `owner_portal_permission_missing` without it; the empty summary with `Features:AgencyTier` or `Features:TaxReportingExports` off, as before): `totalWithheld` and `details` (agency, property,
   month, base and withholding in euro: the pieces of the owner's own payouts, adding up to the total) and `cuStatements`: the record of the owner profile in the annual data of the agency
@@ -653,4 +664,5 @@ payload column of `TaxReportingDatasets` exists, it is encrypted through `Encryp
   profiles of the grants and ignores the tenant filter on purpose, as the statements do).
 - **Reach, logs.** Every action of `api/withholding` needs a caller of the whole org (403 before anything is read); the logs carry ids, the year and counts, never a name, a fiscal code or an
   address.
-- **Proofs.** `CuDatasetTests` (`CuDataset_SharesSumToOwnerTotals_Test`, `CuDataset_PayloadEncrypted_Test`, `OwnerPortalWithholding_OnlyOwnClaim_Test`).
+- **Proofs.** `CuDatasetTests` (`CuDataset_SharesSumToOwnerTotals_Test`, `CuDataset_PayloadEncrypted_Test`, `OwnerPortalWithholding_OnlyOwnClaim_Test`) and
+  `TaxReportingExportsTests` (`ContractsCommunication_ExcludesStaysWithAgencyWithholding_Test`).

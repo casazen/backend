@@ -8,7 +8,8 @@ namespace Casazen.Infrastructure.Services;
 
 /// <summary>
 /// The files of the tax reporting of the owners (E18/F01/US02, NF-117, ⚖ T2): the data of the Certificazione Unica (a CSV or an Excel file with one row for each recipient and one for each of
-/// its stays, and the draft «prospetto CU» of an owner as a PDF). They carry <b>every field the accountant's software needs</b>, from data that was decided and stored before (the annual data, the evidence, the F24 records): nothing is
+/// its stays, and the draft «prospetto CU» of an owner as a PDF), the data of the 770 (the withholdings made and paid, month by month) and the communication of the short-let contracts handled
+/// without withholding. They carry <b>every field the accountant's software needs</b>, from data that was decided and stored before (the annual data, the evidence, the F24 records): nothing is
 /// computed here, nothing is a telematic file or a form filed, and nothing is sent. The texts are those of the resource files, in the language of the request. The CSV and the Excel file of a
 /// report have the same tables, so the same figures (<see cref="ReportTable"/>).
 /// </summary>
@@ -16,6 +17,9 @@ public static class TaxReportingExports
 {
     /// <summary>The name of the sheet of the recipients of the Certificazione Unica: «CU» in both languages, so it is not a text to translate.</summary>
     public const string CuRecordsSheetName = "CU";
+
+    /// <summary>The name of the sheet of the data of the 770: «770» in both languages.</summary>
+    public const string Tax770SheetName = "770";
 
     /// <summary>The most rows of a table of these exports: a year of an agency is far below it, and a file is never cut at the 10 000 rows of the other reports.</summary>
     public const int MaxRows = 200_000;
@@ -221,6 +225,152 @@ public static class TaxReportingExports
     /// <summary>The name of the file of the draft CU of an owner: <c>prospetto-cu-2026-3f2a….pdf</c> (the id of the owner, never its name).</summary>
     public static string CuProspectFileName(int year, Guid ownerId) =>
         string.Create(CultureInfo.InvariantCulture, $"prospetto-cu-{year:0000}-{ownerId:N}.pdf");
+
+    // ---------------------------------------------------------------- the 770
+
+    /// <summary>
+    /// The table of the data of the 770: for each month and tax code the withholding made (and the base), the F24 it was paid with (its amount, due date, day paid, filing state and references)
+    /// and the difference between what was withheld and what the F24 says. A month whose F24 was never generated says so, and the columns of the F24 stay empty (never a zero payment).
+    /// </summary>
+    public static ReportTable Tax770Table(Withholding770Data data, IDocumentTexts texts, string language)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        ArgumentNullException.ThrowIfNull(texts);
+
+        var table = new ReportTable(
+            texts.Get("Tax770ExportTitle", language, data.Year.ToString("0000", CultureInfo.InvariantCulture)),
+            [
+                texts.Get("F24DocColMonth", language),
+                texts.Get("F24DocColYear", language),
+                texts.Get("F24DocTaxCode", language),
+                texts.Get("F24ExportColGrossBaseEuro", language),
+                texts.Get("Tax770ColWithheld", language),
+                texts.Get("Tax770ColF24Amount", language),
+                texts.Get("AccPkgColDueDate", language),
+                texts.Get("Tax770ColPaidOn", language),
+                texts.Get("Tax770ColFilingState", language),
+                texts.Get("Tax770ColHandoff", language),
+                texts.Get("Tax770ColReceipt", language),
+                texts.Get("Tax770ColDifference", language),
+                texts.Get("AccPkgColEvidence", language),
+            ]);
+        foreach (var line in data.Lines)
+        {
+            table.Add(
+                ReportCell.Integer(line.Month),
+                ReportCell.Integer(data.Year),
+                line.TaxCode,
+                ReportCell.Money(line.GrossBase),
+                ReportCell.Money(line.Withheld),
+                ReportCell.Money(line.F24Amount),
+                ReportCell.Date(line.F24DueDate),
+                ReportCell.Date(line.F24PaidOn),
+                line.FilingState is { } state ? texts.Get("TaxFilingState" + state, language) : texts.Get("Tax770NoF24", language),
+                line.HandoffReference,
+                line.ReceiptReference,
+                ReportCell.Money(line.F24Amount is { } amount ? line.Withheld - amount : null),
+                line.EvidenceCount);
+        }
+
+        return table;
+    }
+
+    /// <summary>The CSV of the data of the 770.</summary>
+    public static byte[] Tax770Csv(Withholding770Data data, IDocumentTexts texts, string language) =>
+        CsvWriter.Write(Tax770Table(data, texts, language), MaxRows);
+
+    /// <summary>The Excel file of the data of the 770: one sheet, <see cref="Tax770SheetName"/>.</summary>
+    public static byte[] Tax770Xlsx(Withholding770Data data, IDocumentTexts texts, string language) =>
+        XlsxWriter.Write([new ReportSheet(Tax770SheetName, Tax770Table(data, texts, language))], MaxRows);
+
+    /// <summary>The name of the file of the data of the 770 of a year: <c>770-2026.csv</c>.</summary>
+    public static string Tax770FileName(int year, string extension) =>
+        string.Create(CultureInfo.InvariantCulture, $"770-{year:0000}.{extension}");
+
+    // ---------------------------------------------------------------- the communication of the short-let contracts
+
+    /// <summary>
+    /// The table of the communication of the contracts: for each contract the lessor (name, fiscal code, address), the property (address, comune, cadastral data and CIN when stored), the duration
+    /// (the first and the last day, the nights), the consideration and why the agency did not withhold. Every row is a stay the payouts of the year decided without the agency's withholding.
+    /// </summary>
+    public static ReportTable ContractsTable(ContractsCommunication data, IDocumentTexts texts, string language)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        ArgumentNullException.ThrowIfNull(texts);
+
+        var table = new ReportTable(
+            texts.Get("ContractsExportTitle", language, data.Year.ToString("0000", CultureInfo.InvariantCulture)),
+            [
+                texts.Get("ContractsColLessor", language),
+                texts.Get("CuColFiscalCode", language),
+                texts.Get("CuColVatNumber", language),
+                texts.Get("CuColStreet", language),
+                texts.Get("CuColCivic", language),
+                texts.Get("CuColPostalCode", language),
+                texts.Get("CuColCity", language),
+                texts.Get("CuColLegalAddress", language),
+                texts.Get("CuColProperty", language),
+                texts.Get("CuColPropertyAddress", language),
+                texts.Get("CuColPropertyCity", language),
+                texts.Get("CuColIstat", language),
+                texts.Get("CuColCin", language),
+                texts.Get("CuColCadastralSheet", language),
+                texts.Get("CuColCadastralParcel", language),
+                texts.Get("CuColCadastralSubaltern", language),
+                texts.Get("CuColCadastralCategory", language),
+                texts.Get("CuColCheckIn", language),
+                texts.Get("CuColCheckOut", language),
+                texts.Get("CuColNights", language),
+                texts.Get("AccPkgColChannel", language),
+                texts.Get("ContractsColCurrency", language),
+                texts.Get("ContractsColConsideration", language),
+                texts.Get("ContractsColReason", language),
+                texts.Get("CuColMissing", language),
+            ]);
+        foreach (var row in data.Rows)
+        {
+            table.Add(
+                row.Lessor.Name,
+                row.Lessor.FiscalCode,
+                row.Lessor.VatNumber,
+                row.Lessor.Street,
+                row.Lessor.Civic,
+                row.Lessor.PostalCode,
+                row.Lessor.City,
+                row.Lessor.LegalAddress,
+                row.Property?.Name,
+                AddressOf(row.Property),
+                CityOf(row.Property),
+                row.Property?.ComuneIstatCode,
+                row.Property?.Cin,
+                row.Property?.CadastralSheet,
+                row.Property?.CadastralParcel,
+                row.Property?.CadastralSubaltern,
+                row.Property?.CadastralCategory,
+                ReportCell.Date(row.CheckIn),
+                ReportCell.Date(row.CheckOut),
+                ReportCell.Integer(row.Nights),
+                row.Channel,
+                row.Currency,
+                ReportCell.Money(row.Consideration),
+                ReasonText(row.Reason, texts, language),
+                MissingText(row.Lessor.Missing, texts, language));
+        }
+
+        return table;
+    }
+
+    /// <summary>The CSV of the communication of the contracts.</summary>
+    public static byte[] ContractsCsv(ContractsCommunication data, IDocumentTexts texts, string language) =>
+        CsvWriter.Write(ContractsTable(data, texts, language), MaxRows);
+
+    /// <summary>The Excel file of the communication of the contracts: one sheet.</summary>
+    public static byte[] ContractsXlsx(ContractsCommunication data, IDocumentTexts texts, string language) =>
+        XlsxWriter.Write([new ReportSheet(texts.Get("ContractsExportSheet", language), ContractsTable(data, texts, language))], MaxRows);
+
+    /// <summary>The name of the file of the communication of the contracts of a year: <c>comunicazione-locazioni-brevi-2026.csv</c>.</summary>
+    public static string ContractsFileName(int year, string extension) =>
+        string.Create(CultureInfo.InvariantCulture, $"comunicazione-locazioni-brevi-{year:0000}.{extension}");
 
     // ---------------------------------------------------------------- the words
 
