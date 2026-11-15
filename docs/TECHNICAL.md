@@ -1752,7 +1752,8 @@ reservation of the room of a property, found through the confirmed `OctorateList
   `octorate-booking-engine`, `CasaZenSite` for any other direct booking, `Manual` for the rest. The public checkout (`POST /api/public/bookings`) takes an optional
   `attribution` `{ source, medium, campaign, referrer }`, kept only after `BookingAttribution.Sanitize` (lower-case tokens that fit the columns, the referrer
   reduced to its host name; what is not valid is dropped, never an error). The import writes `octorate-booking-engine` for a reservation of the booking engine
-  of the agency (the channel `BookingStateMapper` keeps direct) when it makes the booking, and when a newer version of one it made before is read; a reservation
+  of the agency (the channel `BookingStateMapper` keeps direct) when it makes the booking, and when a newer version of one it made before is read; the migration
+  gives it to the ones already imported (`AddBookingAttribution.BackfillSql`: a booking of the booking site with a reservation, no attribution and no row of the mirror); a reservation
   CasaZen pushed itself (a booking with a row of the mirror, its echo linked by reference) is never attributed. `GET /api/bookings/search` and `/counts` filter by
   `origin` (`BookingOrigins.Matching`, the same rule as a predicate); every booking answer has `origin` and, for a portal, `originChannel` (the name of its
   source; the name of an `OtherChannel` portal is `channelLabel`).

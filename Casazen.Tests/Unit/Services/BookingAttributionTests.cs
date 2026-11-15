@@ -1,5 +1,6 @@
 using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Unit.Octorate;
@@ -411,6 +412,28 @@ public class BookingAttributionTests
         Assert.Equal((BookingSource.Manual, (string?)null), await SourceAndAttributionAsync(h, manual));
     }
 
+    /// <summary>
+    /// A reservation of the booking engine that is attributed to it keeps its attribution when CasaZen cancels it: the cancellation makes a row of the mirror for a
+    /// reservation CasaZen did not make (OctorateBookingCancelHandler), and neither that row nor the next version read takes the attribution away or changes it.
+    /// </summary>
+    [Fact]
+    public async Task BookingImport_AnAttributedBooking_KeepsItsAttribution_WhenTheCancellationMakesItsRowOfTheMirror()
+    {
+        var h = new BookingImportHarness();
+        var engine = await h.SeedBookingAsync(
+            "9501", source: BookingSource.Direct, status: BookingStatus.Confirmed, total: 330m, updatedAt: FirstVersion.AddDays(-1), octorateUpdatedAt: FirstVersion);
+        await SetAttributionAsync(h, engine, BookingAttribution.OctorateBookingEngineSource);
+        await MirrorAsync(h, engine, OctorateSyncOperation.Cancel);
+        h.Serve(Res("9501") with { ChannelId = "270", ChannelName = "Direct Reservations", UpdatedAt = SecondVersion });
+        await using var db = h.NewDb();
+
+        await h.Service(db).ImportAllAsync(h.PropertyId, CancellationToken.None);
+
+        var (source, attribution) = await SourceAndAttributionAsync(h, engine);
+        Assert.Equal((BookingSource.Direct, (string?)"octorate-booking-engine"), (source, attribution));
+        Assert.Equal(BookingOrigin.AgencySite, BookingOrigins.Of(source, attribution));
+    }
+
     // ─── What the tests share ────────────────────────────────────────────────────────────────────────────
 
     private static Booking StayOf(BookingSource source, string? attribution = null, string? label = null) => new()
@@ -445,11 +468,12 @@ public class BookingAttributionTests
         return booking.Id;
     }
 
-    /// <summary>The row of the mirror the push of CasaZen makes for a booking (the import never does).</summary>
-    private static async Task MirrorAsync(BookingImportHarness h, Guid bookingId)
+    /// <summary>The row of the mirror the push of CasaZen makes for a booking (the import never does), or the cancellation of CasaZen for a reservation it did not make.</summary>
+    private static async Task MirrorAsync(BookingImportHarness h, Guid bookingId, OctorateSyncOperation operation = OctorateSyncOperation.Create)
     {
         await using var db = h.NewDb();
-        db.OctorateBookingSyncs.Add(new OctorateBookingSync { OrgId = OrgA, BookingId = bookingId, PropertyId = h.PropertyId });
+        db.OctorateBookingSyncs.Add(
+            new OctorateBookingSync { OrgId = OrgA, BookingId = bookingId, PropertyId = h.PropertyId, LastOperation = operation, State = OctorateSyncState.Synced });
         await db.SaveChangesAsync();
     }
 

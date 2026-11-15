@@ -925,7 +925,8 @@ migration. `GET api/public/stays` (the parameters of `stays`), `GET api/public/s
   the page the guest came from). Every field is optional and **none is ever refused**: the server keeps only what passes `BookingAttribution.Sanitize` and
   drops the rest, so a stray parameter of a link never costs the guest the booking. Stored on four new nullable columns of `Bookings`:
   `AttributionSource` (`varchar(40)`), `AttributionMedium` (`varchar(40)`), `AttributionCampaign` (`varchar(80)`), `AttributionReferrerHost` (`varchar(255)`);
-  migration `AddBookingAttribution`, additive, **no backfill, no flag**.
+  migration `AddBookingAttribution`, additive, **no flag**. The same migration also attributes the reservations of the booking engine that the import already made
+  (`AddBookingAttribution.BackfillSql`, below).
 - **No personal data is kept.** `source`, `medium` and `campaign` are trimmed, put in lower case and kept only when they are a token (letters and digits, and
   `-`, `_`, `.` inside), at most the length of the column, with no more than 8 digits in a row (the separators `-`, `_`, `.` do not end the row: `333-123-4567`
   is ten digits; a letter does) and not the form of an Italian fiscal code (six letters, two digits, a letter, two digits, a letter, three digits, a letter, with
@@ -944,8 +945,13 @@ migration. `GET api/public/stays` (the parameters of `stays`), `GET api/public/s
 - **The import** writes `octorate-booking-engine` on a reservation of the booking engine of the agency (the channel the import keeps direct, `270` in the
   sandbox) when it makes the booking, and when it reads a newer version of one it made before the column existed (a booking with a reservation on Octorate and
   no row of the mirror). A reservation CasaZen pushed itself to that channel (a booking with a row of the mirror, or its echo linked by reference) is the booking
-  CasaZen already has and is **never** attributed. Bookings made before the migration have no attribution and read as `CasaZenSite`, except those that the
-  import reads again.
+  CasaZen already has and is **never** attributed. **The data that exists**: the migration runs one `UPDATE` (`AddBookingAttribution.BackfillSql`) that gives
+  `octorate-booking-engine` to the bookings of the booking site (`Source` 0) that have a reservation on Octorate, no attribution and no row of the mirror: CasaZen
+  makes that row before it creates a reservation, so a reservation with none is one it did not make (the definition `HostBookingService` uses for a direct booking
+  that stays Octorate's). Nothing else changes, not even `UpdatedAt`; the read of a newer version does the same for a booking the old release imports during a
+  rolling deploy. Left as `CasaZenSite`: a booking made before the migration that has no attribution and a row of the mirror that is not the push's, which is the
+  case of a reservation of the engine that the host cancelled in CasaZen before this release (the cancellation makes a row for it,
+  `OctorateBookingCancelHandler`); telling that row from the push's needs a marker on the row.
 - Rollback: deploy the previous release (it ignores the columns); `Down` drops them and the values are lost.
 
 ### 11.7 Public coordinates (privacy)
