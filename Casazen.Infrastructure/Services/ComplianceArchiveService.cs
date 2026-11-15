@@ -11,6 +11,8 @@ using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Jobs;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -39,7 +41,8 @@ public sealed class ComplianceArchiveService(
     IFeatureFlags featureFlags,
     IOptions<ComplianceOptions> options,
     ILogger<ComplianceArchiveService> logger,
-    TimeProvider? timeProvider = null) : IComplianceArchiveService
+    TimeProvider? timeProvider = null,
+    IBackgroundJobClient? jobs = null) : IComplianceArchiveService
 {
     private const int ReadChunkBytes = 81920;
 
@@ -447,10 +450,32 @@ public sealed class ComplianceArchiveService(
             logger.LogInformation(
                 "Compliance proof uploaded. ProofId={ProofId} OrgId={OrgId} PropertyId={PropertyId} Kind={Kind} Properties={Properties}",
                 proof.Id, orgId, property.Id, proof.Kind, flats.Count);
+            QueueDeletionOfTheDocuments(orgId, proof.Kind);
             return ToEntry(
                 new ProofRow(proof.Id, proof.Kind, proof.PropertyId, property.Name, proof.Day, proof.ContentType, proof.UploadedAt),
                 flats.Select(flat => new ComplianceCoveredProperty(flat.Id, flat.Name)).ToList(),
                 coveredStays);
+        }
+    }
+
+    /// <summary>
+    /// Queues the run that deletes the documents of the stays a receipt covers (E20/F02/US01/T02, NF-121): never in the request, only for the receipt of the Alloggiati
+    /// communication and only while <c>Features:PurgeDocumentsAfterReceipt</c> is on. The proof is stored by now, so a queue that does not answer never fails the upload:
+    /// the daily run of the same job does the work, and the failure is logged.
+    /// </summary>
+    private void QueueDeletionOfTheDocuments(Guid orgId, ManualProofKind kind)
+    {
+        if (jobs is null || kind != ManualProofKind.AlloggiatiReceipt || !featureFlags.IsEnabled(FeatureFlags.PurgeDocumentsAfterReceipt))
+            return;
+
+        try
+        {
+            var jobId = jobs.Enqueue<GuestDocumentPurgeJob>(job => job.ExecuteForOrgAsync(orgId, CancellationToken.None));
+            logger.LogInformation("The deletion of the documents after the receipt is queued. OrgId={OrgId} JobId={JobId}", orgId, jobId);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "The deletion of the documents after the receipt could not be queued: the daily run does it. OrgId={OrgId}", orgId);
         }
     }
 

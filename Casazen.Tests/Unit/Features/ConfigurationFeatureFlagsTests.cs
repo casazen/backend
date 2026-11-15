@@ -107,6 +107,8 @@ public class ConfigurationFeatureFlagsTests
                 "TouristTaxOnlinePayment",
                 // E01/F04/US01/T03: the automation routines (API, engine, time triggers), off until the actions a host needs are real.
                 "Routines",
+                // E20/F02/US01/T02: the deletion of the guests' documents once the stay is covered by an archived Alloggiati receipt, off until the test environment has shown it.
+                "PurgeDocumentsAfterReceipt",
             },
             FeatureFlags.All);
     }

@@ -64,6 +64,7 @@ without bookings.
 | `AlloggiatiData` | Birth, citizenship, sex, document and scan of the booker; every guest of each stay (all kinds) after that stay's check-out, and the copy of the OTA conversations of the stay ([§ 14](#14-the-copy-of-the-ota-conversations-adr-032-e05f01)) | check-out of the stay / latest check-out | gdpr.md § 5: "conservazione **consigliata** per prova adempimento (es. 5 anni)" (an example, not an obligation). alloggiati.md § 4: the **Police receipt** must be kept 5 years (verified source): it is a different document, not the guest data | **Not an obligation**: to be decided |
 | `Marketing` | The consent ends (`Expired` event, version of the grant) | day of the grant | gdpr.md § 5: "Dati marketing: fino a revoca consenso" | Without a period the consent lasts until withdrawal, which is what gdpr.md says; a maximum duration is a product/DPO decision |
 | `FiscalData` | Whole record anonymized (as the erasure, not marked deleted) | latest check-out | gdpr.md § 5: "Dati fiscali/contabili: 10 anni (obbligo fiscale)", without the article of law | **Source to be completed** with the article before configuring |
+| Documents after the receipt (not a configurable category; see below) | The photos of identity documents a verification kept (`DocumentImages`: the objects and the rows, also the rows a verification already marked deleted) and the legacy scan of the booker (`Guest.DocumentScanUrl`); **never** the document data of the guests of the stay (`StayGuest`: number, type, dates), which are the legal record | the stay is covered by an archived Alloggiati receipt (E20/F02/US01/T01); no period | NF-121, NF-16, decision O4 of the operations plan; alloggiati.md "Receipt for several flats" | **Off by default** (`Features__PurgeDocumentsAfterReceipt`): the deletion is irreversible, so it is on in the test environment first |
 
 Example, only after the product owner's decision (values and sources are not provided by this task):
 
@@ -71,6 +72,22 @@ Example, only after the product owner's decision (values and sources are not pro
 Gdpr__Retention__FiscalData__Years=10
 Gdpr__Retention__FiscalData__Source=<article of law confirmed by the accountant>
 ```
+
+### Documents deleted after the receipt (E20/F02/US01/T02, NF-121, NF-16, decision O4)
+
+When **the stay is covered by an archived Alloggiati receipt** (a proof of the kind `AlloggiatiReceipt` that names the flat of the stay and the arrival day of the stay,
+alloggiati.md "Receipt for several flats") the photos of the guests' identity documents are deleted from the private storage and their rows removed, and the legacy scan of
+the booker is deleted and its reference cleared. A stay that is only «entrusted» to the channel manager, with no receipt, deletes nothing; neither does a stay that owes
+no communication (a request, a cancelled stay, a no-show). The booker's legacy scan is a record of the guest and not of the stay, so it also waits until **no other stay of
+that guest** is still waiting for its receipt. The document data of the guests (`StayGuest`) are **not** touched: they stay until the existing `AlloggiatiData` retention.
+
+- **Switch:** `Features__PurgeDocumentsAfterReceipt`, **off by default**; with it off the daily job and the run after an upload read and delete nothing. It is turned on in the
+  test environment after the merge and in production only when the product owner decides (the deletion cannot be undone).
+- **When:** the recurring job `guest-document-purge` (daily at 03:50 UTC, `[DisableConcurrentExecution]`, always registered) over every organization, and a run for the organization
+  queued right after an Alloggiati receipt is uploaded (never inside the request; a failure to queue it is logged and the daily run does the work).
+- **Idempotent:** a second run finds nothing. For each stay that lost something one line of the log with counts only (the id of the organization and of the stay, the photos and
+  the scans deleted: never a name, a number or a storage key) and one line in the send log of the stay (`DocumentsDeleted`, «Documenti cancellati dopo la ricevuta», with the date).
+- **A failure is not hidden:** a file the storage could not delete keeps its row and its reference, the other stays go on, and the run fails at its end (Hangfire repeats it).
 
 ## 4. Guests of the stay (companions): rule per category of guest
 

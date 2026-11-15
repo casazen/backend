@@ -673,6 +673,10 @@ public static class ServiceCollectionExtensions
         // E20/F02/US01/T01 (NF-47, CHK-08): the proofs are kept five years from their upload; the daily job (compliance-proof-retention) deletes the file and the row of
         // those whose time is over. Always scheduled, nothing to configure.
         services.AddScoped<Casazen.Infrastructure.Jobs.ComplianceProofRetentionJob>();
+        // E20/F02/US01/T02 (NF-121, NF-16, decision O4): the photos of the identity documents and the legacy scan of a stay covered by an archived Alloggiati receipt are deleted by the
+        // daily job (guest-document-purge) and by a run queued after each receipt upload; behind Features:PurgeDocumentsAfterReceipt, off by default (the deletion cannot be undone).
+        services.AddScoped<IGuestDocumentPurgeService, GuestDocumentPurgeService>();
+        services.AddScoped<Casazen.Infrastructure.Jobs.GuestDocumentPurgeJob>();
         services.AddScoped<IComplianceActivityFeeder, ComplianceActivityFeeder>();
         services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
         // «Gestisci con AI» of the page of the adempimenti: asks the guests for their data (e-mail with the check-in link, chat messages the

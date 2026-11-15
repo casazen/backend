@@ -35,6 +35,7 @@ public class RecurringJobsConcurrencyTests
         "supplier-showcase-media-cleanup",
         "accountant-package-monthly",
         "compliance-proof-retention",
+        "guest-document-purge",
     ];
 
     [Fact]

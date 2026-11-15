@@ -1,8 +1,8 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -13,8 +13,8 @@ namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
 /// E03/F04/US02/T04 privacy proofs (ADR-013-R7, art. 17 GDPR): the photo of an identity document that a verification kept in the private bucket
-/// (the object <b>and</b> its <see cref="DocumentImage"/> row) is deleted when the guest is erased and when the Alloggiati receipt arrives, also
-/// the rows a verification already deleted from the bucket and marked; the photos of another guest or of another booking stay.
+/// (the object <b>and</b> its <see cref="DocumentImage"/> row) is deleted when the guest is erased and when an archived Alloggiati receipt covers the
+/// stay (E20/F02/US01/T02), also the rows a verification already deleted from the bucket and marked; the photos of another guest or of another booking stay.
 /// </summary>
 public class DocumentImageErasureTests
 {
@@ -42,16 +42,41 @@ public class DocumentImageErasureTests
         Assert.Empty(deleted);
     }
 
-    /// <summary>Privacy rule: the receipt of the communication of a stay deletes the photos of its verification, objects and rows, and only its own.</summary>
+    /// <summary>
+    /// Privacy rule: once an archived receipt of the communication covers the stay, the photos of its verification are deleted, objects and rows, and only its own: the
+    /// stay of the next day, which has no receipt, keeps its photo (E20/F02/US01/T02, the one place that deletes the documents after a receipt).
+    /// </summary>
     [Fact]
     public async Task DocumentImageErasure_AlloggiatiReceipt_DeletesThePhotosOfTheBooking_Test()
     {
         using var db = OrgTeamTestData.NewDb();
         var world = World.Seed(db);
         var storage = StorageThatRemembers(out var deleted);
-        var job = new AlloggiatiReceiptJob(db, null!, storage.Object, NullLogger<AlloggiatiReceiptJob>.Instance, TimeProvider.System);
+        world.BookingB.CheckInDate = world.BookingA.CheckInDate.AddDays(1);
+        world.BookingB.CheckOutDate = world.BookingA.CheckOutDate.AddDays(1);
+        db.ManualComplianceProofs.Add(new ManualComplianceProof
+        {
+            OrgId = world.BookingA.OrgId,
+            PropertyId = world.BookingA.PropertyId,
+            Kind = ManualProofKind.AlloggiatiReceipt,
+            Day = DateOnly.FromDateTime(world.BookingA.CheckInDate),
+            FileKey = "compliance-proofs/test/receipt.pdf",
+            ContentType = "application/pdf",
+            UploadedByUserId = "auth0|owner",
+            UploadedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+        var flags = new Mock<IFeatureFlags>();
+        flags.Setup(f => f.IsEnabled(FeatureFlags.PurgeDocumentsAfterReceipt)).Returns(true);
+        var purge = new GuestDocumentPurgeService(
+            db,
+            storage.Object,
+            new GuestDataEraser(db, storage.Object, NullLogger<GuestDataEraser>.Instance),
+            flags.Object,
+            TimeProvider.System,
+            NullLogger<GuestDocumentPurgeService>.Instance);
 
-        await job.DeleteDocumentImagesAsync(world.BookingA.Id, CancellationToken.None);
+        await purge.PurgeAsync(null, CancellationToken.None);
 
         Assert.Equal(world.KeysOf(world.GuestA).Order(StringComparer.Ordinal), deleted.Order(StringComparer.Ordinal));
         var left = await db.DocumentImages.AsNoTracking().ToListAsync();

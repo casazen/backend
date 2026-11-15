@@ -165,6 +165,15 @@ public static class RecurringJobsRegistration
             ComplianceProofRetentionJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // E20/F02/US01/T02 (NF-121, NF-16, decision O4): once a stay is covered by an archived Alloggiati receipt the photos of its guests' identity documents and the legacy scan of
+        // its booker are deleted, every day at 03:50 UTC (and by a run for the organization queued right after a receipt upload). Always registered: the service reads
+        // Features:PurgeDocumentsAfterReceipt at each run and reads and deletes nothing while it is off (the deletion cannot be undone).
+        recurringJobManager.AddOrUpdate<GuestDocumentPurgeJob>(
+            GuestDocumentPurgeJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            GuestDocumentPurgeJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         // CO-20: daily CIN alert, after the nightly compliance check of CO-06.
         recurringJobManager.AddOrUpdate<CinDeadlineAlertJob>(
             CinDeadlineAlertJob.RecurringJobId,
