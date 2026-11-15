@@ -1081,6 +1081,9 @@
   <data name="AlloggiatiTransmissionUnavailable" xml:space="preserve">
     <value>CasaZen does not transmit to Alloggiati Web yet: send the record on the Questura portal using the data summary, then mark it as sent manually.</value>
   </data>
+  <data name="AlloggiatiChannelManagerWriteInProgress" xml:space="preserve">
+    <value>The guests of this stay are already being sent: try again in a moment.</value>
+  </data>
   <data name="AlloggiatiRecordFileNotReady" xml:space="preserve">
     <value>The file for the Alloggiati Web portal cannot be generated: the guest data is incomplete or an official code is missing. Complete the guest's Alloggiati details.</value>
   </data>
@@ -1512,6 +1515,27 @@
   </data>
   <data name="CheckInDocumentRequired" xml:space="preserve">
     <value>Document file is required.</value>
+  </data>
+  <data name="CheckInDocumentSideInvalid" xml:space="preserve">
+    <value>The document side must be front, back or single (one picture).</value>
+  </data>
+  <data name="BiometricSettingsThresholdsOutOfRange" xml:space="preserve">
+    <value>The manual review threshold cannot be below {0} and the acceptance threshold cannot be above {1}.</value>
+  </data>
+  <data name="BiometricSettingsThresholdsOrder" xml:space="preserve">
+    <value>The manual review threshold must be lower than the acceptance threshold.</value>
+  </data>
+  <data name="BiometricSettingsAttemptsOutOfRange" xml:space="preserve">
+    <value>Attempts must be between {0} and {1}.</value>
+  </data>
+  <data name="VerificationVideoCallUrlInvalid" xml:space="preserve">
+    <value>The video call link must be an absolute https address, with no spaces or credentials and at most {0} characters.</value>
+  </data>
+  <data name="VerificationGuestUnreachable" xml:space="preserve">
+    <value>The guest has no e-mail address: nothing was sent. Propose the video call from the portal chat.</value>
+  </data>
+  <data name="VerificationVideoCallNotSent" xml:space="preserve">
+    <value>The e-mail with the link could not be queued: try again shortly or contact the guest from the portal chat.</value>
   </data>
   <data name="CheckInDocumentPhotoTypeUnsupported" xml:space="preserve">
     <value>Document photo must be JPEG or PNG.</value>

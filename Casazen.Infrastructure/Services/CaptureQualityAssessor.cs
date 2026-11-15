@@ -31,7 +31,8 @@ public static class CaptureQualityRules
 
 /// <summary>
 /// The in-memory checks of one capture (E03/F04/US02/T02, AC-NF51-1, AC-NF51-2). Selfie: no face, several faces, face too small (under
-/// <c>Biometrics:MinFaceAreaRatio</c>), face too dark or too bright, face blurred. Document: too dark or too bright, glare, blur, no face photo.
+/// <c>Biometrics:MinFaceAreaRatio</c>), face too dark or too bright, face blurred. Document: too dark or too bright, glare, blur, no face photo
+/// (the back of a card, <see cref="CaptureKind.DocumentBack"/>, is not asked for a face: the photo is on the front, E22/F01/US01/T02).
 /// The MRZ of a document is checked by its reading (<see cref="CaptureGuidanceCodes.FromMrzQuality"/>), not here. Glasses and masks cannot be
 /// detected by the models: a selfie always carries them as static tips. Nothing is kept: the gray copies are zeroed before returning, and the
 /// picture is the caller's.
@@ -47,7 +48,9 @@ public sealed class CaptureQualityAssessor(IFaceDetector faceDetector, IOptions<
     public CaptureAssessment Assess(RasterImage image, CaptureKind kind, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(image);
-        return kind == CaptureKind.Selfie ? AssessSelfie(image, cancellationToken) : AssessDocument(image, cancellationToken);
+        return kind == CaptureKind.Selfie
+            ? AssessSelfie(image, cancellationToken)
+            : AssessDocument(image, kind != CaptureKind.DocumentBack, cancellationToken);
     }
 
     private CaptureAssessment AssessSelfie(RasterImage image, CancellationToken cancellationToken)
@@ -90,7 +93,11 @@ public sealed class CaptureQualityAssessor(IFaceDetector faceDetector, IOptions<
         return new CaptureAssessment(guidance.Count == 0, guidance, SelfieTips, true);
     }
 
-    private CaptureAssessment AssessDocument(RasterImage image, CancellationToken cancellationToken)
+    /// <summary>
+    /// A document picture. <paramref name="expectFace"/> is false for the back of a card (E22/F01/US01/T02): the photo is on the front, so no face is
+    /// looked for, the face models are not asked and the pixel checks are the whole assessment.
+    /// </summary>
+    private CaptureAssessment AssessDocument(RasterImage image, bool expectFace, CancellationToken cancellationToken)
     {
         var guidance = new List<string>();
         using (var gray = Statistics(image, null))
@@ -102,14 +109,17 @@ public sealed class CaptureQualityAssessor(IFaceDetector faceDetector, IOptions<
         }
 
         var assessed = true;
-        try
+        if (expectFace)
         {
-            if (faceDetector.Detect(image, options.Value.DocumentDetectionScoreThreshold, cancellationToken).Count == 0)
-                guidance.Add(CaptureGuidanceCodes.ShowDocumentPhoto);
-        }
-        catch (BiometricUnavailableException)
-        {
-            assessed = false;
+            try
+            {
+                if (faceDetector.Detect(image, options.Value.DocumentDetectionScoreThreshold, cancellationToken).Count == 0)
+                    guidance.Add(CaptureGuidanceCodes.ShowDocumentPhoto);
+            }
+            catch (BiometricUnavailableException)
+            {
+                assessed = false;
+            }
         }
 
         return new CaptureAssessment(assessed && guidance.Count == 0, guidance, [], assessed);

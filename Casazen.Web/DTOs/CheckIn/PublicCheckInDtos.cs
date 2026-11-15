@@ -111,6 +111,16 @@ public sealed class PublicIdentityVerificationStateDto
     public bool DocumentNotArchived { get; set; }
     public int VerifyingGuestPosition { get; set; }
 
+    /// <summary>
+    /// The pictures of the document on file (E22/F01/US01/T02): <c>["single"]</c>, or <c>front</c> and <c>back</c> for those that were sent; empty before the
+    /// first one. <c>documentChecked</c> and the step move to the selfie only when the face and the MRZ were found across them.
+    /// </summary>
+    public IReadOnlyList<string> DocumentSides { get; set; } = [];
+
+    /// <summary>The side of a document of two sides still to photograph, <c>front</c> or <c>back</c>, so a reloaded page asks for it; null when none is missing.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? DocumentSideNeeded { get; set; }
+
     public static PublicIdentityVerificationStateDto From(IdentityVerificationState state) => new()
     {
         Step = state.Step,
@@ -124,6 +134,8 @@ public sealed class PublicIdentityVerificationStateDto
         OperatorPathOpen = state.OperatorPathOpen,
         DocumentNotArchived = state.DocumentNotArchived,
         VerifyingGuestPosition = state.VerifyingGuestPosition,
+        DocumentSides = state.DocumentSides ?? [],
+        DocumentSideNeeded = state.DocumentSideNeeded,
     };
 }
 
@@ -666,8 +678,14 @@ public class DocumentUploadResponse
     /// <summary>The photo was kept encrypted for the comparison with the selfie (never in Ticino, never before the biometric consent).</summary>
     public bool DocumentStored { get; set; }
 
-    /// <summary>The property keeps no document (Ticino): the selfie step sends the photo of the document again.</summary>
+    /// <summary>The property keeps no document (Ticino): the selfie step sends the photo of the document again (both sides of a document of two sides).</summary>
     public bool DocumentNotArchived { get; set; }
+
+    /// <summary>The side that was just read: <c>single</c> (the default), <c>front</c> or <c>back</c> (E22/F01/US01/T02).</summary>
+    public string Side { get; set; } = DocumentSides.Single;
+
+    /// <summary>The pictures of the attempt on file: <c>["single"]</c>, or <c>front</c> and <c>back</c> for those that were sent (E22/F01/US01/T02).</summary>
+    public IReadOnlyList<string> Sides { get; set; } = [];
 }
 
 /// <summary>

@@ -121,4 +121,19 @@ public enum AlloggiatiWebStatus
     /// stored: it is what every reader derives from the no-show mark, so the stay is neither "to send manually" nor overdue and no alert is sent.
     /// </summary>
     NotDue = 11,
+
+    // E20/F01/US01/T02: the two values below are derived by AlloggiatiStatusRules.WithChannelManager from the guests written to the channel manager,
+    // for a stay whose sender is the channel manager. Never stored in a report, never a sent status.
+
+    /// <summary>
+    /// Every registered guest of the stay is on the channel manager, written for good (not as a draft), and the channel manager sends them to the police
+    /// (PO-02). It is not «sent»: green exists only with an archived receipt (CHK-12), so the stay is yellow until one is archived. Derived, never stored.
+    /// </summary>
+    EntrustedToChannelManager = 12,
+
+    /// <summary>
+    /// At least one guest of the stay could not be written to the channel manager (Octorate refused or did not answer, or a place of the guest is not in
+    /// its table): the host retries or corrects the guest, and the errors per guest position say why. Derived, never stored.
+    /// </summary>
+    ChannelManagerWriteFailed = 13,
 }

@@ -222,9 +222,10 @@ public sealed record BulkFilter(
 /// <summary>A flow and one of its states (<c>active</c>, <c>toComplete</c>, <c>notAvailable</c>) on a property.</summary>
 public sealed record BulkFlowStateFilter(OnboardingFlow Flow, string State);
 
-/// <summary>The choice to apply. The one choice of this version is the sender of the Alloggiati Web and ISTAT communications.</summary>
+/// <summary>The choice to apply: the sender of the Alloggiati Web and ISTAT communications, and with it, once for the org, whether CasaZen writes the guests to the channel manager on their own.</summary>
 /// <param name="ComplianceSender">The sender: <c>ChannelManager</c>, <c>CasaZen</c> or <c>Manual</c>; the switch of E03 decides which one a property may have.</param>
-public sealed record BulkChoice(ComplianceSenderType? ComplianceSender);
+/// <param name="AutoSendGuestsToOctorate">An org-wide setting (E20/F01/US01/T01, decision O1), written once and not for each property, only with a confirmed apply: <c>true</c> lets CasaZen write the guests of a stay to the channel manager as soon as their data is complete and the identity check passed; <c>null</c> leaves it as it is.</param>
+public sealed record BulkChoice(ComplianceSenderType? ComplianceSender, bool? AutoSendGuestsToOctorate = null);
 
 /// <summary>One property of the sample of a preview.</summary>
 public sealed record BulkPropertySample(Guid PropertyId, string Name, string City);
@@ -258,7 +259,13 @@ public sealed record BulkApplySummary(int Applied, int Unchanged, int Refused, i
 /// <param name="ComplianceSender">The sender asked.</param>
 /// <param name="Summary">The counts.</param>
 /// <param name="Items">The properties by name (then the ids that are not properties of the selection, in the order asked).</param>
-public sealed record BulkApplyResult(bool DryRun, ComplianceSenderType ComplianceSender, BulkApplySummary Summary, IReadOnlyList<BulkApplyItem> Items);
+/// <param name="AutoSendGuestsToOctorate">The org-wide setting the choice asked for (E20/F01/US01/T01); <c>null</c> when the choice did not carry it. It is written only when <paramref name="DryRun"/> is false.</param>
+public sealed record BulkApplyResult(
+    bool DryRun,
+    ComplianceSenderType ComplianceSender,
+    BulkApplySummary Summary,
+    IReadOnlyList<BulkApplyItem> Items,
+    bool? AutoSendGuestsToOctorate = null);
 
 /// <summary>
 /// How far one flow has got over the properties the scope reaches. The four numbers add up to the properties: <paramref name="Active"/> runs,

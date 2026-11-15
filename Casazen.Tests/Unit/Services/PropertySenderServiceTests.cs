@@ -439,6 +439,29 @@ public class PropertySenderServiceTests
         octorate.Verify(o => o.GetPoliceAccountAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>
+    /// E20/F01/US01/T01 (decision O1): the guests written to the channel manager on their own is an org-wide setting, off by default, and the view of the
+    /// sender of any property of the org reads it from the org.
+    /// </summary>
+    [Fact]
+    public async Task PropertySender_AutoSendOfTheOrg_IsOffByDefault_AndTheViewReadsItFromTheOrg()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        var world = await SeedAsync(databaseName);
+        var octorate = new Mock<IOctorateApiClient>();
+        OctorateExposes(octorate, valid: null, autorun: null);
+        await using var db = OrgTeamTestData.NewDb(databaseName);
+        var service = NewService(db, new FakeTimeProvider(Start), octorate);
+
+        Assert.False((await service.GetAsync(world.Connected, CancellationToken.None)).AutoSendGuestsToOctorate);
+
+        var org = await db.Orgs.SingleAsync(o => o.Id == world.OrgId);
+        org.AutoSendGuestsToOctorate = true;
+        await db.SaveChangesAsync();
+
+        Assert.True((await service.GetAsync(world.Connected, CancellationToken.None)).AutoSendGuestsToOctorate);
+    }
+
     /// <summary>The sender service over the real store and delegation service, with the clock, Octorate and the flags under the test's control.</summary>
     private static PropertySenderService NewService(AppDbContext db, FakeTimeProvider clock, Mock<IOctorateApiClient> octorate)
     {

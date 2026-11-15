@@ -1,8 +1,12 @@
+using System.Globalization;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
@@ -30,7 +34,8 @@ public class VerificationQueueService(
     ILogger<VerificationQueueService> logger,
     TimeProvider? timeProvider = null,
     IAccessCodeService? accessCodes = null,
-    IInternalActivityService? activities = null) : IVerificationQueueService
+    IInternalActivityService? activities = null,
+    IDomainEventRecorder? domainEvents = null) : IVerificationQueueService
 {
     /// <summary>The model name of an operator row when no automatic outcome came before it (a refused consent, a request of the guest).</summary>
     internal const string OperatorModelName = "operator";
@@ -189,6 +194,121 @@ public class VerificationQueueService(
     }
 
     /// <summary>
+    /// The operator proposes a video call (E22/F01/US01/T03): the link of the meeting goes to the guest by e-mail, in the guest's language, and CasaZen keeps it
+    /// in no table and no log (it stays in the body of the queued e-mail, the Hangfire job, until that job expires; the service has no HTTP client: the link is
+    /// not fetched either). The booking must be one the caller reaches whose verification waits for an operator; the
+    /// verification is not decided by this, the operator decides after the call as ever. What is recorded is only that a call was proposed, and when, on the
+    /// open "To do" of the verification (its reason and a line of its notes, in the org's language, the id of the operator not in it), and in the log of the
+    /// application with the booking and the operator, no link.
+    /// </summary>
+    public async Task<VideoCallOutcome> ProposeVideoCallAsync(
+        Guid bookingId,
+        HostScope scope,
+        string meetingUrl,
+        string? operatorUserId = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+
+        var link = VideoCallLinks.TryParse(meetingUrl);
+        if (link is null)
+            throw new DomainRuleException(VideoCallLinks.UrlInvalidCode, "VerificationVideoCallUrlInvalid", VideoCallLinks.MaxLength);
+
+        var session = await PendingSessions(scope)
+            .Include(s => s.Booking)
+                .ThenInclude(b => b.Guest)
+            .Include(s => s.Booking)
+                .ThenInclude(b => b.Property)
+            .Where(s => s.BookingId == bookingId)
+            .OrderByDescending(s => s.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (session == null)
+        {
+            logger.LogWarning("No pending verification found for booking {BookingId}: no video call proposed", bookingId);
+            return VideoCallOutcome.NotPending;
+        }
+
+        var booking = session.Booking;
+        var guest = booking.Guest;
+        if (string.IsNullOrWhiteSpace(guest.Email))
+        {
+            // Nobody to e-mail: the operator is told, and the "To do" says where else to reach the guest (the chat of the portal the booking came from).
+            await UpdateTodoAsync(session.OrgId, bookingId, "TodoReason_IdentityVerificationUseChat", null, null, cancellationToken);
+            logger.LogInformation("Video call for booking {BookingId} not sent: the guest has no e-mail address, the portal chat is suggested", bookingId);
+            return VideoCallOutcome.GuestUnreachable;
+        }
+
+        var culture = GuestLanguages.CultureOf(GuestLanguages.Resolve(session.Language, null));
+        var email = EmailTemplates.GuestVideoCall(
+            culture,
+            $"{guest.FirstName} {guest.LastName}".Trim(),
+            booking.Property.Name,
+            booking.CheckInDate,
+            link.AbsoluteUri);
+        if (!emailQueue.Enqueue(guest.Email, email, EmailTemplates.Names.GuestVideoCall))
+        {
+            logger.LogWarning("Video call e-mail of booking {BookingId} not queued", bookingId);
+            return VideoCallOutcome.NotSent;
+        }
+
+        // Only that a call was proposed, and when, in the words of the org's language: not the link (it is in the e-mail), and not who proposed it (the id of
+        // an operator says nothing to the person who reads the "To do"; the log of the application keeps the operator).
+        var proposedAt = UtcNow().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+        await UpdateTodoAsync(
+            session.OrgId,
+            bookingId,
+            "TodoReason_IdentityVerificationVideoCall",
+            "TodoNote_IdentityVerificationVideoCall",
+            proposedAt,
+            cancellationToken);
+        logger.LogInformation("User {UserId} proposed a video call for booking {BookingId}", operatorUserId ?? "none", bookingId);
+        return VideoCallOutcome.Sent;
+    }
+
+    /// <summary>
+    /// What the open "To do" of the verification of the booking says after a video call was proposed, or could not be (the guest has no e-mail address): its
+    /// reason, in the language of the org, and, when there is a <paramref name="noteKey"/>, a line of the same language added to its notes (the newest 2000
+    /// characters are kept) with <paramref name="noteValue"/> in it. Nothing when no "To do" is open.
+    /// </summary>
+    private async Task UpdateTodoAsync(
+        Guid orgId,
+        Guid bookingId,
+        string reasonKey,
+        string? noteKey,
+        string? noteValue,
+        CancellationToken cancellationToken)
+    {
+        var type = nameof(ActivityType.IdentityVerification);
+        var todo = await db.InternalActivities
+            .Where(a => a.OrgId == orgId
+                        && a.ActivityType == type
+                        && a.EntityType == InternalActivity.BookingEntityType
+                        && a.EntityId == bookingId
+                        && a.CompletedAt == null)
+            .OrderBy(a => a.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (todo is null)
+            return;
+
+        var language = await db.Orgs
+            .AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(o => o.Id == orgId)
+            .Select(o => o.DefaultLanguage)
+            .FirstOrDefaultAsync(cancellationToken);
+        var culture = OrgInvitationEmails.CultureOf(language);
+        todo.Reason = EmailTexts.Get(reasonKey, culture);
+        if (noteKey is not null)
+        {
+            var note = string.Format(culture, EmailTexts.Get(noteKey, culture), noteValue);
+            var notes = string.IsNullOrEmpty(todo.Notes) ? note : todo.Notes + "\n" + note;
+            todo.Notes = notes.Length > 2000 ? notes[^2000..] : notes;
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
     /// Record manual verification outcome by the operator (AC-NF12-6).
     /// Updates the session with the operator's decision, logs it (E03/F04/US02/T03, AC-NF50-5) and, on an approval only, releases the lock
     /// code to the guest and e-mails it (AC-NF50-4).
@@ -226,6 +346,17 @@ public class VerificationQueueService(
         session.BiometricOutcome = decided;
         session.UpdatedAt = now;
         await AddOperatorLogAsync(session, decided, operatorUserId, note, now, cancellationToken);
+
+        // E20/F01/US01/T01: an approval is announced on the bus in the same save as its row of the log (ids and the method, nothing else): an org that
+        // lets CasaZen write the guests to the channel manager on their own learns that the identity of the stay is verified. A rejection is not one.
+        if (outcome)
+        {
+            domainEvents?.Record(
+                DomainEventType.IdVerificationCompleted,
+                bookingId,
+                new IdVerificationCompletedPayload(bookingId, session.Booking.PropertyId, IdVerificationMethods.Operator),
+                orgId: session.OrgId);
+        }
 
         // The decision first: the gate of the code reads the latest row of the log from the database.
         await db.SaveChangesAsync(cancellationToken);

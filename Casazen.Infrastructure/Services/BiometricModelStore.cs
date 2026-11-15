@@ -187,9 +187,9 @@ public sealed class BiometricModelStore(
 
         Func<HttpClient>? http = httpClientFactory is null ? null : () => httpClientFactory.CreateClient(HttpClientName);
         var infos = new List<BiometricModelInfo>();
-        var detector = await LoadOneAsync("face_detector", settings.FaceDetector, settings, http, infos, ValidateDetector, cancellationToken);
-        var antiSpoofing = await LoadOneAsync("anti_spoofing", settings.AntiSpoofing, settings, http, infos, ValidateSingleOutput, cancellationToken);
-        var recognition = await LoadOneAsync("face_recognition", settings.FaceRecognition, settings, http, infos, ValidateSingleOutput, cancellationToken);
+        var detector = await LoadOneAsync(BiometricModelRoles.FaceDetector, settings.FaceDetector, settings, http, infos, ValidateDetector, cancellationToken);
+        var antiSpoofing = await LoadOneAsync(BiometricModelRoles.AntiSpoofing, settings.AntiSpoofing, settings, http, infos, ValidateSingleOutput, cancellationToken);
+        var recognition = await LoadOneAsync(BiometricModelRoles.FaceRecognition, settings.FaceRecognition, settings, http, infos, ValidateSingleOutput, cancellationToken);
 
         if (detector is null || antiSpoofing is null || recognition is null)
         {
@@ -308,4 +308,194 @@ public sealed class BiometricModelStore(
         LoadedBiometricModel? Recognition);
 
     internal static IReadOnlyList<string> RequiredDetectorOutputs => YuNetOutputs;
+}
+
+/// <summary>The roles of the models the identity verification needs: the three the store loads and the OCR-B file of the MRZ (E22/F01/US01/T01).</summary>
+public static class BiometricModelRoles
+{
+    /// <summary>YuNet: faces and landmarks.</summary>
+    public const string FaceDetector = "face_detector";
+
+    /// <summary>MiniFASNet: photo-of-photo and screen attacks.</summary>
+    public const string AntiSpoofing = "anti_spoofing";
+
+    /// <summary>AuraFace-v1 (or SFace): the vector of a face.</summary>
+    public const string FaceRecognition = "face_recognition";
+
+    /// <summary>OCR-B language data of Tesseract for the lines of the MRZ, loaded by the document readers and not by the store.</summary>
+    public const string MrzOcr = "mrz_ocr";
+}
+
+/// <summary>The states of a model, and of the set of them, in <see cref="BiometricModelsStatus"/>: codes the admin console and the health check speak.</summary>
+public static class BiometricModelStatusStates
+{
+    /// <summary><c>Features:CheckInIdentityVerification</c> is off: nothing is loaded and nothing is checked.</summary>
+    public const string Disabled = "disabled";
+
+    /// <summary>The models are being verified, downloaded or loaded (the start of the API).</summary>
+    public const string Loading = "loading";
+
+    /// <summary>Verified by its SHA-256 and loaded.</summary>
+    public const string Ready = "ready";
+
+    /// <summary>
+    /// Pinned and on disk but not loaded by the store: the OCR-B file, whose hash the document readers verify the first time a document is read (the
+    /// status never hashes a file: it runs on every health probe).
+    /// </summary>
+    public const string Present = "present";
+
+    /// <summary>Cannot be used: <see cref="BiometricModelStatus.Code"/> says why (a code of <see cref="ModelFileProvisioner"/>).</summary>
+    public const string Failed = "failed";
+
+    /// <summary>Of the set only: at least one model cannot be used, so every verification goes to the operator.</summary>
+    public const string Unavailable = "unavailable";
+}
+
+/// <summary>
+/// One model as the status shows it: what it is (name, version, licence), whether its SHA-256 is pinned, and where it stands, with the failure
+/// code when it cannot be used. Never a path, a hash or an address.
+/// </summary>
+public sealed record BiometricModelStatus(
+    string Role,
+    string Name,
+    string Version,
+    string License,
+    string State,
+    string? Code,
+    bool Pinned)
+{
+    /// <summary>The model can be used: loaded, or present and to be verified at its first use.</summary>
+    public bool IsUsable => State is BiometricModelStatusStates.Ready or BiometricModelStatusStates.Present;
+}
+
+/// <summary>The status of the models of the identity verification: whether the feature is on, the state of the set, and one entry per model.</summary>
+public sealed record BiometricModelsStatus(
+    bool FeatureEnabled,
+    string State,
+    string? ReasonCode,
+    IReadOnlyList<BiometricModelStatus> Models);
+
+/// <summary>
+/// What is known of the models without touching their files: no hashing, no download, no network (it runs on every health probe). The state of
+/// the three models of the store comes from its snapshot, the state of the OCR-B file from the configuration and the disk (pinned and found).
+/// </summary>
+public static class BiometricModelStatuses
+{
+    private const string Unknown = "unknown";
+
+    public static BiometricModelsStatus Describe(
+        bool featureEnabled,
+        BiometricModelsSnapshot snapshot,
+        BiometricModelOptions biometrics,
+        MrzOcrOptions mrzOcr,
+        string? baseDirectory = null)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(biometrics);
+        ArgumentNullException.ThrowIfNull(mrzOcr);
+
+        var models = new List<BiometricModelStatus>
+        {
+            OfStoreModel(BiometricModelRoles.FaceDetector, biometrics.FaceDetector, featureEnabled, snapshot),
+            OfStoreModel(BiometricModelRoles.AntiSpoofing, biometrics.AntiSpoofing, featureEnabled, snapshot),
+            OfStoreModel(BiometricModelRoles.FaceRecognition, biometrics.FaceRecognition, featureEnabled, snapshot),
+            OfOcrModel(mrzOcr.Mrz, featureEnabled, baseDirectory ?? AppContext.BaseDirectory),
+        };
+
+        string state;
+        if (!featureEnabled)
+            state = BiometricModelStatusStates.Disabled;
+        else if (models.All(model => model.IsUsable))
+            state = BiometricModelStatusStates.Ready;
+        else if (models.Any(model => model.State == BiometricModelStatusStates.Failed))
+            state = BiometricModelStatusStates.Unavailable;
+        else
+            state = BiometricModelStatusStates.Loading;
+
+        return new BiometricModelsStatus(
+            featureEnabled,
+            state,
+            state == BiometricModelStatusStates.Unavailable ? snapshot.ReasonCode : null,
+            models);
+    }
+
+    private static BiometricModelStatus OfStoreModel(string role, ModelFileOptions spec, bool featureEnabled, BiometricModelsSnapshot snapshot)
+    {
+        if (!featureEnabled)
+            return Of(role, spec, BiometricModelStatusStates.Disabled, null);
+
+        var info = snapshot.Models.FirstOrDefault(model => string.Equals(model.Role, role, StringComparison.Ordinal));
+        if (info is not null)
+        {
+            return info.Loaded
+                ? Of(role, spec, BiometricModelStatusStates.Ready, null)
+                : Of(role, spec, BiometricModelStatusStates.Failed, info.FailureCode ?? Unknown);
+        }
+
+        return snapshot.State switch
+        {
+            BiometricModelsState.NotLoaded or BiometricModelsState.Loading => Of(role, spec, BiometricModelStatusStates.Loading, null),
+
+            // The configuration is invalid or the loading failed as a whole: no model was tried one by one.
+            BiometricModelsState.Unavailable => Of(role, spec, BiometricModelStatusStates.Failed, snapshot.ReasonCode ?? Unknown),
+
+            // The flag is on now and was off when the process started: the models are loaded at start, a restart loads them.
+            BiometricModelsState.Disabled => Of(role, spec, BiometricModelStatusStates.Failed, "not_loaded"),
+
+            // Ready with no entry for this model cannot happen (the store publishes the three): never claim more than is known.
+            _ => Of(role, spec, BiometricModelStatusStates.Failed, Unknown),
+        };
+    }
+
+    private static BiometricModelStatus OfOcrModel(ModelFileOptions spec, bool featureEnabled, string baseDirectory)
+    {
+        if (!featureEnabled)
+            return Of(BiometricModelRoles.MrzOcr, spec, BiometricModelStatusStates.Disabled, null);
+
+        if (!spec.HasWellFormedSha256())
+            return Of(BiometricModelRoles.MrzOcr, spec, BiometricModelStatusStates.Failed, ModelFileProvisioner.HashNotConfigured);
+
+        if (string.IsNullOrWhiteSpace(spec.Path))
+            return Of(BiometricModelRoles.MrzOcr, spec, BiometricModelStatusStates.Failed, ModelFileProvisioner.PathInvalid);
+
+        string path;
+        try
+        {
+            path = System.IO.Path.IsPathRooted(spec.Path)
+                ? spec.Path
+                : System.IO.Path.GetFullPath(System.IO.Path.Combine(baseDirectory, spec.Path));
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return Of(BiometricModelRoles.MrzOcr, spec, BiometricModelStatusStates.Failed, ModelFileProvisioner.PathInvalid);
+        }
+
+        return File.Exists(path)
+            ? Of(BiometricModelRoles.MrzOcr, spec, BiometricModelStatusStates.Present, null)
+            : Of(BiometricModelRoles.MrzOcr, spec, BiometricModelStatusStates.Failed, ModelFileProvisioner.FileMissing);
+    }
+
+    private static BiometricModelStatus Of(string role, ModelFileOptions spec, string state, string? code) =>
+        new(role, spec.Name, spec.Version, spec.License, state, code, spec.HasWellFormedSha256());
+}
+
+/// <summary>The status of the models as it is now: one reading for the health check and the admin console, so they cannot disagree.</summary>
+public interface IBiometricModelStatusReader
+{
+    BiometricModelsStatus Read();
+}
+
+/// <inheritdoc cref="IBiometricModelStatusReader" />
+public sealed class BiometricModelStatusReader(
+    IBiometricModelStore store,
+    IOptions<BiometricModelOptions> biometrics,
+    IOptions<MrzOcrOptions> mrzOcr,
+    IFeatureFlags featureFlags) : IBiometricModelStatusReader
+{
+    public BiometricModelsStatus Read() =>
+        BiometricModelStatuses.Describe(
+            featureFlags.IsEnabled(FeatureFlags.CheckInIdentityVerification),
+            store.Snapshot,
+            biometrics.Value,
+            mrzOcr.Value);
 }

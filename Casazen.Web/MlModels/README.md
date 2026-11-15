@@ -7,7 +7,13 @@ check-in goes to the operator or to the guided manual entry. Reference: `docs/TE
 reading) and `docs/runbooks/deploy-checklist.md` (sections `Biometrics` and `MrzOcr`).
 
 **No model file is committed yet and no hash is pinned.** The files below must be added by the operator after reading their licence and
-training-data note (ADR-013 gates: model licence review, DPIA).
+training-data note (ADR-013 gates: model licence review, DPIA). Everything is prepared so that the delivery is one command once the product
+owner allows it (decision O7): [`models.manifest.json`](models.manifest.json) lists every model with its source, licence, size and the
+variables to pin, [`scripts/biometrics/fetch-models.mjs`](../../scripts/biometrics/fetch-models.mjs) downloads and verifies them and prints
+the Railway variable lines, [`scripts/biometrics/export_minifasnet.py`](../../scripts/biometrics/export_minifasnet.py) is the recipe that
+exports MiniFASNetV2 to ONNX, and [`docs/runbooks/biometric-models.md`](../../docs/runbooks/biometric-models.md) has the exact steps.
+**Never run the script or the recipe, and never commit a model file, without that permission.**
+`GET /api/admin/biometrics/status` (platform administrators) and the `biometrics` entry of `/api/health/ready` say which model is missing and why.
 
 | Path | What | Source | Licence | Pin | Size |
 |---|---|---|---|---|---|

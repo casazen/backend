@@ -109,6 +109,10 @@ public static class OctorateServiceCollectionExtensions
         services.AddScoped<OctorateStayStateJob>();
         services.AddScoped<OctorateCheckInRetryJob>();
 
+        // The places Octorate recognizes (E20/F01/US01/T01, decision O2): its table of cities with the police codes, kept in memory for 24 hours, so the
+        // comuni of a guest go with the exact names of that table. The sync service takes it as an optional parameter: this registration is what turns it on.
+        services.AddScoped<IOctoratePlaceNames, OctoratePlaceNames>();
+
         return services;
     }
 }

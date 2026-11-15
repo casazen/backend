@@ -31,8 +31,14 @@ public enum CaptureKind
     /// <summary>The face of the guest, from the camera.</summary>
     Selfie = 1,
 
-    /// <summary>The identity document, the side with the photo and the MRZ.</summary>
+    /// <summary>The identity document, the side with the photo (and, on a passport, the MRZ): the face of the document is looked for.</summary>
     Document = 2,
+
+    /// <summary>
+    /// The back of an identity card (E22/F01/US01/T02): the MRZ side of the Italian electronic identity card and of the other TD1 cards. The light, the
+    /// glare and the blur are checked like on any document picture, but <b>no face is looked for</b>: the photo is on the front.
+    /// </summary>
+    DocumentBack = 3,
 }
 
 /// <summary>
@@ -96,6 +102,18 @@ public static class CaptureGuidanceCodes
 
     /// <summary>Static tip of the selfie: take off a mask or anything that covers the face (not detected by the models).</summary>
     public const string TipRemoveMask = "tip_remove_mask";
+
+    /// <summary>
+    /// The photo of the document was read but its MRZ is not on that side (an identity card: the MRZ is on the back): turn the document over and photograph
+    /// the back (E22/F01/US01/T02).
+    /// </summary>
+    public const string DocumentBackNeeded = "document_back_needed";
+
+    /// <summary>
+    /// The MRZ was read on the back but the photo of the face is not on the front on file (or the front is not good enough): photograph the front
+    /// (E22/F01/US01/T02).
+    /// </summary>
+    public const string DocumentFrontNeeded = "document_front_needed";
 
     /// <summary>The guidance of the quality hints of an MRZ reading (<see cref="MrzQualityCodes"/>).</summary>
     public static IReadOnlyList<string> FromMrzQuality(IEnumerable<string> hints) =>

@@ -47,11 +47,18 @@ public class PublicGuestCheckInController(
     public const string ValidationCodesExtension = "codes";
 
     /// <summary>
-    /// Largest request of <c>/document</c> and <c>/selfie</c> (10 MB). Their multipart body is buffered in memory up to this size
+    /// Largest request of <c>/document</c> (10 MB). Its multipart body is buffered in memory up to this size
     /// (<see cref="RequestFormLimitsAttribute.MemoryBufferThreshold"/>), so an image is never spilled to a temporary file on disk
-    /// (ADR-013-R2): the default threshold is 64 KB.
+    /// (ADR-013-R2): the default threshold is 64 KB. <c>/selfie</c> has <see cref="MaxSelfieRequestBytes"/>.
     /// </summary>
     public const int MaxImageRequestBytes = 10_000_000;
+
+    /// <summary>
+    /// Largest request of <c>/selfie</c> (15 MB, E22/F01/US01/T02): the selfie and, for a property that keeps no document (Ticino), the pictures of the document read
+    /// before, the front and the back of a card, so three pictures with the budget each of them always had (5 MB: 10 MB were for the two of before). Buffered in
+    /// memory up to this size like <see cref="MaxImageRequestBytes"/>, never in a temporary file (ADR-013-R2). A request over it is refused by the server with 413.
+    /// </summary>
+    public const int MaxSelfieRequestBytes = 15_000_000;
 
     private static readonly string[] AllowedImageTypes = ["image/jpeg", "image/jpg", "image/png"];
 
@@ -299,6 +306,14 @@ public class PublicGuestCheckInController(
     /// session as flags. Outside Ticino, after the biometric consent, the photo is kept encrypted for the comparison with the selfie
     /// (<c>documentStored</c>) until the verification is over; in Ticino nothing is kept (ADR-013-R6, <c>documentNotArchived</c>). Supports
     /// passport (TD-3), ID card (TD-1), and residence permit. Behind <see cref="FeatureFlags.CheckInIdentityVerification"/>, off by default.
+    /// <para>
+    /// <b>Two sides</b> (E22/F01/US01/T02): the form field <c>side</c> is <c>front</c>, <c>back</c> or <c>single</c> (the default, and today's behaviour: one
+    /// picture with the face and the MRZ, as on a passport). The Italian electronic identity card and the other TD-1 cards have the face on the front and the
+    /// MRZ on the back: the face must come from the front (or a single picture), the MRZ from any side, and <c>acceptable</c> is true when both were found
+    /// across the pictures of the attempt. <c>guidanceCodes</c> then say which side is missing (<c>document_back_needed</c>, <c>document_front_needed</c>);
+    /// <c>side</c> and <c>sides</c> in the answer are the side just read and the pictures on file. A side sent again replaces its own picture and is not a
+    /// new attempt. 400 <c>document_side_invalid</c> for any other value of <c>side</c>.
+    /// </para>
     /// </summary>
     [HttpPost("{token}/document")]
     [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
@@ -307,11 +322,15 @@ public class PublicGuestCheckInController(
     [RequestFormLimits(MemoryBufferThreshold = MaxImageRequestBytes, MultipartBodyLengthLimit = MaxImageRequestBytes)]
     public async Task<ActionResult<DocumentUploadResponse>> UploadDocument(
         string token,
-        [FromForm] IFormFile document)
+        [FromForm] IFormFile document,
+        [FromForm] string? side = null)
     {
         var session = await checkInService.GetSessionByTokenAsync(token);
         if (session is null)
             return NotFound();
+
+        if (!DocumentSides.TryParse(side, out var documentSide))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "document_side_invalid", "CheckInDocumentSideInvalid");
 
         if (document == null || document.Length == 0)
             return this.ApiProblem(StatusCodes.Status400BadRequest, "document_required", "CheckInDocumentRequired");
@@ -323,7 +342,7 @@ public class PublicGuestCheckInController(
         {
             // Read in memory only (ADR-013-R2): the multipart body is buffered in memory, the service zeroes its copy.
             await using var image = document.OpenReadStream();
-            var result = await verificationFlow.SubmitDocumentAsync(session, image, HttpContext.RequestAborted);
+            var result = await verificationFlow.SubmitDocumentAsync(session, image, documentSide, HttpContext.RequestAborted);
             var reading = result.Reading;
             var fields = reading.Fields;
 
@@ -358,6 +377,8 @@ public class PublicGuestCheckInController(
                 GuidanceCodes = result.GuidanceCodes,
                 DocumentStored = result.DocumentStored,
                 DocumentNotArchived = result.DocumentNotArchived,
+                Side = DocumentSides.CodeOf(result.Side),
+                Sides = result.SidesReceived ?? [],
             });
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -377,16 +398,24 @@ public class PublicGuestCheckInController(
     /// its kept photo is gone), 400 <c>document_photo_required</c> for a property in Ticino without the photo of the document, 409
     /// <c>document_photo_mismatch</c> when that photo is not the one read. A minor, an organization that does not offer it and a session already
     /// with the operator answer <c>operator</c>. Behind <see cref="FeatureFlags.CheckInIdentityVerification"/>, off by default.
+    /// <para>
+    /// A document of two sides (E22/F01/US01/T02, <c>side</c> <c>front</c> and <c>back</c> of <c>/document</c>): <c>documentPhoto</c> is the front (the face)
+    /// and, for a property in Ticino, which keeps nothing, <c>documentPhotoBack</c> is the back; both are the pictures that were read, or 400
+    /// <c>document_photo_required</c> and 409 <c>document_photo_mismatch</c>. Elsewhere neither is needed. 409 <c>document_check_required</c> also while
+    /// the face or the MRZ of such a document is still missing, with no attempt spent. The whole request is at most <see cref="MaxSelfieRequestBytes"/> (15 MB,
+    /// the 5 MB of each of three pictures); over it the server answers 413.
+    /// </para>
     /// </summary>
     [HttpPost("{token}/selfie")]
     [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
     [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
-    [RequestSizeLimit(MaxImageRequestBytes)]
-    [RequestFormLimits(MemoryBufferThreshold = MaxImageRequestBytes, MultipartBodyLengthLimit = MaxImageRequestBytes)]
+    [RequestSizeLimit(MaxSelfieRequestBytes)]
+    [RequestFormLimits(MemoryBufferThreshold = MaxSelfieRequestBytes, MultipartBodyLengthLimit = MaxSelfieRequestBytes)]
     public async Task<ActionResult<SelfieUploadResponse>> UploadSelfie(
         string token,
         [FromForm] IFormFile selfie,
-        [FromForm] IFormFile? documentPhoto = null)
+        [FromForm] IFormFile? documentPhoto = null,
+        [FromForm] IFormFile? documentPhotoBack = null)
     {
         var session = await checkInService.GetSessionByTokenAsync(token);
         if (session is null)
@@ -401,13 +430,17 @@ public class PublicGuestCheckInController(
         if (documentPhoto is not null && (documentPhoto.Length == 0 || !IsImage(documentPhoto)))
             return this.ApiProblem(StatusCodes.Status400BadRequest, "document_photo_type_unsupported", "CheckInDocumentPhotoTypeUnsupported");
 
+        if (documentPhotoBack is not null && (documentPhotoBack.Length == 0 || !IsImage(documentPhotoBack)))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "document_photo_type_unsupported", "CheckInDocumentPhotoTypeUnsupported");
+
         SelfieStepResult result;
         try
         {
             // ADR-013-R1: in the request, not in a job. ADR-013-R2: in memory only, zeroed by the agent and the pipeline.
             await using var selfieStream = selfie.OpenReadStream();
             await using var documentStream = documentPhoto?.OpenReadStream();
-            result = await verificationFlow.SubmitSelfieAsync(session, selfieStream, documentStream, HttpContext.RequestAborted);
+            await using var documentBackStream = documentPhotoBack?.OpenReadStream();
+            result = await verificationFlow.SubmitSelfieAsync(session, selfieStream, documentStream, documentBackStream, HttpContext.RequestAborted);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
