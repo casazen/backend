@@ -107,6 +107,8 @@ public class ConfigurationFeatureFlagsTests
                 "TouristTaxOnlinePayment",
                 // E01/F04/US01/T03: the automation routines (API, engine, time triggers), off until the actions a host needs are real.
                 "Routines",
+                // E18/F01/US03/T01: the Italian tax reporting of the owners (the warnings of the limit of units and of the company tenant, the exports of E18), off until the accountant confirms the ⚖ choices.
+                "TaxReportingExports",
             },
             FeatureFlags.All);
     }

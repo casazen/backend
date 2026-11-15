@@ -414,6 +414,12 @@ public static class OwnerReadinessCodes
     /// longer the picture of the ledger and the agency generates it again (blocking, with the invoice as the source).
     /// </summary>
     public const string OwnerInvoiceAfterApproval = "owner_invoice_after_approval";
+
+    /// <summary>
+    /// The owner is past the limit of units of a private person and is presumed a business (E18/F01/US03/T01, ⚖ I8): the statement version is flagged (never blocking: the
+    /// statement is right, the tax treatment of the owner is what to look at). Recorded on a version only while <c>Features:TaxReportingExports</c> is on.
+    /// </summary>
+    public const string ShortLetBusinessPresumed = "short_let_business_presumed";
 }
 
 /// <summary>The kinds of the flat fees of a mandate, as the <see cref="OwnerLedgerEntry.SourceReference"/> of their lines (E13/F01/US01/T02).</summary>

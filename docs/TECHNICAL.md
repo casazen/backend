@@ -3143,6 +3143,19 @@ Who issued a document of a booking: one row for each document CasaZen issues, wr
 | `LockedAt` | `DateTime` | — | UTC |
 | `LockedByDocumentId` | `Guid?` | no foreign key, **unique** where set (`UIX_BookingDocumentIssuers_LockedByDocumentId`) | The document of the row; `null` for a legacy row made before any document |
 
+#### `ShortLetTaxDecision` (NF-117, E18/F01/US03/T01, ⚖ I7)
+
+What a person of the agency decided about the tax regime of one stay of a company tenant in the Italian property of a private owner: still a short let (the intermediary withholds) or not. Append only: a new decision for the same booking replaces the latest as the one in force (`OwnerTaxRules.CurrentDecision`) and the earlier ones stay as the history. The withholding facts read it through `IOwnerTaxChecks.TreatmentOfStaysAsync`; the checks and the endpoints are in [`owner-accounting.md`](runbooks/owner-accounting.md) (« Limit of units, company tenant and co-owners »). The same migration, `AddOwnerTaxChecks`, adds `PropertyOwners.ExternalShortLetUnits` and `OwnerMandates.CoOwnerTaxReporting`.
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | tenant key (`ITenantOwned`), FK `Orgs` (CASCADE) | The org of the booking |
+| `BookingId` | `Guid` | indexed with `OrgId` (`IX_ShortLetTaxDecisions_OrgId_BookingId`, not unique), **no foreign key** | The stay; the decision is tax evidence and outlives the booking |
+| `Regime` | `int` (enum `ShortLetTaxRegime`) | explicit numbers, check `IN (1, 2)` | `ShortLet` 1, `NotShortLet` 2 |
+| `Reason` | `string` (500) | required | The note of the agency; never logged, never in the «Da fare» |
+| `DecidedAt`, `DecidedByUserId` | `DateTime`, `string` (255) | required | UTC; the Auth0 subject of the person |
+
 #### Activation of CasaZen with Octorate (NF-104..NF-107, E10/F01/US01/T01)
 
 Six tables keep what the activation cannot derive: the host's intents and the activation facts. **The state of a part of the plan and of a flow is never stored**: it is derived on every read from the connection, the mapping, the sender... (the principle of the activation checklist of PL-15). Every table is `ITenantOwned` (`OrgId` FK `Orgs` RESTRICT, global tenant query filter); a property-bound row goes with its property (FK `Properties` CASCADE). Ids are `Guid`, users are `string` (255, the Auth0 subject, never a foreign key), enums are stored as their number (explicit values, never renumbered), no row holds a secret or personal data. Nothing writes to them yet except the tasks of E10 that follow; they are not read while `Features:OctorateOnboarding` is off.

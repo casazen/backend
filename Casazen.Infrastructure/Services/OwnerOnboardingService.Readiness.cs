@@ -61,6 +61,12 @@ public sealed partial class OwnerOnboardingService
         // counts, the financial readiness and the invitations, as its past stays in the registry and in the periods. An owner with no period at all
         // is still to complete.
         var current = owners.Where(o => !periodsByOwner[o.Id].Any() || periodsByOwner[o.Id].Any(p => IsLive(p, today))).ToList();
+
+        // The warnings of the UI (E18/F01/US03/T01, behind Features:TaxReportingExports): an owner past the limit of units is presumed a business. The units are the owner's
+        // whole portfolio in the org, not the part of it inside the reach of the caller: the limit is the owner's, whoever looks.
+        var unitChecks = taxChecks is { WarningsEnabled: true } && current.Count > 0
+            ? await taxChecks.CheckUnitsAsync(scope.OrgId, [.. current.Select(o => o.Id)], today, ct)
+            : new Dictionary<Guid, OwnerUnitsCheck>();
         var ownerRows = new List<OwnerReadinessOwner>(current.Count);
         foreach (var owner in current)
         {
@@ -105,7 +111,10 @@ public sealed partial class OwnerOnboardingService
                 flags,
                 flags.Registry && flags.Ownership && flags.Mandate && flags.FiscalProfile && flags.Payment,
                 state,
-                [.. registry, .. ownership, .. mandate, .. fiscal, .. payment, .. portal]));
+                [.. registry, .. ownership, .. mandate, .. fiscal, .. payment, .. portal])
+            {
+                Warnings = WarningsOf(unitChecks.GetValueOrDefault(owner.Id)),
+            });
         }
 
         var propertyRows = new List<OwnerReadinessProperty>();
@@ -169,6 +178,26 @@ public sealed partial class OwnerOnboardingService
             [.. orderedOwners.Take(ownerCap)],
             [.. orderedProperties.Take(OwnerOnboardingLimits.MaxListed)],
             truncated);
+    }
+
+    /// <summary>
+    /// The warnings of an owner from its check of the limit of units (E18/F01/US03/T01, ⚖ I8): one when it is presumed a business, with the counts behind it and the
+    /// suggestion to make its issuer profile that of a business; none otherwise. Counts and codes, never a value.
+    /// </summary>
+    private static IReadOnlyList<OwnerReadinessWarning> WarningsOf(OwnerUnitsCheck? check)
+    {
+        if (check is not { PresumedBusiness: true })
+            return [];
+
+        return
+        [
+            new OwnerReadinessWarning(
+                OwnerReadinessWarnings.ShortLetBusinessPresumed,
+                check.ManagedUnits,
+                check.ExternalUnits,
+                check.MaxUnits,
+                OwnerReadinessSuggestions.IssuerProfile),
+        ];
     }
 
     /// <summary>The code of a kind in the API: <c>person</c> or <c>company</c>.</summary>

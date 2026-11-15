@@ -276,6 +276,17 @@ public static class FeatureFlags
     /// </summary>
     public const string Routines = "Routines";
 
+    /// <summary>
+    /// E18/F01/US03/T01 (NF-117, D15): the Italian tax reporting of the owners (the checks of the limit of units and of the company tenant today, the exports of the later
+    /// tasks of epic E18), <b>off by default</b> and turned on only in the test environment until the accountant confirms the ⚖ choices (I6, I7, I8). Off, every endpoint of
+    /// <c>OwnerTaxDecisionsController</c> (<c>api/owner-tax-decisions</c>, <c>api/owners/{id}/tax-checks</c>, <c>api/owners/{id}/external-short-let-units</c>) answers 404 before
+    /// authentication, and the warnings the UI shows are not made: no <c>warnings</c> in the owner readiness, no non-blocking issue on the statement versions, no «Da fare»
+    /// <c>company_tenant_decision</c>. <b>Not behind it, on purpose</b>: the facts of the withholding (<c>IOwnerTaxChecks.TreatmentOfStaysAsync</c>: an owner past the limit is a
+    /// business whatever the screens show; a decision already recorded is followed) and the field <c>coOwnerTaxReporting</c> of the mandate. It needs no variable to start.
+    /// The frontend reads the key <c>taxReportingExports</c>.
+    /// </summary>
+    public const string TaxReportingExports = "TaxReportingExports";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -304,5 +315,6 @@ public static class FeatureFlags
         AccountantPackage,
         TouristTaxOnlinePayment,
         Routines,
+        TaxReportingExports,
     ];
 }

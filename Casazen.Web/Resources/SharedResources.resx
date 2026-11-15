@@ -6585,6 +6585,15 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerMandateInvalid" xml:space="preserve">
     <value>Un dato del mandato non è valido: controlla il campo indicato.</value>
   </data>
+  <data name="OwnerTaxDecisionInvalid" xml:space="preserve">
+    <value>Un dato della decisione non è valido: controlla il campo indicato (la prenotazione, il regime o il motivo).</value>
+  </data>
+  <data name="OwnerTaxDecisionNotApplicable" xml:space="preserve">
+    <value>Questo soggiorno non richiede una decisione: serve solo per un conduttore società in un immobile italiano di un proprietario privato.</value>
+  </data>
+  <data name="OwnerExternalUnitsInvalid" xml:space="preserve">
+    <value>Il numero di appartamenti in locazione breve fuori dall'agenzia non è valido: indica un numero intero da 0 a 1000.</value>
+  </data>
   <data name="OwnerMandateOverlap" xml:space="preserve">
     <value>Esiste già una versione del mandato che inizia in questa data o dopo: le versioni non si sovrappongono.</value>
   </data>
