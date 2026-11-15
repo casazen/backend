@@ -3382,6 +3382,54 @@
   <data name="ServiceRequestCannotRemind" xml:space="preserve">
     <value>Only a new request that is still waiting for the supplier's answer can be reminded.</value>
   </data>
+  <data name="ServiceRequestCannotReschedule" xml:space="preserve">
+    <value>Only a new request that is still waiting for the supplier's answer, with no other time or quote pending, can be moved.</value>
+  </data>
+  <data name="CleaningSetupCleanerRequired" xml:space="preserve">
+    <value>Choose who does the cleaning: a supplier or a member of the staff.</value>
+  </data>
+  <data name="CleaningSetupCleanerMismatch" xml:space="preserve">
+    <value>The supplier or the staff member does not match the kind of cleaner chosen: give only the one that is needed.</value>
+  </data>
+  <data name="CleaningSetupPriceInvalid" xml:space="preserve">
+    <value>The agreed price must be at least 1 cent and within the allowed maximum; it is required for a supplier.</value>
+  </data>
+  <data name="CleaningSetupCurrencyRequired" xml:space="preserve">
+    <value>State the currency of the price: an amount is never applied to a currency nobody chose.</value>
+  </data>
+  <data name="CleaningSetupCurrencyMismatch" xml:space="preserve">
+    <value>The currency of the price must be the one of the property ({0}).</value>
+  </data>
+  <data name="CleaningSetupStartTimeInvalid" xml:space="preserve">
+    <value>The start time must be in whole minutes (for example 11:00).</value>
+  </data>
+  <data name="CleaningSetupDurationInvalid" xml:space="preserve">
+    <value>The cleaning must last between {0} and {1} minutes.</value>
+  </data>
+  <data name="CleaningSetupSupplierNotFound" xml:space="preserve">
+    <value>The chosen supplier does not exist.</value>
+  </data>
+  <data name="CleaningSetupSupplierInactive" xml:space="preserve">
+    <value>The chosen supplier is not active and cannot receive requests.</value>
+  </data>
+  <data name="CleaningSetupSupplierOutsideComune" xml:space="preserve">
+    <value>The chosen supplier does not operate in the comune of the property.</value>
+  </data>
+  <data name="CleaningSetupStaffInvalid" xml:space="preserve">
+    <value>The chosen person is not an active member of your organization with access to this property.</value>
+  </data>
+  <data name="CleaningSetupBulkEmpty" xml:space="preserve">
+    <value>Choose at least one property: an empty list does not mean «all of them».</value>
+  </data>
+  <data name="CleaningSetupBulkTooMany" xml:space="preserve">
+    <value>You can set at most {0} properties at a time.</value>
+  </data>
+  <data name="CleaningAutomationSetupInvalid" xml:space="preserve">
+    <value>The cleaning setup of this property is not complete: the supplier or staff member and the price do not match the kind chosen.</value>
+  </data>
+  <data name="CleaningAutomationStaffUnavailable" xml:space="preserve">
+    <value>The staff member chosen for the cleaning is no longer active or no longer has access to the property.</value>
+  </data>
   <data name="ServiceRequestCannotAddPhotos" xml:space="preserve">
     <value>Photos of the work are added while the work is on, before the request is completed.</value>
   </data>
