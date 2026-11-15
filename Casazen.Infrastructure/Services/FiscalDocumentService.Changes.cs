@@ -131,6 +131,14 @@ public sealed partial class FiscalDocumentService
         if (active && change == BookingChange.Refunded)
             return;
 
+        // An invoice the SDI rejected never was issued: a credit note does not correct it (its correction replaces it, E17/F01/US02/T03), so the host is told that the booking changed and
+        // decides what to do with the rejected invoice.
+        if (issued.SdiStatus == FiscalDocumentSdiStatuses.Rejected)
+        {
+            plan.Todos.Add((issued.Id, FiscalDocumentTodos.BookingChangedReason));
+            return;
+        }
+
         OrgFiscalIssuerProfile organization;
         FiscalTaxRule rule;
         try

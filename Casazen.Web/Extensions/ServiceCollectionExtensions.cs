@@ -583,9 +583,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IEntitlementService, EntitlementService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
         services.AddScoped<IBillingCheckoutService, BillingCheckoutService>();
-        // PL-13: VAT computed by Stripe Tax (no rate in code); no SDI provider is integrated in this build, so the
-        // e-invoices are issued manually (health check "einvoicing", docs/runbooks/billing-tax.md).
-        services.AddScoped<ISdiEInvoiceProvider, UnconfiguredSdiEInvoiceProvider>();
+        // PL-13: VAT computed by Stripe Tax (no rate in code); the SaaS e-invoices are issued manually (health check "einvoicing",
+        // docs/runbooks/billing-tax.md). The port to the SDI, ISdiEInvoiceProvider, is registered with the fiscal documents
+        // (AddCasazenFiscalDocuments, E17/F01/US02): the adapter of the provider when Sdi:Provider is configured, else the unconfigured one.
         services.AddScoped<IPlatformInvoiceService, PlatformInvoiceService>();
         services.AddScoped<IBillingEntryGate, BillingEntryGate>();
         services.AddScoped<IRentBillingService, RentBillingService>();

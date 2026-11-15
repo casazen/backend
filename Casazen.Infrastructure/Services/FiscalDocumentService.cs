@@ -374,6 +374,7 @@ public sealed partial class FiscalDocumentService(
             throw new DomainRuleException(FiscalDocumentErrors.NotCreditable, "FiscalDocumentNotCreditable");
         }
 
+        RequireNotRejected(original);
         var booking = await BookingOfAsync(note.BookingId, ct);
         var (organization, org) = await RequireIssuerAsync(booking.OrgId, ct);
 
@@ -433,6 +434,8 @@ public sealed partial class FiscalDocumentService(
             RequireGuestDocument(original);
         if (original.Status != FiscalDocumentStatus.Issued || original.Kind == DocumentKind.CreditNote || original.Kind == DocumentKind.Proforma)
             throw new DomainRuleException(FiscalDocumentErrors.NotCreditable, "FiscalDocumentNotCreditable");
+        if (!ownerInvoice)
+            RequireNotRejected(original);
 
         var credited = await CreditedSoFarAsync(original.Id, ct);
         var remaining = original.Total - credited;
@@ -943,7 +946,20 @@ public sealed partial class FiscalDocumentService(
         // The number of the issuer the document is issued on (E17/F01/US01/T01): its counter, its series. A document made before the issuers existed is the
         // organization's.
         document.IssuerProfileId ??= profile.Id;
-        var number = await numbering.ReserveNextAsync(orgId, document.IssuerProfileId.Value, series, ct);
+
+        // The replacement of a document the SDI rejected (E17/F01/US02/T03) holds the number the correction took from it, and keeps the day of the document it replaces: that number is
+        // used and no other is reserved, so the sequence has neither a duplicate nor a hole. Anything else reserves the next number of the series.
+        var issueDay = today;
+        FiscalNumber number;
+        if (document.ReplacesDocumentId is { } replacedId)
+        {
+            issueDay = await RequireReplacedAsync(document, replacedId, ct) ?? today;
+            number = new FiscalNumber(document.Series, document.SequenceNumber!.Value, document.Number!);
+        }
+        else
+        {
+            number = await numbering.ReserveNextAsync(orgId, document.IssuerProfileId.Value, series, ct);
+        }
 
         // What the document may be is decided again here, under the lock of the series (a credit note takes the series of its original, so the same lock):
         // the checks before the transaction are quick refusals, but two parallel requests both pass them, and neither the original nor the booking changes to
@@ -968,7 +984,7 @@ public sealed partial class FiscalDocumentService(
         document.Series = number.Series;
         document.SequenceNumber = number.Number;
         document.Number = number.Display;
-        document.IssueDate = today;
+        document.IssueDate = issueDay;
 
         // The issuer as it is now, kept with the document: its PDF and its XML read it from here from now on. The version of the rule is the one the draft
         // was made with (a document made before the versions existed takes the one in force).
@@ -1010,6 +1026,36 @@ public sealed partial class FiscalDocumentService(
         await db.SaveChangesAsync(ct);
         if (transaction is not null)
             await transaction.CommitAsync(ct);
+    }
+
+    /// <summary>
+    /// The document a replacement draft replaces (E17/F01/US02/T03) is a document of the same organization and issuer that the SDI rejected and that gave its number up (discarded, no sequence
+    /// number, the same series and display number as the draft holds), and no other replacement of it was issued: the number goes to the replacement of that document and to nobody else.
+    /// Answers the day of the document it replaces (the replacement keeps it); 422 <c>document_replacement_invalid</c> otherwise.
+    /// </summary>
+    private async Task<DateOnly?> RequireReplacedAsync(FiscalDocument replacement, Guid replacedId, CancellationToken ct)
+    {
+        var replaced = await db.FiscalDocuments
+            .AsNoTracking()
+            .Where(d => d.Id == replacedId && d.OrgId == replacement.OrgId)
+            .Select(d => new { d.Status, d.SdiStatus, d.IssuerProfileId, d.Series, d.Number, d.SequenceNumber, d.IssueDate, d.Kind })
+            .FirstOrDefaultAsync(ct);
+        var holdsItsNumber = replacement.SequenceNumber is > 0 && !string.IsNullOrEmpty(replacement.Number);
+        var valid = replaced is not null
+                    && holdsItsNumber
+                    && replaced.Status == FiscalDocumentStatus.Discarded
+                    && replaced.SdiStatus == FiscalDocumentSdiStatuses.Rejected
+                    && replaced.SequenceNumber is null
+                    && replaced.IssuerProfileId == replacement.IssuerProfileId
+                    && replaced.Kind == replacement.Kind
+                    && string.Equals(replaced.Series, replacement.Series, StringComparison.Ordinal)
+                    && string.Equals(replaced.Number, replacement.Number, StringComparison.Ordinal)
+                    && !await db.FiscalDocuments.AnyAsync(
+                        d => d.ReplacesDocumentId == replacedId && d.Id != replacement.Id && d.Status == FiscalDocumentStatus.Issued, ct);
+        if (!valid)
+            throw new DomainRuleException(FiscalDocumentSdiErrors.ReplacementInvalid, FiscalDocumentSdiErrors.MessageKeyOf(FiscalDocumentSdiErrors.ReplacementInvalid));
+
+        return replaced!.IssueDate;
     }
 
     /// <summary>
@@ -1083,8 +1129,9 @@ public sealed partial class FiscalDocumentService(
 
     /// <summary>
     /// Who transmits the file to the SDI (<c>IdTrasmittente</c>, E17/F01/US01/T03): the subject whose channel sends it, by its fiscal code (else its VAT number).
-    /// No provider of the SDI is configured yet (E17/F01/US02 replaces this with the provider's id): it is the agency, for a document it issues in its own name as
-    /// for one it issues on behalf of an owner (the agency, not the owner, sends the file).
+    /// It is the agency, for a document it issues in its own name as for one it issues on behalf of an owner (the agency, not the owner, sends the file). The XML is immutable
+    /// once issued: the SDI channel of E17/F01/US02 sends the file as it was issued, so whether a provider needs its own code here is checked on its sandbox
+    /// (<c>docs/runbooks/fiscal-documents.md</c>, *Verifying the channel*) and, if it does, changes here for the files issued afterwards.
     /// </summary>
     internal static FatturaPaId TransmitterOf(FiscalIssuerSnapshot issuerSnapshot)
     {
@@ -1251,6 +1298,16 @@ public sealed partial class FiscalDocumentService(
             .AsNoTracking()
             .Where(d => d.CreditedDocumentId == documentId && d.Status == FiscalDocumentStatus.Draft && d.Kind == DocumentKind.CreditNote)
             .SumAsync(d => d.Total, ct);
+
+    /// <summary>
+    /// A guest document the SDI rejected never was issued, so it is not credited: its correction replaces it, with the number it gave up (E17/F01/US02/T03); a credit note of it would bill
+    /// an operation twice and take its number away from the replacement. 422 <c>document_rejected_use_correction</c>. An owner invoice is credited as it always was.
+    /// </summary>
+    private static void RequireNotRejected(FiscalDocument original)
+    {
+        if (original.SdiStatus == FiscalDocumentSdiStatuses.Rejected && original.Purpose != FiscalDocumentPurpose.OwnerInvoice)
+            throw new DomainRuleException(FiscalDocumentSdiErrors.UseCorrection, FiscalDocumentSdiErrors.MessageKeyOf(FiscalDocumentSdiErrors.UseCorrection));
+    }
 
     private static void RequireCasazenDraft(FiscalDocument document)
     {
@@ -1455,7 +1512,8 @@ public sealed partial class FiscalDocumentService(
         document.RecipientPec = data.Pec;
     }
 
-    private static void CopyRecipient(FiscalDocument from, FiscalDocument to)
+    /// <summary>The recipient snapshot of <paramref name="from"/> copied to <paramref name="to"/> (a credit note, the replacement of a rejected document).</summary>
+    internal static void CopyRecipient(FiscalDocument from, FiscalDocument to)
     {
         to.RecipientKind = from.RecipientKind;
         to.RecipientName = from.RecipientName;
@@ -1471,7 +1529,8 @@ public sealed partial class FiscalDocumentService(
         to.RecipientPec = from.RecipientPec;
     }
 
-    private static FiscalDocumentLine CopyLine(FiscalDocument document, FiscalDocumentLine line) => new()
+    /// <summary>A line of another document as a line of <paramref name="document"/>: the same text, amounts and VAT, a new id.</summary>
+    internal static FiscalDocumentLine CopyLine(FiscalDocument document, FiscalDocumentLine line) => new()
     {
         OrgId = document.OrgId,
         DocumentId = document.Id,
