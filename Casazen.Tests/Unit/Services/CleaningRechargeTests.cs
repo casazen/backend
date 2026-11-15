@@ -367,6 +367,64 @@ public class CleaningRechargeTests
         Assert.Equal(CleaningRechargeMode.ActualCost, (await world.Mandates.ListAsync(OrgWide, another)).Single().CleaningRechargeMode);
     }
 
+    /// <summary>
+    /// PROOF TEST: money rule. A property of two owners (60% and 40%) whose mandates differ, the first on the actual cost and the second on the flat rate, is never charged both ways:
+    /// the cleaning request goes only to the owner on the actual cost, for its share of the price (the cents the rounding leaves are the last share's), the flat fee of the stay goes
+    /// only to the other, for its share of the fee, and nobody gets both. Posting again changes nothing; a request whose price changes reverses and replaces only the line of the owner on
+    /// the actual cost.
+    /// </summary>
+    [Fact]
+    public async Task CleaningRecharge_CoOwnersOnDifferentModes_EachPaysItsShareOnce_Test()
+    {
+        var world = await World.CreateAsync();
+        var actual = await world.OwnerAsync();
+        var flat = await world.OwnerAsync();
+        var property = await world.CoOwnedPropertyAsync("TEST Casa Lago", (actual, 60m), (flat, 40m));
+        await world.MandateAsync(actual, CleaningRechargeMode.ActualCost, 40m);
+        await world.MandateAsync(flat, CleaningRechargeMode.FlatRate, 40m);
+        var stay = await world.StayAsync(property, Day(10, 17), Day(10, 20));
+        var request = await world.RequestAsync(property, ServiceRequestStatus.Completato, At(10, 20), r =>
+        {
+            r.BookingId = stay;
+            r.FinalAmountCents = 8501;
+        });
+
+        var result = await world.Service.PostPeriodAsync(OrgId, 2026, 10, "auth0|admin");
+
+        Assert.DoesNotContain(result.Issues, i => i.Blocking);
+        var lines = await world.LiveAsync();
+
+        // The request: only the owner on the actual cost has a line of it, its 60% of 85.01 (51.006, rounded to 51.01); the owner on the flat rate has none.
+        var cleaned = Assert.Single(CleaningLines(lines));
+        Assert.Equal((actual, request, 60m), (cleaned.PropertyOwnerId, cleaned.SourceId!.Value, cleaned.SharePercent));
+        Assert.Equal((-85.01m, -51.01m, -51.01m), (cleaned.SourceAmount, cleaned.OriginalAmount, cleaned.Amount));
+
+        // The flat fee of the stay: only the owner on the flat rate has it, its 40% of 40.00; the owner on the actual cost has none (its mandate has the same flat rate, never posted).
+        var fee = Assert.Single(lines, e => e.SourceType == OwnerLedgerSourceType.MandateFlatFee);
+        Assert.Equal((flat, stay, OwnerLedgerFlatFees.Cleaning, 40m), (fee.PropertyOwnerId, fee.SourceId!.Value, fee.SourceReference, fee.SharePercent));
+        Assert.Equal(-16.00m, fee.Amount);
+
+        // Each owner is charged its share of the cleaning once, by one way only.
+        decimal ChargedTo(Guid owner) => lines.Where(e => e.PropertyOwnerId == owner && e.EntryType == OwnerLedgerEntryType.OwnerCharge).Sum(e => e.Amount);
+        Assert.Equal((-51.01m, -16.00m), (ChargedTo(actual), ChargedTo(flat)));
+
+        // Posting again changes nothing.
+        world.Clock.Advance(TimeSpan.FromMinutes(5));
+        var again = await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
+        Assert.Equal((0, 0), (again.Posted, again.Reversed));
+        Assert.Equal(lines.Select(e => e.Id).Order(), (await world.LiveAsync()).Select(e => e.Id).Order());
+
+        // The price of the request changes: only the line of the owner on the actual cost is reversed and replaced (60% of 90.00); the flat fee of the other stays the same line.
+        await world.ChangeRequestAsync(request, r => r.FinalAmountCents = 9000);
+        world.Clock.Advance(TimeSpan.FromMinutes(5));
+        var changed = await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
+        Assert.Equal((1, 1), (changed.Posted, changed.Reversed));
+        var after = await world.LiveAsync();
+        var replaced = Assert.Single(CleaningLines(after));
+        Assert.Equal((actual, -54.00m), (replaced.PropertyOwnerId, replaced.Amount));
+        Assert.Equal(fee.Id, Assert.Single(after, e => e.SourceType == OwnerLedgerSourceType.MandateFlatFee).Id);
+    }
+
     private static CompletedCleaning Cleaning(Guid property, Guid? stay, Guid request, long cents, CleaningAmountVat vat) =>
         new(property, stay, new DateOnly(2026, 10, 20), cents, "CHF", vat, CleaningKind.Supplier, true, CleaningSourceKind.ServiceRequest, request, null);
 
@@ -486,6 +544,27 @@ public class CleaningRechargeTests
                 SharePercent = 100m,
                 OwnershipStart = new DateTime(2026, 1, 1),
             });
+            await Db.SaveChangesAsync();
+            return property.Id;
+        }
+
+        /// <summary>A Ticino property in francs owned from January by two owners, each in the share given.</summary>
+        public async Task<Guid> CoOwnedPropertyAsync(string name, (Guid Owner, decimal Share) first, (Guid Owner, decimal Share) second)
+        {
+            var property = new Property { OrgId = OrgId, OwnerId = "auth0|agency", Name = name, Address = "Via 1", City = "Lugano", Currency = "CHF" };
+            Db.Properties.Add(property);
+            foreach (var (owner, share) in new[] { first, second })
+            {
+                Db.PropertyOwnerships.Add(new PropertyOwnership
+                {
+                    OrgId = OrgId,
+                    PropertyId = property.Id,
+                    PropertyOwnerId = owner,
+                    SharePercent = share,
+                    OwnershipStart = new DateTime(2026, 1, 1),
+                });
+            }
+
             await Db.SaveChangesAsync();
             return property.Id;
         }

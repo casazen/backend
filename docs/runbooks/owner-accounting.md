@@ -222,7 +222,8 @@ the one definition; no flag):
 - **The invoice.** The version's lines make one `Recharge` line for each cleaning request, «Riaddebito pulizia - {property} - richiesta {reference} del {day}» (with
   «, fattura del fornitore {reference}» when the supplier's invoice is known); a request changed after it was posted is one line, the net of the reversal and the new line.
 - **Prove it** (`CleaningRechargeTests`, no database): once per request and never together with the flat fee; a cancelled request posts nothing and its posted line is
-  reversed; the invoice shows a line per request with its reference; the «Da fare» of an unknown VAT; the staff cleaning without a price.
+  reversed; the invoice shows a line per request with its reference; the «Da fare» of an unknown VAT; the staff cleaning without a price; the owners of one property on different
+  modes (60% on the actual cost, 40% on the flat rate: each pays its share once, the request only to the first and the flat fee only to the second).
 
 ## Owner invoices (E14/F01/US01/T01)
 
