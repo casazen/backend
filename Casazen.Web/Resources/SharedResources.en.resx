@@ -1081,6 +1081,9 @@
   <data name="AlloggiatiTransmissionUnavailable" xml:space="preserve">
     <value>CasaZen does not transmit to Alloggiati Web yet: send the record on the Questura portal using the data summary, then mark it as sent manually.</value>
   </data>
+  <data name="AlloggiatiChannelManagerWriteInProgress" xml:space="preserve">
+    <value>The guests of this stay are already being sent: try again in a moment.</value>
+  </data>
   <data name="AlloggiatiRecordFileNotReady" xml:space="preserve">
     <value>The file for the Alloggiati Web portal cannot be generated: the guest data is incomplete or an official code is missing. Complete the guest's Alloggiati details.</value>
   </data>
@@ -6231,6 +6234,21 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="FiscalDocPdfFiscalCode" xml:space="preserve">
     <value>Tax code: {0}</value>
   </data>
+  <data name="FiscalDocPdfIssuedOnBehalf" xml:space="preserve">
+    <value>Issued through {0} on behalf of the owner</value>
+  </data>
+  <data name="FiscalDocPdfCoOwners" xml:space="preserve">
+    <value>Co-owners: {0}</value>
+  </data>
+  <data name="FiscalDocPdfStampDutyReference" xml:space="preserve">
+    <value>Stamp duty paid: {0}</value>
+  </data>
+  <data name="FiscalDocPdfStampDutyToPay" xml:space="preserve">
+    <value>Stamp duty to be paid</value>
+  </data>
+  <data name="FiscalDocPdfStampDutyVirtual" xml:space="preserve">
+    <value>Stamp duty paid virtually</value>
+  </data>
   <data name="FiscalDocPdfLinesHeading" xml:space="preserve">
     <value>Details</value>
   </data>
@@ -6338,6 +6356,9 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="FiscalDocumentAlreadyIssued" xml:space="preserve">
     <value>This booking already has an issued document: issuing another one needs a full credit note first.</value>
+  </data>
+  <data name="FiscalDocumentOwnerIssuerMissing" xml:space="preserve">
+    <value>The owner of the property has no complete issuer profile yet: no document is prepared until you complete it.</value>
   </data>
   <data name="FiscalDocumentDraftOutdated" xml:space="preserve">
     <value>The tax rules or the data of the issuer have changed since the draft was prepared: refresh it and check the amounts again before issuing.</value>
@@ -7640,5 +7661,32 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="AccountantPackageInvalidPeriod" xml:space="preserve">
     <value>Invalid period: give a month (period=2026-10) or a year (period=2026), between 2000 and 2100.</value>
+  </data>
+  <data name="AccountantPackageSettingsInvalid" xml:space="preserve">
+    <value>The settings of the send are incomplete: say whether the monthly send is on, the day of the month and the folders to send.</value>
+  </data>
+  <data name="AccountantPackageRecipientMissing" xml:space="preserve">
+    <value>The e-mail address of the accountant is needed to turn the monthly send on.</value>
+  </data>
+  <data name="AccountantPackageRecipientInvalid" xml:space="preserve">
+    <value>The e-mail address of the accountant is not valid: write the address only, with no name and no spaces.</value>
+  </data>
+  <data name="AccountantPackageSendDayInvalid" xml:space="preserve">
+    <value>The day of the send must be a day of the month between {0} and {1}.</value>
+  </data>
+  <data name="AccountantPackageContentsInvalid" xml:space="preserve">
+    <value>Choose at least one folder to send, among those of the package, each one once.</value>
+  </data>
+  <data name="AccountantPackageLinkInvalid" xml:space="preserve">
+    <value>The link is not valid or has expired.</value>
+  </data>
+  <data name="AccountantPackageNotSent" xml:space="preserve">
+    <value>The package could not be sent to the accountant: nothing was sent. Try again in a moment.</value>
+  </data>
+  <data name="AccPkgOmittedNotSelected" xml:space="preserve">
+    <value>Folder not chosen in the settings of the monthly send.</value>
+  </data>
+  <data name="AccountantPackageOwnerAccountingRequired" xml:space="preserve">
+    <value>The folders that hold the owner accounting (invoices to the owners, statements, withholding, agency summary, VAT) can be chosen, and a test of them sent, only with the permission to read the owners' statements.</value>
   </data>
 </root>

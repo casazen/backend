@@ -259,11 +259,17 @@ public class ComplianceStatusServiceTests
         var status = await world.StatusService(db).EvaluateAsync(world.OrgWide, CancellationToken.None);
 
         Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.EntrustedToChannelManager), (ItemOf(status, all).Verdict.Light, ItemOf(status, all).Verdict.Reason));
-        foreach (var notEntrusted in new[] { some, draft, failed, none })
+        foreach (var notEntrusted in new[] { some, draft, none })
         {
-            // Not entrusted: the host still has to send it (a link that is a draft, failed or missing is not a send).
+            // Not entrusted: the host still has to send it (a link that is a draft or missing is not a send).
             Assert.Equal((ComplianceCockpitAction.SendAlloggiati, ComplianceLight.Red), (ItemOf(status, notEntrusted).Action, ItemOf(status, notEntrusted).Verdict.Light));
         }
+
+        // A guest that could not be written is not «to send» either: it is a failure to resolve, on the booking (E20/F01/US01/T02).
+        Assert.Equal(
+            (ComplianceCockpitAction.ResolveAlloggiatiFailure, ComplianceLight.Red, ComplianceReasonCodes.AlloggiatiFailed),
+            (ItemOf(status, failed).Action, ItemOf(status, failed).Verdict.Light, ItemOf(status, failed).Verdict.Reason));
+        Assert.Equal(failed.Id, ItemOf(status, failed).TargetId);
 
         // Over 30 nights the channel manager does not send, entrusted or not.
         Assert.Equal((ComplianceCockpitAction.SendAlloggiatiManually, ComplianceReasonCodes.OverThirtyNightsNotSent),

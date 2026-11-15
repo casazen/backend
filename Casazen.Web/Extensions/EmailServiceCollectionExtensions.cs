@@ -55,6 +55,8 @@ public static class EmailServiceCollectionExtensions
         services.AddSingleton<PublicSiteLinks>();
         // DEB-01: the signed unsubscribe link of the marketing campaigns, built and checked in one place (ADR-007-R18).
         services.AddSingleton<MarketingUnsubscribeLinks>();
+        // E15/F01/US02/T02: the signed link of the package sent to the accountant, built and checked in one place (the secret of the signed links, 30 days).
+        services.AddSingleton<AccountantPackageLinks>();
         services.AddScoped<IEmailQueue, HangfireEmailQueue>();
         services.AddScoped<EmailDeliveryJob>();
         // Check-in link email with its outcome recorded on the session (CO-09).

@@ -22,16 +22,27 @@ internal sealed class BookingInvoiceDataConfiguration : IEntityTypeConfiguration
 }
 
 /// <summary>
-/// The profile of the issuer of the documents of an organization (FIS-02, NF-82, E06/F02/US02/T01, E11/F01/US01/T01): one row for each organization, so
-/// a second profile of the same org is refused by the database, whoever writes it. The Italian fiscal identity (VAT number, fiscal code) is on <c>Org</c>;
-/// the IBAN and the QR-IBAN get their converter from <c>EncryptedColumns</c> (no length), the channels whose portal collects the tourist tax are jsonb.
+/// The profiles of the issuers (FIS-02, NF-82, E06/F02/US02/T01, E11/F01/US01/T01, E17/F01/US01/T01): one row for each organization (no owner) and one for each
+/// owner who issues, so a second profile of the same org or of the same owner is refused by the database, whoever writes it (two partial unique indexes). The
+/// Italian fiscal identity of the organization (VAT number, fiscal code) is on <c>Org</c>; an owner's is on its profile. The personal data and the bank
+/// accounts get their converter from <c>EncryptedColumns</c> (no length), the channels whose portal collects the tourist tax are jsonb. The profile of an owner
+/// goes with the owner (cascade), unless a document was issued on it (the foreign key of the documents is restrict).
 /// </summary>
 internal sealed class OrgFiscalIssuerProfileConfiguration : IEntityTypeConfiguration<OrgFiscalIssuerProfile>
 {
     public void Configure(EntityTypeBuilder<OrgFiscalIssuerProfile> entity)
     {
-        entity.HasIndex(p => p.OrgId).IsUnique().HasDatabaseName(OrgFiscalIssuerProfile.OrgIndexName);
+        entity.HasIndex(p => p.OrgId)
+            .IsUnique()
+            .HasFilter("\"PropertyOwnerId\" IS NULL")
+            .HasDatabaseName(OrgFiscalIssuerProfile.OrgIndexName);
+        entity.HasIndex(p => p.PropertyOwnerId)
+            .IsUnique()
+            .HasFilter("\"PropertyOwnerId\" IS NOT NULL")
+            .HasDatabaseName(OrgFiscalIssuerProfile.OwnerIndexName);
+        entity.HasOne<PropertyOwner>().WithMany().HasForeignKey(p => p.PropertyOwnerId).OnDelete(DeleteBehavior.Cascade);
         entity.Ignore(p => p.PlatformCollectedTouristTaxChannels);
+        entity.Ignore(p => p.IsOwnerProfile);
 
         // Who holds the accounts of the portals and whether their commissions are recharged (E14/F01/US01/T01, ⚖ I10, I11): the migration gives the profiles that
         // exist the defaults (the owner, the recharge on). EF always writes the value of the entity: left to generate it, EF would take an explicit false for
@@ -59,31 +70,37 @@ internal sealed class PropertyChannelAccountHolderConfiguration : IEntityTypeCon
 }
 
 /// <summary>
-/// The single issuer of the documents of a booking (FIS-02, NF-82, E06/F02/US02/T01): one row for each booking, so a second issuer of the same
-/// booking is refused by the database itself, and the row goes with its booking (cascade). The document that locked it is a plain column: the
-/// table of the documents arrives later (E06/F01/US02/T01).
+/// Who issued the documents of a booking (FIS-02, NF-82, E06/F02/US02/T01, E17/F01/US01/T02): one row for each document issued (a booking with the receipt of
+/// its owner and the invoice of the agency has two), so the database refuses a second row of the same document (<see cref="BookingDocumentIssuer.DocumentIndexName"/>);
+/// the booking is indexed, no longer unique. The row goes with its booking (cascade). The document is a plain column (the legacy rows of a lock made before
+/// any document have none).
 /// </summary>
 internal sealed class BookingDocumentIssuerConfiguration : IEntityTypeConfiguration<BookingDocumentIssuer>
 {
     public void Configure(EntityTypeBuilder<BookingDocumentIssuer> entity)
     {
         entity.HasOne<Booking>().WithMany().HasForeignKey(i => i.BookingId).OnDelete(DeleteBehavior.Cascade);
-        entity.HasIndex(i => i.BookingId).IsUnique().HasDatabaseName(BookingDocumentIssuer.BookingIndexName);
+        entity.HasIndex(i => i.BookingId);
+        entity.HasIndex(i => i.LockedByDocumentId)
+            .IsUnique()
+            .HasFilter("\"LockedByDocumentId\" IS NOT NULL")
+            .HasDatabaseName(BookingDocumentIssuer.DocumentIndexName);
     }
 }
 
 /// <summary>
-/// The fiscal documents (NF-83, NF-84, E06/F01/US02/T01, E11/F01/US01/T01). Kept ten years (ADR-033-R7): the booking, the property, the owner, the
-/// statement version, the credited and the replaced document are <b>restrict</b> foreign keys, so neither the removal of a booking nor anything else can
-/// delete a document by cascade. The database refuses two documents with the same number in one org and series, two imported rows of one Octorate
-/// document and two live owner invoices of one owner and period, and accepts only the known SDI states. The recipient columns, the issuer snapshot and
-/// the XML get their converter from <c>EncryptedColumns</c> (no length); <c>xmin</c> is the concurrency token.
+/// The fiscal documents (NF-83, NF-84, E06/F01/US02/T01, E11/F01/US01/T01, E17/F01/US01/T01). Kept ten years (ADR-033-R7): the booking, the property, the
+/// owner, the statement version, the issuer profile, the credited and the replaced document are <b>restrict</b> foreign keys, so neither the removal of a
+/// booking nor anything else can delete a document by cascade. The database refuses two documents with the same number in one org, issuer and series, two
+/// imported rows of one Octorate document and two live owner invoices of one owner and period, and accepts only the known SDI states. The recipient columns,
+/// the issuer snapshot and the XML get their converter from <c>EncryptedColumns</c> (no length); <c>xmin</c> is the concurrency token.
 /// </summary>
 internal sealed class FiscalDocumentConfiguration : IEntityTypeConfiguration<FiscalDocument>
 {
     public void Configure(EntityTypeBuilder<FiscalDocument> entity)
     {
         entity.HasOne<Booking>().WithMany().HasForeignKey(d => d.BookingId).OnDelete(DeleteBehavior.Restrict);
+        entity.HasOne<OrgFiscalIssuerProfile>().WithMany().HasForeignKey(d => d.IssuerProfileId).OnDelete(DeleteBehavior.Restrict);
         entity.HasOne<Property>().WithMany().HasForeignKey(d => d.PropertyId).OnDelete(DeleteBehavior.Restrict);
         entity.HasOne<PropertyOwner>().WithMany().HasForeignKey(d => d.RecipientOwnerId).OnDelete(DeleteBehavior.Restrict);
         entity.HasOne<OwnerStatementVersion>().WithMany().HasForeignKey(d => d.OwnerStatementVersionId).OnDelete(DeleteBehavior.Restrict);
@@ -99,7 +116,7 @@ internal sealed class FiscalDocumentConfiguration : IEntityTypeConfiguration<Fis
                 + $"AND \"Kind\" <> {(int)FiscalDocumentKind.CreditNote} AND NOT \"CreditedInFull\" AND \"RecipientOwnerId\" IS NOT NULL")
             .HasDatabaseName(FiscalDocument.OwnerPeriodIndexName);
 
-        entity.HasIndex(d => new { d.OrgId, d.Series, d.SequenceNumber })
+        entity.HasIndex(d => new { d.OrgId, d.IssuerProfileId, d.Series, d.SequenceNumber })
             .IsUnique()
             .HasFilter("\"SequenceNumber\" IS NOT NULL")
             .HasDatabaseName(FiscalDocument.SeriesNumberIndexName);
@@ -132,12 +149,12 @@ internal sealed class FiscalDocumentLineConfiguration : IEntityTypeConfiguration
     }
 }
 
-/// <summary>The counter of the fiscal numbers: one row per org and series (<see cref="FiscalNumberSequence.OrgSeriesIndexName"/>).</summary>
+/// <summary>The counter of the fiscal numbers: one row per org, issuer and series (<see cref="FiscalNumberSequence.IssuerSeriesIndexName"/>).</summary>
 internal sealed class FiscalNumberSequenceConfiguration : IEntityTypeConfiguration<FiscalNumberSequence>
 {
     public void Configure(EntityTypeBuilder<FiscalNumberSequence> entity)
     {
-        entity.HasIndex(s => new { s.OrgId, s.Series }).IsUnique().HasDatabaseName(FiscalNumberSequence.OrgSeriesIndexName);
+        entity.HasIndex(s => new { s.OrgId, s.IssuerProfileId, s.Series }).IsUnique().HasDatabaseName(FiscalNumberSequence.IssuerSeriesIndexName);
         entity.ToTable(table => table.HasCheckConstraint("CK_FiscalNumberSequences_LastNumber", "\"LastNumber\" >= 0"));
     }
 }

@@ -53,9 +53,10 @@
   </ItemGroup>
 
   <!--
-    The official FatturaPA schema and the XML signature schema it imports (E06/F01/US02/T03, ADR-019-R6): the files the Agenzia delle Entrate
-    publishes, committed unchanged in Fiscal\Schemas with their source and SHA-256 in docs/runbooks/fiscal-documents.md, compiled into the assembly
-    (FatturaPaSchemaProvider). A build without them validates nothing and issues no electronic invoice (fatturapa_schema_unavailable).
+    The official FatturaPA schema and the XML signature schema it imports (E06/F01/US02/T03, E17/F01/US01/T03, ADR-019-R6): Schema_VFPR12_v1.2.3.xsd of the
+    Agenzia delle Entrate and xmldsig-core-schema.xsd of the W3C, committed unchanged in Fiscal\Schemas (binary in .gitattributes) with their source and SHA-256 in
+    docs/runbooks/fiscal-documents.md and FatturaPaSchemaProvider.OfficialFiles, compiled into the assembly (FatturaPaSchemaProvider). A build without them
+    validates nothing and issues no electronic invoice (fatturapa_schema_unavailable).
   -->
   <ItemGroup>
     <EmbeddedResource Include="Fiscal\Schemas\*.xsd" LogicalName="Casazen.Infrastructure.Fiscal.Schemas.%(Filename)%(Extension)" />

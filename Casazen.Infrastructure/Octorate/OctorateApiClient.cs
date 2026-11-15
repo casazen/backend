@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Octorate;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Microsoft.Extensions.Configuration;
@@ -526,6 +527,31 @@ public sealed partial class OctorateApiClient(
             InstantOf(OctorateHttp.StringOf(root, "effectiveCheckin")),
             arrivalTime is { Length: > ArrivalTimeMaxLength } ? arrivalTime[..ArrivalTimeMaxLength] : arrivalTime);
     }
+
+    public async Task<OctoratePlaceEntry[]> GetCheckInCitiesAsync(string country, CancellationToken ct)
+    {
+        // The two-letter code of a country, nothing else: it goes into the address.
+        if (country is not { Length: 2 } || !country.All(char.IsAsciiLetter))
+            throw new ArgumentException("A country is its two-letter code.", nameof(country));
+
+        using var document = await GetJsonAsync($"/rest/v2/checkin/city/{Uri.EscapeDataString(country.ToUpperInvariant())}", "checkin-cities", ct);
+        var places = ReadCheckInCities(document.RootElement);
+
+        // An answer with no usable place is not "no place is recognized": the caller would hold every guest back for a table that was not read.
+        return places.Length > 0 ? places : throw new OctorateServerException(null);
+    }
+
+    /// <summary>The places of the answer of the check-in cities: a bare array or <c>{data: [...]}</c>; an item with no name or no police code is left out.</summary>
+    internal static OctoratePlaceEntry[] ReadCheckInCities(JsonElement root) =>
+    [
+        .. Items(root)
+            .Where(item => item.ValueKind == JsonValueKind.Object)
+            .Select(item => new OctoratePlaceEntry(
+                OctorateHttp.StringOf(item, "internalName") ?? string.Empty,
+                OctorateHttp.StringOf(item, "countryPoliceCode") ?? string.Empty,
+                OctorateHttp.StringOf(item, "regionType")))
+            .Where(place => place.Name.Length > 0 && place.PoliceCode.Length > 0),
+    ];
 
     /// <summary>The address of the guests of a reservation (v1).</summary>
     private static string CheckInGuestsPath(string accommodationId, string reservationId)

@@ -4,9 +4,11 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Tests.Unit.Authorization;
+using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
 using Casazen.Web.Resources;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
@@ -151,23 +153,97 @@ public class PropertySenderControllerTests
         Assert.Equal("property_not_found", Assert.IsAssignableFrom<ProblemDetails>(problem.Value).Extensions["code"]);
     }
 
+    /// <summary>
+    /// Proof (permission, E20/F01/US01/T01, decision O1): the guests written to the channel manager on their own is an org-wide setting, so only the
+    /// organization administrator changes it. A member who reaches the property and may change its sender is refused (403) when the request changes the
+    /// setting, and nothing of the request is done (the sender is not switched, the setting stays); the same member may send the value it already has.
+    /// </summary>
+    [Fact]
+    public async Task PropertySender_AutoSendOfTheOrg_ChangesOnlyForTheOrganizationAdministrator_Test()
+    {
+        var senders = new Mock<IPropertySenderService>();
+        senders
+            .Setup(s => s.SwitchAsync(
+                PropertyOfOrgA, It.IsAny<ComplianceSenderType>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
+                It.IsAny<ComplianceSenderType?>(), It.IsAny<string?>()))
+            .ReturnsAsync(View(PropertyOfOrgA));
+        var lookup = new Mock<IHostResourceLookup>();
+        lookup
+            .Setup(l => l.ForPropertyAsync(PropertyOfOrgA, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(HostResource.ForProperty(new Property { Id = PropertyOfOrgA, OrgId = OrgA, OwnerId = Owner, Name = "Casa del Lago" }));
+        var setting = new Mock<IOrgGuestAutoSendSetting>();
+        setting.Setup(s => s.GetAsync(OrgA, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        setting.Setup(s => s.SetAsync(OrgA, It.IsAny<bool>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var turnOn = new SwitchSenderRequest
+        {
+            Sender = ComplianceSenderType.Manual,
+            Confirmed = true,
+            DelegationTextVersion = AlloggiatiDelegationTexts.CurrentVersion,
+            AutoSendGuestsToOctorate = true,
+        };
+
+        // Not the organization administrator: refused, the sender not switched, the setting not written.
+        var member = Controller(senders, lookup, HostAuthorizationTestHarness.User(Owner, "PropertyOwner"), setting, orgAdmin: false);
+        Assert.IsType<ForbidResult>((await member.Switch(PropertyOfOrgA, turnOn, CancellationToken.None)).Result);
+        senders.Verify(
+            s => s.SwitchAsync(
+                It.IsAny<Guid>(), It.IsAny<ComplianceSenderType>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
+                It.IsAny<ComplianceSenderType?>(), It.IsAny<string?>()),
+            Times.Never);
+        setting.Verify(s => s.SetAsync(It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // The value it already has is no change: the member is not asked for more than it is allowed.
+        var unchanged = new SwitchSenderRequest
+        {
+            Sender = ComplianceSenderType.Manual,
+            Confirmed = true,
+            DelegationTextVersion = AlloggiatiDelegationTexts.CurrentVersion,
+            AutoSendGuestsToOctorate = false,
+        };
+        Assert.IsType<OkObjectResult>((await member.Switch(PropertyOfOrgA, unchanged, CancellationToken.None)).Result);
+
+        // The organization administrator changes it, after the sender, in its own name, and the answer says so.
+        var admin = Controller(senders, lookup, HostAuthorizationTestHarness.User(Owner, "PropertyOwner"), setting, orgAdmin: true);
+        var answer = Assert.IsType<OkObjectResult>((await admin.Switch(PropertyOfOrgA, turnOn, CancellationToken.None)).Result);
+        Assert.True(Assert.IsType<PropertySenderDto>(answer.Value).AutoSendGuestsToOctorate);
+        setting.Verify(s => s.SetAsync(OrgA, true, Owner, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private static PropertySenderController Controller(
         Mock<IPropertySenderService> senders,
         Mock<IHostResourceLookup> lookup,
-        ClaimsPrincipal user)
+        ClaimsPrincipal user,
+        Mock<IOrgGuestAutoSendSetting>? setting = null,
+        bool orgAdmin = false)
     {
         var services = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider();
         return new PropertySenderController(
             senders.Object,
             lookup.Object,
-            HostAuthorizationTestHarness.Create(OrgA),
+            new OrgAdminAuthorization(HostAuthorizationTestHarness.Create(OrgA), orgAdmin),
             services.GetRequiredService<IStringLocalizer<SharedResources>>(),
-            NullLogger<PropertySenderController>.Instance)
+            NullLogger<PropertySenderController>.Instance,
+            (setting ?? new Mock<IOrgGuestAutoSendSetting>()).Object)
         {
             ControllerContext = new ControllerContext
             {
                 HttpContext = new DefaultHttpContext { User = user, RequestServices = services },
             },
         };
+    }
+
+    /// <summary>
+    /// The production-like authorization of the property (the harness) with the policy of the organization administrator decided by the test: the
+    /// harness registers no policy of that name, and what is under test is that the controller asks for it, not how the policy is evaluated.
+    /// </summary>
+    private sealed class OrgAdminAuthorization(IAuthorizationService inner, bool orgAdmin) : IAuthorizationService
+    {
+        public Task<AuthorizationResult> AuthorizeAsync(ClaimsPrincipal user, object? resource, IEnumerable<IAuthorizationRequirement> requirements) =>
+            inner.AuthorizeAsync(user, resource, requirements);
+
+        public Task<AuthorizationResult> AuthorizeAsync(ClaimsPrincipal user, object? resource, string policyName) =>
+            policyName == CasazenPolicies.OrgBillingAdmin
+                ? Task.FromResult(orgAdmin ? AuthorizationResult.Success() : AuthorizationResult.Failed())
+                : inner.AuthorizeAsync(user, resource, policyName);
     }
 }

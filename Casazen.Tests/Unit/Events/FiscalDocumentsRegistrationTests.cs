@@ -59,6 +59,9 @@ public class FiscalDocumentsRegistrationTests
             (typeof(IBillingSetupContributor), typeof(ChannelCommissionsSectionContributor), ServiceLifetime.Scoped),
             (typeof(IBillingSetupContributor), typeof(OwnerMandatesSectionContributor), ServiceLifetime.Scoped),
 
+            // The owner issuers of the section «Italia» (E17/F01/US01/T01).
+            (typeof(IBillingSetupContributor), typeof(OwnerIssuerSetupContributor), ServiceLifetime.Scoped),
+
             // The two consumers of the sync with Octorate (E06/F02/US01/T04): the pre-fill on BookingCreated, then the write-back on InvoiceDataSaved.
             (typeof(IEventHandler<DomainEvent>), typeof(InvoiceDataFromOctorateHandler), ServiceLifetime.Scoped),
             (typeof(IEventHandler<DomainEvent>), typeof(OctorateBillingWriteBackHandler), ServiceLifetime.Scoped),
@@ -85,6 +88,7 @@ public class FiscalDocumentsRegistrationTests
             (typeof(IFatturaPaXmlBuilder), typeof(FatturaPaXmlBuilder), ServiceLifetime.Singleton),
             (typeof(IOctorateDocumentImportService), typeof(OctorateDocumentImportService), ServiceLifetime.Scoped),
             (typeof(IGuestDocumentLineBuilder), typeof(GuestDocumentLineBuilder), ServiceLifetime.Scoped),
+            (typeof(IDocumentPlanService), typeof(DocumentPlanService), ServiceLifetime.Scoped),
             (typeof(IFiscalDocumentService), typeof(FiscalDocumentService), ServiceLifetime.Scoped),
             (typeof(IBookingPaymentLedgerService), typeof(BookingPaymentLedgerService), ServiceLifetime.Scoped),
 
@@ -108,6 +112,9 @@ public class FiscalDocumentsRegistrationTests
             (typeof(IPortalAccountHolderResolver), typeof(PortalAccountHolderResolver), ServiceLifetime.Scoped),
             (typeof(IPortalAccountSettingsService), typeof(PortalAccountSettingsService), ServiceLifetime.Scoped),
             (typeof(IOwnerInvoiceService), typeof(OwnerInvoiceService), ServiceLifetime.Scoped),
+
+            // The issuer profiles of the owners (E17/F01/US01/T01).
+            (typeof(IOwnerIssuerProfileService), typeof(OwnerIssuerProfileService), ServiceLifetime.Scoped),
         };
 
         Assert.Equal(expected, ours);

@@ -39,7 +39,39 @@ public interface IComplianceStatusService
     /// channel manager stays «external verification required» and the report does not depend on its availability.
     /// </summary>
     Task<ComplianceStatusResult> EvaluateAsync(HostScope scope, ComplianceStatusWindow window, CancellationToken ct);
+
+    /// <summary>
+    /// The Alloggiati status of ONE stay, by the same facts and the same rules as the cockpit (E20/F01/US01/T02): the sender, where its guests stand on
+    /// the channel manager (entrusted, failed, in progress), the state of each guest (position, state, error code, attempts, last attempt), the archived
+    /// receipt that covers the arrival day, the light the cockpit would show and the actions that can help. <c>null</c> when the stay is not one the
+    /// caller reaches (another org's, one outside the reach of a collaborator «Solo alcuni», or one that does not exist): the same answer for all three.
+    /// </summary>
+    Task<ComplianceStayStatus?> GetStayStatusAsync(HostScope scope, Guid bookingId, CancellationToken ct);
 }
+
+/// <summary>
+/// The Alloggiati status of one stay as the per-stay API and the booking page show it (E20/F01/US01/T02, NF-43, NF-52): the one truth the cockpit shares.
+/// No personal data: positions, states and codes.
+/// </summary>
+/// <param name="BookingId">The stay.</param>
+/// <param name="PropertyId">Its property.</param>
+/// <param name="Sender">Who sends the communication, as far as CasaZen can rely on it (the channel manager only while the connector is on).</param>
+/// <param name="Status">The status the stay reads: «entrusted» or «write failed» for a channel-manager stay (<see cref="AlloggiatiStatusRules.WithChannelManager"/>), otherwise as before; <see cref="AlloggiatiWebStatus.NotDue"/> for a stay that owes nothing (a no-show, a request still waiting, a cancelled booking) unless its communication was sent.</param>
+/// <param name="ChannelManager">Where the guests stand on the channel manager; <see cref="ChannelManagerWriteState.NotApplicable"/> when it is not the sender.</param>
+/// <param name="Guests">The guests written (or being written) to the channel manager, by position; empty when it is not the sender.</param>
+/// <param name="ReceiptProof">The archived receipt of the arrival day (a receipt CasaZen holds, or one the host uploaded); <c>null</c> when none: green needs it.</param>
+/// <param name="Verdict">The light and the action of the cockpit for the stay; <c>null</c> before its arrival day, when nothing is due.</param>
+/// <param name="Actions">What can help (<see cref="AlloggiatiStayActions"/>); empty when nothing, and always for a stay that owes nothing.</param>
+public sealed record ComplianceStayStatus(
+    Guid BookingId,
+    Guid PropertyId,
+    ComplianceSenderType Sender,
+    AlloggiatiWebStatus Status,
+    ChannelManagerWriteState ChannelManager,
+    IReadOnlyList<ChannelManagerGuestFact> Guests,
+    ComplianceProof? ReceiptProof,
+    ComplianceStayVerdict? Verdict,
+    IReadOnlyList<string> Actions);
 
 /// <summary>
 /// The part of the past a coverage report looks at: the stays that arrive from <paramref name="From"/> to <paramref name="To"/> (Europe/Rome

@@ -1,5 +1,10 @@
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
+using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -185,5 +190,86 @@ public sealed class ItalySectionContributor(IDocumentIssuerService issuers) : Is
             items.Add(Item(BillingSetupItemKeys.StampDutyUnconfirmed, BillingSetupReasons.Unconfirmed));
 
         return items;
+    }
+}
+
+/// <summary>
+/// The owner issuers of the section «Italia» (E17/F01/US01/T01, NF-116, D12): in Italy the owner of a property issues the document of the stay, so every owner with
+/// an ownership of an Italian property that has not ended (in force or to come, on the Rome day of today: the definition of <see cref="OwnerMandatesSectionContributor"/>)
+/// needs an issuer profile that can issue (<see cref="OwnerIssuerProfileRules.MissingFields"/>: none, or one that misses a field, does not count). The item
+/// <see cref="BillingSetupItemKeys.OwnerIssuerMissing"/> carries the count of the owners still without one; an anonymized owner is not counted.
+/// </summary>
+/// <remarks>
+/// It reads for the organization of the setup, whatever the country of its own profile (a Swiss agency with Italian properties needs its owners' profiles too),
+/// names the org in every query (it may run with no tenant of its own) and returns a count, never a name. A private owner and a company count alike: both issue
+/// in their own name. An organization without such owners has nothing to look at here (<see cref="AppliesAsync"/>): the section «Italia» of a Swiss agency
+/// without Italian properties does not apply because of it.
+/// </remarks>
+public sealed class OwnerIssuerSetupContributor(AppDbContext db, IFiscalTaxRuleResolver taxRules, TimeProvider time) : IBillingSetupContributor
+{
+    public string Section => BillingSetupSections.Italy;
+
+    public async Task<bool> AppliesAsync(Guid orgId, CancellationToken ct) =>
+        (await OwnersOfItalianPropertiesAsync(orgId, time.TodayInRomeAsDateOnly(), ct)).Count > 0;
+
+    public async Task<IReadOnlyList<BillingSetupItem>> EvaluateAsync(Guid orgId, CancellationToken ct)
+    {
+        var today = time.TodayInRomeAsDateOnly();
+        var owners = await OwnersOfItalianPropertiesAsync(orgId, today, ct);
+        if (owners.Count == 0)
+            return [];
+
+        var profiles = await db.OrgFiscalIssuerProfiles
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(profile => profile.OrgId == orgId && profile.PropertyOwnerId != null && owners.Contains(profile.PropertyOwnerId.Value))
+            .ToListAsync(ct);
+        var ready = profiles
+            .Where(profile => CanIssue(profile, today))
+            .Select(profile => profile.PropertyOwnerId!.Value)
+            .ToHashSet();
+
+        var without = owners.Count(owner => !ready.Contains(owner));
+        return without == 0
+            ? []
+            : [new BillingSetupItem(BillingSetupItemKeys.OwnerIssuerMissing, Section, BillingSetupReasons.Required, without)];
+    }
+
+    /// <summary>The owners, not anonymized, with an ownership of an Italian property that has not ended on <paramref name="today"/> (in force or to come).</summary>
+    private async Task<List<Guid>> OwnersOfItalianPropertiesAsync(Guid orgId, DateOnly today, CancellationToken ct)
+    {
+        var ownerships = await db.PropertyOwnerships
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(ownership => ownership.OrgId == orgId && ownership.Property.Country == FiscalDocumentRules.Italy)
+            .Select(ownership => new { ownership.PropertyOwnerId, ownership.OwnershipEnd })
+            .ToListAsync(ct);
+        var issuing = ownerships
+            .Where(ownership => ownership.OwnershipEnd is not { } end || RomeCalendar.DateInRome(end) >= today)
+            .Select(ownership => ownership.PropertyOwnerId)
+            .Distinct()
+            .ToList();
+        if (issuing.Count == 0)
+            return [];
+
+        return await db.PropertyOwners
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(owner => owner.OrgId == orgId && owner.AnonymizedAt == null && issuing.Contains(owner.Id))
+            .Select(owner => owner.Id)
+            .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// The profile has everything an issue of an Italian stay needs today (the regime code of the rule in force when it has none of its own): an Italian profile,
+    /// since a Swiss one (made for ⚖ C1) never issues the stay of an Italian property.
+    /// </summary>
+    private bool CanIssue(OrgFiscalIssuerProfile profile, DateOnly today)
+    {
+        if (FiscalDocumentRules.IsSwiss(profile.CountryCode))
+            return false;
+
+        var rule = taxRules.TryResolve(profile.CountryCode, profile.DocumentRegime, profile.StayVatTreatment, CleaningFeeTreatment.FollowsStay, today);
+        return OwnerIssuerProfileRules.MissingFields(profile, rule?.FatturaPaRegimeCode).Count == 0;
     }
 }

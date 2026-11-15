@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -50,7 +51,8 @@ public sealed class IdentityVerificationFlowService(
     IFileStorage storage,
     IDataProtectionProvider dataProtection,
     TimeProvider clock,
-    ILogger<IdentityVerificationFlowService> logger) : IIdentityVerificationFlowService
+    ILogger<IdentityVerificationFlowService> logger,
+    IDomainEventRecorder? domainEvents = null) : IIdentityVerificationFlowService
 {
     /// <summary>Data Protection purpose of the encrypted picture of a document in the private bucket. Never change it: stored pictures would become unreadable.</summary>
     public const string DocumentImageContentPurpose = "Casazen.DocumentImage.Content";
@@ -442,6 +444,18 @@ public sealed class IdentityVerificationFlowService(
             DurationMs = outcome.DurationMs,
             CreatedAt = now,
         });
+
+        // E20/F01/US01/T01: a passed verification is announced on the bus, in the same save as its row of the log: an org that lets CasaZen write the
+        // guests to the channel manager on their own learns that the identity of the stay is verified. Ids and the method only, never a picture or a value.
+        if (outcome.Result == IdentityVerificationResult.Ok)
+        {
+            domainEvents?.Record(
+                DomainEventType.IdVerificationCompleted,
+                session.BookingId,
+                new IdVerificationCompletedPayload(session.BookingId, session.Booking.PropertyId, IdVerificationMethods.Biometric),
+                orgId: session.OrgId);
+        }
+
         await db.SaveChangesAsync(ct);
         logger.LogInformation(
             "Identity verification of session {SessionId}: result={Result} attempt={Attempt}/{MaxAttempts} durationMs={DurationMs}",

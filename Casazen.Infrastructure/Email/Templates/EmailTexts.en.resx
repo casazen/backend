@@ -2790,4 +2790,28 @@
   <data name="FiscalDocumentDelivery_Kind_CreditNote" xml:space="preserve">
     <value>Credit note</value>
   </data>
+  <data name="AccountantPackage_Subject" xml:space="preserve">
+    <value>Accountant package: {0} of {1}</value>
+  </data>
+  <data name="AccountantPackage_Greeting" xml:space="preserve">
+    <value>Hello,</value>
+  </data>
+  <data name="AccountantPackage_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; has prepared with CasaZen the package of &lt;strong&gt;{1}&lt;/strong&gt;: the documents and the summaries of the month, with an index that lists every file and its SHA-256 fingerprint. Download it from the link below.</value>
+  </data>
+  <data name="AccountantPackage_Cta" xml:space="preserve">
+    <value>Download the package</value>
+  </data>
+  <data name="AccountantPackage_LinkFallback" xml:space="preserve">
+    <value>If the button does not work, copy and paste this link into your browser:</value>
+  </data>
+  <data name="AccountantPackage_Validity" xml:space="preserve">
+    <value>The link is valid until {0}.</value>
+  </data>
+  <data name="AccountantPackage_NoAttachment" xml:space="preserve">
+    <value>To protect the data the package is not attached to this e-mail: it is downloaded only from this link.</value>
+  </data>
+  <data name="AccountantPackage_NotYou" xml:space="preserve">
+    <value>The link is personal: whoever receives it can download the package until it expires. If you were not expecting this message, ignore it and let {0} know.</value>
+  </data>
 </root>

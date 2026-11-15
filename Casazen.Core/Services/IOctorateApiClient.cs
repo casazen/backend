@@ -1,3 +1,5 @@
+using Casazen.Core.Octorate;
+
 namespace Casazen.Core.Services;
 
 /// <summary>
@@ -145,6 +147,15 @@ public interface IOctorateApiClient
 
     /// <summary>The arrival Octorate registered for a reservation (<c>effectiveCheckin</c>, <c>arrivalTime</c> of the single read).</summary>
     Task<OctorateReservationArrival> GetReservationArrivalAsync(string accommodationId, string reservationId, CancellationToken ct);
+
+    /// <summary>
+    /// The places of a country as Octorate's check-in recognizes them, with their police codes (<c>GET /rest/v2/checkin/city/{country}</c>,
+    /// E20/F01/US01/T01, decision O2; the sandbox of 2026-11-04 answered 11,149 entries for <c>IT</c>, each with <c>internalName</c>,
+    /// <c>regionType</c> and <c>countryPoliceCode</c>): the table the exact names of a guest's comuni are taken from. The country is the two-letter
+    /// code. An entry with no name or no police code is left out. An answer that holds no usable entry is <c>OctorateServerException</c>, never an empty
+    /// table: a caller must not take "no places" for "no place is recognized".
+    /// </summary>
+    Task<OctoratePlaceEntry[]> GetCheckInCitiesAsync(string country, CancellationToken ct);
 
     /// <summary>
     /// Octorate's availability check of the room of <paramref name="target"/> for the nights from <paramref name="from"/> to the night before

@@ -578,7 +578,7 @@ public sealed class OwnerInvoiceService(
     /// <summary>The profile of the issuer, complete: 422 <c>issuer_profile_incomplete</c> (with the <c>fields</c>) otherwise, as for the documents of the guests.</summary>
     private async Task<OrgFiscalIssuerProfile> RequireIssuerAsync(Guid orgId, CancellationToken ct)
     {
-        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.OrgId == orgId, ct);
+        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().OfOrganization(orgId).FirstOrDefaultAsync(ct);
         var settings = await issuers.GetSettingsAsync(orgId, ct);
         if (profile is null || settings.MissingFields.Count > 0)
         {

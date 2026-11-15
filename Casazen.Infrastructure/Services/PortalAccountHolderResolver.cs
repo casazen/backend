@@ -34,7 +34,7 @@ public sealed class PortalAccountHolderResolver(AppDbContext db) : IPortalAccoun
     public async Task<PortalAccountHolders> ForOrgAsync(Guid orgId, CancellationToken ct = default)
     {
         var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking()
-            .Where(p => p.OrgId == orgId)
+            .OfOrganization(orgId)
             .Select(p => new { p.PortalAccountHolder, p.RechargePortalCommissions })
             .FirstOrDefaultAsync(ct);
         var rows = await db.PropertyChannelAccountHolders.AsNoTracking()
@@ -57,7 +57,7 @@ public sealed class PortalAccountHolderResolver(AppDbContext db) : IPortalAccoun
 
     private async Task<PortalAccountHolder> DefaultOfAsync(Guid orgId, CancellationToken ct) =>
         await db.OrgFiscalIssuerProfiles.AsNoTracking()
-            .Where(p => p.OrgId == orgId)
+            .OfOrganization(orgId)
             .Select(p => (PortalAccountHolder?)p.PortalAccountHolder)
             .FirstOrDefaultAsync(ct)
         ?? PortalAccountHolders.Defaults.Default;
