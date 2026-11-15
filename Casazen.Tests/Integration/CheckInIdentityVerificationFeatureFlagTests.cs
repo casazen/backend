@@ -56,10 +56,11 @@ public class CheckInIdentityVerificationFeatureFlagTests(CasazenWebApplicationFa
         Assert.Equal(HttpStatusCode.BadRequest, selfie.StatusCode);
     }
 
+    /// <summary>The document takes one picture (10 MB); the selfie takes up to three, the selfie and the two sides of a document of Ticino (15 MB, E22/F01/US01/T02).</summary>
     [Theory]
-    [InlineData(nameof(PublicGuestCheckInController.UploadDocument))]
-    [InlineData(nameof(PublicGuestCheckInController.UploadSelfie))]
-    public void ImageEndpoint_BuffersTheWholeRequestInMemory_NeverOnDisk(string action)
+    [InlineData(nameof(PublicGuestCheckInController.UploadDocument), PublicGuestCheckInController.MaxImageRequestBytes)]
+    [InlineData(nameof(PublicGuestCheckInController.UploadSelfie), PublicGuestCheckInController.MaxSelfieRequestBytes)]
+    public void ImageEndpoint_BuffersTheWholeRequestInMemory_NeverOnDisk(string action, int cap)
     {
         var method = typeof(PublicGuestCheckInController).GetMethod(action)!;
         var formLimits = method.GetCustomAttribute<RequestFormLimitsAttribute>();
@@ -67,8 +68,8 @@ public class CheckInIdentityVerificationFeatureFlagTests(CasazenWebApplicationFa
 
         Assert.NotNull(formLimits);
         Assert.NotNull(sizeLimit);
-        Assert.Equal((long?)PublicGuestCheckInController.MaxImageRequestBytes, ((IRequestSizeLimitMetadata)sizeLimit).MaxRequestBodySize);
-        Assert.True(formLimits.MemoryBufferThreshold >= PublicGuestCheckInController.MaxImageRequestBytes);
+        Assert.Equal((long?)cap, ((IRequestSizeLimitMetadata)sizeLimit).MaxRequestBodySize);
+        Assert.True(formLimits.MemoryBufferThreshold >= cap);
     }
 
     private async Task<(string Token, Guid SessionId, Guid BookingId)> SeedSessionAsync()

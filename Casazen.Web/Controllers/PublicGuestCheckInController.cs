@@ -47,11 +47,18 @@ public class PublicGuestCheckInController(
     public const string ValidationCodesExtension = "codes";
 
     /// <summary>
-    /// Largest request of <c>/document</c> and <c>/selfie</c> (10 MB). Their multipart body is buffered in memory up to this size
+    /// Largest request of <c>/document</c> (10 MB). Its multipart body is buffered in memory up to this size
     /// (<see cref="RequestFormLimitsAttribute.MemoryBufferThreshold"/>), so an image is never spilled to a temporary file on disk
-    /// (ADR-013-R2): the default threshold is 64 KB.
+    /// (ADR-013-R2): the default threshold is 64 KB. <c>/selfie</c> has <see cref="MaxSelfieRequestBytes"/>.
     /// </summary>
     public const int MaxImageRequestBytes = 10_000_000;
+
+    /// <summary>
+    /// Largest request of <c>/selfie</c> (15 MB, E22/F01/US01/T02): the selfie and, for a property that keeps no document (Ticino), the pictures of the document read
+    /// before, the front and the back of a card, so three pictures with the budget each of them always had (5 MB: 10 MB were for the two of before). Buffered in
+    /// memory up to this size like <see cref="MaxImageRequestBytes"/>, never in a temporary file (ADR-013-R2). A request over it is refused by the server with 413.
+    /// </summary>
+    public const int MaxSelfieRequestBytes = 15_000_000;
 
     private static readonly string[] AllowedImageTypes = ["image/jpeg", "image/jpg", "image/png"];
 
@@ -395,14 +402,15 @@ public class PublicGuestCheckInController(
     /// A document of two sides (E22/F01/US01/T02, <c>side</c> <c>front</c> and <c>back</c> of <c>/document</c>): <c>documentPhoto</c> is the front (the face)
     /// and, for a property in Ticino, which keeps nothing, <c>documentPhotoBack</c> is the back; both are the pictures that were read, or 400
     /// <c>document_photo_required</c> and 409 <c>document_photo_mismatch</c>. Elsewhere neither is needed. 409 <c>document_check_required</c> also while
-    /// the face or the MRZ of such a document is still missing, with no attempt spent.
+    /// the face or the MRZ of such a document is still missing, with no attempt spent. The whole request is at most <see cref="MaxSelfieRequestBytes"/> (15 MB,
+    /// the 5 MB of each of three pictures); over it the server answers 413.
     /// </para>
     /// </summary>
     [HttpPost("{token}/selfie")]
     [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
     [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
-    [RequestSizeLimit(MaxImageRequestBytes)]
-    [RequestFormLimits(MemoryBufferThreshold = MaxImageRequestBytes, MultipartBodyLengthLimit = MaxImageRequestBytes)]
+    [RequestSizeLimit(MaxSelfieRequestBytes)]
+    [RequestFormLimits(MemoryBufferThreshold = MaxSelfieRequestBytes, MultipartBodyLengthLimit = MaxSelfieRequestBytes)]
     public async Task<ActionResult<SelfieUploadResponse>> UploadSelfie(
         string token,
         [FromForm] IFormFile selfie,
