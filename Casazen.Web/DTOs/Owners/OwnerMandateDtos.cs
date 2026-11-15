@@ -7,7 +7,8 @@ namespace Casazen.Web.DTOs.Owners;
 /// <summary>
 /// A mandate version of an owner (E13/F01/US01/T01): <c>GET/POST api/owners/{ownerId}/mandates</c>. <see cref="OwnershipId"/> is set only on a mandate of one
 /// ownership of before E13; the versions the API writes cover every property of the owner. The signed document is only said to be on file
-/// (<see cref="HasDocument"/>), never returned.
+/// (<see cref="HasDocument"/>), never returned. <see cref="CoOwnerTaxReporting"/> (E18/F01/US03/T01, ⚖ I6) says how the withholding evidence and the CU of a
+/// property of several co-owners are written: <c>Signatory</c> (the default) or <c>PerShare</c>.
 /// </summary>
 public sealed record OwnerMandateDto(
     Guid Id,
@@ -25,7 +26,8 @@ public sealed record OwnerMandateDto(
     int MonthlyFrequency,
     bool HasDocument,
     DateTime CreatedAt,
-    string? CreatedByUserId)
+    string? CreatedByUserId,
+    CoOwnerTaxReporting CoOwnerTaxReporting)
 {
     public static OwnerMandateDto From(OwnerMandate m) => new(
         m.Id,
@@ -43,7 +45,8 @@ public sealed record OwnerMandateDto(
         m.MonthlyFrequency,
         !string.IsNullOrWhiteSpace(m.MandatePdfUrl),
         m.CreatedAt,
-        m.CreatedByUserId);
+        m.CreatedByUserId,
+        m.CoOwnerTaxReporting);
 }
 
 /// <summary>

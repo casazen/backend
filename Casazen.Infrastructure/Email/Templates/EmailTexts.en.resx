@@ -2712,6 +2712,9 @@
   <data name="TodoReason_BookingSyncConflict" xml:space="preserve">
     <value>The booking was changed in your channel manager: choose which version to keep</value>
   </data>
+  <data name="TodoReason_CompanyTenantDecision" xml:space="preserve">
+    <value>The tenant is a company and the property belongs to a private owner: decide whether the stay stays a short let (with the withholding) or not. The tax agency (circular 24/E of 2017) says the short-let regime does not apply when the tenant is a company; the Court of Cassation (12395/2024) says only the landlord counts, if the use is residential. Check with the accountant and record the decision.</value>
+  </data>
   <data name="OwnerContactInvitation_Subject" xml:space="preserve">
     <value>Invitation to the owner portal of {0}</value>
   </data>

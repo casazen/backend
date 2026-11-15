@@ -175,6 +175,15 @@ public enum ActivityType
     CheckInLinkToSend = 110,
 
     /// <summary>
+    /// A company is the tenant of a stay in the Italian property of a private owner (E18/F01/US03/T01, ⚖ I7, NF-117): the tax agency circular and the Court of Cassation
+    /// read the short-let regime differently, so a person decides whether the stay stays a short let (withholding) or not, and the decision is recorded
+    /// (<c>ShortLetTaxDecision</c>). About the booking (entity type <c>Booking</c>), on its property, leading to it (<see cref="ActivityAction.ReviewBooking"/>), with the
+    /// reason <c>company_tenant_decision</c> in words; closed when a decision is recorded, when the booking is cancelled or marked a no-show, or when the stay is no company tenant's any more (closed by the system). Raised only while <c>Features:TaxReportingExports</c>
+    /// is on. The number 120 keeps clear of the values the tasks that run in parallel append after 100.
+    /// </summary>
+    CompanyTenantDecision = 120,
+
+    /// <summary>
     /// The dates of a stay changed after the supplier took its automatic cleaning (E24/F01/US01/T02, NF-120): the cleaning stays on the old day and the host
     /// decides whether to cancel it, ask for another or keep it. About the booking, leading to it (<see cref="ActivityAction.ReviewBooking"/>); raised once for
     /// each stay while it is open, and closed by the system when the stay is cancelled or the property is declared ready. The numbers from 130 are the
