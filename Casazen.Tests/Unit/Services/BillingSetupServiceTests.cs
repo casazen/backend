@@ -325,6 +325,59 @@ public class BillingSetupServiceTests
     }
 
     /// <summary>
+    /// PROOF TEST: money rule (FIX/RES-OWNERS, S009). The section of the Swiss tourist tax lists the portals that collect it by default (the shipped
+    /// <c>SwissTouristTax:PlatformCollected</c>) as the guest documents read it for an issuer that confirmed none, so the wizard asks about the portals that are not on that
+    /// list and never about all of them. The list is read-only (it is never saved, never taken for the issuer's own answer, and the item stays missing until the issuer confirms
+    /// its list), the issuer's own list is kept apart from it, and an Italian issuer has no default.
+    /// </summary>
+    [Fact]
+    public async Task TouristTax_ListsThePlatformDefaults_TheGuestDocumentsUse_WithoutConfirmingThem_Test()
+    {
+        var databaseName = $"billing-setup-defaults-{Guid.NewGuid()}";
+        await SeedAsync(databaseName, profileOfA: Profile(OrgA, "TEST Quokka Sagl"), profileOfB: null);
+        await using var db = NewDb(databaseName, new FixedTenantContext(OrgA));
+        var swiss = new Casazen.Core.Options.SwissTouristTaxOptions { PlatformCollected = [BookingSource.Airbnb, BookingSource.BookingCom] };
+        var lines = new GuestDocumentLineBuilder(
+            db,
+            new Casazen.Web.Resources.ResxDocumentTexts(),
+            Microsoft.Extensions.Options.Options.Create(new Casazen.Core.Options.FiscalDocumentRulesOptions()),
+            Microsoft.Extensions.Options.Options.Create(swiss));
+        var issuers = Issuers(db);
+        var service = new BillingSetupService(issuers, [new TouristTaxSectionContributor(issuers)], NullLogger<BillingSetupService>.Instance, documentLines: lines);
+        static IReadOnlyList<string> Defaults(BillingSetupSection section) =>
+            Assert.IsAssignableFrom<IReadOnlyList<string>>(section.Values[BillingSetupService.DefaultPlatformCollectedTouristTaxChannels]);
+
+        // Nothing confirmed: the portals of the platform are listed, and they are exactly what the documents of this issuer would say, not an answer of the issuer.
+        var unconfirmed = await Section(service, BillingSetupSections.TouristTax);
+        Assert.Equal(["Airbnb", "BookingCom"], Defaults(unconfirmed));
+        Assert.Equal(
+            lines.PlatformCollectedChannelsOf(new OrgFiscalIssuerProfile { CountryCode = "CH" }).Select(source => source.ToString()),
+            Defaults(unconfirmed));
+        Assert.Equal(false, unconfirmed.Values["confirmed"]);
+        Assert.Null(unconfirmed.Values[BillingSetupFields.PlatformCollectedTouristTaxChannels]);
+        Assert.Equal([BillingSetupItemKeys.TouristTaxChannelsUnconfirmed], unconfirmed.Missing.Select(i => i.Key));
+        Assert.Null((await StoredAsync(databaseName)).PlatformCollectedTouristTaxChannelsJson);
+
+        // Reading it again, or saving another section, never confirms it: the profile still holds nothing.
+        await service.PutSectionAsync(OrgA, "numbering", new BillingSetupPayload { GuestDocumentSeries = "{year}" }, null, Ct);
+        Assert.Null((await StoredAsync(databaseName)).PlatformCollectedTouristTaxChannelsJson);
+
+        // The issuer confirms only Airbnb: its own list is saved apart, and the defaults of the platform are still the platform's.
+        var confirmed = await service.PutSectionAsync(OrgA, "touristTax", new BillingSetupPayload { PlatformCollectedTouristTaxChannels = ["Airbnb"] }, null, Ct);
+        Assert.Equal(["Airbnb"], Assert.IsAssignableFrom<IReadOnlyList<string>>(confirmed.Values[BillingSetupFields.PlatformCollectedTouristTaxChannels]));
+        Assert.Equal(["Airbnb", "BookingCom"], Defaults(confirmed));
+        Assert.Equal("""["Airbnb"]""", (await StoredAsync(databaseName)).PlatformCollectedTouristTaxChannelsJson);
+
+        // An Italian issuer has no default: its channel rules are the ones of the comune.
+        await service.PutSectionAsync(OrgA, "issuer", new BillingSetupPayload { CountryCode = "IT" }, null, Ct);
+        Assert.Empty(Defaults(await Section(service, BillingSetupSections.TouristTax)));
+
+        // A service built without the line builder lists none rather than a list of its own.
+        var bare = new BillingSetupService(issuers, [new TouristTaxSectionContributor(issuers)], NullLogger<BillingSetupService>.Instance);
+        Assert.Empty(Defaults(await Section(bare, BillingSetupSections.TouristTax)));
+    }
+
+    /// <summary>
     /// The step «Emissione»: the choice counts as made when the step was saved while the profile could issue; saved before, it is a draft, and a profile that
     /// stops being complete asks for the confirmation again.
     /// </summary>

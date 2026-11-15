@@ -148,6 +148,9 @@ public static class FiscalDocumentExtensions
         // The versioned mandates of the owners, the standard mandate, the billing address of an owner and the channel commission rules (E13/F01/US01/T01).
         services.AddScoped<IOwnerMandateService, OwnerMandateService>();
 
+        // The list of the owners of an agency with the number of their properties, the kind and the currency of their fiscal profile and the mandate in force, in one query (FIX/RES-OWNERS).
+        services.AddScoped<IOwnerDirectoryService, OwnerDirectoryService>();
+
         // Who holds the account of a listing on a portal (⚖ I10, I11): the reader of the other epics and the settings of the section «channels» of the billing setup
         // with the holders of the listings; and the invoices of the property manager to the owners made from the statement versions, behind
         // Features:OwnerInvoicing (E14/F01/US01/T01).

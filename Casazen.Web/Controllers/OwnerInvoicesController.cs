@@ -11,8 +11,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// The invoices of the property manager to the owners (E14/F01/US01/T01, NF-114): the list (<c>agency.statement.view</c>), the draft made from a statement
-/// version, its issue, its discard and the credit note of an issued invoice (<c>agency.statement.manage</c>). The PDF and the XML of an owner invoice are the
+/// The invoices of the property manager to the owners (E14/F01/US01/T01, NF-114): the list and the read of one invoice by its id (<c>agency.statement.view</c>), the draft
+/// made from a statement version, its issue, its discard and the credit note of an issued invoice (<c>agency.statement.manage</c>). The PDF and the XML of an owner invoice are the
 /// ones of every fiscal document (<c>GET api/fiscal/documents/{id}/pdf</c> and <c>/xml</c>, a document without a booking: the whole org only).
 /// </summary>
 /// <remarks>
@@ -55,6 +55,22 @@ public class OwnerInvoicesController(
 
         var rows = await invoices.ListAsync(orgId, new OwnerInvoiceCriteria(year, month, ownerId), HttpContext.RequestAborted);
         return Ok(rows.Select(OwnerInvoiceListItemDto.From).ToList());
+    }
+
+    /// <summary>
+    /// One owner invoice with its lines, as the creation of the draft answers them (<c>agency.statement.view</c>, the whole organization only): a draft is read again by its id
+    /// after a reload, without making it again. 404 <c>fiscal_document_not_found</c> for an invoice of another org and for a document that is not an owner invoice.
+    /// </summary>
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(OwnerInvoiceDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OwnerInvoiceDto>> Get(Guid id)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+
+        return Ok(OwnerInvoiceDto.From(await invoices.GetAsync(orgId, id, HttpContext.RequestAborted)));
     }
 
     /// <summary>
