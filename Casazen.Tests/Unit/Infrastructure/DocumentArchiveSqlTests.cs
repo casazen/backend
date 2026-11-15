@@ -164,12 +164,16 @@ public class DocumentArchiveSqlTests
         // The whole org: the tenant filter is in each of the five branches.
         Assert.All(Branches(wholeOrg[1]), branch => Assert.Contains("@ef_filter", branch, StringComparison.Ordinal));
 
+        // A collaborator reads a receipt of several flats only when every flat it covers is in reach AND none is gone (the soft-delete filter takes a deleted flat out of
+        // the NOT EXISTS): the lines of the receipt are counted against the lines whose flat is still there, in the same statement (two counts); the whole org has no count.
         Assert.All(BranchesOf(limited[1], "ManualComplianceProofs"), branch =>
         {
             Assert.Contains("PropertyMemberAccesses", branch, StringComparison.Ordinal);
             Assert.Contains("NOT EXISTS", branch, StringComparison.Ordinal);
             Assert.Contains("ManualComplianceProofProperties", branch, StringComparison.Ordinal);
+            Assert.Matches("(?is)count\\(.*count\\(", branch);
         });
+        Assert.All(BranchesOf(wholeOrg[1], "ManualComplianceProofs"), branch => Assert.DoesNotContain("count(", branch, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

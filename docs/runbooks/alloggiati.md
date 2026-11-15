@@ -605,7 +605,7 @@ A stay is proven by a receipt when its flat is one the receipt covers and its ar
 
 ### Who reads a receipt of several flats
 
-The file is about the guests of every flat it covers, so a collaborator «Solo alcuni» reads it (the list, the file, the export, the proofs of a stay, the document archive) **only when it reaches every flat of it**; one flat out of its reach keeps the whole proof out. The whole organization finds it by any flat it covers (`GET api/compliance/archive?propertyId=`); the general archive (`GET api/documents`) shows it under the flat it was filed under.
+The file is about the guests of every flat it covers, so a collaborator «Solo alcuni» reads it (the list, the file, the export, the proofs of a stay, the document archive) **only when it reaches every flat of it**; one flat out of its reach keeps the whole proof out, **a flat deleted since included** (in the general archive the soft-delete filter of the statement takes a deleted flat out of the check of the reach, so `ComplianceProofArchiveSource.InReach` counts the lines of the receipt against the lines whose flat is still there and, for a limited scope, hides a receipt that covers a flat gone: the answer of the dedicated archive, which lifts the filter in its own statement and judges the deleted flat itself; the whole organization reads it in both). The whole organization finds it by any flat it covers (`GET api/compliance/archive?propertyId=`); the general archive (`GET api/documents`) shows it under the flat it was filed under.
 
 ### Five-year purge
 

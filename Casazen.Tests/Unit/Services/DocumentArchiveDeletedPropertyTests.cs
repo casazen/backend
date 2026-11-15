@@ -86,7 +86,86 @@ public class DocumentArchiveDeletedPropertyTests
         }
 
         // The history of the proofs of the deleted flat: the dedicated archive keeps it (its own statement lifts the filter, shared with no other source).
-        var dedicated = new ComplianceArchiveService(
+        var history = await DedicatedArchive(world).ListAsync(wholeOrg, new ComplianceArchiveQuery(), CancellationToken.None);
+        Assert.Contains(history.Items, i => i.Id == hiddenReceipt);
+        Assert.Contains(history.Items, i => i.Id == hiddenIstat);
+    }
+
+    /// <summary>
+    /// PROOF TEST: permission rule. A collaborator «Solo alcuni» reads a receipt of several flats only when EVERY flat it covers is in its reach, a flat deleted since
+    /// included: the soft-delete filter of the statement takes a deleted flat out of the check of the reach, so the lines of the receipt are counted against the lines whose
+    /// flat is still there and a receipt that covers a flat gone stays out. With a receipt of two flats, one of them deleted afterwards, and a collaborator who reaches only the
+    /// other: it does not read it in the list, the count, the ZIP or the download of the general archive (the answer of the dedicated archive too), a receipt of its own flat
+    /// alone it still reads, and whoever has the whole reach reads both.
+    /// </summary>
+    [Fact]
+    public async Task DocumentArchive_AReceiptThatCoversAFlatDeletedSince_IsNotReadByACollaboratorWhoDoesNotReachIt_Test()
+    {
+        var world = await DocumentArchiveWorld.CreateAsync();
+        var shared = await world.AddProofAsync(world.Hosts.Granted, ManualProofKind.AlloggiatiReceipt, new DateOnly(2026, 10, 3), world.Hosts.Hidden);
+        var sharedIstat = await world.AddProofAsync(world.Hosts.Granted, ManualProofKind.IstatProof, new DateOnly(2026, 9, 1), world.Hosts.Hidden);
+        var alone = await world.AddProofAsync(world.Hosts.Granted, ManualProofKind.AlloggiatiReceipt, new DateOnly(2026, 10, 4));
+        var service = world.Service();
+        var collaborator = world.Hosts.Restricted;
+        var wholeOrg = world.Hosts.OrgWide;
+
+        // Before the deletion the flat that is not the collaborator's is out of its reach: the receipts that cover it are not read.
+        var before = await service.ListAsync(collaborator, DocumentArchiveWorld.EveryType, All);
+        Assert.Equal(
+            new[] { world.GrantedPropertyDocument, world.GrantedLeaseDocument, alone }.Order(),
+            before.Items.Select(i => i.Id).Order());
+
+        await world.SoftDeleteAsync(world.Hosts.Hidden);
+
+        // After it the answer is the same, whatever the flat that is gone: in the list, the count, the ZIP and the download.
+        var list = await service.ListAsync(collaborator, DocumentArchiveWorld.EveryType, All);
+        Assert.Equal(
+            new[] { world.GrantedPropertyDocument, world.GrantedLeaseDocument, alone }.Order(),
+            list.Items.Select(i => i.Id).Order());
+        Assert.Equal(3, list.TotalCount);
+        var counts = await service.CountByTypeAsync(collaborator, DocumentArchiveWorld.EveryType, All);
+        Assert.Equal(
+            [
+                (ArchiveDocumentType.AlloggiatiReceipt, 1),
+                (ArchiveDocumentType.IstatProof, 0),
+                (ArchiveDocumentType.TouristTax, 0),
+                (ArchiveDocumentType.Contract, 1),
+                (ArchiveDocumentType.PropertyDocument, 1),
+            ],
+            counts.Select(c => (c.Type, c.Count)));
+        using var zip = new MemoryStream();
+        var exported = await service.ExportAsync(collaborator, DocumentArchiveWorld.EveryType, All, zip);
+        Assert.Equal((3, 3), (exported.Documents, exported.Files));
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => service.OpenAsync(collaborator, DocumentArchiveWorld.EveryType, ArchiveDocumentType.AlloggiatiReceipt, shared));
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => service.OpenAsync(collaborator, DocumentArchiveWorld.EveryType, ArchiveDocumentType.IstatProof, sharedIstat));
+        var own = await service.OpenAsync(collaborator, DocumentArchiveWorld.EveryType, ArchiveDocumentType.AlloggiatiReceipt, alone);
+        await using (own.Content)
+        {
+            Assert.Equal("application/pdf", own.ContentType);
+        }
+
+        // The dedicated archive gives the same answer for the collaborator; whoever has the whole reach reads the receipts of both flats in either archive.
+        var dedicated = DedicatedArchive(world);
+        var dedicatedOfTheCollaborator = await dedicated.ListAsync(collaborator, new ComplianceArchiveQuery(), CancellationToken.None);
+        Assert.Equal([alone], dedicatedOfTheCollaborator.Items.Select(i => i.Id));
+        var generalOfTheOrg = await service.ListAsync(wholeOrg, DocumentArchiveWorld.EveryType, All);
+        Assert.Contains(generalOfTheOrg.Items, i => i.Id == shared);
+        Assert.Contains(generalOfTheOrg.Items, i => i.Id == sharedIstat);
+        var shownToTheOrg = await service.OpenAsync(wholeOrg, DocumentArchiveWorld.EveryType, ArchiveDocumentType.AlloggiatiReceipt, shared);
+        await using (shownToTheOrg.Content)
+        {
+            Assert.Equal("application/pdf", shownToTheOrg.ContentType);
+        }
+
+        var dedicatedOfTheOrg = await dedicated.ListAsync(wholeOrg, new ComplianceArchiveQuery(), CancellationToken.None);
+        Assert.Equal(new[] { shared, sharedIstat, alone }.Order(), dedicatedOfTheOrg.Items.Select(i => i.Id).Order());
+    }
+
+    /// <summary>The dedicated archive of the proofs (<c>api/compliance/archive</c>): its own statement, which lifts the soft-delete filter to keep the history.</summary>
+    private static ComplianceArchiveService DedicatedArchive(DocumentArchiveWorld world) =>
+        new(
             world.Db,
             world.Storage,
             Mock.Of<IComplianceStatusService>(),
@@ -94,8 +173,4 @@ public class DocumentArchiveDeletedPropertyTests
             Mock.Of<IFeatureFlags>(),
             Options.Create(new ComplianceOptions()),
             NullLogger<ComplianceArchiveService>.Instance);
-        var history = await dedicated.ListAsync(wholeOrg, new ComplianceArchiveQuery(), CancellationToken.None);
-        Assert.Contains(history.Items, i => i.Id == hiddenReceipt);
-        Assert.Contains(history.Items, i => i.Id == hiddenIstat);
-    }
 }

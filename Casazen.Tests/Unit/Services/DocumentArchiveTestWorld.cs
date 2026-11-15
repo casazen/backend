@@ -158,10 +158,10 @@ internal sealed class DocumentArchiveWorld
     }
 
     /// <summary>
-    /// A proof the host uploaded for <paramref name="property"/> (E20/F02/US01/T01), as the archive of the proofs stores it: the row, the line of the flat it covers and
-    /// its file in the private bucket under the key the real code builds.
+    /// A proof the host uploaded for <paramref name="property"/> (E20/F02/US01/T01), as the archive of the proofs stores it: the row, the line of the flat it was filed under
+    /// and one for each of <paramref name="alsoCovering"/> (a receipt of several flats), and its file in the private bucket under the key the real code builds.
     /// </summary>
-    public async Task<Guid> AddProofAsync(Property property, ManualProofKind kind, DateOnly day)
+    public async Task<Guid> AddProofAsync(Property property, ManualProofKind kind, DateOnly day, params Property[] alsoCovering)
     {
         var id = Guid.NewGuid();
         var key = StorageKeys.ManualComplianceProof(property.OrgId, id, $"{Guid.NewGuid():N}.pdf");
@@ -178,6 +178,9 @@ internal sealed class DocumentArchiveWorld
             UploadedAt = new DateTime(2026, 10, 8, 9, 0, 0, DateTimeKind.Utc),
         });
         Db.ManualComplianceProofProperties.Add(new ManualComplianceProofProperty { OrgId = property.OrgId, ProofId = id, PropertyId = property.Id });
+        foreach (var other in alsoCovering)
+            Db.ManualComplianceProofProperties.Add(new ManualComplianceProofProperty { OrgId = property.OrgId, ProofId = id, PropertyId = other.Id });
+
         Storage.Add(key, Pdf($"prova {kind}"));
         KeysByDocument[id] = key;
         await Db.SaveChangesAsync();

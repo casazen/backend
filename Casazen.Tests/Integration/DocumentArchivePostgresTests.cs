@@ -100,7 +100,7 @@ public class DocumentArchivePostgresTests : IAsyncLifetime
         return new DocumentArchiveService(sources, _db, Options.Create(new DocumentArchiveOptions()), NullLogger<DocumentArchiveService>.Instance);
     }
 
-    private Guid AddProof(Property property, ManualProofKind kind, DateOnly day)
+    private Guid AddProof(Property property, ManualProofKind kind, DateOnly day, params Property[] alsoCovering)
     {
         var id = Guid.NewGuid();
         _db.ManualComplianceProofs.Add(new ManualComplianceProof
@@ -116,6 +116,9 @@ public class DocumentArchivePostgresTests : IAsyncLifetime
             UploadedAt = new DateTime(2026, 10, 8, 9, 0, 0, DateTimeKind.Utc),
         });
         _db.ManualComplianceProofProperties.Add(new ManualComplianceProofProperty { OrgId = property.OrgId, ProofId = id, PropertyId = property.Id });
+        foreach (var other in alsoCovering)
+            _db.ManualComplianceProofProperties.Add(new ManualComplianceProofProperty { OrgId = property.OrgId, ProofId = id, PropertyId = other.Id });
+
         return id;
     }
 
@@ -279,5 +282,31 @@ public class DocumentArchivePostgresTests : IAsyncLifetime
                 (ArchiveDocumentType.PropertyDocument, 3),
             ],
             counts.Select(c => (c.Type, c.Count)));
+    }
+
+    /// <summary>
+    /// E20/F02/US01/T01 (permission): a collaborator «Solo alcuni» does not read a receipt that covers a flat it does not reach, one that was deleted since included (the
+    /// soft-delete filter of the statement takes a deleted flat out of the check of the reach, so the lines of the receipt are counted against the flats still there); a receipt
+    /// of its own flat alone it reads, and the whole org reads both. The unit test runs the same data on InMemory.
+    /// </summary>
+    [PostgresFact]
+    public async Task ACollaboratorSoloAlcuni_DoesNotReadAReceiptThatCoversAFlatDeletedSince_OnPostgreSql()
+    {
+        var shared = AddProof(_hosts.Granted, ManualProofKind.AlloggiatiReceipt, new DateOnly(2026, 10, 3), _hosts.Hidden);
+        var alone = AddProof(_hosts.Granted, ManualProofKind.AlloggiatiReceipt, new DateOnly(2026, 10, 4));
+        var deleted = await _db.Properties.SingleAsync(p => p.Id == _hosts.Hidden.Id);
+        deleted.IsDeleted = true;
+        deleted.DeletedAt = new DateTime(2026, 10, 8, 10, 0, 0, DateTimeKind.Utc);
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+        var service = Service();
+        var receipts = Query(types: [ArchiveDocumentType.AlloggiatiReceipt]);
+
+        var collaborator = await service.ListAsync(_hosts.Restricted, DocumentArchiveWorld.EveryType, receipts);
+        var wholeOrg = await service.ListAsync(_hosts.OrgWide, DocumentArchiveWorld.EveryType, receipts);
+
+        Assert.Equal([alone], collaborator.Items.Select(i => i.Id));
+        Assert.Equal(1, collaborator.TotalCount);
+        Assert.Equal(new[] { shared, alone }.Order(), wholeOrg.Items.Select(i => i.Id).Order());
     }
 }

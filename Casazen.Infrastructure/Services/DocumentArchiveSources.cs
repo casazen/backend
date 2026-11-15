@@ -198,7 +198,7 @@ public sealed class TouristTaxRemittanceArchiveSource(AppDbContext db, IFileStor
 /// Accountant does not hold (<see cref="ArchiveDocumentTypes.IsComplianceProof"/>: a download is written in the log).</para>
 /// <para><b>The reach.</b> The one of the compliance archive (<c>InScope</c> of a proof): the proofs whose every flat the caller reaches, the flat they were filed
 /// under and every flat a receipt covers, so a collaborator «Solo alcuni» never opens the file of a receipt that is also about the guests of a flat it does not
-/// reach. Like every other source of the archive it leaves out what belongs to a flat deleted since (the soft-delete filter of the model applies, the tenant filter
+/// reach, nor of one that also covers a flat deleted since (the lines of the receipt are counted against the flats still there, see <see cref="InReach"/>). Like every other source of the archive it leaves out what belongs to a flat deleted since (the soft-delete filter of the model applies, the tenant filter
 /// too): <b>no source of this class may lift a filter of the model</b>, because EF applies <c>IgnoreQueryFilters</c> to the whole statement and the list, the
 /// count and the export concatenate all the sources in ONE statement, so a filter lifted here would be lifted for the documents of the properties and the leases too.
 /// The history of the proofs of a flat deleted since stays in the dedicated archive (<c>api/compliance/archive</c>), which reads them with its own statement. The
@@ -235,12 +235,23 @@ public abstract class ComplianceProofArchiveSource(AppDbContext db, IFileStorage
     /// The proofs of this kind of the caller's org in its reach, those of a flat deleted since left out like the documents of every other source. No filter of the
     /// model is lifted here (see the remarks of the class): the statement of the list is shared with the other sources.
     /// </summary>
+    /// <remarks>
+    /// A scope limited to some flats reads a receipt of several flats only when <b>every</b> flat it covers is in its reach, the ones deleted since included, and when in
+    /// doubt it does not read it (the answer of the dedicated archive). <c>InScope</c> judges the flats that are still there; the soft-delete filter, which applies to the
+    /// whole statement of the list, takes a deleted flat out of the join it checks, so such a flat would not fail the check. The lines of the receipt are therefore counted
+    /// against the lines whose flat still exists (and is the org's), and a receipt that covers a flat gone stays out of a limited scope; the whole org reads it. It is one
+    /// statement all the same, and no filter is lifted.
+    /// </remarks>
     protected IQueryable<ManualComplianceProof> InReach(HostScope scope)
     {
         var orgId = scope.OrgId;
-        return db.ManualComplianceProofs.AsNoTracking()
+        var proofs = db.ManualComplianceProofs.AsNoTracking()
             .Where(p => p.OrgId == orgId && p.Property.OrgId == orgId && p.Kind == kind)
             .InScope(scope);
+
+        return scope.IsOrgWide
+            ? proofs
+            : proofs.Where(p => p.CoveredProperties.Count() == p.CoveredProperties.Count(line => line.Property.OrgId == orgId));
     }
 }
 
