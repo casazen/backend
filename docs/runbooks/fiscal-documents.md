@@ -571,6 +571,8 @@ caller); an account of the agency whose commissions it does not recharge never n
   (the deposit kept) keeps a share of the tourist tax line (⚖ I12). The ledger of the owner does not follow it: a stay that owes no tourist tax (a booking that is
   not active, or a no-show, `AlloggiatiStatusRules`) keeps none of a payment as tax, so the deposit kept is all revenue of the owner, as the box of the tax of the
   statement leaves the stay out (fixed with the scenario, `OwnerAccountingService` and the reconciliation of the month).
+- The document of a booking of a portal is always «Pagata tramite il portale», also for the line of the tourist tax of Ticino that Booking.com does not collect and
+  that nobody recorded (`Origin_BookingCom_*`, the assertion is marked): left to a fix of its own (the part of the tax to collect at the property).
 
 ## Retention and privacy
 

@@ -61,6 +61,8 @@ public class SwissAgencyScenarioTests
         await world.GiveInvoiceDataAsync(booking, "TEST Ospite Portale");
 
         // B7, B8a: the document after the stay: the stay at 3.8% and the tourist tax of Ticino (2 guests x 3 nights x CHF 2.00, Booking.com does not collect it).
+        // KNOWN DEFECT (register of the residual defects, left to its own fix): a document of a booking of a portal is always «paid through the portal», also for
+        // the line of the tax the portal does not collect and nobody recorded. The payment state asserted here is the code as it is, not the state to reach.
         var document = await IssuedAfterTheStayAsync(world, booking, Day(10, 6), "2026/1");
         AssertDocument(
             document,
@@ -300,6 +302,7 @@ public class SwissAgencyScenarioTests
         await world.RecordPaymentByHandAsync(manual, 312m, PaymentMethod.CashOnArrival, Day(10, 23));
         var manualDocument = await IssuedAfterTheStayAsync(world, manual, Day(10, 27), "2026/4");
 
+        // KNOWN DEFECT (see Origin_BookingCom_*): «paid through the portal» also for the tax of Ticino the portal does not collect.
         AssertDocument(
             portalDocument,
             [(FiscalLineType.Accommodation, 433.53m, 3.8m, 16.47m), (FiscalLineType.TouristTax, 12.00m, 0m, 0m)],
