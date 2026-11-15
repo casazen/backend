@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -1058,7 +1059,7 @@ public class Pain001V09Tests
         var service = new Mock<IWireTransferService>(MockBehavior.Strict);
         var resolver = new Mock<IOrgContextResolver>();
         resolver.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(orgId);
-        var controller = new WireTransferController(service.Object, resolver.Object, NullLogger<WireTransferController>.Instance)
+        var controller = new WireTransferController(service.Object, resolver.Object, Mock.Of<IHostScopeResolver>(), NullLogger<WireTransferController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };
