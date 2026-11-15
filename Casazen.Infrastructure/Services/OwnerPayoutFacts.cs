@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -17,10 +16,11 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// <list type="bullet">
 /// <item><b>The stays</b> are the owner's revenue lines (<see cref="OwnerLedgerEntryType.BookingRevenue"/>, from a payment or from the booking) of the month of the version
-/// and of the months before, posted up to its cut-off, added up per stay (a reversal cancels the line it reverses): the owner's share of the gross without the tourist tax
-/// (<see cref="OwnerLedgerRules"/> already left it out). A stay with nothing left (cancelled, refunded) is no stay of the payout. A stay a confirmed payout of the owner
-/// already covered (its <see cref="OwnerPayout.StayIdsJson"/>) is never decided twice; a payout confirmed before E18/F01/US01 lists no stays and covers every stay of
-/// its version's month and of the months before.</item>
+/// and of the months before, posted up to its cut-off, that no confirmed payout of the owner covered yet, added up per stay (a reversal cancels the line it reverses): the
+/// owner's share of the gross without the tourist tax (<see cref="OwnerLedgerRules"/> already left it out). A confirmed payout covers the lines its own version is made
+/// of and the ones before it (the month of its version and the months before, posted up to its cut-off), whatever its date: a line is decided once, a payout confirmed
+/// before E18/F01/US01 included, and the balance of a stay paid in another month (a deposit, then the rest) is decided with the payout that pays it. A stay with nothing
+/// left to decide (cancelled, refunded, covered) is no stay of the payout. A reversed payout covers nothing.</item>
 /// <item><b>Each stay</b> is judged by <see cref="PayoutFactRules.EvaluateStay"/> on its booking (active, Italian property, nights), the owner (a private natural person,
 /// on the registry and on the fiscal profile in force), the checks of E18/F01/US03 (<see cref="IOwnerTaxChecks.TreatmentOfStaysAsync"/>: presumed business, company
 /// tenant), how the ledger posted it (payments in CasaZen or recorded by the agency), the portal and who holds its account (<see cref="IPortalAccountHolderResolver"/>),
@@ -160,8 +160,8 @@ public sealed class OwnerPayoutFacts(
     }
 
     /// <summary>
-    /// The stays of the payout: the owner's live revenue of each stay in the ledger of the version's month and of the months before (posted up to the cut-off), the
-    /// stays with something left and not covered by a confirmed payout of the owner.
+    /// The stays of the payout: the owner's revenue lines of the ledger of the version's month and of the months before (posted up to the cut-off) that no confirmed
+    /// payout of the owner covered, added up per stay; the stays with something left to decide.
     /// </summary>
     private async Task<Dictionary<Guid, StayRevenue>> StaysOfAsync(OwnerStatementVersion version, CancellationToken ct)
     {
@@ -172,30 +172,23 @@ public sealed class OwnerPayoutFacts(
                 && (e.SourceType == OwnerLedgerSourceType.Payment || e.SourceType == OwnerLedgerSourceType.Booking)
                 && e.PostedAt <= version.CutoffAt
                 && (e.PeriodYear < version.PeriodYear || (e.PeriodYear == version.PeriodYear && e.PeriodMonth <= version.PeriodMonth)))
-            .Select(e => new RevenueLine(e.SourceType, e.SourceId, e.SourceReference, e.PropertyId, e.OriginalCurrency, e.OriginalAmount, e.SharePercent, e.PeriodYear, e.PeriodMonth))
+            .Select(e => new RevenueLine(
+                e.SourceType, e.SourceId, e.SourceReference, e.PropertyId, e.OriginalCurrency, e.OriginalAmount, e.SharePercent, e.PeriodYear, e.PeriodMonth, e.PostedAt))
             .ToListAsync(ct);
 
-        var payouts = await db.OwnerPayouts.AsNoTracking()
+        // What the confirmed payouts of the owner decided: the lines of their version, its month and the months before, posted up to its cut-off. A line is decided once.
+        var covers = await db.OwnerPayouts.AsNoTracking()
             .Where(p => p.OrgId == orgId && p.PropertyOwnerId == ownerId && p.Status == OwnerPayoutStatus.Confirmed)
-            .Select(p => new { p.StayIdsJson, p.OwnerStatementVersionId })
+            .Join(
+                db.OwnerStatementVersions.AsNoTracking().Where(v => v.OrgId == orgId),
+                p => p.OwnerStatementVersionId,
+                v => v.Id,
+                (p, v) => new { Period = v.PeriodYear * 12 + v.PeriodMonth, v.CutoffAt })
             .ToListAsync(ct);
-        var covered = new HashSet<Guid>();
-        foreach (var listed in payouts.Where(p => p.StayIdsJson is not null))
-            covered.UnionWith(StayIdsOf(listed.StayIdsJson));
-
-        // A payout of before E18/F01/US01 lists no stays: it paid the balance of its version, so every stay of that month and of the months before is covered by it.
-        var legacyVersions = payouts.Where(p => p.StayIdsJson is null).Select(p => p.OwnerStatementVersionId).Distinct().ToList();
-        var legacyUpTo = legacyVersions.Count == 0
-            ? (int?)null
-            : (await db.OwnerStatementVersions.AsNoTracking()
-                .Where(v => v.OrgId == orgId && legacyVersions.Contains(v.Id))
-                .Select(v => v.PeriodYear * 12 + v.PeriodMonth)
-                .ToListAsync(ct))
-                .DefaultIfEmpty()
-                .Max();
 
         var stays = new Dictionary<Guid, StayRevenue>();
-        foreach (var group in lines.GroupBy(StayOf))
+        var open = lines.Where(l => !covers.Any(c => l.PeriodYear * 12 + l.PeriodMonth <= c.Period && l.PostedAt <= c.CutoffAt));
+        foreach (var group in open.GroupBy(StayOf))
         {
             var stayId = group.Key ?? throw Unresolved("stays");
             var currencies = group.Select(l => StayCurrency.Normalize(l.Currency)).Distinct(StringComparer.Ordinal).ToList();
@@ -203,8 +196,7 @@ public sealed class OwnerPayoutFacts(
                 throw Unresolved("stays");
 
             var gross = group.Sum(l => l.Amount);
-            var latest = group.Max(l => l.PeriodYear * 12 + l.PeriodMonth);
-            if (gross <= 0m || covered.Contains(stayId) || latest <= legacyUpTo)
+            if (gross <= 0m)
                 continue;
 
             var fromPayments = group.Where(l => l.SourceType == OwnerLedgerSourceType.Payment).Sum(l => l.Amount) > 0m;
@@ -234,20 +226,6 @@ public sealed class OwnerPayoutFacts(
         line.SourceType == OwnerLedgerSourceType.Booking ? line.SourceId
         : Guid.TryParseExact(line.Reference, "N", out var booking) ? booking : null;
 
-    private static IEnumerable<Guid> StayIdsOf(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json))
-            return [];
-        try
-        {
-            return JsonSerializer.Deserialize<List<Guid>>(json) ?? [];
-        }
-        catch (JsonException)
-        {
-            return [];
-        }
-    }
-
     private static DomainRuleException Unresolved(string field) =>
         new(OwnerPayoutErrors.TaxApplicabilityUnresolved, "TaxApplicabilityUnresolved") { Extensions = new Dictionary<string, object?> { ["field"] = field } };
 
@@ -260,7 +238,8 @@ public sealed class OwnerPayoutFacts(
         decimal Amount,
         decimal SharePercent,
         int PeriodYear,
-        int PeriodMonth);
+        int PeriodMonth,
+        DateTime PostedAt);
 
     /// <summary>The owner's revenue of one stay: its property, currency and gross (the original amounts), its share, whether payments posted it and which.</summary>
     private sealed record StayRevenue(Guid? PropertyId, string Currency, decimal Gross, decimal SharePercent, bool FromPayments, IReadOnlyList<Guid> PaymentIds);

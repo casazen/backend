@@ -220,6 +220,59 @@ public class OwnerPayoutFactsTests
         Assert.Equal(210m, await world.Db.TaxObligationEvidence.SumAsync(e => e.Amount ?? 0m));
     }
 
+    /// <summary>
+    /// Money: a stay paid in two months (a deposit of 400 in October, the balance of 600 in November) is withheld once on each part, by the payout that pays it: the
+    /// payout of October decides the deposit (84), the payout of November only the balance (126), never the deposit again and never without the balance.
+    /// </summary>
+    [Fact]
+    public async Task PayoutFacts_StayPaidInTwoMonths_EachPartIsDecidedOnce_Test()
+    {
+        var world = new FactsWorld();
+        var owner = await world.OwnerAsync();
+        var house = await world.PropertyAsync(owner);
+        var guest = new Guest { OrgId = world.OrgId, FirstName = "Test", LastName = "Guest", Email = $"{Guid.NewGuid():N}@example.com" };
+        var booking = new Booking
+        {
+            OrgId = world.OrgId,
+            PropertyId = house,
+            GuestId = guest.Id,
+            CheckInDate = new DateTime(2026, 10, 30),
+            CheckOutDate = new DateTime(2026, 11, 2),
+            NumberOfGuests = 2,
+            Status = BookingStatus.CheckedOut,
+            Source = BookingSource.Manual,
+            BasePrice = 1000m,
+            TotalPrice = 1000m,
+        };
+        world.Db.Guests.Add(guest);
+        world.Db.Bookings.Add(booking);
+        foreach (var (amount, day) in new[] { (400m, new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc)), (600m, new DateTime(2026, 11, 3, 9, 0, 0, DateTimeKind.Utc)) })
+        {
+            world.Db.Payments.Add(new Payment
+            {
+                OrgId = world.OrgId,
+                BookingId = booking.Id,
+                Amount = amount,
+                Status = PaymentStatus.Completed,
+                TransactionId = "TEST-" + Guid.NewGuid().ToString("N"),
+                Description = "TEST",
+                ProcessedAt = day,
+            });
+        }
+
+        await world.Db.SaveChangesAsync();
+        var october = await world.ApprovedVersionAsync(owner);
+        var deposit = await world.Payouts.ConfirmPayoutAsync(world.OrgId, world.Payout(owner, october, "k-october"), null);
+        Assert.Equal((400m, 84m), (deposit.Evidence[0].GrossBase!.Value, deposit.Evidence[0].Amount!.Value));
+
+        var november = await world.ApprovedVersionAsync(owner, 11);
+        var balance = await world.Payouts.ConfirmPayoutAsync(world.OrgId, world.Payout(owner, november, "k-november") with { PaidOn = new DateOnly(2026, 12, 4) }, null);
+        Assert.Equal(OwnerWithholdingRules.Applicable, balance.Evidence[0].ReasonCode);
+        Assert.Equal((600m, 600m, 126m), (balance.Payout.GrossAmount, balance.Evidence[0].GrossBase!.Value, balance.Evidence[0].Amount!.Value));
+        Assert.Equal(booking.Id, Assert.Single(TaxObligationEvidenceDto.FactsOf(balance.Evidence[0].FactsJson)!.Stays).BookingId);
+        Assert.Equal(210m, await world.Db.TaxObligationEvidence.SumAsync(e => e.Amount ?? 0m));
+    }
+
     /// <summary>The rules of a stay, pure: a stay longer than the short let, or of a property outside Italy, is no qualifying short let; a stay paid at the property is not the agency's.</summary>
     [Fact]
     public void PayoutFactRules_EvaluateStay_QualifyingAndCollection_Test()
@@ -429,12 +482,12 @@ public class OwnerPayoutFactsTests
             return booking.Id;
         }
 
-        /// <summary>The October ledger posted, the version of the owner generated and approved.</summary>
-        public async Task<Guid> ApprovedVersionAsync(Guid owner)
+        /// <summary>The ledger of the month of 2026 posted (October unless said), the version of the owner generated and approved.</summary>
+        public async Task<Guid> ApprovedVersionAsync(Guid owner, int month = 10)
         {
-            await Accounting.PostPeriodAsync(OrgId, 2026, 10, null);
+            await Accounting.PostPeriodAsync(OrgId, 2026, month, null);
             Clock.Advance(TimeSpan.FromMinutes(1));
-            var version = await Accounting.GenerateVersionAsync(OrgId, owner, 2026, 10, null);
+            var version = await Accounting.GenerateVersionAsync(OrgId, owner, 2026, month, null);
             await Accounting.ApproveVersionAsync(OrgId, version.Id, null);
             Clock.Advance(TimeSpan.FromMinutes(1));
             return version.Id;

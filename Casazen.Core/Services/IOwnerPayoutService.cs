@@ -289,7 +289,10 @@ public sealed record PayoutFacts
     /// <summary>The components of the base (<see cref="PayoutFactRules.StayGross"/>: the gross of the stays in the base), in <see cref="WithholdingCurrency"/>.</summary>
     public IReadOnlyDictionary<string, decimal> Components { get; init; } = new Dictionary<string, decimal>();
 
-    /// <summary>The stays the payout covers (decided by it, in the base or not): a later payout never decides them again.</summary>
+    /// <summary>
+    /// The stays the payout decided on, in the base or not. What it decided is the revenue of its version (the month and the months before, up to the cut-off): a
+    /// later payout never decides those lines again, only what was posted since (the rest of a stay paid in two months included).
+    /// </summary>
     public IReadOnlyList<Guid> StayIds { get; init; } = [];
 
     /// <summary>Each stay with its facts and why it is or is not in the base.</summary>

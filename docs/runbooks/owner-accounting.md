@@ -463,10 +463,12 @@ Decisions of 2026-11-14 (`fatturazione/analisi-tecnica.md` §5, ⚖ I9, R5, R6 o
   working capital the agency keeps) never more: 422 `owner_payout_exceeds_balance` with `balance` and `currency`, also when nothing is left. A retry with the same key
   answers the same payout and never reads the facts again.
 - **The stays** are the owner's revenue lines of the ledger (`BookingRevenue` from a payment or from the booking) of the month of the version and of the months before,
-  posted up to its cut-off, added up per stay: the owner's share of the gross **without the tourist tax** (the ledger never posts it as revenue). A stay with nothing left
-  (cancelled, refunded) is none. A stay a confirmed payout of the owner already covered (its `stayIds`) is never decided twice: the second payout of a version decides
-  `no_stays_to_decide`; a reversed payout frees its stays. A payout confirmed before this release lists no stays and covers every stay of its version's month and of
-  the months before. A stay whose booking cannot be read, or whose lines are in two currencies, is 422 `tax_applicability_unresolved` (`stays`).
+  posted up to its cut-off, that no confirmed payout of the owner decided yet, added up per stay: the owner's share of the gross **without the tourist tax** (the ledger
+  never posts it as revenue). A confirmed payout decides the lines of its own version (its month and the months before, posted up to its cut-off), a payout of before
+  this release included: a line is decided once (the second payout of a version decides `no_stays_to_decide`), the rest of a stay paid in two months (a deposit, then
+  the balance) is decided with the payout that pays it, and a balance carried from a month nobody paid is decided with the payout of the later version. A reversed
+  payout decides nothing. A stay with nothing left to decide (cancelled, refunded) is none. A stay whose booking cannot be read, or whose lines are in two currencies,
+  is 422 `tax_applicability_unresolved` (`stays`).
 - **Each stay** (`PayoutFactRules.EvaluateStay`, codes of `PayoutStayReasons`):
   - *qualifying short let*: active (confirmed, checked in or out, no no-show: `AlloggiatiStatusRules`), in an Italian property, 1 to `ShortStayFiscal:MaxStayNights`
     nights (30), of an owner who is a private natural person (the registry, `OwnerTaxRules.IsNaturalPrivate`, and the fiscal profile in force is not a legal entity),
