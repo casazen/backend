@@ -274,6 +274,13 @@ public static class DemoShowcaseCatalog
         public const string OwnerIssuerDocuments = "owner-issuer-documents";
 
         /// <summary>
+        /// An electronic invoice the SDI rejected (E17/F01/US02/T03, NF-86): issued to a TEST company, rejected with an official code (the recipient's VAT number is missing), the «Da fare»
+        /// «Correggi la fattura» it raises with the reason in plain words, and the correction: a draft that keeps the number the rejected invoice gave up. A template only: the submission to
+        /// the SDI is off (<c>Features:SdiSubmission</c>) and needs a channel the demo does not have.
+        /// </summary>
+        public const string SdiRejectedInvoice = "sdi-rejected-invoice";
+
+        /// <summary>
         /// The payment ledger (E06/F04/US01/T03, FIS-05, NF-85): a card payment with the commission and the net the provider reported, a cash payment
         /// the host recorded, and a booking of a channel with the amount the channel collected (commission not given by Octorate: not shown). Invented
         /// amounts, a template of the lines the ledger answers.
@@ -408,6 +415,7 @@ public static class DemoShowcaseCatalog
         Scenario.FiscalDocumentsDirect,
         Scenario.SwissFiscalDocument,
         Scenario.OwnerIssuerDocuments,
+        Scenario.SdiRejectedInvoice,
         Scenario.PaymentLedger,
         Scenario.OwnerChannelCommission,
         Scenario.ReportCollections,
@@ -532,6 +540,15 @@ public static class DemoShowcaseCatalog
     [
         new("ricevuta-comproprietari", "TEST Mario Rossi", DocumentRegime.PrivatePerson, "P{year}", [50m, 50m], "TEST-BOLLO-1", 300.00m, 50.00m, 12.00m, false, Scenario.OwnerIssuerDocuments),
         new("fattura-societa-terzo-emittente", "TEST Immobiliare Lago Srl", DocumentRegime.VatOrdinary, "SRL{year}", [100m], null, 300.00m, 50.00m, 12.00m, true, Scenario.OwnerIssuerDocuments),
+    ];
+
+    /// <summary>
+    /// The electronic invoice of a demo stay that the SDI rejected (E17/F01/US02/T03): number 2026/1 to a TEST company, 312.00 in all, rejected with the code 00417 (the VAT number or the fiscal
+    /// code of the recipient is missing). The correction is a draft that keeps that number, because an invoice the SDI rejected was never delivered. Invented, a template only.
+    /// </summary>
+    public static IReadOnlyList<DemoSdiRejectedInvoiceTemplate> SdiRejectedInvoiceExamples { get; } =
+    [
+        new("fattura-scartata", "2026/1", "TEST Immobiliare Lago Srl", 312.00m, "00417", Scenario.SdiRejectedInvoice),
     ];
 
     /// <summary>
@@ -2244,6 +2261,18 @@ public sealed record DemoOwnerIssuerDocumentTemplate(
     decimal Cleaning,
     decimal TouristTax,
     bool CleaningByTheAgency,
+    string Scenario);
+
+/// <summary>
+/// An electronic invoice of a demo stay that the SDI rejected (E17/F01/US02/T03): its number, the TEST recipient, the total and the official code of the rejection (the reason in plain words
+/// is the one <c>SdiRejectionReasons</c> gives for it).
+/// </summary>
+public sealed record DemoSdiRejectedInvoiceTemplate(
+    string Key,
+    string Number,
+    string RecipientName,
+    decimal Total,
+    string ErrorCode,
     string Scenario);
 
 /// <summary>A fiscal document of a direct demo stay: its status, the number of an issued one, the TEST recipient, the total and the tourist tax in it.</summary>

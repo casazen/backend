@@ -80,6 +80,12 @@ public enum ActivityAction
     ReviewFiscalDocument = 30,
 
     /// <summary>
+    /// The SDI rejected an electronic invoice of CasaZen (E17/F01/US02/T03, NF-86): the guided correction of the document, <c>/app/short-rent/fiscal/documents?document={id}&amp;step=correct</c>
+    /// (the frontend adds the entry to its <c>ACTION_ROUTE_MAP</c>). About the rejected document; the reason code is <c>sdi_rejected</c>. Closes by itself when the correction starts.
+    /// </summary>
+    CorrectInvoice = 31,
+
+    /// <summary>
     /// An owner stay waits for the agency (E07/F07/US01/T01, NF-111): a request to approve or reject, or a block the channel manager refused, to send again
     /// or to cancel. Leads to the owner stays of the console. About the owner stay. The numbers 40 to 49 are the owner portal operations (epic E07/F07).
     /// </summary>

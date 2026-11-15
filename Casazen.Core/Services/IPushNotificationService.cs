@@ -282,6 +282,12 @@ public static class PushDeliveryKeys
     public static string FiscalDocumentIssued(Guid documentId) => $"fiscal-document:{documentId:N}:issued";
 
     /// <summary>
+    /// The SDI rejected an electronic invoice of a booking (E17/F01/US02/T03), to the hosts of the booking: one per document (a rejection is recorded once), stable across retries of the event,
+    /// so the bell and the open pages of the host read the document and the booking again and the host knows the invoice has to be corrected.
+    /// </summary>
+    public static string FiscalDocumentSdiRejected(Guid documentId) => $"fiscal-document:{documentId:N}:sdi-rejected";
+
+    /// <summary>
     /// The guest paid the tourist tax of a stay online (E25/F01/US01/T01), to the hosts of the booking: one per paid intent of the stay's record, stable across the
     /// retries of the webhook.
     /// </summary>
@@ -432,6 +438,12 @@ public static class PushTypes
     /// route its detail. The web client reads again the list of the documents and the booking when it arrives. Neither the guest nor an amount is ever in it.
     /// </summary>
     public const string FiscalDocumentIssued = "fiscal-document-issued";
+
+    /// <summary>
+    /// The SDI rejected an electronic invoice of a booking (E17/F01/US02/T03): pushed to the hosts of the booking, written to the bell and published live; <c>entityId</c> is the booking, the
+    /// route its detail, which the open pages read again. Neither the guest, nor an amount, nor the reason is ever in it: the reason is read from the document.
+    /// </summary>
+    public const string FiscalDocumentSdiRejected = "fiscal-document-sdi-rejected";
 
     /// <summary>
     /// The guest paid the tourist tax of a stay online (E25/F01/US01/T01): pushed to the hosts of the booking, written to the bell and published live; <c>entityId</c> is the
