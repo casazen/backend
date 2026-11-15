@@ -299,6 +299,8 @@ builder.Services.AddHostedService<AlloggiatiCodeTableSeedHostedService>();
 builder.Services.AddHostedService<SeoBootstrapHostedService>();
 // Which legal documents are not published and what to configure (decision D9, docs/runbooks/legal-documents.md).
 builder.Services.AddHostedService<LegalDocumentsStartupCheck>();
+// The Italian short-let withholding rule of OwnerAccounting:ItalianShortLetRule as a draft (not approved) of every agency with owners (E18/F01/US01/T01).
+builder.Services.AddHostedService<OwnerWithholdingDraftSeedHostedService>();
 // The provider an admin saved, so the first request does not still see only the server configuration.
 builder.Services.AddHostedService<AiSettingsWarmupHostedService>();
 // E09/F01/US01/T02: with the connector on and the cache of the portal catalog still empty (a new environment), one run of the daily refresh is queued

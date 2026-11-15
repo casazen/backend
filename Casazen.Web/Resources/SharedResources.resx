@@ -6888,6 +6888,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerPayoutKeyReused" xml:space="preserve">
     <value>Questa chiave è già stata usata per un pagamento diverso.</value>
   </data>
+  <data name="OwnerPayoutExceedsBalance" xml:space="preserve">
+    <value>Il pagamento supera quanto la versione del rendiconto deve ancora al proprietario.</value>
+  </data>
   <data name="OwnerPayoutNotFound" xml:space="preserve">
     <value>Pagamento al proprietario non trovato.</value>
   </data>

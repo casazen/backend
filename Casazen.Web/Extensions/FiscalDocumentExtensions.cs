@@ -135,8 +135,10 @@ public static class FiscalDocumentExtensions
         // the owner (E13/F01/US02/T01, E13/F01/US02/T02). The accounting service takes it to publish; it takes nothing of the accounting service.
         services.AddScoped<IOwnerStatementDocuments, OwnerStatementDocuments>();
 
-        // The payouts to the owners with their withholding evidence, the annual tax data and the filing states (E06/F05/US02/T03).
+        // The payouts to the owners with their withholding evidence, the annual tax data and the filing states (E06/F05/US02/T03), and the facts of a payout read
+        // from the owner ledger, never typed (E18/F01/US01/T01).
         services.AddScoped<IOwnerPayoutService, OwnerPayoutService>();
+        services.AddScoped<OwnerPayoutFacts>();
 
         // The prudent defaults of the owner ledger (E13/F01/US01/T01, ⚖ R2: the channel commissions when a reservation brings none), from the section
         // OwnerAccounting. Not validated at startup: a value that is not a portal or a percent is ignored and the stays of that channel are held back by

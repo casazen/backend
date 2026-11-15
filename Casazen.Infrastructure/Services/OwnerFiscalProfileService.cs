@@ -1,19 +1,25 @@
 using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
 /// <inheritdoc cref="IOwnerFiscalProfileService"/>
-/// <remarks>Logs carry ids, codes and field names: never a value of a profile.</remarks>
+/// <remarks>
+/// Logs carry ids, codes and field names: never a value of a profile. The Italian short-let rule of the configuration (<paramref name="accountingOptions"/>,
+/// E18/F01/US01/T01) is seeded as a draft that is not approved; a service built without the options (a test) seeds nothing.
+/// </remarks>
 public sealed partial class OwnerFiscalProfileService(
     AppDbContext db,
     TimeProvider timeProvider,
-    ILogger<OwnerFiscalProfileService> logger) : IOwnerFiscalProfileService
+    ILogger<OwnerFiscalProfileService> logger,
+    IOptions<OwnerAccountingOptions>? accountingOptions = null) : IOwnerFiscalProfileService
 {
     [GeneratedRegex("^[0-9a-fA-F]{64}$", RegexOptions.CultureInvariant)]
     private static partial Regex Sha256Pattern();
@@ -26,48 +32,27 @@ public sealed partial class OwnerFiscalProfileService(
     public async Task<OwnerAccountingPolicy> CreatePolicyAsync(Guid orgId, OwnerAccountingPolicyCommand command, string? userId, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(command);
-        var jurisdiction = command.Jurisdiction?.Trim().ToUpperInvariant() ?? string.Empty;
-        var ruleCode = command.RuleCode?.Trim() ?? string.Empty;
-        var version = command.Version?.Trim() ?? string.Empty;
-        var sourceUrl = command.SourceUrl?.Trim() ?? string.Empty;
-        var sha = command.SourceSha256?.Trim().ToLowerInvariant() ?? string.Empty;
+        var policy = Validated(command, pinnedSource: true);
 
-        RequirePolicyField(JurisdictionPattern().IsMatch(jurisdiction) && jurisdiction.Length <= OwnerAccountingPolicy.JurisdictionMaxLength, "jurisdiction");
-        RequirePolicyField(ruleCode.Length is > 0 and <= OwnerAccountingPolicy.RuleCodeMaxLength, "ruleCode");
-        RequirePolicyField(version.Length is > 0 and <= OwnerAccountingPolicy.VersionMaxLength, "version");
-        RequirePolicyField(
-            sourceUrl.Length <= OwnerAccountingPolicy.SourceUrlMaxLength && Uri.TryCreate(sourceUrl, UriKind.Absolute, out var source) && source.Scheme == Uri.UriSchemeHttps,
-            "sourceUrl");
-        RequirePolicyField(Sha256Pattern().IsMatch(sha), "sourceSha256");
-        RequirePolicyField(command.ValidTo is null || command.ValidTo >= command.ValidFrom, "validTo");
-        RequirePolicyField(command.Parameters is not null, "parameters");
-        if (command.Parameters!.Problem() is { } field)
-            RequirePolicyField(false, field);
-
-        if (await db.OwnerAccountingPolicies.AnyAsync(p => p.OrgId == orgId && p.RuleCode == ruleCode && p.Version == version, ct))
+        if (await db.OwnerAccountingPolicies.AnyAsync(p => p.OrgId == orgId && p.RuleCode == policy.RuleCode && p.Version == policy.Version, ct))
             throw new DomainConflictException(OwnerFiscalErrors.PolicyVersionExists, "OwnerPolicyVersionExists");
 
-        var policy = new OwnerAccountingPolicy
-        {
-            OrgId = orgId,
-            Jurisdiction = jurisdiction,
-            RuleCode = ruleCode,
-            Version = version,
-            ValidFrom = command.ValidFrom,
-            ValidTo = command.ValidTo,
-            SourceUrl = sourceUrl,
-            SourceSha256 = sha,
-            ParametersJson = command.Parameters.ToJson(),
-            CreatedAt = UtcNow,
-            CreatedByUserId = userId,
-        };
+        policy.OrgId = orgId;
+        policy.CreatedAt = UtcNow;
+        policy.CreatedByUserId = userId;
         db.OwnerAccountingPolicies.Add(policy);
         await db.SaveChangesAsync(ct);
-        logger.LogInformation("Owner accounting rule {RuleCode} v{Version} of org {OrgId} created", ruleCode, version, orgId);
+        logger.LogInformation("Owner accounting rule {RuleCode} v{Version} of org {OrgId} created", policy.RuleCode, policy.Version, orgId);
         return policy;
     }
 
-    public async Task<OwnerAccountingPolicy> ApprovePolicyAsync(Guid orgId, Guid policyId, string approverName, string? userId, CancellationToken ct = default)
+    public async Task<OwnerAccountingPolicy> ApprovePolicyAsync(
+        Guid orgId,
+        Guid policyId,
+        string approverName,
+        string? userId,
+        string? sourceSha256 = null,
+        CancellationToken ct = default)
     {
         var policy = await db.OwnerAccountingPolicies.FirstOrDefaultAsync(p => p.Id == policyId && p.OrgId == orgId, ct)
             ?? throw new NotFoundException($"Owner accounting policy {policyId} was not found") { Code = "owner_policy_not_found", MessageKey = "OwnerPolicyNotFound" };
@@ -77,12 +62,75 @@ public sealed partial class OwnerFiscalProfileService(
         var name = approverName?.Trim() ?? string.Empty;
         RequirePolicyField(name.Length is > 0 and <= OwnerAccountingPolicy.ApproverNameMaxLength, "approvedByName");
 
+        // The seeded draft has no hash of its source (E18/F01/US01/T01): the accountant pins the document checked when approving. A pinned rule keeps its hash, and a
+        // hash that differs from it is not the document the rule was written from.
+        var checkedSource = string.IsNullOrWhiteSpace(sourceSha256) ? null : sourceSha256.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(policy.SourceSha256))
+        {
+            RequirePolicyField(checkedSource is not null && Sha256Pattern().IsMatch(checkedSource), "sourceSha256");
+            policy.SourceSha256 = checkedSource!;
+        }
+        else
+        {
+            RequirePolicyField(checkedSource is null || string.Equals(checkedSource, policy.SourceSha256, StringComparison.OrdinalIgnoreCase), "sourceSha256");
+        }
+
         policy.ApprovedAt = UtcNow;
         policy.ApprovedByName = name;
         policy.ApprovedByUserId = userId;
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Owner accounting rule {PolicyId} of org {OrgId} approved", policy.Id, orgId);
         return policy;
+    }
+
+    public async Task<OwnerAccountingPolicy?> EnsureItalianShortLetDraftAsync(Guid orgId, CancellationToken ct = default)
+    {
+        var template = accountingOptions?.Value.ItalianShortLetRule;
+        if (template is null || template.ValidFrom is not { } validFrom)
+            return null;
+
+        // The same checks as a rule set an agency writes, except the hash of the source: the draft is seeded unpinned when the configuration has none.
+        OwnerAccountingPolicy draft;
+        try
+        {
+            draft = Validated(
+                new OwnerAccountingPolicyCommand
+                {
+                    Jurisdiction = template.Jurisdiction,
+                    RuleCode = template.RuleCode,
+                    Version = template.Version,
+                    ValidFrom = validFrom,
+                    SourceUrl = template.SourceUrl,
+                    SourceSha256 = template.SourceSha256,
+                    Parameters = template.ToParameters(),
+                },
+                pinnedSource: false);
+        }
+        catch (DomainRuleException e)
+        {
+            logger.LogWarning("The Italian short-let rule of the configuration is incomplete ({Field}): no draft is seeded", e.Extensions.GetValueOrDefault("field"));
+            return null;
+        }
+
+        if (await db.OwnerAccountingPolicies.AnyAsync(p => p.OrgId == orgId && p.RuleCode == draft.RuleCode && p.Version == draft.Version, ct))
+            return null;
+
+        draft.OrgId = orgId;
+        draft.CreatedAt = UtcNow;
+        db.OwnerAccountingPolicies.Add(draft);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, OwnerAccountingPolicy.RuleVersionIndexName))
+        {
+            // Another instance seeded it at the same start: one draft, not two.
+            db.Entry(draft).State = EntityState.Detached;
+            return null;
+        }
+
+        logger.LogInformation("Owner accounting rule {RuleCode} v{Version} seeded as a draft (not approved) for org {OrgId}", draft.RuleCode, draft.Version, orgId);
+        return draft;
     }
 
     public async Task<IReadOnlyList<OwnerAccountingPolicy>> ListPoliciesAsync(Guid orgId, CancellationToken ct = default) =>
@@ -228,6 +276,44 @@ public sealed partial class OwnerFiscalProfileService(
         if (code is not null && (exact ? code.Length != max || !code.All(char.IsAsciiLetter) : code.Length > max))
             throw ProfileInvalid(field);
         return code;
+    }
+
+    /// <summary>
+    /// A rule set made of <paramref name="command"/> after the checks of a rule set (422 <c>owner_policy_invalid</c> with the <c>field</c>): the jurisdiction, the code and
+    /// the version, the https address of the source and its SHA-256 (or, when <paramref name="pinnedSource"/> is false, none: the approval pins it), the validity and
+    /// complete parameters. Without its org, its creation time and its author.
+    /// </summary>
+    private static OwnerAccountingPolicy Validated(OwnerAccountingPolicyCommand command, bool pinnedSource)
+    {
+        var jurisdiction = command.Jurisdiction?.Trim().ToUpperInvariant() ?? string.Empty;
+        var ruleCode = command.RuleCode?.Trim() ?? string.Empty;
+        var version = command.Version?.Trim() ?? string.Empty;
+        var sourceUrl = command.SourceUrl?.Trim() ?? string.Empty;
+        var sha = command.SourceSha256?.Trim().ToLowerInvariant() ?? string.Empty;
+
+        RequirePolicyField(JurisdictionPattern().IsMatch(jurisdiction) && jurisdiction.Length <= OwnerAccountingPolicy.JurisdictionMaxLength, "jurisdiction");
+        RequirePolicyField(ruleCode.Length is > 0 and <= OwnerAccountingPolicy.RuleCodeMaxLength, "ruleCode");
+        RequirePolicyField(version.Length is > 0 and <= OwnerAccountingPolicy.VersionMaxLength, "version");
+        RequirePolicyField(
+            sourceUrl.Length <= OwnerAccountingPolicy.SourceUrlMaxLength && Uri.TryCreate(sourceUrl, UriKind.Absolute, out var source) && source.Scheme == Uri.UriSchemeHttps,
+            "sourceUrl");
+        RequirePolicyField(Sha256Pattern().IsMatch(sha) || (!pinnedSource && sha.Length == 0), "sourceSha256");
+        RequirePolicyField(command.ValidTo is null || command.ValidTo >= command.ValidFrom, "validTo");
+        RequirePolicyField(command.Parameters is not null, "parameters");
+        if (command.Parameters!.Problem() is { } field)
+            RequirePolicyField(false, field);
+
+        return new OwnerAccountingPolicy
+        {
+            Jurisdiction = jurisdiction,
+            RuleCode = ruleCode,
+            Version = version,
+            ValidFrom = command.ValidFrom,
+            ValidTo = command.ValidTo,
+            SourceUrl = sourceUrl,
+            SourceSha256 = sha,
+            ParametersJson = command.Parameters.ToJson(),
+        };
     }
 
     private static void RequirePolicyField(bool valid, string field)

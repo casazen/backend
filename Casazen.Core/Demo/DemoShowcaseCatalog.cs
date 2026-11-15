@@ -326,6 +326,14 @@ public static class DemoShowcaseCatalog
         /// (<c>api/owners/{id}/tax-checks</c>, <c>api/owner-tax-decisions</c>), the showcase writes none of these rows.
         /// </summary>
         public const string OwnerTaxChecks = "owner-tax-checks";
+
+        /// <summary>
+        /// The facts of a payout read from the ledger (E18/F01/US01/T01, NF-117, ⚖ R5): the stays of the October statement of a private TEST owner of an Italian house,
+        /// one paid with a payment the agency recorded (in the base, its tourist tax left out), one of Airbnb on the agency's account (Airbnb withholds for the private host
+        /// itself: never withheld again) and one of Booking.com on the owner's account (the portal pays the owner: the agency neither collected nor intervened). A template
+        /// of what the payout dialog previews (<c>GET api/owner-accounting/payouts/preview</c>); the showcase writes none of these rows.
+        /// </summary>
+        public const string PayoutFacts = "payout-facts";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -413,6 +421,7 @@ public static class DemoShowcaseCatalog
         Scenario.ReportChannelCosts,
         Scenario.CleaningAtCheckout,
         Scenario.OwnerTaxChecks,
+        Scenario.PayoutFacts,
     ];
 
     /// <summary>
@@ -580,6 +589,17 @@ public static class DemoShowcaseCatalog
     [
         new("conduttore-societa-da-decidere", "TEST Mario Rossi", "TEST Impresa Lago Srl", null, null, Scenario.OwnerTaxChecks),
         new("conduttore-societa-non-locazione-breve", "TEST Mario Rossi", "TEST Impresa Lago Srl", ShortLetTaxRegime.NotShortLet, "TEST: deciso con il commercialista", Scenario.OwnerTaxChecks),
+    ];
+
+    /// <summary>
+    /// The stays of the demo payout (E18/F01/US01/T01, ⚖ R5): what the ledger and the booking say of each and where the facts of the payout put it. Invented amounts of a
+    /// TEST owner of an Italian house; a template only.
+    /// </summary>
+    public static IReadOnlyList<DemoPayoutStayTemplate> PayoutFactsExamples { get; } =
+    [
+        new("diretta-pagata-in-base", "TEST Mario Rossi", BookingSource.Manual, 900.00m, 18.00m, true, PortalAccountHolder.Owner, Services.PayoutStayReasons.InBase, Scenario.PayoutFacts),
+        new("airbnb-conto-agenzia", "TEST Mario Rossi", BookingSource.Airbnb, 600.00m, 0m, false, PortalAccountHolder.Agency, Services.OwnerWithholdingRules.AlreadyWithheldByPortal, Scenario.PayoutFacts),
+        new("booking-conto-proprietario", "TEST Mario Rossi", BookingSource.BookingCom, 450.00m, 0m, false, PortalAccountHolder.Owner, Services.OwnerWithholdingRules.NoCollectionOrIntervention, Scenario.PayoutFacts),
     ];
 
     /// <summary>
@@ -2262,6 +2282,21 @@ public sealed record DemoOwnerUnitsTemplate(string Key, string OwnerName, int Ma
 /// agency, both <c>null</c> while nobody decided.
 /// </summary>
 public sealed record DemoCompanyTenantTemplate(string Key, string OwnerName, string TenantName, ShortLetTaxRegime? Decision, string? Reason, string Scenario);
+
+/// <summary>
+/// A stay of the demo payout (E18/F01/US01/T01): the owner, the channel, the owner's gross of it without the tourist tax and the tourist tax left out, whether the ledger
+/// posted it from a payment the agency recorded, who holds the account of the portal, and the reason the facts of the payout give it (<c>in_base</c> or why not).
+/// </summary>
+public sealed record DemoPayoutStayTemplate(
+    string Key,
+    string OwnerName,
+    BookingSource Channel,
+    decimal Gross,
+    decimal TouristTax,
+    bool PostedFromPayments,
+    PortalAccountHolder AccountHolder,
+    string Reason,
+    string Scenario);
 
 /// <summary>
 /// A channel rule of the tourist tax written by the showcase (NF-46, ADR-037-R3): platform data, for the comune of the demo house
