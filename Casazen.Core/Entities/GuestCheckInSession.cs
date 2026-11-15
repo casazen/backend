@@ -82,7 +82,9 @@ public class GuestCheckInSession : ITenantOwned
     /// <summary>
     /// The checks of the identity document the guest uploaded (E03/F04/US02/T04), as JSON: whether its MRZ was read, its check digits, its expiry,
     /// whether the MRZ agrees with the check-in data field by field, whether its holder is a minor and the SHA-256 of the picture (to recognise it
-    /// when it is sent again with the selfie). Flags and a hash only: never a value read on the document. Null before the first upload.
+    /// when it is sent again with the selfie). For a document of two sides (E22/F01/US01/T02) also what each picture showed (a face found, a good
+    /// capture, the checks of the MRZ read on it) and the SHA-256 of the back. Flags and hashes only: never a value read on the document. Null before
+    /// the first upload.
     /// </summary>
     public string? DocumentCheckJson { get; set; }
 

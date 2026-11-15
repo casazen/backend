@@ -47,4 +47,25 @@
   <data name="GuestCheckInReminder_Validity" xml:space="preserve">
     <value>El enlace es válido hasta el {0}.</value>
   </data>
+  <data name="GuestVideoCall_Subject" xml:space="preserve">
+    <value>Videollamada para tu check-in — {0}</value>
+  </data>
+  <data name="GuestVideoCall_Greeting" xml:space="preserve">
+    <value>Hola {0}:</value>
+  </data>
+  <data name="GuestVideoCall_Body" xml:space="preserve">
+    <value>Para completar el check-in de tu estancia en &lt;strong&gt;{0}&lt;/strong&gt; (llegada: &lt;strong&gt;{1}&lt;/strong&gt;), el anfitrión necesita verificar tu identidad con una breve videollamada.</value>
+  </data>
+  <data name="GuestVideoCall_Instructions" xml:space="preserve">
+    <value>Ten a mano el documento de identidad que indicaste en el check-in y abre el enlace de abajo a la hora acordada con el anfitrión:</value>
+  </data>
+  <data name="GuestVideoCall_Cta" xml:space="preserve">
+    <value>Unirme a la videollamada</value>
+  </data>
+  <data name="GuestVideoCall_LinkFallback" xml:space="preserve">
+    <value>Si el botón no funciona, copia y pega este enlace en tu navegador:</value>
+  </data>
+  <data name="GuestVideoCall_Hint" xml:space="preserve">
+    <value>Después, el anfitrión concluye la verificación de identidad. Si no esperabas esta solicitud, ignora este correo.</value>
+  </data>
 </root>
