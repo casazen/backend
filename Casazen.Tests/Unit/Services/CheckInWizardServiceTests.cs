@@ -59,6 +59,42 @@ public class CheckInWizardServiceTests
     }
 
     [Fact]
+    public async Task CheckInWizard_State_AsksTheFieldsOfTheRegionTable_Test()
+    {
+        // The statistical fields of the wizard are the ones of the row of the ISTAT region table of the comune of the property (E21/F01/US01/T01).
+        await using var db = NewDb($"wizard-istat-{Guid.NewGuid():N}", null);
+        await db.Database.EnsureCreatedAsync();
+        db.Comuni.Add(new Comune
+        {
+            IstatCode = "013075",
+            Name = "Como",
+            DisplayName = "Como",
+            NormalizedName = "como",
+            SearchText = "como",
+            ProvinceCode = "CO",
+            RegionIstatCode = "03",
+            RegionName = "Lombardia",
+        });
+        var booking = await SeedStayAsync(db, OrgA);
+        var property = await db.Properties.SingleAsync(p => p.Id == booking.PropertyId);
+        property.ComuneIstatCode = "013075";
+        await db.SaveChangesAsync();
+
+        // The seeded table verifies nothing: no field is asked.
+        Assert.Empty((await Wizard(db).GetStateAsync(booking.Id, CancellationToken.None)).RequiredGuestFields);
+
+        // The staff says Lombardia requires the kind of tourism: that field and no other; a property with no comune of the list is asked none.
+        var row = await db.IstatRegionRules.SingleAsync(r => r.RegionIstatCode == "03");
+        row.RequiredGuestFields = IstatGuestFieldLists.TourismTypeField;
+        await db.SaveChangesAsync();
+        Assert.Equal([IstatGuestFieldLists.TourismTypeField], (await Wizard(db).GetStateAsync(booking.Id, CancellationToken.None)).RequiredGuestFields);
+
+        property.ComuneIstatCode = null;
+        await db.SaveChangesAsync();
+        Assert.Empty((await Wizard(db).GetStateAsync(booking.Id, CancellationToken.None)).RequiredGuestFields);
+    }
+
+    [Fact]
     public async Task CheckInWizard_OtherOrganizationBooking_NotFound_Test()
     {
         var databaseName = $"checkin-wizard-{Guid.NewGuid():N}";

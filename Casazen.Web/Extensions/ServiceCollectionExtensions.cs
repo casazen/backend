@@ -558,6 +558,9 @@ public static class ServiceCollectionExtensions
         // Whether the police and ISTAT send of a property is really active (E03/F02/US01/T02, NF-52): the sender view turned into a state per
         // communication (Active only on Octorate's word, Unknown when it is not readable), with a short memory for the status engine.
         services.AddScoped<IComplianceConnectionHealthService, ComplianceConnectionHealthService>();
+        // The ISTAT region table and what a property gets from it (E21/F01/US01/T01, decision O6): the rows the staff keeps, and the region, deadline,
+        // required guest fields, coverage and next step of a property. Reads and writes the table only; nothing is sent to anybody.
+        services.AddScoped<IIstatRegionService, IstatRegionService>();
 
         // Multi-tenant Org boundary (US-004): tenant resolution + org/entitlement reads.
         // One instance per request: the EF filter reads it, the middleware and the org resolver write it (A1-20).

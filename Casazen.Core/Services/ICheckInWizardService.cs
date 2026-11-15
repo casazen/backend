@@ -13,8 +13,9 @@ namespace Casazen.Core.Services;
 /// </summary>
 /// <remarks>
 /// A booking the caller's org does not have is not found (<see cref="Exceptions.NotFoundException"/>, the tenant filter); the web layer authorizes
-/// the booking first. In this release CasaZen does not send to the police itself (E03/F01/US06 deferred) and no region requires a statistical
-/// field (E03/F01/US08 deferred): <see cref="CheckInState.RequiredGuestFields"/> is empty.
+/// the booking first. In this release CasaZen does not send to the police itself (E03/F01/US06 deferred), and the statistical fields a region requires
+/// are the ones of its row of the ISTAT region table (E21/F01/US01/T01): <see cref="CheckInState.RequiredGuestFields"/> is empty where the table has no
+/// row, none is verified or the region requires none.
 /// </remarks>
 public interface ICheckInWizardService
 {
@@ -63,7 +64,7 @@ public static class CheckInWizardCodes
 /// <param name="Booking">The booking: property, dates, nights, source, declared guests, status.</param>
 /// <param name="Attendance">Expected, arrived, departed, no-show or inactive.</param>
 /// <param name="Guests">The guests in record order; the booker shown before any guest is registered has <see cref="StayGuest.Id"/> empty.</param>
-/// <param name="RequiredGuestFields">The statistical fields the region requires (none in this release).</param>
+/// <param name="RequiredGuestFields">The statistical fields the region requires, from the ISTAT region table (none when it says none or is not verified).</param>
 /// <param name="Issues">What the checks found.</param>
 /// <param name="Tax">The tourist tax of the stay; null when it cannot be worked out now.</param>
 /// <param name="Sender">Who sends the police communications of the property.</param>

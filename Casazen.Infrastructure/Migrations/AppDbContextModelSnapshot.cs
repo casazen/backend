@@ -4801,6 +4801,358 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("InternalActivities");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.IstatRegionRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("DeadlineDay")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DeadlineKind")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("OctorateCoverage")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PortalUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("ProvinceCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<string>("RegionIstatCode")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<string>("RegionName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("RequiredGuestFields")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("SourceUrl")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("System")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("VerifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RegionIstatCode")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_IstatRegionRules_Region")
+                        .HasFilter("\"ProvinceCode\" IS NULL");
+
+                    b.HasIndex("RegionIstatCode", "ProvinceCode")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_IstatRegionRules_Region_Province")
+                        .HasFilter("\"ProvinceCode\" IS NOT NULL");
+
+                    b.ToTable("IstatRegionRules", t =>
+                        {
+                            t.HasCheckConstraint("CK_IstatRegionRules_Deadline", "(\"DeadlineKind\" = 2 AND \"DeadlineDay\" BETWEEN 1 AND 31) OR (\"DeadlineKind\" <> 2 AND \"DeadlineDay\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_IstatRegionRules_Enums", "\"DeadlineKind\" IN (0, 1, 2) AND \"OctorateCoverage\" IN (0, 1, 2)");
+
+                            t.HasCheckConstraint("CK_IstatRegionRules_PortalUrlHttps", "\"PortalUrl\" IS NULL OR \"PortalUrl\" LIKE 'https://%'");
+
+                            t.HasCheckConstraint("CK_IstatRegionRules_ProvinceCode", "\"ProvinceCode\" IS NULL OR \"ProvinceCode\" ~ '^[A-Z]{2}$'");
+
+                            t.HasCheckConstraint("CK_IstatRegionRules_RegionIstatCode", "\"RegionIstatCode\" ~ '^[0-9]{2}$'");
+
+                            t.HasCheckConstraint("CK_IstatRegionRules_RequiredGuestFields", "\"RequiredGuestFields\" IS NULL OR \"RequiredGuestFields\" ~ '^((TourismType|TravelWay|EducationLevel)(,(TourismType|TravelWay|EducationLevel))*)?$'");
+
+                            t.HasCheckConstraint("CK_IstatRegionRules_SourceUrlHttps", "\"SourceUrl\" LIKE 'https://%'");
+                        });
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0001"),
+                            DeadlineKind = 0,
+                            Notes = "Matrice del runbook: ROSS1000, protocollo di famiglia, configurazione locale da acquisire. Nessuna pagina del Piemonte nel runbook: la fonte è la pagina della famiglia ROSS1000. Scadenza non indicata.",
+                            OctorateCoverage = 0,
+                            RegionIstatCode = "01",
+                            RegionName = "Piemonte",
+                            SourceUrl = "https://statistica.regione.emilia-romagna.it/metadati/rilevazioni/turismo/allegati-rilevazioni-turismo/manuali-e-tracciati-rilevazioni-turismo",
+                            System = "ROSS1000",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0002"),
+                            DeadlineDay = 5,
+                            DeadlineKind = 2,
+                            Notes = "Il manuale ufficiale conferma obbligatorietà, inserimento manuale e integrazione con PMS (contratto tecnico non pubblico). Chiusura mensile C59-M entro il giorno 5, inclusi i periodi chiusi.",
+                            OctorateCoverage = 0,
+                            RegionIstatCode = "02",
+                            RegionName = "Valle d'Aosta",
+                            SourceUrl = "https://www.regione.vda.it/gestione/vit_albergatori/Docs/VIT%20Albergatori%20Manuale%20utente.pdf",
+                            System = "VIT Albergatori",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0003"),
+                            DeadlineDay = 5,
+                            DeadlineKind = 2,
+                            Notes = "Ross1000 Lombardia: inserimento mensile entro il giorno 5 del mese successivo, anche senza movimento (L.R. 27/2015 art. 38 c. 8 e art. 40 c. 9; Città metropolitana di Milano, Provincia di Lecco). Provincia di Sondrio: ABIT, stessa scadenza del giorno 5. Campi statistici obbligatori: non chiari, da verificare.",
+                            OctorateCoverage = 0,
+                            PortalUrl = "https://www.flussituristici.servizirl.it/",
+                            RegionIstatCode = "03",
+                            RegionName = "Lombardia",
+                            SourceUrl = "https://www.cittametropolitana.mi.it/servizi/Comunicazione-dei-flussi-turistici-delle-strutture-ricettive/",
+                            System = "ROSS1000 (Provincia di Sondrio: ABIT)",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0004"),
+                            DeadlineKind = 0,
+                            Notes = "ASTAT gestisce la rilevazione mensile IST-00139 e, da novembre 2023, la giornaliera TUR-031. La pagina ufficiale pubblica guida e circolare correnti ma non un contratto PMS. Giorno di scadenza non indicato.",
+                            OctorateCoverage = 0,
+                            ProvinceCode = "BZ",
+                            RegionIstatCode = "04",
+                            RegionName = "Provincia autonoma di Bolzano",
+                            SourceUrl = "https://astat.provinz.bz.it/it/turismo",
+                            System = "ASTAT (IST-00139 mensile, TUR-031 giornaliera)",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0005"),
+                            DeadlineKind = 0,
+                            Notes = "STU ammette inserimento manuale, file da gestionale abilitato e Web Service (test di congruenza con ISPAT). DTU Alloggi, per gli alloggi privati: inserimento online con SPID/CPS, nessuna API pubblica verificata. Scadenza non indicata.",
+                            OctorateCoverage = 0,
+                            ProvinceCode = "TN",
+                            RegionIstatCode = "04",
+                            RegionName = "Provincia autonoma di Trento",
+                            SourceUrl = "https://www.provincia.tn.it/Servizi/Comunicare-online-le-presenze-degli-ospiti-a-ISTAT-e-Pubblica-Sicurezza",
+                            System = "STU (strutture ricettive); DTU Alloggi (alloggi privati)",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0006"),
+                            DeadlineKind = 0,
+                            Notes = "Matrice del runbook: ROSS1000, protocollo di famiglia. Scadenza non indicata.",
+                            OctorateCoverage = 0,
+                            RegionIstatCode = "05",
+                            RegionName = "Veneto",
+                            SourceUrl = "https://elezioni2020.regione.veneto.it/web/turismo/rilevazione-flussi-turistici-ross1000",
+                            System = "ROSS1000",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0007"),
+                            DeadlineKind = 0,
+                            Notes = "Il portale ufficiale dichiara il caricamento da file anche per le unità abitative; il tracciato non è pubblico (assistenza Insiel). Scadenza non indicata.",
+                            OctorateCoverage = 0,
+                            PortalUrl = "https://servizistatistici.regione.fvg.it/webtur/jsp/wt/login.jsp",
+                            RegionIstatCode = "06",
+                            RegionName = "Friuli-Venezia Giulia",
+                            SourceUrl = "https://servizistatistici.regione.fvg.it/webtur/jsp/wt/login.jsp",
+                            System = "WebTur",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0008"),
+                            DeadlineKind = 0,
+                            Notes = "Non assumere una copertura uniforme dal solo nome della regione: si instrada per codice struttura ed ente competente. Nessuna pagina della Liguria nel runbook: la fonte è la pagina della famiglia ROSS1000. Scadenza non indicata.",
+                            OctorateCoverage = 0,
+                            RegionIstatCode = "07",
+                            RegionName = "Liguria",
+                            SourceUrl = "https://statistica.regione.emilia-romagna.it/metadati/rilevazioni/turismo/allegati-rilevazioni-turismo/manuali-e-tracciati-rilevazioni-turismo",
+                            System = "ROSS1000 e percorsi locali (RIMOVCLI)",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0009"),
+                            DeadlineKind = 0,
+                            Notes = "Implementazione di riferimento: XML/WS v2.4, TXT v4, Web Service e demo ufficiale. Scadenza non indicata.",
+                            OctorateCoverage = 0,
+                            RegionIstatCode = "08",
+                            RegionName = "Emilia-Romagna",
+                            SourceUrl = "https://statistica.regione.emilia-romagna.it/metadati/rilevazioni/turismo/allegati-rilevazioni-turismo/manuali-e-tracciati-rilevazioni-turismo",
+                            System = "ROSS1000",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0010"),
+                            DeadlineKind = 0,
+                            Notes = "Unicom per Arezzo; Turismo5 per Firenze e gli ambiti indicati, Pistoia e Prato; Ricestat per Grosseto, Livorno, Lucca, Massa-Carrara, Pisa e Siena. Il portale si sceglie per provincia, non per regione. Scadenza non indicata.",
+                            OctorateCoverage = 0,
+                            RegionIstatCode = "09",
+                            RegionName = "Toscana",
+                            SourceUrl = "https://www.regione.toscana.it/-/codice-identificativo-nazionale-cin-per-le-locazioni-turistiche-e-le-strutture-ricettive-turistiche",
+                            System = "Turismo5 (famiglia ROSS1000), Ricestat e sistemi territoriali: dipende dalla provincia",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0011"),
+                            DeadlineDay = 5,
+                            DeadlineKind = 2,
+                            Notes = "File giornaliero TXT dal gestionale (o inserimento manuale), registrazione quotidiana di arrivo, partenza e camere occupate; chiusura mensile entro il giorno 5, anche a zero. La specifica «Istruzioni per interfacciamento» è da acquisire.",
+                            OctorateCoverage = 0,
+                            RegionIstatCode = "10",
+                            RegionName = "Umbria",
+                            SourceUrl = "https://www.regione.umbria.it/turismo-attivita-sportive/modalita-di-rilevazione-del-movimento-dei-clienti-negli-esercizi-ricettivi1",
+                            System = "Turismatica",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0012"),
+                            DeadlineKind = 0,
+                            Notes = "Protocollo di famiglia, configurazione locale da acquisire. Nessuna pagina delle Marche nel runbook: la fonte è la pagina della famiglia ROSS1000. Scadenza non indicata.",
+                            OctorateCoverage = 0,
+                            RegionIstatCode = "11",
+                            RegionName = "Marche",
+                            SourceUrl = "https://statistica.regione.emilia-romagna.it/metadati/rilevazioni/turismo/allegati-rilevazioni-turismo/manuali-e-tracciati-rilevazioni-turismo",
+                            System = "ROSS1000 (ISTRICE)",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0013"),
+                            DeadlineKind = 0,
+                            Notes = "La pagina ufficiale dichiara l'import XML; il Web Service si abilita solo dopo la conferma della Regione. Scadenza non indicata.",
+                            OctorateCoverage = 0,
+                            RegionIstatCode = "12",
+                            RegionName = "Lazio",
+                            SourceUrl = "https://regione.lazio.it/cittadini/turismo/comunicazione-flussi-turistici-e-cir",
+                            System = "ROSS1000-Lazio (dal 21/05/2025)",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0014"),
+                            DeadlineKind = 0,
+                            Notes = "Famiglia XML/TXT/WS di ROSS1000: endpoint e credenziali locali da confermare. Scadenza non indicata.",
+                            OctorateCoverage = 0,
+                            RegionIstatCode = "13",
+                            RegionName = "Abruzzo",
+                            SourceUrl = "https://www.regione.abruzzo.it/novita/procedura-telematica-ottenere-il-cir",
+                            System = "SITRA (ROSS1000)",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0015"),
+                            DeadlineKind = 0,
+                            Notes = "Il servizio regionale dei flussi non è identificato nelle fonti pubbliche consultate: non va classificato come ROSS1000 per analogia. Percorso assistito, con il contatto dell'ente competente.",
+                            OctorateCoverage = 0,
+                            RegionIstatCode = "14",
+                            RegionName = "Molise",
+                            SourceUrl = "https://www.regione.molise.it/flex/cm/pages/ServeBLOB.php/L/IT/IDPagina/20744",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0016"),
+                            DeadlineKind = 0,
+                            Notes = "Integrazione REST API ufficiale dal 2025 (CUSR e API key della struttura); documentazione tecnica e utenze di test su richiesta alle software house. Scadenza non indicata.",
+                            OctorateCoverage = 0,
+                            RegionIstatCode = "15",
+                            RegionName = "Campania",
+                            SourceUrl = "https://www.regione.campania.it/aree-tematiche/cultura-turismo/strutture-ricettive-locazioni-brevi/sinfonia-turismo-smart-sistema-monitoraggio-accoglienza-ricettivita-turistica",
+                            System = "Sinfonia Turismo SMART",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0017"),
+                            DeadlineKind = 0,
+                            Notes = "SPOT Online: XML UTF-8 giornaliero (movimentogiornaliero-0.6.xsd), caricamento dopo l'accesso SPID. SPOT Easy, per le locazioni turistiche: inserimento sul portale; il caricamento del file di Pubblica Sicurezza non equivale a un flusso ISTAT. Scadenza non indicata.",
+                            OctorateCoverage = 0,
+                            RegionIstatCode = "16",
+                            RegionName = "Puglia",
+                            SourceUrl = "https://dms.ect.regione.puglia.it/comefareper?pagina=faqprivateSpot",
+                            System = "DMS: SPOT Online (strutture ricettive), SPOT Easy (locazioni turistiche)",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0018"),
+                            DeadlineDay = 10,
+                            DeadlineKind = 2,
+                            Notes = "APT Basilicata dichiara che SIST è basato su Turismo5/ROSS1000; la rilevazione include le locazioni turistiche. Dati mensili da comunicare entro il giorno 10 (dati e obblighi 2026).",
+                            OctorateCoverage = 0,
+                            RegionIstatCode = "17",
+                            RegionName = "Basilicata",
+                            SourceUrl = "https://www.aptbasilicata.it/dati-statistici-2026/",
+                            System = "SIST (basato su Turismo5/ROSS1000)",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0019"),
+                            DeadlineKind = 0,
+                            Notes = "Portale come scritto nel runbook: sirdat.regione.calabria.it (endpoint locale non pubblicato). Scadenza non indicata.",
+                            OctorateCoverage = 0,
+                            RegionIstatCode = "18",
+                            RegionName = "Calabria",
+                            SourceUrl = "https://www.regione.calabria.it/cultura-turismo-ed-eventi/strutture-ricettive/informazioni-servizi-e-modulistica/documenti/",
+                            System = "ROSS1000",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0020"),
+                            DeadlineKind = 0,
+                            Notes = "Protocollo PMS ufficiale rev. 1.0.7 del 03/04/2025: API HTTPS con bearer token e XML; credenziali PMS dedicate a una sola struttura. Scadenza non indicata.",
+                            OctorateCoverage = 0,
+                            PortalUrl = "https://osservatorioturistico.regione.sicilia.it/public/info",
+                            RegionIstatCode = "19",
+                            RegionName = "Sicilia",
+                            SourceUrl = "https://osservatorioturistico.regione.sicilia.it/public/public/docs/Sistema_Informativo_Osservatorio_Turistico_ProtocolloPMS.pdf",
+                            System = "Osservatorio Turistico regionale",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("a1c39e50-7d24-4b68-9f03-5e8d2c6b0021"),
+                            DeadlineKind = 0,
+                            Notes = "Protocollo di famiglia, configurazione regionale da acquisire. Nessuna pagina della Sardegna nel runbook: la fonte è la pagina della famiglia ROSS1000. Scadenza non indicata.",
+                            OctorateCoverage = 0,
+                            RegionIstatCode = "20",
+                            RegionName = "Sardegna",
+                            SourceUrl = "https://statistica.regione.emilia-romagna.it/metadati/rilevazioni/turismo/allegati-rilevazioni-turismo/manuali-e-tracciati-rilevazioni-turismo",
+                            System = "SIRED (ROSS1000)",
+                            UpdatedAt = new DateTime(2026, 11, 15, 0, 0, 0, 0, DateTimeKind.Utc)
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.LeaseCondominiumTerms", b =>
                 {
                     b.Property<Guid>("Id")

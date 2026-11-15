@@ -12,6 +12,7 @@ using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.SiteProfile;
 using Casazen.Core.Suppliers;
+using Casazen.Infrastructure.Data.Seeds;
 using Casazen.Infrastructure.Events;
 using Casazen.Tests.Unit.Services;
 using Xunit;
@@ -257,6 +258,24 @@ public class DemoShowcaseTests
                 Assert.Null(setup.SupplierKey);
             }
         });
+    }
+
+    /// <summary>
+    /// E21/F01/US01/T01 (NF-44): the demo has a house in a region the ISTAT region table seeds «da verificare» (the Villa del Lago, in Como, Lombardia), so the coverage of
+    /// the property answers a region the channel manager is not verified to cover: coverage unknown, never covered. The table is platform data: the showcase writes no row of it.
+    /// </summary>
+    [Fact]
+    public void IstatRegionCoverage_TheDemoHasAHouseInASeededRegion_ThatIsToVerify()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.IstatRegionCoverage, DemoShowcaseCatalog.Scenarios);
+        var house = Assert.Single(DemoShowcaseCatalog.Properties, p => p.Scenarios.Contains(DemoShowcaseCatalog.Scenario.IstatRegionCoverage));
+        Assert.Equal(RentalMode.Short, house.Mode);
+
+        var region = ItalianRegions.FindByCode(house.Place.RegionCode);
+        Assert.NotNull(region);
+        var row = Assert.Single(IstatRegionRuleSeed.Build(), r => r.RegionIstatCode == region.IstatCode && r.ProvinceCode is null);
+        Assert.Equal(IstatCoverage.Unknown, row.OctorateCoverage);
+        Assert.Null(row.VerifiedAt);
     }
 
     /// <summary>The routines of the demo are marked rows of the reset, like the other invented rows of the org.</summary>

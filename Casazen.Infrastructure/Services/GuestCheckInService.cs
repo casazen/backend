@@ -203,12 +203,16 @@ public class GuestCheckInService(
             PrivacyNoticeVersion = GdprOptions.Normalize(_gdpr.PrivacyNoticeVersion),
             MarketingConsentVersion = GdprOptions.Normalize(_gdpr.MarketingConsentVersion),
 
-            // Data minimization (ADR-030-R1): the page asks a statistical field only where the region requires it. The regional coverage is
-            // deferred in this release (E03/F01/US08), so no region requires one and the list is empty.
-            RequiredGuestFields = [],
+            // Data minimization (ADR-030-R1): the page asks a statistical field only where the region requires it, as the ISTAT region table says
+            // (E21/F01/US01/T01): none for a comune that is not in the list, for a region without a row and for a row that is not verified.
+            RequiredGuestFields = await RequiredGuestFieldsAsync(booking.Property.ComuneIstatCode),
             Language = session.Language,
         };
     }
+
+    /// <summary>The statistical fields the region of the property requires of its guests: the ones its row of the region table names, none otherwise.</summary>
+    private async Task<IReadOnlyList<string>> RequiredGuestFieldsAsync(string? comuneIstatCode) =>
+        IstatRegionResolver.RequiredFields((await IstatRegionService.FindForComuneAsync(db, comuneIstatCode, CancellationToken.None))?.Rule);
 
     public async Task<GuestCheckInLanguageOutcome> SetLanguageAsync(string token, string language)
     {

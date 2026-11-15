@@ -17,7 +17,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-15.29";
+    public const string Version = "2026-11-15.30";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -373,6 +373,14 @@ public static class DemoShowcaseCatalog
         /// the attribution, never stored. Nothing is sent to a channel manager or a payment provider.
         /// </summary>
         public const string BookingFourOrigins = "booking-four-origins";
+
+        /// <summary>
+        /// The ISTAT region table (E21/F01/US01/T01, NF-44): the Villa del Lago is in Como, in Lombardia, a region the table seeds «da verificare» (the coverage by the
+        /// channel manager unknown, no statistical field required), so what <c>api/properties/{id}/istat-coverage</c> answers for it is the system of the portal of
+        /// the region, the monthly deadline of day 5 and the next step «ask support», never «covered». Platform data: the showcase writes no row of the table and
+        /// only names the property that shows it.
+        /// </summary>
+        public const string IstatRegionCoverage = "istat-region-coverage";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -466,6 +474,7 @@ public static class DemoShowcaseCatalog
         Scenario.PayoutFacts,
         Scenario.TaxReportingYearEnd,
         Scenario.BookingFourOrigins,
+        Scenario.IstatRegionCoverage,
     ];
 
     /// <summary>
@@ -767,7 +776,7 @@ public static class DemoShowcaseCatalog
             NightlyRate: 180m,
             CleaningFee: 40m,
             Cadastral: null,
-            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast, Scenario.BookingManualLight, Scenario.PropertyWizardFields, Scenario.PropertySiteProfile, Scenario.ListingChannelStates, Scenario.PropertyRoomsAndDiscounts, Scenario.CalendarDayRules],
+            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast, Scenario.BookingManualLight, Scenario.PropertyWizardFields, Scenario.PropertySiteProfile, Scenario.ListingChannelStates, Scenario.PropertyRoomsAndDiscounts, Scenario.CalendarDayRules, Scenario.IstatRegionCoverage],
             Profile: new DemoPropertyProfile(
                 AccommodationType.HouseOrVilla, 5, 140, "Villa sul lago con giardino (demo)",
                 new TimeOnly(15, 0), new TimeOnly(10, 0), SmokingPolicy.No, PetsPolicy.OnRequest, PartiesPolicy.No,
