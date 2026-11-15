@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -141,36 +140,12 @@ public sealed record TaxObligationEvidenceDto(
     DateTime CreatedAt,
     PayoutFacts? Facts)
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-
     public static TaxObligationEvidenceDto From(TaxObligationEvidence e) => new(
         e.Id, e.Decision, e.ReasonCode, e.Jurisdiction, e.RuleCode, e.RuleVersion, e.GrossBase, e.RatePercent, e.Rounding, e.Amount, e.TaxCode, e.PaidOn,
         e.PeriodYear, e.PeriodMonth, e.ReversesEvidenceId, e.CreatedAt, FactsOf(e.FactsJson));
 
-    /// <summary>The facts of the ledger a decision was taken on; <c>null</c> for the facts typed before E18/F01/US01 (no <c>source</c>) or a JSON that cannot be read.</summary>
-    public static PayoutFacts? FactsOf(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json))
-            return null;
-
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            if (document.RootElement.ValueKind != JsonValueKind.Object
-                || !document.RootElement.TryGetProperty("source", out var source)
-                || source.ValueKind != JsonValueKind.String
-                || source.GetString() != PayoutFactRules.FromLedger)
-            {
-                return null;
-            }
-
-            return document.RootElement.Deserialize<PayoutFacts>(Json);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
+    /// <summary>The facts of the ledger a decision was taken on (<see cref="PayoutFactRules.FromJson"/>); <c>null</c> for the facts typed before E18/F01/US01.</summary>
+    public static PayoutFacts? FactsOf(string? json) => PayoutFactRules.FromJson(json);
 }
 
 /// <summary>

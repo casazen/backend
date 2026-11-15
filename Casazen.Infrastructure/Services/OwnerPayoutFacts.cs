@@ -16,11 +16,12 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// <list type="bullet">
 /// <item><b>The stays</b> are the owner's revenue lines (<see cref="OwnerLedgerEntryType.BookingRevenue"/>, from a payment or from the booking) of the month of the version
-/// and of the months before, posted up to its cut-off, that no confirmed payout of the owner covered yet, added up per stay (a reversal cancels the line it reverses): the
-/// owner's share of the gross without the tourist tax (<see cref="OwnerLedgerRules"/> already left it out). A confirmed payout covers the lines its own version is made
-/// of and the ones before it (the month of its version and the months before, posted up to its cut-off), whatever its date: a line is decided once, a payout confirmed
-/// before E18/F01/US01 included, and the balance of a stay paid in another month (a deposit, then the rest) is decided with the payout that pays it. A stay with nothing
-/// left to decide (cancelled, refunded, covered) is no stay of the payout. A reversed payout covers nothing.</item>
+/// and of the months before, posted up to its cut-off, that no confirmed payout of the owner decided yet, added up per stay (a reversal cancels the line it reverses): the
+/// owner's share of the gross without the tourist tax (<see cref="OwnerLedgerRules"/> already left it out). A confirmed payout decided the lines it names
+/// (<see cref="PayoutFacts.DecidedEntryIds"/>: those of its stays); a payout confirmed before E18/F01/US01 (typed facts) the lines of its version (its month and the
+/// months before, posted up to its cut-off). A line is decided once, the balance of a stay paid in another month (a deposit, then the rest) with the payout that pays
+/// it; a reversed payout decided nothing, so its lines are decided again by the next payout, whatever payout was confirmed in between. A stay with nothing left to
+/// decide (cancelled, refunded, decided) is no stay of the payout, and its open lines stay open.</item>
 /// <item><b>Each stay</b> is judged by <see cref="PayoutFactRules.EvaluateStay"/> on its booking (active, Italian property, nights), the owner (a private natural person,
 /// on the registry and on the fiscal profile in force), the checks of E18/F01/US03 (<see cref="IOwnerTaxChecks.TreatmentOfStaysAsync"/>: presumed business, company
 /// tenant), how the ledger posted it (payments in CasaZen or recorded by the agency), the portal and who holds its account (<see cref="IPortalAccountHolderResolver"/>),
@@ -152,6 +153,7 @@ public sealed class OwnerPayoutFacts(
             QualifyingShortLet = facts.Count == 0 ? null : facts.Any(s => s.Qualifying),
             Components = new Dictionary<string, decimal>(StringComparer.Ordinal) { [PayoutFactRules.StayGross] = inBase.Sum(s => s.BaseAmount ?? 0m) },
             StayIds = [.. facts.Select(s => s.BookingId)],
+            DecidedEntryIds = [.. stays.Values.SelectMany(s => s.EntryIds).Order()],
             Stays = facts,
             PortalsWithholding = [.. portals.Select(p => p.ToString()).Order(StringComparer.Ordinal)],
             Fx = fx,
@@ -161,7 +163,7 @@ public sealed class OwnerPayoutFacts(
 
     /// <summary>
     /// The stays of the payout: the owner's revenue lines of the ledger of the version's month and of the months before (posted up to the cut-off) that no confirmed
-    /// payout of the owner covered, added up per stay; the stays with something left to decide.
+    /// payout of the owner decided, added up per stay; the stays with something left to decide, with the lines they are made of.
     /// </summary>
     private async Task<Dictionary<Guid, StayRevenue>> StaysOfAsync(OwnerStatementVersion version, CancellationToken ct)
     {
@@ -173,21 +175,40 @@ public sealed class OwnerPayoutFacts(
                 && e.PostedAt <= version.CutoffAt
                 && (e.PeriodYear < version.PeriodYear || (e.PeriodYear == version.PeriodYear && e.PeriodMonth <= version.PeriodMonth)))
             .Select(e => new RevenueLine(
-                e.SourceType, e.SourceId, e.SourceReference, e.PropertyId, e.OriginalCurrency, e.OriginalAmount, e.SharePercent, e.PeriodYear, e.PeriodMonth, e.PostedAt))
+                e.Id, e.SourceType, e.SourceId, e.SourceReference, e.PropertyId, e.OriginalCurrency, e.OriginalAmount, e.SharePercent, e.PeriodYear, e.PeriodMonth,
+                e.PostedAt))
             .ToListAsync(ct);
 
-        // What the confirmed payouts of the owner decided: the lines of their version, its month and the months before, posted up to its cut-off. A line is decided once.
-        var covers = await db.OwnerPayouts.AsNoTracking()
+        // What the confirmed payouts of the owner decided, a line once: a payout read from the ledger the lines it names (PayoutFacts.DecidedEntryIds), so the lines of a
+        // payout that is reversed are open again for the next one even when another payout of the owner was confirmed in between (never lost, never twice); a payout
+        // whose facts were typed (before E18/F01/US01), or name no lines, the lines of its version, its month and the months before, posted up to its cut-off.
+        var confirmed = await db.OwnerPayouts.AsNoTracking()
             .Where(p => p.OrgId == orgId && p.PropertyOwnerId == ownerId && p.Status == OwnerPayoutStatus.Confirmed)
             .Join(
                 db.OwnerStatementVersions.AsNoTracking().Where(v => v.OrgId == orgId),
                 p => p.OwnerStatementVersionId,
                 v => v.Id,
-                (p, v) => new { Period = v.PeriodYear * 12 + v.PeriodMonth, v.CutoffAt })
+                (p, v) => new { p.Id, Period = v.PeriodYear * 12 + v.PeriodMonth, v.CutoffAt })
             .ToListAsync(ct);
+        var payoutIds = confirmed.Select(p => p.Id).ToList();
+        var factsOfPayouts = (await db.TaxObligationEvidence.AsNoTracking()
+                .Where(e => e.OrgId == orgId && payoutIds.Contains(e.OwnerPayoutId) && e.ReversesEvidenceId == null)
+                .Select(e => new { e.OwnerPayoutId, e.FactsJson })
+                .ToListAsync(ct))
+            .GroupBy(e => e.OwnerPayoutId)
+            .ToDictionary(g => g.Key, g => g.Select(e => PayoutFactRules.FromJson(e.FactsJson)?.DecidedEntryIds).FirstOrDefault(ids => ids is not null));
+        var decided = new HashSet<Guid>();
+        var covers = new List<(int Period, DateTime CutoffAt)>();
+        foreach (var payout in confirmed)
+        {
+            if (factsOfPayouts.GetValueOrDefault(payout.Id) is { } ids)
+                decided.UnionWith(ids);
+            else
+                covers.Add((payout.Period, payout.CutoffAt));
+        }
 
         var stays = new Dictionary<Guid, StayRevenue>();
-        var open = lines.Where(l => !covers.Any(c => l.PeriodYear * 12 + l.PeriodMonth <= c.Period && l.PostedAt <= c.CutoffAt));
+        var open = lines.Where(l => !decided.Contains(l.Id) && !covers.Any(c => l.PeriodYear * 12 + l.PeriodMonth <= c.Period && l.PostedAt <= c.CutoffAt));
         foreach (var group in open.GroupBy(StayOf))
         {
             var stayId = group.Key ?? throw Unresolved("stays");
@@ -195,6 +216,8 @@ public sealed class OwnerPayoutFacts(
             if (currencies.Count != 1)
                 throw Unresolved("stays");
 
+            // Nothing left to decide (cancelled, refunded, or a reversal whose replacement is not posted yet): its lines stay open, so a replacement posted later
+            // nets with them instead of being withheld a second time.
             var gross = group.Sum(l => l.Amount);
             if (gross <= 0m)
                 continue;
@@ -206,7 +229,8 @@ public sealed class OwnerPayoutFacts(
                 gross,
                 group.Where(l => l.Amount > 0m).Select(l => l.SharePercent).DefaultIfEmpty(100m).Max(),
                 fromPayments,
-                [.. group.Where(l => l.SourceType == OwnerLedgerSourceType.Payment && l.SourceId is not null).Select(l => l.SourceId!.Value).Distinct()]);
+                [.. group.Where(l => l.SourceType == OwnerLedgerSourceType.Payment && l.SourceId is not null).Select(l => l.SourceId!.Value).Distinct()],
+                [.. group.Select(l => l.Id)]);
         }
 
         return stays;
@@ -230,6 +254,7 @@ public sealed class OwnerPayoutFacts(
         new(OwnerPayoutErrors.TaxApplicabilityUnresolved, "TaxApplicabilityUnresolved") { Extensions = new Dictionary<string, object?> { ["field"] = field } };
 
     private sealed record RevenueLine(
+        Guid Id,
         OwnerLedgerSourceType SourceType,
         Guid? SourceId,
         string? Reference,
@@ -241,8 +266,18 @@ public sealed class OwnerPayoutFacts(
         int PeriodMonth,
         DateTime PostedAt);
 
-    /// <summary>The owner's revenue of one stay: its property, currency and gross (the original amounts), its share, whether payments posted it and which.</summary>
-    private sealed record StayRevenue(Guid? PropertyId, string Currency, decimal Gross, decimal SharePercent, bool FromPayments, IReadOnlyList<Guid> PaymentIds);
+    /// <summary>
+    /// The owner's revenue of one stay: its property, currency and gross (the original amounts), its share, whether payments posted it and which, and the ledger lines
+    /// it is made of (what the payout decides).
+    /// </summary>
+    private sealed record StayRevenue(
+        Guid? PropertyId,
+        string Currency,
+        decimal Gross,
+        decimal SharePercent,
+        bool FromPayments,
+        IReadOnlyList<Guid> PaymentIds,
+        IReadOnlyList<Guid> EntryIds);
 
     private sealed record BookingFacts(
         Guid Id,

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -290,10 +291,18 @@ public sealed record PayoutFacts
     public IReadOnlyDictionary<string, decimal> Components { get; init; } = new Dictionary<string, decimal>();
 
     /// <summary>
-    /// The stays the payout decided on, in the base or not. What it decided is the revenue of its version (the month and the months before, up to the cut-off): a
-    /// later payout never decides those lines again, only what was posted since (the rest of a stay paid in two months included).
+    /// The stays the payout decided on, in the base or not: their revenue lines are <see cref="DecidedEntryIds"/>. A later payout never decides those lines again, only
+    /// what was posted since (the rest of a stay paid in two months included), unless this payout is reversed.
     /// </summary>
     public IReadOnlyList<Guid> StayIds { get; init; } = [];
+
+    /// <summary>
+    /// The revenue lines of the ledger (<see cref="OwnerLedgerEntry"/> ids) the payout decided: those of the stays of <see cref="Stays"/>. While the payout is confirmed no
+    /// other payout decides them again (never withheld twice); once it is reversed they are open again and the next payout decides them (never lost), whatever other
+    /// payout of the owner was confirmed in between. <c>null</c> only in the facts of before this list (they decided the lines of their version, its month and the
+    /// months before, posted up to its cut-off).
+    /// </summary>
+    public IReadOnlyList<Guid>? DecidedEntryIds { get; init; }
 
     /// <summary>Each stay with its facts and why it is or is not in the base.</summary>
     public IReadOnlyList<PayoutStayFact> Stays { get; init; } = [];
@@ -410,6 +419,36 @@ public static class PayoutFactRules
 
     /// <summary>The component of the base: the gross of the stays in the base without the tourist tax (room, cleaning and extras, as the ledger posts a stay).</summary>
     public const string StayGross = "stay_gross";
+
+    private static readonly JsonSerializerOptions FactsSerializer = new(JsonSerializerDefaults.Web);
+
+    /// <summary>
+    /// The facts of the ledger a decision was taken on (<see cref="TaxObligationEvidence.FactsJson"/>); <c>null</c> for the facts typed before E18/F01/US01 (no
+    /// <c>source</c>) or a JSON that cannot be read. The API and the payouts read them the same way.
+    /// </summary>
+    public static PayoutFacts? FromJson(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !document.RootElement.TryGetProperty("source", out var source)
+                || source.ValueKind != JsonValueKind.String
+                || source.GetString() != FromLedger)
+            {
+                return null;
+            }
+
+            return document.RootElement.Deserialize<PayoutFacts>(FactsSerializer);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>
     /// The facts of one stay. <b>Qualifying short let</b>: an active stay (the one definition, <c>AlloggiatiStatusRules</c>), in an Italian property, of 1 to

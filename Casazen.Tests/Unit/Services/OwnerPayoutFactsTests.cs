@@ -273,6 +273,43 @@ public class OwnerPayoutFactsTests
         Assert.Equal(210m, await world.Db.TaxObligationEvidence.SumAsync(e => e.Amount ?? 0m));
     }
 
+    /// <summary>
+    /// Money (review of S029): a stay is withheld once, never lost and never twice, when the payout that withheld it is reversed after another payout of the same
+    /// version. A qualifying stay of 1000: P1 of 600 withholds 210, P2 of 400 decides nothing; P1 is reversed (its evidence −210) while P2 stays; P3 pays the 600
+    /// left and withholds the 210 again: 210 on 1000 in all, never 0 and never 420.
+    /// </summary>
+    [Fact]
+    public async Task PayoutFacts_PayoutReversedAfterAPartialOne_IsWithheldAgainOnce_Test()
+    {
+        var world = new FactsWorld();
+        var owner = await world.OwnerAsync();
+        var house = await world.PropertyAsync(owner);
+        var stay = await world.StayAsync(house, BookingSource.Manual, 1000m, paid: true);
+        var version = await world.ApprovedVersionAsync(owner);
+
+        var first = await world.Payouts.ConfirmPayoutAsync(world.OrgId, world.Payout(owner, version, "k-p1") with { GrossAmount = 600m }, null);
+        Assert.Equal((210m, 390m), (first.Payout.WithholdingAmount, first.Payout.NetAmount));
+        var second = await world.Payouts.ConfirmPayoutAsync(world.OrgId, world.Payout(owner, version, "k-p2") with { GrossAmount = 400m }, null);
+        Assert.Equal((0m, OwnerWithholdingRules.NoStaysToDecide), (second.Payout.WithholdingAmount, Assert.Single(second.Evidence).ReasonCode));
+
+        // The wire of P1 bounced: P1 is reversed, P2 is not. The stay P1 decided is open again: the preview and the next payout decide it once more.
+        await world.Payouts.ReversePayoutAsync(world.OrgId, first.Payout.Id, "TEST bonifico respinto", null);
+        var preview = await world.Payouts.PreviewPayoutAsync(world.OrgId, version, PaidOn);
+        Assert.Equal((600m, 210m, (string?)null), (preview.Balance, preview.WithholdingAmount!.Value, preview.BlockingCode));
+
+        var third = await world.Payouts.ConfirmPayoutAsync(world.OrgId, world.Payout(owner, version, "k-p3"), null);
+        Assert.Equal((600m, 210m, 390m), (third.Payout.GrossAmount, third.Payout.WithholdingAmount, third.Payout.NetAmount));
+        var decision = Assert.Single(third.Evidence);
+        Assert.Equal((TaxDecision.Applicable, 1000m, 210m), (decision.Decision, decision.GrossBase!.Value, decision.Amount!.Value));
+        Assert.Equal(stay, Assert.Single(TaxObligationEvidenceDto.FactsOf(decision.FactsJson)!.Stays).BookingId);
+
+        // 210 on 1000 in all (P1, its reversal and P3; P2 decided nothing), the F24 of November says the same, and nothing is left to pay or to decide.
+        Assert.Equal(210m, await world.Db.TaxObligationEvidence.SumAsync(e => e.Amount ?? 0m));
+        Assert.Equal(210m, (await world.Withholding.GenerateF24Async(world.OrgId, 11, 2026)).TotalAmount);
+        var nothingLeft = await Assert.ThrowsAsync<DomainRuleException>(() => world.Payouts.ConfirmPayoutAsync(world.OrgId, world.Payout(owner, version, "k-p4"), null));
+        Assert.Equal(OwnerPayoutErrors.PayoutExceedsBalance, nothingLeft.Code);
+    }
+
     /// <summary>The rules of a stay, pure: a stay longer than the short let, or of a property outside Italy, is no qualifying short let; a stay paid at the property is not the agency's.</summary>
     [Fact]
     public void PayoutFactRules_EvaluateStay_QualifyingAndCollection_Test()

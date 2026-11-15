@@ -451,7 +451,8 @@ agree. **Read only, no entity, and a difference blocks nothing: the agency decid
   `F24` and a sheet for the breakdown. 400 `fiscal_export_invalid_format`; 422 `tax_no_obligations` (no decision in the month), `owner_period_invalid`. The data to pay
   and file with: **payment and filing stay with the agency or its accountant**, no telematic file is produced.
 - **Reach**: every action of `api/withholding` needs a caller of the whole org since E18/F01/US01/T02 (403 for a caller restricted to some properties, before anything is
-  read), like the rest of the owner accounting: the F24 data and the breakdown name every owner of the org.
+  read), like the rest of the owner accounting: the F24 data and the breakdown name every owner of the org. The approval of a rule set
+  (`POST api/owner-accounting/policies/{id}/approve`) too: an approved rule set decides the withholding of every owner whose profile points at it.
 - **Existing rows**: the F24 records created before get the state `generated`; the old `WithholdingLog` rows stay as history, nothing writes them.
 
 ### Facts of the payout (E18/F01/US01/T01)
@@ -465,11 +466,14 @@ Decisions of 2026-11-14 (`fatturazione/analisi-tecnica.md` §5, ⚖ I9, R5, R6 o
   answers the same payout and never reads the facts again.
 - **The stays** are the owner's revenue lines of the ledger (`BookingRevenue` from a payment or from the booking) of the month of the version and of the months before,
   posted up to its cut-off, that no confirmed payout of the owner decided yet, added up per stay: the owner's share of the gross **without the tourist tax** (the ledger
-  never posts it as revenue). A confirmed payout decides the lines of its own version (its month and the months before, posted up to its cut-off), a payout of before
-  this release included: a line is decided once (the second payout of a version decides `no_stays_to_decide`), the rest of a stay paid in two months (a deposit, then
-  the balance) is decided with the payout that pays it, and a balance carried from a month nobody paid is decided with the payout of the later version. A reversed
-  payout decides nothing. A stay with nothing left to decide (cancelled, refunded) is none. A stay whose booking cannot be read, or whose lines are in two currencies,
-  is 422 `tax_applicability_unresolved` (`stays`).
+  never posts it as revenue). A confirmed payout decided the lines it names in its facts (`decidedEntryIds`: the lines of its stays); a payout of before this release
+  (typed facts) the lines of its own version (its month and the months before, posted up to its cut-off). A line is decided once (the second payout of a version
+  decides `no_stays_to_decide`), the rest of a stay paid in two months (a deposit, then the balance) is decided with the payout that pays it, and a balance carried
+  from a month nobody paid is decided with the payout of the later version. A reversed payout decides nothing: its lines are open again and the next payout decides
+  them, also when another payout of the owner was confirmed in between (P1 of 600 withholds 210, P2 of 400 decides nothing, P1 reversed, P3 of 600 withholds the 210
+  again: never lost, never twice). A stay with nothing left to decide (cancelled, refunded) is none, and its open lines stay open (a reversal nets with the replacement
+  posted later). A stay whose booking cannot be read, or whose lines are in two currencies, is 422 `tax_applicability_unresolved` (`stays`). The regime of a stay is read
+  with its property also when the property was deleted after the check-out (fiscal history).
 - **Each stay** (`PayoutFactRules.EvaluateStay`, codes of `PayoutStayReasons`):
   - *qualifying short let*: active (confirmed, checked in or out, no no-show: `AlloggiatiStatusRules`), in an Italian property, 1 to `ShortStayFiscal:MaxStayNights`
     nights (30), of an owner who is a private natural person (the registry, `OwnerTaxRules.IsNaturalPrivate`, and the fiscal profile in force is not a legal entity),
@@ -488,7 +492,7 @@ Decisions of 2026-11-14 (`fatturazione/analisi-tecnica.md` §5, ⚖ I9, R5, R6 o
   ledger converts), and the net is in francs: `Withholding` line in francs with the euro as its original amount and the rate. Without a rate: 422
   `tax_applicability_unresolved` (`fxRate`).
 - **Evidence.** `factsJson` of the evidence (and `facts` of `TaxObligationEvidenceDto`) holds the facts with `source: "ledger"`: the gross, the balance, the currency and
-  the one of the withholding, every stay with its facts and its reason, the components, the portals of ⚖ R5, the rate and the parameters of the rule. The evidence of
+  the one of the withholding, every stay with its facts and its reason, the ledger lines it decided (`decidedEntryIds`), the components, the portals of ⚖ R5, the rate and the parameters of the rule. The evidence of
   before this release has the facts that were typed (no `source`; `facts` is `null`). The co-owners (⚖ I6): each owner is paid its share, so the facts are its share;
   the attribution of the Certificazione Unica to the signatory is E18/F01/US02's.
 - **The Italian rule as a draft (⚖ I9).** At every start (`OwnerWithholdingDraftSeedHostedService`) each agency with owners gets, once per version, the rule of
