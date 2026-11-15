@@ -197,6 +197,14 @@ public static class EncryptedColumns
     public const string IstatCredentialsPurpose = "Casazen.PropertyIstatCredentials";
 
     /// <summary>
+    /// Purpose of the raw token of a check-in link kept while its delivery waits (E23/F01/US01/T01, NF-122): <see cref="CheckInLinkDelivery.LinkToken"/>, the secret that
+    /// opens the guest page of a booking, which the system otherwise stores only as a hash. Kept only while the host may need it to carry the link (the «Copia link» of the
+    /// «To do», the retry that sends the same link), cleared when the link is sent or the row ends, never logged and never returned to a caller who cannot copy a link.
+    /// Its own purpose: a payload of another column never reads as a token. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string CheckInLinkTokenPurpose = "Casazen.CheckInLink.Token";
+
+    /// <summary>
     /// Purpose of the address of the accountant of an organization (NF-101, E15/F01/US02/T01): <see cref="AccountantPackageSettings.AccountantEmail"/>, the address the package is sent to every month. Personal data of a
     /// third party; read by the settings of the organization and by the send, never searched (the job asks only whether there is one) and never logged. Never change it: stored values would become unreadable.
     /// </summary>
@@ -436,6 +444,10 @@ public static class EncryptedColumns
             nameof(PropertyIstatCredentials.Username),
             nameof(PropertyIstatCredentials.Password),
             nameof(PropertyIstatCredentials.StructureCode)),
+        // E23/F01/US01/T01 (NF-122): the raw token of a check-in link whose delivery waits, so the host can copy the link and a retry sends the same one.
+        new EncryptedEntity<CheckInLinkDelivery>(
+            CheckInLinkTokenPurpose,
+            nameof(CheckInLinkDelivery.LinkToken)),
         // NF-101: the address the package of the accountant is sent to every month (E15/F01/US02/T01); the job asks only whether there is one (IS NOT NULL).
         new EncryptedEntity<AccountantPackageSettings>(
             AccountantPackagePurpose,

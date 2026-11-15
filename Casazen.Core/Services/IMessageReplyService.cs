@@ -39,7 +39,11 @@ public interface IMessageReplyService
     /// <c>thread_not_found</c>; 409 <c>thread_closed</c> (a direct conversation past the seventh day after the check-out, or an anonymized one);
     /// 422 <c>idempotency_key_invalid</c>.
     /// </summary>
-    /// <param name="origin">The person who wrote it, or the assistant; never the guest.</param>
+    /// <param name="origin">
+    /// The person who wrote it, the assistant, or an automatic message of CasaZen (<see cref="MessageOrigin.Automation"/>: the check-in link, a scheduled message; it has no
+    /// user and no rule code, is never shown as written by a person, and answers nobody: it marks no message of the guest as read and does not make the conversation
+    /// «answered»); never the guest.
+    /// </param>
     /// <param name="ruleCode">The rule of the assistant that produced the message; only with <see cref="MessageOrigin.Assistant"/>.</param>
     Task<MessageReplyResult> ReplyAsync(
         HostScope scope,

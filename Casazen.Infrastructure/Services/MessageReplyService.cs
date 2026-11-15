@@ -401,20 +401,30 @@ public sealed class MessageReplyService(
         if (state is OtaMessageDeliveryState.Created or OtaMessageDeliveryState.WaitingAuthorization or OtaMessageDeliveryState.Sent)
         {
             var now = Now();
-            var unread = await db.OtaMessages
-                .Where(m => m.OrgId == thread.OrgId && m.ThreadId == thread.Id && m.Direction == OtaMessageDirection.Inbound && m.ReadAt == null)
-                .ToListAsync(ct);
-            foreach (var message in unread)
-                message.ReadAt = now;
+
+            // An automatic message (the check-in link, E23/F01/US01/T01) answers nobody: it marks no message of the guest as read and does not make the conversation
+            // «answered», so a question of the guest still waits for its answer in «Da rispondere». It is still the latest message.
+            var answers = row.Origin != MessageOrigin.Automation;
+            if (answers)
+            {
+                var unread = await db.OtaMessages
+                    .Where(m => m.OrgId == thread.OrgId && m.ThreadId == thread.Id && m.Direction == OtaMessageDirection.Inbound && m.ReadAt == null)
+                    .ToListAsync(ct);
+                foreach (var message in unread)
+                    message.ReadAt = now;
+            }
 
             // A conversation that was erased in the meantime has nothing left to count.
             if (await db.OtaMessageThreads.FirstOrDefaultAsync(t => t.OrgId == thread.OrgId && t.Id == thread.Id, ct) is { } conversation)
             {
-                conversation.UnreadCount = 0;
+                if (answers)
+                    conversation.UnreadCount = 0;
+
                 if (row.SentAt >= conversation.LastMessageAt)
                 {
                     conversation.LastMessageAt = row.SentAt;
-                    conversation.LastMessageDirection = OtaMessageDirection.Outbound;
+                    if (answers)
+                        conversation.LastMessageDirection = OtaMessageDirection.Outbound;
                 }
 
                 conversation.UpdatedAt = now;

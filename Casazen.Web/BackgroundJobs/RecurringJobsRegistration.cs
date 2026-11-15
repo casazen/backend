@@ -298,6 +298,10 @@ public static class RecurringJobsRegistration
             "0 8 * * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // E23/F01/US01/T01, T02 (NF-122): the check-in links of the stays with no e-mail address that wait for the chat of the portal or for the contact of the guest are tried
+        // again every hour, only while the connector and one of the flags PortalChatCheckInLink and GuestContactInfo are on.
+        ConfigureCheckInLinkDeliveryJob(recurringJobManager, CheckInLinkDeliveryRetryJob.IsEnabled(featureFlags));
+
         // MO-04: Expo receipts of the pushes (DeviceNotRegistered removes the device), purge of old delivery rows.
         recurringJobManager.AddOrUpdate<PushReceiptsJob>(
             PushReceiptsJob.RecurringJobId,
@@ -353,6 +357,26 @@ public static class RecurringJobsRegistration
             ComuneOfficialProfileRefreshJob.RecurringJobId,
             job => job.ExecuteAsync(),
             ComuneOfficialProfileRefreshJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The hourly retry of the check-in links that wait (E23/F01/US01/T01, T02): scheduled only while <paramref name="enabled"/> (the connector and at least one of the flags
+    /// <c>PortalChatCheckInLink</c> and <c>GuestContactInfo</c> on); otherwise the schedule of an earlier deploy is removed, and the daily <c>guest-checkin-send</c> alone records
+    /// where each link stands.
+    /// </summary>
+    private static void ConfigureCheckInLinkDeliveryJob(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(CheckInLinkDeliveryRetryJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<CheckInLinkDeliveryRetryJob>(
+            CheckInLinkDeliveryRetryJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            CheckInLinkDeliveryRetryJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

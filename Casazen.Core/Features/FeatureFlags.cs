@@ -277,6 +277,27 @@ public static class FeatureFlags
     public const string Routines = "Routines";
 
     /// <summary>
+    /// E23/F01/US01/T01 (NF-122, NF-63, decision O10 of the operations plan of 2026-11-14): the check-in link of a booking of a portal that has no e-mail address goes to the guest
+    /// in the reservation thread of the portal chat, once, as an automatic message, and the booking shows a waiting state («in attesa del permesso chat», «in attesa della
+    /// conversazione») with a «To do» whose «Copia link» lets the host carry the link itself. <b>Off by default</b> and turned on only in the test environment: the chat of the
+    /// channel manager needs a permission of the application that Octorate has not given in the sandbox. Off, the daily job <c>guest-checkin-send</c> behaves as before (it
+    /// writes the delivery record of the booking with the state <c>WaitingContact</c>, so the host can see why, and raises no «To do»), the hourly job
+    /// <c>checkin-link-delivery-retry</c> is not scheduled and <c>GET api/bookings/{id}/checkin/link-delivery</c> only reads what was recorded. It needs no variable to start,
+    /// and works only while <see cref="OctorateConnector"/> is on too. The frontend reads the key <c>portalChatCheckInLink</c>.
+    /// </summary>
+    public const string PortalChatCheckInLink = "PortalChatCheckInLink";
+
+    /// <summary>
+    /// E23/F01/US01/T02 (NF-122, NF-63, S18, D24): for a booking of a portal that has no e-mail address, CasaZen reads the e-mail address of the guest from the channel manager
+    /// (<c>POST /rest/v2/reservation/{acc}/{refer}/contactInfo</c>), <b>once for the booking, for the check-in link only</b>, never in bulk and never into the CRM, and sends the link
+    /// by e-mail; a phone number that comes with it is kept for the host's view only. <b>Off by default</b>: Octorate releases the contact only to the static outbound IP
+    /// addresses registered with it, and the Railway plan that gives them (Pro) is not active. Off, nothing is asked. On without the registration, the read is refused (401 or
+    /// 403): the booking waits in the state <c>WaitingStaticIps</c> and the read is repeated at most once a day. It needs no variable to start, and works only while
+    /// <see cref="OctorateConnector"/> is on too. The frontend reads the key <c>guestContactInfo</c>.
+    /// </summary>
+    public const string GuestContactInfo = "GuestContactInfo";
+
+    /// <summary>
     /// E20/F02/US01/T02 (NF-121, NF-16, decision O4): the deletion of the guests' documents once the stay is covered by an archived Alloggiati receipt, <b>off by default</b>: the
     /// deletion cannot be undone, so it is turned on in the test environment after the merge and in production only after the test has shown it. Off, the daily job
     /// <c>guest-document-purge</c> and the run queued after a receipt upload read nothing and delete nothing. On, the photos of identity documents a verification kept (the objects
@@ -313,6 +334,8 @@ public static class FeatureFlags
         AccountantPackage,
         TouristTaxOnlinePayment,
         Routines,
+        PortalChatCheckInLink,
+        GuestContactInfo,
         PurgeDocumentsAfterReceipt,
     ];
 }
