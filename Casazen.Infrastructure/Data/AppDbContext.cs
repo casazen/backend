@@ -166,6 +166,13 @@ public class AppDbContext(
     public DbSet<InternalActivity> InternalActivities { get; set; } = null!;
 
     /// <summary>
+    /// The default cleaner of a property at the check-out of its stays, with the price and the time agreed (E24/F01/US01/T01, NF-120), and the automatic cleaning
+    /// of a stay, the key of the idempotency of the automation (E24/F01/US01/T02). Both are tenant-filtered.
+    /// </summary>
+    public DbSet<PropertyCleaningSetup> PropertyCleaningSetups { get; set; } = null!;
+    public DbSet<StayCleaning> StayCleanings { get; set; } = null!;
+
+    /// <summary>
     /// The supplier's agenda (SP-03): weekly working hours, time off, blocks and extra openings, and the settings row. All
     /// keyed by the supplier org and <b>not</b> tenant-filtered (see the TN-2 allow-list): only <c>SupplierAgendaService</c>
     /// (and the supplier repair) reads and writes them, always with an explicit <c>OrgId</c> predicate.
@@ -424,6 +431,9 @@ public class AppDbContext(
 
     public DbSet<TaxObligationEvidence> TaxObligationEvidence { get; set; } = null!;
     public DbSet<TaxReportingDataset> TaxReportingDatasets { get; set; } = null!;
+
+    // What a person decided about the tax regime of the stay of a company tenant in the property of a private owner: append only (E18/F01/US03/T01, ⚖ I7)
+    public DbSet<ShortLetTaxDecision> ShortLetTaxDecisions { get; set; } = null!;
 
     // The check-in guests and the states of a stay sent to Octorate (NF-41, NF-45, E03/F01/US01/T03): ids, hashes and codes, no personal data
     public DbSet<StayGuestOctorateLink> StayGuestOctorateLinks { get; set; } = null!;
@@ -2118,6 +2128,9 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new TaxObligationEvidenceConfiguration());
         modelBuilder.ApplyConfiguration(new TaxReportingDatasetConfiguration());
 
+        // The decisions about the regime of the stays of a company tenant (E18/F01/US03/T01, ⚖ I7): the tenant query filter is applied below, to every ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new ShortLetTaxDecisionConfiguration());
+
         // The invoices of the retired agency-to-owner generator stay readable and are never called compliant (E06/F01/US02/T05): the rows that exist
         // when the column is added get the legacy code.
         modelBuilder.Entity<AgencyInvoice>().Property(i => i.ComplianceStatus).HasDefaultValue(AgencyInvoiceCompliance.LegacyUnverified);
@@ -2162,6 +2175,12 @@ public class AppDbContext(
                 .HasFilter("\"Action\" IS NOT NULL AND \"CompletedAt\" IS NULL")
                 .HasDatabaseName(InternalActivity.OpenTodoIndexName);
         });
+
+        // ─── The cleaning at check-out (E24/F01/US01, NF-120) ────────────────────────
+        // The default cleaner of a property with the price and the time agreed (one for each property), and the automatic cleaning of a stay (one for each
+        // stay: the key of the idempotency of the automation). The tenant query filter is applied below, to every ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new PropertyCleaningSetupConfiguration());
+        modelBuilder.ApplyConfiguration(new StayCleaningConfiguration());
 
         // ─── Drafts of the wizards (ADR-024) ─────────────────────────────────────
         // One draft per person, wizard and entity. The unique indexes are what makes two devices that save the first draft at the same

@@ -76,6 +76,15 @@ public sealed partial class OwnerAccountingService
         if (closing < 0m)
             issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.NegativeBalance, ownerId, Blocking: false));
 
+        // The statement flag (E18/F01/US03/T01, ⚖ I8, behind Features:TaxReportingExports): an owner past the limit of units of a private person is presumed a business. It
+        // never blocks the version: the statement is right, the tax treatment of the owner is what the agency looks at. The units are those of the last day of the month.
+        if (taxChecks is { WarningsEnabled: true }
+            && (await taxChecks.CheckUnitsAsync(orgId, [ownerId], period.Last, ct)).TryGetValue(ownerId, out var units)
+            && units.PresumedBusiness)
+        {
+            issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.ShortLetBusinessPresumed, ownerId, Blocking: false));
+        }
+
         // A draft or flagged version made of these very lines, with these very issues, is what a new version would be: the bulk generation leaves it (running it twice
         // changes nothing more).
         if (skipWhenCurrent && sameLines && previous is not null && SameIssues(previous, issues))

@@ -437,3 +437,59 @@ agree. **Read only, no entity, and a difference blocks nothing: the agency decid
   (with the `reason`) through `…/filing-state` (`agency.owner.financial.manage`). Nothing is ever sent by CasaZen. `api/withholding/reconciliation/{year}`
   compares the obligations of each month with its F24 and the year with the annual data. The F24 PDF prints the filing state and the receipt.
 - **Existing rows**: the F24 records created before get the state `generated`; the old `WithholdingLog` rows stay as history, nothing writes them.
+
+## Limit of units, company tenant and co-owners (E18/F01/US03/T01)
+
+Decisions of 2026-11-14 (`fatturazione/analisi-tecnica.md` §5, ⚖ I6, I7 and I8 of the table §7): prudent defaults, configurable, to be confirmed by an accountant; nothing is
+filed by CasaZen. The warnings and the endpoints are behind `Features:TaxReportingExports` (off by default, on in the test environment: `feature-flags.md`); the **facts the
+withholding reads are not behind it** (an owner past the limit is a business whatever the screens show, a decision already recorded is followed).
+
+- **Limit of units** (⚖ I8, `IOwnerTaxChecks.CheckUnitsAsync`). The units of an owner are the apartments the agency manages for it (the distinct **Italian** properties in
+  **short-rent** mode, not deleted, with an ownership of the owner in force on the day: a co-owner counts the property once, whatever its share, because the limit is counted
+  for each co-owner) plus `PropertyOwner.ExternalShortLetUnits`, the apartments the owner declares it lets short outside the agency (0 to 1000, 0 until declared). A natural
+  person who is not a VAT holder (`entityKind` not a company, `taxRegime` `Private`; a legal entity or a VAT holder is a business already, `applies: false`) with **more
+  than `ShortStayFiscal:MaxApartmentsPerTaxpayer` units** (2: the third is the first past the limit) is **presumed a business** from the tax year
+  `ShortStayFiscal:ThresholdFromTaxYear` (2026); a day of an earlier year presumes nothing, as the older limit is not in the configuration. The limit is the configuration of
+  the fiscal rules (`deploy-checklist.md` § 2), never a number of the code. The count is the owner's whole portfolio in the org, whatever the reach of the caller.
+  - **Treated as a business**: `TreatmentOfStaysAsync` answers `qualifiesAsShortLet: false`, reason `owner_presumed_business`, for every stay of the owner: no short-let
+    regime, so no 21% withholding. The facts of E18/F01/US01 read it; this task decides nothing else about the withholding.
+  - **Readiness warning**: `GET api/onboarding/owners/readiness` gives the owner `warnings: [{ code: "short_let_business_presumed", managedUnits, externalUnits, maxUnits,
+    suggestion: "issuer_profile" }]`. A warning never changes `ready` or `accountingReady`. The suggestion is to make the issuer profile of the owner that of a business (a VAT
+    regime and its VAT number, `PUT api/owners/{id}/issuer-profile`): nothing is changed by itself. A caller with a partial reach gets the warning only for an owner whose every
+    ownership it reaches (the line of `GET api/owners/{id}/tax-checks`, of the import and of the invitations): the counts are the whole portfolio, so for an owner with a property
+    outside the reach there is no warning, as the counts would tell about properties the caller does not reach.
+  - **Statement flag**: a statement version generated for the owner records the **non-blocking** issue `short_let_business_presumed` (in `issuesJson`, the units of the last day of
+    the month): the version is never `Flagged` because of it and can be approved as usual. A version generated before the owner crossed the limit does not carry it.
+  - **API**: `GET api/owners/{ownerId}/tax-checks` (`agency.owner.view`) answers `{ ownerId, applies, managedUnits, externalUnits, totalUnits, maxUnits, presumedBusiness }`;
+    `PUT api/owners/{ownerId}/external-short-let-units` (`agency.owner.financial.manage`) with `{ units }` (**required**: a request without it is 422
+    `owner_external_units_invalid`, never a 0 by omission) saves the declared apartments and answers the new check. Both need the owner in the reach of the caller (an owner
+    with a property outside it is the 404 `owner_not_found`).
+- **Company tenant** (⚖ I7). The tax agency (circular 24/E/2017) excludes the short-let regime when the tenant is a company, the Court of Cassation (12395/2024) says only the
+  landlord counts when the use is residential: CasaZen **changes nothing by itself**, a person decides and the decision is recorded.
+  - **The case**: an **active** stay (confirmed, checked in or checked out, no no-show: `AlloggiatiStatusRules`), in an **Italian** property, of at most
+    `ShortStayFiscal:MaxStayNights` nights (30), whose invoice data names a **company** (only the kind is read, never a name or a fiscal code), and at least one owner of the
+    property on the check-out day is a private natural person (`OwnerTaxRules.IsCompanyTenantCase`, the one definition).
+  - **«Da fare»** (`ActivityType.CompanyTenantDecision`, about the booking, leading to it): raised once for each booking by the consumer of `InvoiceDataSaved` and `BookingConfirmed` (either order: the state is read when the event is handled)
+    (`CompanyTenantDecisionHandler`, only while the flag is on) with a fixed sentence in the language of the org that tells the two readings in plain words (key
+    `TodoReason_CompanyTenantDecision` of `EmailTexts`, no rate in it: the rate is configuration); no personal data. It closes when a decision is recorded, when the booking is cancelled or marked a
+    no-show, and (by the system) when the consumer reads the stay and it is no case any more (the invoice data became a private person's, the dates or the owners changed: a decision
+    would be 422 `owner_tax_decision_not_applicable`); it is asked again if the stay becomes a case again, never after a person closed it or a decision was recorded. **Limit**: the
+    state is read only when one of the two events is handled, so a stay that becomes a case in another way (an owner is added to the property after its bookings: the owner import is
+    the only writer of the ownerships; the dates change) raises no «Da fare»; `GET api/owner-tax-decisions` lists it all the same.
+  - **Decision** (`ShortLetTaxDecision`: booking, regime, reason, who, when; **append only**, the latest in force, the earlier ones are the history): `POST api/owner-tax-decisions`
+    (`agency.owner.financial.manage`) `{ bookingId, regime, reason }` with `regime` `ShortLet` (the stay stays a short let: the intermediary withholds) or `NotShortLet` and the
+    reason a note of the agency (1 to 500 characters, never logged, never in the «Da fare»). The regime is **required** (no default by omission). The same regime and reason again
+    is the same decision. A stay that is no case is 422 `owner_tax_decision_not_applicable`: a regime is never recorded for a stay nobody questioned. 404 `booking_not_found`
+    (also a booking outside the reach); 422 `owner_tax_decision_invalid` with the `field`. `GET api/owner-tax-decisions?state=Pending|Decided` (`agency.owner.financial.read`)
+    lists the cases in reach with the decision in force (the code of the booking, the property and the dates: never the tenant), the most recent check-out first, at most 200.
+  - **Withholding facts**: `TreatmentOfStaysAsync(orgId, ownerId, bookingIds, asOf)` gives each stay `qualifiesAsShortLet`, a `reason` (`short_let`, `owner_presumed_business`,
+    `company_tenant_short_let`, `company_tenant_not_short_let`), `companyTenant` and `decisionPending`. A company tenant **without a decision stays a short let** (⚖ I7: no automatic
+    change of regime) and says `decisionPending`; `NotShortLet` takes the stay out of the withholding; a decision is followed only while the stay still is a company-tenant case
+    (one recorded for a stay whose recipient changed since is not). A payout already confirmed keeps its own evidence: a later decision changes the stays not yet paid.
+- **Co-owners** (⚖ I6, acceptance step A4). `OwnerMandate.CoOwnerTaxReporting` (`coOwnerTaxReporting` on `POST api/owners/{id}/mandates`, in the standard mandate and in
+  the answer): `Signatory` (0, the default: everything on the co-owner who signed the mandate, the one whose mandate is in force, as `DocumentPlanService` picks it) or
+  `PerShare` (1: the withholding evidence and the CU split by `PropertyOwnership.SharePercent`). An undefined value is 422 `owner_mandate_invalid` with the `field`
+  `coOwnerTaxReporting`. Every mandate written before the field is `Signatory`. E18/F01/US01 and US02 read it; nothing is split by this task.
+- **Data**: migration `AddOwnerTaxChecks`: `PropertyOwners.ExternalShortLetUnits` (int, default 0, check 0 to 1000), the table `ShortLetTaxDecisions` (tenant-owned, gone with the
+  org, the booking a plain id with no foreign key: the decision is tax evidence) and `OwnerMandates.CoOwnerTaxReporting` (int, default 0). Rolling it back drops the decisions: they
+  are evidence, so a rollback after decisions were recorded is a decision of the operator, not a routine step.
