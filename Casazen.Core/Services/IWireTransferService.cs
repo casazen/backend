@@ -65,6 +65,23 @@ public interface IWireTransferService
     /// no name and no file.
     /// </summary>
     Task<IReadOnlyList<WireBatchSummary>> ListBatchesAsync(Guid orgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The payouts of the org that a wire file of <paramref name="currency"/> can still pay (EUR for the SEPA file, CHF for the Swiss one; the case and the spaces of the
+    /// code do not matter): the payouts <see cref="CreateBatchAsync"/> accepts, that is confirmed (never reversed), of a statement version published to the owner, with a
+    /// net amount above zero and in no batch. One currency per list: the payouts of the other one are never in it. Oldest first, the order of the transfers of a batch, at
+    /// most <see cref="WireTransferErrors.ListedPayablePayouts"/>. Each one comes with its owner, the period of its statement and whether the owner has an IBAN, as a yes or a
+    /// no: <b>never an IBAN</b>, never an address. 422 <see cref="WireTransferErrors.CurrencyNotSupported"/> for a currency that has no wire file, or none: the list of «every
+    /// currency» does not exist.
+    /// </summary>
+    Task<IReadOnlyList<WirePayoutSummary>> ListPayablePayoutsAsync(Guid orgId, string? currency, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A batch of the org (its state, with no IBAN, no name and no file) and the payouts it pays, with the same members as <see cref="ListPayablePayoutsAsync"/>, in the order of
+    /// the transfers of its file. A payout reversed after the batch was made is in the list and says so. A batch of before the payouts (made from statements) has no payout
+    /// rows: its list is empty. A batch of another org does not exist for the caller (404).
+    /// </summary>
+    Task<WireBatchPayoutsSummary> GetBatchPayoutsAsync(Guid orgId, Guid batchId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -82,6 +99,27 @@ public sealed record WireBatchSummary(
     DateTime CreatedAt,
     DateTime? DownloadedAt,
     DateTime? PaidAt);
+
+/// <summary>
+/// A payout as the wire page shows it, in the list of the payable ones and in the payouts of a batch: who is paid (the owner, by id and name), which statement it pays (the
+/// year and the month of its period), how much (<see cref="Amount"/>: the net after the withholding, the amount of the transfer) in which currency, when it was confirmed, whether
+/// it is still confirmed (a payout reversed after its batch was made stays in the batch and says <see cref="OwnerPayoutStatus.Reversed"/>) and whether the owner has an IBAN
+/// now, <b>as a yes or a no</b>. The type has no member that could carry an IBAN, an address or a file.
+/// </summary>
+public sealed record WirePayoutSummary(
+    Guid PayoutId,
+    Guid OwnerId,
+    string OwnerName,
+    int PeriodYear,
+    int PeriodMonth,
+    decimal Amount,
+    string Currency,
+    DateTime ConfirmedAt,
+    OwnerPayoutStatus Status,
+    bool OwnerHasIban);
+
+/// <summary>A batch as the list shows it and the payouts it pays (<see cref="IWireTransferService.GetBatchPayoutsAsync"/>).</summary>
+public sealed record WireBatchPayoutsSummary(WireBatchSummary Batch, IReadOnlyList<WirePayoutSummary> Payouts);
 
 /// <summary>The messages a wire batch can be (<see cref="WireBatch.MessageFormat"/>).</summary>
 public static class WireMessageFormats
@@ -207,6 +245,9 @@ public static class WireTransferErrors
 
     /// <summary>The most batches the list returns (the newest ones).</summary>
     public const int ListedBatches = 200;
+
+    /// <summary>The most payable payouts the list of a currency returns (the oldest ones): a batch holds at most <see cref="MaxTransfers"/> of them.</summary>
+    public const int ListedPayablePayouts = MaxTransfers;
 
     /// <summary>The currency of the SEPA file.</summary>
     public const string SepaCurrency = "EUR";
