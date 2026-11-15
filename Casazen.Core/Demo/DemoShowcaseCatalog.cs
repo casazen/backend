@@ -326,6 +326,13 @@ public static class DemoShowcaseCatalog
         /// (<c>api/owners/{id}/tax-checks</c>, <c>api/owner-tax-decisions</c>), the showcase writes none of these rows.
         /// </summary>
         public const string OwnerTaxChecks = "owner-tax-checks";
+
+        /// <summary>
+        /// How the cleaning is recharged to the owner under the mandate (E14/F01/US02/T01, ⚖ I13): the flat fee of each stay (the default), or the cost of each cleaning completed in the
+        /// month, one charge linked to its request on the invoice of the agency, never together with the flat fee. Invented, TEST owners and amounts: a template of what the mandate
+        /// (<c>api/owners/{id}/mandates</c>, <c>cleaningRechargeMode</c>) and the posting of the month answer; the showcase writes none of these rows.
+        /// </summary>
+        public const string CleaningRecharge = "cleaning-recharge";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -413,6 +420,7 @@ public static class DemoShowcaseCatalog
         Scenario.ReportChannelCosts,
         Scenario.CleaningAtCheckout,
         Scenario.OwnerTaxChecks,
+        Scenario.CleaningRecharge,
     ];
 
     /// <summary>
@@ -580,6 +588,18 @@ public static class DemoShowcaseCatalog
     [
         new("conduttore-societa-da-decidere", "TEST Mario Rossi", "TEST Impresa Lago Srl", null, null, Scenario.OwnerTaxChecks),
         new("conduttore-societa-non-locazione-breve", "TEST Mario Rossi", "TEST Impresa Lago Srl", ShortLetTaxRegime.NotShortLet, "TEST: deciso con il commercialista", Scenario.OwnerTaxChecks),
+    ];
+
+    /// <summary>
+    /// The three ways the cleaning reaches the invoice of the agency to a demo owner (E14/F01/US02/T01, ⚖ I13): the flat fee of the mandate for each stay; the cost of a cleaning
+    /// request completed in the month (one line for each request, with its reference, and no flat fee); the cost of a staff cleaning that has no rate, which is the flat rate of the
+    /// mandate. Invented, TEST owners and amounts in euro; a template only.
+    /// </summary>
+    public static IReadOnlyList<DemoCleaningRechargeTemplate> CleaningRechargeExamples { get; } =
+    [
+        new("forfait-per-soggiorno", "TEST Mario Rossi", CleaningRechargeMode.FlatRate, "TEST Impresa di pulizie", null, 40m, Scenario.CleaningRecharge),
+        new("costo-effettivo-richiesta", "TEST Giulia Bianchi", CleaningRechargeMode.ActualCost, "TEST Impresa di pulizie", 85m, 40m, Scenario.CleaningRecharge),
+        new("costo-effettivo-staff-senza-tariffa", "TEST Luca Verdi", CleaningRechargeMode.ActualCost, "TEST Personale dell'agenzia", null, 40m, Scenario.CleaningRecharge),
     ];
 
     /// <summary>
@@ -2262,6 +2282,20 @@ public sealed record DemoOwnerUnitsTemplate(string Key, string OwnerName, int Ma
 /// agency, both <c>null</c> while nobody decided.
 /// </summary>
 public sealed record DemoCompanyTenantTemplate(string Key, string OwnerName, string TenantName, ShortLetTaxRegime? Decision, string? Reason, string Scenario);
+
+/// <summary>
+/// An example of how the cleaning reaches the invoice of the agency to an owner (E14/F01/US02/T01, ⚖ I13): the <paramref name="Mode"/> of its mandate, who cleaned
+/// (<paramref name="Cleaner"/>), the price of the request in euro (<paramref name="RequestAmount"/>, <c>null</c> for a staff cleaning with no rate) and the flat fee of the mandate
+/// (<paramref name="MandateFlatRate"/>), which is the fee of each stay on the flat rate and the price of a staff cleaning with no rate on the actual cost.
+/// </summary>
+public sealed record DemoCleaningRechargeTemplate(
+    string Key,
+    string OwnerName,
+    CleaningRechargeMode Mode,
+    string Cleaner,
+    decimal? RequestAmount,
+    decimal MandateFlatRate,
+    string Scenario);
 
 /// <summary>
 /// A channel rule of the tourist tax written by the showcase (NF-46, ADR-037-R3): platform data, for the comune of the demo house

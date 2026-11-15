@@ -42,8 +42,10 @@ accountant; every one of them is set through the «Fatturazione» wizard of the 
   `owner_mandate_invalid`, a mandate of 0% is a choice and never what an omitted or misspelt field turns into), `commissionBase` (`GrossExclTouristTax` = 1, the default,
   ⚖ R3: the gross of the stay without the tourist tax, cleaning included; `GrossExclTouristTaxAndCleaning` = 2), `commissionIncludesVat` (default
   `false`: the percent and the flat fees are «+ IVA», ⚖ R4; the VAT is added by the owner invoice, E14), `cleaningFlatRate` and `linenFlatRate` (per stay,
-  in the settlement currency of the owner; `null` = none), `passthroughPaymentFees`, `withholdingTreatment` and the optional `documentReference` of the
-  signed mandate (an https address or a key of the private storage: without it the owner readiness says `mandate_document_missing`). A version is in force
+  in the settlement currency of the owner; `null` = none), `cleaningRechargeMode` (`FlatRate` = 1, the default, and the value of every mandate written before the
+  field: the cleaning is the flat fee of each stay; `ActualCost` = 2: the cost of each cleaning request completed in the month, ⚖ I13, see «Cleanings recharged at
+  their cost» below; an undefined value is 422 `owner_mandate_invalid` with the field `cleaningRechargeMode`), `passthroughPaymentFees`,
+  `withholdingTreatment` and the optional `documentReference` of the signed mandate (an https address or a key of the private storage: without it the owner readiness says `mandate_document_missing`). A version is in force
   from `validFrom` to `validTo` (Rome days, both included); a new version ends the one in force the day before it starts and is refused with 409
   `owner_mandate_overlap` when a version already starts on that day or later: one mandate a day, never two, never a gap written by the API. 422
   `owner_mandate_invalid` with the `field`. The versions written by the API cover every property of the owner; a mandate of one ownership (the shape of
@@ -176,6 +178,52 @@ booking line, and the month of the payment then posts it (the readiness says `un
   checked on the first real payload of the channel manager** (does `totalGross` include the tourist tax?): the channel commission and the commission of the
   mandate are a percentage of the same gross.
 
+### Cleanings recharged at their cost (E14/F01/US02/T01, ⚖ I13, NF-114, NF-115)
+
+Acceptance step C4 of `pilota-flusso-completo-2026-11-14.md`: the invoice of the property manager recharges the cleaning done by the agency's own cleaning
+company or staff, and each line points to the cleaning request. The mandate chooses how (`OwnerMandate.CleaningRechargeMode`, `OwnerMandateRules.CleaningRechargeModeOf`,
+the one definition; no flag):
+
+| Mode | The cleaning the owner is charged |
+|---|---|
+| `FlatRate` (default, ⚖ I13) | the flat fee of the mandate (`CleaningFlatRate`) for each stay, as in E13 (`MandateFlatFee` lines) |
+| `ActualCost` | the cost of each cleaning completed in the month: one `OwnerCharge` of source `CleaningRequest` for each, linked to the request. **The flat fee of the stay is not posted** for that mandate: the cleaning is charged once, never both |
+
+- **Where the cleanings come from.** Only `ICleaningCostSource.GetCompletedAsync` (the operations plan, E24/F01/US01/T03): `OwnerAccountingService` never reads
+  `ServiceRequest` or `InternalActivity`. It returns the cleanings of the month (Rome days, both ends included) of a request that is completed or paid and of a staff
+  activity that is completed, **never a cancelled or refused one**; a supplier request whose final amount waits for the host's confirmation (above the quote by more than
+  the tolerance) is not a cost yet and comes back, once, in the month of the confirmation. The source is read only for the properties of the owners that have a mandate on
+  the actual cost, and not at all when no mandate asks for it (a plan costs no query more for the other agencies). A cleaning with `RechargeToOwner` false (a staff cleaning
+  the agency bears itself) is nobody's charge.
+- **The line.** `OwnerCharge`, `SourceType` `CleaningRequest` (9), `SourceId` the request (or the staff activity), `SourceReference` its short reference (the first
+  8 characters of the id, upper case: `OwnerLedgerCleaningRecharges.ReferenceOf`), `AttachmentReference` the reference of the supplier's invoice when the model links one (none
+  today), `Description` «Pulizia del dd/MM/yyyy» (`EmailTexts` `OwnerLedger_CleaningRecharge`, in the language of the org), `ServiceDate` and `RecognitionDate` the day the cost
+  became firm (`CompletedCleaning.CompletedOn`), which decides the month. Key `clean:{request}` + the usual owner and amounts: **once per request and owner**; posting again
+  adds nothing. Shared by the owners of the property like every charge (half to even, the remainder to the last owner), in the currency of the property, converted with the
+  rate of the agency.
+- **The amount** is what the cost source reads (the final amount the supplier declared, else the price it committed to, else the estimate). A staff cleaning that has no rate
+  costs the flat rate of the mandate (`CleaningFlatRate`, in the settlement currency of the owner). **A cleaning with no price at all is never posted as a charge of zero**: the
+  owner's statement is held back with the blocking `source_amount_missing` (owner, property, request) until the request has an amount, the staff activity a rate (or the mandate a
+  flat rate), or the agency stops recharging it.
+- **Whose day.** The owners, the shares and the mandate are those of the **check-out day of the stay the cleaning is for** (`CompletedCleaning.BookingId`), so the flat fee of a
+  stay and its cleanings are decided by the same version of the mandate (a mandate that changes mode between the check-out and the cleaning never charges a stay twice, nor
+  none); a cleaning of no stay uses the day it was completed. With no mandate in force the share is held back as for every stay (`mandate_missing_for_stay`); a gap in the
+  shares of the property is `ownership_missing` / `ownership_share_gap` (blocking), never a guess.
+- **A request that changes or is cancelled.** The key holds the amounts, so a request whose price changed after it was posted is a reversal of the old line and a new line
+  (as every source that changed, and `late_source_after_close` when the month of the owner is closed); a request that is cancelled afterwards is no longer returned, so its
+  line is reversed and nothing is posted for it.
+- **The VAT is never guessed.** The amount is posted as the cost source gives it, whatever its VAT nature (`IncludesSupplierVat`: the gross the supplier declared;
+  `ExcludesVat`; `NotApplicable`: a staff cost): the ledger keeps no VAT nature. **When the source does not say it (`Unknown`)** the posting raises the «Da fare»
+  `CleaningVatToState` for the agency, about the stay of the cleaning (entity
+  `Booking`, «Do now» opens it) or, for a cleaning of no stay, about the request itself: once for each stay or request (an item open, or one a person closed, is not raised
+  again), without personal data, in the language of the org (`TodoReason_CleaningVatToState`). It is closed by the system at a later posting when the cleaning's VAT is known;
+  an item about a cleaning cancelled afterwards stays until a person closes it. The VAT the owner invoice adds to the line is that of any recharge (⚖ R4, below): **whether
+  the VAT of a supplier's gross amount is to be taken out of the base of the recharge is a question for the accountant**, not decided here.
+- **The invoice.** The version's lines make one `Recharge` line for each cleaning request, «Riaddebito pulizia - {property} - richiesta {reference} del {day}» (with
+  «, fattura del fornitore {reference}» when the supplier's invoice is known); a request changed after it was posted is one line, the net of the reversal and the new line.
+- **Prove it** (`CleaningRechargeTests`, no database): once per request and never together with the flat fee; a cancelled request posts nothing and its posted line is
+  reversed; the invoice shows a line per request with its reference; the «Da fare» of an unknown VAT; the staff cleaning without a price.
+
 ## Owner invoices (E14/F01/US01/T01)
 
 The invoice of the property manager to an owner (NF-114, D9): a `FiscalDocument` with `Purpose = OwnerInvoice`, made from a version of the statement, behind
@@ -200,7 +248,8 @@ The invoice of the property manager to an owner (NF-114, D9): a `FiscalDocument`
   `document_invoice_data_missing` with the `fields`).
 - **Lines, from the ledger lines of the version** (the owner's lines of the month up to its cut-off; a reversal and the line it reverses cancel out):
   - `AgencyCommission` → one `Commission` line per property («Provvigione di gestione - casa - mese»);
-  - `OwnerCharge` → one `Recharge` line per flat fee of a stay (cleaning, linen) and per approved charge, with its own description and day;
+  - `OwnerCharge` → one `Recharge` line per flat fee of a stay (cleaning, linen), per cleaning request recharged at its cost (E14/F01/US02/T01: with its reference, instead of
+    the flat fee of the stay) and per approved charge, with its own description and day;
   - `OwnerExpense` of an owner charge of kind expense → one `AdvancedExpense` line each, outside the VAT (an expense advanced in the name and on behalf of the
     owner, art. 15 in Italy); the card fees the mandate passes on (`OwnerExpense` of a payment) are a cost the agency bears in its own name → one `Recharge`
     line per property;

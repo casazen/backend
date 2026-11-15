@@ -433,6 +433,22 @@ public static class OwnerLedgerFlatFees
 }
 
 /// <summary>
+/// The lines of the cleanings recharged at their cost (E14/F01/US02/T01, ⚖ I13): the <see cref="OwnerLedgerSourceType.CleaningRequest"/> lines of the owner ledger, one for each
+/// cleaning request completed in the month for an owner whose mandate asks for the actual cost.
+/// </summary>
+public static class OwnerLedgerCleaningRecharges
+{
+    /// <summary>The characters of the reference of a cleaning request.</summary>
+    public const int ReferenceLength = 8;
+
+    /// <summary>
+    /// The short reference of a cleaning request (the first characters of its id, upper case, no dashes): what the line of a statement or of an owner invoice says to point to the request. The
+    /// id stays in <see cref="OwnerLedgerEntry.SourceId"/>: the reference is for people, never a way into the request.
+    /// </summary>
+    public static string ReferenceOf(Guid requestId) => requestId.ToString("N")[..ReferenceLength].ToUpperInvariant();
+}
+
+/// <summary>
 /// The money rules of the posting of a stay (E13/F01/US01/T02, NF-115), pure: the revenue of a payment without the tourist tax, the gross of a stay posted
 /// from its booking and the base a commission is a percentage of. Every amount is rounded to the cent half to even, as the rest of the owner ledger.
 /// </summary>

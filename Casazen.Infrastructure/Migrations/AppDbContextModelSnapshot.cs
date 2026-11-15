@@ -8976,6 +8976,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<decimal?>("CleaningFlatRate")
                         .HasColumnType("decimal(10,2)");
 
+                    b.Property<int?>("CleaningRechargeMode")
+                        .HasColumnType("integer");
+
                     b.Property<int>("CoOwnerTaxReporting")
                         .HasColumnType("integer");
 

@@ -6801,6 +6801,15 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OwnerInvoiceFlatFeeLinen" xml:space="preserve">
     <value>Linen flat fee</value>
   </data>
+  <data name="OwnerInvoiceCleaningRecharge" xml:space="preserve">
+    <value>Cleaning recharge</value>
+  </data>
+  <data name="OwnerInvoiceCleaningRequest" xml:space="preserve">
+    <value>request {0} of {1}</value>
+  </data>
+  <data name="OwnerInvoiceCleaningRequestWithInvoice" xml:space="preserve">
+    <value>request {0} of {1}, supplier invoice {2}</value>
+  </data>
   <data name="OwnerInvoiceStay" xml:space="preserve">
     <value>stay {0} checking out on {1}</value>
   </data>

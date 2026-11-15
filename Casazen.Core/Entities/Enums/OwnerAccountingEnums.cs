@@ -78,6 +78,15 @@ public enum OwnerLedgerSourceType
     /// sources of a month: the posting of a month neither posts nor reverses it.
     /// </summary>
     OwnerInvoice = 8,
+
+    /// <summary>
+    /// A cleaning completed by the agency's company or staff and recharged to the owner at its cost (E14/F01/US02/T01, ⚖ I13): the <see cref="OwnerLedgerEntry.SourceId"/> is the
+    /// cleaning request (or the staff activity), the <see cref="OwnerLedgerEntry.SourceReference"/> its short reference
+    /// (<c>OwnerLedgerCleaningRecharges.ReferenceOf</c>), the <see cref="OwnerLedgerEntry.AttachmentReference"/> the reference of the supplier's invoice when the model links one, the
+    /// line an <see cref="OwnerLedgerEntryType.OwnerCharge"/>. A recharge of the agency like a flat fee, which it replaces for the mandate (never both): the owner invoice (E14)
+    /// shows one line for each request and applies its VAT.
+    /// </summary>
+    CleaningRequest = 9,
 }
 
 /// <summary>

@@ -792,6 +792,12 @@
   <data name="TodoReason_CleaningDateChanged" xml:space="preserve">
     <value>Le date del soggiorno sono cambiate: la pulizia è già stata presa in carico, decidi se spostarla o annullarla</value>
   </data>
+  <data name="TodoReason_CleaningVatToState" xml:space="preserve">
+    <value>La pulizia da riaddebitare al proprietario non ha l'IVA indicata: indicala (e l'importo, se manca) prima di chiudere il rendiconto</value>
+  </data>
+  <data name="OwnerLedger_CleaningRecharge" xml:space="preserve">
+    <value>Pulizia del {0}</value>
+  </data>
   <data name="CleaningAutomation_RequestNote" xml:space="preserve">
     <value>Pulizia automatica al check-out. Prezzo concordato.</value>
   </data>

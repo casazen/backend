@@ -6801,6 +6801,15 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerInvoiceFlatFeeLinen" xml:space="preserve">
     <value>Forfait biancheria</value>
   </data>
+  <data name="OwnerInvoiceCleaningRecharge" xml:space="preserve">
+    <value>Riaddebito pulizia</value>
+  </data>
+  <data name="OwnerInvoiceCleaningRequest" xml:space="preserve">
+    <value>richiesta {0} del {1}</value>
+  </data>
+  <data name="OwnerInvoiceCleaningRequestWithInvoice" xml:space="preserve">
+    <value>richiesta {0} del {1}, fattura del fornitore {2}</value>
+  </data>
   <data name="OwnerInvoiceStay" xml:space="preserve">
     <value>soggiorno {0} con partenza il {1}</value>
   </data>

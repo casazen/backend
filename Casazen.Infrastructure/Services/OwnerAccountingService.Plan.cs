@@ -86,9 +86,17 @@ public sealed partial class OwnerAccountingService
         var settledByPayout = wireSources.Count == 0 ? new HashSet<(Guid, int, int)>() : await PayoutSettledMonthsAsync(orgId, ct);
         var wires = wireSources.Where(w => !settledByPayout.Contains((w.OwnerId, w.StatementYear, w.StatementMonth))).ToList();
 
+        // The mandates of the owners (E13/F01/US01/T01) and those of single ownerships of before: OwnerMandateRules.InForce picks the one of a share. They are read before the
+        // ownerships: the cleanings to read (E14/F01/US02/T01) are those of the properties of the owners whose mandate asks for the actual cost.
+        var mandates = await db.OwnerMandates.AsNoTracking()
+            .Where(m => m.OrgId == orgId)
+            .ToListAsync(ct);
+        var cleanings = await ReadCleaningsAsync(orgId, period, mandates, ct);
+
         var propertyIds = payments.Select(p => p.PropertyId)
             .Concat(charges.Select(c => c.PropertyId))
             .Concat(stays.Select(s => s.PropertyId))
+            .Concat(cleanings.Select(c => c.PropertyId))
             .Distinct()
             .ToList();
         var ownerships = await db.PropertyOwnerships.AsNoTracking()
@@ -97,11 +105,7 @@ public sealed partial class OwnerAccountingService
         foreach (var group in ownerships.GroupBy(o => o.PropertyOwnerId))
             plan.OwnerProperties[group.Key] = group.Select(o => o.PropertyId).ToHashSet();
 
-        // The mandates of the owners (E13/F01/US01/T01) and those of single ownerships of before: OwnerMandateRules.InForce picks the one of a share. The
-        // commission rules of the channels and their configured defaults (⚖ R2).
-        var mandates = await db.OwnerMandates.AsNoTracking()
-            .Where(m => m.OrgId == orgId)
-            .ToListAsync(ct);
+        // The commission rules of the channels and their configured defaults (⚖ R2).
         var channelRules = await db.OrgChannelCommissionRules.AsNoTracking()
             .Where(r => r.OrgId == orgId)
             .ToListAsync(ct);
@@ -131,6 +135,8 @@ public sealed partial class OwnerAccountingService
 
         foreach (var stay in stays)
             await PlanStayAsync(inputs, stay, ct);
+
+        await PlanCleaningsAsync(inputs, cleanings, ct);
 
         foreach (var charge in charges)
         {
@@ -260,7 +266,8 @@ public sealed partial class OwnerAccountingService
     /// is the gross of the booking without the tourist tax (<see cref="StaySource.Gross"/>: the <see cref="Booking.BasePrice"/>, the cleaning included, of a booking
     /// priced by CasaZen; the total of the reservation less the tourist tax for a portal) recognized on the check-out (⚖ R1), with the commission of the mandate
     /// and the channel commission of a portal. A price the host agreed by hand is an amount even when it is 0 (a stay for free): no revenue, nothing to tell.
-    /// Every stay, whatever path posts its revenue, gets the flat fees of the mandate in force on the check-out, once (cleaning, linen: recharges of the agency).
+    /// Every stay, whatever path posts its revenue, gets the flat fees of the mandate in force on the check-out, once (cleaning, linen: recharges of the agency); the cleaning
+    /// only when the mandate recharges it at the flat rate (<see cref="CleaningRechargeMode.FlatRate"/>), because on the actual cost it comes from the cleaning requests.
     /// </summary>
     private async Task PlanStayAsync(PlanInputs inputs, StaySource stay, CancellationToken ct)
     {
@@ -325,6 +332,11 @@ public sealed partial class OwnerAccountingService
             foreach (var (kind, rate) in new[] { (OwnerLedgerFlatFees.Cleaning, mandate.CleaningFlatRate), (OwnerLedgerFlatFees.Linen, mandate.LinenFlatRate) })
             {
                 if (rate is not { } amount || amount <= 0m)
+                    continue;
+
+                // With the mandate on the actual cost the cleaning is posted from the cleaning requests (PlanCleaningsAsync, E14/F01/US02/T01): the flat fee of the stay is not,
+                // never both. Decided by the mandate of the check-out day, the very day PlanCleaningsAsync reads for the cleanings of this stay.
+                if (kind == OwnerLedgerFlatFees.Cleaning && OwnerMandateRules.CleaningRechargeModeOf(mandate) == CleaningRechargeMode.ActualCost)
                     continue;
 
                 // A flat fee is in the settlement currency of the owner: the line needs no rate (the currency of the property while the owner is not resolved).
@@ -557,6 +569,12 @@ public sealed partial class OwnerAccountingService
 
         /// <summary>The lines that may be posted: those of the owners whose month is still open.</summary>
         public IEnumerable<OwnerLedgerEntry> OpenEntries => Entries.Where(e => !ClosedOwners.Contains(e.PropertyOwnerId));
+
+        /// <summary>
+        /// The cleanings recharged at their cost (E14/F01/US02/T01) that the plan holds for an owner whose month is open, with whether the cost source says their VAT: the facts the
+        /// posting raises and closes the «Da fare» from.
+        /// </summary>
+        public List<CleaningFact> Cleanings { get; } = [];
 
         /// <summary>The (owner, stay) already told to have no mandate: one issue each.</summary>
         private HashSet<(Guid Owner, Guid Stay)> MissingMandates { get; } = [];
