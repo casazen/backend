@@ -1,14 +1,18 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Events;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
+using Casazen.Tests.Unit.Services;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Events;
@@ -193,7 +197,16 @@ public class RoutineEventHandlerTests
     }
 
     private static RoutineEventHandler Handler(AppDbContext db) =>
-        new(new RoutineService(db, NullLogger<RoutineService>.Instance), NullLogger<RoutineEventHandler>.Instance);
+        new(
+            new RoutineService(
+                db,
+                new ConditionEvaluator(NullLogger<ConditionEvaluator>.Instance),
+                new InternalActivityService(db, NullLogger<InternalActivityService>.Instance),
+                Mock.Of<IBackgroundJobClient>(),
+                new TestFeatureFlags(FeatureFlags.Routines),
+                TimeProvider.System,
+                NullLogger<RoutineService>.Instance),
+            NullLogger<RoutineEventHandler>.Instance);
 
     private async Task HandleAsync(DomainEvent domainEvent)
     {

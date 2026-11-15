@@ -295,6 +295,95 @@ labels of E13, the VAT summary of E15 and the TD17 of E17 are meant to read it t
   behind `Features:AgencyTier` (ON in test): with the flag off the lists stay empty and a statement or an invoice is not there. The invoices are the issued documents
   with the purpose owner invoice made out to the owner profile (E14 makes them from a statement).
 
+## Month-end in bulk (E13/F01/US03/T01)
+
+Quokka manages about 250 flats: every month-end step runs for all the owners of a month in one call (`fatturazione/analisi-tecnica.md` §5 and ⚖ §7: no flag, no
+migration, no new table).
+
+- **Endpoint** `POST api/owner-accounting/periods/{y}/{m}/bulk` with `{ action, ownerIds? }`, `action` one of `post`, `generate`, `approve`, `publish`, `close`
+  (member names, any case). The permission is the one of the single operation: `agency.statement.publish` for `publish`, `agency.statement.manage` for every other
+  step (and `agency.statement.view` of the controller); a caller restricted to some properties gets 403 before anything is read. 422 `owner_bulk_action_invalid`,
+  `owner_period_invalid`; 409 `owner_period_not_ended` for a `close` of a month that is not over (once, for every owner: never one refusal each).
+- **Which owners.** Without `ownerIds`: every owner the readiness of the month knows (a line, a source, a version or a close in it), by id. With a list: those named,
+  each once, in the order given. **An empty list is 422 `owner_bulk_owners_empty`, never «everyone»** (the list was sent and says nobody); **no list on a month in which the
+  readiness knows no owner is an empty run**: 200 with no row (`total` 0), not that error. More than 5,000 is 422 `owner_bulk_too_many_owners`; an id that is
+  not an owner of the org (another org's included: the same row for both) is a row `owner_not_found` and nothing is run for it.
+- **One transaction and one result for each owner.** `generate`, `approve`, `publish` and `close` run owner by owner through the single operations (their rules, their
+  refusals, their lock of the org): an owner that fails leaves nothing behind (the tracked changes are dropped) and never stops the others. The answer has one row for
+  each owner `{ ownerId, ok, code?, unchanged, issues?, details? }` and the counts (`total`, `processed`, `succeeded`, `unchanged`, `failed`, `allDone`):
+  **`allDone` is true only when the run is over, every owner was answered and none failed.** `ok` is the truth (the owner is in the state the step leads to);
+  `code` is the stable code of the reason (why a step was not done, or a note on an `ok` row: `owner_period_closed`, `owner_statement_unchanged`, a version generated
+  `owner_statement_flagged`); `issues` are the blocking issue codes behind it; `details` the facts to act on (`due`, `paid`, `difference` of a close that does not
+  reconcile). A failure that is not a rule of the domain (the database, a file) is logged with the ids and its exception (its cause and stack stay in the log) and is
+  `owner_bulk_failed`, never a success.
+- **Steps.** `post` posts the ledger of the month for the owners asked for **in one transaction** (a ledger is posted from all the sources of the month under one lock;
+  the lines of the other owners are left as they are): a row fails with the first blocking issue that kept a source out of its ledger (`mandate_missing_for_stay`,
+  `ownership_share_gap`, `fx_missing`...), is done when lines were posted or reversed, unchanged when there was nothing to post. `generate` makes the version
+  (`owner_statement_flagged` with the blocking `issues` on an `ok` row when it came out flagged). `approve` approves the version in force: **a flagged version is never
+  approved in bulk, it is a failed row `owner_statement_flagged` with its blocking `issues`**; one already approved or published is unchanged. `publish` publishes the
+  approved version (its file, its PDF and the notice to the owner, as the single publication does them). `close` closes the month on the approved version reconciled to
+  the confirmed payouts or the paid wires and **never waives a difference** (that needs a reason and `agency.owner.financial.manage`, owner by owner): a difference or a
+  negative balance is a failed row `owner_close_unreconciled` with `details`.
+- **Idempotent.** An owner already where the step leads (a version generated and not changed since, with the same lines, opening balance and issues; approved;
+  published; a closed month, for every step but the publication) is an `unchanged` row and nothing is made, posted, published or closed twice: a run is repeated after a failure
+  or a deploy. **A closed month is not «published» by its close**: the close accepts an approved version too, so `publish` on a closed month publishes a version that is only
+  approved (the owner portal and the accountant read only published statements) and is `unchanged` (`owner_period_closed`) only when the version is already published.
+- **Up to 20 owners the answer is the request's** (200 with the rows); **for more it is a background job**: 202 with `jobId`, `status` `Queued`, the `Location` of the
+  progress and nothing run in the request. `GET api/owner-accounting/periods/{y}/{m}/bulk/{jobId}` (`agency.statement.view`) answers `status` (`Queued`, `Running`,
+  `Completed`, `Failed`), `total`, the counts and the rows done so far. The job (`OwnerBulkCloseJob`, Hangfire) runs under the tenant of the org and as the user who
+  asked, with the owners resolved when it was queued; **its progress is a parameter of the Hangfire job (`owner-bulk-progress`), so nothing is stored in the database**,
+  and it lasts as long as Hangfire keeps the job (a day after it succeeded by default): an expired run, one of another org or month, or an id that is not a job is the
+  same 404 `owner_bulk_job_not_found` (the org and the month are read from the arguments the job was queued with, never from the caller). No automatic retry: a run that
+  fails as a whole is `Failed` with `errorCode` (`owner_bulk_failed`, or the code of the rule that stopped it) and the rows done before it, and it is run again, which
+  finds the owners done as they are.
+- **Cost.** Each owner reads the plan of the month again inside its own step (so a source that arrives during a long run is seen by the next owner, and the close reads
+  the readiness at its own moment): 250 owners are a few minutes of background work, not seconds. The screen of the bulk close shows the reconciliation of the month
+  (below) before it asks the agency to close.
+- **Not here.** No notification when a run ends (the screen polls the progress); no waiver; no bulk correction.
+
+## Month reconciliation (E13/F01/US03/T02)
+
+Acceptance step C1 of `pilota-flusso-completo-2026-11-14.md`: before closing a month the agency checks that the portals' payments, the bookings and the statements
+agree. **Read only, no entity, and a difference blocks nothing: the agency decides** (the close of an owner does not read it).
+
+- **Endpoint** `GET api/owner-accounting/periods/{y}/{m}/reconciliation` (`agency.statement.view`, the whole org: 403 otherwise; `Cache-Control: no-store`). 422
+  `owner_period_invalid`. Amounts are in the currency they were posted or recorded in and **are never added to those of another currency**: a channel has a row for
+  each currency, the statements one for each statement currency.
+- **`channels`**: one row for each channel and currency with a stay posted in the month (by channel, then currency). `stays` and `ledgerGross` are the live lines of the owner
+  ledger of the month that come from a booking (neither reversals nor reversed lines; the owners' shares add up to the whole stay): the stays with a revenue line and their
+  gross without the tourist tax, in the currency of the property. `commissions` is what the portals kept, split by where the line says it comes from (its rule version):
+  `fromPortal` (`payload`, the reservation's own figure; also the lines of before the rules existed, which could only come from it), `fromRule` (`channel-rule:{id}`, a rule of
+  the agency) and `fromDefault` (`channel-default`, the configured default); `total` and `onRule` (`fromRule + fromDefault`) tell how much of it rests on a rule and not on the
+  portal (⚖ R2). For a **portal** (`FiscalCopy.IsOtaBookingSource`): `expectedNetPayout` is the gross less the commission of the stays **the portal collected** (a stay with
+  `OtaCompanyCollect = false` is collected by the host: no payout is expected, it is counted in `hostCollectedStays`; unknown counts as collected, as the payment ledger reads
+  it), `recordedPayouts` what CasaZen records as paid for the stays that have a payout figure, `difference` the recorded less the expected of those stays (negative: less was
+  recorded), and `staysWithoutRecordedPayout` the stays with an expected payout and no payout figure. These four are `null` for a channel that is not a portal (the agency's own
+  site, a booking entered by hand). **Not available is never zero** (ADR-033-R2): when the row expects a payout and not one of its stays has a figure, `recordedPayouts` and
+  `difference` are `null`, not 0 and not minus the expected (a row with some figures compares only the stays that have one, and counts the others in
+  `staysWithoutRecordedPayout`).
+- **What is «recorded».** Read from the database like the payment ledger (`IBookingPaymentLedgerService`), without a call to the channel manager: the payments collected in
+  CasaZen for the booking (recorded by hand: each payment net of its refunds and **without its part of the tourist tax**, as the owner ledger posts it,
+  `OwnerLedgerRules.RevenueOfPayment`; a payment refunded in full counts 0) and, when there is none, the net the channel manager reported
+  (`Booking.OtaNetAmount`; **never derived** from the amount paid and the commission, ADR-033). **Today that is no figure at all for a stay of a portal:** the Octorate import
+  gives no net (`Booking.OtaNetAmount` stays `null`, `BookingStateMapper.ToOtaAmounts`) and a portal stay takes no payment by hand (`payment_booking_from_portal`), so every stay
+  the portal collected is told as `payout_source_unavailable` until a source of the payouts exists (the amount the guest paid, `Booking.OtaPaidAmount`, is not the payout and is
+  never used for it). The comparison is on the gross **without the tourist tax**: a portal that collects it (Airbnb in Ticino, ⚖ C5) is read for the rest.
+- **`statements`**: one row for each statement currency of the month: the owners with a line in it (`ledgerOwners`), the published statements (`publishedStatements`: the
+  newest published version of each owner for the month, even superseded by one not published yet, as the owner portal reads it), `ledgerTotal` (every line of the month,
+  a reversal cancelling the line it reverses), `publishedTotal` (closing less opening balance of those versions) and `difference` (published less ledger).
+- **`differences`**: every difference, by what it is about (`kind`: `Stay` with the booking, `Entry` with the ledger line, `Statement` with the version), with `reason`,
+  `currency`, `expected`, `recorded` and `difference` (**always recorded less expected**, `null` when there is no recorded figure to subtract), the `channel` of a stay and the
+  `ownerId` of an owner's ledger or statement. The reasons: `payout_source_unavailable` (a stay the portal collected has an expected payout and CasaZen has no figure for it: `recorded`
+  and `difference` are `null`, not available and never zero), `payout_differs`, `stay_not_posted` (an
+  active stay of the month with no collected payment, that the ledger posts from its booking, with a gross to post and no live revenue line in any month: expected its
+  gross, recorded 0; a stay paid in CasaZen is posted by its payments on their day and is never told here), `statement_not_published` (the owner has no published statement:
+  its lines are in none; the lines of a booking of an owner are one difference, any other line is one by itself) and `posted_after_publication` (lines posted after the
+  cut-off of the published statement, listed the same way). What is left once those are taken out (a published total that is not the total of the lines it was cut from) is
+  told by the version, `statement_total_differs`, so **the listed differences with a figure add up to the difference of the totals** (the payouts of a channel row, the statements
+  of a statement row); `payout_source_unavailable` has no figure and `stay_not_posted` is in no total.
+- **Scope.** Every read names the org; the lines, the bookings (also of a property deleted since) and the payments of another org are never read; nothing is written; the
+  logs carry ids and counts.
+
 ## External invoice references (E06/F01/US02/T05)
 
 - **The months invoiced outside CasaZen.** Before E14 the agency invoiced its fee with its own fiscal system; the stored agency invoices of the retired

@@ -3977,6 +3977,48 @@
   <data name="ApprovalOriginActionFailed" xml:space="preserve">
     <value>The linked action failed and the item is still waiting for approval. You can edit the text and try again.</value>
   </data>
+  <data name="RoutineNotFound" xml:space="preserve">
+    <value>Routine not found among those of your organization.</value>
+  </data>
+  <data name="RoutineNameInvalid" xml:space="preserve">
+    <value>The routine name must be 1 to {0} characters.</value>
+  </data>
+  <data name="RoutineEventTypeInvalid" xml:space="preserve">
+    <value>The event type of the routine is not valid.</value>
+  </data>
+  <data name="RoutineEventNotAvailable" xml:space="preserve">
+    <value>This event is not available for routines yet.</value>
+  </data>
+  <data name="RoutineEventConfigInvalid" xml:space="preserve">
+    <value>The event configuration is not valid: for the events tied to dates, days and hours are whole numbers from 0 to {0}; the other events take no configuration.</value>
+  </data>
+  <data name="RoutineConditionInvalid" xml:space="preserve">
+    <value>The routine condition is not valid.</value>
+  </data>
+  <data name="RoutineActionsInvalid" xml:space="preserve">
+    <value>A routine has 1 to {0} actions, each of a type that exists.</value>
+  </data>
+  <data name="RoutineActionConfigInvalid" xml:space="preserve">
+    <value>The configuration of action {0} ({1}) is not valid.</value>
+  </data>
+  <data name="RoutineActionNotAvailable" xml:space="preserve">
+    <value>An active routine can only have available actions. Not available yet: {0}. You can try them in test mode.</value>
+  </data>
+  <data name="RoutineLimitReached" xml:space="preserve">
+    <value>You already have {0} routines, the most an organization can have.</value>
+  </data>
+  <data name="RoutinePayloadInvalid" xml:space="preserve">
+    <value>The test event must be a JSON object.</value>
+  </data>
+  <data name="RoutineNeedsOrgScope" xml:space="preserve">
+    <value>Routines act on every property of the organization: they need access to the whole organization.</value>
+  </data>
+  <data name="RoutineActiveRequired" xml:space="preserve">
+    <value>Say whether the routine is active.</value>
+  </data>
+  <data name="RoutineTestModeRequired" xml:space="preserve">
+    <value>Say whether the routine is in test mode.</value>
+  </data>
   <data name="Only campaigns waiting for approval can be approved" xml:space="preserve">
     <value>Only campaigns waiting for approval can be approved.</value>
   </data>
@@ -4152,7 +4194,7 @@
     <value>The issuer profile has no IBAN for the account to debit: add it in the «Fatturazione» setup. No batch was saved.</value>
   </data>
   <data name="WireOwnerAddressMissing" xml:space="preserve">
-    <value>{0} owners have no complete address (street, postal code, town and country), which the Swiss wire needs: complete the data of the owners listed. No batch was saved.</value>
+    <value>{0} owners have no complete address (street, postal code, town and country), which the wire file needs: complete the data of the owners listed. No batch was saved.</value>
   </data>
   <data name="WireOwnerIbanMissing" xml:space="preserve">
     <value>{0} owners do not have an IBAN configured: complete the data of the owners listed. No batch was saved.</value>
@@ -4162,6 +4204,9 @@
   </data>
   <data name="WireOwnerIbanNotSwiss" xml:space="preserve">
     <value>{0} owners have an IBAN that is not Swiss or Liechtenstein: a CHF transfer to that account is not a domestic payment and this file does not cover it. No batch was saved.</value>
+  </data>
+  <data name="WireOwnerIbanNotSepa" xml:space="preserve">
+    <value>{0} owners have an IBAN outside the SEPA area: a EUR transfer to that account is not a SEPA credit transfer and this file does not cover it. No batch was saved.</value>
   </data>
   <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
     <value>Access code not available or verification not passed</value>
@@ -6605,6 +6650,18 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="OwnerPeriodNotEnded" xml:space="preserve">
     <value>The month is not over yet: it can be closed from the day after its last day.</value>
+  </data>
+  <data name="OwnerBulkActionInvalid" xml:space="preserve">
+    <value>The bulk operation is not valid: choose post, generate, approve, publish or close.</value>
+  </data>
+  <data name="OwnerBulkOwnersEmpty" xml:space="preserve">
+    <value>The list of owners is empty: name at least one owner, or leave the list out to include them all.</value>
+  </data>
+  <data name="OwnerBulkTooManyOwners" xml:space="preserve">
+    <value>The list names too many owners: at most {0} at a time.</value>
+  </data>
+  <data name="OwnerBulkJobNotFound" xml:space="preserve">
+    <value>Bulk operation not found or expired.</value>
   </data>
   <data name="OwnerCloseWaiverForbidden" xml:space="preserve">
     <value>Only who manages the owners' finances can close the month with a waiver.</value>

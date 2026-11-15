@@ -3977,6 +3977,48 @@
   <data name="ApprovalOriginActionFailed" xml:space="preserve">
     <value>L'azione collegata non è riuscita e l'elemento resta da approvare. Puoi modificare il testo e riprovare.</value>
   </data>
+  <data name="RoutineNotFound" xml:space="preserve">
+    <value>Routine non trovata tra quelle della tua organizzazione.</value>
+  </data>
+  <data name="RoutineNameInvalid" xml:space="preserve">
+    <value>Il nome della routine deve avere da 1 a {0} caratteri.</value>
+  </data>
+  <data name="RoutineEventTypeInvalid" xml:space="preserve">
+    <value>Il tipo di evento della routine non è valido.</value>
+  </data>
+  <data name="RoutineEventNotAvailable" xml:space="preserve">
+    <value>Questo evento non è ancora disponibile per le routine.</value>
+  </data>
+  <data name="RoutineEventConfigInvalid" xml:space="preserve">
+    <value>La configurazione dell'evento non è valida: per gli eventi legati alle date giorni e ore sono numeri interi da 0 a {0}; gli altri eventi non hanno configurazione.</value>
+  </data>
+  <data name="RoutineConditionInvalid" xml:space="preserve">
+    <value>La condizione della routine non è valida.</value>
+  </data>
+  <data name="RoutineActionsInvalid" xml:space="preserve">
+    <value>Una routine ha da 1 a {0} azioni, ognuna di un tipo che esiste.</value>
+  </data>
+  <data name="RoutineActionConfigInvalid" xml:space="preserve">
+    <value>La configurazione dell'azione {0} ({1}) non è valida.</value>
+  </data>
+  <data name="RoutineActionNotAvailable" xml:space="preserve">
+    <value>Una routine attiva può avere solo azioni disponibili. Non lo sono ancora: {0}. Puoi provarle con la modalità di prova.</value>
+  </data>
+  <data name="RoutineLimitReached" xml:space="preserve">
+    <value>Hai già {0} routine, il massimo per un'organizzazione.</value>
+  </data>
+  <data name="RoutinePayloadInvalid" xml:space="preserve">
+    <value>L'evento di prova deve essere un oggetto JSON.</value>
+  </data>
+  <data name="RoutineNeedsOrgScope" xml:space="preserve">
+    <value>Le routine agiscono su tutti gli immobili dell'organizzazione: servono i permessi su tutta l'organizzazione.</value>
+  </data>
+  <data name="RoutineActiveRequired" xml:space="preserve">
+    <value>Indica se la routine è attiva.</value>
+  </data>
+  <data name="RoutineTestModeRequired" xml:space="preserve">
+    <value>Indica se la routine è in modalità di prova.</value>
+  </data>
   <data name="Only campaigns waiting for approval can be approved" xml:space="preserve">
     <value>Solo le campagne in attesa di approvazione possono essere approvate</value>
   </data>
@@ -4152,7 +4194,7 @@
     <value>Nel profilo emittente manca l'IBAN del conto da addebitare: inseriscilo nella configurazione «Fatturazione». Nessun batch è stato salvato.</value>
   </data>
   <data name="WireOwnerAddressMissing" xml:space="preserve">
-    <value>{0} proprietari non hanno un indirizzo completo (via, CAP, località e paese), che il bonifico svizzero richiede: completa i dati dei proprietari indicati. Nessun batch è stato salvato.</value>
+    <value>{0} proprietari non hanno un indirizzo completo (via, CAP, località e paese), che il file di bonifico richiede: completa i dati dei proprietari indicati. Nessun batch è stato salvato.</value>
   </data>
   <data name="WireOwnerIbanMissing" xml:space="preserve">
     <value>{0} proprietari non hanno un IBAN configurato: completa i dati dei proprietari indicati. Nessun batch è stato salvato.</value>
@@ -4162,6 +4204,9 @@
   </data>
   <data name="WireOwnerIbanNotSwiss" xml:space="preserve">
     <value>{0} proprietari hanno un IBAN che non è svizzero né del Liechtenstein: un bonifico in CHF verso quel conto non è un pagamento nazionale e questo file non lo copre. Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WireOwnerIbanNotSepa" xml:space="preserve">
+    <value>{0} proprietari hanno un IBAN fuori dall'area SEPA: un bonifico in EUR verso quel conto non è un bonifico SEPA e questo file non lo copre. Nessun batch è stato salvato.</value>
   </data>
   <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
     <value>Codice di accesso non disponibile o verifica non superata</value>
@@ -6605,6 +6650,18 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="OwnerPeriodNotEnded" xml:space="preserve">
     <value>Il mese non è ancora finito: si chiude dal giorno dopo l'ultimo giorno del mese.</value>
+  </data>
+  <data name="OwnerBulkActionInvalid" xml:space="preserve">
+    <value>L'operazione in blocco non è valida: scegli tra registra, genera, approva, pubblica e chiudi.</value>
+  </data>
+  <data name="OwnerBulkOwnersEmpty" xml:space="preserve">
+    <value>L'elenco dei proprietari è vuoto: indica almeno un proprietario, oppure ometti l'elenco per includerli tutti.</value>
+  </data>
+  <data name="OwnerBulkTooManyOwners" xml:space="preserve">
+    <value>L'elenco indica troppi proprietari: al massimo {0} per volta.</value>
+  </data>
+  <data name="OwnerBulkJobNotFound" xml:space="preserve">
+    <value>Operazione in blocco non trovata o scaduta.</value>
   </data>
   <data name="OwnerCloseWaiverForbidden" xml:space="preserve">
     <value>Solo chi gestisce le finanze dei proprietari può chiudere il mese con una deroga.</value>
