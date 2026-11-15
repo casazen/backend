@@ -6630,6 +6630,18 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerPeriodNotEnded" xml:space="preserve">
     <value>Il mese non è ancora finito: si chiude dal giorno dopo l'ultimo giorno del mese.</value>
   </data>
+  <data name="OwnerBulkActionInvalid" xml:space="preserve">
+    <value>L'operazione in blocco non è valida: scegli tra registra, genera, approva, pubblica e chiudi.</value>
+  </data>
+  <data name="OwnerBulkOwnersEmpty" xml:space="preserve">
+    <value>L'elenco dei proprietari è vuoto: indica almeno un proprietario, oppure ometti l'elenco per includerli tutti.</value>
+  </data>
+  <data name="OwnerBulkTooManyOwners" xml:space="preserve">
+    <value>L'elenco indica troppi proprietari: al massimo {0} per volta.</value>
+  </data>
+  <data name="OwnerBulkJobNotFound" xml:space="preserve">
+    <value>Operazione in blocco non trovata o scaduta.</value>
+  </data>
   <data name="OwnerCloseWaiverForbidden" xml:space="preserve">
     <value>Solo chi gestisce le finanze dei proprietari può chiudere il mese con una deroga.</value>
   </data>
