@@ -425,6 +425,9 @@ public class AppDbContext(
     public DbSet<TaxObligationEvidence> TaxObligationEvidence { get; set; } = null!;
     public DbSet<TaxReportingDataset> TaxReportingDatasets { get; set; } = null!;
 
+    // What a person decided about the tax regime of the stay of a company tenant in the property of a private owner: append only (E18/F01/US03/T01, ⚖ I7)
+    public DbSet<ShortLetTaxDecision> ShortLetTaxDecisions { get; set; } = null!;
+
     // The check-in guests and the states of a stay sent to Octorate (NF-41, NF-45, E03/F01/US01/T03): ids, hashes and codes, no personal data
     public DbSet<StayGuestOctorateLink> StayGuestOctorateLinks { get; set; } = null!;
     public DbSet<OctorateStayStateSync> OctorateStayStateSyncs { get; set; } = null!;
@@ -2117,6 +2120,9 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new OwnerMessageConfiguration());
         modelBuilder.ApplyConfiguration(new TaxObligationEvidenceConfiguration());
         modelBuilder.ApplyConfiguration(new TaxReportingDatasetConfiguration());
+
+        // The decisions about the regime of the stays of a company tenant (E18/F01/US03/T01, ⚖ I7): the tenant query filter is applied below, to every ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new ShortLetTaxDecisionConfiguration());
 
         // The invoices of the retired agency-to-owner generator stay readable and are never called compliant (E06/F01/US02/T05): the rows that exist
         // when the column is added get the legacy code.
