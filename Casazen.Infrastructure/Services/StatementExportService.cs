@@ -80,6 +80,29 @@ public sealed class StatementExportService(
         return new StatementExportFile(pdfRenderer.Render(F24Documents.Pdf(record, orgName, texts, language)), PdfContentType, name);
     }
 
+    public async Task<StatementExportFile> ExportCuProspectAsync(Guid orgId, int year, Guid ownerId, string language, CancellationToken ct = default)
+    {
+        var stored = await WithholdingService.ReadCuDatasetAsync(db, orgId, year, ct);
+        var record = stored.Records.FirstOrDefault(r => r.OwnerId == ownerId)
+            ?? throw new NotFoundException($"The annual data of {year} has no record for owner {ownerId}")
+            {
+                Code = TaxReportingErrors.CuRecordNotFound,
+                MessageKey = "TaxCuRecordNotFound",
+            };
+        var orgName = await db.Orgs
+            .AsNoTracking()
+            .Where(o => o.Id == orgId)
+            .Select(o => o.Name)
+            .FirstOrDefaultAsync(ct) ?? string.Empty;
+
+        // The log carries the ids and the year: never the name, the fiscal code or the address of the recipient.
+        logger.LogInformation("Draft CU of owner {OwnerId} for {Year} exported as PDF", ownerId, year);
+        return new StatementExportFile(
+            pdfRenderer.Render(TaxReportingExports.CuProspect(year, record, stored.Dataset.FilingState, orgName, texts, language)),
+            PdfContentType,
+            TaxReportingExports.CuProspectFileName(year, ownerId));
+    }
+
     /// <summary>
     /// What the files print besides the statement, as stored: the number of the owner's current statement version of the month once approved or
     /// published (E06/F05/US02/T02), and the wire transfers that paid the statement with their state. Nothing is computed here.

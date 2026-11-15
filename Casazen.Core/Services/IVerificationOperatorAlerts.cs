@@ -48,9 +48,15 @@ public static class VerificationAlertReasons
     /// <summary>The guest who must be verified is a minor: no biometric processing (ADR-013-R9).</summary>
     public const string MinorExcluded = "minor_excluded";
 
+    /// <summary>
+    /// The registry of the legal texts serves no text of the biometric consent (production serves approved texts only, and none is approved yet, E22/F01/US02/T02):
+    /// the identity step is not offered and an operator verifies.
+    /// </summary>
+    public const string LegalTextNotApproved = "legal_text_not_approved";
+
     /// <summary>Every code.</summary>
     public static IReadOnlyList<string> All { get; } =
-        [Review, AttemptsExhausted, ConsentRefused, TechnicalError, GuestRequest, BiometricsDisabled, MinorExcluded];
+        [Review, AttemptsExhausted, ConsentRefused, TechnicalError, GuestRequest, BiometricsDisabled, MinorExcluded, LegalTextNotApproved];
 
     /// <summary>True for one of <see cref="All"/>.</summary>
     public static bool IsKnown(string? code) => code is not null && All.Contains(code, StringComparer.Ordinal);

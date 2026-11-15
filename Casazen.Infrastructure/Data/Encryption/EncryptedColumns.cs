@@ -211,6 +211,13 @@ public static class EncryptedColumns
     public const string AccountantPackagePurpose = "Casazen.AccountantPackage.Settings";
 
     /// <summary>
+    /// Purpose of the annual tax data of the owners (NF-117, E18/F01/US02/T01): <see cref="TaxReportingDataset.PayloadJson"/>, the Certificazione Unica data of a year with the name, the fiscal code
+    /// and the address of every recipient and the property and the period of every stay. Read to make the exports for the accountant and the view of the owner (its own record only), never searched
+    /// and never logged. Data stored in clear before (the totals of each owner) is read as it is and rewritten at startup. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string TaxReportingDatasetPurpose = "Casazen.TaxReportingDataset";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -452,6 +459,10 @@ public static class EncryptedColumns
         new EncryptedEntity<AccountantPackageSettings>(
             AccountantPackagePurpose,
             nameof(AccountantPackageSettings.AccountantEmail)),
+        // NF-117: the annual tax data of the owners, with the recipients of the Certificazione Unica and their stays (E18/F01/US02/T01). The column is text, it has no length.
+        new EncryptedEntity<TaxReportingDataset>(
+            TaxReportingDatasetPurpose,
+            nameof(TaxReportingDataset.PayloadJson)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

@@ -30,6 +30,9 @@ internal sealed class GuestCheckInSessionConfiguration : IEntityTypeConfiguratio
 
         // E03/F04/US02/T01: the biometric consent (its version), and the checks of the document (flags and a hash, no value read on it).
         entity.Property(s => s.BiometricConsentVersion).HasMaxLength(50);
+
+        // E22/F01/US02/T02: the hash of the reference text of the version of the registry the guest accepted.
+        entity.Property(s => s.BiometricConsentTextHash).HasMaxLength(64);
         entity.Property(s => s.DocumentCheckJson).HasColumnType("jsonb");
     }
 }

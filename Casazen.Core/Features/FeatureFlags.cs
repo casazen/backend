@@ -309,12 +309,16 @@ public static class FeatureFlags
     public const string SdiSubmission = "SdiSubmission";
 
     /// <summary>
-    /// E18/F01/US03/T01 (NF-117, D15): the Italian tax reporting of the owners (the checks of the limit of units and of the company tenant today, the exports of the later
-    /// tasks of epic E18), <b>off by default</b> and turned on only in the test environment until the accountant confirms the ⚖ choices (I6, I7, I8). Off, every endpoint of
-    /// <c>OwnerTaxDecisionsController</c> (<c>api/owner-tax-decisions</c>, <c>api/owners/{id}/tax-checks</c>, <c>api/owners/{id}/external-short-let-units</c>) answers 404 before
-    /// authentication, and the warnings the UI shows are not made: no <c>warnings</c> in the owner readiness, no non-blocking issue on the statement versions, no «Da fare»
-    /// <c>company_tenant_decision</c>. <b>Not behind it, on purpose</b>: the facts of the withholding (<c>IOwnerTaxChecks.TreatmentOfStaysAsync</c>: an owner past the limit is a
-    /// business whatever the screens show; a decision already recorded is followed) and the field <c>coOwnerTaxReporting</c> of the mandate. It needs no variable to start.
+    /// E18/F01/US03/T01 and E18/F01/US02 (NF-117, D15): the Italian tax reporting of the owners (the checks of the limit of units and of the company tenant, and the exports of the
+    /// Certificazione Unica, the 770 and the communication of the short-let contracts, the owner's view of its withholding, and the year-end exports of the tourist tax), <b>off by default</b>
+    /// and turned on only in the test environment until the accountant confirms the ⚖ choices (I6, I7, I8, T2). Off, every endpoint of <c>OwnerTaxDecisionsController</c>
+    /// (<c>api/owner-tax-decisions</c>, <c>api/owners/{id}/tax-checks</c>, <c>api/owners/{id}/external-short-let-units</c>) answers 404 before authentication, and the warnings the UI shows are
+    /// not made: no <c>warnings</c> in the owner readiness, no non-blocking issue on the statement versions, no «Da fare» <c>company_tenant_decision</c>. The same 404 for the new exports of
+    /// <c>WithholdingController</c> (<c>api/withholding/annual/{year}/export</c>, <c>api/withholding/annual/{year}/owners/{id}/pdf</c>, <c>api/withholding/770/{year}/export</c>,
+    /// <c>api/withholding/contracts-communication/{year}/export</c>) and of <c>TouristTaxSummaryController</c> (<c>api/tourist-tax/year-end/{year}/declaration|agent-account|ticino</c>);
+    /// with it off <c>GET api/owner-portal/withholding</c> answers the empty summary it was. <b>Not behind it, on purpose</b>: the facts of the withholding
+    /// (<c>IOwnerTaxChecks.TreatmentOfStaysAsync</c>: an owner past the limit is a business whatever the screens show; a decision already recorded is followed), the field
+    /// <c>coOwnerTaxReporting</c> of the mandate, the annual data and its filing states (<c>api/withholding/annual</c>) and the F24 data. It needs no variable to start.
     /// The frontend reads the key <c>taxReportingExports</c>.
     /// </summary>
     public const string TaxReportingExports = "TaxReportingExports";

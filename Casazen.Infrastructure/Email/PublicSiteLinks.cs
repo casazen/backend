@@ -28,6 +28,17 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     }
 
     /// <summary>
+    /// The door page of a property, the address behind the QR code printed for the door (route <c>/checkin/porta/{doorToken}</c>, E22/F01/US02/T01; the page is a
+    /// frontend task): the guest who arrives types the booking code (or the surname) and the arrival date and is taken to the identity step of its check-in. Only the
+    /// random door token of the property is in the address (<see cref="Core.Entities.PropertyDoorTokens"/>): it says which property the page is about and nothing else.
+    /// </summary>
+    public string DoorCheckIn(string doorToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(doorToken);
+        return Build($"/checkin/porta/{Uri.EscapeDataString(doorToken)}");
+    }
+
+    /// <summary>
     /// Page of the web app where a guest stops the marketing e-mails of an org (route <c>/unsubscribe</c>, DEB-01; the page is a frontend
     /// task). <paramref name="signedQuery"/> (<c>orgId</c>, <c>emailHash</c>, <c>expiresAt</c>, <c>signature</c>, built by
     /// <see cref="MarketingUnsubscribeLinks"/>) travels in the <b>fragment</b>, which a browser never sends to a server, so it is in no

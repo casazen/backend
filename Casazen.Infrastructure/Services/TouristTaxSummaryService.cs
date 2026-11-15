@@ -27,7 +27,7 @@ namespace Casazen.Infrastructure.Services;
 /// reach, and a balance or a status worked out against them would be false. It cannot record, delete or open one (403). The properties are
 /// looked up with <c>IgnoreQueryFilters([SoftDeleteQueryFilter])</c>, as the report does: the history of a deleted property stays reachable.</para>
 /// </remarks>
-public sealed class TouristTaxSummaryService(
+public sealed partial class TouristTaxSummaryService(
     AppDbContext db,
     IFiscalReportingService fiscalReporting,
     IFileStorage storage,
@@ -42,6 +42,15 @@ public sealed class TouristTaxSummaryService(
         HostScope scope,
         FiscalReportPeriod period,
         CancellationToken cancellationToken = default)
+    {
+        return (await BuildSummaryAsync(scope, period, cancellationToken)).Summary;
+    }
+
+    /// <summary>
+    /// The summary of the period with the report of the fiscal area it was read from and the reach of the scope (the year-end exports of E18/F01/US02/T03 read the stays of the same report, so what they
+    /// count is what the summary counted, never a second reading).
+    /// </summary>
+    private async Task<SummaryBuild> BuildSummaryAsync(HostScope scope, FiscalReportPeriod period, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(period);
@@ -89,7 +98,7 @@ public sealed class TouristTaxSummaryService(
         var owedCents = builders.Sum(c => c.OwedCents);
         var paidCents = builders.Sum(c => c.PaidCents);
 
-        return new TouristTaxSummary(
+        var summary = new TouristTaxSummary(
             period,
             summaries,
             new TouristTaxSummaryTotals(
@@ -101,6 +110,7 @@ public sealed class TouristTaxSummaryService(
                 paymentsHidden ? null : TouristTaxSummaryRules.FromCents(paidCents),
                 paymentsHidden ? null : TouristTaxSummaryRules.FromCents(owedCents - paidCents)),
             paymentsHidden);
+        return new SummaryBuild(summary, report, reach);
     }
 
     public async Task<TouristTaxRemittanceLine> RecordRemittanceAsync(
@@ -396,6 +406,9 @@ public sealed class TouristTaxSummaryService(
 
     /// <summary>What a scope reaches: the comuni of its properties in Italy (as keys) and the ids of its properties in another country.</summary>
     private sealed record Reach(HashSet<string> ComuneKeys, HashSet<Guid> ForeignPropertyIds);
+
+    /// <summary>A summary with the report it was read from and the reach it was cut with.</summary>
+    private sealed record SummaryBuild(TouristTaxSummary Summary, TouristTaxReport Report, Reach Reach);
 
     /// <summary>A receipt that was read and checked: its bytes, positioned at the start, and what it is.</summary>
     private sealed class ReceiptContent(MemoryStream content, TouristTaxReceiptKind kind) : IAsyncDisposable

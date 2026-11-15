@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -432,24 +433,129 @@ public sealed class OwnerPortalService(
             MessageKey = OwnerIssuedDocumentsErrors.NotFoundMessageKey,
         };
 
+    // ---------------------------------------------------------------- E18/F01/US02/T01: the withholding and the Certificazione Unica of the owner
+
     /// <summary>
-    /// Gets withholding tax summary for the owner (ADR-011-R2).
-    /// Returns empty summary for now (withholding feature not yet implemented).
+    /// The withholding of the owner in the year (ADR-011-R2, E18/F01/US02/T01). <b>Only the owner profiles of the claim</b>: the evidence and the annual data are read by the owner profiles the
+    /// caller holds <c>accounting.read</c> on (<see cref="AccountingAccessAsync"/>), each predicate names them and the tenant filter of the caller (it has no org of its own) is ignored on purpose,
+    /// so another owner's withholding, or a co-owner's, is never read. The totals are the evidence's, to the cent: the pieces of a payout (<see cref="TaxEvidenceLines"/>) add up to it. The
+    /// annual data of the year is shown once reviewed, and only the record of the profile (the totals: never the recipients, the stays or the co-owners it adds up).
     /// </summary>
-    public Task<OwnerPortalWithholdingInfo> GetOwnerWithholdingAsync(
+    public async Task<OwnerPortalWithholdingInfo> GetOwnerWithholdingAsync(
         Guid ownerUserId,
         int? year = null,
         CancellationToken cancellationToken = default)
     {
-        var currentYear = year ?? timeProvider.GetUtcNow().Year;
+        var taxYear = year ?? timeProvider.TodayInRomeAsDateOnly().Year;
+        var summary = new OwnerPortalWithholdingInfo { Year = taxYear };
 
-        // Placeholder: withholding feature not yet implemented
-        return Task.FromResult(new OwnerPortalWithholdingInfo
+        // Both flags off (the production default): the empty summary it was.
+        if (!Features().IsEnabled(FeatureFlags.TaxReportingExports) || await AccountingAccessAsync(ownerUserId, cancellationToken) is not { } access)
+            return summary;
+
+        var grants = access.With(OwnerPortalPermission.AccountingRead);
+        var ownerIds = grants.Select(g => g.PropertyOwnerId).Distinct().ToList();
+        var evidence = (await db.TaxObligationEvidence
+                .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+                .AsNoTracking()
+                .Where(e => e.Decision == TaxDecision.Applicable && e.PeriodYear == taxYear && ownerIds.Contains(e.PropertyOwnerId))
+                .Where(OwnerPayoutService.IsItalianRule)
+                .OrderBy(e => e.CreatedAt)
+                .ThenBy(e => e.Id)
+                .ToListAsync(cancellationToken))
+            .Where(e => access.Covers(e.OrgId, e.PropertyOwnerId, OwnerPortalPermission.AccountingRead))
+            .ToList();
+        var lines = evidence.SelectMany(TaxEvidenceLines.Of).ToList();
+
+        var orgIds = grants.Select(g => g.OrgId).Distinct().ToList();
+        var agencies = await AgencyNamesAsync(orgIds, cancellationToken);
+        var propertyIds = lines.Where(l => l.PropertyId is not null).Select(l => l.PropertyId!.Value).Distinct().ToList();
+        var propertyNames = new Dictionary<Guid, string>();
+        if (propertyIds.Count > 0)
         {
-            Year = currentYear,
-            TotalWithheld = 0m,
-            Details = []
-        });
+            propertyNames = await db.Set<Property>()
+                .IgnoreQueryFilters([AppDbContext.TenantQueryFilter, AppDbContext.SoftDeleteQueryFilter])
+                .AsNoTracking()
+                .Where(p => propertyIds.Contains(p.Id))
+                .Select(p => new { p.Id, p.Name })
+                .ToDictionaryAsync(p => p.Id, p => p.Name, cancellationToken);
+        }
+
+        summary.TotalWithheld = evidence.Sum(e => e.Amount ?? 0m);
+        summary.Details =
+        [
+            .. lines
+                .GroupBy(l => (l.OrgId, l.Month, l.PropertyId))
+                .Select(g => new OwnerPortalWithholdingDetailInfo
+                {
+                    AgencyId = g.Key.OrgId,
+                    AgencyName = agencies.GetValueOrDefault(g.Key.OrgId, string.Empty),
+                    PropertyId = g.Key.PropertyId ?? Guid.Empty,
+                    PropertyName = g.Key.PropertyId is { } id ? propertyNames.GetValueOrDefault(id, string.Empty) : string.Empty,
+                    Month = g.Key.Month,
+                    GrossBase = g.Sum(l => l.GrossBase),
+                    AmountWithheld = g.Sum(l => l.Withheld),
+                })
+                .Where(d => d.GrossBase != 0m || d.AmountWithheld != 0m)
+                .OrderBy(d => d.Month)
+                .ThenBy(d => d.AgencyName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(d => d.PropertyName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(d => d.PropertyId),
+        ];
+        summary.CuStatements = await CuStatementsAsync(grants, taxYear, agencies, cancellationToken);
+        return summary;
+    }
+
+    /// <summary>
+    /// The Certificazione Unica of the year of the owner profiles of <paramref name="grants"/>, from the annual data of each agency once it is reviewed (reviewed, submitted or accepted: the
+    /// data still generated can be built again, and a rejected one is not the owner's to read). Only the record of each profile, as the totals.
+    /// </summary>
+    private async Task<IReadOnlyList<OwnerPortalCuInfo>> CuStatementsAsync(
+        IReadOnlyList<OwnerPortalGrant> grants,
+        int year,
+        IReadOnlyDictionary<Guid, string> agencies,
+        CancellationToken cancellationToken)
+    {
+        var orgIds = grants.Select(g => g.OrgId).Distinct().ToList();
+        var datasets = await db.TaxReportingDatasets
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(d => d.Kind == TaxReportingDataset.CertificazioneUnica && d.Year == year && orgIds.Contains(d.OrgId))
+            .ToListAsync(cancellationToken);
+
+        var statements = new List<OwnerPortalCuInfo>();
+        foreach (var dataset in datasets.Where(d => d.FilingState is TaxFilingState.Reviewed or TaxFilingState.Submitted or TaxFilingState.Accepted))
+        {
+            IReadOnlyList<CuRecord> records;
+            try
+            {
+                records = CuDatasetPayload.Parse(dataset.PayloadJson);
+            }
+            catch (JsonException)
+            {
+                // A damaged payload shows nothing to the owner; the agency's own exports fail loudly on it.
+                continue;
+            }
+
+            foreach (var ownerId in grants.Where(g => g.OrgId == dataset.OrgId).Select(g => g.PropertyOwnerId).Distinct())
+            {
+                if (records.FirstOrDefault(r => r.OwnerId == ownerId) is { } record)
+                {
+                    statements.Add(new OwnerPortalCuInfo(
+                        dataset.OrgId,
+                        agencies.GetValueOrDefault(dataset.OrgId, string.Empty),
+                        dataset.Year,
+                        dataset.FilingState,
+                        dataset.GeneratedAt,
+                        record.GrossBase,
+                        record.Withheld,
+                        record.TaxCode,
+                        record.Attribution));
+                }
+            }
+        }
+
+        return statements.OrderBy(s => s.AgencyName, StringComparer.OrdinalIgnoreCase).ThenBy(s => s.AgencyId).ToList();
     }
 
     /// <summary>

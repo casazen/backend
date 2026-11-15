@@ -20,9 +20,10 @@ public interface IIdentityVerificationFlowService
 
     /// <summary>
     /// Records the guest's answer to the biometric consent: <paramref name="consentGiven"/> true records the time and the
-    /// <paramref name="consentVersion"/> (required, at most <see cref="BiometricConsentRules.VersionMaxLength"/> characters); false records the
-    /// refusal and hands the verification to an operator, who is alerted at once. When the biometric verification is not offered (switched off
-    /// for the organization, or the guest is a minor) nothing is recorded and the operator takes over.
+    /// <paramref name="consentVersion"/> (required, at most <see cref="BiometricConsentRules.VersionMaxLength"/> characters, and the one the registry of the legal texts
+    /// serves now, <see cref="ICheckInLegalTexts"/>: any other string is <see cref="BiometricConsentStatus.VersionUnknown"/>, E22/F01/US02/T02) together with the hash of that text;
+    /// false records the refusal and hands the verification to an operator, who is alerted at once. When the biometric verification is not offered (switched off
+    /// for the organization, the guest is a minor, or the registry serves no text of the consent: <c>legal_text_not_approved</c>) nothing is recorded and the operator takes over.
     /// </summary>
     Task<BiometricConsentResult> RecordConsentAsync(GuestCheckInSession session, bool consentGiven, string? consentVersion, CancellationToken ct);
 
@@ -189,6 +190,12 @@ public enum BiometricConsentStatus
 
     /// <summary>A consent without its version: nothing recorded.</summary>
     VersionRequired = 4,
+
+    /// <summary>
+    /// A consent for a version that the registry of the legal texts does not serve now (a free string, a version of the past, a draft in production): nothing recorded
+    /// (E22/F01/US02/T02, 422 <c>biometric_consent_version_unknown</c>). Never returned while the flow has no registry.
+    /// </summary>
+    VersionUnknown = 5,
 }
 
 /// <summary>The answer to the consent and the state after it.</summary>

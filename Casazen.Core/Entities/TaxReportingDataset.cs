@@ -47,7 +47,11 @@ public class TaxReportingDataset : ITenantOwned
     [MaxLength(HashLength)]
     public string EvidenceSha256 { get; set; } = string.Empty;
 
-    /// <summary>The data per owner (JSON): owner id, gross base, withheld, evidence count.</summary>
+    /// <summary>
+    /// The data per recipient (JSON, <see cref="Casazen.Core.Services.CuDatasetPayload"/>): owner id, gross base, withheld and evidence count (what it always held), and since E18/F01/US02/T01
+    /// the recipient (name, fiscal code, address), the properties and the stays. <b>Encrypted at rest</b> (<c>EncryptedColumns.TaxReportingDatasetPurpose</c>, no length on the column); the API of the
+    /// annual data answers only the totals of each owner (<see cref="Casazen.Core.Services.CuDatasetPayload.TotalsJson"/>).
+    /// </summary>
     [Required]
     public string PayloadJson { get; set; } = "[]";
 
