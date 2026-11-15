@@ -6767,6 +6767,16 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<bool>("AutoSendGuestsToOctorate")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("AutoSendGuestsToOctorateChangedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AutoSendGuestsToOctorateChangedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
                     b.Property<string>("BillingCountry")
                         .HasMaxLength(2)
                         .HasColumnType("character varying(2)");
@@ -14889,6 +14899,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("ErrorCode")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ErrorFields")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("OctorateGuestId")
                         .HasMaxLength(100)

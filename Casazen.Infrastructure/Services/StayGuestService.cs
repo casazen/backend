@@ -1,4 +1,6 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -17,7 +19,8 @@ namespace Casazen.Infrastructure.Services;
 public class StayGuestService(
     AppDbContext db,
     IAlloggiatiCodeTableService codeTables,
-    TimeProvider? timeProvider = null) : IStayGuestService
+    TimeProvider? timeProvider = null,
+    IDomainEventRecorder? domainEvents = null) : IStayGuestService
 {
     /// <summary>Longest name stored for places, citizenship and document labels.</summary>
     public const int MaxLabelLength = 100;
@@ -123,6 +126,15 @@ public class StayGuestService(
         }
 
         db.StayGuests.RemoveRange(existing.Where(s => s.Position >= candidates.Count));
+
+        // E20/F01/US01/T01: the guests were saved. The event goes into the outbox in the same save as the rows (ids and a word, never a guest's data), so
+        // an org that lets CasaZen write the guests to the channel manager on their own is told, and a failed save leaves no event. The org is the
+        // booking's: the guest portal has no authenticated request to take it from.
+        domainEvents?.Record(
+            DomainEventType.StayGuestsChanged,
+            booking.Id,
+            new StayGuestsChangedPayload(booking.Id, booking.PropertyId, hostAuthor ? StayGuestsChangedAuthors.Host : StayGuestsChangedAuthors.Guest),
+            orgId: booking.OrgId);
 
         if (save)
             await db.SaveChangesAsync(cancellationToken);
