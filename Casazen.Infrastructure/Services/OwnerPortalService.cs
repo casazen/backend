@@ -25,13 +25,15 @@ namespace Casazen.Infrastructure.Services;
 /// </param>
 /// <param name="accessResolver">What the caller reaches now (its ownerships and the permissions a delegation gave): who may read the accounting.</param>
 /// <param name="statementDocuments">The statements as the PDF has them, the stored PDF and the PDF of an invoice.</param>
+/// <param name="issuedDocuments">The documents CasaZen issued in the name of the owner: the list, their PDF and XML and the ZIP for the owner's accountant (E17/F02/US01/T01); optional for the same reason as <paramref name="dashboard"/>.</param>
 public sealed class OwnerPortalService(
     AppDbContext db,
     TimeProvider timeProvider,
     IHostDashboardService? dashboard = null,
     IFeatureFlags? featureFlags = null,
     IOwnerPortalAccessResolver? accessResolver = null,
-    IOwnerStatementDocuments? statementDocuments = null) : IOwnerPortalService
+    IOwnerStatementDocuments? statementDocuments = null,
+    IOwnerIssuedDocumentsExport? issuedDocuments = null) : IOwnerPortalService
 {
     /// <summary>
     /// Gets properties owned by the owner with occupancy and revenue summaries (ADR-011-R2, ADR-011-R8).
@@ -229,6 +231,92 @@ public sealed class OwnerPortalService(
         return new OwnerFileContent(new MemoryStream(file.Content, writable: false), file.FileName, file.ContentType);
     }
 
+    // ---------------------------------------------------------------- E17/F02/US01/T01: the documents issued in the name of the owner
+
+    public async Task<IReadOnlyList<OwnerPortalIssuedDocumentInfo>> GetOwnerIssuedDocumentsAsync(
+        Guid ownerUserId,
+        AccountantPackagePeriod? period = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (await IssuedDocumentsAccessAsync(ownerUserId, cancellationToken) is not { } access)
+            return [];
+
+        // Only the documents issued on the issuer profile of an owner profile the caller holds accounting.read on: the agency's own documents and the ones of another owner are not there.
+        var rows = await IssuedDocuments().ListAsync(OwnersOf(access), period, OwnerCollaborationRules.MaxList, cancellationToken);
+        var agencies = await AgencyNamesAsync(rows.Select(r => r.OrgId), cancellationToken);
+
+        return
+        [
+            .. rows.Select(r => new OwnerPortalIssuedDocumentInfo(
+                r.DocumentId,
+                r.OrgId,
+                agencies.GetValueOrDefault(r.OrgId, string.Empty),
+                r.Number,
+                r.IssueDate,
+                r.Kind,
+                r.Total,
+                r.Currency,
+                r.SdiStatus,
+                r.HasXml)),
+        ];
+    }
+
+    public async Task<OwnerFileContent> OpenOwnerIssuedDocumentPdfAsync(
+        Guid ownerUserId,
+        Guid documentId,
+        string? language = null,
+        CancellationToken cancellationToken = default)
+    {
+        // One 404 for a document that is not the caller's, of another owner, the agency's, not issued or missing, and with a flag off.
+        var access = await IssuedDocumentsAccessAsync(ownerUserId, cancellationToken) ?? throw IssuedDocumentNotFound(documentId);
+        var file = await IssuedDocuments().GetPdfAsync(OwnersOf(access), documentId, language, cancellationToken) ?? throw IssuedDocumentNotFound(documentId);
+        return new OwnerFileContent(new MemoryStream(file.Content, writable: false), file.FileName, file.ContentType);
+    }
+
+    public async Task<OwnerFileContent> OpenOwnerIssuedDocumentXmlAsync(
+        Guid ownerUserId,
+        Guid documentId,
+        CancellationToken cancellationToken = default)
+    {
+        var access = await IssuedDocumentsAccessAsync(ownerUserId, cancellationToken) ?? throw IssuedDocumentNotFound(documentId);
+        var file = await IssuedDocuments().GetXmlAsync(OwnersOf(access), documentId, cancellationToken) ?? throw IssuedDocumentNotFound(documentId);
+        return new OwnerFileContent(new MemoryStream(file.Content, writable: false), file.FileName, file.ContentType);
+    }
+
+    public async Task<AccountantPackageResult> ExportOwnerIssuedDocumentsAsync(
+        Guid ownerUserId,
+        AccountantPackagePeriod period,
+        Stream destination,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(period);
+        ArgumentNullException.ThrowIfNull(destination);
+
+        var access = await IssuedDocumentsAccessAsync(ownerUserId, cancellationToken)
+            ?? throw new NotFoundException($"Nothing to export for owner user {ownerUserId}")
+            {
+                Code = OwnerIssuedDocumentsErrors.NotAvailable,
+                MessageKey = OwnerIssuedDocumentsErrors.NotAvailableMessageKey,
+            };
+        return await IssuedDocuments().BuildAsync(OwnersOf(access), period, destination, cancellationToken);
+    }
+
+    /// <summary>
+    /// What the caller reads of the documents issued in the name of its owners: the accounting access (<see cref="AccountingAccessAsync"/>: the agency plan, an ownership in force,
+    /// <c>accounting.read</c>), and <c>null</c> too while <c>Features:FiscalDocumentIssuance</c> is off: with either flag off the lists stay empty and the files are not there.
+    /// </summary>
+    private async Task<OwnerPortalAccess?> IssuedDocumentsAccessAsync(Guid ownerUserId, CancellationToken cancellationToken)
+    {
+        if (!Features().IsEnabled(FeatureFlags.FiscalDocumentIssuance))
+            return null;
+
+        return await AccountingAccessAsync(ownerUserId, cancellationToken);
+    }
+
+    /// <summary>The owner profiles the caller holds <c>accounting.read</c> on, each of an agency: the owners whose documents it reads (never more than the grants say).</summary>
+    private static IReadOnlyList<OwnerIssuedDocumentsOwner> OwnersOf(OwnerPortalAccess access) =>
+        [.. access.With(OwnerPortalPermission.AccountingRead).Select(g => new OwnerIssuedDocumentsOwner(g.OrgId, g.PropertyOwnerId)).Distinct()];
+
     /// <summary>
     /// What the caller reads of the accounting. <c>null</c> when there is nothing to show: <c>Features:AgencyTier</c> is off (the lists stay empty as they were), or the
     /// caller has no ownership in force and no delegation. A caller that has some and holds <c>accounting.read</c> on none of them (a delegated contact the owner did not
@@ -320,6 +408,9 @@ public sealed class OwnerPortalService(
     private IOwnerStatementDocuments StatementFiles() =>
         statementDocuments ?? throw new InvalidOperationException("The owner portal accounting needs the statement files, which the dependency injection provides.");
 
+    private IOwnerIssuedDocumentsExport IssuedDocuments() =>
+        issuedDocuments ?? throw new InvalidOperationException("The documents issued in the name of the owner need their export service, which the dependency injection provides.");
+
     private static NotFoundException StatementNotFound(Guid statementId) =>
         new($"Owner statement version {statementId} was not found")
         {
@@ -332,6 +423,13 @@ public sealed class OwnerPortalService(
         {
             Code = OwnerStatementFileErrors.InvoiceNotFound,
             MessageKey = OwnerStatementFileErrors.InvoiceNotFoundMessageKey,
+        };
+
+    private static NotFoundException IssuedDocumentNotFound(Guid documentId) =>
+        new($"Owner issued document {documentId} was not found")
+        {
+            Code = OwnerIssuedDocumentsErrors.NotFound,
+            MessageKey = OwnerIssuedDocumentsErrors.NotFoundMessageKey,
         };
 
     /// <summary>
