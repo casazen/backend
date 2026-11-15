@@ -150,6 +150,7 @@ public sealed partial class FiscalDocumentService(
             stale.Status = FiscalDocumentStatus.Discarded;
             stale.UpdatedAt = UtcNow;
             await db.SaveChangesAsync(ct);
+            await CloseReviewTodoAsync(stale.OrgId, stale.Id, ct);
             logger.LogInformation("Draft {DocumentId} of booking {BookingId} discarded: the plan of the booking has no such document any more", stale.Id, booking.Id);
         }
 
@@ -809,6 +810,7 @@ public sealed partial class FiscalDocumentService(
             draft.Status = FiscalDocumentStatus.Discarded;
             draft.UpdatedAt = UtcNow;
             await db.SaveChangesAsync(ct);
+            await CloseReviewTodoAsync(draft.OrgId, draft.Id, ct);
             logger.LogInformation("Draft {DocumentId} of booking {BookingId} discarded: the plan of the booking has no such document any more", draft.Id, booking.Id);
             return draft;
         }

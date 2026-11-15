@@ -97,6 +97,8 @@ public sealed partial class FiscalDocumentService
             draft.Status = FiscalDocumentStatus.Discarded;
             draft.UpdatedAt = UtcNow;
             await db.SaveChangesAsync(ct);
+            // The «To do» that told the host the booking changed under this draft (it was kept while money was collected) has nothing left to look at: it is done with the draft (FIX/RES-DOCS).
+            await CloseReviewTodoAsync(draft.OrgId, draft.Id, ct);
             plan.Discarded++;
             logger.LogInformation("Draft {DocumentId} of booking {BookingId} discarded: the booking is no longer active ({Change})", draft.Id, booking.Id, change);
             return;
