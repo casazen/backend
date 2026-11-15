@@ -528,7 +528,7 @@ With several co-owners the owner of a V1 account is the one who **signs for the 
 stay are always the same owner's.
 
 **The amounts.** The taxable amount is the sum of the `ChannelFee` lines of the owner ledger of the month (a reversal and the line it reverses cancel out; the drafts only read the ledger,
-so a month the owner accounting has not posted yet has no commissions to invoice), in the currency of the stay
+so a month the owner accounting has not posted yet has no commissions to invoice, and the answer says so: `ledgerPosted` false), in the currency of the stay
 and **in euro only**: a commission in another currency is not converted by a guess, it is reported (`currency_not_supported`). Only the stays that are **active now** are integrated (the one
 definition, `AlloggiatiStatusRules.ActiveBookingStatuses` and no no-show): the owner ledger is posted by hand, so the line of a stay cancelled or marked no-show after the posting is alive until the
 next posting, and the drafts and the issue leave it out as `stay_not_active`. One line for each property
@@ -544,7 +544,8 @@ first issue). Committed: Booking.com B.V. and Airbnb Ireland UC. A channel witho
 in `notDue` with the reason `portal_not_configured` until the accountant gives the legal entity and an entry is added. An entry that is not usable (not a portal, in Italy, without a name,
 VAT number or address) is ignored. Two channels of one legal entity make one TD17 (the key is the country and the VAT number).
 
-**One live document for a holder, a portal and a month.** `POST api/fiscal/self-billing/drafts` makes the drafts of a month, or makes them again from the ledger while they are drafts; an
+**One live document for a holder, a portal and a month.** `POST api/fiscal/self-billing/drafts` makes the drafts of a month that is over (Europe/Rome, as the close of an owner's month: 422 `self_billing_period_not_ended` while it runs, for the issue too, because an issued TD17 is not
+completed afterwards), or makes them again from the ledger while they are drafts; an
 issued TD17 is left alone and the row says `changedSinceIssue` when the ledger of the month now gives another taxable amount (an issued document never changes: correct it with the
 accountant); a draft the ledger no longer supports (its commissions are gone, its holder or portal changed) is discarded (no number). The generation of a month is taken one at a time
 per organization (advisory lock `SelfBilling`, 1_640), so a double click never makes two drafts. The issue (`POST …/{id}/issue`, `{ confirm: true }`) refuses a draft that is not what the
@@ -562,7 +563,7 @@ like every recipient; the SDI code and the PEC are the holder's: where the file 
 |---|---|
 | `GET api/fiscal/self-billing?period=yyyy-MM` | the TD17 of the org (drafts and issued ones), the newest month first: holder, portal, month, deadline, amounts, status, state towards the SDI |
 | `GET api/fiscal/self-billing/{id}` | one TD17 with its lines and, for a draft, `estimatedAmount` |
-| `POST api/fiscal/self-billing/drafts` `{ period }` | the drafts of the month: counts, one row for each TD17 (`created`, `updated`, `already_issued`, `estimatedAmount`, `changedSinceIssue`), `failed` (a holder that needs one and cannot get one: `owner_issuer_missing`, `issuer_profile_incomplete`, with the fields), `notDue` (the commissions left out and why: `portal_not_configured`, `holder_private_person`, `holder_not_italian`, `holder_not_vat_registered`, `currency_not_supported`, `not_a_portal`, `stay_not_found`, `stay_not_active`) |
+| `POST api/fiscal/self-billing/drafts` `{ period }` | the drafts of the month: counts, `ledgerPosted` (the owner ledger has lines for the month), one row for each TD17 (`created`, `updated`, `already_issued`, `estimatedAmount`, `changedSinceIssue`), `failed` (a holder that needs one and cannot get one: `owner_issuer_missing`, `issuer_profile_incomplete`, with the fields), `notDue` (the commissions left out and why: `portal_not_configured`, `holder_private_person`, `holder_not_italian`, `holder_not_vat_registered`, `currency_not_supported`, `not_a_portal`, `stay_not_found`, `stay_not_active`) |
 | `POST api/fiscal/self-billing/{id}/issue` `{ confirm: true, acceptEstimate? }` | the issue, after the confirmation (and the acceptance of the estimate when part of the amount is one) |
 | `DELETE api/fiscal/self-billing/{id}` | the discard of a draft |
 

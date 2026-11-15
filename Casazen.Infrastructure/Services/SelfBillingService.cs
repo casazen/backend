@@ -5,6 +5,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -54,6 +55,7 @@ public sealed class SelfBillingService(
     {
         if (year is < 2000 or > 2100 || month is < 1 or > 12)
             throw new DomainRuleException(SelfBillingErrors.PeriodInvalid, "SelfBillingPeriodInvalid");
+        RequirePeriodOver(year, month);
         RequireConfigured();
 
         // One generation of an organization at a time: two requests (a double click, a retry) never both find «no draft yet» for a holder, a portal and a month.
@@ -134,7 +136,11 @@ public sealed class SelfBillingService(
         logger.LogInformation(
             "Self-billed invoice drafts of org {OrgId} for {Year}-{Month} by {UserId}: {Created} made, {Updated} made again, {Issued} issued already, {Discarded} discarded, {Failed} holders refused, {NotDue} commissions not due, {Ignored} portal entries ignored",
             orgId, year, month, userId, created, updated, alreadyIssued, discarded, plan.Failed.Count, plan.NotDue.Count, options.Value.IgnoredPortalEntries());
-        return new SelfBillingGeneration(year, month, created, updated, alreadyIssued, discarded, outcomes, plan.Failed, plan.NotDue);
+
+        // The drafts only read the ledger, which is posted by hand (the month-end posting of the owner accounting): a month with no line in it has nothing to invoice, and the answer says so
+        // instead of an empty list that reads as «nothing is due».
+        var ledgerPosted = await db.OwnerLedgerEntries.AsNoTracking().AnyAsync(e => e.OrgId == orgId && e.PeriodYear == year && e.PeriodMonth == month, ct);
+        return new SelfBillingGeneration(year, month, created, updated, alreadyIssued, discarded, outcomes, plan.Failed, plan.NotDue, ledgerPosted);
     }
 
     public async Task<IReadOnlyList<SelfBillingRow>> ListAsync(Guid orgId, SelfBillingCriteria criteria, CancellationToken ct = default)
@@ -188,6 +194,7 @@ public sealed class SelfBillingService(
         // drafts of the month are made again first.
         if (draft.PeriodYear is not { } year || draft.PeriodMonth is not { } month)
             throw new DomainConflictException(FiscalDocumentErrors.DraftOutdated, "FiscalDocumentDraftOutdated");
+        RequirePeriodOver(year, month);
 
         var plan = await PlanAsync(orgId, year, month, ct);
         var group = plan.Groups.FirstOrDefault(g => IsDocumentOf(draft, g))
@@ -694,6 +701,17 @@ public sealed class SelfBillingService(
                 .ToDictionaryAsync(p => p.Id, p => p.Name, ct);
 
     // ---------------------------------------------------------------- helpers
+
+    /// <summary>
+    /// The month is over (Europe/Rome, as the close of an owner's month asks): a TD17 integrates the commissions of a whole month and an issued one is not completed afterwards, so neither the
+    /// drafts nor the issue are made while the month runs. 422 <c>self_billing_period_not_ended</c> otherwise.
+    /// </summary>
+    private void RequirePeriodOver(int year, int month)
+    {
+        var last = new DateOnly(year, month, 1).AddMonths(1).AddDays(-1);
+        if (last >= time.TodayInRomeAsDateOnly())
+            throw new DomainRuleException(SelfBillingErrors.PeriodNotEnded, "SelfBillingPeriodNotEnded");
+    }
 
     /// <summary>The settings can make a TD17: a VAT rate above 0 and at most 100, and a portal that can be invoiced. 422 <c>self_billing_not_configured</c> otherwise.</summary>
     private void RequireConfigured()

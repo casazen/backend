@@ -72,7 +72,8 @@ public class SelfBillingController(
     /// <summary>
     /// The drafts of a month (<c>{ period: "yyyy-MM" }</c>) for every holder and portal that needs a TD17: made, or made again, with the counts, one row for each TD17 (with the
     /// part of its amount that is an estimate), the holders that need one and cannot get one yet (<c>failed</c>) and the commissions that are not self-billed (<c>notDue</c>) with the
-    /// reason. 422 <c>self_billing_period_invalid</c>, <c>self_billing_not_configured</c>.
+    /// reason, and <c>ledgerPosted</c> (false: the owner ledger of the month has no line yet, post the month first). 422 <c>self_billing_period_invalid</c>,
+    /// <c>self_billing_period_not_ended</c> (the month is not over), <c>self_billing_not_configured</c>.
     /// </summary>
     [HttpPost("drafts")]
     [ProducesResponseType(typeof(SelfBillingGenerationDto), StatusCodes.Status200OK)]
@@ -95,7 +96,7 @@ public class SelfBillingController(
 
     /// <summary>
     /// The draft issued after the confirmation (<c>{ confirm: true }</c>, else 422 <c>document_confirmation_required</c>): numbered in the series of its holder, with its XML, to be
-    /// sent to the SDI. 404 for a document of another org or one that is not a TD17; 422 <c>document_not_draft</c>, <c>self_billing_not_configured</c>,
+    /// sent to the SDI. 404 for a document of another org or one that is not a TD17; 422 <c>document_not_draft</c>, <c>self_billing_period_not_ended</c>, <c>self_billing_not_configured</c>,
     /// <c>fatturapa_xml_invalid</c>, <c>fatturapa_schema_unavailable</c>, <c>series_too_long</c>; 409 <c>document_draft_outdated</c> (make the drafts of the month again first). When part of the
     /// amount is an estimate (a rule of the agency or the default of the channel: <c>estimatedAmount</c> of <c>GET {id}</c>) the issue needs <c>acceptEstimate: true</c> too, else 422
     /// <c>self_billing_estimate_unconfirmed</c> (with <c>estimatedAmount</c>) and nothing is numbered.

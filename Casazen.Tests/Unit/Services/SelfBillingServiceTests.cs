@@ -329,6 +329,44 @@ public class SelfBillingServiceTests
     }
 
     /// <summary>
+    /// PROOF TEST: money rule. A TD17 integrates the commissions of a whole month and an issued one is not completed afterwards: the month of the clock and the later ones are refused (422) for the
+    /// drafts, and so is the issue while the month runs; the answer of a month that is over says whether its owner ledger holds lines (a month with none has nothing to invoice, and the host is
+    /// told to post it instead of reading «nothing is due»).
+    /// </summary>
+    [Fact]
+    public async Task Td17_AMonthThatIsNotOverIsRefused_AndTheAnswerSaysIfTheLedgerIsPosted_Test()
+    {
+        await using var rig = await SelfBillingRig.CreateAsync();
+        await rig.StandardMonthAsync();
+
+        // The clock is at 12 November 2026: November and the months after it are not over, nothing is made.
+        foreach (var (year, month) in new[] { (2026, 11), (2026, 12), (2027, 1) })
+        {
+            var refused = await Assert.ThrowsAsync<DomainRuleException>(() => rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, year, month, null));
+            Assert.Equal(SelfBillingErrors.PeriodNotEnded, refused.Code);
+        }
+
+        Assert.Empty(await rig.Db.FiscalDocuments.AsNoTracking().ToListAsync());
+
+        // A month that is over is made, and the answer says whether the ledger holds lines for it: October does, August has none.
+        var october = await rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, null);
+        Assert.True(october.LedgerPosted);
+        Assert.Equal(2, october.Created);
+        var august = await rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 8, null);
+        Assert.False(august.LedgerPosted);
+        Assert.Empty(august.Drafts);
+
+        // The month is over the day after its last day (Europe/Rome): on 31 October the draft of October is not issued, the day after it is.
+        var id = october.Drafts.First().DocumentId;
+        rig.Clock.SetUtcNow(new DateTimeOffset(2026, 10, 31, 12, 0, 0, TimeSpan.Zero));
+        var early = await Assert.ThrowsAsync<DomainRuleException>(() => rig.Service.IssueAsync(rig.OrgId, id, confirm: true, null));
+        Assert.Equal(SelfBillingErrors.PeriodNotEnded, early.Code);
+        Assert.Empty(await rig.Db.FiscalNumberSequences.AsNoTracking().ToListAsync());
+        rig.Clock.SetUtcNow(new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.Zero));
+        Assert.Equal(FiscalDocumentStatus.Issued, (await rig.Service.IssueAsync(rig.OrgId, id, confirm: true, null)).Document.Status);
+    }
+
+    /// <summary>
     /// PROOF TEST: permission (tenant) rule. A TD17 of another organization, or a document that is not a TD17, is not found (404): nothing is read, issued or discarded; the list of
     /// another organization is empty; and the endpoints of the guest documents refuse to make again, issue, discard or credit a TD17 (422 <c>document_self_billing</c>).
     /// </summary>

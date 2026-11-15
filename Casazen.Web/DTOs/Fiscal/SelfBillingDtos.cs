@@ -103,7 +103,8 @@ public sealed record GenerateSelfBillingRequest
 
 /// <summary>
 /// What the drafts of a month did: how many were made, made again, left alone because they were issued already and dropped because the ledger no longer supports them, one row for
-/// each TD17 (with what it is and the estimated part of its amount), the holders that need one and cannot get one yet, and the commissions that are not self-billed with the reason.
+/// each TD17 (with what it is and the estimated part of its amount), the holders that need one and cannot get one yet, the commissions that are not self-billed with the reason, and whether
+/// the owner ledger of the month is posted (<see cref="LedgerPosted"/> false: the drafts read the ledger, so the month has to be posted by the owner accounting first).
 /// </summary>
 public sealed record SelfBillingGenerationDto(
     int Year,
@@ -114,7 +115,8 @@ public sealed record SelfBillingGenerationDto(
     int Discarded,
     IReadOnlyList<SelfBillingOutcomeDto> Drafts,
     IReadOnlyList<SelfBillingFailureDto> Failed,
-    IReadOnlyList<SelfBillingNotDueDto> NotDue)
+    IReadOnlyList<SelfBillingNotDueDto> NotDue,
+    bool LedgerPosted)
 {
     public static SelfBillingGenerationDto From(SelfBillingGeneration generation)
     {
@@ -128,7 +130,8 @@ public sealed record SelfBillingGenerationDto(
             generation.Discarded,
             generation.Drafts.Select(d => new SelfBillingOutcomeDto(d.DocumentId, d.HolderKind.ToString(), d.HolderOwnerId, d.PortalName, d.Result, d.TaxableBase, d.EstimatedAmount, d.ChangedSinceIssue)).ToList(),
             generation.Failed.Select(f => new SelfBillingFailureDto(f.HolderKind.ToString(), f.HolderOwnerId, f.PortalName, f.Code, f.Fields)).ToList(),
-            generation.NotDue.Select(n => new SelfBillingNotDueDto(n.Reason, n.Channel, n.Stays, n.Amount, n.Currency)).ToList());
+            generation.NotDue.Select(n => new SelfBillingNotDueDto(n.Reason, n.Channel, n.Stays, n.Amount, n.Currency)).ToList(),
+            generation.LedgerPosted);
     }
 }
 

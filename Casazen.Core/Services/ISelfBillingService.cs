@@ -37,7 +37,8 @@ public interface ISelfBillingService
     /// <summary>
     /// The drafts of a month for every holder and portal that needs one: made, or made again when a draft exists, left alone when it is issued (reported with
     /// <see cref="SelfBillingOutcome.ChangedSinceIssue"/>). The commissions that cannot be self-billed are in the answer with the reason (<see cref="SelfBillingNotDue"/>,
-    /// <see cref="SelfBillingFailure"/>). 422 <c>self_billing_period_invalid</c>, <c>self_billing_not_configured</c> (no VAT rate, no portal).
+    /// <see cref="SelfBillingFailure"/>). 422 <c>self_billing_period_invalid</c>, <c>self_billing_period_not_ended</c> (the month is not over), <c>self_billing_not_configured</c> (no VAT
+    /// rate, no portal). The answer says whether the owner ledger of the month is posted (<see cref="SelfBillingGeneration.LedgerPosted"/>).
     /// </summary>
     Task<SelfBillingGeneration> CreateDraftsForPeriodAsync(Guid orgId, int year, int month, string? userId, CancellationToken ct = default);
 
@@ -110,6 +111,10 @@ public sealed record SelfBillingDetail(FiscalDocument Document, SelfBillingRow R
 /// <param name="Drafts">One row for each holder and portal that needs a TD17 and could get one: the document, what was done to it, its amounts.</param>
 /// <param name="Failed">The holders that need a TD17 and could not get one now, with the code of the reason (an incomplete issuer profile).</param>
 /// <param name="NotDue">The commissions of the month that are not self-billed, with the reason: they tell the host what was left out and why.</param>
+/// <param name="LedgerPosted">
+/// The owner ledger has lines for the month (the month-end posting of the owner accounting was run). The drafts only read the ledger: without it a month has nothing to invoice, and the host
+/// is told to post the month first instead of reading an empty answer as «nothing is due».
+/// </param>
 public sealed record SelfBillingGeneration(
     int Year,
     int Month,
@@ -119,7 +124,8 @@ public sealed record SelfBillingGeneration(
     int Discarded,
     IReadOnlyList<SelfBillingOutcome> Drafts,
     IReadOnlyList<SelfBillingFailure> Failed,
-    IReadOnlyList<SelfBillingNotDue> NotDue);
+    IReadOnlyList<SelfBillingNotDue> NotDue,
+    bool LedgerPosted);
 
 /// <summary>One TD17 of a generation.</summary>
 /// <param name="Result">One of <see cref="SelfBillingResults"/>.</param>
@@ -185,6 +191,12 @@ public static class SelfBillingErrors
 {
     /// <summary>422: the month asked for is not a month.</summary>
     public const string PeriodInvalid = "self_billing_period_invalid";
+
+    /// <summary>
+    /// 422: the month is not over (Europe/Rome): a TD17 integrates the commissions of a whole month and an issued one is not completed afterwards, so the drafts are made, and issued,
+    /// once the month has ended (as the close of an owner's month is).
+    /// </summary>
+    public const string PeriodNotEnded = "self_billing_period_not_ended";
 
     /// <summary>422: the settings cannot make a TD17: the VAT rate is not above 0 and at most 100, or no portal is configured.</summary>
     public const string NotConfigured = "self_billing_not_configured";
