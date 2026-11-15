@@ -351,18 +351,19 @@ public class ComplianceArchiveNpgsqlTranslationTests
 
     /// <summary>
     /// PROOF TEST: data and permission rule (shape of the statements, E20/F02/US01/T01). The flats a receipt covers are checked in ONE statement of the org and the
-    /// reach of the caller (the ids as one array, not a query for each flat), and the stays the receipt proves are counted by the database, flat by flat, from the one
-    /// definition of a stay that owes the communication: of the org, in the reach, in an active status with no no-show mark, arrived within the Europe/Rome day.
+    /// reach of the caller (the ids as one array, not a query for each flat), and the stays the receipt may prove are read by the database, as one statement, from the one
+    /// definition of a stay that owes the communication: of the org, in the reach, in an active status with no no-show mark, arrived within the Europe/Rome day. Which of them
+    /// the receipt turns green is the verdict of the traffic light (the state engine, asked once for all of them).
     /// </summary>
     [Fact]
-    public async Task ComplianceArchive_TheCoverageOfSeveralFlats_IsOneStatementOfTheOrgAndTheReach_AndTheStaysAreCountedInSql_Test()
+    public async Task ComplianceArchive_TheCoverageOfSeveralFlats_IsOneStatementOfTheOrgAndTheReach_AndTheStaysAreReadInSql_Test()
     {
         var other = OtherPropertyId;
         DataTable? TwoFlats(string sql)
         {
-            // The count of the stays reads the flats in a subquery too: what is read first (FROM) decides what the statement is.
+            // The read of the stays reads the flats in a subquery too: what is read first (FROM) decides what the statement is.
             if (Regex.IsMatch(sql, "FROM \"Bookings\"", RegexOptions.IgnoreCase))
-                return Table([("PropertyId", typeof(Guid)), ("Stays", typeof(int))], PropertyId, 2);
+                return Table([("Id", typeof(Guid)), ("PropertyId", typeof(Guid))], BookingId, PropertyId);
 
             if (Regex.IsMatch(sql, "FROM \"Properties\"", RegexOptions.IgnoreCase))
             {
@@ -374,10 +375,16 @@ public class ComplianceArchiveNpgsqlTranslationTests
             return Rows(sql);
         }
 
-        var (preview, previewStatements) = Build(TwoFlats);
+        // The traffic light turns every stay it is asked about green: the statements are the ones of the archive, not the engine's.
+        var engine = new Mock<IComplianceStatusService>();
+        engine
+            .Setup(s => s.GetStaysAReceiptTurnsGreenAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, IReadOnlyCollection<Guid> ids, CancellationToken _) => ids.ToHashSet());
+
+        var (preview, previewStatements) = Build(TwoFlats, engine.Object);
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => preview.GetReceiptCoverageAsync(
             Restricted, new DateOnly(2026, 11, 3), [PropertyId, other], CancellationToken.None));
-        var (upload, uploadStatements) = Build(TwoFlats);
+        var (upload, uploadStatements) = Build(TwoFlats, engine.Object);
         await NpgsqlTranslationProbe.AssertTranslatesAsync(async () =>
         {
             await using var content = new MemoryStream("%PDF-1.4 TEST"u8.ToArray());
@@ -404,12 +411,14 @@ public class ComplianceArchiveNpgsqlTranslationTests
             Assert.Contains("\"NoShowAt\" IS NULL", stays, StringComparison.Ordinal);
             Assert.Matches("\"CheckInDate\" >= @", stays);
             Assert.Matches("\"CheckInDate\" < @", stays);
-            Assert.Contains("GROUP BY", stays, StringComparison.Ordinal);
             Assert.DoesNotContain("\"Guests\"", stays, StringComparison.Ordinal);
         }
 
-        // The summary stops after the count: two statements, none for a guest, a proof or a file.
+        // The summary stops after the stays: two statements, none for a guest, a proof or a file.
         Assert.Equal(2, previewStatements.Count);
+        engine.Verify(
+            s => s.GetStaysAReceiptTurnsGreenAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
     }
 
     /// <summary>

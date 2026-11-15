@@ -68,10 +68,17 @@ public class DocumentImageErasureTests
         await db.SaveChangesAsync();
         var flags = new Mock<IFeatureFlags>();
         flags.Setup(f => f.IsEnabled(FeatureFlags.PurgeDocumentsAfterReceipt)).Returns(true);
+
+        // The traffic light reads every stay it is asked about green (its own verdicts are proved in GuestDocumentPurgeTests and ComplianceReceiptCoverageTests).
+        var engine = new Mock<IComplianceStatusService>();
+        engine
+            .Setup(s => s.GetStaysAReceiptTurnsGreenAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, IReadOnlyCollection<Guid> ids, CancellationToken _) => ids.ToHashSet());
         var purge = new GuestDocumentPurgeService(
             db,
             storage.Object,
             new GuestDataEraser(db, storage.Object, NullLogger<GuestDataEraser>.Instance),
+            engine.Object,
             flags.Object,
             TimeProvider.System,
             NullLogger<GuestDocumentPurgeService>.Instance);

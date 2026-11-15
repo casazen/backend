@@ -39,10 +39,17 @@ public class GuestDocumentPurgeNpgsqlTranslationTests
         var storage = new Mock<IFileStorage>();
         var flags = new Mock<IFeatureFlags>();
         flags.Setup(f => f.IsEnabled(FeatureFlags.PurgeDocumentsAfterReceipt)).Returns(true);
+
+        // The traffic light reads every stay it is asked about green: the statements are the ones of the purge, not the state engine's (which has its own proofs).
+        var engine = new Mock<IComplianceStatusService>();
+        engine
+            .Setup(s => s.GetStaysAReceiptTurnsGreenAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, IReadOnlyCollection<Guid> ids, CancellationToken _) => ids.ToHashSet());
         var service = new GuestDocumentPurgeService(
             db,
             storage.Object,
             new GuestDataEraser(db, storage.Object, NullLogger<GuestDataEraser>.Instance),
+            engine.Object,
             flags.Object,
             new FakeTimeProvider(new DateTimeOffset(2026, 11, 6, 10, 0, 0, TimeSpan.Zero)),
             NullLogger<GuestDocumentPurgeService>.Instance);

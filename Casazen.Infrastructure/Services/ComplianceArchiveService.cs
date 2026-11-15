@@ -625,9 +625,11 @@ public sealed class ComplianceArchiveService(
     }
 
     /// <summary>
-    /// The stays of <paramref name="flatIds"/> that arrived on <paramref name="day"/> (the Europe/Rome day) and owe the Alloggiati communication: the one
-    /// definition (<see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/> and no no-show mark), in the reach of the caller, counted by the database for each
-    /// flat. A flat with no such stay is not in the answer.
+    /// The stays of <paramref name="flatIds"/> that arrived on <paramref name="day"/> (the Europe/Rome day), owe the Alloggiati communication (the one definition,
+    /// <see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/> and no no-show mark) and are in the reach of the caller, <b>that the receipt turns green</b>, counted for
+    /// each flat: the verdict of the traffic light decides (<see cref="IComplianceStatusService.GetStaysAReceiptTurnsGreenAsync"/>, the same one the deletion of the guests'
+    /// documents asks), so a stay whose communication failed or was only partly accepted, which stays red whatever receipt exists, is not counted. A flat with no such stay is
+    /// not in the answer.
     /// </summary>
     private async Task<Dictionary<Guid, int>> CountStaysAsync(HostScope scope, DateOnly day, IReadOnlyList<Guid> flatIds, CancellationToken ct)
     {
@@ -635,16 +637,22 @@ public sealed class ComplianceArchiveService(
         var wanted = flatIds.ToList();
         var from = RomeCalendar.StartOfDayUtc(day);
         var to = RomeCalendar.StartOfDayUtc(day.AddDays(1));
-        var counts = await db.Bookings
+        var stays = await db.Bookings
             .AsNoTracking()
             .Where(b => b.OrgId == orgId && wanted.Contains(b.PropertyId))
             .InScope(scope)
             .Where(b => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
             .Where(b => b.CheckInDate >= from && b.CheckInDate < to)
-            .GroupBy(b => b.PropertyId)
-            .Select(group => new { PropertyId = group.Key, Stays = group.Count() })
+            .Select(b => new { b.Id, b.PropertyId })
             .ToListAsync(ct);
-        return counts.ToDictionary(row => row.PropertyId, row => row.Stays);
+        if (stays.Count == 0)
+            return new Dictionary<Guid, int>();
+
+        var green = await status.GetStaysAReceiptTurnsGreenAsync(orgId, stays.Select(stay => stay.Id).ToList(), ct);
+        return stays
+            .Where(stay => green.Contains(stay.Id))
+            .GroupBy(stay => stay.PropertyId)
+            .ToDictionary(group => group.Key, group => group.Count());
     }
 
     /// <summary>

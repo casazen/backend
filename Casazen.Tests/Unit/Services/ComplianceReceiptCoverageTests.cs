@@ -214,6 +214,43 @@ public sealed class ComplianceReceiptCoverageTests
         Assert.Equal(ComplianceLight.Red, ItemOf(withLegacy, trulloAnotherDay).Verdict.Light);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule. «Diventano in regola» is what the traffic light reads green with the receipt, not every stay of the flat and the day: a stay whose communication
+    /// failed (an error, a rejection, a guest the channel manager could not take) or was only partly accepted stays red whatever receipt exists, so neither the summary before
+    /// saving nor the answer of the upload counts it, one by one for each of the four states; and the count is exactly the stays the light turns green once the receipt is saved.
+    /// </summary>
+    [Fact]
+    public async Task ReceiptCoverage_AStayWhoseCommunicationFailedOrWasPartlyAccepted_IsNotCountedAsTurningGreen_Test()
+    {
+        var world = await World.SeedAsync();
+        world.Senders[world.Granted.Id] = ComplianceSenderType.ChannelManager;
+        var (error, _) = await world.AddStayAsync(world.Hidden, checkInOffset: -2, report: AlloggiatiWebStatus.Errore);
+        var (rejected, _) = await world.AddStayAsync(world.Hidden, checkInOffset: -2, report: AlloggiatiWebStatus.Rifiutato);
+        var (partly, _) = await world.AddStayAsync(world.Hidden, checkInOffset: -2, report: AlloggiatiWebStatus.PartiallyAccepted);
+        var (writeFailed, _) = await world.AddStayAsync(world.Granted, checkInOffset: -2, guests: 1);
+        await world.EntrustAsync(writeFailed, positions: [0], status: OctorateSyncStatus.Failed);
+        var (fineOfTheFlat, _) = await world.AddStayAsync(world.Hidden, checkInOffset: -2);
+        var (fineOfTheChannelManager, _) = await world.AddStayAsync(world.Granted, checkInOffset: -2, guests: 1);
+        var storage = new RecordingStorage();
+        await using var db = world.Db();
+        var service = NewService(world, db, storage);
+
+        var summary = await service.GetReceiptCoverageAsync(world.OrgWide, DayOf(-2), [world.Granted.Id, world.Hidden.Id], CancellationToken.None);
+        Assert.Equal(2, summary.Stays);
+        Assert.Equal([(world.Granted.Id, 1), (world.Hidden.Id, 1)], summary.Properties.Select(flat => (flat.PropertyId, flat.Stays)));
+
+        var entry = await UploadAsync(service, world.OrgWide, world, world.Granted.Id, DayOf(-2), world.Hidden.Id);
+        Assert.Equal(2, entry.CoveredStays);
+
+        // What the light says once the receipt is saved: the two stays counted turn green, the four whose communication did not go through stay red.
+        var after = await world.StatusService(db).EvaluateAsync(world.OrgWide, CancellationToken.None);
+        foreach (var green in new[] { fineOfTheFlat, fineOfTheChannelManager })
+            Assert.Equal(ComplianceLight.Green, ItemOf(after, green).Verdict.Light);
+
+        foreach (var red in new[] { error, rejected, partly, writeFailed })
+            Assert.Equal(ComplianceLight.Red, ItemOf(after, red).Verdict.Light);
+    }
+
     // ─── What the purge deletes ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>

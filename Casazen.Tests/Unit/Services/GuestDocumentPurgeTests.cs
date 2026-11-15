@@ -257,6 +257,66 @@ public sealed class GuestDocumentPurgeTests
     }
 
     /// <summary>
+    /// PROOF TEST: privacy rule. «Covered» is the verdict of the traffic light, not only a receipt on the flat and the day: a stay whose communication failed (an error, a
+    /// rejection, a guest the channel manager could not take) or was only partly accepted is red whatever receipt exists, so it is not covered and keeps its photos and its scan,
+    /// one by one for each of the four states; the stays of the same flat and day with nothing wrong are purged, and once the failure is mended the next run deletes the rest.
+    /// </summary>
+    [Fact]
+    public async Task Purge_AStayWhoseCommunicationFailedOrWasPartlyAccepted_IsNotCovered_AndKeepsItsDocuments_Test()
+    {
+        var world = await World.SeedAsync();
+        world.Senders[world.Granted.Id] = ComplianceSenderType.ChannelManager;
+        var storage = new RecordingStorage();
+        var error = await AddStayWithDocumentsAsync(world, storage, world.Hidden, -3, images: 1, alreadyMarkedDeleted: 0, scan: true, report: AlloggiatiWebStatus.Errore);
+        var rejected = await AddStayWithDocumentsAsync(world, storage, world.Hidden, -3, images: 1, alreadyMarkedDeleted: 0, scan: true, report: AlloggiatiWebStatus.Rifiutato);
+        var partly = await AddStayWithDocumentsAsync(world, storage, world.Hidden, -3, images: 1, alreadyMarkedDeleted: 0, scan: true, report: AlloggiatiWebStatus.PartiallyAccepted);
+        var writeFailed = await AddStayWithDocumentsAsync(world, storage, world.Granted, -3, images: 1, alreadyMarkedDeleted: 0, scan: true);
+        await world.EntrustAsync(writeFailed.Stay, [0], status: OctorateSyncStatus.Failed);
+        var fineOfTheFlat = await AddStayWithDocumentsAsync(world, storage, world.Hidden, -3, images: 1, alreadyMarkedDeleted: 0, scan: true);
+        var fineOfTheChannelManager = await AddStayWithDocumentsAsync(world, storage, world.Granted, -3, images: 1, alreadyMarkedDeleted: 0, scan: true);
+        await AddReceiptAsync(world, world.Org.Id, world.Hidden.Id, DayOf(-3));
+        await AddReceiptAsync(world, world.Org.Id, world.Granted.Id, DayOf(-3));
+
+        await using (var db = world.Db())
+            Assert.Equal(new GuestDocumentPurgeResult(true, 2, 2, 2), await NewService(world, db, storage).PurgeAsync(null, CancellationToken.None));
+
+        await using (var read = world.Db())
+        {
+            foreach (var kept in new[] { error, rejected, partly, writeFailed })
+            {
+                Assert.Equal(1, await read.DocumentImages.AsNoTracking().CountAsync(i => i.BookingId == kept.Stay.Id));
+                Assert.Equal(kept.ScanKey, (await read.Guests.AsNoTracking().SingleAsync(g => g.Id == kept.Stay.GuestId)).DocumentScanUrl);
+                Assert.All(kept.AllKeys, key => Assert.True(storage.Has(key), "A stay whose communication failed keeps its documents."));
+            }
+
+            foreach (var gone in new[] { fineOfTheFlat, fineOfTheChannelManager })
+            {
+                Assert.Empty(await read.DocumentImages.AsNoTracking().Where(i => i.BookingId == gone.Stay.Id).ToListAsync());
+                Assert.Null((await read.Guests.AsNoTracking().SingleAsync(g => g.Id == gone.Stay.GuestId)).DocumentScanUrl);
+            }
+
+            Assert.Equal(
+                new[] { fineOfTheFlat.Stay.Id, fineOfTheChannelManager.Stay.Id }.Order(),
+                (await read.ComplianceSendLogEntries.AsNoTracking().ToListAsync()).Select(l => l.BookingId!.Value).Order());
+        }
+
+        // The communication of the stay in error is mended (declared sent): the traffic light reads it green with the receipt, and the next run deletes its documents.
+        await using (var edit = world.Db())
+        {
+            (await edit.AlloggiatiWebReports.SingleAsync(r => r.BookingId == error.Stay.Id)).Status = AlloggiatiWebStatus.InviatoManualmente;
+            await edit.SaveChangesAsync();
+        }
+
+        await using (var db = world.Db())
+            Assert.Equal(new GuestDocumentPurgeResult(true, 1, 1, 1), await NewService(world, db, storage).PurgeAsync(null, CancellationToken.None));
+
+        await using var after = world.Db();
+        Assert.Empty(await after.DocumentImages.AsNoTracking().Where(i => i.BookingId == error.Stay.Id).ToListAsync());
+        foreach (var stillKept in new[] { rejected, partly, writeFailed })
+            Assert.Equal(1, await after.DocumentImages.AsNoTracking().CountAsync(i => i.BookingId == stillKept.Stay.Id));
+    }
+
+    /// <summary>
     /// PROOF TEST: data rule. A document the storage could not delete keeps its row and its reference (and no line of the send log), the other stays still go, and the run
     /// fails at its end instead of reading as done; once the storage answers again the stay is cleared.
     /// </summary>
@@ -358,6 +418,7 @@ public sealed class GuestDocumentPurgeTests
             db,
             storage,
             new GuestDataEraser(db, storage, eraserLog ?? (ILogger<GuestDataEraser>)NullLogger<GuestDataEraser>.Instance),
+            world.StatusService(db),
             flags.Object,
             world.Clock,
             purgeLog ?? (ILogger<GuestDocumentPurgeService>)NullLogger<GuestDocumentPurgeService>.Instance);
@@ -402,9 +463,10 @@ public sealed class GuestDocumentPurgeTests
         int images,
         int alreadyMarkedDeleted,
         bool scan,
-        BookingStatus status = BookingStatus.Confirmed)
+        BookingStatus status = BookingStatus.Confirmed,
+        AlloggiatiWebStatus? report = null)
     {
-        var (stay, _) = await world.AddStayAsync(property, checkInOffset, guests: 2, status: status);
+        var (stay, _) = await world.AddStayAsync(property, checkInOffset, guests: 2, status: status, report: report);
         await using var db = world.Db();
         foreach (var guest in await db.StayGuests.Where(g => g.BookingId == stay.Id).ToListAsync())
         {

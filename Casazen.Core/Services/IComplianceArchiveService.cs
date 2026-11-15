@@ -85,8 +85,9 @@ public interface IComplianceArchiveService
 
     /// <summary>
     /// What a receipt of the Alloggiati communication of <paramref name="day"/> would prove for the flats <paramref name="propertyIds"/>: the stays of those flats
-    /// that arrived that day and owe the communication (a request, a cancelled stay and a no-show do not), in all and for each flat, so the host reads
-    /// «Diventano in regola: N soggiorni» before saving (E20/F02/US01/T01). It stores and changes nothing, and checks the flats exactly as the upload does.
+    /// that arrived that day, owe the communication (a request, a cancelled stay and a no-show do not) and that the receipt turns green, in all and for each flat, so the
+    /// host reads «Diventano in regola: N soggiorni» before saving (E20/F02/US01/T01). The verdict of the traffic light decides, so a stay whose communication failed
+    /// or was only partly accepted, which stays red whatever receipt exists, is not counted. It stores and changes nothing, and checks the flats exactly as the upload does.
     /// </summary>
     /// <exception cref="Exceptions.NotFoundException">A flat is not the caller's or is out of its reach.</exception>
     /// <exception cref="Exceptions.DomainRuleException">The day or the flats are not acceptable (an empty list is never «every flat»: 422 <c>compliance_proof_coverage_invalid</c>).</exception>

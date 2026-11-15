@@ -416,6 +416,55 @@ public sealed class ComplianceStatusService(
             actions);
     }
 
+    public async Task<IReadOnlySet<Guid>> GetStaysAReceiptTurnsGreenAsync(Guid orgId, IReadOnlyCollection<Guid> bookingIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(bookingIds);
+
+        var ids = bookingIds.Distinct().ToList();
+        var green = new HashSet<Guid>();
+        if (ids.Count == 0)
+            return green;
+
+        var nowUtc = _clock.GetUtcNow().UtcDateTime;
+        var today = _clock.TodayInRome();
+        var todayDate = _clock.TodayInRomeAsDateOnly();
+
+        // The stays the cockpit judges: those that owe the communication (the one definition) and whose arrival day has come. The org is named here, whoever calls.
+        var stays = await db.Bookings
+            .AsNoTracking()
+            .Where(b => b.OrgId == orgId && ids.Contains(b.Id))
+            .Where(b => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
+            .Select(b => new StayRow(b.Id, b.PropertyId, b.GuestId, b.CheckInDate, b.CheckOutDate, b.ArrivedAt, b.TouristTax, string.Empty))
+            .ToListAsync(ct);
+        var dueStays = stays.Where(s => s.CheckInDate <= today).ToList();
+        if (dueStays.Count == 0)
+            return green;
+
+        // Who sends, as the cockpit reads it (the history of a property deleted since is kept) and where the guests stand on the channel manager: the same reads.
+        var senderOf = (await senders.GetManyForHistoryAsync(dueStays.Select(s => s.PropertyId).Distinct().ToList(), ct))
+            .ToDictionary(pair => pair.Key, pair => pair.Value);
+        var connectorOn = featureFlags.IsEnabled(FeatureFlags.OctorateConnector);
+        ComplianceSenderType SenderOf(Guid propertyId) =>
+            senderOf.TryGetValue(propertyId, out var info) && info.Applies
+                ? info.AlloggiatiSender == ComplianceSenderType.ChannelManager && !connectorOn ? ComplianceSenderType.Manual : info.AlloggiatiSender
+                : ComplianceSenderType.Manual;
+        var reads = await ReadAlloggiatiAsync(orgId, dueStays, SenderOf, ct);
+
+        // The receipt, taken as archived: one proof of the arrival day for each stay, and the same judgement as the cockpit's. The connection is not looked at (nothing is read from
+        // Octorate): a proof ends the verdict before the connection counts, and a failure ends it before the proof.
+        var proofs = dueStays
+            .Select(s => new CoveredProof(Guid.Empty, s.PropertyId, ManualProofKind.AlloggiatiReceipt, RomeCalendar.DateInRome(s.CheckInDate), nowUtc))
+            .ToLookup(p => (p.PropertyId, p.Kind));
+        foreach (var stay in dueStays)
+        {
+            var judged = JudgeAlloggiati(stay, reads, proofs, SenderOf(stay.PropertyId), connection: null, nowUtc, today, todayDate);
+            if (judged.Verdict.Verdict.Light == ComplianceLight.Green)
+                green.Add(stay.Id);
+        }
+
+        return green;
+    }
+
     /// <summary>
     /// The archived proof of the arrival day of a stay: the live receipt a report points to, or else a receipt the host uploaded that covers the
     /// property of the stay, for that day (one receipt may cover several flats, E20/F02/US01/T01; the proofs of a flat the receipt does not name

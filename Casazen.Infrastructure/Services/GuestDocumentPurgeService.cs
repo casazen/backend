@@ -13,7 +13,11 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// <para><b>Which stays.</b> The stays that owe the communication (<see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/>, no no-show mark: the one definition) and
 /// hold a photo of a document or whose booker holds a legacy scan, of the org asked for. A stay is covered when an Alloggiati receipt covers its flat on its arrival
-/// day (Europe/Rome), read through <c>ManualProofCoverage</c>, the one reading the traffic light uses too: «covered» is the same word in both places.</para>
+/// day (Europe/Rome), read through <c>ManualProofCoverage</c>, the one reading the traffic light uses too, <b>and</b> the traffic light reads the stay green with that
+/// receipt: the verdict is asked of the state engine (<see cref="IComplianceStatusService.GetStaysAReceiptTurnsGreenAsync"/>, <see cref="ComplianceLightRules.Alloggiati"/>),
+/// not rebuilt here, so a stay whose communication failed (an error, a rejection, a guest the channel manager could not take) or was only partly accepted is not covered
+/// whatever receipt exists, keeps its photos and its scan, and is a stay that still waits for its receipt for the scan of its guest. «Covered» is the same word as the
+/// «Diventano in regola» the host reads when it uploads the receipt.</para>
 /// <para><b>One stay, one unit of work.</b> The objects go first (<see cref="DocumentImageCleaner"/>, the same deleter an erasure uses, so a failure of the storage leaves
 /// the rows for the next run), then the rows, the scan reference and the line of the send log are saved together, and the context is cleared before the next stay.
 /// A stay that fails is counted and left as it is; the run goes on and fails at its end, never in silence.</para>
@@ -27,6 +31,7 @@ public sealed class GuestDocumentPurgeService(
     AppDbContext db,
     IFileStorage storage,
     GuestDataEraser eraser,
+    IComplianceStatusService status,
     IFeatureFlags featureFlags,
     TimeProvider timeProvider,
     ILogger<GuestDocumentPurgeService> logger) : IGuestDocumentPurgeService
@@ -111,8 +116,9 @@ public sealed class GuestDocumentPurgeService(
     }
 
     /// <summary>
-    /// The stays among <paramref name="stays"/> that an Alloggiati receipt covers: a receipt of their org that names their flat on their arrival day. Read for one org at a
-    /// time, so a receipt of another org never covers a stay.
+    /// The stays among <paramref name="stays"/> that an Alloggiati receipt covers: a receipt of their org that names their flat on their arrival day, and that the traffic
+    /// light reads green with that receipt (the verdict of the state engine: a stay whose communication failed or was only partly accepted is not covered). Read for one org
+    /// at a time, so a receipt of another org never covers a stay and the engine is asked about the stays of one org only.
     /// </summary>
     private async Task<HashSet<Guid>> CoveredAsync(IReadOnlyList<StayRow> stays, CancellationToken ct)
     {
@@ -131,11 +137,12 @@ public sealed class GuestDocumentPurgeService(
                 .Where(proof => proof.Kind == ManualProofKind.AlloggiatiReceipt)
                 .Select(proof => (proof.PropertyId, proof.Day))
                 .ToHashSet();
-            foreach (var (stay, day) in arrivals)
-            {
-                if (receipts.Contains((stay.PropertyId, day)))
-                    covered.Add(stay.Id);
-            }
+            var withReceipt = arrivals
+                .Where(arrival => receipts.Contains((arrival.Stay.PropertyId, arrival.Day)))
+                .Select(arrival => arrival.Stay.Id)
+                .ToList();
+            if (withReceipt.Count > 0)
+                covered.UnionWith(await status.GetStaysAReceiptTurnsGreenAsync(org.Key, withReceipt, ct));
         }
 
         return covered;
