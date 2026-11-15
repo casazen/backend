@@ -33,7 +33,7 @@ public class PublicGuestCheckInControllerVerificationTests
     public async Task UploadSelfie_AStepThatDidNotRun_AnswersItsStatusAndNoCode(SelfieStepStatus status, int httpStatus, string code)
     {
         SetupSession();
-        _flow.Setup(f => f.SubmitSelfieAsync(It.IsAny<GuestCheckInSession>(), It.IsAny<Stream>(), It.IsAny<Stream?>(), It.IsAny<CancellationToken>()))
+        _flow.Setup(f => f.SubmitSelfieAsync(It.IsAny<GuestCheckInSession>(), It.IsAny<Stream>(), It.IsAny<Stream?>(), It.IsAny<Stream?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SelfieStepResult(status, IdentityVerificationGuestResults.Retry, [], 3, null));
 
         var result = await Controller().UploadSelfie(Token, Image("selfie"));
@@ -47,7 +47,7 @@ public class PublicGuestCheckInControllerVerificationTests
     public async Task UploadSelfie_ADecision_AnswersTheResultAndTheCodeOnlyOnOk()
     {
         SetupSession();
-        _flow.Setup(f => f.SubmitSelfieAsync(It.IsAny<GuestCheckInSession>(), It.IsAny<Stream>(), It.IsAny<Stream?>(), It.IsAny<CancellationToken>()))
+        _flow.Setup(f => f.SubmitSelfieAsync(It.IsAny<GuestCheckInSession>(), It.IsAny<Stream>(), It.IsAny<Stream?>(), It.IsAny<Stream?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SelfieStepResult(SelfieStepStatus.Done, IdentityVerificationGuestResults.Ok, [], 3, "7391"));
 
         var ok = Assert.IsType<OkObjectResult>((await Controller().UploadSelfie(Token, Image("selfie"))).Result);
@@ -62,7 +62,7 @@ public class PublicGuestCheckInControllerVerificationTests
     public async Task UploadSelfie_OkWithTheCodeHeldBack_AnswersWhyAndNoCode()
     {
         SetupSession();
-        _flow.Setup(f => f.SubmitSelfieAsync(It.IsAny<GuestCheckInSession>(), It.IsAny<Stream>(), It.IsAny<Stream?>(), It.IsAny<CancellationToken>()))
+        _flow.Setup(f => f.SubmitSelfieAsync(It.IsAny<GuestCheckInSession>(), It.IsAny<Stream>(), It.IsAny<Stream?>(), It.IsAny<Stream?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SelfieStepResult(SelfieStepStatus.Done, IdentityVerificationGuestResults.Ok, [], 3, null, AccessCodeHoldReasons.TouristTaxDue));
 
         var ok = Assert.IsType<OkObjectResult>((await Controller().UploadSelfie(Token, Image("selfie"))).Result);
@@ -94,7 +94,7 @@ public class PublicGuestCheckInControllerVerificationTests
     public async Task UploadSelfie_TheFlowFails_Answers500WithoutTheError()
     {
         SetupSession();
-        _flow.Setup(f => f.SubmitSelfieAsync(It.IsAny<GuestCheckInSession>(), It.IsAny<Stream>(), It.IsAny<Stream?>(), It.IsAny<CancellationToken>()))
+        _flow.Setup(f => f.SubmitSelfieAsync(It.IsAny<GuestCheckInSession>(), It.IsAny<Stream>(), It.IsAny<Stream?>(), It.IsAny<Stream?>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("storage is down: the name of the guest is Mario Rossi"));
 
         var result = await Controller().UploadSelfie(Token, Image("selfie"));
