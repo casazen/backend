@@ -6,6 +6,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
+using Casazen.Web.DTOs.OwnerPortal;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -97,16 +98,28 @@ public class OwnerAccountingController(
         return Ok(versions.Select(OwnerStatementVersionDto.From).ToList());
     }
 
-    /// <summary>A version with the ledger lines it is made of, each with its source.</summary>
+    /// <summary>
+    /// A version with the ledger lines it is made of, each with its source, and the tourist tax box of the statement with its amounts (<c>touristTax</c>, FIX/RES-OWNERS): one
+    /// row for each stay whose tax the agency collects, for information only and never in a total, the very rows the owner portal shows for the same version (both are read
+    /// from <see cref="IOwnerStatementDocuments.GetContentAsync"/>, the one source of the PDF, the CSV and the portal). The whole org only (403 otherwise), as every action here;
+    /// 404 for a version of another organization; 409 <c>owner_ledger_immutable</c> when the lines of the version no longer give the totals it stores (no file shows a wrong net,
+    /// and neither does this box).
+    /// </summary>
     [HttpGet("versions/{versionId:guid}")]
     [ProducesResponseType(typeof(OwnerStatementVersionDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<OwnerStatementVersionDetailDto>> Version(Guid versionId)
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<OwnerStatementVersionDetailDto>> Version(Guid versionId, [FromServices] IOwnerStatementDocuments files)
     {
         if (await OrgAsync() is not { } orgId)
             return Forbid();
         var detail = await accounting.GetVersionAsync(orgId, versionId, HttpContext.RequestAborted);
-        return Ok(new OwnerStatementVersionDetailDto(OwnerStatementVersionDto.From(detail.Version), detail.Entries.Select(OwnerLedgerEntryDto.From).ToList()));
+        var content = await files.GetContentAsync(orgId, versionId, null, HttpContext.RequestAborted);
+        return Ok(new OwnerStatementVersionDetailDto(
+            OwnerStatementVersionDto.From(detail.Version),
+            detail.Entries.Select(OwnerLedgerEntryDto.From).ToList(),
+            content.TouristTax.Select(OwnerPortalTouristTaxDto.From).ToList()));
     }
 
     /// <summary>Approves a draft version. 422 <c>owner_statement_flagged</c>; 409 <c>owner_statement_not_draft</c>, <c>owner_period_dirty</c>.</summary>
@@ -593,8 +606,14 @@ public sealed record OwnerStatementVersionDto(
         v.PublishedAt, v.PublishedByUserId, v.PublishedSha256, v.SupersedesVersionId, v.SupersededByVersionId, v.CreatedAt);
 }
 
-/// <summary>A version with its lines.</summary>
-public sealed record OwnerStatementVersionDetailDto(OwnerStatementVersionDto Version, IReadOnlyList<OwnerLedgerEntryDto> Entries);
+/// <summary>
+/// A version with its lines and its tourist tax box: <c>touristTax</c> is the box the PDF, the CSV and the owner portal carry, in the same shape as the portal's
+/// (<see cref="OwnerPortalTouristTaxDto"/>), for information only and outside every total.
+/// </summary>
+public sealed record OwnerStatementVersionDetailDto(
+    OwnerStatementVersionDto Version,
+    IReadOnlyList<OwnerLedgerEntryDto> Entries,
+    IReadOnlyList<OwnerPortalTouristTaxDto> TouristTax);
 
 /// <summary>The month of an owner: the close with its reconciliation or waiver, the retention and the legal hold.</summary>
 public sealed record OwnerClosePeriodDto(

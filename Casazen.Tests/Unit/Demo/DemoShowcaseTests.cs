@@ -158,6 +158,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.CompanyTenantExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.CleaningRechargeExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.PayoutFactsExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.YearEndExportExamples.Select(example => example.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -1341,6 +1342,50 @@ public class DemoShowcaseTests
                 example.TouristTax, example.PostedFromPayments, false, true, example.AccountHolder, false, true, treatment);
             Assert.Equal(example.Reason, PayoutFactRules.EvaluateStay(stay, settings).Reason);
         }
+    }
+
+    /// <summary>
+    /// E18/F01/US02: the demo lines of the year-end files are TEST ones and say what the rules say: the withholding of a Certificazione Unica record is the rate of the portals on its
+    /// base to the cent (⚖ I6: the record of the signatory and the one of a co-owner on its own name are the two ways of the same mandate), the 770 line is the one of the record of the
+    /// signatory and the F24 paid settles it, the contracts the agency did not withhold on are the stays of the demo payout the facts put outside the base and carry no withholding,
+    /// and the tourist tax of the comune owed more than it was remitted is still to pay.
+    /// </summary>
+    [Fact]
+    public void TaxReportingYearEnd_TheExamplesAreTestOnesAndSayWhatTheRulesSay()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.TaxReportingYearEnd, DemoShowcaseCatalog.Scenarios);
+        var examples = DemoShowcaseCatalog.YearEndExportExamples;
+        Assert.Equal(examples.Count, examples.Select(e => e.Key).Distinct(StringComparer.Ordinal).Count());
+        var rate = new ShortStayFiscalOptions().OtaWithholdingRate;
+
+        var records = examples.Where(e => e.File == DemoYearEndFile.Cu).ToList();
+        var signatory = Assert.Single(records, e => e.Detail == CuAttributions.Signatory);
+        Assert.Single(records, e => e.Detail == CuAttributions.Share);
+        Assert.All(records, e =>
+        {
+            Assert.StartsWith("TEST", e.Subject, StringComparison.Ordinal);
+            Assert.Equal(decimal.Round(e.Base!.Value * rate, 2, MidpointRounding.AwayFromZero), e.Due);
+        });
+
+        var line770 = Assert.Single(examples, e => e.File == DemoYearEndFile.Tax770);
+        Assert.Equal(signatory.Base, line770.Base);
+        Assert.Equal(signatory.Due, line770.Due);
+        Assert.Equal(line770.Due, line770.Settled);
+
+        var contracts = examples.Where(e => e.File == DemoYearEndFile.Contracts).ToList();
+        Assert.Equal(2, contracts.Count);
+        Assert.All(contracts, contract =>
+        {
+            Assert.StartsWith("TEST", contract.Subject, StringComparison.Ordinal);
+            Assert.Equal(0m, contract.Due);
+            Assert.Contains(DemoShowcaseCatalog.PayoutFactsExamples, stay => stay.OwnerName == contract.Subject && stay.Gross == contract.Base && stay.Reason == contract.Detail);
+        });
+        Assert.Contains(contracts, c => c.Detail == OwnerWithholdingRules.AlreadyWithheldByPortal);
+        Assert.Contains(contracts, c => c.Detail == OwnerWithholdingRules.NoCollectionOrIntervention);
+
+        var tax = Assert.Single(examples, e => e.File == DemoYearEndFile.TouristTax);
+        Assert.Null(tax.Base);
+        Assert.Equal(TouristTaxSummaryStatus.ToPay, TouristTaxSummaryRules.StatusOf((long)(tax.Due * 100m), (long)(tax.Settled!.Value * 100m)));
     }
 
     /// <summary>

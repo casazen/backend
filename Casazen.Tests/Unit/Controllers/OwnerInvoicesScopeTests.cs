@@ -39,8 +39,8 @@ public class OwnerInvoicesScopeTests
 
             var actions = await AssertEveryActionForbiddenAsync(new OwnerInvoicesController(invoices.Object, Org(), Scope(restricted)));
 
-            // The list, the draft, the issue, the credit note and the discard: each refused before the service was asked anything (a strict mock would have thrown).
-            Assert.Equal(5, actions);
+            // The list, the read by id, the draft, the issue, the credit note and the discard: each refused before the service was asked anything (a strict mock would have thrown).
+            Assert.Equal(6, actions);
             invoices.VerifyNoOtherCalls();
         }
     }
@@ -103,6 +103,15 @@ public class OwnerInvoicesScopeTests
 
         Assert.IsType<OkObjectResult>(list.Result);
         invoices.Verify(i => i.ListAsync(OrgId, It.IsAny<OwnerInvoiceCriteria>(), It.IsAny<CancellationToken>()), Times.Once);
+
+        // The read by id is served too, for the org of the caller, with the lines of the invoice as the creation answers them.
+        var invoiceId = Guid.NewGuid();
+        invoices.Setup(i => i.GetAsync(OrgId, invoiceId, It.IsAny<CancellationToken>())).ReturnsAsync(new FiscalDocument { Id = invoiceId, OrgId = OrgId, Purpose = FiscalDocumentPurpose.OwnerInvoice });
+
+        var read = await owner.Get(invoiceId);
+
+        Assert.Equal(invoiceId, Assert.IsType<OwnerInvoiceDto>(Assert.IsType<OkObjectResult>(read.Result).Value).Id);
+        invoices.Verify(i => i.GetAsync(OrgId, invoiceId, It.IsAny<CancellationToken>()), Times.Once);
 
         var portalAccounts = new Mock<IPortalAccountSettingsService>();
         portalAccounts.Setup(p => p.ListAccountHoldersAsync(OrgId, It.IsAny<CancellationToken>())).ReturnsAsync([]);

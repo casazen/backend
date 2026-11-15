@@ -1,5 +1,7 @@
 using System.Globalization;
 using Casazen.Core.Authorization;
+using Casazen.Core.Documents;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
@@ -38,8 +40,16 @@ public class TouristTaxSummaryController(
     ITouristTaxSummaryService summaries,
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver,
-    IStringLocalizer<SharedResources> localizer) : ControllerBase
+    IStringLocalizer<SharedResources> localizer,
+    IDocumentTexts? documentTexts = null,
+    IAuthorizationService? authorizationService = null) : ControllerBase
 {
+    /// <summary>The labels of the files of the year-end exports (E18/F01/US02/T03): the resource files, in the language of the request. The dependency injection always passes them; optional so that what builds the controller for the older actions keeps compiling.</summary>
+    private readonly IDocumentTexts _documentTexts = documentTexts ?? new ResxDocumentTexts();
+
+    /// <summary>Code of a <c>by</c> of the account of the agent that is neither <c>month</c> nor <c>quarter</c> (E18/F01/US02/T03).</summary>
+    public const string AccountInvalidPeriodCode = "tourist_tax_account_invalid_period";
+
     /// <summary>The language of the CSV and of the Excel file: Italian, whatever the language the caller asked in.</summary>
     private static readonly CultureInfo ItalianCulture = CultureInfo.GetCultureInfo("it-IT");
 
@@ -84,6 +94,116 @@ public class TouristTaxSummaryController(
                 fileFormat,
                 fileFormat == ReportFormat.Xlsx ? TouristTaxSummaryDocuments.Xlsx(summary, texts) : TouristTaxSummaryDocuments.Csv(summary, texts),
                 TouristTaxSummaryDocuments.FileName(summary.Period, ReportRequestChecks.FileExtensionOf(fileFormat)));
+        }
+        catch (FiscalValidationException ex)
+        {
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ex.Code, ex.MessageKey, ex.MessageArgs);
+        }
+    }
+
+    /// <summary>
+    /// The annual declaration data of the tourist tax per comune for the year as a CSV or an Excel file (E18/F01/US02/T03, NF-117, acceptance step C9): nights, guests, the stays with a tax and the
+    /// stays with none with the reason, the exempt guests by reason (counts, never a guest; the reasons only for a caller that holds <c>guest.read</c>, art. 9 GDPR: the others get the age and one
+    /// «restricted» row), the tax due, the tax remitted with the days and references of the payments, and the difference. It is made
+    /// of the summary of the year (nothing recomputed) and nothing is filed by CasaZen. Behind <c>Features:TaxReportingExports</c> (404 before authentication while it is off); needs a scope that
+    /// reaches the whole org (403 <c>tourist_tax_year_end_needs_whole_org</c>). <c>format</c> is <c>csv</c> or <c>xlsx</c> (400 <c>report_invalid_format</c>); 400 <c>fiscal_report_period_invalid</c>
+    /// for a year the reports do not support. <c>Cache-Control: no-store</c>.
+    /// </summary>
+    [HttpGet("year-end/{year:int}/declaration")]
+    [FeatureGate(FeatureFlags.TaxReportingExports)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GetYearEndDeclaration(int year, [FromQuery] string? format, CancellationToken cancellationToken)
+    {
+        if (YearEndFormat(format, out var fileFormat) is { } formatProblem)
+            return formatProblem;
+        if (await GetScopeAsync(cancellationToken) is not { } scope)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        try
+        {
+            // The reason of an exemption can reveal a health condition (art. 9 GDPR): as on the tax of a stay it is shown only to who holds guest.read (the accountant role does not). Without the
+            // authorization service the answer is the restricted one: never the reasons by default.
+            var withReasons = authorizationService is not null && (await authorizationService.AuthorizeAsync(User, CasazenPolicies.GuestRead)).Succeeded;
+            var data = await summaries.GetDeclarationAsync(scope, year, withReasons, cancellationToken);
+            var language = DocumentLanguages.Current;
+            return this.ReportFile(
+                fileFormat,
+                fileFormat == ReportFormat.Xlsx ? TouristTaxYearEndExports.DeclarationXlsx(data, _documentTexts, language) : TouristTaxYearEndExports.DeclarationCsv(data, _documentTexts, language),
+                TouristTaxYearEndExports.DeclarationFileName(year, ReportRequestChecks.FileExtensionOf(fileFormat)));
+        }
+        catch (FiscalValidationException ex)
+        {
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ex.Code, ex.MessageKey, ex.MessageArgs);
+        }
+    }
+
+    /// <summary>
+    /// The account of the agent («conto giudiziale») for the year as a CSV or an Excel file (E18/F01/US02/T03, acceptance step C9): for each comune the tax collected and remitted by <c>by=month</c>
+    /// (the default) or <c>by=quarter</c>, a line for the year and every payment with its day, period and reference. The format a comune asks varies: the file carries every field. Same gate, reach and
+    /// errors as the declaration; 400 <c>tourist_tax_account_invalid_period</c> for a <c>by</c> that is neither.
+    /// </summary>
+    [HttpGet("year-end/{year:int}/agent-account")]
+    [FeatureGate(FeatureFlags.TaxReportingExports)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GetYearEndAgentAccount(int year, [FromQuery] string? format, [FromQuery] string? by, CancellationToken cancellationToken)
+    {
+        if (YearEndFormat(format, out var fileFormat) is { } formatProblem)
+            return formatProblem;
+        var cut = by?.Trim().ToLowerInvariant() switch
+        {
+            null or "" or "month" => TouristTaxAccountPeriod.Month,
+            "quarter" => TouristTaxAccountPeriod.Quarter,
+            _ => (TouristTaxAccountPeriod?)null,
+        };
+        if (cut is not { } period)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, AccountInvalidPeriodCode, "TouristTaxAccountInvalidPeriod");
+        if (await GetScopeAsync(cancellationToken) is not { } scope)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        try
+        {
+            var data = await summaries.GetAgentAccountAsync(scope, year, period, cancellationToken);
+            var language = DocumentLanguages.Current;
+            return this.ReportFile(
+                fileFormat,
+                fileFormat == ReportFormat.Xlsx ? TouristTaxYearEndExports.AgentAccountXlsx(data, _documentTexts, language) : TouristTaxYearEndExports.AgentAccountCsv(data, _documentTexts, language),
+                TouristTaxYearEndExports.AgentAccountFileName(year, period, ReportRequestChecks.FileExtensionOf(fileFormat)));
+        }
+        catch (FiscalValidationException ex)
+        {
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ex.Code, ex.MessageKey, ex.MessageArgs);
+        }
+    }
+
+    /// <summary>
+    /// The yearly count of the nights per property in Ticino for the year as a CSV or an Excel file (E18/F01/US02/T03, acceptance step D3), due by 5 January of the next year: the stays and the nights
+    /// of the year, the taxed and untaxed ones by their documents, those with no document issued yet (told apart) and the tourist tax of the documents in francs. Same gate, reach and errors as the
+    /// declaration.
+    /// </summary>
+    [HttpGet("year-end/{year:int}/ticino")]
+    [FeatureGate(FeatureFlags.TaxReportingExports)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GetYearEndTicinoCount(int year, [FromQuery] string? format, CancellationToken cancellationToken)
+    {
+        if (YearEndFormat(format, out var fileFormat) is { } formatProblem)
+            return formatProblem;
+        if (await GetScopeAsync(cancellationToken) is not { } scope)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        try
+        {
+            var data = await summaries.GetTicinoYearlyCountAsync(scope, year, cancellationToken);
+            var language = DocumentLanguages.Current;
+            return this.ReportFile(
+                fileFormat,
+                fileFormat == ReportFormat.Xlsx ? TouristTaxYearEndExports.TicinoXlsx(data, _documentTexts, language) : TouristTaxYearEndExports.TicinoCsv(data, _documentTexts, language),
+                TouristTaxYearEndExports.TicinoFileName(year, ReportRequestChecks.FileExtensionOf(fileFormat)));
         }
         catch (FiscalValidationException ex)
         {
@@ -179,6 +299,20 @@ public class TouristTaxSummaryController(
 
         await summaries.DeleteRemittanceAsync(scope, id, cancellationToken);
         return NoContent();
+    }
+
+    /// <summary>
+    /// The format of a year-end export (E18/F01/US02/T03): <c>csv</c> or <c>xlsx</c> and nothing else, there is no JSON of these files. 400 <c>report_invalid_format</c> for anything else, before
+    /// anything is read.
+    /// </summary>
+    private ObjectResult? YearEndFormat(string? format, out ReportFormat fileFormat)
+    {
+        if (this.CheckFormat(format, out fileFormat) is { } problem)
+            return problem;
+
+        return fileFormat == ReportFormat.Json
+            ? this.ApiProblem(StatusCodes.Status400BadRequest, ReportRequestChecks.InvalidFormatCode, "ReportInvalidFormat")
+            : null;
     }
 
     /// <summary>The caller's reach (AM-03): the whole org for the roles that reach it, only the properties it was given otherwise; null without an org.</summary>

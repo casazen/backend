@@ -33,6 +33,13 @@ public interface IStatementExportService
     /// The PDF of the stored F24 data of the org for the month. It never generates the record: a month without one is a 404 (<c>f24_not_found</c>).
     /// </summary>
     Task<StatementExportFile> ExportF24Async(Guid orgId, int month, int year, string language, CancellationToken ct = default);
+
+    /// <summary>
+    /// The draft «prospetto CU» of an owner for the year as a PDF (E18/F01/US02/T01, NF-117): its record of the stored annual data, with the recipient, the stays, the base and the
+    /// withholding. It is a draft with a watermark and never the Certificazione Unica. Read only. 404 <c>tax_dataset_not_found</c> without annual data for the year,
+    /// <c>tax_cu_record_not_found</c> for an owner with no record (another org's owner is the same answer); 422 <c>tax_cu_dataset_outdated</c>.
+    /// </summary>
+    Task<StatementExportFile> ExportCuProspectAsync(Guid orgId, int year, Guid ownerId, string language, CancellationToken ct = default);
 }
 
 /// <summary>The two formats of a statement.</summary>

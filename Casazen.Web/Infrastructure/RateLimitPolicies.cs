@@ -47,6 +47,12 @@ public static class RateLimitPolicies
     /// <summary>Guest check-in submission (partitioned by IP and token hash).</summary>
     public const string GuestCheckInSubmit = "GuestCheckInSubmit";
 
+    /// <summary>
+    /// The guest at the door (<c>POST api/public/checkin/door/{doorToken}</c>, E22/F01/US02/T01): a booking code (or a surname) and a date open the check-in link of a stay, so it is the tightest
+    /// of the check-in limits: 5 a minute for each client IP and door token (the partition holds a hash of the <c>{doorToken}</c> of the route, never the token itself).
+    /// </summary>
+    public const string PublicDoorCheckIn = "PublicDoorCheckIn";
+
     /// <summary>Public tourist tax calculator.</summary>
     public const string PublicTouristTaxCalc = "PublicTouristTaxCalc";
 

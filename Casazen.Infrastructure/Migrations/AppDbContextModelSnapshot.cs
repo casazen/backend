@@ -3976,6 +3976,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("BiometricConsentRefusedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("BiometricConsentTextHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("BiometricConsentVersion")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
@@ -10614,6 +10618,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<string>("DoorToken")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("EnergyClass")
                         .HasMaxLength(2)
                         .HasColumnType("character varying(2)");
@@ -10778,6 +10786,11 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("CancellationPolicyId");
 
                     b.HasIndex("ComuneIstatCode");
+
+                    b.HasIndex("DoorToken")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_Properties_DoorToken")
+                        .HasFilter("\"DoorToken\" IS NOT NULL");
 
                     b.HasIndex("OrgId");
 

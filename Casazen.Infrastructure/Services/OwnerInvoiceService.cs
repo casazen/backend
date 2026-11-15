@@ -114,6 +114,15 @@ public sealed class OwnerInvoiceService(
         await documents.DiscardOwnerInvoiceDraftAsync(documentId, ct);
     }
 
+    public async Task<FiscalDocument> GetAsync(Guid orgId, Guid documentId, CancellationToken ct = default)
+    {
+        // The org and the purpose are asked of the row itself, so a document of another org and a document of a guest are the 404 of one that does not exist.
+        return await db.FiscalDocuments.AsNoTracking()
+                .Include(d => d.Lines)
+                .FirstOrDefaultAsync(d => d.Id == documentId && d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.OwnerInvoice, ct)
+            ?? throw DocumentNotFound(documentId);
+    }
+
     public async Task<IReadOnlyList<OwnerInvoiceRow>> ListAsync(Guid orgId, OwnerInvoiceCriteria criteria, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(criteria);

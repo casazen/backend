@@ -3,6 +3,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.OfficialData;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
@@ -166,12 +167,13 @@ public partial class FiscalService
         var stays = await db.Bookings.AsNoTracking()
             .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .InScope(scope)
+            // E18/F01/US02/T03: the stays that happened, by the one definition of an active stay (AlloggiatiStatusRules): confirmed, checked in or checked out, and never a no-show, whose guests never came
+            // (a no-show owes no tourist tax in any reader). The declaration to the comune and the account of the agent are made of this report.
             .Where(b => b.OrgId == scope.OrgId
                 && b.CheckInDate >= from
                 && b.CheckInDate < toExclusive
-                && (b.Status == BookingStatus.Confirmed
-                    || b.Status == BookingStatus.CheckedIn
-                    || b.Status == BookingStatus.CheckedOut))
+                && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status)
+                && b.NoShowAt == null)
             .Select(b => new
             {
                 b.Id,

@@ -15,6 +15,7 @@ using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Controllers;
+using Casazen.Web.DTOs.OwnerPortal;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
@@ -202,6 +203,111 @@ public class OwnerStatementDocumentsTests
         // The revenue of those stays is still in the statement and the net is the version's.
         Assert.Equal(content.Lines.Count, none.Lines.Count);
         Assert.Equal(content.Totals, none.Totals);
+    }
+
+    /// <summary>
+    /// PROOF TEST: money rule (FIX/RES-OWNERS, S007, ⚖ C5). Until the issuer confirms its own list of the portals that collect the tourist tax, the box of the statement leaves
+    /// out the stays of the portals of the shipped default (<c>SwissTouristTax:PlatformCollected</c>), the very list the guest documents use for that issuer
+    /// (<see cref="IGuestDocumentLineBuilder.PlatformCollectedChannelsOf"/>): the statement and the documents never disagree on who collects. The issuer's own answer, an empty
+    /// one included, replaces the default; an Italian issuer has none.
+    /// </summary>
+    [Fact]
+    public async Task StatementTouristTaxBox_BeforeIssuerConfirmation_UsesThePlatformDefaults_Test()
+    {
+        var swiss = new Casazen.Core.Options.SwissTouristTaxOptions { PlatformCollected = [BookingSource.BookingCom] };
+        var world = await World.CreateAsync(swiss: swiss);
+        var documents = new GuestDocumentLineBuilder(world.Db, new ResxDocumentTexts(), Options.Create(new Casazen.Core.Options.FiscalDocumentRulesOptions()), Options.Create(swiss));
+        async Task<decimal> BoxAsync() => (await world.Documents.GetContentAsync(world.OrgId, world.VersionId)).TouristTax.Sum(t => t.Amount);
+
+        // The agency has no issuer profile at all: nothing is confirmed and Italy has no default, so it collects the 12 of the portal stay and the 8 of the direct one.
+        Assert.Equal(20m, await BoxAsync());
+
+        // A Swiss issuer that has confirmed nothing: Booking.com collects the tax of its stay itself by default, as the documents of that stay say, so only the 8 is the agency's.
+        var issuer = new OrgFiscalIssuerProfile { OrgId = world.OrgId, CountryCode = "CH" };
+        world.Db.OrgFiscalIssuerProfiles.Add(issuer);
+        await world.Db.SaveChangesAsync();
+        Assert.Equal([BookingSource.BookingCom], documents.PlatformCollectedChannelsOf(issuer));
+        Assert.Equal(8m, await BoxAsync());
+
+        // The issuer confirms that no portal collects it: that is an answer and not «use the default»; the documents and the box both put the 12 back.
+        issuer.PlatformCollectedTouristTaxChannelsJson = "[]";
+        await world.Db.SaveChangesAsync();
+        Assert.Empty(documents.PlatformCollectedChannelsOf(issuer));
+        Assert.Equal(20m, await BoxAsync());
+
+        // The issuer confirms Booking.com: it is its own list now, and the box follows it as before.
+        issuer.PlatformCollectedTouristTaxChannelsJson = "[\"BookingCom\"]";
+        await world.Db.SaveChangesAsync();
+        Assert.Equal([BookingSource.BookingCom], documents.PlatformCollectedChannelsOf(issuer));
+        Assert.Equal(8m, await BoxAsync());
+
+        // Confirmed on another portal, the stay of Booking.com is the agency's whatever the default says.
+        issuer.PlatformCollectedTouristTaxChannelsJson = "[\"Airbnb\"]";
+        await world.Db.SaveChangesAsync();
+        Assert.Equal(20m, await BoxAsync());
+
+        // An Italian issuer that has confirmed nothing has no default: the list of the platform is the Swiss one.
+        issuer.CountryCode = "IT";
+        issuer.PlatformCollectedTouristTaxChannelsJson = null;
+        await world.Db.SaveChangesAsync();
+        Assert.Empty(documents.PlatformCollectedChannelsOf(issuer));
+        Assert.Equal(20m, await BoxAsync());
+    }
+
+    /// <summary>
+    /// PROOF TEST: money rule (FIX/RES-OWNERS, S016). The agency reads a version with the tourist tax box of the statement, with its amounts: the same rows, in the same order and
+    /// currency, as the owner portal reads for that version (both are the content of the one source of the PDF and the CSV), the amounts of the box are in the files too, and
+    /// they are outside the totals of the version; a tax that changes changes both boxes alike. A caller of another organization gets the 404 of a version that does not exist
+    /// and one with a partial reach is refused before anything is read.
+    /// </summary>
+    [Fact]
+    public async Task AgencyStatement_GroupedTouristTax_EqualsThePortalOne_Test()
+    {
+        var world = await World.CreateAsync();
+
+        async Task<(OwnerStatementVersionDetailDto Agency, OwnerPortalStatementDetailDto Portal)> ReadBothAsync()
+        {
+            var answer = await Controller(world.OrgId, new HostScope(world.OrgId), world.Accounting()).Version(world.VersionId, world.Documents);
+            var agency = Assert.IsType<OwnerStatementVersionDetailDto>(Assert.IsType<OkObjectResult>(answer.Result).Value);
+            var content = await world.Documents.GetContentAsync(world.OrgId, world.VersionId);
+            var summary = new OwnerPortalStatementInfo(
+                world.VersionId, world.OrgId, content.AgencyName, content.Year, content.Month, content.VersionNumber, content.Currency, World.Cutoff.AddHours(1), false, null, false, content.Totals);
+            return (agency, OwnerPortalStatementDetailDto.From(new OwnerPortalStatementDetailInfo(summary, content)));
+        }
+
+        // The 12 of the portal stay and the 8 of the direct one, by check-in, in francs, for the agency as for the owner.
+        var (agency, portal) = await ReadBothAsync();
+        Assert.Equal(portal.TouristTax, agency.TouristTax);
+        Assert.Equal([12m, 8m], agency.TouristTax.Select(t => t.Amount));
+        Assert.All(agency.TouristTax, t => Assert.Equal("CHF", t.Currency));
+        Assert.Equal(new[] { "BookingCom", "Direct" }, agency.TouristTax.Select(t => t.Channel));
+
+        // The agency keeps what it read before: the version and its lines, and the box is outside every total.
+        Assert.Equal((world.VersionId, 10), (agency.Version.Id, agency.Version.EntryCount));
+        Assert.NotEmpty(agency.Entries);
+        Assert.Equal(580m, portal.Statement.Totals.Net);
+        var csv = Encoding.UTF8.GetString((await world.Documents.GetCsvAsync(world.OrgId, world.VersionId, "it")).Content);
+        Assert.Contains("Tassa di soggiorno (informativa);", csv, StringComparison.Ordinal);
+        Assert.Contains("12,00", csv, StringComparison.Ordinal);
+        Assert.Contains("8,00", csv, StringComparison.Ordinal);
+
+        // The tax of the portal stay changes: the agency's box and the portal's change together, and the net stays what the version says.
+        await world.SetTouristTaxAsync(world.PortalBookingId, 99m);
+        var (changedAgency, changedPortal) = await ReadBothAsync();
+        Assert.Equal(changedPortal.TouristTax, changedAgency.TouristTax);
+        Assert.Equal([99m, 8m], changedAgency.TouristTax.Select(t => t.Amount));
+        Assert.Equal(580m, changedPortal.Statement.Totals.Net);
+
+        // Another organization asks for the version: the 404 of a version that does not exist, and no tax of ours.
+        var other = await Assert.ThrowsAsync<NotFoundException>(
+            () => Controller(world.OtherOrgId, new HostScope(world.OtherOrgId), world.Accounting()).Version(world.VersionId, world.Documents));
+        Assert.Equal(OwnerAccountingErrors.VersionNotFound, other.Code);
+
+        // A caller with a partial reach is refused before the content is read (a strict mock would have thrown).
+        var files = new Mock<IOwnerStatementDocuments>(MockBehavior.Strict);
+        var refused = await Controller(world.OrgId, new HostScope(world.OrgId, GrantedToUserId: "auth0|caller"), world.Accounting()).Version(world.VersionId, files.Object);
+        Assert.IsType<ForbidResult>(refused.Result);
+        files.VerifyNoOtherCalls();
     }
 
     /// <summary>
@@ -609,14 +715,14 @@ public class OwnerStatementDocumentsTests
         Currency = "CHF",
     };
 
-    private static OwnerAccountingController Controller(Guid orgId, HostScope scope)
+    private static OwnerAccountingController Controller(Guid orgId, HostScope scope, IOwnerAccountingService? accounting = null)
     {
         var org = new Mock<IOrgContextResolver>();
         org.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(orgId);
         var scopes = new Mock<IHostScopeResolver>();
         scopes.Setup(r => r.ResolveAsync(It.IsAny<string>(), It.IsAny<IReadOnlySet<string>>(), orgId, It.IsAny<CancellationToken>())).ReturnsAsync(scope);
         var identity = new ClaimsIdentity([new Claim("sub", "auth0|caller"), new Claim(ClaimTypes.NameIdentifier, "auth0|caller")], "test");
-        return new OwnerAccountingController(Mock.Of<IOwnerAccountingService>(), org.Object, scopes.Object, Mock.Of<IAuthorizationService>())
+        return new OwnerAccountingController(accounting ?? Mock.Of<IOwnerAccountingService>(), org.Object, scopes.Object, Mock.Of<IAuthorizationService>())
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) } },
         };
@@ -665,12 +771,15 @@ public class OwnerStatementDocumentsTests
     {
         public static readonly DateTime Cutoff = new(2026, 11, 10, 8, 0, 0, DateTimeKind.Utc);
 
-        private World(AppDbContext db)
+        private World(AppDbContext db, Casazen.Core.Options.SwissTouristTaxOptions swiss)
         {
             Db = db;
             Clock = new FakeTimeProvider(new DateTimeOffset(Cutoff.AddDays(1)));
             Storage = new InMemoryFileStorage();
             Queue = new CapturingEmailQueue();
+
+            // The channels that collect the tourist tax are read as the guest documents read them (the line builder over the same database): the shipped default of a Swiss
+            // issuer that confirmed none is the one the test gives (none unless a test says one).
             Documents = new OwnerStatementDocuments(
                 db,
                 new MigraDocPdfDocumentRenderer(),
@@ -682,7 +791,8 @@ public class OwnerStatementDocumentsTests
                 new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = "https://app.example.com" })),
                 new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, Clock),
                 Clock,
-                NullLogger<OwnerStatementDocuments>.Instance);
+                NullLogger<OwnerStatementDocuments>.Instance,
+                documentLines: new GuestDocumentLineBuilder(db, new ResxDocumentTexts(), Options.Create(new Casazen.Core.Options.FiscalDocumentRulesOptions()), Options.Create(swiss)));
         }
 
         public AppDbContext Db { get; }
@@ -736,12 +846,14 @@ public class OwnerStatementDocumentsTests
                 NullLogger<OwnerCollaborationService>.Instance);
         }
 
-        public static async Task<World> CreateAsync(bool approved = false)
+        public static async Task<World> CreateAsync(bool approved = false, Casazen.Core.Options.SwissTouristTaxOptions? swiss = null)
         {
-            var world = new World(new AppDbContext(
-                new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OwnerStatementDocuments_{Guid.NewGuid()}").Options,
-                new StatementTenant(),
-                new EphemeralDataProtectionProvider()));
+            var world = new World(
+                new AppDbContext(
+                    new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OwnerStatementDocuments_{Guid.NewGuid()}").Options,
+                    new StatementTenant(),
+                    new EphemeralDataProtectionProvider()),
+                swiss ?? new Casazen.Core.Options.SwissTouristTaxOptions());
             await world.SeedAsync(approved);
             return world;
         }
