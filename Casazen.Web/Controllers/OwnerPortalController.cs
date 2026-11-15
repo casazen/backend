@@ -213,10 +213,10 @@ public class OwnerPortalController(
 
     /// <summary>
     /// The documents CasaZen issued in the name of the owner (E17/F02/US01/T01, NF-116): the receipts of a private owner and the invoices of a company, with their credit notes, issued on the
-    /// issuer profile of an owner the caller reads the accounting of: number, day, kind, total, currency, state of the SDI and the name of the recipient, the newest first; <c>period</c>
+    /// issuer profile of an owner the caller reads the accounting of: number, day, kind, total, currency, state of the SDI and whether it has an XML, the newest first; <c>period</c>
     /// (<c>yyyy-MM</c> or <c>yyyy</c>) narrows them to the ones issued then (400 <c>accountant_package_invalid_period</c>). Only the owner of the <c>owner_id</c> claim, and a delegated contact
     /// that holds <c>accounting.read</c> (403 <c>owner_portal_permission_missing</c> otherwise). Behind <c>Features:AgencyTier</c> and <c>Features:FiscalDocumentIssuance</c>: with either off the
-    /// list stays empty. Never a contact of the guest.
+    /// list stays empty. Nothing of a guest is in the list: the PDF and the XML hold what the document itself says.
     /// </summary>
     [HttpGet("issued-documents")]
     [EnableRateLimiting(RateLimitPolicies.OwnerPortalRead)]
