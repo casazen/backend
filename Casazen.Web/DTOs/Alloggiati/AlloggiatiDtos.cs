@@ -79,14 +79,34 @@ public sealed record AlloggiatiReceiptCoverageDto(bool Archived, string? Source,
         proof is null ? new AlloggiatiReceiptCoverageDto(false, null, null) : new AlloggiatiReceiptCoverageDto(true, proof.Source, proof.VerifiedAt);
 }
 
+/// <summary>
+/// What the host's retry of the write of the guests did (<c>POST api/alloggiati/{bookingId}/retry-octorate-write</c>, E20/F01/US01/T02): the outcome of the
+/// send and, when it did nothing or not everything, why. No personal data.
+/// </summary>
+/// <param name="State">
+/// <c>Sent</c> (every guest tried went), <c>PartlyFailed</c> or <c>Failed</c> (the guests that could not be written have their code in the block of
+/// the guests), <c>NothingToSend</c> (no guest could be tried again: a guest held back for a place is corrected, not retried) or <c>NotApplicable</c> /
+/// <c>NotMirrored</c> (the stay is not written to the channel manager at all).
+/// </param>
+/// <param name="Reason">Why nothing was tried, a stable code the clients translate (<c>sender_not_channel_manager</c>, <c>booking_not_active</c>, ...); <c>null</c> when guests were tried.</param>
+public sealed record AlloggiatiRetryResultDto(OctorateCheckInSendState State, string? Reason)
+{
+    public static AlloggiatiRetryResultDto From(OctorateCheckInSendResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return new AlloggiatiRetryResultDto(result.State, result.Reason);
+    }
+}
+
 public class AlloggiatiStatusDto
 {
     public Guid BookingId { get; set; }
 
     /// <summary>
-    /// <see cref="AlloggiatiWebStatus.NotDue"/> for a no-show (NF-45): the guests never came, nothing is to be communicated. For a stay whose sender is
-    /// the channel manager, <see cref="AlloggiatiWebStatus.EntrustedToChannelManager"/> once its guests are on Octorate (yellow, never green without an
-    /// archived receipt) and <see cref="AlloggiatiWebStatus.ChannelManagerWriteFailed"/> when a guest could not be written (E20/F01/US01/T02).
+    /// <see cref="AlloggiatiWebStatus.NotDue"/> for a stay that owes nothing (NF-45: a no-show, a request still waiting, a cancelled booking): the guests never
+    /// came, nothing is to be communicated. For a stay whose sender is the channel manager,
+    /// <see cref="AlloggiatiWebStatus.EntrustedToChannelManager"/> once its guests are on Octorate (yellow, never green without an archived receipt) and
+    /// <see cref="AlloggiatiWebStatus.ChannelManagerWriteFailed"/> when a guest could not be written (E20/F01/US01/T02).
     /// </summary>
     public AlloggiatiWebStatus Status { get; set; }
 
@@ -113,14 +133,18 @@ public class AlloggiatiStatusDto
     /// </summary>
     public AlloggiatiChannelManagerDto? ChannelManager { get; set; }
 
+    /// <summary>What the host's retry of the write of the guests did; <c>null</c> in every other answer (E20/F01/US01/T02).</summary>
+    public AlloggiatiRetryResultDto? Retry { get; set; }
+
     /// <summary>
     /// The status of a stay. With <paramref name="stay"/> (the same facts and rules as the cockpit) the channel manager is taken into account: the
-    /// status reads «entrusted» or «write failed» where the guests say so, and the block of the guests and the receipt coverage is added.
+    /// status reads «entrusted» or «write failed» where the guests say so, «not due» for a stay that owes nothing, and the block of the guests and the
+    /// receipt coverage is added.
     /// </summary>
     public static AlloggiatiStatusDto From(AlloggiatiStatusInfo info, ComplianceStayStatus? stay = null) => new()
     {
         BookingId = info.BookingId,
-        Status = stay is null ? info.Status : AlloggiatiStatusRules.WithChannelManager(info.Status, stay.ChannelManager),
+        Status = StatusOf(info, stay),
         ConfirmationNumber = info.ConfirmationNumber,
         ErrorCode = info.ErrorCode,
         ReportedAt = info.ReportedAt,
@@ -131,6 +155,18 @@ public class AlloggiatiStatusDto
         DataComplete = info.DataComplete,
         ChannelManager = stay is null ? null : AlloggiatiChannelManagerDto.From(stay),
     };
+
+    private static AlloggiatiWebStatus StatusOf(AlloggiatiStatusInfo info, ComplianceStayStatus? stay)
+    {
+        if (stay is null)
+            return info.Status;
+
+        // A stay that owes nothing reads «not due» whatever its guests are on the channel manager, unless its communication was sent.
+        if (stay.Status == AlloggiatiWebStatus.NotDue && !AlloggiatiStatusRules.IsSent(info.Status))
+            return AlloggiatiWebStatus.NotDue;
+
+        return AlloggiatiStatusRules.WithChannelManager(info.Status, stay.ChannelManager);
+    }
 }
 
 public class AlloggiatiSummaryDto

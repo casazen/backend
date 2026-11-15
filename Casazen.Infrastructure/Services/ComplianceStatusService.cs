@@ -401,11 +401,15 @@ public sealed class ComplianceStatusService(
 
         var judged = JudgeAlloggiati(stay, reads, proofs, sender, connection, _clock.GetUtcNow().UtcDateTime, today, _clock.TodayInRomeAsDateOnly());
 
-        // A stay that owes nothing (a no-show, a request, a cancelled booking) has no light; neither has one whose arrival day has not come.
-        var due = AlloggiatiStatusRules.ActiveBookingStatuses.Contains(found.Status) && found.NoShowAt is null && stay.CheckInDate <= today;
-        var status = found.NoShowAt is not null && !AlloggiatiStatusRules.IsSent(judged.Status) ? AlloggiatiWebStatus.NotDue : judged.Status;
+        // A stay that owes nothing (a no-show, a request still waiting, a cancelled booking: the one definition of the Alloggiati job) reads «not due»
+        // whatever its guests are on the channel manager, has no light and offers no action (a retry of its write would do nothing: the send path sends
+        // nothing for it); a communication already sent stays visible. A stay whose arrival day has not come owes it later: it keeps its status and has
+        // no light yet.
+        var owes = AlloggiatiStatusRules.ActiveBookingStatuses.Contains(found.Status) && found.NoShowAt is null;
+        var due = owes && stay.CheckInDate <= today;
+        var status = !owes && !AlloggiatiStatusRules.IsSent(judged.Status) ? AlloggiatiWebStatus.NotDue : judged.Status;
         var links = reads.Links[stay.Id].OrderBy(l => l.Position).ToList();
-        var actions = sender == ComplianceSenderType.ChannelManager && AlloggiatiStatusRules.CanRetryChannelManagerWrite(links)
+        var actions = owes && sender == ComplianceSenderType.ChannelManager && AlloggiatiStatusRules.CanRetryChannelManagerWrite(links)
             ? new[] { AlloggiatiStayActions.RetryOctorateWrite }
             : [];
         return new ComplianceStayStatus(

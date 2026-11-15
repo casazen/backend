@@ -6,6 +6,8 @@ using Casazen.Core.Octorate;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
+using Casazen.Infrastructure.Octorate;
+using Casazen.Tests.Unit.Authorization;
 using Casazen.Tests.Unit.Services;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.Alloggiati;
@@ -14,6 +16,7 @@ using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -228,6 +231,133 @@ public class AlloggiatiStayStatusTests
         Assert.Equal(AlloggiatiWebStatus.DaInviareManualmente, status.Status);
         Assert.Empty(status.Guests);
         Assert.Empty(status.Actions);
+    }
+
+    /// <summary>
+    /// A stay that owes nothing (a request still waiting, a cancelled booking, a no-show: the one definition of the Alloggiati job) reads «not due» and offers
+    /// no action, whatever its guests are on the channel manager: a retry of its write would do nothing. The API reads the same, and the stay that still owes
+    /// the communication keeps its failure and its action.
+    /// </summary>
+    [Fact]
+    public async Task AStayThatOwesNothing_ReadsNotDueAndOffersNoAction_WhateverItsGuestsAreOnTheChannelManager()
+    {
+        var world = await ComplianceStatusServiceTests.World.SeedAsync();
+        world.Senders[world.Granted.Id] = ComplianceSenderType.ChannelManager;
+        var (cancelled, _) = await world.AddStayAsync(world.Granted, checkInOffset: 0, nights: 3, guests: 2);
+        var (noShow, _) = await world.AddStayAsync(world.Granted, checkInOffset: 0, nights: 3, guests: 2);
+        var (waiting, _) = await world.AddStayAsync(world.Granted, checkInOffset: 0, nights: 3, guests: 2);
+        var (owes, _) = await world.AddStayAsync(world.Granted, checkInOffset: 0, nights: 3, guests: 2);
+        foreach (var stay in new[] { cancelled, noShow, waiting, owes })
+        {
+            await world.EntrustAsync(stay, positions: [0]);
+            await world.EntrustAsync(stay, positions: [1], status: OctorateSyncStatus.Failed);
+        }
+
+        await world.UpdateStayAsync(cancelled, b => b.Status = BookingStatus.Cancelled);
+        await world.UpdateStayAsync(noShow, b => b.NoShowAt = DateTime.UtcNow);
+        await world.UpdateStayAsync(waiting, b => b.Status = BookingStatus.Pending);
+        await using var db = world.Db();
+        var service = world.StatusService(db);
+
+        foreach (var gone in new[] { cancelled, noShow, waiting })
+        {
+            var status = await service.GetStayStatusAsync(world.OrgWide, gone.Id, CancellationToken.None);
+
+            Assert.Equal(AlloggiatiWebStatus.NotDue, status!.Status);
+            Assert.Empty(status.Actions);
+            Assert.Null(status.Verdict);
+            var dto = AlloggiatiStatusDto.From(
+                new AlloggiatiStatusInfo(gone.Id, AlloggiatiWebStatus.DaInviareManualmente, null, null, null, DateTime.UtcNow, false, 0, false, true), status);
+            Assert.Equal(AlloggiatiWebStatus.NotDue, dto.Status);
+            Assert.Empty(dto.ChannelManager!.Actions);
+        }
+
+        var stillOwes = await service.GetStayStatusAsync(world.OrgWide, owes.Id, CancellationToken.None);
+        Assert.Equal(AlloggiatiWebStatus.ChannelManagerWriteFailed, stillOwes!.Status);
+        Assert.Equal([AlloggiatiStayActions.RetryOctorateWrite], stillOwes.Actions);
+    }
+
+    /// <summary>
+    /// The retry of the write answers what it did, in the answer: the outcome and, when nothing was tried, why; and while another send of the stay holds the
+    /// lock it is a 409, never a «done» for a retry that did nothing.
+    /// </summary>
+    [Fact]
+    public async Task RetryOctorateWrite_AnswersWhatTheRetryDid_AndA409WhileAnotherSendIsRunning()
+    {
+        var booking = new Booking
+        {
+            Id = Guid.NewGuid(),
+            OrgId = Guid.NewGuid(),
+            PropertyId = Guid.NewGuid(),
+            GuestId = Guid.NewGuid(),
+            CheckInDate = new DateTime(2026, 11, 10, 0, 0, 0, DateTimeKind.Utc),
+            CheckOutDate = new DateTime(2026, 11, 13, 0, 0, 0, DateTimeKind.Utc),
+            Status = BookingStatus.Confirmed,
+            NumberOfGuests = 2,
+        };
+        var alloggiati = new Mock<IAlloggiatiWebService>();
+        alloggiati
+            .Setup(a => a.GetStatusAsync(booking.Id))
+            .ReturnsAsync(new AlloggiatiStatusInfo(booking.Id, AlloggiatiWebStatus.DaInviareManualmente, null, null, null, DateTime.UtcNow, false, 0, false, true));
+        var sync = new Mock<ICheckInOctorateSyncService>();
+        var controller = ControllerOfAnOwner(booking, alloggiati, sync);
+
+        // Another send of the stay holds the lock: nothing was tried, and no status is answered as if it had.
+        sync
+            .Setup(s => s.RetryGuestsNowAsync(booking.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctorateCheckInSendResult(OctorateCheckInSendState.NothingToSend, CheckInOctorateSyncService.ReasonSendInProgress, false, [], false));
+        var busy = Assert.IsType<ObjectResult>((await controller.RetryOctorateWrite(booking.Id)).Result);
+        Assert.Equal(StatusCodes.Status409Conflict, busy.StatusCode);
+        Assert.Equal(AlloggiatiController.WriteInProgressCode, Assert.IsAssignableFrom<ProblemDetails>(busy.Value).Extensions["code"]);
+        alloggiati.Verify(a => a.GetStatusAsync(It.IsAny<Guid>()), Times.Never);
+
+        // A retry that did nothing says so, and why.
+        sync
+            .Setup(s => s.RetryGuestsNowAsync(booking.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctorateCheckInSendResult(OctorateCheckInSendState.NotApplicable, CheckInOctorateSyncService.ReasonSenderNotChannelManager, false, [], false));
+        var nothing = Assert.IsType<AlloggiatiStatusDto>(Assert.IsType<OkObjectResult>((await controller.RetryOctorateWrite(booking.Id)).Result).Value);
+        Assert.Equal((OctorateCheckInSendState.NotApplicable, CheckInOctorateSyncService.ReasonSenderNotChannelManager), (nothing.Retry!.State, nothing.Retry.Reason));
+
+        // One that tried guests and did not get them all through says so too: the codes of the guests are in the block of the stay.
+        sync
+            .Setup(s => s.RetryGuestsNowAsync(booking.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctorateCheckInSendResult(OctorateCheckInSendState.PartlyFailed, null, false, [], false));
+        var partly = Assert.IsType<AlloggiatiStatusDto>(Assert.IsType<OkObjectResult>((await controller.RetryOctorateWrite(booking.Id)).Result).Value);
+        Assert.Equal((OctorateCheckInSendState.PartlyFailed, null), (partly.Retry!.State, partly.Retry.Reason));
+    }
+
+    /// <summary>The controller for the owner of the property of <paramref name="booking"/>, with the production-like authorization of the harness.</summary>
+    private static AlloggiatiController ControllerOfAnOwner(Booking booking, Mock<IAlloggiatiWebService> alloggiati, Mock<ICheckInOctorateSyncService> sync)
+    {
+        const string owner = "auth0|owner";
+        var bookings = new Mock<IBookingService>();
+        bookings.Setup(b => b.GetBookingAsync(booking.Id)).ReturnsAsync(booking);
+        var lookup = new Mock<IHostResourceLookup>();
+        lookup
+            .Setup(l => l.ForPropertyAsync(booking.PropertyId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(HostResource.ForProperty(new Property { Id = booking.PropertyId, OrgId = booking.OrgId, OwnerId = owner, Name = "Casa del Lago" }));
+        var services = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider();
+        return new AlloggiatiController(
+            alloggiati.Object,
+            bookings.Object,
+            Mock.Of<IPropertyAuthorizationService>(),
+            lookup.Object,
+            HostAuthorizationTestHarness.Create(booking.OrgId),
+            Mock.Of<IStayGuestService>(),
+            Mock.Of<IAlloggiatiCodeTableService>(),
+            Mock.Of<IAlloggiatiReportScheduler>(),
+            Mock.Of<IOrgContextResolver>(),
+            Mock.Of<IHostScopeResolver>(),
+            services.GetRequiredService<IStringLocalizer<SharedResources>>(),
+            NullLogger<AlloggiatiController>.Instance,
+            Mock.Of<IComplianceStatusService>(),
+            sync.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = HostAuthorizationTestHarness.User(owner, "PropertyOwner"), RequestServices = services },
+            },
+        };
     }
 
     private static AlloggiatiController Controller(

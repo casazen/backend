@@ -3,6 +3,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Octorate;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Alloggiati;
 using Casazen.Web.Infrastructure;
@@ -44,6 +45,9 @@ public class AlloggiatiController(
 {
     /// <summary>Code of a send request: CasaZen has no Alloggiati Web client (422).</summary>
     public const string TransmissionUnavailableCode = "alloggiati_transmission_unavailable";
+
+    /// <summary>Code of a retry of the write of the guests while another send of the stay is running (409).</summary>
+    public const string WriteInProgressCode = "alloggiati_write_in_progress";
 
     /// <summary>Code of a code search on an unknown list (400).</summary>
     public const string CodeListUnknownCode = "alloggiati_code_list_unknown";
@@ -88,11 +92,21 @@ public class AlloggiatiController(
 
     /// <summary>
     /// The host asks to try again to write the guests of the stay to the channel manager (the action <c>RetryOctorateWrite</c> of the status): the guests whose
-    /// write failed or was left pending are sent again, attempts used up included, and the status is answered as it is afterwards. A guest held back for a place
-    /// Octorate does not know is not retried: the host corrects the guest, which sends it. Needs <c>alloggiati.submit</c> on the booking.
+    /// write failed or was left pending are sent again, attempts used up included, and the status is answered as it is afterwards, with what the retry did
+    /// (<c>retry</c>: the outcome and, when nothing was tried, why). A guest held back for a place Octorate does not know is not retried: the host corrects
+    /// the guest, which sends it. Needs <c>alloggiati.submit</c> on the booking. Another send of the stay is running: nothing was tried, 409
+    /// <c>alloggiati_write_in_progress</c>, and the host asks again in a moment.
     /// </summary>
+    /// <response code="200">The status of the stay and what the retry did.</response>
+    /// <response code="403">The caller may not submit the Alloggiati data of the booking.</response>
+    /// <response code="404">No such booking in the caller's org.</response>
+    /// <response code="409"><c>alloggiati_write_in_progress</c>: another send of the guests of the stay is running.</response>
     [HttpPost("{bookingId:guid}/retry-octorate-write")]
     [Authorize(Policy = CasazenPolicies.AlloggiatiSubmit)]
+    [ProducesResponseType(typeof(AlloggiatiStatusDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<AlloggiatiStatusDto>> RetryOctorateWrite(Guid bookingId)
     {
         var (_, denied) = await AuthorizeBookingAsync(bookingId, AlloggiatiOperations.Submit);
@@ -101,11 +115,17 @@ public class AlloggiatiController(
 
         var result = await octorateSync.RetryGuestsNowAsync(bookingId, HttpContext.RequestAborted);
         logger.LogInformation(
-            "User {UserId} asked to try again the write of the guests of booking {BookingId} to the channel manager: {State}",
-            User.GetUserId(), bookingId, result.State);
+            "User {UserId} asked to try again the write of the guests of booking {BookingId} to the channel manager: {State} {Reason}",
+            User.GetUserId(), bookingId, result.State, result.Reason);
+
+        // Another send of the stay holds the lock: nothing was tried, and «done» is never answered for it.
+        if (result.Reason == CheckInOctorateSyncService.ReasonSendInProgress)
+            return this.ApiProblem(StatusCodes.Status409Conflict, WriteInProgressCode, "AlloggiatiChannelManagerWriteInProgress");
 
         var status = await alloggiatiWebService.GetStatusAsync(bookingId);
-        return Ok(AlloggiatiStatusDto.From(status, await GetStayStatusAsync(bookingId)));
+        var dto = AlloggiatiStatusDto.From(status, await GetStayStatusAsync(bookingId));
+        dto.Retry = AlloggiatiRetryResultDto.From(result);
+        return Ok(dto);
     }
 
     /// <summary>

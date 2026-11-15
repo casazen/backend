@@ -56,12 +56,12 @@ public interface IComplianceStatusService
 /// <param name="BookingId">The stay.</param>
 /// <param name="PropertyId">Its property.</param>
 /// <param name="Sender">Who sends the communication, as far as CasaZen can rely on it (the channel manager only while the connector is on).</param>
-/// <param name="Status">The status the stay reads: «entrusted» or «write failed» for a channel-manager stay (<see cref="AlloggiatiStatusRules.WithChannelManager"/>), otherwise as before.</param>
+/// <param name="Status">The status the stay reads: «entrusted» or «write failed» for a channel-manager stay (<see cref="AlloggiatiStatusRules.WithChannelManager"/>), otherwise as before; <see cref="AlloggiatiWebStatus.NotDue"/> for a stay that owes nothing (a no-show, a request still waiting, a cancelled booking) unless its communication was sent.</param>
 /// <param name="ChannelManager">Where the guests stand on the channel manager; <see cref="ChannelManagerWriteState.NotApplicable"/> when it is not the sender.</param>
 /// <param name="Guests">The guests written (or being written) to the channel manager, by position; empty when it is not the sender.</param>
 /// <param name="ReceiptProof">The archived receipt of the arrival day (a receipt CasaZen holds, or one the host uploaded); <c>null</c> when none: green needs it.</param>
 /// <param name="Verdict">The light and the action of the cockpit for the stay; <c>null</c> before its arrival day, when nothing is due.</param>
-/// <param name="Actions">What can help (<see cref="AlloggiatiStayActions"/>); empty when nothing.</param>
+/// <param name="Actions">What can help (<see cref="AlloggiatiStayActions"/>); empty when nothing, and always for a stay that owes nothing.</param>
 public sealed record ComplianceStayStatus(
     Guid BookingId,
     Guid PropertyId,
