@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-14.1";
+    public const string Version = "2026-11-15.1";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -305,6 +305,14 @@ public static class DemoShowcaseCatalog
         public const string ReportChannelCosts = "report-channel-costs";
 
         /// <summary>
+        /// The cleaning at check-out (E24/F01/US01, NF-120): the ready routine «Pulizia al check-out» of the demo host (the time of the check-out of the property, the action
+        /// <c>CreateCleaningRequest</c>, a marked <c>Routine</c> row) and the two kinds of default cleaner a property can have: one with a trusted supplier at an agreed price and time,
+        /// one with a member of the staff and its cost to recharge to the owner. The cleaners are templates only, like the demo suppliers and staff they point at (the demo creates no
+        /// supplier org nor staff user), so no cleaning is created by the demo itself; they say what <c>api/properties/{id}/cleaning-setup</c> accepts. Invented amounts.
+        /// </summary>
+        public const string CleaningAtCheckout = "cleaning-at-checkout";
+
+        /// <summary>
         /// The two Italian tax checks of the owners (E18/F01/US03/T01, NF-117, ⚖ I7 and I8): an owner who lets short more apartments than the limit of a private person (two
         /// the agency manages and one it declares outside it: presumed a business, a warning and no short-let withholding), and the stay of a company tenant in the property of a
         /// private owner (a «Da fare» until a person decides, then the withholding facts follow the decision). Invented, TEST owners: a template of what the checks answer
@@ -395,6 +403,7 @@ public static class DemoShowcaseCatalog
         Scenario.OwnerChannelCommission,
         Scenario.ReportCollections,
         Scenario.ReportChannelCosts,
+        Scenario.CleaningAtCheckout,
         Scenario.OwnerTaxChecks,
     ];
 
@@ -1591,6 +1600,29 @@ public static class DemoShowcaseCatalog
             ],
             true,
             Scenario.RoutineTestMode),
+
+        // E24/F01/US01/T02: the ready routine «Pulizia al check-out»: an offset of 0 after the check-out is the check-out time of the property on its own clock, even when the
+        // host never registers the departure, and the action creates the cleaning for the default cleaner of the property (a supplier's request or a staff activity), once for each
+        // stay. A property with no cleaner set up is skipped (the action is blocked and says so in the log), so it changes nothing in the demo until a cleaner is set.
+        new(
+            "pulizia-al-checkout",
+            "Pulizia al check-out (DEMO)",
+            RoutineEventType.AfterCheckout,
+            0,
+            [new DemoRoutineAction(RoutineActionType.CreateCleaningRequest, "{}")],
+            false,
+            Scenario.CleaningAtCheckout),
+    ];
+
+    /// <summary>
+    /// The default cleaner of two demo properties (E24/F01/US01/T01, NF-120): Villa del Lago with the trusted supplier «Pulizie Express DEMO» at € 65.00 from 11:00 for two hours, Casa
+    /// Trastevere with Sofia Conte of the staff, at € 35.00 on the check-out time of the house (the cost is recharged to the owner). Templates only: the demo creates no supplier org
+    /// and no staff user (<see cref="Suppliers"/> and <see cref="StaffMembers"/> are templates too), so these are the bodies <c>PUT api/properties/{id}/cleaning-setup</c> takes, not rows.
+    /// </summary>
+    public static IReadOnlyList<DemoCleaningSetupTemplate> CleaningSetups { get; } =
+    [
+        new("villa-lago-fornitore", "villa-lago", PropertyCleanerKind.Supplier, "pulizie-express", null, 6500, new TimeOnly(11, 0), 120, Scenario.CleaningAtCheckout),
+        new("casa-trastevere-staff", "casa-trastevere", PropertyCleanerKind.Staff, null, "sofia-conte", 3500, null, null, Scenario.CleaningAtCheckout),
     ];
 
     /// <summary>
@@ -2490,6 +2522,21 @@ public sealed record DemoRoutineTemplate(
 
 /// <summary>An action of a demo routine: its type and its configuration as the JSON object the editor writes (<c>{ "text": "…", "dueInDays": 1 }</c>).</summary>
 public sealed record DemoRoutineAction(RoutineActionType Type, string ConfigJson);
+
+/// <summary>
+/// The default cleaner of a demo property (E24/F01/US01/T01, NF-120): who cleans (the key of a <see cref="DemoSupplierTemplate"/> or of a <see cref="DemoStaffTemplate"/>), the agreed price in
+/// cents of the property's currency, and the time and the length when the setup says them. A template only (not written as a row): it is the body of <c>PUT api/properties/{id}/cleaning-setup</c>.
+/// </summary>
+public sealed record DemoCleaningSetupTemplate(
+    string Key,
+    string PropertyKey,
+    PropertyCleanerKind Kind,
+    string? SupplierKey,
+    string? StaffKey,
+    int PriceCents,
+    TimeOnly? StartTime,
+    int? DurationMinutes,
+    string Scenario);
 
 /// <summary>Which of the two sources of the hub of messages a demo conversation is kept in, and what it is about.</summary>
 public enum DemoMessageThreadKind
