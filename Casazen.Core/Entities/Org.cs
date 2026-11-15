@@ -343,4 +343,21 @@ public class Org
     /// <summary>Who revoked the delegation: the Auth0 subject of the account, not a foreign key.</summary>
     [MaxLength(AlloggiatiDelegationUserIdMaxLength)]
     public string? AlloggiatiDelegationRevokedByUserId { get; set; }
+
+    // ─── Guests written to the channel manager on their own (E20/F01/US01, decision O1) ─────────
+
+    /// <summary>
+    /// The org lets CasaZen write the guests of a stay to the channel manager as soon as their data is complete and the identity check has passed,
+    /// with no confirmation of the host (decision O1: the agency accepts that complete data plus a passed identity check is the confirmation). Off
+    /// by default: the guests then go only when the host confirms the check-in wizard. It changes nothing about who sends to the police: the
+    /// channel manager does. Written only by <c>IOrgGuestAutoSendSetting</c>.
+    /// </summary>
+    public bool AutoSendGuestsToOctorate { get; set; }
+
+    /// <summary>When <see cref="AutoSendGuestsToOctorate"/> was last changed (UTC); <c>null</c> when it never was.</summary>
+    public DateTime? AutoSendGuestsToOctorateChangedAt { get; set; }
+
+    /// <summary>Who changed <see cref="AutoSendGuestsToOctorate"/> last: the Auth0 subject of the account, not a foreign key.</summary>
+    [MaxLength(AlloggiatiDelegationUserIdMaxLength)]
+    public string? AutoSendGuestsToOctorateChangedByUserId { get; set; }
 }

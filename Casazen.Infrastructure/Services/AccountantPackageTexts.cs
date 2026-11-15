@@ -105,6 +105,7 @@ internal static class PackageLabels
     public const string IndexColFolder = "AccPkgIndexColFolder";
     public const string IndexColReason = "AccPkgIndexColReason";
     public const string OmittedOwnerAccounting = "AccPkgOmittedOwnerAccounting";
+    public const string OmittedNotSelected = "AccPkgOmittedNotSelected";
 
     // The agency summary.
     public const string SummaryTitle = "AccPkgSummaryTitle";

@@ -201,7 +201,7 @@ public sealed class ComplianceStatusService(
         ILookup<Guid, ReportRow> Reports,
         IReadOnlyDictionary<Guid, ReceiptRow> Receipts,
         ILookup<Guid, int> GuestPositions,
-        ILookup<Guid, LinkRow> SentLinks);
+        ILookup<Guid, ChannelManagerGuestFact> Links);
 
     private async Task<AlloggiatiReads> ReadAlloggiatiAsync(
         Guid orgId,
@@ -228,7 +228,8 @@ public sealed class ComplianceStatusService(
                 .Select(r => new ReceiptRow(r.Id, r.RetrievedAt))
                 .ToListAsync(ct);
 
-        // What was entrusted to the channel manager: the guests of a stay that are on Octorate for good (not as a draft).
+        // What was entrusted to the channel manager and what failed on its way: the guests of a stay and the links of each to Octorate (a guest on it
+        // for good is not a draft; a guest that could not be written says why, E20/F01/US01/T02). The links of the stays of the channel manager only.
         var channelManagerStayIds = dueStays.Where(s => senderOf(s.PropertyId) == ComplianceSenderType.ChannelManager).Select(s => s.Id).ToList();
         var guests = channelManagerStayIds.Count == 0
             ? []
@@ -241,15 +242,15 @@ public sealed class ComplianceStatusService(
             ? []
             : await db.StayGuestOctorateLinks
                 .AsNoTracking()
-                .Where(l => channelManagerStayIds.Contains(l.BookingId) && l.Status == OctorateSyncStatus.Sent && !l.SentAsDraft)
-                .Select(l => new LinkRow(l.BookingId, l.Position, l.SentAt))
+                .Where(l => channelManagerStayIds.Contains(l.BookingId))
+                .Select(l => new LinkRow(l.BookingId, l.Position, l.Status, l.SentAsDraft, l.ErrorCode, l.ErrorFields, l.Attempts, l.UpdatedAt))
                 .ToListAsync(ct);
 
         return new AlloggiatiReads(
             reports.ToLookup(r => r.BookingId),
             receipts.ToDictionary(r => r.Id),
             guests.ToLookup(g => g.BookingId, g => g.Position),
-            links.ToLookup(l => l.BookingId));
+            links.ToLookup(l => l.BookingId, l => new ChannelManagerGuestFact(l.Position, l.Status, l.SentAsDraft, l.ErrorCode, l.ErrorFields, l.Attempts, l.UpdatedAt)));
     }
 
     private static void AddAlloggiati(
@@ -269,43 +270,158 @@ public sealed class ComplianceStatusService(
         {
             universe.Bookings.Add(stay.Id);
 
-            // The report that stands for the stay: the one of its booker, or else the latest.
-            var ofStay = reads.Reports[stay.Id].ToList();
-            var report = ofStay.FirstOrDefault(r => r.GuestId == stay.GuestId) ?? ofStay.OrderByDescending(r => r.UpdatedAt).FirstOrDefault();
-            var status = AlloggiatiStatusRules.Effective(report?.Status, stay.CheckInDate, today);
             var sender = senderOf(stay.PropertyId);
-
-            var (entrusted, entrustedAt) = sender == ComplianceSenderType.ChannelManager ? EntrustedState(stay.Id, reads) : (false, null);
-            var communicated = status is AlloggiatiWebStatus.Inviato or AlloggiatiWebStatus.InviatoManualmente or AlloggiatiWebStatus.SentReceiptPending;
-            DateTime? communicatedAt = communicated ? report?.ReportedAt ?? report?.UpdatedAt : entrustedAt;
-            var deadline = AlloggiatiTerms.DeadlineUtc(stay.ArrivedAt, stay.CheckInDate, stay.CheckOutDate);
-
-            var verdict = ComplianceLightRules.Alloggiati(new AlloggiatiFacts
-            {
-                Sender = sender,
-                Status = status,
-                StayNights = AlloggiatiTerms.StayDays(stay.CheckInDate, stay.CheckOutDate),
-                DeadlineUtc = deadline,
-                NowUtc = nowUtc,
-                TodayRome = todayDate,
-                GuestsEntrusted = entrusted,
-                CommunicatedAt = communicatedAt,
-                Connection = sender == ComplianceSenderType.ChannelManager && connections.TryGetValue(stay.PropertyId, out var known)
-                    ? known.Alloggiati.State
-                    : null,
-                Proof = AlloggiatiProof(stay, report, reads, proofs),
-            });
+            var connection = sender == ComplianceSenderType.ChannelManager && connections.TryGetValue(stay.PropertyId, out var known)
+                ? known.Alloggiati.State
+                : (ConnectionHealthState?)null;
+            var judged = JudgeAlloggiati(stay, reads, proofs, sender, connection, nowUtc, today, todayDate);
 
             items.Add(new ComplianceStatusItem(
                 ComplianceItemKind.Alloggiati,
-                verdict.Action,
+                judged.Verdict.Action,
                 stay.PropertyId,
                 stay.Id,
                 null,
                 LabelOf(stay, propertyNames),
-                verdict.Verdict,
-                deadline));
+                judged.Verdict.Verdict,
+                judged.DeadlineUtc));
         }
+    }
+
+    /// <summary>What the rules decided for one stay: the status it reads, where its guests stand on the channel manager, the light and the proof.</summary>
+    private sealed record AlloggiatiJudgement(
+        AlloggiatiWebStatus Status,
+        ChannelManagerWriteState ChannelManager,
+        ComplianceStayVerdict Verdict,
+        DateTime DeadlineUtc,
+        ComplianceProof? Proof);
+
+    /// <summary>
+    /// The one place the Alloggiati facts of a stay become a status and a light, for the cockpit and for the per-stay status alike (E20/F01/US01/T02): the
+    /// report that stands for the stay, its status with the channel manager taken into account (<see cref="AlloggiatiStatusRules.WithChannelManager"/>:
+    /// «entrusted» when every guest is on Octorate for good, «write failed» when one could not be written), and the light of
+    /// <see cref="ComplianceLightRules.Alloggiati"/>, which is green only with an archived receipt.
+    /// </summary>
+    private static AlloggiatiJudgement JudgeAlloggiati(
+        StayRow stay,
+        AlloggiatiReads reads,
+        ILookup<(Guid PropertyId, ManualProofKind Kind), ProofRow> proofs,
+        ComplianceSenderType sender,
+        ConnectionHealthState? connection,
+        DateTime nowUtc,
+        DateTime today,
+        DateOnly todayDate)
+    {
+        // The report that stands for the stay: the one of its booker, or else the latest.
+        var ofStay = reads.Reports[stay.Id].ToList();
+        var report = ofStay.FirstOrDefault(r => r.GuestId == stay.GuestId) ?? ofStay.OrderByDescending(r => r.UpdatedAt).FirstOrDefault();
+
+        var channelManager = sender == ComplianceSenderType.ChannelManager
+            ? AlloggiatiStatusRules.ChannelManagerStateOf(reads.GuestPositions[stay.Id].ToList(), reads.Links[stay.Id].ToList())
+            : ChannelManagerWriteState.NotApplicable;
+        var status = AlloggiatiStatusRules.WithChannelManager(AlloggiatiStatusRules.Effective(report?.Status, stay.CheckInDate, today), channelManager);
+        var communicated = status is AlloggiatiWebStatus.Inviato or AlloggiatiWebStatus.InviatoManualmente or AlloggiatiWebStatus.SentReceiptPending;
+        var deadline = AlloggiatiTerms.DeadlineUtc(stay.ArrivedAt, stay.CheckInDate, stay.CheckOutDate);
+        var proof = AlloggiatiProof(stay, report, reads, proofs);
+
+        var verdict = ComplianceLightRules.Alloggiati(new AlloggiatiFacts
+        {
+            Sender = sender,
+            Status = status,
+            StayNights = AlloggiatiTerms.StayDays(stay.CheckInDate, stay.CheckOutDate),
+            DeadlineUtc = deadline,
+            NowUtc = nowUtc,
+            TodayRome = todayDate,
+            GuestsEntrusted = channelManager == ChannelManagerWriteState.Entrusted,
+            CommunicatedAt = communicated ? report?.ReportedAt ?? report?.UpdatedAt : null,
+            Connection = connection,
+            Proof = proof,
+        });
+
+        return new AlloggiatiJudgement(status, channelManager, verdict, deadline, proof);
+    }
+
+    public async Task<ComplianceStayStatus?> GetStayStatusAsync(HostScope scope, Guid bookingId, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        var orgId = scope.OrgId;
+        var today = _clock.TodayInRome();
+
+        // The stay of the caller's reach, by the same reads as the cockpit: another org's stay, one outside the reach of a collaborator «Solo alcuni»
+        // and one that does not exist are the same answer.
+        var found = await db.Bookings
+            .AsNoTracking()
+            .Where(b => b.OrgId == orgId && b.Id == bookingId)
+            .InScope(scope)
+            .Select(b => new
+            {
+                Stay = new StayRow(
+                    b.Id,
+                    b.PropertyId,
+                    b.GuestId,
+                    b.CheckInDate,
+                    b.CheckOutDate,
+                    b.ArrivedAt,
+                    b.TouristTax,
+                    (b.Guest.FirstName + " " + b.Guest.LastName).Trim()),
+                b.Status,
+                b.NoShowAt,
+            })
+            .FirstOrDefaultAsync(ct);
+        if (found is null)
+            return null;
+
+        var stay = found.Stay;
+        var info = (await senders.GetManyAsync([stay.PropertyId], ct)).GetValueOrDefault(stay.PropertyId);
+        var sender = info is { Applies: true }
+            ? info.AlloggiatiSender == ComplianceSenderType.ChannelManager && !featureFlags.IsEnabled(FeatureFlags.OctorateConnector)
+                ? ComplianceSenderType.Manual
+                : info.AlloggiatiSender
+            : ComplianceSenderType.Manual;
+
+        // The same reads as the cockpit, for this stay alone: its report and receipt, its guests and their links, the proofs of its property and day.
+        var reads = await ReadAlloggiatiAsync(orgId, [stay], _ => sender, ct);
+        var day = RomeCalendar.DateInRome(stay.CheckInDate);
+        var proofRows = await db.ManualComplianceProofs
+            .AsNoTracking()
+            .Where(p => p.OrgId == orgId && p.PropertyId == stay.PropertyId && p.Day == day)
+            .Select(p => new ProofRow(p.Id, p.PropertyId, p.Kind, p.Day, p.UploadedAt))
+            .ToListAsync(ct);
+        var proofs = proofRows.ToLookup(p => (p.PropertyId, p.Kind));
+
+        // The connection of the channel manager, from the short memory of the health service (the cockpit reads it the same way): an inactive one is a
+        // reason of the light, so the stay reads like the cockpit says.
+        ConnectionHealthState? connection = null;
+        if (sender == ComplianceSenderType.ChannelManager)
+        {
+            var healthOf = (await health.GetManyAsync([stay.PropertyId], ct)).ToDictionary(pair => pair.Key, pair => pair.Value);
+            if (healthOf.TryGetValue(stay.PropertyId, out var known) && known.Alloggiati.Reason != ComplianceConnectionHealthRules.NotCheckedYetReason)
+                connection = known.Alloggiati.State;
+        }
+
+        var judged = JudgeAlloggiati(stay, reads, proofs, sender, connection, _clock.GetUtcNow().UtcDateTime, today, _clock.TodayInRomeAsDateOnly());
+
+        // A stay that owes nothing (a no-show, a request still waiting, a cancelled booking: the one definition of the Alloggiati job) reads «not due»
+        // whatever its guests are on the channel manager, has no light and offers no action (a retry of its write would do nothing: the send path sends
+        // nothing for it); a communication already sent stays visible. A stay whose arrival day has not come owes it later: it keeps its status and has
+        // no light yet.
+        var owes = AlloggiatiStatusRules.ActiveBookingStatuses.Contains(found.Status) && found.NoShowAt is null;
+        var due = owes && stay.CheckInDate <= today;
+        var status = !owes && !AlloggiatiStatusRules.IsSent(judged.Status) ? AlloggiatiWebStatus.NotDue : judged.Status;
+        var links = reads.Links[stay.Id].OrderBy(l => l.Position).ToList();
+        var actions = owes && sender == ComplianceSenderType.ChannelManager && AlloggiatiStatusRules.CanRetryChannelManagerWrite(links)
+            ? new[] { AlloggiatiStayActions.RetryOctorateWrite }
+            : [];
+        return new ComplianceStayStatus(
+            stay.Id,
+            stay.PropertyId,
+            sender,
+            status,
+            judged.ChannelManager,
+            sender == ComplianceSenderType.ChannelManager ? links : [],
+            judged.Proof,
+            due ? judged.Verdict : null,
+            actions);
     }
 
     /// <summary>
@@ -329,24 +445,6 @@ public sealed class ComplianceStatusService(
         return manual is null
             ? null
             : new ComplianceProof($"manual-proof:{manual.Id:N}", ComplianceEvidenceSources.ManualUpload, manual.UploadedAt);
-    }
-
-    /// <summary>
-    /// Whether every registered guest of the stay is on Octorate for good, and since when (the latest send): a stay with no registered guest
-    /// has nothing to entrust.
-    /// </summary>
-    private static (bool Entrusted, DateTime? At) EntrustedState(Guid bookingId, AlloggiatiReads reads)
-    {
-        var positions = reads.GuestPositions[bookingId].Distinct().ToList();
-        if (positions.Count == 0)
-            return (false, null);
-
-        var sentAt = reads.SentLinks[bookingId]
-            .GroupBy(l => l.Position)
-            .ToDictionary(g => g.Key, g => g.Max(l => l.SentAt));
-        return positions.All(sentAt.ContainsKey)
-            ? (true, positions.Select(p => sentAt[p]).Max())
-            : (false, null);
     }
 
     // ─── Identity ───────────────────────────────────────────────────────────────────────────────────────
@@ -753,7 +851,15 @@ public sealed class ComplianceStatusService(
 
     private sealed record GuestRow(Guid BookingId, int Position);
 
-    private sealed record LinkRow(Guid BookingId, int Position, DateTime? SentAt);
+    private sealed record LinkRow(
+        Guid BookingId,
+        int Position,
+        OctorateSyncStatus Status,
+        bool SentAsDraft,
+        string? ErrorCode,
+        string? ErrorFields,
+        int Attempts,
+        DateTime UpdatedAt);
 
     private sealed record SessionRow(Guid Id, Guid BookingId, DateTime? OperatorRequestedAt, DateTime CreatedAt);
 

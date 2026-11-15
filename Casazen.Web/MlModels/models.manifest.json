@@ -1,0 +1,172 @@
+{
+  "$comment": "Delivery manifest of the identity verification models (E22/F01/US01/T01, ADR-013-R8 and R14). No model file is committed and no hash is pinned: sha256 stays null until the operator, with the permission of the product owner (decision O7), runs scripts/biometrics/fetch-models.mjs --write-manifest. A model is used by the API only when its SHA-256 equals the Railway variable named in config.sha256. Read by scripts/biometrics/fetch-models.mjs and by ModelManifestTests; docs/runbooks/biometric-models.md has the steps.",
+  "schemaVersion": 1,
+  "toleranceRatio": 0.2,
+  "models": [
+    {
+      "id": "yunet",
+      "role": "face_detector",
+      "name": "YuNet",
+      "version": "2023mar",
+      "file": "face_detection_yunet_2023mar.onnx",
+      "targetPath": "biometrics/face_detection_yunet_2023mar.onnx",
+      "usedBy": "Biometrics:FaceDetector",
+      "delivery": "commit",
+      "alternative": false,
+      "source": {
+        "repository": "https://github.com/opencv/opencv_zoo",
+        "path": "models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+        "urlTemplate": "https://github.com/opencv/opencv_zoo/raw/{revision}/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+        "revision": null,
+        "defaultRevision": "main"
+      },
+      "license": {
+        "id": "MIT",
+        "url": "https://opensource.org/licenses/MIT"
+      },
+      "approxSizeBytes": 230000,
+      "sha256": null,
+      "config": {
+        "sha256": "Biometrics__FaceDetector__Sha256"
+      },
+      "notes": [
+        "Face detector and landmarks of the OpenCV Zoo, trained on WIDER FACE. About 230 KB: committed in MlModels/biometrics."
+      ]
+    },
+    {
+      "id": "minifasnet",
+      "role": "anti_spoofing",
+      "name": "MiniFASNetV2",
+      "version": "2.7_80x80",
+      "file": "2.7_80x80_MiniFASNetV2.onnx",
+      "targetPath": "biometrics/2.7_80x80_MiniFASNetV2.onnx",
+      "usedBy": "Biometrics:AntiSpoofing",
+      "delivery": "commit",
+      "alternative": false,
+      "source": {
+        "repository": "https://github.com/minivision-ai/Silent-Face-Anti-Spoofing",
+        "path": "resources/anti_spoof_models/2.7_80x80_MiniFASNetV2.pth",
+        "urlTemplate": null,
+        "revision": null,
+        "defaultRevision": "master"
+      },
+      "license": {
+        "id": "Apache-2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0"
+      },
+      "approxSizeBytes": 2000000,
+      "sha256": null,
+      "config": {
+        "sha256": "Biometrics__AntiSpoofing__Sha256"
+      },
+      "export": {
+        "script": "scripts/biometrics/export_minifasnet.py",
+        "input": "1x3x80x80",
+        "output": "1x3",
+        "realClass": 1
+      },
+      "notes": [
+        "There is no ONNX file to download: the PyTorch weights of the release are exported with scripts/biometrics/export_minifasnet.py (input 1x3x80x80, output 1x3, class 1 is the real face), then fetch-models.mjs --only minifasnet measures and hashes the exported file."
+      ]
+    },
+    {
+      "id": "auraface",
+      "role": "face_recognition",
+      "name": "AuraFace-v1",
+      "version": "1.0.0",
+      "file": "glintr100.onnx",
+      "targetPath": "biometrics/glintr100.onnx",
+      "usedBy": "Biometrics:FaceRecognition",
+      "delivery": "external",
+      "alternative": false,
+      "source": {
+        "repository": "https://huggingface.co/fal/AuraFace-v1",
+        "path": "glintr100.onnx",
+        "urlTemplate": "https://huggingface.co/fal/AuraFace-v1/resolve/{revision}/glintr100.onnx",
+        "revision": null,
+        "defaultRevision": "main"
+      },
+      "license": {
+        "id": "Apache-2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0"
+      },
+      "approxSizeBytes": 260000000,
+      "sha256": null,
+      "config": {
+        "sha256": "Biometrics__FaceRecognition__Sha256",
+        "downloadUrl": "Biometrics__FaceRecognition__DownloadUrl"
+      },
+      "notes": [
+        "More accurate than SFace, about 260 MB: over the 100 MB limit of a GitHub file, so it is never committed. The API downloads it to Biometrics__FaceRecognition__Path at start (and keeps it only when the SHA-256 matches), or it lives on a Railway volume (docs/runbooks/biometric-models.md)."
+      ]
+    },
+    {
+      "id": "sface",
+      "role": "face_recognition",
+      "name": "SFace",
+      "version": "2021dec",
+      "file": "face_recognition_sface_2021dec.onnx",
+      "targetPath": "biometrics/face_recognition_sface_2021dec.onnx",
+      "usedBy": "Biometrics:FaceRecognition (the documented alternative to AuraFace-v1)",
+      "delivery": "commit",
+      "alternative": true,
+      "source": {
+        "repository": "https://github.com/opencv/opencv_zoo",
+        "path": "models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
+        "urlTemplate": "https://github.com/opencv/opencv_zoo/raw/{revision}/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
+        "revision": null,
+        "defaultRevision": "main"
+      },
+      "license": {
+        "id": "Apache-2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0"
+      },
+      "approxSizeBytes": 38700000,
+      "sha256": null,
+      "config": {
+        "sha256": "Biometrics__FaceRecognition__Sha256",
+        "set": {
+          "Biometrics__FaceRecognition__Name": "SFace",
+          "Biometrics__FaceRecognition__Version": "2021dec",
+          "Biometrics__FaceRecognition__Path": "MlModels/biometrics/face_recognition_sface_2021dec.onnx",
+          "Biometrics__RecognitionMean": "0",
+          "Biometrics__RecognitionStd": "1"
+        }
+      },
+      "notes": [
+        "Small enough to be committed, less accurate than AuraFace-v1. Chosen INSTEAD of AuraFace-v1 (the two share Biometrics__FaceRecognition__*): fetch it with --only sface and set the variables of config.set together with the hash."
+      ]
+    },
+    {
+      "id": "ocrb",
+      "role": "mrz_ocr",
+      "name": "OCR-B",
+      "version": "tessdata",
+      "file": "ocrb.traineddata",
+      "targetPath": "ocr/ocrb.traineddata",
+      "usedBy": "MrzOcr:Mrz",
+      "delivery": "commit",
+      "alternative": false,
+      "source": {
+        "repository": "https://github.com/Shreeshrii/tessdata_ocrb",
+        "path": "ocrb.traineddata",
+        "urlTemplate": "https://github.com/Shreeshrii/tessdata_ocrb/raw/{revision}/ocrb.traineddata",
+        "revision": null,
+        "defaultRevision": "master"
+      },
+      "license": {
+        "id": "Apache-2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0"
+      },
+      "approxSizeBytes": 3000000,
+      "toleranceRatio": 0.7,
+      "sha256": null,
+      "config": {
+        "sha256": "MrzOcr__Mrz__Sha256"
+      },
+      "notes": [
+        "OCR-B language data of Tesseract for the two or three lines of the MRZ. The README names no repository and only says a few MB: the repository above is the community one to confirm when pinning, hence the wide size tolerance. The mrz.traineddata of tesseractMRZ works too with MrzOcr__MrzLanguage=mrz."
+      ]
+    }
+  ]
+}

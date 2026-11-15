@@ -459,6 +459,53 @@ public class AccountantPackageTests
         Assert.Equal(PackageLabels.All.Count, PackageLabels.All.Distinct().Count());
     }
 
+    /// <summary>
+    /// E15/F01/US02/T02: the package the agency sends every month holds only the folders it chose. A folder that is not chosen is neither read nor written and the index lists it as left out, next to the owner
+    /// accounting a caller may not read; what is chosen holds the very files the package with every folder holds, and the owner accounting stays out whatever is chosen when the access does not allow it.
+    /// </summary>
+    [Fact]
+    public async Task AccountantPackage_WithChosenFolders_WritesOnlyThose_AndTheIndexListsTheOthersAsLeftOut()
+    {
+        await using var rig = await AccountantPackageRig.CreateAsync();
+        var period = AccountantPackagePeriod.OfYear(2026);
+        var everything = Unzip(await rig.BuildAsync(AccountantPackageAccess.Full, period));
+        var chosen = AccountantPackageFolders.Vat | AccountantPackageFolders.Collections | AccountantPackageFolders.OwnerInvoices;
+        rig.StatementFiles.Invocations.Clear();
+        rig.OwnerReports.Invocations.Clear();
+
+        var some = Unzip(await rig.BuildAsync(AccountantPackageAccess.Full.Narrowed(chosen), period));
+
+        // Only the chosen folders are there, with the files the package with every folder has in them.
+        string FolderOfPath(string path) => path[..path.IndexOf('/', StringComparison.Ordinal)];
+        var written = some.Keys.Where(k => k != AccountantPackageStructure.IndexFile).ToList();
+        Assert.Equal(["fatture-proprietari", "incassi", "iva"], written.Select(FolderOfPath).Distinct().Order(StringComparer.Ordinal));
+        Assert.Equal(
+            everything.Keys.Where(k => k != AccountantPackageStructure.IndexFile && written.Select(FolderOfPath).Contains(FolderOfPath(k))).Order(StringComparer.Ordinal),
+            written.Order(StringComparer.Ordinal));
+
+        // The index tells the truth about them and lists every folder that is not there.
+        var index = ParseIndex(some[AccountantPackageStructure.IndexFile]);
+        Assert.Equal(written.Order(StringComparer.Ordinal), index.Entries.Select(e => e.Path).Order(StringComparer.Ordinal));
+        Assert.Equal(
+            AccountantPackageFolderRules.Singles.Where(f => (chosen & f) == 0).Select(AccountantPackageFolderRules.FolderOf).Order(StringComparer.Ordinal),
+            index.Omitted.Select(r => r.TrimEnd('/')).Order(StringComparer.Ordinal));
+
+        // What was not chosen was not even read: no statement, no owner report (the summary and the statements are not chosen).
+        rig.StatementFiles.Verify(f => f.GetPdfAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.OwnerReports.Verify(r => r.GetByOwnerAsync(It.IsAny<HostScope>(), It.IsAny<HostPerformanceQuery>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // The invoices to the owners are chosen, but the access does not allow the owner accounting: the folder is left out for that, and no folder is listed twice.
+        var withoutPermission = Unzip(await rig.BuildAsync(AccountantPackageAccess.WithoutOwnerAccounting.Narrowed(chosen), period));
+        Assert.DoesNotContain(withoutPermission.Keys, k => k.StartsWith("fatture-proprietari/", StringComparison.Ordinal));
+        var omitted = ParseIndex(withoutPermission[AccountantPackageStructure.IndexFile]).Omitted.Select(r => r.TrimEnd('/')).ToList();
+        Assert.Equal(omitted.Distinct().Order(StringComparer.Ordinal), omitted.Order(StringComparer.Ordinal));
+        Assert.Equal(
+            AccountantPackageStructure.OwnerAccountingFolders.Concat(
+                    AccountantPackageFolderRules.Singles.Where(f => (chosen & f) == 0 && !AccountantPackageFolderRules.IsOwnerAccounting(f)).Select(AccountantPackageFolderRules.FolderOf))
+                .Order(StringComparer.Ordinal),
+            omitted.Order(StringComparer.Ordinal));
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static Task<decimal> SumAsync(AccountantPackageRig rig, OwnerLedgerEntryType type) =>

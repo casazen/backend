@@ -1,6 +1,7 @@
 using Casazen.Web.Configuration;
 using Casazen.Web.HealthChecks;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Casazen.Web.Extensions;
 
@@ -9,7 +10,8 @@ namespace Casazen.Web.Extensions;
 /// <list type="bullet">
 ///   <item><c>/api/health/live</c>: the process answers; no dependency is checked;</item>
 ///   <item><c>/api/health/ready</c>: database, Hangfire, the connection budget of the database (db-connections), the ISTAT comuni list and configuration of email, storage, Stripe, Auth0, the Vercel
-///   Domains API (custom domains, BK-17), the public API URL (iCal links) and the publication of the legal documents (LEGAL-TEXTS, DEPLOY-CFG); 200 when
+///   Domains API (custom domains, BK-17), the public API URL (iCal links), the publication of the legal documents (LEGAL-TEXTS, DEPLOY-CFG) and the model
+///   files of the identity verification (<c>biometrics</c>, never unhealthy: the operator path keeps working); 200 when
 ///   healthy or degraded (an optional integration is missing), 503 when unhealthy;</item>
 ///   <item><c>/api/health</c>: same as ready (kept for CI and the existing smoke scripts).</item>
 /// </list>
@@ -40,6 +42,9 @@ public static class HealthCheckExtensions
             .AddCheck<StorageConfigurationHealthCheck>("storage", tags: [ReadyTag])
             .AddCheck<StripeConfigurationHealthCheck>("stripe", tags: [ReadyTag])
             .AddCheck<EInvoicingConfigurationHealthCheck>("einvoicing", tags: [ReadyTag])
+            // E22/F01/US01/T01: the models of the identity verification. Non-blocking by construction: an exception of the check itself is
+            // degraded too, never unhealthy, because without the models the operator path keeps working.
+            .AddCheck<BiometricsHealthCheck>("biometrics", failureStatus: HealthStatus.Degraded, tags: [ReadyTag])
             .AddCheck<Auth0ConfigurationHealthCheck>("auth0", tags: [ReadyTag])
             .AddCheck<VercelDomainsConfigurationHealthCheck>("vercel", tags: [ReadyTag])
             .AddCheck<ApiBaseUrlHealthCheck>("api-url", tags: [ReadyTag])

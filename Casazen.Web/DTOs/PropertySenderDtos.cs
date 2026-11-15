@@ -27,6 +27,11 @@ namespace Casazen.Web.DTOs;
 /// <param name="DelegationTextVersion">The version of the delegation text to show and to accept before an automatic sender is set; the client sends it back as <c>delegationTextVersion</c> with <c>delegationConsent</c>.</param>
 /// <param name="DeclaredAt">When the host declared the channel manager activated (UTC); <c>null</c> when it did not or a later change voided it.</param>
 /// <param name="LastChangedAt">When a person last chose the sender (UTC); <c>null</c> for a default.</param>
+/// <param name="AutoSendGuestsToOctorate">
+/// An org-wide field, the same for every property of the org (E20/F01/US01/T01, decision O1): the org lets CasaZen write the guests of a stay to the
+/// channel manager as soon as their data is complete and the identity check passed, with no confirmation of the host. Off by default. Changing it
+/// asks the organization administrator (<c>PUT</c> with <c>autoSendGuestsToOctorate</c>).
+/// </param>
 public sealed record PropertySenderDto(
     Guid PropertyId,
     ComplianceSenderType Sender,
@@ -46,7 +51,8 @@ public sealed record PropertySenderDto(
     bool DelegationAccepted,
     string DelegationTextVersion,
     DateTime? DeclaredAt,
-    DateTime? LastChangedAt)
+    DateTime? LastChangedAt,
+    bool AutoSendGuestsToOctorate = false)
 {
     /// <summary>The DTO of a view, with the guidance already worded in the language of the request.</summary>
     public static PropertySenderDto From(PropertySenderView view, string? guidance)
@@ -71,7 +77,8 @@ public sealed record PropertySenderDto(
             view.DelegationAccepted,
             view.DelegationTextVersion,
             view.DeclaredAt,
-            view.LastChangedAt);
+            view.LastChangedAt,
+            view.AutoSendGuestsToOctorate);
     }
 }
 
@@ -140,4 +147,12 @@ public sealed class SwitchSenderRequest
     /// </summary>
     [MaxLength(AlloggiatiDelegationTexts.VersionMaxLength, ErrorMessage = "AlloggiatiDelegationVersionInvalid")]
     public string? DelegationTextVersion { get; set; }
+
+    /// <summary>
+    /// Optional, an org-wide setting (E20/F01/US01/T01, decision O1): <c>true</c> lets CasaZen write the guests of a stay to the channel manager as soon as
+    /// their data is complete and the identity check passed, <c>false</c> goes back to the host's confirmation in the check-in wizard, left out changes
+    /// nothing. It is applied after the sender, when the sender change went through, and only for the organization administrator: another member who
+    /// asks to change it is refused (403), whatever the sender does.
+    /// </summary>
+    public bool? AutoSendGuestsToOctorate { get; set; }
 }

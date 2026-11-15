@@ -1081,6 +1081,9 @@
   <data name="AlloggiatiTransmissionUnavailable" xml:space="preserve">
     <value>CasaZen non trasmette ancora ad Alloggiati Web: invia la schedina dal portale della Questura con il riepilogo dati e segna l'invio come manuale.</value>
   </data>
+  <data name="AlloggiatiChannelManagerWriteInProgress" xml:space="preserve">
+    <value>Gli ospiti di questo soggiorno sono già in corso di invio: riprova tra qualche istante.</value>
+  </data>
   <data name="AlloggiatiRecordFileNotReady" xml:space="preserve">
     <value>Il file per il portale Alloggiati Web non può essere generato: i dati degli ospiti sono incompleti oppure manca qualche codice ufficiale. Completa la scheda Alloggiati dell'ospite.</value>
   </data>
@@ -1512,6 +1515,27 @@
   </data>
   <data name="CheckInDocumentRequired" xml:space="preserve">
     <value>Il file del documento è obbligatorio.</value>
+  </data>
+  <data name="CheckInDocumentSideInvalid" xml:space="preserve">
+    <value>Il lato del documento deve essere front (fronte), back (retro) o single (una sola foto).</value>
+  </data>
+  <data name="BiometricSettingsThresholdsOutOfRange" xml:space="preserve">
+    <value>La soglia di verifica manuale non può essere sotto {0} e la soglia di accettazione non può superare {1}.</value>
+  </data>
+  <data name="BiometricSettingsThresholdsOrder" xml:space="preserve">
+    <value>La soglia di verifica manuale deve essere più bassa della soglia di accettazione.</value>
+  </data>
+  <data name="BiometricSettingsAttemptsOutOfRange" xml:space="preserve">
+    <value>I tentativi devono essere da {0} a {1}.</value>
+  </data>
+  <data name="VerificationVideoCallUrlInvalid" xml:space="preserve">
+    <value>Il link della videochiamata deve essere un indirizzo https assoluto, senza spazi né credenziali e di al massimo {0} caratteri.</value>
+  </data>
+  <data name="VerificationGuestUnreachable" xml:space="preserve">
+    <value>L'ospite non ha un indirizzo e-mail: non è stato inviato nulla. Proponi la videochiamata dalla chat del portale.</value>
+  </data>
+  <data name="VerificationVideoCallNotSent" xml:space="preserve">
+    <value>Non è stato possibile mettere in coda l'e-mail con il link: riprova tra poco o contatta l'ospite dalla chat del portale.</value>
   </data>
   <data name="CheckInDocumentPhotoTypeUnsupported" xml:space="preserve">
     <value>La foto del documento deve essere JPEG o PNG.</value>
@@ -7776,5 +7800,32 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="FiscalDocPushSdiRejectedBody" xml:space="preserve">
     <value>Lo SDI ha scartato una fattura: correggila e reinviala.</value>
+  </data>
+  <data name="AccountantPackageSettingsInvalid" xml:space="preserve">
+    <value>Le impostazioni dell'invio sono incomplete: indica se l'invio mensile è attivo, il giorno del mese e le cartelle da inviare.</value>
+  </data>
+  <data name="AccountantPackageRecipientMissing" xml:space="preserve">
+    <value>Per attivare l'invio mensile serve l'indirizzo e-mail del commercialista.</value>
+  </data>
+  <data name="AccountantPackageRecipientInvalid" xml:space="preserve">
+    <value>L'indirizzo e-mail del commercialista non è valido: scrivi solo l'indirizzo, senza nome e senza spazi.</value>
+  </data>
+  <data name="AccountantPackageSendDayInvalid" xml:space="preserve">
+    <value>Il giorno dell'invio deve essere un giorno del mese tra {0} e {1}.</value>
+  </data>
+  <data name="AccountantPackageContentsInvalid" xml:space="preserve">
+    <value>Scegli almeno una cartella da inviare, tra quelle del pacchetto, ciascuna una sola volta.</value>
+  </data>
+  <data name="AccountantPackageLinkInvalid" xml:space="preserve">
+    <value>Il link non è valido o è scaduto.</value>
+  </data>
+  <data name="AccountantPackageNotSent" xml:space="preserve">
+    <value>Non è stato possibile inviare il pacchetto al commercialista: non è stato inviato nulla. Riprova tra poco.</value>
+  </data>
+  <data name="AccPkgOmittedNotSelected" xml:space="preserve">
+    <value>Cartella non scelta nelle impostazioni dell'invio mensile.</value>
+  </data>
+  <data name="AccountantPackageOwnerAccountingRequired" xml:space="preserve">
+    <value>Le cartelle con la contabilità dei proprietari (fatture ai proprietari, rendiconti, ritenute, riepilogo dell'agenzia, IVA) si scelgono, e se ne invia una prova, solo con il permesso di leggere i rendiconti dei proprietari.</value>
   </data>
 </root>

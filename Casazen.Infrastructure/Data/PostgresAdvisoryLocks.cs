@@ -486,6 +486,13 @@ internal static class PostgresAdvisoryLocks
         /// the commit; the dates lock of the property is taken inside it (by the block), never the other way round.
         /// </summary>
         OwnerStays = 21_071,
+
+        /// <summary>
+        /// The settings of the package of the accountant of one org (key: <c>orgId.ToString("N")</c>, E15/F01/US02): saving them and recording a send (the month an e-mail was queued for) are taken one at a time and held
+        /// until the commit, so a month is sent once however many runs reach it (the job, its retry, a «send a test») and a save never lands between the check that a month was sent and the line that says so. The values
+        /// 1_650 to 1_659 are the package of the accountant (epic E15).
+        /// </summary>
+        AccountantPackage = 1_650,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
