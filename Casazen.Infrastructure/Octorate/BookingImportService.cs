@@ -41,6 +41,10 @@ namespace Casazen.Infrastructure.Octorate;
 /// <item><b>Who collects (E08/F03/US03/T02, NF-77).</b> A booking of a channel (an OTA source) gets <see cref="Booking.OtaCompanyCollect"/> from the
 /// <c>companyCollect</c> of the reservation and <see cref="Booking.OtaCommissionIncludedInPayments"/> from the portal catalog the marketplace caches,
 /// both <c>null</c> when they are not said, on create and on every newer version; any other booking never gets them.</item>
+/// <item><b>Origin (E27/F01/US01/T01, NF-123).</b> A reservation of the booking engine of the agency (the channel that stays <see cref="BookingSource.Direct"/>)
+/// gets the attribution <c>octorate-booking-engine</c> when the booking is made, and when a newer version of a booking the import made before that is read:
+/// its origin is then the site of the agency. A reservation CasaZen pushed itself (a booking with a row of the mirror, or its echo linked by reference) is the
+/// booking CasaZen already has and is never attributed.</item>
 /// <item><b>Rate limit.</b> The single reads wait for the bucket of the org to refill (at most <see cref="MaxRateWait"/>); a run that cannot go on
 /// stops, is reported <see cref="ImportOutcome.Incomplete"/> and does not move the checkpoint of the listing.</item>
 /// <item><b>Privacy.</b> The logs carry ids, counts and the type of an error, never a name, a note, an amount or a body.</item>
@@ -415,6 +419,15 @@ public sealed class BookingImportService(
                                || booking.OtaPaidAmount != amounts.Paid
                                || booking.OtaBalanceAmount != amounts.Balance);
         var originChanged = booking.Source != BookingSource.Manual && (booking.Source != source || booking.ChannelLabel != label);
+
+        // E27/F01/US01/T01 (NF-123): a reservation of the booking engine of the agency that the import made before the attribution existed gets it with the next
+        // version read. A booking CasaZen pushed to that channel itself never does (it has a row of the mirror: only the push makes it, never the import), and a
+        // booking that has an attribution already (a link of the agency) keeps its own. Not a change of the stay: it is saved without an event, like the flags below.
+        var attribution = mapper.ToAttributionSource(source);
+        var attributionChanged = attribution is not null
+                                 && booking.Source == BookingSource.Direct
+                                 && booking.AttributionSource is null
+                                 && !await IsPushedByCasaZenAsync(booking, ct);
         var note = Clip(reservation.Notes, 1000);
         var noteChanged = booking.SpecialRequests.Length == 0 && note.Length > 0;
 
@@ -428,7 +441,8 @@ public sealed class BookingImportService(
         if (reservation.UpdatedAt is { } updatedAt)
             booking.OctorateUpdatedAt = updatedAt;
 
-        if (!(statusChanged || propertyChanged || datesChanged || guestsChanged || moneyChanged || originChanged || noteChanged || collectionChanged))
+        if (!(statusChanged || propertyChanged || datesChanged || guestsChanged || moneyChanged || originChanged || noteChanged || collectionChanged
+              || attributionChanged))
         {
             await db.SaveChangesAsync(ct);
             return Applied.Skipped;
@@ -475,6 +489,9 @@ public sealed class BookingImportService(
             booking.Source = source;
             booking.ChannelLabel = label;
         }
+
+        if (attributionChanged)
+            booking.AttributionSource = attribution;
 
         if (noteChanged)
             booking.SpecialRequests = note;
@@ -549,6 +566,9 @@ public sealed class BookingImportService(
             Status = status,
             Source = channel.Source,
             ChannelLabel = channel.Label,
+            // E27/F01/US01/T01 (NF-123): a reservation of the booking engine of the agency stays direct and is attributed to it, so its origin is the site of
+            // the agency. The reservation CasaZen pushed itself never gets here: it is the booking CasaZen already has (LinkOwnBookingAsync, the known id).
+            AttributionSource = mapper.ToAttributionSource(channel.Source),
             SpecialRequests = Clip(reservation.Notes, 1000),
             OctorateReservationId = reservation.Id,
             OctorateUpdatedAt = reservation.UpdatedAt,
@@ -671,6 +691,17 @@ public sealed class BookingImportService(
         return await db.Payments
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AnyAsync(p => p.OrgId == booking.OrgId && p.BookingId == booking.Id, ct);
+    }
+
+    /// <summary>
+    /// The booking is one CasaZen made and pushed to Octorate: it has a row of the mirror (<see cref="OctorateBookingSync"/>), which only the push makes and
+    /// never the import. Its reservation is CasaZen's own, on whatever channel it was written, so it is never attributed to the booking engine of the agency.
+    /// </summary>
+    private async Task<bool> IsPushedByCasaZenAsync(Booking booking, CancellationToken ct)
+    {
+        return await db.OctorateBookingSyncs
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AnyAsync(s => s.OrgId == booking.OrgId && s.BookingId == booking.Id, ct);
     }
 
     /// <summary>

@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using Casazen.Core.Authorization;
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
@@ -151,6 +152,10 @@ public sealed class BookingSearchService(
             var sources = BookingListRules.SourcesOf(channels).ToList();
             query = query.Where(b => sources.Contains(b.Source));
         }
+
+        // The origin the host reads (E27/F01/US01/T01, NF-123): the one rule of BookingOrigins, as a predicate. It only narrows: the scope is applied apart.
+        if (criteria.Origins is { Count: > 0 } origins)
+            query = query.Where(BookingOrigins.Matching(origins));
 
         if (criteria.CheckInStates is { Count: > 0 } states)
             query = query.Where(CheckInStateIn(states.Distinct().ToList(), nowUtc));
