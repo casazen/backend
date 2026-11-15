@@ -546,6 +546,8 @@ and recharges at 8.1%, its VAT posted to the ledger and the version generated ag
 package of October built (the index lists every file with its SHA-256; the VAT of the quarter for each rate) and the owner paid with a `pain.001.001.09.ch.03` file.
 The invoice is offset in the statement, so it has no QR-bill; `QrBill_OnlyWhenTheOwnerOwesTheAgency` shows the QR-bill of a month in which the owner owes the agency.
 The variant V2 recharges the commission of Booking.com on the invoice of the property manager and lists it in the VAT file of the agency for information.
+The variant of the portal that collects the tax (an Airbnb reservation imported from Octorate, Airbnb in `PlatformCollectedTouristTaxChannels`) bills the stay only:
+no line of the tax of Ticino on the document, the gross without it, nothing in the box of the tax of the statement nor in the tax of the agency summary.
 
 **The changes (B12)**: a date change (the guest stays two nights more: a credit note of the whole document and a new document, issued at once), a cancellation with a
 full Stripe refund (a credit note of the whole document; nothing posted for the stay) and a no-show with a deposit kept (a credit note of the difference, the VAT split in

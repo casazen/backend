@@ -464,6 +464,51 @@ public class SwissAgencyScenarioTests
         Assert.False(Assert.Single(detail.Sections.Single(s => s.Section == "channelFees").Lines).ChannelFeeRechargedByAgency);
     }
 
+    [Fact(DisplayName = "Variante del portale che incassa la tassa (B7 B8a B8b C1 C3 C4 C7, ⚖ C4 C5): prenotazione Airbnb tramite Octorate, nessuna riga della tassa di Ticino nel documento e nessuna nel riquadro del rendiconto")]
+    public async Task Variant_ThePortalCollectsTheTouristTax_Airbnb_NoTaxLineOnTheDocument_NorInTheStatementBox()
+    {
+        await using var world = await World.CreateAsync();
+        world.At(World.InRome(Day(9, 20), 10));
+        var booking = await world.ImportFromChannelManagerAsync(world.AirbnbReservation(Day(10, 2), Day(10, 5), 450m, commission: 69.75m, touristTax: 12m));
+
+        // The import stored the tax the portal collected from the guest, outside the price of the host.
+        var stored = await world.BookingAsync(booking);
+        Assert.Equal(
+            (BookingSource.Airbnb, 450.00m, 462.00m, 12.00m, (decimal?)69.75m, (bool?)true),
+            (stored.Source, stored.BasePrice, stored.TotalPrice, stored.TouristTax, stored.OtaCommission, stored.OtaCompanyCollect));
+        await world.GiveInvoiceDataAsync(booking, "TEST Ospite Lago");
+
+        // Airbnb collects the tourist tax of Ticino (the issuer confirmed it in the wizard): the document bills the stay only, with no line of the tax.
+        var document = await IssuedAfterTheStayAsync(world, booking, Day(10, 6), "2026/1");
+        AssertDocument(
+            document,
+            [(FiscalLineType.Accommodation, 433.53m, 3.8m, 16.47m)],
+            (433.53m, 16.47m, 450.00m),
+            FiscalPaymentChannel.Portal,
+            FiscalDocumentPaymentState.Paid);
+        var text = TextOf(await world.PdfContentAsync(document.Id));
+        Assert.DoesNotContain("Tassa di soggiorno", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Airbnb", text, StringComparison.OrdinalIgnoreCase);
+        AssertTheGuestGotTheDocument(world, document, await world.GuestEmailOfAsync(booking), "Fattura");
+
+        // The month: the gross without the tax the portal collected, the commission of the reservation; the box of the tax is empty (the portal remits it).
+        var month = await world.CloseMonthAsync(2026, 10, EndOfOctober);
+        await AssertMonthAsync(
+            world,
+            month,
+            new Expected(
+                Gross: 450.00m,
+                ChannelFees: -69.75m,
+                Commission: -90.00m,
+                Vat: -13.77m,
+                Recharges: -80.00m,
+                Closing: 196.48m,
+                InvoiceLines: [(FiscalLineType.Commission, 90.00m, 8.1m, 7.29m), (FiscalLineType.Recharge, 80.00m, 8.1m, 6.48m)],
+                InvoiceTotals: (170.00m, 13.77m, 183.77m)));
+        Assert.Empty((await world.StatementOfAsync(month.Published.Id)).TouristTax);
+        Assert.Empty((await world.AgencySummaryAsync(October)).TouristTax.Switzerland);
+    }
+
     [Fact(DisplayName = "QR-fattura solo con un importo dovuto (C4): un mese con il solo riaddebito di una riparazione, la fattura PM chiede il pagamento con la QR-fattura")]
     public async Task QrBill_OnlyWhenTheOwnerOwesTheAgency()
     {

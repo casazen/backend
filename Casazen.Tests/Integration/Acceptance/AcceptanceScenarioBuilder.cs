@@ -99,6 +99,9 @@ internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
     /// <summary>The channel id Octorate gives Booking.com.</summary>
     public const string BookingComChannel = "142";
 
+    /// <summary>The channel id Octorate gives Airbnb.</summary>
+    public const string AirbnbChannel = "274";
+
     /// <summary>The first day of the mandate, of the ownership and of the rules of the agency.</summary>
     public static readonly DateOnly FirstOfTheYear = new(2026, 1, 1);
 
@@ -401,6 +404,36 @@ internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
             TotalGross = price,
             CompanyCollect = portalCollects ? OctorateReservation.CompanyCollectCompany : OctorateReservation.CompanyCollectHotel,
             PriceBreakdown = commission is { } kept ? [new OctoratePriceComponent(OctorateReservation.CommissionType, kept)] : [],
+        };
+    }
+
+    /// <summary>
+    /// A reservation of Airbnb as the channel manager gives it: the price of the host, the commission of the portal in the breakdown, collected by the portal, two
+    /// guests, and the tourist tax of Ticino the portal collected from the guest itself (Airbnb is the portal the issuer confirmed as collecting it in the wizard).
+    /// </summary>
+    public OctorateReservation AirbnbReservation(DateOnly checkIn, DateOnly checkOut, decimal price, decimal commission, decimal touristTax)
+    {
+        var id = $"ABB{Interlocked.Increment(ref _sequence):D4}";
+        return new OctorateReservation
+        {
+            Id = id,
+            Status = OctorateBookingStatus.Confirmed,
+            Product = OctorateRoom,
+            Currency = "CHF",
+            ChannelId = AirbnbChannel,
+            ChannelName = "Airbnb",
+            CheckIn = Day(checkIn),
+            CheckOut = Day(checkOut),
+            UpdatedAt = Clock.GetUtcNow().UtcDateTime,
+            FirstName = "TEST",
+            LastName = "Ospite Lago",
+            GuestEmail = $"test.{id.ToLowerInvariant()}@guest.airbnb.com",
+            TotalGuests = 2,
+            RoomGross = price,
+            TotalGross = price + touristTax,
+            TouristTax = touristTax,
+            CompanyCollect = OctorateReservation.CompanyCollectCompany,
+            PriceBreakdown = [new OctoratePriceComponent(OctorateReservation.CommissionType, commission)],
         };
     }
 
