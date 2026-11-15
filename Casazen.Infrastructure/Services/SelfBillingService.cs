@@ -168,10 +168,10 @@ public sealed class SelfBillingService(
             .Include(d => d.Lines)
             .FirstOrDefaultAsync(d => d.Id == documentId && d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.Kind != DocumentKind.CreditNote, ct)
             ?? throw DocumentNotFound(documentId);
-        return await DetailOfAsync(orgId, document, ct);
+        return await DetailOfAsync(orgId, document, await EstimatedAmountOfAsync(orgId, document, ct), ct);
     }
 
-    public async Task<SelfBillingDetail> IssueAsync(Guid orgId, Guid documentId, bool confirm, string? userId, CancellationToken ct = default)
+    public async Task<SelfBillingDetail> IssueAsync(Guid orgId, Guid documentId, bool confirm, string? userId, CancellationToken ct = default, bool acceptEstimate = false)
     {
         if (!confirm)
             throw new DomainRuleException(FiscalDocumentErrors.ConfirmationRequired, "FiscalDocumentConfirmationRequired");
@@ -199,8 +199,19 @@ public sealed class SelfBillingService(
         if (!IsTheSameDraft(draft, expected))
             throw new DomainConflictException(FiscalDocumentErrors.DraftOutdated, "FiscalDocumentDraftOutdated");
 
+        // Part of the amount may be an estimate (a rule of the agency or the default of the channel, never the figure of the portal): it is issued only when the host accepted it, because an
+        // issued TD17 is not corrected from here. Nothing is numbered before the answer.
+        var estimated = EstimateOf(group);
+        if (estimated > 0m && !acceptEstimate)
+        {
+            throw new DomainRuleException(SelfBillingErrors.EstimateNotConfirmed, "SelfBillingEstimateNotConfirmed")
+            {
+                Extensions = new Dictionary<string, object?> { ["estimatedAmount"] = estimated },
+            };
+        }
+
         var issued = await documents.IssueSelfBillingAsync(draft.Id, composition.Rule, options.Value.EffectiveSeriesPattern, userId, ct);
-        return await DetailOfAsync(orgId, issued, ct);
+        return await DetailOfAsync(orgId, issued, 0m, ct);
     }
 
     public async Task DiscardDraftAsync(Guid orgId, Guid documentId, CancellationToken ct = default)
@@ -597,7 +608,7 @@ public sealed class SelfBillingService(
         group.Portal.Name,
         result,
         document.TaxableBase,
-        Math.Clamp(group.Estimated, 0m, group.Taxable),
+        EstimateOf(group),
         changedSinceIssue);
 
     // ---------------------------------------------------------------- rows
@@ -605,11 +616,28 @@ public sealed class SelfBillingService(
     /// <summary>The holder of a TD17 as its row shows it: agency or owner, and the legal name.</summary>
     private sealed record HolderInfo(SelfBillingHolderKind Kind, Guid? OwnerId, string Name);
 
-    private async Task<SelfBillingDetail> DetailOfAsync(Guid orgId, FiscalDocument document, CancellationToken ct)
+    private async Task<SelfBillingDetail> DetailOfAsync(Guid orgId, FiscalDocument document, decimal estimated, CancellationToken ct)
     {
         var info = await HolderInfoAsync(orgId, [document], ct);
-        return new SelfBillingDetail(document, RowOf(document, info));
+        return new SelfBillingDetail(document, RowOf(document, info), estimated);
     }
+
+    /// <summary>
+    /// The estimate of a draft as the plan gives it now (the figure the issue asks to accept), recomputed as the issue does; 0 for a document that is not a draft and for a draft the ledger no
+    /// longer supports (the next generation drops it).
+    /// </summary>
+    private async Task<decimal> EstimatedAmountOfAsync(Guid orgId, FiscalDocument document, CancellationToken ct)
+    {
+        if (document.Status != FiscalDocumentStatus.Draft || document.PeriodYear is not { } year || document.PeriodMonth is not { } month)
+            return 0m;
+
+        var plan = await PlanAsync(orgId, year, month, ct);
+        var group = plan.Groups.FirstOrDefault(g => IsDocumentOf(document, g));
+        return group is null ? 0m : EstimateOf(group);
+    }
+
+    /// <summary>The part of the taxable amount of a group that is an estimate (a rule of the agency or a default, not the figure of the portal), never more than what is invoiced.</summary>
+    private static decimal EstimateOf(Group group) => Math.Clamp(group.Estimated, 0m, group.Taxable);
 
     private async Task<IReadOnlyDictionary<Guid, HolderInfo>> HolderInfoAsync(Guid orgId, IReadOnlyCollection<FiscalDocument> found, CancellationToken ct)
     {

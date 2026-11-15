@@ -6720,6 +6720,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="SelfBillingPeriodInvalid" xml:space="preserve">
     <value>Il mese indicato non è valido: usa il formato AAAA-MM.</value>
   </data>
+  <data name="SelfBillingEstimateNotConfirmed" xml:space="preserve">
+    <value>Una parte dell'importo non viene dalla fattura del portale ma da una regola dell'agenzia o dal valore predefinito del canale: controllala e conferma l'emissione accettando la stima.</value>
+  </data>
   <data name="SelfBillingNotConfigured" xml:space="preserve">
     <value>Le autofatture TD17 non sono ancora configurate per questa installazione: mancano l'aliquota IVA o i dati dei portali esteri.</value>
   </data>

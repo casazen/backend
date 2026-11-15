@@ -96,7 +96,9 @@ public class SelfBillingController(
     /// <summary>
     /// The draft issued after the confirmation (<c>{ confirm: true }</c>, else 422 <c>document_confirmation_required</c>): numbered in the series of its holder, with its XML, to be
     /// sent to the SDI. 404 for a document of another org or one that is not a TD17; 422 <c>document_not_draft</c>, <c>self_billing_not_configured</c>,
-    /// <c>fatturapa_xml_invalid</c>, <c>fatturapa_schema_unavailable</c>, <c>series_too_long</c>; 409 <c>document_draft_outdated</c> (make the drafts of the month again first).
+    /// <c>fatturapa_xml_invalid</c>, <c>fatturapa_schema_unavailable</c>, <c>series_too_long</c>; 409 <c>document_draft_outdated</c> (make the drafts of the month again first). When part of the
+    /// amount is an estimate (a rule of the agency or the default of the channel: <c>estimatedAmount</c> of <c>GET {id}</c>) the issue needs <c>acceptEstimate: true</c> too, else 422
+    /// <c>self_billing_estimate_unconfirmed</c> (with <c>estimatedAmount</c>) and nothing is numbered.
     /// </summary>
     [HttpPost("{id:guid}/issue")]
     [ProducesResponseType(typeof(SelfBillingDto), StatusCodes.Status200OK)]
@@ -104,12 +106,12 @@ public class SelfBillingController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
-    public async Task<ActionResult<SelfBillingDto>> Issue(Guid id, [FromBody] IssueFiscalDocumentRequest request)
+    public async Task<ActionResult<SelfBillingDto>> Issue(Guid id, [FromBody] IssueSelfBillingRequest request)
     {
         if (await OrgAsync() is not { } orgId)
             return Forbid();
 
-        var issued = await selfBilling.IssueAsync(orgId, id, request.Confirm, User.GetUserId(), HttpContext.RequestAborted);
+        var issued = await selfBilling.IssueAsync(orgId, id, request.Confirm, User.GetUserId(), HttpContext.RequestAborted, request.AcceptEstimate);
         return Ok(SelfBillingDto.From(issued));
     }
 

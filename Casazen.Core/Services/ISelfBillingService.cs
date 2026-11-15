@@ -50,9 +50,11 @@ public interface ISelfBillingService
     /// <summary>
     /// The draft issued after the confirmation (422 <c>document_confirmation_required</c>): numbered, with its XML, to be sent to the SDI. 404
     /// <c>fiscal_document_not_found</c>; 422 <c>document_not_draft</c>, <c>self_billing_not_configured</c>; 409 <c>document_draft_outdated</c> when the ledger, the holder, the
-    /// portal or the settings would give another document now (make the drafts of the month again first).
+    /// portal or the settings would give another document now (make the drafts of the month again first). When part of the amount is an estimate (it comes from a rule of the agency or
+    /// the default of the channel, not from the figure of the portal: <see cref="SelfBillingDetail.EstimatedAmount"/>) the issue needs <paramref name="acceptEstimate"/>: 422
+    /// <c>self_billing_estimate_unconfirmed</c> otherwise, nothing is numbered.
     /// </summary>
-    Task<SelfBillingDetail> IssueAsync(Guid orgId, Guid documentId, bool confirm, string? userId, CancellationToken ct = default);
+    Task<SelfBillingDetail> IssueAsync(Guid orgId, Guid documentId, bool confirm, string? userId, CancellationToken ct = default, bool acceptEstimate = false);
 
     /// <summary>The draft discarded (no number is consumed): its holder, portal and month are free for a new draft. 404 <c>fiscal_document_not_found</c>; 422 <c>document_not_draft</c>.</summary>
     Task DiscardDraftAsync(Guid orgId, Guid documentId, CancellationToken ct = default);
@@ -96,8 +98,12 @@ public sealed record SelfBillingRow(
     string Currency,
     string SdiStatus);
 
-/// <summary>A TD17 with its lines (<see cref="Document"/>) and its row.</summary>
-public sealed record SelfBillingDetail(FiscalDocument Document, SelfBillingRow Row);
+/// <summary>A TD17 with its lines (<see cref="Document"/>), its row and the estimate of its amount.</summary>
+/// <param name="EstimatedAmount">
+/// For a draft, the part of the taxable amount that comes from a rule of the agency or the default of the channel, not from the figure of the portal, as the plan gives it now (the same
+/// figure the issue asks to accept); 0 for a draft nothing estimates, for a draft the ledger no longer supports and for a document that is issued.
+/// </param>
+public sealed record SelfBillingDetail(FiscalDocument Document, SelfBillingRow Row, decimal EstimatedAmount);
 
 /// <summary>What the drafts of a month did.</summary>
 /// <param name="Discarded">The drafts of the month the ledger no longer supports (their commissions are gone, their holder or portal changed): dropped, they had no number.</param>
@@ -188,6 +194,12 @@ public static class SelfBillingErrors
     /// of the documents of the guests.
     /// </summary>
     public const string UseSelfBilling = "document_self_billing";
+
+    /// <summary>
+    /// 422: part of the taxable amount is an estimate (a rule of the agency or the default of the channel, not the figure of the portal) and the issue did not accept it
+    /// (<c>acceptEstimate</c>): the host checks the amount against the invoice of the portal first. The answer carries <c>estimatedAmount</c>.
+    /// </summary>
+    public const string EstimateNotConfirmed = "self_billing_estimate_unconfirmed";
 }
 
 /// <summary>The rules of the TD17 that need no database.</summary>

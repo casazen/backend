@@ -535,7 +535,9 @@ next posting, and the drafts and the issue leave it out as `stay_not_active`. On
 (`Commissioni di intermediazione {portal} - {property} - {MM/yyyy}`); a property whose commissions net to nothing has none. The VAT is **integrated at `SelfBilling:VatRatePercent`
 (⚖, 22)** on top, through `FiscalDocumentTotals.FromNet` (cent-accurate, the cent of difference on the largest line), whatever the regime of the holder (a flat-rate regime integrates
 the VAT too): it never comes from the tax rules of the sales documents. The part of the amount that comes from a rule of the agency or from the default of the channel, not from the
-figure of the portal (`OwnerReconciliationRules.SourceOf`), is the **estimated amount** of the answer: check it against the invoice of the portal before issuing.
+figure of the portal (`OwnerReconciliationRules.SourceOf`), is the **estimated amount** (`estimatedAmount`, in the answer of the drafts and in the detail of the draft, recomputed from the ledger as the issue does): check it against the invoice of the
+portal before issuing. The issue refuses a draft with an estimate (422 `self_billing_estimate_unconfirmed`, the figure in `estimatedAmount`, nothing numbered) until the host accepts it with
+`acceptEstimate: true`, because an issued TD17 is not corrected from here.
 
 **Portals.** The cedente is the legal entity of `SelfBilling:Portals` (channel, name, ISO country, VAT number, street, city; ⚖ verify them against a real invoice of the portal before the
 first issue). Committed: Booking.com B.V. and Airbnb Ireland UC. A channel without an entry (Expedia, Vrbo, TripAdvisor, Agoda...) is **never** invoiced by a guess: its commissions are
@@ -559,9 +561,9 @@ like every recipient; the SDI code and the PEC are the holder's: where the file 
 | Endpoint (`agency.invoice.manage`, agency plan, the whole organization only, `Features:FiscalDocumentIssuance`) | What |
 |---|---|
 | `GET api/fiscal/self-billing?period=yyyy-MM` | the TD17 of the org (drafts and issued ones), the newest month first: holder, portal, month, deadline, amounts, status, state towards the SDI |
-| `GET api/fiscal/self-billing/{id}` | one TD17 with its lines |
+| `GET api/fiscal/self-billing/{id}` | one TD17 with its lines and, for a draft, `estimatedAmount` |
 | `POST api/fiscal/self-billing/drafts` `{ period }` | the drafts of the month: counts, one row for each TD17 (`created`, `updated`, `already_issued`, `estimatedAmount`, `changedSinceIssue`), `failed` (a holder that needs one and cannot get one: `owner_issuer_missing`, `issuer_profile_incomplete`, with the fields), `notDue` (the commissions left out and why: `portal_not_configured`, `holder_private_person`, `holder_not_italian`, `holder_not_vat_registered`, `currency_not_supported`, `not_a_portal`, `stay_not_found`, `stay_not_active`) |
-| `POST api/fiscal/self-billing/{id}/issue` `{ confirm: true }` | the issue, after the confirmation |
+| `POST api/fiscal/self-billing/{id}/issue` `{ confirm: true, acceptEstimate? }` | the issue, after the confirmation (and the acceptance of the estimate when part of the amount is one) |
 | `DELETE api/fiscal/self-billing/{id}` | the discard of a draft |
 
 The PDF and the XML are the ones of every document (`GET api/fiscal/documents/{id}/pdf` and `/xml`, a document without a booking: the whole org only). The endpoints of the guest documents

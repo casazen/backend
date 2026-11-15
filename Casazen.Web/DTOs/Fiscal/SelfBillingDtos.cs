@@ -51,12 +51,16 @@ public sealed record SelfBillingListItemDto(
     }
 }
 
-/// <summary>A TD17 with its lines (one for each property): the row, the version of the settings it was made with, the rate of the VAT integrated and whether the XML exists.</summary>
+/// <summary>
+/// A TD17 with its lines (one for each property): the row, the version of the settings it was made with, the rate of the VAT integrated, whether the XML exists and, for a draft, the
+/// part of its taxable amount that is an estimate (<see cref="EstimatedAmount"/>: a rule of the agency or the default of the channel, not the figure of the portal; the issue asks to accept it).
+/// </summary>
 public sealed record SelfBillingDto(
     SelfBillingListItemDto Invoice,
     string? RuleVersion,
     decimal? VatRatePercent,
     bool HasXml,
+    decimal EstimatedAmount,
     IReadOnlyList<SelfBillingLineDto> Lines)
 {
     public static SelfBillingDto From(SelfBillingDetail detail)
@@ -68,6 +72,7 @@ public sealed record SelfBillingDto(
             document.RuleVersion,
             document.VatRatePercent,
             !string.IsNullOrEmpty(document.FatturaPaXml),
+            detail.EstimatedAmount,
             document.Lines.OrderBy(l => l.LineNumber).Select(SelfBillingLineDto.From).ToList());
     }
 }
@@ -77,6 +82,17 @@ public sealed record SelfBillingLineDto(int LineNumber, string Description, deci
 {
     public static SelfBillingLineDto From(FiscalDocumentLine line) =>
         new(line.LineNumber, line.Description, line.TotalPrice, line.VatRatePercent, line.VatAmount);
+}
+
+/// <summary>
+/// <c>POST api/fiscal/self-billing/{id}/issue</c>: the host confirms the issue (<see cref="Confirm"/>) and, when part of the amount is an estimate (a rule of the agency or the default of the
+/// channel, <c>estimatedAmount</c> of the detail), accepts it (<see cref="AcceptEstimate"/>); without it the issue is 422 <c>self_billing_estimate_unconfirmed</c> and nothing is numbered.
+/// </summary>
+public sealed record IssueSelfBillingRequest
+{
+    public bool Confirm { get; init; }
+
+    public bool AcceptEstimate { get; init; }
 }
 
 /// <summary><c>POST api/fiscal/self-billing/drafts</c>: the month (<c>yyyy-MM</c>) whose drafts are made.</summary>

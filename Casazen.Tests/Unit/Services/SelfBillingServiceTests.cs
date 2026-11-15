@@ -292,6 +292,43 @@ public class SelfBillingServiceTests
     }
 
     /// <summary>
+    /// PROOF TEST: money rule. The part of the amount that comes from a rule of the agency or the default of the channel, not from the figure of the portal, is an estimate: the detail of the draft
+    /// says how much (the figure the issue asks to accept), the issue without the acceptance is 422 and numbers nothing, with it the TD17 is issued; a draft made of the figures of the portal has
+    /// no estimate and is issued as before.
+    /// </summary>
+    [Fact]
+    public async Task Td17_AnEstimatedAmountNeedsAnExplicitAcceptance_Test()
+    {
+        await using var rig = await SelfBillingRig.CreateAsync();
+        await rig.AddAsync(
+            rig.Fee(rig.Company, rig.Lake, await rig.StayAsync(rig.Lake, BookingSource.BookingCom, new DateTime(2026, 10, 5)), 100.00m),
+            rig.Fee(rig.Company, rig.Lake, await rig.StayAsync(rig.Lake, BookingSource.BookingCom, new DateTime(2026, 10, 9)), 30.00m, ruleVersion: ChannelFeeSources.Default),
+            rig.Fee(rig.Company, rig.Mountain, await rig.StayAsync(rig.Mountain, BookingSource.Airbnb, new DateTime(2026, 10, 12)), 60.00m));
+        var generation = await rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, null);
+        var booking = generation.Drafts.Single(d => d.PortalName == "Booking.com B.V.");
+        var airbnb = generation.Drafts.Single(d => d.PortalName == "Airbnb Ireland UC");
+        Assert.Equal((130.00m, 30.00m), (booking.TaxableBase, booking.EstimatedAmount));
+        Assert.Equal(0m, airbnb.EstimatedAmount);
+
+        // The detail says the same figure, recomputed from the plan as the issue does.
+        Assert.Equal(30.00m, (await rig.Service.GetAsync(rig.OrgId, booking.DocumentId)).EstimatedAmount);
+        Assert.Equal(0m, (await rig.Service.GetAsync(rig.OrgId, airbnb.DocumentId)).EstimatedAmount);
+
+        // Without the acceptance nothing is issued and no number is consumed; the refusal carries the figure.
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => rig.Service.IssueAsync(rig.OrgId, booking.DocumentId, confirm: true, null));
+        Assert.Equal(SelfBillingErrors.EstimateNotConfirmed, refused.Code);
+        Assert.Equal(30.00m, refused.Extensions!["estimatedAmount"]);
+        Assert.Empty(await rig.Db.FiscalNumberSequences.AsNoTracking().ToListAsync());
+        Assert.Equal(FiscalDocumentStatus.Draft, (await rig.DocumentAsync(booking.DocumentId)).Status);
+
+        // The draft of the portal's own figures is issued without it; the estimated one with it, and an issued document estimates nothing.
+        Assert.Equal(FiscalDocumentStatus.Issued, (await rig.Service.IssueAsync(rig.OrgId, airbnb.DocumentId, confirm: true, null)).Document.Status);
+        var issued = await rig.Service.IssueAsync(rig.OrgId, booking.DocumentId, confirm: true, null, acceptEstimate: true);
+        Assert.Equal((FiscalDocumentStatus.Issued, "TD17-2026/2", 0m), (issued.Document.Status, issued.Row.Number, issued.EstimatedAmount));
+        Assert.Equal(0m, (await rig.Service.GetAsync(rig.OrgId, booking.DocumentId)).EstimatedAmount);
+    }
+
+    /// <summary>
     /// PROOF TEST: permission (tenant) rule. A TD17 of another organization, or a document that is not a TD17, is not found (404): nothing is read, issued or discarded; the list of
     /// another organization is empty; and the endpoints of the guest documents refuse to make again, issue, discard or credit a TD17 (422 <c>document_self_billing</c>).
     /// </summary>
@@ -354,7 +391,7 @@ public class SelfBillingServiceTests
             {
                 var arguments = action.GetParameters()
                     .Select(p => p.ParameterType == typeof(GenerateSelfBillingRequest) ? new GenerateSelfBillingRequest { Period = "2026-10" }
-                        : p.ParameterType == typeof(IssueFiscalDocumentRequest) ? new IssueFiscalDocumentRequest { Confirm = true }
+                        : p.ParameterType == typeof(IssueSelfBillingRequest) ? new IssueSelfBillingRequest { Confirm = true, AcceptEstimate = true }
                         : p.ParameterType.IsValueType ? Activator.CreateInstance(p.ParameterType) : null)
                     .ToArray();
                 var task = (Task)action.Invoke(controller, arguments)!;
