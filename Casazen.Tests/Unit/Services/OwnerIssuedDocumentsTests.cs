@@ -50,7 +50,8 @@ public class OwnerIssuedDocumentsTests
     /// <summary>
     /// Privacy: the owner sees the documents issued on the issuer profile of its own owner profiles and nothing else: not the agency's own documents, not another owner's, not a
     /// draft, a discarded one, a proforma or an imported one, not an invoice of the agency to the owner. A document of another owner, a draft and one that does not exist are the same
-    /// 404, and nothing of a guest but the name the document prints (no contact, no fiscal code, no address) reaches the answer.
+    /// 404, and nothing of a guest but the name the document prints (no contact, no fiscal code, no address) reaches the answer. The contacts of the guest (e-mail, phone, PEC) are in no
+    /// file either: not in the text of a PDF, not in the cells of a register (CSV or Excel), not in any file of the ZIPs of the year.
     /// </summary>
     [Fact]
     public async Task OwnerIssuedDocuments_OnlyOwnIssuerProfile_Test()
@@ -105,8 +106,40 @@ public class OwnerIssuedDocumentsTests
 
         // Nothing of a guest is in the list: not its name, a contact, a fiscal code, an address or a PEC (the PDF and the XML hold what the document says).
         var json = JsonSerializer.Serialize(mine.Select(OwnerPortalIssuedDocumentDto.From));
-        foreach (var secret in new[] { "TEST Ospite", "ospite.riservato@example.com", "+41790000000", "RSSMRA80A01H501U", "Via Privata 1", "ospite@pec.example.com" })
+        foreach (var secret in new[] { "TEST Ospite", World.GuestEmail, World.GuestPhone, "RSSMRA80A01H501U", "Via Privata 1", World.GuestPec })
             Assert.DoesNotContain(secret, json, StringComparison.Ordinal);
+
+        // Nor is a contact of the guest in any file the portal hands out: the PDF prints what the document says (the name of its recipient), the registers the name, never an e-mail, a phone or a PEC.
+        // The PDF is read from what the renderer was given (its bytes are compressed), an Excel register from the parts of its own zip, every other file of the ZIPs of the year as text.
+        var contacts = new[] { World.GuestEmail, World.GuestPhone, World.GuestPec };
+        var pdfText = TextOf(world.Renderer.Rendered.Last());
+        Assert.Contains("TEST Ospite Uno", pdfText, StringComparison.Ordinal);
+
+        world.Renderer.Rendered.Clear();
+        var zips = new List<Dictionary<string, byte[]>>();
+        foreach (var person in new[] { world.OwnerUserA, world.OwnerUserB })
+        {
+            await using var zipStream = new MemoryStream();
+            await world.Portal.ExportOwnerIssuedDocumentsAsync(person, AccountantPackagePeriod.OfYear(2026), zipStream);
+            zips.Add(Unzip(zipStream));
+        }
+
+        var files = zips.SelectMany(TextsOf).ToList();
+        var pdfs = world.Renderer.Rendered.Select(TextOf).Append(pdfText).ToList();
+
+        // The readers are not blind: they see the name of the recipient in a CSV register and in an Excel one, and every PDF of the two ZIPs went through the renderer (the seven documents of 2026:
+        // A1 to A4 and X1 of the owner A, B1 and B2 of the owner B; the PDFs of the invoices of the agency are not made by it).
+        Assert.Contains(files, file => file.Path.EndsWith(".csv", StringComparison.Ordinal) && file.Text.Contains("TEST Ospite Uno", StringComparison.Ordinal));
+        Assert.Contains(files, file => file.Path.Contains(".xlsx!", StringComparison.Ordinal) && file.Text.Contains("TEST Ospite Uno", StringComparison.Ordinal));
+        var documentPdfs = zips.Sum(zip => zip.Keys.Count(path => path.EndsWith(".pdf", StringComparison.Ordinal) && !path.Contains("fatture-agenzia/", StringComparison.Ordinal)));
+        Assert.Equal(7, documentPdfs);
+        Assert.Equal(documentPdfs, world.Renderer.Rendered.Count);
+
+        foreach (var contact in contacts)
+        {
+            Assert.All(pdfs, text => Assert.DoesNotContain(contact, text, StringComparison.Ordinal));
+            Assert.Empty(files.Where(file => file.Text.Contains(contact, StringComparison.Ordinal)).Select(file => file.Path));
+        }
 
         // The words of the two answers are in the resource files, in both languages (the parity test of the package reads the keys of its labels).
         Assert.Equal(
@@ -362,6 +395,15 @@ public class OwnerIssuedDocumentsTests
 
     private sealed class World
     {
+        /// <summary>The contacts of the guest of the stay of A4 (its e-mail and phone) and the PEC every document of the world holds for its recipient: what must never reach an owner, in whatever file.</summary>
+        public const string GuestEmail = "ospite.riservato@example.com";
+
+        /// <inheritdoc cref="GuestEmail"/>
+        public const string GuestPhone = "+41790000000";
+
+        /// <inheritdoc cref="GuestEmail"/>
+        public const string GuestPec = "ospite@pec.example.com";
+
         private static readonly DateTime Cutoff = new(2026, 11, 20, 8, 0, 0, DateTimeKind.Utc);
         private readonly EphemeralDataProtectionProvider _protection = new();
         private readonly DbContextOptions<AppDbContext> _options;
@@ -542,7 +584,7 @@ public class OwnerIssuedDocumentsTests
             });
 
             // A guest with contacts, and the booking and the payment of A4: stored as «to collect», settled by a card payment.
-            var guest = new Guest { OrgId = OrgId, FirstName = "Ospite", LastName = "Riservato", Email = "ospite.riservato@example.com", PhoneNumber = "+41790000000" };
+            var guest = new Guest { OrgId = OrgId, FirstName = "Ospite", LastName = "Riservato", Email = GuestEmail, PhoneNumber = GuestPhone };
             Seed.Guests.Add(guest);
             Seed.Bookings.Add(new Booking
             {
@@ -679,7 +721,7 @@ public class OwnerIssuedDocumentsTests
                 RecipientName = recipient,
                 RecipientFiscalCode = "RSSMRA80A01H501U",
                 RecipientAddressStreet = "Via Privata 1",
-                RecipientPec = "ospite@pec.example.com",
+                RecipientPec = GuestPec,
                 PaymentChannel = FiscalPaymentChannel.Portal,
                 PaymentState = FiscalDocumentPaymentState.Paid,
                 SdiStatus = kind == FiscalDocumentKind.Receipt ? FiscalDocumentSdiStatuses.NotApplicable : FiscalDocumentSdiStatuses.ToSend,
@@ -758,6 +800,52 @@ public class OwnerIssuedDocumentsTests
         }
 
         return files;
+    }
+
+    /// <summary>Everything a PDF was given to print: its title, its watermark, its headings, its paragraphs and the headers and the cells of its tables (a block this does not read stops the proof).</summary>
+    private static string TextOf(PdfDocumentContent pdf)
+    {
+        var texts = new List<string> { pdf.Title, pdf.Watermark ?? string.Empty };
+        foreach (var block in pdf.Blocks)
+        {
+            switch (block)
+            {
+                case PdfHeading heading:
+                    texts.Add(heading.Text);
+                    break;
+                case PdfParagraph paragraph:
+                    texts.Add(paragraph.Text);
+                    break;
+                case PdfTable table:
+                    texts.AddRange(table.Columns.Select(column => column.Header));
+                    texts.AddRange(table.Rows.SelectMany(row => row));
+                    break;
+                default:
+                    throw new InvalidOperationException($"The proof does not read a block of type {block.GetType().Name}");
+            }
+        }
+
+        return string.Join('\n', texts);
+    }
+
+    /// <summary>The files of a ZIP of the export as text, each with its path: a CSV, an XML or a PDF as they are, an Excel file as each part of its own zip (<c>path.xlsx!part</c>).</summary>
+    private static List<(string Path, string Text)> TextsOf(Dictionary<string, byte[]> files)
+    {
+        var texts = new List<(string Path, string Text)>();
+        foreach (var (path, content) in files)
+        {
+            if (!path.EndsWith(".xlsx", StringComparison.Ordinal))
+            {
+                texts.Add((path, Encoding.UTF8.GetString(content)));
+                continue;
+            }
+
+            using var workbook = new MemoryStream(content);
+            foreach (var (part, bytes) in Unzip(workbook))
+                texts.Add(($"{path}!{part}", Encoding.UTF8.GetString(bytes)));
+        }
+
+        return texts;
     }
 
     /// <summary>The rows of a CSV as the writer makes it: the cells split on <c>;</c>, a quoted cell kept whole, the BOM dropped; an empty row is one empty cell.</summary>
