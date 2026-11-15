@@ -29,7 +29,8 @@ public class PublicGuestCheckInController(
     IFeatureFlags featureFlags,
     IStringLocalizer<SharedResources> localizer,
     ILogger<PublicGuestCheckInController> logger,
-    ITouristTaxCollectionService? touristTaxCollection = null) : ControllerBase
+    ITouristTaxCollectionService? touristTaxCollection = null,
+    ICheckInLegalTexts? legalTexts = null) : ControllerBase
 {
     /// <summary>Problem code of a submit on a session the guest has already completed (409).</summary>
     public const string AlreadySubmittedCode = "checkin_already_submitted";
@@ -39,6 +40,9 @@ public class PublicGuestCheckInController(
 
     /// <summary>Problem code of a selfie without a recorded biometric consent (409, ADR-013-R9).</summary>
     public const string BiometricConsentRequiredCode = "biometric_consent_required";
+
+    /// <summary>Problem code of a consent that refers to a version the registry of the legal texts does not serve now (422, E22/F01/US02/T02).</summary>
+    public const string BiometricConsentVersionUnknownCode = "biometric_consent_version_unknown";
 
     /// <summary>
     /// Extension of the 400 of the submit (NF-40): a map from each field key (<c>Guests[1].DocumentNumber</c>) to the message key of
@@ -262,11 +266,39 @@ public class PublicGuestCheckInController(
     }
 
     /// <summary>
+    /// The legal texts of the identity step for the stay of the link (E22/F01/US02/T02, NF-24, NF-50): the active version of the biometric consent and, for a property that
+    /// keeps no document (Ticino, or Switzerland with a canton CasaZen does not know), of the Ticino notice, from the registry of the legal texts. <c>lang</c> is one of
+    /// <c>it</c>, <c>en</c>, <c>de</c>, <c>fr</c>, <c>es</c> (the language of the session, then the browser, otherwise); each text says the <c>language</c> of the file served (the closest the
+    /// registry has), its <c>version</c> (the id the consent posts back), <c>isDraft</c> (a draft is served outside production only: the page shows a «Bozza» badge) and its
+    /// <c>contentHtml</c>, sanitized (headings, paragraphs and lists). In production only approved versions are served, so the list can lack the consent; the identity step is then
+    /// not offered (<c>biometricOffered: false</c>) and an operator verifies. 404 for an unknown, expired or completed link. Behind
+    /// <see cref="FeatureFlags.CheckInIdentityVerification"/>, off by default.
+    /// </summary>
+    [HttpGet("{token}/legal-texts")]
+    [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
+    public async Task<ActionResult<CheckInLegalTextsResponse>> GetLegalTexts(string token, [FromQuery] string? lang = null)
+    {
+        if (legalTexts is null)
+            return NotFound();
+
+        var session = await checkInService.GetSessionByTokenAsync(token);
+        if (session is null)
+            return NotFound();
+
+        var state = await verificationFlow.GetStateAsync(session, HttpContext.RequestAborted);
+        var language = GuestLanguages.Normalize(lang) ?? GuestLanguages.Resolve(session.Language, Request.Headers.AcceptLanguage.ToString());
+        return Ok(CheckInLegalTextsResponse.From(language, legalTexts.GetForStay(state.DocumentNotArchived, language)));
+    }
+
+    /// <summary>
     /// The guest's answer to the biometric consent (E03/F04/US02/T04, ADR-013-R9): explicit, separate from the privacy notice and refusable.
-    /// <c>{ consentGiven: true, consentVersion }</c> records the time and the version of the text; <c>{ consentGiven: false }</c> records the
+    /// <c>{ consentGiven: true, consentVersion }</c> records the time and the version of the text, with the hash of that text (the version is the one that
+    /// <c>GET .../legal-texts</c> serves, E22/F01/US02/T02); <c>{ consentGiven: false }</c> records the
     /// refusal and hands the verification to an operator, alerted at once. When the biometric verification is not offered (switched off for the
-    /// organization, a minor) nothing is recorded and the answer is <c>operator</c>. 400 <c>biometric_consent_answer_required</c> without
-    /// <c>consentGiven</c>, 400 <c>biometric_consent_version_required</c> for a consent without its version (at most 50 characters); 404 for an
+    /// organization, a minor, or no text of the consent approved in production) nothing is recorded and the answer is <c>operator</c>. 400 <c>biometric_consent_answer_required</c> without
+    /// <c>consentGiven</c>, 400 <c>biometric_consent_version_required</c> for a consent without its version (at most 50 characters), 422
+    /// <c>biometric_consent_version_unknown</c> for a version the registry does not serve now (the page reads the texts again); 404 for an
     /// unknown, expired or completed link. Behind <see cref="FeatureFlags.CheckInIdentityVerification"/>, off by default.
     /// </summary>
     [HttpPost("{token}/biometric-consent")]
@@ -286,6 +318,9 @@ public class PublicGuestCheckInController(
         var result = await verificationFlow.RecordConsentAsync(session, consentGiven, request.ConsentVersion, HttpContext.RequestAborted);
         if (result.Status == BiometricConsentStatus.VersionRequired)
             return this.ApiProblem(StatusCodes.Status400BadRequest, "biometric_consent_version_required", "CheckInBiometricConsentVersionRequired");
+
+        if (result.Status == BiometricConsentStatus.VersionUnknown)
+            return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, BiometricConsentVersionUnknownCode, "CheckInBiometricConsentVersionUnknown");
 
         return Ok(new BiometricConsentResponse
         {

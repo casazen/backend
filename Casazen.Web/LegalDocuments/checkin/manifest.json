@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "texts": [
+    {
+      "kind": "biometric-consent",
+      "version": "checkin-biometric-2026-11",
+      "status": "draft",
+      "approvedBy": null,
+      "approvedAt": null,
+      "languages": {
+        "it": { "file": "biometric-consent.it.md", "sha256": "387c93dae378fa13874e9b3d9459f522eaa7569dab4adaa8ef42c8a0ab3350fa" },
+        "en": { "file": "biometric-consent.en.md", "sha256": "aaa55316ed0672aaa64cc0103f2983b1144f0e2680fef9331c82d2e433555946" },
+        "de": { "file": "biometric-consent.de.md", "sha256": "7d494e41fc38a352366839edb0757ed7a2474a2db1d3b69cb7a485c745f58258" },
+        "fr": { "file": "biometric-consent.fr.md", "sha256": "80c395bc8c42bef96c1ef3b7088994164700a23b4489cbf7c6ec2d54bb8ee8fa" },
+        "es": { "file": "biometric-consent.es.md", "sha256": "712dad36a7d464d2e941188d96d00327d32729f70f31b3965a1640176a7382fc" }
+      }
+    },
+    {
+      "kind": "ticino-notice",
+      "version": "checkin-ticino-2026-11",
+      "status": "draft",
+      "approvedBy": null,
+      "approvedAt": null,
+      "languages": {
+        "it": { "file": "ticino-notice.it.md", "sha256": "373205d8df5a06d46fbb62581f653ab62038564c60ebfeedc193c59f2ccfd084" },
+        "en": { "file": "ticino-notice.en.md", "sha256": "64591fcdfb614a2f1d1af7875a1a0e8870237c87621027e76a3bf1948b96d7de" }
+      }
+    }
+  ]
+}

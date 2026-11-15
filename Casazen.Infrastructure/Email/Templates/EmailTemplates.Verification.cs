@@ -149,6 +149,7 @@ public static partial class EmailTemplates
         VerificationAlertReasons.GuestRequest => "VerificationOperatorAlert_Reason_GuestRequest",
         VerificationAlertReasons.BiometricsDisabled => "VerificationOperatorAlert_Reason_BiometricsDisabled",
         VerificationAlertReasons.MinorExcluded => "VerificationOperatorAlert_Reason_MinorExcluded",
+        VerificationAlertReasons.LegalTextNotApproved => "VerificationOperatorAlert_Reason_LegalTextNotApproved",
         _ => "VerificationOperatorAlert_Reason_Other",
     };
 }

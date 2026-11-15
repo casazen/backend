@@ -1468,6 +1468,12 @@
   <data name="CheckInBiometricConsentVersionRequired" xml:space="preserve">
     <value>The version of the biometric consent text is missing (50 characters at most).</value>
   </data>
+  <data name="CheckInBiometricConsentVersionUnknown" xml:space="preserve">
+    <value>The text of the biometric consent is no longer the one in force. Reload the page and read the updated text.</value>
+  </data>
+  <data name="DoorCheckInNotFound" xml:space="preserve">
+    <value>We cannot find a stay with these details. Check the booking code (or the surname) and the arrival date, or ask the property for help.</value>
+  </data>
   <data name="CheckInBiometricConsentRequired" xml:space="preserve">
     <value>Before the selfie we need your consent to the biometric verification. You can also ask a person to verify you.</value>
   </data>

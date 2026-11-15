@@ -407,3 +407,45 @@ health check is healthy/degraded as described; the endpoints serve the drafts an
 `LegalPrivacyNoticeV2Tests` (CF-BE): the `2026-10-v2` privacy notice names ConcordatoFacile in both languages (the `2026-10-v1` files and the DPA do
 not), has the same sections and numbering in Italian and English, carries the draft notice, is published with the controller's data and, when its
 version is activated, asks the hosts to accept the privacy again and nothing else.
+
+## 8. Texts of the guest check-in: the registry (E22/F01/US02/T02, decision O9)
+
+> **Bozza: i testi sono bozze finché il legale non li approva.** The consent to the biometric verification and the Ticino notice are drafts: they are served on `test` and
+> `development`, flagged `isDraft`, and **never in production** until a pull request approves them (below).
+
+The two texts the guest reads in the identity step of the check-in are not in the frontend any more: they are files of the backend with a manifest, so that the backend knows which
+version a consent refers to and production can refuse a text that nobody approved. They are separate from the host documents of sections 1-7 (no placeholders, no `Legal:Documents:*` version).
+
+| Piece | Behaviour | Code |
+|---|---|---|
+| `Casazen.Web/LegalDocuments/checkin/manifest.json` | The versions of each text: `kind` (`biometric-consent`, `ticino-notice`), `version` (an id of at most 50 characters, the one the consent posts back), `status` (`draft` or `approved`), `approvedBy` and `approvedAt` (null while a draft; both required when `approved`) and, per language, the `file` and its `sha256` | `CheckInLegalTexts` |
+| `biometric-consent.{it,en,de,fr,es}.md`, `ticino-notice.{it,en}.md` | The text, in a small Markdown subset: `#` and `##` headings, paragraphs, `- ` lists and `**bold**`. A block between `<!-- if:document-archived -->` and `<!-- /if -->` is for a property that keeps the photo of the document, `<!-- if:document-not-archived -->` for one that does not (Ticino); the marker lines are never shown. Italian is the reference and is required for every version | `CheckInLegalMarkdown` |
+| `GET api/public/checkin/{token}/legal-texts?lang=` | Anonymous, rate limit `GuestCheckIn`, behind `Features:CheckInIdentityVerification`. `{ language, texts: [{ kind, version, language, isDraft, contentHtml }] }`: the active consent and, for a property that keeps no document (Ticino, or Switzerland with an unknown canton), the Ticino notice. `language` of a text is the one of the file served: the one asked for, else English, else Italian. `contentHtml` is sanitized (headings, paragraphs, lists) | `PublicGuestCheckInController.GetLegalTexts` |
+| `POST api/public/checkin/{token}/biometric-consent` | `consentVersion` must be the version the registry serves now: any other string is **422 `biometric_consent_version_unknown`** and nothing is recorded. A recorded consent keeps `BiometricConsentVersion` and `BiometricConsentTextHash` (the SHA-256 of the Italian reference file of the version) | `IdentityVerificationFlowService.RecordConsentAsync` |
+| No approved consent in production | The registry serves no consent: `GET .../legal-texts` has no text of it, the verification state says `biometricOffered: false` and the step `operator`, a consent posted anyway is answered `operator`, and the operators get the alert with the reason **`legal_text_not_approved`** (e-mail, urgent "To do", push), also when the guest then asks for a person (not `guest_request`). The guest is never blocked: a person verifies the identity | `VerificationAlertReasons.LegalTextNotApproved` |
+
+**Which version is active.** The versions of a kind are listed in time order; the **last** one that can be served is the active one. Production serves the last `approved` one; every other
+environment (`Staging`, `Development`, `Testing`) the last one, draft or approved. Only the active version can be consented to: a guest who read the text before a deploy that changes
+it gets the 422 and the page reads the texts again.
+
+**Integrity.** The registry computes the SHA-256 of each file (UTF-8 without BOM, line endings as `\n`, so a Windows and a Linux checkout agree) and serves a language only when it is the
+one in the manifest; a version whose Italian file is missing or does not match is not served, with an error in the log (names only). `LegalTexts_HashMatchesFile_Test` checks the
+files that ship. Compute a hash with `tr -d '\r' < file.md | sha256sum`.
+
+### How the legal approval is recorded
+
+The approval is a pull request to `develop` (GitHub flow) that a person of CasaZen opens with the written approval of the lawyer in hand:
+
+1. The lawyer reads the files (and the Italian reference above all). If the wording changes, **add a new version**: new files (for example `biometric-consent.2027-01.it.md`), a new entry at
+   the **end** of `manifest.json` with a new `version`, `status: approved`, `approvedBy` (name or e-mail of the lawyer) and `approvedAt` (ISO date of the approval). The draft entry stays: a consent
+   row that kept its version and hash must still be explainable. Never edit in place a file of a version somebody accepted.
+2. If the wording does not change, set on the same entry `status: "approved"`, `approvedBy` and `approvedAt`. The Ticino notice starts with the line `BOZZA - da approvare dal legale`: remove
+   it from both files and write the new `sha256` of each (the consent files have no such line).
+3. Run `dotnet test --filter CheckInLegalTextsTests` (the hash and the approval are checked) and merge.
+4. On `test` read `GET /api/public/checkin/{token}/legal-texts` (`isDraft: false`) and do a check-in with the identity step; the release PR `develop` → `main` brings it to production, where
+   `legal_text_not_approved` stops being raised.
+
+Translations (German, French and Spanish of the Ticino notice) are not written: a guest of those languages reads the English text until a version adds them.
+
+`CheckInLegalTextsTests` (unit): production serves only approved versions, a consent can refer only to the served version and keeps its hash, the files that ship match the manifest, an approved
+text needs its approval, a text never brings a tag of its own.
