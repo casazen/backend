@@ -11,6 +11,7 @@ using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit;
+using Casazen.Web.DTOs.OwnerPortal;
 using Casazen.Web.Resources;
 using Xunit;
 using DocumentKind = Casazen.Core.Entities.Enums.FiscalDocumentKind;
@@ -413,6 +414,12 @@ public class SwissAgencyScenarioTests
         var text = StatementTextOf(statement);
         Assert.Contains("Commissioni del portale riaddebitate dal gestore (fattura n. PM2026/1)", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Trattenuta dal portale", text, StringComparison.Ordinal);
+
+        // The owner portal says it as the owner reads it: under the filter of the request of an owner, on and with no org, the line of the page is the recharge.
+        var detail = OwnerPortalStatementDetailDto.From(await world.PortalStatementAsTheOwnerAsync(month.Published.Id));
+        var portalFee = Assert.Single(detail.Sections.Single(s => s.Section == "channelFees").Lines);
+        Assert.Equal((-67.50m, true), (portalFee.Amount, portalFee.ChannelFeeRechargedByAgency));
+        Assert.Equal("PM2026/1", detail.OwnerInvoiceNumber);
 
         // The VAT file of the agency: the commission of the portal it holds the account of, for information (a possible base of the purchase tax, never VAT due).
         AssertPackage(

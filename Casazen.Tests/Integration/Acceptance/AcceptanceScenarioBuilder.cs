@@ -882,6 +882,16 @@ internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
         return await scope.Portal.GetOwnerStatementsAsync(OwnerUserId);
     }
 
+    /// <summary>
+    /// A published statement as its owner reads it on the portal (<c>GET api/owner-portal/statements/{id}</c>, the lines and their labels), under the tenant filter of
+    /// the request of an owner: on, and with no org (the person of the portal has none), so a read that leaves a row to the filter finds nothing there.
+    /// </summary>
+    public async Task<OwnerPortalStatementDetailInfo> PortalStatementAsTheOwnerAsync(Guid versionId)
+    {
+        await using var scope = new AcceptanceScope(this, new AppDbContext(_options, new OwnerRequestTenant(), Keys));
+        return await scope.Portal.GetOwnerStatementAsync(OwnerUserId, versionId);
+    }
+
     /// <summary>The PDF of a published statement the owner downloads from its portal.</summary>
     public async Task<byte[]> PortalStatementPdfAsync(Guid versionId)
     {
@@ -1012,6 +1022,14 @@ internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
         var root = directory?.FullName ?? throw new InvalidOperationException("Casazen.sln not found above the test output folder.");
         return new ConfigurationBuilder().AddJsonFile(Path.Combine(root, "Casazen.Web", "appsettings.json"), optional: false).Build();
     }
+}
+
+/// <summary>What the request of a person of the owner portal has: an authenticated caller, so the tenant filter is on, and no org of its own (fail-closed).</summary>
+internal sealed class OwnerRequestTenant : ITenantContext
+{
+    public Guid? OrgId => null;
+
+    public bool FilterEnabled => true;
 }
 
 /// <summary>What the end of a month left: the posting, the first version, the draft and the issued invoice of the property manager, and the published version.</summary>
