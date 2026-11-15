@@ -1,3 +1,4 @@
+using System.Data;
 using System.Reflection;
 using System.Security.Claims;
 using System.Text.Json;
@@ -5,6 +6,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Tests.Unit.Infrastructure;
 using Casazen.Tests.Unit.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
@@ -68,10 +70,10 @@ public class ChatAvailabilityTests : IAsyncLifetime
         Assert.Equal(
             [new MessageChannelStatus(_world.Scope.Granted.Id, "Trullo", MessageChannelStatuses.WaitingPermission, Checked)],
             collaborator);
-        Assert.Equal([new MessageChannelStatus(_world.Scope.OtherOrgProperty.Id, "Villa Altrove", MessageChannelStatuses.Available, null)], otherOrg);
+        Assert.Equal([new MessageChannelStatus(_world.Scope.OtherOrgProperty.Id, "Villa Altrove", MessageChannelStatuses.Available, Checked)], otherOrg);
         Assert.Empty(await hub.GetChannelStatusAsync(new HostScope(Guid.NewGuid())));
 
-        // A listing the copy has not reached yet is available, with no instant; the answer to a client names no code of the channel manager.
+        // The answer to a client names no code of the channel manager.
         var json = JsonSerializer.Serialize(MessageChannelStatusDto.From(wholeOrg), new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.Contains("\"status\":\"waiting_permission\"", json, StringComparison.Ordinal);
         Assert.Contains("\"status\":\"error\"", json, StringComparison.Ordinal);
@@ -161,6 +163,54 @@ public class ChatAvailabilityTests : IAsyncLifetime
 
         Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(forbidden.Result).StatusCode);
         hub.VerifyNoOtherCalls();
+    }
+
+    /// <summary>
+    /// The three statements of the channel status (the confirmed listings of the properties the scope reaches, their names, the sync states) are turned into SQL by the PostgreSQL
+    /// provider for every kind of scope (the in-memory provider accepts what Npgsql cannot translate: see <see cref="NpgsqlTranslationProbe"/>), and the reach of a collaborator is
+    /// applied in the statement itself (an <c>EXISTS</c> on the grants of the person), never on the rows after they were read.
+    /// </summary>
+    [Theory]
+    [InlineData("whole-org")]
+    [InlineData("collaborator")]
+    [InlineData("collaborator-one-area")]
+    [InlineData("account-in-no-team")]
+    public async Task ChannelStatus_TranslatesToSqlOnPostgres_AndTheReachIsInTheStatement(string kind)
+    {
+        var orgId = Guid.Parse("7a3c1d52-9f0e-4b8a-8d65-2c4e1f0b9a11");
+        var scope = kind switch
+        {
+            "collaborator" => new HostScope(orgId, GrantedToUserId: "auth0|collaboratore"),
+            "collaborator-one-area" => new HostScope(orgId, GrantedToUserId: "auth0|collaboratore", GrantedMode: RentalMode.Short),
+            "account-in-no-team" => new HostScope(orgId, OwnerId: "auth0|titolare"),
+            _ => new HostScope(orgId),
+        };
+        var statements = new List<string>();
+
+        // The first statement answers one confirmed listing, so that the two that follow it (the names, the sync states) are sent as well.
+        static DataTable? OneListing(string sql)
+        {
+            if (!sql.Contains("OctorateListingMappings", StringComparison.Ordinal))
+                return null;
+
+            var table = new DataTable();
+            table.Columns.Add("PropertyId", typeof(Guid));
+            table.Columns.Add("OctorateAccommodationId", typeof(string));
+            table.Rows.Add(Guid.Parse("11111111-2222-4333-8444-555555555555"), "ACC-1");
+            return table;
+        }
+
+        await using var db = NpgsqlTranslationProbe.NewContext(statements, rows: OneListing);
+        await NpgsqlTranslationProbe.AssertTranslatesAsync(() => MessageHubTestKit.Service(db).GetChannelStatusAsync(scope));
+
+        Assert.Equal(3, statements.Count);
+        Assert.Contains("OctorateListingMappings", statements[0], StringComparison.Ordinal);
+        Assert.Contains("OtaMessageSyncStates", statements[2], StringComparison.Ordinal);
+        Assert.All(statements, sql => Assert.DoesNotContain("\"Text\"", sql, StringComparison.Ordinal));
+        if (kind.StartsWith("collaborator", StringComparison.Ordinal))
+            Assert.Contains("PropertyMemberAccesses", statements[0], StringComparison.Ordinal);
+        else if (kind == "whole-org")
+            Assert.DoesNotContain("PropertyMemberAccesses", statements[0], StringComparison.Ordinal);
     }
 
     // ---- The data -------------------------------------------------------------------------------------------------------------------------
