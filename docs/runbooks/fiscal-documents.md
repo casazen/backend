@@ -456,6 +456,14 @@ in SQL to the scope of the caller (the list's own `Matching`), so a caller restr
 **The documents of a booking.** `GET api/bookings/{id}/fiscal-documents` (`payment.read`, the booking authorized like its payments): number, kind, status, total, currency and the current payment
 state of each document (a discarded draft left out). The booking card reads it.
 
+**The document of the drawer (FIX/RES-DOCS).** `GET api/fiscal/documents/{id}` (`FiscalDocumentDto.From`) gives the drawer of the frontend (`src/features/fiscal/documents/`) what it shows when it arrives, with the names
+it reads: for **each line** `lineType` (the name of `FiscalLineType`: `Accommodation`, `AdvancedExpense`, `Cleaning`, `Commission`, `ExtraService`, `Other`, `Recharge`, `TouristTax`), `vatRatePercent` and `vatAmount` (the
+VAT stored on the line, `null` for a line written before it was stored); for the **document** `paymentChannel` (the name of `FiscalPaymentChannel`: `Unknown`, `CasaZen`, `Portal`, `Outside`) and `issuer`, the snapshot
+the document keeps from its issue (`FiscalIssuerSnapshot`): `legalName` (the name the document prints: the legal name, else the name of the organization), `addressStreet`, `addressCivic`, `postalCode`, `city`,
+`province`, `countryCode`, `vatNumber`, `fiscalCode`, `swissVatNumber`. `issuer` is `null` for a draft and for a document issued before the snapshot existed (the PDF names the issuer from the profile of today): **nothing
+is looked up and nothing is made up.** The bank account (not even masked), the agency that issued on behalf of an owner and the co-owners stay in the PDF. The issuer is in the answer for **one** document only, for a caller
+who reaches it (the list leaves it out, `FiscalDocumentDto.ForList`), and a document of another org is a 404. The preview of the next number is not part of this.
+
 **Live refresh.** The issue of **one** document asked by a person, and a credit note, queue the push `fiscal-document-issued` (`PushDeliveryKeys.FiscalDocumentIssued`, once per document, to the
 hosts of the booking): through the decorator it is the entry of the bell and the live `notificationsChanged` that makes the open pages read the list of the documents and the booking again
 (`docs/runbooks/in-app-notifications.md`). The bulk issue and the daily run do **not** notify: a message for each of hundreds of documents helps nobody, and their answer and the list tell.
@@ -498,6 +506,12 @@ events of one change (the refund and the cancellation) and events delivered out 
   hand meanwhile leaves the draft refused with 422 `credit_amount_exceeds`). The decision and the draft are taken under the advisory lock of the booking (`FiscalDocumentBooking`, 1_604).
 - **What cannot be decided** (the issuer's profile is incomplete, no tax rule applies) is not a failure of the event: the host gets the «To do» `fiscal_document_booking_changed`, the event is
   not delivered again, and the daily run makes the draft of a booking that has none. Any other failure (the database) is thrown again and the outbox delivers the event again.
+- **The two «To do» close by themselves (FIX/RES-DOCS).** `fiscal_document_credit_note_to_issue` closes when the host **issues** the credit note (in the transaction of the issue, which also closes the item that said
+  a credit note may be needed on the document it credits) or **discards** it (in the transaction of the discard). `fiscal_document_booking_changed` closes when the booking **goes back as it was**: the correction of an
+  event finds the issued document billing what the booking bills (`Matches`) again, or the draft is made again from its booking (the event, the host's refresh, the daily run). The close is `FindOpenAsync` +
+  `CloseAsync(ClosedBySystem)` in the organization of the document (`FiscalDocumentService.CloseReviewTodoAsync`), once (a second close keeps the first time and the first closer), and only for the action
+  `ReviewFiscalDocument`: the «Correggi la fattura» of a rejection has its own consumer. **The limit:** the daily run of the portal stays that ended tells the host «once for each document, whatever became of the
+  item», so an item the system closed counts as told there; and the credit note draft prepared earlier stays for the host when the booking goes back as it was (it is checked and issued, or discarded, by hand).
 
 ## E-mail to the guest and the public page of the document (E12/F01/US02/T01, NF-83)
 
@@ -510,7 +524,11 @@ The guest gets the document of the stay as an **e-mail with a signed link**, nev
 - **What is sent.** Only an issued guest document of CasaZen: not a draft, not an owner invoice (422 `document_owner_invoice`), not a document imported from Octorate (422 `document_read_only`). The Swiss documents go like the Italian ones.
 - **The address** is the one of the guest of the booking. A relay address of a portal (`…@guest.booking.com`, which forwards to the guest) is a normal address. Refused (422 `document_recipient_email_invalid`; for the automatic send:
   nothing is sent and the document stays in CasaZen and in the package of the accountant): empty, malformed, no dot in the domain, an erased guest (`Guest.DataAnonymizedDate`) and the domains that are never delivered
-  (`.invalid`, `.localhost`, `.local`, where the placeholder of an erased guest, `ANON-…@deleted.local`, is). `example.com` and `.test` stay addresses: the data of a demo is e-mailed like any other.
+  (`.invalid`, `.localhost`, `.local`, where the placeholder of an erased guest, `ANON-…@deleted.local`, is) **or kept for examples** (RFC 2606: `.test`, `.example`, and `example.com`, `example.org`, `example.net` with
+  every subdomain of them; FIX/RES-DOCS). The same for a **guest of the demo** (a row of the showcase seed: `TestDataMarkers`, entity `Guest`, origin `showcase`; the addresses of `DemoShowcaseCatalog` are `@example.com`
+  anyway), so a demo organization with «e-mail to the guest» on never mails a domain that bounces. They are a guest with no address, decided in the one place that sends (`FiscalDocumentDeliveryService.QueueAsync`, for
+  the host's send and for the automatic one alike, never in a caller): nothing is queued, nothing fails (the automatic send answers `NoAddress`; the host's own send is the 422 above, never a «queued»), and the
+  document stays available on its page and in the package of the accountant.
 - **The link** is `{App:PublicSiteBaseUrl}/documents/view/{id}?token=`. The token is an ASP.NET Core Data Protection time-limited payload (`FiscalDocumentLinkTokens`, purpose `Casazen.FiscalDocument.Link`, **30 days** from the
   moment the e-mail is queued) that carries **only the document id**: no name, no address, no amount. Nothing is stored for it (no column, no migration); a new e-mail makes a new token and the older ones open until they expire;
   the key ring is in the database, so a link outlives a redeploy.
@@ -642,6 +660,11 @@ file here. Two rules of the list the correction rests on: an invoice already sen
   see above). The issue checks it again under the numbering path (`document_replacement_invalid`, 422): the replaced document must be a discarded rejected one of the same issuer, series and number,
   and no other replacement of it may be issued. A document that **was delivered** is corrected with a credit note, never replaced.
 - **A rejected invoice is never credited** (422 `document_rejected_use_correction`, also for the credit note a booking change would prepare: the host gets the «To do» that the booking changed).
+- **A self-billed invoice (TD17) has no correction here (FIX/RES-DOCS).** `POST …/sdi/correct` of a document whose purpose is `SelfBilling` is refused, **whatever its state**, with its own code: 422
+  `self_billing_not_correctable` (`SelfBillingErrors.NotCorrectable`, message key `SelfBillingNotCorrectable` in both `SharedResources` files). The guard is in the controller (it asks the service nothing) and in
+  `StartCorrectionAsync` (nothing is made, changed or numbered), and `GET …/sdi` says `canCorrect: false` for it. **No «Correggi la fattura» is raised for it** either: `FiscalDocumentRejectionHandler` skips a
+  rejected `SelfBilling` document (logged with the ids), because that item leads to a correction a TD17 has not; its rejection is read on the self-billed invoices (`api/fiscal/self-billing`, which shows the state
+  towards the SDI). `submit` and `declare` work for it like for any electronic invoice. Not built: a correction flow of a TD17 (the accountant decides how to correct it, see *Self-billed invoices*).
 - ⚖ To be confirmed by the accountant: the reuse of the number of a rejected invoice, and that the replacement keeps its day (the Agenzia delle Entrate accepts the same number and date for a file sent again
   shortly after a rejection; after that, or for a delivered invoice, the credit note and a new invoice are the way). A replacement that is discarded leaves its number unused: the rejected document keeps it
   in the history.
@@ -777,7 +800,8 @@ The PDF and the XML are the ones of every document (`GET api/fiscal/documents/{i
 (`api/fiscal/documents`) neither make again, issue, credit nor discard a TD17: 422 `document_self_billing`. A caller who reaches only some properties is refused on every action (403); a
 document of another org, or one that is not a TD17, is 404.
 
-**Not in this slice** (so it is not silently missing): a credit note or a correction of an issued TD17 (it is not credited from here: the accountant decides how to correct it); the posting
+**Not in this slice** (so it is not silently missing): a credit note or a correction of an issued TD17 (it is not credited from here: the accountant decides how to correct it; `POST …/sdi/correct` of a TD17
+answers 422 `self_billing_not_correctable` and no «Correggi la fattura» is raised for a TD17 the SDI rejected); the posting
 of the integrated VAT to the owner ledger (the TD17 is neutral for the holder: the VAT is due and deductible); the invoice number and date of the portal as the related document; the
 submission to the SDI (not made by the issue: the document is `to_send` and the channel of *SDI submission, outcomes and correction* above sends it like every Italian electronic invoice); the accountant package and the VAT register (E15, E19). No migration: nothing is stored beyond the existing columns of
 `FiscalDocuments`. **Rollback:** switch `Features:FiscalDocumentIssuance` off (the endpoints answer 404) or empty `SelfBilling:Portals` (nothing is made: 422 `self_billing_not_configured`); an

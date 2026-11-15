@@ -398,6 +398,154 @@ public class FiscalDocumentBookingChangeTests
         Assert.Equal(FiscalDocumentStatus.Discarded, (await ReloadAsync(db, note.Id)).Status);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (FIX/RES-DOCS). The «To do» «Controlla ed emetti la nota di credito» that a correction leaves for the host closes by itself, once and by the system, when the host issues the credit note
+    /// (the item that said a credit note may be needed on the document it credits closes with it) or discards it, in the organization of the document: an item of another organization that names the same id stays open.
+    /// </summary>
+    [Fact]
+    public async Task CreditNoteIssued_ClosesTheToDo_Test()
+    {
+        await using var db = NewDb();
+        await SeedOrgAsync(db);
+        var property = await AddPropertyAsync(db);
+        var service = ServiceOf(db);
+        var handler = HandlerOf(service);
+        var activities = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, new FakeTimeProvider(Now));
+
+        // A booking cancelled with nothing paid: the correction prepares the credit note, and the host is told to check and issue it. The document itself already had the item that says a credit note may be needed,
+        // and an item of another organization names the same id (it is none of this organization's business).
+        var cancelled = await AddBookingAsync(db, property);
+        var original = await IssueAsync(service, cancelled);
+        await CancelAsync(db, cancelled);
+        await handler.HandleAsync(BookingEvent(DomainEventType.BookingCancelled, cancelled), CancellationToken.None);
+        var note = await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Kind == DocumentKind.CreditNote && d.BookingId == cancelled);
+        await activities.CreateAsync(ReviewTodo(original.Id, property, OrgId, FiscalDocumentTodos.BookingChangedReason), CancellationToken.None);
+        var otherOrg = Guid.NewGuid();
+        await activities.CreateAsync(ReviewTodo(original.Id, null, otherOrg, FiscalDocumentTodos.BookingChangedReason), CancellationToken.None);
+        Assert.Equal(3, (await TodosAsync(db)).Count(t => t.CompletedAt is null));
+        Assert.Contains(await TodosAsync(db), t => t.EntityId == note.Id && t.Reason == FiscalDocumentTodos.CreditNoteToIssueReason);
+
+        // The host issues the credit note: the item that waited for it and the one that said it may be needed are closed, by the system. The item of the other organization is not touched.
+        await service.IssueAsync(note.Id, confirm: true);
+        var afterIssue = await TodosAsync(db);
+        var ours = afterIssue.Where(t => t.OrgId == OrgId).ToList();
+        Assert.Equal(2, ours.Count);
+        Assert.All(ours, t => Assert.Equal((true, InternalActivity.ClosedBySystem), (t.CompletedAt is not null, t.ClosedBy)));
+        Assert.Null(Assert.Single(afterIssue, t => t.OrgId == otherOrg).CompletedAt);
+
+        // A credit note the host discards instead: its item closes with the discard, and the draft is not issued.
+        var second = await AddBookingAsync(db, property);
+        await IssueAsync(service, second);
+        await CancelAsync(db, second);
+        await handler.HandleAsync(BookingEvent(DomainEventType.BookingCancelled, second), CancellationToken.None);
+        var draft = await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Kind == DocumentKind.CreditNote && d.BookingId == second);
+        Assert.Null(Assert.Single(await TodosAsync(db), t => t.EntityId == draft.Id).CompletedAt);
+
+        await service.DiscardDraftAsync(draft.Id);
+
+        var discarded = await ReloadAsync(db, draft.Id);
+        Assert.Equal((FiscalDocumentStatus.Discarded, (int?)null), (discarded.Status, discarded.SequenceNumber));
+        var closed = Assert.Single(await TodosAsync(db), t => t.EntityId == draft.Id);
+        Assert.Equal((true, InternalActivity.ClosedBySystem), (closed.CompletedAt is not null, closed.ClosedBy));
+    }
+
+    /// <summary>
+    /// The «To do» that tells the host a booking changed closes when the booking goes back as it was: the issued document bills what the booking bills again (the correction of the event finds nothing to credit), or the
+    /// draft is made again from its booking. A booking that is still not as it was keeps its item, and a second delivery of the event does not raise a second one.
+    /// </summary>
+    [Fact]
+    public async Task BookingBackAsItWas_ClosesTheChangedBookingToDo_AndABookingThatStaysChangedKeepsIt()
+    {
+        await using var db = NewDb();
+        await SeedOrgAsync(db);
+        var property = await AddPropertyAsync(db);
+        var service = ServiceOf(db);
+
+        // A portal collected the money and the stay is cancelled: nobody knows what it kept, so no credit note is made and the host is told the booking changed.
+        var reinstated = await AddBookingAsync(db, property, BookingSource.Airbnb, companyCollect: true);
+        var reinstatedDocument = await IssueAsync(service, reinstated);
+        var stays = await AddBookingAsync(db, property, BookingSource.Airbnb, companyCollect: true);
+        var staysDocument = await IssueAsync(service, stays);
+        foreach (var booking in new[] { reinstated, stays })
+        {
+            await CancelAsync(db, booking);
+            await service.ApplyBookingChangeAsync(booking, BookingChange.Cancelled);
+        }
+
+        Assert.All(await TodosAsync(db), t => Assert.Equal((FiscalDocumentTodos.BookingChangedReason, (DateTime?)null), (t.Reason, t.CompletedAt)));
+        Assert.Equal(2, (await TodosAsync(db)).Count);
+
+        // One goes back as it was (the same stay, on again): its item closes. The other stays cancelled, and the event delivered again keeps its one item.
+        await ChangeBookingAsync(db, reinstated, b => { b.Status = BookingStatus.CheckedOut; b.CancelledAt = null; });
+        await service.ApplyBookingChangeAsync(reinstated, BookingChange.Modified);
+        await service.ApplyBookingChangeAsync(stays, BookingChange.Cancelled);
+
+        var items = await TodosAsync(db);
+        Assert.Equal(2, items.Count);
+        var back = Assert.Single(items, t => t.EntityId == reinstatedDocument.Id);
+        Assert.Equal((true, InternalActivity.ClosedBySystem), (back.CompletedAt is not null, back.ClosedBy));
+        Assert.Null(Assert.Single(items, t => t.EntityId == staysDocument.Id).CompletedAt);
+
+        // A draft kept because money was collected for a booking that is cancelled has the item too; made again from the booking when it is on again, the item closes.
+        var withDraft = await AddBookingAsync(db, property);
+        var draft = await service.CreateDraftAsync(withDraft, null);
+        await AddPaymentAsync(db, withDraft, 362m);
+        await CancelAsync(db, withDraft);
+        await service.ApplyBookingChangeAsync(withDraft, BookingChange.Cancelled);
+        Assert.Null(Assert.Single(await TodosAsync(db), t => t.EntityId == draft.Id).CompletedAt);
+
+        await ChangeBookingAsync(db, withDraft, b => { b.Status = BookingStatus.CheckedOut; b.CancelledAt = null; });
+        await service.ApplyBookingChangeAsync(withDraft, BookingChange.Modified);
+
+        Assert.Equal(FiscalDocumentStatus.Draft, (await ReloadAsync(db, draft.Id)).Status);
+        Assert.NotNull(Assert.Single(await TodosAsync(db), t => t.EntityId == draft.Id).CompletedAt);
+    }
+
+    /// <summary>
+    /// The «To do» of a draft the system discards closes with it (FIX/RES-DOCS, data rule): a draft kept because money was collected for a cancelled booking has its item «the booking changed»; once the refund
+    /// brings what was collected back to nothing, the correction discards the draft by itself and the item that named it is closed by the system, in the organization of the draft (an item of another
+    /// organization that names the same id stays open); the event delivered again changes nothing and raises nothing.
+    /// </summary>
+    [Fact]
+    public async Task DraftDiscardedByTheSystem_ClosesItsChangedBookingToDo_Test()
+    {
+        await using var db = NewDb();
+        await SeedOrgAsync(db);
+        var property = await AddPropertyAsync(db);
+        var service = ServiceOf(db);
+        var handler = HandlerOf(service);
+        var activities = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, new FakeTimeProvider(Now));
+
+        // A draft, 362.00 collected, the booking cancelled: the draft is kept for the host, who is told the booking changed. An item of another organization names the same id.
+        var booking = await AddBookingAsync(db, property);
+        var draft = await service.CreateDraftAsync(booking, null);
+        var payment = await AddPaymentAsync(db, booking, 362m);
+        await CancelAsync(db, booking);
+        await handler.HandleAsync(BookingEvent(DomainEventType.BookingCancelled, booking), CancellationToken.None);
+        var otherOrg = Guid.NewGuid();
+        await activities.CreateAsync(ReviewTodo(draft.Id, null, otherOrg, FiscalDocumentTodos.BookingChangedReason), CancellationToken.None);
+        Assert.Equal(FiscalDocumentStatus.Draft, (await ReloadAsync(db, draft.Id)).Status);
+        var raised = Assert.Single(await TodosAsync(db), t => t.OrgId == OrgId);
+        Assert.Equal((draft.Id, FiscalDocumentTodos.BookingChangedReason, (DateTime?)null), (raised.EntityId!.Value, raised.Reason, raised.CompletedAt));
+
+        // The refund brings what was collected back to nothing: the correction discards the draft by itself, and its item is done.
+        var paid = await db.Payments.SingleAsync();
+        paid.RefundedAmount = 362m;
+        paid.Status = PaymentStatus.Refunded;
+        await db.SaveChangesAsync();
+        await handler.HandleAsync(RefundEvent(payment, booking, 362m), CancellationToken.None);
+
+        Assert.Equal(FiscalDocumentStatus.Discarded, (await ReloadAsync(db, draft.Id)).Status);
+        var items = await TodosAsync(db);
+        var closed = Assert.Single(items, t => t.OrgId == OrgId);
+        Assert.Equal((true, InternalActivity.ClosedBySystem), (closed.CompletedAt is not null, closed.ClosedBy));
+        Assert.Null(Assert.Single(items, t => t.OrgId == otherOrg).CompletedAt);
+
+        // The event delivered again finds no document to follow: nothing changes and no item is raised.
+        await handler.HandleAsync(RefundEvent(payment, booking, 362m), CancellationToken.None);
+        Assert.Equal(2, (await TodosAsync(db)).Count);
+    }
+
     [Fact]
     public async Task Handler_ListensToTheChangesOfABooking_AndNothingElse_AndAnErrorIsAnAnswerOrIsThrownAgain()
     {
@@ -549,6 +697,19 @@ public class FiscalDocumentBookingChangeTests
 
     private static async Task<List<InternalActivity>> TodosAsync(AppDbContext db) =>
         await db.InternalActivities.AsNoTracking().Where(a => a.Action != null).ToListAsync();
+
+    /// <summary>The «To do» that asks the host to look at a document, as a correction raises it (the property of a booking, or none for an item of an organization).</summary>
+    private static CreateTodoRequest ReviewTodo(Guid documentId, Guid? propertyId, Guid orgId, string reason) => new()
+    {
+        Type = ActivityType.FiscalDocument,
+        Action = ActivityAction.ReviewFiscalDocument,
+        EntityType = FiscalDocumentTodos.EntityType,
+        EntityId = documentId,
+        Urgency = ActivityUrgency.Medium,
+        PropertyId = propertyId,
+        OrgId = orgId,
+        Reason = reason,
+    };
 
     private static string Snapshot(FiscalDocument d) =>
         string.Join('|', d.Number, d.Status, d.TaxableBase, d.VatAmount, d.StampDuty, d.Total, d.PaymentChannel, d.RuleVersion, d.IssuerSnapshot, d.UpdatedAt.Ticks,

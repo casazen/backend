@@ -97,6 +97,8 @@ public sealed partial class FiscalDocumentService
             draft.Status = FiscalDocumentStatus.Discarded;
             draft.UpdatedAt = UtcNow;
             await db.SaveChangesAsync(ct);
+            // The «To do» that told the host the booking changed under this draft (it was kept while money was collected) has nothing left to look at: it is done with the draft (FIX/RES-DOCS).
+            await CloseReviewTodoAsync(draft.OrgId, draft.Id, ct);
             plan.Discarded++;
             logger.LogInformation("Draft {DocumentId} of booking {BookingId} discarded: the booking is no longer active ({Change})", draft.Id, booking.Id, change);
             return;
@@ -178,7 +180,11 @@ public sealed partial class FiscalDocumentService
             }
 
             if (now is not null && Matches(issued, now))
+            {
+                // The booking bills what the document says again (it went back as it was): a «To do» that asked the host to look at the document, because a credit note may be needed, is done.
+                await CloseReviewTodoAsync(issued.OrgId, issued.Id, ct);
                 return;
+            }
 
             if (uncovered > 0m)
                 await PrepareCreditNoteAsync(issued, credited, uncovered, reason, rule, plan, ct);
@@ -303,6 +309,30 @@ public sealed partial class FiscalDocumentService
             // The property is gone (deleted since): nobody to tell, and a retry would find the same.
             logger.LogInformation("Document {DocumentId} of booking {BookingId}: property not found, no «To do» raised ({Reason})", documentId, booking.Id, reason);
             return BookingChangeOutcome.None;
+        }
+    }
+
+    /// <summary>
+    /// The «To do» that asks the host to look at a document (<c>ReviewFiscalDocument</c>: «a credit note may be needed», «check and issue the credit note») done by the system, because what it asked for
+    /// has happened or is not needed any more: the document it names was issued or discarded, was made again from its booking, or its booking bills what it says again (FIX/RES-DOCS). The item is found
+    /// and closed in the organization of the document, once (a second close keeps the first time and the first closer), and in the transaction of the change that makes it moot: the context, and so the
+    /// connection, is the one of that change. A document with no open item is the usual case, and costs one read; one closed or gone since it was read leaves nothing to do.
+    /// </summary>
+    private async Task CloseReviewTodoAsync(Guid orgId, Guid documentId, CancellationToken ct)
+    {
+        if (activities is null)
+            return;
+
+        if (await activities.FindOpenAsync(orgId, nameof(ActivityAction.ReviewFiscalDocument), FiscalDocumentTodos.EntityType, documentId, ct) is not { } open)
+            return;
+
+        try
+        {
+            await activities.CloseAsync(open.Id, InternalActivity.ClosedBySystem, ct);
+        }
+        catch (NotFoundException)
+        {
+            // Closed or gone since it was read: nothing is left to close.
         }
     }
 

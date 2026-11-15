@@ -24,6 +24,8 @@ namespace Casazen.Infrastructure.Services;
 /// nothing, so an event delivered again does no harm. A failure (the database) is logged with the type of the error and thrown again, so the outbox delivers the event again.</item>
 /// <item><b>No item for what is not rejected any more.</b> The events are not delivered in order: a rejection whose document was corrected, or credited, before the event was delivered raises nothing
 /// (its closing event found no item and went away, so an item raised now would never close).</item>
+/// <item><b>No item for a self-billed invoice.</b> A TD17 the SDI rejected (<see cref="FiscalDocumentPurpose.SelfBilling"/>) raises nothing here: «Correggi la fattura» leads to the correction of an
+/// invoice to a guest, which a TD17 has not (<see cref="SelfBillingErrors.NotCorrectable"/>); its rejection is read on the self-billed invoices (FIX/RES-DOCS).</item>
 /// <item><b>The property of the item.</b> The property of the document; a document with none (an owner invoice), or whose property is gone, gets an item of the organization.</item>
 /// <item><b>Live, not only listed.</b> The hosts of the booking of the document are told with a push once the item is raised (<see cref="FiscalDocumentLiveRefresh.TellOfRejection"/>): the bell
 /// gets its entry and the open pages read the document and the «To do» again, with no reload. One push per document (stable delivery key), best effort after the item is saved.</item>
@@ -91,6 +93,13 @@ public sealed class FiscalDocumentRejectionHandler(
         if (document.Status != FiscalDocumentStatus.Issued || document.SdiStatus != FiscalDocumentSdiStatuses.Rejected)
         {
             logger.LogInformation("Event {EventId}: fiscal document {DocumentId} is not rejected any more: no «To do» raised", domainEvent.Id, documentId);
+            return;
+        }
+
+        // A self-billed invoice (TD17) has no correction (422 self_billing_not_correctable): «Correggi la fattura» would lead nowhere, and its page of the self-billed invoices shows the rejection.
+        if (document.Purpose == FiscalDocumentPurpose.SelfBilling)
+        {
+            logger.LogInformation("Event {EventId}: fiscal document {DocumentId} is a self-billed invoice: no «To do» to correct it raised", domainEvent.Id, documentId);
             return;
         }
 

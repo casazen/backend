@@ -150,6 +150,7 @@ public sealed partial class FiscalDocumentService(
             stale.Status = FiscalDocumentStatus.Discarded;
             stale.UpdatedAt = UtcNow;
             await db.SaveChangesAsync(ct);
+            await CloseReviewTodoAsync(stale.OrgId, stale.Id, ct);
             logger.LogInformation("Draft {DocumentId} of booking {BookingId} discarded: the plan of the booking has no such document any more", stale.Id, booking.Id);
         }
 
@@ -231,9 +232,15 @@ public sealed partial class FiscalDocumentService(
         else
             RequireGuestDocument(document);
         RequireNotAHeldNumber(document);
+
+        // The draft is discarded and the «To do» that waited for it («Controlla ed emetti la nota di credito» of a correction) is closed in one transaction: nothing is left to issue.
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, ct);
         document.Status = FiscalDocumentStatus.Discarded;
         document.UpdatedAt = UtcNow;
         await db.SaveChangesAsync(ct);
+        await CloseReviewTodoAsync(document.OrgId, document.Id, ct);
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
         logger.LogInformation("Fiscal document draft {DocumentId} discarded", document.Id);
     }
 
@@ -803,6 +810,7 @@ public sealed partial class FiscalDocumentService(
             draft.Status = FiscalDocumentStatus.Discarded;
             draft.UpdatedAt = UtcNow;
             await db.SaveChangesAsync(ct);
+            await CloseReviewTodoAsync(draft.OrgId, draft.Id, ct);
             logger.LogInformation("Draft {DocumentId} of booking {BookingId} discarded: the plan of the booking has no such document any more", draft.Id, booking.Id);
             return draft;
         }
@@ -862,6 +870,11 @@ public sealed partial class FiscalDocumentService(
                 db.FiscalDocumentLines.Add(line);
 
         await db.SaveChangesAsync(ct);
+
+        // A draft made again from its booking as it is now follows it again: the «To do» that told the host the booking changed under it, or that the draft could not follow it, is done (FIX/RES-DOCS).
+        if (!isNew)
+            await CloseReviewTodoAsync(draft.OrgId, draft.Id, ct);
+
         return draft;
     }
 
@@ -1055,6 +1068,15 @@ public sealed partial class FiscalDocumentService(
             orgId: document.OrgId);
 
         await db.SaveChangesAsync(ct);
+
+        // A credit note is issued (the draft a correction left for the host, or one made at once): the «To do» that waited for it, and the one that said a credit note may be needed for the document it
+        // credits, are done. They close in this transaction (FIX/RES-DOCS), so the document and its item never disagree.
+        if (credited is not null)
+        {
+            await CloseReviewTodoAsync(document.OrgId, document.Id, ct);
+            await CloseReviewTodoAsync(document.OrgId, credited.Id, ct);
+        }
+
         if (transaction is not null)
             await transaction.CommitAsync(ct);
     }

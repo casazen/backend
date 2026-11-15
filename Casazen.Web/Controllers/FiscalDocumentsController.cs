@@ -66,10 +66,14 @@ public class FiscalDocumentsController(
         }
 
         var result = await documents.ListAsync(scope, new FiscalDocumentCriteria(bookingId, propertyId, fromDay, toDay, kind, status, source), page, pageSize, ct);
-        return Ok(new FiscalDocumentPageDto(result.Items.Select(FiscalDocumentDto.From).ToList(), result.TotalCount, result.Page, result.PageSize));
+        return Ok(new FiscalDocumentPageDto(result.Items.Select(FiscalDocumentDto.ForList).ToList(), result.TotalCount, result.Page, result.PageSize));
     }
 
-    /// <summary>One document with its lines.</summary>
+    /// <summary>
+    /// One document with its lines (the type, the VAT rate and the VAT of each), who collected the money (<c>paymentChannel</c>) and the issuer as the document keeps it (<c>issuer</c>: name, address, country
+    /// and tax ids of the snapshot written at the issue; <c>null</c> for a draft and for a document issued before the snapshot existed). All of it is data the document already holds, for a caller who reaches
+    /// the document: a document of another org is a 404, like a missing one, and the rows of the list carry no issuer.
+    /// </summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(FiscalDocumentDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -251,7 +255,8 @@ public class FiscalDocumentsController(
     /// <summary>
     /// The issued document sent to the guest of its booking by e-mail (E12/F01/US02/T01): a signed link that opens for 30 days, in an e-mail queued on Hangfire; <c>{ queued, linkExpiresAt }</c>, never
     /// that the e-mail was delivered. The address is the one of the guest of the booking, a relay address of a portal included. 422 <c>document_not_issued</c>, <c>document_owner_invoice</c>, <c>document_self_billing</c> (a self-billed invoice, TD17, has no guest),
-    /// <c>document_read_only</c>, <c>document_recipient_email_invalid</c> (no address, an erased guest, a placeholder), <c>document_email_not_sent</c> (nothing was queued). The e-mail is sent again at every call.
+    /// <c>document_read_only</c>, <c>document_recipient_email_invalid</c> (no address, an erased guest, a placeholder, a reserved domain such as <c>example.com</c> or <c>.test</c>, a guest of the demo), <c>document_email_not_sent</c>
+    /// (nothing was queued). The e-mail is sent again at every call.
     /// The same e-mail goes by itself at the issue when the issuer has «e-mail to the guest» on.
     /// </summary>
     [HttpPost("{id:guid}/send-email")]
