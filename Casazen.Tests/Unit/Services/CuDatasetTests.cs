@@ -289,9 +289,9 @@ public class CuDatasetTests
 
     /// <summary>
     /// A house of two co-owners, <paramref name="shares"/> of the first and the rest of the second, a stay of 1000 paid to the agency, both statements approved and both payouts made on 5
-    /// November: 600 and 400 of base, 126 and 84 withheld.
+    /// November: 600 and 400 of base, 126 and 84 withheld. Without <paramref name="firstIsPaid"/> only the second is paid: 400 of base, 84 withheld.
     /// </summary>
-    private static async Task<(Guid First, Guid Second)> CoOwnedPaidAsync(OwnerPayoutFactsTests.FactsWorld world)
+    private static async Task<(Guid First, Guid Second)> CoOwnedPaidAsync(OwnerPayoutFactsTests.FactsWorld world, bool firstIsPaid = true)
     {
         var first = await world.OwnerAsync();
         var second = await world.OwnerAsync();
@@ -320,7 +320,9 @@ public class CuDatasetTests
         await world.StayAsync(house.Id, BookingSource.Manual, 1000m, paid: true);
         var firstVersion = await world.ApprovedVersionAsync(first);
         var secondVersion = await world.ApprovedVersionAsync(second);
-        await world.Payouts.ConfirmPayoutAsync(world.OrgId, world.Payout(first, firstVersion, "k-first"), null);
+        if (firstIsPaid)
+            await world.Payouts.ConfirmPayoutAsync(world.OrgId, world.Payout(first, firstVersion, "k-first"), null);
+
         await world.Payouts.ConfirmPayoutAsync(world.OrgId, world.Payout(second, secondVersion, "k-second"), null);
         return (first, second);
     }
@@ -420,6 +422,32 @@ public class CuDatasetTests
         var version = await world.ApprovedVersionAsync(owner);
         var paid = await world.Payouts.ConfirmPayoutAsync(world.OrgId, world.Payout(owner, version, key), null);
         return (owner, paid.Payout.Id);
+    }
+
+    /// <summary>
+    /// Data (review of S031, ⚖ I6): when only a co-owner was paid in the year, its withholding is still reported on the signatory (the largest share), and the record says whose it is:
+    /// attribution signatory, the share of the co-owner in the shares and in the lines, so the files and the portal never pass it for the signatory's own.
+    /// </summary>
+    [Fact]
+    public async Task CuDataset_SignatoryWithoutOwnPayments_SaysWhoseShareItCarries_Test()
+    {
+        var world = new OwnerPayoutFactsTests.FactsWorld();
+        var (first, second) = await CoOwnedPaidAsync(world, firstIsPaid: false);
+
+        var built = await world.Payouts.GenerateAnnualDatasetAsync(world.OrgId, 2026, "auth0|admin");
+
+        var record = Assert.Single(CuDatasetPayload.Parse(built.PayloadJson));
+        Assert.Equal((first, 400m, 84m, CuAttributions.Signatory, 1), (record.OwnerId, record.GrossBase, record.Withheld, record.Attribution, record.Evidence));
+        var share = Assert.Single(record.Shares);
+        Assert.Equal((second, 400m, 84m), (share.OwnerId, share.GrossBase, share.Withheld));
+        Assert.All(record.Lines, line => Assert.Equal(second, line.SourceOwnerId));
+        Assert.Equal((record.GrossBase, record.Withheld), (record.Lines.Sum(l => l.GrossBase), record.Lines.Sum(l => l.Withheld)));
+
+        // The file says it too: the signatory, with the co-owner and what it puts in.
+        var stored = await world.Withholding.GetCuDatasetAsync(world.OrgId, 2026);
+        var csv = Encoding.UTF8.GetString(TaxReportingExports.CuCsv(2026, stored.Records, new ResxDocumentTexts(), DocumentLanguages.Italian));
+        Assert.Contains("Firmatario, con i comproprietari", csv, StringComparison.Ordinal);
+        Assert.Contains("TEST Proprietario: 400,00 / 84,00", csv, StringComparison.Ordinal);
     }
 
     /// <summary>The shape of the annual data the accountant package reads (<c>AccountantPackageService.ReadCu</c>).</summary>

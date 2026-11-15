@@ -632,7 +632,8 @@ payload column of `TaxReportingDatasets` exists, it is encrypted through `Encryp
 - **Co-owners** (⚖ I6, `OwnerMandate.CoOwnerTaxReporting`). Each co-owner is paid its share, so the evidence is its own. The record is the owner's own for a property of one owner on the
   check-out day of the stay. For a property of several co-owners the signatory (`DocumentPlanRules.SignatoryOf`: the mandate in force that day, then the largest share, then the oldest
   ownership, then the smallest id) decides by its mandate: `Signatory` (the default, «altrimenti sul firmatario») writes everything on the signatory, `attribution: "signatory"`, with
-  `shares` saying what each co-owner puts into the record (name, base, withholding); `PerShare` keeps each co-owner's share on its own name, `attribution: "share"`. Either way **the shares
+  `shares` saying what each co-owner puts into the record (name, base, withholding), also when only a co-owner was paid in the year (the record is the signatory's, never passed for its
+  own: `attribution: "signatory"` as soon as the record carries the evidence of another owner); `PerShare` keeps each co-owner's share on its own name, `attribution: "share"`. Either way **the shares
   add up to the signatory's totals**. The evidence of an owner that was not an owner of the property on that day is never moved.
 - **Encrypted, and never in the API of the annual data.** `PayloadJson` is encrypted at rest (`Casazen.TaxReportingDataset`, [`encryption.md`](encryption.md)): it names the fiscal code and
   the address of every recipient. A payload stored before (the totals of each owner) is read as it is and rewritten at startup. `GET`/`POST api/withholding/annual/{year}` answer the totals

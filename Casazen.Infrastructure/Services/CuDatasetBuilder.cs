@@ -56,10 +56,10 @@ internal static class CuDatasetBuilder
                 Withheld = pieces.Sum(l => l.Withheld),
                 Evidence = pieces.Select(l => l.EvidenceId).Distinct().Count(),
                 Recipient = people.RecipientOf(group.Key, PaymentDayOf(pieces, year)),
-                Attribution = AttributionOf(group.Select(p => (p.Line.OwnerId, p.OwnShare)).ToList()),
+                Attribution = AttributionOf(group.Key, group.Select(p => (p.Line.OwnerId, p.OwnShare)).ToList()),
                 TaxCode = TaxCodeOf(pieces),
                 RuleVersions = [.. pieces.Select(l => l.RuleVersion).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
-                Shares = SharesOf(pieces, people),
+                Shares = SharesOf(group.Key, pieces, people),
                 Properties = [.. cuLines.Where(l => l.PropertyId is not null).Select(l => l.PropertyId!.Value).Distinct().Select(people.PropertyOf).Where(p => p is not null).Select(p => p!).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ThenBy(p => p.Id)],
                 Lines = cuLines,
             };
@@ -106,19 +106,25 @@ internal static class CuDatasetBuilder
             .ThenBy(l => l.SourceOwnerId)
             .ToList();
 
-    /// <summary>Several owners in one record: the signatory with the others on it; none of them: an owner on its own, or a co-owner that kept its own share.</summary>
-    private static string AttributionOf(IReadOnlyList<(Guid Source, bool OwnShare)> sources)
+    /// <summary>
+    /// Evidence of another owner on the record (the signatory with its co-owners, or alone with the payout of the one co-owner that was paid in the year): the signatory; none: an owner on
+    /// its own, or a co-owner that kept its own share.
+    /// </summary>
+    private static string AttributionOf(Guid recipient, IReadOnlyList<(Guid Source, bool OwnShare)> sources)
     {
-        if (sources.Select(s => s.Source).Distinct().Count() > 1)
+        if (sources.Any(s => s.Source != recipient))
             return CuAttributions.Signatory;
 
         return sources.Any(s => s.OwnShare) ? CuAttributions.Share : CuAttributions.Owner;
     }
 
-    /// <summary>What each owner puts into a record that adds up several (the signatory with its co-owners); nothing for a record of one owner.</summary>
-    private static List<CuShare> SharesOf(IReadOnlyList<EvidenceLine> pieces, TaxReportingPeople people)
+    /// <summary>
+    /// What each owner puts into a record that carries the evidence of another owner (the signatory with its co-owners, or with the one co-owner that was paid in the year); nothing for a record that
+    /// is all its own owner's.
+    /// </summary>
+    private static List<CuShare> SharesOf(Guid recipient, IReadOnlyList<EvidenceLine> pieces, TaxReportingPeople people)
     {
-        if (pieces.Select(l => l.OwnerId).Distinct().Count() < 2)
+        if (pieces.All(l => l.OwnerId == recipient))
             return [];
 
         return pieces
