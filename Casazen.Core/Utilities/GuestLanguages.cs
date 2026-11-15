@@ -43,6 +43,27 @@ public static class GuestLanguages
         return Default;
     }
 
+    /// <summary>
+    /// The language to write to a guest by the country on the booking (E23/F01/US01/T01), when the guest chose none: Italian for Italy, German for Germany and Austria, French
+    /// for France, Spanish for Spain and English for every other country; <c>null</c> when the booking names no country (a stay from a portal comes with none), so the caller
+    /// decides. Accepts the two-letter and three-letter ISO codes and the usual names.
+    /// </summary>
+    public static string? OfCountry(string? country)
+    {
+        var value = country?.Trim().ToUpperInvariant();
+        if (string.IsNullOrEmpty(value))
+            return null;
+
+        return value switch
+        {
+            "IT" or "ITA" or "ITALIA" or "ITALY" => "it",
+            "DE" or "DEU" or "GERMANIA" or "GERMANY" or "DEUTSCHLAND" or "AT" or "AUT" or "AUSTRIA" or "ÖSTERREICH" => "de",
+            "FR" or "FRA" or "FRANCIA" or "FRANCE" => "fr",
+            "ES" or "ESP" or "SPAGNA" or "SPAIN" or "ESPAÑA" => "es",
+            _ => "en",
+        };
+    }
+
     /// <summary>The culture the emails of <paramref name="language"/> are written in (Italian for an unsupported one).</summary>
     public static CultureInfo CultureOf(string? language) => Normalize(language) switch
     {
