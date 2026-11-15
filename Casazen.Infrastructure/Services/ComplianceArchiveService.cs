@@ -8,8 +8,11 @@ using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Jobs;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -38,7 +41,8 @@ public sealed class ComplianceArchiveService(
     IFeatureFlags featureFlags,
     IOptions<ComplianceOptions> options,
     ILogger<ComplianceArchiveService> logger,
-    TimeProvider? timeProvider = null) : IComplianceArchiveService
+    TimeProvider? timeProvider = null,
+    IBackgroundJobClient? jobs = null) : IComplianceArchiveService
 {
     private const int ReadChunkBytes = 81920;
 
@@ -71,7 +75,8 @@ public sealed class ComplianceArchiveService(
             .Select(p => new ProofRow(p.Id, p.Kind, p.PropertyId, p.Property.Name, p.Day, p.ContentType, p.UploadedAt))
             .ToListAsync(ct);
 
-        return new ComplianceArchivePage(rows.Select(ToEntry).ToList(), page, size, total);
+        var covered = await CoveredPropertiesAsync(scope.OrgId, rows, ct);
+        return new ComplianceArchivePage(rows.Select(row => ToEntry(row, covered[row.Id])).ToList(), page, size, total);
     }
 
     public async Task<ComplianceBookingCompliance> GetBookingComplianceAsync(HostScope scope, Guid bookingId, CancellationToken ct)
@@ -88,14 +93,16 @@ public sealed class ComplianceArchiveService(
             .FirstOrDefaultAsync(ct)
             ?? throw BookingNotFound();
 
-        // The proofs of the stay are the receipts filed under its arrival day, for its property (the key the traffic light reads them by). They are
-        // the Alloggiati receipts and nothing else: a record of money (a tourist tax receipt) never belongs to a stay, whoever asks.
+        // The proofs of the stay are the receipts filed under its arrival day that cover its property (the key the traffic light reads them by: a
+        // receipt may cover several flats, E20/F02/US01/T01). They are the Alloggiati receipts and nothing else: a record of money (a tourist tax
+        // receipt) never belongs to a stay, whoever asks. A receipt of flats the caller does not all reach is not listed (its file is about them all).
         var arrival = RomeCalendar.DateInRome(booking.CheckInDate);
         var proofs = await ProofsInScope(scope, booking.PropertyId, ManualProofKind.AlloggiatiReceipt, arrival, arrival, moneyProofs: false)
             .OrderByDescending(p => p.UploadedAt)
             .ThenByDescending(p => p.Id)
             .Select(p => new ProofRow(p.Id, p.Kind, p.PropertyId, p.Property.Name, p.Day, p.ContentType, p.UploadedAt))
             .ToListAsync(ct);
+        var covered = await CoveredPropertiesAsync(orgId, proofs, ct);
 
         var lines = await db.ComplianceSendLogEntries
             .AsNoTracking()
@@ -111,7 +118,7 @@ public sealed class ComplianceArchiveService(
         return new ComplianceBookingCompliance(
             booking.Id,
             booking.PropertyId,
-            proofs.Select(ToEntry).ToList(),
+            proofs.Select(row => ToEntry(row, covered[row.Id])).ToList(),
             lines
                 .Select(l => new ComplianceSendLogLine(
                     l.Id, l.Kind, l.Sender, l.SentAt, l.Reference, l.ByUserId is { } user ? names.GetValueOrDefault(user) : null))
@@ -388,15 +395,17 @@ public sealed class ComplianceArchiveService(
         if (request.Day > _clock.TodayInRomeAsDateOnly() || request.Day.Year < ComplianceArchiveLimits.MinYear)
             throw new DomainRuleException(ComplianceArchiveErrorCodes.ProofDayInvalid, "ComplianceProofDayInvalid");
 
+        // The flats the proof covers: the flat of the request and, for an Alloggiati receipt, the others it names (E20/F02/US01/T01, decision O3). Each
+        // one must be a flat of the org the caller reaches: another org's, one out of its reach and one that does not exist are the same 404.
         var orgId = scope.OrgId;
-        var propertyId = request.PropertyId;
-        var property = await db.Properties
-            .AsNoTracking()
-            .Where(p => p.OrgId == orgId && p.Id == propertyId)
-            .InScope(scope)
-            .Select(p => new { p.Id, p.Name })
-            .FirstOrDefaultAsync(ct)
-            ?? throw PropertyNotFound(propertyId);
+        var flatIds = CoveredIdsOf(request.PropertyId, request.Kind, request.CoveredPropertyIds);
+        var flats = await ResolveFlatsAsync(scope, flatIds, ct);
+        var property = flats[0];
+
+        // The stays the receipt proves, counted before anything is stored (the answer tells the host how many it turned in order).
+        int? coveredStays = null;
+        if (request.Kind == ManualProofKind.AlloggiatiReceipt)
+            coveredStays = (await CountStaysAsync(scope, request.Day, flatIds, ct)).Values.Sum();
 
         // The file is read to the end and judged on its content before anything is stored.
         var (file, kind) = await ReadProofAsync(content, Archive.UploadMaxBytes, ct);
@@ -424,6 +433,12 @@ public sealed class ComplianceArchiveService(
             try
             {
                 db.ManualComplianceProofs.Add(proof);
+
+                // One line for each flat the proof covers, the flat it was filed under included. Added through the set, never only to a collection of the
+                // proof: a line with a preset id attached that way would be tracked as modified and the save would update a row that is not there.
+                foreach (var flat in flats)
+                    db.ManualComplianceProofProperties.Add(new ManualComplianceProofProperty { OrgId = orgId, ProofId = id, PropertyId = flat.Id });
+
                 await db.SaveChangesAsync(ct);
             }
             catch
@@ -433,10 +448,60 @@ public sealed class ComplianceArchiveService(
             }
 
             logger.LogInformation(
-                "Compliance proof uploaded. ProofId={ProofId} OrgId={OrgId} PropertyId={PropertyId} Kind={Kind}",
-                proof.Id, orgId, property.Id, proof.Kind);
-            return ToEntry(new ProofRow(proof.Id, proof.Kind, proof.PropertyId, property.Name, proof.Day, proof.ContentType, proof.UploadedAt));
+                "Compliance proof uploaded. ProofId={ProofId} OrgId={OrgId} PropertyId={PropertyId} Kind={Kind} Properties={Properties}",
+                proof.Id, orgId, property.Id, proof.Kind, flats.Count);
+            QueueDeletionOfTheDocuments(orgId, proof.Kind);
+            return ToEntry(
+                new ProofRow(proof.Id, proof.Kind, proof.PropertyId, property.Name, proof.Day, proof.ContentType, proof.UploadedAt),
+                flats.Select(flat => new ComplianceCoveredProperty(flat.Id, flat.Name)).ToList(),
+                coveredStays);
         }
+    }
+
+    /// <summary>
+    /// Queues the run that deletes the documents of the stays a receipt covers (E20/F02/US01/T02, NF-121): never in the request, only for the receipt of the Alloggiati
+    /// communication and only while <c>Features:PurgeDocumentsAfterReceipt</c> is on. The proof is stored by now, so a queue that does not answer never fails the upload:
+    /// the daily run of the same job does the work, and the failure is logged.
+    /// </summary>
+    private void QueueDeletionOfTheDocuments(Guid orgId, ManualProofKind kind)
+    {
+        if (jobs is null || kind != ManualProofKind.AlloggiatiReceipt || !featureFlags.IsEnabled(FeatureFlags.PurgeDocumentsAfterReceipt))
+            return;
+
+        try
+        {
+            var jobId = jobs.Enqueue<GuestDocumentPurgeJob>(job => job.ExecuteForOrgAsync(orgId, CancellationToken.None));
+            logger.LogInformation("The deletion of the documents after the receipt is queued. OrgId={OrgId} JobId={JobId}", orgId, jobId);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "The deletion of the documents after the receipt could not be queued: the daily run does it. OrgId={OrgId}", orgId);
+        }
+    }
+
+    public async Task<ComplianceReceiptCoverage> GetReceiptCoverageAsync(
+        HostScope scope,
+        DateOnly day,
+        IReadOnlyList<Guid> propertyIds,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(propertyIds);
+
+        if (day > _clock.TodayInRomeAsDateOnly() || day.Year < ComplianceArchiveLimits.MinYear)
+            throw new DomainRuleException(ComplianceArchiveErrorCodes.ProofDayInvalid, "ComplianceProofDayInvalid");
+
+        // A list of flats is asked for here: an empty one is never «every flat».
+        if (propertyIds.Count == 0 || propertyIds.Count > ComplianceArchiveLimits.MaxCoveredProperties)
+            throw CoverageInvalid();
+
+        var flatIds = propertyIds.Distinct().ToList();
+        var flats = await ResolveFlatsAsync(scope, flatIds, ct);
+        var counts = await CountStaysAsync(scope, day, flatIds, ct);
+        return new ComplianceReceiptCoverage(
+            day,
+            counts.Values.Sum(),
+            flats.Select(flat => new ComplianceReceiptCoverageProperty(flat.Id, flat.Name, counts.GetValueOrDefault(flat.Id))).ToList());
     }
 
     // ---------------------------------------------------------------- reads
@@ -464,8 +529,9 @@ public sealed class ComplianceArchiveService(
         if (!moneyProofs)
             proofs = proofs.Where(p => !ComplianceArchiveRules.MoneyKinds.Contains(p.Kind));
 
+        // The proofs of a flat are those that cover it, the flat they were filed under or another one of their receipt (E20/F02/US01/T01).
         if (propertyId is { } property)
-            proofs = proofs.Where(p => p.PropertyId == property);
+            proofs = proofs.Where(p => p.PropertyId == property || p.CoveredProperties.Any(link => link.PropertyId == property));
         if (kind is { } proofKind)
             proofs = proofs.Where(p => p.Kind == proofKind);
         if (from is { } first)
@@ -491,6 +557,137 @@ public sealed class ComplianceArchiveService(
             .AnyAsync(ct);
         if (!reachable)
             throw PropertyNotFound(id);
+    }
+
+    /// <summary>
+    /// The ids of the flats a proof covers, the flat of the request first, with no repeat (E20/F02/US01/T01, decision O3). Only the receipt of the Alloggiati
+    /// communication may name more than its own flat; a list for another kind, or one longer than <see cref="ComplianceArchiveLimits.MaxCoveredProperties"/>,
+    /// is a 422. No list, or an empty one, is the flat of the request alone: never «every flat».
+    /// </summary>
+    private static List<Guid> CoveredIdsOf(Guid propertyId, ManualProofKind kind, IReadOnlyList<Guid>? others)
+    {
+        var ids = new List<Guid> { propertyId };
+        if (others is not { Count: > 0 })
+            return ids;
+
+        if (kind != ManualProofKind.AlloggiatiReceipt || others.Count > ComplianceArchiveLimits.MaxCoveredProperties)
+            throw CoverageInvalid();
+
+        foreach (var id in others.Distinct())
+        {
+            if (!ids.Contains(id))
+                ids.Add(id);
+        }
+
+        return ids;
+    }
+
+    /// <summary>
+    /// The flats of <paramref name="ids"/>, in the order asked for, each one a flat of the caller's org in its reach (a flat deleted since is not one:
+    /// nothing new is filed under it). A flat that is not the org's, is out of the reach or does not exist is the same 404. When the receipt covers more
+    /// than one flat every flat must be in Italy, where the Alloggiati communication is made (422).
+    /// </summary>
+    private async Task<List<FlatRow>> ResolveFlatsAsync(HostScope scope, IReadOnlyList<Guid> ids, CancellationToken ct)
+    {
+        var orgId = scope.OrgId;
+        var flats = db.Properties.AsNoTracking().Where(p => p.OrgId == orgId);
+
+        // One flat is the common case and the statement it always was; several are one statement too, never one query for each.
+        if (ids.Count == 1)
+        {
+            var only = ids[0];
+            flats = flats.Where(p => p.Id == only);
+        }
+        else
+        {
+            var wanted = ids.ToList();
+            flats = flats.Where(p => wanted.Contains(p.Id));
+        }
+
+        var found = (await flats
+                .InScope(scope)
+                .Select(p => new FlatRow(p.Id, p.Name, p.Country))
+                .ToListAsync(ct))
+            .ToDictionary(flat => flat.Id);
+        var ordered = new List<FlatRow>(ids.Count);
+        foreach (var id in ids)
+        {
+            if (!found.TryGetValue(id, out var flat))
+                throw PropertyNotFound(id);
+
+            ordered.Add(flat);
+        }
+
+        if (ordered.Count > 1 && ordered.Any(flat => !TouristTaxComune.IsItalianCountry(flat.Country)))
+            throw CoverageInvalid();
+
+        return ordered;
+    }
+
+    /// <summary>
+    /// The stays of <paramref name="flatIds"/> that arrived on <paramref name="day"/> (the Europe/Rome day), owe the Alloggiati communication (the one definition,
+    /// <see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/> and no no-show mark) and are in the reach of the caller, <b>that the receipt turns green</b>, counted for
+    /// each flat: the verdict of the traffic light decides (<see cref="IComplianceStatusService.GetStaysAReceiptTurnsGreenAsync"/>, the same one the deletion of the guests'
+    /// documents asks), so a stay whose communication failed or was only partly accepted, which stays red whatever receipt exists, is not counted. A flat with no such stay is
+    /// not in the answer.
+    /// </summary>
+    private async Task<Dictionary<Guid, int>> CountStaysAsync(HostScope scope, DateOnly day, IReadOnlyList<Guid> flatIds, CancellationToken ct)
+    {
+        var orgId = scope.OrgId;
+        var wanted = flatIds.ToList();
+        var from = RomeCalendar.StartOfDayUtc(day);
+        var to = RomeCalendar.StartOfDayUtc(day.AddDays(1));
+        var stays = await db.Bookings
+            .AsNoTracking()
+            .Where(b => b.OrgId == orgId && wanted.Contains(b.PropertyId))
+            .InScope(scope)
+            .Where(b => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
+            .Where(b => b.CheckInDate >= from && b.CheckInDate < to)
+            .Select(b => new { b.Id, b.PropertyId })
+            .ToListAsync(ct);
+        if (stays.Count == 0)
+            return new Dictionary<Guid, int>();
+
+        var green = await status.GetStaysAReceiptTurnsGreenAsync(orgId, stays.Select(stay => stay.Id).ToList(), ct);
+        return stays
+            .Where(stay => green.Contains(stay.Id))
+            .GroupBy(stay => stay.PropertyId)
+            .ToDictionary(group => group.Key, group => group.Count());
+    }
+
+    /// <summary>
+    /// The flats each of <paramref name="rows"/> covers, with their names (E20/F02/US01/T01): the flat the proof was filed under first, then the others by
+    /// name, in one statement for all the proofs of the page. The caller reads a proof only when it reaches every flat of it, so no name is shown that it
+    /// may not see; a flat deleted since keeps its name (the history of compliance is kept).
+    /// </summary>
+    private async Task<Dictionary<Guid, IReadOnlyList<ComplianceCoveredProperty>>> CoveredPropertiesAsync(
+        Guid orgId,
+        IReadOnlyCollection<ProofRow> rows,
+        CancellationToken ct)
+    {
+        var covered = rows.ToDictionary(row => row.Id, row => new List<ComplianceCoveredProperty> { new(row.PropertyId, row.PropertyName) });
+        if (rows.Count == 0)
+            return covered.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<ComplianceCoveredProperty>)pair.Value);
+
+        var proofIds = rows.Select(row => row.Id).ToList();
+        var links = await db.ManualComplianceProofProperties
+            .AsNoTracking()
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
+            .Where(link => link.OrgId == orgId && proofIds.Contains(link.ProofId))
+            .Select(link => new { link.ProofId, link.PropertyId, link.Property.Name })
+            .ToListAsync(ct);
+        foreach (var group in links.GroupBy(link => link.ProofId))
+        {
+            var list = covered[group.Key];
+            var others = group
+                .Where(link => list.TrueForAll(flat => flat.Id != link.PropertyId))
+                .OrderBy(link => link.Name, StringComparer.Ordinal)
+                .Select(link => new ComplianceCoveredProperty(link.PropertyId, link.Name))
+                .ToList();
+            list.AddRange(others);
+        }
+
+        return covered.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<ComplianceCoveredProperty>)pair.Value);
     }
 
     private async Task<string> PropertyNameAsync(Guid orgId, Guid propertyId, CancellationToken ct) =>
@@ -525,7 +722,10 @@ public sealed class ComplianceArchiveService(
 
     // ---------------------------------------------------------------- shapes
 
-    private static ComplianceArchiveEntry ToEntry(ProofRow row) =>
+    private static ComplianceArchiveEntry ToEntry(
+        ProofRow row,
+        IReadOnlyList<ComplianceCoveredProperty>? covered = null,
+        int? coveredStays = null) =>
         new(
             row.Id,
             row.Kind,
@@ -536,7 +736,9 @@ public sealed class ComplianceArchiveService(
             ComplianceEvidenceSources.ManualUpload,
             row.UploadedAt,
             ComplianceArchiveRules.RetainUntil(row.UploadedAt),
-            row.ContentType);
+            row.ContentType,
+            covered,
+            coveredStays);
 
     /// <summary>
     /// One obligation of the traffic light as a row of the report. A stay is named by its code and arrival day, never by its guest (the label
@@ -654,7 +856,12 @@ public sealed class ComplianceArchiveService(
     private static NotFoundException PropertyNotFound(Guid propertyId) =>
         new($"Property {propertyId} not found") { MessageKey = "PropertyNotFound" };
 
+    private static DomainRuleException CoverageInvalid() =>
+        new(ComplianceArchiveErrorCodes.ProofCoverageInvalid, "ComplianceProofCoverageInvalid");
+
     // ---------------------------------------------------------------- rows
+
+    private sealed record FlatRow(Guid Id, string Name, string Country);
 
     private sealed record ProofRow(Guid Id, ManualProofKind Kind, Guid PropertyId, string PropertyName, DateOnly Day, string ContentType, DateTime UploadedAt);
 

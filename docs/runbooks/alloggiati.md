@@ -583,3 +583,38 @@ See `GET api/alloggiati/{bookingId}/status` and `GET api/bookings/{bookingId}/co
 ### Migration `AddOctorateGuestAutoSend`
 
 Adds `Orgs.AutoSendGuestsToOctorate` (default false), `AutoSendGuestsToOctorateChangedAt`, `AutoSendGuestsToOctorateChangedByUserId` and `StayGuestOctorateLinks.ErrorFields`. Rollback: the columns are additive; the code ignores them when the setting is off.
+
+## Receipt for several flats, five-year purge and proofs in the document archive (E20/F02/US01/T01)
+
+An agency with one police account («Gestione Appartamenti» profile) gets **one** receipt a day for all its flats, so the receipt of the Alloggiati communication names the flats it covers (decision O3, NF-43, NF-47). Nothing of the content of the PDF is read: it is the host's word, checked against the organization and the reach of the person who uploads it.
+
+### What the upload takes
+
+`POST api/compliance/archive/proofs` (`multipart/form-data`, policy `alloggiati.submit`, as before) takes the field `propertyIds` (repeat it) next to `propertyId`, `kind`, `day` and `file`:
+
+- `propertyId` is always covered, so **no list, or an empty one, is that flat alone** and never every flat of the organization;
+- the list is for `kind=AlloggiatiReceipt` only (another kind with a list is a 422 `compliance_proof_coverage_invalid`); with several flats **every one must be in Italy** (422 otherwise) and there are at most `ComplianceArchiveLimits.MaxCoveredProperties` (500) of them;
+- every flat must be one of the caller's organization **and in the reach of the caller** (a collaborator «Solo alcuni»): another organization's flat, one out of the reach and one that does not exist are the same 404 `not_found`, whichever of them is `propertyId`. Nothing is stored when one is refused;
+- 201 answers the proof with `coveredProperties` (the flat of the request first, then the others by name) and, for an Alloggiati receipt, `coveredStays`: how many stays of those flats arrived that day and are now proven by it.
+
+`GET api/compliance/archive/proofs/coverage?day=2026-11-03&propertyIds=…&propertyIds=…` (policy `booking.read`, stores nothing) is the summary the host reads before saving, «Diventano in regola: N soggiorni»: `{ day, stays, properties: [{ propertyId, propertyName, stays }] }`, with the same checks (an empty list is a 422, never «every flat»).
+
+### Which stays it proves
+
+A stay is proven by a receipt when its flat is one the receipt covers and its arrival day (Europe/Rome) is the day of the receipt, and by nothing else: the stay of another flat of the organization arriving the same day, or another day of a covered flat, stays red. The stays counted are the ones that owe the communication (`AlloggiatiStatusRules.ActiveBookingStatuses`, no no-show mark) **and that the receipt turns green**: the count of `coveredStays` and of the summary, and the deletion of the guests' documents ([gdpr.md](gdpr.md) § 3), ask the verdict of the traffic light (`IComplianceStatusService.GetStaysAReceiptTurnsGreenAsync`, `ComplianceLightRules.Alloggiati` with the receipt taken as archived), so a stay whose communication failed (`Errore`, `Rifiutato`, a guest the channel manager could not take: `ChannelManagerWriteFailed`) or was only partly accepted (`PartiallyAccepted`) is red whatever receipt exists, is not counted and keeps its documents. The traffic light, the per-stay status (`GET api/alloggiati/{bookingId}/status`) and the page of the stay read the proofs through the one reading `ManualProofCoverage`, which also counts the flat a proof was filed under when it has no line in the table below (a row older than the table, a seed): a proof always proves its own flat.
+
+### Who reads a receipt of several flats
+
+The file is about the guests of every flat it covers, so a collaborator «Solo alcuni» reads it (the list, the file, the export, the proofs of a stay, the document archive) **only when it reaches every flat of it**; one flat out of its reach keeps the whole proof out, **a flat deleted since included** (in the general archive the soft-delete filter of the statement takes a deleted flat out of the check of the reach, so `ComplianceProofArchiveSource.InReach` counts the lines of the receipt against the lines whose flat is still there and, for a limited scope, hides a receipt that covers a flat gone: the answer of the dedicated archive, which lifts the filter in its own statement and judges the deleted flat itself; the whole organization reads it in both). The whole organization finds it by any flat it covers (`GET api/compliance/archive?propertyId=`); the general archive (`GET api/documents`) shows it under the flat it was filed under.
+
+### Five-year purge
+
+The recurring job `compliance-proof-retention` (daily at 03:40 UTC, `[DisableConcurrentExecution]`, always registered, no flag) deletes the stored file and the row of every proof whose `RetainUntil` (the upload plus five years) has passed, for every organization, with the lines of its flats (cascade). A proof that is not yet due is never read for deletion. The file goes before the row; one that cannot be deleted keeps its row and the run fails at its end (Hangfire repeats it), so nothing past its time is kept in silence. The log carries counts and the cutoff day only.
+
+### Proofs in the document archive
+
+The Alloggiati receipts and the ISTAT proofs the host uploaded are listed in the general archive (`GET api/documents`, types `alloggiatiReceipt` and `istatProof`, «Prove di adempimento») and downloadable there, with `guest.read` (the Accountant does not hold it): a download is written in the log by id, never by a name. The receipts of a tourist tax declaration or payment are records of money with their own permission and are not in that list. As for every document of that archive, what belongs to a flat deleted since is not listed, counted, exported or downloaded there (the list, the count and the export are ONE statement over all the sources, and EF applies a lifted filter to the whole statement, so these two sources lift none); the history of the proofs of a deleted flat stays in the dedicated archive (`GET api/compliance/archive`), which reads them with its own statement.
+
+### Migration `AddReceiptCoverage`
+
+Creates `ManualComplianceProofProperties` (`ProofId`, `PropertyId`, `OrgId`, unique pair `(ProofId, PropertyId)`, cascade from the proof and from the flat) and backfills **one line for every existing proof**, for the flat it was filed under. Rollback: the table is additive. Dropping it (with the previous version of the code) leaves every proof proving the flat it was filed under; the other flats a receipt for several flats covered lose it, and their stays turn red again until a receipt is uploaded for them.

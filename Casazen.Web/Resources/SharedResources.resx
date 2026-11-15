@@ -5847,6 +5847,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="ComplianceProofKindInvalid" xml:space="preserve">
     <value>Il tipo di prova non è valido: usa AlloggiatiReceipt, IstatProof, TouristTaxDeclaration o TouristTaxPayment.</value>
   </data>
+  <data name="ComplianceProofCoverageInvalid" xml:space="preserve">
+    <value>Gli appartamenti della ricevuta non sono validi: indicane almeno uno, tutti in Italia, e più di uno solo per la ricevuta di Alloggiati Web.</value>
+  </data>
   <data name="ComplianceExportTooLarge" xml:space="preserve">
     <value>Le prove del periodo sono troppe per una sola esportazione: scegli un periodo più breve o un solo immobile.</value>
   </data>
