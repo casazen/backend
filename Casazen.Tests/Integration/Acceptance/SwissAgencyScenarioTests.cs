@@ -62,12 +62,13 @@ public class SwissAgencyScenarioTests
             (BookingSource.BookingCom, BookingStatus.Confirmed, 450.00m, 450.00m, 0m, (decimal?)67.50m, (bool?)true, 2),
             (stored.Source, stored.Status, stored.BasePrice, stored.TotalPrice, stored.TouristTax, stored.OtaCommission, stored.OtaCompanyCollect, stored.NumberOfGuests));
         Assert.NotNull(stored.OctorateReservationId);
-        await world.GiveInvoiceDataAsync(booking, "TEST Ospite Portale");
 
+        // The portal sends no invoice data and the agency types none: the document is made out to the guest of the booking, by name only (FIX/DOC-RECIPIENT).
         // B7, B8a: the document after the stay: the stay at 3.8% and the tourist tax of Ticino (2 guests x 3 nights x CHF 2.00, Booking.com does not collect it).
         // KNOWN DEFECT (register of the residual defects, left to its own fix): a document of a booking of a portal is always «paid through the portal», also for
         // the line of the tax the portal does not collect and nobody recorded. The payment state asserted here is the code as it is, not the state to reach.
         var document = await IssuedAfterTheStayAsync(world, booking, Day(10, 6), "2026/1");
+        AssertRecipientIsTheGuestByName(document, "TEST Ospite Portale");
         AssertDocument(
             document,
             [(FiscalLineType.Accommodation, 433.53m, 3.8m, 16.47m), (FiscalLineType.TouristTax, 12.00m, 0m, 0m)],
@@ -294,7 +295,6 @@ public class SwissAgencyScenarioTests
     {
         world.At(World.InRome(Day(9, 20), 10));
         var portal = await world.ImportFromChannelManagerAsync(world.BookingComReservation(Day(10, 2), Day(10, 5), 450m, commission: 67.50m));
-        await world.GiveInvoiceDataAsync(portal, "TEST Ospite Portale");
         world.At(World.InRome(Day(9, 25), 10));
         var site = await world.ImportFromChannelManagerAsync(world.AgencySiteReservation(Day(10, 9), Day(10, 12), 390m, touristTax: 12m));
         await world.GiveInvoiceDataAsync(site, "TEST Ospite Sito");
@@ -302,7 +302,9 @@ public class SwissAgencyScenarioTests
         var (showcase, _) = await world.PayOnTheCasaZenSiteAsync(Day(10, 16), Day(10, 19), price: 420m, cleaningFee: 60m, providerFee: 12.48m);
         await world.GiveInvoiceDataAsync(showcase, "TEST Ospite Vetrina");
 
+        // The booking of the portal has no invoice data: its document is made out to its guest, by name only (FIX/DOC-RECIPIENT).
         var portalDocument = await IssuedAfterTheStayAsync(world, portal, Day(10, 6), "2026/1");
+        AssertRecipientIsTheGuestByName(portalDocument, "TEST Ospite Portale");
 
         world.At(World.InRome(Day(10, 8), 9));
         await world.RecordPaymentByHandAsync(site, 402m, PaymentMethod.BankTransfer, Day(10, 8));
@@ -760,6 +762,26 @@ public class SwissAgencyScenarioTests
         Assert.Equal((DocumentKind.Invoice, FiscalDocumentStatus.Issued, (DateOnly?)day), (document.Kind, document.Status, document.IssueDate));
         Assert.Equal(number, document.Number);
         return document;
+    }
+
+    /// <summary>The booking has no invoice data (a portal sends none): the document is made out to the guest of the booking, by name only, and nothing else of the guest is on it.</summary>
+    private static void AssertRecipientIsTheGuestByName(FiscalDocument document, string name)
+    {
+        Assert.Equal((InvoiceRecipientKind.Guest, name), (document.RecipientKind, document.RecipientName));
+        var rest = new[]
+        {
+            document.RecipientFiscalCode,
+            document.RecipientVatNumber,
+            document.RecipientAddressStreet,
+            document.RecipientAddressCivic,
+            document.RecipientPostalCode,
+            document.RecipientCity,
+            document.RecipientProvince,
+            document.RecipientCountryCode,
+            document.RecipientSdiCode,
+            document.RecipientPec,
+        };
+        Assert.All(rest, value => Assert.Null(value));
     }
 
     /// <summary>A Swiss document of a stay: its lines (net, rate, VAT), its totals, who collected and the state of the payment, to the cent; no XML, nothing for the SDI.</summary>

@@ -6421,7 +6421,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>Il proprietario dell'immobile non ha ancora un profilo di emittente completo: nessun documento viene preparato finché non lo completi.</value>
   </data>
   <data name="FiscalDocumentDraftOutdated" xml:space="preserve">
-    <value>Le regole fiscali o i dati dell'emittente sono cambiati da quando è stata preparata la bozza: aggiornala e controlla di nuovo gli importi prima di emettere.</value>
+    <value>Le regole fiscali, i dati dell'emittente o il destinatario sono cambiati da quando è stata preparata la bozza: aggiornala e controlla di nuovo importi e destinatario prima di emettere.</value>
   </data>
   <data name="FiscalDocumentBookingNotActive" xml:space="preserve">
     <value>La prenotazione non è attiva (richiesta, annullata o no-show): non si emette un documento fiscale per questa prenotazione.</value>

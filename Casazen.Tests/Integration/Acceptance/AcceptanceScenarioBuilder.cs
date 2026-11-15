@@ -397,7 +397,7 @@ internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
             CheckOut = Day(checkOut),
             UpdatedAt = Clock.GetUtcNow().UtcDateTime,
             FirstName = "TEST",
-            LastName = "Ospite Booking",
+            LastName = "Ospite Portale",
             GuestEmail = $"test.{id.ToLowerInvariant()}@guest.booking.com",
             TotalGuests = 2,
             RoomGross = price,
@@ -611,7 +611,8 @@ internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
 
     /// <summary>
     /// Who the document of the stay is made out to, as the agency gives it on the booking card (<see cref="InvoiceDataService"/>, source host): a Swiss document needs
-    /// the name of the recipient and prints the address when there is one.
+    /// the name of the recipient and prints the address when there is one. A booking with no invoice data (a portal sends none) is made out to the name of its guest
+    /// (FIX/DOC-RECIPIENT): the Booking.com origin of the scenario gives none, so that the scenario shows it.
     /// </summary>
     public async Task GiveInvoiceDataAsync(Guid bookingId, string name, string countryCode = "CH")
     {
