@@ -919,6 +919,30 @@ migration. `GET api/public/stays` (the parameters of `stays`), `GET api/public/s
   and is cleared, with the special requests, when the guest is erased ([gdpr.md](gdpr.md)).
 - Rollback: deploy the previous release (it ignores the column); `Down` drops it and the values are lost.
 
+### 11.6b Where the guest came from: attribution and origin (E27/F01/US01/T01, NF-123)
+
+- `POST /api/public/bookings` accepts an optional `attribution` block `{ source, medium, campaign, referrer }` (the `utm_*` of the link the guest followed and
+  the page the guest came from). Every field is optional and **none is ever refused**: the server keeps only what passes `BookingAttribution.Sanitize` and
+  drops the rest, so a stray parameter of a link never costs the guest the booking. Stored on four new nullable columns of `Bookings`:
+  `AttributionSource` (`varchar(40)`), `AttributionMedium` (`varchar(40)`), `AttributionCampaign` (`varchar(80)`), `AttributionReferrerHost` (`varchar(255)`);
+  migration `AddBookingAttribution`, additive, **no backfill, no flag**.
+- **No personal data is kept.** `source`, `medium` and `campaign` are trimmed, put in lower case and kept only when they are a token (letters and digits, and
+  `-`, `_`, `.` inside), at most the length of the column and with no run of more than 8 digits: an e-mail address, a phone number, an address of a page, a
+  query or free text is dropped, never repaired and never truncated. The referrer is reduced to its **host name** (no scheme, credentials, port, path, query
+  or fragment): an IP address, a name with no dot, a scheme other than http(s) or a longer name is dropped. Nothing of it goes to the logs.
+- **The origin** is what the host reads: `BookingOrigins.Of(source, attributionSource)` (`Casazen.Core/Bookings`) gives `Portal` (every channel of the
+  channel manager, with its name in `originChannel`), `AgencySite` (a direct booking whose attribution source is `agency-site`, the `utm_source` of the link the
+  agency copies from CasaZen, or `octorate-booking-engine`), `CasaZenSite` (any other direct booking) and `Manual` (entered by the host). `BookingSource` is
+  **unchanged**: the invoicing plan reasons per channel. Every booking answer (`GET /api/bookings`, `/search`, `/{id}` and the answers of the actions) has
+  `origin` and `originChannel`; `GET /api/bookings/search` and `/counts` filter with `origin=Portal&origin=AgencySite` (or comma separated, any case; 400
+  `booking_list_invalid_origin` for any other word). The raw attribution is not in the answer.
+- **The import** writes `octorate-booking-engine` on a reservation of the booking engine of the agency (the channel the import keeps direct, `270` in the
+  sandbox) when it makes the booking, and when it reads a newer version of one it made before the column existed (a booking with a reservation on Octorate and
+  no row of the mirror). A reservation CasaZen pushed itself to that channel (a booking with a row of the mirror, or its echo linked by reference) is the booking
+  CasaZen already has and is **never** attributed. Bookings made before the migration have no attribution and read as `CasaZenSite`, except those that the
+  import reads again.
+- Rollback: deploy the previous release (it ignores the columns); `Down` drops them and the values are lost.
+
 ### 11.7 Public coordinates (privacy)
 
 - The exact position of a house (6 decimals, about 10 cm, what the host types) **never leaves CasaZen**. Every public

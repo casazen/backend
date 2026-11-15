@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Casazen.Core.Authorization;
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
@@ -47,6 +48,9 @@ public class BookingsController(
 
     /// <summary>Code of a <c>channel</c> query value of the search that is not the name of a channel (SR-03b).</summary>
     public const string InvalidChannelCode = "booking_list_invalid_channel";
+
+    /// <summary>Code of an <c>origin</c> query value of the search that is not the name of an origin (E27/F01/US01/T01, NF-123).</summary>
+    public const string InvalidOriginCode = "booking_list_invalid_origin";
 
     /// <summary>Code of a <c>checkInStatus</c> query value of the search that is not the name of a check-in state (SR-03b).</summary>
     public const string InvalidCheckInStatusCode = "booking_list_invalid_check_in_status";
@@ -128,10 +132,15 @@ public class BookingsController(
     /// <c>guest</c>, then <c>:asc</c> (default) or <c>:desc</c>. Each row also says <c>channel</c>, <c>paymentState</c>,
     /// <c>paidAmount</c> (only for a caller with <c>payment.read</c>), <c>alloggiatiStatus</c> and <c>respondBy</c>.
     /// </para>
+    /// <para>
+    /// E27/F01/US01/T01 (NF-123): <c>origin</c> one or more of <c>Portal</c>, <c>AgencySite</c>, <c>CasaZenSite</c>, <c>Manual</c>, repeated or separated by
+    /// commas, keeps the bookings that came from there (<see cref="BookingOrigins.Matching"/>); every row says its <c>origin</c> and, for a portal, its
+    /// <c>originChannel</c>. 400 <c>booking_list_invalid_origin</c> for any other word.
+    /// </para>
     /// TN-3: filtered in SQL by the caller's scope; with <c>propertyId</c>: 404 when the property is not in the caller's org,
     /// 403 without <c>booking.read</c> on it. 400 <c>booking_list_invalid_status</c>, <c>booking_list_invalid_range</c> (also for
     /// <c>arrivalFrom</c> after <c>arrivalTo</c>), <c>booking_list_invalid_view</c>, <c>booking_list_invalid_channel</c>,
-    /// <c>booking_list_invalid_check_in_status</c> and <c>booking_list_invalid_sort</c>.
+    /// <c>booking_list_invalid_check_in_status</c>, <c>booking_list_invalid_sort</c> and <c>booking_list_invalid_origin</c>.
     /// </summary>
     [HttpGet("search")]
     [ProducesResponseType(typeof(PagedResultDto<BookingListItemDto>), StatusCodes.Status200OK)]
@@ -156,7 +165,8 @@ public class BookingsController(
         [FromQuery] string? view = null,
         [FromQuery(Name = "channel")] string[]? channel = null,
         [FromQuery(Name = "checkInStatus")] string[]? checkInStatus = null,
-        [FromQuery] string? sort = null)
+        [FromQuery] string? sort = null,
+        [FromQuery(Name = "origin")] string[]? origin = null)
     {
         if (GetUserId() == null)
             return Unauthorized();
@@ -165,7 +175,7 @@ public class BookingsController(
         var requestedPageSize = pageSize ?? _bookingsOptions.DefaultPageSize;
 
         if (TryReadFilters(
-                fromDay, toDay, status, q, propertyId, guestId, arrivalFrom, arrivalTo, view, channel, checkInStatus, sort, out var filters)
+                fromDay, toDay, status, q, propertyId, guestId, arrivalFrom, arrivalTo, view, channel, checkInStatus, sort, origin, out var filters)
             is { } invalid)
             return invalid;
 
@@ -199,7 +209,8 @@ public class BookingsController(
     /// How many bookings are in each chip of the list (SR-03b): <c>{ all, toConfirm, upcoming, inProgress, completed, cancelled }</c>
     /// for the bookings that satisfy the filters of <c>GET /api/bookings/search</c> but the chip (<c>view</c>), the page and the
     /// order. One aggregate query, filtered in SQL by the caller's scope like the list. A booking is in at most one chip, so the
-    /// counters never count it twice. Same 400s as the search for the filters it takes; same 404 and 403 for <c>propertyId</c>.
+    /// counters never count it twice. Same 400s as the search for the filters it takes (<c>origin</c> too, E27/F01/US01/T01); same 404 and 403
+    /// for <c>propertyId</c>.
     /// </summary>
     [HttpGet("counts")]
     [ProducesResponseType(typeof(BookingCountsDto), StatusCodes.Status200OK)]
@@ -220,13 +231,14 @@ public class BookingsController(
         [FromQuery] DateOnly? arrivalFrom = null,
         [FromQuery] DateOnly? arrivalTo = null,
         [FromQuery(Name = "channel")] string[]? channel = null,
-        [FromQuery(Name = "checkInStatus")] string[]? checkInStatus = null)
+        [FromQuery(Name = "checkInStatus")] string[]? checkInStatus = null,
+        [FromQuery(Name = "origin")] string[]? origin = null)
     {
         if (GetUserId() == null)
             return Unauthorized();
 
         if (TryReadFilters(
-                fromDay, toDay, status, q, propertyId, guestId, arrivalFrom, arrivalTo, null, channel, checkInStatus, null, out var filters)
+                fromDay, toDay, status, q, propertyId, guestId, arrivalFrom, arrivalTo, null, channel, checkInStatus, null, origin, out var filters)
             is { } invalid)
             return invalid;
 
@@ -257,6 +269,7 @@ public class BookingsController(
         string[]? channel,
         string[]? checkInStatus,
         string? sort,
+        string[]? origin,
         out BookingSearchCriteria filters)
     {
         filters = new BookingSearchCriteria();
@@ -276,6 +289,9 @@ public class BookingsController(
         if (!BookingListRules.TryParseNames<BookingChannel>(channel, out var channels))
             return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidChannelCode, "BookingListInvalidChannel");
 
+        if (!BookingListRules.TryParseNames<BookingOrigin>(origin, out var origins))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidOriginCode, "BookingListInvalidOrigin");
+
         if (!BookingListRules.TryParseNames<HostTodayCheckInState>(checkInStatus, out var checkInStates))
             return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidCheckInStatusCode, "BookingListInvalidCheckInStatus");
 
@@ -294,7 +310,8 @@ public class BookingsController(
             View: chip,
             Channels: channels,
             CheckInStates: checkInStates,
-            Sort: order);
+            Sort: order,
+            Origins: origins);
         return null;
     }
 
@@ -387,6 +404,10 @@ public class BookingsController(
     /// (<c>Stripe</c>, <c>ChannelManager</c>, <c>Manual</c>). Like <c>paidAmount</c>, <c>otaAmounts</c>, <c>collection</c> and <c>amountSources</c> are
     /// left out for a caller without <c>payment.read</c>, who still gets <c>paymentState</c>. <c>octorateSync</c> is the mirror of the booking on
     /// Octorate (<c>null</c> when it is not mirrored) and carries no money.
+    /// </para>
+    /// <para>
+    /// E27/F01/US01/T01 (NF-123): every booking answer has its <c>origin</c> (<c>Portal</c>, <c>AgencySite</c>, <c>CasaZenSite</c> or <c>Manual</c>) and, for a
+    /// portal, its <c>originChannel</c>. The attribution it is worked out from (source, medium, campaign, referrer host) is not part of the answer.
     /// </para>
     /// </summary>
     [HttpGet("{id}")]

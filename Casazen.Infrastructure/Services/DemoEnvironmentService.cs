@@ -1840,6 +1840,12 @@ public class DemoEnvironmentService(
             OtaBalanceAmount = template.Ota?.Balance,
             OtaCompanyCollect = template.Ota?.CompanyCollect,
             OtaCommissionIncludedInPayments = template.Ota?.CommissionIncludedInPayments,
+            // E27/F01/US01/T01 (NF-123): where the guest came from, as the checkout (a link of the agency) or the import (the booking engine of the agency)
+            // would have recorded it; invented like the rest. With the source it gives the origin the host reads on the booking.
+            AttributionSource = template.Attribution?.Source,
+            AttributionMedium = template.Attribution?.Medium,
+            AttributionCampaign = template.Attribution?.Campaign,
+            AttributionReferrerHost = template.Attribution?.ReferrerHost,
         };
         db.Bookings.Add(booking);
         await db.SaveChangesAsync(cancellationToken);

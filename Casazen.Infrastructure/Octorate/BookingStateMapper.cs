@@ -1,4 +1,5 @@
 using System.Globalization;
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
@@ -19,7 +20,9 @@ namespace Casazen.Infrastructure.Octorate;
 /// <item><b>Channel.</b> The portal code of the reservation (<c>channelId</c>) is the first key, its name (<c>channelName</c>) the second; the
 /// booking engine of the agency (<c>270</c>) is <see cref="BookingSource.Direct"/>, so it counts as direct for the fiscal documents and the
 /// marketing (BKG-01.5). A portal that <see cref="BookingSource"/> has no value for is <see cref="BookingSource.OtherChannel"/>, with the name
-/// in <see cref="Booking.ChannelLabel"/>: a wrong value is never reused. The source is the per-channel state of a booking.</item>
+/// in <see cref="Booking.ChannelLabel"/>: a wrong value is never reused. The source is the per-channel state of a booking. A reservation of the booking
+/// engine also gets the attribution <see cref="BookingAttribution.OctorateBookingEngineSource"/> (<see cref="ToAttributionSource"/>, E27/F01/US01/T01), which is
+/// what makes its origin the site of the agency and not CasaZen's own.</item>
 /// <item><b>Dates.</b> <c>checkin</c> and <c>checkout</c> are UTC instants: they are put on the clock of the property
 /// (<see cref="TimezoneHelper.ConvertUtcToLocal"/>) and only the local calendar date is kept, as every stay date is (midnight UTC of the date).</item>
 /// <item><b>Amounts.</b> Rounded to the cent and bounded to what the columns hold; <c>null</c> stays <c>null</c>, it is never turned into zero. They
@@ -95,6 +98,17 @@ public sealed class BookingStateMapper
 
         return BookingSource.OtherChannel;
     }
+
+    /// <summary>
+    /// The attribution source of a booking the import makes from a reservation whose <see cref="ToSource"/> is <paramref name="source"/> (E27/F01/US01/T01,
+    /// NF-123): a reservation of the booking engine of the agency (<see cref="BookingEngineChannelId"/>, the one channel that stays
+    /// <see cref="BookingSource.Direct"/>) is <see cref="BookingAttribution.OctorateBookingEngineSource"/>, so its origin is the site of the agency
+    /// (<see cref="BookingOrigins.Of(BookingSource, string?)"/>) while its source stays direct for the fiscal documents and the marketing; any other
+    /// source has none. Only the import writes it, and only for a booking it makes or one it made: a reservation CasaZen pushed itself to that channel is
+    /// the booking CasaZen already has and is never attributed here.
+    /// </summary>
+    public string? ToAttributionSource(BookingSource source) =>
+        source == BookingSource.Direct ? BookingAttribution.OctorateBookingEngineSource : null;
 
     /// <summary>
     /// The name to show next to the source of a booking from a portal that has no source of its own; <c>null</c> for every other source and

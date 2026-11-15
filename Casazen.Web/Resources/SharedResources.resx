@@ -2290,6 +2290,9 @@
   <data name="BookingListInvalidChannel" xml:space="preserve">
     <value>Canale non valido: usa i nomi Direct, Manual, Airbnb, BookingCom, Expedia, Vrbo, TripAdvisor, Agoda o Other (ogni altra origine), ripetuti o separati da virgole.</value>
   </data>
+  <data name="BookingListInvalidOrigin" xml:space="preserve">
+    <value>Provenienza non valida: usa i nomi Portal, AgencySite, CasaZenSite o Manual, ripetuti o separati da virgole.</value>
+  </data>
   <data name="BookingListInvalidCheckInStatus" xml:space="preserve">
     <value>Stato del check-in non valido: usa i nomi NotSent, Sent, InProgress, Completed o Expired, ripetuti o separati da virgole.</value>
   </data>
