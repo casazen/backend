@@ -52,7 +52,8 @@ public sealed class IdentityVerificationFlowService(
     IDataProtectionProvider dataProtection,
     TimeProvider clock,
     ILogger<IdentityVerificationFlowService> logger,
-    IDomainEventRecorder? domainEvents = null) : IIdentityVerificationFlowService
+    IDomainEventRecorder? domainEvents = null,
+    ICheckInLegalTexts? legalTexts = null) : IIdentityVerificationFlowService
 {
     /// <summary>Data Protection purpose of the encrypted picture of a document in the private bucket. Never change it: stored pictures would become unreadable.</summary>
     public const string DocumentImageContentPurpose = "Casazen.DocumentImage.Content";
@@ -94,6 +95,7 @@ public sealed class IdentityVerificationFlowService(
         {
             session.BiometricConsentRefusedAt = now;
             session.BiometricConsentAt = null;
+            session.BiometricConsentTextHash = null;
             session.UpdatedAt = now;
             await DeleteStoredDocumentAsync(session, ct);
             await ToOperatorAsync(session, VerificationAlertReasons.ConsentRefused, ct);
@@ -118,6 +120,20 @@ public sealed class IdentityVerificationFlowService(
             return new BiometricConsentResult(BiometricConsentStatus.Operator, State(session, context));
         }
 
+        // E22/F01/US02/T02: no text of the consent can be shown (production serves approved texts only, and none is approved): the biometric path is closed, a person
+        // verifies and the host is told why (legal_text_not_approved).
+        if (!context.ConsentTextServed)
+        {
+            await DeleteStoredDocumentAsync(session, ct);
+            await ToOperatorAsync(session, VerificationAlertReasons.LegalTextNotApproved, ct);
+            return new BiometricConsentResult(BiometricConsentStatus.Operator, State(session, context));
+        }
+
+        // A consent refers to the version of the text the registry serves now, never to a free string; it keeps the hash of that text with it (GDPR art. 7(1)).
+        var served = legalTexts?.FindServedVersion(CheckInLegalTextKinds.BiometricConsent, version);
+        if (legalTexts is not null && served is null)
+            return new BiometricConsentResult(BiometricConsentStatus.VersionUnknown, State(session, context));
+
         // Already with the operator (a refusal, a request, a review): the person decides, the biometric path is not opened again.
         if (InOperatorPath(session, context))
         {
@@ -127,6 +143,7 @@ public sealed class IdentityVerificationFlowService(
 
         session.BiometricConsentAt = now;
         session.BiometricConsentVersion = version;
+        session.BiometricConsentTextHash = served?.TextHash;
         session.BiometricConsentRefusedAt = null;
         session.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
@@ -149,7 +166,7 @@ public sealed class IdentityVerificationFlowService(
         try
         {
             bytes = await ImageBytes.ReadAllAsync(image, MaxImageBytes, ct);
-            var consented = context.Enabled && session.BiometricConsentAt is not null;
+            var consented = context.Enabled && context.ConsentTextServed && session.BiometricConsentAt is not null;
 
             // The face of the document is looked for only after the consent, and not on the back of a card (the photo is on the front); the MRZ
             // hints give the guidance of the reading in any case.
@@ -315,6 +332,13 @@ public sealed class IdentityVerificationFlowService(
             return await OperatorAsync(session, VerificationAlertReasons.MinorExcluded, policy, ct);
         }
 
+        // E22/F01/US02/T02: the text of the consent is no longer served (a registry with nothing approved in production): no selfie is compared, a person verifies.
+        if (!context.ConsentTextServed)
+        {
+            await DeleteStoredDocumentAsync(session, ct);
+            return await OperatorAsync(session, VerificationAlertReasons.LegalTextNotApproved, policy, ct);
+        }
+
         if (session.BiometricConsentAt is null)
             return Refused(SelfieStepStatus.ConsentRequired, session, policy);
 
@@ -405,8 +429,13 @@ public sealed class IdentityVerificationFlowService(
         var context = await ContextAsync(session, ct);
         if (session.BiometricOutcome != BiometricOutcome.Accept)
         {
+            // E22/F01/US02/T02: a guest who is on the operator path because no text of the consent is served (production, nothing approved) is not the one who chose it: the host
+            // is told the reason, legal_text_not_approved, not a request the guest did not make.
+            var reason = context.Enabled && !context.IsMinor && !context.ConsentTextServed
+                ? VerificationAlertReasons.LegalTextNotApproved
+                : VerificationAlertReasons.GuestRequest;
             await DeleteStoredDocumentAsync(session, ct);
-            await ToOperatorAsync(session, VerificationAlertReasons.GuestRequest, ct);
+            await ToOperatorAsync(session, reason, ct);
         }
 
         return State(session, context);
@@ -622,7 +651,7 @@ public sealed class IdentityVerificationFlowService(
     {
         var check = ReadCheck(session);
         var minor = context.IsMinor || check?.Check.HolderIsMinor == true;
-        var offered = context.Enabled && !minor && session.BiometricConsentRefusedAt is null;
+        var offered = context.Enabled && context.ConsentTextServed && !minor && session.BiometricConsentRefusedAt is null;
         var operatorPath = InOperatorPath(session, context);
         var passed = session.BiometricOutcome == BiometricOutcome.Accept;
 
@@ -677,7 +706,8 @@ public sealed class IdentityVerificationFlowService(
             verifying?.Position ?? 0,
             IsMinor(identity.DateOfBirth),
             await DocumentNotArchivedAsync(booking.Property, ct),
-            await VerificationHandOff.IsWithOperatorAsync(db, booking.Id, ct));
+            await VerificationHandOff.IsWithOperatorAsync(db, booking.Id, ct),
+            legalTexts is null || legalTexts.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent) is not null);
     }
 
     /// <summary>The settings of the org, or the default of ADR-013-R13 when it has none: enabled on the Agency plan only.</summary>
@@ -1071,7 +1101,8 @@ public sealed class IdentityVerificationFlowService(
         int VerifyingGuestPosition,
         bool IsMinor,
         bool DocumentNotArchived,
-        bool BookingWithOperator);
+        bool BookingWithOperator,
+        bool ConsentTextServed);
 }
 
 /// <summary>

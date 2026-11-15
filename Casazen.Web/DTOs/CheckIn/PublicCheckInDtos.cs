@@ -147,8 +147,54 @@ public sealed class BiometricConsentRequest
 {
     public bool? ConsentGiven { get; set; }
 
-    /// <summary>At most <see cref="BiometricConsentRules.VersionMaxLength"/> characters (400 <c>biometric_consent_version_required</c> otherwise).</summary>
+    /// <summary>
+    /// The version of the text the guest read, as <c>GET .../legal-texts</c> served it: at most <see cref="BiometricConsentRules.VersionMaxLength"/> characters
+    /// (400 <c>biometric_consent_version_required</c> otherwise), and a version the registry serves now (422 <c>biometric_consent_version_unknown</c> otherwise).
+    /// </summary>
     public string? ConsentVersion { get; set; }
+}
+
+/// <summary>
+/// The legal texts of the identity step for a stay (<c>GET api/public/checkin/{token}/legal-texts</c>, E22/F01/US02/T02): the <c>language</c> asked for, and the
+/// <c>texts</c> the registry serves, each in the closest language it has.
+/// </summary>
+public sealed class CheckInLegalTextsResponse
+{
+    public string Language { get; set; } = string.Empty;
+
+    public IReadOnlyList<CheckInLegalTextDto> Texts { get; set; } = [];
+
+    public static CheckInLegalTextsResponse From(string language, IReadOnlyList<CheckInLegalText> texts) => new()
+    {
+        Language = language,
+        Texts = [.. texts.Select(CheckInLegalTextDto.From)],
+    };
+}
+
+/// <summary>
+/// One legal text: its <c>kind</c> (<c>biometric-consent</c>, <c>ticino-notice</c>), the <c>version</c> the consent posts back, the <c>language</c> of the file served, whether it is a
+/// draft (served outside production only: the page shows a «Bozza» badge) and its text as sanitized HTML.
+/// </summary>
+public sealed class CheckInLegalTextDto
+{
+    public string Kind { get; set; } = string.Empty;
+
+    public string Version { get; set; } = string.Empty;
+
+    public string Language { get; set; } = string.Empty;
+
+    public bool IsDraft { get; set; }
+
+    public string ContentHtml { get; set; } = string.Empty;
+
+    public static CheckInLegalTextDto From(CheckInLegalText text) => new()
+    {
+        Kind = text.Kind,
+        Version = text.Version,
+        Language = text.Language,
+        IsDraft = text.IsDraft,
+        ContentHtml = text.ContentHtml,
+    };
 }
 
 /// <summary>

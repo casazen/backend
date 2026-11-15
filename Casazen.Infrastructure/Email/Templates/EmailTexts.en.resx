@@ -2094,6 +2094,9 @@
   <data name="VerificationOperatorAlert_Reason_MinorExcluded" xml:space="preserve">
     <value>The guest to verify is a minor: the biometric verification does not apply.</value>
   </data>
+  <data name="VerificationOperatorAlert_Reason_LegalTextNotApproved" xml:space="preserve">
+    <value>The text of the consent to the biometric verification is not approved by legal counsel yet: in production the face check is not offered and an operator has to verify the identity.</value>
+  </data>
   <data name="VerificationOperatorAlert_Reason_Other" xml:space="preserve">
     <value>The identity verification needs an operator.</value>
   </data>

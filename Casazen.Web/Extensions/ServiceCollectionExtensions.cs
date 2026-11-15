@@ -757,6 +757,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAccountantPackageDeliveryService, AccountantPackageDelivery>();
         services.AddScoped<AccountantPackageMonthlyJob>();
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
+        // E22/F01/US02/T02: the registry of the legal texts of the guest check-in (consent to the biometric verification, notice for Ticino): the files and the manifest under
+        // LegalDocuments/checkin, drafts until approved; production serves approved versions only. Read once per process.
+        services.AddSingleton<ICheckInLegalTexts, CheckInLegalTexts>();
         services.AddScoped<IOnboardingService, OnboardingService>();
         // AM-02: the people of an org: seats of the plan, invitations and their acceptance, the members and the hourly
         // maintenance (reminders, expiry, deletion of the closed ones).
