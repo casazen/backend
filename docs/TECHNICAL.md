@@ -3377,6 +3377,13 @@ Integration tests run on **real PostgreSQL**, so FKs, unique indexes, `timestamp
 - A test that migrates to an older point (`await _database.MigrateEmptyToAsync(<the migration before the one under test>)`, a copy of a template migrated once per run: runbook `ci-backend.md` §7) and seeds rows there must **not** save entities through the model: the model writes the columns of the latest schema, so every column added later broke it (`42703: column "RentalMode" of relation "Properties" does not exist`, after PC-03, PC-05, SU-04 and PC-06 had broken the same tests). Write the rows by SQL naming only the columns that exist at that point: `Casazen.Tests/Integration/Postgres/Legacy{Org,Property,Guest,Lease,Booking}Rows` (or an `INSERT` of your own, as most of the `*MigrationPostgresTests` do), and read through the model only after the last `MigrateAsync()`. `LegacyRowsSchemaTests` (no database) replays the migrations and checks that each helper fits the schema at every point where a test uses it: add the new use to its `Uses` list.
 - A test that fails because of a known product bug owned by another task is marked `Skip = "<task id>: <reason>"`.
 
+### Proof tests of encrypted columns
+
+A payload written by an encrypted column (`converter.ConvertToProvider(value)`, or the raw text read from the table) is random base64url text, so a test that asserts that a value is **absent** from it fails by chance when the value is short: the building number `"12"` turned up in about 1 payload in 100 (`OwnerIssuerProfile_PersonalDataEncrypted_Test`, seen in CI on 2026-11-15).
+
+- Search a payload with `Assert.DoesNotContain` only for values of **8 characters or more**, whole as the column or the file holds them (a value with a character outside the base64url alphabet, such as a space, a dot or an at sign, can never be met by chance either), never for a piece of a value.
+- Prove a shorter value by what always holds: the payload starts with `EncryptedColumns.ProtectedPayloadPrefix`, is not equal to the value, and `ConvertFromProvider` gives the value back.
+
 ### Dates, "today" and the clock (FD-06, QA-CLOCK)
 
 The calendar "today" of hosts, guests and properties is the date in **Europe/Rome**. Every night between 22:00 and 24:00 UTC (23:00 and 24:00 in winter) the UTC date is still yesterday in Rome, so code or tests that take "today" from the UTC clock are wrong in that window only.
