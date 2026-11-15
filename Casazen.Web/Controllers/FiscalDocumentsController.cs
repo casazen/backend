@@ -201,7 +201,8 @@ public class FiscalDocumentsController(
 
     /// <summary>
     /// The draft discarded (no number consumed). 422 <c>document_not_draft</c>, <c>document_read_only</c>, <c>document_owner_invoice</c> (the draft of an owner invoice
-    /// is discarded by <c>DELETE api/owner-invoices/{id}</c>, with <c>agency.statement.manage</c>).
+    /// is discarded by <c>DELETE api/owner-invoices/{id}</c>, with <c>agency.statement.manage</c>), <c>document_replacement_holds_number</c> (the replacement of an invoice the SDI
+    /// rejected holds its number: it is issued, never discarded).
     /// </summary>
     [HttpDelete("{id:guid}")]
     [Authorize(Policy = CasazenPolicies.PaymentWrite)]
