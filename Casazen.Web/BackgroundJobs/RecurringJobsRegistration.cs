@@ -36,6 +36,11 @@ public static class RecurringJobsRegistration
         // E12/F01/US01/T02: the drafts of the stays that ended and their automatic issue, only while the issuance of the fiscal documents is on.
         ConfigureFiscalDocumentJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.FiscalDocumentIssuance));
 
+        // E17/F01/US02/T01: the status of the electronic invoices submitted to the SDI, the fallback of the provider's webhook, only while the issuance and the SDI submission are both on.
+        ConfigureSdiJobs(
+            recurringJobManager,
+            featureFlags.IsEnabled(FeatureFlags.FiscalDocumentIssuance) && featureFlags.IsEnabled(FeatureFlags.SdiSubmission));
+
         // E10/F01/US01/T04: the "To do" of the flows to complete and of a lost connection, only while the activation with Octorate is on.
         ConfigureOnboardingJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateOnboarding));
 
@@ -448,6 +453,26 @@ public static class RecurringJobsRegistration
             job => job.ExecuteAsync(CancellationToken.None),
             FiscalDocumentsDueJob.Cron,
             new RecurringJobOptions { TimeZone = RomeCalendar.TimeZone });
+    }
+
+    /// <summary>
+    /// The status of the electronic invoices submitted to the SDI (E17/F01/US02/T01, NF-116), every 30 minutes: only with <see cref="FeatureFlags.FiscalDocumentIssuance"/> and
+    /// <see cref="FeatureFlags.SdiSubmission"/> on (and the run does nothing while no provider is configured). With either off nothing is asked and the schedule of an earlier deploy is
+    /// removed (<c>RemoveIfExists</c>).
+    /// </summary>
+    private static void ConfigureSdiJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(SdiStatusPollJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<SdiStatusPollJob>(
+            SdiStatusPollJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            SdiStatusPollJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 
     /// <summary>

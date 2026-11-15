@@ -276,6 +276,17 @@ public static class FeatureFlags
     /// </summary>
     public const string Routines = "Routines";
 
+    /// <summary>
+    /// E17/F01/US02/T01 (NF-116, NF-86, D13, D15): the submission of the Italian electronic invoices to the SDI through the accredited channel (the provider adapter) and
+    /// their correction after a rejection, <b>off by default</b> and turned on only in the test environment until the accountant confirms the ⚖ choices (the provider, the
+    /// reuse of the number of a rejected document). Off, the write endpoints of <c>api/fiscal/documents/{id}/sdi</c> (<c>submit</c>, <c>declare</c>, <c>correct</c>) and the webhook
+    /// of the provider (<c>api/webhooks/sdi/{secret}</c>) answer 404 before authentication, and the recurring job <c>fiscal-sdi-status</c> is removed; the state of a document
+    /// (<c>GET api/fiscal/documents/{id}/sdi</c>) is a read and stays. They are behind <see cref="FiscalDocumentIssuance"/> too. With no provider configured
+    /// (<c>Sdi:Provider:*</c>) a submission answers <c>NotConfigured</c> and changes nothing, and the manual declaration works all the same. The frontend reads the key
+    /// <c>sdiSubmission</c>.
+    /// </summary>
+    public const string SdiSubmission = "SdiSubmission";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -304,5 +315,6 @@ public static class FeatureFlags
         AccountantPackage,
         TouristTaxOnlinePayment,
         Routines,
+        SdiSubmission,
     ];
 }

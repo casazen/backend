@@ -107,6 +107,8 @@ public class ConfigurationFeatureFlagsTests
                 "TouristTaxOnlinePayment",
                 // E01/F04/US01/T03: the automation routines (API, engine, time triggers), off until the actions a host needs are real.
                 "Routines",
+                // E17/F01/US02/T01: the submission of the Italian electronic invoices to the SDI through the provider and the correction of the rejected ones, off until the accountant confirms the ⚖ choices.
+                "SdiSubmission",
             },
             FeatureFlags.All);
     }
