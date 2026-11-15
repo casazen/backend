@@ -60,9 +60,11 @@ public class BookingCheckInLinkController(
     /// Where the check-in link of the booking stands on its way to the guest (E23/F01/US01/T01, T02, NF-122): the channel (<c>Email</c>, <c>PortalChat</c>, <c>Manual</c>), the state
     /// (<c>Sent</c>, a waiting state or <c>Failed</c>) with its stable error code, and the link to copy («Copia link»), which is returned <b>only</b> to a caller who can already
     /// copy one (<c>booking.write</c> on the property, as for <c>POST .../checkin/link</c>) and only while the delivery waits or failed and the link can still be opened. A booking
-    /// with no delivery record answers 200 with an empty body of members. A booking of another org is a 404, whatever the permission.
+    /// with no delivery record answers 200 with an empty body of members. A booking of another org is a 404, whatever the permission. The answer can hold the link, a secret that opens the
+    /// guest page, so it is private: <c>Cache-Control: no-store</c> (<see cref="PrivateAnswerAttribute"/>).
     /// </summary>
     [HttpGet("{id:guid}/checkin/link-delivery")]
+    [PrivateAnswer]
     [ProducesResponseType(typeof(CheckInLinkDeliveryResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

@@ -1,3 +1,4 @@
+using System.Reflection;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -7,6 +8,7 @@ using Casazen.Tests.Unit.Authorization;
 using Casazen.Tests.Unit.Email;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.CheckIn;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -147,6 +149,22 @@ public class BookingCheckInLinkControllerTests
         var none = Assert.IsType<CheckInLinkDeliveryResponse>(Assert.IsType<OkObjectResult>((await writer.GetCheckInLinkDelivery(booking.Id)).Result).Value);
         Assert.Null(none.State);
         Assert.Null(none.CheckInLink);
+    }
+
+    /// <summary>
+    /// PROOF TEST: privacy rule (the review of S010, fix 8). The answer that can hold the link of the guest page is private: the action carries <see cref="PrivateAnswerAttribute"/>, which
+    /// puts <c>Cache-Control: no-store</c> and <c>X-Robots-Tag: noindex</c> on it, so no cache keeps the secret.
+    /// </summary>
+    [Fact]
+    public void LinkDelivery_TheAnswerThatCanHoldTheLinkIsNeverStored_Test()
+    {
+        var action = typeof(BookingCheckInLinkController).GetMethod(nameof(BookingCheckInLinkController.GetCheckInLinkDelivery))!;
+
+        Assert.NotNull(action.GetCustomAttribute<PrivateAnswerAttribute>());
+        var response = new DefaultHttpContext().Response;
+        PrivateAnswerAttribute.Apply(response);
+        Assert.Equal("no-store", response.Headers.CacheControl.ToString());
+        Assert.Equal("noindex", response.Headers["X-Robots-Tag"].ToString());
     }
 
     /// <summary>
