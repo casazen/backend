@@ -141,7 +141,7 @@ public sealed class TouristTaxYearEndExportsTests
     /// <summary>
     /// Data: the yearly count of the nights of Ticino is read from the stays of the year in the properties of the canton and the documents issued for them: the taxed nights (a tourist tax on the
     /// document, a credit note taking it away), the untaxed ones (a document without it), those with no document issued yet (told apart, never untaxed), and the francs of the documents; a property in
-    /// another canton, a stay of another year or a cancelled one, and the documents of another org are not in it.
+    /// another canton, a stay of another year or a cancelled one, and the documents of another org are not in it; a property in Switzerland whose canton is not known is in it, flagged.
     /// </summary>
     [Fact]
     public async Task TouristTaxYear_TicinoCountComesFromTheDocumentsOfTheStays_Test()
@@ -154,6 +154,7 @@ public sealed class TouristTaxYearEndExportsTests
         var casa = SeedProperty(db, orgId, "Casa Lugano", "Lugano", country: "CH", municipality: "5113");
         var vuota = SeedProperty(db, orgId, "Casa Vuota Lugano", "Lugano", country: "CH", municipality: "5113");
         var zurigo = SeedProperty(db, orgId, "Casa Zurigo", "Zürich", country: "CH", municipality: "261");
+        var senzaComune = SeedProperty(db, orgId, "Villa Senza Comune", "Chiasso", country: "CH", municipality: null);
 
         var taxed = SeedStay(db, casa, Day(2026, 3, 1), nights: 3, touristTax: 0m);
         var untaxed = SeedStay(db, casa, Day(2026, 4, 10), nights: 2, touristTax: 0m);
@@ -163,6 +164,7 @@ public sealed class TouristTaxYearEndExportsTests
         SeedStay(db, casa, Day(2026, 6, 1), nights: 2, touristTax: 0m, status: BookingStatus.Cancelled);
         SeedStay(db, casa, Day(2026, 7, 1), nights: 3, touristTax: 0m, noShow: true);
         var elsewhere = SeedStay(db, zurigo, Day(2026, 3, 1), nights: 5, touristTax: 0m);
+        SeedStay(db, senzaComune, Day(2026, 9, 9), nights: 2, touristTax: 0m);
         SeedDocument(db, orgId, casa, taxed, FiscalDocumentKind.Invoice, "CHF", tax: 12m);
         SeedDocument(db, orgId, casa, untaxed, FiscalDocumentKind.Invoice, "CHF", tax: 0m);
         SeedDocument(db, orgId, casa, credited, FiscalDocumentKind.Invoice, "CHF", tax: 16m);
@@ -175,17 +177,23 @@ public sealed class TouristTaxYearEndExportsTests
         var count = await sut.GetTicinoYearlyCountAsync(new HostScope(orgId), 2026);
 
         Assert.Equal(new DateOnly(2027, 1, 5), count.DueDate);
-        Assert.Equal(["Casa Lugano", "Casa Vuota Lugano"], count.Properties.Select(p => p.PropertyName));
+        Assert.Equal(["Casa Lugano", "Casa Vuota Lugano", "Villa Senza Comune"], count.Properties.Select(p => p.PropertyName));
         var lugano = count.Properties[0];
         Assert.Equal((4, 11, 1, 3, 2, 6, 1, 2, "CHF", 12m), (lugano.Stays, lugano.Nights, lugano.TaxedStays, lugano.TaxedNights, lugano.UntaxedStays, lugano.UntaxedNights, lugano.StaysWithoutDocument, lugano.NightsWithoutDocument, lugano.Currency, lugano.TouristTax));
         Assert.Equal(lugano.Nights, lugano.TaxedNights + lugano.UntaxedNights + lugano.NightsWithoutDocument);
         var empty = count.Properties[1];
         Assert.Equal((0, 0, 0m), (empty.Stays, empty.Nights, empty.TouristTax));
 
+        // A property in Switzerland whose canton is not known may be in Ticino: it is in the count with its stays and flagged, never dropped in silence; a property of Ticino is not flagged.
+        var unknown = count.Properties[2];
+        Assert.Equal((true, 1, 2, 1, 2), (unknown.CantonUnknown, unknown.Stays, unknown.Nights, unknown.StaysWithoutDocument, unknown.NightsWithoutDocument));
+        Assert.All(count.Properties.Take(2), p => Assert.False(p.CantonUnknown));
+
         var texts = new ResxDocumentTexts();
         var csv = Encoding.UTF8.GetString(TouristTaxYearEndExports.TicinoCsv(count, texts, DocumentLanguages.Italian));
         Assert.Contains("05/01/2027", csv, StringComparison.Ordinal);
         Assert.Contains("Casa Lugano;Via Test 1;Lugano;5113;4;11;1;3;2;6;1;2;CHF;12,00", csv, StringComparison.Ordinal);
+        Assert.Contains("Villa Senza Comune;Via Test 1;Chiasso;;1;2;0;0;0;0;1;2;CHF;0,00;Cantone non determinato", csv, StringComparison.Ordinal);
         Assert.DoesNotContain("Zurigo", csv, StringComparison.Ordinal);
         Assert.True(TouristTaxYearEndExports.TicinoXlsx(count, texts, DocumentLanguages.English).Length > 0);
         Assert.Equal("casazen-imposta-soggiorno-ticino-2026.csv", TouristTaxYearEndExports.TicinoFileName(2026, "csv"));

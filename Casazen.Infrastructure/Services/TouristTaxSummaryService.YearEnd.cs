@@ -89,7 +89,8 @@ public sealed partial class TouristTaxSummaryService
         var orgId = scope.OrgId;
         var due = TouristTaxYearEndRules.TicinoCountDue(year);
 
-        // The properties in Ticino, the deleted ones too (their stays are history): the canton of the municipality of each, as the accountant package tells the Swiss tourist tax.
+        // The properties in Ticino, the deleted ones too (their stays are history): the canton of the municipality of each, as the accountant package tells the Swiss tourist tax. A property in
+        // Switzerland whose canton is not known (an empty canton: no municipality on it, or one the registry lacks) may be in Ticino: it is counted too and flagged, never dropped in silence.
         var swiss = await db.Properties.AsNoTracking()
             .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(p => p.OrgId == orgId && p.Country == "CH")
@@ -97,7 +98,7 @@ public sealed partial class TouristTaxSummaryService
             .ToListAsync(cancellationToken);
         var cantons = await AccountantPackageFacts.SwissCantonsAsync(db, orgId, [.. swiss.Select(p => p.Id)], cancellationToken);
         var properties = swiss
-            .Where(p => cantons.TryGetValue(p.Id, out var canton) && string.Equals(canton, TouristTaxYearEndRules.TicinoCanton, StringComparison.OrdinalIgnoreCase))
+            .Where(p => cantons.TryGetValue(p.Id, out var canton) && (canton.Length == 0 || string.Equals(canton, TouristTaxYearEndRules.TicinoCanton, StringComparison.OrdinalIgnoreCase)))
             .ToList();
         if (properties.Count == 0)
             return new TicinoYearlyCount(year, due, []);
@@ -160,7 +161,8 @@ public sealed partial class TouristTaxSummaryService
                 count.UntaxedNights,
                 count.StaysWithoutDocument,
                 count.NightsWithoutDocument,
-                count.TouristTax));
+                count.TouristTax,
+                cantons[property.Id].Length == 0));
         }
 
         return new TicinoYearlyCount(year, due, [.. counts.OrderBy(c => c.PropertyName, StringComparer.OrdinalIgnoreCase).ThenBy(c => c.PropertyId)]);

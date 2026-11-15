@@ -227,6 +227,7 @@ public static class TouristTaxYearEndExports
                 texts.Get("TtTicinoColNoDocumentNights", language),
                 texts.Get("TtTicinoColCurrency", language),
                 texts.Get("TtTicinoColAmount", language),
+                texts.Get("TtColNote", language),
             ]);
         foreach (var property in data.Properties)
         {
@@ -244,7 +245,8 @@ public static class TouristTaxYearEndExports
                 property.StaysWithoutDocument,
                 property.NightsWithoutDocument,
                 property.Currency,
-                ReportCell.Money(property.TouristTax));
+                ReportCell.Money(property.TouristTax),
+                property.CantonUnknown ? texts.Get("TtTicinoNoteCantonUnknown", language) : null);
         }
 
         return table;

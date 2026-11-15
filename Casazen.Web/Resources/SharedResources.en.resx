@@ -8428,4 +8428,7 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="TtTicinoColAmount" xml:space="preserve">
     <value>Tourist tax from the documents</value>
   </data>
+  <data name="TtTicinoNoteCantonUnknown" xml:space="preserve">
+    <value>Canton not known (the Swiss municipality of the property is missing or unknown): the property is in the count because it may be in Ticino, to be checked</value>
+  </data>
 </root>

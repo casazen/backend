@@ -699,7 +699,8 @@ the summary reads now applies too (it used a copy of the list that did not leave
   (confirmed, checked in or checked out; a stay is counted whole in the year of its check-in, ⚖ like the summary), their nights, **taxed** (the tourist tax lines of the issued documents of the
   stay add up to more than nothing, a credit note taking its amount away), **untaxed** (a document without a tax: the portal collects it, the guest is exempt, no rule), **without a document**
   (none issued yet: told apart, never counted as untaxed) and **the francs of the documents** (`FiscalDocumentLine` of type tourist tax of the documents in the currency of the property: E12,
-  never a calculation). Every query names the org.
+  never a calculation). **A property in Switzerland whose canton is not known** (no Swiss municipality on it, or one the registry of the municipalities lacks: the field is optional) may be in
+  Ticino, so it is in the count with its stays and a note in the last column («Cantone non determinato…»), never dropped in silence (`TicinoPropertyCount.CantonUnknown`). Every query names the org.
 - **Proof.** `TouristTaxYearEndExportsTests` (`TouristTaxYearEnd_ExemptionReasonsOnlyToWhoHoldsGuestRead_Test`: the reasons with and without `guest.read`, in the data and in the file;
   `TouristTaxYearEnd_DueMinusRemittedPerMunicipality_Test`: due less remitted per comune to the cent, the reasons and the exemptions, the quarters adding
   up to the year, the files; the count of Ticino from the documents; the whole-org refusal and the rules).

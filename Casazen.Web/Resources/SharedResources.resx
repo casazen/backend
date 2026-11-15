@@ -8428,4 +8428,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="TtTicinoColAmount" xml:space="preserve">
     <value>Tassa di soggiorno dai documenti</value>
   </data>
+  <data name="TtTicinoNoteCantonUnknown" xml:space="preserve">
+    <value>Cantone non determinato (comune svizzero dell'immobile mancante o sconosciuto): l'immobile è nel conteggio perché potrebbe essere in Ticino, da verificare</value>
+  </data>
 </root>

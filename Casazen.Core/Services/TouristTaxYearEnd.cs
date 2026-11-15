@@ -107,7 +107,8 @@ public sealed record TouristTaxAgentAccount(
 /// The yearly count of the nights of one property in Ticino for the regional tourist organization (E18/F01/US02/T03, acceptance step D3): the stays with check-in in the year, their nights, those
 /// whose document of the stay carries a tourist tax (<see cref="TaxedStays"/>), those whose document has none (a portal that collects it, an exemption, no rule: <see cref="UntaxedStays"/>) and
 /// those with no document issued yet (<see cref="StaysWithoutDocument"/>: told apart, never counted as untaxed). <see cref="TouristTax"/> is the tourist tax lines of the issued documents of those stays,
-/// credit notes taken away, in <see cref="Currency"/>: the amount of the documents, never a calculation.
+/// credit notes taken away, in <see cref="Currency"/>: the amount of the documents, never a calculation. <see cref="CantonUnknown"/> marks a property in Switzerland whose canton is not known (no
+/// Swiss municipality on the property, or one the registry of the municipalities does not have): it may be in Ticino, so it is counted and the file says so, never dropped in silence.
 /// </summary>
 public sealed record TicinoPropertyCount(
     Guid PropertyId,
@@ -124,7 +125,8 @@ public sealed record TicinoPropertyCount(
     int UntaxedNights,
     int StaysWithoutDocument,
     int NightsWithoutDocument,
-    decimal TouristTax);
+    decimal TouristTax,
+    bool CantonUnknown = false);
 
 /// <summary>The yearly count of the nights of the properties in Ticino, due by 5 January of the next year (<see cref="TouristTaxYearEndRules.TicinoCountDue"/>).</summary>
 public sealed record TicinoYearlyCount(int Year, DateOnly DueDate, IReadOnlyList<TicinoPropertyCount> Properties);
