@@ -37,7 +37,7 @@ public interface IGuestDocumentPurgeService
 /// <param name="Enabled">Whether <c>Features:PurgeDocumentsAfterReceipt</c> was on: with it off nothing was read or deleted.</param>
 /// <param name="Stays">The stays that lost a document.</param>
 /// <param name="Images">The rows of <c>DocumentImages</c> removed (each one a document of a verification, front and back together) with their objects.</param>
-/// <param name="Scans">The legacy scans of a booker deleted.</param>
+/// <param name="Scans">The objects of the legacy scans of a booker deleted from the storage (a reference cleared while another guest record still points to the object is not one).</param>
 public sealed record GuestDocumentPurgeResult(bool Enabled, int Stays, int Images, int Scans)
 {
     /// <summary>The answer of a run while the flag is off.</summary>

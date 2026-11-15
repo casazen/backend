@@ -317,6 +317,45 @@ public sealed class GuestDocumentPurgeTests
     }
 
     /// <summary>
+    /// PROOF TEST: privacy rule. Only what really left the storage is counted and written as a deletion: a scan whose object another guest record still points to (the
+    /// snapshot of the same guest another stay was made with) loses the reference of the covered stay, which is saved, but it is neither counted nor written in the send log
+    /// and its object stays; when the last record that points to it is cleared the object is deleted, counted and written.
+    /// </summary>
+    [Fact]
+    public async Task Purge_AScanStillPointedToByAnotherRecord_LosesItsReference_ButIsNeitherCountedNorLogged_Test()
+    {
+        var world = await World.SeedAsync();
+        var storage = new RecordingStorage();
+        var first = await AddStayWithDocumentsAsync(world, storage, world.Granted, -3, images: 0, alreadyMarkedDeleted: 0, scan: true);
+        var other = await AddStayOfASnapshotOfTheGuestAsync(world, first.Stay, world.Hidden, -1);
+        await AddReceiptAsync(world, world.Org.Id, world.Granted.Id, DayOf(-3));
+
+        // The first stay is covered: its record is cleared and saved, the object is the snapshot's too and stays; nothing is counted or written.
+        await using (var db = world.Db())
+            Assert.Equal(new GuestDocumentPurgeResult(true, 0, 0, 0), await NewService(world, db, storage).PurgeAsync(null, CancellationToken.None));
+
+        await using (var read = world.Db())
+        {
+            Assert.Null((await read.Guests.AsNoTracking().SingleAsync(g => g.Id == first.Stay.GuestId)).DocumentScanUrl);
+            Assert.Equal(first.ScanKey, (await read.Guests.AsNoTracking().SingleAsync(g => g.Id == other.GuestId)).DocumentScanUrl);
+            Assert.Empty(await read.ComplianceSendLogEntries.AsNoTracking().ToListAsync());
+        }
+
+        Assert.True(storage.Has(first.ScanKey!));
+        Assert.Empty(storage.Deleted);
+
+        // The other stay is covered too: the last reference goes and the object with it, counted and written for that stay.
+        await AddReceiptAsync(world, world.Org.Id, world.Hidden.Id, DayOf(-1));
+        await using (var db = world.Db())
+            Assert.Equal(new GuestDocumentPurgeResult(true, 1, 0, 1), await NewService(world, db, storage).PurgeAsync(null, CancellationToken.None));
+
+        await using var after = world.Db();
+        Assert.Null((await after.Guests.AsNoTracking().SingleAsync(g => g.Id == other.GuestId)).DocumentScanUrl);
+        Assert.False(storage.Has(first.ScanKey!));
+        Assert.Equal(other.Id, Assert.Single(await after.ComplianceSendLogEntries.AsNoTracking().ToListAsync()).BookingId);
+    }
+
+    /// <summary>
     /// PROOF TEST: data rule. A document the storage could not delete keeps its row and its reference (and no line of the send log), the other stays still go, and the run
     /// fails at its end instead of reading as done; once the storage answers again the stay is cleared.
     /// </summary>
@@ -534,6 +573,35 @@ public sealed class GuestDocumentPurgeTests
         storage.Put(key);
         db.Bookings.Add(stay);
         db.DocumentImages.Add(new DocumentImage { OrgId = first.OrgId, GuestId = first.GuestId, BookingId = stay.Id, FrontImageUrl = key });
+        await db.SaveChangesAsync();
+        return stay;
+    }
+
+    /// <summary>
+    /// A stay in <paramref name="property"/> of ANOTHER guest record that is a snapshot of the booker of <paramref name="first"/> (what a check-in makes when the guest is shared by
+    /// two stays): the copy carries the same reference to the scan, so the object is pointed to by two records.
+    /// </summary>
+    private static async Task<Booking> AddStayOfASnapshotOfTheGuestAsync(World world, Booking first, Property property, int checkInOffset)
+    {
+        await using var db = world.Db();
+        var booker = await db.Guests.AsNoTracking().SingleAsync(g => g.Id == first.GuestId);
+        var snapshot = booker.CreateSnapshot(world.Clock.GetUtcNow().UtcDateTime);
+        var day = new DateTime(2026, 11, 6, 0, 0, 0, DateTimeKind.Utc).AddDays(checkInOffset);
+        var stay = new Booking
+        {
+            OrgId = first.OrgId,
+            PropertyId = property.Id,
+            GuestId = snapshot.Id,
+            CheckInDate = day,
+            CheckOutDate = day.AddDays(2),
+            NumberOfGuests = 1,
+            Status = BookingStatus.Confirmed,
+            Source = BookingSource.Manual,
+            BasePrice = 300m,
+            TotalPrice = 300m,
+        };
+        db.Guests.Add(snapshot);
+        db.Bookings.Add(stay);
         await db.SaveChangesAsync();
         return stay;
     }

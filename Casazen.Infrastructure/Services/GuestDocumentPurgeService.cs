@@ -161,30 +161,37 @@ public sealed class GuestDocumentPurgeService(
         if (photos.Count > 0)
             await DocumentImageCleaner.DeleteAsync(db, storage, logger, photos, ct);
 
-        var scans = await DeleteScanOfBookerAsync(stay, ct);
-        if (photos.Count == 0 && scans == 0)
+        var scan = await DeleteScanOfBookerAsync(stay, ct);
+        if (photos.Count == 0 && !scan.ReferenceCleared)
             return (0, 0);
 
-        // Added through the set (its id is preset): the line of the send log of the stay, with the date it was deleted.
-        db.ComplianceSendLogEntries.Add(new ComplianceSendLogEntry
+        // The line of the send log of the stay, with the date it was deleted, only for what really left the storage: the photos, and a scan whose object was deleted. A scan
+        // whose object another guest record still points to (a snapshot of the same guest) or whose reference is not a storage key only loses its reference here: that is
+        // saved all the same, but it is neither counted nor written as a deletion. Added through the set (its id is preset).
+        if (photos.Count > 0 || scan.ObjectsDeleted > 0)
         {
-            OrgId = stay.OrgId,
-            PropertyId = stay.PropertyId,
-            BookingId = stay.Id,
-            Kind = ComplianceSendKind.DocumentsDeleted,
-            Sender = ComplianceSender.CasaZen,
-            SentAt = now,
-        });
+            db.ComplianceSendLogEntries.Add(new ComplianceSendLogEntry
+            {
+                OrgId = stay.OrgId,
+                PropertyId = stay.PropertyId,
+                BookingId = stay.Id,
+                Kind = ComplianceSendKind.DocumentsDeleted,
+                Sender = ComplianceSender.CasaZen,
+                SentAt = now,
+            });
+        }
+
         await db.SaveChangesAsync(ct);
         db.ChangeTracker.Clear();
-        return (photos.Count, scans);
+        return (photos.Count, scan.ObjectsDeleted);
     }
 
     /// <summary>
-    /// Deletes the legacy scan of the booker of the stay and clears its reference (1), unless the guest has another stay that owes the communication and is not covered yet
-    /// (0): the scan is the guest's, and that stay may still need it. Nothing is deleted when the booker holds no scan.
+    /// Clears the reference of the legacy scan of the booker of the stay and deletes its object (<see cref="ScanOutcome.ObjectsDeleted"/> says whether it was deleted), unless
+    /// the guest has another stay that owes the communication and is not covered yet: the scan is the guest's, and that stay may still need it. Nothing is cleared when the
+    /// booker holds no scan. The object is kept while another guest record still points to it: it goes with the last reference.
     /// </summary>
-    private async Task<int> DeleteScanOfBookerAsync(StayRow stay, CancellationToken ct)
+    private async Task<ScanOutcome> DeleteScanOfBookerAsync(StayRow stay, CancellationToken ct)
     {
         // The reference first and nothing else: most covered stays have no legacy scan, and the record of the guest is loaded only for the one that has.
         var scan = await db.Guests
@@ -194,7 +201,7 @@ public sealed class GuestDocumentPurgeService(
             .Select(guest => guest.DocumentScanUrl)
             .FirstOrDefaultAsync(ct);
         if (string.IsNullOrWhiteSpace(scan))
-            return 0;
+            return ScanOutcome.Untouched;
 
         var others = await db.Bookings
             .AsNoTracking()
@@ -205,17 +212,23 @@ public sealed class GuestDocumentPurgeService(
             .ToListAsync(ct);
         var coveredOthers = await CoveredAsync(others, ct);
         if (others.Any(other => !coveredOthers.Contains(other.Id)))
-            return 0;
+            return ScanOutcome.Untouched;
 
         var booker = await db.Guests
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .FirstOrDefaultAsync(guest => guest.OrgId == stay.OrgId && guest.Id == stay.GuestId, ct);
         if (booker is null)
-            return 0;
+            return ScanOutcome.Untouched;
 
-        await eraser.DeleteDocumentScanAsync(booker, ct);
-        return 1;
+        var objectsDeleted = await eraser.DeleteDocumentScanAsync(booker, ct);
+        return new ScanOutcome(true, objectsDeleted);
     }
 
     private sealed record StayRow(Guid Id, Guid OrgId, Guid PropertyId, Guid GuestId, DateTime CheckInDate);
+
+    /// <summary>What happened to the scan of a booker: whether its reference was cleared (to be saved), and how many objects left the storage (0 when another record still points to it).</summary>
+    private sealed record ScanOutcome(bool ReferenceCleared, int ObjectsDeleted)
+    {
+        public static ScanOutcome Untouched { get; } = new(false, 0);
+    }
 }
