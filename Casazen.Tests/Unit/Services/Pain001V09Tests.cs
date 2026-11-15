@@ -191,17 +191,20 @@ public class Pain001V09Tests
         var (batch, xml) = await service.CreateBatchAsync(orgId, payouts, ExecutionDate);
 
         Assert.Contains(SwissIban, xml);
+        Assert.All(new[] { "Mario Rossi", "Luigi Bianchi", "Via Cantonale", "Quokka Immobiliare SA" }, name => Assert.Contains(name, xml, StringComparison.Ordinal));
         Assert.True(EncryptedColumns.IsConfigured(db));
         var entity = db.Model.FindEntityType(typeof(WireBatch))!;
         foreach (var (property, clear) in new[] { (nameof(WireBatch.XmlContent), xml), (nameof(WireBatch.DebitAccount), DebitIban) })
         {
             Assert.Contains(EncryptedColumns.All, c => c.EntityType == typeof(WireBatch) && c.Property == property && c.Purpose == EncryptedColumns.WireBatchFilePurpose);
 
-            // What EF writes in the column: the payload of Data Protection, with none of the secrets of the file in it.
+            // What EF writes in the column: the payload of Data Protection, with none of the secrets of the file in it. The payload is random text, so a short value (a first name, a town) turns up in it by chance: only
+            // values too long to be met by chance are searched for, the whole names and the whole street as the file holds them, and the payload is proved not to be the clear text.
             var converter = Assert.IsType<EncryptedStringConverter>(entity.FindProperty(property)!.GetValueConverter());
             var written = Assert.IsType<string>(converter.ConvertToProvider(clear));
             Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, written, StringComparison.Ordinal);
-            foreach (var secret in new[] { SwissIban, OtherSwissIban, DebitIban, "Mario", "Rossi", "Luigi", "Bianchi", "Via Cantonale", "Lugano", "Quokka", "<Document" })
+            Assert.NotEqual(clear, written);
+            foreach (var secret in new[] { SwissIban, OtherSwissIban, DebitIban, "Mario Rossi", "Luigi Bianchi", "Via Cantonale", "Quokka Immobiliare SA", "<Document" })
                 Assert.DoesNotContain(secret, written, StringComparison.Ordinal);
 
             // And what it gives back is the clear value, to the byte.
