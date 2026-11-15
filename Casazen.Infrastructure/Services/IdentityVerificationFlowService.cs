@@ -104,19 +104,24 @@ public sealed class IdentityVerificationFlowService(
 
         if (!context.Enabled)
         {
+            await DeleteStoredDocumentAsync(session, ct);
             await ToOperatorAsync(session, VerificationAlertReasons.BiometricsDisabled, ct);
             return new BiometricConsentResult(BiometricConsentStatus.Operator, State(session, context));
         }
 
         if (context.IsMinor)
         {
+            await DeleteStoredDocumentAsync(session, ct);
             await ToOperatorAsync(session, VerificationAlertReasons.MinorExcluded, ct);
             return new BiometricConsentResult(BiometricConsentStatus.Operator, State(session, context));
         }
 
         // Already with the operator (a refusal, a request, a review): the person decides, the biometric path is not opened again.
         if (InOperatorPath(session, context))
+        {
+            await CloseOperatorPathAsync(session, context, ct);
             return new BiometricConsentResult(BiometricConsentStatus.Operator, State(session, context));
+        }
 
         session.BiometricConsentAt = now;
         session.BiometricConsentVersion = version;
@@ -289,13 +294,24 @@ public sealed class IdentityVerificationFlowService(
 
         // Also a new link of a booking that is with an operator (rejected, or a hand-off still open): the session is new, the decision is not.
         if (InOperatorPath(session, context))
+        {
+            await CloseOperatorPathAsync(session, context, ct);
             return Done(IdentityVerificationGuestResults.Operator, [], Remaining(session, policy), null);
+        }
 
+        // Every way to the operator takes the pictures kept for the comparison with it (both sides of a document): an administrator of the organization can
+        // switch the face check off, or lower the attempts, while a guest is between the document and the selfie (E22/F01/US01/T03).
         if (!context.Enabled)
+        {
+            await DeleteStoredDocumentAsync(session, ct);
             return await OperatorAsync(session, VerificationAlertReasons.BiometricsDisabled, policy, ct);
+        }
 
         if (context.IsMinor)
+        {
+            await DeleteStoredDocumentAsync(session, ct);
             return await OperatorAsync(session, VerificationAlertReasons.MinorExcluded, policy, ct);
+        }
 
         if (session.BiometricConsentAt is null)
             return Refused(SelfieStepStatus.ConsentRequired, session, policy);
@@ -317,7 +333,10 @@ public sealed class IdentityVerificationFlowService(
             return Refused(SelfieStepStatus.DocumentRequired, session, policy);
 
         if (session.BiometricAttempts >= policy.MaxAttempts)
+        {
+            await DeleteStoredDocumentAsync(session, ct);
             return await OperatorAsync(session, VerificationAlertReasons.AttemptsExhausted, policy, ct);
+        }
 
         var attempt = session.BiometricAttempts + 1;
         IdentityVerificationOutcome outcome;
@@ -523,6 +542,17 @@ public sealed class IdentityVerificationFlowService(
     {
         await ToOperatorAsync(session, reason, ct);
         return Done(IdentityVerificationGuestResults.Operator, [], Remaining(session, policy), null);
+    }
+
+    /// <summary>
+    /// The verification is on the operator path already (<see cref="InOperatorPath"/>): the pictures kept for the comparison go, both sides of a document, as on
+    /// every other way to a person (an administrator of the organization can switch the face check off or lower the attempts while a guest is between the
+    /// document and the selfie, E22/F01/US01/T03).
+    /// </summary>
+    private async Task CloseOperatorPathAsync(GuestCheckInSession session, FlowContext context, CancellationToken ct)
+    {
+        await DeleteStoredDocumentAsync(session, ct);
+        await db.SaveChangesAsync(ct);
     }
 
     private static SelfieStepResult Done(string result, IReadOnlyList<string> guidance, int remaining, string? lockCode, string? lockCodeHeld = null) =>

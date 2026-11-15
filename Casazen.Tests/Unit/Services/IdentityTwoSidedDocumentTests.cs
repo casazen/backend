@@ -92,7 +92,8 @@ public class IdentityTwoSidedDocumentTests
     /// <summary>
     /// Proof (privacy): both pictures follow the rules of one. Between the document and the selfie they are in the private bucket, encrypted (never the
     /// bytes that were sent), in one row; and on every way out of the verification (a pass, a review, the last failure, an error, a refusal, a request for a
-    /// person, a minor found on the back) both objects are gone and the row is marked deleted.
+    /// person, a minor found on the back) both objects are gone and the row is marked deleted. So it is on the two ways that the administrator of the organization
+    /// opens (E22/F01/US01/T03) while the guest is between the document and the selfie: the face check switched off, and the attempts lowered to the ones made.
     /// </summary>
     [Theory]
     [InlineData("ok")]
@@ -101,6 +102,9 @@ public class IdentityTwoSidedDocumentTests
     [InlineData("error")]
     [InlineData("consent-refused")]
     [InlineData("request-operator")]
+    [InlineData("switched-off-by-the-organization")]
+    [InlineData("consent-after-switched-off")]
+    [InlineData("attempts-lowered-by-the-organization")]
     public async Task TwoSided_NoImageKeptAfterVerification_Test(string exit)
     {
         await using var world = await World.CreateAsync();
@@ -147,6 +151,25 @@ public class IdentityTwoSidedDocumentTests
                 break;
             case "request-operator":
                 await world.Flow().RequestOperatorAsync(session, CancellationToken.None);
+                break;
+            case "switched-off-by-the-organization":
+                await world.SetSettingsAsync(enabled: false, maxAttempts: 3);
+                Assert.Equal(IdentityVerificationGuestResults.Operator, (await world.SelfieAsync(session)).Result);
+                Assert.Equal(VerificationAlertReasons.BiometricsDisabled, Assert.Single(world.Alerts).Reason);
+                break;
+            case "consent-after-switched-off":
+                await world.SetSettingsAsync(enabled: false, maxAttempts: 3);
+                var consent = await world.Flow().RecordConsentAsync(session, true, "TEST-biometric-v1", CancellationToken.None);
+                Assert.Equal(BiometricConsentStatus.Operator, consent.Status);
+                Assert.Equal(VerificationAlertReasons.BiometricsDisabled, Assert.Single(world.Alerts).Reason);
+                break;
+            case "attempts-lowered-by-the-organization":
+                // One attempt failed (the pictures stay for the next one), then the administrator lowers the attempts to the one that was made.
+                world.Agent.Next(Outcome(IdentityVerificationResult.NotOk));
+                Assert.Equal(IdentityVerificationGuestResults.Retry, (await world.SelfieAsync(session)).Result);
+                Assert.Equal(2, world.Storage.Objects.Count);
+                await world.SetSettingsAsync(enabled: true, maxAttempts: 1);
+                Assert.Equal(IdentityVerificationGuestResults.Operator, (await world.SelfieAsync(session)).Result);
                 break;
         }
 
@@ -703,6 +726,22 @@ public class IdentityTwoSidedDocumentTests
             var consent = await Flow().RecordConsentAsync(loaded, true, "TEST-biometric-v1", CancellationToken.None);
             Assert.Equal(BiometricConsentStatus.Recorded, consent.Status);
             return loaded;
+        }
+
+        /// <summary>The row of the settings of the org as an administrator saves it through <c>api/settings/biometrics</c>: the flow reads it at its next step.</summary>
+        public async Task SetSettingsAsync(bool enabled, int maxAttempts)
+        {
+            var row = await Db.BiometricSettings.IgnoreQueryFilters().SingleOrDefaultAsync(s => s.OrgId == OrgId);
+            if (row is null)
+            {
+                row = new BiometricSettings { OrgId = OrgId, AcceptThreshold = 0.85m, EscalateThreshold = 0.70m, CreatedAt = Now.UtcDateTime };
+                Db.BiometricSettings.Add(row);
+            }
+
+            row.Enabled = enabled;
+            row.MaxAttempts = maxAttempts;
+            row.UpdatedAt = Now.UtcDateTime;
+            await Db.SaveChangesAsync();
         }
 
         public async Task<DocumentStepResult> DocumentAsync(GuestCheckInSession session, byte[] picture, DocumentSide side = DocumentSide.Single)
