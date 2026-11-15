@@ -517,6 +517,65 @@ the link sees what the guest sees. The token is in the query of the page, which 
 - The Excel file is written by `XlsxWriter` (no package, only `System.IO.Compression`): amounts are numbers, days are dates, every text is an inline string, so a text
   that starts with `= + - @` is never run (the CSV puts an apostrophe before it). More than 9,999 documents is 422 `csv_too_many_rows` or `xlsx_too_many_rows`: narrow the period.
 
+## Acceptance scenario of Switzerland (E19/F01/US01/T01)
+
+`Casazen.Tests/Integration/Acceptance/SwissAgencyScenarioTests.cs` drives the whole chain of an agency of Lugano through the real code, from the booking to the wire
+file, and asserts every amount to the cent. The setup is `AcceptanceScenarioBuilder.cs`: each step opens a scope of its own (a context and the services over it, as a
+request or a job does) on one database, in memory for every test and on PostgreSQL in CI for the main path (`[PostgresFact]` twin). Only the external services are
+stand-ins: the client of Octorate, Stripe, the e-mail queue (it records what it is given), the police (Alloggiati) and the push notifications; the Italian XML builder is
+a strict stand-in, never called, since a Swiss document has no XML.
+
+**The agency** (plan Agency, flags `FiscalDocumentIssuance`, `OwnerInvoicing`, `AccountantPackage`, `AgencyTier` on, the configuration shipped in `appsettings.json`):
+an issuer of Switzerland registered for the VAT (UID, IBAN, QR-IBAN) saved with `SaveSettingsAsync` as the wizard «Fatturazione» saves it, with the automatic issue and
+the e-mail to the guest on and Airbnb collecting the tourist tax of Ticino; one flat in Lugano (CHF, BFS 5113) owned by a private owner with a mandate of 20% «+ IVA» and a
+cleaning flat fee of CHF 80; the rule of the agency for Booking.com, 15%; the listing mapped on the channel manager; the account of Booking.com held by the owner (V1)
+or, in its variant, by the agency (V2).
+
+**The four origins** (one test each, `Origin_*`, the whole chain in one test; the main path has the four in one month):
+
+| Origin | How it comes in | Document of the guest (CHF) | Statement of October |
+|---|---|---|---|
+| Booking.com through Octorate | the import of the channel manager: 450.00, commission 67.50 in the reservation, collected by the portal | stay 450.00 at 3.8% (VAT 16.47), tourist tax of Ticino 2 × 3 × 2.00 = 12.00 outside the VAT: 462.00, «Pagata tramite il portale» | gross 450.00, channel fee −67.50 (payload), commission −90.00, VAT of the invoice −13.77, cleaning −80.00: 198.73 |
+| Agency's own site | the «direct» channel of Octorate: 390.00 + 12.00 of tourist tax, paid by bank transfer, recorded by hand | 390.00 at 3.8% (VAT 14.28) + 12.00: 402.00, paid | gross 390.00 (the payment less its tax), commission −78.00, VAT −12.80, cleaning −80.00: 219.20 |
+| CasaZen site | a booking paid with Stripe (420.00, fee 12.48 captured from the balance transaction, borne by the agency) | stay 360.00 and cleaning 60.00 at 3.8% (VAT 15.38) + 12.00 of tourist tax: 432.00, **to collect** | gross 420.00 (on the day of the payment), commission −84.00, VAT −13.28, cleaning −80.00: 242.72 |
+| By hand | a booking entered by the agency, 300.00 + 12.00, paid in cash | 300.00 at 3.8% (VAT 10.98) + 12.00: 312.00, paid | gross 300.00, commission −60.00, VAT −11.34, cleaning −80.00: 148.66 |
+
+Each document is drafted and issued by the daily run of the day after the check-out (numbers `2026/1`… in the order of the stays), e-mailed to the guest with its link,
+and its PDF is the Swiss layout. The month is then posted, its version generated, the invoice of the property manager made from it and issued (`PM2026/1`, commission
+and recharges at 8.1%, its VAT posted to the ledger and the version generated again with it), the version approved and published (its PDF in the owner portal), the
+package of October built (the index lists every file with its SHA-256; the VAT of the quarter for each rate) and the owner paid with a `pain.001.001.09.ch.03` file.
+The invoice is offset in the statement, so it has no QR-bill; `QrBill_OnlyWhenTheOwnerOwesTheAgency` shows the QR-bill of a month in which the owner owes the agency.
+The variant V2 recharges the commission of Booking.com on the invoice of the property manager and lists it in the VAT file of the agency for information.
+The variant of the portal that collects the tax (an Airbnb reservation imported from Octorate, Airbnb in `PlatformCollectedTouristTaxChannels`) bills the stay only:
+no line of the tax of Ticino on the document, the gross without it, nothing in the box of the tax of the statement nor in the tax of the agency summary.
+
+**The changes (B12)**: a date change (the guest stays two nights more: a credit note of the whole document and a new document, issued at once), a cancellation with a
+full Stripe refund (a credit note of the whole document; nothing posted for the stay) and a no-show with a deposit kept (a credit note of the difference, the VAT split in
+proportion to the lines; the deposit is the revenue of the owner, without a cleaning fee).
+
+**The wire file** is checked against the stand-in schema of the tests; `Wire_ThePayoutFile_ValidatesAgainstTheOfficialSwissSchema` validates it against the official
+`pain.001.001.09.ch.03.xsd` and is reported as skipped, with its reason, until the file is added (`docs/runbooks/wire-transfers.md`).
+
+**Fixed with the scenario:** the statement read every listing as V1 (the resolver of E14 was not wired into `OwnerStatementDocuments`), so the statement of a V2
+listing told the owner that the portal billed it while the invoice of the property manager recharged the commission. The channel fee that the invoice recharges (the
+agency holds the account and recharges, the test of the invoice) is now «Commissioni del portale riaddebitate dal gestore (fattura n. …)», in the published PDF and on
+the owner portal (`Variant_V2_*`, read as the owner reads it: the request of an owner has no org, and the resolver reads the holders whatever the tenant of the
+caller); an account of the agency whose commissions it does not recharge never names the invoice (`Variant_V2_WithoutTheRecharge_*`).
+
+**What the scenario shows** (facts of the code as it is, for the decisions of the PO and of the accountant):
+
+- A Swiss document needs the name of its recipient, read from the invoice data of the booking: a stay with none (no answer at the check-in, nothing typed by the agency,
+  no pre-fill from the channel manager) gets no document from the daily run (`document_invoice_data_missing`, skipped and read again at the next run). In the scenario
+  the agency gives the name on the booking card.
+- The checkout of the CasaZen site in Switzerland does not collect the tourist tax yet: the document carries the line of Ticino and stays «Da incassare» although the
+  stay is paid (analisi-tecnica §5bis.3, second wave).
+- A credit note for the difference (a no-show, a partial refund) is spread over the lines of the document in proportion, the tourist tax included: the part that stays
+  (the deposit kept) keeps a share of the tourist tax line (⚖ I12). The ledger of the owner does not follow it: a stay that owes no tourist tax (a booking that is
+  not active, or a no-show, `AlloggiatiStatusRules`) keeps none of a payment as tax, so the deposit kept is all revenue of the owner, as the box of the tax of the
+  statement leaves the stay out (fixed with the scenario, `OwnerAccountingService` and the reconciliation of the month).
+- The document of a booking of a portal is always «Pagata tramite il portale», also for the line of the tourist tax of Ticino that Booking.com does not collect and
+  that nobody recorded (`Origin_BookingCom_*`, the assertion is marked): left to a fix of its own (the part of the tax to collect at the property).
+
 ## Retention and privacy
 
 - A fiscal document is kept ten years (ADR-033-R7): the booking, the property, the owner, the statement version, the credited and the replaced document
