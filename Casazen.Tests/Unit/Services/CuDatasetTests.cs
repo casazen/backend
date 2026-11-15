@@ -377,6 +377,51 @@ public class CuDatasetTests
         return user;
     }
 
+    /// <summary>
+    /// Money (review of S031): a payout reversed in the same month cancels out, and one reversed in a later month of the same year nets to nothing too, so neither owner has a record in the
+    /// Certificazione Unica of the year (never a record with base 0 and two offsetting lines); one reversed in the year after keeps its record in the year of the payout and has one with the
+    /// opposite amounts in the year of the reversal. The totals of the data are always the evidence's, so the F24 and the reconciliation still agree.
+    /// </summary>
+    [Fact]
+    public async Task CuDataset_ReversedPayout_LeavesNoRecordInTheYearAndAnOppositeOneTheYearAfter_Test()
+    {
+        var world = new OwnerPayoutFactsTests.FactsWorld();
+        var sameMonth = await PaidOwnerAsync(world, "k-same-month");
+        var laterMonth = await PaidOwnerAsync(world, "k-later-month");
+        var nextYear = await PaidOwnerAsync(world, "k-next-year");
+
+        // The same month (November), a later month of the year (December), and the year after (January 2027).
+        await world.Payouts.ReversePayoutAsync(world.OrgId, sameMonth.Payout, "TEST bonifico respinto", null);
+        world.Clock.Advance(TimeSpan.FromDays(20));
+        await world.Payouts.ReversePayoutAsync(world.OrgId, laterMonth.Payout, "TEST bonifico respinto", null);
+        world.Clock.Advance(TimeSpan.FromDays(45));
+        await world.Payouts.ReversePayoutAsync(world.OrgId, nextYear.Payout, "TEST bonifico respinto", null);
+
+        // 2026: only the payout that was not reversed in the year has a record; the evidence of the other two (decisions and reversals) is in the totals and nets to nothing.
+        var year = await world.Payouts.GenerateAnnualDatasetAsync(world.OrgId, 2026, "auth0|admin");
+        var record = Assert.Single(CuDatasetPayload.Parse(year.PayloadJson));
+        Assert.Equal((nextYear.Owner, 1000m, 210m, 1), (record.OwnerId, record.GrossBase, record.Withheld, record.Evidence));
+        Assert.Equal((1000m, 210m, 5), (year.TotalGrossBase, year.TotalWithheld, year.EvidenceCount));
+
+        // 2027: the reversal is a record with the opposite amounts, in the month of the reversal.
+        var after = await world.Payouts.GenerateAnnualDatasetAsync(world.OrgId, 2027, "auth0|admin");
+        var opposite = Assert.Single(CuDatasetPayload.Parse(after.PayloadJson));
+        Assert.Equal((nextYear.Owner, -1000m, -210m), (opposite.OwnerId, opposite.GrossBase, opposite.Withheld));
+        var line = Assert.Single(opposite.Lines);
+        Assert.Equal((1, -1000m, -210m), (line.Month, line.GrossBase, line.Withheld));
+        Assert.Equal((-1000m, -210m, 1), (after.TotalGrossBase, after.TotalWithheld, after.EvidenceCount));
+    }
+
+    /// <summary>An owner with a house, a stay of 1000 paid to the agency and its payout of 5 November: the owner and the payout.</summary>
+    private static async Task<(Guid Owner, Guid Payout)> PaidOwnerAsync(OwnerPayoutFactsTests.FactsWorld world, string key)
+    {
+        var owner = await world.OwnerAsync();
+        await world.StayAsync(await world.PropertyAsync(owner), BookingSource.Manual, 1000m, paid: true);
+        var version = await world.ApprovedVersionAsync(owner);
+        var paid = await world.Payouts.ConfirmPayoutAsync(world.OrgId, world.Payout(owner, version, key), null);
+        return (owner, paid.Payout.Id);
+    }
+
     /// <summary>The shape of the annual data the accountant package reads (<c>AccountantPackageService.ReadCu</c>).</summary>
     private sealed record LegacyOwner(Guid OwnerId, decimal GrossBase, decimal Withheld, int Evidence);
 }

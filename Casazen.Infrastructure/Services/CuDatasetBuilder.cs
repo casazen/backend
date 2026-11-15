@@ -64,8 +64,9 @@ internal static class CuDatasetBuilder
                 Lines = cuLines,
             };
 
-            // A recipient whose withholding was reversed in the same year is withheld nothing: no Certificazione Unica is due to it.
-            if (record.GrossBase != 0m || record.Withheld != 0m || cuLines.Count > 0)
+            // A recipient whose withholding was reversed in the same year (in the same month or in a later one) is withheld nothing: no Certificazione Unica is due to it, so no record and none of its
+            // offsetting lines. A reversal in a later year is a record of its own with the opposite amounts.
+            if (record.GrossBase != 0m || record.Withheld != 0m)
                 records.Add(record);
         }
 

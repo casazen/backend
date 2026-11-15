@@ -627,7 +627,7 @@ payload column of `TaxReportingDatasets` exists, it is encrypted through `Encryp
   payment) and the base and the withholding in euro of each, with the tax code and the rule versions. **The records add up to the evidence to the cent** (`TaxEvidenceLines`): the
   withholding of a payout is decided once on the whole base of its stays, so each stay carries its part in proportion to its base, the cents that are left going to the largest
   remainders; a payout of before the facts were read from the ledger (typed facts) has one line with no stay for its whole amount; a decision and its reversal in the same month cancel
-  out and leave no line, a reversal in a later year is a line with the opposite amounts in the month of the reversal. A recipient whose withholding was reversed in the same year has no
+  out and leave no line, a reversal in a later year is a line with the opposite amounts in the month of the reversal. A recipient whose withholding was reversed in the same year (in the same month or in a later one) has no
   record. `TotalGrossBase`, `TotalWithheld`, `EvidenceCount` and the hash are the evidence's, as before, so `GET api/withholding/reconciliation/{year}` still reconciles.
 - **Co-owners** (⚖ I6, `OwnerMandate.CoOwnerTaxReporting`). Each co-owner is paid its share, so the evidence is its own. The record is the owner's own for a property of one owner on the
   check-out day of the stay. For a property of several co-owners the signatory (`DocumentPlanRules.SignatoryOf`: the mandate in force that day, then the largest share, then the oldest
