@@ -40,6 +40,17 @@ public static class BookingAttribution
     public static bool IsAgencySource(string? source) =>
         source is not null && AgencySources.Contains(source, StringComparer.Ordinal);
 
+    /// <summary>The word a reservation of the booking engine of the agency goes by in a file a guest or a host reads (<see cref="SourceForExport"/>).</summary>
+    public const string AgencyBookingEngineExportName = "agency-booking-engine";
+
+    /// <summary>
+    /// The source of a booking as the export of the guest's data says it (art. 15, E27/F01/US01/T01): as it is stored, but for the token of the booking engine of
+    /// the agency (<see cref="OctorateBookingEngineSource"/>), which names the supplier of the channel manager and so never leaves in a file for a guest or a host:
+    /// it goes as <see cref="AgencyBookingEngineExportName"/>, which tells the same.
+    /// </summary>
+    public static string? SourceForExport(string? source) =>
+        string.Equals(source, OctorateBookingEngineSource, StringComparison.Ordinal) ? AgencyBookingEngineExportName : source;
+
     /// <summary>
     /// The values to store for what the checkout sent (E27/F01/US01/T01): the <c>source</c>, the <c>medium</c> and the <c>campaign</c> as lower-case tokens
     /// that fit their columns, the referrer reduced to its host name (<see cref="SignupAttributionRules.SanitizeToken"/>,

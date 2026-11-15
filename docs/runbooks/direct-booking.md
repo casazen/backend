@@ -931,7 +931,10 @@ migration. `GET api/public/stays` (the parameters of `stays`), `GET api/public/s
   is ten digits; a letter does) and not the form of an Italian fiscal code (six letters, two digits, a letter, two digits, a letter, three digits, a letter, with
   the letters that stand for digits in the omocode forms; also written with separators): an e-mail address (it has an `@`), a phone number, a fiscal code, an
   address of a page, a query or free text is dropped, never repaired and never truncated. The referrer is reduced to its **host name** (no scheme, credentials, port, path, query
-  or fragment): an IP address, a name with no dot, a scheme other than http(s) or a longer name is dropped. Nothing of it goes to the logs.
+  or fragment): an IP address, a name with no dot, a scheme other than http(s) or a longer name is dropped. Nothing of it goes to the logs. The rights of the guest
+  cover it ([gdpr.md](gdpr.md)): the four values are in the export of the guest's data (`attributionSource`, `attributionMedium`, `attributionCampaign`,
+  `attributionReferrerHost`; the token of the booking engine of the agency leaves as `agency-booking-engine`, never the name of the supplier) and are cleared,
+  with the special requests, when the guest is erased or anonymized; the booking keeps its source.
 - **The origin** is what the host reads: `BookingOrigins.Of(source, attributionSource)` (`Casazen.Core/Bookings`) gives `Portal` (every channel of the
   channel manager, with its name in `originChannel`), `AgencySite` (a direct booking whose attribution source is `agency-site`, the `utm_source` of the link the
   agency copies from CasaZen, or `octorate-booking-engine`), `CasaZenSite` (any other direct booking) and `Manual` (entered by the host). `BookingSource` is
