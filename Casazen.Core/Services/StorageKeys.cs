@@ -16,6 +16,7 @@ namespace Casazen.Core.Services;
 /// <item><c>service-requests/{requestId}/photos/{file}</c> — private bucket (photos of a supplier's work, SP-04)</item>
 /// <item><c>orgs/{orgId}/leases/{leaseId}/maintenance/{requestId}/{file}</c> — private bucket (photos of a tenant maintenance request)</item>
 /// <item><c>tourist-tax/{orgId}/{remittanceId}/{file}</c> — private bucket (the receipt of a tourist tax payment, NF-100)</item>
+/// <item><c>accountant-packages/{orgId}/{yyyy-MM}.zip</c> — private bucket (the package of a month that waits for the link of its e-mail to the accountant, E15/F01/US02/T02)</item>
 /// </list>
 /// Private keys are what the database stores for private files (<c>PropertyDocument.StorageUrl</c>,
 /// <c>Guest.DocumentScanUrl</c>); public files are stored as their absolute public URL.
@@ -112,6 +113,14 @@ public static partial class StorageKeys
     /// <summary>The file attached to a message of the owner inbox (private bucket, E07/F07/US01/T02); the name is made by the server.</summary>
     public static string OwnerMessageAttachment(Guid orgId, Guid conversationId, string fileName) =>
         $"owner-messages/{orgId}/{conversationId}/{fileName}";
+
+    /// <summary>
+    /// The package of the accountant of one month (private bucket, E15/F01/US02/T02, NF-101): kept until the link of the e-mail that names it has expired, and opened only through
+    /// <c>GET api/public/accountant-package/{orgId}/{period}</c> with a signed link, never by a public URL. The key is made of the org and the month and nothing else, so one org has at most one
+    /// object for a month and the next send of the same month replaces it. <paramref name="period"/> is <c>yyyy-MM</c> (anything else is refused).
+    /// </summary>
+    public static string AccountantPackage(Guid orgId, string period) =>
+        EnsureValid($"accountant-packages/{orgId:D}/{period}.zip");
 
     /// <summary>A new random file name that keeps only the (lower-cased) extension of the upload.</summary>
     public static string NewFileName(string? originalFileName) =>

@@ -50,6 +50,74 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("AccessCodeReleaseLogs");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.AccountantPackageSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AccountantEmail")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Contents")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastSendAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastSendError")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<string>("LastSendPeriod")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
+
+                    b.Property<int?>("LastSendResult")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("MonthlySendEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SendDayOfMonth")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("StoredPackageAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("StoredPackagePeriod")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_AccountantPackageSettings_OrgId");
+
+                    b.ToTable("AccountantPackageSettings", t =>
+                        {
+                            t.HasCheckConstraint("CK_AccountantPackageSettings_Contents", "\"Contents\" BETWEEN 1 AND 255");
+
+                            t.HasCheckConstraint("CK_AccountantPackageSettings_LastSendResult", "\"LastSendResult\" IS NULL OR \"LastSendResult\" IN (1, 2)");
+
+                            t.HasCheckConstraint("CK_AccountantPackageSettings_SendDay", "\"SendDayOfMonth\" BETWEEN 1 AND 28");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.AgencyInvoice", b =>
                 {
                     b.Property<Guid>("Id")
@@ -17381,6 +17449,15 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Booking");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.AccountantPackageSettings", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.AgencyInvoice", b =>

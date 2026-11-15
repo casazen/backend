@@ -7638,4 +7638,31 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="AccountantPackageInvalidPeriod" xml:space="preserve">
     <value>Invalid period: give a month (period=2026-10) or a year (period=2026), between 2000 and 2100.</value>
   </data>
+  <data name="AccountantPackageSettingsInvalid" xml:space="preserve">
+    <value>The settings of the send are incomplete: say whether the monthly send is on, the day of the month and the folders to send.</value>
+  </data>
+  <data name="AccountantPackageRecipientMissing" xml:space="preserve">
+    <value>The e-mail address of the accountant is needed to turn the monthly send on.</value>
+  </data>
+  <data name="AccountantPackageRecipientInvalid" xml:space="preserve">
+    <value>The e-mail address of the accountant is not valid: write the address only, with no name and no spaces.</value>
+  </data>
+  <data name="AccountantPackageSendDayInvalid" xml:space="preserve">
+    <value>The day of the send must be a day of the month between {0} and {1}.</value>
+  </data>
+  <data name="AccountantPackageContentsInvalid" xml:space="preserve">
+    <value>Choose at least one folder to send, among those of the package, each one once.</value>
+  </data>
+  <data name="AccountantPackageLinkInvalid" xml:space="preserve">
+    <value>The link is not valid or has expired.</value>
+  </data>
+  <data name="AccountantPackageNotSent" xml:space="preserve">
+    <value>The package could not be sent to the accountant: nothing was sent. Try again in a moment.</value>
+  </data>
+  <data name="AccPkgOmittedNotSelected" xml:space="preserve">
+    <value>Folder not chosen in the settings of the monthly send.</value>
+  </data>
+  <data name="AccountantPackageOwnerAccountingRequired" xml:space="preserve">
+    <value>The folders that hold the owner accounting (invoices to the owners, statements, withholding, agency summary, VAT) can be chosen, and a test of them sent, only with the permission to read the owners' statements.</value>
+  </data>
 </root>

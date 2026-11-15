@@ -24,6 +24,7 @@ Object keys:
 | private | `leases/{orgId}/{leaseId}/registration/{random}.pdf` (RLI receipts, LT-01: only through `GET /api/leases/{id}/registration/receipt`) |
 | private | `leases/{orgId}/{leaseId}/signed-contract/{random}.pdf` (contract signed by every party, LT-02: uploaded by the landlord or copied from the e-sign provider; only through `GET /api/leases/{id}/signed-document`) |
 | private | `tourist-tax/{orgId}/{remittanceId}/{random}.{pdf\|jpg\|png}` (the receipt of a tourist tax payment, NF-100: type read from the bytes, at most 10 MB; only through `GET /api/tourist-tax/remittances/{id}/receipt`, removed with the payment) |
+| private | `accountant-packages/{orgId}/{yyyy-MM}.zip` (the package of a month that waits for the link of its e-mail to the accountant, E15/F01/US02/T02, NF-101: made by the monthly job or by «send a test»; only through `GET /api/public/accountant-package/{orgId}/{period}` with a signed link of 30 days, never by a public URL; one package at a time for an org, a newer one replaces the older, and the nightly run `accountant-package-monthly` deletes it when its link has expired: `AccountantPackageSettings.StoredPackagePeriod` and `StoredPackageAt` name it) |
 
 Lease contract PDFs (offline signing flow, D15) use the private bucket through `IFileStorage`: the landlord uploads the signed contract (`POST /api/leases/{id}/signed-document`, PDF of at most 20 MB, `docs/runbooks/rli.md` § Contract signature). A path left by the old e-sign stub (`/signed/…`) is not a storage key and is never served.
 
