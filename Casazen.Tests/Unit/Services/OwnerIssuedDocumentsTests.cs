@@ -513,15 +513,32 @@ public class OwnerIssuedDocumentsTests
             Seed.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile { Id = ProfileOrg, OrgId = OrgId, DocumentRegime = DocumentRegime.VatOrdinary, LegalName = "TEST Agenzia Srl" });
             Seed.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile
             {
-                Id = ProfileA, OrgId = OrgId, PropertyOwnerId = OwnerA, DocumentRegime = DocumentRegime.VatOrdinary, LegalName = "TEST Immobiliare Lago Srl", FiscalCode = "01234567897", VatNumber = "01234567897", GuestDocumentSeries = "SRL{year}",
+                Id = ProfileA,
+                OrgId = OrgId,
+                PropertyOwnerId = OwnerA,
+                DocumentRegime = DocumentRegime.VatOrdinary,
+                LegalName = "TEST Immobiliare Lago Srl",
+                FiscalCode = "01234567897",
+                VatNumber = "01234567897",
+                GuestDocumentSeries = "SRL{year}",
             });
             Seed.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile
             {
-                Id = ProfileB, OrgId = OrgId, PropertyOwnerId = OwnerB, DocumentRegime = DocumentRegime.PrivatePerson, LegalName = "TEST Mario Rossi", FiscalCode = "RSSMRA70A01H501S",
+                Id = ProfileB,
+                OrgId = OrgId,
+                PropertyOwnerId = OwnerB,
+                DocumentRegime = DocumentRegime.PrivatePerson,
+                LegalName = "TEST Mario Rossi",
+                FiscalCode = "RSSMRA70A01H501S",
             });
             Seed.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile
             {
-                Id = ProfileA2, OrgId = OtherOrgId, PropertyOwnerId = OwnerA2, DocumentRegime = DocumentRegime.PrivatePerson, LegalName = "TEST Lago Privato", FiscalCode = "RSSMRA70A01H501S",
+                Id = ProfileA2,
+                OrgId = OtherOrgId,
+                PropertyOwnerId = OwnerA2,
+                DocumentRegime = DocumentRegime.PrivatePerson,
+                LegalName = "TEST Lago Privato",
+                FiscalCode = "RSSMRA70A01H501S",
             });
 
             // A guest with contacts, and the booking and the payment of A4: stored as «to collect», settled by a card payment.
