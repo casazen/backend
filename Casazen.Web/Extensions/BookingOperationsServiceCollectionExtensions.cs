@@ -26,6 +26,9 @@ public static class BookingOperationsServiceCollectionExtensions
         services.AddScoped<IEventHandler<DomainEvent>, BookingSpecialRequestActivityHandler>();
         services.AddScoped<IEventHandler<DomainEvent>, ChannelBookingAlertHandler>();
 
+        // E24/F01/US01/T02 (NF-120): the automatic cleaning of a stay follows the stay: moved when its dates change, cancelled when the booking is, behind Features:Routines.
+        services.AddScoped<IEventHandler<DomainEvent>, CleaningBookingChangesHandler>();
+
         // E08/F01/US01/T02 (NF-74): where in Octorate a property books; every writer of a booking to Octorate asks it first.
         services.AddScoped<IOctorateBookingTargets, OctorateBookingTargets>();
 

@@ -17,12 +17,15 @@ namespace Casazen.Infrastructure.Services;
 /// reach of an org-wide scope when it is an owner of the org; inside a partial one only when it holds a period on a property the scope reaches.
 /// The ownership periods are read through their property, so a period on a property outside the reach is never seen, counted or changed.</para>
 /// <para><b>Logs</b> carry the org and counts, never a name, an identifier, an address, an IBAN or a cell of the file.</para>
+/// <para><b>Warnings.</b> With <paramref name="taxChecks"/> and <c>Features:TaxReportingExports</c> on, the readiness also tells, for each owner, that it is presumed a
+/// business (E18/F01/US03/T01): a warning, which never changes what the owner is ready for. A service built without it (a test) gives none.</para>
 /// </remarks>
 public sealed partial class OwnerOnboardingService(
     AppDbContext db,
     IActivityLog activityLog,
     TimeProvider timeProvider,
-    ILogger<OwnerOnboardingService> logger) : IOwnerOnboardingService
+    ILogger<OwnerOnboardingService> logger,
+    IOwnerTaxChecks? taxChecks = null) : IOwnerOnboardingService
 {
     private DateOnly Today() => timeProvider.TodayInRomeAsDateOnly();
 

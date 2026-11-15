@@ -486,6 +486,14 @@ internal static class PostgresAdvisoryLocks
         /// 1_650 to 1_659 are the package of the accountant (epic E15).
         /// </summary>
         AccountantPackage = 1_650,
+
+        /// <summary>
+        /// The automatic cleaning of one stay (key: <c>bookingId.ToString("N")</c>, E24/F01/US01/T02): the check that the stay has none, the creation of the service request or
+        /// of the staff activity and the <c>StayCleaning</c> row that keys it are taken one at a time and held until the commit, so the two triggers of a stay (the check-out time
+        /// and the departure the host registered) create one cleaning. The supplier's calendar lock is taken inside it (by the request), never the other way round. The values
+        /// 24_000 to 24_099 are the cleaning at check-out (epic E24).
+        /// </summary>
+        CleaningAutomation = 24_011,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

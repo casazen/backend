@@ -3406,6 +3406,63 @@
   <data name="ServiceRequestCannotRemind" xml:space="preserve">
     <value>Si può sollecitare solo una richiesta nuova che aspetta ancora la risposta del fornitore.</value>
   </data>
+  <data name="ServiceRequestCannotReschedule" xml:space="preserve">
+    <value>Si può spostare solo una richiesta nuova che aspetta ancora la risposta del fornitore, senza altri orari o preventivi in sospeso.</value>
+  </data>
+  <data name="CleaningSetupCleanerRequired" xml:space="preserve">
+    <value>Scegli chi fa la pulizia: un fornitore o una persona dello staff.</value>
+  </data>
+  <data name="CleaningSetupCleanerMismatch" xml:space="preserve">
+    <value>Il fornitore o la persona dello staff non corrispondono al tipo di addetto scelto: indica solo quello che serve.</value>
+  </data>
+  <data name="CleaningSetupPriceInvalid" xml:space="preserve">
+    <value>Il prezzo concordato deve essere di almeno 1 centesimo e non superare il massimo ammesso; per un fornitore è obbligatorio.</value>
+  </data>
+  <data name="CleaningSetupCurrencyRequired" xml:space="preserve">
+    <value>Indica la valuta del prezzo: un importo non si applica a una valuta che nessuno ha scelto.</value>
+  </data>
+  <data name="CleaningSetupCurrencyMismatch" xml:space="preserve">
+    <value>La valuta del prezzo deve essere quella dell'immobile ({0}).</value>
+  </data>
+  <data name="CleaningSetupStartTimeInvalid" xml:space="preserve">
+    <value>L'orario di inizio deve essere in minuti interi (per esempio 11:00).</value>
+  </data>
+  <data name="CleaningSetupDurationInvalid" xml:space="preserve">
+    <value>La durata della pulizia deve essere tra {0} e {1} minuti.</value>
+  </data>
+  <data name="CleaningSetupSupplierNotFound" xml:space="preserve">
+    <value>Il fornitore scelto non esiste.</value>
+  </data>
+  <data name="CleaningSetupSupplierInactive" xml:space="preserve">
+    <value>Il fornitore scelto non è attivo: non può ricevere richieste.</value>
+  </data>
+  <data name="CleaningSetupSupplierOutsideComune" xml:space="preserve">
+    <value>Il fornitore scelto non opera nel comune dell'immobile.</value>
+  </data>
+  <data name="CleaningSetupStaffInvalid" xml:space="preserve">
+    <value>La persona scelta non è un membro attivo della tua organizzazione con accesso a questo immobile.</value>
+  </data>
+  <data name="CleaningSetupBulkEmpty" xml:space="preserve">
+    <value>Scegli almeno un immobile: un elenco vuoto non vale «tutti».</value>
+  </data>
+  <data name="CleaningSetupBulkTooMany" xml:space="preserve">
+    <value>Puoi impostare al massimo {0} immobili alla volta.</value>
+  </data>
+  <data name="CleaningAutomationSetupInvalid" xml:space="preserve">
+    <value>L'impostazione della pulizia di questo immobile non è completa: il fornitore o la persona dello staff e il prezzo non corrispondono al tipo scelto.</value>
+  </data>
+  <data name="CleaningAutomationStaffUnavailable" xml:space="preserve">
+    <value>La persona dello staff scelta per la pulizia non è più attiva o non ha più accesso all'immobile.</value>
+  </data>
+  <data name="CleaningSetupSupplierCurrencyUnsupported" xml:space="preserve">
+    <value>I fornitori del marketplace lavorano in euro e non si converte nulla: un immobile in {0} può avere la pulizia solo a una persona dello staff.</value>
+  </data>
+  <data name="CleaningAutomationSupplierCurrencyUnsupported" xml:space="preserve">
+    <value>L'immobile è in {0} e i fornitori del marketplace lavorano in euro: la pulizia non può essere richiesta al fornitore.</value>
+  </data>
+  <data name="InternalActivityCancelled" xml:space="preserve">
+    <value>L'attività è stata annullata: il suo stato non può più cambiare.</value>
+  </data>
   <data name="ServiceRequestCannotAddPhotos" xml:space="preserve">
     <value>Le foto del lavoro si aggiungono mentre il lavoro è in corso, prima di completare la richiesta.</value>
   </data>
@@ -6608,6 +6665,15 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="OwnerMandateInvalid" xml:space="preserve">
     <value>Un dato del mandato non è valido: controlla il campo indicato.</value>
+  </data>
+  <data name="OwnerTaxDecisionInvalid" xml:space="preserve">
+    <value>Un dato della decisione non è valido: controlla il campo indicato (la prenotazione, il regime o il motivo).</value>
+  </data>
+  <data name="OwnerTaxDecisionNotApplicable" xml:space="preserve">
+    <value>Questo soggiorno non richiede una decisione: serve solo per un conduttore società in un immobile italiano di un proprietario privato.</value>
+  </data>
+  <data name="OwnerExternalUnitsInvalid" xml:space="preserve">
+    <value>Il numero di appartamenti in locazione breve fuori dall'agenzia non è valido: indica un numero intero da 0 a 1000.</value>
   </data>
   <data name="OwnerMandateOverlap" xml:space="preserve">
     <value>Esiste già una versione del mandato che inizia in questa data o dopo: le versioni non si sovrappongono.</value>

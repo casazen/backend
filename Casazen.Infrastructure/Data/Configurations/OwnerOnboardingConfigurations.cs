@@ -19,5 +19,10 @@ internal sealed class PropertyOwnerConfiguration : IEntityTypeConfiguration<Prop
             .IsUnique()
             .HasFilter("\"ExternalKey\" IS NOT NULL")
             .HasDatabaseName(PropertyOwner.OrgExternalKeyIndexName);
+
+        // The apartments the owner lets short outside the agency (E18/F01/US03/T01): a count, never negative and never more than a person can declare.
+        entity.ToTable(table => table.HasCheckConstraint(
+            "CK_PropertyOwners_ExternalShortLetUnits",
+            $"\"ExternalShortLetUnits\" >= 0 AND \"ExternalShortLetUnits\" <= {PropertyOwner.ExternalShortLetUnitsMax}"));
     }
 }

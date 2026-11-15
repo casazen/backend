@@ -10,6 +10,7 @@ using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.SiteProfile;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Events;
 using Casazen.Tests.Unit.Services;
 using Xunit;
@@ -149,6 +150,9 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.OwnerIssuerDocumentExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.PaymentLedgerExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.ChannelCommissionRules.Select(rule => rule.Scenario))
+            .Concat(DemoShowcaseCatalog.CleaningSetups.Select(setup => setup.Scenario))
+            .Concat(DemoShowcaseCatalog.OwnerUnitsExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.CompanyTenantExamples.Select(example => example.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -198,6 +202,48 @@ public class DemoShowcaseTests
         Assert.Contains(RoutineActionType.Wait, test.Actions.Select(a => a.Type));
         Assert.Contains(DemoShowcaseCatalog.Scenario.RoutineActive, DemoShowcaseCatalog.Scenarios);
         Assert.Contains(DemoShowcaseCatalog.Scenario.RoutineTestMode, DemoShowcaseCatalog.Scenarios);
+    }
+
+    /// <summary>
+    /// E24/F01/US01 (NF-120): the demo shows the cleaning at check-out: the ready routine «Pulizia al check-out» (the time of the check-out, no offset, the action that creates the
+    /// cleaning, active) and the two kinds of default cleaner on two different houses, one with a trusted supplier at an agreed price and one with a member of the staff, each a body the
+    /// API would save for a short-rent house of the demo and a supplier or staff member of its templates.
+    /// </summary>
+    [Fact]
+    public void CleaningAtCheckout_TheDemoHasTheReadyRoutine_AndASupplierAndAStaffSetup()
+    {
+        var routine = Assert.Single(DemoShowcaseCatalog.Routines, r => r.Scenario == DemoShowcaseCatalog.Scenario.CleaningAtCheckout);
+        Assert.Equal((RoutineEventType.AfterCheckout, 0, false), (routine.EventType, routine.DaysBefore, routine.IsTestMode));
+        Assert.Equal([RoutineActionType.CreateCleaningRequest], routine.Actions.Select(a => a.Type));
+        Assert.Contains("DEMO", routine.Name, StringComparison.Ordinal);
+
+        var setups = DemoShowcaseCatalog.CleaningSetups;
+        Assert.Equal(setups.Count, setups.Select(s => s.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(setups.Count, setups.Select(s => s.PropertyKey).Distinct(StringComparer.Ordinal).Count());
+        Assert.Contains(setups, s => s.Kind == PropertyCleanerKind.Supplier);
+        Assert.Contains(setups, s => s.Kind == PropertyCleanerKind.Staff);
+        Assert.All(setups, setup =>
+        {
+            var property = Assert.Single(DemoShowcaseCatalog.Properties, p => p.Key == setup.PropertyKey);
+            Assert.Equal(RentalMode.Short, property.Mode);
+            Assert.Equal(DemoShowcaseCatalog.Scenario.CleaningAtCheckout, setup.Scenario);
+            Assert.True(ServiceRequestPricing.IsValidAmount(setup.PriceCents), $"{setup.Key}: the price is not an amount of a request");
+            Assert.True(setup.StartTime is null || setup.StartTime.Value.Ticks % TimeSpan.TicksPerMinute == 0, $"{setup.Key}: the start is not in whole minutes");
+            Assert.True(
+                setup.DurationMinutes is null or >= SupplierServiceCatalogLimits.MinDurationMinutes and <= SupplierServiceCatalogLimits.MaxDurationMinutes,
+                $"{setup.Key}: the duration is out of range");
+            if (setup.Kind == PropertyCleanerKind.Supplier)
+            {
+                var supplier = Assert.Single(DemoShowcaseCatalog.Suppliers, s => s.Key == setup.SupplierKey);
+                Assert.True(supplier.IsTrusted);
+                Assert.Null(setup.StaffKey);
+            }
+            else
+            {
+                Assert.Single(DemoShowcaseCatalog.StaffMembers, s => s.Key == setup.StaffKey);
+                Assert.Null(setup.SupplierKey);
+            }
+        });
     }
 
     /// <summary>The routines of the demo are marked rows of the reset, like the other invented rows of the org.</summary>
@@ -1173,6 +1219,35 @@ public class DemoShowcaseTests
                 Assert.True(amounts.VatAmount > 0m);
             }
         }
+    }
+
+    /// <summary>
+    /// E18/F01/US03/T01: the demo owners of the limit of units are TEST owners, one under the limit and one past it (the third apartment is the one declared outside the agency),
+    /// as the check of the owners says; the stays of a company tenant are TEST ones, one waiting for a decision and one decided with the note of the agency.
+    /// </summary>
+    [Fact]
+    public void OwnerTaxChecks_TheExamplesAreWhatTheChecksAnswer()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.OwnerTaxChecks, DemoShowcaseCatalog.Scenarios);
+        var rules = new ShortStayFiscalOptions();
+        var day = new DateOnly(2026, 11, 15);
+        var units = DemoShowcaseCatalog.OwnerUnitsExamples;
+        Assert.All(units, e => Assert.StartsWith("TEST", e.OwnerName, StringComparison.Ordinal));
+        var under = Assert.Single(units, e => e.Key == "due-unita-privato");
+        var over = Assert.Single(units, e => e.Key == "tre-unita-impresa-presunta");
+        Assert.False(OwnerTaxRules.CheckUnits(Guid.NewGuid(), OwnerEntityKind.NaturalPerson, OwnerTaxRegime.Private, under.ManagedUnits, under.ExternalUnits, day, rules).PresumedBusiness);
+        Assert.True(OwnerTaxRules.CheckUnits(Guid.NewGuid(), OwnerEntityKind.NaturalPerson, OwnerTaxRegime.Private, over.ManagedUnits, over.ExternalUnits, day, rules).PresumedBusiness);
+        Assert.InRange(over.ExternalUnits, 1, PropertyOwner.ExternalShortLetUnitsMax);
+
+        var tenants = DemoShowcaseCatalog.CompanyTenantExamples;
+        Assert.All(tenants, e => Assert.StartsWith("TEST", e.OwnerName, StringComparison.Ordinal));
+        Assert.All(tenants, e => Assert.StartsWith("TEST", e.TenantName, StringComparison.Ordinal));
+        var pending = Assert.Single(tenants, e => e.Decision is null);
+        Assert.Null(pending.Reason);
+        var decided = Assert.Single(tenants, e => e.Decision is not null);
+        Assert.Equal(ShortLetTaxRegime.NotShortLet, decided.Decision);
+        Assert.StartsWith("TEST", decided.Reason, StringComparison.Ordinal);
+        Assert.InRange(decided.Reason!.Length, 1, ShortLetTaxDecision.ReasonMaxLength);
     }
 
     /// <summary>

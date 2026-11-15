@@ -29,6 +29,8 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>Locks.</b> Posting, generation, close and corrections of one org run one at a time (<see cref="PostgresAdvisoryLocks.Scope.OwnerAccounting"/>).</para>
 /// <para><b>Files.</b> The publication of a version stores its PDF with it, in the same save (<paramref name="statementFiles"/>, E13/F01/US02/T01), and tells the owner
 /// after it (E13/F01/US02/T02); a service built without it (a test) publishes the version and the JSON file only.</para>
+/// <para><b>Flag.</b> With <paramref name="taxChecks"/> and <c>Features:TaxReportingExports</c> on, a version of an owner presumed a business (the limit of units of a private
+/// person, E18/F01/US03/T01) records the non-blocking issue <c>short_let_business_presumed</c>: the statement is right, the tax treatment of the owner is what to look at.</para>
 /// </remarks>
 public sealed partial class OwnerAccountingService(
     AppDbContext db,
@@ -36,7 +38,8 @@ public sealed partial class OwnerAccountingService(
     TimeProvider time,
     ILogger<OwnerAccountingService> logger,
     IOptions<OwnerAccountingOptions>? accountingOptions = null,
-    IOwnerStatementDocuments? statementFiles = null) : IOwnerAccountingService
+    IOwnerStatementDocuments? statementFiles = null,
+    IOwnerTaxChecks? taxChecks = null) : IOwnerAccountingService
 {
     /// <summary>A rate older than this many days before the day of the source is not used.</summary>
     public const int FxMaxAgeDays = 7;
