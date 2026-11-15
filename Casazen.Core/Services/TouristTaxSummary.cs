@@ -172,6 +172,12 @@ public static class TouristTaxErrorCodes
     /// no property, so a caller who reaches only some properties has no part in them.
     /// </summary>
     public const string PaymentsNeedWholeOrg = "tourist_tax_payments_need_whole_org";
+
+    /// <summary>
+    /// 403: the exports of the tourist tax at year end (the declaration to the comune, the account of the agent, the yearly count of Ticino) need a scope that reaches the whole org: a declaration of
+    /// some of the properties would be false, and the payments belong to the org (E18/F01/US02/T03).
+    /// </summary>
+    public const string YearEndNeedsWholeOrg = "tourist_tax_year_end_needs_whole_org";
 }
 
 /// <summary>The kind of file a receipt really is, read from its content (<see cref="TouristTaxReceiptRules.Sniff"/>).</summary>

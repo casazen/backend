@@ -615,7 +615,7 @@ withholding reads are not behind it** (an owner past the limit is a business wha
 
 Decisions of 2026-11-14 (`fatturazione/analisi-tecnica.md` §5, ⚖ I6 and T2 of the table §7): prudent defaults, configurable, to be confirmed by an accountant. **Nothing is filed or
 sent by CasaZen**: the telematic record layouts of the CU, the 770 and the communication are not produced (⚖ T2), the exports carry every field the accountant's software needs, and
-every file says it is the data to fill the form with. The new exports and the view of the owner are behind `Features:TaxReportingExports`
+every file says it is the data to fill the form with. The new exports, the view of the owner and the exports of the tourist tax at year end are behind `Features:TaxReportingExports`
 (off by default, on in the test environment: [`feature-flags.md`](feature-flags.md)); the annual data and its filing states (`api/withholding/annual`) are not. **No migration**: the
 payload column of `TaxReportingDatasets` exists, it is encrypted through `EncryptedColumns` (below).
 
@@ -666,3 +666,35 @@ payload column of `TaxReportingDatasets` exists, it is encrypted through `Encryp
   address.
 - **Proofs.** `CuDatasetTests` (`CuDataset_SharesSumToOwnerTotals_Test`, `CuDataset_PayloadEncrypted_Test`, `OwnerPortalWithholding_OnlyOwnClaim_Test`) and
   `TaxReportingExportsTests` (`ContractsCommunication_ExcludesStaysWithAgencyWithholding_Test`).
+
+## Tourist tax at year end (E18/F01/US02/T03)
+
+Acceptance steps C9 and D3 of `pilota-flusso-completo-2026-11-14.md`: the agency collects the tourist tax and answers for it to the comune. Three exports of the year, **CSV or Excel**
+(`GET api/tourist-tax/year-end/{year}/…?format=csv|xlsx`, `payment.read` like the rest of the controller, `no-store`), behind `Features:TaxReportingExports` (404 before authentication while it is
+off). **Nothing is filed by CasaZen**, nothing is recomputed (⚖ T2: the format a comune asks varies, so the files carry every field the data has), and there is **no migration**. They need a
+scope that reaches the whole org: 403 `tourist_tax_year_end_needs_whole_org` before anything is read (a declaration of some of the properties would be false, and the payments belong to the org);
+400 `report_invalid_format` (there is no JSON of them) and `fiscal_report_period_invalid` (a year outside 2000-2100). The texts are those of the resource files, in the language of the request.
+**The stays are the ones that happened**: the one definition of an active stay (`AlloggiatiStatusRules`: confirmed, checked in or checked out, and never a no-show), which the tourist tax report
+the summary reads now applies too (it used a copy of the list that did not leave the no-shows out: a stay whose guests never came owes no tax in any reader).
+
+- **Annual declaration** (`…/declaration`, `TouristTaxSummaryService.GetDeclarationAsync`). Made of the tourist tax summary of the year (`BuildSummaryAsync`: the same report, owed from the
+  amounts the engine recorded on the stays with check-in in the year, remitted from the payments, in whole cents): per comune the stays, nights and guests, **the tax due, the tax remitted
+  with the days and references of the payments (`TouristTaxRemittance`) and the difference** (`owed - remitted`, to the cent, so the balance is always exactly their difference), its status
+  and the payments table. In addition, from what the stays store (`StayTouristTax`): the **stays with a tax** and **the stays with no amount, counted apart with the reason** (`exempt`: the tax
+  confirmed guest by guest is nothing because every guest is exempt; `collected_by_channel`: the channel collects it, by the rule of the comune or the host's declaration; `not_calculated`: never
+  confirmed or calculated, the owed amount of the comune may be incomplete; `no_tax_due`: confirmed and nothing), and **the exempt guests by reason** (a count of stays, guests and guest-nights
+  per comune and reason: `minor_age`, a code of the catalogue `TouristTaxExemptionReason`, or `erased` once the reason went with the guest's data). **A count, never a guest, a booking or a
+  name**: the reason can reveal a health condition (art. 9 GDPR) and is encrypted at rest, so it leaves only as an aggregate, as the declaration to the comune asks. A house abroad is left out, as
+  the summary does.
+- **Account of the agent** (`…/agent-account?by=month|quarter`, «conto giudiziale», when the comune asks it of the collecting manager). For each comune and each month (default) or quarter the
+  summary of that period (what the stays record as owed and what was remitted for it: **a payment counts in the period its declared period lies inside**), then the line of the year, and the
+  table of every payment of the year with its period, amount, day, reference and receipt. The periods add up to the year for what is owed; a payment that spans two periods is in the line of the
+  year and in the table, in no period (the file says how the periods are counted in its title). 400 `tourist_tax_account_invalid_period` for another `by`.
+- **Ticino** (`…/ticino`, `TouristTaxSummaryService.GetTicinoYearlyCountAsync`, due by **5 January** of the next year: `TouristTaxYearEndRules.TicinoCountDue`). For each property in the canton `TI`
+  (the canton of its municipality, as the accountant package tells the Swiss tourist tax; a deleted property with stays is there too, one with none is not) the stays with check-in in the year
+  (confirmed, checked in or checked out; a stay is counted whole in the year of its check-in, ⚖ like the summary), their nights, **taxed** (the tourist tax lines of the issued documents of the
+  stay add up to more than nothing, a credit note taking its amount away), **untaxed** (a document without a tax: the portal collects it, the guest is exempt, no rule), **without a document**
+  (none issued yet: told apart, never counted as untaxed) and **the francs of the documents** (`FiscalDocumentLine` of type tourist tax of the documents in the currency of the property: E12,
+  never a calculation). Every query names the org.
+- **Proof.** `TouristTaxYearEndExportsTests` (`TouristTaxYearEnd_DueMinusRemittedPerMunicipality_Test`: due less remitted per comune to the cent, the reasons and the exemptions, the quarters adding
+  up to the year, the files; the count of Ticino from the documents; the whole-org refusal and the rules).

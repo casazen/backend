@@ -8233,4 +8233,196 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="ContractsReasonRuleWithoutWithholding" xml:space="preserve">
     <value>The rule applied has no withholding</value>
   </data>
+  <data name="TouristTaxAccountInvalidPeriod" xml:space="preserve">
+    <value>The period of the account of the agent is not valid: use "month" (by month) or "quarter" (by quarter).</value>
+  </data>
+  <data name="TouristTaxYearEndNeedsWholeOrg" xml:space="preserve">
+    <value>The year-end tourist tax data covers every property of the organization: it needs access to the whole organization.</value>
+  </data>
+  <data name="TtDeclarationTitle" xml:space="preserve">
+    <value>Annual tourist tax declaration {0} per municipality: nights and guests, stays with and without tax, tax due, remitted and difference (data for the declaration to the municipality: nothing is filed by CasaZen)</value>
+  </data>
+  <data name="TtDeclarationSheet" xml:space="preserve">
+    <value>By municipality</value>
+  </data>
+  <data name="TtExemptionsTitle" xml:space="preserve">
+    <value>Exempt guests by reason, {0}: stays, guests and nights per municipality and exemption reason (counts only, no names)</value>
+  </data>
+  <data name="TtExemptionsSheet" xml:space="preserve">
+    <value>Exemptions</value>
+  </data>
+  <data name="TtRemittancesTitle" xml:space="preserve">
+    <value>Remittances to the municipality recorded, {0}: period paid, amount, date, reference and receipt</value>
+  </data>
+  <data name="TtRemittancesSheet" xml:space="preserve">
+    <value>Remittances</value>
+  </data>
+  <data name="TtColComune" xml:space="preserve">
+    <value>Municipality</value>
+  </data>
+  <data name="TtColStays" xml:space="preserve">
+    <value>Stays (check-in in the year)</value>
+  </data>
+  <data name="TtColNights" xml:space="preserve">
+    <value>Nights</value>
+  </data>
+  <data name="TtColGuests" xml:space="preserve">
+    <value>Guests</value>
+  </data>
+  <data name="TtColTaxedStays" xml:space="preserve">
+    <value>Stays with tax</value>
+  </data>
+  <data name="TtColStaysWithoutAmount" xml:space="preserve">
+    <value>Stays without an amount</value>
+  </data>
+  <data name="TtColReasonExempt" xml:space="preserve">
+    <value>No amount: every guest exempt</value>
+  </data>
+  <data name="TtColReasonChannel" xml:space="preserve">
+    <value>No amount: tax collected by the channel</value>
+  </data>
+  <data name="TtColReasonNotCalculated" xml:space="preserve">
+    <value>No amount: tax not calculated</value>
+  </data>
+  <data name="TtColReasonNoTaxDue" xml:space="preserve">
+    <value>No amount: no tax due</value>
+  </data>
+  <data name="TtColOwed" xml:space="preserve">
+    <value>Tax due (euro)</value>
+  </data>
+  <data name="TtColRemitted" xml:space="preserve">
+    <value>Tax remitted (euro)</value>
+  </data>
+  <data name="TtColDifference" xml:space="preserve">
+    <value>Difference (euro)</value>
+  </data>
+  <data name="TtColStatus" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="TtColNote" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="TtTotal" xml:space="preserve">
+    <value>Total</value>
+  </data>
+  <data name="TtYes" xml:space="preserve">
+    <value>Yes</value>
+  </data>
+  <data name="TtStatusToPay" xml:space="preserve">
+    <value>To remit</value>
+  </data>
+  <data name="TtStatusPaid" xml:space="preserve">
+    <value>Remitted</value>
+  </data>
+  <data name="TtStatusOverpaid" xml:space="preserve">
+    <value>Overpaid</value>
+  </data>
+  <data name="TtExemptionColReason" xml:space="preserve">
+    <value>Exemption reason</value>
+  </data>
+  <data name="TtExemptionColGuestNights" xml:space="preserve">
+    <value>Nights of the exempt guests</value>
+  </data>
+  <data name="TtExemptionMinorAge" xml:space="preserve">
+    <value>Minors (exempt by age)</value>
+  </data>
+  <data name="TtExemptionResident" xml:space="preserve">
+    <value>Residents of the municipality</value>
+  </data>
+  <data name="TtExemptionHealthCare" xml:space="preserve">
+    <value>Health or care reasons</value>
+  </data>
+  <data name="TtExemptionDisabilityCompanion" xml:space="preserve">
+    <value>Companions of disabled people</value>
+  </data>
+  <data name="TtExemptionPublicService" xml:space="preserve">
+    <value>Law enforcement or other public service</value>
+  </data>
+  <data name="TtExemptionHostFamily" xml:space="preserve">
+    <value>Family of the manager</value>
+  </data>
+  <data name="TtExemptionOther" xml:space="preserve">
+    <value>Other exemption of the municipal regulation</value>
+  </data>
+  <data name="TtExemptionErased" xml:space="preserve">
+    <value>Reason no longer available (guest data erased)</value>
+  </data>
+  <data name="TtRemColPeriodFrom" xml:space="preserve">
+    <value>Period from</value>
+  </data>
+  <data name="TtRemColPeriodTo" xml:space="preserve">
+    <value>Period to</value>
+  </data>
+  <data name="TtRemColAmount" xml:space="preserve">
+    <value>Amount remitted (euro)</value>
+  </data>
+  <data name="TtRemColPaidOn" xml:space="preserve">
+    <value>Date of the payment</value>
+  </data>
+  <data name="TtRemColReference" xml:space="preserve">
+    <value>Reference</value>
+  </data>
+  <data name="TtRemColNotes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="TtRemColReceipt" xml:space="preserve">
+    <value>Receipt stored</value>
+  </data>
+  <data name="TtAgentTitle" xml:space="preserve">
+    <value>Account of the accounting agent {0}, {1}: tourist tax collected (recorded on the stays with check-in in the period) and remitted to the municipality (payments whose period lies inside the period), with the line of the year and the list of the payments (nothing is filed by CasaZen)</value>
+  </data>
+  <data name="TtAgentByMonth" xml:space="preserve">
+    <value>by month</value>
+  </data>
+  <data name="TtAgentByQuarter" xml:space="preserve">
+    <value>by quarter</value>
+  </data>
+  <data name="TtAgentSheetAccount" xml:space="preserve">
+    <value>Account</value>
+  </data>
+  <data name="TtAgentColCollected" xml:space="preserve">
+    <value>Tax collected (euro)</value>
+  </data>
+  <data name="TtAgentYear" xml:space="preserve">
+    <value>Year</value>
+  </data>
+  <data name="TtTicinoTitle" xml:space="preserve">
+    <value>Yearly count of the nights of {0} per property, Ticino, to send to the tourist organization by {1}: stays with check-in in the year, nights with and without tourist tax according to the documents issued, amounts in francs from the documents (nothing is filed by CasaZen)</value>
+  </data>
+  <data name="TtTicinoColProperty" xml:space="preserve">
+    <value>Property</value>
+  </data>
+  <data name="TtTicinoColAddress" xml:space="preserve">
+    <value>Address</value>
+  </data>
+  <data name="TtTicinoColTown" xml:space="preserve">
+    <value>Town</value>
+  </data>
+  <data name="TtTicinoColMunicipality" xml:space="preserve">
+    <value>Municipality code (FSO)</value>
+  </data>
+  <data name="TtTicinoColTaxedStays" xml:space="preserve">
+    <value>Stays with tax</value>
+  </data>
+  <data name="TtTicinoColTaxedNights" xml:space="preserve">
+    <value>Nights with tax</value>
+  </data>
+  <data name="TtTicinoColUntaxedStays" xml:space="preserve">
+    <value>Stays without tax on the document</value>
+  </data>
+  <data name="TtTicinoColUntaxedNights" xml:space="preserve">
+    <value>Nights without tax on the document</value>
+  </data>
+  <data name="TtTicinoColNoDocumentStays" xml:space="preserve">
+    <value>Stays without an issued document</value>
+  </data>
+  <data name="TtTicinoColNoDocumentNights" xml:space="preserve">
+    <value>Nights without an issued document</value>
+  </data>
+  <data name="TtTicinoColCurrency" xml:space="preserve">
+    <value>Currency</value>
+  </data>
+  <data name="TtTicinoColAmount" xml:space="preserve">
+    <value>Tourist tax from the documents</value>
+  </data>
 </root>
