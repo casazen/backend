@@ -382,6 +382,7 @@ public class SdiControllersTests
             .BuildServiceProvider();
         var localizer = new Mock<IStringLocalizer<SharedResources>>();
         localizer.Setup(l => l[It.IsAny<string>()]).Returns((string name) => new LocalizedString(name, name, resourceNotFound: true));
+        localizer.Setup(l => l[It.IsAny<string>(), It.IsAny<object[]>()]).Returns((string name, object[] _) => new LocalizedString(name, name, resourceNotFound: true));
         var requestServices = new ServiceCollection().AddSingleton(localizer.Object).BuildServiceProvider();
         var http = new DefaultHttpContext { RequestServices = requestServices };
         http.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(Body));
@@ -408,6 +409,7 @@ public class SdiControllersTests
         org.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(OrgId);
         var localizer = new Mock<IStringLocalizer<SharedResources>>();
         localizer.Setup(l => l[It.IsAny<string>()]).Returns((string name) => new LocalizedString(name, name, resourceNotFound: true));
+        localizer.Setup(l => l[It.IsAny<string>(), It.IsAny<object[]>()]).Returns((string name, object[] _) => new LocalizedString(name, name, resourceNotFound: true));
         var requestServices = new ServiceCollection().AddSingleton(localizer.Object).BuildServiceProvider();
         var identity = new ClaimsIdentity([new Claim("sub", "auth0|collaborator"), new Claim(ClaimTypes.NameIdentifier, "auth0|collaborator")], "test");
         return new FiscalDocumentSdiController(
