@@ -2100,6 +2100,9 @@
   <data name="TodoReason_IdentityVerificationUseChat" xml:space="preserve">
     <value>La verifica dell'identità attende un operatore: l'ospite non ha un indirizzo e-mail, proponi la videochiamata dalla chat del portale</value>
   </data>
+  <data name="TodoNote_IdentityVerificationVideoCall" xml:space="preserve">
+    <value>Videochiamata proposta il {0} (UTC)</value>
+  </data>
   <data name="GuestVideoCall_Subject" xml:space="preserve">
     <value>Videochiamata per il check-in — {0}</value>
   </data>

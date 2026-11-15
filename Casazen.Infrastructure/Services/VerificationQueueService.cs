@@ -194,8 +194,9 @@ public class VerificationQueueService(
     /// <summary>
     /// The operator proposes a video call (E22/F01/US01/T03): the link of the meeting goes to the guest by e-mail, in the guest's language, and is kept nowhere
     /// (the service has no HTTP client: it is not fetched either). The booking must be one the caller reaches whose verification waits for an operator; the
-    /// verification is not decided by this, the operator decides after the call as ever. What is recorded is only that a call was proposed, when and by whom,
-    /// on the open "To do" of the verification (reason and notes), and in the log of the application with the booking and the operator, no link.
+    /// verification is not decided by this, the operator decides after the call as ever. What is recorded is only that a call was proposed, and when, on the
+    /// open "To do" of the verification (its reason and a line of its notes, in the org's language, the id of the operator not in it), and in the log of the
+    /// application with the booking and the operator, no link.
     /// </summary>
     public async Task<VideoCallOutcome> ProposeVideoCallAsync(
         Guid bookingId,
@@ -229,7 +230,7 @@ public class VerificationQueueService(
         if (string.IsNullOrWhiteSpace(guest.Email))
         {
             // Nobody to e-mail: the operator is told, and the "To do" says where else to reach the guest (the chat of the portal the booking came from).
-            await UpdateTodoAsync(session.OrgId, bookingId, "TodoReason_IdentityVerificationUseChat", null, cancellationToken);
+            await UpdateTodoAsync(session.OrgId, bookingId, "TodoReason_IdentityVerificationUseChat", null, null, cancellationToken);
             logger.LogInformation("Video call for booking {BookingId} not sent: the guest has no e-mail address, the portal chat is suggested", bookingId);
             return VideoCallOutcome.GuestUnreachable;
         }
@@ -247,20 +248,32 @@ public class VerificationQueueService(
             return VideoCallOutcome.NotSent;
         }
 
-        // Only that a call was proposed, when and by whom: the link is in the e-mail and nowhere here.
+        // Only that a call was proposed, and when, in the words of the org's language: not the link (it is in the e-mail), and not who proposed it (the id of
+        // an operator says nothing to the person who reads the "To do"; the log of the application keeps the operator).
         var proposedAt = UtcNow().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
-        var note = $"Videochiamata proposta il {proposedAt} UTC da {(string.IsNullOrWhiteSpace(operatorUserId) ? "sistema" : operatorUserId)}";
-        await UpdateTodoAsync(session.OrgId, bookingId, "TodoReason_IdentityVerificationVideoCall", note, cancellationToken);
+        await UpdateTodoAsync(
+            session.OrgId,
+            bookingId,
+            "TodoReason_IdentityVerificationVideoCall",
+            "TodoNote_IdentityVerificationVideoCall",
+            proposedAt,
+            cancellationToken);
         logger.LogInformation("User {UserId} proposed a video call for booking {BookingId}", operatorUserId ?? "none", bookingId);
         return VideoCallOutcome.Sent;
     }
 
     /// <summary>
     /// What the open "To do" of the verification of the booking says after a video call was proposed, or could not be (the guest has no e-mail address): its
-    /// reason, in the language of the org, and, when there is a <paramref name="note"/>, a line added to its notes (the newest 2000 characters are kept). Nothing
-    /// when no "To do" is open.
+    /// reason, in the language of the org, and, when there is a <paramref name="noteKey"/>, a line of the same language added to its notes (the newest 2000
+    /// characters are kept) with <paramref name="noteValue"/> in it. Nothing when no "To do" is open.
     /// </summary>
-    private async Task UpdateTodoAsync(Guid orgId, Guid bookingId, string reasonKey, string? note, CancellationToken cancellationToken)
+    private async Task UpdateTodoAsync(
+        Guid orgId,
+        Guid bookingId,
+        string reasonKey,
+        string? noteKey,
+        string? noteValue,
+        CancellationToken cancellationToken)
     {
         var type = nameof(ActivityType.IdentityVerification);
         var todo = await db.InternalActivities
@@ -280,9 +293,11 @@ public class VerificationQueueService(
             .Where(o => o.Id == orgId)
             .Select(o => o.DefaultLanguage)
             .FirstOrDefaultAsync(cancellationToken);
-        todo.Reason = EmailTexts.Get(reasonKey, OrgInvitationEmails.CultureOf(language));
-        if (note is not null)
+        var culture = OrgInvitationEmails.CultureOf(language);
+        todo.Reason = EmailTexts.Get(reasonKey, culture);
+        if (noteKey is not null)
         {
+            var note = string.Format(culture, EmailTexts.Get(noteKey, culture), noteValue);
             var notes = string.IsNullOrEmpty(todo.Notes) ? note : todo.Notes + "\n" + note;
             todo.Notes = notes.Length > 2000 ? notes[^2000..] : notes;
         }

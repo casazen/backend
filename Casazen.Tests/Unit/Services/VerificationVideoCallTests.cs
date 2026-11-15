@@ -101,11 +101,11 @@ public class VerificationVideoCallTests : IAsyncLifetime
         AssertNoRowHolds("meet.example.test");
         Assert.All(_logs, line => Assert.DoesNotContain(Marker, line, StringComparison.Ordinal));
 
-        // What is kept: that a call was proposed, when and by whom, and the state the operator sees.
+        // What is kept: that a call was proposed, and when, in words (the id of the operator is in the log, not in the "To do"), and the state the operator sees.
         var todo = await _db.InternalActivities.SingleAsync(Ct);
         Assert.Equal(EmailTexts.Get("TodoReason_IdentityVerificationVideoCall", EmailTemplates.DefaultCulture), todo.Reason);
-        Assert.Contains("2026-11-14 10:00", todo.Notes, StringComparison.Ordinal);
-        Assert.Contains(Operator, todo.Notes, StringComparison.Ordinal);
+        Assert.Equal("Videochiamata proposta il 2026-11-14 10:00 (UTC)", todo.Notes);
+        Assert.DoesNotContain(Operator, todo.Notes, StringComparison.Ordinal);
         Assert.Null(todo.CompletedAt);
         Assert.Contains(_logs, line => line.Contains(Operator, StringComparison.Ordinal) && line.Contains("video call", StringComparison.Ordinal));
 
@@ -246,6 +246,30 @@ public class VerificationVideoCallTests : IAsyncLifetime
         var mail = Assert.Single(_emails);
         Assert.StartsWith(subjectStart, mail.Content.Subject, StringComparison.Ordinal);
         Assert.Contains(Marker, mail.Content.HtmlBody, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The line of the "To do" is a text of the host's side, in the language of the org (Italian or English) with the day and the hour of the proposal, and it never
+    /// carries the id of the operator (a raw Auth0 id says nothing to the person who reads it): a second proposal adds a second line.
+    /// </summary>
+    [Theory]
+    [InlineData("it", "Videochiamata proposta il 2026-11-14 10:00 (UTC)")]
+    [InlineData("en", "Video call proposed on 2026-11-14 10:00 (UTC)")]
+    public async Task VideoCall_TheTodoNote_IsInTheLanguageOfTheOrg_WithTheDate_AndWithoutTheOperator(string orgLanguage, string expected)
+    {
+        var org = await _db.Orgs.SingleAsync(Ct);
+        org.DefaultLanguage = orgLanguage;
+        await _db.SaveChangesAsync(Ct);
+        var bookingId = await AddStayAsync("anna@example.com");
+
+        await Service().ProposeVideoCallAsync(bookingId, OrgScope, MeetingUrl, Operator, Ct);
+        _clock.Advance(TimeSpan.FromMinutes(5));
+        await Service().ProposeVideoCallAsync(bookingId, OrgScope, MeetingUrl, null, Ct);
+
+        var todo = await _db.InternalActivities.SingleAsync(Ct);
+        Assert.Equal(expected + "\n" + expected.Replace("10:00", "10:05", StringComparison.Ordinal), todo.Notes);
+        Assert.DoesNotContain("auth0", todo.Notes, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(EmailTexts.Get("TodoReason_IdentityVerificationVideoCall", CultureInfo.GetCultureInfo(orgLanguage)), todo.Reason);
     }
 
     /// <summary>When the e-mail cannot be queued (no provider, the queue down) nothing is recorded and the operator is told: the "To do" is not changed.</summary>

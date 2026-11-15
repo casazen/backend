@@ -64,8 +64,9 @@ public interface IVerificationQueueService
     /// check cannot decide. <paramref name="meetingUrl"/> is the address of the meeting the operator created, with any provider: an absolute https address of
     /// at most 500 characters (<see cref="VideoCallLinks"/>; <see cref="Exceptions.DomainRuleException"/> 422 <c>video_call_url_invalid</c> otherwise). It is
     /// <b>never fetched and never stored</b>: it goes to the guest in an e-mail (template «Videochiamata per il check-in», in the language of the guest's
-    /// check-in page) and the only trace is on the open "To do" of the verification: its reason says a call was proposed, and its notes when and by whom
-    /// (<paramref name="operatorUserId"/>). The verification still waits: the decision after the call is <see cref="RecordManualVerificationAsync"/> (or the
+    /// check-in page) and the only trace is on the open "To do" of the verification: its reason says a call was proposed, and a line of its notes when (the
+    /// operator, <paramref name="operatorUserId"/>, is in the log of the application, not in the "To do"). The verification still waits: the decision after
+    /// the call is <see cref="RecordManualVerificationAsync"/> (or the
     /// rejection) as ever, with <c>Method = Operator</c> and the note «videochiamata». A guest with no e-mail address is
     /// <see cref="VideoCallOutcome.GuestUnreachable"/>: nothing is sent and the "To do" suggests the portal chat.
     /// </summary>

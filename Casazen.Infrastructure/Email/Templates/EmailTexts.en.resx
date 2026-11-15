@@ -2100,6 +2100,9 @@
   <data name="TodoReason_IdentityVerificationUseChat" xml:space="preserve">
     <value>The identity verification waits for an operator: the guest has no e-mail address, propose the video call from the portal chat</value>
   </data>
+  <data name="TodoNote_IdentityVerificationVideoCall" xml:space="preserve">
+    <value>Video call proposed on {0} (UTC)</value>
+  </data>
   <data name="GuestVideoCall_Subject" xml:space="preserve">
     <value>Video call for your check-in — {0}</value>
   </data>
