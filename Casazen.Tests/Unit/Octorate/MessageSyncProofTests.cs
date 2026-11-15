@@ -398,8 +398,12 @@ public class MessageSyncProofTests
             await db.SaveChangesAsync();
         }
 
-        var link = MessageSyncHarness.Inbound("70002", ThreadId, "Completa il check-in online da questo link: https://public.test/checkin/TOKEN")
-            with { Direction = OtaMessageDirection.Outbound, SenderName = "Host", SentAt = sentAt };
+        var link = MessageSyncHarness.Inbound("70002", ThreadId, "Completa il check-in online da questo link: https://public.test/checkin/TOKEN") with
+        {
+            Direction = OtaMessageDirection.Outbound,
+            SenderName = "Host",
+            SentAt = sentAt,
+        };
         h.Client.Setup(c => c.GetChatMessagesAsync(MessageSyncHarness.Accommodation, ThreadId, It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([question, link]);
         await using (var db = h.NewDb())
@@ -414,8 +418,12 @@ public class MessageSyncProofTests
         Assert.Equal(MessageOrigin.Automation, linkRow.Origin);
 
         // A person answers on the channel manager after the link: that is an answer.
-        var answer = MessageSyncHarness.Inbound("70003", ThreadId, "Il check-in e dalle 15.")
-            with { Direction = OtaMessageDirection.Outbound, SenderName = "Host", SentAt = MessageSyncHarness.Now.UtcDateTime.AddMinutes(-10) };
+        var answer = MessageSyncHarness.Inbound("70003", ThreadId, "Il check-in e dalle 15.") with
+        {
+            Direction = OtaMessageDirection.Outbound,
+            SenderName = "Host",
+            SentAt = MessageSyncHarness.Now.UtcDateTime.AddMinutes(-10),
+        };
         h.Client.Setup(c => c.GetChatMessagesAsync(MessageSyncHarness.Accommodation, ThreadId, It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([question, link, answer]);
         await using (var db = h.NewDb())
