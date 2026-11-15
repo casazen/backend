@@ -254,6 +254,44 @@ public class SelfBillingServiceTests
     }
 
     /// <summary>
+    /// PROOF TEST: money rule (the one definition of an active stay). The owner ledger is posted by hand, so the line of a stay cancelled or marked no-show after the posting is still alive: the
+    /// TD17 never integrates it, neither in the draft (left out as «stay not active», with its commission) nor at the issue (a draft made while the stay was active is refused, 409, and made
+    /// again without it).
+    /// </summary>
+    [Fact]
+    public async Task Td17_OnlyActiveStaysAreIntegrated_Test()
+    {
+        await using var rig = await SelfBillingRig.CreateAsync();
+        var kept = await rig.StayAsync(rig.Lake, BookingSource.BookingCom, new DateTime(2026, 10, 5));
+        var cancelled = await rig.StayAsync(rig.Lake, BookingSource.BookingCom, new DateTime(2026, 10, 9));
+        var noShow = await rig.StayAsync(rig.Lake, BookingSource.BookingCom, new DateTime(2026, 10, 14));
+        await rig.AddAsync(rig.Fee(rig.Company, rig.Lake, kept, 100.00m), rig.Fee(rig.Company, rig.Lake, cancelled, 40.00m), rig.Fee(rig.Company, rig.Lake, noShow, 25.00m));
+
+        // Made while the three stays are active: 165.00.
+        var first = await rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, null);
+        var drafted = Assert.Single(first.Drafts);
+        Assert.Equal(165.00m, drafted.TaxableBase);
+        Assert.Empty(first.NotDue);
+        var id = drafted.DocumentId;
+
+        // The cancellation and the no-show come after the posting: the lines are alive in the ledger, the draft is no longer what the plan gives, and the issue refuses it.
+        await rig.ChangeStayAsync(cancelled, status: BookingStatus.Cancelled);
+        await rig.ChangeStayAsync(noShow, noShowAt: new DateTime(2026, 10, 15, 0, 0, 0, DateTimeKind.Utc));
+        var outdated = await Assert.ThrowsAsync<DomainConflictException>(() => rig.Service.IssueAsync(rig.OrgId, id, confirm: true, null));
+        Assert.Equal(FiscalDocumentErrors.DraftOutdated, outdated.Code);
+        Assert.Empty(await rig.Db.FiscalNumberSequences.AsNoTracking().ToListAsync());
+
+        // Made again, the draft is what the active stay gives and the two others are left out with their commission and the reason.
+        var again = await rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, null);
+        var updated = Assert.Single(again.Drafts);
+        Assert.Equal((id, 100.00m), (updated.DocumentId, updated.TaxableBase));
+        var left = Assert.Single(again.NotDue);
+        Assert.Equal((SelfBillingNotDueReasons.StayNotActive, "BookingCom", 2, 65.00m, "EUR"), (left.Reason, left.Channel, left.Stays, left.Amount, left.Currency));
+        var issued = (await rig.Service.IssueAsync(rig.OrgId, id, confirm: true, null)).Document;
+        Assert.Equal((100.00m, 22.00m), (issued.TaxableBase, issued.VatAmount));
+    }
+
+    /// <summary>
     /// PROOF TEST: permission (tenant) rule. A TD17 of another organization, or a document that is not a TD17, is not found (404): nothing is read, issued or discarded; the list of
     /// another organization is empty; and the endpoints of the guest documents refuse to make again, issue, discard or credit a TD17 (422 <c>document_self_billing</c>).
     /// </summary>
@@ -703,6 +741,16 @@ internal sealed class SelfBillingRig : IAsyncDisposable
             ExpediaStay = booking.Id;
         await AddAsync(booking);
         return booking.Id;
+    }
+
+    /// <summary>The state of a stay after the ledger was posted: cancelled (<paramref name="status"/>), or marked no-show (<paramref name="noShowAt"/>).</summary>
+    public async Task ChangeStayAsync(Guid stay, BookingStatus? status = null, DateTime? noShowAt = null)
+    {
+        var booking = await Db.Bookings.SingleAsync(b => b.Id == stay);
+        booking.Status = status ?? booking.Status;
+        booking.NoShowAt = noShowAt ?? booking.NoShowAt;
+        await Db.SaveChangesAsync();
+        Db.ChangeTracker.Clear();
     }
 
     /// <summary>The channel fee line of an owner for a stay: <paramref name="commission"/> is what the portal kept (the ledger line is its negative).</summary>

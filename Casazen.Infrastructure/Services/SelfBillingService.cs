@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,9 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>The draft is the ledger.</b> It is made again from the ledger until it is issued (the lines it had are replaced), and the issue refuses a draft that is no longer what
 /// the ledger, the holder, the portal and the settings give (409 <c>document_draft_outdated</c>). A draft nothing in the ledger supports any more is discarded by the next
 /// generation (no number was given).</item>
+/// <item><b>Only active stays.</b> The ledger is posted by hand (the month-end posting), so the line of a stay cancelled or marked no-show since is still alive until the next posting:
+/// the bookings are read for their channel, their check-out day and whether they are active now (<see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/> and no no-show, the one definition),
+/// and a stay that is not is reported as not due (<see cref="SelfBillingNotDueReasons.StayNotActive"/>), in the drafts and at the issue.</item>
 /// <item><b>Logs</b> carry ids and counts: never a name, a VAT number or an amount.</item>
 /// </list>
 /// </remarks>
@@ -244,7 +248,7 @@ public sealed class SelfBillingService(
 
     private sealed record FeeLine(Guid PropertyId, Guid StayId, Guid OwnerId, string Currency, decimal Amount, string? RuleVersion);
 
-    private sealed record StayFacts(Guid Id, BookingSource Source, DateTime CheckOut);
+    private sealed record StayFacts(Guid Id, BookingSource Source, DateTime CheckOut, BookingStatus Status, DateTime? NoShowAt);
 
     private sealed record OwnerFacts(Guid Id, OwnerEntityKind? EntityKind, string? VatNumber);
 
@@ -268,7 +272,7 @@ public sealed class SelfBillingService(
         var stays = await db.Bookings.AsNoTracking()
             .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(b => b.OrgId == orgId && stayIds.Contains(b.Id))
-            .Select(b => new StayFacts(b.Id, b.Source, b.CheckOutDate))
+            .Select(b => new StayFacts(b.Id, b.Source, b.CheckOutDate, b.Status, b.NoShowAt))
             .ToDictionaryAsync(b => b.Id, ct);
 
         var holderMap = await holders.ForOrgAsync(orgId, ct);
@@ -289,6 +293,14 @@ public sealed class SelfBillingService(
             if (!stays.TryGetValue(stayFees.Key, out var stay))
             {
                 AddNotDue(SelfBillingNotDueReasons.StayNotFound, string.Empty);
+                continue;
+            }
+
+            // The ledger is posted by hand: the line of a stay that was cancelled or marked no-show after the posting is alive until the next one. Only an active stay (the one definition
+            // of the code, as the owner ledger plans it) is integrated, so the draft and the issue never invoice a commission nobody owes.
+            if (!AlloggiatiStatusRules.ActiveBookingStatuses.Contains(stay.Status) || stay.NoShowAt is not null)
+            {
+                AddNotDue(SelfBillingNotDueReasons.StayNotActive, stay.Source.ToString());
                 continue;
             }
 

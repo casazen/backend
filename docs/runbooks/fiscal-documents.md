@@ -529,7 +529,9 @@ stay are always the same owner's.
 
 **The amounts.** The taxable amount is the sum of the `ChannelFee` lines of the owner ledger of the month (a reversal and the line it reverses cancel out; the drafts only read the ledger,
 so a month the owner accounting has not posted yet has no commissions to invoice), in the currency of the stay
-and **in euro only**: a commission in another currency is not converted by a guess, it is reported (`currency_not_supported`). One line for each property
+and **in euro only**: a commission in another currency is not converted by a guess, it is reported (`currency_not_supported`). Only the stays that are **active now** are integrated (the one
+definition, `AlloggiatiStatusRules.ActiveBookingStatuses` and no no-show): the owner ledger is posted by hand, so the line of a stay cancelled or marked no-show after the posting is alive until the
+next posting, and the drafts and the issue leave it out as `stay_not_active`. One line for each property
 (`Commissioni di intermediazione {portal} - {property} - {MM/yyyy}`); a property whose commissions net to nothing has none. The VAT is **integrated at `SelfBilling:VatRatePercent`
 (⚖, 22)** on top, through `FiscalDocumentTotals.FromNet` (cent-accurate, the cent of difference on the largest line), whatever the regime of the holder (a flat-rate regime integrates
 the VAT too): it never comes from the tax rules of the sales documents. The part of the amount that comes from a rule of the agency or from the default of the channel, not from the
@@ -558,7 +560,7 @@ like every recipient; the SDI code and the PEC are the holder's: where the file 
 |---|---|
 | `GET api/fiscal/self-billing?period=yyyy-MM` | the TD17 of the org (drafts and issued ones), the newest month first: holder, portal, month, deadline, amounts, status, state towards the SDI |
 | `GET api/fiscal/self-billing/{id}` | one TD17 with its lines |
-| `POST api/fiscal/self-billing/drafts` `{ period }` | the drafts of the month: counts, one row for each TD17 (`created`, `updated`, `already_issued`, `estimatedAmount`, `changedSinceIssue`), `failed` (a holder that needs one and cannot get one: `owner_issuer_missing`, `issuer_profile_incomplete`, with the fields), `notDue` (the commissions left out and why: `portal_not_configured`, `holder_private_person`, `holder_not_italian`, `holder_not_vat_registered`, `currency_not_supported`, `not_a_portal`, `stay_not_found`) |
+| `POST api/fiscal/self-billing/drafts` `{ period }` | the drafts of the month: counts, one row for each TD17 (`created`, `updated`, `already_issued`, `estimatedAmount`, `changedSinceIssue`), `failed` (a holder that needs one and cannot get one: `owner_issuer_missing`, `issuer_profile_incomplete`, with the fields), `notDue` (the commissions left out and why: `portal_not_configured`, `holder_private_person`, `holder_not_italian`, `holder_not_vat_registered`, `currency_not_supported`, `not_a_portal`, `stay_not_found`, `stay_not_active`) |
 | `POST api/fiscal/self-billing/{id}/issue` `{ confirm: true }` | the issue, after the confirmation |
 | `DELETE api/fiscal/self-billing/{id}` | the discard of a draft |
 

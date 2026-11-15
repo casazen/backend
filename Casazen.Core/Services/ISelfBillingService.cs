@@ -166,6 +166,12 @@ public static class SelfBillingNotDueReasons
 
     /// <summary>The booking of the commission is not in the registry any more.</summary>
     public const string StayNotFound = "stay_not_found";
+
+    /// <summary>
+    /// The booking of the commission is not active now (cancelled, a request or a hold, or marked no-show: <c>AlloggiatiStatusRules.ActiveBookingStatuses</c> and no no-show, the one
+    /// definition): the owner ledger is posted by hand, so the line of a stay that changed after the posting is alive until the next one, and it is never integrated meanwhile.
+    /// </summary>
+    public const string StayNotActive = "stay_not_active";
 }
 
 /// <summary>The stable codes of the self-billed invoices, with the keys of their messages in <c>SharedResources</c>.</summary>
