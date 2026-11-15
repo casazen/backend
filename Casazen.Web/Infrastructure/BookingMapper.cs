@@ -1,3 +1,4 @@
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
@@ -76,6 +77,10 @@ public static class BookingMapper
         // The channel of a booking that came from a channel through the channel manager: what tells it apart from the others (the "OTA" badge). A
         // booking CasaZen made and sent to Octorate has a reservation there too, and is not one: the one definition of «of a channel» decides.
         response.OtaSource = OtaChannelActionPolicy.IsChannelBooking(booking) ? booking.Source.ToString() : null;
+        // The origin the host reads (E27/F01/US01/T01, NF-123): from the source and the attribution of the booking, by the one rule of BookingOrigins. The
+        // source above is unchanged (the invoicing reasons per channel); a booking of the agency's booking engine is AgencySite and has no OtaSource.
+        response.Origin = BookingOrigins.Of(booking).ToString();
+        response.OriginChannel = BookingOrigins.PortalOf(booking);
         response.SpecialRequests = booking.SpecialRequests;
         response.ExpectedArrivalTime = booking.ExpectedArrivalTime;
         response.PaymentOption = booking.PaymentOption.ToString();

@@ -40,7 +40,7 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
     /// <summary>
     /// Full anonymization of <paramref name="guest"/>: every personal field, its document scan, the guests of its stays,
     /// the IP and note of its consent events, the marketing e-mail and IP of its per-channel marketing consents (the consent
-    /// ends), the special requests of its bookings, the name shown on its reviews (DB-12a: the
+    /// ends), the special requests of its bookings with their arrival time and where the guest came from (the attribution, E27/F01/US01/T01), the name shown on its reviews (DB-12a: the
     /// mark and the text stay, anonymous); the words and the names of the copy of its conversations with the channels (E05/F01/US01/T03, ADR-032-R13) and the words of the
     /// items of the approval queue about those conversations (<see cref="ClearApprovalItemsOfGuestAsync"/>, E05/F04/US01);
     /// open check-in links of its bookings expire; and what the CRM holds of the guest
@@ -552,17 +552,28 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
 
     /// <summary>
     /// Special requests are written by the guest (preferences, possibly health data): not needed for the accounts. The expected arrival
-    /// time the guest gave at the checkout (DB-03b) goes with them: a preference of that person, not an accounting record.
+    /// time the guest gave at the checkout (DB-03b) goes with them: a preference of that person, not an accounting record. So does where
+    /// the guest came from (E27/F01/US01/T01, NF-123): the source, the medium and the campaign of the link and the host name of the site, a trace
+    /// of that person's visit tied to the booking that the accounts do not need (the same four values the export of the guest's data gives).
+    /// The booking stays with its source: only the attribution goes, and the origin the host reads, worked out from both, falls back to the one of
+    /// a booking of the booking site with no link of the agency.
     /// </summary>
     private async Task<int> ClearSpecialRequestsAsync(Guid guestId, DateTime now, CancellationToken cancellationToken)
     {
         var bookings = await db.Bookings
-            .Where(b => b.GuestId == guestId && (b.SpecialRequests != "" || b.ExpectedArrivalTime != null))
+            .Where(b => b.GuestId == guestId
+                        && (b.SpecialRequests != "" || b.ExpectedArrivalTime != null
+                            || b.AttributionSource != null || b.AttributionMedium != null
+                            || b.AttributionCampaign != null || b.AttributionReferrerHost != null))
             .ToListAsync(cancellationToken);
         foreach (var booking in bookings)
         {
             booking.SpecialRequests = string.Empty;
             booking.ExpectedArrivalTime = null;
+            booking.AttributionSource = null;
+            booking.AttributionMedium = null;
+            booking.AttributionCampaign = null;
+            booking.AttributionReferrerHost = null;
             booking.UpdatedAt = now;
         }
 

@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Microsoft.EntityFrameworkCore;
@@ -100,6 +101,28 @@ public class Booking : ITenantOwned
     /// </summary>
     [MaxLength(PropertyICalFeed.LabelMaxLength)]
     public string? ChannelLabel { get; set; }
+
+    /// <summary>
+    /// Where the guest of a booking came from (E27/F01/US01/T01, NF-123): the <c>source</c> of the link the guest booked from (<c>agency-site</c> for a link
+    /// the agency copied from CasaZen) or <c>octorate-booking-engine</c> for a reservation of the booking engine of the agency that the import made. With
+    /// <see cref="Source"/> it gives the origin of the booking (<see cref="BookingOrigins.Of(BookingSource, string?)"/>); <see cref="Source"/> itself is never
+    /// changed by it. A lower-case token, at most <see cref="BookingAttribution.MaxSourceLength"/> characters, never personal data
+    /// (<see cref="BookingAttribution.Sanitize"/>); <c>null</c> for every booking that came from no link, and for every booking made before it.
+    /// </summary>
+    [MaxLength(BookingAttribution.MaxSourceLength)]
+    public string? AttributionSource { get; set; }
+
+    /// <summary>The <c>medium</c> of the link the guest booked from (e.g. <c>link</c>); a lower-case token like <see cref="AttributionSource"/>, <c>null</c> when it had none.</summary>
+    [MaxLength(BookingAttribution.MaxMediumLength)]
+    public string? AttributionMedium { get; set; }
+
+    /// <summary>The <c>campaign</c> label of the link the guest booked from (e.g. <c>estate-2026</c>); a lower-case token like <see cref="AttributionSource"/>, <c>null</c> when it had none.</summary>
+    [MaxLength(BookingAttribution.MaxCampaignLength)]
+    public string? AttributionCampaign { get; set; }
+
+    /// <summary>The host name of the site the guest came from (e.g. <c>www.agenzia.it</c>), never the address of a page: no scheme, credentials, port, path or query.</summary>
+    [MaxLength(BookingAttribution.MaxReferrerHostLength)]
+    public string? AttributionReferrerHost { get; set; }
 
     /// <summary>
     /// OTA stay from iCal "da verificare" (CO-21): why a sync of its feed asks the host to check the reservation on the

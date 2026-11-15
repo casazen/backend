@@ -1,3 +1,4 @@
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
@@ -245,6 +246,62 @@ public class BookingServiceTests
         Assert.Equal(property.OrgId, inserted.Guest.OrgId);
         _mockGuestRepository.Verify(x => x.AddAsync(It.IsAny<Guest>()), Times.Never);
         _mockRepository.Verify(x => x.DiscardCheckoutAttemptAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
+    /// <summary>
+    /// PROOF TEST: privacy rule (E27/F01/US01/T01, NF-123). What the checkout sent as the attribution is stored as marketing tokens and a host name only: the
+    /// link of the agency makes the booking one of the site of the agency, an e-mail address or a query that came with it is dropped, the referrer is reduced to
+    /// its host, and the booking itself is never refused for it.
+    /// </summary>
+    [Fact]
+    public async Task CreateDirectBookingAsync_Attribution_IsStoredSanitized_NoPersonalData_AndTheBookingStaysDirect()
+    {
+        var property = ConnectReadyProperty();
+        Booking? inserted = null;
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Booking>()))
+            .Callback((Booking b) => inserted = b)
+            .ReturnsAsync((Booking b) => b);
+        _mockStripe
+            .Setup(x => x.CreateConnectedAccountPaymentIntentAsync(
+                It.IsAny<string>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
+            .ReturnsAsync(new Stripe.PaymentIntent { Id = "pi_attribution", ClientSecret = "pi_attribution_secret" });
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
+        var input = DirectInput(property.Id, checkIn, checkIn.AddDays(3), PaymentOption.Immediate) with
+        {
+            Attribution = new BookingAttributionInput(
+                "Agency-Site",
+                "https://www.agenzia.it/case?nome=Mario",
+                "mario.rossi@example.com",
+                "https://www.agenzia.it:8443/case/trullo?email=mario@example.com"),
+        };
+
+        await _service.CreateDirectBookingAsync(input);
+
+        Assert.NotNull(inserted);
+        Assert.Equal(BookingSource.Direct, inserted.Source);
+        Assert.Equal(("agency-site", null, null, "www.agenzia.it"), (inserted.AttributionSource, inserted.AttributionMedium, inserted.AttributionCampaign, inserted.AttributionReferrerHost));
+        Assert.Equal(BookingOrigin.AgencySite, BookingOrigins.Of(inserted));
+    }
+
+    [Fact]
+    public async Task CreateDirectBookingAsync_WithoutAttribution_StoresNone_AndTheBookingIsOfCasaZenOwnSite()
+    {
+        var property = ConnectReadyProperty();
+        Booking? inserted = null;
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Booking>()))
+            .Callback((Booking b) => inserted = b)
+            .ReturnsAsync((Booking b) => b);
+        _mockStripe
+            .Setup(x => x.CreateConnectedAccountPaymentIntentAsync(
+                It.IsAny<string>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
+            .ReturnsAsync(new Stripe.PaymentIntent { Id = "pi_no_attribution", ClientSecret = "pi_no_attribution_secret" });
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
+
+        await _service.CreateDirectBookingAsync(DirectInput(property.Id, checkIn, checkIn.AddDays(3), PaymentOption.Immediate));
+
+        Assert.NotNull(inserted);
+        Assert.Equal((null, null, null, null), (inserted.AttributionSource, inserted.AttributionMedium, inserted.AttributionCampaign, inserted.AttributionReferrerHost));
+        Assert.Equal(BookingOrigin.CasaZenSite, BookingOrigins.Of(inserted));
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.SiteProfile;
@@ -16,7 +17,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-15.3";
+    public const string Version = "2026-11-15.28";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -340,6 +341,14 @@ public static class DemoShowcaseCatalog
         /// (<c>api/owners/{id}/tax-checks</c>, <c>api/owner-tax-decisions</c>), the showcase writes none of these rows.
         /// </summary>
         public const string OwnerTaxChecks = "owner-tax-checks";
+
+        /// <summary>
+        /// The origin of a booking (E27/F01/US01/T01, NF-123): Appartamento Brera has one stay ahead for each of the four origins the host reads on the booking list and
+        /// the booking sheet: a portal (Airbnb, with its reservation), the site of the agency (a link of the agency, and a reservation of its booking engine), CasaZen's own
+        /// site and a stay the host entered. The attribution is what the checkout and the import record (invented, TEST); the origin itself is worked out from the source and
+        /// the attribution, never stored. Nothing is sent to a channel manager or a payment provider.
+        /// </summary>
+        public const string BookingFourOrigins = "booking-four-origins";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -429,6 +438,7 @@ public static class DemoShowcaseCatalog
         Scenario.ReportChannelCosts,
         Scenario.CleaningAtCheckout,
         Scenario.OwnerTaxChecks,
+        Scenario.BookingFourOrigins,
     ];
 
     /// <summary>
@@ -1051,6 +1061,68 @@ public static class DemoShowcaseCatalog
                         "ABC1234",
                         "fatture.demo@pec.example.com",
                         InvoiceDataSource.Host)),
+                // E27/F01/US01/T01 (Scenario.BookingFourOrigins, NF-123): one stay for each origin the host reads on the booking list, in the nights ahead of the reset. A
+                // portal (Airbnb, with its reservation on the channel manager), the site of the agency by a link of the agency (the attribution of the link) and by a
+                // reservation of its booking engine (the attribution the import writes), CasaZen's own site (no attribution) and a stay the host entered. Invented, like the rest.
+                new(
+                    "origine-portale",
+                    "Ingrid",
+                    "Lindqvist",
+                    "ospite.demo.origine-1@example.com",
+                    6,
+                    2,
+                    BookingStatus.Confirmed,
+                    Scenario.BookingFourOrigins,
+                    BookingSource.Airbnb,
+                    Ota: new DemoOtaTemplate("TEST-OCT-7701", Paid: 120.00m, CommissionIncludedInPayments: false)),
+                new(
+                    "origine-sito-agenzia",
+                    "Matteo",
+                    "Pellegrini",
+                    "ospite.demo.origine-2@example.com",
+                    10,
+                    3,
+                    BookingStatus.Confirmed,
+                    Scenario.BookingFourOrigins,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite,
+                    Attribution: new DemoAttributionTemplate(
+                        BookingAttribution.AgencySiteSource, "link", "estate-2026", "www.agenzia-test.example.com")),
+                new(
+                    "origine-motore-agenzia",
+                    "Beatrice",
+                    "Sala",
+                    "ospite.demo.origine-3@example.com",
+                    16,
+                    2,
+                    BookingStatus.Confirmed,
+                    Scenario.BookingFourOrigins,
+                    BookingSource.Direct,
+                    Ota: new DemoOtaTemplate("TEST-OCT-7702", Paid: 200.00m),
+                    Attribution: new DemoAttributionTemplate(BookingAttribution.OctorateBookingEngineSource)),
+                new(
+                    "origine-sito-casazen",
+                    "Giacomo",
+                    "Donati",
+                    "ospite.demo.origine-4@example.com",
+                    22,
+                    2,
+                    BookingStatus.Confirmed,
+                    Scenario.BookingFourOrigins,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite),
+                new(
+                    "origine-manuale",
+                    "Vittoria",
+                    "Neri",
+                    "ospite.demo.origine-5@example.com",
+                    28,
+                    2,
+                    BookingStatus.Confirmed,
+                    Scenario.BookingFourOrigins,
+                    BookingSource.Manual,
+                    AgreedTotal: 300m,
+                    PriceNote: "Concordato al telefono (dimostrazione)"),
             ]),
         new(
             Key: "casa-trastevere",
@@ -2000,7 +2072,23 @@ public sealed record DemoBookingTemplate(
     DemoOtaTemplate? Ota = null,
     DemoInvoiceData? InvoiceData = null,
     DemoComplianceTemplate? Compliance = null,
-    IReadOnlyList<DemoPaymentTemplate>? Payments = null);
+    IReadOnlyList<DemoPaymentTemplate>? Payments = null,
+    DemoAttributionTemplate? Attribution = null);
+
+/// <summary>
+/// Where the guest of a demo stay came from (E27/F01/US01/T01, NF-123): the attribution the checkout or the import would have recorded on the booking, invented like
+/// the rest. Every value passes <c>BookingAttribution.Sanitize</c> unchanged (a test of the demo checks it), so the origin of the stay (a link of the agency, the booking
+/// engine of the agency) is one the real rules would give.
+/// </summary>
+/// <param name="Source">The source: <c>agency-site</c> for a link of the agency, <c>octorate-booking-engine</c> for a reservation of its booking engine.</param>
+/// <param name="Medium">The medium of the link; <c>null</c> when it had none.</param>
+/// <param name="Campaign">The campaign of the link; <c>null</c> when it had none.</param>
+/// <param name="ReferrerHost">The host of the site the guest came from (a test host at example.com); <c>null</c> when none.</param>
+public sealed record DemoAttributionTemplate(
+    string Source,
+    string? Medium = null,
+    string? Campaign = null,
+    string? ReferrerHost = null);
 
 /// <summary>
 /// A payment of a demo stay (E07/F03/US02, NF-97): written with the stay at the reset, marked as showcase data (<c>TestDataEntities.Payment</c>) and gone with the

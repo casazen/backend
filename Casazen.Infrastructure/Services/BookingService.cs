@@ -1,4 +1,5 @@
 ﻿using Casazen.Core.Authorization;
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Events;
@@ -213,6 +214,10 @@ public class BookingService(
         // once, the database keeps its hash.
         var checkoutToken = CheckoutOutcomes.NewToken();
 
+        // E27/F01/US01/T01 (NF-123): where the guest came from, kept as marketing tokens only. What does not pass the rules is dropped here, never an error:
+        // a stray parameter of a link must not cost the guest the booking, and nothing personal reaches the table.
+        var attribution = BookingAttribution.Sanitize(input.Attribution);
+
         var booking = new Booking
         {
             PropertyId = input.PropertyId,
@@ -228,6 +233,10 @@ public class BookingService(
             ExpectedArrivalTime = expectedArrivalTime,
             Status = BookingStatus.Pending,
             Source = BookingSource.Direct,
+            AttributionSource = attribution.Source,
+            AttributionMedium = attribution.Medium,
+            AttributionCampaign = attribution.Campaign,
+            AttributionReferrerHost = attribution.ReferrerHost,
             BasePrice = basePrice,
             CleaningFee = price.CleaningFee,
             TouristTax = touristTaxAmount,
