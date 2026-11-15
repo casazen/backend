@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.Documents;
+using Casazen.Core.Entities;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -70,6 +71,41 @@ public class OwnerAccountingScopeTests
 
         Assert.IsType<OkObjectResult>(result.Result);
         accounting.Verify(a => a.GetReadinessAsync(OrgId, 2026, 10, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// Permission (E18/F01/US01, review of S029): an approved rule set decides the withholding of every owner whose profile points at it, the seeded Italian draft
+    /// included, so a caller restricted to some properties is refused the approval before anything is read or written (403); a caller of the whole org approves it.
+    /// </summary>
+    [Fact]
+    public async Task ApprovePolicy_CallerWithoutAnOrgWideReach_GetsForbidden_Test()
+    {
+        var policyId = Guid.NewGuid();
+        var request = new ApproveOwnerPolicyRequest { ApprovedByName = "TEST Commercialista", SourceSha256 = new string('c', 64) };
+        foreach (var restricted in new[] { new HostScope(OrgId, GrantedToUserId: UserId), new HostScope(OrgId, OwnerId: UserId) })
+        {
+            var profiles = new Mock<IOwnerFiscalProfileService>(MockBehavior.Strict);
+            var controller = new OwnerFiscalProfilesController(
+                profiles.Object, Org(), Mock.Of<IAuthorizationService>(), Scope(restricted), NullLogger<OwnerFiscalProfilesController>.Instance);
+            controller.ControllerContext = Context();
+
+            var refused = await controller.ApprovePolicy(policyId, request);
+
+            Assert.IsType<ForbidResult>(refused.Result);
+            profiles.VerifyNoOtherCalls();
+        }
+
+        var approver = new Mock<IOwnerFiscalProfileService>();
+        approver.Setup(p => p.ApprovePolicyAsync(OrgId, policyId, "TEST Commercialista", UserId, request.SourceSha256, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OwnerAccountingPolicy { OrgId = OrgId, Jurisdiction = "IT", RuleCode = "IT-STR-WITHHOLDING", Version = "2026.1" });
+        var wholeOrg = new OwnerFiscalProfilesController(
+            approver.Object, Org(), Mock.Of<IAuthorizationService>(), Scope(new HostScope(OrgId)), NullLogger<OwnerFiscalProfilesController>.Instance);
+        wholeOrg.ControllerContext = Context();
+
+        var served = await wholeOrg.ApprovePolicy(policyId, request);
+
+        Assert.IsType<OkObjectResult>(served.Result);
+        approver.Verify(p => p.ApprovePolicyAsync(OrgId, policyId, "TEST Commercialista", UserId, request.SourceSha256, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     /// <summary>Calls every HTTP action of the controller with empty arguments (a refusal needs none) and checks the answer is a 403.</summary>

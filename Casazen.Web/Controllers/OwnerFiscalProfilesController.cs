@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
@@ -20,6 +21,7 @@ public class OwnerFiscalProfilesController(
     IOwnerFiscalProfileService profiles,
     IOrgContextResolver orgContextResolver,
     IAuthorizationService authorizationService,
+    IHostScopeResolver hostScopeResolver,
     ILogger<OwnerFiscalProfilesController> logger) : ControllerBase
 {
     /// <summary>The profiles of an owner, the newest first; full values only with <c>agency.owner.financial.manage</c>.</summary>
@@ -112,11 +114,13 @@ public class OwnerFiscalProfilesController(
     /// <summary>
     /// Records the qualified accountant's approval (<c>{ approvedByName, sourceSha256? }</c>); an approved rule set never changes (409). A rule set whose source is not
     /// pinned (the seeded Italian draft, <c>sourceSha256</c> empty) needs the SHA-256 of the document the accountant checked (422 <c>owner_policy_invalid</c> with
-    /// <c>sourceSha256</c> otherwise), which pins it.
+    /// <c>sourceSha256</c> otherwise), which pins it. An approved rule set decides the withholding of every owner whose profile points at it, so the approval needs an
+    /// org-wide reach, like the rest of the owner accounting: 403 for a caller restricted to some properties, before anything is read.
     /// </summary>
     [HttpPost("api/owner-accounting/policies/{policyId:guid}/approve")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
     [ProducesResponseType(typeof(OwnerAccountingPolicyDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
@@ -124,6 +128,8 @@ public class OwnerFiscalProfilesController(
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
         if (orgId is null)
+            return Forbid();
+        if (await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted) is not { IsOrgWide: true })
             return Forbid();
 
         var policy = await profiles.ApprovePolicyAsync(
