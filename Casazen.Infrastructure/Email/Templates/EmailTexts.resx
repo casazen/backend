@@ -2774,4 +2774,28 @@
   <data name="FiscalDocumentDelivery_Kind_CreditNote" xml:space="preserve">
     <value>Nota di credito</value>
   </data>
+  <data name="AccountantPackage_Subject" xml:space="preserve">
+    <value>Pacchetto per il commercialista: {0} di {1}</value>
+  </data>
+  <data name="AccountantPackage_Greeting" xml:space="preserve">
+    <value>Buongiorno,</value>
+  </data>
+  <data name="AccountantPackage_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ha preparato con CasaZen il pacchetto di &lt;strong&gt;{1}&lt;/strong&gt;: i documenti e i riepiloghi del mese, con un indice che elenca ogni file e la sua impronta SHA-256. Lo scarichi dal link qui sotto.</value>
+  </data>
+  <data name="AccountantPackage_Cta" xml:space="preserve">
+    <value>Scarica il pacchetto</value>
+  </data>
+  <data name="AccountantPackage_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="AccountantPackage_Validity" xml:space="preserve">
+    <value>Il link è valido fino al {0}.</value>
+  </data>
+  <data name="AccountantPackage_NoAttachment" xml:space="preserve">
+    <value>Per proteggere i dati il pacchetto non è allegato a questa e-mail: si scarica solo da questo link.</value>
+  </data>
+  <data name="AccountantPackage_NotYou" xml:space="preserve">
+    <value>Il link è personale: chi lo riceve può scaricare il pacchetto fino alla scadenza. Se non aspettavi questo messaggio, ignoralo e avvisa {0}.</value>
+  </data>
 </root>

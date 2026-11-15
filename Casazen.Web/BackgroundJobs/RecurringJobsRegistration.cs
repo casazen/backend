@@ -36,6 +36,9 @@ public static class RecurringJobsRegistration
         // E12/F01/US01/T02: the drafts of the stays that ended and their automatic issue, only while the issuance of the fiscal documents is on.
         ConfigureFiscalDocumentJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.FiscalDocumentIssuance));
 
+        // E15/F01/US02/T02 (NF-101): the package of the previous month goes to the accountant of every org that asked for it, only while the package of the accountant is on.
+        ConfigureAccountantPackageJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.AccountantPackage));
+
         // E10/F01/US01/T04: the "To do" of the flows to complete and of a lost connection, only while the activation with Octorate is on.
         ConfigureOnboardingJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateOnboarding));
 
@@ -471,6 +474,26 @@ public static class RecurringJobsRegistration
             FiscalDocumentsDueJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             FiscalDocumentsDueJob.Cron,
+            new RecurringJobOptions { TimeZone = RomeCalendar.TimeZone });
+    }
+
+    /// <summary>
+    /// The monthly package of the accountant (E15/F01/US02/T02, NF-101): every day at 06:00 Europe/Rome, only with <see cref="FeatureFlags.AccountantPackage"/> on. Each run sends the previous month to the accountant of
+    /// every org whose monthly send is on and whose day has come, once for each org and month, and deletes the packages whose link has expired. With the flag off nothing is made or sent by time and the schedule of an
+    /// earlier deploy is removed (<c>RemoveIfExists</c>).
+    /// </summary>
+    private static void ConfigureAccountantPackageJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(AccountantPackageMonthlyJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<AccountantPackageMonthlyJob>(
+            AccountantPackageMonthlyJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            AccountantPackageMonthlyJob.Cron,
             new RecurringJobOptions { TimeZone = RomeCalendar.TimeZone });
     }
 
