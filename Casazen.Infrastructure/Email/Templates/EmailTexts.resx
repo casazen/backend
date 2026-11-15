@@ -2094,6 +2094,9 @@
   <data name="VerificationOperatorAlert_Reason_MinorExcluded" xml:space="preserve">
     <value>L'ospite da verificare è minorenne: la verifica biometrica non si applica.</value>
   </data>
+  <data name="VerificationOperatorAlert_Reason_LegalTextNotApproved" xml:space="preserve">
+    <value>Il testo del consenso alla verifica biometrica non è ancora approvato dal legale: in produzione la verifica con il viso non viene offerta e l'identità va verificata da un operatore.</value>
+  </data>
   <data name="VerificationOperatorAlert_Reason_Other" xml:space="preserve">
     <value>La verifica dell'identità richiede un operatore.</value>
   </data>

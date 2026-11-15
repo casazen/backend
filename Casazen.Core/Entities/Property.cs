@@ -46,6 +46,18 @@ public class Property : ITenantOwned
     [MaxLength(100)]
     public string? Slug { get; set; }
 
+    /// <summary>
+    /// The random token in the address of the door page of the property (E22/F01/US02/T01, NF-24, NF-50): the printed QR code points to
+    /// <c>{App:PublicSiteBaseUrl}/checkin/porta/{DoorToken}</c>, where the guest who arrives proves the stay with its booking code (or its surname) and the
+    /// arrival date and is taken to the identity step of its check-in. 32 url-safe characters (<see cref="PropertyDoorTokens"/>), unique in the table and
+    /// derived from nothing (the id of a property is enumerable, the token is not). Made the first time the host asks for the code; replaced by «Rigenera», and the
+    /// printed code of the old one stops working at once. <c>null</c> for a property whose code was never asked. Never serialized with the property: only
+    /// the host endpoint of the code returns it.
+    /// </summary>
+    [MaxLength(PropertyDoorTokens.MaxLength)]
+    [JsonIgnore]
+    public string? DoorToken { get; set; }
+
     [MaxLength(2000)]
     public string Description { get; set; } = string.Empty;
 

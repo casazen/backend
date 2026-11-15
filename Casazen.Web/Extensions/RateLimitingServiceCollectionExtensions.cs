@@ -25,7 +25,12 @@ public static class RateLimitingServiceCollectionExtensions
 {
     public const string SectionName = "RateLimiting";
 
-    private const string TokenRouteValue = "token";
+    /// <summary>The route value the check-in policies partition by: <c>{token}</c>.</summary>
+    public const string DefaultTokenRouteValue = "token";
+
+    /// <summary>The route value of the door policy: <c>{doorToken}</c> of <c>api/public/checkin/door/{doorToken}</c>.</summary>
+    public const string DoorTokenRouteValue = "doorToken";
+
     private static readonly TimeSpan OneMinute = TimeSpan.FromMinutes(1);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -39,6 +44,9 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.PublicGuestSession, 10, TimeSpan.FromMinutes(5)),
         new(RateLimitPolicies.GuestCheckIn, 10, OneMinute, "CheckIn:RateLimitPermitLimit", PartitionByToken: true),
         new(RateLimitPolicies.GuestCheckInSubmit, 3, OneMinute, "CheckIn:SubmitRateLimitPermitLimit", PartitionByToken: true),
+
+        // The guest at the door (E22/F01/US02/T01): a booking code or a surname and a date open the check-in link of a stay: 5 a minute per client IP and door token.
+        new(RateLimitPolicies.PublicDoorCheckIn, 5, OneMinute, PartitionByToken: true, TokenRouteValue: DoorTokenRouteValue),
         new(RateLimitPolicies.PublicTouristTaxCalc, 30, OneMinute, "SeoTouristTax:RateLimitPermitLimit"),
         new(RateLimitPolicies.PublicSeoEvents, 60, OneMinute),
         new(RateLimitPolicies.PublicResolveHost, 60, OneMinute, "PublicHost:RateLimitPermitLimit"),
@@ -159,9 +167,10 @@ public static class RateLimitingServiceCollectionExtensions
 
                     var partitionByToken = definition.PartitionByToken;
                     var partitionByUser = definition.PartitionByUser;
+                    var tokenRouteValue = definition.TokenRouteValue;
                     options.AddPolicy(definition.Name, httpContext =>
                         RateLimitPartition.GetFixedWindowLimiter(
-                            GetPartitionKey(httpContext, partitionByToken, partitionByUser),
+                            GetPartitionKey(httpContext, partitionByToken, partitionByUser, tokenRouteValue),
                             _ => limiterOptions));
                 }
 
@@ -199,11 +208,15 @@ public static class RateLimitingServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Client IP partition, plus a hash of the <c>{token}</c> route value when the policy asks for it. A policy partitioned by
-    /// person (<paramref name="partitionByUser"/>) counts the signed-in account instead, whatever the network it comes from;
+    /// Client IP partition, plus a hash of the <c>{token}</c> route value (the one named by <paramref name="tokenRouteValue"/>) when the policy asks for it. A
+    /// policy partitioned by person (<paramref name="partitionByUser"/>) counts the signed-in account instead, whatever the network it comes from;
     /// a caller with no account falls back to its IP.
     /// </summary>
-    public static string GetPartitionKey(HttpContext httpContext, bool partitionByToken, bool partitionByUser = false)
+    public static string GetPartitionKey(
+        HttpContext httpContext,
+        bool partitionByToken,
+        bool partitionByUser = false,
+        string tokenRouteValue = DefaultTokenRouteValue)
     {
         if (partitionByUser && httpContext.User.GetUserId() is { Length: > 0 } userId)
         {
@@ -213,7 +226,7 @@ public static class RateLimitingServiceCollectionExtensions
 
         var ipKey = ClientIp.GetRateLimitKey(httpContext);
         if (!partitionByToken
-            || httpContext.Request.RouteValues[TokenRouteValue]?.ToString() is not { Length: > 0 } token)
+            || httpContext.Request.RouteValues[tokenRouteValue]?.ToString() is not { Length: > 0 } token)
         {
             return ipKey;
         }
@@ -276,10 +289,12 @@ public static class RateLimitingServiceCollectionExtensions
 /// <param name="LegacyPermitLimitKey">Configuration key of the limit used before FD-10, still honoured.</param>
 /// <param name="PartitionByToken">Also partition by the hash of the <c>{token}</c> route value.</param>
 /// <param name="PartitionByUser">Partition by the signed-in account instead of the client IP (a signed-in endpoint only).</param>
+/// <param name="TokenRouteValue">The route value <paramref name="PartitionByToken"/> hashes: <c>token</c>, or <c>doorToken</c> for the door of a property.</param>
 public sealed record RateLimitPolicyDefinition(
     string Name,
     int DefaultPermitLimit,
     TimeSpan DefaultWindow,
     string? LegacyPermitLimitKey = null,
     bool PartitionByToken = false,
-    bool PartitionByUser = false);
+    bool PartitionByUser = false,
+    string TokenRouteValue = RateLimitingServiceCollectionExtensions.DefaultTokenRouteValue);

@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.OwnerPortal;
@@ -33,25 +34,54 @@ public class OwnerPortalBookingSummaryDto
 }
 
 /// <summary>
-/// Withholding tax summary for owner portal (ADR-011-R2).
-/// Aggregated withholding information for tax purposes.
+/// The withholding of the owner in a year (ADR-011-R2, E18/F01/US02/T01, <c>GET api/owner-portal/withholding</c>): what the agency withheld on the owner's payouts, by month and property, and the
+/// Certificazione Unica of the year once the agency reviewed it. Only the owner's own profiles; amounts in euro to the cent.
 /// </summary>
 public class OwnerPortalWithholdingDto
 {
     public int Year { get; set; }
+
+    /// <summary>Always <c>EUR</c>.</summary>
+    public string Currency { get; set; } = "EUR";
+
     public decimal TotalWithheld { get; set; }
+
     public IReadOnlyList<OwnerPortalWithholdingDetailDto> Details { get; set; } = [];
+
+    /// <summary>The Certificazione Unica of the year of each owner profile the caller reads; empty until the agency reviewed it.</summary>
+    public IReadOnlyList<OwnerPortalCuDto> CuStatements { get; set; } = [];
 }
 
 /// <summary>
-/// Detailed withholding entry.
+/// What was withheld for one property in one month (a reversal taking its decision away). A payout of before the facts were read from the ledger names no property: its line has an empty id and
+/// name.
 /// </summary>
 public class OwnerPortalWithholdingDetailDto
 {
+    public Guid AgencyId { get; set; }
+    public string AgencyName { get; set; } = string.Empty;
     public Guid PropertyId { get; set; }
     public string PropertyName { get; set; } = string.Empty;
     public int Month { get; set; }
+    public decimal GrossBase { get; set; }
     public decimal AmountWithheld { get; set; }
+}
+
+/// <summary>
+/// The Certificazione Unica data of the owner for the year as the agency stored it: its state, the base and the withholding in euro, the F24 tax code and how the record was made
+/// (<c>owner</c>, <c>signatory</c> or <c>share</c>). Never the recipient data, the stays or the co-owners: those are the agency's.
+/// </summary>
+public class OwnerPortalCuDto
+{
+    public Guid AgencyId { get; set; }
+    public string AgencyName { get; set; } = string.Empty;
+    public int Year { get; set; }
+    public TaxFilingState State { get; set; }
+    public DateTime GeneratedAt { get; set; }
+    public decimal GrossBase { get; set; }
+    public decimal Withheld { get; set; }
+    public string? TaxCode { get; set; }
+    public string Attribution { get; set; } = string.Empty;
 }
 
 /// <summary>

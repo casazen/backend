@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -138,6 +139,82 @@ public sealed class WithholdingService(AppDbContext db, TimeProvider time) : IWi
             .ToList();
 
         return new F24MonthData(year, month, lines, breakdown);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>Reads the row of the year of the org, decrypts and parses its payload; the stored data is what the accountant reviewed, so nothing here builds or changes it.</remarks>
+    public Task<StoredCuDataset> GetCuDatasetAsync(Guid orgId, int year, CancellationToken cancellationToken = default) =>
+        ReadCuDatasetAsync(db, orgId, year, cancellationToken);
+
+    /// <summary>The stored annual data of the year with its records: the one reader of the exports and of the draft CU of an owner.</summary>
+    internal static async Task<StoredCuDataset> ReadCuDatasetAsync(AppDbContext db, Guid orgId, int year, CancellationToken cancellationToken)
+    {
+        RequireYear(year);
+
+        var dataset = await db.TaxReportingDatasets.AsNoTracking()
+            .FirstOrDefaultAsync(d => d.OrgId == orgId && d.Kind == TaxReportingDataset.CertificazioneUnica && d.Year == year, cancellationToken)
+            ?? throw new NotFoundException($"Tax dataset of {year} was not found") { Code = OwnerPayoutErrors.DatasetNotFound, MessageKey = "TaxDatasetNotFound" };
+        var records = CuDatasetPayload.Parse(dataset.PayloadJson);
+        if (!CuDatasetPayload.IsDetailed(records))
+            throw new DomainRuleException(TaxReportingErrors.CuDatasetOutdated, "CuDatasetOutdated");
+
+        return new StoredCuDataset(dataset, records);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// One line for each month and tax code of the evidence of the year (a month with two codes has two lines, never one merged), with the F24 record of the month when it has that code.
+    /// An F24 that was never generated, or one not marked as paid, has its columns empty: the 770 is told what was withheld, and never that something was paid that nobody recorded.
+    /// </remarks>
+    public async Task<Withholding770Data> Get770DataAsync(Guid orgId, int year, CancellationToken cancellationToken = default)
+    {
+        RequireYear(year);
+
+        var evidence = await OwnerPayoutService.F24EvidenceQuery(db, orgId)
+            .Where(e => e.PeriodYear == year)
+            .ToListAsync(cancellationToken);
+        if (evidence.Count == 0)
+            throw new DomainRuleException(OwnerPayoutErrors.NoObligations, "TaxNoObligations");
+
+        var records = await db.F24Records.AsNoTracking()
+            .Where(f => f.OrgId == orgId && f.ReferenceYear == year)
+            .ToListAsync(cancellationToken);
+        var lines = evidence
+            .GroupBy(e => (e.PeriodMonth, TaxCode: e.TaxCode ?? string.Empty))
+            .OrderBy(g => g.Key.PeriodMonth)
+            .ThenBy(g => g.Key.TaxCode, StringComparer.Ordinal)
+            .Select(g =>
+            {
+                var f24 = records.FirstOrDefault(f => f.ReferenceMonth == g.Key.PeriodMonth && string.Equals(f.TaxCode, g.Key.TaxCode, StringComparison.Ordinal));
+                return new Withholding770Line(
+                    g.Key.PeriodMonth,
+                    g.Key.TaxCode,
+                    g.Sum(e => e.GrossBase ?? 0m),
+                    g.Sum(e => e.Amount ?? 0m),
+                    g.Count(),
+                    f24?.TotalAmount,
+                    f24 is null ? null : DateOnly.FromDateTime(f24.DueDate),
+                    f24?.PaidAt is { } paid ? RomeCalendar.DateInRome(paid) : null,
+                    f24?.FilingState,
+                    f24?.HandoffReference,
+                    f24?.ReceiptReference);
+            })
+            .ToList();
+        return new Withholding770Data(year, lines);
+    }
+
+    /// <inheritdoc />
+    public async Task<ContractsCommunication> GetContractsCommunicationAsync(Guid orgId, int year, CancellationToken cancellationToken = default)
+    {
+        RequireYear(year);
+
+        return await ContractsCommunicationBuilder.BuildAsync(db, orgId, year, cancellationToken);
+    }
+
+    private static void RequireYear(int year)
+    {
+        if (year is < 2000 or > 2100)
+            throw new DomainRuleException(OwnerAccountingErrors.PeriodInvalid, "OwnerPeriodInvalid");
     }
 
     /// <summary>The F24 due date: the 16th of the month after the reference month (ADR-018-R8).</summary>

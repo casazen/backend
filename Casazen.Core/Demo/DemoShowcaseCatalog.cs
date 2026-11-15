@@ -358,6 +358,15 @@ public static class DemoShowcaseCatalog
         public const string PayoutFacts = "payout-facts";
 
         /// <summary>
+        /// The year-end tax reporting (E18/F01/US02, NF-117, ⚖ I6 and T2): what the files for the accountant and for the comune say of two private TEST owners of an Italian house
+        /// they share: the Certificazione Unica record of the signatory with the share of its co-owner, or each co-owner on its own name when the mandate says per share; the 770 line
+        /// of the month with the F24 that paid it; two short lets the agency handled without withholding on them (Airbnb withholds itself, Booking.com pays the owner); and the
+        /// tourist tax of a comune for the year, owed and remitted. A template of what <c>api/withholding/annual/{year}/export</c>, <c>api/withholding/770/{year}/export</c>,
+        /// <c>api/withholding/contracts-communication/{year}/export</c> and <c>api/tourist-tax/year-end/{year}/declaration</c> answer; the showcase writes none of these rows.
+        /// </summary>
+        public const string TaxReportingYearEnd = "tax-reporting-year-end";
+
+        /// <summary>
         /// The origin of a booking (E27/F01/US01/T01, NF-123): Appartamento Brera has one stay ahead for each of the four origins the host reads on the booking list and
         /// the booking sheet: a portal (Airbnb, with its reservation), the site of the agency (a link of the agency, and a reservation of its booking engine), CasaZen's own
         /// site and a stay the host entered. The attribution is what the checkout and the import record (invented, TEST); the origin itself is worked out from the source and
@@ -463,6 +472,7 @@ public static class DemoShowcaseCatalog
         Scenario.OwnerTaxChecks,
         Scenario.CleaningRecharge,
         Scenario.PayoutFacts,
+        Scenario.TaxReportingYearEnd,
         Scenario.BookingFourOrigins,
         Scenario.IstatRegionCoverage,
     ];
@@ -664,6 +674,22 @@ public static class DemoShowcaseCatalog
         new("diretta-pagata-in-base", "TEST Mario Rossi", BookingSource.Manual, 900.00m, 18.00m, true, PortalAccountHolder.Owner, Services.PayoutStayReasons.InBase, Scenario.PayoutFacts),
         new("airbnb-conto-agenzia", "TEST Mario Rossi", BookingSource.Airbnb, 600.00m, 0m, false, PortalAccountHolder.Agency, Services.OwnerWithholdingRules.AlreadyWithheldByPortal, Scenario.PayoutFacts),
         new("booking-conto-proprietario", "TEST Mario Rossi", BookingSource.BookingCom, 450.00m, 0m, false, PortalAccountHolder.Owner, Services.OwnerWithholdingRules.NoCollectionOrIntervention, Scenario.PayoutFacts),
+    ];
+
+    /// <summary>
+    /// The lines of the year-end files of the demo (E18/F01/US02, NF-117, ⚖ I6 and T2): the Certificazione Unica record of the signatory of a house of two TEST co-owners (it carries
+    /// the share of its co-owner) and the record of the co-owner on its own name (the other way the mandate can say it, never both for the same house), the 770 line of the month with
+    /// the F24 that paid it, the two short lets of the payout of <see cref="PayoutFactsExamples"/> that the agency did not withhold on, and the tourist tax of a comune owed and
+    /// remitted in part. Invented, TEST owners and amounts in euro, the withholding at the rate of the portals; a template only.
+    /// </summary>
+    public static IReadOnlyList<DemoYearEndExportTemplate> YearEndExportExamples { get; } =
+    [
+        new("cu-firmatario-con-quota", DemoYearEndFile.Cu, "TEST Mario Rossi", 1500.00m, 315.00m, null, Services.CuAttributions.Signatory, Scenario.TaxReportingYearEnd),
+        new("cu-per-quota", DemoYearEndFile.Cu, "TEST Giulia Bianchi", 500.00m, 105.00m, null, Services.CuAttributions.Share, Scenario.TaxReportingYearEnd),
+        new("770-ottobre", DemoYearEndFile.Tax770, "2026-10", 1500.00m, 315.00m, 315.00m, null, Scenario.TaxReportingYearEnd),
+        new("contratto-airbnb-trattenuta-dal-portale", DemoYearEndFile.Contracts, "TEST Mario Rossi", 600.00m, 0m, null, Services.OwnerWithholdingRules.AlreadyWithheldByPortal, Scenario.TaxReportingYearEnd),
+        new("contratto-booking-conto-proprietario", DemoYearEndFile.Contracts, "TEST Mario Rossi", 450.00m, 0m, null, Services.OwnerWithholdingRules.NoCollectionOrIntervention, Scenario.TaxReportingYearEnd),
+        new("tassa-di-soggiorno-milano", DemoYearEndFile.TouristTax, "Milano", null, 126.00m, 100.00m, null, Scenario.TaxReportingYearEnd),
     ];
 
     /// <summary>
@@ -2477,6 +2503,38 @@ public sealed record DemoPayoutStayTemplate(
     bool PostedFromPayments,
     PortalAccountHolder AccountHolder,
     string Reason,
+    string Scenario);
+
+/// <summary>The year-end files of the tax reporting (E18/F01/US02) a line of the demo is in.</summary>
+public enum DemoYearEndFile
+{
+    /// <summary>The Certificazione Unica data: one line for each recipient.</summary>
+    Cu,
+
+    /// <summary>The data of the 770: one line for each month and tax code.</summary>
+    Tax770,
+
+    /// <summary>The communication of the short-let contracts handled without withholding: one line for each contract.</summary>
+    Contracts,
+
+    /// <summary>The year-end tourist tax: one line for each comune.</summary>
+    TouristTax,
+}
+
+/// <summary>
+/// A line of a year-end file of the demo (E18/F01/US02): the <paramref name="File"/> it is in, whom it is about (an owner, a month or a comune), the base in euro it is made on (none for
+/// the tourist tax), the amount due (the withholding, or the tourist tax owed), the amount settled (the F24 paid, or the tourist tax remitted; none when the file does not say) and, in
+/// <paramref name="Detail"/>, how a Certificazione Unica record was made out (<see cref="Services.CuAttributions"/>) or why the agency did not withhold on a contract
+/// (<see cref="Services.OwnerWithholdingRules"/>).
+/// </summary>
+public sealed record DemoYearEndExportTemplate(
+    string Key,
+    DemoYearEndFile File,
+    string Subject,
+    decimal? Base,
+    decimal Due,
+    decimal? Settled,
+    string? Detail,
     string Scenario);
 
 /// <summary>

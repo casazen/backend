@@ -30,7 +30,8 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Facts around a line.</b> The stay of a line (a booking: from its source, or from the booking a payment is of) gives the days, the channel and the code;
 /// the property its name. A line whose booking is gone keeps the days of the ledger line.</item>
 /// <item><b>Tourist tax box.</b> The tax of the stays of the statement (the stays with revenue in it) that the agency collects: <see cref="Booking.TouristTax"/> of
-/// each, less the stays whose channel collects it itself (a channel of the confirmed list of the issuer, or the collector of the stay as the host's tourist tax decides:
+/// each, less the stays whose channel collects it itself (a channel of the list the guest documents use for the issuer: the one it confirmed, else the shipped default of a Swiss
+/// issuer, <see cref="IGuestDocumentLineBuilder.PlatformCollectedChannelsOf"/>; or the collector of the stay as the host's tourist tax decides:
 /// the active rule of the channel in the comune, else the one the host declared, else the one confirmed with the calculation), and only for a stay that owes the tax
 /// (an active booking that is not a no-show). For information only, in the currency of the property, never in a total.</item>
 /// <item><b>Who holds the portal account.</b> The channel fee of a stay is flagged as recharged by the agency when the invoice of the property manager recharges it:
@@ -57,7 +58,8 @@ public sealed class OwnerStatementDocuments(
     IInternalActivityService activities,
     TimeProvider time,
     ILogger<OwnerStatementDocuments> logger,
-    IPortalAccountHolderResolver? holders = null) : IOwnerStatementDocuments
+    IPortalAccountHolderResolver? holders = null,
+    IGuestDocumentLineBuilder? documentLines = null) : IOwnerStatementDocuments
 {
     /// <summary>The entity type of the «To do» about a statement whose owner could not be told that it was published.</summary>
     public const string OwnerStatementVersionEntityType = "OwnerStatementVersion";
@@ -486,8 +488,24 @@ public sealed class OwnerStatementDocuments(
         booking.Source == BookingSource.OtherChannel && !string.IsNullOrWhiteSpace(booking.ChannelLabel) ? booking.ChannelLabel.Trim() : booking.Source.ToString();
 
     /// <summary>
+    /// The channels whose portal collects the tourist tax itself for the issuer of the org, the very answer the guest documents use
+    /// (<see cref="IGuestDocumentLineBuilder.PlatformCollectedChannelsOf"/>): the list the issuer confirmed (an empty one included: «no portal collects it» is an answer), and
+    /// while it has confirmed none the shipped default of a Swiss issuer (<c>SwissTouristTax:PlatformCollected</c>), so the box of the statement and the documents of the stays
+    /// never disagree on who collects. An org with no issuer profile is read as a new one (Italy, nothing confirmed). A service built without the line builder reads only what
+    /// the issuer confirmed.
+    /// </summary>
+    private IReadOnlyList<BookingSource> PlatformCollectedChannelsOf(Guid orgId, OrgFiscalIssuerProfile? issuer)
+    {
+        if (documentLines is null)
+            return issuer?.PlatformCollectedTouristTaxChannels ?? [];
+
+        return documentLines.PlatformCollectedChannelsOf(issuer ?? new OrgFiscalIssuerProfile { OrgId = orgId });
+    }
+
+    /// <summary>
     /// The tourist tax of the stays that have revenue in the statement, collected by the agency: the tax stored on the booking, except where the channel collects
-    /// it itself (a channel of the confirmed list of the issuer, or the collector of the stay: <see cref="TouristTaxCollectorRules.Decide"/> from the active rule of
+    /// it itself (a channel of the list of the issuer as the guest documents read it, <see cref="PlatformCollectedChannelsOf"/>, or the collector of the stay:
+    /// <see cref="TouristTaxCollectorRules.Decide"/> from the active rule of
     /// the channel in the comune and the collector the host declared, else the one confirmed with the calculation). The stays whose revenue a reversal took back to
     /// nothing are not stays of the statement, and neither is a stay that owes nothing: a cancelled booking, a request or a no-show can keep revenue (a payment the
     /// guest does not get back) but its tax is not due, so it is never in the box (<see cref="AlloggiatiStatusRules"/>, the one definition of an active booking).
@@ -509,8 +527,9 @@ public sealed class OwnerStatementDocuments(
             return [];
 
         // Who collects the tax of a stay is what the host's tourist tax says (TouristTaxCollectorRules: the active rule of the channel in the comune of the property,
-        // else the collector the host declared for the stay), else the one the host confirmed with the calculation; and any channel of the confirmed list of the
-        // issuer. A stay that nobody is known to collect for is the agency's: never an assumed 0.
+        // else the collector the host declared for the stay), else the one the host confirmed with the calculation; and any channel of the list of the issuer as the
+        // guest documents read it (the confirmed one, else the shipped default of a Swiss issuer). A stay that nobody is known to collect for is the agency's: never an
+        // assumed 0.
         var ids = stays.Select(b => b.Id).ToList();
         var records = (await db.StayTouristTaxes
                 .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -523,12 +542,12 @@ public sealed class OwnerStatementDocuments(
         var rules = comuni.Count == 0
             ? []
             : await db.TouristTaxChannelRules.AsNoTracking().Where(r => r.IsActive && comuni.Contains(r.IstatCode)).ToListAsync(ct);
-        var platformCollected = (await db.OrgFiscalIssuerProfiles
-                .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-                .AsNoTracking()
-                .OfOrganization(orgId)
-                .FirstOrDefaultAsync(ct))
-            ?.PlatformCollectedTouristTaxChannels ?? [];
+        var issuer = await db.OrgFiscalIssuerProfiles
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .OfOrganization(orgId)
+            .FirstOrDefaultAsync(ct);
+        var platformCollected = PlatformCollectedChannelsOf(orgId, issuer);
 
         bool ChannelCollects(BookingFacts stay)
         {

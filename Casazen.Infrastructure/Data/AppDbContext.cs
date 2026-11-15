@@ -807,6 +807,14 @@ public class AppDbContext(
             .HasFilter("\"Slug\" IS NOT NULL AND \"IsDeleted\" = false")
             .HasDatabaseName("UIX_Properties_OrgId_Slug");
 
+        // E22/F01/US02/T01: the door token of the QR code printed for the door is unique in the whole table (the public door page finds the property by
+        // it alone), and a property that never asked for the code has none. A soft-deleted property keeps its token: a printed code is never given to another.
+        modelBuilder.Entity<Property>()
+            .HasIndex(p => p.DoorToken)
+            .IsUnique()
+            .HasFilter("\"DoorToken\" IS NOT NULL")
+            .HasDatabaseName("UIX_Properties_DoorToken");
+
         modelBuilder.Entity<Booking>().HasIndex(b => b.PropertyId);
         modelBuilder.Entity<Booking>().HasIndex(b => b.GuestId);
         modelBuilder.Entity<Booking>().HasIndex(b => b.CheckInDate);

@@ -60,6 +60,13 @@ public interface IOwnerInvoiceService
     Task<IReadOnlyList<OwnerInvoiceRow>> ListAsync(Guid orgId, OwnerInvoiceCriteria criteria, CancellationToken ct = default);
 
     /// <summary>
+    /// One owner invoice with its lines, as the draft answers them (FIX/RES-OWNERS): a draft is read again after a reload without making it again, and an issued invoice or a
+    /// credit note is read as it was issued. Never written, never numbered. 404 <c>fiscal_document_not_found</c> for a document of another org and for a document that is not
+    /// an owner invoice (a document of a guest answers 404 here, whoever asks).
+    /// </summary>
+    Task<FiscalDocument> GetAsync(Guid orgId, Guid documentId, CancellationToken ct = default);
+
+    /// <summary>
     /// The drafts of a period for every owner with a statement version of it that is not superseded: made, or made again, with the counts; an owner whose
     /// invoice is issued is left alone, one with nothing to invoice is counted. 422 <c>owner_period_invalid</c>; an issuer that cannot issue (profile, rule) is
     /// 422 for the whole call, before anything is written.

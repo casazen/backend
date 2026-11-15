@@ -62,8 +62,8 @@ internal enum Pain001Flavor
 /// <item><b>Group header.</b> The unique message id, the creation time, the number of transactions and the control sum of the whole file, the initiating party
 /// (the agency).</item>
 /// <item><b>One payment per requested execution date.</b> Each with its unique id, the transfer method <c>TRF</c>, its own count and control sum, the date
-/// (<c>ReqdExctnDt/Dt</c>), the debtor (the agency: name and structured address), its IBAN and the debtor agent (<c>NOTPROVIDED</c>: the bank reads it from the
-/// IBAN). The SEPA payment also has the service level <c>SEPA</c> (<c>PmtTpInf/SvcLvl/Cd</c>, before the date) and the charge bearer <c>SLEV</c> (<c>ChrgBr</c>,
+/// (<c>ReqdExctnDt/Dt</c>), the debtor (the agency: name and structured address), its IBAN and the debtor agent (the bank reads the account from the IBAN; what the
+/// file says of the bank is <see cref="DebtorAgent"/>). The SEPA payment also has the service level <c>SEPA</c> (<c>PmtTpInf/SvcLvl/Cd</c>, before the date) and the charge bearer <c>SLEV</c> (<c>ChrgBr</c>,
 /// after the debtor agent): the rules of the EPC that a schema cannot say, which <see cref="Pain001Checks"/> checks on the finished file.</item>
 /// <item><b>One transfer per payout.</b> The unique end-to-end id, the amount in the currency, the creditor (the owner: name and structured address), the
 /// creditor IBAN and the remittance. No creditor agent in either file: the BIC is optional and an IBAN identifies the bank (a domestic one in CHF, one of the SEPA
@@ -88,6 +88,9 @@ internal static class Pain001V09Writer
 
     /// <summary>The charge bearer of the SEPA credit transfer (<c>ChrgBr</c>): «following service level», the charges are those the SEPA service level says, the only one the EUR file has.</summary>
     public const string SepaChargeBearer = "SLEV";
+
+    /// <summary>The code of the Swiss bank clearing (<c>ClrSysId/Cd</c>), whose members are identified by the institution identifier of the IBAN of their accounts.</summary>
+    public const string SwissClearingSystem = "CHBCC";
 
     /// <summary>The longest <c>Nm</c> and <c>StrtNm</c> (<c>Max70Text</c>).</summary>
     public const int Max70 = 70;
@@ -226,7 +229,7 @@ internal static class Pain001V09Writer
             new XElement(ns + "ReqdExctnDt", new XElement(ns + "Dt", date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))),
             Party(ns, "Dbtr", message.Debtor, flavor),
             new XElement(ns + "DbtrAcct", new XElement(ns + "Id", new XElement(ns + "IBAN", message.DebtorIban))),
-            new XElement(ns + "DbtrAgt", new XElement(ns + "FinInstnId", new XElement(ns + "Othr", new XElement(ns + "Id", "NOTPROVIDED")))));
+            DebtorAgent(ns, flavor, message.DebtorIban));
 
         // The charge bearer comes after the debtor agent and before the transfers.
         if (flavor == Pain001Flavor.Sepa)
@@ -247,6 +250,42 @@ internal static class Pain001V09Writer
         }
 
         return payment;
+    }
+
+    /// <summary>
+    /// The debtor agent, the bank of the account that is debited. The ISO schema of the EUR file takes an «other identification» there, so the bank is left unnamed
+    /// with <c>NOTPROVIDED</c> (it reads the account from the IBAN). The Swiss schema takes a BIC or a clearing member id and no «other identification» (a file with
+    /// <c>Othr</c> there does not validate): the Swiss file names the bank by the institution identifier its IBAN carries (characters 5 to 9 of a Swiss or
+    /// Liechtenstein IBAN) as a member of the Swiss bank clearing; an IBAN that carries none leaves the bank unnamed, which that schema also takes (its three
+    /// identifications are optional), and the bank reads the account from the IBAN.
+    /// </summary>
+    private static XElement DebtorAgent(XNamespace ns, Pain001Flavor flavor, string debtorIban)
+    {
+        var bank = new XElement(ns + "FinInstnId");
+        if (flavor == Pain001Flavor.Sepa)
+        {
+            bank.Add(new XElement(ns + "Othr", new XElement(ns + "Id", "NOTPROVIDED")));
+        }
+        else if (SwissInstitutionId(debtorIban) is { } institution)
+        {
+            bank.Add(
+                new XElement(
+                    ns + "ClrSysMmbId",
+                    new XElement(ns + "ClrSysId", new XElement(ns + "Cd", SwissClearingSystem)),
+                    new XElement(ns + "MmbId", institution)));
+        }
+
+        return new XElement(ns + "DbtrAgt", bank);
+    }
+
+    /// <summary>The institution identifier of a Swiss or Liechtenstein IBAN (characters 5 to 9, five digits); <c>null</c> for any other IBAN.</summary>
+    private static string? SwissInstitutionId(string iban)
+    {
+        if (!WireIban.IsSwiss(iban))
+            return null;
+
+        var institution = iban[4..9];
+        return institution.All(char.IsAsciiDigit) ? institution : null;
     }
 
     /// <summary>A party with its structured address: <c>Nm</c>, then <c>StrtNm</c>, <c>BldgNb</c> (when there is one), <c>PstCd</c>, <c>TwnNm</c>, <c>Ctry</c>.</summary>

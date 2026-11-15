@@ -25,6 +25,11 @@
     <None Update="LeaseLetters\**\*.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <!-- Texts of the legal documents provided by the product owner (D14, PL-14): docs/runbooks/legal-documents.md. -->
     <None Update="LegalDocuments\**\*.html" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- Texts of the guest check-in (consent to the biometric verification, notice for Ticino) and their manifest, drafts until the lawyer approves them
+         (E22/F01/US02/T02): docs/runbooks/legal-documents.md. The manifest is a Content item in the Web SDK, a None item elsewhere: both are listed. -->
+    <None Update="LegalDocuments\checkin\**\*.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Update="LegalDocuments\checkin\**\*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="LegalDocuments\checkin\**\*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <!-- Small model files of the identity verification (E03/F04/US01, ADR-013-R8): shipped with the API once the operator adds them, each
          used only when its SHA-256 equals the pinned one. See MlModels/README.md and docs/TECHNICAL.md. -->
     <None Update="MlModels\**\*.onnx" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

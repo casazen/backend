@@ -111,8 +111,11 @@ public interface IOwnerPortalService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets withholding tax summary for the owner (ADR-011-R2).
-    /// Returns empty summary for now (withholding feature not yet implemented).
+    /// The withholding of the owner (ADR-011-R2, E18/F01/US02/T01, <c>GET api/owner-portal/withholding</c>): what the agency withheld on the payouts it made to the owner profiles the caller holds
+    /// <c>accounting.read</c> on in the year (the applicable evidence of an Italian rule and its reversals, month by month and property, in euro), and the Certificazione Unica of the year of each
+    /// of those profiles once the agency reviewed it (never a draft, never its recipient data of another owner, never the co-owners of a signatory). Behind <c>Features:TaxReportingExports</c> and
+    /// <c>Features:AgencyTier</c>: with either off the summary stays empty, as it was. A caller with no ownership in force gets the empty summary; a delegated contact the owner did not give
+    /// <c>accounting.read</c> is refused (403 <c>owner_portal_permission_missing</c>). Every read names the owner profiles of the claim: nothing of another owner, whatever the tenant of the caller.
     /// </summary>
     Task<OwnerPortalWithholdingInfo> GetOwnerWithholdingAsync(
         Guid ownerUserId,
@@ -339,22 +342,51 @@ public sealed record OwnerPortalIssuedDocumentInfo(
     bool HasXml);
 
 /// <summary>
-/// Withholding tax summary (placeholder for future implementation).
+/// The withholding of the owner in a year (E18/F01/US02/T01): the total withheld, its details by agency, month and property, and the Certificazione Unica of the year of each owner profile once the
+/// agency reviewed it. Always in euro: the withholding of the Italian rule is decided and paid in euro.
 /// </summary>
 public class OwnerPortalWithholdingInfo
 {
     public int Year { get; set; }
+
+    /// <summary>The currency of every amount: always <c>EUR</c>.</summary>
+    public string Currency { get; set; } = "EUR";
+
+    /// <summary>What was withheld in the year, the sum of <see cref="Details"/>.</summary>
     public decimal TotalWithheld { get; set; }
+
     public IReadOnlyList<OwnerPortalWithholdingDetailInfo> Details { get; set; } = [];
+
+    /// <summary>The Certificazione Unica of the year of each owner profile the caller reads, the agency having reviewed it; empty until then.</summary>
+    public IReadOnlyList<OwnerPortalCuInfo> CuStatements { get; set; } = [];
 }
 
 /// <summary>
-/// Withholding detail (placeholder for future implementation).
+/// What was withheld on the payouts of one month for one property (<see cref="AmountWithheld"/>, in euro, a reversal taking its decision away), on the base of <see cref="GrossBase"/>. A payout of
+/// before the facts were read from the ledger names no property: its line has an empty id and name.
 /// </summary>
 public class OwnerPortalWithholdingDetailInfo
 {
+    public Guid AgencyId { get; set; }
+    public string AgencyName { get; set; } = string.Empty;
     public Guid PropertyId { get; set; }
     public string PropertyName { get; set; } = string.Empty;
     public int Month { get; set; }
+    public decimal GrossBase { get; set; }
     public decimal AmountWithheld { get; set; }
 }
+
+/// <summary>
+/// The Certificazione Unica data of an owner profile for a year as the agency stored it (E18/F01/US02/T01): its state (reviewed, submitted or accepted: a draft is never shown), the base and the
+/// withholding in euro, the F24 tax code and how the record was made (<see cref="CuAttributions"/>). Never the data of another owner: a record of a signatory says that it has co-owners, not who.
+/// </summary>
+public sealed record OwnerPortalCuInfo(
+    Guid AgencyId,
+    string AgencyName,
+    int Year,
+    TaxFilingState State,
+    DateTime GeneratedAt,
+    decimal GrossBase,
+    decimal Withheld,
+    string? TaxCode,
+    string Attribution);

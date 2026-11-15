@@ -1468,6 +1468,12 @@
   <data name="CheckInBiometricConsentVersionRequired" xml:space="preserve">
     <value>Manca la versione del testo del consenso biometrico (al massimo 50 caratteri).</value>
   </data>
+  <data name="CheckInBiometricConsentVersionUnknown" xml:space="preserve">
+    <value>Il testo del consenso biometrico non è più quello in vigore. Ricarica la pagina e leggi il testo aggiornato.</value>
+  </data>
+  <data name="DoorCheckInNotFound" xml:space="preserve">
+    <value>Non troviamo un soggiorno con questi dati. Controlla il codice di prenotazione (o il cognome) e la data di arrivo, oppure chiedi aiuto alla struttura.</value>
+  </data>
   <data name="CheckInBiometricConsentRequired" xml:space="preserve">
     <value>Prima del selfie serve il tuo consenso alla verifica biometrica. Puoi anche chiedere la verifica a una persona.</value>
   </data>
@@ -8004,6 +8010,432 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="OwnerIssuedDocumentsNotAvailable" xml:space="preserve">
     <value>Non ci sono documenti emessi a tuo nome da scaricare.</value>
+  </data>
+  <data name="TaxCuRecordNotFound" xml:space="preserve">
+    <value>Per questo proprietario non ci sono dati della Certificazione Unica nell'anno.</value>
+  </data>
+  <data name="CuDatasetOutdated" xml:space="preserve">
+    <value>I dati annuali di questo anno sono stati generati prima che contenessero i percipienti: rigenerali (finché sono solo generati) prima di esportarli.</value>
+  </data>
+  <data name="CuExportTitle" xml:space="preserve">
+    <value>Dati per la Certificazione Unica {0} della ritenuta sulle locazioni brevi: una riga per percipiente, importi in euro (non è la CU trasmessa)</value>
+  </data>
+  <data name="CuExportLinesTitle" xml:space="preserve">
+    <value>Soggiorni di ogni percipiente, {0}: base e ritenuta in euro di ogni soggiorno (gli storni sono righe con importi opposti)</value>
+  </data>
+  <data name="CuExportSheetStays" xml:space="preserve">
+    <value>Soggiorni</value>
+  </data>
+  <data name="CuColRecipient" xml:space="preserve">
+    <value>Percipiente</value>
+  </data>
+  <data name="CuColFirstName" xml:space="preserve">
+    <value>Nome</value>
+  </data>
+  <data name="CuColLastName" xml:space="preserve">
+    <value>Cognome</value>
+  </data>
+  <data name="CuColEntityKind" xml:space="preserve">
+    <value>Tipo di soggetto</value>
+  </data>
+  <data name="CuColFiscalCode" xml:space="preserve">
+    <value>Codice fiscale</value>
+  </data>
+  <data name="CuColVatNumber" xml:space="preserve">
+    <value>Partita IVA</value>
+  </data>
+  <data name="CuColResidence" xml:space="preserve">
+    <value>Paese di residenza fiscale</value>
+  </data>
+  <data name="CuColStreet" xml:space="preserve">
+    <value>Via</value>
+  </data>
+  <data name="CuColCivic" xml:space="preserve">
+    <value>Civico</value>
+  </data>
+  <data name="CuColPostalCode" xml:space="preserve">
+    <value>CAP</value>
+  </data>
+  <data name="CuColCity" xml:space="preserve">
+    <value>Comune</value>
+  </data>
+  <data name="CuColProvince" xml:space="preserve">
+    <value>Provincia</value>
+  </data>
+  <data name="CuColCountry" xml:space="preserve">
+    <value>Paese</value>
+  </data>
+  <data name="CuColLegalAddress" xml:space="preserve">
+    <value>Indirizzo del profilo fiscale</value>
+  </data>
+  <data name="CuColAttribution" xml:space="preserve">
+    <value>Attribuzione</value>
+  </data>
+  <data name="CuColShares" xml:space="preserve">
+    <value>Comproprietari inclusi (base / ritenuta, euro)</value>
+  </data>
+  <data name="CuColMissing" xml:space="preserve">
+    <value>Dati mancanti</value>
+  </data>
+  <data name="CuColProperty" xml:space="preserve">
+    <value>Immobile</value>
+  </data>
+  <data name="CuColPropertyAddress" xml:space="preserve">
+    <value>Indirizzo dell'immobile</value>
+  </data>
+  <data name="CuColPropertyCity" xml:space="preserve">
+    <value>CAP e comune dell'immobile</value>
+  </data>
+  <data name="CuColIstat" xml:space="preserve">
+    <value>Codice ISTAT del comune</value>
+  </data>
+  <data name="CuColCin" xml:space="preserve">
+    <value>Codice identificativo nazionale (CIN)</value>
+  </data>
+  <data name="CuColCadastralSheet" xml:space="preserve">
+    <value>Foglio</value>
+  </data>
+  <data name="CuColCadastralParcel" xml:space="preserve">
+    <value>Particella</value>
+  </data>
+  <data name="CuColCadastralSubaltern" xml:space="preserve">
+    <value>Subalterno</value>
+  </data>
+  <data name="CuColCadastralCategory" xml:space="preserve">
+    <value>Categoria catastale</value>
+  </data>
+  <data name="CuColCheckIn" xml:space="preserve">
+    <value>Arrivo</value>
+  </data>
+  <data name="CuColCheckOut" xml:space="preserve">
+    <value>Partenza</value>
+  </data>
+  <data name="CuColNights" xml:space="preserve">
+    <value>Notti</value>
+  </data>
+  <data name="CuColCoOwner" xml:space="preserve">
+    <value>Comproprietario (pagamento di origine)</value>
+  </data>
+  <data name="CuEntityKindNaturalPerson" xml:space="preserve">
+    <value>Persona fisica</value>
+  </data>
+  <data name="CuEntityKindLegalEntity" xml:space="preserve">
+    <value>Soggetto diverso da persona fisica</value>
+  </data>
+  <data name="CuAttributionOwner" xml:space="preserve">
+    <value>Proprietario</value>
+  </data>
+  <data name="CuAttributionSignatory" xml:space="preserve">
+    <value>Firmatario, con i comproprietari</value>
+  </data>
+  <data name="CuAttributionShare" xml:space="preserve">
+    <value>Quota del comproprietario</value>
+  </data>
+  <data name="CuMissingName" xml:space="preserve">
+    <value>denominazione</value>
+  </data>
+  <data name="CuMissingFiscalCode" xml:space="preserve">
+    <value>codice fiscale</value>
+  </data>
+  <data name="CuMissingAddress" xml:space="preserve">
+    <value>indirizzo</value>
+  </data>
+  <data name="CuProspectTitle" xml:space="preserve">
+    <value>Prospetto per la CU {0} (bozza)</value>
+  </data>
+  <data name="CuProspectWatermark" xml:space="preserve">
+    <value>BOZZA</value>
+  </data>
+  <data name="CuProspectDisclaimer" xml:space="preserve">
+    <value>Bozza di prospetto con i dati della ritenuta sulle locazioni brevi per la Certificazione Unica. Non è la Certificazione Unica: la predispone e la trasmette l'agenzia o il suo commercialista.</value>
+  </data>
+  <data name="CuProspectOrg" xml:space="preserve">
+    <value>Sostituto d'imposta e intermediario: {0}</value>
+  </data>
+  <data name="CuProspectYear" xml:space="preserve">
+    <value>Anno d'imposta: {0}</value>
+  </data>
+  <data name="CuProspectState" xml:space="preserve">
+    <value>Stato dei dati annuali: {0}</value>
+  </data>
+  <data name="CuProspectName" xml:space="preserve">
+    <value>Denominazione: {0}</value>
+  </data>
+  <data name="CuProspectFiscalCode" xml:space="preserve">
+    <value>Codice fiscale: {0}</value>
+  </data>
+  <data name="CuProspectVat" xml:space="preserve">
+    <value>Partita IVA: {0}</value>
+  </data>
+  <data name="CuProspectAddress" xml:space="preserve">
+    <value>Indirizzo: {0}</value>
+  </data>
+  <data name="CuProspectMissing" xml:space="preserve">
+    <value>Dati del percipiente da completare: {0}</value>
+  </data>
+  <data name="CuProspectCoOwners" xml:space="preserve">
+    <value>Comprende le quote dei comproprietari: {0}</value>
+  </data>
+  <data name="CuProspectSectionStays" xml:space="preserve">
+    <value>Soggiorni e ritenuta</value>
+  </data>
+  <data name="CuProspectTotals" xml:space="preserve">
+    <value>Totale: base {0} euro, ritenuta {1} euro</value>
+  </data>
+  <data name="CuProspectTaxCode" xml:space="preserve">
+    <value>Codice tributo: {0}. Regola: {1}</value>
+  </data>
+  <data name="Tax770ExportTitle" xml:space="preserve">
+    <value>Dati per il modello 770 {0}: ritenute operate e versate per mese e codice tributo, importi in euro (non è la dichiarazione)</value>
+  </data>
+  <data name="Tax770ColWithheld" xml:space="preserve">
+    <value>Ritenute operate (euro)</value>
+  </data>
+  <data name="Tax770ColF24Amount" xml:space="preserve">
+    <value>Importo dell'F24 (euro)</value>
+  </data>
+  <data name="Tax770ColPaidOn" xml:space="preserve">
+    <value>F24 pagato il</value>
+  </data>
+  <data name="Tax770ColFilingState" xml:space="preserve">
+    <value>Stato dell'F24</value>
+  </data>
+  <data name="Tax770ColHandoff" xml:space="preserve">
+    <value>Riferimento della consegna</value>
+  </data>
+  <data name="Tax770ColReceipt" xml:space="preserve">
+    <value>Ricevuta</value>
+  </data>
+  <data name="Tax770ColDifference" xml:space="preserve">
+    <value>Ritenute operate meno F24 (euro)</value>
+  </data>
+  <data name="Tax770NoF24" xml:space="preserve">
+    <value>F24 non generato</value>
+  </data>
+  <data name="ContractsExportTitle" xml:space="preserve">
+    <value>Comunicazione dei contratti di locazione breve {0}: contratti gestiti senza ritenuta dell'agenzia, da comunicare entro il 30 giugno (non è l'invio all'Agenzia delle entrate)</value>
+  </data>
+  <data name="ContractsExportSheet" xml:space="preserve">
+    <value>Contratti</value>
+  </data>
+  <data name="ContractsColLessor" xml:space="preserve">
+    <value>Locatore</value>
+  </data>
+  <data name="ContractsColCurrency" xml:space="preserve">
+    <value>Valuta</value>
+  </data>
+  <data name="ContractsColConsideration" xml:space="preserve">
+    <value>Corrispettivo lordo</value>
+  </data>
+  <data name="ContractsColReason" xml:space="preserve">
+    <value>Perché l'agenzia non ha trattenuto</value>
+  </data>
+  <data name="ContractsReasonAlreadyWithheldByPortal" xml:space="preserve">
+    <value>Ritenuta già operata dal portale</value>
+  </data>
+  <data name="ContractsReasonNoCollectionOrIntervention" xml:space="preserve">
+    <value>L'agenzia non ha incassato né è intervenuta nel pagamento</value>
+  </data>
+  <data name="ContractsReasonRuleWithoutWithholding" xml:space="preserve">
+    <value>La regola applicata non prevede ritenuta</value>
+  </data>
+  <data name="TouristTaxAccountInvalidPeriod" xml:space="preserve">
+    <value>Il periodo del conto dell'agente non è valido: indica «month» (per mese) oppure «quarter» (per trimestre).</value>
+  </data>
+  <data name="TouristTaxYearEndNeedsWholeOrg" xml:space="preserve">
+    <value>I dati di fine anno dell'imposta di soggiorno riguardano tutti gli immobili dell'organizzazione: servono i permessi sull'intera organizzazione.</value>
+  </data>
+  <data name="TtDeclarationTitle" xml:space="preserve">
+    <value>Dichiarazione annuale dell'imposta di soggiorno {0} per comune: pernottamenti e ospiti, soggiorni con e senza imposta, imposta dovuta, versata e differenza (dati per la dichiarazione al comune: nulla viene trasmesso da CasaZen)</value>
+  </data>
+  <data name="TtDeclarationSheet" xml:space="preserve">
+    <value>Per comune</value>
+  </data>
+  <data name="TtExemptionsTitle" xml:space="preserve">
+    <value>Ospiti esenti per motivo, {0}: soggiorni, ospiti e pernottamenti per comune e motivo di esenzione (solo conteggi, nessun nominativo)</value>
+  </data>
+  <data name="TtExemptionsSheet" xml:space="preserve">
+    <value>Esenzioni</value>
+  </data>
+  <data name="TtRemittancesTitle" xml:space="preserve">
+    <value>Versamenti al comune registrati, {0}: periodo pagato, importo, data, riferimento e ricevuta</value>
+  </data>
+  <data name="TtRemittancesSheet" xml:space="preserve">
+    <value>Versamenti</value>
+  </data>
+  <data name="TtColComune" xml:space="preserve">
+    <value>Comune</value>
+  </data>
+  <data name="TtColStays" xml:space="preserve">
+    <value>Soggiorni (check-in nell'anno)</value>
+  </data>
+  <data name="TtColNights" xml:space="preserve">
+    <value>Pernottamenti</value>
+  </data>
+  <data name="TtColGuests" xml:space="preserve">
+    <value>Ospiti</value>
+  </data>
+  <data name="TtColTaxedStays" xml:space="preserve">
+    <value>Soggiorni con imposta</value>
+  </data>
+  <data name="TtColStaysWithoutAmount" xml:space="preserve">
+    <value>Soggiorni senza importo</value>
+  </data>
+  <data name="TtColReasonExempt" xml:space="preserve">
+    <value>Senza importo: tutti gli ospiti esenti</value>
+  </data>
+  <data name="TtColReasonChannel" xml:space="preserve">
+    <value>Senza importo: imposta incassata dal canale</value>
+  </data>
+  <data name="TtColReasonNotCalculated" xml:space="preserve">
+    <value>Senza importo: imposta non calcolata</value>
+  </data>
+  <data name="TtColReasonNoTaxDue" xml:space="preserve">
+    <value>Senza importo: nessuna imposta dovuta</value>
+  </data>
+  <data name="TtColOwed" xml:space="preserve">
+    <value>Imposta dovuta (euro)</value>
+  </data>
+  <data name="TtColRemitted" xml:space="preserve">
+    <value>Imposta versata (euro)</value>
+  </data>
+  <data name="TtColDifference" xml:space="preserve">
+    <value>Differenza (euro)</value>
+  </data>
+  <data name="TtColStatus" xml:space="preserve">
+    <value>Stato</value>
+  </data>
+  <data name="TtColNote" xml:space="preserve">
+    <value>Nota</value>
+  </data>
+  <data name="TtTotal" xml:space="preserve">
+    <value>Totale</value>
+  </data>
+  <data name="TtYes" xml:space="preserve">
+    <value>Sì</value>
+  </data>
+  <data name="TtStatusToPay" xml:space="preserve">
+    <value>Da versare</value>
+  </data>
+  <data name="TtStatusPaid" xml:space="preserve">
+    <value>Versata</value>
+  </data>
+  <data name="TtStatusOverpaid" xml:space="preserve">
+    <value>Versata in più</value>
+  </data>
+  <data name="TtExemptionColReason" xml:space="preserve">
+    <value>Motivo dell'esenzione</value>
+  </data>
+  <data name="TtExemptionColGuestNights" xml:space="preserve">
+    <value>Pernottamenti degli ospiti esenti</value>
+  </data>
+  <data name="TtExemptionMinorAge" xml:space="preserve">
+    <value>Minori (esenzione per età)</value>
+  </data>
+  <data name="TtExemptionResident" xml:space="preserve">
+    <value>Residenti nel comune</value>
+  </data>
+  <data name="TtExemptionHealthCare" xml:space="preserve">
+    <value>Motivi di salute o di assistenza</value>
+  </data>
+  <data name="TtExemptionDisabilityCompanion" xml:space="preserve">
+    <value>Accompagnatori di persone disabili</value>
+  </data>
+  <data name="TtExemptionPublicService" xml:space="preserve">
+    <value>Forze dell'ordine o altro servizio pubblico</value>
+  </data>
+  <data name="TtExemptionHostFamily" xml:space="preserve">
+    <value>Familiari del gestore</value>
+  </data>
+  <data name="TtExemptionOther" xml:space="preserve">
+    <value>Altra esenzione del regolamento comunale</value>
+  </data>
+  <data name="TtExemptionErased" xml:space="preserve">
+    <value>Motivo non più disponibile (dati dell'ospite cancellati)</value>
+  </data>
+  <data name="TtExemptionRestricted" xml:space="preserve">
+    <value>Esenti, motivo riservato (richiede il permesso sui dati degli ospiti)</value>
+  </data>
+  <data name="TtRemColPeriodFrom" xml:space="preserve">
+    <value>Periodo dal</value>
+  </data>
+  <data name="TtRemColPeriodTo" xml:space="preserve">
+    <value>Periodo al</value>
+  </data>
+  <data name="TtRemColAmount" xml:space="preserve">
+    <value>Importo versato (euro)</value>
+  </data>
+  <data name="TtRemColPaidOn" xml:space="preserve">
+    <value>Data del versamento</value>
+  </data>
+  <data name="TtRemColReference" xml:space="preserve">
+    <value>Riferimento</value>
+  </data>
+  <data name="TtRemColNotes" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="TtRemColReceipt" xml:space="preserve">
+    <value>Ricevuta archiviata</value>
+  </data>
+  <data name="TtAgentTitle" xml:space="preserve">
+    <value>Conto dell'agente contabile {0}, {1}: imposta di soggiorno riscossa (registrata sui soggiorni con check-in nel periodo) e versata al comune (versamenti con periodo compreso nel periodo), con la riga dell'anno e l'elenco dei versamenti (nulla viene trasmesso da CasaZen)</value>
+  </data>
+  <data name="TtAgentByMonth" xml:space="preserve">
+    <value>per mese</value>
+  </data>
+  <data name="TtAgentByQuarter" xml:space="preserve">
+    <value>per trimestre</value>
+  </data>
+  <data name="TtAgentSheetAccount" xml:space="preserve">
+    <value>Conto</value>
+  </data>
+  <data name="TtAgentColCollected" xml:space="preserve">
+    <value>Imposta riscossa (euro)</value>
+  </data>
+  <data name="TtAgentYear" xml:space="preserve">
+    <value>Anno</value>
+  </data>
+  <data name="TtTicinoTitle" xml:space="preserve">
+    <value>Conteggio annuale dei pernottamenti {0} per immobile, Ticino, da trasmettere all'ente turistico entro il {1}: soggiorni con check-in nell'anno, notti con e senza tassa di soggiorno secondo i documenti emessi, importi in franchi dai documenti (nulla viene trasmesso da CasaZen)</value>
+  </data>
+  <data name="TtTicinoColProperty" xml:space="preserve">
+    <value>Immobile</value>
+  </data>
+  <data name="TtTicinoColAddress" xml:space="preserve">
+    <value>Indirizzo</value>
+  </data>
+  <data name="TtTicinoColTown" xml:space="preserve">
+    <value>Località</value>
+  </data>
+  <data name="TtTicinoColMunicipality" xml:space="preserve">
+    <value>Codice del comune (UST)</value>
+  </data>
+  <data name="TtTicinoColTaxedStays" xml:space="preserve">
+    <value>Soggiorni con tassa</value>
+  </data>
+  <data name="TtTicinoColTaxedNights" xml:space="preserve">
+    <value>Notti con tassa</value>
+  </data>
+  <data name="TtTicinoColUntaxedStays" xml:space="preserve">
+    <value>Soggiorni senza tassa sul documento</value>
+  </data>
+  <data name="TtTicinoColUntaxedNights" xml:space="preserve">
+    <value>Notti senza tassa sul documento</value>
+  </data>
+  <data name="TtTicinoColNoDocumentStays" xml:space="preserve">
+    <value>Soggiorni senza documento emesso</value>
+  </data>
+  <data name="TtTicinoColNoDocumentNights" xml:space="preserve">
+    <value>Notti senza documento emesso</value>
+  </data>
+  <data name="TtTicinoColCurrency" xml:space="preserve">
+    <value>Valuta</value>
+  </data>
+  <data name="TtTicinoColAmount" xml:space="preserve">
+    <value>Tassa di soggiorno dai documenti</value>
+  </data>
+  <data name="TtTicinoNoteCantonUnknown" xml:space="preserve">
+    <value>Cantone non determinato (comune svizzero dell'immobile mancante o sconosciuto): l'immobile è nel conteggio perché potrebbe essere in Ticino, da verificare</value>
   </data>
   <data name="IstatRegionFieldRequired" xml:space="preserve">
     <value>Il campo è obbligatorio.</value>
