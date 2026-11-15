@@ -47,7 +47,11 @@ public enum CleaningSourceKind
 /// </summary>
 /// <param name="PropertyId">The property that was cleaned.</param>
 /// <param name="BookingId">The stay the cleaning was for, when it was for one.</param>
-/// <param name="CompletedOn">The Europe/Rome date the cleaning was completed on.</param>
+/// <param name="CompletedOn">
+/// The Europe/Rome date the cost became firm, the very date the period is judged on: the day the cleaning was completed or, for a supplier request whose final amount the host had to confirm
+/// (it was above the quote by more than the tolerance, decision D7), the day of the confirmation. A late confirmation therefore falls in the period of its confirmation, never in an
+/// earlier one that may already be invoiced.
+/// </param>
 /// <param name="AmountCents">
 /// What the cleaning cost, in cents of <paramref name="Currency"/>. A supplier: the final amount the supplier declared when it completed the work, else the price it
 /// committed to (the one it took the request at, or the quote the customer accepted), else the estimated amount of the request. Staff: the internal rate of the activity.
@@ -83,6 +87,9 @@ public sealed record CompletedCleaning(
 /// <remarks>
 /// <para><b>What counts.</b> A service request of category cleaning that is <c>Completato</c> or <c>Pagato</c> (<c>Annullato</c> and <c>Rifiutato</c> never, nor one that
 /// is still open), and a staff activity of type Cleaning that is completed. Each comes back once.</para>
+/// <para><b>Never an amount nobody confirmed.</b> A supplier request whose final amount is above the quote by more than the tolerance (decision D7) is a cost only once the host
+/// confirmed it: until then it is not returned. It comes back once, in the period of the confirmation (its <c>CompletedOn</c> is the day of the confirmation, not of the completion),
+/// so the statement of a period already closed never changes after it was issued and an amount confirmed late falls in the open one. <c>SourceId</c> is the request, always the same.</para>
 /// <para><b>Whose.</b> Only what belongs to <c>orgId</c>: the read is scoped by the tenant filter and by an explicit <c>orgId</c> check on each row and on its property, so a
 /// property id of another organization returns nothing. A request born from a supplier's public showcase is never a cleaning of a host.</para>
 /// </remarks>

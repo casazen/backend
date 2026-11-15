@@ -12,8 +12,12 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// <list type="bullet">
 /// <item><b>Supplier cleanings</b>: the service requests of the org of category cleaning that are <c>Completato</c> or <c>Pagato</c>, the ones the host sees (a backup that waits and
-/// the primary it replaced are not jobs). A request that was cancelled, refused or is still open never comes back. The date is the one of the completion (<c>CompletedAt</c>; the
-/// payment, then the last change, for a row that has none), on the Europe/Rome calendar.</item>
+/// the primary it replaced are not jobs). A request that was cancelled, refused or is still open never comes back. A request whose final amount waits for the host's confirmation
+/// (<c>FinalAmountNeedsConfirmation</c>: the amount is above the quote by more than the tolerance, decision D7, and the host has not confirmed it) is not a cost yet and never comes back
+/// until it is confirmed. The date is the one the cost became firm, on the Europe/Rome calendar: the confirmation of the amount (<c>FinalAmountConfirmedAt</c>) when the host had to
+/// confirm it, else the completion (<c>CompletedAt</c>; the payment, then the last change, for a row that has none): the same date filters the period and is the <c>CompletedOn</c> of the
+/// record, so a period already invoiced never gets an entry afterwards and an amount confirmed late falls in the period of its confirmation. A request the host marked as paid by hand with the
+/// confirmation still open counts from the day it was paid (the payment settles it).</item>
 /// <item><b>The amount</b> is the one the model has, never one made up: the final amount the supplier declared, else the price it committed to (<c>QuotedAmountCents</c>, which is also the
 /// quote the customer accepted), else a quote still waiting, else the estimated amount of the request; none at all is 0 with the VAT <see cref="CleaningAmountVat.Unknown"/>. Every amount
 /// of a service request is «gross as declared» (decision D4: no VAT split), so a supplier's amount is <see cref="CleaningAmountVat.IncludesSupplierVat"/>; a staff cost has no VAT of a
@@ -71,14 +75,16 @@ public sealed class CleaningCostSource(AppDbContext db) : ICleaningCostSource
                         && ids.Contains(r.PropertyId.Value)
                         && r.Category == ServiceCategories.Cleaning
                         && (r.Status == ServiceRequestStatus.Completato || r.Status == ServiceRequestStatus.Pagato)
-                        && (r.CompletedAt ?? r.PaidAt ?? r.UpdatedAt) >= fromUtc
-                        && (r.CompletedAt ?? r.PaidAt ?? r.UpdatedAt) < untilUtc)
+                        // The final amount is above the quote by more than the tolerance and the host has not confirmed it (decision D7): it is not a cost until it does.
+                        && !(r.Status == ServiceRequestStatus.Completato && r.FinalAmountNeedsConfirmation && r.FinalAmountConfirmedAt == null)
+                        && (r.FinalAmountConfirmedAt ?? (r.FinalAmountNeedsConfirmation ? r.PaidAt : null) ?? r.CompletedAt ?? r.PaidAt ?? r.UpdatedAt) >= fromUtc
+                        && (r.FinalAmountConfirmedAt ?? (r.FinalAmountNeedsConfirmation ? r.PaidAt : null) ?? r.CompletedAt ?? r.PaidAt ?? r.UpdatedAt) < untilUtc)
             .Select(r => new
             {
                 r.Id,
                 PropertyId = r.PropertyId!.Value,
                 r.BookingId,
-                At = r.CompletedAt ?? r.PaidAt ?? r.UpdatedAt,
+                At = r.FinalAmountConfirmedAt ?? (r.FinalAmountNeedsConfirmation ? r.PaidAt : null) ?? r.CompletedAt ?? r.PaidAt ?? r.UpdatedAt,
                 r.FinalAmountCents,
                 r.QuotedAmountCents,
                 r.QuoteTotalCents,

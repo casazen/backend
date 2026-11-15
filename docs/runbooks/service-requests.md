@@ -97,7 +97,10 @@ stay is cancelled or the property is declared ready.
 plan (its task E14/F01/US02/T01 consumes it). Read only, one `CompletedCleaning` for each cleaning completed from `from` to `to`, both included, on the Europe/Rome calendar, oldest first.
 
 - **What counts.** A service request of category cleaning that is `Completato` or `Pagato` (never `Annullato`, `Rifiutato` or still open; never a backup that waits nor a request of a
-  supplier's showcase) and a staff activity of type Cleaning that is completed.
+  supplier's showcase) and a staff activity of type Cleaning that is completed. **Never an amount nobody confirmed**: a supplier request whose final amount is above the quote by more than
+  the tolerance (decision D7, `FinalAmountNeedsConfirmation`) is not returned until the host confirms it. It then comes back once, in the period of the confirmation: `CompletedOn` is the date the
+  period is judged on (the confirmation, else the completion), so the statement of a closed period never changes and an amount confirmed late falls in the open one. `SourceId` is always the
+  request. A request the host marked as paid by hand with the confirmation still open counts from the day it was paid.
 - **Amount.** Supplier: `FinalAmountCents`, else `QuotedAmountCents`, else `QuoteTotalCents`, else `EstimatedAmountCents`; none at all is 0 with `AmountVat = Unknown`. Staff: `InternalRate`
   in cents. The currency is the one of the property (requests and rates carry none).
 - **VAT nature (what the model says).** Every amount of a service request is documented «gross as declared (decision D4: no VAT split)»: supplier amounts are `IncludesSupplierVat`; a staff

@@ -186,6 +186,65 @@ public class CleaningCostSourceTests
         Assert.All(cleanings, c => Assert.Equal("EUR", c.Currency));
     }
 
+    /// <summary>
+    /// Proof (money): a final amount above the quote by more than the tolerance (decision D7) that the host has not confirmed is not a cost, in no period. One confirmed late comes back once, in
+    /// the period of its confirmation, with the day of the confirmation as <c>CompletedOn</c> (the very date the period is judged on) and not in the earlier period that may be invoiced already;
+    /// one that never needed the confirmation keeps the day of its completion, and one the host paid by hand with the confirmation still open counts from the day it was paid.
+    /// </summary>
+    [Fact]
+    public async Task CleaningCost_UnconfirmedAmountIsNoCost_ConfirmedLateFallsInThePeriodOfTheConfirmation_Test()
+    {
+        var (db, world, source) = await WorldAsync();
+        await using var disposable = db;
+        var waiting = Request(world, world.Granted, ServiceRequestStatus.Completato, Utc(9, 29), r =>
+        {
+            r.FinalAmountCents = 9000;
+            r.QuotedAmountCents = 6000;
+            r.FinalAmountNeedsConfirmation = true;
+        });
+        var late = Request(world, world.Granted, ServiceRequestStatus.Completato, Utc(9, 29), r =>
+        {
+            r.FinalAmountCents = 9500;
+            r.QuotedAmountCents = 6000;
+            r.FinalAmountConfirmedAt = Utc(10, 8);
+        });
+        var plain = Request(world, world.Granted, ServiceRequestStatus.Completato, Utc(10, 5), r => r.FinalAmountCents = 6000);
+        var paidByHand = Request(world, world.Granted, ServiceRequestStatus.Pagato, Utc(9, 28), r =>
+        {
+            r.FinalAmountCents = 9800;
+            r.QuotedAmountCents = 6000;
+            r.FinalAmountNeedsConfirmation = true;
+            r.PaidAt = Utc(10, 20);
+        });
+        await SaveAsync(db, waiting, late, plain, paidByHand);
+
+        var september = await source.GetCompletedAsync(world.OrgId, null, new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 30), CancellationToken.None);
+        var october = await source.GetCompletedAsync(world.OrgId, null, From, To, CancellationToken.None);
+
+        Assert.Empty(september);
+        Assert.Equal([plain.Id, late.Id, paidByHand.Id], october.Select(c => c.SourceId));
+        Assert.Equal([new DateOnly(2026, 10, 5), new DateOnly(2026, 10, 8), new DateOnly(2026, 10, 20)], october.Select(c => c.CompletedOn));
+        Assert.Equal([6000L, 9500L, 9800L], october.Select(c => c.AmountCents));
+        Assert.DoesNotContain(waiting.Id, october.Select(c => c.SourceId));
+
+        // The host confirms the amount that waited: from then on it is a cost, once, on the day of the confirmation.
+        db.ChangeTracker.Clear();
+        var confirmed = await db.ServiceRequests.IgnoreQueryFilters().SingleAsync(r => r.Id == waiting.Id);
+        confirmed.FinalAmountNeedsConfirmation = false;
+        confirmed.FinalAmountConfirmedAt = Utc(11, 3);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var septemberAfter = await source.GetCompletedAsync(world.OrgId, null, new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 30), CancellationToken.None);
+        var octoberAfter = await source.GetCompletedAsync(world.OrgId, null, From, To, CancellationToken.None);
+        var november = await source.GetCompletedAsync(world.OrgId, null, new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 30), CancellationToken.None);
+
+        Assert.Empty(septemberAfter);
+        Assert.Equal(october.Select(c => c.SourceId), octoberAfter.Select(c => c.SourceId));
+        var entry = Assert.Single(november);
+        Assert.Equal((waiting.Id, new DateOnly(2026, 11, 3), 9000L), (entry.SourceId, entry.CompletedOn, entry.AmountCents));
+    }
+
     // ─── The amount ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The amount is the final one the supplier declared, else the price it committed to, else a quote still waiting, else the estimate; none at all is 0, and the VAT says it does not know.</summary>
