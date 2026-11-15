@@ -684,7 +684,10 @@ the summary reads now applies too (it used a copy of the list that did not leave
   confirmed guest by guest is nothing because every guest is exempt; `collected_by_channel`: the channel collects it, by the rule of the comune or the host's declaration; `not_calculated`: never
   confirmed or calculated, the owed amount of the comune may be incomplete; `no_tax_due`: confirmed and nothing), and **the exempt guests by reason** (a count of stays, guests and guest-nights
   per comune and reason: `minor_age`, a code of the catalogue `TouristTaxExemptionReason`, or `erased` once the reason went with the guest's data). **A count, never a guest, a booking or a
-  name**: the reason can reveal a health condition (art. 9 GDPR) and is encrypted at rest, so it leaves only as an aggregate, as the declaration to the comune asks. A house abroad is left out, as
+  name**: the reason can reveal a health condition (art. 9 GDPR) and is encrypted at rest, so it leaves only as an aggregate, as the declaration to the comune asks, **and only to a caller that
+  holds `guest.read` on the whole org** (the accountant role holds `payment.read` and not `guest.read`, as on the tax of a stay): the others get `minor_age` and one `restricted` row (text «Esenti,
+  motivo riservato») that counts the same stays, guests and guest-nights of every other exempt guest, and no reason (`TouristTaxSummaryService.GetDeclarationAsync(…, withExemptionReasons)`, the
+  controller asks the policy `guest.read`; without the authorization service the answer is the restricted one). A house abroad is left out, as
   the summary does.
 - **Account of the agent** (`…/agent-account?by=month|quarter`, «conto giudiziale», when the comune asks it of the collecting manager). For each comune and each month (default) or quarter the
   summary of that period (what the stays record as owed and what was remitted for it: **a payment counts in the period its declared period lies inside**), then the line of the year, and the
@@ -696,5 +699,6 @@ the summary reads now applies too (it used a copy of the list that did not leave
   stay add up to more than nothing, a credit note taking its amount away), **untaxed** (a document without a tax: the portal collects it, the guest is exempt, no rule), **without a document**
   (none issued yet: told apart, never counted as untaxed) and **the francs of the documents** (`FiscalDocumentLine` of type tourist tax of the documents in the currency of the property: E12,
   never a calculation). Every query names the org.
-- **Proof.** `TouristTaxYearEndExportsTests` (`TouristTaxYearEnd_DueMinusRemittedPerMunicipality_Test`: due less remitted per comune to the cent, the reasons and the exemptions, the quarters adding
+- **Proof.** `TouristTaxYearEndExportsTests` (`TouristTaxYearEnd_ExemptionReasonsOnlyToWhoHoldsGuestRead_Test`: the reasons with and without `guest.read`, in the data and in the file;
+  `TouristTaxYearEnd_DueMinusRemittedPerMunicipality_Test`: due less remitted per comune to the cent, the reasons and the exemptions, the quarters adding
   up to the year, the files; the count of Ticino from the documents; the whole-org refusal and the rules).

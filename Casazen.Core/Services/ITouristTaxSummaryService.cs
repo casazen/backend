@@ -62,7 +62,14 @@ public interface ITouristTaxSummaryService
     /// nothing is filed. A scope that does not reach the whole org is 403 <see cref="TouristTaxErrorCodes.YearEndNeedsWholeOrg"/>, before anything is read.
     /// </summary>
     /// <exception cref="FiscalValidationException">The year is not valid for a report (400 <c>fiscal_report_period_invalid</c>).</exception>
-    Task<TouristTaxDeclaration> GetDeclarationAsync(HostScope scope, int year, CancellationToken cancellationToken = default);
+    /// <param name="scope">The reach of the caller.</param>
+    /// <param name="year">The year of the check-ins.</param>
+    /// <param name="withExemptionReasons">
+    /// True only for a caller that holds <c>guest.read</c>: the reason of an exemption can reveal a health condition (art. 9 GDPR), so without it the exempt guests are counted by the kind of
+    /// their exemption alone (<c>minor_age</c>, or <see cref="TouristTaxExemptionKinds.Restricted"/>) and no reason leaves.
+    /// </param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    Task<TouristTaxDeclaration> GetDeclarationAsync(HostScope scope, int year, bool withExemptionReasons, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The account of the agent for <paramref name="year"/> (E18/F01/US02/T03, «conto giudiziale»): for each comune the tax collected and remitted by month or quarter (the summary of each

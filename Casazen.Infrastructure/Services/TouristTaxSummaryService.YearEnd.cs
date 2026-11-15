@@ -18,7 +18,7 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public sealed partial class TouristTaxSummaryService
 {
-    public async Task<TouristTaxDeclaration> GetDeclarationAsync(HostScope scope, int year, CancellationToken cancellationToken = default)
+    public async Task<TouristTaxDeclaration> GetDeclarationAsync(HostScope scope, int year, bool withExemptionReasons, CancellationToken cancellationToken = default)
     {
         RequireYearEnd(scope, year);
 
@@ -33,7 +33,7 @@ public sealed partial class TouristTaxSummaryService
             {
                 var key = TouristTaxSummaryRules.ComuneKeyOf(summary.Comune);
                 var ofComune = stays.Where(s => TouristTaxSummaryRules.ComuneKeyOf(s.Comune) == key).ToList();
-                return new TouristTaxDeclarationComune(summary, ofComune.Count(s => s.Amount > 0), NoAmountOf(ofComune, facts), ExemptionsOf(ofComune, facts));
+                return new TouristTaxDeclarationComune(summary, ofComune.Count(s => s.Amount > 0), NoAmountOf(ofComune, facts), ExemptionsOf(ofComune, facts, withExemptionReasons));
             })
             .ToList();
         return new TouristTaxDeclaration(year, comuni, built.Summary.Total);
@@ -255,7 +255,7 @@ public sealed partial class TouristTaxSummaryService
     /// The exempt guests of the confirmed stays of a comune by reason, with the stays they are in and the nights they spent: a count, never a guest, a name or a booking. A stay may have taxed
     /// and exempt guests, so the stays with an amount are counted here too.
     /// </summary>
-    private static List<TouristTaxReasonCount> ExemptionsOf(IReadOnlyList<TouristTaxStayLine> stays, IReadOnlyDictionary<Guid, TouristTaxStayFacts> facts)
+    private static List<TouristTaxReasonCount> ExemptionsOf(IReadOnlyList<TouristTaxStayLine> stays, IReadOnlyDictionary<Guid, TouristTaxStayFacts> facts, bool withReasons)
     {
         var exempt = new List<(string Reason, Guid BookingId, int Nights)>();
         foreach (var stay in stays)
@@ -265,7 +265,7 @@ public sealed partial class TouristTaxSummaryService
 
             foreach (var guest in stayFacts.Guests)
             {
-                if (TouristTaxYearEndRules.ExemptionReasonOf(guest) is { } reason)
+                if (TouristTaxYearEndRules.ExemptionReasonOf(guest, withReasons) is { } reason)
                     exempt.Add((reason, stay.BookingId, stay.Nights));
             }
         }

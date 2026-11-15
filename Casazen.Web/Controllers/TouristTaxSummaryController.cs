@@ -41,7 +41,8 @@ public class TouristTaxSummaryController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver,
     IStringLocalizer<SharedResources> localizer,
-    IDocumentTexts? documentTexts = null) : ControllerBase
+    IDocumentTexts? documentTexts = null,
+    IAuthorizationService? authorizationService = null) : ControllerBase
 {
     /// <summary>The labels of the files of the year-end exports (E18/F01/US02/T03): the resource files, in the language of the request. The dependency injection always passes them; optional so that what builds the controller for the older actions keeps compiling.</summary>
     private readonly IDocumentTexts _documentTexts = documentTexts ?? new ResxDocumentTexts();
@@ -102,7 +103,8 @@ public class TouristTaxSummaryController(
 
     /// <summary>
     /// The annual declaration data of the tourist tax per comune for the year as a CSV or an Excel file (E18/F01/US02/T03, NF-117, acceptance step C9): nights, guests, the stays with a tax and the
-    /// stays with none with the reason, the exempt guests by reason (counts, never a guest), the tax due, the tax remitted with the days and references of the payments, and the difference. It is made
+    /// stays with none with the reason, the exempt guests by reason (counts, never a guest; the reasons only for a caller that holds <c>guest.read</c>, art. 9 GDPR: the others get the age and one
+    /// «restricted» row), the tax due, the tax remitted with the days and references of the payments, and the difference. It is made
     /// of the summary of the year (nothing recomputed) and nothing is filed by CasaZen. Behind <c>Features:TaxReportingExports</c> (404 before authentication while it is off); needs a scope that
     /// reaches the whole org (403 <c>tourist_tax_year_end_needs_whole_org</c>). <c>format</c> is <c>csv</c> or <c>xlsx</c> (400 <c>report_invalid_format</c>); 400 <c>fiscal_report_period_invalid</c>
     /// for a year the reports do not support. <c>Cache-Control: no-store</c>.
@@ -121,7 +123,10 @@ public class TouristTaxSummaryController(
 
         try
         {
-            var data = await summaries.GetDeclarationAsync(scope, year, cancellationToken);
+            // The reason of an exemption can reveal a health condition (art. 9 GDPR): as on the tax of a stay it is shown only to who holds guest.read (the accountant role does not). Without the
+            // authorization service the answer is the restricted one: never the reasons by default.
+            var withReasons = authorizationService is not null && (await authorizationService.AuthorizeAsync(User, CasazenPolicies.GuestRead)).Succeeded;
+            var data = await summaries.GetDeclarationAsync(scope, year, withReasons, cancellationToken);
             var language = DocumentLanguages.Current;
             return this.ReportFile(
                 fileFormat,

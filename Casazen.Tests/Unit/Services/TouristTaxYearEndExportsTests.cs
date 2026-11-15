@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Security.Claims;
 using System.Text;
 using Casazen.Core.Authorization;
 using Casazen.Core.Documents;
@@ -10,8 +12,15 @@ using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.Authorization;
+using Casazen.Web.Controllers;
+using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -72,7 +81,7 @@ public sealed class TouristTaxYearEndExportsTests
         await db.SaveChangesAsync();
         var sut = CreateService(db);
 
-        var declaration = await sut.GetDeclarationAsync(new HostScope(orgId), 2026);
+        var declaration = await sut.GetDeclarationAsync(new HostScope(orgId), 2026, withExemptionReasons: true);
 
         Assert.Equal(["Como", "Milano", "Roma"], declaration.Comuni.Select(c => c.Summary.Comune));
         Assert.All(declaration.Comuni, c => Assert.Equal(c.Summary.Owed - c.Summary.Paid!.Value, c.Summary.Balance!.Value));
@@ -199,7 +208,7 @@ public sealed class TouristTaxYearEndExportsTests
         {
             foreach (var ask in new Func<Task>[]
                      {
-                         () => sut.GetDeclarationAsync(restricted, 2026),
+                         () => sut.GetDeclarationAsync(restricted, 2026, withExemptionReasons: true),
                          () => sut.GetAgentAccountAsync(restricted, 2026, TouristTaxAccountPeriod.Month),
                          () => sut.GetTicinoYearlyCountAsync(restricted, 2026),
                      })
@@ -211,7 +220,7 @@ public sealed class TouristTaxYearEndExportsTests
 
         foreach (var ask in new Func<Task>[]
                  {
-                     () => sut.GetDeclarationAsync(new HostScope(orgId), 1999),
+                     () => sut.GetDeclarationAsync(new HostScope(orgId), 1999, withExemptionReasons: true),
                      () => sut.GetAgentAccountAsync(new HostScope(orgId), 2101, TouristTaxAccountPeriod.Quarter),
                      () => sut.GetTicinoYearlyCountAsync(new HostScope(orgId), 0),
                  })
@@ -244,6 +253,85 @@ public sealed class TouristTaxYearEndExportsTests
         Assert.Equal(12, monthly.Count);
         Assert.Equal(("2028-02", new DateOnly(2028, 2, 1), new DateOnly(2028, 2, 29)), monthly[1]);
         Assert.Equal(new DateOnly(2027, 1, 5), TouristTaxYearEndRules.TicinoCountDue(2026));
+    }
+
+    /// <summary>
+    /// Privacy (art. 9 GDPR, review of S031): the reason of an exemption can reveal a health condition, so, as on the tax of a stay, the declaration to the comune names the reasons only to a caller that
+    /// holds <c>guest.read</c> on the whole org (the accountant holds <c>payment.read</c> and not <c>guest.read</c>). The others get the age and one «restricted» row that counts the same stays,
+    /// guests and nights, and not a word of any reason: neither in the data nor in the file the controller answers.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TouristTaxYearEnd_ExemptionReasonsOnlyToWhoHoldsGuestRead_Test(bool holdsGuestRead)
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = CreateDb();
+        SeedOrg(db, orgId);
+        var loft = SeedProperty(db, orgId, "Loft Milano", "Milano");
+
+        // A minor and a guest exempt for a health reason, two residents, and a guest whose reason was erased with the data.
+        var health = SeedStay(db, loft, Day(2026, 3, 2), nights: 3, touristTax: 20m);
+        SeedRecord(db, orgId, health, confirmed: true, collector: TouristTaxCollector.Host, guests: [(TouristTaxExemptionKind.Age, TouristTaxExemptionReason.MinorAgeCode), (TouristTaxExemptionKind.Host, TouristTaxExemptionReason.HealthCareCode)]);
+        var residents = SeedStay(db, loft, Day(2026, 5, 10), nights: 1, touristTax: 0m);
+        SeedRecord(db, orgId, residents, confirmed: true, collector: TouristTaxCollector.Host, guests: [(TouristTaxExemptionKind.Host, TouristTaxExemptionReason.ResidentCode), (TouristTaxExemptionKind.Host, TouristTaxExemptionReason.ResidentCode)]);
+        var erased = SeedStay(db, loft, Day(2026, 6, 15), nights: 2, touristTax: 0m);
+        SeedRecord(db, orgId, erased, confirmed: true, collector: TouristTaxCollector.Host, guests: [(TouristTaxExemptionKind.Host, null)]);
+        await db.SaveChangesAsync();
+
+        // The data: with guest.read every reason, without it the age and «restricted», with the counts of the reasons it folds (3 stays, 4 guests, 7 nights of guests).
+        var data = await CreateService(db).GetDeclarationAsync(new HostScope(orgId), 2026, holdsGuestRead);
+        var counts = Assert.Single(data.Comuni).Exemptions.Select(r => (r.Reason, r.Stays, r.Guests, r.GuestNights)).ToList();
+        List<(string Reason, int Stays, int Guests, int GuestNights)> expected = holdsGuestRead
+            ? [(TouristTaxExemptionKinds.Erased, 1, 1, 2), (TouristTaxExemptionReason.HealthCareCode, 1, 1, 3), (TouristTaxExemptionReason.MinorAgeCode, 1, 1, 3), (TouristTaxExemptionReason.ResidentCode, 1, 2, 2)]
+            : [(TouristTaxExemptionReason.MinorAgeCode, 1, 1, 3), (TouristTaxExemptionKinds.Restricted, 3, 4, 7)];
+        Assert.Equal(expected, counts);
+
+        // The file the controller answers: the reasons in words only for who holds guest.read, the permission asked as the policy of the area (never the one of the payments).
+        var authorization = new Mock<IAuthorizationService>();
+        authorization
+            .Setup(a => a.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), CasazenPolicies.GuestRead))
+            .ReturnsAsync(holdsGuestRead ? AuthorizationResult.Success() : AuthorizationResult.Failed());
+        var org = new Mock<IOrgContextResolver>();
+        org.Setup(o => o.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(orgId);
+        var scopes = new Mock<IHostScopeResolver>();
+        scopes.Setup(s => s.ResolveAsync(It.IsAny<string>(), It.IsAny<IReadOnlySet<string>>(), orgId, It.IsAny<CancellationToken>())).ReturnsAsync(new HostScope(orgId));
+        var controller = new TouristTaxSummaryController(CreateService(db), org.Object, scopes.Object, Mock.Of<IStringLocalizer<SharedResources>>(), new ResxDocumentTexts(), authorization.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", "auth0|commercialista")], "Test")) },
+            },
+        };
+
+        var previous = CultureInfo.CurrentUICulture;
+        CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("it-IT");
+        string csv;
+        try
+        {
+            var answer = Assert.IsType<FileContentResult>(await controller.GetYearEndDeclaration(2026, "csv", CancellationToken.None));
+            csv = Encoding.UTF8.GetString(answer.FileContents);
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = previous;
+        }
+
+        Assert.Contains("Milano;Minori (esenzione per età);1;1;3", csv, StringComparison.Ordinal);
+        if (holdsGuestRead)
+        {
+            Assert.Contains("Milano;Motivi di salute o di assistenza;1;1;3", csv, StringComparison.Ordinal);
+            Assert.Contains("Milano;Residenti nel comune;1;2;2", csv, StringComparison.Ordinal);
+            Assert.Contains("Milano;Motivo non più disponibile (dati dell'ospite cancellati);1;1;2", csv, StringComparison.Ordinal);
+            Assert.DoesNotContain("motivo riservato", csv, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.Contains("Milano;Esenti, motivo riservato (richiede il permesso sui dati degli ospiti);3;4;7", csv, StringComparison.Ordinal);
+            Assert.DoesNotContain("salute", csv, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Residenti nel comune", csv, StringComparison.Ordinal);
+            Assert.DoesNotContain("Motivo non più disponibile", csv, StringComparison.Ordinal);
+        }
     }
 
     private static TouristTaxSummaryService CreateService(AppDbContext db)

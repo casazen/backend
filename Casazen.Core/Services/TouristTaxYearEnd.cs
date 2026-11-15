@@ -43,6 +43,12 @@ public static class TouristTaxExemptionKinds
 {
     /// <summary>The reason was erased with the data of the guest (art. 9 GDPR): the guest was exempt, the reason is no longer known.</summary>
     public const string Erased = "erased";
+
+    /// <summary>
+    /// The reason is not shown because the caller does not hold <c>guest.read</c>: the reason of an exemption can reveal a health condition (art. 9 GDPR), so, as on the tax of a stay,
+    /// only the kind of the exemption stays visible (the age is <c>minor_age</c>) and every other exempt guest is counted under this word.
+    /// </summary>
+    public const string Restricted = "restricted";
 }
 
 /// <summary>A reason with the stays, the guests and the nights it counts: <see cref="GuestNights"/> is the nights of the stay for each guest.</summary>
@@ -166,9 +172,10 @@ public static class TouristTaxYearEndRules
 
     /// <summary>
     /// The reason an exempt guest is counted under: <c>minor_age</c> for the exemption the calculator applies from the age, the code the host chose from the catalogue, and
-    /// <see cref="TouristTaxExemptionKinds.Erased"/> once the reason was erased with the data of the guest. <c>null</c> for a guest who pays.
+    /// <see cref="TouristTaxExemptionKinds.Erased"/> once the reason was erased with the data of the guest. <c>null</c> for a guest who pays. Without <paramref name="withReasons"/> (the caller has no
+    /// <c>guest.read</c>: the reason can reveal a health condition, art. 9 GDPR) only the age is told apart and every other exempt guest is <see cref="TouristTaxExemptionKinds.Restricted"/>.
     /// </summary>
-    public static string? ExemptionReasonOf(TouristTaxGuestFact guest)
+    public static string? ExemptionReasonOf(TouristTaxGuestFact guest, bool withReasons = true)
     {
         ArgumentNullException.ThrowIfNull(guest);
 
@@ -176,6 +183,7 @@ public static class TouristTaxYearEndRules
         {
             TouristTaxExemptionKind.None => null,
             TouristTaxExemptionKind.Age => TouristTaxExemptionReason.MinorAgeCode,
+            _ when !withReasons => TouristTaxExemptionKinds.Restricted,
             _ => string.IsNullOrWhiteSpace(guest.Code) ? TouristTaxExemptionKinds.Erased : guest.Code,
         };
     }

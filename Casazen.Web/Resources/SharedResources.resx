@@ -8347,6 +8347,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="TtExemptionErased" xml:space="preserve">
     <value>Motivo non più disponibile (dati dell'ospite cancellati)</value>
   </data>
+  <data name="TtExemptionRestricted" xml:space="preserve">
+    <value>Esenti, motivo riservato (richiede il permesso sui dati degli ospiti)</value>
+  </data>
   <data name="TtRemColPeriodFrom" xml:space="preserve">
     <value>Periodo dal</value>
   </data>

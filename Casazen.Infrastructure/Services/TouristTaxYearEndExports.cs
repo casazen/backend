@@ -318,6 +318,7 @@ public static class TouristTaxYearEndExports
         TouristTaxExemptionReason.HostFamilyCode => texts.Get("TtExemptionHostFamily", language),
         TouristTaxExemptionReason.OtherCode => texts.Get("TtExemptionOther", language),
         TouristTaxExemptionKinds.Erased => texts.Get("TtExemptionErased", language),
+        TouristTaxExemptionKinds.Restricted => texts.Get("TtExemptionRestricted", language),
         _ => reason,
     };
 }
