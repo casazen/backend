@@ -4176,7 +4176,7 @@
     <value>The issuer profile has no IBAN for the account to debit: add it in the «Fatturazione» setup. No batch was saved.</value>
   </data>
   <data name="WireOwnerAddressMissing" xml:space="preserve">
-    <value>{0} owners have no complete address (street, postal code, town and country), which the Swiss wire needs: complete the data of the owners listed. No batch was saved.</value>
+    <value>{0} owners have no complete address (street, postal code, town and country), which the wire file needs: complete the data of the owners listed. No batch was saved.</value>
   </data>
   <data name="WireOwnerIbanMissing" xml:space="preserve">
     <value>{0} owners do not have an IBAN configured: complete the data of the owners listed. No batch was saved.</value>
@@ -4186,6 +4186,9 @@
   </data>
   <data name="WireOwnerIbanNotSwiss" xml:space="preserve">
     <value>{0} owners have an IBAN that is not Swiss or Liechtenstein: a CHF transfer to that account is not a domestic payment and this file does not cover it. No batch was saved.</value>
+  </data>
+  <data name="WireOwnerIbanNotSepa" xml:space="preserve">
+    <value>{0} owners have an IBAN outside the SEPA area: a EUR transfer to that account is not a SEPA credit transfer and this file does not cover it. No batch was saved.</value>
   </data>
   <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
     <value>Access code not available or verification not passed</value>
@@ -6629,6 +6632,18 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="OwnerPeriodNotEnded" xml:space="preserve">
     <value>The month is not over yet: it can be closed from the day after its last day.</value>
+  </data>
+  <data name="OwnerBulkActionInvalid" xml:space="preserve">
+    <value>The bulk operation is not valid: choose post, generate, approve, publish or close.</value>
+  </data>
+  <data name="OwnerBulkOwnersEmpty" xml:space="preserve">
+    <value>The list of owners is empty: name at least one owner, or leave the list out to include them all.</value>
+  </data>
+  <data name="OwnerBulkTooManyOwners" xml:space="preserve">
+    <value>The list names too many owners: at most {0} at a time.</value>
+  </data>
+  <data name="OwnerBulkJobNotFound" xml:space="preserve">
+    <value>Bulk operation not found or expired.</value>
   </data>
   <data name="OwnerCloseWaiverForbidden" xml:space="preserve">
     <value>Only who manages the owners' finances can close the month with a waiver.</value>

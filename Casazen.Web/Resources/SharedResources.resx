@@ -4176,7 +4176,7 @@
     <value>Nel profilo emittente manca l'IBAN del conto da addebitare: inseriscilo nella configurazione «Fatturazione». Nessun batch è stato salvato.</value>
   </data>
   <data name="WireOwnerAddressMissing" xml:space="preserve">
-    <value>{0} proprietari non hanno un indirizzo completo (via, CAP, località e paese), che il bonifico svizzero richiede: completa i dati dei proprietari indicati. Nessun batch è stato salvato.</value>
+    <value>{0} proprietari non hanno un indirizzo completo (via, CAP, località e paese), che il file di bonifico richiede: completa i dati dei proprietari indicati. Nessun batch è stato salvato.</value>
   </data>
   <data name="WireOwnerIbanMissing" xml:space="preserve">
     <value>{0} proprietari non hanno un IBAN configurato: completa i dati dei proprietari indicati. Nessun batch è stato salvato.</value>
@@ -4186,6 +4186,9 @@
   </data>
   <data name="WireOwnerIbanNotSwiss" xml:space="preserve">
     <value>{0} proprietari hanno un IBAN che non è svizzero né del Liechtenstein: un bonifico in CHF verso quel conto non è un pagamento nazionale e questo file non lo copre. Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WireOwnerIbanNotSepa" xml:space="preserve">
+    <value>{0} proprietari hanno un IBAN fuori dall'area SEPA: un bonifico in EUR verso quel conto non è un bonifico SEPA e questo file non lo copre. Nessun batch è stato salvato.</value>
   </data>
   <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
     <value>Codice di accesso non disponibile o verifica non superata</value>
@@ -6629,6 +6632,18 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="OwnerPeriodNotEnded" xml:space="preserve">
     <value>Il mese non è ancora finito: si chiude dal giorno dopo l'ultimo giorno del mese.</value>
+  </data>
+  <data name="OwnerBulkActionInvalid" xml:space="preserve">
+    <value>L'operazione in blocco non è valida: scegli tra registra, genera, approva, pubblica e chiudi.</value>
+  </data>
+  <data name="OwnerBulkOwnersEmpty" xml:space="preserve">
+    <value>L'elenco dei proprietari è vuoto: indica almeno un proprietario, oppure ometti l'elenco per includerli tutti.</value>
+  </data>
+  <data name="OwnerBulkTooManyOwners" xml:space="preserve">
+    <value>L'elenco indica troppi proprietari: al massimo {0} per volta.</value>
+  </data>
+  <data name="OwnerBulkJobNotFound" xml:space="preserve">
+    <value>Operazione in blocco non trovata o scaduta.</value>
   </data>
   <data name="OwnerCloseWaiverForbidden" xml:space="preserve">
     <value>Solo chi gestisce le finanze dei proprietari può chiudere il mese con una deroga.</value>

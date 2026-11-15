@@ -22,16 +22,17 @@ using static Casazen.Tests.Unit.Services.WireTestData;
 namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
-/// E06/F05/US01/T01 (NF-25, AC-E06-F05-US01-01), carried on the payouts by E16/F01/US01/T01: the wire file is validated before the batch is saved. A file that does
-/// not validate leaves no row behind, a file is never produced without its schema, the money of the file is exact (decimals, never a float) and matches its lines,
-/// the errors carry no IBAN and no name, and the validation reads no external entity. The official schemas are not in the repository until an operator adds them
-/// (docs/runbooks/wire-transfers.md): the tests that need to get past the validation give the service a schema of their own (<see cref="Pain001TestSchemas"/>).
-/// The rules of the Swiss message itself, of the payouts and of the owners are in <see cref="Pain001V09Tests"/>.
+/// E06/F05/US01/T01 (NF-25, AC-E06-F05-US01-01), carried on the payouts by E16/F01/US01/T01 and on the pain.001.001.09 file of EUR by E16/F01/US02/T01: the wire file
+/// is validated before the batch is saved. A file that does not validate leaves no row behind, a file is never produced without its schema, the money of the file is
+/// exact (decimals, never a float) and matches its lines, the errors carry no IBAN and no name, and the validation reads no external entity. The official schemas are
+/// not in the repository until an operator adds them (docs/runbooks/wire-transfers.md): the tests that need to get past the validation give the service a schema of
+/// their own (<see cref="Pain001TestSchemas"/>). The rules of the two messages themselves, of the payouts and of the owners are in <see cref="Pain001V09Tests"/>.
 /// </summary>
 public class Pain001ValidationProofTests
 {
+    // The two messages are written in the same namespace: the schema each currency is validated against is what tells them apart.
     private static readonly XNamespace Swiss = Pain001SchemaProvider.SwissNamespace;
-    private static readonly XNamespace Sepa = Pain001SchemaProvider.SepaNamespace;
+    private static readonly XNamespace Iso = Pain001SchemaProvider.IsoNamespace;
 
     // ---- the proof of the brief ------------------------------------------------------------------------------------------------------------------------
 
@@ -115,29 +116,31 @@ public class Pain001ValidationProofTests
     }
 
     /// <summary>
-    /// The embedded schemas either compile or the reason is known: a build never has files it cannot use and says nothing about it. The two currencies have
-    /// each their own message (<c>pain.001.001.03</c> for EUR, <c>pain.001.001.09</c> for CHF).
+    /// The embedded schemas either compile or the reason is known: a build never has files it cannot use and says nothing about it. Each currency has its own
+    /// folder and its own file (<c>pain.001.001.09.xsd</c> of the ISO catalogue for EUR, <c>pain.001.001.09.ch.03.xsd</c> of the Swiss Payment Standards for CHF): the two
+    /// messages share a namespace, so a file put in the wrong folder would compile and validate the wrong message, and its name is what says so.
     /// </summary>
     [Fact]
     public void Pain001SchemaProvider_EmbeddedFiles_CompileOrSayWhy_Test()
     {
         var names = Pain001SchemaProvider.EmbeddedSchemaNames();
 
-        foreach (var (currency, prefix) in new[]
+        foreach (var (currency, prefix, file) in new[]
                  {
-                     (WireTransferErrors.SepaCurrency, Pain001SchemaProvider.SepaResourcePrefix),
-                     (WireTransferErrors.SwissCurrency, Pain001SchemaProvider.SwissResourcePrefix),
+                     (WireTransferErrors.SepaCurrency, Pain001SchemaProvider.IsoResourcePrefix, Pain001V09Writer.IsoSchemaFile),
+                     (WireTransferErrors.SwissCurrency, Pain001SchemaProvider.SwissResourcePrefix, Pain001V09Writer.SwissSchemaFile),
                  })
         {
-            var embedded = names.Any(n => n.StartsWith(prefix, StringComparison.Ordinal));
+            var embedded = names.Where(n => n.StartsWith(prefix, StringComparison.Ordinal)).ToList();
             Assert.True(
-                Pain001SchemaProvider.HasOfficialSchema(currency) == embedded,
-                $"{currency}: embedded files = {embedded}, usable = {Pain001SchemaProvider.HasOfficialSchema(currency)} ({Pain001SchemaProvider.LoadProblem(currency)})");
+                Pain001SchemaProvider.HasOfficialSchema(currency) == (embedded.Count > 0),
+                $"{currency}: embedded files = {embedded.Count}, usable = {Pain001SchemaProvider.HasOfficialSchema(currency)} ({Pain001SchemaProvider.LoadProblem(currency)})");
+            Assert.All(embedded, name => Assert.Equal(prefix + file, name));
         }
 
-        Assert.Equal(Pain001SchemaProvider.SepaNamespace, Pain001SchemaProvider.NamespaceOf(" eur "));
+        Assert.Equal(Pain001SchemaProvider.IsoNamespace, Pain001SchemaProvider.NamespaceOf(" eur "));
         Assert.Equal(Pain001SchemaProvider.SwissNamespace, Pain001SchemaProvider.NamespaceOf("CHF"));
-        Assert.Equal("urn:iso:std:iso:20022:tech:xsd:pain.001.001.09", Pain001SchemaProvider.SwissNamespace);
+        Assert.Equal("urn:iso:std:iso:20022:tech:xsd:pain.001.001.09", Pain001SchemaProvider.IsoNamespace);
         Assert.Equal(WireTransferErrors.CurrencyNotSupported, Assert.Throws<DomainRuleException>(() => Pain001SchemaProvider.NamespaceOf("USD")).Code);
     }
 
@@ -181,13 +184,14 @@ public class Pain001ValidationProofTests
         Assert.Null(other.Set);
         Assert.Contains("target namespace", other.Problem);
 
-        // The schema of the SEPA message is not the schema of the Swiss one: a file written in the Swiss namespace would only draw a warning and pass.
-        var sepaForSwiss = Pain001SchemaProvider.Load(
-            ["sepa.xsd"],
-            _ => Open(Pain001TestSchemas.AcceptingXsdFor(Pain001SchemaProvider.SepaNamespace)),
-            Pain001SchemaProvider.SwissNamespace);
-        Assert.Null(sepaForSwiss.Set);
-        Assert.Contains(Pain001SchemaProvider.SwissNamespace, sepaForSwiss.Problem);
+        // The schema of the message CasaZen wrote for EUR before (pain.001.001.03) is no schema of the one it writes now: a file written in the namespace of
+        // pain.001.001.09 would only draw a warning and pass.
+        var retired = Pain001SchemaProvider.Load(
+            ["pain.001.001.03.xsd"],
+            _ => Open(Pain001TestSchemas.AcceptingXsdFor(Pain001TestSchemas.RetiredSepaNamespace)),
+            Pain001SchemaProvider.IsoNamespace);
+        Assert.Null(retired.Set);
+        Assert.Contains(Pain001SchemaProvider.IsoNamespace, retired.Problem);
     }
 
     /// <summary>
@@ -217,8 +221,8 @@ public class Pain001ValidationProofTests
     // ---- the currency, the amounts and the lines --------------------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// The file is validated with the schema set of its own currency (EUR the SEPA one, CHF the Swiss one, which have two namespaces and so are two sets); a currency
-    /// that has no wire file is 422 <c>wire_currency_not_supported</c>, from the service and from the provider.
+    /// The file is validated with the schema set of its own currency (EUR the ISO one, CHF the Swiss one: the two messages share a namespace, so the currency is what
+    /// picks the set); a currency that has no wire file is 422 <c>wire_currency_not_supported</c>, from the service and from the provider.
     /// </summary>
     [Theory]
     [InlineData("EUR", ItalianIban)]
@@ -241,9 +245,9 @@ public class Pain001ValidationProofTests
 
         Assert.Equal(currency, Assert.Single(requested));
         Assert.Equal(currency, batch.Currency);
-        var ns = currency == "CHF" ? Swiss : Sepa;
+        var ns = currency == "CHF" ? Swiss : Iso;
         Assert.Equal(currency, (string?)XDocument.Parse(xml).Descendants(ns + "InstdAmt").Single().Attribute("Ccy"));
-        Assert.Equal(currency == "CHF" ? WireMessageFormats.Pain001V09Ch03 : WireMessageFormats.Pain001V03Sepa, batch.MessageFormat);
+        Assert.Equal(currency == "CHF" ? WireMessageFormats.Pain001V09Ch03 : WireMessageFormats.Pain001V09Sepa, batch.MessageFormat);
 
         var unsupported = Assert.Throws<DomainRuleException>(() => Pain001SchemaProvider.GetSchemas("USD"));
         Assert.Equal(WireTransferErrors.CurrencyNotSupported, unsupported.Code);
@@ -266,7 +270,7 @@ public class Pain001ValidationProofTests
         var (batch, xml) = await NewService(db).CreateBatchAsync(orgId, [first, second], ExecutionDate);
 
         Assert.Equal("EUR", batch.Currency);
-        Assert.All(XDocument.Parse(xml).Descendants(Sepa + "InstdAmt"), a => Assert.Equal("EUR", (string?)a.Attribute("Ccy")));
+        Assert.All(XDocument.Parse(xml).Descendants(Iso + "InstdAmt"), a => Assert.Equal("EUR", (string?)a.Attribute("Ccy")));
         Assert.Equal(750.00m, batch.TotalAmount);
     }
 
@@ -328,7 +332,7 @@ public class Pain001ValidationProofTests
 
         var (batch, xml) = await NewService(db).CreateBatchAsync(orgId, ids, ExecutionDate);
 
-        var ns = currency == "CHF" ? Swiss : Sepa;
+        var ns = currency == "CHF" ? Swiss : Iso;
         var document = XDocument.Parse(xml);
         var amounts = document.Descendants(ns + "InstdAmt").Select(a => a.Value).Order(StringComparer.Ordinal).ToList();
         Assert.Equal(new[] { "0.10", "0.20", "33.33", "33.33", "33.34" }, amounts);
@@ -378,7 +382,8 @@ public class Pain001ValidationProofTests
 
     /// <summary>
     /// The control sum and the count the batch says are checked too: a file consistent with itself but not with its batch is refused. And the elements are read in
-    /// the namespace of the message of the currency: a file of the other message has no initiation message at all.
+    /// the namespace of the message of the currency: a file of another message (the <c>pain.001.001.03</c> CasaZen wrote for EUR before) has no initiation message
+    /// at all.
     /// </summary>
     [Fact]
     public async Task Pain001Checks_FileThatDoesNotMatchItsBatch_IsRefused_Test()
@@ -387,7 +392,9 @@ public class Pain001ValidationProofTests
 
         Assert.Equal(new[] { "CtrlSum" }, Pain001Checks.Violations(xml, batch.Currency, batch.TotalAmount + 0.01m, batch.TransferCount));
         Assert.Equal(new[] { "NbOfTxs" }, Pain001Checks.Violations(xml, batch.Currency, batch.TotalAmount, batch.TransferCount + 1));
-        Assert.Equal(new[] { "CstmrCdtTrfInitn" }, Pain001Checks.Violations(xml, "EUR", batch.TotalAmount, batch.TransferCount));
+        Assert.Equal(
+            new[] { "CstmrCdtTrfInitn" },
+            Pain001Checks.Violations(xml.Replace(Pain001SchemaProvider.IsoNamespace, Pain001TestSchemas.RetiredSepaNamespace), "EUR", batch.TotalAmount, batch.TransferCount));
     }
 
     /// <summary>
