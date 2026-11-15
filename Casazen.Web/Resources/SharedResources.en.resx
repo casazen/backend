@@ -6418,7 +6418,7 @@ Once active, the function works on the data the channel manager already holds.</
     <value>The owner of the property has no complete issuer profile yet: no document is prepared until you complete it.</value>
   </data>
   <data name="FiscalDocumentDraftOutdated" xml:space="preserve">
-    <value>The tax rules or the data of the issuer have changed since the draft was prepared: refresh it and check the amounts again before issuing.</value>
+    <value>The tax rules, the data of the issuer or the recipient have changed since the draft was prepared: refresh it and check the amounts and the recipient again before issuing.</value>
   </data>
   <data name="FiscalDocumentBookingNotActive" xml:space="preserve">
     <value>The booking is not active (a request, cancelled or a no-show): no fiscal document is issued for it.</value>
@@ -7938,5 +7938,23 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="AccountantPackageOwnerAccountingRequired" xml:space="preserve">
     <value>The folders that hold the owner accounting (invoices to the owners, statements, withholding, agency summary, VAT) can be chosen, and a test of them sent, only with the permission to read the owners' statements.</value>
+  </data>
+  <data name="AccPkgOwnDocsTotalsTitle" xml:space="preserve">
+    <value>Period total by currency: documents, taxable base, VAT, stamp duty and total (credit notes negative)</value>
+  </data>
+  <data name="AccPkgOwnDocsSummaryTitle" xml:space="preserve">
+    <value>Annual summary of the documents issued in the owner's name, {0}, by month and kind (credit notes negative)</value>
+  </data>
+  <data name="AccPkgOwnDocsAgencyInvoicesTitle" xml:space="preserve">
+    <value>Invoices of the agency to the owner and recharges, {0}: commission, recharges and expenses advanced by currency (credit notes negative)</value>
+  </data>
+  <data name="AccPkgOwnDocsAgencyInvoiceDetailTitle" xml:space="preserve">
+    <value>Invoices of the agency to the owner: commission, recharges and expenses advanced of each invoice (credit notes negative)</value>
+  </data>
+  <data name="OwnerIssuedDocumentNotFound" xml:space="preserve">
+    <value>Document not found.</value>
+  </data>
+  <data name="OwnerIssuedDocumentsNotAvailable" xml:space="preserve">
+    <value>There are no documents issued in your name to download.</value>
   </data>
 </root>

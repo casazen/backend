@@ -130,6 +130,9 @@ public class FiscalDocumentsRegistrationTests
             (typeof(IEventHandler<DomainEvent>), typeof(FiscalDocumentRejectionHandler), ServiceLifetime.Scoped),
             (typeof(IBillingSetupContributor), typeof(SdiIssuerRegistrationContributor), ServiceLifetime.Scoped),
 
+            // The documents issued in the name of the owners: the list, the PDF and the XML, and the ZIP for the owner's accountant (E17/F02/US01/T01).
+            (typeof(IOwnerIssuedDocumentsExport), typeof(OwnerIssuedDocumentsExport), ServiceLifetime.Scoped),
+
             // The checks of the limit of units of an owner and of the company tenant, and the consumer of InvoiceDataSaved and BookingConfirmed that raises the «Da fare» of a company tenant
             // (E18/F01/US03/T01).
             (typeof(IOwnerTaxChecks), typeof(OwnerTaxChecks), ServiceLifetime.Scoped),
