@@ -240,6 +240,12 @@ FatturaPA (`FatturaPaRegimeCode`, `TD01`/`TD04`), the `StampDuty` (`Threshold`, 
     the data is waited for in the same way: the host asks for the data, and no document is made out to the guest's name behind their back. A guest who was **erased**
     (anonymized: the name is the placeholder `ANONYMIZED`), **deleted** or who **asked to be erased** never gets a document made out to a name that is no longer theirs: the
     same 422, and the stay waits for the host (who may type the invoice data of the booking, which then wins).
+  - **The issue reads the recipient again.** For a document that needs only a name, the issue (the one document, the bulk issue, the automatic issue) reads the recipient as the draft does
+    (`RecipientOfAsync`) and compares it with the draft: when they differ the answer is 409 `document_draft_outdated` (the same as for a changed rule: nothing is numbered, the draft stays
+    a draft, and refreshing it, `POST api/fiscal/documents/{id}/refresh`, makes it again). It differs when the booking got invoice data with a name since the draft was made out to the guest
+    (the data wins), when the invoice data the draft was made from changed or is gone, when the name of the guest changed, and when the guest was erased, deleted or asked to be erased
+    since: the draft made again is then the 422 above, so a draft made before the erasure never goes out with the name of the guest. The draft of an **Italian invoice** is not read
+    again at the issue: it never falls back and it is issued as it always was.
 - **Swiss documents** have no nature code, no stamp duty, no XML (`FatturaPaXml` null) and the SDI state `not_applicable`; their tourist tax line reads
   «Tassa di soggiorno (non soggetta all'IVA)».
 - **The preview** `GET api/fiscal/documents/issuer-preview` (without `bookingId`: the organization) and `GET api/fiscal/documents/settings` return the rule

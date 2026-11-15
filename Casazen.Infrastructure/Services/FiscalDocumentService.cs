@@ -36,7 +36,8 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>The recipient.</b> The invoice data of the booking when it holds a name: it wins, as it always did. A booking with none (the portals and the site of the agency send
 /// none) is made out to its guest for a document that needs only a name (a Swiss document of any kind, an Italian receipt): the name of the guest, nothing else of the guest
 /// (<see cref="RecipientNameOfGuest"/>, FIX/DOC-RECIPIENT). An Italian invoice, a guest who asked for an invoice without giving its data and a guest who was erased never fall
-/// back: 422 <c>document_invoice_data_missing</c>, as before.</item>
+/// back: 422 <c>document_invoice_data_missing</c>, as before. The issue reads the recipient again for a document that needs only a name: a draft that is no longer what the booking says
+/// (invoice data with a name since, a guest erased since) is 409 <c>document_draft_outdated</c> (<see cref="RequireDraftOfTheRecipientAsync"/>).</item>
 /// <item><b>Logs</b> carry ids, codes and counts: never a value of the recipient or an amount.</item>
 /// </list>
 /// </remarks>
@@ -259,6 +260,7 @@ public sealed partial class FiscalDocumentService(
         var profile = await IssuerProfileAsync(booking, organization, document.IssuerProfileId, requireComplete: true, ct);
         var rule = RuleOf(profile, booking);
         RequireDraftOfTheRule(document, rule);
+        await RequireDraftOfTheRecipientAsync(document, booking.Id, rule, ct);
         await RequireNoOtherDocumentAsync(booking.Id, document.Id, PartOf(document.ForAgencyServices, profile.IsOwnerProfile), ct);
 
         var today = timeProvider.TodayInRomeAsDateOnly();
@@ -789,13 +791,10 @@ public sealed partial class FiscalDocumentService(
             await RequireNoOtherDocumentAsync(booking.Id, draft.Id, PartOf(planned.ForAgencyServices, profile.IsOwnerProfile), ct, countPlannedCredit: true);
 
         var kind = rule.DocumentKind == RuleDocumentKind.Receipt ? DocumentKind.Receipt : DocumentKind.Invoice;
-        var nameOnly = NeedsOnlyTheName(rule, kind);
-        var recipient = await invoiceData.GetAsync(booking.Id, ct);
 
         // A document that needs only a name, for a booking with no invoice data of its own (a portal sends none): the guest of the booking is the recipient, by name only
         // (FIX/DOC-RECIPIENT). No name to use (the guest was erased or has none): the refusal below is the one of a booking with no data, as before.
-        var guestName = nameOnly && NeedsTheNameOfTheGuest(recipient) ? await GuestNameOfRecipientAsync(booking.Id, ct) : null;
-        var missing = guestName is null ? MissingInvoiceData(recipient, nameOnly) : Array.Empty<string>();
+        var (recipient, guestName, missing) = await RecipientOfAsync(booking.Id, NeedsOnlyTheName(rule, kind), ct);
         if (missing.Count > 0)
         {
             throw new DomainRuleException(FiscalDocumentErrors.InvoiceDataMissing, "FiscalDocumentInvoiceDataMissing")
@@ -1361,6 +1360,69 @@ public sealed partial class FiscalDocumentService(
 
     /// <summary>What <see cref="GuestNameOfRecipientAsync"/> reads of the guest of a booking: the two parts of the name, and whether the guest is gone.</summary>
     private sealed record GuestNameFacts(string? FirstName, string? LastName, bool Erased);
+
+    /// <summary>
+    /// Who a document of the booking is made out to now (FIX/DOC-RECIPIENT): the invoice data of the booking, else for a document that needs only a name the name of its guest, else what is
+    /// missing (<see cref="MissingInvoiceData"/>). The one reading of the draft (<see cref="RebuildAsync"/>) and of its issue (<see cref="RequireDraftOfTheRecipientAsync"/>).
+    /// </summary>
+    private async Task<(InvoiceDataView? Data, string? GuestName, IReadOnlyList<string> Missing)> RecipientOfAsync(Guid bookingId, bool nameOnly, CancellationToken ct)
+    {
+        var data = await invoiceData.GetAsync(bookingId, ct);
+        var guestName = nameOnly && NeedsTheNameOfTheGuest(data) ? await GuestNameOfRecipientAsync(bookingId, ct) : null;
+        IReadOnlyList<string> missing = guestName is null ? MissingInvoiceData(data, nameOnly) : [];
+        return (data, guestName, missing);
+    }
+
+    /// <summary>
+    /// The draft of a document that needs only a name is still made out to who the booking says now (FIX/DOC-RECIPIENT): the draft made with the name of the guest is no longer the document once the
+    /// booking has invoice data with a name (it wins), once the guest was erased or asked to be erased (a document is never made out to a name that is no longer theirs) or when the name changed;
+    /// a draft made from invoice data is no longer it when the data changed or is gone. 409 <c>document_draft_outdated</c> and nothing is numbered: the host makes the draft again, which is then
+    /// the 422 of the draft when there is nobody to make it out to. The draft of an Italian invoice is not read again: it never falls back and is issued as it always was.
+    /// </summary>
+    private async Task RequireDraftOfTheRecipientAsync(FiscalDocument draft, Guid bookingId, FiscalTaxRule rule, CancellationToken ct)
+    {
+        var kind = rule.DocumentKind == RuleDocumentKind.Receipt ? DocumentKind.Receipt : DocumentKind.Invoice;
+        if (!NeedsOnlyTheName(rule, kind))
+            return;
+
+        var (data, guestName, missing) = await RecipientOfAsync(bookingId, nameOnly: true, ct);
+        if (missing.Count == 0)
+        {
+            var current = new FiscalDocument();
+            if (guestName is not null)
+                CopyRecipientName(guestName, current);
+            else
+                CopyRecipient(data!, current);
+
+            if (SameRecipient(draft, current))
+                return;
+        }
+
+        throw new DomainConflictException(FiscalDocumentErrors.DraftOutdated, "FiscalDocumentDraftOutdated");
+    }
+
+    /// <summary>Two documents have the same recipient: the same kind and the same text in every field of the snapshot, a text of white space being none.</summary>
+    private static bool SameRecipient(FiscalDocument first, FiscalDocument second) =>
+        first.RecipientKind == second.RecipientKind && RecipientTextsOf(first).Zip(RecipientTextsOf(second)).All(pair => SameText(pair.First, pair.Second));
+
+    /// <summary>The texts of the recipient snapshot of a document, in a fixed order.</summary>
+    private static string?[] RecipientTextsOf(FiscalDocument document) =>
+    [
+        document.RecipientName,
+        document.RecipientFiscalCode,
+        document.RecipientVatNumber,
+        document.RecipientAddressStreet,
+        document.RecipientAddressCivic,
+        document.RecipientPostalCode,
+        document.RecipientCity,
+        document.RecipientProvince,
+        document.RecipientCountryCode,
+        document.RecipientSdiCode,
+        document.RecipientPec,
+    ];
+
+    private static bool SameText(string? first, string? second) =>
+        string.Equals(string.IsNullOrWhiteSpace(first) ? null : first.Trim(), string.IsNullOrWhiteSpace(second) ? null : second.Trim(), StringComparison.Ordinal);
 
     /// <summary>
     /// The draft was made with the tax rule the document is about to be issued with: the version of its rule, the kind of document and the VAT of each of its

@@ -157,6 +157,70 @@ public class FiscalDocumentRecipientProofTests
         Assert.DoesNotContain(GuestName, text, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule. A draft made out to the guest by name (the booking had no invoice data) is no longer the document once the booking has invoice data with a name: the issue is
+    /// refused (409 <c>document_draft_outdated</c>, nothing numbered, the draft stays a draft), and the draft made again takes the invoice data and is issued with it.
+    /// </summary>
+    [Fact]
+    public async Task Document_DraftMadeWithTheGuestName_IsOutdatedOnceTheBookingHasInvoiceData_Test()
+    {
+        await using var db = NewDb();
+        var booking = await SeedSwissAsync(db);
+        string? typed = null;
+        var service = Service(db, id => typed is null ? null : Row(id, name: typed, requested: false, street: "Bahnhofstrasse 1", city: "Zurigo"));
+
+        var draft = await service.CreateDraftAsync(booking, null);
+        Assert.Equal(GuestName, draft.RecipientName);
+
+        typed = "TEST Studio Rossi";
+        var outdated = await Assert.ThrowsAsync<DomainConflictException>(() => service.IssueAsync(draft.Id, confirm: true));
+
+        Assert.Equal(FiscalDocumentErrors.DraftOutdated, outdated.Code);
+        var kept = await db.FiscalDocuments.AsNoTracking().SingleAsync();
+        Assert.Equal((FiscalDocumentStatus.Draft, (string?)null, GuestName), (kept.Status, kept.Number, kept.RecipientName));
+
+        await service.RefreshDraftAsync(draft.Id);
+        var issued = await service.IssueAsync(draft.Id, confirm: true);
+
+        Assert.Equal((FiscalDocumentStatus.Issued, "TEST Studio Rossi", "Bahnhofstrasse 1"), (issued.Status, issued.RecipientName, issued.RecipientAddressStreet));
+    }
+
+    /// <summary>
+    /// PROOF TEST: privacy rule. A guest who was erased (anonymized), who asked to be erased or who was deleted after the draft was made out to their name: the issue is refused (409
+    /// <c>document_draft_outdated</c>, nothing numbered) and the draft made again is the refusal of a booking with no invoice data: no document goes out to a name that is no longer theirs.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    public async Task Document_DraftMadeWithTheGuestName_IsOutdatedWhenTheGuestIsErasedAfterwards_Test(bool anonymized, bool erasureRequested, bool deleted)
+    {
+        await using var db = NewDb();
+        var booking = await SeedSwissAsync(db);
+        var service = Service(db);
+        var draft = await service.CreateDraftAsync(booking, null);
+
+        var guestId = await db.Bookings.Where(b => b.Id == booking).Select(b => b.GuestId).SingleAsync();
+        var guest = await db.Guests.SingleAsync(g => g.Id == guestId);
+        guest.DataAnonymizedDate = anonymized ? Now.UtcDateTime : null;
+        guest.ErasureRequested = erasureRequested;
+        guest.IsDeleted = deleted;
+        if (anonymized)
+        {
+            guest.FirstName = GuestDataEraser.AnonymizedName;
+            guest.LastName = GuestDataEraser.AnonymizedName;
+        }
+
+        await db.SaveChangesAsync();
+
+        var outdated = await Assert.ThrowsAsync<DomainConflictException>(() => service.IssueAsync(draft.Id, confirm: true));
+        Assert.Equal(FiscalDocumentErrors.DraftOutdated, outdated.Code);
+        Assert.Equal(FiscalDocumentStatus.Draft, (await db.FiscalDocuments.AsNoTracking().SingleAsync()).Status);
+
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => service.RefreshDraftAsync(draft.Id));
+        Assert.Equal(FiscalDocumentErrors.InvoiceDataMissing, refused.Code);
+    }
+
     /// <summary>The recipient columns beyond the name and the kind of recipient: every one is empty on a document made out to the guest by name.</summary>
     private static string?[] RestOfTheRecipient(FiscalDocument document)
     {
