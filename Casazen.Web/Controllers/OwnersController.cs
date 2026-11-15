@@ -28,25 +28,23 @@ public class OwnersController(
 
     /// <summary>
     /// List of property owners for the agency. IBAN is masked (last 4 chars only, ADR-012-R3).
-    /// Requires <c>agency.owner.view</c> policy.
+    /// Requires <c>agency.owner.view</c> policy. Each owner carries the number of its properties, the kind and the settlement currency of its fiscal profile in force and the
+    /// mandate in force today (<c>null</c> without one), all read with the list in one query (FIX/RES-OWNERS). The owners are those of the caller's org inside its reach: the
+    /// whole org, or for a caller restricted to some properties the owners whose every property it reaches (the rule of the mandates of the owner).
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(List<PropertyOwnerSummaryDto>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<List<PropertyOwnerSummaryDto>>> GetAll()
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<List<PropertyOwnerSummaryDto>>> GetAll(
+        [FromServices] IOwnerDirectoryService directory,
+        [FromServices] IHostScopeResolver hostScopeResolver)
     {
         logger.LogInformation("Retrieving property owners list");
 
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null)
+        if (await ScopeAsync(hostScopeResolver) is not { } scope)
             return Forbid();
 
-        var owners = await db.PropertyOwners
-            .Where(o => o.OrgId == orgId.Value)
-            .OrderBy(o => o.LastName)
-            .ThenBy(o => o.FirstName)
-            .AsNoTracking()
-            .ToListAsync(HttpContext.RequestAborted);
-
+        var owners = await directory.ListAsync(scope, HttpContext.RequestAborted);
         return Ok(owners.Select(PropertyOwnerDtoMapper.ToSummary).ToList());
     }
 

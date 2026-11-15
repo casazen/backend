@@ -38,6 +38,15 @@ append-only owner ledger, the statement versions and the month-end close (T02), 
 Decisions of 2026-11-14 (`fatturazione/analisi-tecnica.md` §5, ⚖ table §7): the defaults marked ⚖ are prudent and configurable, to be confirmed by an
 accountant; every one of them is set through the «Fatturazione» wizard of the onboarding guide.
 
+- **The list of the owners** (`GET api/owners`, `agency.owner.view`, `IOwnerDirectoryService`, FIX/RES-OWNERS): each owner carries the person (name, e-mail, phone, tax
+  regime, IBAN masked to its last four characters) and what the screen «Proprietari» draws a row with, read with the list in **one statement** (never one read for each
+  owner): `propertyCount` (the properties of an ownership not ended today, on a property that still exists, each once), `entityKind` (`NaturalPerson` or `LegalEntity`) and
+  `settlementCurrency` of the fiscal profile in force today (the newest when none is in force, as the page of the owner reads it; both `null` for an owner with no profile:
+  the statements and the payouts read the profile and never a guess), and `mandateInForce` (`{ id, validFrom, validTo, commissionPercent, commissionBase,
+  commissionIncludesVat }` of the owner's own mandate in force today, the latest start when more cover the day, `null` without one: never a commission of zero). No identifier,
+  address or bank account of the owner or of its profile is read for the list. The owners are those of the caller's org inside its reach: the whole org, or for a caller
+  restricted to some properties (a collaborator «Solo alcuni», an account outside the org team) the owners with at least one ownership period and every period on a
+  property it reaches, the rule of the mandates below, so the list never shows an owner whose mandate answers 404.
 - **Mandate** (`OwnerMandate`, `api/owners/{ownerId}/mandates`): `GET` the versions, the newest first (`agency.owner.view`); `POST` a new version
   (`agency.owner.financial.manage`) with `validFrom` and `commissionPercent` (0-100, two decimals; **both required**: a request without the percent is 422
   `owner_mandate_invalid`, a mandate of 0% is a choice and never what an omitted or misspelt field turns into), `commissionBase` (`GrossExclTouristTax` = 1, the default,
@@ -113,7 +122,10 @@ accounting for Swiss owners, and the retention law that applies (Italy at least 
   until a new version. Approval
   (`…/versions/{id}/approve`, `agency.statement.manage`) and publication (`…/publish`, `agency.statement.publish`) are distinct permissions; publication
   stores the JSON of the version and of its lines with its SHA-256 (`…/published`), kept after it is superseded. `GET …/versions/{id}` drills down to the
-  lines and their sources.
+  lines and their sources, and carries the tourist tax box of the statement with its amounts (`touristTax`: one row for each stay whose tax the agency collects,
+  `{ property, checkIn, checkOut, channel, bookingCode, currency, amount }`, for information only and outside every total): the very rows the owner portal reads for
+  the version, both from `IOwnerStatementDocuments.GetContentAsync` (FIX/RES-OWNERS), so it answers 409 `owner_ledger_immutable` when the lines no longer give the totals
+  the version stores, as the files do.
 - **Readiness** (`GET …/periods/{y}/{m}/readiness`): issues of a property (`ownership_missing`, `ownership_share_gap`, `source_amount_missing`,
   `channel_commission_missing`) have no owner of
   their own and are listed for the org, **and** hold back the statement of every owner of that property (a source left out of the ledger is a line missing
@@ -234,7 +246,8 @@ The invoice of the property manager to an owner (NF-114, D9): a `FiscalDocument`
 - **Endpoints** `api/owner-invoices`, the whole org only (403 for a caller restricted to some properties), 404 while the flag is off:
   `POST drafts { versionId }`, `POST {id}/issue { confirm }`, `POST {id}/credit-note { amount?, reason, confirm }` and `DELETE {id}` (the discard of a draft), all
   with `agency.statement.manage`, `GET ?period=yyyy-MM&ownerId=` (`agency.statement.view`: number, owner, total, currency, status and, once issued, `payment`:
-  `offset`, `to_pay` with `amountDue`, `credited`). The PDF and the XML are those of every fiscal document (`GET api/fiscal/documents/{id}/pdf|xml`, read with
+  `offset`, `to_pay` with `amountDue`, `credited`) and `GET {id}` (`agency.statement.view`: the invoice with its lines, as the draft answers them, so a draft is read
+  again after a reload without making it again; 404 `fiscal_document_not_found` for another org's invoice and for a document that is not an owner invoice). The PDF and the XML are those of every fiscal document (`GET api/fiscal/documents/{id}/pdf|xml`, read with
   `payment.read`, a document without a booking: the whole org). **The endpoints of the guest documents (`api/fiscal/documents`, `payment.write`) refuse to make an
   owner invoice again, to issue it, to credit it or to discard it (422 `document_owner_invoice`)**: the property manager of the short-rent area holds
   `payment.write` and no agency permission (DEB-01), and the credit note writes to the owner ledger (the VAT given back, below), so it needs the permission of the

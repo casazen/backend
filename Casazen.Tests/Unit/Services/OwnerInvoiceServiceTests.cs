@@ -140,6 +140,68 @@ public class OwnerInvoiceServiceTests
     }
 
     /// <summary>
+    /// PROOF TEST: permission (tenant) rule (FIX/RES-OWNERS, S016). An owner invoice is read again by its id with the lines the creation answered, nothing written, but only
+    /// by its own organization and only when it is an owner invoice: the id of another org's invoice and the id of a document of the same org that is a guest document or a
+    /// self-billed invoice are the 404 of a document that does not exist, and an id that nobody has too.
+    /// </summary>
+    [Fact]
+    public async Task OwnerInvoiceById_OfAnotherOrgOrOtherPurpose_IsNotFound_Test()
+    {
+        await using var rig = await OwnerInvoiceRig.SwissAsync();
+        var version = await rig.VersionAsync(rig.StandardMonth());
+        var draft = await rig.Invoices.CreateDraftAsync(rig.OrgId, version.Id, null);
+        rig.Db.FiscalDocuments.AddRange(
+            OtherDocument(rig, FiscalDocumentPurpose.GuestStay),
+            OtherDocument(rig, FiscalDocumentPurpose.SelfBilling),
+            OtherDocument(rig, FiscalDocumentPurpose.OwnerInvoice, FiscalDocumentKind.CreditNote));
+        await rig.Db.SaveChangesAsync();
+        rig.Db.ChangeTracker.Clear();
+        var before = await rig.Db.FiscalDocuments.AsNoTracking().CountAsync();
+
+        // The draft of the org comes back as it is, with its lines to the cent: what the creation answered, read again after a reload.
+        var read = await rig.Invoices.GetAsync(rig.OrgId, draft.Id);
+        Assert.Equal((draft.Id, FiscalDocumentStatus.Draft, FiscalDocumentPurpose.OwnerInvoice, draft.Total, draft.Lines.Count), (read.Id, read.Status, read.Purpose, read.Total, read.Lines.Count));
+        Assert.Equal(
+            draft.Lines.OrderBy(l => l.LineNumber).Select(l => (l.LineNumber, l.LineType, l.TotalPrice, l.VatRatePercent, l.VatAmount)),
+            read.Lines.OrderBy(l => l.LineNumber).Select(l => (l.LineNumber, l.LineType, l.TotalPrice, l.VatRatePercent, l.VatAmount)));
+        Assert.Equal(before, await rig.Db.FiscalDocuments.AsNoTracking().CountAsync());
+
+        // The credit note of an owner invoice is an owner invoice document too: read as it was issued.
+        var note = await rig.Db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Kind == FiscalDocumentKind.CreditNote);
+        Assert.Equal(note.Id, (await rig.Invoices.GetAsync(rig.OrgId, note.Id)).Id);
+
+        // Another org: the 404 of a document that does not exist; the same id asked by its own org is served.
+        var other = await Assert.ThrowsAsync<NotFoundException>(() => rig.Invoices.GetAsync(Guid.NewGuid(), draft.Id));
+        Assert.Equal(FiscalDocumentErrors.NotFound, other.Code);
+
+        // The same org, another purpose: a guest document and a self-billed invoice are not owner invoices.
+        foreach (var purpose in new[] { FiscalDocumentPurpose.GuestStay, FiscalDocumentPurpose.SelfBilling })
+        {
+            var notAnOwnerInvoice = await rig.Db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Purpose == purpose);
+            var refusal = await Assert.ThrowsAsync<NotFoundException>(() => rig.Invoices.GetAsync(rig.OrgId, notAnOwnerInvoice.Id));
+            Assert.Equal(FiscalDocumentErrors.NotFound, refusal.Code);
+        }
+
+        var nobody = await Assert.ThrowsAsync<NotFoundException>(() => rig.Invoices.GetAsync(rig.OrgId, Guid.NewGuid()));
+        Assert.Equal(FiscalDocumentErrors.NotFound, nobody.Code);
+    }
+
+    private static FiscalDocument OtherDocument(OwnerInvoiceRig rig, FiscalDocumentPurpose purpose, FiscalDocumentKind kind = FiscalDocumentKind.Invoice) => new()
+    {
+        OrgId = rig.OrgId,
+        Purpose = purpose,
+        Kind = kind,
+        Status = FiscalDocumentStatus.Issued,
+        Series = "TEST",
+        Number = $"TEST/{purpose}-{kind}",
+        IssueDate = new DateOnly(2026, 11, 1),
+        Currency = "CHF",
+        RecipientOwnerId = purpose == FiscalDocumentPurpose.OwnerInvoice ? rig.OwnerId : null,
+        PeriodYear = 2026,
+        PeriodMonth = 10,
+    };
+
+    /// <summary>
     /// PROOF TEST: money rule (⚖ I10, I11). With the listings on the default holder (the owner, V1) no portal commission is recharged; once the agency holds the
     /// account of one listing on Booking.com (V2, written in bulk), its commissions, and only its, are one recharge line «Riaddebito commissioni Booking.com»;
     /// with the recharge switched off there is none again.

@@ -31,8 +31,15 @@ public sealed class BillingSetupService(
     IEnumerable<IBillingSetupContributor> contributors,
     ILogger<BillingSetupService> logger,
     IPortalAccountSettingsService? portalAccounts = null,
-    IFeatureFlags? featureFlags = null) : IBillingSetupService
+    IFeatureFlags? featureFlags = null,
+    IGuestDocumentLineBuilder? documentLines = null) : IBillingSetupService
 {
+    /// <summary>
+    /// The key of the section <c>touristTax</c> that lists the portals that collect the tourist tax by default, for an issuer that has not confirmed its own list yet:
+    /// read-only, the shipped default (<c>SwissTouristTax:PlatformCollected</c>) as the guest documents read it, never copied into the profile.
+    /// </summary>
+    public const string DefaultPlatformCollectedTouristTaxChannels = "defaultPlatformCollectedTouristTaxChannels";
+
     public async Task<BillingSetup> GetAsync(Guid orgId, CancellationToken ct = default)
     {
         var view = await issuers.GetSettingsAsync(orgId, ct);
@@ -193,7 +200,7 @@ public sealed class BillingSetupService(
     }
 
     /// <summary>The section with its values: the ones of the profile of the issuer, and for <c>channels</c> the defaults of the portal accounts (E14/F01/US01/T01).</summary>
-    private static BillingSetupSection SectionOf(Evaluation evaluation, IssuerSettingsView view, IReadOnlyDictionary<string, object?>? channels = null) =>
+    private BillingSetupSection SectionOf(Evaluation evaluation, IssuerSettingsView view, IReadOnlyDictionary<string, object?>? channels = null) =>
         new(
             evaluation.Section,
             evaluation.Applies,
@@ -272,8 +279,23 @@ public sealed class BillingSetupService(
     private static string CountryOf(string? countryCode) =>
         string.IsNullOrWhiteSpace(countryCode) ? OrgFiscalIssuerProfile.DefaultCountryCode : countryCode.Trim().ToUpperInvariant();
 
+    /// <summary>
+    /// The portals that collect the tourist tax by default for an issuer of <paramref name="countryCode"/> that has confirmed none, by the names of
+    /// <see cref="Casazen.Core.Entities.Enums.BookingSource"/>: exactly what the guest documents say of a profile with nothing confirmed
+    /// (<see cref="IGuestDocumentLineBuilder.PlatformCollectedChannelsOf"/>: the shipped default of a Swiss issuer, none for an Italian one), so the wizard and the documents
+    /// never disagree. Empty when the service is built without the line builder.
+    /// </summary>
+    private IReadOnlyList<string> PlatformDefaultsOf(string? countryCode)
+    {
+        if (documentLines is null)
+            return [];
+
+        var unconfirmed = new OrgFiscalIssuerProfile { CountryCode = CountryOf(countryCode) };
+        return [.. documentLines.PlatformCollectedChannelsOf(unconfirmed).Select(source => source.ToString())];
+    }
+
     /// <summary>What is saved in a section, by the names of <see cref="BillingSetupFields"/>; the bank accounts of the issuer are in none. A section no epic fills here has none.</summary>
-    private static Dictionary<string, object?> ValuesOf(string section, IssuerSettingsView view)
+    private Dictionary<string, object?> ValuesOf(string section, IssuerSettingsView view)
     {
         var issuer = view.Issuer;
         switch (section)
@@ -321,6 +343,10 @@ public sealed class BillingSetupService(
                     [BillingSetupFields.PlatformCollectedTouristTaxChannels] = issuer.PlatformCollectedTouristTaxChannelsConfirmed
                         ? issuer.PlatformCollectedTouristTaxChannels.Select(source => source.ToString()).ToList()
                         : null,
+
+                    // The portals that collect it by default while the issuer has confirmed none (the shipped default of a Swiss issuer, none for an Italian one): the
+                    // wizard asks about the portals that are not on it, not about all of them. Read, never saved; the issuer's own answer is the field above.
+                    [DefaultPlatformCollectedTouristTaxChannels] = PlatformDefaultsOf(issuer.CountryCode),
                 };
             case BillingSetupSections.Automation:
                 return new Dictionary<string, object?>
