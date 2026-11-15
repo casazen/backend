@@ -451,6 +451,9 @@ public class OwnerTaxChecksTests
         {
             var text = EmailTexts.Get(OwnerTaxChecks.CompanyTenantReasonKey, culture);
             Assert.DoesNotContain("{", text, StringComparison.Ordinal);
+
+            // The rate of the withholding is configuration (ShortStayFiscal:OtaWithholdingRate), never a number written in a sentence.
+            Assert.DoesNotContain("%", text, StringComparison.Ordinal);
             Assert.True(text.Length <= TodoLimits.ReasonMaxLength);
             Assert.Contains("12395/2024", text, StringComparison.Ordinal);
             Assert.Contains("24/E", text, StringComparison.Ordinal);
