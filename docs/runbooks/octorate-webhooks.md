@@ -169,7 +169,8 @@ have changed, at most once an hour: `WaitingChatPermission` when the copy of the
 runs hourly, § 4c); `WaitingThread` when the booking has its conversation; `WaitingStaticIps` and a refused contact a day after the last read; `Failed` with a limit or an outage up
 to three attempts. A row made while the flags were off holds no token and nobody has its link: when a flag is turned on the pass issues a new link for it. A row ends when the guest
 completes the check-in, the booking is cancelled or no longer takes a check-in, the link expires, or the host generates or sends a link itself; its «To do» is closed with it.
-The reminder of the missing data leaves such a stay alone (a new link would replace the one the guest already has).
+The reminder of the missing data leaves such a stay alone (a new link would replace the one the guest already has in the chat, or the one the host copies from its «To do»: an open row
+whose link goes by a channel of its own, or that holds a token, is left alone; a row with no token has nothing to copy and the stay is reminded as it always was).
 
 **An automatic message answers nobody.** `MessageOrigin.Automation` is never shown as written by a person; it marks no message of the guest as read and does not make the
 conversation «answered», so a question of the guest still waits in «Da rispondere» (the copy takes the direction of the thread from the newest message that is not automatic).

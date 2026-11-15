@@ -651,6 +651,80 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Equal(2, issued[manual.Booking.Id].Count);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (the review of S010, fix 7). The reminder before arrival does not replace the link a row holds for the host: with only the contact of the guest on and no address
+    /// at the channel, the row waits for the host (<c>Manual</c>, <c>WaitingContact</c>, its token and a «To do» «Copia link»), and the reminder, which would issue a new link and leave the
+    /// host with nothing to copy, leaves the stay alone.
+    /// </summary>
+    [Fact]
+    public async Task SendJob_TheReminderLeavesAlone_ARowThatHoldsTheLinkForTheHost_Test()
+    {
+        var waiting = await AddStayAsync(daysUntilCheckIn: 0, withThread: false, withSession: false);
+        var rig = new Rig(_db, _world, _clock, FeatureFlags.GuestContactInfo);
+        rig.Contacts
+            .Setup(c => c.ReadForCheckInLinkAsync(It.IsAny<Guid>(), waiting.Booking.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GuestContactInfoOutcome(GuestContactInfoStatus.NoEmailAtChannel));
+        var issued = new List<IssuedCheckInLink>();
+        var checkIn = new Mock<IGuestCheckInService>();
+        checkIn
+            .Setup(s => s.IssueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
+            .ReturnsAsync((Guid bookingId, Guid orgId) =>
+            {
+                var token = "job-" + Guid.NewGuid().ToString("N");
+                var session = new GuestCheckInSession
+                {
+                    BookingId = bookingId,
+                    OrgId = orgId,
+                    TokenHash = GuestCheckInService.HashToken(token),
+                    ExpiresAt = _clock.GetUtcNow().UtcDateTime.AddDays(7),
+                    Status = GuestCheckInSessionStatus.Inviato,
+                    CreatedAt = _clock.GetUtcNow().UtcDateTime,
+                };
+                _db.GuestCheckInSessions.Add(session);
+                _db.SaveChanges();
+                var link = new IssuedCheckInLink(session.Id, token, session.ExpiresAt);
+                issued.Add(link);
+                return link;
+            });
+        var stayGuests = new Mock<IStayGuestService>();
+        stayGuests
+            .Setup(s => s.GetForBookingsAsync(It.IsAny<IReadOnlyCollection<Booking>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Booking> bookings, CancellationToken _) =>
+                (IReadOnlyDictionary<Guid, IReadOnlyList<StayGuest>>)bookings.ToDictionary(b => b.Id, _ => (IReadOnlyList<StayGuest>)[]));
+        var emails = new Mock<IGuestCheckInLinkEmailQueue>();
+        emails
+            .Setup(e => e.QueueAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GuestCheckInLinkEmailOutcome(GuestCheckInLinkEmailStatus.Failed, GuestCheckInLinkEmailErrors.NoRecipient));
+        var job = new GuestCheckInSendJob(
+            _db,
+            checkIn.Object,
+            emails.Object,
+            stayGuests.Object,
+            EmailTestHelpers.Links("https://public.test"),
+            Options.Create(new GuestCheckInOptions { SendWindowDays = 3, ReminderDaysBefore = 3 }),
+            NullLogger<GuestCheckInSendJob>.Instance,
+            _clock,
+            rig.Service);
+
+        await job.ExecuteAsync();
+
+        // The first stage issued the link; nobody can be reached, so the row holds it for the host, with the «To do».
+        var first = Assert.Single(issued);
+        var row = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync();
+        Assert.Equal((CheckInLinkChannel.Manual, CheckInLinkDeliveryState.WaitingContact, first.Token), (row.Channel, row.State, row.LinkToken));
+        Assert.Single(await _db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.CheckInLinkToSend)).ToListAsync());
+
+        // The day after: the reminder leaves the link the host copies from its «To do» where it is.
+        foreach (var session in await _db.GuestCheckInSessions.ToListAsync())
+            session.CreatedAt = session.CreatedAt.AddDays(-2);
+        await _db.SaveChangesAsync();
+        await job.ExecuteAsync();
+
+        Assert.Single(issued);
+        var view = await rig.Service.GetAsync(_world.Scope.OrgId, waiting.Booking.Id, includeLink: true);
+        Assert.Equal($"https://public.test/checkin/{first.Token}", view!.Link);
+    }
+
     // ---- Small facts -------------------------------------------------------------------------------------------------------------------------
 
     /// <summary>The codes the hourly pass calls transient are the ones the exceptions carry, and the key of a message is a short string of letters, digits and a dash.</summary>

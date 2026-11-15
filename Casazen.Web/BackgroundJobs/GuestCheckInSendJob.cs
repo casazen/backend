@@ -236,12 +236,15 @@ public class GuestCheckInSendJob(
             return;
 
         // E23/F01/US01/T01: a stay with no e-mail address whose link the delivery service took over is not reminded: a new link would replace the one the guest already has
-        // (in the chat of the portal), or the one the host is about to copy, and the reminder could reach nobody.
+        // (in the chat of the portal), or the one the host is about to copy, and the reminder could reach nobody. Held by the service: the row is open and the link goes by a channel
+        // of its own (the chat, the e-mail), or the row holds the token of a link that waits for the host (the one the host copies from its «To do», «Copia link»: the token is stored
+        // only for a stay from a portal while a flag of the module is on, and cleared when the link is sent or the row ends). A row with no token (made with the flags off, or for
+        // a stay that is not a portal's) has nothing to copy, and the stay is reminded as it always was.
         if (deliveries is not null)
         {
             var candidateIds = candidates.Select(b => b.Id).ToList();
             var heldByTheService = await db.CheckInLinkDeliveries
-                .Where(d => candidateIds.Contains(d.BookingId) && d.EndedAt == null && d.Channel != CheckInLinkChannel.Manual)
+                .Where(d => candidateIds.Contains(d.BookingId) && d.EndedAt == null && (d.Channel != CheckInLinkChannel.Manual || d.LinkToken != null))
                 .Select(d => d.BookingId)
                 .ToListAsync();
             candidates = candidates
