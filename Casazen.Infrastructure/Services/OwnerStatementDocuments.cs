@@ -33,9 +33,11 @@ namespace Casazen.Infrastructure.Services;
 /// each, less the stays whose channel collects it itself (a channel of the confirmed list of the issuer, or the collector of the stay as the host's tourist tax decides:
 /// the active rule of the channel in the comune, else the one the host declared, else the one confirmed with the calculation), and only for a stay that owes the tax
 /// (an active booking that is not a no-show). For information only, in the currency of the property, never in a total.</item>
-/// <item><b>Who holds the portal account.</b> The channel fee of a stay is flagged as the agency's when the agency holds the account of the listing on that portal
-/// (<see cref="IPortalAccountHolderResolver"/>, E14, ⚖ I10: V2, the portal bills the agency, which recharges the commission on its invoice); otherwise it is V1, the
-/// owner's, «Trattenuta dal portale». A service built without the resolver reads every listing as V1.</item>
+/// <item><b>Who holds the portal account.</b> The channel fee of a stay is flagged as recharged by the agency when the invoice of the property manager recharges it:
+/// the agency holds the account of the listing on that portal and the organization recharges the commissions of the accounts it holds
+/// (<see cref="PortalAccountHolders.RechargesCommissionOf"/> of <see cref="IPortalAccountHolderResolver"/>, E14, ⚖ I10 I11, the very test of the invoice), so the
+/// label «riaddebitate dal gestore (fattura n. …)» never names an invoice without that recharge; otherwise it is «Trattenuta dal portale». A service built without
+/// the resolver reads every listing as V1.</item>
 /// <item><b>Language.</b> There is no language kept for an owner yet: Italian unless the caller asks for English. The stored PDF is in Italian.</item>
 /// <item><b>The notice of the publication.</b> The e-mail that tells the owner is queued after the publication was saved. A notice that cannot be prepared or queued never
 /// turns the publication into an error, and is never silent: it is logged with its ids and the agency gets a «To do» (<see cref="ActivityType.OwnerStatementNoticeFailed"/>,
@@ -426,7 +428,7 @@ public sealed class OwnerStatementDocuments(
 
     /// <summary>
     /// The line of a ledger entry: its part, its day, the stay (days, channel, code) and property it is about, and, for the commission a portal kept, whether the
-    /// agency holds the account of the listing on that portal (<paramref name="portalAccounts"/>).
+    /// invoice of the property manager recharges it (<paramref name="portalAccounts"/>: the agency holds the account of the listing on that portal and recharges).
     /// </summary>
     private static OwnerStatementLine LineOf(OwnerLedgerEntry entry, BookingFacts? booking, string? propertyName, PortalAccountHolders portalAccounts)
     {
@@ -454,10 +456,11 @@ public sealed class OwnerStatementDocuments(
             entry.Amount,
             entry.ReversesEntryId is not null,
 
-            // V2: the portal bills the agency, which recharges the commission; V1 (the default): the portal bills the owner.
+            // V2 with the recharge (the test of the invoice, OwnerInvoiceService): the portal bills the agency, which recharges the commission on its invoice. V1 (the
+            // default), or an account of the agency whose commissions it does not recharge: no invoice of the property manager carries it.
             AgencyHoldsPortalAccount: entry.EntryType == OwnerLedgerEntryType.ChannelFee
                 && booking is not null
-                && portalAccounts.Resolve(entry.PropertyId ?? booking.PropertyId, booking.Source) == PortalAccountHolder.Agency);
+                && portalAccounts.RechargesCommissionOf(entry.PropertyId ?? booking.PropertyId, booking.Source));
     }
 
     /// <summary>The booking a ledger line is about: the source of a stay line or a flat fee, the booking a payment is of (its reference, with no dashes); none for a charge, a wire or a payout.</summary>

@@ -429,6 +429,38 @@ public class SwissAgencyScenarioTests
             portalCommissionRow: "Booking.com;67,50;CHF");
     }
 
+    [Fact(DisplayName = "Variante V2 senza riaddebito (C2 C4, ⚖ I10 I11): l'account Booking.com e' dell'agenzia che non riaddebita le commissioni: nessun riaddebito nella fattura PM e il rendiconto non cita la fattura per la commissione")]
+    public async Task Variant_V2_WithoutTheRecharge_NoRechargeOnThePmInvoice_AndTheStatementNeverNamesItForTheCommission()
+    {
+        await using var world = await World.CreateAsync(agencyHoldsTheBookingAccount: true, rechargePortalCommissions: false);
+        world.At(World.InRome(Day(9, 20), 10));
+        var booking = await world.ImportFromChannelManagerAsync(world.BookingComReservation(Day(10, 2), Day(10, 5), 450m, commission: null));
+        await world.GiveInvoiceDataAsync(booking, "TEST Ospite Portale");
+        await IssuedAfterTheStayAsync(world, booking, Day(10, 6), "2026/1");
+
+        // The commission of the rule (15%) stays a cost of the owner and the invoice does not recharge it: the commission of the agency and the cleaning fee only.
+        var month = await world.CloseMonthAsync(2026, 10, EndOfOctober);
+        await AssertMonthAsync(
+            world,
+            month,
+            new Expected(
+                Gross: 450.00m,
+                ChannelFees: -67.50m,
+                Commission: -90.00m,
+                Vat: -13.77m,
+                Recharges: -80.00m,
+                Closing: 198.73m,
+                InvoiceLines: [(FiscalLineType.Commission, 90.00m, 8.1m, 7.29m), (FiscalLineType.Recharge, 80.00m, 8.1m, 6.48m)],
+                InvoiceTotals: (170.00m, 13.77m, 183.77m)));
+
+        // The statement says what the invoice does: the line is not a recharge of the agency, and no label names invoice PM2026/1 for it, in the PDF or on the portal.
+        var statement = await world.StatementOfAsync(month.Published.Id);
+        Assert.False(Assert.Single(statement.Of(OwnerStatementSection.ChannelFees)).AgencyHoldsPortalAccount);
+        Assert.DoesNotContain("riaddebitate dal gestore", StatementTextOf(statement), StringComparison.Ordinal);
+        var detail = OwnerPortalStatementDetailDto.From(await world.PortalStatementAsTheOwnerAsync(month.Published.Id));
+        Assert.False(Assert.Single(detail.Sections.Single(s => s.Section == "channelFees").Lines).ChannelFeeRechargedByAgency);
+    }
+
     [Fact(DisplayName = "QR-fattura solo con un importo dovuto (C4): un mese con il solo riaddebito di una riparazione, la fattura PM chiede il pagamento con la QR-fattura")]
     public async Task QrBill_OnlyWhenTheOwnerOwesTheAgency()
     {

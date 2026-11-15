@@ -555,8 +555,10 @@ proportion to the lines; the deposit is the revenue of the owner, without a clea
 `pain.001.001.09.ch.03.xsd` and is reported as skipped, with its reason, until the file is added (`docs/runbooks/wire-transfers.md`).
 
 **Fixed with the scenario:** the statement read every listing as V1 (the resolver of E14 was not wired into `OwnerStatementDocuments`), so the statement of a V2
-listing told the owner that the portal billed it while the invoice of the property manager recharged the commission. The channel fee of a listing whose account the
-agency holds is now «Commissioni del portale riaddebitate dal gestore (fattura n. …)», in the published PDF and on the owner portal.
+listing told the owner that the portal billed it while the invoice of the property manager recharged the commission. The channel fee that the invoice recharges (the
+agency holds the account and recharges, the test of the invoice) is now «Commissioni del portale riaddebitate dal gestore (fattura n. …)», in the published PDF and on
+the owner portal (`Variant_V2_*`, read as the owner reads it: the request of an owner has no org, and the resolver reads the holders whatever the tenant of the
+caller); an account of the agency whose commissions it does not recharge never names the invoice (`Variant_V2_WithoutTheRecharge_*`).
 
 **What the scenario shows** (facts of the code as it is, for the decisions of the PO and of the accountant):
 

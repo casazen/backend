@@ -268,8 +268,8 @@ setup (`GET api/billing-setup`, wizard «Fatturazione») and are saved by the en
 the property), read and written in bulk by `GET/PUT api/billing-setup/channel-account-holders` (`[{ propertyId, channel, holder }]`, `holder: null` back to the
 default; an empty list is 422, never «all»). They are part of the billing setup: `payment.read` (`property.write` to write), the whole org, behind
 `Features:FiscalDocumentIssuance` like the rest of the setup and behind `Features:OwnerInvoicing` like the invoices that use them (404 while either is off;
-while `OwnerInvoicing` is off the section `channels` shows no values). `IPortalAccountHolderResolver` is the one reader: the owner invoice today; the statement
-labels of E13, the VAT summary of E15 and the TD17 of E17 are meant to read it too.
+while `OwnerInvoicing` is off the section `channels` shows no values). `IPortalAccountHolderResolver` is the one reader: the owner invoice, the statement labels of
+E13 (its PDF and the owner portal) and the VAT summary of E15; the TD17 of E17 is meant to read it too.
 ## Statement files and the owner portal accounting (E13/F01/US02)
 
 - **PDF and CSV of a version** (`GET api/owner-accounting/versions/{id}/pdf` and `…/csv`, `agency.statement.view`, the whole org): made from the ledger lines the
@@ -278,8 +278,12 @@ labels of E13, the VAT summary of E15 and the TD17 of E17 are meant to read it t
   no longer give it the answer is 409 `owner_ledger_immutable` (see «Evidence»), never a file with another net. The box «Tassa di soggiorno» is for information,
   collected by the agency and to be remitted to the municipality or the cantonal tourist office, and is never added to or taken from the net.
 - **Who holds the portal account.** The label of the commission of the channels follows it: «Trattenuta dal portale (fattura del portale a tuo nome)» when the owner
-  holds the account (V1), «Commissioni del portale riaddebitate dal gestore (fattura n. …)» when the agency does (V2). The holder of each listing and portal is the one
-  of `IPortalAccountHolderResolver` (E14), the same the owner invoice reads, so the statement and the invoice never tell the owner two different things (E19/F01/US01/T01).
+  holds the account (V1), «Commissioni del portale riaddebitate dal gestore (fattura n. …)» when the invoice of the property manager recharges it (V2 with
+  `RechargePortalCommissions` on). The test is the one of the owner invoice (`PortalAccountHolders.RechargesCommissionOf` of `IPortalAccountHolderResolver`, E14), so
+  the statement and the invoice never tell the owner two different things (E19/F01/US01/T01): an account of the agency whose commissions it does not recharge is never
+  labelled as recharged and never names the invoice. **Known gap:** that line is labelled «Trattenuta dal portale (fattura del portale a tuo nome)» although the portal
+  bills the agency; a label of its own needs new texts. The owner portal reads the same flag (`channelFeeRechargedByAgency`): the resolver reads the holders whatever
+  the tenant of the caller, since the request of an owner has no org of its own.
 - **Published = stored.** Publishing a version builds its PDF once, stores it with its SHA-256 as an owner document of type statement (the id of the document is the
   id of the version) and tells the people of the owner portal who read the statements of the owner by e-mail: the agency and the link to the page «Contabilità», never an
   amount, a period or a line. The owner downloads exactly the stored file. A version published before this release has no stored PDF: the agency gets a PDF built

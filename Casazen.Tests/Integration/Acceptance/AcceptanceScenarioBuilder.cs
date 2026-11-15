@@ -169,13 +169,17 @@ internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
 
     /// <summary>
     /// The agency of the scenario on a database of its own (in memory unless <paramref name="options"/> says otherwise), set up as the wizard «Fatturazione» leaves it.
-    /// With <paramref name="agencyHoldsTheBookingAccount"/> the Booking.com account of the flat is the agency's (V2); otherwise the owner's (V1, the default).
+    /// With <paramref name="agencyHoldsTheBookingAccount"/> the Booking.com account of the flat is the agency's (V2); otherwise the owner's (V1, the default). With
+    /// <paramref name="rechargePortalCommissions"/> false the agency does not recharge the commissions of the accounts it holds (⚖ I11; on by default).
     /// </summary>
-    public static async Task<AcceptanceScenarioBuilder> CreateAsync(bool agencyHoldsTheBookingAccount = false, DbContextOptions<AppDbContext>? options = null)
+    public static async Task<AcceptanceScenarioBuilder> CreateAsync(
+        bool agencyHoldsTheBookingAccount = false,
+        DbContextOptions<AppDbContext>? options = null,
+        bool rechargePortalCommissions = true)
     {
         var world = new AcceptanceScenarioBuilder(
             options ?? new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"Acceptance_{Guid.NewGuid():N}").Options);
-        await world.SetUpAsync(agencyHoldsTheBookingAccount);
+        await world.SetUpAsync(agencyHoldsTheBookingAccount, rechargePortalCommissions);
         return world;
     }
 
@@ -193,7 +197,7 @@ internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
 
     // ---------------------------------------------------------------- the setup
 
-    private async Task SetUpAsync(bool agencyHoldsTheBookingAccount)
+    private async Task SetUpAsync(bool agencyHoldsTheBookingAccount, bool rechargePortalCommissions)
     {
         await using (var scope = Scope())
         {
@@ -362,6 +366,9 @@ internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
                     [new ChannelAccountHolderCommand { PropertyId = PropertyId, Channel = BookingSource.BookingCom, Holder = PortalAccountHolder.Agency }],
                     AgencyUser);
             }
+
+            if (!rechargePortalCommissions)
+                await scope.PortalAccounts.SaveAsync(OrgId, new PortalAccountSettingsCommand { RechargePortalCommissions = false }, AgencyUser);
         }
     }
 
