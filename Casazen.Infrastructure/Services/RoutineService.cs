@@ -25,7 +25,8 @@ namespace Casazen.Infrastructure.Services;
 /// <see cref="RoutineCodes.ConditionInvalid"/>, which the host sees in the log.</item>
 /// <item><b>Guardrails</b> (ADR-022-R11) run before every action, also in test mode, on facts read from the booking and never from the payload: what
 /// cannot be read is not a pass.</item>
-/// <item><b>Actions</b> run in order and stop at the first one that fails; a blocked action does not stop the next ones. In test mode none runs: each is
+/// <item><b>Actions</b> run in order and stop at the first one that fails; a blocked action, or one that is skipped because it had nothing to do for the stay
+/// (<c>RequestReview</c> of a portal booking), does not stop the next ones. In test mode none runs: each is
 /// <c>simulated</c>. The switch of <see cref="ExecuteActionAsync"/> has one case for each action, owned by the task that makes it real; what has no case
 /// fails with <see cref="RoutineCodes.ActionNotAvailable"/>, it never pretends.</item>
 /// <item><b>Wait</b> saves the payload and the next action in <c>ResultJson</c>, sets <c>ResumeAt</c> and schedules
@@ -49,7 +50,8 @@ public class RoutineService(
     IFeatureFlags featureFlags,
     TimeProvider timeProvider,
     ILogger<RoutineService> logger,
-    ICleaningAutomationService? cleaning = null) : IRoutineService
+    ICleaningAutomationService? cleaning = null,
+    IHostReviewService? reviews = null) : IRoutineService
 {
     /// <summary>
     /// The unique index on <c>RoutineExecutions (RoutineId, EventId)</c> (migration <c>AddRoutineEngine</c>): a second execution of
@@ -438,7 +440,8 @@ public class RoutineService(
     }
 
     /// <summary>
-    /// The one place that runs an action: a case for each action, owned by the task that makes it real (<c>CreateActivity</c>: E01/F04/US01/T02).
+    /// The one place that runs an action: a case for each action, owned by the task that makes it real (<c>CreateActivity</c>: E01/F04/US01/T02,
+    /// <c>CreateCleaningRequest</c>: E24/F01/US01/T02, <c>RequestReview</c>: E26/F01/US01/T01).
     /// What the catalog does not list as available, and what has no case yet, fails with <see cref="RoutineCodes.ActionNotAvailable"/>: nothing here
     /// pretends to have done what it did not.
     /// </summary>
@@ -457,9 +460,10 @@ public class RoutineService(
             {
                 case RoutineActionType.CreateActivity:
                     return await CreateActivityAsync(routine, actionIndex, action, payload, cancellationToken);
-
                 case RoutineActionType.CreateCleaningRequest:
                     return await CreateCleaningRequestAsync(routine, actionIndex, action, payload, cancellationToken);
+                case RoutineActionType.RequestReview:
+                    return await RequestReviewAsync(routine, actionIndex, action, payload, cancellationToken);
             }
         }
 
@@ -559,6 +563,42 @@ public class RoutineService(
             CleaningAutomationOutcome.Failed => RoutineActionResult.Failed(actionIndex, action.Type, result.Code ?? RoutineCodes.ActionError),
             _ => RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ActionError),
         };
+    }
+
+    /// <summary>
+    /// <c>RequestReview</c> (E26/F01/US01/T01): the invitation to write the review of the stay of the event's booking, the email with the signed link that the host
+    /// can also send by hand (<see cref="IHostReviewService.RequestInviteAsync"/>, the same rules and the same mark: once per booking whoever asks). The booking is
+    /// read in the org of the routine. <c>done</c> when the email was queued; <c>skipped</c> with the reason when the booking is not to be invited (a portal booking
+    /// or one of the host, a stay cancelled, not over or over for more than 14 days, a no-show, a guest with no address, a review or an invitation that exists
+    /// already): nothing was written, and it is not a failure, so nothing is tried again. <c>failed</c> when the event names no booking of the org, or when the
+    /// queue did not take the email (the mark is taken back, so the host can still ask by hand): the host never reads a success nobody confirmed.
+    /// </summary>
+    private async Task<RoutineActionResult> RequestReviewAsync(
+        Routine routine,
+        int actionIndex,
+        RoutineAction action,
+        IReadOnlyDictionary<string, object?> payload,
+        CancellationToken cancellationToken)
+    {
+        // The module that sends it is not there (a service built without it): the action cannot run, and it says so.
+        if (reviews is null)
+            return RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ActionNotAvailable);
+
+        if (!RoutinePayload.TryGetId(payload, "bookingId", out var bookingId))
+            return RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ReviewNeedsBooking);
+
+        var request = await reviews.RequestInviteAsync(routine.OrgId, bookingId, cancellationToken);
+        switch (request.Status)
+        {
+            case ReviewInviteRequestStatus.Sent:
+                return RoutineActionResult.Done(actionIndex, action.Type);
+            case ReviewInviteRequestStatus.Skipped when request.Reason is { } reason:
+                return RoutineActionResult.Skipped(actionIndex, action.Type, reason);
+            case ReviewInviteRequestStatus.BookingNotFound:
+                return RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ReviewNeedsBooking);
+            default:
+                return RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ReviewInviteNotSent);
+        }
     }
 
     /// <summary>

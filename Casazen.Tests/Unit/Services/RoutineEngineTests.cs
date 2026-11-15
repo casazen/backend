@@ -427,7 +427,6 @@ public class RoutineEngineTests
     [InlineData(nameof(RoutineActionType.NotifyOwner))]
     [InlineData(nameof(RoutineActionType.NotifyStaff))]
     [InlineData(nameof(RoutineActionType.NotifyTeam))]
-    [InlineData(nameof(RoutineActionType.RequestReview))]
     [InlineData(nameof(RoutineActionType.AddTag))]
     public async Task Action_WithNoImplementation_FailsWithACode_AndNeverPretends(string type)
     {

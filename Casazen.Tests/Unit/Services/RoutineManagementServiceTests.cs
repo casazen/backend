@@ -130,7 +130,7 @@ public class RoutineManagementServiceTests
             Command(actions: [CreateTodo, Act("NotifyOwner"), Act("AddTag", """{"tag":"vip"}"""), Act("NotifyOwner")], active: false));
 
         var byTheSwitch = await RefusedAsync(() => service.SetActiveAsync(OrgA, routine.Id, true));
-        var byACreate = await RefusedAsync(() => service.CreateAsync(OrgA, Command(actions: [Act("RequestReview")], active: true)));
+        var byACreate = await RefusedAsync(() => service.CreateAsync(OrgA, Command(actions: [Act("NotifyStaff")], active: true)));
         // A change that only says "active" keeps the actions the routine has, so it is judged with them.
         var byAnUpdate = await RefusedAsync(() => service.UpdateAsync(OrgA, routine.Id, new RoutineCommand(null, null, null, null, null, null, true)));
 

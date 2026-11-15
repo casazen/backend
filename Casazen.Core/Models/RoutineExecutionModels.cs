@@ -44,6 +44,16 @@ public static class RoutineCodes
     /// </summary>
     public const string CleaningNotConfigured = "routine_cleaning_not_configured";
 
+    /// <summary><c>RequestReview</c> (E26/F01/US01/T01) needs the booking of the event: the event names none, or the org has no such booking.</summary>
+    public const string ReviewNeedsBooking = "routine_review_needs_booking";
+
+    /// <summary>
+    /// <c>RequestReview</c> (E26/F01/US01/T01): the queue did not take the e-mail of the invitation (the provider is not configured, or it could not be queued). The
+    /// action fails, and the booking is not marked, so the host can still ask by hand. The code the host's button answers with too (422), so the interface has the
+    /// words for it already.
+    /// </summary>
+    public const string ReviewInviteNotSent = "review_invite_not_sent";
+
     /// <summary>
     /// The booking of the event was cancelled, or marked as a no-show, while the execution waited: the actions after the wait are not run (a stay that does not
     /// happen gets no To do and no message). Recorded as the reason of each action left, <c>blocked</c>; the routines of a cancellation are not stopped by it.
@@ -96,7 +106,7 @@ public static class RoutineExecutionOutcomes
     /// <summary>A Wait is pending: <c>ResumeAt</c> is when the job that continues it runs.</summary>
     public const string Waiting = "Waiting";
 
-    /// <summary>Every action ended done, simulated or blocked.</summary>
+    /// <summary>Every action ended done, simulated, blocked or skipped.</summary>
     public const string Success = "Success";
 
     /// <summary>The condition was invalid, the routine was deactivated while it waited, or an action failed.</summary>
@@ -115,6 +125,12 @@ public static class RoutineActionOutcomes
     /// <summary>A guardrail stopped the action (<see cref="RoutineActionResult.Code"/> is its reason); the next actions go on.</summary>
     public const string Blocked = "blocked";
 
+    /// <summary>
+    /// The action had nothing to do for this stay (E26/F01/US01/T01): it is not a failure and nothing was asked of anybody. <see cref="RoutineActionResult.Code"/>
+    /// is the reason (a booking of a portal, a guest with no address, an invitation already sent…); the next actions go on.
+    /// </summary>
+    public const string Skipped = "skipped";
+
     /// <summary>The action could not be done (<see cref="RoutineActionResult.Code"/> is a stable code); the actions after it do not run.</summary>
     public const string Failed = "failed";
 
@@ -126,7 +142,7 @@ public static class RoutineActionOutcomes
 /// <param name="Index">The position of the action in the routine, from 0.</param>
 /// <param name="Type">The type of the action.</param>
 /// <param name="Outcome">One of <see cref="RoutineActionOutcomes"/>.</param>
-/// <param name="Code">Why: the guardrail of a blocked action, the stable code of a failed one; <c>null</c> otherwise.</param>
+/// <param name="Code">Why: the guardrail of a blocked action, the reason of a skipped one, the stable code of a failed one; <c>null</c> otherwise.</param>
 public sealed record RoutineActionResult(int Index, RoutineActionType Type, string Outcome, string? Code)
 {
     public static RoutineActionResult Done(int index, RoutineActionType type) => new(index, type, RoutineActionOutcomes.Done, null);
@@ -134,6 +150,8 @@ public sealed record RoutineActionResult(int Index, RoutineActionType Type, stri
     public static RoutineActionResult Simulated(int index, RoutineActionType type) => new(index, type, RoutineActionOutcomes.Simulated, null);
 
     public static RoutineActionResult Blocked(int index, RoutineActionType type, string code) => new(index, type, RoutineActionOutcomes.Blocked, code);
+
+    public static RoutineActionResult Skipped(int index, RoutineActionType type, string code) => new(index, type, RoutineActionOutcomes.Skipped, code);
 
     public static RoutineActionResult Failed(int index, RoutineActionType type, string code) => new(index, type, RoutineActionOutcomes.Failed, code);
 
