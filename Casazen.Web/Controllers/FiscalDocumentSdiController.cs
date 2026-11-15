@@ -1,6 +1,7 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Documents;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
@@ -15,7 +16,9 @@ namespace Casazen.Web.Controllers;
 /// The Italian electronic invoices of CasaZen on their way to the SDI (E17/F01/US02/T01 and T03, NF-116, NF-86): the state of a document (<c>GET</c>), its submission through the channel
 /// (<c>POST submit</c>), the declaration of a file the issuer sent by hand (<c>POST declare</c>) and the correction of a rejected invoice (<c>POST correct</c>). Reads need <c>payment.read</c>,
 /// every change <c>payment.write</c>; a document is authorized through its booking like the payments of a booking, a document without a booking only for a caller who reaches the whole org;
-/// a document of another org is a 404, like a missing one.
+/// a document of another org is a 404, like a missing one. An invoice of the property manager to an owner is never read or changed here (422 <c>document_owner_invoice</c>): its SDI state, its
+/// submission and its declaration are on <see cref="OwnerInvoiceSdiController"/>, behind <c>agency.statement.manage</c> and <c>Features:OwnerInvoicing</c>, since a role that holds
+/// <c>payment.write</c> (the property manager) holds no agency permission.
 /// </summary>
 /// <remarks>
 /// The three changes are behind <c>Features:SdiSubmission</c> <b>and</b> <c>Features:FiscalDocumentIssuance</c> (404 while either is off); the state is a read and is not. With no
@@ -46,8 +49,10 @@ public class FiscalDocumentSdiController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<FiscalDocumentSdiDto>> Get(Guid id)
     {
-        if (await ReachableAsync(id, PaymentOperations.Read) is null)
+        if (await ReachableAsync(id, PaymentOperations.Read) is not { } document)
             return DocumentNotFound();
+        if (IsOwnerInvoice(document))
+            return OwnerInvoiceRefused();
 
         var state = await sdi.GetStateAsync(id, HttpContext.RequestAborted);
         return state is null ? DocumentNotFound() : Ok(FiscalDocumentSdiDto.From(state, texts, DocumentLanguages.Current));
@@ -68,8 +73,10 @@ public class FiscalDocumentSdiController(
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<SubmitFiscalDocumentSdiResultDto>> Submit(Guid id)
     {
-        if (await ReachableAsync(id, PaymentOperations.Write) is null)
+        if (await ReachableAsync(id, PaymentOperations.Write) is not { } document)
             return DocumentNotFound();
+        if (IsOwnerInvoice(document))
+            return OwnerInvoiceRefused();
 
         var ct = HttpContext.RequestAborted;
         var result = await sdi.SubmitAsync(id, ct);
@@ -93,8 +100,10 @@ public class FiscalDocumentSdiController(
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<FiscalDocumentSdiDto>> Declare(Guid id, [FromBody] DeclareFiscalDocumentSdiRequest request)
     {
-        if (await ReachableAsync(id, PaymentOperations.Write) is null)
+        if (await ReachableAsync(id, PaymentOperations.Write) is not { } document)
             return DocumentNotFound();
+        if (IsOwnerInvoice(document))
+            return OwnerInvoiceRefused();
 
         // A declaration with no kind is the one invalid field the service names (it never guesses what was meant).
         var declaration = new SdiDeclaration(request.Kind ?? default, request.Date, request.Reference, request.ErrorCode, request.ErrorText);
@@ -117,8 +126,10 @@ public class FiscalDocumentSdiController(
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<FiscalDocumentDto>> Correct(Guid id)
     {
-        if (await ReachableAsync(id, PaymentOperations.Write) is null)
+        if (await ReachableAsync(id, PaymentOperations.Write) is not { } document)
             return DocumentNotFound();
+        if (IsOwnerInvoice(document))
+            return OwnerInvoiceRefused();
 
         var replacement = await corrections.StartCorrectionAsync(id, User.FindFirst("sub")?.Value, HttpContext.RequestAborted);
         logger.LogInformation("Fiscal document {DocumentId}: correction started by the host, replacement draft {ReplacementId}", id, replacement.Id);
@@ -173,4 +184,10 @@ public class FiscalDocumentSdiController(
 
     private ActionResult DocumentNotFound() =>
         this.ApiProblem(StatusCodes.Status404NotFound, FiscalDocumentErrors.NotFound, "FiscalDocumentNotFound");
+
+    /// <summary>An invoice of the property manager to an owner: its SDI state and actions are those of <see cref="OwnerInvoiceSdiController"/> (its permission, its flag).</summary>
+    private static bool IsOwnerInvoice(FiscalDocument document) => document.Purpose == FiscalDocumentPurpose.OwnerInvoice;
+
+    private ActionResult OwnerInvoiceRefused() =>
+        this.ApiProblem(StatusCodes.Status422UnprocessableEntity, OwnerInvoiceErrors.UseOwnerInvoices, "FiscalDocumentOwnerInvoice");
 }

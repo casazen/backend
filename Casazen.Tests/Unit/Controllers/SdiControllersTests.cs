@@ -256,6 +256,84 @@ public class SdiControllersTests
         untouched.VerifyNoOtherCalls();
     }
 
+    /// <summary>
+    /// PROOF TEST: permission rule. The property manager holds <c>payment.write</c>, reaches the whole org and holds no agency permission (DEB-01): the SDI endpoints of the guest documents refuse an
+    /// invoice of the property manager to an owner (its state, its submission, its declaration, its correction: 422 <c>document_owner_invoice</c>) and ask the services nothing. The owner invoice is read
+    /// and sent on <c>api/owner-invoices/{id}/sdi</c>: <c>agency.statement.manage</c> to change it, its flag, the whole org only (a caller restricted to some properties is refused before anything is
+    /// read), and a guest document is not found there.
+    /// </summary>
+    [Fact]
+    public async Task OwnerInvoiceSdi_PropertyManagerCannotSubmitOrDeclareAnOwnerInvoice_Test()
+    {
+        // The roles: the property manager of the short-rent area writes payments, but holds no agency permission.
+        var propertyManager = OrgRoleCatalog.SeededRoles.Single(r => r.ContextKey == OrgRoleCatalog.ShortRent && r.RoleKey == OrgRoleCatalog.PropertyManagerRoleKey);
+        Assert.Contains("payment.write", propertyManager.Permissions);
+        Assert.DoesNotContain(AgencyPermissions.StatementManage, OrgRoleCatalog.AgencyPermissionsOf(OrgRole.PropertyManager));
+
+        // The generic endpoints, for a caller who reaches the whole org with payment.write: an owner invoice is 422, and nothing is asked of the services.
+        var documentId = Guid.NewGuid();
+        var documents = new Mock<IFiscalDocumentService>();
+        documents.Setup(d => d.GetAsync(documentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FiscalDocument { Id = documentId, OrgId = OrgId, Purpose = FiscalDocumentPurpose.OwnerInvoice });
+        var sdi = new Mock<IFiscalDocumentSdiService>();
+        var corrections = new Mock<IFiscalDocumentCorrectionService>();
+        var generic = Documents(documents.Object, sdi.Object, corrections.Object, Mock.Of<IHostResourceLookup>(), allowed: true, ScopeOf(new HostScope(OrgId)));
+        Assert.All(
+            [
+                (await generic.Get(documentId)).Result,
+                (await generic.Submit(documentId)).Result,
+                (await generic.Declare(documentId, new DeclareFiscalDocumentSdiRequest { Kind = SdiDeclarationKind.Sent })).Result,
+                (await generic.Correct(documentId)).Result,
+            ],
+            result =>
+            {
+                var problem = Assert.IsType<ObjectResult>(result);
+                Assert.Equal(StatusCodes.Status422UnprocessableEntity, problem.StatusCode);
+                Assert.Equal(OwnerInvoiceErrors.UseOwnerInvoices, Assert.IsType<ProblemDetails>(problem.Value).Extensions["code"]);
+            });
+        sdi.VerifyNoOtherCalls();
+        corrections.VerifyNoOtherCalls();
+
+        // The owner invoices: read with agency.statement.view, changed with agency.statement.manage, all behind their flag, the changes behind the two flags of the SDI too.
+        var type = typeof(OwnerInvoiceSdiController);
+        Assert.Equal(CasazenPolicies.AgencyStatementView, type.GetCustomAttribute<AuthorizeAttribute>()!.Policy);
+        Assert.Equal([FeatureFlags.OwnerInvoicing], type.GetCustomAttributes<FeatureGateAttribute>().Select(a => a.Flag).ToArray());
+        foreach (var action in new[] { nameof(OwnerInvoiceSdiController.Submit), nameof(OwnerInvoiceSdiController.Declare) })
+        {
+            var method = type.GetMethod(action)!;
+            Assert.Equal(CasazenPolicies.AgencyStatementManage, method.GetCustomAttribute<AuthorizeAttribute>()!.Policy);
+            Assert.Equal(
+                [FeatureFlags.FiscalDocumentIssuance, FeatureFlags.SdiSubmission],
+                method.GetCustomAttributes<FeatureGateAttribute>().Select(a => a.Flag).Order().ToArray());
+        }
+
+        // A caller restricted to some properties is refused on every action before anything is read.
+        foreach (var restricted in new[] { new HostScope(OrgId, GrantedToUserId: "auth0|collaborator"), new HostScope(OrgId, OwnerId: "auth0|collaborator") })
+        {
+            var untouchedDocuments = new Mock<IFiscalDocumentService>(MockBehavior.Strict);
+            var untouched = new Mock<IFiscalDocumentSdiService>(MockBehavior.Strict);
+            var owners = OwnerInvoices(untouchedDocuments.Object, untouched.Object, ScopeOf(restricted));
+            Assert.IsType<ForbidResult>((await owners.Get(documentId)).Result);
+            Assert.IsType<ForbidResult>((await owners.Submit(documentId)).Result);
+            Assert.IsType<ForbidResult>((await owners.Declare(documentId, new DeclareFiscalDocumentSdiRequest { Kind = SdiDeclarationKind.Sent })).Result);
+            untouchedDocuments.VerifyNoOtherCalls();
+            untouched.VerifyNoOtherCalls();
+        }
+
+        // The whole org is served, for an owner invoice of its org; a guest document is not found there.
+        sdi.Setup(s => s.SubmitAsync(documentId, It.IsAny<CancellationToken>())).ReturnsAsync(new SdiSubmitResult(SdiSubmitOutcome.NotConfigured, FiscalDocumentSdiStatuses.ToSend));
+        sdi.Setup(s => s.GetStateAsync(documentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FiscalDocumentSdiState(documentId, FiscalDocumentSdiStatuses.ToSend, null, null, null, false, true, true, false));
+        var agency = OwnerInvoices(documents.Object, sdi.Object, ScopeOf(new HostScope(OrgId)));
+        var submitted = Assert.IsType<OkObjectResult>((await agency.Submit(documentId)).Result);
+        Assert.Equal("NotConfigured", Assert.IsType<SubmitFiscalDocumentSdiResultDto>(submitted.Value).Outcome);
+
+        var guestId = Guid.NewGuid();
+        documents.Setup(d => d.GetAsync(guestId, It.IsAny<CancellationToken>())).ReturnsAsync(new FiscalDocument { Id = guestId, OrgId = OrgId, BookingId = Guid.NewGuid() });
+        Assert.Equal(StatusCodes.Status404NotFound, Assert.IsType<ObjectResult>((await agency.Submit(guestId)).Result).StatusCode);
+        sdi.Verify(s => s.SubmitAsync(guestId, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // ---------------------------------------------------------------- the reason in plain words
 
     [Fact]
@@ -429,6 +507,32 @@ public class SdiControllersTests
                 HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity), RequestServices = requestServices },
             },
         };
+    }
+
+    private static OwnerInvoiceSdiController OwnerInvoices(IFiscalDocumentService documents, IFiscalDocumentSdiService sdi, IHostScopeResolver scopes)
+    {
+        var org = new Mock<IOrgContextResolver>();
+        org.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(OrgId);
+        var localizer = new Mock<IStringLocalizer<SharedResources>>();
+        localizer.Setup(l => l[It.IsAny<string>()]).Returns((string name) => new LocalizedString(name, name, resourceNotFound: true));
+        localizer.Setup(l => l[It.IsAny<string>(), It.IsAny<object[]>()]).Returns((string name, object[] _) => new LocalizedString(name, name, resourceNotFound: true));
+        var requestServices = new ServiceCollection().AddSingleton(localizer.Object).BuildServiceProvider();
+        var identity = new ClaimsIdentity([new Claim("sub", "auth0|collaborator"), new Claim(ClaimTypes.NameIdentifier, "auth0|collaborator")], "test");
+        return new OwnerInvoiceSdiController(documents, sdi, new ResxDocumentTexts(), org.Object, scopes, NullLogger<OwnerInvoiceSdiController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity), RequestServices = requestServices },
+            },
+        };
+    }
+
+    /// <summary>The scope resolver of a caller whose scope is <paramref name="scope"/>.</summary>
+    private static IHostScopeResolver ScopeOf(HostScope scope)
+    {
+        var resolver = new Mock<IHostScopeResolver>();
+        resolver.Setup(r => r.ResolveAsync(It.IsAny<string>(), It.IsAny<IReadOnlySet<string>>(), OrgId, It.IsAny<CancellationToken>())).ReturnsAsync(scope);
+        return resolver.Object;
     }
 
     private static ServiceProvider JobServices(IFiscalDocumentSdiService sdi, ISdiEInvoiceProvider provider, List<Guid> entered) =>
