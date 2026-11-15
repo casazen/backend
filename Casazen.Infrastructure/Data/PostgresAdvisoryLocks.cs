@@ -466,6 +466,13 @@ internal static class PostgresAdvisoryLocks
         FiscalDocumentBooking = 1_604,
 
         /// <summary>
+        /// The SDI state of one fiscal document (key: <c>{documentId:N}</c>, E17/F01/US02/T01, held until the commit): the submission through the provider (the call to the provider
+        /// included), the outcomes the provider's webhook and the poll job record, a declaration of a document sent by hand and the start of the correction of a rejected one run one at a
+        /// time, so a double click never submits a document twice and two outcomes never apply at once. Taken <b>before</b> the numbering lock (<see cref="FiscalNumbering"/>) when both are needed.
+        /// </summary>
+        FiscalDocumentSdi = 1_620,
+
+        /// <summary>
         /// The push of one calendar change to the channel manager (key: process id, <c>processId.ToString("N")</c>, E08/F05/US02/T01, a session lock held for the whole
         /// run): the immediate run enqueued after a change and the recurring job that picks up what is due never send the same chunk twice, because a run that finds
         /// the lock taken leaves and the other one does the work. The values 20_800 to 20_899 are the booking operations of the calendar workspace (epic E08).

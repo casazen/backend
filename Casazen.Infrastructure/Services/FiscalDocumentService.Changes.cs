@@ -80,13 +80,15 @@ public sealed partial class FiscalDocumentService
 
     /// <summary>
     /// A draft follows its booking: made again from it while the booking is active; discarded when the booking bills nothing any more and nothing was collected for it; kept, with a «To do»
-    /// for the host, when money was collected (the host decides) or when the draft cannot be made again (its data is missing now).
+    /// for the host, when money was collected (the host decides), when the draft holds the number of a rejected invoice (E17/F01/US02/T03) or when the draft cannot be made again (its data
+    /// is missing now).
     /// </summary>
     private async Task FollowDraftAsync(FiscalDocument draft, BookingFacts booking, bool active, BookingChange change, ChangePlan plan, CancellationToken ct)
     {
         if (!active)
         {
-            if (await CollectedOfAsync(booking.Id, ct) > 0m)
+            // The replacement of an invoice the SDI rejected holds its number (E17/F01/US02/T03): never discarded, the host decides, as when money was collected.
+            if (HoldsAReplacedNumber(draft) || await CollectedOfAsync(booking.Id, ct) > 0m)
             {
                 plan.Todos.Add((draft.Id, FiscalDocumentTodos.BookingChangedReason));
                 return;
@@ -130,6 +132,14 @@ public sealed partial class FiscalDocumentService
         // A refund of an active booking is its own price (an edit of the price is a BookingModified): nothing to correct.
         if (active && change == BookingChange.Refunded)
             return;
+
+        // An invoice the SDI rejected never was issued: a credit note does not correct it (its correction replaces it, E17/F01/US02/T03), so the host is told that the booking changed and
+        // decides what to do with the rejected invoice.
+        if (issued.SdiStatus == FiscalDocumentSdiStatuses.Rejected)
+        {
+            plan.Todos.Add((issued.Id, FiscalDocumentTodos.BookingChangedReason));
+            return;
+        }
 
         OrgFiscalIssuerProfile organization;
         FiscalTaxRule rule;

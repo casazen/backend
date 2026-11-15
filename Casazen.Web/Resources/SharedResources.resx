@@ -7761,6 +7761,148 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="AccountantPackageInvalidPeriod" xml:space="preserve">
     <value>Periodo non valido: indica un mese (period=2026-10) oppure un anno (period=2026), tra il 2000 e il 2100.</value>
   </data>
+  <!-- E17/F01/US02: le fatture elettroniche verso lo SDI, gli scarti e la correzione (NF-116, NF-86). Il nome del fornitore del canale non compare mai (D14). -->
+  <data name="SdiNotElectronic" xml:space="preserve">
+    <value>Questo documento non è una fattura elettronica da inviare allo SDI: una ricevuta, un documento svizzero o una bozza non si inviano.</value>
+  </data>
+  <data name="SdiNotToSend" xml:space="preserve">
+    <value>La fattura non è più da inviare: è già stata inviata, dichiarata inviata o ha avuto una risposta dallo SDI.</value>
+  </data>
+  <data name="SdiStateFinal" xml:space="preserve">
+    <value>Lo SDI ha già risposto per questa fattura: lo stato non cambia più.</value>
+  </data>
+  <data name="SdiDeclarationInvalid" xml:space="preserve">
+    <value>I dati della dichiarazione non sono validi: servono il giorno dell'invio (non nel futuro e non prima dell'emissione) e il riferimento, oppure il codice della notifica di scarto.</value>
+  </data>
+  <data name="FiscalDocumentNotRejected" xml:space="preserve">
+    <value>Si corregge così solo una fattura scartata dallo SDI. Una fattura già consegnata si corregge con una nota di credito.</value>
+  </data>
+  <data name="FiscalDocumentNotCorrectable" xml:space="preserve">
+    <value>Questa fattura scartata non si può correggere qui: ha delle note di credito.</value>
+  </data>
+  <data name="FiscalDocumentReplacementInvalid" xml:space="preserve">
+    <value>La bozza non sostituisce una fattura scartata dello stesso emittente: il numero non si riutilizza.</value>
+  </data>
+  <data name="FiscalDocumentReplacementHoldsNumber" xml:space="preserve">
+    <value>Questa bozza sostituisce una fattura scartata dallo SDI e ne conserva il numero: va emessa, non eliminata.</value>
+  </data>
+  <data name="FiscalDocumentRejectedUseCorrection" xml:space="preserve">
+    <value>Una fattura scartata dallo SDI non è mai stata emessa: non si storna con una nota di credito, si corregge e si reinvia con lo stesso numero.</value>
+  </data>
+  <data name="SdiWebhookNotConfigured" xml:space="preserve">
+    <value>Il collegamento allo SDI non è configurato.</value>
+  </data>
+  <data name="SdiWebhookSecretInvalid" xml:space="preserve">
+    <value>Il segreto dell'indirizzo non è valido.</value>
+  </data>
+  <data name="SdiTransmissionUnknown" xml:space="preserve">
+    <value>L'invio indicato non è noto.</value>
+  </data>
+  <data name="SdiReasonGeneric" xml:space="preserve">
+    <value>Il Sistema di Interscambio (SDI) ha rifiutato il file (codice {0}). Controlla i dati della fattura o chiedi aiuto al tuo commercialista.</value>
+  </data>
+  <data name="SdiReasonNoCode" xml:space="preserve">
+    <value>Il Sistema di Interscambio (SDI) ha rifiutato il file senza dire perché. Controlla i dati della fattura o chiedi aiuto al tuo commercialista.</value>
+  </data>
+  <data name="SdiReasonFileName" xml:space="preserve">
+    <value>Il nome del file non è nel formato richiesto dallo SDI. Non dipende dai dati della fattura: correggi e reinvia; se si ripete, contattaci.</value>
+  </data>
+  <data name="SdiReasonFileNameDuplicate" xml:space="preserve">
+    <value>Lo SDI ha già ricevuto un file con lo stesso nome. Correggi e reinvia la fattura; se si ripete, contattaci.</value>
+  </data>
+  <data name="SdiReasonFileSize" xml:space="preserve">
+    <value>Il file è troppo grande per il canale di trasmissione.</value>
+  </data>
+  <data name="SdiReasonSignature" xml:space="preserve">
+    <value>La firma elettronica del file non è valida, oppure il certificato è scaduto o non è affidabile. Non dipende dai dati della fattura: reinvia; se si ripete, contattaci.</value>
+  </data>
+  <data name="SdiReasonFileCorrupt" xml:space="preserve">
+    <value>Il file è vuoto o danneggiato. Correggi e reinvia la fattura.</value>
+  </data>
+  <data name="SdiReasonFormat" xml:space="preserve">
+    <value>Il file non rispetta il formato della fattura elettronica. Controlla i dati della fattura, soprattutto quelli del cliente, e reinvia.</value>
+  </data>
+  <data name="SdiReasonNatureMissing" xml:space="preserve">
+    <value>Una riga con IVA a zero non indica la natura dell'operazione (per esempio N1 o N4). Correggi la riga e reinvia.</value>
+  </data>
+  <data name="SdiReasonNatureNotAllowed" xml:space="preserve">
+    <value>Una riga indica la natura dell'operazione ma ha un'aliquota IVA diversa da zero. Correggi la riga e reinvia.</value>
+  </data>
+  <data name="SdiReasonNatureGeneric" xml:space="preserve">
+    <value>Il codice natura generico (N2, N3, N6) non è più ammesso: serve quello specifico (per esempio N2.2). Correggi la riga e reinvia.</value>
+  </data>
+  <data name="SdiReasonDateFuture" xml:space="preserve">
+    <value>La data della fattura è successiva al giorno in cui il file è arrivato allo SDI. Correggi la data e reinvia.</value>
+  </data>
+  <data name="SdiReasonDateBeforeRelated" xml:space="preserve">
+    <value>La data della fattura è precedente a quella del documento a cui si riferisce. Correggi la data e reinvia.</value>
+  </data>
+  <data name="SdiReasonWithholding" xml:space="preserve">
+    <value>Le righe indicano una ritenuta ma mancano i dati della ritenuta. Correggi la fattura e reinvia.</value>
+  </data>
+  <data name="SdiReasonRecipientIdMissing" xml:space="preserve">
+    <value>Il cliente non ha né la partita IVA né il codice fiscale: ne serve almeno uno. Completa i dati del cliente e reinvia.</value>
+  </data>
+  <data name="SdiReasonVatSummary" xml:space="preserve">
+    <value>I riepiloghi dell'IVA non corrispondono alle righe della fattura (aliquote o nature diverse). Controlla le righe e reinvia.</value>
+  </data>
+  <data name="SdiReasonAmounts" xml:space="preserve">
+    <value>Gli importi non tornano: l'imposta, l'imponibile o il prezzo totale non sono calcolati come richiesto. Controlla gli importi e reinvia.</value>
+  </data>
+  <data name="SdiReasonNumber" xml:space="preserve">
+    <value>Il numero della fattura non contiene nessuna cifra. Correggi il numero e reinvia.</value>
+  </data>
+  <data name="SdiReasonRecipientCode" xml:space="preserve">
+    <value>Il codice destinatario del cliente non è valido, non è attivo o ha la lunghezza sbagliata. Correggilo nei dati del cliente e reinvia.</value>
+  </data>
+  <data name="SdiReasonFormatVersion" xml:space="preserve">
+    <value>Il formato di trasmissione non coincide con la versione del file. Non dipende dai tuoi dati: reinvia; se si ripete, contattaci.</value>
+  </data>
+  <data name="SdiReasonDiscount" xml:space="preserve">
+    <value>Uno sconto o una maggiorazione non indica né la percentuale né l'importo. Correggi la riga e reinvia.</value>
+  </data>
+  <data name="SdiReasonDocumentType" xml:space="preserve">
+    <value>Il tipo di documento non è compatibile con chi emette e chi riceve la fattura, o con le aliquote IVA delle righe. Controlla i dati della fattura e reinvia.</value>
+  </data>
+  <data name="SdiReasonIntentDeclaration" xml:space="preserve">
+    <value>La fattura è senza IVA per una dichiarazione d'intento che risulta non valida. Controlla la dichiarazione e reinvia.</value>
+  </data>
+  <data name="SdiReasonTransmitterId" xml:space="preserve">
+    <value>Il codice di chi trasmette il file (il canale di invio) non risulta valido all'Anagrafe Tributaria. Non dipende dai dati del cliente: contattaci.</value>
+  </data>
+  <data name="SdiReasonIssuerId" xml:space="preserve">
+    <value>La partita IVA o il codice fiscale di chi emette la fattura non risulta valido all'Anagrafe Tributaria, oppure i due non sono coerenti. Controlla i dati dell'emittente e reinvia.</value>
+  </data>
+  <data name="SdiReasonRepresentativeId" xml:space="preserve">
+    <value>La partita IVA o il codice fiscale del rappresentante fiscale non risulta valido all'Anagrafe Tributaria. Controllalo e reinvia.</value>
+  </data>
+  <data name="SdiReasonRecipientId" xml:space="preserve">
+    <value>La partita IVA o il codice fiscale del cliente non risulta valido all'Anagrafe Tributaria, oppure i due non sono coerenti. Correggili nei dati del cliente e reinvia.</value>
+  </data>
+  <data name="SdiReasonPublicBody" xml:space="preserve">
+    <value>Il codice o l'ente indicato non risulta tra le pubbliche amministrazioni (IPA). Controlla i dati del cliente e reinvia.</value>
+  </data>
+  <data name="SdiReasonDuplicate" xml:space="preserve">
+    <value>Una fattura con lo stesso emittente, numero e anno è già stata inviata e non è stata scartata. Controlla di non averla già inviata.</value>
+  </data>
+  <data name="SdiErrorIssuerPending" xml:space="preserve">
+    <value>La partita IVA dell'emittente non è ancora abilitata al canale di invio: l'abilitazione è in corso. La fattura resta da inviare: riprova più tardi, oppure caricala a mano sul portale dell'Agenzia delle Entrate e dichiara l'invio.</value>
+  </data>
+  <data name="SdiErrorProviderRefused" xml:space="preserve">
+    <value>Il canale di invio ha rifiutato il file prima di inviarlo. La fattura resta da inviare: controlla i dati, oppure caricala a mano sul portale dell'Agenzia delle Entrate e dichiara l'invio.</value>
+  </data>
+  <data name="SdiErrorProviderError" xml:space="preserve">
+    <value>Il canale di invio non ha risposto o ha dato un errore: nulla è stato inviato. La fattura resta da inviare: riprova tra poco.</value>
+  </data>
+  <data name="SdiErrorNotSupported" xml:space="preserve">
+    <value>Il canale di invio non gestisce questo tipo di documento.</value>
+  </data>
+  <data name="FiscalDocPushSdiRejectedTitle" xml:space="preserve">
+    <value>Fattura scartata dallo SDI</value>
+  </data>
+  <data name="FiscalDocPushSdiRejectedBody" xml:space="preserve">
+    <value>Lo SDI ha scartato una fattura: correggila e reinviala.</value>
+  </data>
   <data name="AccountantPackageSettingsInvalid" xml:space="preserve">
     <value>Le impostazioni dell'invio sono incomplete: indica se l'invio mensile è attivo, il giorno del mese e le cartelle da inviare.</value>
   </data>
