@@ -43,6 +43,12 @@ public class OwnerIssuerProfileTests
     private static readonly DateTimeOffset Now = new(2026, 11, 20, 10, 0, 0, TimeSpan.Zero);
 
     /// <summary>
+    /// The shortest value searched for inside a Data Protection payload. A payload is random text, so a short value turns up in it by chance (the building number "12" in about one payload in a hundred); from this
+    /// many characters on the chance is below one in a trillion.
+    /// </summary>
+    private const int MinLengthSearchedInPayload = 8;
+
+    /// <summary>
     /// PROOF TEST: privacy rule. The personal data of an owner who issues (the legal name, the fiscal code, the VAT number, the address and the PEC) are stored as
     /// Data Protection payloads of the purpose of the issuer profiles, never in clear, and read back in clear through the model only; the answer of a caller who
     /// may not change the profile masks them.
@@ -76,7 +82,13 @@ public class OwnerIssuerProfileTests
 
             var payload = (string)converter.ConvertToProvider(value!)!;
             Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, payload, StringComparison.Ordinal);
-            Assert.DoesNotContain(value!, payload, StringComparison.Ordinal);
+            Assert.NotEqual(value, payload);
+
+            // The payload is random text, so a short value (the building number, the postal code, the town) turns up in it by chance: only a value too long to be met by chance is searched for in it.
+            // A short one is proved by what holds every time: what is stored is a payload and not the value, and the converter of the column gives the value back.
+            if (value!.Length >= MinLengthSearchedInPayload)
+                Assert.DoesNotContain(value, payload, StringComparison.Ordinal);
+
             Assert.Equal(value, converter.ConvertFromProvider(payload));
             Assert.ThrowsAny<CryptographicException>(() => otherPurpose.Unprotect(payload));
         }
