@@ -350,6 +350,46 @@ the host gets a «To do» (`ReviewFiscalDocument`, reason `fiscal_document_booki
   as it was issued. Resources `FiscalDocPdfIssuedOnBehalf`, `FiscalDocPdfCoOwners`, `FiscalDocPdfStampDutyReference`, `FiscalDocPdfStampDutyVirtual`,
   `FiscalDocPdfStampDutyToPay`, Italian and English.
 
+## Documents in the owner's name: portal and export (`IOwnerIssuedDocumentsExport`, E17/F02/US01/T01, NF-116)
+
+The documents CasaZen issues **in the name of an owner** (the receipt of a private owner, the FatturaPA of a company, their credit notes: see *Document plan of a booking*)
+are shown to the owner in its portal and handed to the owner's accountant. Acceptance steps C8 (a copy of the invoices issued in the name of company B for its accountant) and
+D2 (the yearly summary of the documents issued in its name and of the recharges) of `pilota-flusso-completo-2026-11-14.md`. No migration, no flag and no setting of its own.
+
+- **Which documents.** The issued documents of a stay (purpose `GuestStay`, source CasaZen, kind invoice, receipt or credit note, with a number and a day of the issue) whose
+  `IssuerProfileId` is the issuer profile of the owner (`OrgFiscalIssuerProfile.PropertyOwnerId`). Never the organization's own documents (the agency's services to the guest),
+  another owner's, a draft, a discarded one, a proforma, or an invoice of the agency to the owner. The document of several co-owners is issued on the profile of the one who signs
+  (⚖ I6): it is that co-owner's, and the others, who are listed in it with their shares, do not find it in their own list.
+- **Owner portal** (`OwnerPortal`, rate limits `OwnerPortalRead` and `OwnerPortalDownload`):
+  - `GET api/owner-portal/issued-documents[?period=yyyy-MM|yyyy]`: `{ documentId, agencyId, agencyName, number, issueDate, kind, total, currency, sdiStatus, hasXml }`, the newest
+    first, at most 500; 400 `accountant_package_invalid_period`.
+  - `GET api/owner-portal/issued-documents/{id}/pdf?lang=` and `…/{id}/xml` (404 `fiscal_document_xml_unavailable` for a receipt, which has none).
+  - `GET api/owner-portal/issued-documents/export?period=yyyy-MM|yyyy`: the ZIP of the next paragraphs.
+  - Only the owner of the `owner_id` claim (every owner profile its ownerships are on, in every agency) and a delegated contact that holds `accounting.read` (403
+    `owner_portal_permission_missing`); behind `Features:AgencyTier` **and** `Features:FiscalDocumentIssuance`: with either off the list is empty and a file is 404 (`owner_issued_document_not_found`,
+    the export `owner_issued_documents_not_available`). One 404 for a document of another owner, of the agency, a draft or missing. **Nothing of a guest is in the list** (no name, no contact,
+    no tax data): the PDF and the XML hold what the document itself says (the name and, for a company, the tax data of its recipient; never a contact), and the register of the ZIP the name of
+    the recipient.
+- **PDF.** Rendered like `GET api/fiscal/documents/{id}/pdf` (the issuer of the snapshot of the issue, the co-owners, the agency as intermediary, the stamp text). The payment state is the
+  current one, read from the payments of the booking **naming the org of the document** (`FiscalDocumentService.CollectedByBookingAsync(…, ofOrg)`): the portal has no tenant, and a
+  document that was paid is never printed «da incassare».
+- **Export for the accountant.** `GET api/owners/{ownerId}/issued-documents/export?period=yyyy-MM|yyyy` for the agency (`OwnerIssuerProfilesController`: `agency.statement.view` on top of
+  `agency.owner.view`, behind `FiscalDocumentIssuance`; **the whole organization only**, 403 `forbidden` for a caller who reaches only some properties, because the accounts of an owner span
+  all of them; 404 `owner_not_found` for an owner of another org) and the same ZIP for the owner at `GET api/owner-portal/issued-documents/export`. One ZIP, streamed,
+  `casazen-documenti-emessi-<period>.zip`, `Cache-Control: private, no-store`; 422 `accountant_package_too_large` before the first byte (the caps of `DocumentArchive`, as the accountant package).
+  - `documenti-emessi/`: the PDF and the XML (when stored) of each document issued in the month or the year (by the day of the issue), and `registro-<issuer>.csv` and `.xlsx`, made with the
+    tables of the accountant package: the register (kind, number, day, recipient, collected by, taxable, VAT, stamp duty, total, currency; credit notes negative), the VAT of each document
+    for each rate, the totals for each rate and nature and **the totals of the period for each currency** (documents, taxable, VAT, stamp duty, total), which are the sums of the rows
+    of the register.
+  - A **year** adds `riepilogo-annuale/documenti-emessi.csv` and `.xlsx` (the documents by month, kind and currency, then the totals and the VAT for each rate of the year),
+    `riepilogo-annuale/fatture-agenzia-e-riaddebiti.csv` and `.xlsx` (the invoices of the agency to the owner: commission, recharges with their VAT and expenses advanced for each currency and for each
+    invoice, from the lines of the invoices of E14; credit notes negative) and `fatture-agenzia/` (the invoices and credit notes the agency issued to the owner in the year: the PDF the owner
+    downloads in its portal, the XML when Italian, and their register).
+  - `indice.csv`, written by the writer of the accountant package: every file with its description, its rows and its SHA-256. A person who reads the accounting of more than one owner
+    profile (the owner of two agencies, a contact of two owners) gets one folder `proprietario-<n>-<issuer>/` for each.
+- **Privacy.** Reads name the org and the owner in every query (the portal has no org of its own); the log carries ids and counts. An anonymized owner keeps its documents (legal retention,
+  ADR-033-R7) and the agency can still export them; the portal reaches none (its ownerships no longer count).
+
 ## Drafts and bulk issue (E12/F01/US01/T02)
 
 **One draft for every stay that ended, never two.** A booking has a *live document* when it has one that is not discarded, not a credit note, not a proforma and **not credited in

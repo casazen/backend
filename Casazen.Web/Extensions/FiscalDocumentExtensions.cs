@@ -154,6 +154,10 @@ public static class FiscalDocumentExtensions
         // The issuer profiles of the owners who issue the documents of their Italian stays, with their own series and numbering (E17/F01/US01/T01).
         services.AddScoped<IOwnerIssuerProfileService, OwnerIssuerProfileService>();
 
+        // The documents issued in the name of the owners for the owner portal and for the accountant of the owner: the list, their PDF and XML and the ZIP of the month or the year
+        // (E17/F02/US01/T01). The owner portal service takes it; it takes nothing of the portal.
+        services.AddScoped<IOwnerIssuedDocumentsExport, OwnerIssuedDocumentsExport>();
+
         return services;
     }
 }

@@ -115,6 +115,9 @@ public class FiscalDocumentsRegistrationTests
 
             // The issuer profiles of the owners (E17/F01/US01/T01).
             (typeof(IOwnerIssuerProfileService), typeof(OwnerIssuerProfileService), ServiceLifetime.Scoped),
+
+            // The documents issued in the name of the owners: the list, the PDF and the XML, and the ZIP for the owner's accountant (E17/F02/US01/T01).
+            (typeof(IOwnerIssuedDocumentsExport), typeof(OwnerIssuedDocumentsExport), ServiceLifetime.Scoped),
         };
 
         Assert.Equal(expected, ours);

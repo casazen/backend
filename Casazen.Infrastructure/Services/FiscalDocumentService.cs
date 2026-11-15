@@ -1369,21 +1369,31 @@ public sealed partial class FiscalDocumentService(
     /// host records none on it and no link is made for it): what the guest paid is what the channel manager reports (<c>OtaPaidAmount</c>, the figure the payment ledger shows too),
     /// and nothing is collected while it says nothing. A stay the portal collected is the portal's money, never counted here.
     /// </summary>
-    internal static async Task<Dictionary<Guid, decimal>> CollectedByBookingAsync(AppDbContext db, IReadOnlyCollection<Guid> bookingIds, CancellationToken ct)
+    /// <param name="db">The context.</param>
+    /// <param name="bookingIds">The bookings.</param>
+    /// <param name="ct">The cancellation token.</param>
+    /// <param name="ofOrg">The org of the bookings, for a caller that has no org of its own (the owner portal: its tenant filter matches nothing); <c>null</c> for a caller of the org, whose tenant filter applies.</param>
+    internal static async Task<Dictionary<Guid, decimal>> CollectedByBookingAsync(AppDbContext db, IReadOnlyCollection<Guid> bookingIds, CancellationToken ct, Guid? ofOrg = null)
     {
         if (bookingIds.Count == 0)
             return [];
 
-        var collected = await db.Payments
+        // A caller with no org of its own (the owner portal) has a tenant filter that matches nothing: it names the org of the bookings instead (ofOrg).
+        var payments = ofOrg is { } payOrg
+            ? db.Payments.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).Where(p => p.OrgId == payOrg)
+            : db.Payments.AsQueryable();
+        var collected = await payments
             .AsNoTracking()
             .Where(p => bookingIds.Contains(p.BookingId) && (p.Status == PaymentStatus.Completed || p.Status == PaymentStatus.PartiallyRefunded))
             .GroupBy(p => p.BookingId)
             .Select(g => new { BookingId = g.Key, Collected = g.Sum(p => p.Amount - p.RefundedAmount) })
             .ToDictionaryAsync(x => x.BookingId, x => x.Collected, ct);
 
-        var paidToTheHost = await db.Bookings
+        var stays = ofOrg is { } stayOrg
+            ? db.Bookings.IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter, AppDbContext.TenantQueryFilter]).Where(b => b.OrgId == stayOrg)
+            : db.Bookings.IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]);
+        var paidToTheHost = await stays
             .AsNoTracking()
-            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(b => bookingIds.Contains(b.Id) && b.OtaPaidAmount != null && b.OtaCompanyCollect != true)
             .Select(b => new { b.Id, Paid = b.OtaPaidAmount ?? 0m })
             .ToListAsync(ct);

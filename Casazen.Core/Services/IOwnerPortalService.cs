@@ -67,6 +67,50 @@ public interface IOwnerPortalService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The documents CasaZen issued in the name of the owner (<c>GET api/owner-portal/issued-documents</c>, E17/F02/US01/T01, NF-116): the issued documents of the stays (a receipt of a
+    /// private owner, the invoice of a company, their credit notes) whose issuer is the issuer profile of an owner profile the caller holds <c>accounting.read</c> on, the newest first,
+    /// at most <see cref="OwnerCollaborationRules.MaxList"/>, narrowed to the ones issued in <paramref name="period"/> when it is given. Each with its number, day, kind, total, currency,
+    /// state of the SDI and whether it has an XML; nothing of a guest. Behind <c>Features:AgencyTier</c> and <c>Features:FiscalDocumentIssuance</c>: with either off the list stays empty. A caller with no ownership in force gets an empty list; a delegated contact the owner did not give
+    /// <c>accounting.read</c> is refused (403 <c>owner_portal_permission_missing</c>).
+    /// </summary>
+    Task<IReadOnlyList<OwnerPortalIssuedDocumentInfo>> GetOwnerIssuedDocumentsAsync(
+        Guid ownerUserId,
+        AccountantPackagePeriod? period = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The PDF of one document issued in the name of the owner (<c>GET api/owner-portal/issued-documents/{id}/pdf</c>), made from the document and the issuer as they were at the issue, in
+    /// <paramref name="language"/> (Italian by default). 404 <c>owner_issued_document_not_found</c> for a document that is not one of the caller's (another owner's, the agency's, a
+    /// draft, missing: one answer) and with a flag off; 403 as <see cref="GetOwnerIssuedDocumentsAsync"/>.
+    /// </summary>
+    Task<OwnerFileContent> OpenOwnerIssuedDocumentPdfAsync(
+        Guid ownerUserId,
+        Guid documentId,
+        string? language = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The FatturaPA XML of one invoice or credit note issued in the name of the owner (<c>GET api/owner-portal/issued-documents/{id}/xml</c>), as it was stored at the issue. 404 as
+    /// <see cref="OpenOwnerIssuedDocumentPdfAsync"/>, and <c>fiscal_document_xml_unavailable</c> for a document of the owner that has none (a receipt); 403 as the list.
+    /// </summary>
+    Task<OwnerFileContent> OpenOwnerIssuedDocumentXmlAsync(
+        Guid ownerUserId,
+        Guid documentId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The ZIP for the accountant of the owner (<c>GET api/owner-portal/issued-documents/export?period=yyyy-MM|yyyy</c>), streamed to <paramref name="destination"/>: the PDF and the XML
+    /// of the documents issued in the owner's name in the month or the year, their register and an index with the SHA-256 of every file, and for a year also their summary and the invoices
+    /// of the property manager to the owner with their recharges. Every owner profile the caller holds <c>accounting.read</c> on (one folder each when more than one). 404
+    /// <c>owner_issued_documents_not_available</c> with a flag off or with no ownership in force; 403 as the list; 422 <c>accountant_package_too_large</c> before the first byte.
+    /// </summary>
+    Task<AccountantPackageResult> ExportOwnerIssuedDocumentsAsync(
+        Guid ownerUserId,
+        AccountantPackagePeriod period,
+        Stream destination,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets withholding tax summary for the owner (ADR-011-R2).
     /// Returns empty summary for now (withholding feature not yet implemented).
     /// </summary>
@@ -267,6 +311,32 @@ public sealed record OwnerPortalInvoiceInfo(
     int? PeriodMonth,
     Guid? StatementId,
     bool CreditedInFull);
+
+/// <summary>
+/// A document issued in the name of the owner as the owner portal lists it (E17/F02/US01/T01): its number, day, kind, total, currency and state of the SDI, and whether it has an XML.
+/// Nothing of a guest: the PDF and the XML hold what the document itself says.
+/// </summary>
+/// <param name="DocumentId">The fiscal document.</param>
+/// <param name="AgencyId">The agency that issues it for the owner (an owner can have more than one).</param>
+/// <param name="AgencyName">The name of the agency.</param>
+/// <param name="Number">The number, with the series of the owner.</param>
+/// <param name="IssueDate">The day it was issued (a Europe/Rome calendar day).</param>
+/// <param name="Kind">An invoice, a receipt or a credit note.</param>
+/// <param name="Total">The total, in <paramref name="Currency"/>.</param>
+/// <param name="Currency">The currency.</param>
+/// <param name="SdiStatus">One of <c>FiscalDocumentSdiStatuses</c>.</param>
+/// <param name="HasXml">True when the document has a FatturaPA XML to download.</param>
+public sealed record OwnerPortalIssuedDocumentInfo(
+    Guid DocumentId,
+    Guid AgencyId,
+    string AgencyName,
+    string Number,
+    DateOnly IssueDate,
+    FiscalDocumentKind Kind,
+    decimal Total,
+    string Currency,
+    string SdiStatus,
+    bool HasXml);
 
 /// <summary>
 /// Withholding tax summary (placeholder for future implementation).
