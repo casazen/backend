@@ -10896,6 +10896,68 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.PropertyCleaningSetup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("CleanerKind")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("DurationMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("PriceCents")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("StaffUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<TimeOnly?>("StartTime")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<Guid?>("SupplierOrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
+
+                    b.HasIndex("PropertyId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_PropertyCleaningSetups_PropertyId");
+
+                    b.HasIndex("SupplierOrgId");
+
+                    b.ToTable("PropertyCleaningSetups", t =>
+                        {
+                            t.HasCheckConstraint("CK_PropertyCleaningSetups_Cleaner", "(\"CleanerKind\" = 1 AND \"SupplierOrgId\" IS NOT NULL AND \"StaffUserId\" IS NULL AND \"PriceCents\" IS NOT NULL AND \"PriceCents\" BETWEEN 1 AND 10000000) OR (\"CleanerKind\" = 2 AND \"StaffUserId\" IS NOT NULL AND \"SupplierOrgId\" IS NULL AND (\"PriceCents\" IS NULL OR \"PriceCents\" BETWEEN 1 AND 10000000))");
+
+                            t.HasCheckConstraint("CK_PropertyCleaningSetups_Duration", "\"DurationMinutes\" IS NULL OR \"DurationMinutes\" BETWEEN 5 AND 1440");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.PropertyComplianceSender", b =>
                 {
                     b.Property<Guid>("Id")
@@ -14768,6 +14830,56 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("CleaningRequestId");
 
                     b.ToTable("StayCheckouts");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.StayCleaning", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CleanerKind")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("InternalActivityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ScheduledStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ServiceRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
+
+                    b.HasIndex("InternalActivityId");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("ServiceRequestId");
+
+                    b.HasIndex("OrgId", "BookingId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_StayCleanings_OrgId_BookingId");
+
+                    b.ToTable("StayCleanings");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.StayGuest", b =>
@@ -19794,6 +19906,26 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.PropertyCleaningSetup", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierOrgId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.PropertyComplianceSender", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Org", null)
@@ -20669,6 +20801,37 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Booking");
 
                     b.Navigation("CleaningRequest");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.StayCleaning", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Booking", null)
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.InternalActivity", null)
+                        .WithMany()
+                        .HasForeignKey("InternalActivityId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.ServiceRequest", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceRequestId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.StayGuest", b =>

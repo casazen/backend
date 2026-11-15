@@ -83,11 +83,43 @@ public sealed class BookingCleaningActivityHandler(
         if (cleaningRequested)
             return;
 
-        var checkOutDay = stay.CheckOutDate.Date;
+        // E24/F01/US01/T02: a staff activity of type Cleaning (the automation assigns one to a member of the staff) is a cleaning planned like a request.
+        var staffCleaningPlanned = await db.InternalActivities
+            .AsNoTracking()
+            .AnyAsync(
+                a => a.OrgId == orgId
+                     && a.BookingId == bookingId
+                     && a.Action == null
+                     && a.ActivityType == InternalActivity.CleaningActivityType
+                     && a.Status != InternalActivity.StatusCancelled,
+                ct);
+        if (staffCleaningPlanned)
+            return;
+
+        await RaiseCleaningDueAsync(db, activities, timeProvider, logger, orgId, bookingId, stay.PropertyId, stay.CheckOutDate, ct);
+    }
+
+    /// <summary>
+    /// Raises the "To do" of a stay that ended without a cleaning: about the booking, on its property, due at the next arrival of the property, with the urgency that
+    /// arrival gives it. Idempotent while the item is open (<see cref="IInternalActivityService.CreateAsync"/>); the callers decide whether the stay was raised for already.
+    /// Shared with the automation of the cleaning at check-out, which raises it when it cannot create the cleaning (E24/F01/US01/T02).
+    /// </summary>
+    internal static async Task RaiseCleaningDueAsync(
+        AppDbContext db,
+        IInternalActivityService activities,
+        TimeProvider timeProvider,
+        ILogger logger,
+        Guid orgId,
+        Guid bookingId,
+        Guid propertyId,
+        DateTime checkOutDate,
+        CancellationToken ct)
+    {
+        var checkOutDay = checkOutDate.Date;
         var nextCheckIn = await db.Bookings
             .AsNoTracking()
             .Where(b => b.OrgId == orgId
-                        && b.PropertyId == stay.PropertyId
+                        && b.PropertyId == propertyId
                         && b.Id != bookingId
                         && b.Status == BookingStatus.Confirmed
                         && b.CheckInDate >= checkOutDay)
@@ -103,7 +135,7 @@ public sealed class BookingCleaningActivityHandler(
             EntityType = InternalActivity.BookingEntityType,
             EntityId = bookingId,
             Urgency = UrgencyOf(deadline, timeProvider.GetUtcNow().UtcDateTime),
-            PropertyId = stay.PropertyId,
+            PropertyId = propertyId,
             Deadline = deadline,
             Reason = await BookingTodoItems.ReasonAsync(db, orgId, BookingTodoItems.CleaningDueReason, ct),
         };
@@ -115,7 +147,7 @@ public sealed class BookingCleaningActivityHandler(
         catch (NotFoundException)
         {
             // The property is gone (deleted since): nothing to clean, and a retry would find the same.
-            logger.LogInformation("Event {EventId}: property {PropertyId} of booking {BookingId} not found, no cleaning to do", domainEvent.Id, stay.PropertyId, bookingId);
+            logger.LogInformation("Property {PropertyId} of booking {BookingId} not found, no cleaning to do", propertyId, bookingId);
         }
     }
 
