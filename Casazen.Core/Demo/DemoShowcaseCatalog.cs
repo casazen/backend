@@ -17,7 +17,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-15.28";
+    public const string Version = "2026-11-15.29";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -343,6 +343,13 @@ public static class DemoShowcaseCatalog
         public const string OwnerTaxChecks = "owner-tax-checks";
 
         /// <summary>
+        /// How the cleaning is recharged to the owner under the mandate (E14/F01/US02/T01, ⚖ I13): the flat fee of each stay (the default), or the cost of each cleaning completed in the
+        /// month, one charge linked to its request on the invoice of the agency, never together with the flat fee. Invented, TEST owners and amounts: a template of what the mandate
+        /// (<c>api/owners/{id}/mandates</c>, <c>cleaningRechargeMode</c>) and the posting of the month answer; the showcase writes none of these rows.
+        /// </summary>
+        public const string CleaningRecharge = "cleaning-recharge";
+
+        /// <summary>
         /// The facts of a payout read from the ledger (E18/F01/US01/T01, NF-117, ⚖ R5): the stays of the October statement of a private TEST owner of an Italian house,
         /// one paid with a payment the agency recorded (in the base, its tourist tax left out), one of Airbnb on the agency's account (Airbnb withholds for the private host
         /// itself: never withheld again) and one of Booking.com on the owner's account (the portal pays the owner: the agency neither collected nor intervened). A template
@@ -446,6 +453,7 @@ public static class DemoShowcaseCatalog
         Scenario.ReportChannelCosts,
         Scenario.CleaningAtCheckout,
         Scenario.OwnerTaxChecks,
+        Scenario.CleaningRecharge,
         Scenario.PayoutFacts,
         Scenario.BookingFourOrigins,
     ];
@@ -624,6 +632,18 @@ public static class DemoShowcaseCatalog
     [
         new("conduttore-societa-da-decidere", "TEST Mario Rossi", "TEST Impresa Lago Srl", null, null, Scenario.OwnerTaxChecks),
         new("conduttore-societa-non-locazione-breve", "TEST Mario Rossi", "TEST Impresa Lago Srl", ShortLetTaxRegime.NotShortLet, "TEST: deciso con il commercialista", Scenario.OwnerTaxChecks),
+    ];
+
+    /// <summary>
+    /// The three ways the cleaning reaches the invoice of the agency to a demo owner (E14/F01/US02/T01, ⚖ I13): the flat fee of the mandate for each stay; the cost of a cleaning
+    /// request completed in the month (one line for each request, with its reference, and no flat fee); the cost of a staff cleaning that has no rate, which is the flat rate of the
+    /// mandate. Invented, TEST owners and amounts in euro; a template only.
+    /// </summary>
+    public static IReadOnlyList<DemoCleaningRechargeTemplate> CleaningRechargeExamples { get; } =
+    [
+        new("forfait-per-soggiorno", "TEST Mario Rossi", CleaningRechargeMode.FlatRate, "TEST Impresa di pulizie", null, 40m, Scenario.CleaningRecharge),
+        new("costo-effettivo-richiesta", "TEST Giulia Bianchi", CleaningRechargeMode.ActualCost, "TEST Impresa di pulizie", 85m, 40m, Scenario.CleaningRecharge),
+        new("costo-effettivo-staff-senza-tariffa", "TEST Luca Verdi", CleaningRechargeMode.ActualCost, "TEST Personale dell'agenzia", null, 40m, Scenario.CleaningRecharge),
     ];
 
     /// <summary>
@@ -2420,6 +2440,20 @@ public sealed record DemoOwnerUnitsTemplate(string Key, string OwnerName, int Ma
 /// agency, both <c>null</c> while nobody decided.
 /// </summary>
 public sealed record DemoCompanyTenantTemplate(string Key, string OwnerName, string TenantName, ShortLetTaxRegime? Decision, string? Reason, string Scenario);
+
+/// <summary>
+/// An example of how the cleaning reaches the invoice of the agency to an owner (E14/F01/US02/T01, ⚖ I13): the <paramref name="Mode"/> of its mandate, who cleaned
+/// (<paramref name="Cleaner"/>), the price of the request in euro (<paramref name="RequestAmount"/>, <c>null</c> for a staff cleaning with no rate) and the flat fee of the mandate
+/// (<paramref name="MandateFlatRate"/>), which is the fee of each stay on the flat rate and the price of a staff cleaning with no rate on the actual cost.
+/// </summary>
+public sealed record DemoCleaningRechargeTemplate(
+    string Key,
+    string OwnerName,
+    CleaningRechargeMode Mode,
+    string Cleaner,
+    decimal? RequestAmount,
+    decimal MandateFlatRate,
+    string Scenario);
 
 /// <summary>
 /// A stay of the demo payout (E18/F01/US01/T01): the owner, the channel, the owner's gross of it without the tourist tax and the tourist tax left out, whether the ledger

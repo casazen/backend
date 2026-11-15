@@ -382,6 +382,7 @@ public sealed partial class OwnerMandateService(
         CommissionBase = terms.CommissionBase,
         CommissionIncludesVat = terms.CommissionIncludesVat,
         CleaningFlatRate = terms.CleaningFlatRate,
+        CleaningRechargeMode = terms.CleaningRechargeMode,
         LinenFlatRate = terms.LinenFlatRate,
         PassthroughPaymentFees = terms.PassthroughPaymentFees,
         WithholdingTreatment = terms.WithholdingTreatment,
@@ -404,6 +405,8 @@ public sealed partial class OwnerMandateService(
             throw MandateInvalid("commissionBase");
         if (!IsFlatRate(command.CleaningFlatRate))
             throw MandateInvalid("cleaningFlatRate");
+        if (command.CleaningRechargeMode is { } recharge && !Enum.IsDefined(recharge))
+            throw MandateInvalid("cleaningRechargeMode");
         if (!IsFlatRate(command.LinenFlatRate))
             throw MandateInvalid("linenFlatRate");
         if (command.WithholdingTreatment is { } treatment && !Enum.IsDefined(treatment))
@@ -421,6 +424,7 @@ public sealed partial class OwnerMandateService(
             command.CommissionBase ?? CommissionBase.GrossExclTouristTax,
             command.CommissionIncludesVat,
             command.CleaningFlatRate,
+            command.CleaningRechargeMode ?? CleaningRechargeMode.FlatRate,
             command.LinenFlatRate,
             command.PassthroughPaymentFees,
             command.WithholdingTreatment ?? CommissionTreatment.Deductible,
@@ -486,6 +490,7 @@ public sealed partial class OwnerMandateService(
         CommissionBase CommissionBase,
         bool CommissionIncludesVat,
         decimal? CleaningFlatRate,
+        CleaningRechargeMode CleaningRechargeMode,
         decimal? LinenFlatRate,
         bool PassthroughPaymentFees,
         CommissionTreatment WithholdingTreatment,
