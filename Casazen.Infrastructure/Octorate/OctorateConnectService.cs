@@ -89,6 +89,16 @@ public sealed class OctorateConnectService(
             OctorateConfiguration configuration;
             using (orgScope.Use(orgId))
                 configuration = await client.GetConfigurationAsync(ct);
+            if (!OctorateEnvironments.Matches(environment, configuration.Environment))
+            {
+                // Only log a closed set of classifications, never the upstream response or an arbitrary value.
+                var reportedEnvironment = string.IsNullOrWhiteSpace(configuration.Environment) ? "missing"
+                    : OctorateEnvironments.Matches(OctorateEnvironment.Test, configuration.Environment) ? "sandbox"
+                    : OctorateEnvironments.Matches(OctorateEnvironment.Production, configuration.Environment) ? "production"
+                    : "unrecognized";
+                logger.LogWarning("Octorate environment verification failed: expected {ExpectedEnvironment}, reported {ReportedEnvironment}",
+                    environment, reportedEnvironment);
+            }
             OctorateEnvironments.EnsureMatches(environment, configuration);
         }
         catch (OctorateException ex)
