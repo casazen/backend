@@ -89,7 +89,8 @@ public sealed class OctorateConnectService(
             OctorateConfiguration configuration;
             using (orgScope.Use(orgId))
                 configuration = await client.GetConfigurationAsync(ct);
-            if (!OctorateEnvironments.Matches(environment, configuration.Environment))
+            var expectedApiEnvironment = OctorateEnvironments.ExpectedApiEnvironment(environment, options.Value.AllowProductionApiInTest);
+            if (!OctorateEnvironments.Matches(expectedApiEnvironment, configuration.Environment))
             {
                 // Only log a closed set of classifications, never the upstream response or an arbitrary value.
                 var reportedEnvironment = string.IsNullOrWhiteSpace(configuration.Environment) ? "missing"
@@ -97,9 +98,9 @@ public sealed class OctorateConnectService(
                     : OctorateEnvironments.Matches(OctorateEnvironment.Production, configuration.Environment) ? "production"
                     : "unrecognized";
                 logger.LogWarning("Octorate environment verification failed: expected {ExpectedEnvironment}, reported {ReportedEnvironment}",
-                    environment, reportedEnvironment);
+                    expectedApiEnvironment, reportedEnvironment);
             }
-            OctorateEnvironments.EnsureMatches(environment, configuration);
+            OctorateEnvironments.EnsureMatches(expectedApiEnvironment, configuration);
         }
         catch (OctorateException ex)
         {
