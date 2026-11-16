@@ -185,6 +185,7 @@ internal sealed class OrgInvitationTestKit
         {
             org = AddOrg(db);
             org.Name = org.DisplayName = "Casa Rossi";
+            org.IsAgency = true;
             org.PlanTier = tier;
             org.SubscriptionStatus = status;
             org.SubscriptionId = status == SubscriptionStatus.None ? null : $"sub_{Guid.NewGuid():N}";

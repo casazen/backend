@@ -47,9 +47,6 @@ public sealed partial class OrgInvitationService(
 
     private DateTime Now => _clock.GetUtcNow().UtcDateTime;
 
-    /// <summary>Invitation emails an org may send in 24 hours (<c>OrgTeam:InvitationDailyLimit</c>, AM-D15); a value that is not a positive number is ignored.</summary>
-    private int DailyLimit => ReadPositive(OrgInvitationRules.DailyLimitConfigKey, OrgInvitationRules.DefaultDailyLimit);
-
     /// <summary>Minutes between two «reinvia» of one invitation (<c>OrgTeam:ResendMinutes</c>, AM-D15); a value that is not a positive number is ignored.</summary>
     private TimeSpan ResendWait => TimeSpan.FromMinutes(ReadPositive(OrgInvitationRules.ResendMinutesConfigKey, OrgInvitationRules.DefaultResendMinutes));
 
@@ -59,6 +56,7 @@ public sealed partial class OrgInvitationService(
     public async Task<OrgInvitationSent> CreateAsync(CreateOrgInvitation request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        await RequireAgencyAsync(request.OrgId, cancellationToken);
 
         if (request.Role == OrgRole.Owner)
             throw new DomainRuleException(OrgMembershipErrors.OwnerNotAssignable, "OrgMemberOwnerNotAssignable");
@@ -127,9 +125,7 @@ public sealed partial class OrgInvitationService(
             if (await HasOpenInvitationAsync(request.OrgId, email, exceptId: null, now, cancellationToken))
                 throw new DomainConflictException(OrgInvitationErrors.AlreadyPending, "OrgInvitationAlreadyPending");
 
-            // The emails of the org are capped (AM-D15). Under the seats lock, like the check of the seat: two requests at the
-            // tenth place cannot both pass.
-            await EnsureUnderDailyLimitAsync(request.OrgId, now, cancellationToken);
+            // Agency invitations and collaborators have no count limit.
             await seats.EnsureSeatAvailableAsync(request.OrgId, cancellationToken);
 
             // The line of the activity log goes in the same save as the invitation: no invitation without its line, no line without it.
@@ -196,6 +192,7 @@ public sealed partial class OrgInvitationService(
         string actorUserId,
         CancellationToken cancellationToken = default)
     {
+        await RequireAgencyAsync(orgId, cancellationToken);
         var actor = await OrgTeamAccess.RequireManagerAsync(db, orgId, actorUserId, cancellationToken);
         publicSiteLinks.EnsureConfigured();
 
@@ -213,9 +210,8 @@ public sealed partial class OrgInvitationService(
             if (invitation.Status is OrgInvitationStatus.Accepted or OrgInvitationStatus.Revoked)
                 throw new DomainConflictException(OrgInvitationErrors.NotPending, "OrgInvitationNotPending");
 
-            // AM-D15: one «reinvia» an hour for each invitation, and the cap of the org on all of its emails.
+            // Avoid repeated email delivery of the same invitation within the resend interval.
             EnsureResendIsNotTooSoon(invitation, now);
-            await EnsureUnderDailyLimitAsync(orgId, now, cancellationToken);
 
             // An expired invitation holds no seat: bringing it back takes one again, and must not collide with a newer
             // invitation of the same person or with the person having joined meanwhile.
@@ -262,6 +258,7 @@ public sealed partial class OrgInvitationService(
         string actorUserId,
         CancellationToken cancellationToken = default)
     {
+        await RequireAgencyAsync(orgId, cancellationToken);
         var actor = await OrgTeamAccess.RequireManagerAsync(db, orgId, actorUserId, cancellationToken);
 
         var now = Now;
@@ -303,6 +300,7 @@ public sealed partial class OrgInvitationService(
         string actorUserId,
         CancellationToken cancellationToken = default)
     {
+        await RequireAgencyAsync(orgId, cancellationToken);
         var actor = await OrgTeamAccess.RequireManagerAsync(db, orgId, actorUserId, cancellationToken);
         publicSiteLinks.EnsureConfigured();
 
@@ -532,29 +530,12 @@ public sealed partial class OrgInvitationService(
         invitation.SendLog = [.. invitation.SendLog.Where(sent => sent > cutoff), now];
     }
 
-    /// <summary>
-    /// 429 <see cref="OrgInvitationErrors.DailyLimitReached"/> when the org has already sent <c>OrgTeam:InvitationDailyLimit</c> emails
-    /// of invitations (created or sent again, any state of the invitation: one revoked still counts) in the last 24 hours. Counts
-    /// the emails in the list each invitation keeps, and reads only the invitations whose last send is inside the window.
-    /// <b>The caller holds the seats lock of the org</b> and writes the send before releasing it, so two requests at the last
-    /// place cannot both pass.
-    /// </summary>
-    private async Task EnsureUnderDailyLimitAsync(Guid orgId, DateTime now, CancellationToken cancellationToken)
+    /// <summary>Only agency administrators manage collaborators; private owners have no team.</summary>
+    private async Task RequireAgencyAsync(Guid orgId, CancellationToken cancellationToken)
     {
-        var cutoff = now - OrgInvitationRules.DailyWindow;
-        var logs = await db.OrgInvitations.IgnoreQueryFilters().AsNoTracking()
-            .Where(i => i.OrgId == orgId && i.LastSentAt >= cutoff)
-            .Select(i => i.SendLog)
-            .ToListAsync(cancellationToken);
-
-        var sent = logs.Sum(log => log.Count(at => at >= cutoff));
-        var limit = DailyLimit;
-        if (sent >= limit)
-        {
-            logger.LogInformation(
-                "Org invitation refused, the daily cap of emails is reached: orgId={OrgId} sent={Sent} limit={Limit}", orgId, sent, limit);
-            throw new DomainTooManyRequestsException(OrgInvitationErrors.DailyLimitReached, "InvitationDailyLimitReached", limit);
-        }
+        if (!await db.Orgs.AsNoTracking().AnyAsync(o => o.Id == orgId && o.IsActive
+                && o.OrgType == OrgType.Host && (o.IsAgency || o.PlanTier == PlanTier.Agency), cancellationToken))
+            throw new DomainForbiddenException("org_agency_required", "OrgAgencyRequired");
     }
 
     /// <summary>429 <see cref="OrgInvitationErrors.ResendTooSoon"/> while <c>OrgTeam:ResendMinutes</c> have not passed since the last email of the invitation; says how many minutes are left.</summary>

@@ -68,6 +68,7 @@ public sealed partial class OrgInvitationService
         var targetOrg = await db.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == seen.OrgId, cancellationToken);
         if (targetOrg is not { IsActive: true, OrgType: OrgType.Host })
             throw Gone(OrgInvitationErrors.Invalid, "InvitationInvalid");
+        await RequireAgencyAsync(seen.OrgId, cancellationToken);
 
         // What the account is in an org today decides: join, leave an empty org of its own for this one, or refuse.
         AcceptPlan plan;

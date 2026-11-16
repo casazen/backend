@@ -20,6 +20,9 @@ internal sealed class HostInviteRecordConfiguration : IEntityTypeConfiguration<H
         entity.HasIndex(i => new { i.InvitedByUserId, i.Email })
             .HasDatabaseName("IX_HostInviteRecords_InvitedByUserId_Email");
 
+        // Agency provisioning resolves the accepted staff invitation by the accepting account.
+        entity.HasIndex(i => i.UsedByUserId);
+
         // The pending cap of a host org and the admin list by creation date.
         entity.HasIndex(i => new { i.InvitedByOrgId, i.CreatedAt })
             .HasDatabaseName("IX_HostInviteRecords_InvitedByOrgId_CreatedAt");

@@ -871,11 +871,11 @@ public class OrgInvitationAcceptanceTests
         await using var after = _kit.NewDb();
         var usage = await _kit.Seats(after).GetUsageAsync(org.Id);
         Assert.Equal((2, 2, 0), (usage.Used, usage.ActiveMembers, usage.PendingInvitations));
-        Assert.Equal(2, usage.Max);
+        Assert.Equal(int.MaxValue, usage.Max);
     }
 
     [Fact]
-    public async Task AcceptAsync_AfterADowngradeThePendingInvitationStillJoins_TheOrgIsOverItsSeatsAndStaysSo()
+    public async Task AcceptAsync_AfterADowngradeAgencyInvitationsRemainUnlimited()
     {
         var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Pro, status: SubscriptionStatus.Unpaid);
         await _kit.SeedMemberAsync(org.Id, "auth0|m1", OrgRole.Collaborator);
@@ -888,8 +888,8 @@ public class OrgInvitationAcceptanceTests
         Assert.Equal(org.Id, accepted.OrgId);
         await using var db = _kit.NewDb();
         var usage = await _kit.Seats(db).GetUsageAsync(org.Id);
-        Assert.Equal((2, 4), (usage.Max, usage.Used));
-        Assert.False(usage.CanInvite);
+        Assert.Equal((int.MaxValue, 4), (usage.Max, usage.Used));
+        Assert.True(usage.CanInvite);
     }
 
     // ─── The tenant of the request ──────────────────────────────────────────────────────────────────────

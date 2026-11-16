@@ -39,7 +39,9 @@ public class HostInviteSentDto
     public Guid InviteId { get; set; }
     public DateTime ExpiresAt { get; set; }
 
-    public static HostInviteSentDto From(HostInviteSent sent) => new() { InviteId = sent.InviteId, ExpiresAt = sent.ExpiresAt };
+    public string? Url { get; set; }
+
+    public static HostInviteSentDto From(HostInviteSent sent) => new() { InviteId = sent.InviteId, ExpiresAt = sent.ExpiresAt, Url = sent.Url };
 }
 
 public class HostInviteInviterDto
@@ -90,6 +92,7 @@ public class HostInviteQuotaDto
 
 public class HostInviteLookupResponse
 {
+    public bool IsAgency { get; set; }
     public bool Valid { get; set; }
 
     /// <summary><c>Pending</c>, <c>Used</c>, <c>Expired</c>, <c>Revoked</c> or <c>Invalid</c>.</summary>
@@ -102,6 +105,7 @@ public class HostInviteLookupResponse
 
     public static HostInviteLookupResponse From(HostInviteLookup lookup) => new()
     {
+        IsAgency = lookup.IsAgency,
         Valid = lookup.Valid,
         State = lookup.State,
         InviterName = lookup.InviterName,

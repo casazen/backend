@@ -19,6 +19,30 @@ public class OrgServiceTests
         return new AppDbContext(options);
     }
 
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task EnsureOrgForUserAsync_OnlyAcceptedStaffInvitesCreateAgencies(bool staffInvite, bool accepted)
+    {
+        await using var db = CreateDb(Guid.NewGuid().ToString());
+        const string userId = "auth0|founder";
+        db.Users.Add(new User { Id = userId, Email = "founder@example.com" });
+        db.HostInviteRecords.Add(new HostInviteRecord
+        {
+            Email = "founder@example.com", TokenHash = new string('a', 64), InvitedByUserId = "auth0|inviter",
+            InvitedByOrgId = staffInvite ? null : Guid.NewGuid(), IsUsed = accepted,
+            UsedByUserId = accepted ? userId : null, ExpiresAt = DateTime.UtcNow.AddDays(7),
+        });
+        await db.SaveChangesAsync();
+        var org = await new OrgService(db).EnsureOrgForUserAsync(userId, "founder@example.com", "My Agency");
+        Assert.Equal(staffInvite && accepted, org.IsAgency);
+        Assert.Equal(PlanTier.Starter, org.PlanTier);
+        // Organization owners are never platform super admins.
+        Assert.NotEqual(UserRole.Admin, (await db.Users.SingleAsync()).Role);
+    }
+
     [Fact]
     public async Task EnsureOrgForUserAsync_NewOrg_StartsOnStarterWithoutSubscription()
     {
@@ -40,6 +64,7 @@ public class OrgServiceTests
 
         // Paid tiers come only from a Stripe subscription (#274): a new org is always Starter.
         Assert.Equal(PlanTier.Starter, org.PlanTier);
+        Assert.False(org.IsAgency);
         Assert.Equal(SubscriptionStatus.None, org.SubscriptionStatus);
         Assert.Null(org.SubscriptionId);
         var user = await db.Users.SingleAsync(u => u.Id == userId);
