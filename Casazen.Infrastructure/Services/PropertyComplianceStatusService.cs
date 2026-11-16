@@ -159,7 +159,7 @@ public class PropertyComplianceStatusService(
         var baseComplete = !string.IsNullOrWhiteSpace(property.Name)
             && !string.IsNullOrWhiteSpace(property.Address)
             && !string.IsNullOrWhiteSpace(property.City)
-            && property.Country is "IT" or "CH"
+            && property.Country.Length == 2
             && property.MaxGuests > 0
             && property.NightlyRate > 0;
 
