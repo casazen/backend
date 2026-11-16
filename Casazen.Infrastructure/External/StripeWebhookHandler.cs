@@ -42,7 +42,8 @@ public class StripeWebhookHandler(
     IServiceRequestOfferCompletion? offerCompletion = null,
     IDomainEventRecorder? domainEvents = null,
     IBankLinkService? bankLinks = null,
-    ITouristTaxCollectionService? touristTaxCollection = null)
+    ITouristTaxCollectionService? touristTaxCollection = null,
+    Microsoft.Extensions.Configuration.IConfiguration? commercialConfiguration = null)
 {
     private const string DirectBookingKind = "direct-booking";
 
@@ -453,7 +454,7 @@ public class StripeWebhookHandler(
         // paid for; past due keeps the tier already paid (grace period, see EntitlementService).
         if (status is SubscriptionStatus.Active or SubscriptionStatus.Trialing)
         {
-            var priceId = subscription.Items?.Data?.FirstOrDefault()?.Price?.Id;
+            var priceId = subscription.Items?.Data?.FirstOrDefault(i => stripeBillingService.MapPriceIdToTier(i.Price?.Id).HasValue)?.Price?.Id;
             var tier = stripeBillingService.MapPriceIdToTier(priceId);
             if (tier.HasValue)
             {
@@ -486,6 +487,20 @@ public class StripeWebhookHandler(
         if (!string.IsNullOrWhiteSpace(subscription.CustomerId))
             org.StripeCustomerId ??= subscription.CustomerId;
 
+        var commercial = CommercialSignup.Read(org.CommercialSignupJson);
+        if (commercial is not null && commercialConfiguration is not null && status is SubscriptionStatus.Active or SubscriptionStatus.Trialing)
+        {
+            var baseItem = subscription.Items?.Data?.FirstOrDefault(i => stripeBillingService.MapPriceIdToTier(i.Price?.Id).HasValue);
+            if (baseItem is not null && subscription.Metadata?.GetValueOrDefault("commercialConfiguration") == commercial.Fingerprint)
+            {
+                org.CommercialPaymentConfirmed = true;
+                org.CommercialRoomAllowance = commercial.Profile == "agency" ? checked((int)baseItem.Quantity) : 0;
+                var paidAddons = CommercialAddon.All.Where(a => subscription.Items!.Data.Any(i =>
+                    i.Price?.Id == CommercialPricing.Price(commercialConfiguration!, a.Code) && i.Quantity >= baseItem.Quantity))
+                    .Select(a => a.Code).ToArray();
+                org.CommercialPaidAddonsJson = System.Text.Json.JsonSerializer.Serialize(paidAddons);
+            }
+        }
         org.UpdatedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync();
         await entitlementService.SyncFromSubscriptionAsync(org.Id);
@@ -494,7 +509,7 @@ public class StripeWebhookHandler(
         // Only on customer.subscription.created (not updated/deleted)
         if (eventType == "customer.subscription.created" && concordatoFacileGiftService is not null)
         {
-            var priceId = subscription.Items?.Data?.FirstOrDefault()?.Price?.Id;
+            var priceId = subscription.Items?.Data?.FirstOrDefault(i => stripeBillingService.MapPriceIdToTier(i.Price?.Id).HasValue)?.Price?.Id;
             if (!string.IsNullOrWhiteSpace(priceId) && IsBiennialSubscriptionPrice(priceId))
             {
                 logger.LogInformation(

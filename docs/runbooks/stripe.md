@@ -1105,3 +1105,19 @@ Webhook `metadata.kind = bank-link-payment` on the platform endpoint. No Dashboa
 1. Automated: `StripeWebhookIdempotencyPostgresTests` (sequential and parallel duplicates on both endpoints, failure then retry, incomplete/unpaid without access), `BillingCheckoutPostgresTests` (repeated checkout, double click, other plan, incomplete), `StripeWebhookSubscriptionStateTests`, `WebhookSignatureTests`.
 2. Test mode: from Stripe Dashboard resend the same event twice to the platform endpoint: the second job logs `Skipping duplicate Stripe event`.
 3. Test mode: complete a checkout, then start another from the plans page: 409 `already_subscribed`, no second session in Stripe.
+
+## Commercial signup (#896)
+
+The new web signup selects one profile (agency, private owner, long-term landlord; suppliers use their existing registration), a plan and optional modules before taking a payment. Existing accounts retain their current access. Apply `20261116221500_AddCommercialSignup` before deploying the API and deploy the API before the frontend.
+
+The Agency product is opt-in: configure `Billing__Prices__Agency` with a **monthly per-room recurring Price**, and `Billing__Display__Agency__PriceMonthly` with its display amount. A structure with three rooms creates a subscription base line with quantity 3. The wizard asks the total billable room count; this is not a count of beds. Starter/Pro/Scale private-owner subscriptions keep quantity 1.
+
+Optional modules are `channels`, `direct-booking`, `compliance`, `identification`, `messages-ai`, `operations`, `fiscal`, `revenue`, `crm`. For each commercially offered module configure `Billing__Addons__<code>__PriceId` and `Billing__Addons__<code>__PriceMonthly`. Prices must be recurring monthly EUR prices, consistent with the base product, and exclusive of tax. Agency add-on line quantities equal the declared room count; other profiles use quantity 1. Missing prices are shown as unavailable, never zero-cost. Modules that depend on rollout flags must also have their existing technical feature enabled. The commercial catalog does not turn those flags on.
+
+No Stripe product or price is created automatically. Keep the existing Stripe Tax registrations and product/price tax settings consistent with the configured products. The existing Checkout tax integration remains responsible for tax calculation.
+
+The validated selection is stored on the organization. Checkout reuse matches both the configuration fingerprint and return URL. The signed subscription webhook confirms payment and records paid modules from Stripe line items, rather than accepting the browser's `checkout=success` parameter as proof. `/onboarding` is an allow-listed return page. A canceled checkout resumes the saved selection; an existing subscription is managed through the customer portal instead of creating a second subscription.
+
+The organization's owner/plan administrator can activate the second rental area from Administration → Billing and plan → Manage active areas. New signup does not offer Both. This changes rental contexts, not paid add-on prices. Further subscription adjustments use the configured Stripe customer portal; do not add paid modules by directly editing the saved draft.
+
+Agency creation asks for a required agency name and creates a distinct organization via the existing race-safe provisioning service. The founder gets the existing `OrgRole.Owner` membership, including administration and invitations; this is never the platform-wide `Admin` role. Invitations are available from Administration → People after activation. Existing-agency membership continues through the signed, expiring invitation flow, with recipient verification and acceptance; no agency lookup or public join action is added.

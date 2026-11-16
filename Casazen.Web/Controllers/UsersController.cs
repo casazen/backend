@@ -27,7 +27,8 @@ public class UsersController(
     ILogger<UsersController> logger,
     IEntitlementService entitlementService,
     IHostOnboardingGate hostOnboardingGate,
-    PublicSiteLinks publicSiteLinks) : ControllerBase
+    PublicSiteLinks publicSiteLinks,
+    Casazen.Infrastructure.Data.AppDbContext? commercialDb = null) : ControllerBase
 {
     /// <summary>
     /// 422 on <c>PUT /api/users/onboarding</c> from a user without an org and without consents: the first org is
@@ -362,6 +363,10 @@ public class UsersController(
         if (!string.IsNullOrWhiteSpace(dto.PlanTier) && !PlanCatalog.TryParseTier(dto.PlanTier, out _))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingPlanTierUnknown");
 
+        if (dto.CommercialSignup is { } commercial &&
+            (commercial.Validate() is not null || commercial.RentalType != dto.RentalType))
+            return BadRequest(new { code = "commercial_selection_invalid" });
+
         var sub = GetSub();
         if (sub == null)
             return Unauthorized();
@@ -370,6 +375,17 @@ public class UsersController(
 
         var existingUser = await userService.GetUserAsync(sub);
         var hadOrg = existingUser?.OrgId.HasValue == true;
+        if (existingUser?.OrgId is Guid existingOrgId && commercialDb is not null)
+        {
+            var existingOrg = await commercialDb.Orgs.FindAsync([existingOrgId], HttpContext.RequestAborted);
+            if (existingOrg?.CommercialSignupJson is not null && (!requireConsents || dto.RentalType != existingUser.RentalType?.ToString()))
+            {
+                var authorization = HttpContext.RequestServices.GetRequiredService<IAuthorizationService>();
+                var allowed = await authorization.AuthorizeAsync(User, null, Casazen.Web.Authorization.CasazenPolicies.OrgBillingAdmin);
+                if (!allowed.Succeeded) return Forbid();
+            }
+        }
+
 
         // The first org of a user is created only together with the consents (PLG-AC2), whatever the verb. A PUT
         // from a user with Auth0 roles but no org (roles assigned by hand, org never provisioned) is not refused:
@@ -408,6 +424,27 @@ public class UsersController(
 
         if (!success)
             return ToConsentError(error);
+
+        if (dto.CommercialSignup is { } selection && commercialDb is not null)
+        {
+            var commercialOrg = await commercialDb.Orgs.FindAsync([orgId], HttpContext.RequestAborted);
+            // Never replace a paid configuration through the account-creation endpoint.
+            if (commercialOrg is not null && !BillingSubscriptionPolicy.BlocksNewCheckout(commercialOrg))
+            {
+                var savedCommercial = CommercialSignup.Read(commercialOrg.CommercialSignupJson);
+                if (savedCommercial is not null && savedCommercial.Fingerprint != selection.Fingerprint)
+                    return Conflict(new { code = "commercial_selection_changed" });
+                commercialOrg.CommercialSignupJson = selection.Serialize();
+                if (selection.Profile == "agency")
+                {
+                    commercialOrg.Name = selection.AgencyName!.Trim();
+                    commercialOrg.DisplayName = commercialOrg.Name;
+                    // CompleteOnboardingAsync already creates the founder's OrgRole.Owner membership,
+                    // including account administration and invitation permissions. Never a platform Admin role.
+                }
+                await commercialDb.SaveChangesAsync(HttpContext.RequestAborted);
+            }
+        }
 
         return Ok(new OnboardingResponseDto
         {
@@ -493,6 +530,11 @@ public class UsersController(
         // A supplier org owns no properties: the "first property" step is for host orgs only.
         if (user.OrgId is Guid orgId && org?.OrgType != OrgType.Supplier)
             detail.HasProperties = await onboardingService.OrgHasPropertiesAsync(orgId, HttpContext.RequestAborted);
+        detail.CommercialEnabledAddons = System.Text.Json.JsonSerializer.Deserialize<string[]>(org?.CommercialPaidAddonsJson ?? "[]") ?? [];
+        detail.CommercialSignup = CommercialSignup.Read(org?.CommercialSignupJson);
+        detail.CommercialSetupRequired = detail.CommercialSignup is not null &&
+            (org?.CommercialPaymentConfirmed != true ||
+             org.SubscriptionStatus is not (SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.PastDue));
         detail.EmailVerified = (await accountEmails.ResolveAsync(User, user.Id, cancellationToken)).EmailVerified;
         return detail;
     }

@@ -42,6 +42,7 @@ public class BillingController(
                 DisplayName = configuration[$"Billing:Display:{e.Tier}:Name"] ?? e.DisplayName,
                 PriceMonthly = configuration.GetValue<decimal>($"Billing:Display:{e.Tier}:PriceMonthly", 0m),
                 Currency = "EUR",
+                BillingUnit = e.Tier == PlanTier.Agency ? "room" : "plan",
                 UnitAllowance = e.MaxProperties == int.MaxValue ? -1 : e.MaxProperties,
                 Features = configuration.GetSection($"Billing:Display:{e.Tier}:Features").Get<string[]>() ?? [e.Description],
                 StripePriceId = priceId ?? string.Empty,
@@ -78,6 +79,12 @@ public class BillingController(
     {
         if (!PlanCatalog.TryParseTier(request.PlanTier, out var planTier))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingPlanTierUnknown");
+
+        if (request.CommercialSignup is { } selected &&
+            (selected.Validate() is not null || selected.PlanTier != request.PlanTier))
+            return BadRequest(new { code = "commercial_selection_invalid" });
+        if (request.CommercialSignup?.Addons.Any(code => !CommercialPricing.IsAvailable(configuration, code)) == true)
+            return UnprocessableEntity(new { code = "commercial_addon_unavailable" });
 
         if (string.IsNullOrWhiteSpace(request.BillingCountry) || request.BillingCountry.Trim().Length != 2)
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingCountryInvalid");
@@ -122,6 +129,10 @@ public class BillingController(
         if (org is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
 
+        var savedSelection = CommercialSignup.Read(org.CommercialSignupJson);
+        if (savedSelection is not null && request.CommercialSignup?.Fingerprint != savedSelection.Fingerprint)
+            return Conflict(new { code = "commercial_selection_changed" });
+
         // Refused before the billing profile changes; BillingCheckoutService checks again under the org lock and on Stripe.
         if (BillingSubscriptionPolicy.BlocksNewCheckout(org))
         {
@@ -150,7 +161,9 @@ public class BillingController(
         var cancelUrl = string.IsNullOrWhiteSpace(request.CancelUrl)
             ? publicSiteLinks.BillingCheckoutCancel(returnPath)
             : request.CancelUrl.Trim();
-        var url = await billingCheckoutService.StartCheckoutAsync(org.Id, planTier, successUrl, cancelUrl, ct);
+        var url = request.CommercialSignup is { } commercialSelection
+            ? await billingCheckoutService.StartCommercialCheckoutAsync(org.Id, planTier, successUrl, cancelUrl, commercialSelection, ct)
+            : await billingCheckoutService.StartCheckoutAsync(org.Id, planTier, successUrl, cancelUrl, ct);
         return Ok(new CheckoutSessionResponse { CheckoutUrl = url });
     }
 
@@ -283,6 +296,8 @@ public class BillingController(
     private static SubscriptionDto Map(Casazen.Core.Entities.Org org) => new()
     {
         PlanTier = org.PlanTier.ToString(),
+        RoomQuantity = org.CommercialRoomAllowance,
+        EnabledAddons = System.Text.Json.JsonSerializer.Deserialize<string[]>(org.CommercialPaidAddonsJson ?? "[]") ?? [],
         Status = org.SubscriptionStatus switch
         {
             SubscriptionStatus.Trialing => "trialing",

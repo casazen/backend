@@ -19,12 +19,13 @@ public sealed class BillingCheckoutService(
     IStripeBillingService stripeBillingService,
     ILogger<BillingCheckoutService> logger) : IBillingCheckoutService
 {
-    public async Task<string> StartCheckoutAsync(
-        Guid orgId,
-        PlanTier planTier,
-        string successUrl,
-        string cancelUrl,
-        CancellationToken cancellationToken = default)
+    public Task<string> StartCheckoutAsync(Guid orgId, PlanTier planTier, string successUrl, string cancelUrl, CancellationToken cancellationToken = default) =>
+        StartCheckoutCoreAsync(orgId, planTier, successUrl, cancelUrl, cancellationToken, null);
+
+    public Task<string> StartCommercialCheckoutAsync(Guid orgId, PlanTier planTier, string successUrl, string cancelUrl, CommercialSignup selection, CancellationToken cancellationToken = default) =>
+        StartCheckoutCoreAsync(orgId, planTier, successUrl, cancelUrl, cancellationToken, selection);
+
+    private async Task<string> StartCheckoutCoreAsync(Guid orgId, PlanTier planTier, string successUrl, string cancelUrl, CancellationToken cancellationToken, CommercialSignup? selection)
     {
         // The lock is held until commit or rollback, Stripe calls included: the next checkout of the org waits and
         // then sees the customer id and the session created here. Disposing without commit rolls back.
@@ -59,15 +60,12 @@ public sealed class BillingCheckoutService(
         else
         {
             await EnsureNoSubscriptionOnStripeAsync(org, cancellationToken);
-            reusable = await SettleOpenSessionsAsync(org, planTier, cancellationToken);
+            reusable = await SettleOpenSessionsAsync(org, planTier, successUrl, selection?.Fingerprint, cancellationToken);
         }
 
-        var session = reusable ?? await stripeBillingService.CreateCheckoutSessionAsync(
-            org,
-            planTier,
-            successUrl,
-            cancelUrl,
-            cancellationToken);
+        var session = reusable ?? (selection is null
+            ? await stripeBillingService.CreateCheckoutSessionAsync(org, planTier, successUrl, cancelUrl, cancellationToken)
+            : await stripeBillingService.CreateCommercialCheckoutSessionAsync(org, planTier, successUrl, cancelUrl, selection, cancellationToken));
 
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
@@ -101,10 +99,10 @@ public sealed class BillingCheckoutService(
     /// Returns an open session for <paramref name="planTier"/> to reuse, and expires every other open session of the
     /// customer so that at most one checkout can be completed.
     /// </summary>
-    private async Task<StripeCheckoutSession?> SettleOpenSessionsAsync(Org org, PlanTier planTier, CancellationToken cancellationToken)
+    private async Task<StripeCheckoutSession?> SettleOpenSessionsAsync(Org org, PlanTier planTier, string successUrl, string? configurationKey, CancellationToken cancellationToken)
     {
         var open = await stripeBillingService.ListOpenCheckoutSessionsAsync(org.StripeCustomerId!, cancellationToken);
-        var reusable = open.FirstOrDefault(s => s.PlanTier == planTier);
+        var reusable = open.FirstOrDefault(s => s.PlanTier == planTier && s.ConfigurationKey == configurationKey && (configurationKey is null || s.ReturnUrl == successUrl));
 
         foreach (var session in open.Where(s => !ReferenceEquals(s, reusable)))
         {

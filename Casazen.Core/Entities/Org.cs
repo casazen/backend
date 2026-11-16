@@ -40,6 +40,14 @@ public class Org
     /// </summary>
     public bool IsAgencyTierDowngraded { get; set; }
 
+    /// <summary>Issue #896: server-validated commercial draft; no paid access is granted by this field.</summary>
+    public string? CommercialSignupJson { get; set; }
+    public bool CommercialPaymentConfirmed { get; set; }
+    public string? CommercialPaidAddonsJson { get; set; }
+    public int CommercialRoomAllowance { get; set; }
+
+
+
     [Required, MaxLength(200)]
     public string DisplayName { get; set; } = string.Empty;
 

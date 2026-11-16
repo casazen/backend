@@ -69,6 +69,7 @@ public class EndpointAuthorizationArchitectureTests
         ["WizardDraftsController.Delete"] = "ADR-024: the caller discards its own draft, by the token's sub and the caller's org (same reason as Get); never the draft of another person.",
 
         // Catalogs without tenant data.
+        ["CommercialCatalogController.Get"] = "Commercial add-on catalog from configuration, available before organization creation (#896).",
         ["BillingController.GetPlans"] = "Public plan catalog from configuration; every billing change is RequireOrgBillingAdmin.",
         ["TouristTaxRatesController.GetAll"] = "Platform reference data (tourist tax rates per comune), not tenant data; writes are AdminOnly.",
         ["TouristTaxRatesController.GetById"] = "Platform reference data, see GetAll.",

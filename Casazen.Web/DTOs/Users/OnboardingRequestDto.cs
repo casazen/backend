@@ -14,6 +14,7 @@ public class OnboardingRequestDto
     /// the checkout; the value is accepted only so existing clients keep working.
     /// </summary>
     public string? PlanTier { get; set; }
+    public Casazen.Core.Services.CommercialSignup? CommercialSignup { get; set; }
 
     /// <summary>Legal consents captured during first-run onboarding.</summary>
     public OnboardingConsentsDto? Consents { get; set; }

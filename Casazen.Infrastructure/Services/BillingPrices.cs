@@ -62,7 +62,9 @@ public static class BillingPrices
     {
         var problems = new List<string>();
 
+        // Agency is a newly introduced opt-in product; existing installations keep serving their configured plans.
         var missing = PlanCatalog.All
+            .Where(e => e.Tier != PlanTier.Agency)
             .Where(e => Resolve(configuration, e.Tier) is null)
             .Select(e => VariableName(e.Tier))
             .ToList();
