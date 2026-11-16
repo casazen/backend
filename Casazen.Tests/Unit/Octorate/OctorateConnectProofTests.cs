@@ -34,6 +34,17 @@ namespace Casazen.Tests.Unit.Octorate;
 /// </summary>
 public class OctorateConnectProofTests
 {
+    [Theory]
+    [InlineData(OctorateEnvironment.Test, false, OctorateEnvironment.Test)]
+    [InlineData(OctorateEnvironment.Test, true, OctorateEnvironment.Production)]
+    [InlineData(OctorateEnvironment.Production, false, OctorateEnvironment.Production)]
+    [InlineData(OctorateEnvironment.Production, true, OctorateEnvironment.Production)]
+    public void ExpectedApiEnvironment_UsesExplicitProductionOverrideOnlyForTest(
+        OctorateEnvironment connection, bool allowProduction, OctorateEnvironment expected)
+    {
+        Assert.Equal(expected, OctorateEnvironments.ExpectedApiEnvironment(connection, allowProduction));
+    }
+
     // One provider for the whole class: EF keeps one model per provider.
     private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
 

@@ -24,6 +24,12 @@ public static class OctorateEnvironments
         return hostEnvironment.IsProduction() ? OctorateEnvironment.Production : OctorateEnvironment.Test;
     }
 
+    /// <summary>Expected upstream environment; the connection remains stored in its CasaZen environment.</summary>
+    public static OctorateEnvironment ExpectedApiEnvironment(OctorateEnvironment connectionEnvironment, bool allowProductionApiInTest) =>
+        connectionEnvironment == OctorateEnvironment.Test && allowProductionApiInTest
+            ? OctorateEnvironment.Production
+            : connectionEnvironment;
+
     /// <summary>The name Octorate gives <paramref name="environment"/> in its configuration.</summary>
     public static string ReportedNameOf(OctorateEnvironment environment) => environment switch
     {

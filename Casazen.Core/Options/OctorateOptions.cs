@@ -41,6 +41,9 @@ public sealed class OctorateOptions
     /// </summary>
     public string? RedirectUri { get; set; }
 
+    /// <summary>Allow the test deployment to connect to production Octorate credentials. This can affect real properties.</summary>
+    public bool AllowProductionApiInTest { get; set; }
+
     /// <summary>Minutes a consent state is valid (1 to <see cref="MaxStateLifetimeMinutes"/>).</summary>
     public int StateLifetimeMinutes { get; set; } = DefaultStateLifetimeMinutes;
 
