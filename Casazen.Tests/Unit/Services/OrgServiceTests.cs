@@ -31,9 +31,13 @@ public class OrgServiceTests
         db.Users.Add(new User { Id = userId, Email = "founder@example.com" });
         db.HostInviteRecords.Add(new HostInviteRecord
         {
-            Email = "founder@example.com", TokenHash = new string('a', 64), InvitedByUserId = "auth0|inviter",
-            InvitedByOrgId = staffInvite ? null : Guid.NewGuid(), IsUsed = accepted,
-            UsedByUserId = accepted ? userId : null, ExpiresAt = DateTime.UtcNow.AddDays(7),
+            Email = "founder@example.com",
+            TokenHash = new string('a', 64),
+            InvitedByUserId = "auth0|inviter",
+            InvitedByOrgId = staffInvite ? null : Guid.NewGuid(),
+            IsUsed = accepted,
+            UsedByUserId = accepted ? userId : null,
+            ExpiresAt = DateTime.UtcNow.AddDays(7),
         });
         await db.SaveChangesAsync();
         var org = await new OrgService(db).EnsureOrgForUserAsync(userId, "founder@example.com", "My Agency");
