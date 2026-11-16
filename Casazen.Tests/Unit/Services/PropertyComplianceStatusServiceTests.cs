@@ -43,6 +43,16 @@ public class PropertyComplianceStatusServiceTests
     }
 
     [Fact]
+    public async Task UnknownCountry_IsExplainedAsAnActivationBlocker()
+    {
+        await using var db = CreateDb(nameof(UnknownCountry_IsExplainedAsAnActivationBlocker));
+        var property = await SeedCompliantAsync(db, PropertyComplianceStatus.Pending);
+        await SetAsync(db, property.Id, p => p.Country = string.Empty);
+        var steps = await CreateService(db).GetBlockingStepsAsync(await ReloadAsync(db, property.Id));
+        Assert.Contains(steps.Single(s => s.Id == "base-data").Blockers, b => b.Code == "activation_country_unknown");
+    }
+
+    [Fact]
     public async Task ImportedDraft_OnlyBecomesActiveAfterTheHostResolvesBlockers()
     {
         await using var db = CreateDb(nameof(ImportedDraft_OnlyBecomesActiveAfterTheHostResolvesBlockers));

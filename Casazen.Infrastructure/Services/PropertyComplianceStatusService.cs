@@ -156,12 +156,18 @@ public class PropertyComplianceStatusService(
             ?? ComplianceOptions.DefaultCinGuidanceUrl;
 
         // Bedrooms are not checked: 0 is a studio flat (monolocale, A2-27).
-        var baseComplete = !string.IsNullOrWhiteSpace(property.Name)
+        var baseDataComplete = !string.IsNullOrWhiteSpace(property.Name)
             && !string.IsNullOrWhiteSpace(property.Address)
             && !string.IsNullOrWhiteSpace(property.City)
-            && property.Country.Length == 2
             && property.MaxGuests > 0
             && property.NightlyRate > 0;
+        var countryKnown = property.Country.Length == 2;
+        var baseComplete = baseDataComplete && countryKnown;
+        var baseBlockers = new List<ActivationBlocker>();
+        if (!baseDataComplete)
+            baseBlockers.Add(new("activation_base_data_incomplete", "ActivationBaseDataIncomplete"));
+        if (!countryKnown)
+            baseBlockers.Add(new("activation_country_unknown", "ActivationBaseDataIncomplete"));
 
         var requiredDocs = ResolveRequiredDocuments(property);
 
@@ -183,7 +189,7 @@ public class PropertyComplianceStatusService(
             {
                 LabelKey = "ActivationStepBaseData",
                 MessageKey = baseComplete ? null : "ActivationBaseDataIncomplete",
-                Blockers = baseComplete ? [] : [new("activation_base_data_incomplete", "ActivationBaseDataIncomplete")],
+                Blockers = baseBlockers,
                 Warnings = comuneMissing ? [new("comune_istat_missing", "ActivationComuneMissing")] : [],
             },
             new ComplianceActivationStep(
