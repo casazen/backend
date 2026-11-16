@@ -47,6 +47,10 @@ public class ChannelMappingProofTests
 
         Assert.Equal(("CH", "Lugano"), country);
         ai.Verify(a => a.GenerateAsync(It.IsAny<AiRequest>(), AiModelTier.Economy, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        ai.Setup(a => a.GenerateAsync(It.IsAny<AiRequest>(), AiModelTier.Economy, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AiGenerationResult("Roma", 0, 0, AiModelTier.Economy, false));
+        Assert.Equal((string.Empty, (string?)null), await OctorateImportCountryResolver.ResolveAsync(
+            db, listing, ai.Object, NullLogger.Instance, CancellationToken.None));
         Assert.Equal((string.Empty, "Non presente"), await OctorateImportCountryResolver.ResolveAsync(db,
             new OctorateProperty { Id = "2", City = "Non presente" }, ai.Object, NullLogger.Instance, CancellationToken.None));
     }
