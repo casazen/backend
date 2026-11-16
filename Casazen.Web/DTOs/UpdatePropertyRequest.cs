@@ -54,6 +54,10 @@ public class UpdatePropertyRequest
     [MaxLength(10, ErrorMessage = "PropertyPostalCodeTooLong")]
     public string? PostalCode { get; set; }
 
+    /// <summary>Country of an imported draft being reviewed. Other properties keep their current country.</summary>
+    [RegularExpression("^(IT|CH)$", ErrorMessage = "ValidationError")]
+    public string? Country { get; set; }
+
     /// <summary>
     /// ISTAT code (6 digits) of the comune, chosen from the official list (<c>GET /api/comuni</c>, SU-04); <c>null</c> or blank
     /// clears it (and the region that follows it); leaving it out keeps it. Validated against the list when it changes: 422

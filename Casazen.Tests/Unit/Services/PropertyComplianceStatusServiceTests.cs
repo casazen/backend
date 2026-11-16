@@ -29,6 +29,20 @@ public class PropertyComplianceStatusServiceTests
     private readonly RecordingEmailQueue _emails = new();
 
     [Fact]
+    public async Task SwissProperty_DoesNotRequireItalianCinOrCertificate()
+    {
+        await using var db = CreateDb(nameof(SwissProperty_DoesNotRequireItalianCinOrCertificate));
+        var property = await SeedCompliantAsync(db, PropertyComplianceStatus.Pending);
+        await SetAsync(db, property.Id, p => { p.Country = "CH"; p.CinCode = null; });
+        db.PropertyDocuments.RemoveRange(db.PropertyDocuments);
+        await db.SaveChangesAsync();
+        var stored = await ReloadAsync(db, property.Id);
+        var steps = await CreateService(db).GetBlockingStepsAsync(stored);
+        Assert.Equal("complete", steps.Single(s => s.Id == "cin").Status);
+        Assert.Equal("complete", steps.Single(s => s.Id == "documents").Status);
+    }
+
+    [Fact]
     public async Task ImportedDraft_OnlyBecomesActiveAfterTheHostResolvesBlockers()
     {
         await using var db = CreateDb(nameof(ImportedDraft_OnlyBecomesActiveAfterTheHostResolvesBlockers));
@@ -50,6 +64,11 @@ public class PropertyComplianceStatusServiceTests
         Assert.False((await ReloadAsync(db, property.Id)).IsActive);
 
         await SetAsync(db, property.Id, p => p.CinCode = "IT058091C27G5FFZDZ");
+        await SetChecklistAsync(db, property.Id, c => c.ConfirmedAt = null);
+        var incompleteSafety = await service.ActivateAsync(property.Id, new HostActivation(property.OwnerId, true));
+        Assert.Contains(incompleteSafety.IncompleteSteps, step => step.Id == "safety");
+        Assert.False((await ReloadAsync(db, property.Id)).IsActive);
+        await SetChecklistAsync(db, property.Id, c => c.ConfirmedAt = Now);
         var completed = await service.ActivateAsync(property.Id, new HostActivation(property.OwnerId, true));
         Assert.Equal(PropertyComplianceStatus.Active, completed.Status);
         Assert.True((await ReloadAsync(db, property.Id)).IsActive);

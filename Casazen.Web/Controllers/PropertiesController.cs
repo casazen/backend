@@ -12,6 +12,7 @@ using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.Validation;
+using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.BackgroundJobs;
@@ -345,6 +346,28 @@ public class PropertiesController(
         }
 
         request.ApplyTo(existing);
+
+        // A host can correct the country on an imported draft before activation. Active properties keep the existing contract.
+        if (!existing.IsActive && request.Country is { } country && country != existing.Country)
+        {
+            var database = HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+            var imported = await database.OctorateListingMappings.AnyAsync(m => m.OrgId == existing.OrgId &&
+                m.PropertyId == existing.Id && m.Status == OctorateMappingStatus.Confirmed, HttpContext.RequestAborted);
+            if (imported)
+            {
+                existing.Country = country;
+                existing.Currency = country == "CH" ? "CHF" : "EUR";
+                existing.Timezone = country == "CH" ? "Europe/Zurich" : "Europe/Rome";
+                existing.ComuneIstatCode = null;
+                existing.SwissMunicipalityCode = null;
+                existing.RegionCode = null;
+                if (country == "CH")
+                {
+                    chosenComune = null;
+                    clearComune = true;
+                }
+            }
+        }
         if (chosenComune is not null)
         {
             existing.ComuneIstatCode = chosenComune.IstatCode;

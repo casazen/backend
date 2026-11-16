@@ -33,6 +33,25 @@ public class ChannelMappingProofTests
     private static readonly IReadOnlySet<string> ManagerRoles = new HashSet<string> { "PropertyManager" };
 
     [Fact]
+    public async Task ImportedCountry_UsesOfficialMunicipality_WithoutTrustingTheModel()
+    {
+        await using var db = NewDb();
+        db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = "5113", CantonCode = "TI", OfficialName = "Lugano" });
+        await db.SaveChangesAsync();
+        var ai = new Mock<IAiProvider>();
+        ai.Setup(a => a.GenerateAsync(It.IsAny<AiRequest>(), AiModelTier.Economy, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AiGenerationResult("Lugano", 0, 0, AiModelTier.Economy, false));
+        var listing = new OctorateProperty { Id = "1", Address = "Via Test 1, Lugano" };
+
+        var country = await OctorateImportCountryResolver.ResolveAsync(db, listing, ai.Object, NullLogger.Instance, CancellationToken.None);
+
+        Assert.Equal(("CH", "Lugano"), country);
+        ai.Verify(a => a.GenerateAsync(It.IsAny<AiRequest>(), AiModelTier.Economy, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal((string.Empty, "Non presente"), await OctorateImportCountryResolver.ResolveAsync(db,
+            new OctorateProperty { Id = "2", City = "Non presente" }, ai.Object, NullLogger.Instance, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task ImportedInactiveProperty_IsVisibleForReview_WithinItsHostScope()
     {
         await using var db = NewDb();

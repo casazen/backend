@@ -76,7 +76,11 @@ public class PropertyComplianceStatusService(
             .Include(c => c.Items)
             .FirstOrDefaultAsync(c => c.PropertyId == property.Id, cancellationToken);
 
-        return BuildBlockingSteps(property, comuneListImported, uploadedTypes, safetyChecklist);
+        var steps = BuildBlockingSteps(property, comuneListImported, uploadedTypes, safetyChecklist);
+        if (!property.IsActive && await db.OctorateListingMappings.AnyAsync(m => m.OrgId == property.OrgId &&
+                m.PropertyId == property.Id && m.Status == OctorateMappingStatus.Confirmed, cancellationToken))
+            return RequireDraftReview(steps);
+        return steps;
     }
 
     public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<ComplianceActivationStep>>> GetBlockingStepsManyAsync(
@@ -111,17 +115,27 @@ public class PropertyComplianceStatusService(
             .GroupBy(c => c.PropertyId)
             .ToDictionary(g => g.Key, g => g.First());
 
+        var draftIds = properties.Where(p => !p.IsActive).Select(p => p.Id).ToArray();
+        var importedDraftIds = draftIds.Length == 0 ? new HashSet<Guid>() :
+            (await db.OctorateListingMappings.AsNoTracking()
+                .Where(m => m.PropertyId != null && draftIds.Contains(m.PropertyId.Value) && m.Status == OctorateMappingStatus.Confirmed)
+                .Select(m => m.PropertyId!.Value).ToListAsync(cancellationToken)).ToHashSet();
+
         foreach (var property in properties)
         {
-            stepsOf[property.Id] = BuildBlockingSteps(
+            var propertySteps = BuildBlockingSteps(
                 property,
                 comuneListImported,
                 typesOf.GetValueOrDefault(property.Id) ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                 checklistOf.GetValueOrDefault(property.Id));
+            stepsOf[property.Id] = importedDraftIds.Contains(property.Id) ? RequireDraftReview(propertySteps) : propertySteps;
         }
 
         return stepsOf;
     }
+
+    private static IReadOnlyList<ComplianceActivationStep> RequireDraftReview(IReadOnlyList<ComplianceActivationStep> steps) =>
+        steps.Select(step => step.Status == "complete" ? step : step with { Blocker = true }).ToList();
 
     // The rules of the four compliance steps, on facts already read: one definition for the wizard, the activation, the
     // re-evaluation, the nightly check and the host's list (SR-07a) — which read the facts of one property or of many. The base
@@ -135,7 +149,9 @@ public class PropertyComplianceStatusService(
         IReadOnlySet<string> uploadedTypes,
         PropertySafetyChecklist? safetyChecklist)
     {
-        var cinStatus = CinComplianceRules.ResolveStatus(property.CinCode);
+        var cinStatus = string.Equals(property.Country, "CH", StringComparison.OrdinalIgnoreCase)
+            ? "valid"
+            : CinComplianceRules.ResolveStatus(property.CinCode);
         var cinGuidanceUrl = configuration["Compliance:CinGuidanceUrl"]
             ?? ComplianceOptions.DefaultCinGuidanceUrl;
 
@@ -143,6 +159,7 @@ public class PropertyComplianceStatusService(
         var baseComplete = !string.IsNullOrWhiteSpace(property.Name)
             && !string.IsNullOrWhiteSpace(property.Address)
             && !string.IsNullOrWhiteSpace(property.City)
+            && property.Country is "IT" or "CH"
             && property.MaxGuests > 0
             && property.NightlyRate > 0;
 
@@ -426,7 +443,7 @@ public class PropertyComplianceStatusService(
                 await db.SaveChangesAsync(cancellationToken);
             }
             catch (DbUpdateException ex) when (ex.InnerException is PostgresException
-                   { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: PropertyAddress.UniqueIndexName })
+            { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: PropertyAddress.UniqueIndexName })
             {
                 throw new DomainConflictException(PropertyAddress.DuplicateCode, "PropertyAddressTaken");
             }
@@ -515,6 +532,8 @@ public class PropertyComplianceStatusService(
     /// </summary>
     private IReadOnlyList<string> ResolveRequiredDocuments(Property property)
     {
+        if (string.Equals(property.Country, "CH", StringComparison.OrdinalIgnoreCase))
+            return [];
         var section = configuration.GetSection("Compliance:RequiredDocuments");
         var keys = section.GetChildren().Select(c => c.Key).ToList();
 

@@ -1479,7 +1479,8 @@ public sealed partial class OctorateApiClient(
             Address = OctorateHttp.StringOf(item, "address") ?? OctorateHttp.StringOf(location, "address"),
             City = OctorateHttp.StringOf(item, "city") ?? OctorateHttp.StringOf(location, "city"),
             PostalCode = OctorateHttp.StringOf(item, "zipCode") ?? OctorateHttp.StringOf(item, "zip") ?? OctorateHttp.StringOf(location, "zipCode"),
-            Country = OctorateHttp.StringOf(item, "country") ?? OctorateHttp.StringOf(location, "countryAlpha2"),
+            Country = OctorateHttp.StringOf(item, "countryAlpha2") ?? OctorateHttp.StringOf(location, "countryAlpha2")
+                ?? OctorateHttp.StringOf(item, "country") ?? OctorateHttp.StringOf(location, "country"),
             Latitude = latitude,
             Longitude = longitude,
             Category = OctorateHttp.StringOf(item, "propertyCategory"),
