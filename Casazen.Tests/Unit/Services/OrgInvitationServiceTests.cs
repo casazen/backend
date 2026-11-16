@@ -563,7 +563,7 @@ public class OrgInvitationServiceTests
         var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Starter, status: SubscriptionStatus.None);
         var created = await CreateAsync(Request(org.Id));
         var token = OrgInvitationTestKit.TokenInEmail(Assert.Single(_kit.Emails.Snapshot()));
-        await CreateAsync(Request(org.Id, email: "other@example.com"));
+        await CreateAsync(Request(org.Id, email: "first-other@example.com"));
 
         await using (var db = _kit.NewDb())
             await _kit.Invitations(db).RevokeAsync(org.Id, created.Invitation.Id, "auth0|owner");
