@@ -361,19 +361,19 @@ public sealed class ChannelMappingService(
     public async Task<bool> IsWriteBlockedAsync(Guid propertyId, CancellationToken ct)
     {
         // Called by the content push and the booking actions, also from jobs: the property's own org, read across orgs.
-        var orgId = await db.Properties
+        var property = await db.Properties
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter, AppDbContext.SoftDeleteQueryFilter])
             .AsNoTracking()
             .Where(p => p.Id == propertyId)
-            .Select(p => (Guid?)p.OrgId)
+            .Select(p => new { p.OrgId, p.IsActive, p.IsDeleted })
             .FirstOrDefaultAsync(ct);
-        if (orgId is null)
+        if (property is null || !property.IsActive || property.IsDeleted)
             return true;
 
         var undecided = await db.OctorateListingMappings
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
-            .Where(m => m.OrgId == orgId && (m.Status == OctorateMappingStatus.Proposed || m.Status == OctorateMappingStatus.Ambiguous))
+            .Where(m => m.OrgId == property.OrgId && (m.Status == OctorateMappingStatus.Proposed || m.Status == OctorateMappingStatus.Ambiguous))
             .Select(m => new { m.PropertyId, m.CandidatePropertyIdsJson })
             .ToListAsync(ct);
 

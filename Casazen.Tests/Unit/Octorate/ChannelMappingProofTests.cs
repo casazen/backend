@@ -7,6 +7,7 @@ using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
+using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
@@ -30,6 +31,30 @@ public class ChannelMappingProofTests
     private const string Collaborator = "auth0|collaborator-a";
     private const string Legacy = "auth0|legacy-manager-a";
     private static readonly IReadOnlySet<string> ManagerRoles = new HashSet<string> { "PropertyManager" };
+
+    [Fact]
+    public async Task ImportedInactiveProperty_IsVisibleForReview_WithinItsHostScope()
+    {
+        await using var db = NewDb();
+        var connection = await SeedConnectionAsync(db, OrgA);
+        var imported = await SeedPropertyAsync(db, OrgA, "Importata");
+        var unrelated = await SeedPropertyAsync(db, OrgA, "Altra inattiva");
+        var otherOrg = await SeedPropertyAsync(db, OrgB, "Altra organizzazione");
+        foreach (var property in await db.Properties.ToListAsync())
+            property.IsActive = false;
+        db.OctorateListingMappings.Add(Mapping(OrgA, connection, "1001", OctorateMappingStatus.Confirmed, imported));
+        await db.SaveChangesAsync();
+
+        var repository = new PropertyRepository(db);
+        var visible = (await repository.GetByScopeAsync(new HostScope(OrgA))).Select(p => p.Id).ToArray();
+        Assert.Contains(imported, visible);
+        Assert.DoesNotContain(unrelated, visible);
+        Assert.DoesNotContain(otherOrg, visible);
+        Assert.NotNull(await repository.GetPropertyDetailAsync(imported));
+        Assert.Null(await repository.GetPropertyDetailAsync(unrelated));
+        var service = Service(db, new Mock<IOctorateApiClient>(MockBehavior.Strict).Object);
+        Assert.True(await service.IsWriteBlockedAsync(imported, CancellationToken.None));
+    }
 
     [Fact]
     public async Task ChannelMapping_UnconfirmedBlocksWrites_Test()

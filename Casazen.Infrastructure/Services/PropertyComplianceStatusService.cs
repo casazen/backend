@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -399,6 +400,11 @@ public class PropertyComplianceStatusService(
                     }
 
                     property.ComplianceStatus = PropertyComplianceStatus.Active;
+                    // An imported draft is visible while inactive; only the host's successful activation promotes it.
+                    if (host is not null && !property.IsActive && await db.OctorateListingMappings.AnyAsync(
+                            m => m.OrgId == property.OrgId && m.PropertyId == property.Id &&
+                                 m.Status == OctorateMappingStatus.Confirmed, cancellationToken))
+                        property.IsActive = true;
                     property.ComplianceCompletedAt = now;
                     property.ComplianceSuspendedAt = null;
                     property.ComplianceSuspensionReasons = null;
@@ -415,7 +421,15 @@ public class PropertyComplianceStatusService(
             }
 
             property.ComplianceCheckedAt = now;
-            await db.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException ex) when (ex.InnerException is PostgresException
+                   { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: PropertyAddress.UniqueIndexName })
+            {
+                throw new DomainConflictException(PropertyAddress.DuplicateCode, "PropertyAddressTaken");
+            }
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
         }

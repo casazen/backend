@@ -29,6 +29,33 @@ public class PropertyComplianceStatusServiceTests
     private readonly RecordingEmailQueue _emails = new();
 
     [Fact]
+    public async Task ImportedDraft_OnlyBecomesActiveAfterTheHostResolvesBlockers()
+    {
+        await using var db = CreateDb(nameof(ImportedDraft_OnlyBecomesActiveAfterTheHostResolvesBlockers));
+        var property = await SeedCompliantAsync(db, PropertyComplianceStatus.Pending);
+        await SetAsync(db, property.Id, p => { p.IsActive = false; p.CinCode = null; });
+        db.OctorateListingMappings.Add(new OctorateListingMapping
+        {
+            OrgId = property.OrgId,
+            PropertyId = property.Id,
+            ConnectionId = Guid.NewGuid(),
+            OctorateAccommodationId = "test-accommodation",
+            Status = OctorateMappingStatus.Confirmed,
+        });
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        var blocked = await service.ActivateAsync(property.Id, new HostActivation(property.OwnerId, true));
+        Assert.NotEmpty(blocked.IncompleteSteps);
+        Assert.False((await ReloadAsync(db, property.Id)).IsActive);
+
+        await SetAsync(db, property.Id, p => p.CinCode = "IT058091C27G5FFZDZ");
+        var completed = await service.ActivateAsync(property.Id, new HostActivation(property.OwnerId, true));
+        Assert.Equal(PropertyComplianceStatus.Active, completed.Status);
+        Assert.True((await ReloadAsync(db, property.Id)).IsActive);
+    }
+
+    [Fact]
     public async Task ReevaluateAsync_ActivePropertyWithoutCin_SuspendsWithReasonAndEmailsTheHost()
     {
         await using var db = CreateDb(nameof(ReevaluateAsync_ActivePropertyWithoutCin_SuspendsWithReasonAndEmailsTheHost));

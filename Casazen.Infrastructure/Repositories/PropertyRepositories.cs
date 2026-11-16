@@ -39,22 +39,25 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        return await ActivePropertiesInScope(scope).OrderBy(p => p.Name).ToListAsync();
+        return await VisiblePropertiesInScope(scope).OrderBy(p => p.Name).ToListAsync();
     }
 
     public async Task<IEnumerable<Property>> GetByScopeAsync(HostScope scope, RentalMode mode)
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        return await ActivePropertiesInScope(scope)
+        return await VisiblePropertiesInScope(scope)
             .Where(p => p.RentalMode == mode)
             .OrderBy(p => p.Name)
             .ToListAsync();
     }
 
-    private IQueryable<Property> ActivePropertiesInScope(HostScope scope)
+    private IQueryable<Property> VisiblePropertiesInScope(HostScope scope)
     {
-        var query = context.Properties.Where(p => p.OrgId == scope.OrgId && p.IsActive).InScope(scope);
+        // Imported drafts need review even though they are not active. Keep unrelated inactive records hidden.
+        var query = context.Properties.Where(p => p.OrgId == scope.OrgId && (p.IsActive ||
+            context.OctorateListingMappings.Any(m => m.OrgId == p.OrgId && m.PropertyId == p.Id &&
+                m.Status == OctorateMappingStatus.Confirmed))).InScope(scope);
 
         return query;
     }
@@ -233,7 +236,9 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
             .Include(p => p.OtaIntegrations)
             .Include(p => p.Bookings)
             .Include(p => p.PricingAdapterConfig)
-            .FirstOrDefaultAsync(p => p.Id == id && p.IsActive);
+            .FirstOrDefaultAsync(p => p.Id == id && (p.IsActive ||
+                context.OctorateListingMappings.Any(m => m.OrgId == p.OrgId && m.PropertyId == p.Id &&
+                    m.Status == OctorateMappingStatus.Confirmed)));
     }
 
     public async Task<IEnumerable<Property>> GetByScopeForComplianceAsync(HostScope scope)
