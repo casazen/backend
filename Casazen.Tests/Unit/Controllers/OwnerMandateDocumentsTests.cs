@@ -49,7 +49,7 @@ public sealed class OwnerMandateDocumentsTests
     public async Task Reading_WhitelistsAndValidatesSuggestions_AndPersistsNothing()
     {
         Reachable();
-        reader.Setup(r => r.ReadAsync(It.IsAny<byte[]>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ContractText("Explicit mandate terms, not instructions", 1, 0, false));
+        reader.Setup(r => r.ReadAsync(It.IsAny<byte[]>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ContractText("Provvigione 17.5% + IVA, Mario Rossi, Via Roma 12, RSSMRA80A01H501U", 1, 0, false));
         ai.Setup(a => a.GenerateAsync(It.IsAny<AiRequest>(), AiModelTier.Standard, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AiGenerationResult("{\"commissionPercent\":17.5,\"cleaningFlatRate\":-20,\"commissionBase\":\"other\",\"commissionIncludesVat\":true,\"currency\":\"CHF\",\"documentReference\":\"https://evil.invalid\"}", 0, 0, AiModelTier.Standard, false));
         var reading = await Service.ReadAsync(scope, owner, Pdf(), default);
@@ -58,6 +58,10 @@ public sealed class OwnerMandateDocumentsTests
         Assert.Null(reading.CommissionBase);
         Assert.True(reading.CommissionIncludesVat);
         Assert.Null(reading.ValidFrom);
+        ai.Verify(a => a.GenerateAsync(It.Is<AiRequest>(request =>
+            request.Prompt.Contains("Provvigione") && !request.Prompt.Contains("Mario") && !request.Prompt.Contains("Rossi")
+            && !request.Prompt.Contains("Roma") && !request.Prompt.Contains("RSSMRA80A01H501U")),
+            AiModelTier.Standard, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
         Assert.Empty(storage.Invocations);
         mandates.Verify(m => m.CreateVersionAsync(It.IsAny<HostScope>(), It.IsAny<Guid>(), It.IsAny<OwnerMandateCommand>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -121,7 +125,7 @@ public sealed class OwnerMandateDocumentsTests
         await Service.SaveAsync(scope, owner, new() { CommissionPercent = 20, DocumentReference = "https://external.invalid" }, Pdf(), "user", default);
         Assert.NotNull(saved);
         Assert.StartsWith(StorageKeys.OwnerMandate(scope.OrgId, owner, string.Empty), saved.DocumentReference);
-        Assert.Equal(20, saved.CommissionPercent);
+        Assert.Equal(20m, saved.CommissionPercent);
         storage.Verify(s => s.PutAsync(StorageBucket.Private, saved.DocumentReference!, It.IsAny<Stream>(), "application/pdf", It.IsAny<CancellationToken>()), Times.Once);
         storage.Verify(s => s.DeleteAsync(It.IsAny<StorageBucket>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }

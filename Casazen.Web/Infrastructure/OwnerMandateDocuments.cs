@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using UglyToad.PdfPig;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
@@ -27,11 +28,11 @@ public sealed class OwnerMandateDocuments(
         try
         {
             var text = await reader.ReadAsync(bytes, ct);
-            if (text.Truncated || string.IsNullOrWhiteSpace(text.Text))
+            if (text.Truncated || string.IsNullOrWhiteSpace(text.Text) || text.Text.Length > 60_000)
                 return new();
             // Existing platform scrubber and provider budget guard apply. Never send images or log contract text.
-            var prompt = PiiScrubber.Scrub(text.Text);
-            if (prompt.Length > 60_000)
+            var prompt = FinancialExcerpt(text.Text);
+            if (string.IsNullOrWhiteSpace(prompt) || prompt.Length > 60_000)
                 return new();
             var result = await ai.GenerateAsync(new AiRequest(
                 "<mandate_document>\n" + prompt + "\n</mandate_document>", [],
@@ -107,6 +108,33 @@ public sealed class OwnerMandateDocuments(
         if (row?.MandatePdfUrl is not { } key || !key.StartsWith(prefix, StringComparison.Ordinal) || !StorageKeys.IsValid(key))
             throw Missing();
         return await storage.OpenReadAsync(StorageBucket.Private, key, ct) ?? throw Missing();
+    }
+
+    private static readonly HashSet<string> FinancialWords = new(
+        ("provvigione provvigioni commission commissione commissioni percento percentuale percentuali percent percentage " +
+         "iva vat tva inclusa incluso escluse esclusa escluso inclusi excluded included including excluding oltre più plus " +
+         "pulizia pulizie cleaning biancheria linen laundry forfait flat rate importo importi amount amounts per ogni " +
+         "soggiorno soggiorni stay stays prenotazione booking pagamento pagamenti payment payments carta card " +
+         "spese costi fees fee costo charge charges carico borne owner agency agenzia proprietario proprietaria " +
+         "gross lordo lorda netto net incasso ricavo ricavi tourist tax tassa imposta soggiorno cleaning " +
+         "decorrenza decorre decorrere inizio valida valido efficacia effective valid from starts start dal al fino " +
+         "data date il la di del della delle dei e ed a su sul sulla senza with without and of the on to " +
+         "eur euro euros chf franchi franco franc francs usd dollars dollari gbp pounds sterline " +
+         "gennaio febbraio marzo aprile maggio giugno luglio agosto settembre ottobre novembre dicembre " +
+         "january february march april may june july august september october november december").Split(' '),
+        StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Only financial clauses, stripped of names, addresses and non-financial wording, may leave the host (FD-21).</summary>
+    private static string FinancialExcerpt(string text)
+    {
+        // The existing scrubber covers contacts and identifiers, not arbitrary names/addresses. Do not forward raw contract text.
+        var lines = PiiScrubber.Scrub(text).Split(['\r', '\n', '\f'], StringSplitOptions.RemoveEmptyEntries);
+        var financial = lines.Where(line => Regex.IsMatch(line,
+            @"\b(provvigion[ei]|commission[ei]?|iva|vat|tva|pulizi[ae]|cleaning|biancheria|linen|laundry|forfait|payment|pagament[oi]|decorrenza|decorre|efficacia|effective|starts)\b",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250)));
+        return string.Join("\n", financial.Select(line => Regex.Replace(line, @"\p{L}+",
+            word => FinancialWords.Contains(word.Value) ? word.Value : "[omitted]",
+            RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250))));
     }
 
     private static decimal? Number(decimal? value, decimal max) => value is >= 0 && value <= max && decimal.Round(value.Value, 2) == value ? value : null;
