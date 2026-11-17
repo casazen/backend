@@ -1,3 +1,4 @@
+using Casazen.Core.TouristTax;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -63,6 +64,8 @@ public sealed class OnboardingAssistService(
         var kind = PanelStepCatalog.TryOfContext(context, out var info) ? info : null;
         var channelCode = CheckedChannel(kind, input.ChannelCode);
         await OnboardingReach.EnsureAsync(db, scope, input.PropertyId, ct);
+        if (kind?.Kind is PanelStepKind.PoliceConnection or PanelStepKind.IstatConnection)
+            await OnboardingReach.EnsureItalianComplianceAsync(db, scope, input.PropertyId, ct);
 
         for (var attempt = 1; ; attempt++)
         {
@@ -374,6 +377,8 @@ public sealed class OnboardingAssistService(
                 ?? throw NotFound();
             if (!await CanReachAsync(scope, request.PropertyId, ct))
                 throw NotFound();
+            if (request.Context is OnboardingAssistContexts.PanelPolice or OnboardingAssistContexts.PanelIstat)
+                await OnboardingReach.EnsureItalianComplianceAsync(db, scope, request.PropertyId, ct);
             if (request.Status != OnboardingAssistStatus.Done)
                 throw new DomainConflictException(OnboardingAssistCodes.NotDone, "AssistRequestNotDone");
 
@@ -635,20 +640,23 @@ public sealed class OnboardingAssistService(
             var istatRow = istat.FirstOrDefault(c => c.PropertyId == property.Id);
             var istatVault = vault.FirstOrDefault(s => s.PropertyId == property.Id && s.Kind == SupportVaultSecretKind.RegionalIstat);
             var sender = senders.FirstOrDefault(s => s.PropertyId == property.Id);
+            var italian = TouristTaxComune.IsItalianCountry(property.Country);
+            var applicableKinds = italian ? kinds : kinds.Where(k => k == PanelStepKind.ChannelAccess).ToList();
             blocks.Add(new AssistChecklistProperty(
                 property.Id,
                 property.Name,
                 property.City,
                 PanelUserOf(property.Id),
-                new AssistCredentialPresence(policeRow is not null, policeRow?.UpdatedAt),
-                new AssistIstatPresence(
+                italian ? new AssistCredentialPresence(policeRow is not null, policeRow?.UpdatedAt) : null,
+                italian ? new AssistIstatPresence(
                     istatRow is not null || istatVault is not null,
                     istatRow?.UpdatedAt ?? istatVault?.UpdatedAt,
-                    IstatRequirementOf(request, property.Country)),
-                sender is null
+                    IstatRequirementOf(request, property.Country)) : null,
+                !italian || sender is null
                     ? null
                     : new AssistSenderLine(sender.AlloggiatiSender, sender.LastChangedAt, sender.ActivationDeclaredAt >= sender.LastChangedAt),
-                StepsOf(request, kinds, steps.Where(s => s.PropertyId == property.Id), placeholders: request.PropertyId is not null)));
+                StepsOf(request, applicableKinds, steps.Where(s => s.PropertyId == property.Id), placeholders: request.PropertyId is not null),
+                property.Country));
         }
 
         return blocks;

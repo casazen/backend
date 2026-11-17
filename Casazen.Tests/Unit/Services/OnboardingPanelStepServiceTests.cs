@@ -47,6 +47,23 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _db.DisposeAsync();
 
+    [Theory]
+    [InlineData(PanelStepKind.PoliceConnection)]
+    [InlineData(PanelStepKind.IstatConnection)]
+    public async Task Start_ForeignProperty_DoesNotCreateAnItalianStepOrReminder(PanelStepKind kind)
+    {
+        (await _db.Properties.SingleAsync(p => p.Id == _world.Granted.Id)).Country = "CH";
+        await _db.SaveChangesAsync();
+        var count = await _db.InternalActivities.CountAsync();
+
+        var error = await Assert.ThrowsAsync<DomainRuleException>(() => Service().StartAsync(
+            _world.OrgWide, _world.OwnerUserId, new PanelStepStartRequest(kind, _world.Granted.Id), Ct));
+
+        Assert.Equal("sender_not_applicable", error.Code);
+        Assert.Empty(await _db.OnboardingPanelSteps.ToListAsync());
+        Assert.Equal(count, await _db.InternalActivities.CountAsync());
+    }
+
     // ─── Start ───────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>

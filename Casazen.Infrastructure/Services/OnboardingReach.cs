@@ -52,6 +52,19 @@ internal static class OnboardingReach
             throw PropertyNotFound();
     }
 
+    /// <summary>Italian panel connections never create reminders for a foreign property. Call after the scope check.</summary>
+    public static async Task EnsureItalianComplianceAsync(AppDbContext db, HostScope scope, Guid? propertyId, CancellationToken ct)
+    {
+        if (propertyId is not { } id)
+            return;
+
+        var country = await db.Properties.AsNoTracking()
+            .Where(p => p.OrgId == scope.OrgId && p.Id == id).InScope(scope)
+            .Select(p => p.Country).SingleOrDefaultAsync(ct);
+        if (!Casazen.Core.TouristTax.TouristTaxComune.IsItalianCountry(country))
+            throw new DomainRuleException(PropertySenderStore.NotApplicableCode, "SenderNotApplicable");
+    }
+
     public static NotFoundException PropertyNotFound() =>
         new("Property not found for the onboarding step.")
         {

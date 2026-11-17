@@ -294,6 +294,38 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
             Assert.DoesNotContain(value, json, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task ForeignProperty_ChecklistOmitsItalianConnectionsEvenForHistoricalRequests()
+    {
+        var request = await RequestAsync(OnboardingAssistContexts.PanelIstat, _world.Granted.Id);
+        (await _db.Properties.SingleAsync(p => p.Id == _world.Granted.Id)).Country = "CH";
+        await _db.SaveChangesAsync();
+
+        var block = Assert.Single((await StaffService().GetAsync(request.Id, Ct)).Checklist);
+        Assert.Equal("CH", block.Country);
+        Assert.Null(block.PoliceCredentials);
+        Assert.Null(block.IstatCredentials);
+        Assert.Null(block.Sender);
+        Assert.Empty(block.Steps);
+        Assert.Equal("CH", block.ToDto().Country);
+    }
+
+    [Theory]
+    [InlineData(OnboardingAssistContexts.PanelPolice)]
+    [InlineData(OnboardingAssistContexts.PanelIstat)]
+    public async Task ForeignProperty_DoesNotCreateItalianConnectionRequestOrReminder(string context)
+    {
+        (await _db.Properties.SingleAsync(p => p.Id == _world.Granted.Id)).Country = "CH";
+        await _db.SaveChangesAsync();
+        var count = await _db.InternalActivities.CountAsync();
+
+        var error = await Assert.ThrowsAsync<DomainRuleException>(() => RequestAsync(context, _world.Granted.Id));
+
+        Assert.Equal("sender_not_applicable", error.Code);
+        Assert.Empty(await _db.OnboardingAssistRequests.ToListAsync());
+        Assert.Equal(count, await _db.InternalActivities.CountAsync());
+    }
+
     // ─── «Non funziona» ──────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>

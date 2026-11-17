@@ -165,7 +165,8 @@ public sealed record AssistChecklistProperty(
     AssistCredentialPresence? PoliceCredentials,
     AssistIstatPresence? IstatCredentials,
     AssistSenderLine? Sender,
-    IReadOnlyList<AssistChecklistStep> Steps);
+    IReadOnlyList<AssistChecklistStep> Steps,
+    string? Country = null);
 
 /// <summary>Whether a credential is there and since when.</summary>
 public sealed record AssistCredentialPresence(bool Present, DateTime? UpdatedAt);
