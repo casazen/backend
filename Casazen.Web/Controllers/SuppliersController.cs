@@ -262,7 +262,7 @@ public class SuppliersController(
     private const string AccountEmailVerifiedClaim = "https://casazen.app/email_verified";
 
     /// <summary>
-    /// Returns <c>Active</c> suppliers for a comune or property. Hosts only (<c>property.read</c>, TN-3); with
+    /// Returns <c>Active</c> suppliers for a comune, property, or all accessible short-rental municipalities. Hosts only (<c>property.read</c>, TN-3); with
     /// <c>propertyId</c> the property is authorized as a <see cref="HostResource"/>. <c>category</c> is a code of
     /// <c>GET /api/service-categories</c>: only suppliers that declared it are returned, an unknown code is a 422
     /// <c>invalid_service_category</c> (SU-03). Since SR-09a each supplier also carries what a host weighs: up to three published
@@ -286,16 +286,18 @@ public class SuppliersController(
         [FromServices] ISupplierServiceCatalogService catalog,
         [FromServices] ISupplierKpiService kpis,
         [FromServices] ISupplierMatchService matcher,
+        [FromServices] IHostScopeResolver hostScopeResolver,
         CancellationToken cancellationToken)
     {
         if (!SupplierPickerSearch.TryParseSort(query.Sort, out var sort))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierSortInvalid");
 
-        var (target, failure) = await ResolveSearchTargetAsync(query.PropertyId, query.Comune, cancellationToken);
+        var (targets, failure) = await ResolveSearchTargetsAsync(
+            query.PropertyId, query.Comune, query.AccountScope, hostScopeResolver, cancellationToken);
         if (failure is not null)
             return failure;
 
-        var suppliers = await supplierService.GetActiveByComuneAsync(target, query.Category, cancellationToken);
+        var suppliers = await supplierService.GetActiveByComuniAsync(targets, query.Category, cancellationToken);
 
         // The comuni chosen from the official list are shown by name (SU-04).
         var listed = await comuneDirectory.GetByIstatCodesAsync(
@@ -336,8 +338,8 @@ public class SuppliersController(
     /// One supplier of the area of a property, for its own page in the marketplace (MKT): the same entry as the list of
     /// <see cref="GetSuppliers"/>, with the same fields and no more, but with <b>every</b> published service (the list carries the
     /// first three). The target is the one of the list: <c>propertyId</c> (authorized as a <see cref="HostResource"/>) or
-    /// <c>comune</c>. 404 <c>supplier_not_found</c> when the supplier is not one the list would show there: not <c>Active</c>, or not
-    /// working in that comune. A supplier is never reachable by id alone.
+    /// <c>comune</c>, or <c>accountScope</c> for all accessible short-rental municipalities. 404 <c>supplier_not_found</c> when
+    /// the supplier is not active or does not work in any of the selected municipalities.
     /// </summary>
     [HttpGet("{orgId:guid}")]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
@@ -350,15 +352,17 @@ public class SuppliersController(
         Guid orgId,
         [FromQuery] Guid? propertyId,
         [FromQuery] string? comune,
+        [FromQuery] bool accountScope,
+        [FromServices] IHostScopeResolver hostScopeResolver,
         [FromServices] ISupplierServiceCatalogService catalog,
         [FromServices] ISupplierKpiService kpis,
         CancellationToken cancellationToken)
     {
-        var (target, failure) = await ResolveSearchTargetAsync(propertyId, comune, cancellationToken);
+        var (targets, failure) = await ResolveSearchTargetsAsync(propertyId, comune, accountScope, hostScopeResolver, cancellationToken);
         if (failure is not null)
             return failure;
 
-        var supplier = (await supplierService.GetActiveByComuneAsync(target, category: null, cancellationToken))
+        var supplier = (await supplierService.GetActiveByComuniAsync(targets, category: null, cancellationToken))
             .FirstOrDefault(sp => sp.OrgId == orgId);
         if (supplier is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ServiceRequestErrorCodes.SupplierNotFound, ServiceRequestErrorCodes.SupplierNotFoundMessageKey);
@@ -375,41 +379,54 @@ public class SuppliersController(
             maxServices: int.MaxValue));
     }
 
-    /// <summary>
-    /// The comune the suppliers of the picker are looked up for: the one of the property when <paramref name="propertyId"/> is
-    /// given (the caller's own, authorized as a host resource; its chosen ISTAT code, else its written city, SU-04), else the one
-    /// typed (<paramref name="comune"/>). The failure is the answer to return: 401, 404 for a property that is not the caller's,
-    /// 403 for one the caller may not read, 400 when there is nothing to look up.
-    /// </summary>
-    private async Task<(ComuneTarget Target, ActionResult? Failure)> ResolveSearchTargetAsync(
+    /// <summary>Resolves the search areas, using the caller's property permissions for account and property searches.</summary>
+    private async Task<(IReadOnlyCollection<ComuneTarget> Targets, ActionResult? Failure)> ResolveSearchTargetsAsync(
         Guid? propertyId,
         string? comune,
+        bool accountScope,
+        IHostScopeResolver hostScopeResolver,
         CancellationToken cancellationToken)
     {
-        var target = ComuneTarget.FromInput(comune);
+        if (propertyId is null && string.IsNullOrWhiteSpace(comune) && accountScope)
+        {
+            if (await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken) is not { } orgId
+                || await hostScopeResolver.ResolveHostScopeAsync(User, orgId, cancellationToken) is not { } scope)
+                return ([], Forbid());
 
+            Response.Headers.CacheControl = "private, no-store";
+            var locations = await db.Properties.AsNoTracking()
+                .Where(p => p.OrgId == orgId && p.RentalMode == RentalMode.Short && (p.IsActive ||
+                    db.OctorateListingMappings.Any(m => m.OrgId == p.OrgId && m.PropertyId == p.Id &&
+                        m.Status == OctorateMappingStatus.Confirmed)))
+                .InScope(scope)
+                .Select(p => new { p.ComuneIstatCode, p.City })
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            return (locations.Select(p => new ComuneTarget(p.ComuneIstatCode, p.City)).ToList(), null);
+        }
+
+        var target = ComuneTarget.FromInput(comune);
         if (propertyId is Guid pid)
         {
             var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
             if (orgId is null)
-                return (target, Unauthorized());
+                return ([], Unauthorized());
 
             var property = await db.Properties
                 .AsNoTracking()
                 .FirstOrDefaultAsync(p => p.Id == pid && p.OrgId == orgId.Value, cancellationToken);
 
             if (property is null)
-                return (target, this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "PropertyNotFound"));
+                return ([], this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "PropertyNotFound"));
 
             if (!await authorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), PropertyOperations.Read))
-                return (target, Forbid());
+                return ([], Forbid());
 
-            // The property's chosen comune (ISTAT code) when it has one, its written city otherwise (SU-04).
             target = ComuneTarget.ForProperty(property);
         }
 
         return target.IsEmpty
-            ? (target, this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierSearchTargetRequired"))
-            : (target, null);
+            ? ([], this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierSearchTargetRequired"))
+            : ([target], null);
     }
 }

@@ -4,6 +4,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 // OrgEntity is a global alias defined in Casazen.Tests.csproj: OrgEntity = global::Casazen.Core.Entities.Org
@@ -98,6 +99,49 @@ public class SupplierPickerPrivacyIntegrationTests(CasazenWebApplicationFactory 
         Assert.Empty(await SearchAsync(client, comune, "bozza"));
         Assert.Empty(await SearchAsync(client, comune, "eliminata"));
         Assert.Empty(await SearchAsync(client, comune, "del pending"));
+    }
+
+    [Fact]
+    public async Task AccountScope_ListAndDetail_UseOnlyTheAccountShortRentalAreas()
+    {
+        var firstArea = $"First{Guid.NewGuid():N}"[..16];
+        var secondArea = $"Second{Guid.NewGuid():N}"[..16];
+        var otherArea = $"Other{Guid.NewGuid():N}"[..16];
+        var longRentArea = $"LongRent{Guid.NewGuid():N}"[..16];
+        var first = await SeedSupplierAsync(firstArea, SupplierStatus.Active, VatNumber);
+        var second = await SeedSupplierAsync(secondArea, SupplierStatus.Active, VatNumber);
+        var other = await SeedSupplierAsync(otherArea, SupplierStatus.Active, VatNumber);
+        var longRent = await SeedSupplierAsync(longRentArea, SupplierStatus.Active, VatNumber);
+        var owner = $"auth0|host-{Guid.NewGuid():N}";
+        var firstProperty = await factory.SeedPropertyAsync(owner);
+        var secondProperty = await factory.SeedPropertyAsync(owner);
+        var longRentProperty = await factory.SeedPropertyAsync(owner);
+        var unrelatedProperty = await factory.SeedPropertyAsync($"auth0|other-{Guid.NewGuid():N}");
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var properties = await db.Properties.IgnoreQueryFilters().Where(p =>
+                p.Id == firstProperty.Id || p.Id == secondProperty.Id ||
+                p.Id == longRentProperty.Id || p.Id == unrelatedProperty.Id).ToDictionaryAsync(p => p.Id);
+            properties[firstProperty.Id].City = firstArea;
+            properties[secondProperty.Id].City = secondArea;
+            properties[longRentProperty.Id].City = longRentArea;
+            properties[longRentProperty.Id].RentalMode = RentalMode.Long;
+            properties[unrelatedProperty.Id].City = otherArea;
+            await db.SaveChangesAsync();
+        }
+
+        using var client = factory.CreateAuthenticatedClient(owner, "PropertyOwner");
+        using var response = await client.GetAsync("/api/suppliers?accountScope=true&category=cleaning");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var ids = payload.RootElement.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("orgId").GetGuid());
+        Assert.Equal(new[] { first.OrgId, second.OrgId }.Order(), ids.Order());
+
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/suppliers/{second.OrgId}?accountScope=true")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/suppliers/{other.OrgId}?accountScope=true")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/suppliers/{longRent.OrgId}?accountScope=true")).StatusCode);
     }
 
     [Fact]

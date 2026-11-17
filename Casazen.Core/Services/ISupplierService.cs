@@ -167,6 +167,12 @@ public interface ISupplierService
         string? category,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Active suppliers covering any of the specified municipalities.</summary>
+    Task<IReadOnlyList<SupplierProfile>> GetActiveByComuniAsync(
+        IReadOnlyCollection<Casazen.Core.Suppliers.ComuneTarget> targets,
+        string? category,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Creates an admin invite record. Returns the generated invite id.</summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
     /// Code <c>invalid_service_category</c>: one of <paramref name="categories"/> is not a
