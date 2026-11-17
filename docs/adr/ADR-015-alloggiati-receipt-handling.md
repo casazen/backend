@@ -1,9 +1,9 @@
 # ADR-015: Alloggiati Web Receipt Handling
 
-**Status:** Accepted  
+**Status:** Accepted (amended 2026-11-03)  
 **Date:** 2026-10-24  
 **Issue:** none (run R20261024-1925)  
-**Informs:** NF-14
+**Informs:** NF-14, NF-43, NF-47
 
 ## Context
 
@@ -157,3 +157,72 @@ Per Q-002 answer, create one report on arrival day only.
 - ConfirmationNumber format parsing
 
 **Feature flag:** `automatic_alloggiati` default OFF
+
+## Amendment 2026-11-03 (run R20261103-1506)
+
+**Why:** NF-43 (sender configuration per ADR-029) and NF-47 (receipt archive with Octorate integration) require extending Alloggiati handling to respect sender configuration and integrate with Octorate.
+
+**Decision delta:**
+
+### Sender Check Integration
+
+Per ADR-029, Alloggiati send logic MUST verify sender configuration:
+
+```csharp
+public async Task SendAlloggiatiAsync(Guid bookingId, CancellationToken ct)
+{
+    var booking = await _db.Bookings.FindAsync(bookingId, ct);
+    var senderConfig = await _db.PropertyComplianceSenders.FindAsync(booking.PropertyId, ct);
+    
+    // Skip if sender is not CasaZen
+    if (senderConfig?.AlloggiatiSender != ComplianceSenderType.CasaZen)
+    {
+        _logger.LogInformation("Alloggiati send skipped: sender is {Sender}", senderConfig?.AlloggiatiSender);
+        return;
+    }
+    
+    // Proceed with send
+    await _soapClient.SendAsync(booking, ct);
+}
+```
+
+### Octorate Receipt Handling
+
+When sender is ChannelManager (Octorate sends), CasaZen does not send but MAY import receipts if available via Octorate API:
+
+```csharp
+public async Task ImportOctorateReceiptsAsync(CancellationToken ct)
+{
+    var channelManagerProperties = await _db.PropertyComplianceSenders
+        .Where(s => s.AlloggiatiSender == ComplianceSenderType.ChannelManager)
+        .Select(s => s.PropertyId)
+        .ToArrayAsync(ct);
+        
+    foreach (var propertyId in channelManagerProperties)
+    {
+        // If Octorate API supports receipt export (Q-002), import them
+        var receipts = await _octorate.GetAlloggiatiReceiptsAsync(propertyId, ct);
+        // Store for archive visibility
+    }
+}
+```
+
+### Archive Unified View
+
+Receipt archive shows all receipts regardless of sender:
+- CasaZen-sent: from `AlloggiatiReceipt` table
+- Octorate-sent: imported from Octorate (if API available)
+- Manual: uploaded by user
+
+| ID | Priority | Requirement |
+|---|---|---|
+| ADR-015-R15 | P0 | Alloggiati send MUST verify `PropertyComplianceSender.AlloggiatiSender = CasaZen` before send; skip (never error) if sender is ChannelManager or Manual |
+| ADR-015-R16 | P0 | Receipt archive MUST display receipts from all sources (CasaZen-sent, Octorate-imported if available, manual uploads) |
+| ADR-015-R17 | P1 | If Q-002 confirms Octorate receipt API, import job MUST fetch receipts for ChannelManager properties |
+
+**Replaces:** None (new requirements extend existing set).
+
+**Consequences delta:**
+- Backend: Sender check in send logic, unified receipt archive query
+- Frontend: Archive shows source indicator per receipt
+- Octorate receipt import conditional on Q-002 sandbox verification
