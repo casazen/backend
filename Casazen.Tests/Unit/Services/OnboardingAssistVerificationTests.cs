@@ -234,7 +234,7 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         Assert.Equal(ComplianceSenderType.ChannelManager, Assert.Single((await StaffService().GetAsync(request.Id, Ct)).Checklist).Sender!.Sender);
 
         // A historic support request may still exist after the property country changes: no Italian sender is then shown.
-        _world.Granted.Country = "CH";
+        (await _db.Properties.SingleAsync(p => p.Id == _world.Granted.Id, Ct)).Country = "CH";
         await _db.SaveChangesAsync();
         Assert.Null(Assert.Single((await StaffService().GetAsync(request.Id, Ct)).Checklist).Sender);
     }
