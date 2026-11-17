@@ -33,7 +33,9 @@ public sealed record PriceSuggestionFacts(
     int? Beds,
     int Bathrooms,
     int? AreaSqm,
-    IReadOnlyList<string> Amenities);
+    IReadOnlyList<string> Amenities,
+    string Country = "IT",
+    string Currency = "EUR");
 
 /// <summary>
 /// The prompt of the nightly price (WIZ-AI-PRICE), in Italian, with the figures of the similar homes when there are enough of them. It
@@ -43,7 +45,7 @@ public sealed record PriceSuggestionFacts(
 public static class ListingPriceSuggestionPrompt
 {
     /// <summary>Version of the wording; part of the key of the cached answers.</summary>
-    public const string PromptVersion = "price-v1";
+    public const string PromptVersion = "price-v2";
 
     /// <summary>
     /// Amenities that say nothing about the price (the safety devices the law asks for, the rules of the house, how luggage is kept):
@@ -83,7 +85,9 @@ public static class ListingPriceSuggestionPrompt
             property.Beds,
             property.Bathrooms,
             property.AreaSqm,
-            amenities);
+            amenities,
+            property.Country,
+            property.Currency);
     }
 
     /// <summary>The codes (<see cref="PriceSuggestionFields"/>) of the facts the prompt really carries: what the host did not say is not listed.</summary>
@@ -117,7 +121,7 @@ public static class ListingPriceSuggestionPrompt
 
         var lines = new List<string>
         {
-            "Sei un revenue manager esperto di affitti brevi in Italia. Stima il prezzo base per notte di una casa vacanze "
+            "Sei un revenue manager esperto di affitti brevi nella località e nel paese indicati. Stima il prezzo base per notte di una casa vacanze "
             + "che il proprietario sta per pubblicare su CasaZen.",
             string.Empty,
             "Dati della casa (forniti dal proprietario):",
@@ -126,6 +130,8 @@ public static class ListingPriceSuggestionPrompt
         if (facts.AccommodationType is not null)
             lines.Add($"- Tipo: {facts.AccommodationType}");
 
+        lines.Add($"- Paese: {facts.Country}");
+        lines.Add($"- Valuta dei prezzi: {facts.Currency} (mantienila, non convertirla né dedurla dal paese)");
         lines.Add($"- Posizione: {Place(facts)}");
 
         if (facts.Setting is not null)
@@ -168,7 +174,7 @@ public static class ListingPriceSuggestionPrompt
             "- Rispondi SOLO con un oggetto JSON, senza testo prima o dopo, con queste chiavi e nient'altro:",
             "{\"nightlyRate\": 0, \"rangeMin\": 0, \"rangeMax\": 0, \"cleaningFee\": 0, \"weekendSurchargePercent\": 0, "
             + "\"minNights\": 1, \"rationale\": \"\"}",
-            "Tutti i numeri sono interi: i prezzi in euro, il supplemento weekend da 0 a 50, il soggiorno minimo da 1 a 7.",
+            $"Tutti i numeri sono interi: i prezzi in {facts.Currency}, il supplemento weekend da 0 a 50, il soggiorno minimo da 1 a 7.",
         ]);
 
         return string.Join('\n', lines);
@@ -187,8 +193,8 @@ public static class ListingPriceSuggestionPrompt
             ? "di dimensioni simili a questa"
             : "di varie dimensioni (non tutte confrontabili con questa)";
         return $"Dati reali di CasaZen: {market.Count.ToString(CultureInfo.InvariantCulture)} case {size} pubblicate {where} "
-            + $"chiedono per notte da {Euro(market.Min)} a {Euro(market.Max)} (primo quartile {Euro(market.P25)}, mediana "
-            + $"{Euro(market.Median)}, terzo quartile {Euro(market.P75)}). Usali come riferimento principale e adattali al "
+            + $"chiedono per notte da {Money(market.Min, facts.Currency)} a {Money(market.Max, facts.Currency)} (primo quartile {Money(market.P25, facts.Currency)}, mediana "
+            + $"{Money(market.Median, facts.Currency)}, terzo quartile {Money(market.P75, facts.Currency)}). Usali come riferimento principale e adattali al "
             + "confronto con questa casa.";
     }
 
@@ -211,7 +217,8 @@ public static class ListingPriceSuggestionPrompt
 
     private static string Line(string label, int value) => $"- {label}: {value.ToString(CultureInfo.InvariantCulture)}";
 
-    private static string Euro(decimal value) => $"{Math.Round(value).ToString("0", CultureInfo.InvariantCulture)} €";
+    private static string Money(decimal value, string currency) =>
+        $"{Math.Round(value).ToString("0", CultureInfo.InvariantCulture)} {(currency == "EUR" ? "€" : currency)}";
 
     private static bool IsEnglish(string language) =>
         string.Equals(language, "en", StringComparison.OrdinalIgnoreCase);

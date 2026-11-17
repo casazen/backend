@@ -37,7 +37,9 @@ public class ListingPriceSuggestionService(
     {
         ArgumentNullException.ThrowIfNull(property);
 
-        var comune = await comuneDirectory.FindByIstatCodeAsync(property.ComuneIstatCode, activeOnly: false, cancellationToken);
+        var comune = property.Country == "IT"
+            ? await comuneDirectory.FindByIstatCodeAsync(property.ComuneIstatCode, activeOnly: false, cancellationToken)
+            : null;
         var facts = ListingPriceSuggestionPrompt.FactsOf(property, comune);
         var market = await LoadMarketAsync(property, cancellationToken);
         var basis = new PriceSuggestionBasis(
@@ -78,7 +80,7 @@ public class ListingPriceSuggestionService(
         logger.LogInformation(
             "Price suggestion for property {PropertyId}: ai={AiUsed} reason={Reason} similarListings={SimilarListings} priced={Priced}",
             property.Id, suggestion.AiUsed, suggestion.Reason, basis.SimilarListings, suggestion.NightlyRate is not null);
-        return suggestion;
+        return suggestion with { Currency = facts.Currency };
     }
 
     /// <summary>
@@ -97,7 +99,8 @@ public class ListingPriceSuggestionService(
         {
             var cached = aiCache.TryGet(orgId, cacheKey, out AiGenerationResult? ai) && ai is not null;
             if (!cached)
-                ai = await aiProvider.GenerateAsync(prompt, AiModelTier.Economy, cacheKey, cancellationToken);
+                // Use the bounded long-call client: the normal 30s client used to race the browser timeout.
+                ai = await aiProvider.GenerateAsync(new AiRequest(prompt, [], MaxCompletionTokens: 1024), AiModelTier.Economy, cacheKey, cancellationToken);
 
             if (!ai!.ProviderConfigured)
                 return (null, PriceSuggestionFallbackReasons.AiNotConfigured);
@@ -154,6 +157,8 @@ public class ListingPriceSuggestionService(
             .Where(p => p.OrgId != property.OrgId
                 && !p.IsTestData
                 && p.Org.IsActive
+                && p.Country == property.Country
+                && p.Currency == property.Currency
                 && p.ComuneIstatCode == property.ComuneIstatCode
                 && p.NightlyRate > 0)
             .OrderBy(p => p.Id)
