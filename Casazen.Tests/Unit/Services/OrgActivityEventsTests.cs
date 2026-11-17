@@ -137,7 +137,7 @@ public class OrgActivityEventsTests
             Assert.Equal(OrgInvitationErrors.EmailMismatch, refused.Code);
         }
 
-        Assert.Equal([OrgActivityType.MemberReactivated, OrgActivityType.MemberInvited], (await LinesAsync(org.Id)).Select(l => l.Type));
+        Assert.Equal([OrgActivityType.MemberInvited], (await LinesAsync(org.Id)).Select(l => l.Type));
     }
 
     // ─── People ─────────────────────────────────────────────────────────────────────────────────────────
@@ -257,7 +257,10 @@ public class OrgActivityEventsTests
             await _kit.Team(db).ReactivateAsync(org.Id, anna.Id, OwnerId);
         }
 
-        Assert.Equal([OrgActivityType.MemberInvited], (await LinesAsync(org.Id)).Select(l => l.Type));
+        var types = (await LinesAsync(org.Id)).Select(l => l.Type).ToArray();
+        Assert.Equal(2, types.Length);
+        Assert.Contains(OrgActivityType.MemberInvited, types);
+        Assert.Contains(OrgActivityType.MemberReactivated, types);
     }
 
     // ─── The properties given to a member (AM-03: who gave what to whom) ────────────────────────────────
