@@ -1,0 +1,505 @@
+{
+  "environment": "test",
+  "schema": "casazen_test",
+  "mapping": [
+    {
+      "id": "a7112026-1117-4000-8000-000000001006",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a1",
+      "code": "QK10000001",
+      "oldIn": "2026-10-26T00:00:00+00:00",
+      "oldOut": "2026-10-29T00:00:00+00:00",
+      "newIn": "2026-10-24",
+      "newOut": "2026-10-27",
+      "nights": 3,
+      "days": -2
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001040",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a1",
+      "code": "QK10000002",
+      "oldIn": "2026-11-02T00:00:00+00:00",
+      "oldOut": "2026-11-05T00:00:00+00:00",
+      "newIn": "2026-11-02",
+      "newOut": "2026-11-05",
+      "nights": 3,
+      "days": 0
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001074",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a1",
+      "code": "QK10000003",
+      "oldIn": "2026-11-09T00:00:00+00:00",
+      "oldOut": "2026-11-12T00:00:00+00:00",
+      "newIn": "2026-11-08",
+      "newOut": "2026-11-11",
+      "nights": 3,
+      "days": -1
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001108",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a1",
+      "code": "QK10000004",
+      "oldIn": "2026-11-14T00:00:00+00:00",
+      "oldOut": "2026-11-16T00:00:00+00:00",
+      "newIn": "2026-11-13",
+      "newOut": "2026-11-15",
+      "nights": 2,
+      "days": -1
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001142",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a1",
+      "code": "QK10000005",
+      "oldIn": "2026-11-16T00:00:00+00:00",
+      "oldOut": "2026-11-19T00:00:00+00:00",
+      "newIn": "2026-11-16",
+      "newOut": "2026-11-19",
+      "nights": 3,
+      "days": 0
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001176",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a1",
+      "code": "QK10000006",
+      "oldIn": "2026-11-20T00:00:00+00:00",
+      "oldOut": "2026-11-22T00:00:00+00:00",
+      "newIn": "2026-11-20",
+      "newOut": "2026-11-22",
+      "nights": 2,
+      "days": 0
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001206",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a1",
+      "code": "QK10000007",
+      "oldIn": "2026-11-23T00:00:00+00:00",
+      "oldOut": "2026-11-26T00:00:00+00:00",
+      "newIn": "2026-11-24",
+      "newOut": "2026-11-27",
+      "nights": 3,
+      "days": 1
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001238",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a1",
+      "code": "QK10000008",
+      "oldIn": "2026-11-28T00:00:00+00:00",
+      "oldOut": "2026-12-01T00:00:00+00:00",
+      "newIn": "2026-11-29",
+      "newOut": "2026-12-02",
+      "nights": 3,
+      "days": 1
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001270",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a1",
+      "code": "QK10000009",
+      "oldIn": "2026-12-03T00:00:00+00:00",
+      "oldOut": "2026-12-06T00:00:00+00:00",
+      "newIn": "2026-12-05",
+      "newOut": "2026-12-08",
+      "nights": 3,
+      "days": 2
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001302",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a1",
+      "code": "QK10000010",
+      "oldIn": "2026-12-10T00:00:00+00:00",
+      "oldOut": "2026-12-13T00:00:00+00:00",
+      "newIn": "2026-12-11",
+      "newOut": "2026-12-14",
+      "nights": 3,
+      "days": 1
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001334",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a1",
+      "code": "QK10000011",
+      "oldIn": "2026-12-18T00:00:00+00:00",
+      "oldOut": "2026-12-21T00:00:00+00:00",
+      "newIn": "2026-12-18",
+      "newOut": "2026-12-21",
+      "nights": 3,
+      "days": 0
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001366",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a1",
+      "code": "QK10000012",
+      "oldIn": "2026-12-27T00:00:00+00:00",
+      "oldOut": "2026-12-30T00:00:00+00:00",
+      "newIn": "2026-12-26",
+      "newOut": "2026-12-29",
+      "nights": 3,
+      "days": -1
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001432",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a2",
+      "code": "QK20000001",
+      "oldIn": "2026-10-26T00:00:00+00:00",
+      "oldOut": "2026-10-29T00:00:00+00:00",
+      "newIn": "2026-10-26",
+      "newOut": "2026-10-29",
+      "nights": 3,
+      "days": 0
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001455",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a2",
+      "code": "QK20000002",
+      "oldIn": "2026-11-02T00:00:00+00:00",
+      "oldOut": "2026-11-05T00:00:00+00:00",
+      "newIn": "2026-11-03",
+      "newOut": "2026-11-06",
+      "nights": 3,
+      "days": 1
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001478",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a2",
+      "code": "QK20000003",
+      "oldIn": "2026-11-09T00:00:00+00:00",
+      "oldOut": "2026-11-12T00:00:00+00:00",
+      "newIn": "2026-11-09",
+      "newOut": "2026-11-12",
+      "nights": 3,
+      "days": 0
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001501",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a2",
+      "code": "QK20000004",
+      "oldIn": "2026-11-14T00:00:00+00:00",
+      "oldOut": "2026-11-16T00:00:00+00:00",
+      "newIn": "2026-11-12",
+      "newOut": "2026-11-14",
+      "nights": 2,
+      "days": -2
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001524",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a2",
+      "code": "QK20000005",
+      "oldIn": "2026-11-16T00:00:00+00:00",
+      "oldOut": "2026-11-19T00:00:00+00:00",
+      "newIn": "2026-11-15",
+      "newOut": "2026-11-18",
+      "nights": 3,
+      "days": -1
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001547",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a2",
+      "code": "QK20000006",
+      "oldIn": "2026-11-20T00:00:00+00:00",
+      "oldOut": "2026-11-22T00:00:00+00:00",
+      "newIn": "2026-11-21",
+      "newOut": "2026-11-23",
+      "nights": 2,
+      "days": 1
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001570",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a2",
+      "code": "QK20000007",
+      "oldIn": "2026-11-23T00:00:00+00:00",
+      "oldOut": "2026-11-26T00:00:00+00:00",
+      "newIn": "2026-11-25",
+      "newOut": "2026-11-28",
+      "nights": 3,
+      "days": 2
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001595",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a2",
+      "code": "QK20000008",
+      "oldIn": "2026-11-28T00:00:00+00:00",
+      "oldOut": "2026-12-01T00:00:00+00:00",
+      "newIn": "2026-11-30",
+      "newOut": "2026-12-03",
+      "nights": 3,
+      "days": 2
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001620",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a2",
+      "code": "QK20000009",
+      "oldIn": "2026-12-03T00:00:00+00:00",
+      "oldOut": "2026-12-06T00:00:00+00:00",
+      "newIn": "2026-12-06",
+      "newOut": "2026-12-09",
+      "nights": 3,
+      "days": 3
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001645",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a2",
+      "code": "QK20000010",
+      "oldIn": "2026-12-10T00:00:00+00:00",
+      "oldOut": "2026-12-13T00:00:00+00:00",
+      "newIn": "2026-12-12",
+      "newOut": "2026-12-15",
+      "nights": 3,
+      "days": 2
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001670",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a2",
+      "code": "QK20000011",
+      "oldIn": "2026-12-18T00:00:00+00:00",
+      "oldOut": "2026-12-21T00:00:00+00:00",
+      "newIn": "2026-12-20",
+      "newOut": "2026-12-23",
+      "nights": 3,
+      "days": 2
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001695",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a2",
+      "code": "QK20000012",
+      "oldIn": "2026-12-27T00:00:00+00:00",
+      "oldOut": "2026-12-30T00:00:00+00:00",
+      "newIn": "2026-12-27",
+      "newOut": "2026-12-30",
+      "nights": 3,
+      "days": 0
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001726",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a3",
+      "code": "QK30000001",
+      "oldIn": "2026-10-26T00:00:00+00:00",
+      "oldOut": "2026-10-29T00:00:00+00:00",
+      "newIn": "2026-10-27",
+      "newOut": "2026-10-30",
+      "nights": 3,
+      "days": 1
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001749",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a3",
+      "code": "QK30000002",
+      "oldIn": "2026-11-02T00:00:00+00:00",
+      "oldOut": "2026-11-05T00:00:00+00:00",
+      "newIn": "2026-11-01",
+      "newOut": "2026-11-04",
+      "nights": 3,
+      "days": -1
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001772",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a3",
+      "code": "QK30000003",
+      "oldIn": "2026-11-09T00:00:00+00:00",
+      "oldOut": "2026-11-12T00:00:00+00:00",
+      "newIn": "2026-11-06",
+      "newOut": "2026-11-09",
+      "nights": 3,
+      "days": -3
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001795",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a3",
+      "code": "QK30000004",
+      "oldIn": "2026-11-14T00:00:00+00:00",
+      "oldOut": "2026-11-16T00:00:00+00:00",
+      "newIn": "2026-11-13",
+      "newOut": "2026-11-15",
+      "nights": 2,
+      "days": -1
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001818",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a3",
+      "code": "QK30000005",
+      "oldIn": "2026-11-16T00:00:00+00:00",
+      "oldOut": "2026-11-19T00:00:00+00:00",
+      "newIn": "2026-11-17",
+      "newOut": "2026-11-20",
+      "nights": 3,
+      "days": 1
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001841",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a3",
+      "code": "QK30000006",
+      "oldIn": "2026-11-20T00:00:00+00:00",
+      "oldOut": "2026-11-22T00:00:00+00:00",
+      "newIn": "2026-11-22",
+      "newOut": "2026-11-24",
+      "nights": 2,
+      "days": 2
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001864",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a3",
+      "code": "QK30000007",
+      "oldIn": "2026-11-23T00:00:00+00:00",
+      "oldOut": "2026-11-26T00:00:00+00:00",
+      "newIn": "2026-11-26",
+      "newOut": "2026-11-29",
+      "nights": 3,
+      "days": 3
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001889",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a3",
+      "code": "QK30000008",
+      "oldIn": "2026-11-28T00:00:00+00:00",
+      "oldOut": "2026-12-01T00:00:00+00:00",
+      "newIn": "2026-12-01",
+      "newOut": "2026-12-04",
+      "nights": 3,
+      "days": 3
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001914",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a3",
+      "code": "QK30000009",
+      "oldIn": "2026-12-03T00:00:00+00:00",
+      "oldOut": "2026-12-06T00:00:00+00:00",
+      "newIn": "2026-12-07",
+      "newOut": "2026-12-10",
+      "nights": 3,
+      "days": 4
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001939",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a3",
+      "code": "QK30000010",
+      "oldIn": "2026-12-10T00:00:00+00:00",
+      "oldOut": "2026-12-13T00:00:00+00:00",
+      "newIn": "2026-12-14",
+      "newOut": "2026-12-17",
+      "nights": 3,
+      "days": 4
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001964",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a3",
+      "code": "QK30000011",
+      "oldIn": "2026-12-18T00:00:00+00:00",
+      "oldOut": "2026-12-21T00:00:00+00:00",
+      "newIn": "2026-12-21",
+      "newOut": "2026-12-24",
+      "nights": 3,
+      "days": 3
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001989",
+      "propertyId": "36e556c2-943e-44d7-86db-dea0567ea8a3",
+      "code": "QK30000012",
+      "oldIn": "2026-12-27T00:00:00+00:00",
+      "oldOut": "2026-12-30T00:00:00+00:00",
+      "newIn": "2026-12-28",
+      "newOut": "2026-12-31",
+      "nights": 3,
+      "days": 1
+    }
+  ],
+  "sql": "BEGIN;\nSELECT pg_advisory_xact_lock(hashtext('quokka-test-date-redistribution-20261117'));\nDO $demo$\nDECLARE m record; d interval;\nBEGIN\n IF (SELECT count(*) FROM casazen_test.\"Bookings\" WHERE \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8')<>36 THEN RAISE EXCEPTION 'Unexpected demo booking count'; END IF;\n FOR m IN SELECT * FROM jsonb_to_recordset('[{\"id\":\"a7112026-1117-4000-8000-000000001006\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a1\",\"old_in\":\"2026-10-26\",\"old_out\":\"2026-10-29\",\"new_in\":\"2026-10-24\",\"new_out\":\"2026-10-27\",\"days\":-2},{\"id\":\"a7112026-1117-4000-8000-000000001040\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a1\",\"old_in\":\"2026-11-02\",\"old_out\":\"2026-11-05\",\"new_in\":\"2026-11-02\",\"new_out\":\"2026-11-05\",\"days\":0},{\"id\":\"a7112026-1117-4000-8000-000000001074\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a1\",\"old_in\":\"2026-11-09\",\"old_out\":\"2026-11-12\",\"new_in\":\"2026-11-08\",\"new_out\":\"2026-11-11\",\"days\":-1},{\"id\":\"a7112026-1117-4000-8000-000000001108\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a1\",\"old_in\":\"2026-11-14\",\"old_out\":\"2026-11-16\",\"new_in\":\"2026-11-13\",\"new_out\":\"2026-11-15\",\"days\":-1},{\"id\":\"a7112026-1117-4000-8000-000000001142\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a1\",\"old_in\":\"2026-11-16\",\"old_out\":\"2026-11-19\",\"new_in\":\"2026-11-16\",\"new_out\":\"2026-11-19\",\"days\":0},{\"id\":\"a7112026-1117-4000-8000-000000001176\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a1\",\"old_in\":\"2026-11-20\",\"old_out\":\"2026-11-22\",\"new_in\":\"2026-11-20\",\"new_out\":\"2026-11-22\",\"days\":0},{\"id\":\"a7112026-1117-4000-8000-000000001206\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a1\",\"old_in\":\"2026-11-23\",\"old_out\":\"2026-11-26\",\"new_in\":\"2026-11-24\",\"new_out\":\"2026-11-27\",\"days\":1},{\"id\":\"a7112026-1117-4000-8000-000000001238\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a1\",\"old_in\":\"2026-11-28\",\"old_out\":\"2026-12-01\",\"new_in\":\"2026-11-29\",\"new_out\":\"2026-12-02\",\"days\":1},{\"id\":\"a7112026-1117-4000-8000-000000001270\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a1\",\"old_in\":\"2026-12-03\",\"old_out\":\"2026-12-06\",\"new_in\":\"2026-12-05\",\"new_out\":\"2026-12-08\",\"days\":2},{\"id\":\"a7112026-1117-4000-8000-000000001302\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a1\",\"old_in\":\"2026-12-10\",\"old_out\":\"2026-12-13\",\"new_in\":\"2026-12-11\",\"new_out\":\"2026-12-14\",\"days\":1},{\"id\":\"a7112026-1117-4000-8000-000000001334\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a1\",\"old_in\":\"2026-12-18\",\"old_out\":\"2026-12-21\",\"new_in\":\"2026-12-18\",\"new_out\":\"2026-12-21\",\"days\":0},{\"id\":\"a7112026-1117-4000-8000-000000001366\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a1\",\"old_in\":\"2026-12-27\",\"old_out\":\"2026-12-30\",\"new_in\":\"2026-12-26\",\"new_out\":\"2026-12-29\",\"days\":-1},{\"id\":\"a7112026-1117-4000-8000-000000001432\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a2\",\"old_in\":\"2026-10-26\",\"old_out\":\"2026-10-29\",\"new_in\":\"2026-10-26\",\"new_out\":\"2026-10-29\",\"days\":0},{\"id\":\"a7112026-1117-4000-8000-000000001455\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a2\",\"old_in\":\"2026-11-02\",\"old_out\":\"2026-11-05\",\"new_in\":\"2026-11-03\",\"new_out\":\"2026-11-06\",\"days\":1},{\"id\":\"a7112026-1117-4000-8000-000000001478\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a2\",\"old_in\":\"2026-11-09\",\"old_out\":\"2026-11-12\",\"new_in\":\"2026-11-09\",\"new_out\":\"2026-11-12\",\"days\":0},{\"id\":\"a7112026-1117-4000-8000-000000001501\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a2\",\"old_in\":\"2026-11-14\",\"old_out\":\"2026-11-16\",\"new_in\":\"2026-11-12\",\"new_out\":\"2026-11-14\",\"days\":-2},{\"id\":\"a7112026-1117-4000-8000-000000001524\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a2\",\"old_in\":\"2026-11-16\",\"old_out\":\"2026-11-19\",\"new_in\":\"2026-11-15\",\"new_out\":\"2026-11-18\",\"days\":-1},{\"id\":\"a7112026-1117-4000-8000-000000001547\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a2\",\"old_in\":\"2026-11-20\",\"old_out\":\"2026-11-22\",\"new_in\":\"2026-11-21\",\"new_out\":\"2026-11-23\",\"days\":1},{\"id\":\"a7112026-1117-4000-8000-000000001570\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a2\",\"old_in\":\"2026-11-23\",\"old_out\":\"2026-11-26\",\"new_in\":\"2026-11-25\",\"new_out\":\"2026-11-28\",\"days\":2},{\"id\":\"a7112026-1117-4000-8000-000000001595\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a2\",\"old_in\":\"2026-11-28\",\"old_out\":\"2026-12-01\",\"new_in\":\"2026-11-30\",\"new_out\":\"2026-12-03\",\"days\":2},{\"id\":\"a7112026-1117-4000-8000-000000001620\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a2\",\"old_in\":\"2026-12-03\",\"old_out\":\"2026-12-06\",\"new_in\":\"2026-12-06\",\"new_out\":\"2026-12-09\",\"days\":3},{\"id\":\"a7112026-1117-4000-8000-000000001645\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a2\",\"old_in\":\"2026-12-10\",\"old_out\":\"2026-12-13\",\"new_in\":\"2026-12-12\",\"new_out\":\"2026-12-15\",\"days\":2},{\"id\":\"a7112026-1117-4000-8000-000000001670\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a2\",\"old_in\":\"2026-12-18\",\"old_out\":\"2026-12-21\",\"new_in\":\"2026-12-20\",\"new_out\":\"2026-12-23\",\"days\":2},{\"id\":\"a7112026-1117-4000-8000-000000001695\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a2\",\"old_in\":\"2026-12-27\",\"old_out\":\"2026-12-30\",\"new_in\":\"2026-12-27\",\"new_out\":\"2026-12-30\",\"days\":0},{\"id\":\"a7112026-1117-4000-8000-000000001726\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a3\",\"old_in\":\"2026-10-26\",\"old_out\":\"2026-10-29\",\"new_in\":\"2026-10-27\",\"new_out\":\"2026-10-30\",\"days\":1},{\"id\":\"a7112026-1117-4000-8000-000000001749\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a3\",\"old_in\":\"2026-11-02\",\"old_out\":\"2026-11-05\",\"new_in\":\"2026-11-01\",\"new_out\":\"2026-11-04\",\"days\":-1},{\"id\":\"a7112026-1117-4000-8000-000000001772\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a3\",\"old_in\":\"2026-11-09\",\"old_out\":\"2026-11-12\",\"new_in\":\"2026-11-06\",\"new_out\":\"2026-11-09\",\"days\":-3},{\"id\":\"a7112026-1117-4000-8000-000000001795\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a3\",\"old_in\":\"2026-11-14\",\"old_out\":\"2026-11-16\",\"new_in\":\"2026-11-13\",\"new_out\":\"2026-11-15\",\"days\":-1},{\"id\":\"a7112026-1117-4000-8000-000000001818\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a3\",\"old_in\":\"2026-11-16\",\"old_out\":\"2026-11-19\",\"new_in\":\"2026-11-17\",\"new_out\":\"2026-11-20\",\"days\":1},{\"id\":\"a7112026-1117-4000-8000-000000001841\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a3\",\"old_in\":\"2026-11-20\",\"old_out\":\"2026-11-22\",\"new_in\":\"2026-11-22\",\"new_out\":\"2026-11-24\",\"days\":2},{\"id\":\"a7112026-1117-4000-8000-000000001864\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a3\",\"old_in\":\"2026-11-23\",\"old_out\":\"2026-11-26\",\"new_in\":\"2026-11-26\",\"new_out\":\"2026-11-29\",\"days\":3},{\"id\":\"a7112026-1117-4000-8000-000000001889\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a3\",\"old_in\":\"2026-11-28\",\"old_out\":\"2026-12-01\",\"new_in\":\"2026-12-01\",\"new_out\":\"2026-12-04\",\"days\":3},{\"id\":\"a7112026-1117-4000-8000-000000001914\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a3\",\"old_in\":\"2026-12-03\",\"old_out\":\"2026-12-06\",\"new_in\":\"2026-12-07\",\"new_out\":\"2026-12-10\",\"days\":4},{\"id\":\"a7112026-1117-4000-8000-000000001939\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a3\",\"old_in\":\"2026-12-10\",\"old_out\":\"2026-12-13\",\"new_in\":\"2026-12-14\",\"new_out\":\"2026-12-17\",\"days\":4},{\"id\":\"a7112026-1117-4000-8000-000000001964\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a3\",\"old_in\":\"2026-12-18\",\"old_out\":\"2026-12-21\",\"new_in\":\"2026-12-21\",\"new_out\":\"2026-12-24\",\"days\":3},{\"id\":\"a7112026-1117-4000-8000-000000001989\",\"property_id\":\"36e556c2-943e-44d7-86db-dea0567ea8a3\",\"old_in\":\"2026-12-27\",\"old_out\":\"2026-12-30\",\"new_in\":\"2026-12-28\",\"new_out\":\"2026-12-31\",\"days\":1}]'::jsonb) AS x(id uuid,property_id uuid,old_in date,old_out date,new_in date,new_out date,days int)\n LOOP\n IF NOT EXISTS(SELECT 1 FROM casazen_test.\"Bookings\" WHERE \"Id\"=m.id AND \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8' AND \"CheckInDate\"::date=m.old_in AND \"CheckOutDate\"::date=m.old_out) THEN RAISE EXCEPTION 'Demo dates changed; inspect before retry'; END IF;\n d=make_interval(days=>m.days);\n UPDATE casazen_test.\"Bookings\" SET \"CheckInDate\"=m.new_in::timestamptz,\"CheckOutDate\"=m.new_out::timestamptz,\n \"ArrivedAt\"=\"ArrivedAt\"+d,\"CheckedOutAt\"=\"CheckedOutAt\"+d,\"FreeRefundDeadline\"=\"FreeRefundDeadline\"+d,\n \"CreatedAt\"=least(\"CreatedAt\"+d,now()-interval '1 day'),\"ConfirmedAt\"=least(\"ConfirmedAt\"+d,now()-interval '1 hour'),\"UpdatedAt\"=now()\n WHERE \"Id\"=m.id AND \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8';\n UPDATE casazen_test.\"Payments\" SET \"ProcessedAt\"=least(\"ProcessedAt\"+d,now()),\"CreatedAt\"=least(\"CreatedAt\"+d,now()-interval '1 day'),\"UpdatedAt\"=now() WHERE \"BookingId\"=m.id AND \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8';\n UPDATE casazen_test.\"InternalActivities\" SET \"ScheduledAt\"=\"ScheduledAt\"+d,\"Deadline\"=\"Deadline\"+d,\"CompletedAt\"=\"CompletedAt\"+d WHERE (\"BookingId\"=m.id OR (\"EntityId\"=m.id AND \"EntityType\"='Booking')) AND \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8';\n UPDATE casazen_test.\"AlloggiatiWebReports\" SET \"ReportedAt\"=\"ReportedAt\"+d,\"ScheduledFor\"=\"ScheduledFor\"+d,\"UpdatedAt\"=now() WHERE \"BookingId\"=m.id AND \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8';\n UPDATE casazen_test.\"ManualComplianceProofs\" SET \"Day\"=m.new_in,\"UploadedAt\"=least(\"UploadedAt\"+d,now()) WHERE \"PropertyId\"=m.property_id AND \"Kind\"=1 AND \"Day\"=m.old_in AND \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8';\n UPDATE casazen_test.\"SwissComplianceReceipts\" SET \"ReportDate\"=\"ReportDate\"+d,\"UploadedAt\"=least(\"UploadedAt\"+d,now()) WHERE \"PropertyId\"=m.property_id AND \"Type\"='Police' AND \"ReportDate\"::date=m.old_in AND \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8';\n UPDATE casazen_test.\"ComplianceSendLogEntries\" SET \"SentAt\"=least(\"SentAt\"+d,now()) WHERE \"BookingId\"=m.id AND \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8';\n UPDATE casazen_test.\"FiscalDocuments\" SET \"ServicePeriodFrom\"=m.new_in,\"ServicePeriodTo\"=m.new_out,\"UpdatedAt\"=now() WHERE \"BookingId\"=m.id AND \"Purpose\"=1 AND \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8';\n UPDATE casazen_test.\"FiscalDocumentLines\" l SET \"Description\"=replace(replace(l.\"Description\",m.old_out::text,m.new_out::text),m.old_in::text,m.new_in::text)\n FROM casazen_test.\"FiscalDocuments\" f WHERE f.\"Id\"=l.\"DocumentId\" AND f.\"BookingId\"=m.id AND f.\"Purpose\"=1 AND f.\"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8';\n UPDATE casazen_test.\"StayTouristTaxes\" SET \"CalculationHash\"=encode(sha256(convert_to('stay-tourist-tax:v2|'||m.new_in::text||'|'||m.new_out::text||'|status:0|rate:f22cb6ed164e1574b5dc24d26e3a47ef|guest:0|guest:1|total:'||to_char(\"Total\",'FM999999990.00')||'|amount:0:'||to_char(\"Total\"/2,'FM999999990.00')||'|amount:1:'||to_char(\"Total\"/2,'FM999999990.00')||'|collector:Host|rule:-','UTF8')),'hex'),\"CollectedAt\"=least(\"CollectedAt\"+d,now()),\"UpdatedAt\"=now()\n WHERE \"BookingId\"=m.id AND \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8';\n UPDATE casazen_test.\"OwnerLedgerEntries\" e SET \"ServiceDate\"=\"ServiceDate\"+m.days,\n \"RecognitionDate\"=CASE WHEN \"RecognitionDate\"=m.old_out THEN m.new_out ELSE \"RecognitionDate\" END,\n \"PaymentDate\"=least(\"PaymentDate\"+m.days,current_date),\n \"FxDate\"=CASE WHEN \"FxDate\"=m.old_out THEN m.new_out WHEN \"FxDate\"=m.old_in THEN m.new_in ELSE \"FxDate\" END\n WHERE e.\"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8' AND (e.\"SourceId\"=m.id OR e.\"SourceReference\"=replace(m.id::text,'-','') OR e.\"SourceId\" IN (SELECT \"Id\" FROM casazen_test.\"Payments\" WHERE \"BookingId\"=m.id AND \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8'));\n END LOOP;\n IF EXISTS(SELECT 1 FROM casazen_test.\"Bookings\" a JOIN casazen_test.\"Bookings\" b ON a.\"PropertyId\"=b.\"PropertyId\" AND a.\"Id\"<b.\"Id\" AND a.\"CheckInDate\"<b.\"CheckOutDate\" AND b.\"CheckInDate\"<a.\"CheckOutDate\" WHERE a.\"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8') THEN RAISE EXCEPTION 'Overlapping demo stays'; END IF;\n UPDATE casazen_test.\"OwnerClosePeriods\" SET \"IsDirty\"=true,\"DirtySince\"=now(),\"UpdatedAt\"=now() WHERE \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8' AND \"PeriodYear\"=2026 AND \"PeriodMonth\" IN (10,11,12);\nEND $demo$;\nCOMMIT;",
+  "nativeJobs": [
+    {
+      "month": 10,
+      "action": 2,
+      "id": 112693
+    },
+    {
+      "month": 11,
+      "action": 2,
+      "id": 112694
+    },
+    {
+      "month": 12,
+      "action": 2,
+      "id": 112695
+    },
+    {
+      "month": 10,
+      "action": 3,
+      "id": 112706
+    },
+    {
+      "month": 11,
+      "action": 3,
+      "id": 112707
+    },
+    {
+      "month": 12,
+      "action": 3,
+      "id": 112708
+    },
+    {
+      "month": 10,
+      "action": 4,
+      "id": 112709
+    },
+    {
+      "month": 11,
+      "action": 4,
+      "id": 112710
+    },
+    {
+      "month": 12,
+      "action": 4,
+      "id": 112711
+    }
+  ],
+  "verification": {
+    "bookings": 36,
+    "arrivalDates": 35,
+    "jobs": [
+      {
+        "id": 112709,
+        "state": "Succeeded",
+        "progress": "{\"status\":\"Completed\",\"results\":[{\"ownerId\":\"fa985716-6d5a-4c5a-b554-140a6ea00e9e\",\"ok\":true,\"code\":null,\"unchanged\":false,\"issues\":null,\"details\":null}],\"errorCode\":null}"
+      },
+      {
+        "id": 112710,
+        "state": "Succeeded",
+        "progress": "{\"status\":\"Completed\",\"results\":[{\"ownerId\":\"fa985716-6d5a-4c5a-b554-140a6ea00e9e\",\"ok\":true,\"code\":null,\"unchanged\":false,\"issues\":null,\"details\":null}],\"errorCode\":null}"
+      },
+      {
+        "id": 112711,
+        "state": "Succeeded",
+        "progress": "{\"status\":\"Completed\",\"results\":[{\"ownerId\":\"fa985716-6d5a-4c5a-b554-140a6ea00e9e\",\"ok\":true,\"code\":null,\"unchanged\":false,\"issues\":null,\"details\":null}],\"errorCode\":null}"
+      }
+    ],
+    "versions": [
+      {
+        "month": 10,
+        "number": 2,
+        "status": 4,
+        "issues": null,
+        "balance": 265.9,
+        "pdfExists": true,
+        "bytes": 58339
+      },
+      {
+        "month": 11,
+        "number": 2,
+        "status": 4,
+        "issues": null,
+        "balance": 1531.18,
+        "pdfExists": true,
+        "bytes": 74123
+      },
+      {
+        "month": 12,
+        "number": 2,
+        "status": 4,
+        "issues": null,
+        "balance": 2886.85,
+        "pdfExists": true,
+        "bytes": 74427
+      }
+    ]
+  },
+  "notes": [
+    "Durations and prices unchanged; 36 bookings across 35 distinct arrival dates, no within-property overlaps.",
+    "Guest document service periods/descriptions, manual police proof days, activity timelines and ledger dates aligned.",
+    "Three native version-2 owner statements published; version-1 PDFs retained as history. Original invoices remain valid for the same owner/month and unchanged amounts."
+  ]
+}
