@@ -281,7 +281,7 @@ public sealed class MessageThreadDto
 
 /// <summary>
 /// The chat of each listing the caller reaches (<c>GET api/messages/channel-status</c>, E23/F01/US01/T03): one item per listing with a confirmed mapping, with its property,
-/// its <c>Status</c> (<c>available</c>, <c>waiting_permission</c> when the chat module is not in the license of the listing yet, <c>error</c> for any other failure of the last
+/// its <c>Status</c> (<c>pending_sync</c>, <c>available</c>, <c>waiting_permission</c> when the chat module is not in the license of the listing yet, <c>error</c> for any other failure of the last
 /// pass) and <c>LastCheckedAt</c>, the instant of the last pass that reached it (<c>null</c> while none did). It is how the inbox says «this listing has no chat yet» instead of
 /// showing an empty list. No name of a guest, no address, no code of the channel manager.
 /// </summary>

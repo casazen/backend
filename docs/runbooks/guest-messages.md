@@ -118,6 +118,26 @@ channels (Airbnb, Booking.com, Vrbo, Expedia) that the sync copies from the chan
 ([`octorate-webhooks.md`](octorate-webhooks.md) § 4c). `IMessageHubService` reads them; the direct endpoints above answer exactly as before. Always on:
 with the connector off the OTA part is empty.
 
+### Channel coverage and pilot
+
+Hosts open **Messaggi** from the Short Rent menu. The unread count combines direct and OTA conversations. The web UI keeps the inbox beside the conversation
+on desktop, shows the stay in a third pane on wide screens, and opens stay details on demand on smaller screens. The same reply box works on both sources.
+The [message assistant](message-assistant.md) can prepare a draft for review, subject to the existing feature flag, permissions and organization settings.
+
+Keep Octorate as the provider for supported OTA chats. Linking a listing or importing its booking does not verify that the chat works. The endpoint
+`GET api/messages/channel-status` reports `pending_sync` until the first recorded pass succeeds or fails, `available` after a successful pass,
+`waiting_permission` for a missing chat entitlement, and `error` for other recorded failures. The inbox names affected properties. A successful pass
+verifies that the integration could read the listing, while delivery must be checked on the original portal.
+
+Run the pilot with a licensed Octorate listing and a confirmed mapping. For each active supported OTA, send a test guest message and check that it appears
+once under the correct property and reservation. Reply manually from CasaZen and check that the guest sees it in the original conversation. Then repeat with
+an approved AI draft in a test organization with the assistant configured. Compare the visible thread with the portal, including message order and delivery
+status. On a confirmed direct booking, repeat the guest-to-host and host-to-guest flow from «Le mie prenotazioni». Confirm that a read-only collaborator sees
+only the properties in scope and cannot send replies. The endpoint and UI tests can run with synthetic messages. They do not establish delivery on a live OTA.
+
+The public contact form for visitors without a booking sends an email to the host. Replies in an external email mailbox are outside the booking chat. A
+future inbox for those inquiries would require an email intake and reply path, including a way to identify the correct conversation without relying on a name.
+
 **Thread key.** Every conversation is named by an opaque key, `ota:{thread id}` or `direct:{booking id}` (the guid with dashes, lower case;
 `MessageThreadKey`). The client hands back what the server gave and never builds one. Anything else is **400 `thread_key_invalid`**. A direct
 conversation is named by its booking because it has one thread per booking.
