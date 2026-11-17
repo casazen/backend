@@ -14,7 +14,8 @@ public sealed class OwnerMandateDocuments(
     IOwnerMandateService mandates,
     IFileStorage storage,
     IContractTextReader reader,
-    IAiProvider ai)
+    IAiProvider ai,
+    ILogger<OwnerMandateDocuments> logger)
 {
     public const long MaxBytes = 20 * 1024 * 1024;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -82,8 +83,18 @@ public sealed class OwnerMandateDocuments(
         }
         catch
         {
-            // This fresh random object cannot belong to an earlier version. A failed write must not leave an orphan.
-            await storage.DeleteAsync(StorageBucket.Private, key, CancellationToken.None);
+            // This fresh object cannot belong to an earlier version. Cleanup must preserve the original write failure.
+            try
+            {
+                await storage.DeleteAsync(StorageBucket.Private, key, CancellationToken.None);
+            }
+            catch (Exception cleanupError)
+            {
+                // Storage outage: the private object may remain orphaned until operations reconcile this owner's folder.
+                // Log identifiers and the error type only, never the key, document, or exception message.
+                logger.LogWarning("Mandate document cleanup failed for org {OrgId}, owner {OwnerId}: {ErrorType}",
+                    scope.OrgId, ownerId, cleanupError.GetType().Name);
+            }
             throw;
         }
     }

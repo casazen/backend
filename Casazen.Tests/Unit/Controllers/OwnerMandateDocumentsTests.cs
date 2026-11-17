@@ -5,6 +5,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using Moq;
 using UglyToad.PdfPig.Content;
 using UglyToad.PdfPig.Writer;
@@ -20,7 +21,7 @@ public sealed class OwnerMandateDocumentsTests
     private readonly Mock<IFileStorage> storage = new();
     private readonly Mock<IContractTextReader> reader = new();
     private readonly Mock<IAiProvider> ai = new();
-    private OwnerMandateDocuments Service => new(mandates.Object, storage.Object, reader.Object, ai.Object);
+    private OwnerMandateDocuments Service => new(mandates.Object, storage.Object, reader.Object, ai.Object, Mock.Of<ILogger<OwnerMandateDocuments>>());
 
     private void Reachable() => mandates.Setup(m => m.ListAsync(scope, owner, It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<OwnerMandate>());
     private static IFormFile Pdf()
@@ -94,6 +95,19 @@ public sealed class OwnerMandateDocumentsTests
         await Assert.ThrowsAsync<DomainConflictException>(() => Service.SaveAsync(scope, owner, new(), Pdf(), "user", default));
         Assert.StartsWith(StorageKeys.OwnerMandate(scope.OrgId, owner, string.Empty), stored);
         storage.Verify(s => s.DeleteAsync(StorageBucket.Private, stored!, CancellationToken.None), Times.Once);
+    }
+
+    [Fact]
+    public async Task CleanupFailure_PreservesTheOriginalMandateWriteFailure()
+    {
+        Reachable();
+        var original = new DomainConflictException("owner_mandate_overlap", "OwnerMandateOverlap");
+        mandates.Setup(m => m.CreateVersionAsync(scope, owner, It.IsAny<OwnerMandateCommand>(), "user", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(original);
+        storage.Setup(s => s.DeleteAsync(StorageBucket.Private, It.IsAny<string>(), CancellationToken.None))
+            .ThrowsAsync(new IOException("storage unavailable"));
+        var failure = await Assert.ThrowsAsync<DomainConflictException>(() => Service.SaveAsync(scope, owner, new(), Pdf(), "user", default));
+        Assert.Same(original, failure);
     }
 
     [Fact]
