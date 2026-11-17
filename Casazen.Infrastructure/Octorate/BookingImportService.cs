@@ -757,8 +757,10 @@ public sealed class BookingImportService(
     {
         var mapping = await db.OctorateListingMappings
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .FirstOrDefaultAsync(m => m.Id == target.MappingId && m.OrgId == target.OrgId, ct);
-        if (mapping is null)
+            .FirstOrDefaultAsync(m => m.Id == target.MappingId && m.OrgId == target.OrgId
+                                     && m.PropertyId == target.PropertyId && m.Status == OctorateMappingStatus.Confirmed
+                                     && m.OctorateProductId == target.ProductId, ct);
+        if (mapping is null || mapping.BookingsImportedThrough > startedAt)
             return;
 
         // A full read covers the whole history; a window covers up to now only when it reaches back to the last complete read.

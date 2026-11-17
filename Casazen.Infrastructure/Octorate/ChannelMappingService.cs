@@ -6,6 +6,8 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Jobs;
+using Hangfire;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
@@ -48,7 +50,8 @@ public sealed class ChannelMappingService(
     IHostEnvironment hostEnvironment,
     TimeProvider timeProvider,
     ILogger<ChannelMappingService> logger,
-    IAiProvider? ai = null) : IChannelMappingService
+    IAiProvider? ai = null,
+    IBackgroundJobClient? jobs = null) : IChannelMappingService
 {
     /// <summary>The entity type of the "To do" about a mapping.</summary>
     public const string MappingEntityType = "OctorateListingMapping";
@@ -241,13 +244,17 @@ public sealed class ChannelMappingService(
         }
 
         ApplyRooms(row, rooms);
-        row.OctorateProductId = ChooseRoom(rooms, octorateProductId);
+        var roomId = ChooseRoom(rooms, octorateProductId);
+        if (row.OctorateProductId != roomId)
+            row.BookingsImportedThrough = null;
+        row.OctorateProductId = roomId;
         row.ChannelIdsJson = ChannelIdsJsonOf(connections);
         MarkConfirmed(row, propertyId, userId);
         await ReleaseFromOtherRowsAsync(orgId, propertyId, row.Id, ct);
         await SaveConfirmedAsync(ct);
         await CloseConfirmTodoAsync(row, userId, ct);
 
+        QueueBookingImport(row);
         Audit("confirmed", row, userId);
     }
 
@@ -273,10 +280,14 @@ public sealed class ChannelMappingService(
             rooms = await client.GetRoomsAsync(row.OctorateAccommodationId, ct);
 
         ApplyRooms(row, rooms);
-        row.OctorateProductId = ChooseRoom(rooms, octorateProductId);
+        var roomId = ChooseRoom(rooms, octorateProductId);
+        if (row.OctorateProductId != roomId)
+            row.BookingsImportedThrough = null;
+        row.OctorateProductId = roomId;
         row.UpdatedAt = Now();
         await db.SaveChangesAsync(ct);
 
+        QueueBookingImport(row);
         Audit("room-set", row, userId);
     }
 
@@ -356,6 +367,7 @@ public sealed class ChannelMappingService(
             ct);
         await CloseConfirmTodoAsync(row, userId, ct);
 
+        QueueBookingImport(row);
         Audit("imported", row, userId);
         return created.Id;
     }
@@ -452,6 +464,14 @@ public sealed class ChannelMappingService(
             .ToList();
         row.SnapshotRoomsJson = JsonSerializer.Serialize(units, Json);
         row.SnapshotMaxGuests = units.Max(unit => unit.MaxGuests);
+    }
+
+    // Import as soon as the host has chosen a mapping and its room, rather than waiting up to six hours for reconciliation.
+    // The job rechecks the connected org, environment and current mapping before it reads any reservation.
+    private void QueueBookingImport(OctorateListingMapping row)
+    {
+        if (row.PropertyId is { } propertyId && row.OctorateProductId is not null)
+            jobs?.Enqueue<OctorateBookingImportJob>(job => job.ExecutePropertyAsync(row.OrgId, propertyId, CancellationToken.None));
     }
 
     private void MarkConfirmed(OctorateListingMapping row, Guid propertyId, string userId)
