@@ -1,0 +1,18 @@
+# Account preference for Alloggiati / ISTAT — issue #911
+
+The account administrator chooses the sender on **Inizia con CasaZen** before configuring individual accommodation connections. The preference applies to current and future Italian properties without an explicit override. Property overrides remain authoritative; the screen reports their count. Outside Italy, no Italian sender is inherited. Existing organizations with no preference retain their previous connected/manual default.
+
+`GET/PUT /api/orgs/me/compliance-sender` requires `OrgBillingAdmin`, resolves the organization from the authenticated request (never a body parameter), returns no credentials, and uses private/no-store responses. PUT requires confirmation; ChannelManager requires the current version of the existing delegation. The account revision and EF concurrency tokens reject stale updates. Guest auto-send remains an explicit organization-wide setting, off by default. The nullable columns require the normal EF migration before the API deployment; no existing choice or credential is backfilled or copied.
+
+Sender precedence is: non-Italian not-applicable → explicit property choice → explicit account preference (`OrganizationDefault`) → existing connected/manual fallback. Alloggiati and ISTAT use the same effective sender. Keeping an inherited choice while reviewing the property wizard does not create a property override. Operational state still comes from the property's actual connection and police-account verification; selecting a preference does not activate any external service. Changing an automatic sender requires the administrator's confirmation that the prior sender is disabled. No new Alloggiati transmission implementation is introduced.
+
+## Credentials are not apartment identifiers
+
+Official sources checked on 17 November 2026:
+
+- [Alloggiati Web user manual, section 8](https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/Download/Manuali/manuale.pdf): enabled apartment managers/owners can manage several apartments under their account; municipalities are limited to the province of the issuing Questura.
+- [Questura di Roma application](https://questure.poliziadistato.it/statics/17/modulo-abilitazione-alloggiati-web.pdf): “Gestione Appartamenti” can be requested by agencies or owners of multiple activities, with accommodation-category restrictions. This is not blanket authorization for every property nationally.
+- [Official GestioneAppartamenti_Send SOAP contract](https://alloggiatiweb.poliziadistato.it/service/Service.asmx?op=GestioneAppartamenti_Send): authentication uses Utente/token, and the send also specifies `IdAppartamento`.
+- [Official web-services manual](https://alloggiatiweb.poliziadistato.it/PortaleAlloggiati/Download/Manuali/MANUALEWS.pdf): apartment-management operations apply to authorized accounts and their apartment identifiers.
+
+Therefore, a private host or agency may reuse the credentials of a **properly authorized** multi-apartment account; each apartment still needs the correct identifier, and different provincial or category authorizations may require different accounts. ISTAT credentials depend on the regional system. This change centralizes the **sending preference** and guest-auto-send setting, while preserving the existing per-property credential scope and activation checks. It does not silently copy secrets or pretend every property shares the same authorization. A generalized credential-vault/authorized-account mapping is separate from this preference and would require adapting receipt retrieval and the direct apartment-specific SOAP send path.

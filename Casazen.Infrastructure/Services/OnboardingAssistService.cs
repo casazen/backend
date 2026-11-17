@@ -613,6 +613,10 @@ public sealed class OnboardingAssistService(
             .Where(s => s.OrgId == orgId && ids.Contains(s.PropertyId))
             .Select(s => new { s.PropertyId, s.AlloggiatiSender, s.LastChangedAt, s.ActivationDeclaredAt })
             .ToListAsync(ct);
+        var accountChoice = await db.Orgs.IgnoreQueryFilters([Tenant]).AsNoTracking()
+            .Where(o => o.Id == orgId)
+            .Select(o => new { o.DefaultComplianceSender, o.DefaultComplianceSenderChangedAt })
+            .SingleOrDefaultAsync(ct);
         List<OnboardingPanelStep> steps = kinds.Count == 0
             ? []
             : await db.OnboardingPanelSteps
@@ -642,6 +646,16 @@ public sealed class OnboardingAssistService(
             var sender = senders.FirstOrDefault(s => s.PropertyId == property.Id);
             var italian = TouristTaxComune.IsItalianCountry(property.Country);
             var applicableKinds = italian ? kinds : kinds.Where(k => k == PanelStepKind.ChannelAccess).ToList();
+            // The saved account choice is configuration, never a declaration that this property sends successfully.
+            AssistSenderLine? senderLine = null;
+            if (italian)
+            {
+                if (sender is not null)
+                    senderLine = new AssistSenderLine(sender.AlloggiatiSender, sender.LastChangedAt, sender.ActivationDeclaredAt >= sender.LastChangedAt);
+                else if (accountChoice?.DefaultComplianceSender is ComplianceSenderType.Manual or ComplianceSenderType.ChannelManager
+                         && accountChoice.DefaultComplianceSenderChangedAt is { } changedAt)
+                    senderLine = new AssistSenderLine(accountChoice.DefaultComplianceSender.Value, changedAt, false);
+            }
             blocks.Add(new AssistChecklistProperty(
                 property.Id,
                 property.Name,
@@ -652,9 +666,7 @@ public sealed class OnboardingAssistService(
                     istatRow is not null || istatVault is not null,
                     istatRow?.UpdatedAt ?? istatVault?.UpdatedAt,
                     IstatRequirementOf(request, property.Country)) : null,
-                !italian || sender is null
-                    ? null
-                    : new AssistSenderLine(sender.AlloggiatiSender, sender.LastChangedAt, sender.ActivationDeclaredAt >= sender.LastChangedAt),
+                senderLine,
                 StepsOf(request, applicableKinds, steps.Where(s => s.PropertyId == property.Id), placeholders: request.PropertyId is not null),
                 property.Country));
         }

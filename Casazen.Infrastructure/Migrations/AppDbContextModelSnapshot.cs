@@ -7176,6 +7176,18 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<int?>("DefaultComplianceSender")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("DefaultComplianceSenderChangedAt")
+                        .IsConcurrencyToken()
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DefaultComplianceSenderChangedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
                     b.Property<string>("AlloggiatiDelegationTextVersion")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");

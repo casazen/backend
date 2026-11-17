@@ -241,14 +241,27 @@ public sealed class CheckInComplianceFlowProvider(
             .Where(p => p.OrgId == orgId && ids.Contains(p.Id))
             .Select(p => new { p.Id, p.CinCode, p.Country, p.ComuneIstatCode, p.City })
             .ToListAsync(ct);
-        var withSender = (await db.PropertyComplianceSenders
-                .AsNoTracking()
-                .Where(s => s.OrgId == orgId && ids.Contains(s.PropertyId))
-                .Select(s => new { s.PropertyId, Single = s.AlloggiatiSender == s.IstatSender })
-                .ToListAsync(ct))
+        var storedSenders = await db.PropertyComplianceSenders
+            .AsNoTracking()
+            .Where(s => s.OrgId == orgId && ids.Contains(s.PropertyId))
+            .Select(s => new { s.PropertyId, Single = s.AlloggiatiSender == s.IstatSender })
+            .ToListAsync(ct);
+        var withSender = storedSenders
             .Where(s => s.Single)
             .Select(s => s.PropertyId)
             .ToHashSet();
+
+        // A saved account choice is a single sender too; an explicit property override always takes precedence.
+        // This proves only that a choice exists, never that an external connection or transmission is operational.
+        var accountChoice = await db.Orgs.AsNoTracking()
+            .Where(o => o.Id == orgId)
+            .Select(o => o.DefaultComplianceSender)
+            .SingleOrDefaultAsync(ct);
+        if (accountChoice is ComplianceSenderType.Manual or ComplianceSenderType.ChannelManager)
+        {
+            var overridden = storedSenders.Select(s => s.PropertyId).ToHashSet();
+            withSender.UnionWith(properties.Where(p => !overridden.Contains(p.Id)).Select(p => p.Id));
+        }
 
         var today = timeProvider.TodayInRomeAsDateOnly();
         var readiness = new Dictionary<Guid, FlowReadiness>(ids.Count);

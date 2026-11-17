@@ -247,6 +247,15 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         var overview = await Build(_db).Integration.GetOverviewAsync(_world.OrgId, _world.OrgWide, Ct);
 
         Assert.Equal(new OnboardingSenderCounts(ChannelManager: 1, CasaZen: 1, Manual: 0, NotSet: 1), overview.Senders);
+
+        var org = await _db.Orgs.SingleAsync(o => o.Id == _world.OrgId);
+        org.DefaultComplianceSender = ComplianceSenderType.Manual;
+        await _db.SaveChangesAsync();
+        var inherited = await Build(_db).Integration.GetOverviewAsync(_world.OrgId, _world.OrgWide, Ct);
+        Assert.Equal(new OnboardingSenderCounts(ChannelManager: 1, CasaZen: 1, Manual: 1, NotSet: 0), inherited.Senders);
+        // Stored choices win, foreign/long/inactive properties remain excluded, and collaborator scope stays narrow.
+        var restricted = await Build(_db).Integration.GetOverviewAsync(_world.OrgId, _world.Restricted, Ct);
+        Assert.Equal(new OnboardingSenderCounts(ChannelManager: 1, CasaZen: 0, Manual: 0, NotSet: 0), restricted.Senders);
     }
 
     /// <summary>

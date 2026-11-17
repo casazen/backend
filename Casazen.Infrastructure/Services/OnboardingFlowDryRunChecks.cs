@@ -88,7 +88,7 @@ public sealed class BookingsDryRunCheck(BookingStateMapper mapper) : IFlowDryRun
 
 /// <summary>
 /// The final test of the check-in and compliance flow (E10/F01/US01/T04): the state of the check-in wizard of the booking, read through
-/// <see cref="ICheckInWizardService.GetStateAsync"/> only (the send is never called): the property has a stored sender of the police and ISTAT
+/// <see cref="ICheckInWizardService.GetStateAsync"/> only (the send is never called): the property has an explicitly chosen property or account sender of the police and ISTAT
 /// communications, and the guest data still to give are reported (information: they are often given at the arrival). A booking that owes no
 /// police communication (<see cref="AlloggiatiStatusRules.IsDue"/>: a request, a cancelled booking, a no-show) and a property outside Italy are
 /// skipped.
@@ -118,7 +118,7 @@ public sealed class CheckInComplianceDryRunCheck(ICheckInWizardService wizard) :
             return FlowCheckResult.Skipped(Flow, FlowCheckReasons.NotApplicable);
 
         var guestDataMissing = state.Issues.Any(issue => issue.Blocking);
-        if (state.Sender.Source != SenderSource.Stored)
+        if (state.Sender.Source is not (SenderSource.Stored or SenderSource.OrganizationDefault))
         {
             return guestDataMissing
                 ? FlowCheckResult.Fail(Flow, FlowCheckReasons.SenderMissing, FlowCheckReasons.GuestDataMissing)

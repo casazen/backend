@@ -208,6 +208,40 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
 
     // ─── The checklist ───────────────────────────────────────────────────────────────────────────────────────
 
+    [Fact]
+    public async Task Checklist_InheritsOnlyTheRequestOrganizationsSavedChoice_WithoutDeclaringActivation()
+    {
+        var request = await RequestAsync(OnboardingAssistContexts.PanelPolice, _world.Granted.Id);
+        Assert.Null(Assert.Single((await StaffService().GetAsync(request.Id, Ct)).Checklist).Sender);
+        var org = await _db.Orgs.SingleAsync(o => o.Id == _world.OrgId);
+        org.DefaultComplianceSender = ComplianceSenderType.Manual;
+        org.DefaultComplianceSenderChangedAt = _clock.GetUtcNow().UtcDateTime;
+        var staffOrg = await _db.Orgs.SingleAsync(o => o.Id == _world.OtherOrgId);
+        staffOrg.DefaultComplianceSender = ComplianceSenderType.ChannelManager;
+        staffOrg.DefaultComplianceSenderChangedAt = _clock.GetUtcNow().UtcDateTime;
+        await _db.SaveChangesAsync();
+
+        var inherited = Assert.Single((await StaffService().GetAsync(request.Id, Ct)).Checklist);
+        Assert.Equal(new AssistSenderLine(ComplianceSenderType.Manual, org.DefaultComplianceSenderChangedAt.Value, false), inherited.Sender);
+        Assert.False(inherited.PoliceCredentials!.Present);
+        _db.PropertyComplianceSenders.Add(new PropertyComplianceSender
+        {
+            OrgId = _world.OrgId,
+            PropertyId = _world.Granted.Id,
+            AlloggiatiSender = ComplianceSenderType.ChannelManager,
+            IstatSender = ComplianceSenderType.ChannelManager,
+            LastChangedAt = _clock.GetUtcNow().UtcDateTime,
+            LastChangedByUserId = _world.OwnerUserId,
+        });
+        await _db.SaveChangesAsync();
+        Assert.Equal(ComplianceSenderType.ChannelManager, Assert.Single((await StaffService().GetAsync(request.Id, Ct)).Checklist).Sender!.Sender);
+
+        // A historic support request may still exist after the property country changes: no Italian sender is then shown.
+        (await _db.Properties.SingleAsync(p => p.Id == _world.Granted.Id, Ct)).Country = "CH";
+        await _db.SaveChangesAsync();
+        Assert.Null(Assert.Single((await StaffService().GetAsync(request.Id, Ct)).Checklist).Sender);
+    }
+
     /// <summary>
     /// Support sees what is missing per property before working: the user of the panel in the vault, the police and the ISTAT credentials (and whether the
     /// region needs the ISTAT ones), the stored sender, and each panel step with the key of its guide and its state. Presence and dates only.

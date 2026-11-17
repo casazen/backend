@@ -462,6 +462,54 @@ public class PropertySenderServiceTests
         Assert.True((await service.GetAsync(world.Connected, CancellationToken.None)).AutoSendGuestsToOctorate);
     }
 
+    [Fact]
+    public async Task AccountChoice_IsInheritedByItalianProperties_WithoutMarkingThemOperational()
+    {
+        var name = Guid.NewGuid().ToString();
+        var world = await SeedAsync(name);
+        await using var db = OrgTeamTestData.NewDb(name);
+        var org = await db.Orgs.SingleAsync(o => o.Id == world.OrgId);
+        org.DefaultComplianceSender = ComplianceSenderType.ChannelManager;
+        org.DefaultComplianceSenderChangedAt = Start.UtcDateTime;
+        await db.SaveChangesAsync();
+        var service = NewService(db, new FakeTimeProvider(Start), new Mock<IOctorateApiClient>());
+
+        var inherited = await service.GetAsync(world.NotConnected, CancellationToken.None);
+        Assert.Equal(SenderSource.OrganizationDefault, inherited.Source);
+        Assert.Equal(ComplianceSenderType.ChannelManager, inherited.Sender);
+        Assert.Equal(inherited.Sender, inherited.IstatSender);
+        Assert.NotEqual(SenderState.Active, inherited.State);
+        Assert.False(inherited.ChannelManagerAvailable);
+        var swiss = await service.GetAsync(world.Swiss, CancellationToken.None);
+        Assert.Equal(SenderSource.NotApplicable, swiss.Source);
+        Assert.False(swiss.Applies);
+    }
+
+    [Fact]
+    public async Task AccountChoice_PreservesExplicitPropertyOverride_AndNeverLeaksAcrossOrganizations()
+    {
+        var name = Guid.NewGuid().ToString();
+        var world = await SeedAsync(name);
+        await using var db = OrgTeamTestData.NewDb(name);
+        var service = NewService(db, new FakeTimeProvider(Start), new Mock<IOctorateApiClient>());
+        await service.SwitchAsync(world.Connected, ComplianceSenderType.Manual, true, false, Host, CancellationToken.None);
+        var org = await db.Orgs.SingleAsync(o => o.Id == world.OrgId);
+        org.DefaultComplianceSender = ComplianceSenderType.ChannelManager;
+        var other = OrgTeamTestData.AddOrg(db);
+        other.DefaultComplianceSender = ComplianceSenderType.Manual;
+        var otherProperty = NewProperty(other.Id, "IT", 4);
+        db.Properties.Add(otherProperty);
+        await db.SaveChangesAsync();
+
+        var explicitChoice = await service.GetAsync(world.Connected, CancellationToken.None);
+        Assert.Equal((SenderSource.Stored, ComplianceSenderType.Manual), (explicitChoice.Source, explicitChoice.Sender));
+        var otherChoice = await service.GetAsync(otherProperty.Id, CancellationToken.None);
+        Assert.Equal((SenderSource.OrganizationDefault, ComplianceSenderType.Manual), (otherChoice.Source, otherChoice.Sender));
+        var original = await service.GetAsync(world.NotConnected, CancellationToken.None);
+        Assert.Equal(ComplianceSenderType.ChannelManager, original.Sender);
+        Assert.Single(await db.PropertyComplianceSenders.ToListAsync());
+    }
+
     /// <summary>The sender service over the real store and delegation service, with the clock, Octorate and the flags under the test's control.</summary>
     private static PropertySenderService NewService(AppDbContext db, FakeTimeProvider clock, Mock<IOctorateApiClient> octorate)
     {

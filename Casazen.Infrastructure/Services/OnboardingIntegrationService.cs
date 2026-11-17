@@ -105,7 +105,7 @@ public sealed class OnboardingIntegrationService(
 
     /// <summary>
     /// The properties for each stored sender. A property outside Italy has no police sender to choose (the store says it does not apply), so it
-    /// is in no count; a property with no stored choice is <c>notSet</c> (its default is not a choice).
+    /// is in no count; a property with no stored choice inherits an explicit account choice, or is <c>notSet</c> (an implicit default is not a choice).
     /// </summary>
     private async Task<OnboardingSenderCounts> SenderCountsAsync(
         Guid orgId,
@@ -128,7 +128,21 @@ public sealed class OnboardingIntegrationService(
         var channelManager = Of(ComplianceSenderType.ChannelManager);
         var casaZen = Of(ComplianceSenderType.CasaZen);
         var manual = Of(ComplianceSenderType.Manual);
-        return new OnboardingSenderCounts(channelManager, casaZen, manual, applicable.Count - channelManager - casaZen - manual);
+        var notSet = applicable.Count - channelManager - casaZen - manual;
+        var accountChoice = await db.Orgs.AsNoTracking().Where(o => o.Id == orgId)
+            .Select(o => o.DefaultComplianceSender).SingleOrDefaultAsync(ct);
+        // Only a person-saved account choice counts; the connected/manual fallback still means notSet.
+        if (accountChoice == ComplianceSenderType.ChannelManager)
+        {
+            channelManager += notSet;
+            notSet = 0;
+        }
+        else if (accountChoice == ComplianceSenderType.Manual)
+        {
+            manual += notSet;
+            notSet = 0;
+        }
+        return new OnboardingSenderCounts(channelManager, casaZen, manual, notSet);
     }
 
     /// <summary>The channel states of the properties, for each publication status; every status is listed, with zero when none is in it.</summary>
