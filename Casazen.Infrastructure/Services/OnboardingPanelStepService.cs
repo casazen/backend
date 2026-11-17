@@ -57,6 +57,8 @@ public sealed class OnboardingPanelStepService(
         var panelUrl = OnboardingChannelAccessHandoff.PanelUrlOf(octorateOptions.Value.FrontendBaseUrl, channelCode)
             ?? throw new DomainConflictException("octorate_panel_url_missing", "OctoratePanelUrlMissing");
         await OnboardingReach.EnsureAsync(db, scope, request.PropertyId, ct);
+        if (request.Kind is PanelStepKind.PoliceConnection or PanelStepKind.IstatConnection)
+            await OnboardingReach.EnsureItalianComplianceAsync(db, scope, request.PropertyId, ct);
 
         // A panel that sends the person back uses the registered callback of CasaZen; one that does not is a window CasaZen manages.
         var callbackBase = VerifierOf(request.Kind) is { SupportsCallback: true } ? ParseCallbackBase(octorateOptions.Value.RedirectUri) : null;

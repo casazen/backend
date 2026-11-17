@@ -191,6 +191,8 @@ public sealed class AdminAssistRequestDetailDto
 /// </summary>
 public sealed class AssistChecklistPropertyDto
 {
+    public string? Country { get; set; }
+
     public Guid? PropertyId { get; set; }
 
     public string? PropertyName { get; set; }

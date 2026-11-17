@@ -67,6 +67,7 @@ public static class OnboardingAssistMapping
 
     public static AssistChecklistPropertyDto ToDto(this AssistChecklistProperty block) => new()
     {
+        Country = block.Country,
         PropertyId = block.PropertyId,
         PropertyName = block.PropertyName,
         Comune = block.Comune,
