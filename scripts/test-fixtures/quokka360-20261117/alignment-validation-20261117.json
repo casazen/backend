@@ -1,0 +1,98 @@
+{
+  "date": "2026-11-17",
+  "environment": "test",
+  "audit": [
+    {
+      "check_name": "booking_guest_tenant",
+      "bad": 0
+    },
+    {
+      "check_name": "booking_overlap",
+      "bad": 0
+    },
+    {
+      "check_name": "fiscal_arithmetic",
+      "bad": 0
+    },
+    {
+      "check_name": "guest_issued_document",
+      "bad": 0
+    },
+    {
+      "check_name": "guest_required_identity",
+      "bad": 0
+    },
+    {
+      "check_name": "guest_roster_count",
+      "bad": 0
+    },
+    {
+      "check_name": "issuer_lock_mismatch",
+      "bad": 0
+    },
+    {
+      "check_name": "italian_police_completed",
+      "bad": 0
+    },
+    {
+      "check_name": "missing_manual_proof_files",
+      "bad": 0
+    },
+    {
+      "check_name": "missing_private_owner_files",
+      "bad": 0
+    },
+    {
+      "check_name": "overdue_todo",
+      "bad": 0
+    },
+    {
+      "check_name": "owner_period_balance",
+      "bad": 0
+    },
+    {
+      "check_name": "paid_balance",
+      "bad": 0
+    },
+    {
+      "check_name": "swiss_police_receipt",
+      "bad": 0
+    },
+    {
+      "check_name": "unpublished_current_statement",
+      "bad": 0
+    }
+  ],
+  "backend": {
+    "commit": "2e5c92233ec0d427ddecc6f22eaf56dc37311781",
+    "pullRequest": 931,
+    "targetedTests": {
+      "passed": 149,
+      "failed": 0,
+      "note": "Validated actual business code; historical EF migration designer/snapshot files excluded only from local validation to fit compiler memory. The temporary csproj change was restored and is not committed. Full CI queued."
+    }
+  },
+  "frontend": {
+    "commit": "33d808019640586e0cb754e996b061c37ce4823c",
+    "pullRequest": 609,
+    "targetedTests": {
+      "passed": 47,
+      "failed": 0
+    },
+    "previewDeployment": "dpl_CU354cj6JjPQxcnUXo14GvcKHpiR",
+    "previewBuildStatus": "READY"
+  },
+  "housekeeping": {
+    "routinesTestMode": 3,
+    "completedPaidManualRequests": 12,
+    "completedTurnoversReady": 12,
+    "realNotifications": 0,
+    "realPayments": 0
+  },
+  "pending": [
+    "Railway changes staged only in test, not applied: source commit 2e5c92233ec0d427ddecc6f22eaf56dc37311781.",
+    "After deployment, remove ten legacy Swiss manual-proof cockpit compatibility rows; retain the actual Swiss police receipts and their private PDFs.",
+    "Move only casazen-test-app.vercel.app alias to the new frontend after confirming preview uses test API/Auth0.",
+    "No merge, production deploy, owner-account role change or Chiara invitation."
+  ]
+}
