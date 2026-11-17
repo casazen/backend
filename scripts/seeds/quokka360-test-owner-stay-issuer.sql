@@ -25,7 +25,7 @@ BEGIN
  'Luca La Malfa [TEST - dati sintetici]','LMLLCU80A01H501S',NULL,
  'Via dei Collaudi TEST','1','22100','Como','CO','IT',
  NULL,'0000000','luca.lamalfa@pec.example.test','LLM{year}','TEST-BOLLO-NON-REALE',
- 1,0,false,false,false,false,false,false,now(),now(),'auth0|6afb6c7bb2c0f85f4e97f136');
+ 1,1,false,false,false,false,false,false,now(),now(),'auth0|6afb6c7bb2c0f85f4e97f136');
  -- VAT number, FatturaPA regime, Swiss UID and bank accounts do not belong to this
  -- private Italian owner issuer request; do not create fabricated VAT registration.
 END $$;
