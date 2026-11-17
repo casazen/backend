@@ -279,12 +279,14 @@ public class InternalActivityService(
     public async Task CloseInScopeAsync(Guid activityId, HostScope scope, string closedBy, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        var closer = ClosedByOf(closedBy);
+        _ = ClosedByOf(closedBy);
         var activity = await Todos(scope)
             .FirstOrDefaultAsync(a => a.Id == activityId, ct)
             ?? throw new NotFoundException("To do not found.");
 
-        await MarkClosedAsync(activity, closer, ct);
+        // Host reminders describe persisted business state. A generic dismissal must never hide an unfinished process.
+        if (activity.CompletedAt is null)
+            throw new DomainConflictException(InternalActivityErrors.ManagedAutomatically, InternalActivityErrors.ManagedAutomaticallyMessageKey);
     }
 
     public async Task<InternalActivity?> FindOpenAsync(Guid orgId, string action, string entityType, Guid entityId, CancellationToken ct = default)

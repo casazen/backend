@@ -127,9 +127,9 @@ public interface IInternalActivityService
     Task CloseAsync(Guid activityId, string closedBy, CancellationToken ct);
 
     /// <summary>
-    /// <see cref="CloseAsync"/> for a user who closes an item of the list by hand: the item must be one the scope reaches
-    /// (<see cref="GetPendingAsync"/>, closed ones included); any other id is a <see cref="Exceptions.NotFoundException"/>, the
-    /// same answer as an id that does not exist.
+    /// Legacy host dismissal: verifies scope, returns idempotently for a completed item, and rejects an unfinished process
+    /// with <see cref="Exceptions.DomainConflictException"/>. Only source processes may complete host reminders.
+    /// Unknown or out-of-scope ids are <see cref="Exceptions.NotFoundException"/>.
     /// </summary>
     Task CloseInScopeAsync(Guid activityId, HostScope scope, string closedBy, CancellationToken ct);
 
@@ -211,6 +211,12 @@ public sealed record CreateTodoRequest
 /// <summary>The stable codes and the message keys (<c>SharedResources</c>, Italian and English) of the refusals of <see cref="IInternalActivityService"/> (422).</summary>
 public static class InternalActivityErrors
 {
+    /// <summary>409: the source process is still open and cannot be dismissed by hand.</summary>
+    public const string ManagedAutomatically = "internal_activity_managed_automatically";
+
+    /// <summary>The message key of the automatic-completion refusal.</summary>
+    public const string ManagedAutomaticallyMessageKey = "InternalActivityManagedAutomatically";
+
     /// <summary>
     /// 422: the staff activity was cancelled (the automatic cleaning of a stay that was cancelled before the work started) and its status cannot change any more: it is never completed, so
     /// it never comes back as a cost to recharge to the owner.
