@@ -702,26 +702,30 @@ public partial class SupplierService(
         return count;
     }
 
-    public async Task<IReadOnlyList<SupplierProfile>> GetActiveByComuneAsync(
+    public Task<IReadOnlyList<SupplierProfile>> GetActiveByComuneAsync(
         ComuneTarget target,
+        string? category,
+        CancellationToken cancellationToken = default) =>
+        GetActiveByComuniAsync([target], category, cancellationToken);
+
+    public async Task<IReadOnlyList<SupplierProfile>> GetActiveByComuniAsync(
+        IReadOnlyCollection<ComuneTarget> targets,
         string? category,
         CancellationToken cancellationToken = default)
     {
-        // Filter by category code (SU-03). An unknown code is an error (422), not an empty list that hides the mistake;
-        // a supplier matches only when it declared the code (no categories = no match).
+        // An unknown category remains a 422, including when there are no service areas.
         var categoryCode = string.IsNullOrWhiteSpace(category) ? null : ServiceCategories.Require(category);
+        if (targets.Count == 0)
+            return [];
 
         var active = await db.SupplierProfiles
             .Where(sp => sp.Status == SupplierStatus.Active)
             .ToListAsync(cancellationToken);
-
-        // By ISTAT code when the comune is known (SU-04): the supplier's chosen comuni, and what it wrote before resolved
-        // against the official list; by the written name only when the comune cannot be resolved.
-        var inComune = await comuneMatcher.FilterAsync(active, target, cancellationToken);
+        var covering = await comuneMatcher.FilterAnyAsync(active, targets, cancellationToken);
 
         return categoryCode is null
-            ? inComune.ToList()
-            : inComune.Where(sp => DeserializeStrings(sp.CategoriesJson).Contains(categoryCode, StringComparer.Ordinal)).ToList();
+            ? covering
+            : covering.Where(sp => DeserializeStrings(sp.CategoriesJson).Contains(categoryCode, StringComparer.Ordinal)).ToList();
     }
 
     public async Task<IReadOnlyList<UnmappedServiceCategory>> GetUnmappedCategoriesAsync(CancellationToken cancellationToken = default)

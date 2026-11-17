@@ -15,6 +15,22 @@ namespace Casazen.Tests.Unit.Services;
 public class SupplierComuneMatcherTests
 {
     [Fact]
+    public async Task FilterAnyAsync_MatchesBothAreasWithoutDuplicates()
+    {
+        await using var db = CreateDb();
+        await ComuneTestData.ImportSampleAsync(db);
+        var shared = Supplier(chosen: [ComuneTestData.Milano, ComuneTestData.Firenze]);
+        var inFirenze = Supplier(written: ["Firenze"]);
+        var inTorino = Supplier(chosen: [ComuneTestData.Torino]);
+
+        var found = await Matcher(db).FilterAnyAsync(
+            [shared, inFirenze, inTorino],
+            [new ComuneTarget(null, "Milano"), new ComuneTarget(ComuneTestData.Firenze, "Firenze")]);
+
+        Assert.Equal([shared.OrgId, inFirenze.OrgId], found.Select(s => s.OrgId));
+    }
+
+    [Fact]
     public async Task FilterAsync_SupplierChoseTheComuneFromTheList_MatchesThePropertyByCode()
     {
         await using var db = CreateDb();
