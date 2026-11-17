@@ -4640,6 +4640,8 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("UsedByUserId");
+
                     b.HasIndex("TokenHash")
                         .IsUnique()
                         .HasDatabaseName("UIX_HostInviteRecords_TokenHash");
@@ -7307,6 +7309,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(100)");
 
                     b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsAgency")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("IsAgencyTierDowngraded")

@@ -140,6 +140,10 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
             DisplayName = orgName,
             Slug = slug,
             PlanTier = PlanTier.Starter,
+            // Only an accepted invitation issued by platform staff creates an agency.
+            // Ordinary self-service signup creates a private organization.
+            IsAgency = await dbContext.HostInviteRecords.AnyAsync(i => i.IsUsed && i.UsedByUserId == userId
+                && i.InvitedByOrgId == null, cancellationToken),
             ContactEmail = email,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,

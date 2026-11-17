@@ -447,6 +447,7 @@ public class UsersController(
                 commercialOrg.CommercialSignupJson = selection.Serialize();
                 if (selection.Profile == "agency")
                 {
+                    commercialOrg.IsAgency = true;
                     commercialOrg.Name = selection.AgencyName!.Trim();
                     commercialOrg.DisplayName = commercialOrg.Name;
                     // CompleteOnboardingAsync already creates the founder's OrgRole.Owner membership,
@@ -571,6 +572,7 @@ public class UsersController(
             {
                 Id = org.Id,
                 Name = org.Name,
+                IsAgency = org.IsAgency || org.PlanTier == PlanTier.Agency,
                 Slug = org.Slug,
                 PublicSiteUrl = string.IsNullOrWhiteSpace(org.Slug)
                     ? null

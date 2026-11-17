@@ -6,6 +6,8 @@ namespace Casazen.Web.DTOs.Users;
 /// </summary>
 public class OrgSummaryDto
 {
+    public bool IsAgency { get; set; }
+
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Slug { get; set; } = string.Empty;

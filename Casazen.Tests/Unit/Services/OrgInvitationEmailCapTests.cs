@@ -67,134 +67,14 @@ public class OrgInvitationEmailCapTests
         Assert.Equal(argument, Assert.IsType<int>(Assert.Single(error.MessageArgs)));
     }
 
-    // ─── The daily cap of the org ───────────────────────────────────────────────────────────────────────
-
     [Fact]
-    public async Task CreateAsync_TheEleventhEmailInADay_Is429WithItsOwnCode_AndNothingIsSaved()
+    public async Task CreateAsync_AgencyCanSendMoreThanTheFormerDailyCap()
     {
         var orgId = await SeedScaleOrgAsync();
-        await InviteManyAsync(orgId, OrgInvitationRules.DefaultDailyLimit);
-        var emailsBefore = _kit.Emails.Snapshot().Count;
-
-        var error = await Assert.ThrowsAsync<DomainTooManyRequestsException>(() => InviteAsync(orgId, "eleventh@example.com"));
-
-        AssertTooMany(error, OrgInvitationErrors.DailyLimitReached, OrgInvitationRules.DefaultDailyLimit);
-        Assert.Equal(10, await InvitationRowsAsync(orgId));
-        Assert.Equal(emailsBefore, _kit.Emails.Snapshot().Count);
-        Assert.DoesNotContain(await _kit.ReadActivityAsync(orgId), e => e.SubjectId == "eleventh@example.com");
-    }
-
-    [Fact]
-    public async Task CreateAsync_TheRevokedInvitationsStillCount_SoCreateRevokeCreateIsNoWayRound()
-    {
-        // A Starter org holds two people: the loop frees the seat each time, so only the cap can stop it.
-        var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Starter, status: SubscriptionStatus.None);
-        for (var i = 0; i < 10; i++)
-        {
-            var sent = await InviteAsync(org.Id, "same@example.com");
-            await RevokeAsync(org.Id, sent.Invitation.Id);
-        }
-
-        var error = await Assert.ThrowsAsync<DomainTooManyRequestsException>(() => InviteAsync(org.Id, "same@example.com"));
-
-        Assert.Equal(OrgInvitationErrors.DailyLimitReached, error.Code);
-    }
-
-    [Fact]
-    public async Task CreateAsync_TheWindowSlides_AnEmailLeavesTheCountAfter24Hours()
-    {
-        var orgId = await SeedScaleOrgAsync();
-        await InviteManyAsync(orgId, 10);
-
-        _kit.Clock.Advance(TimeSpan.FromHours(23) + TimeSpan.FromMinutes(59));
-        await Assert.ThrowsAsync<DomainTooManyRequestsException>(() => InviteAsync(orgId, "late@example.com"));
-
-        _kit.Clock.Advance(TimeSpan.FromMinutes(2));
-        var sent = await InviteAsync(orgId, "later@example.com");
-
-        Assert.Equal(OrgInvitationStatus.Pending, sent.Invitation.Status);
-        // The window moves with the emails: the ones sent at different moments leave one at a time.
-        Assert.Equal(11, await InvitationRowsAsync(orgId));
-    }
-
-    [Fact]
-    public async Task CreateAsync_EmailsSentAtDifferentMoments_LeaveTheWindowOneAtATime()
-    {
-        _kit.Settings[OrgInvitationRules.DailyLimitConfigKey] = "3";
-        var orgId = await SeedScaleOrgAsync();
-        await InviteAsync(orgId, "a@example.com");
-        _kit.Clock.Advance(TimeSpan.FromHours(10));
-        await InviteAsync(orgId, "b@example.com");
-        _kit.Clock.Advance(TimeSpan.FromHours(10));
-        await InviteAsync(orgId, "c@example.com");
-        await Assert.ThrowsAsync<DomainTooManyRequestsException>(() => InviteAsync(orgId, "d@example.com"));
-
-        // 24 hours and a minute after the first one, only the first has left the window: one place is free, not three.
-        _kit.Clock.Advance(TimeSpan.FromHours(4) + TimeSpan.FromMinutes(1));
-        await InviteAsync(orgId, "d@example.com");
-        await Assert.ThrowsAsync<DomainTooManyRequestsException>(() => InviteAsync(orgId, "e@example.com"));
-    }
-
-    [Fact]
-    public async Task ResendAsync_EveryEmailCountsNotEveryInvitation_SoTheSameFewInvitationsCannotBeSentAgainForever()
-    {
-        _kit.Settings[OrgInvitationRules.DailyLimitConfigKey] = "4";
-        var orgId = await SeedScaleOrgAsync();
-        var ids = await InviteManyAsync(orgId, 3);
-
-        // Three creations, then one «reinvia» an hour later is the fourth email.
-        _kit.Clock.Advance(TimeSpan.FromHours(1));
-        await ResendAsync(orgId, ids[0]);
-
-        // The fifth is refused even for an invitation that was never sent again: the org has sent its four.
-        _kit.Clock.Advance(TimeSpan.FromHours(1));
-        var error = await Assert.ThrowsAsync<DomainTooManyRequestsException>(() => ResendAsync(orgId, ids[1]));
-        AssertTooMany(error, OrgInvitationErrors.DailyLimitReached, 4);
-
-        // And so is a creation.
-        await Assert.ThrowsAsync<DomainTooManyRequestsException>(() => InviteAsync(orgId, "new@example.com"));
-    }
-
-    [Fact]
-    public async Task CreateAsync_TheCapOfTwoOrgs_IsPerOrg()
-    {
-        var orgA = await SeedScaleOrgAsync("auth0|owner-a");
-        var orgB = await SeedScaleOrgAsync("auth0|owner-b");
-        await InviteManyAsync(orgA, 10, "a", "auth0|owner-a");
-
-        await Assert.ThrowsAsync<DomainTooManyRequestsException>(() => InviteAsync(orgA, "more@example.com", "auth0|owner-a"));
-        var sent = await InviteAsync(orgB, "first@example.com", "auth0|owner-b");
-
-        Assert.Equal(OrgInvitationStatus.Pending, sent.Invitation.Status);
-    }
-
-    [Fact]
-    public async Task CreateAsync_TheDailyLimitSetting_ChangesTheCap()
-    {
-        _kit.Settings[OrgInvitationRules.DailyLimitConfigKey] = "2";
-        var orgId = await SeedScaleOrgAsync();
-        await InviteManyAsync(orgId, 2);
-
-        var error = await Assert.ThrowsAsync<DomainTooManyRequestsException>(() => InviteAsync(orgId, "third@example.com"));
-
-        AssertTooMany(error, OrgInvitationErrors.DailyLimitReached, 2);
-    }
-
-    [Theory]
-    [InlineData("abc")]
-    [InlineData("0")]
-    [InlineData("-4")]
-    [InlineData("")]
-    [InlineData("2.5")]
-    public async Task TheCap_AValueThatIsNotAPositiveWholeNumber_IsIgnoredAndTheDefaultApplies(string configured)
-    {
-        _kit.Settings[OrgInvitationRules.DailyLimitConfigKey] = configured;
-        var orgId = await SeedScaleOrgAsync();
-
-        await InviteManyAsync(orgId, OrgInvitationRules.DefaultDailyLimit);
-        var error = await Assert.ThrowsAsync<DomainTooManyRequestsException>(() => InviteAsync(orgId, "over@example.com"));
-
-        AssertTooMany(error, OrgInvitationErrors.DailyLimitReached, OrgInvitationRules.DefaultDailyLimit);
+        _kit.Settings[OrgInvitationRules.DailyLimitConfigKey] = "1";
+        await InviteManyAsync(orgId, 25);
+        Assert.Equal(25, await InvitationRowsAsync(orgId));
+        Assert.Equal(25, _kit.Emails.Snapshot().Count);
     }
 
     // ─── «Reinvia»: one an hour for each invitation ─────────────────────────────────────────────────────

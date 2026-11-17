@@ -336,23 +336,24 @@ public static partial class EmailTemplates
         string? inviterName,
         string? message,
         string signupUrl,
-        DateTime expiresAtUtc)
+        DateTime expiresAtUtc,
+        bool isAgency = false)
     {
         var builder = new EmailHtmlBuilder(culture);
         builder.Heading("HostInvite_Title");
         if (string.IsNullOrWhiteSpace(inviterName))
-            builder.Paragraph("HostInvite_BodyFromTeam");
+            builder.Paragraph(isAgency ? "AgencyInvite_Body" : "HostInvite_BodyFromTeam");
         else
             builder.Paragraph("HostInvite_BodyFromHost", inviterName);
 
         return builder
             .Muted("HostInvite_EmailHint", email)
-            .Paragraph("HostInvite_NextSteps")
+            .Paragraph(isAgency ? "AgencyInvite_NextSteps" : "HostInvite_NextSteps")
             .Quote("HostInvite_MessageLabel", message)
             .Button("HostInvite_Cta", signupUrl)
             .LinkFallback("HostInvite_LinkFallback", signupUrl)
             .Muted("HostInvite_Expires", builder.FormatInstant(expiresAtUtc))
-            .Build("HostInvite_Subject");
+            .Build(isAgency ? "AgencyInvite_Subject" : "HostInvite_Subject");
     }
 
     /// <summary>Tokenized self check-in link, to the guest.</summary>

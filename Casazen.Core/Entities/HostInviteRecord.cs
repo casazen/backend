@@ -5,8 +5,8 @@ namespace Casazen.Core.Entities;
 
 /// <summary>
 /// Invitation of a prospective <b>independent host</b> (a new host org, not a member of an existing one) sent by a platform
-/// admin or by a host. The invite grants no role and no privilege: the person signs up with the normal self-service flow;
-/// the invite only binds the email, leads to the signup page and records who invited (attribution).
+/// super admin or by a host. Staff invites identify founders of new agencies; host referrals use the ordinary private signup.
+/// The invite binds a verified email and never grants platform staff access. Onboarding makes founders owners of their own org.
 /// </summary>
 /// <remarks>
 /// <para><b>The secret is never stored.</b> The link carries a random token

@@ -339,139 +339,30 @@ public class OrgInvitationServiceTests
         Assert.Contains("anna.leone@example.com", body);
     }
 
-    // ─── Seats ──────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
-    public async Task CreateAsync_StarterHasTwoSeats_TheOwnerAndOneInvitation()
+    public async Task CreateAsync_Agency_HasNoDailyOrSeatLimitEvenOnStarter()
     {
         var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Starter, status: SubscriptionStatus.None);
-
-        await CreateAsync(Request(org.Id, email: "uno@example.com"));
-        var error = await Assert.ThrowsAsync<DomainConflictException>(() => CreateAsync(Request(org.Id, email: "due@example.com")));
-
-        Assert.Equal(OrgSeatErrors.LimitReached, error.Code);
-        Assert.Single(await ListIdsAsync(org.Id));
-    }
-
-    [Fact]
-    public async Task CreateAsync_PendingInvitationsAndActiveMembersTogetherFillTheSeats()
-    {
-        var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Pro);
-        for (var i = 0; i < 6; i++)
-            await _kit.SeedMemberAsync(org.Id, $"auth0|m{i}", OrgRole.Collaborator);
-        for (var i = 0; i < 3; i++)
+        _kit.Settings[OrgInvitationRules.DailyLimitConfigKey] = "1";
+        _kit.Settings["Entitlement:Tiers:Starter:MaxSeats"] = "1";
+        for (var i = 0; i < 25; i++)
             await CreateAsync(Request(org.Id, email: $"inv{i}@example.com"));
-
-        // 1 owner + 6 members + 3 pending = 10 of 10.
-        var error = await Assert.ThrowsAsync<DomainConflictException>(() => CreateAsync(Request(org.Id, email: "last@example.com")));
-
-        Assert.Equal(OrgSeatErrors.LimitReached, error.Code);
-    }
-
-    [Fact]
-    public async Task CreateAsync_TheLastSeat_IsGiven()
-    {
-        var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Pro);
-        for (var i = 0; i < 8; i++)
-            await _kit.SeedMemberAsync(org.Id, $"auth0|m{i}", OrgRole.Collaborator);
-
-        var sent = await CreateAsync(Request(org.Id));
-
-        Assert.Equal(OrgInvitationStatus.Pending, sent.Invitation.Status);
-        await using var db = _kit.NewDb();
-        Assert.Equal(10, (await _kit.Seats(db).GetUsageAsync(org.Id)).Used);
-    }
-
-    [Fact]
-    public async Task CreateAsync_ExpiredInvitationsHoldNoSeat()
-    {
-        var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Starter, status: SubscriptionStatus.None);
-        await _kit.SeedInvitationAsync(org.Id, "old@example.com", expiresAt: _kit.Now.AddMinutes(-1));
-        await _kit.SeedInvitationAsync(org.Id, "marked@example.com", status: OrgInvitationStatus.Expired, closedAt: _kit.Now.AddDays(-1));
-
-        var sent = await CreateAsync(Request(org.Id));
-
-        Assert.Equal(OrgInvitationStatus.Pending, sent.Invitation.Status);
-    }
-
-    [Fact]
-    public async Task CreateAsync_RevokedAndAcceptedInvitationsHoldNoSeat_ButTheAcceptedMemberDoes()
-    {
-        var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Starter, status: SubscriptionStatus.None);
-        await _kit.SeedInvitationAsync(org.Id, "revoked@example.com", status: OrgInvitationStatus.Revoked, closedAt: _kit.Now);
-
-        await CreateAsync(Request(org.Id, email: "uno@example.com"));
-        var error = await Assert.ThrowsAsync<DomainConflictException>(() => CreateAsync(Request(org.Id, email: "due@example.com")));
-
-        Assert.Equal(OrgSeatErrors.LimitReached, error.Code);
-    }
-
-    [Fact]
-    public async Task CreateAsync_ADeactivatedMemberHoldsNoSeat()
-    {
-        var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Starter, status: SubscriptionStatus.None);
-        await _kit.SeedMemberAsync(org.Id, "auth0|gone", OrgRole.Collaborator, status: OrgMemberStatus.Deactivated);
-
-        var sent = await CreateAsync(Request(org.Id));
-
-        Assert.Equal(OrgInvitationStatus.Pending, sent.Invitation.Status);
-    }
-
-    [Fact]
-    public async Task CreateAsync_TheAccountantCountsLikeEveryoneElse()
-    {
-        var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Starter, status: SubscriptionStatus.None);
-        await _kit.SeedMemberAsync(org.Id, "auth0|accountant", OrgRole.Accountant);
-
-        var error = await Assert.ThrowsAsync<DomainConflictException>(() => CreateAsync(Request(org.Id)));
-
-        Assert.Equal(OrgSeatErrors.LimitReached, error.Code);
-    }
-
-    [Fact]
-    public async Task CreateAsync_ProWithASubscriptionNotInGoodStanding_FallsBackToTheStarterSeats_MembersStay()
-    {
-        var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Pro, status: SubscriptionStatus.Unpaid);
-        await _kit.SeedMemberAsync(org.Id, "auth0|m1", OrgRole.Collaborator);
-        await _kit.SeedMemberAsync(org.Id, "auth0|m2", OrgRole.Collaborator);
-
-        var error = await Assert.ThrowsAsync<DomainConflictException>(() => CreateAsync(Request(org.Id)));
-
-        // 3 members above the 2 seats of Starter: they stay, nothing new comes in.
-        Assert.Equal(OrgSeatErrors.LimitReached, error.Code);
-        await using var db = _kit.NewDb();
-        var usage = await _kit.Seats(db).GetUsageAsync(org.Id);
-        Assert.Equal((2, 3), (usage.Max, usage.Used));
-        Assert.Equal(0, usage.Available);
-    }
-
-    [Fact]
-    public async Task CreateAsync_Scale_HasNoLimit()
-    {
-        var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Scale);
-        // The seats of the plan are unlimited; the cap on the emails of a day (AM-D15) is another limit, raised for the test.
-        _kit.Settings[OrgInvitationRules.DailyLimitConfigKey] = "100";
-        for (var i = 0; i < 12; i++)
-            await CreateAsync(Request(org.Id, email: $"p{i}@example.com"));
-
         await using var db = _kit.NewDb();
         var usage = await _kit.Seats(db).GetUsageAsync(org.Id);
         Assert.True(usage.IsUnlimited);
-        Assert.Equal(12, usage.PendingInvitations);
+        Assert.Equal(25, usage.PendingInvitations);
     }
 
     [Fact]
-    public async Task CreateAsync_ConfiguredSeatsOfTheTier_ReplaceTheDefault()
+    public async Task CreateAsync_PrivateOwner_CannotInviteCollaborators()
     {
-        var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Pro);
-        _kit.Settings["Entitlement:Tiers:Pro:MaxSeats"] = "2";
-        await CreateAsync(Request(org.Id, email: "uno@example.com"));
-
-        var error = await Assert.ThrowsAsync<DomainConflictException>(
-            () => CreateAsync(Request(org.Id, email: "due@example.com")));
-
-        // The owner and one invitation fill the two seats the configuration allows a Pro org.
-        Assert.Equal(OrgSeatErrors.LimitReached, error.Code);
+        var (org, _) = await _kit.SeedOwnerOrgAsync();
+        await using var db = _kit.NewDb();
+        (await db.Orgs.SingleAsync(o => o.Id == org.Id)).IsAgency = false;
+        await db.SaveChangesAsync();
+        var error = await Assert.ThrowsAsync<DomainForbiddenException>(() => CreateAsync(Request(org.Id)));
+        Assert.Equal("org_agency_required", error.Code);
+        Assert.Empty(_kit.Emails.Snapshot());
     }
 
     // ─── List ───────────────────────────────────────────────────────────────────────────────────────────
@@ -570,18 +461,15 @@ public class OrgInvitationServiceTests
     }
 
     [Fact]
-    public async Task ResendAsync_AnExpiredInvitationWithTheSeatsFull_IsAConflict()
+    public async Task ResendAsync_AgencyExpiredInvitation_IsNotLimitedByStarterSeats()
     {
         var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Starter, status: SubscriptionStatus.None);
-        var (expired, _) = await _kit.SeedInvitationAsync(org.Id, "anna.leone@example.com", status: OrgInvitationStatus.Expired, closedAt: _kit.Now.AddDays(-1), expiresAt: _kit.Now.AddDays(-1));
-        await _kit.SeedInvitationAsync(org.Id, "someone.else@example.com");
-
+        var (expired, _) = await _kit.SeedInvitationAsync(org.Id, "anna@example.com", status: OrgInvitationStatus.Expired,
+            closedAt: _kit.Now.AddDays(-1), expiresAt: _kit.Now.AddDays(-1));
+        await _kit.SeedInvitationAsync(org.Id, "other@example.com");
         await using var db = _kit.NewDb();
-        var error = await Assert.ThrowsAsync<DomainConflictException>(
-            () => _kit.Invitations(db).ResendAsync(org.Id, expired.Id, "auth0|owner"));
-
-        Assert.Equal(OrgSeatErrors.LimitReached, error.Code);
-        Assert.Equal(OrgInvitationStatus.Expired, (await _kit.ReadInvitationAsync(expired.Id)).Status);
+        var sent = await _kit.Invitations(db).ResendAsync(org.Id, expired.Id, "auth0|owner");
+        Assert.Equal(OrgInvitationStatus.Pending, sent.Invitation.Status);
     }
 
     [Fact]
@@ -675,7 +563,7 @@ public class OrgInvitationServiceTests
         var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Starter, status: SubscriptionStatus.None);
         var created = await CreateAsync(Request(org.Id));
         var token = OrgInvitationTestKit.TokenInEmail(Assert.Single(_kit.Emails.Snapshot()));
-        await Assert.ThrowsAsync<DomainConflictException>(() => CreateAsync(Request(org.Id, email: "other@example.com")));
+        await CreateAsync(Request(org.Id, email: "first-other@example.com"));
 
         await using (var db = _kit.NewDb())
             await _kit.Invitations(db).RevokeAsync(org.Id, created.Invitation.Id, "auth0|owner");

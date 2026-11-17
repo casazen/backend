@@ -105,7 +105,7 @@ public sealed class HostInviteService(
         logger.LogInformation(
             "Host invite {InviteId} created by {ActorUserId} (org {ActorOrgId}, admin {IsAdmin}) for {MaskedEmail}, expires {ExpiresAt}, emailed {Emailed}",
             invite.Id, actor.UserId, actor.OrgId, actor.IsAdmin, LogRedaction.MaskEmail(email), invite.ExpiresAt, sendEmail);
-        return new HostInviteSent(invite.Id, invite.ExpiresAt);
+        return new HostInviteSent(invite.Id, invite.ExpiresAt, actor.IsAdmin ? publicSiteLinks.HostInviteSignup(token) : null);
     }
 
     public async Task<(IReadOnlyList<HostInviteItem> Items, int Total)> ListAsync(
@@ -208,7 +208,7 @@ public sealed class HostInviteService(
         logger.LogInformation(
             "Host invite {InviteId} for {MaskedEmail} resent by {ActorUserId}, expires {ExpiresAt}, emailed {Emailed}",
             invite.Id, LogRedaction.MaskEmail(invite.Email), actor.UserId, invite.ExpiresAt, sendEmail);
-        return new HostInviteSent(invite.Id, invite.ExpiresAt);
+        return new HostInviteSent(invite.Id, invite.ExpiresAt, actor.IsAdmin ? publicSiteLinks.HostInviteSignup(token) : null);
     }
 
     public async Task RevokeAsync(HostInviteActor actorInfo, Guid inviteId, CancellationToken cancellationToken = default)
@@ -277,7 +277,7 @@ public sealed class HostInviteService(
                 new HostInviteActor(invite.InvitedByUserId, invite.InvitedByOrgId, false), inviter?.FirstName, inviter?.LastName, cancellationToken);
         }
 
-        return new HostInviteLookup(true, state.ToString(), inviterName, PersonalDataMasking.MaskEmail(invite.Email));
+        return new HostInviteLookup(true, state.ToString(), inviterName, PersonalDataMasking.MaskEmail(invite.Email), invite.InvitedByOrgId is null);
     }
 
     public async Task AcceptAsync(AcceptHostInvite request, CancellationToken cancellationToken = default)
@@ -492,5 +492,6 @@ public sealed class HostInviteService(
             inviterName,
             invite.Message,
             publicSiteLinks.HostInviteSignup(token),
-            expiresAt ?? invite.ExpiresAt);
+            expiresAt ?? invite.ExpiresAt,
+            isAgency: invite.InvitedByOrgId is null);
 }

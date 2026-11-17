@@ -63,6 +63,7 @@ public class CommercialAgencyIntegrationTests(CasazenWebApplicationFactory facto
         var user = await db.Users.SingleAsync(u => u.Id == userId);
         var org = await db.Orgs.SingleAsync(o => o.Id == user.OrgId);
         Assert.Equal("Nuova Agenzia", org.Name);
+        Assert.True(org.IsAgency);
         Assert.False(org.CommercialPaymentConfirmed);
         var founder = await db.OrgMembers.IgnoreQueryFilters().SingleAsync(m => m.UserId == userId);
         Assert.Equal(org.Id, founder.OrgId);
