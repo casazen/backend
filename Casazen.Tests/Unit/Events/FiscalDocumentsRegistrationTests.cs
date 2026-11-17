@@ -11,6 +11,7 @@ using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Extensions;
+using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -110,6 +111,7 @@ public class FiscalDocumentsRegistrationTests
 
             // The mandates of the owners, their billing address and the channel commission rules (E13/F01/US01/T01).
             (typeof(IOwnerMandateService), typeof(OwnerMandateService), ServiceLifetime.Scoped),
+            (typeof(OwnerMandateDocuments), typeof(OwnerMandateDocuments), ServiceLifetime.Scoped),
 
             // The list of the owners with their properties, profile and mandate in force (FIX/RES-OWNERS).
             (typeof(IOwnerDirectoryService), typeof(OwnerDirectoryService), ServiceLifetime.Scoped),
