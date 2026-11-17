@@ -29,6 +29,25 @@ public class HostInviteServiceTests
     private static readonly HostInviteActor HostB = new("auth0|host-b", OrgB, IsAdmin: false);
     private static readonly HostInviteActor Admin = new("auth0|admin", null, IsAdmin: true);
 
+    [Fact]
+    public async Task CreateAsync_PersonalQrLink_IsReturnedOnlyToSuperAdminAndMatchesTheEmail()
+    {
+        using var f = new Fixture();
+        var sent = await f.Service.CreateAsync(new CreateHostInvite(Admin, "founder@example.com", null, "it"));
+        var (_, content, _) = Assert.Single(f.Queue.Queued);
+        Assert.NotNull(sent.Url);
+        Assert.Contains(sent.Url, content.HtmlBody, StringComparison.Ordinal);
+        Assert.True((await f.Service.LookupAsync(sent.Url.Split('/').Last())).IsAgency);
+    }
+
+    [Fact]
+    public async Task CreateAsync_OrdinaryHost_DoesNotReceiveAPersonalQrLink()
+    {
+        using var f = new Fixture();
+        var sent = await f.Service.CreateAsync(new CreateHostInvite(HostA, "private@example.com", null, "it"));
+        Assert.Null(sent.Url);
+    }
+
     // ─── creation ───
 
     [Fact]
@@ -94,7 +113,7 @@ public class HostInviteServiceTests
         await f.Service.CreateAsync(new CreateHostInvite(Admin, "en@example.com", null, "en"));
 
         var content = Assert.Single(f.Queue.Queued).Content;
-        Assert.Equal("CasaZen invitation — Sign up as a host", content.Subject);
+        Assert.Equal("CasaZen invitation — Create your agency", content.Subject);
         Assert.Equal("en", Assert.Single(f.Db.HostInviteRecords).Locale);
     }
 

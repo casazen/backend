@@ -21,7 +21,7 @@ public class OrgOverviewServiceTests
 
     private static readonly IReadOnlySet<string> Everything = new HashSet<string>(OrgOverviewSections.All, StringComparer.Ordinal);
 
-    private readonly OrgInvitationTestKit _kit = new();
+    private readonly OrgInvitationTestKit _kit = new() { SeedAsAgency = false };
 
     private async Task<OrgOverview> GetAsync(Guid orgId, HostScope? scope = null, IReadOnlySet<string>? permissions = null)
     {

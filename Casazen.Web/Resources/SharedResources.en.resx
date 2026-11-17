@@ -8464,4 +8464,7 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="IstatRegionNotFound" xml:space="preserve">
     <value>This region or autonomous province is not in the table.</value>
   </data>
+  <data name="OrgAgencyRequired" xml:space="preserve">
+    <value>Only agency administrators can invite collaborators.</value>
+  </data>
 </root>

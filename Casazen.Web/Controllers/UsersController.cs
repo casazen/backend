@@ -519,6 +519,7 @@ public class UsersController(
             {
                 Id = org.Id,
                 Name = org.Name,
+                IsAgency = org.IsAgency || org.PlanTier == PlanTier.Agency,
                 Slug = org.Slug,
                 PublicSiteUrl = string.IsNullOrWhiteSpace(org.Slug)
                     ? null

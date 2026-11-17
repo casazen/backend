@@ -100,6 +100,7 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var org = await db.Orgs.SingleAsync(o => o.Id == orgId);
+        org.IsAgency = true;
         org.PlanTier = tier;
         org.SubscriptionStatus = status;
         org.SubscriptionId = status == SubscriptionStatus.None ? null : $"sub_{Guid.NewGuid():N}";
@@ -220,11 +221,11 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
             annaRow.GetProperty("role").GetString(), annaRow.GetProperty("status").GetString(), annaRow.GetProperty("email").GetString()));
         Assert.Equal(["short-rent"], annaRow.GetProperty("areas").EnumerateArray().Select(a => a.GetString()));
         var seats = members.GetProperty("seats");
-        Assert.Equal((10, 2, 2, 0, true), (
+        Assert.Equal((int.MaxValue, 2, 2, 0, true), (
             seats.GetProperty("max").GetInt32(), seats.GetProperty("used").GetInt32(), seats.GetProperty("activeMembers").GetInt32(),
             seats.GetProperty("pendingInvitations").GetInt32(), seats.GetProperty("canInvite").GetBoolean()));
         var entitlement = await (await owner.GetAsync("/api/orgs/me/entitlement")).Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal((10, 2, true), (
+        Assert.Equal((int.MaxValue, 2, true), (
             entitlement.GetProperty("limits").GetProperty("maxSeats").GetInt32(),
             entitlement.GetProperty("usage").GetProperty("seats").GetInt32(),
             entitlement.GetProperty("canInviteMember").GetBoolean()));
@@ -316,26 +317,15 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
     }
 
     [Fact]
-    public async Task Invite_TheSeatsOfThePlan_AreTheLimit_AndARevokedInvitationFreesItsSeat()
+    public async Task Invite_AgencyOnStarter_HasUnlimitedInvitations()
     {
         var (ownerId, _) = await OwnerOnPlanAsync(PlanTier.Starter, SubscriptionStatus.None);
         using var owner = OwnerClient(ownerId);
         var (firstId, _) = await InviteAsync(owner, NewEmail("first"));
         var second = NewEmail("second");
-
-        await OrgTeamHttp.AssertProblemAsync(
-            await owner.PostAsJsonAsync("/api/orgs/me/invitations", InvitationBody(second)), HttpStatusCode.Conflict, "org_seat_limit_reached");
-        var entitlement = await (await owner.GetAsync("/api/orgs/me/entitlement")).Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal((2, 2, false), (
-            entitlement.GetProperty("limits").GetProperty("maxSeats").GetInt32(),
-            entitlement.GetProperty("usage").GetProperty("seats").GetInt32(),
-            entitlement.GetProperty("canInviteMember").GetBoolean()));
-
-        Assert.Equal(HttpStatusCode.NoContent, (await owner.PostAsync($"/api/orgs/me/invitations/{firstId}/revoke", null)).StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent, (await owner.PostAsync($"/api/orgs/me/invitations/{firstId}/revoke", null)).StatusCode);
         Assert.Equal(HttpStatusCode.Created, (await owner.PostAsJsonAsync("/api/orgs/me/invitations", InvitationBody(second))).StatusCode);
-        await OrgTeamHttp.AssertProblemAsync(
-            await owner.PostAsJsonAsync("/api/orgs/me/invitations", InvitationBody(second)), HttpStatusCode.Conflict, "org_invitation_already_pending");
+        Assert.Equal(HttpStatusCode.NoContent, (await owner.PostAsync($"/api/orgs/me/invitations/{firstId}/revoke", null)).StatusCode);
+        await OrgTeamHttp.AssertProblemAsync(await owner.PostAsJsonAsync("/api/orgs/me/invitations", InvitationBody(second)), HttpStatusCode.Conflict, "org_invitation_already_pending");
     }
 
     // ─── What the invited person can get wrong ──────────────────────────────────────────────────────────
@@ -654,7 +644,7 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         Assert.Equal("ok", home.GetProperty("standing").GetString());
         Assert.True(home.GetProperty("openAccess").ValueKind is JsonValueKind.True or JsonValueKind.False);
         var seats = home.GetProperty("seats");
-        Assert.Equal((10, 2, false), (seats.GetProperty("max").GetInt32(), seats.GetProperty("used").GetInt32(), seats.GetProperty("unlimited").GetBoolean()));
+        Assert.Equal((int.MaxValue, 2, true), (seats.GetProperty("max").GetInt32(), seats.GetProperty("used").GetInt32(), seats.GetProperty("unlimited").GetBoolean()));
         var properties = home.GetProperty("properties");
         Assert.Equal(
             (3, 2, 1, 2),
@@ -764,13 +754,8 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
             Assert.Equal(HttpStatusCode.NoContent, (await owner.PostAsync($"/api/orgs/me/invitations/{invitationId}/revoke", null)).StatusCode);
         }
 
-        var refused = await owner.PostAsJsonAsync("/api/orgs/me/invitations", InvitationBody(NewEmail("undicesima")));
-
-        Assert.Equal(HttpStatusCode.TooManyRequests, refused.StatusCode);
-        var problem = await refused.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("invitation_daily_limit_reached", problem.GetProperty("code").GetString());
-        // The message says the limit the org ran into.
-        Assert.Contains("10", problem.GetProperty("detail").GetString(), StringComparison.Ordinal);
+        var extra = await owner.PostAsJsonAsync("/api/orgs/me/invitations", InvitationBody(NewEmail("undicesima")));
+        Assert.Equal(HttpStatusCode.Created, extra.StatusCode);
     }
 
     [Fact]

@@ -2864,4 +2864,13 @@
   <data name="AccountantPackage_NotYou" xml:space="preserve">
     <value>The link is personal: whoever receives it can download the package until it expires. If you were not expecting this message, ignore it and let {0} know.</value>
   </data>
+  <data name="AgencyInvite_Subject" xml:space="preserve">
+    <value>CasaZen invitation — Create your agency</value>
+  </data>
+  <data name="AgencyInvite_Body" xml:space="preserve">
+    <value>The CasaZen team invites you to create your agency on CasaZen. You will be the administrator of your own organization.</value>
+  </data>
+  <data name="AgencyInvite_NextSteps" xml:space="preserve">
+    <value>Create your account using the invited email and complete the initial setup. You can then invite unlimited collaborators. This invitation does not grant access to the staff console.</value>
+  </data>
 </root>

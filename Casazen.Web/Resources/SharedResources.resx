@@ -8464,4 +8464,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="IstatRegionNotFound" xml:space="preserve">
     <value>Questa regione o provincia autonoma non è nella tabella.</value>
   </data>
+  <data name="OrgAgencyRequired" xml:space="preserve">
+    <value>Solo gli amministratori di agenzia possono invitare collaboratori.</value>
+  </data>
 </root>

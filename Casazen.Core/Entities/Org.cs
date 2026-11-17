@@ -40,6 +40,9 @@ public class Org
     /// </summary>
     public bool IsAgencyTierDowngraded { get; set; }
 
+    /// <summary>Business identity, independent of billing tier. Private owners cannot invite collaborators.</summary>
+    public bool IsAgency { get; set; }
+
     [Required, MaxLength(200)]
     public string DisplayName { get; set; } = string.Empty;
 

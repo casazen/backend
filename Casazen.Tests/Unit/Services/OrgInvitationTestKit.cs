@@ -45,6 +45,8 @@ internal sealed class OrgInvitationTestKit
     /// <summary>When false the queue refuses every email (provider not configured, queue down).</summary>
     public bool QueueAccepts { get; set; } = true;
 
+    public bool SeedAsAgency { get; set; } = true;
+
     public string? PublicSiteBaseUrl { get; set; } = EmailTestHelpers.PublicSiteBaseUrl;
 
     private readonly Func<AppDbContext>? _contextFactory;
@@ -185,6 +187,7 @@ internal sealed class OrgInvitationTestKit
         {
             org = AddOrg(db);
             org.Name = org.DisplayName = "Casa Rossi";
+            org.IsAgency = SeedAsAgency;
             org.PlanTier = tier;
             org.SubscriptionStatus = status;
             org.SubscriptionId = status == SubscriptionStatus.None ? null : $"sub_{Guid.NewGuid():N}";

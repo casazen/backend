@@ -10,7 +10,7 @@ public sealed record HostInviteActor(string UserId, Guid? OrgId, bool IsAdmin);
 
 public sealed record CreateHostInvite(HostInviteActor Actor, string Email, string? Message, string? Locale);
 
-public sealed record HostInviteSent(Guid InviteId, DateTime ExpiresAt);
+public sealed record HostInviteSent(Guid InviteId, DateTime ExpiresAt, string? Url = null);
 
 public sealed record HostInviteInviter(string Name, string? OrgName);
 
@@ -29,7 +29,7 @@ public sealed record HostInviteListQuery(HostInviteActor Actor, string? Search, 
 public sealed record HostInviteQuota(int Limit, int Used, int Remaining, DateTime ResetsAt);
 
 /// <summary>What the public page of an invite link shows. Never the whole email.</summary>
-public sealed record HostInviteLookup(bool Valid, string State, string? InviterName, string? MaskedEmail);
+public sealed record HostInviteLookup(bool Valid, string State, string? InviterName, string? MaskedEmail, bool IsAgency = false);
 
 public sealed record AcceptHostInvite(string? Token, string UserId, string? Email, bool EmailVerified);
 
