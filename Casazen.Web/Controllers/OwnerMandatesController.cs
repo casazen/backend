@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Casazen.Core.Authorization;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
@@ -52,6 +54,58 @@ public class OwnerMandatesController(
         return CreatedAtAction(nameof(List), new { ownerId }, OwnerMandateDto.From(mandate));
     }
 
+    /// <summary>Read a PDF into suggestions only: no mandate or document is persisted.</summary>
+    [HttpPost("api/owners/{ownerId:guid}/mandates/read-document")]
+    [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
+    [RequestSizeLimit(OwnerMandateDocuments.MaxBytes + 65536)]
+    [RequestFormLimits(MultipartBodyLengthLimit = OwnerMandateDocuments.MaxBytes + 65536)]
+    public async Task<ActionResult<OwnerMandateReading>> ReadDocument(Guid ownerId, [FromForm] MandateDocumentForm form, [FromServices] OwnerMandateDocuments documents)
+    {
+        if (await ScopeAsync() is not { } scope)
+            return Forbid();
+        if (form.File is null)
+            return BadRequest();
+        Response.Headers.CacheControl = "no-store";
+        return Ok(await documents.ReadAsync(scope, ownerId, form.File, HttpContext.RequestAborted));
+    }
+
+    /// <summary>Attach the PDF privately only when its reviewed mandate version is confirmed.</summary>
+    [HttpPost("api/owners/{ownerId:guid}/mandates/with-document")]
+    [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
+    [RequestSizeLimit(OwnerMandateDocuments.MaxBytes + 65536)]
+    [RequestFormLimits(MultipartBodyLengthLimit = OwnerMandateDocuments.MaxBytes + 65536)]
+    public async Task<ActionResult<OwnerMandateDto>> CreateWithDocument(Guid ownerId, [FromForm] MandateDocumentForm form, [FromServices] OwnerMandateDocuments documents)
+    {
+        if (await ScopeAsync() is not { } scope)
+            return Forbid();
+        if (form.File is null || string.IsNullOrWhiteSpace(form.Command) || form.Command.Length > 16000)
+            return BadRequest();
+        OwnerMandateCommand? command;
+        try
+        {
+            var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+            options.Converters.Add(new JsonStringEnumConverter());
+            command = JsonSerializer.Deserialize<OwnerMandateCommand>(form.Command, options);
+        }
+        catch (JsonException) { return BadRequest(); }
+        if (command is null)
+            return BadRequest();
+        var mandate = await documents.SaveAsync(scope, ownerId, command, form.File, User.GetUserId(), HttpContext.RequestAborted);
+        return CreatedAtAction(nameof(List), new { ownerId }, OwnerMandateDto.From(mandate));
+    }
+
+    [HttpGet("api/owners/{ownerId:guid}/mandates/{mandateId:guid}/document")]
+    [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
+    public async Task<IActionResult> DownloadDocument(Guid ownerId, Guid mandateId, [FromServices] OwnerMandateDocuments documents)
+    {
+        if (await ScopeAsync() is not { } scope)
+            return Forbid();
+        var stream = await documents.DownloadAsync(scope, ownerId, mandateId, HttpContext.RequestAborted);
+        Response.Headers.CacheControl = "no-store";
+        Response.Headers.XContentTypeOptions = "nosniff";
+        return File(stream, "application/pdf", $"mandato-{mandateId:N}.pdf");
+    }
+
     /// <summary>
     /// The standard mandate (<c>{ template, ownerIds? }</c>) for every owner of the agency in reach with an ownership not ended and no mandate (or only the
     /// listed owners): the counts of the versions created and of the owners skipped. 422 <c>owner_mandate_invalid</c>, <c>owner_mandate_owners_empty</c>;
@@ -77,4 +131,11 @@ public class OwnerMandatesController(
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
         return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct);
     }
+}
+
+/// <summary>Multipart mandate upload. Command is omitted when only requesting suggestions.</summary>
+public sealed class MandateDocumentForm
+{
+    public IFormFile? File { get; set; }
+    public string? Command { get; set; }
 }
