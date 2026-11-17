@@ -593,7 +593,7 @@ public sealed class MessageHubService(
         var states = (await db.OtaMessageSyncStates
                 .AsNoTracking()
                 .Where(s => s.OrgId == scope.OrgId && accommodationIds.Contains(s.OctorateAccommodationId))
-                .Select(s => new { s.OctorateAccommodationId, s.LastError, s.UpdatedAt, s.LastRecentPassAt, s.LastDeepPassAt })
+                .Select(s => new { s.OctorateAccommodationId, s.LastError, s.UpdatedAt, s.LastRecentPassAt, s.LastDeepPassAt, s.InitialImportCompletedAt })
                 .ToListAsync(cancellationToken))
             .ToDictionary(s => s.OctorateAccommodationId, StringComparer.Ordinal);
 
@@ -602,15 +602,18 @@ public sealed class MessageHubService(
             .ThenBy(l => l.PropertyId)
             .Select(listing =>
             {
-                if (!states.TryGetValue(listing.OctorateAccommodationId, out var state))
-                    return new MessageChannelStatus(listing.PropertyId, listing.PropertyName, MessageChannelStatuses.Available, null);
+                if (!states.TryGetValue(listing.OctorateAccommodationId, out var state)
+                    || (state.LastError is null && state.LastRecentPassAt is null && state.LastDeepPassAt is null && state.InitialImportCompletedAt is null))
+                    return new MessageChannelStatus(listing.PropertyId, listing.PropertyName, MessageChannelStatuses.PendingSync, null);
 
                 var status = state.LastError is null
                     ? MessageChannelStatuses.Available
                     : state.LastError == OtaMessageSyncErrorCodes.ChatNotLicensed
                         ? MessageChannelStatuses.WaitingPermission
                         : MessageChannelStatuses.Error;
-                var checkedAt = new[] { state.UpdatedAt, state.LastRecentPassAt ?? DateTime.MinValue, state.LastDeepPassAt ?? DateTime.MinValue }.Max();
+                var checkedAt = state.LastError is null
+                    ? new[] { state.LastRecentPassAt, state.LastDeepPassAt, state.InitialImportCompletedAt }.Max()
+                    : state.UpdatedAt;
                 return new MessageChannelStatus(listing.PropertyId, listing.PropertyName, status, checkedAt);
             })
             .ToList();

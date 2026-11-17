@@ -82,18 +82,18 @@ public class ChatAvailabilityTests : IAsyncLifetime
         Assert.DoesNotContain("chat_not_licensed", json, StringComparison.Ordinal);
     }
 
-    /// <summary>A listing whose last pass worked, or that was never read, is available; one whose chat comes back (the error cleared) is available again.</summary>
-    [Fact]
-    public async Task ChannelStatus_AListingThatWorks_OrWasNeverRead_IsAvailable()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ChannelStatus_ReportsPendingUntilTheFirstPassCompletes(bool importInProgress)
     {
         await AddListingAsync(_world.Scope.Granted.Id, "ACC-GRANTED", state: null);
-        await AddListingAsync(_world.Scope.Hidden.Id, "ACC-HIDDEN", hasState: false);
+        await AddListingAsync(_world.Scope.Hidden.Id, "ACC-HIDDEN", hasState: importInProgress, passCompleted: false);
 
         var statuses = await MessageHubTestKit.Service(_db).GetChannelStatusAsync(_world.Scope.OrgWide);
 
-        Assert.All(statuses, s => Assert.Equal(MessageChannelStatuses.Available, s.Status));
-        Assert.Equal(Checked, statuses.Single(s => s.PropertyId == _world.Scope.Granted.Id).LastCheckedAt);
-        Assert.Null(statuses.Single(s => s.PropertyId == _world.Scope.Hidden.Id).LastCheckedAt);
+        Assert.Contains(new MessageChannelStatus(_world.Scope.Granted.Id, "Trullo", MessageChannelStatuses.Available, Checked), statuses);
+        Assert.Contains(new MessageChannelStatus(_world.Scope.Hidden.Id, "Casa Bianca", MessageChannelStatuses.PendingSync, null), statuses);
     }
 
     /// <summary>
@@ -237,7 +237,8 @@ public class ChatAvailabilityTests : IAsyncLifetime
         string? state = null,
         bool hasState = true,
         Guid? orgId = null,
-        OctorateMappingStatus status = OctorateMappingStatus.Confirmed)
+        OctorateMappingStatus status = OctorateMappingStatus.Confirmed,
+        bool passCompleted = true)
     {
         var org = orgId ?? _world.Scope.OrgId;
         var connection = Guid.NewGuid();
@@ -258,6 +259,7 @@ public class ChatAvailabilityTests : IAsyncLifetime
                 PropertyId = propertyId,
                 OctorateAccommodationId = accommodationId,
                 LastError = state,
+                LastRecentPassAt = passCompleted && state is null ? Checked : null,
                 UpdatedAt = Checked,
             });
         }

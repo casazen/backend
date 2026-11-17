@@ -89,8 +89,11 @@ public interface IMessageHubService
 /// <summary>The codes of <see cref="MessageChannelStatus.Status"/>.</summary>
 public static class MessageChannelStatuses
 {
-    /// <summary>The chat of the listing is read: nothing is known to be wrong (also a listing the copy has not reached yet).</summary>
+    /// <summary>The most recent completed synchronization of the listing succeeded.</summary>
     public const string Available = "available";
+
+    /// <summary>The listing has not completed or failed a synchronization yet.</summary>
+    public const string PendingSync = "pending_sync";
 
     /// <summary>The <c>chat</c> module is not in the license of the listing (<c>chat_not_licensed</c>): its messages cannot be read, and the host cannot answer in it yet.</summary>
     public const string WaitingPermission = "waiting_permission";
