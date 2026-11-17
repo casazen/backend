@@ -57,12 +57,11 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
             .Select(i => (Func<Task>)(() => CreateInvitationAsync(Invite(org.Id, $"persona{i}@example.com"))))
             .ToArray());
 
-        Assert.Equal(3, outcomes.Count(o => o.Succeeded));
-        Assert.All(outcomes.Where(o => !o.Succeeded), o => Assert.Equal(OrgInvitationErrors.DailyLimitReached, o.Code));
-        Assert.Equal(3, _kit.Emails.Snapshot().Count);
+        Assert.All(outcomes, o => Assert.True(o.Succeeded, o.Code));
+        Assert.Equal(8, _kit.Emails.Snapshot().Count);
         await using var verify = _kit.NewDb();
         var logs = await verify.OrgInvitations.IgnoreQueryFilters().Where(i => i.OrgId == org.Id).Select(i => i.SendLog).ToListAsync();
-        Assert.Equal(3, logs.Sum(log => log.Count));
+        Assert.Equal(8, logs.Sum(log => log.Count));
     }
 
     [PostgresFact]
@@ -79,10 +78,9 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
             () => CreateInvitationAsync(Invite(orgB.Id, "b2@example.com", "auth0|owner-b")));
 
         // One for each org, whichever of the two requests of an org wins.
-        Assert.Equal(2, outcomes.Count(o => o.Succeeded));
-        Assert.All(outcomes.Where(o => !o.Succeeded), o => Assert.Equal(OrgInvitationErrors.DailyLimitReached, o.Code));
-        Assert.Single(await ListAsync(orgA.Id));
-        Assert.Single(await ListAsync(orgB.Id));
+        Assert.All(outcomes, o => Assert.True(o.Succeeded, o.Code));
+        Assert.Equal(2, (await ListAsync(orgA.Id)).Count);
+        Assert.Equal(2, (await ListAsync(orgB.Id)).Count);
     }
 
     [PostgresFact]

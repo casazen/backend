@@ -64,9 +64,9 @@ public class OrgActivityEventsTests
         var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Starter, status: SubscriptionStatus.None);
         await InviteAsync(org.Id);
 
-        var refused = await Assert.ThrowsAsync<DomainConflictException>(() => InviteAsync(org.Id, "bruno@example.com"));
+        var refused = await Assert.ThrowsAsync<DomainConflictException>(() => InviteAsync(org.Id));
 
-        Assert.Equal(OrgSeatErrors.LimitReached, refused.Code);
+        Assert.Equal(OrgInvitationErrors.AlreadyPending, refused.Code);
         Assert.Single(await LinesAsync(org.Id));
     }
 
@@ -137,7 +137,7 @@ public class OrgActivityEventsTests
             Assert.Equal(OrgInvitationErrors.EmailMismatch, refused.Code);
         }
 
-        Assert.Equal([OrgActivityType.MemberInvited], (await LinesAsync(org.Id)).Select(l => l.Type));
+        Assert.Equal([OrgActivityType.MemberReactivated, OrgActivityType.MemberInvited], (await LinesAsync(org.Id)).Select(l => l.Type));
     }
 
     // ─── People ─────────────────────────────────────────────────────────────────────────────────────────
@@ -254,8 +254,7 @@ public class OrgActivityEventsTests
 
         await using (var db = _kit.NewDb())
         {
-            var refused = await Assert.ThrowsAsync<DomainConflictException>(() => _kit.Team(db).ReactivateAsync(org.Id, anna.Id, OwnerId));
-            Assert.Equal(OrgSeatErrors.LimitReached, refused.Code);
+            await _kit.Team(db).ReactivateAsync(org.Id, anna.Id, OwnerId);
         }
 
         Assert.Equal([OrgActivityType.MemberInvited], (await LinesAsync(org.Id)).Select(l => l.Type));

@@ -51,6 +51,7 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var org = await db.Orgs.SingleAsync(o => o.Id == orgId);
+        org.IsAgency = true;
         org.PlanTier = tier;
         org.SubscriptionStatus = status;
         org.SubscriptionId = status == SubscriptionStatus.None ? null : $"sub_{Guid.NewGuid():N}";

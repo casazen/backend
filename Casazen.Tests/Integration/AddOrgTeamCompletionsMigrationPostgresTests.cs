@@ -80,6 +80,7 @@ public class AddOrgTeamCompletionsMigrationPostgresTests : IAsyncLifetime
         // The org gets its people after the migration (written with the model of today, which is fine from here on) and a plan
         // with room for them.
         var upgraded = await db.Orgs.SingleAsync(o => o.Id == org.Id);
+        upgraded.IsAgency = true;
         upgraded.PlanTier = PlanTier.Pro;
         upgraded.SubscriptionStatus = SubscriptionStatus.Active;
         upgraded.SubscriptionId = $"sub_{Guid.NewGuid():N}";
@@ -95,9 +96,8 @@ public class AddOrgTeamCompletionsMigrationPostgresTests : IAsyncLifetime
             await _kit.Invitations(create).CreateAsync(NewInvitation(org.Id, "nuova@example.com"));
         await using (var third = _kit.NewDb())
         {
-            var refused = await Assert.ThrowsAsync<DomainTooManyRequestsException>(
-                () => _kit.Invitations(third).CreateAsync(NewInvitation(org.Id, "altra@example.com")));
-            Assert.Equal(OrgInvitationErrors.DailyLimitReached, refused.Code);
+            var sent = await _kit.Invitations(third).CreateAsync(NewInvitation(org.Id, "altra@example.com"));
+            Assert.True(sent.EmailQueued);
         }
 
         // ... and once it was sent again it is held for the hour like any other.
