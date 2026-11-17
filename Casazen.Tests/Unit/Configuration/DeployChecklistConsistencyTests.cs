@@ -66,6 +66,7 @@ public class DeployChecklistConsistencyTests
         ["MrzOcr"] = typeof(MrzOcrOptions),
         ["Crm"] = typeof(CrmOptions),
         ["OwnerPortal"] = typeof(OwnerPortalOptions),
+        ["Octorate"] = typeof(OctorateOptions),
     };
 
     /// <summary>Roots whose keys are composed at runtime (no literal in the code, not in <c>appsettings.json</c>), with why.</summary>

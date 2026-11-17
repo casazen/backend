@@ -47,7 +47,8 @@ public sealed class ChannelMappingService(
     IOptions<OctorateOptions> options,
     IHostEnvironment hostEnvironment,
     TimeProvider timeProvider,
-    ILogger<ChannelMappingService> logger) : IChannelMappingService
+    ILogger<ChannelMappingService> logger,
+    IAiProvider? ai = null) : IChannelMappingService
 {
     /// <summary>The entity type of the "To do" about a mapping.</summary>
     public const string MappingEntityType = "OctorateListingMapping";
@@ -328,7 +329,8 @@ public sealed class ChannelMappingService(
         }
 
         // The CasaZen create path: the plan limit (count and insert under the org's lock), the CIN and address rules, the tenant.
-        var property = NewProperty(orgId, userId, listing, rooms);
+        var location = await OctorateImportCountryResolver.ResolveAsync(db, listing, ai, logger, ct);
+        var property = NewProperty(orgId, userId, listing with { Country = location.Country, City = location.City }, rooms);
         var created = await entitlements.CreatePropertyWithinLimitAsync(orgId, () => propertyService.CreatePropertyAsync(property), ct)
             ?? throw PlanLimitReached();
 
@@ -361,19 +363,19 @@ public sealed class ChannelMappingService(
     public async Task<bool> IsWriteBlockedAsync(Guid propertyId, CancellationToken ct)
     {
         // Called by the content push and the booking actions, also from jobs: the property's own org, read across orgs.
-        var orgId = await db.Properties
+        var property = await db.Properties
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter, AppDbContext.SoftDeleteQueryFilter])
             .AsNoTracking()
             .Where(p => p.Id == propertyId)
-            .Select(p => (Guid?)p.OrgId)
+            .Select(p => new { p.OrgId, p.IsActive, p.IsDeleted })
             .FirstOrDefaultAsync(ct);
-        if (orgId is null)
+        if (property is null || !property.IsActive || property.IsDeleted)
             return true;
 
         var undecided = await db.OctorateListingMappings
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
-            .Where(m => m.OrgId == orgId && (m.Status == OctorateMappingStatus.Proposed || m.Status == OctorateMappingStatus.Ambiguous))
+            .Where(m => m.OrgId == property.OrgId && (m.Status == OctorateMappingStatus.Proposed || m.Status == OctorateMappingStatus.Ambiguous))
             .Select(m => new { m.PropertyId, m.CandidatePropertyIdsJson })
             .ToListAsync(ct);
 
@@ -419,7 +421,7 @@ public sealed class ChannelMappingService(
             Address = Cut(listing.Address, 500) ?? string.Empty,
             City = Cut(listing.City, 50) ?? string.Empty,
             PostalCode = Cut(listing.PostalCode, 10) ?? string.Empty,
-            Country = listing.Country is { Length: 2 } country ? country.ToUpperInvariant() : "IT",
+            Country = listing.Country is { Length: 2 } country ? country.ToUpperInvariant() : string.Empty,
             Latitude = listing.Latitude ?? 0,
             Longitude = listing.Longitude ?? 0,
             MaxGuests = Math.Clamp(room?.MaxGuests ?? 0, 0, 100),

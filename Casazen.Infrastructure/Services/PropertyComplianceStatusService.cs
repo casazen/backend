@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -75,7 +76,11 @@ public class PropertyComplianceStatusService(
             .Include(c => c.Items)
             .FirstOrDefaultAsync(c => c.PropertyId == property.Id, cancellationToken);
 
-        return BuildBlockingSteps(property, comuneListImported, uploadedTypes, safetyChecklist);
+        var steps = BuildBlockingSteps(property, comuneListImported, uploadedTypes, safetyChecklist);
+        if (!property.IsActive && await db.OctorateListingMappings.AnyAsync(m => m.OrgId == property.OrgId &&
+                m.PropertyId == property.Id && m.Status == OctorateMappingStatus.Confirmed, cancellationToken))
+            return RequireDraftReview(steps);
+        return steps;
     }
 
     public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<ComplianceActivationStep>>> GetBlockingStepsManyAsync(
@@ -110,17 +115,27 @@ public class PropertyComplianceStatusService(
             .GroupBy(c => c.PropertyId)
             .ToDictionary(g => g.Key, g => g.First());
 
+        var draftIds = properties.Where(p => !p.IsActive).Select(p => p.Id).ToArray();
+        var importedDraftIds = draftIds.Length == 0 ? new HashSet<Guid>() :
+            (await db.OctorateListingMappings.AsNoTracking()
+                .Where(m => m.PropertyId != null && draftIds.Contains(m.PropertyId.Value) && m.Status == OctorateMappingStatus.Confirmed)
+                .Select(m => m.PropertyId!.Value).ToListAsync(cancellationToken)).ToHashSet();
+
         foreach (var property in properties)
         {
-            stepsOf[property.Id] = BuildBlockingSteps(
+            var propertySteps = BuildBlockingSteps(
                 property,
                 comuneListImported,
                 typesOf.GetValueOrDefault(property.Id) ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                 checklistOf.GetValueOrDefault(property.Id));
+            stepsOf[property.Id] = importedDraftIds.Contains(property.Id) ? RequireDraftReview(propertySteps) : propertySteps;
         }
 
         return stepsOf;
     }
+
+    private static IReadOnlyList<ComplianceActivationStep> RequireDraftReview(IReadOnlyList<ComplianceActivationStep> steps) =>
+        steps.Select(step => step.Status == "complete" ? step : step with { Blocker = true }).ToList();
 
     // The rules of the four compliance steps, on facts already read: one definition for the wizard, the activation, the
     // re-evaluation, the nightly check and the host's list (SR-07a) — which read the facts of one property or of many. The base
@@ -134,16 +149,25 @@ public class PropertyComplianceStatusService(
         IReadOnlySet<string> uploadedTypes,
         PropertySafetyChecklist? safetyChecklist)
     {
-        var cinStatus = CinComplianceRules.ResolveStatus(property.CinCode);
+        var cinStatus = string.Equals(property.Country, "CH", StringComparison.OrdinalIgnoreCase)
+            ? "valid"
+            : CinComplianceRules.ResolveStatus(property.CinCode);
         var cinGuidanceUrl = configuration["Compliance:CinGuidanceUrl"]
             ?? ComplianceOptions.DefaultCinGuidanceUrl;
 
         // Bedrooms are not checked: 0 is a studio flat (monolocale, A2-27).
-        var baseComplete = !string.IsNullOrWhiteSpace(property.Name)
+        var baseDataComplete = !string.IsNullOrWhiteSpace(property.Name)
             && !string.IsNullOrWhiteSpace(property.Address)
             && !string.IsNullOrWhiteSpace(property.City)
             && property.MaxGuests > 0
             && property.NightlyRate > 0;
+        var countryKnown = property.Country.Length == 2;
+        var baseComplete = baseDataComplete && countryKnown;
+        var baseBlockers = new List<ActivationBlocker>();
+        if (!baseDataComplete)
+            baseBlockers.Add(new("activation_base_data_incomplete", "ActivationBaseDataIncomplete"));
+        if (!countryKnown)
+            baseBlockers.Add(new("activation_country_unknown", "ActivationBaseDataIncomplete"));
 
         var requiredDocs = ResolveRequiredDocuments(property);
 
@@ -165,7 +189,7 @@ public class PropertyComplianceStatusService(
             {
                 LabelKey = "ActivationStepBaseData",
                 MessageKey = baseComplete ? null : "ActivationBaseDataIncomplete",
-                Blockers = baseComplete ? [] : [new("activation_base_data_incomplete", "ActivationBaseDataIncomplete")],
+                Blockers = baseBlockers,
                 Warnings = comuneMissing ? [new("comune_istat_missing", "ActivationComuneMissing")] : [],
             },
             new ComplianceActivationStep(
@@ -399,6 +423,11 @@ public class PropertyComplianceStatusService(
                     }
 
                     property.ComplianceStatus = PropertyComplianceStatus.Active;
+                    // An imported draft is visible while inactive; only the host's successful activation promotes it.
+                    if (host is not null && !property.IsActive && await db.OctorateListingMappings.AnyAsync(
+                            m => m.OrgId == property.OrgId && m.PropertyId == property.Id &&
+                                 m.Status == OctorateMappingStatus.Confirmed, cancellationToken))
+                        property.IsActive = true;
                     property.ComplianceCompletedAt = now;
                     property.ComplianceSuspendedAt = null;
                     property.ComplianceSuspensionReasons = null;
@@ -415,7 +444,15 @@ public class PropertyComplianceStatusService(
             }
 
             property.ComplianceCheckedAt = now;
-            await db.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException ex) when (ex.InnerException is PostgresException
+            { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: PropertyAddress.UniqueIndexName })
+            {
+                throw new DomainConflictException(PropertyAddress.DuplicateCode, "PropertyAddressTaken");
+            }
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
         }
@@ -501,6 +538,8 @@ public class PropertyComplianceStatusService(
     /// </summary>
     private IReadOnlyList<string> ResolveRequiredDocuments(Property property)
     {
+        if (string.Equals(property.Country, "CH", StringComparison.OrdinalIgnoreCase))
+            return [];
         var section = configuration.GetSection("Compliance:RequiredDocuments");
         var keys = section.GetChildren().Select(c => c.Key).ToList();
 
