@@ -137,9 +137,10 @@ The startup log also prints `Commit: <sha>`.
 
 ## CI: `verify-test` / `verify-prod`
 
-`verify-railway-deploy.yml` runs `scripts/verify-deploy.sh <url> <head_sha> 1200` after a successful
-`CI/CD Pipeline` push to `develop` (test) or `main` (production). It is a separate workflow so Railway
-Wait for CI can go green on `Build & Test` and deploy before verify polls. The script polls
+`verify-railway-deploy.yml` runs `scripts/verify-deploy.sh <url> <deployment_sha> 1200` when the Railway
+GitHub App reports a successful deployment to test or production. A `workflow_run` triggered by CI would
+itself be a check on the same commit: Railway Wait for CI waits for that check, and a verifier waiting
+for the deploy would deadlock. The deployment-status trigger starts only after Railway deploys. The script polls
 `/api/health/ready` every 15 s and:
 
 - **fails at once** when the GitHub variable (`RAILWAY_TEST_URL` / `RAILWAY_PROD_URL`) is not set;
@@ -156,10 +157,10 @@ Product owner setup (once):
 
 1. GitHub → `casazen/backend` → Settings → Secrets and variables → Actions → **Variables**: `RAILWAY_TEST_URL` and
    `RAILWAY_PROD_URL` = public Railway URLs, without trailing slash. They are now mandatory.
-2. Railway → service → each environment → Settings → **Wait for CI** may stay on. It waits for the `CI/CD Pipeline`
-   suite (`Build & Test` only). Deploy verification is `verify-railway-deploy.yml` and starts after that suite is
-   green, so the two no longer wait for each other. Watch paths are set only in the Railway dashboard (there is no
-   `railway.toml` in this repo). Pull requests stay gated by `Build & Test`.
+2. Railway → service → each environment → Settings → **Wait for CI** stays on and waits for every GitHub Actions
+   workflow on the commit. Deploy verification starts only after Railway reports deployment success, so it cannot
+   block the deployment. Watch paths are set only in the Railway dashboard (there is no `railway.toml` in this repo).
+   Pull requests stay gated by `Build & Test`.
 3. Required: Railway → service → each environment → Settings → Deploy → **Healthcheck Path** = `/api/health/live`,
    **Healthcheck Timeout** = `300` ([Railway deploy healthcheck](#railway-deploy-healthcheck)). Without it a deployment
    that fails at startup replaces the running one.
