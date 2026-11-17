@@ -1,0 +1,83 @@
+{
+  "environment": "test",
+  "schema": "casazen_test",
+  "orgId": "ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8",
+  "supplierId": "a7112026-1117-4000-a000-000000000001",
+  "sql": "BEGIN;\nINSERT INTO casazen_test.\"Orgs\" (\"Id\",\"Name\",\"Slug\",\"PlanTier\",\"DisplayName\",\"ContactEmail\",\"IsActive\",\"CreatedAt\",\"UpdatedAt\",\"OrgType\",\"SupplierBackupsEnabled\") VALUES\n('a7112026-1117-4000-a000-000000000001','Quokka Housekeeping [TEST]','quokka-housekeeping-test',0,'Quokka Housekeeping [TEST]','housekeeping@quokka.example.test',true,'2026-10-01',now(),1,false) ON CONFLICT(\"Id\") DO NOTHING;\nINSERT INTO casazen_test.\"SupplierProfiles\" (\"OrgId\",\"Status\",\"LegalName\",\"Phone\",\"Email\",\"CategoriesJson\",\"ComuniJson\",\"ComuneIstatCodesJson\",\"Bio\",\"PhotoUrlsJson\",\"TosAcceptedAt\",\"TosVersion\",\"ActivationStep\",\"CreatedAt\",\"UpdatedAt\")\nVALUES ('a7112026-1117-4000-a000-000000000001',1,'Quokka Housekeeping [TEST - fornitore sintetico]','+390000000000','housekeeping@quokka.example.test','[\"cleaning\"]','[\"Como\",\"Lugano\",\"Ascona\"]','[\"013075\"]','Fornitore abituale sintetico per demo. Nessun incarico, contatto o consenso reale. Storico pulizie contabilizzato in EUR; automazioni mantenute in TestMode.','[]','2026-10-01','TEST-SIMULAZIONE-NON-REALE',5,'2026-10-01',now()) ON CONFLICT(\"OrgId\") DO NOTHING;\nINSERT INTO casazen_test.\"SupplierSettings\" (\"OrgId\",\"BufferMinutes\",\"MaxJobsPerDay\",\"MinNoticeHours\",\"HorizonDays\",\"SlotStepMinutes\",\"ParallelJobs\",\"RespondWithinMinutes\",\"OnlineBookingEnabled\",\"HoursConfiguredAt\",\"AutoAcceptRegulars\",\"NotifyNewRequests\",\"NotifyDayBeforeReminder\",\"NotifyPaymentMarked\",\"CreatedAt\",\"UpdatedAt\")\nVALUES ('a7112026-1117-4000-a000-000000000001',15,12,0,90,15,3,120,false,now(),true,false,false,false,'2026-10-01',now()) ON CONFLICT(\"OrgId\") DO NOTHING;\nINSERT INTO casazen_test.\"TrustedSuppliers\" (\"Id\",\"OrgId\",\"SupplierOrgId\",\"AssignedPropertyIds\",\"Priority\",\"VisibleInMarketplace\",\"CreatedAt\")\nVALUES ('a7112026-1117-4000-a000-000000000002','ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8','a7112026-1117-4000-a000-000000000001',ARRAY['36e556c2-943e-44d7-86db-dea0567ea8a1'::uuid,'36e556c2-943e-44d7-86db-dea0567ea8a2'::uuid,'36e556c2-943e-44d7-86db-dea0567ea8a3'::uuid],1,true,'2026-10-01') ON CONFLICT(\"Id\") DO NOTHING;\nDO $demo$\nDECLARE p record; b record; routine_id uuid; request_id uuid; cleaning_id uuid; start_at timestamptz; ready_at timestamptz;\nBEGIN\n FOR p IN SELECT \"Id\",\"Name\",\"Timezone\" FROM casazen_test.\"Properties\" WHERE \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8' AND \"Id\" IN ('36e556c2-943e-44d7-86db-dea0567ea8a1','36e556c2-943e-44d7-86db-dea0567ea8a2','36e556c2-943e-44d7-86db-dea0567ea8a3') LOOP\n routine_id=md5('quokka-demo-cleaning-routine:'||p.\"Id\"::text)::uuid;\n INSERT INTO casazen_test.\"PropertyCleaningSetups\" (\"Id\",\"OrgId\",\"PropertyId\",\"CleanerKind\",\"SupplierOrgId\",\"PriceCents\",\"StartTime\",\"DurationMinutes\",\"Active\",\"CreatedAt\",\"UpdatedAt\",\"UpdatedByUserId\")\n VALUES (md5('quokka-demo-cleaning-setup:'||p.\"Id\"::text)::uuid,'ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8',p.\"Id\",1,'a7112026-1117-4000-a000-000000000001',7000,'10:00',120,true,'2026-10-01',now(),'auth0|6afb6c7bb2c0f85f4e97f136') ON CONFLICT(\"PropertyId\") DO NOTHING;\n INSERT INTO casazen_test.\"Routines\" (\"Id\",\"OrgId\",\"Name\",\"EventType\",\"EventConfig\",\"ConditionJson\",\"ActionsJson\",\"TestMode\",\"Active\")\n VALUES (routine_id,'ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8','TEST - Housekeeping checkout - '||p.\"Name\",9,'{}',\n jsonb_build_object('version','1.0','groups',jsonb_build_array(jsonb_build_object('operator','AND','rules',jsonb_build_array(jsonb_build_object('fieldId','propertyId','operator','in','value',jsonb_build_array(p.\"Id\"::text))))))::text,\n '[{\"type\":\"CreateCleaningRequest\",\"config\":{}},{\"type\":\"CreateActivity\",\"config\":{\"text\":\"TEST - Verificare pulizia completata e confermare immobile pronto al prossimo ospite\",\"dueInDays\":0}}]',true,true) ON CONFLICT(\"Id\") DO NOTHING;\n FOR b IN SELECT \"Id\",\"CheckOutDate\" FROM casazen_test.\"Bookings\" WHERE \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8' AND \"PropertyId\"=p.\"Id\" AND \"Status\"=3 LOOP\n request_id=md5('quokka-demo-cleaning-request:'||b.\"Id\"::text)::uuid;\n cleaning_id=md5('quokka-demo-stay-cleaning:'||b.\"Id\"::text)::uuid;\n start_at=(b.\"CheckOutDate\"::date+time '10:00') AT TIME ZONE coalesce(nullif(p.\"Timezone\",''),'Europe/Rome');\n ready_at=start_at+interval '2 hours 15 minutes';\n INSERT INTO casazen_test.\"ServiceRequests\" (\"Id\",\"OrgId\",\"BookingId\",\"PropertyId\",\"SupplierOrgId\",\"Category\",\"Urgency\",\"Notes\",\"Status\",\"TakenAt\",\"CompletedAt\",\"PaidAt\",\"PaidBy\",\"ChargeToGuest\",\"CreatedAt\",\"UpdatedAt\",\"RentalContext\",\"ScheduledStartUtc\",\"ScheduledEndUtc\",\"StartedAt\",\"EstimatedAmountCents\",\"QuotedAmountCents\",\"FinalAmountCents\",\"FinalAmountNeedsConfirmation\",\"PaymentMode\",\"PriceLinesJson\",\"CompletionNotes\",\"ServiceNameSnapshot\",\"AutoAccepted\")\n VALUES (request_id,'ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8',b.\"Id\",p.\"Id\",'a7112026-1117-4000-a000-000000000001','cleaning',0,'TEST - Housekeeping checkout ricostruito per demo: pulizia, cambio biancheria e riassetto. Prezzo simulato EUR 70. Nessun incarico o pagamento reale.',4,start_at-interval '1 day',start_at+interval '2 hours',ready_at,0,false,start_at-interval '2 days',now(),0,start_at,start_at+interval '2 hours',start_at,7000,7000,7000,false,0,'[{\"kind\":\"base\",\"label\":\"Pulizia checkout TEST (EUR)\",\"amountCents\":7000}]','TEST - Pulizia e sanificazione simulate completate; biancheria sostituita, dotazioni controllate.','Pulizia checkout e riassetto [TEST]',true) ON CONFLICT(\"Id\") DO NOTHING;\n INSERT INTO casazen_test.\"StayCleanings\" (\"Id\",\"OrgId\",\"BookingId\",\"PropertyId\",\"CleanerKind\",\"ServiceRequestId\",\"ScheduledStartUtc\",\"CreatedAt\",\"UpdatedAt\")\n VALUES (cleaning_id,'ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8',b.\"Id\",p.\"Id\",1,request_id,start_at,start_at-interval '2 days',now()) ON CONFLICT(\"OrgId\",\"BookingId\") DO NOTHING;\n INSERT INTO casazen_test.\"StayCheckouts\" (\"Id\",\"OrgId\",\"BookingId\",\"CurrentStep\",\"DepartureConfirmed\",\"CleaningChoice\",\"CleaningSupplierOrgId\",\"CleaningCategory\",\"CleaningNotes\",\"CleaningRequestId\",\"TouristTaxCollection\",\"PropertyReady\",\"PropertyNotes\",\"CompletedAt\",\"PropertyReadyAt\",\"CreatedAt\",\"UpdatedAt\")\n VALUES (md5('quokka-demo-checkout:'||b.\"Id\"::text)::uuid,'ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8',b.\"Id\",5,true,1,'a7112026-1117-4000-a000-000000000001','cleaning','TEST - Fornitore abituale incaricato in simulazione.',request_id,1,true,'TEST - Pulizia verificata; alloggio pronto alle ore 12:15 locali per il prossimo ospite.',start_at,ready_at,start_at,now())\n ON CONFLICT(\"BookingId\") DO UPDATE SET \"CurrentStep\"=5,\"DepartureConfirmed\"=true,\"CleaningChoice\"=1,\"CleaningSupplierOrgId\"=EXCLUDED.\"CleaningSupplierOrgId\",\"CleaningCategory\"='cleaning',\"CleaningRequestId\"=EXCLUDED.\"CleaningRequestId\",\"TouristTaxCollection\"=1,\"PropertyReady\"=true,\"PropertyNotes\"=EXCLUDED.\"PropertyNotes\",\"CompletedAt\"=EXCLUDED.\"CompletedAt\",\"PropertyReadyAt\"=EXCLUDED.\"PropertyReadyAt\",\"UpdatedAt\"=now();\n UPDATE casazen_test.\"Bookings\" SET \"CheckedOutAt\"=start_at,\"UpdatedAt\"=now() WHERE \"Id\"=b.\"Id\" AND \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8';\n UPDATE casazen_test.\"InternalActivities\" SET \"ScheduledAt\"=start_at,\"CompletedAt\"=start_at+interval '2 hours',\"Status\"='Completed',\"Notes\"='TEST - Pulizia completata dal fornitore abituale Quokka Housekeeping; immobile nuovamente pronto.' WHERE \"BookingId\"=b.\"Id\" AND \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8' AND \"ActivityType\"='Cleaning';\n INSERT INTO casazen_test.\"RoutineExecutions\" (\"Id\",\"OrgId\",\"RoutineId\",\"EventId\",\"StartedAt\",\"CompletedAt\",\"Outcome\",\"ResultJson\")\n VALUES (md5('quokka-demo-housekeeping-execution:'||b.\"Id\"::text)::uuid,'ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8',routine_id,'TEST-housekeeping-checkout-'||b.\"Id\"::text,start_at,ready_at,'Success','{\"actions\":[{\"index\":0,\"type\":\"CreateCleaningRequest\",\"outcome\":\"simulated\"},{\"index\":1,\"type\":\"CreateActivity\",\"outcome\":\"simulated\"}],\"nextActionIndex\":2,\"demoFixture\":true}') ON CONFLICT(\"RoutineId\",\"EventId\") DO NOTHING;\n INSERT INTO casazen_test.\"InternalActivities\" (\"Id\",\"OrgId\",\"PropertyId\",\"BookingId\",\"ActivityType\",\"InternalRate\",\"RechargeToOwner\",\"Status\",\"Notes\",\"ScheduledAt\",\"CompletedAt\",\"CreatedAt\",\"CreatedByUserId\",\"Action\",\"ClosedBy\",\"Deadline\",\"EntityId\",\"EntityType\",\"Reason\",\"Urgency\")\n VALUES (md5('quokka-demo-housekeeping-check:'||b.\"Id\"::text)::uuid,'ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8',p.\"Id\",b.\"Id\",'RoutineTask',0,false,'Completed','TEST - Conferma pulizia e disponibilità ricostruita per demo.',ready_at,ready_at,start_at,'auth0|6afb6c7bb2c0f85f4e97f136','ReviewBooking','System',ready_at,b.\"Id\",'Booking','TEST - Pulizia verificata e immobile pronto al prossimo ospite',0) ON CONFLICT(\"Id\") DO NOTHING;\n END LOOP;\n END LOOP;\nEND $demo$;\nCOMMIT;",
+  "auditSql": "WITH b AS (SELECT * FROM casazen_test.\"Bookings\" WHERE \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8'),\nchecks AS(\n SELECT 'booking_guest_tenant' check_name,count(*) bad FROM b LEFT JOIN casazen_test.\"Guests\" g ON g.\"Id\"=b.\"GuestId\" WHERE g.\"Id\" IS NULL OR g.\"OrgId\"<>b.\"OrgId\"\n UNION ALL SELECT 'guest_roster_count',count(*) FROM b WHERE (SELECT count(*) FROM casazen_test.\"StayGuests\" s WHERE s.\"BookingId\"=b.\"Id\" AND s.\"OrgId\"=b.\"OrgId\")<>b.\"NumberOfGuests\"\n UNION ALL SELECT 'guest_required_identity',count(*) FROM casazen_test.\"StayGuests\" s JOIN b ON b.\"Id\"=s.\"BookingId\" WHERE nullif(s.\"FirstName\",'') IS NULL OR nullif(s.\"LastName\",'') IS NULL OR s.\"DateOfBirth\" IS NULL OR (s.\"Type\" IN (1,2,3) AND (nullif(s.\"DocumentNumber\",'') IS NULL OR s.\"DocumentTypeCode\" IS NULL)) OR s.\"CitizenshipCode\" IS NULL\n UNION ALL SELECT 'booking_overlap',count(*) FROM b a JOIN b z ON a.\"Id\"<z.\"Id\" AND a.\"PropertyId\"=z.\"PropertyId\" AND a.\"CheckInDate\"<z.\"CheckOutDate\" AND z.\"CheckInDate\"<a.\"CheckOutDate\"\n UNION ALL SELECT 'paid_balance',count(*) FROM b WHERE abs(b.\"TotalPrice\"-(SELECT coalesce(sum(p.\"Amount\"),0) FROM casazen_test.\"Payments\" p WHERE p.\"BookingId\"=b.\"Id\" AND p.\"Status\"=2))>0.01\n UNION ALL SELECT 'guest_issued_document',count(*) FROM b WHERE NOT EXISTS(SELECT 1 FROM casazen_test.\"FiscalDocuments\" f WHERE f.\"BookingId\"=b.\"Id\" AND f.\"Purpose\"=1 AND f.\"Status\"=2 AND f.\"PaymentState\"=2 AND abs(f.\"Total\"-b.\"BasePrice\")<0.01 AND f.\"ServicePeriodFrom\"=b.\"CheckInDate\"::date AND f.\"ServicePeriodTo\"=b.\"CheckOutDate\"::date)\n UNION ALL SELECT 'fiscal_arithmetic',count(*) FROM casazen_test.\"FiscalDocuments\" f WHERE f.\"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8' AND abs(f.\"Total\"-f.\"TaxableBase\"-f.\"VatAmount\"-f.\"StampDuty\")>0.01\n UNION ALL SELECT 'italian_police_completed',count(*) FROM b JOIN casazen_test.\"Properties\" p ON p.\"Id\"=b.\"PropertyId\" WHERE p.\"Country\"='IT' AND b.\"Status\" IN(2,3) AND NOT EXISTS(SELECT 1 FROM casazen_test.\"AlloggiatiWebReports\" r WHERE r.\"BookingId\"=b.\"Id\" AND r.\"Status\"=6 AND r.\"ManuallyCompleted\" AND r.\"ReportedAt\" IS NOT NULL)\n UNION ALL SELECT 'swiss_police_receipt',count(*) FROM b JOIN casazen_test.\"Properties\" p ON p.\"Id\"=b.\"PropertyId\" WHERE p.\"Country\"='CH' AND b.\"Status\" IN(2,3) AND NOT EXISTS(SELECT 1 FROM casazen_test.\"SwissComplianceReceipts\" r WHERE r.\"PropertyId\"=p.\"Id\" AND r.\"Type\"='Police' AND r.\"ReportDate\"::date=b.\"CheckInDate\"::date)\n UNION ALL SELECT 'missing_private_owner_files',count(*) FROM casazen_test.\"OwnerDocumentVersions\" v LEFT JOIN storage.objects s ON s.name=v.\"StorageKey\" AND s.bucket_id='casazen-test-private' WHERE v.\"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8' AND s.id IS NULL\n UNION ALL SELECT 'missing_manual_proof_files',count(*) FROM casazen_test.\"ManualComplianceProofs\" p LEFT JOIN storage.objects s ON s.name=p.\"FileKey\" AND s.bucket_id='casazen-test-private' WHERE p.\"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8' AND s.id IS NULL\n UNION ALL SELECT 'overdue_todo',count(*) FROM casazen_test.\"InternalActivities\" WHERE \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8' AND \"Status\"<>'Completed' AND \"Deadline\"<now()\n UNION ALL SELECT 'unpublished_current_statement',count(*) FROM casazen_test.\"OwnerStatementVersions\" WHERE \"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8' AND \"VersionNumber\"=2 AND(\"Status\"<>4 OR \"IssuesJson\" IS NOT NULL)\n UNION ALL SELECT 'owner_period_balance',count(*) FROM casazen_test.\"OwnerStatementVersions\" v WHERE v.\"OrgId\"='ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8' AND v.\"VersionNumber\"=2 AND abs(v.\"ClosingBalance\"-(SELECT coalesce(sum(e.\"Amount\"),0) FROM casazen_test.\"OwnerLedgerEntries\" e WHERE e.\"OrgId\"=v.\"OrgId\" AND e.\"PropertyOwnerId\"=v.\"PropertyOwnerId\" AND e.\"PeriodYear\"=2026 AND e.\"PeriodMonth\"<=v.\"PeriodMonth\"))>0.01\n UNION ALL SELECT 'issuer_lock_mismatch',count(*) FROM b WHERE NOT EXISTS(SELECT 1 FROM casazen_test.\"BookingDocumentIssuers\" i JOIN casazen_test.\"FiscalDocuments\" f ON f.\"Id\"=i.\"LockedByDocumentId\" WHERE i.\"BookingId\"=b.\"Id\" AND f.\"BookingId\"=b.\"Id\")\n) SELECT * FROM checks ORDER BY check_name",
+  "audit": [
+    {
+      "check_name": "booking_guest_tenant",
+      "bad": 0
+    },
+    {
+      "check_name": "booking_overlap",
+      "bad": 0
+    },
+    {
+      "check_name": "fiscal_arithmetic",
+      "bad": 0
+    },
+    {
+      "check_name": "guest_issued_document",
+      "bad": 0
+    },
+    {
+      "check_name": "guest_required_identity",
+      "bad": 0
+    },
+    {
+      "check_name": "guest_roster_count",
+      "bad": 0
+    },
+    {
+      "check_name": "issuer_lock_mismatch",
+      "bad": 0
+    },
+    {
+      "check_name": "italian_police_completed",
+      "bad": 0
+    },
+    {
+      "check_name": "missing_manual_proof_files",
+      "bad": 0
+    },
+    {
+      "check_name": "missing_private_owner_files",
+      "bad": 0
+    },
+    {
+      "check_name": "overdue_todo",
+      "bad": 0
+    },
+    {
+      "check_name": "owner_period_balance",
+      "bad": 0
+    },
+    {
+      "check_name": "paid_balance",
+      "bad": 0
+    },
+    {
+      "check_name": "swiss_police_receipt",
+      "bad": 0
+    },
+    {
+      "check_name": "unpublished_current_statement",
+      "bad": 0
+    }
+  ],
+  "historicalCleanings": 12,
+  "propertyReadyCheckouts": 12,
+  "routines": 3,
+  "regularSupplier": "Quokka Housekeeping [TEST]",
+  "notes": [
+    "Synthetic historical fixtures, no service actually ordered, no supplier notifications or payments.",
+    "Three active routines in TestMode=true, each with CreateCleaningRequest and a ready-for-next-guest verification task; execution history is explicitly simulated.",
+    "Historical completed supplier requests are in EUR 70, independent of property currency, as required by the current service-request model.",
+    "Native automatic supplier cleaning only supports EUR properties. CHF property setups are demo fixtures; do not switch their routines out of TestMode before implementing a declared supplier settlement currency.",
+    "Owner mandates charge cleaning at the flat EUR rate; supplier costs do not create duplicate owner actual-cost charges.",
+    "21 already-issued guest documents had no LockedByDocumentId: populated with their issued document IDs without changing issuer identity.",
+    "Guest identity validation requires document numbers/types for single guests and heads of family/group; family members do not require their own document numbers."
+  ]
+}
