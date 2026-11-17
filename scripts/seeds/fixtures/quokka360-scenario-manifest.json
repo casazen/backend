@@ -1,0 +1,593 @@
+{
+  "asOf": "2026-11-17",
+  "schema": "casazen_test",
+  "orgId": "ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8",
+  "bucket": "casazen-test-private",
+  "simulated": true,
+  "uploads": [
+    {
+      "key": "compliance-proofs/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001032/TEST-alloggiati.pdf",
+      "asset": "alloggiati",
+      "sha256": "82f89d54f6e9d43c0a2c7908b91d69cf63e4a58d959e2f653a2071cdf97b8bb0",
+      "size": 1960
+    },
+    {
+      "key": "compliance-proofs/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001066/TEST-alloggiati.pdf",
+      "asset": "alloggiati",
+      "sha256": "82f89d54f6e9d43c0a2c7908b91d69cf63e4a58d959e2f653a2071cdf97b8bb0",
+      "size": 1960
+    },
+    {
+      "key": "compliance-proofs/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001100/TEST-alloggiati.pdf",
+      "asset": "alloggiati",
+      "sha256": "82f89d54f6e9d43c0a2c7908b91d69cf63e4a58d959e2f653a2071cdf97b8bb0",
+      "size": 1960
+    },
+    {
+      "key": "compliance-proofs/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001134/TEST-alloggiati.pdf",
+      "asset": "alloggiati",
+      "sha256": "82f89d54f6e9d43c0a2c7908b91d69cf63e4a58d959e2f653a2071cdf97b8bb0",
+      "size": 1960
+    },
+    {
+      "key": "compliance-proofs/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001168/TEST-alloggiati.pdf",
+      "asset": "alloggiati",
+      "sha256": "82f89d54f6e9d43c0a2c7908b91d69cf63e4a58d959e2f653a2071cdf97b8bb0",
+      "size": 1960
+    },
+    {
+      "key": "compliance-proofs/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001396/TEST-istat.pdf",
+      "asset": "istat",
+      "sha256": "d730f74591f6c510647e8c4cc03da594b55d55db79ca06212b57d0cef264eecb",
+      "size": 1947
+    },
+    {
+      "key": "compliance-proofs/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001400/TEST-tax.pdf",
+      "asset": "tax",
+      "sha256": "e8030f440eb353afdec84a393c9527031867c65397919b588c30752adbd65816",
+      "size": 1959
+    },
+    {
+      "key": "compliance-proofs/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001404/TEST-tax.pdf",
+      "asset": "tax",
+      "sha256": "e8030f440eb353afdec84a393c9527031867c65397919b588c30752adbd65816",
+      "size": 1959
+    },
+    {
+      "key": "compliance-proofs/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001412/TEST-istat.pdf",
+      "asset": "istat",
+      "sha256": "d730f74591f6c510647e8c4cc03da594b55d55db79ca06212b57d0cef264eecb",
+      "size": 1947
+    },
+    {
+      "key": "compliance-proofs/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001416/TEST-tax.pdf",
+      "asset": "tax",
+      "sha256": "e8030f440eb353afdec84a393c9527031867c65397919b588c30752adbd65816",
+      "size": 1959
+    },
+    {
+      "key": "compliance-proofs/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001420/TEST-tax.pdf",
+      "asset": "tax",
+      "sha256": "e8030f440eb353afdec84a393c9527031867c65397919b588c30752adbd65816",
+      "size": 1959
+    },
+    {
+      "key": "quokka-test-scenario/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001432/TEST-police.pdf",
+      "asset": "swiss",
+      "sha256": "8a04bbaedae7199c8f953c70b3e364a4ac138c723d58830cb919bd9b744bfe66",
+      "size": 1962
+    },
+    {
+      "key": "quokka-test-scenario/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001455/TEST-police.pdf",
+      "asset": "swiss",
+      "sha256": "8a04bbaedae7199c8f953c70b3e364a4ac138c723d58830cb919bd9b744bfe66",
+      "size": 1962
+    },
+    {
+      "key": "quokka-test-scenario/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001478/TEST-police.pdf",
+      "asset": "swiss",
+      "sha256": "8a04bbaedae7199c8f953c70b3e364a4ac138c723d58830cb919bd9b744bfe66",
+      "size": 1962
+    },
+    {
+      "key": "quokka-test-scenario/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001501/TEST-police.pdf",
+      "asset": "swiss",
+      "sha256": "8a04bbaedae7199c8f953c70b3e364a4ac138c723d58830cb919bd9b744bfe66",
+      "size": 1962
+    },
+    {
+      "key": "quokka-test-scenario/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001524/TEST-police.pdf",
+      "asset": "swiss",
+      "sha256": "8a04bbaedae7199c8f953c70b3e364a4ac138c723d58830cb919bd9b744bfe66",
+      "size": 1962
+    },
+    {
+      "key": "quokka-test-scenario/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/36e556c2-943e-44d7-86db-dea0567ea8a2/TEST-otr-2026-10.pdf",
+      "asset": "swiss",
+      "sha256": "8a04bbaedae7199c8f953c70b3e364a4ac138c723d58830cb919bd9b744bfe66",
+      "size": 1962
+    },
+    {
+      "key": "quokka-test-scenario/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/36e556c2-943e-44d7-86db-dea0567ea8a2/TEST-otr-2026-11.pdf",
+      "asset": "swiss",
+      "sha256": "8a04bbaedae7199c8f953c70b3e364a4ac138c723d58830cb919bd9b744bfe66",
+      "size": 1962
+    },
+    {
+      "key": "quokka-test-scenario/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001726/TEST-police.pdf",
+      "asset": "swiss",
+      "sha256": "8a04bbaedae7199c8f953c70b3e364a4ac138c723d58830cb919bd9b744bfe66",
+      "size": 1962
+    },
+    {
+      "key": "quokka-test-scenario/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001749/TEST-police.pdf",
+      "asset": "swiss",
+      "sha256": "8a04bbaedae7199c8f953c70b3e364a4ac138c723d58830cb919bd9b744bfe66",
+      "size": 1962
+    },
+    {
+      "key": "quokka-test-scenario/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001772/TEST-police.pdf",
+      "asset": "swiss",
+      "sha256": "8a04bbaedae7199c8f953c70b3e364a4ac138c723d58830cb919bd9b744bfe66",
+      "size": 1962
+    },
+    {
+      "key": "quokka-test-scenario/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001795/TEST-police.pdf",
+      "asset": "swiss",
+      "sha256": "8a04bbaedae7199c8f953c70b3e364a4ac138c723d58830cb919bd9b744bfe66",
+      "size": 1962
+    },
+    {
+      "key": "quokka-test-scenario/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/a7112026-1117-4000-8000-000000001818/TEST-police.pdf",
+      "asset": "swiss",
+      "sha256": "8a04bbaedae7199c8f953c70b3e364a4ac138c723d58830cb919bd9b744bfe66",
+      "size": 1962
+    },
+    {
+      "key": "quokka-test-scenario/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/36e556c2-943e-44d7-86db-dea0567ea8a3/TEST-otr-2026-10.pdf",
+      "asset": "swiss",
+      "sha256": "8a04bbaedae7199c8f953c70b3e364a4ac138c723d58830cb919bd9b744bfe66",
+      "size": 1962
+    },
+    {
+      "key": "quokka-test-scenario/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/36e556c2-943e-44d7-86db-dea0567ea8a3/TEST-otr-2026-11.pdf",
+      "asset": "swiss",
+      "sha256": "8a04bbaedae7199c8f953c70b3e364a4ac138c723d58830cb919bd9b744bfe66",
+      "size": 1962
+    }
+  ],
+  "bookings": [
+    {
+      "id": "a7112026-1117-4000-8000-000000001006",
+      "code": "QK10000001",
+      "property": "LARIO SUITE BRIENNO",
+      "from": "2026-10-26",
+      "to": "2026-10-29",
+      "phase": "past",
+      "channel": "Airbnb",
+      "currency": "EUR",
+      "total": 219.3,
+      "management": "Luca La Malfa"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001040",
+      "code": "QK10000002",
+      "property": "LARIO SUITE BRIENNO",
+      "from": "2026-11-02",
+      "to": "2026-11-05",
+      "phase": "past",
+      "channel": "Booking.com",
+      "currency": "EUR",
+      "total": 219.3,
+      "management": "Luca La Malfa"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001074",
+      "code": "QK10000003",
+      "property": "LARIO SUITE BRIENNO",
+      "from": "2026-11-09",
+      "to": "2026-11-12",
+      "phase": "past",
+      "channel": "Expedia",
+      "currency": "EUR",
+      "total": 219.3,
+      "management": "Luca La Malfa"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001108",
+      "code": "QK10000004",
+      "property": "LARIO SUITE BRIENNO",
+      "from": "2026-11-14",
+      "to": "2026-11-16",
+      "phase": "past",
+      "channel": "Vrbo",
+      "currency": "EUR",
+      "total": 146.2,
+      "management": "Luca La Malfa"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001142",
+      "code": "QK10000005",
+      "property": "LARIO SUITE BRIENNO",
+      "from": "2026-11-16",
+      "to": "2026-11-19",
+      "phase": "current",
+      "channel": "CasaZen",
+      "currency": "EUR",
+      "total": 219.3,
+      "management": "Luca La Malfa"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001176",
+      "code": "QK10000006",
+      "property": "LARIO SUITE BRIENNO",
+      "from": "2026-11-20",
+      "to": "2026-11-22",
+      "phase": "future",
+      "channel": "Sito Quokka360",
+      "currency": "EUR",
+      "total": 146.2,
+      "management": "Luca La Malfa"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001206",
+      "code": "QK10000007",
+      "property": "LARIO SUITE BRIENNO",
+      "from": "2026-11-23",
+      "to": "2026-11-26",
+      "phase": "future",
+      "channel": "Airbnb",
+      "currency": "EUR",
+      "total": 219.3,
+      "management": "Chiara Ruggeri - pending manual invitation 2026-11-19"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001238",
+      "code": "QK10000008",
+      "property": "LARIO SUITE BRIENNO",
+      "from": "2026-11-28",
+      "to": "2026-12-01",
+      "phase": "future",
+      "channel": "Booking.com",
+      "currency": "EUR",
+      "total": 219.3,
+      "management": "Chiara Ruggeri - pending manual invitation 2026-11-19"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001270",
+      "code": "QK10000009",
+      "property": "LARIO SUITE BRIENNO",
+      "from": "2026-12-03",
+      "to": "2026-12-06",
+      "phase": "future",
+      "channel": "Expedia",
+      "currency": "EUR",
+      "total": 219.3,
+      "management": "Chiara Ruggeri - pending manual invitation 2026-11-19"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001302",
+      "code": "QK10000010",
+      "property": "LARIO SUITE BRIENNO",
+      "from": "2026-12-10",
+      "to": "2026-12-13",
+      "phase": "future",
+      "channel": "Vrbo",
+      "currency": "EUR",
+      "total": 219.3,
+      "management": "Chiara Ruggeri - pending manual invitation 2026-11-19"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001334",
+      "code": "QK10000011",
+      "property": "LARIO SUITE BRIENNO",
+      "from": "2026-12-18",
+      "to": "2026-12-21",
+      "phase": "future",
+      "channel": "CasaZen",
+      "currency": "EUR",
+      "total": 219.3,
+      "management": "Chiara Ruggeri - pending manual invitation 2026-11-19"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001366",
+      "code": "QK10000012",
+      "property": "LARIO SUITE BRIENNO",
+      "from": "2026-12-27",
+      "to": "2026-12-30",
+      "phase": "future",
+      "channel": "Sito Quokka360",
+      "currency": "EUR",
+      "total": 219.3,
+      "management": "Chiara Ruggeri - pending manual invitation 2026-11-19"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001432",
+      "code": "QK20000001",
+      "property": "URBAN RESIDENCE 06",
+      "from": "2026-10-26",
+      "to": "2026-10-29",
+      "phase": "past",
+      "channel": "Expedia",
+      "currency": "CHF",
+      "total": 252,
+      "management": "Luca La Malfa"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001455",
+      "code": "QK20000002",
+      "property": "URBAN RESIDENCE 06",
+      "from": "2026-11-02",
+      "to": "2026-11-05",
+      "phase": "past",
+      "channel": "Vrbo",
+      "currency": "CHF",
+      "total": 252,
+      "management": "Luca La Malfa"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001478",
+      "code": "QK20000003",
+      "property": "URBAN RESIDENCE 06",
+      "from": "2026-11-09",
+      "to": "2026-11-12",
+      "phase": "past",
+      "channel": "CasaZen",
+      "currency": "CHF",
+      "total": 252,
+      "management": "Luca La Malfa"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001501",
+      "code": "QK20000004",
+      "property": "URBAN RESIDENCE 06",
+      "from": "2026-11-14",
+      "to": "2026-11-16",
+      "phase": "past",
+      "channel": "Sito Quokka360",
+      "currency": "CHF",
+      "total": 168,
+      "management": "Luca La Malfa"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001524",
+      "code": "QK20000005",
+      "property": "URBAN RESIDENCE 06",
+      "from": "2026-11-16",
+      "to": "2026-11-19",
+      "phase": "current",
+      "channel": "Airbnb",
+      "currency": "CHF",
+      "total": 252,
+      "management": "Luca La Malfa"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001547",
+      "code": "QK20000006",
+      "property": "URBAN RESIDENCE 06",
+      "from": "2026-11-20",
+      "to": "2026-11-22",
+      "phase": "future",
+      "channel": "Booking.com",
+      "currency": "CHF",
+      "total": 168,
+      "management": "Luca La Malfa"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001570",
+      "code": "QK20000007",
+      "property": "URBAN RESIDENCE 06",
+      "from": "2026-11-23",
+      "to": "2026-11-26",
+      "phase": "future",
+      "channel": "Expedia",
+      "currency": "CHF",
+      "total": 252,
+      "management": "Chiara Ruggeri - pending manual invitation 2026-11-19"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001595",
+      "code": "QK20000008",
+      "property": "URBAN RESIDENCE 06",
+      "from": "2026-11-28",
+      "to": "2026-12-01",
+      "phase": "future",
+      "channel": "Vrbo",
+      "currency": "CHF",
+      "total": 252,
+      "management": "Chiara Ruggeri - pending manual invitation 2026-11-19"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001620",
+      "code": "QK20000009",
+      "property": "URBAN RESIDENCE 06",
+      "from": "2026-12-03",
+      "to": "2026-12-06",
+      "phase": "future",
+      "channel": "CasaZen",
+      "currency": "CHF",
+      "total": 252,
+      "management": "Chiara Ruggeri - pending manual invitation 2026-11-19"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001645",
+      "code": "QK20000010",
+      "property": "URBAN RESIDENCE 06",
+      "from": "2026-12-10",
+      "to": "2026-12-13",
+      "phase": "future",
+      "channel": "Sito Quokka360",
+      "currency": "CHF",
+      "total": 252,
+      "management": "Chiara Ruggeri - pending manual invitation 2026-11-19"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001670",
+      "code": "QK20000011",
+      "property": "URBAN RESIDENCE 06",
+      "from": "2026-12-18",
+      "to": "2026-12-21",
+      "phase": "future",
+      "channel": "Airbnb",
+      "currency": "CHF",
+      "total": 252,
+      "management": "Chiara Ruggeri - pending manual invitation 2026-11-19"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001695",
+      "code": "QK20000012",
+      "property": "URBAN RESIDENCE 06",
+      "from": "2026-12-27",
+      "to": "2026-12-30",
+      "phase": "future",
+      "channel": "Booking.com",
+      "currency": "CHF",
+      "total": 252,
+      "management": "Chiara Ruggeri - pending manual invitation 2026-11-19"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001726",
+      "code": "QK30000001",
+      "property": "FLORIDA ASCONA Room 10",
+      "from": "2026-10-26",
+      "to": "2026-10-29",
+      "phase": "past",
+      "channel": "CasaZen",
+      "currency": "CHF",
+      "total": 312,
+      "management": "Luca La Malfa"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001749",
+      "code": "QK30000002",
+      "property": "FLORIDA ASCONA Room 10",
+      "from": "2026-11-02",
+      "to": "2026-11-05",
+      "phase": "past",
+      "channel": "Sito Quokka360",
+      "currency": "CHF",
+      "total": 312,
+      "management": "Luca La Malfa"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001772",
+      "code": "QK30000003",
+      "property": "FLORIDA ASCONA Room 10",
+      "from": "2026-11-09",
+      "to": "2026-11-12",
+      "phase": "past",
+      "channel": "Airbnb",
+      "currency": "CHF",
+      "total": 312,
+      "management": "Luca La Malfa"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001795",
+      "code": "QK30000004",
+      "property": "FLORIDA ASCONA Room 10",
+      "from": "2026-11-14",
+      "to": "2026-11-16",
+      "phase": "past",
+      "channel": "Booking.com",
+      "currency": "CHF",
+      "total": 208,
+      "management": "Luca La Malfa"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001818",
+      "code": "QK30000005",
+      "property": "FLORIDA ASCONA Room 10",
+      "from": "2026-11-16",
+      "to": "2026-11-19",
+      "phase": "current",
+      "channel": "Expedia",
+      "currency": "CHF",
+      "total": 312,
+      "management": "Luca La Malfa"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001841",
+      "code": "QK30000006",
+      "property": "FLORIDA ASCONA Room 10",
+      "from": "2026-11-20",
+      "to": "2026-11-22",
+      "phase": "future",
+      "channel": "Vrbo",
+      "currency": "CHF",
+      "total": 208,
+      "management": "Luca La Malfa"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001864",
+      "code": "QK30000007",
+      "property": "FLORIDA ASCONA Room 10",
+      "from": "2026-11-23",
+      "to": "2026-11-26",
+      "phase": "future",
+      "channel": "CasaZen",
+      "currency": "CHF",
+      "total": 312,
+      "management": "Chiara Ruggeri - pending manual invitation 2026-11-19"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001889",
+      "code": "QK30000008",
+      "property": "FLORIDA ASCONA Room 10",
+      "from": "2026-11-28",
+      "to": "2026-12-01",
+      "phase": "future",
+      "channel": "Sito Quokka360",
+      "currency": "CHF",
+      "total": 312,
+      "management": "Chiara Ruggeri - pending manual invitation 2026-11-19"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001914",
+      "code": "QK30000009",
+      "property": "FLORIDA ASCONA Room 10",
+      "from": "2026-12-03",
+      "to": "2026-12-06",
+      "phase": "future",
+      "channel": "Airbnb",
+      "currency": "CHF",
+      "total": 312,
+      "management": "Chiara Ruggeri - pending manual invitation 2026-11-19"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001939",
+      "code": "QK30000010",
+      "property": "FLORIDA ASCONA Room 10",
+      "from": "2026-12-10",
+      "to": "2026-12-13",
+      "phase": "future",
+      "channel": "Booking.com",
+      "currency": "CHF",
+      "total": 312,
+      "management": "Chiara Ruggeri - pending manual invitation 2026-11-19"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001964",
+      "code": "QK30000011",
+      "property": "FLORIDA ASCONA Room 10",
+      "from": "2026-12-18",
+      "to": "2026-12-21",
+      "phase": "future",
+      "channel": "Expedia",
+      "currency": "CHF",
+      "total": 312,
+      "management": "Chiara Ruggeri - pending manual invitation 2026-11-19"
+    },
+    {
+      "id": "a7112026-1117-4000-8000-000000001989",
+      "code": "QK30000012",
+      "property": "FLORIDA ASCONA Room 10",
+      "from": "2026-12-27",
+      "to": "2026-12-30",
+      "phase": "future",
+      "channel": "Vrbo",
+      "currency": "CHF",
+      "total": 312,
+      "management": "Chiara Ruggeri - pending manual invitation 2026-11-19"
+    }
+  ]
+}
