@@ -23,6 +23,10 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static partial class StorageKeys
 {
+    /// <summary>A signed management mandate in private storage; generated names never expose the uploaded filename.</summary>
+    public static string OwnerMandate(Guid orgId, Guid ownerId, string fileName) =>
+        $"orgs/{orgId}/owners/{ownerId}/mandates/{fileName}";
+
     public static string LeaseAttachment(Guid orgId, Guid leaseId, string fileName) =>
         $"orgs/{orgId}/leases/{leaseId}/documents/{fileName}";
 

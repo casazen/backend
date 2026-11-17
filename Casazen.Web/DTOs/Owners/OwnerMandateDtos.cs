@@ -30,7 +30,8 @@ public sealed record OwnerMandateDto(
     DateTime CreatedAt,
     string? CreatedByUserId,
     CoOwnerTaxReporting CoOwnerTaxReporting,
-    CleaningRechargeMode CleaningRechargeMode)
+    CleaningRechargeMode CleaningRechargeMode,
+    bool DocumentUploaded = false)
 {
     public static OwnerMandateDto From(OwnerMandate m) => new(
         m.Id,
@@ -50,7 +51,8 @@ public sealed record OwnerMandateDto(
         m.CreatedAt,
         m.CreatedByUserId,
         m.CoOwnerTaxReporting,
-        OwnerMandateRules.CleaningRechargeModeOf(m));
+        OwnerMandateRules.CleaningRechargeModeOf(m),
+        m.MandatePdfUrl?.StartsWith(StorageKeys.OwnerMandate(m.OrgId, m.PropertyOwnerId, string.Empty), StringComparison.Ordinal) == true);
 }
 
 /// <summary>

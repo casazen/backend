@@ -147,6 +147,7 @@ public static class FiscalDocumentExtensions
 
         // The versioned mandates of the owners, the standard mandate, the billing address of an owner and the channel commission rules (E13/F01/US01/T01).
         services.AddScoped<IOwnerMandateService, OwnerMandateService>();
+        services.AddScoped<Casazen.Web.Infrastructure.OwnerMandateDocuments>();
 
         // The list of the owners of an agency with the number of their properties, the kind and the currency of their fiscal profile and the mandate in force, in one query (FIX/RES-OWNERS).
         services.AddScoped<IOwnerDirectoryService, OwnerDirectoryService>();
