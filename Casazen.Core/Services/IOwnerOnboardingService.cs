@@ -48,7 +48,8 @@ public interface IOwnerOnboardingService
     /// person to complete: it is not listed and not counted. The owners are cut at <see cref="OwnerOnboardingLimits.MaxListed"/> unless
     /// <paramref name="listEveryOwner"/> (the invitations, which must see every owner, ask for them all).
     /// </summary>
-    Task<OwnerReadinessReport> GetReadinessAsync(HostScope scope, CancellationToken ct, bool listEveryOwner = false);
+    /// <param name="propertyId">When provided, restricts the report to this property inside the existing scope, and its owners.</param>
+    Task<OwnerReadinessReport> GetReadinessAsync(HostScope scope, CancellationToken ct, bool listEveryOwner = false, Guid? propertyId = null);
 }
 
 /// <summary>The names of the columns of the owner file in the answer (cross-repo contract): never rename one.</summary>
