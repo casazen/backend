@@ -729,3 +729,46 @@ the instance that made it and within `Authorization__UserCacheSeconds` on the ot
 cached: every instance refuses the user from its next request. For the org team (AM-03b): a role or a property scope that was just
 narrowed is old on the other instances for up to that time; with several instances in production, run one instance or set
 `Authorization__UserCacheSeconds` to 0-5 (`org-team.md` § 42).
+
+### Incident #894: admin removal fails before the Auth0 DELETE
+
+In the shared **test** environment, runtime logs for 2026-11-16 20:43:51–20:44:24 UTC show
+`Auth0 token endpoint returned HTTP 403`, followed by `User not deleted` with
+`auth0_management_token_failed`. Role assignment failed at the same token step.
+The failure happens **before** any Management API DELETE and is not evidence of a
+local foreign-key failure or a missing `delete:users` permission alone.
+
+The deployed service has the variable names `Auth0__Domain`, `Auth0__Audience`,
+`Auth0__ManagementApiDomain`, `Auth0__ManagementClientId` and
+`Auth0__ManagementClientSecret`. The connected Railway OAuth API reveals names only;
+the values and Auth0 client grant could not be verified in this investigation.
+
+A technical administrator with existing access must check, without copying secrets into
+logs, tickets or source control:
+
+1. `ManagementApiDomain` is the canonical tenant domain used by the M2M client. The
+   provider strips an optional `https://` prefix and trailing slash. The Management API
+   audience is derived as `https://<that-domain>/api/v2/`; the CasaZen API audience
+   (`Auth0__Audience`) is intentionally not used for this request.
+2. `ManagementClientId` and `ManagementClientSecret` belong to the same existing M2M
+   application in that tenant, rather than the React SPA client. The client must be
+   authorized for the Management API and client-credentials grant. Confirm the configured
+   secret is current using the hosting provider's secret controls, without printing it.
+3. Obtain a Management API token using those configured values in a secure administrator
+   environment. Inspect only the HTTP status and safe error code; do not output the token,
+   secret or full token response. A 400/401/403 is now reported as
+   `auth0_management_credentials_rejected`, while an outage remains
+   `auth0_management_token_failed`.
+4. Once token acquisition succeeds, verify the **existing** grant includes `delete:users`.
+   A DELETE refusal with 403 is separately reported as `auth0_delete_not_allowed`.
+   Review and authorize any missing permission before changing it; this code fix grants
+   no new access and changes no deployed credentials.
+5. Verify with a designated disposable test account after authorization. Do not delete a
+   real account as a health check. Auth0 404 remains an idempotent success; failures leave
+   the CasaZen account and all organization/property data intact. A retry does not bypass
+   Auth0. The dialog retains its error and offers the existing Deactivate path when
+   immediate CasaZen access blocking is needed.
+
+**Operational status:** the diagnostic/UI changes do not by themselves repair the
+redacted tenant configuration. Keep #894 open until token acquisition and an authorized
+test-account removal have been verified on the deployed test environment.

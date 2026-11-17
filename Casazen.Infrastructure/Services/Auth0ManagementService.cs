@@ -129,10 +129,16 @@ public class Auth0ManagementService(
             logger.LogInformation("Auth0ManagementService: Auth0 user {UserId} is already gone", userId);
             return Auth0SyncResult.Synced;
         }
+        catch (ErrorApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+        {
+            // A retry cannot add a missing grant. Keep this distinct from outages and never remove the local user.
+            logger.LogWarning("Auth0ManagementService: delete refused (403); verify delete:users grant for user {UserId}", userId);
+            return Auth0SyncResult.Failed(Auth0SyncResult.DeleteNotAllowedCode);
+        }
         catch (Auth0ManagementTokenException ex)
         {
             logger.LogError(ex, "Auth0ManagementService: No Management API token — cannot delete user {UserId}", userId);
-            return Auth0SyncResult.Failed(Auth0SyncResult.TokenFailedCode);
+            return Auth0SyncResult.Failed(ex.ErrorCode);
         }
         catch (RateLimitApiException ex)
         {
@@ -279,7 +285,7 @@ public class Auth0ManagementService(
             logger.LogError(ex,
                 "Auth0ManagementService: No Management API token — cannot {Operation} roles [{Roles}] for user {UserId}",
                 operation, string.Join(", ", roleNames), userId);
-            return Auth0SyncResult.Failed(Auth0SyncResult.TokenFailedCode);
+            return Auth0SyncResult.Failed(ex.ErrorCode);
         }
         catch (RateLimitApiException ex)
         {
@@ -324,7 +330,7 @@ public class Auth0ManagementService(
         {
             logger.LogError(ex,
                 "Auth0ManagementService: No Management API token — cannot {Operation} {UserId}", operation, userId);
-            return Auth0SyncResult.Failed(Auth0SyncResult.TokenFailedCode);
+            return Auth0SyncResult.Failed(ex.ErrorCode);
         }
         catch (RateLimitApiException ex)
         {

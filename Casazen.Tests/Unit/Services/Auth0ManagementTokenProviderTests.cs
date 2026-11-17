@@ -100,6 +100,35 @@ public class Auth0ManagementTokenProviderTests
         Assert.Equal("tok-after-fix", await provider.GetTokenAsync());
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest)]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    public async Task GetTokenAsync_RejectedConfiguration_HasStableNonSecretCode(HttpStatusCode status)
+    {
+        var http = new MockHttpMessageHandler();
+        http.When(HttpMethod.Post, TokenUrl).Respond(status, "application/json", "{\"error\":\"access_denied\",\"error_description\":\"m2m-secret must never be exposed\"}");
+        var provider = CreateProvider(http, new Auth0TestTimeProvider(), M2MConfig());
+
+        var error = await Assert.ThrowsAsync<Auth0ManagementTokenException>(() => provider.GetTokenAsync());
+
+        Assert.Equal(Casazen.Core.Services.Auth0SyncResult.CredentialsRejectedCode, error.ErrorCode);
+        Assert.DoesNotContain("m2m-secret", error.Message);
+        Assert.DoesNotContain("access_denied", error.Message);
+    }
+
+    [Fact]
+    public async Task GetTokenAsync_ServerFailure_RemainsRetryableTokenFailure()
+    {
+        var http = new MockHttpMessageHandler();
+        http.When(HttpMethod.Post, TokenUrl).Respond(HttpStatusCode.ServiceUnavailable);
+        var provider = CreateProvider(http, new Auth0TestTimeProvider(), M2MConfig());
+
+        var error = await Assert.ThrowsAsync<Auth0ManagementTokenException>(() => provider.GetTokenAsync());
+
+        Assert.Equal(Casazen.Core.Services.Auth0SyncResult.TokenFailedCode, error.ErrorCode);
+    }
+
     [Fact]
     public async Task Invalidate_AfterTokenCached_ForcesNewTokenRequest()
     {
