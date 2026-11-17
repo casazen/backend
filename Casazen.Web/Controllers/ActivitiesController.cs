@@ -37,7 +37,8 @@ namespace Casazen.Web.Controllers;
 public class ActivitiesController(
     IInternalActivityService activities,
     IHostScopeResolver hostScopeResolver,
-    IOrgContextResolver orgContextResolver) : ControllerBase
+    IOrgContextResolver orgContextResolver,
+    OnboardingTodoReconciler? onboardingTodos = null) : ControllerBase
 {
     /// <summary>
     /// The open "To do" items the caller reaches, sorted by the server: the most urgent first, then by deadline (the ones
@@ -56,6 +57,9 @@ public class ActivitiesController(
         if (await ScopeAsync(cancellationToken) is not { } scope)
             return Ok(Array.Empty<TodoActivityDto>());
 
+        if (onboardingTodos is not null)
+            await onboardingTodos.ReconcileAsync(scope, cancellationToken);
+
         var items = await activities.GetPendingAsync(scope, cancellationToken);
         return Ok(items.Select(TodoActivityDto.From).ToList());
     }
@@ -73,6 +77,9 @@ public class ActivitiesController(
         Response.Headers.CacheControl = "private, no-store";
         if (await ScopeAsync(cancellationToken) is not { } scope)
             return Ok(new TodoCountDto(0));
+
+        if (onboardingTodos is not null)
+            await onboardingTodos.ReconcileAsync(scope, cancellationToken);
 
         return Ok(new TodoCountDto(await activities.CountUrgentAsync(scope, cancellationToken)));
     }
