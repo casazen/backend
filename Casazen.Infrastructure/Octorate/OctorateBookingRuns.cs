@@ -24,9 +24,10 @@ internal static class OctorateBookingRuns
     /// The properties to read: the confirmed mappings, with the room chosen, of the orgs whose connection to this environment is connected.
     /// A listing that is proposed, ambiguous or rejected is never read, nor is one of an org that disconnected.
     /// </summary>
-    internal static async Task<IReadOnlyList<RunTarget>> ListTargetsAsync(AppDbContext db, OctorateEnvironment environment, CancellationToken ct)
+    internal static async Task<IReadOnlyList<RunTarget>> ListTargetsAsync(
+        AppDbContext db, OctorateEnvironment environment, CancellationToken ct, Guid? orgId = null, Guid? propertyId = null)
     {
-        var mapped = await ListMappedPropertiesAsync(db, environment, ct);
+        var mapped = await ListMappedPropertiesAsync(db, environment, ct, orgId, propertyId);
         return [.. mapped.Select(m => new RunTarget(m.OrgId, m.PropertyId, m.BookingsImportedThrough))];
     }
 
@@ -37,12 +38,15 @@ internal static class OctorateBookingRuns
     internal static async Task<IReadOnlyList<MappedProperty>> ListMappedPropertiesAsync(
         AppDbContext db,
         OctorateEnvironment environment,
-        CancellationToken ct)
+        CancellationToken ct,
+        Guid? orgId = null,
+        Guid? propertyId = null)
     {
         var connectionIds = await db.OctorateConnections
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
-            .Where(c => c.Environment == environment && c.Status == OctorateConnectionStatus.Connected)
+            .Where(c => c.Environment == environment && c.Status == OctorateConnectionStatus.Connected
+                        && (orgId == null || c.OrgId == orgId))
             .Select(c => c.Id)
             .ToListAsync(ct);
         if (connectionIds.Count == 0)
@@ -51,7 +55,9 @@ internal static class OctorateBookingRuns
         var rows = await db.OctorateListingMappings
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
-            .Where(m => m.Status == OctorateMappingStatus.Confirmed
+            .Where(m => (orgId == null || m.OrgId == orgId)
+                        && (propertyId == null || m.PropertyId == propertyId)
+                        && m.Status == OctorateMappingStatus.Confirmed
                         && m.PropertyId != null
                         && m.OctorateProductId != null
                         && connectionIds.Contains(m.ConnectionId))

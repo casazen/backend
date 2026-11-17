@@ -27,6 +27,31 @@ namespace Casazen.Tests.Unit.Jobs;
 /// </summary>
 public class OctorateBookingJobsTests
 {
+    [Fact]
+    public async Task InitialImport_ReadsOnlyTheRequestedPropertyOfTheConnectedOrg()
+    {
+        var h = new Octorate.BookingImportHarness();
+        h.Serve(Res("7001"));
+        await using var db = h.NewDb();
+        var mapping = await db.OctorateListingMappings.SingleAsync();
+        var job = Import(h, db);
+
+        await job.ExecutePropertyAsync(Guid.NewGuid(), mapping.PropertyId!.Value, CancellationToken.None);
+        await job.ExecutePropertyAsync(mapping.OrgId, Guid.NewGuid(), CancellationToken.None);
+        h.Client.VerifyNoOtherCalls();
+
+        await job.ExecutePropertyAsync(mapping.OrgId, mapping.PropertyId.Value, CancellationToken.None);
+        Assert.Equal(1, await db.Bookings.CountAsync());
+        Assert.NotNull(await h.ReadCheckpointAsync());
+
+        var connection = await db.OctorateConnections.SingleAsync();
+        connection.Status = OctorateConnectionStatus.Disconnected;
+        await db.SaveChangesAsync();
+        h.Client.Invocations.Clear();
+        await job.ExecutePropertyAsync(mapping.OrgId, mapping.PropertyId.Value, CancellationToken.None);
+        h.Client.VerifyNoOtherCalls();
+    }
+
     // ─── The daily import and the reconciliation ─────────────────────────────────────────────────────────
 
     [Fact]
