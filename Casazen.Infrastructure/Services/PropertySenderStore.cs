@@ -93,10 +93,7 @@ public sealed class PropertySenderStore(
             return Stored(row); // The same sender again: nothing changes, nothing is recorded.
 
         // The sender before the change: the stored one, or the default the property had until now.
-        var from = row?.AlloggiatiSender
-                   ?? ((await ChannelManagedAsync([property], ct)).Contains(property.Id)
-                       ? ComplianceSenderType.ChannelManager
-                       : ComplianceSenderType.Manual);
+        var from = row?.AlloggiatiSender ?? (await ReadAsync([property], ct))[property.Id].AlloggiatiSender;
         var now = Now();
         if (row is null)
         {
@@ -148,7 +145,7 @@ public sealed class PropertySenderStore(
     internal static bool IsItalian(string? country) =>
         string.IsNullOrWhiteSpace(country) || string.Equals(country, "IT", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>The senders of properties already found: stored, by default, or not applicable. Two queries at most.</summary>
+    /// <summary>The senders of properties already found: stored, inherited from the account, by default, or not applicable. Three queries at most.</summary>
     private async Task<Dictionary<Guid, PropertySenderInfo>> ReadAsync(IReadOnlyList<PropertyRef> properties, CancellationToken ct)
     {
         var senders = new Dictionary<Guid, PropertySenderInfo>(properties.Count);
@@ -169,13 +166,20 @@ public sealed class PropertySenderStore(
             .AsNoTracking()
             .Where(s => ids.Contains(s.PropertyId))
             .ToDictionaryAsync(s => s.PropertyId, ct);
-        var withoutChoice = italian.Where(p => !stored.ContainsKey(p.Id)).ToList();
+        var orgIds = italian.Select(p => p.OrgId).Distinct().ToList();
+        var defaults = await db.Orgs.AsNoTracking().Where(o => orgIds.Contains(o.Id) && o.DefaultComplianceSender != null)
+            .Select(o => new { o.Id, Sender = o.DefaultComplianceSender!.Value, o.DefaultComplianceSenderChangedAt, o.DefaultComplianceSenderChangedByUserId })
+            .ToDictionaryAsync(o => o.Id, ct);
+        var withoutChoice = italian.Where(p => !stored.ContainsKey(p.Id) && !defaults.ContainsKey(p.OrgId)).ToList();
         var channelManaged = withoutChoice.Count == 0 ? new HashSet<Guid>() : await ChannelManagedAsync(withoutChoice, ct);
 
         foreach (var property in italian)
         {
             senders[property.Id] = stored.TryGetValue(property.Id, out var row)
                 ? Stored(row)
+                : defaults.TryGetValue(property.OrgId, out var account)
+                    ? new PropertySenderInfo(property.Id, property.OrgId, account.Sender, account.Sender, SenderSource.OrganizationDefault, true,
+                        account.DefaultComplianceSenderChangedAt, account.DefaultComplianceSenderChangedByUserId)
                 : channelManaged.Contains(property.Id)
                     ? Default(property, ComplianceSenderType.ChannelManager, SenderSource.DefaultConnected, applies: true)
                     : Default(property, ComplianceSenderType.Manual, SenderSource.DefaultNotConnected, applies: true);

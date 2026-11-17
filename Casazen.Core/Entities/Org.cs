@@ -50,6 +50,15 @@ public class Org
     /// <summary>Business identity, independent of billing tier. Private owners cannot invite collaborators.</summary>
     public bool IsAgency { get; set; }
 
+    /// <summary>Account choice inherited by Italian properties without their own override. Null preserves existing defaults.</summary>
+    [ConcurrencyCheck]
+    public ComplianceSenderType? DefaultComplianceSender { get; set; }
+    [ConcurrencyCheck]
+    public DateTime? DefaultComplianceSenderChangedAt { get; set; }
+    [MaxLength(255)]
+    public string? DefaultComplianceSenderChangedByUserId { get; set; }
+
+
     [Required, MaxLength(200)]
     public string DisplayName { get; set; } = string.Empty;
 

@@ -8,7 +8,7 @@ namespace Casazen.Core.Services;
 /// (ADR-029-R5), so a property never has two senders.
 /// </summary>
 /// <remarks>
-/// <para><b>The default (PO-02).</b> A property with no stored choice is sent by the channel manager while its listing is confirmed
+/// <para><b>The default (PO-02).</b> An Italian property with no stored choice inherits an explicitly chosen account sender first. Otherwise it is sent by the channel manager while its listing is confirmed
 /// (<c>OctorateListingMapping</c> with <c>Status = Confirmed</c>) through an Octorate connection of this environment that is connected;
 /// otherwise it is manual. A property outside Italy (the rule of <c>TouristTaxComune.ForProperty</c>: a country that is not <c>IT</c>)
 /// has no police sender to choose: manual, with <see cref="PropertySenderInfo.Applies"/> false (the Swiss files stay the host's,
@@ -70,6 +70,9 @@ public enum SenderSource
 
     /// <summary>The property is outside Italy: there is no police sender to choose.</summary>
     NotApplicable = 4,
+
+    /// <summary>The account choice inherited by an Italian property without a stored override.</summary>
+    OrganizationDefault = 5,
 }
 
 /// <summary>The sender of the police and ISTAT communications of a property, as stored or by default. No personal data.</summary>
