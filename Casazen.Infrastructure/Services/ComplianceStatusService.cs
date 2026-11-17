@@ -165,7 +165,8 @@ public sealed class ComplianceStatusService(
         var items = new List<ComplianceStatusItem>();
         var universe = new Universe();
 
-        var dueStays = stays.Where(s => s.CheckInDate <= today).ToList();
+        var italianPropertyIds = properties.Where(p => TouristTaxComune.IsItalianCountry(p.Country)).Select(p => p.Id).ToHashSet();
+        var dueStays = stays.Where(s => s.CheckInDate <= today && italianPropertyIds.Contains(s.PropertyId)).ToList();
         var reads = await ReadAlloggiatiAsync(orgId, dueStays, SenderOf, ct);
         AddAlloggiati(items, universe, reads, proofs, dueStays, SenderOf, connections, propertyNames, nowUtc, today, todayDate);
 
@@ -363,6 +364,7 @@ public sealed class ComplianceStatusService(
                     (b.Guest.FirstName + " " + b.Guest.LastName).Trim()),
                 b.Status,
                 b.NoShowAt,
+                b.Property.Country,
             })
             .FirstOrDefaultAsync(ct);
         if (found is null)
@@ -398,7 +400,8 @@ public sealed class ComplianceStatusService(
         // whatever its guests are on the channel manager, has no light and offers no action (a retry of its write would do nothing: the send path sends
         // nothing for it); a communication already sent stays visible. A stay whose arrival day has not come owes it later: it keeps its status and has
         // no light yet.
-        var owes = AlloggiatiStatusRules.ActiveBookingStatuses.Contains(found.Status) && found.NoShowAt is null;
+        var owes = AlloggiatiStatusRules.ActiveBookingStatuses.Contains(found.Status) && found.NoShowAt is null
+            && TouristTaxComune.IsItalianCountry(found.Country);
         var due = owes && stay.CheckInDate <= today;
         var status = !owes && !AlloggiatiStatusRules.IsSent(judged.Status) ? AlloggiatiWebStatus.NotDue : judged.Status;
         var links = reads.Links[stay.Id].OrderBy(l => l.Position).ToList();
@@ -434,6 +437,7 @@ public sealed class ComplianceStatusService(
         var stays = await db.Bookings
             .AsNoTracking()
             .Where(b => b.OrgId == orgId && ids.Contains(b.Id))
+            .Where(AlloggiatiStatusRules.ItalianProperties)
             .Where(b => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
             .Select(b => new StayRow(b.Id, b.PropertyId, b.GuestId, b.CheckInDate, b.CheckOutDate, b.ArrivedAt, b.TouristTax, string.Empty))
             .ToListAsync(ct);

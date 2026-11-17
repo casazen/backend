@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Casazen.Core.Entities;
 using Casazen.Core.Octorate;
 
@@ -63,6 +64,10 @@ public static class AlloggiatiStayActions
 /// </summary>
 public static class AlloggiatiStatusRules
 {
+    /// <summary>Same country rule as TouristTaxComune: legacy empty values and IT, with whitespace/case normalized.</summary>
+    public static readonly Expression<Func<Booking, bool>> ItalianProperties =
+        b => b.Property.Country == null || b.Property.Country.Trim() == "" || b.Property.Country.Trim().ToUpper() == "IT";
+
     /// <summary>
     /// The statuses of a booking that owes a police communication: confirmed, checked in or checked out. A request, a hold and a cancelled
     /// booking owe none. The one definition of the Alloggiati job, the lists, the alerts and the check-in sent to the channel manager.
