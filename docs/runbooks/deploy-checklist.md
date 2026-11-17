@@ -495,7 +495,7 @@ Do not set these expecting an effect. DEPLOY-CFG removed from `appsettings.json`
 
 | Where | What it said | What the code does |
 |---|---|---|
-| Open-questions register § 1 (`DOMANDE-APERTE.md`) | "Attivare **Wait for CI** su Railway" | Allowed now: `CI/CD Pipeline` is only `Build & Test`; `verify-test` / `verify-prod` run afterwards in `verify-railway-deploy.yml` |
+| Open-questions register § 1 (`DOMANDE-APERTE.md`) | "Attivare **Wait for CI** su Railway" | Allowed: Railway waits for all GitHub Actions checks; `verify-test` / `verify-prod` start after Railway reports a successful deployment |
 | `auth0.md` § 5, § 1.1 | `Auth0__ClientId` "used by the supplier registration page" | No code reads it (§ 8); only `Domain`, `Audience` and the management settings are read |
 | `secrets/railway.test.variables.example.json` | Complete test environment | Lacked the required `DataProtection__*`, `App__ApiBaseUrl`, `Legal__*` rows: it would not start (updated, with a production twin) |
 | `appsettings.json` `App:ApiBaseUrl` | Committed with the production Railway host | Test environment published the production host in iCal links and nothing detected it: now empty, `api-url` health check |

@@ -1,16 +1,14 @@
 name: Verify Railway Deploy
 
-# Runs AFTER CI/CD Pipeline succeeds. Must stay out of that workflow: Railway Wait for CI
-# waits for the push check suite, and verify waits for the Railway deploy of this SHA.
-# Keeping them in the same suite deadlocks DEV (FD-12). Runbook: docs/runbooks/health-checks.md.
+# Railway waits for every GitHub Actions suite for a commit. Starting this verifier from workflow_run
+# creates a circular wait: this job waits for a deploy that waits for this job. Start only after the
+# Railway GitHub App reports a successful deployment. Runbook: docs/runbooks/health-checks.md.
 
 on:
-  workflow_run:
-    workflows: ["CI/CD Pipeline"]
-    types: [completed]
+  deployment_status:
 
 concurrency:
-  group: verify-railway-${{ github.event.workflow_run.head_branch }}
+  group: verify-railway-${{ github.event.deployment.environment }}
   cancel-in-progress: true
 
 jobs:
@@ -19,9 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: >
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'develop'
+      github.event.deployment_status.state == 'success' &&
+      github.event.deployment.creator.login == 'railway-app[bot]' &&
+      github.event.deployment.environment == 'casazen-api / test'
     environment:
       name: test
       url: ${{ vars.RAILWAY_TEST_URL }}
@@ -29,13 +27,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.deployment.sha }}
           fetch-depth: 0
 
       - name: Wait for this commit to be deployed and ready
         env:
           RAILWAY_TEST_URL: ${{ vars.RAILWAY_TEST_URL }}
-        run: bash scripts/verify-deploy.sh "$RAILWAY_TEST_URL" "${{ github.event.workflow_run.head_sha }}" 1200
+        run: bash scripts/verify-deploy.sh "$RAILWAY_TEST_URL" "${{ github.event.deployment.sha }}" 1200
 
       - name: Smoke test (auth gate — expect 401, never 500)
         env:
@@ -110,9 +108,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: >
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main'
+      github.event.deployment_status.state == 'success' &&
+      github.event.deployment.creator.login == 'railway-app[bot]' &&
+      github.event.deployment.environment == 'casazen-api / production'
     environment:
       name: production
       url: ${{ vars.RAILWAY_PROD_URL }}
@@ -120,13 +118,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.deployment.sha }}
           fetch-depth: 0
 
       - name: Wait for this commit to be deployed and ready
         env:
           RAILWAY_PROD_URL: ${{ vars.RAILWAY_PROD_URL }}
-        run: bash scripts/verify-deploy.sh "$RAILWAY_PROD_URL" "${{ github.event.workflow_run.head_sha }}" 1200
+        run: bash scripts/verify-deploy.sh "$RAILWAY_PROD_URL" "${{ github.event.deployment.sha }}" 1200
 
       - name: Smoke test production (auth gate)
         env:
