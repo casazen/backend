@@ -165,8 +165,14 @@ public sealed class OnboardingTodoReconcilerTests : IAsyncLifetime
 
     private InternalActivity Todo(Guid orgId, string entityType, Guid entityId, Guid? propertyId = null) => new()
     {
-        OrgId = orgId, PropertyId = propertyId, ActivityType = nameof(ActivityType.WizardResume), Action = ActivityAction.ResumeWizard,
-        EntityType = entityType, EntityId = entityId, CreatedAt = _clock.GetUtcNow().UtcDateTime, ScheduledAt = _clock.GetUtcNow().UtcDateTime,
+        OrgId = orgId,
+        PropertyId = propertyId,
+        ActivityType = nameof(ActivityType.WizardResume),
+        Action = ActivityAction.ResumeWizard,
+        EntityType = entityType,
+        EntityId = entityId,
+        CreatedAt = _clock.GetUtcNow().UtcDateTime,
+        ScheduledAt = _clock.GetUtcNow().UtcDateTime,
         Urgency = ActivityUrgency.Medium,
     };
 }
