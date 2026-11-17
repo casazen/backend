@@ -259,7 +259,7 @@ public sealed class ListingStatusService(
             PublicPhotos: publicPhotos.ListingPhotoUrls(property).Count,
             RoomsWithBeds: rooms.Any(room => room.Beds.Count > 0),
             AddressAndComune: !string.IsNullOrWhiteSpace(property.Address) && !string.IsNullOrWhiteSpace(property.City),
-            ValidCin: CinFormat.IsValid(property.CinCode),
+            ValidCin: !CinFormat.IsRequiredForCountry(property.Country) || CinFormat.IsValid(property.CinCode),
             Amenities: property.Amenities.Count > 0,
             Rules: !string.IsNullOrWhiteSpace(property.HouseRules) || property.ChildrenPolicy is not null || property.PetsPolicy is not null || property.SmokingPolicy is not null,
             Price: property.NightlyRate > 0m);

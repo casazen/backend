@@ -38,7 +38,7 @@ public class PropertyComplianceStatusServiceTests
         await db.SaveChangesAsync();
         var stored = await ReloadAsync(db, property.Id);
         var steps = await CreateService(db).GetBlockingStepsAsync(stored);
-        Assert.Equal("complete", steps.Single(s => s.Id == "cin").Status);
+        Assert.DoesNotContain(steps, s => s.Id == "cin");
         Assert.Equal("complete", steps.Single(s => s.Id == "documents").Status);
     }
 
