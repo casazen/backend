@@ -8467,4 +8467,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OrgAgencyRequired" xml:space="preserve">
     <value>Solo gli amministratori di agenzia possono invitare collaboratori.</value>
   </data>
+  <data name="InternalActivityManagedAutomatically" xml:space="preserve">
+    <value>Questa attività si aggiorna automaticamente quando completi la procedura collegata.</value>
+  </data>
 </root>

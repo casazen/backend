@@ -11,22 +11,12 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// The caller's "To do" list (ADR-026, NF-07): the open items of its org that its scope reaches, the number of the urgent ones
-/// for the nav badge, and the manual close. The items are raised and closed by the system through
-/// <see cref="IInternalActivityService"/> (<c>CreateAsync</c>, <c>CloseAsync</c>); here they are only read and closed by hand.
+/// The caller's "To do" list, raised and completed by the business processes through
+/// <see cref="IInternalActivityService"/>. Reading reconciles persisted completion; visiting the page never completes a task.
 /// </summary>
 /// <remarks>
-/// <para>The list and the count are the caller's own, in every host context, so their policy is
-/// <see cref="CasazenPolicies.Authenticated"/> and what the caller reaches is its <see cref="HostScope"/>, resolved from its org
-/// membership in the database (<see cref="IHostScopeResolver"/>), never from the request: an owner, an administrator, a manager
-/// or a collaborator with every property sees the whole org; a collaborator «Solo alcuni» only the items of the properties it
-/// was given, never an organization-level item (ADR-026-R2). A caller with no org or no scope gets an empty list.</para>
-/// <para>Closing an item is a change, not a read: the close adds <see cref="CasazenPolicies.PropertyWrite"/> (<c>property.write</c>
-/// of the short-rent context) to the policy of the class. A role that only reads (the accountant, a collaborator with no write
-/// permission) still reads the list and the count but cannot close an item for the whole org, a deadline of law such as
-/// Alloggiati or ISTAT included, which would then vanish for the owner too. The policy says who may close; the scope above still
-/// says which items the caller reaches. Like every endpoint, the role is decided here in the web layer:
-/// <see cref="IInternalActivityService"/> checks no role.</para>
+/// <para>The list and count use the caller's database-resolved <see cref="HostScope"/>, never a request-supplied scope.</para>
+/// <para>The legacy close endpoint cannot dismiss an unfinished process. Manual staff work has its own API.</para>
 /// <para>The answer is <see cref="TodoActivityDto"/>, never the <see cref="InternalActivity"/> entity: no staff user, rate, note
 /// or person (ADR-026-R3); the client reads the detail from the API of the entity. It is private and never cached. This
 /// controller is not <c>InternalActivitiesController</c>, the agency-plan staff API, which stays as it is.</para>
@@ -38,7 +28,8 @@ public class ActivitiesController(
     IInternalActivityService activities,
     IHostScopeResolver hostScopeResolver,
     IOrgContextResolver orgContextResolver,
-    OnboardingTodoReconciler? onboardingTodos = null) : ControllerBase
+    OnboardingTodoReconciler? onboardingTodos = null,
+    ImportedListingTodoReconciler? importedListings = null) : ControllerBase
 {
     /// <summary>
     /// The open "To do" items the caller reaches, sorted by the server: the most urgent first, then by deadline (the ones
@@ -59,6 +50,8 @@ public class ActivitiesController(
 
         if (onboardingTodos is not null)
             await onboardingTodos.ReconcileAsync(scope, cancellationToken);
+        if (importedListings is not null)
+            await importedListings.ReconcileAsync(scope, cancellationToken);
 
         var items = await activities.GetPendingAsync(scope, cancellationToken);
         return Ok(items.Select(TodoActivityDto.From).ToList());
@@ -80,24 +73,26 @@ public class ActivitiesController(
 
         if (onboardingTodos is not null)
             await onboardingTodos.ReconcileAsync(scope, cancellationToken);
+        if (importedListings is not null)
+            await importedListings.ReconcileAsync(scope, cancellationToken);
 
         return Ok(new TodoCountDto(await activities.CountUrgentAsync(scope, cancellationToken)));
     }
 
     /// <summary>
-    /// Closes one item of the caller's list by hand (<c>ClosedBy</c> = the caller). Idempotent: an item already closed answers
-    /// 204 too. It needs <see cref="CasazenPolicies.PropertyWrite"/> on top of the class policy: a caller that only reads is
-    /// refused with 403 before anything is looked up, and one that writes closes only the items its scope reaches.
+    /// Legacy endpoint: a process already completed still answers 204; an open process cannot be dismissed manually (409).
+    /// Tenant and property scope checks still happen before its state is disclosed.
     /// </summary>
-    /// <response code="204">Closed (or already closed).</response>
-    /// <response code="403">The caller does not hold <c>property.write</c> in the short-rent context (a role that only reads).</response>
-    /// <response code="404">The caller reaches no such item: of a property it was not given, of another org, unknown.</response>
+    /// <response code="204">Already completed.</response>
+    /// <response code="409">The source process is still open.</response>
+    /// <response code="404">The caller reaches no such item.</response>
     [HttpPost("{id:guid}/close")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Close(Guid id, CancellationToken cancellationToken)
     {
         if (User.GetUserId() is not { Length: > 0 } userId)

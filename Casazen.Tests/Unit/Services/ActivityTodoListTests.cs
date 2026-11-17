@@ -90,9 +90,16 @@ public class ActivityTodoListTests : IAsyncLifetime
 
         await Assert.ThrowsAsync<NotFoundException>(() => collaborator.Close(onHidden, Ct));
         await Assert.ThrowsAsync<NotFoundException>(() => collaborator.Close(orgLevel, Ct));
+        var refused = await Assert.ThrowsAsync<DomainConflictException>(() => collaborator.Close(onGranted, Ct));
+        Assert.Equal(InternalActivityErrors.ManagedAutomatically, refused.Code);
+        Assert.Single(Items(await collaborator.List(Ct)));
+        Assert.Equal(3, Items(await owner.List(Ct)).Count);
+        Assert.Null((await _db.InternalActivities.SingleAsync(a => a.Id == onGranted)).CompletedAt);
+
+        // A legacy client retrying a task already settled by the real process remains idempotent.
+        await service.CloseAsync(onGranted, InternalActivity.ClosedBySystem, Ct);
         Assert.IsType<NoContentResult>(await collaborator.Close(onGranted, Ct));
-        Assert.Empty(Items(await collaborator.List(Ct)));
-        Assert.Equal(2, Items(await owner.List(Ct)).Count);
+        Assert.Equal(InternalActivity.ClosedBySystem, (await _db.InternalActivities.SingleAsync(a => a.Id == onGranted)).ClosedBy);
     }
 
     /// <summary>Proof (data, tenant): the org of an item is the org of its property, never one the request names.</summary>
@@ -174,6 +181,51 @@ public class ActivityTodoListTests : IAsyncLifetime
         await Assert.ThrowsAsync<ArgumentException>(() => service.RaiseUrgencyAsync(item, (ActivityUrgency)99, null, null, Ct));
     }
 
+    [Fact]
+    public async Task ImportedListing_OnlyPersistedActivationCompletesTheReminder_WithinTheCallersScope()
+    {
+        var service = Service();
+        async Task<Guid> Imported(Property property) => await service.CreateAsync(new CreateTodoRequest
+        {
+            Type = ActivityType.CheckImportedListing,
+            Action = ActivityAction.CheckImportedListing,
+            EntityType = "Property",
+            EntityId = property.Id,
+            PropertyId = property.Id,
+            Urgency = ActivityUrgency.Medium,
+        }, Ct);
+        var own = await Imported(_world.Granted);
+        var hidden = await Imported(_world.Hidden);
+        var foreign = await Imported(_world.OtherOrgProperty);
+        var grantedProperty = await _db.Properties.SingleAsync(p => p.Id == _world.Granted.Id);
+        var hiddenProperty = await _db.Properties.SingleAsync(p => p.Id == _world.Hidden.Id);
+        var foreignProperty = await _db.Properties.SingleAsync(p => p.Id == _world.OtherOrgProperty.Id);
+        grantedProperty.IsActive = false;
+        hiddenProperty.IsActive = true;
+        foreignProperty.IsActive = true;
+        await _db.SaveChangesAsync(Ct);
+        var reconciler = new ImportedListingTodoReconciler(_db, service);
+        var onboarding = new OnboardingTodoReconciler(_db, Mock.Of<IOnboardingPlanService>(), Mock.Of<IOnboardingFlowStatusService>(), service);
+        var controller = Controller(_world.CollaboratorId, _world.Restricted, onboarding, reconciler);
+
+        // Opening the list or saving an unfinished review does not count as completing it.
+        Assert.Single(Items(await controller.List(Ct)));
+        Assert.Null((await _db.InternalActivities.SingleAsync(a => a.Id == own)).CompletedAt);
+
+        grantedProperty.IsActive = true;
+        await _db.SaveChangesAsync(Ct);
+        Assert.Empty(Items(await controller.List(Ct)));
+        _clock.Advance(TimeSpan.FromHours(1));
+        var count = Assert.IsType<OkObjectResult>((await controller.UrgentCount(Ct)).Result);
+        Assert.Equal(0, Assert.IsType<TodoCountDto>(count.Value).Count);
+
+        var closed = await _db.InternalActivities.SingleAsync(a => a.Id == own);
+        Assert.Equal(InternalActivity.ClosedBySystem, closed.ClosedBy);
+        Assert.Equal(HostScopeScenario.Now.UtcDateTime, closed.CompletedAt);
+        Assert.Null((await _db.InternalActivities.SingleAsync(a => a.Id == hidden)).CompletedAt);
+        Assert.Null((await _db.InternalActivities.SingleAsync(a => a.Id == foreign)).CompletedAt);
+    }
+
     private InternalActivityService Service() => new(_db, NullLogger<InternalActivityService>.Instance, _clock);
 
     private static CreateTodoRequest CheckIn(Guid propertyId, Guid bookingId) => new()
@@ -187,7 +239,11 @@ public class ActivityTodoListTests : IAsyncLifetime
         Deadline = HostScopeScenario.Now.UtcDateTime.AddDays(1),
     };
 
-    private ActivitiesController Controller(string userId, HostScope scope)
+    private ActivitiesController Controller(
+        string userId,
+        HostScope scope,
+        OnboardingTodoReconciler? onboarding = null,
+        ImportedListingTodoReconciler? importedListings = null)
     {
         var orgContext = new Mock<IOrgContextResolver>();
         orgContext.Setup(o => o.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(_world.OrgId);
@@ -199,7 +255,7 @@ public class ActivityTodoListTests : IAsyncLifetime
         {
             User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", userId)], "test")),
         };
-        return new ActivitiesController(Service(), scopes.Object, orgContext.Object)
+        return new ActivitiesController(Service(), scopes.Object, orgContext.Object, onboarding, importedListings)
         {
             ControllerContext = new ControllerContext { HttpContext = http },
         };

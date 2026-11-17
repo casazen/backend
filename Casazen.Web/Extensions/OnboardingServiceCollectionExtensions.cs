@@ -62,6 +62,7 @@ public static class OnboardingServiceCollectionExtensions
         services.AddScoped<IFlowDryRunCheck, CheckInComplianceDryRunCheck>();
         services.AddScoped<OnboardingFlowTodoSyncJob>();
         services.AddScoped<OnboardingTodoReconciler>();
+        services.AddScoped<ImportedListingTodoReconciler>();
 
         // The guided steps of the Octorate panel and «Do it for me» (E10/F01/US03/T01): the steps with their verification, the requests with
         // the staff queue. One default verifier for each kind of step (order 0); an epic that can read more registers its own for the same kind

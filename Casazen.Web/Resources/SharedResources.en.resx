@@ -8467,4 +8467,7 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OrgAgencyRequired" xml:space="preserve">
     <value>Only agency administrators can invite collaborators.</value>
   </data>
+  <data name="InternalActivityManagedAutomatically" xml:space="preserve">
+    <value>This activity updates automatically when its linked process is completed.</value>
+  </data>
 </root>
