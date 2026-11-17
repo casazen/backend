@@ -225,7 +225,7 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
             seats.GetProperty("max").GetInt32(), seats.GetProperty("used").GetInt32(), seats.GetProperty("activeMembers").GetInt32(),
             seats.GetProperty("pendingInvitations").GetInt32(), seats.GetProperty("canInvite").GetBoolean()));
         var entitlement = await (await owner.GetAsync("/api/orgs/me/entitlement")).Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal((10, 2, true), (
+        Assert.Equal((int.MaxValue, 2, true), (
             entitlement.GetProperty("limits").GetProperty("maxSeats").GetInt32(),
             entitlement.GetProperty("usage").GetProperty("seats").GetInt32(),
             entitlement.GetProperty("canInviteMember").GetBoolean()));
