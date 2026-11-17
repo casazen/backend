@@ -40,6 +40,8 @@ public class SupplierHostOrgSeparationPostgresTests(CasazenWebApplicationFactory
         Assert.Equal(HttpStatusCode.OK, onboarding.StatusCode);
         var hostOrgId = (await onboarding.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("orgId").GetGuid();
         Assert.NotEqual(supplierOrgId, hostOrgId);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/properties")).StatusCode);
+        await ConfirmTestSubscriptionAsync(hostOrgId);
 
         var created = await client.PostAsJsonAsync("/api/properties", PropertyBody());
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
@@ -94,6 +96,8 @@ public class SupplierHostOrgSeparationPostgresTests(CasazenWebApplicationFactory
         Assert.Equal(HttpStatusCode.OK, onboarding.StatusCode);
         var hostOrgId = (await onboarding.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("orgId").GetGuid();
         Assert.NotEqual(supplierOrgId, hostOrgId);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/properties")).StatusCode);
+        await ConfirmTestSubscriptionAsync(hostOrgId);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/properties")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/supplier/profile")).StatusCode);
     }
@@ -117,6 +121,16 @@ public class SupplierHostOrgSeparationPostgresTests(CasazenWebApplicationFactory
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.Equal(supplierOrgId, (await db.DeviceRegistrations.AsNoTracking().SingleAsync(d => d.UserId == sub)).OrgId);
+    }
+
+    private async Task ConfirmTestSubscriptionAsync(Guid orgId)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var org = await db.Orgs.SingleAsync(o => o.Id == orgId);
+        org.CommercialPaymentConfirmed = true;
+        org.SubscriptionStatus = SubscriptionStatus.Active;
+        await db.SaveChangesAsync();
     }
 
     private async Task<Guid> SeedSupplierAsync(string sub, string email, bool legacyOrgIdLink)

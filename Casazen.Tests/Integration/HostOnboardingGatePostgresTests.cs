@@ -97,6 +97,17 @@ public class HostOnboardingGatePostgresTests : IClassFixture<CasazenWebApplicati
         // Onboarded but no property yet: the web app takes the host to the first-property creation.
         Assert.False(me.GetProperty("hasProperties").GetBoolean());
 
+        // A new commercial signup remains gated until the subscription is confirmed.
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/properties")).StatusCode);
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var org = await db.Orgs.SingleAsync(o => o.Id == me.GetProperty("orgId").GetGuid());
+            org.CommercialPaymentConfirmed = true;
+            org.SubscriptionStatus = SubscriptionStatus.Active;
+            await db.SaveChangesAsync();
+        }
+
         var property = await client.PostAsJsonAsync("/api/properties", BodyFor("/api/properties", Guid.Empty));
         Assert.Equal(HttpStatusCode.Created, property.StatusCode);
         var propertyId = (await property.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();

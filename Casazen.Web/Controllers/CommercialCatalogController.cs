@@ -11,7 +11,8 @@ public sealed class CommercialCatalogController(IConfiguration configuration) : 
     [HttpGet]
     public IActionResult Get() => Ok(CommercialAddon.All.Select(a => new
     {
-        a.Code, a.Context,
+        a.Code,
+        a.Context,
         PriceMonthly = configuration.GetValue<decimal?>($"Billing:Addons:{a.Code}:PriceMonthly"),
         Currency = "EUR",
         Purchasable = CommercialPricing.IsAvailable(configuration, a.Code),

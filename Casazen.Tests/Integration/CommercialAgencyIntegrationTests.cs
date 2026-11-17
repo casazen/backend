@@ -11,6 +11,32 @@ namespace Casazen.Tests.Integration;
 public class CommercialAgencyIntegrationTests(CasazenWebApplicationFactory factory) : IClassFixture<CasazenWebApplicationFactory>
 {
     [Fact]
+    public async Task NewHost_WithoutCommercialSelection_StillRequiresPayment()
+    {
+        var userId = $"auth0|no-commercial-{Guid.NewGuid():N}";
+        using var client = factory.CreateAuthenticatedClient(userId, roles: string.Empty);
+        var response = await client.PostAsJsonAsync("/api/users/onboarding", new
+        {
+            rentalType = "ShortTerm",
+            consents = new
+            {
+                tosAccepted = true,
+                tosVersion = "2026-06-v1",
+                privacyAccepted = true,
+                privacyVersion = "2026-06-v1",
+                dpaAccepted = true,
+                dpaVersion = "2026-06-v1",
+                subprocessorsAcknowledged = true,
+                subprocessorsVersion = "2026-06-v1",
+            },
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var profile = await client.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/users/me");
+        Assert.True(profile.GetProperty("commercialSetupRequired").GetBoolean());
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/properties")).StatusCode);
+    }
+
+    [Fact]
     public async Task NewAgency_CreatesNamedOrganization_AndMakesFounderItsOwnerAdministrator()
     {
         var userId = $"auth0|agency-founder-{Guid.NewGuid():N}";
@@ -21,10 +47,14 @@ public class CommercialAgencyIntegrationTests(CasazenWebApplicationFactory facto
             commercialSignup = new { profile = "agency", agencyName = "Nuova Agenzia", planTier = "Agency", rooms = 3, addons = Array.Empty<string>() },
             consents = new
             {
-                tosAccepted = true, tosVersion = "2026-06-v1",
-                privacyAccepted = true, privacyVersion = "2026-06-v1",
-                dpaAccepted = true, dpaVersion = "2026-06-v1",
-                subprocessorsAcknowledged = true, subprocessorsVersion = "2026-06-v1",
+                tosAccepted = true,
+                tosVersion = "2026-06-v1",
+                privacyAccepted = true,
+                privacyVersion = "2026-06-v1",
+                dpaAccepted = true,
+                dpaVersion = "2026-06-v1",
+                subprocessorsAcknowledged = true,
+                subprocessorsVersion = "2026-06-v1",
             },
         });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);

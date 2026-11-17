@@ -375,9 +375,11 @@ public class UsersController(
 
         var existingUser = await userService.GetUserAsync(sub);
         var hadOrg = existingUser?.OrgId.HasValue == true;
+        var hadHostOrg = hadOrg;
         if (existingUser?.OrgId is Guid existingOrgId && commercialDb is not null)
         {
             var existingOrg = await commercialDb.Orgs.FindAsync([existingOrgId], HttpContext.RequestAborted);
+            hadHostOrg = existingOrg?.OrgType != OrgType.Supplier;
             if (existingOrg?.CommercialSignupJson is not null && (!requireConsents || dto.RentalType != existingUser.RentalType?.ToString()))
             {
                 var authorization = HttpContext.RequestServices.GetRequiredService<IAuthorizationService>();
@@ -405,6 +407,14 @@ public class UsersController(
         if (!validationSuccess)
             return ToConsentError(validationError);
 
+        // Legacy clients may omit the selection, but their new host organization still starts behind
+        // the payment gate. The initial setup activates one rental area only.
+        if (!hadHostOrg && rentalType == RentalType.Both)
+            return UnprocessableEntity(new { code = "commercial_single_area_required" });
+        var initialSelection = dto.CommercialSignup ?? (!hadHostOrg
+            ? new CommercialSignup { Profile = rentalType == RentalType.LongTerm ? "long-rent" : "owner" }
+            : null);
+
         var (user, rolesAssigned, roleSync) = await userService.CompleteOnboardingAsync(
             sub, rentalType, email, firstName, lastName);
 
@@ -425,7 +435,7 @@ public class UsersController(
         if (!success)
             return ToConsentError(error);
 
-        if (dto.CommercialSignup is { } selection && commercialDb is not null)
+        if (initialSelection is { } selection && commercialDb is not null)
         {
             var commercialOrg = await commercialDb.Orgs.FindAsync([orgId], HttpContext.RequestAborted);
             // Never replace a paid configuration through the account-creation endpoint.
