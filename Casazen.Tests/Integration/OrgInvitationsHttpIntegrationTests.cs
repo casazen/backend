@@ -221,7 +221,7 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
             annaRow.GetProperty("role").GetString(), annaRow.GetProperty("status").GetString(), annaRow.GetProperty("email").GetString()));
         Assert.Equal(["short-rent"], annaRow.GetProperty("areas").EnumerateArray().Select(a => a.GetString()));
         var seats = members.GetProperty("seats");
-        Assert.Equal((10, 2, 2, 0, true), (
+        Assert.Equal((int.MaxValue, 2, 2, 0, true), (
             seats.GetProperty("max").GetInt32(), seats.GetProperty("used").GetInt32(), seats.GetProperty("activeMembers").GetInt32(),
             seats.GetProperty("pendingInvitations").GetInt32(), seats.GetProperty("canInvite").GetBoolean()));
         var entitlement = await (await owner.GetAsync("/api/orgs/me/entitlement")).Content.ReadFromJsonAsync<JsonElement>();
@@ -644,7 +644,7 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         Assert.Equal("ok", home.GetProperty("standing").GetString());
         Assert.True(home.GetProperty("openAccess").ValueKind is JsonValueKind.True or JsonValueKind.False);
         var seats = home.GetProperty("seats");
-        Assert.Equal((10, 2, false), (seats.GetProperty("max").GetInt32(), seats.GetProperty("used").GetInt32(), seats.GetProperty("unlimited").GetBoolean()));
+        Assert.Equal((int.MaxValue, 2, true), (seats.GetProperty("max").GetInt32(), seats.GetProperty("used").GetInt32(), seats.GetProperty("unlimited").GetBoolean()));
         var properties = home.GetProperty("properties");
         Assert.Equal(
             (3, 2, 1, 2),
