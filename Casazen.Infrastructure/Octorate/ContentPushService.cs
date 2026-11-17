@@ -200,7 +200,7 @@ public sealed class ContentPushService(
         var orgId = property.OrgId;
         var document = SitePropertyProfileJson.Parse(property.SiteProfileJson);
         var photoUrls = publicPhotos.ListingPhotoUrls(property);
-        var cinValid = CinFormat.IsValid(property.CinCode);
+        var cinValid = !CinFormat.IsRequiredForCountry(property.Country) || CinFormat.IsValid(property.CinCode);
 
         // The rule of each channel, before anything is sent: a channel that cannot be published is left to fix, the others go on.
         var ready = new List<(ListingChannelState Row, ListingChannelRule Rule)>();

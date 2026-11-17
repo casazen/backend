@@ -524,7 +524,7 @@ public class PropertyService(
         }
 
         var properties = await repository.GetByScopeForComplianceAsync(scope);
-        var items = properties.Select(p => new OwnerCinComplianceItem(
+        var items = properties.Where(p => CinFormat.IsRequiredForCountry(p.Country)).Select(p => new OwnerCinComplianceItem(
             PropertyId: p.Id,
             PropertyName: p.Name,
             CinCode: p.CinCode,
