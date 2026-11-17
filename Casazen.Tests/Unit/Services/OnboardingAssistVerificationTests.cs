@@ -226,9 +226,12 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         Assert.False(inherited.PoliceCredentials!.Present);
         _db.PropertyComplianceSenders.Add(new PropertyComplianceSender
         {
-            OrgId = _world.OrgId, PropertyId = _world.Granted.Id,
-            AlloggiatiSender = ComplianceSenderType.ChannelManager, IstatSender = ComplianceSenderType.ChannelManager,
-            LastChangedAt = _clock.GetUtcNow().UtcDateTime, LastChangedByUserId = _world.OwnerUserId,
+            OrgId = _world.OrgId,
+            PropertyId = _world.Granted.Id,
+            AlloggiatiSender = ComplianceSenderType.ChannelManager,
+            IstatSender = ComplianceSenderType.ChannelManager,
+            LastChangedAt = _clock.GetUtcNow().UtcDateTime,
+            LastChangedByUserId = _world.OwnerUserId,
         });
         await _db.SaveChangesAsync();
         Assert.Equal(ComplianceSenderType.ChannelManager, Assert.Single((await StaffService().GetAsync(request.Id, Ct)).Checklist).Sender!.Sender);

@@ -409,9 +409,12 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
         // An explicit conflicting property record cannot be hidden by the valid account preference.
         _db.PropertyComplianceSenders.Add(new PropertyComplianceSender
         {
-            OrgId = _world.OrgId, PropertyId = _world.Granted.Id,
-            AlloggiatiSender = ComplianceSenderType.Manual, IstatSender = ComplianceSenderType.ChannelManager,
-            LastChangedAt = HostScopeScenario.Now.UtcDateTime, LastChangedByUserId = _world.OwnerUserId,
+            OrgId = _world.OrgId,
+            PropertyId = _world.Granted.Id,
+            AlloggiatiSender = ComplianceSenderType.Manual,
+            IstatSender = ComplianceSenderType.ChannelManager,
+            LastChangedAt = HostScopeScenario.Now.UtcDateTime,
+            LastChangedByUserId = _world.OwnerUserId,
         });
         await _db.SaveChangesAsync();
         var overridden = Assert.Single(await FlowStatus([]).GetStatusesAsync(
