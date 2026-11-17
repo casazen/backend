@@ -45,6 +45,30 @@ public class OwnerOnboardingServiceTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _db.DisposeAsync();
 
+    [Fact]
+    public async Task Readiness_PropertyFilter_IsExactAndNeverWidensTheCallerReach()
+    {
+        var owner = await AddOwnerAsync("Anna Verdi", "anna@example.com");
+        await AddPeriodAsync(Granted, owner, 100m, new DateOnly(2025, 1, 1));
+        await AddOwnerAsync("Unrelated Owner", "other@example.com");
+
+        var complete = await Service().GetReadinessAsync(_world.OrgWide, Ct, propertyId: Granted);
+        Assert.Equal(1, complete.Summary.Properties);
+        Assert.Single(complete.Owners);
+        Assert.Empty(complete.Properties);
+        Assert.False(complete.Truncated);
+
+        var missing = await Service().GetReadinessAsync(_world.OrgWide, Ct, propertyId: Hidden);
+        Assert.Equal(1, missing.Summary.Properties);
+        Assert.Equal(Hidden, Assert.Single(missing.Properties).PropertyId);
+        Assert.Empty(missing.Owners);
+
+        var outsideReach = await Service().GetReadinessAsync(_world.Restricted, Ct, propertyId: Hidden);
+        Assert.Equal(0, outsideReach.Summary.Properties);
+        Assert.Empty(outsideReach.Properties);
+        Assert.Empty(outsideReach.Owners);
+    }
+
     // ---------------------------------------------------------------- the three proofs of the brief
 
     /// <summary>
