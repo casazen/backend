@@ -40,6 +40,8 @@ public class PropertyComplianceStatusServiceTests
         var steps = await CreateService(db).GetBlockingStepsAsync(stored);
         Assert.DoesNotContain(steps, s => s.Id == "cin");
         Assert.Equal("complete", steps.Single(s => s.Id == "documents").Status);
+        Assert.DoesNotContain(steps, s => s.Id == "safety");
+        Assert.Empty(steps.Single(s => s.Id == "base-data").Warnings);
     }
 
     [Fact]

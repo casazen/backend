@@ -1,3 +1,4 @@
+using Casazen.Core.TouristTax;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -171,7 +172,7 @@ public class PropertyComplianceStatusService(
 
         var requiredDocs = ResolveRequiredDocuments(property);
 
-        var comuneMissing = property.ComuneIstatCode is null && comuneListImported;
+        var comuneMissing = TouristTaxComune.IsItalianCountry(property.Country) && property.ComuneIstatCode is null && comuneListImported;
         var cinIstatMismatch = CinFormat.HasIstatComuneMismatch(property.CinCode, property.ComuneIstatCode);
         var missingDocs = requiredDocs.Where(d => !uploadedTypes.Contains(d)).ToList();
         var docsComplete = missingDocs.Count == 0;
@@ -250,6 +251,8 @@ public class PropertyComplianceStatusService(
         // Do not advertise a completed Italian obligation for a Swiss property.
         if (!CinFormat.IsRequiredForCountry(property.Country))
             steps.RemoveAll(step => step.Id == "cin");
+        if (property.Country.Length == 2 && !TouristTaxComune.IsItalianCountry(property.Country))
+            steps.RemoveAll(step => step.Id == "safety");
         return steps;
     }
 

@@ -55,13 +55,16 @@ public class PriceSuggestionResponse
     /// <summary>True when the AI worked the prices out. False: the prices, if any, come from the figures of the similar homes alone.</summary>
     public bool AiUsed { get; set; }
 
+    /// <summary>ISO currency of the property, for every amount in the suggestion.</summary>
+    public string Currency { get; set; } = "EUR";
+
     /// <summary>
     /// Why the AI is not behind the price when <see cref="AiUsed"/> is false: <c>ai_not_configured</c>, <c>ai_budget_exhausted</c>,
     /// <c>ai_unavailable</c> or <c>ai_invalid_answer</c>.
     /// </summary>
     public string? Reason { get; set; }
 
-    /// <summary>Base price for a night, in euros, a multiple of 5; <c>null</c> when there is nothing to suggest.</summary>
+    /// <summary>Base price for a night, in the property currency, a multiple of 5; <c>null</c> when there is nothing to suggest.</summary>
     public decimal? NightlyRate { get; set; }
 
     /// <summary>Low end of what homes like this ask in the area.</summary>
@@ -70,7 +73,7 @@ public class PriceSuggestionResponse
     /// <summary>High end of what homes like this ask in the area.</summary>
     public decimal? RangeMax { get; set; }
 
-    /// <summary>Once for each stay, in euros; <c>null</c> = not suggested.</summary>
+    /// <summary>Once for each stay, in the property currency; <c>null</c> = not suggested.</summary>
     public decimal? CleaningFee { get; set; }
 
     /// <summary>On the nights of Friday and Saturday, in percent; <c>null</c> = not suggested.</summary>
@@ -88,6 +91,7 @@ public class PriceSuggestionResponse
     public static PriceSuggestionResponse From(NightlyPriceSuggestion suggestion) => new()
     {
         AiUsed = suggestion.AiUsed,
+        Currency = suggestion.Currency,
         Reason = suggestion.Reason,
         NightlyRate = suggestion.NightlyRate,
         RangeMin = suggestion.RangeMin,
