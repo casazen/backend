@@ -1,0 +1,6 @@
+function enqueueSql(month,action){
+ const args=[JSON.stringify(org),"2026",String(month),String(action),JSON.stringify(["fa985716-6d5a-4c5a-b554-140a6ea00e9e"]),JSON.stringify(actor),null,null];
+ const inv={Type:"Casazen.Web.BackgroundJobs.OwnerBulkCloseJob, Casazen.Web",Method:"RunAsync",ParameterTypes:JSON.stringify(["System.Guid, mscorlib","System.Int32, mscorlib","System.Int32, mscorlib","Casazen.Core.Services.OwnerBulkAction, Casazen.Core","System.Guid[], mscorlib","System.String, mscorlib","Hangfire.Server.PerformContext, Hangfire.Core","System.Threading.CancellationToken, mscorlib"]),Arguments:JSON.stringify(args)};
+ const q=x=>"'"+JSON.stringify(x).replaceAll("'","''")+"'";
+ return `WITH j AS (INSERT INTO hangfire_casazen_test.job (statename,invocationdata,arguments,createdat,updatecount) VALUES ('Enqueued',${q(inv)}::jsonb,${q(args)}::jsonb,now(),0) RETURNING id), s AS (INSERT INTO hangfire_casazen_test.state (jobid,name,reason,createdat,data,updatecount) SELECT id,'Enqueued','Quokka360 TEST demo owner accounting',now(),'{"Queue":"default"}'::jsonb,0 FROM j RETURNING id,jobid), u AS (UPDATE hangfire_casazen_test.job SET stateid=s.id FROM s WHERE job.id=s.jobid RETURNING job.id), que AS (INSERT INTO hangfire_casazen_test.jobqueue (jobid,queue,updatecount) SELECT id,'default',0 FROM j RETURNING jobid) SELECT jobid FROM que`;
+}

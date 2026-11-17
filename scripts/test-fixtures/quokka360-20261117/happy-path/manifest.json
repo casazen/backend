@@ -1,0 +1,256 @@
+{
+  "date": "2026-11-17",
+  "environment": "test",
+  "schema": "casazen_test",
+  "orgId": "ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8",
+  "ownerId": "fa985716-6d5a-4c5a-b554-140a6ea00e9e",
+  "verification": {
+    "bookings": 36,
+    "payments": [
+      {
+        "Status": 2,
+        "count": 57
+      }
+    ],
+    "imbalancedPayments": 0,
+    "ledger": 210,
+    "statements": [
+      {
+        "month": 10,
+        "status": 4,
+        "issues": null,
+        "balance": 265.9
+      },
+      {
+        "month": 11,
+        "status": 4,
+        "issues": null,
+        "balance": 1531.18
+      },
+      {
+        "month": 12,
+        "status": 4,
+        "issues": null,
+        "balance": 2886.85
+      }
+    ],
+    "files": [
+      {
+        "title": "Rendiconto 10/2026 - versione 1",
+        "size": 58310,
+        "exists": true
+      },
+      {
+        "title": "Rendiconto 11/2026 - versione 1",
+        "size": 73908,
+        "exists": true
+      },
+      {
+        "title": "Rendiconto 12/2026 - versione 1",
+        "size": 74246,
+        "exists": true
+      },
+      {
+        "title": "Fattura PM PMT2026/1 - SIMULAZIONE",
+        "size": 2228,
+        "exists": true
+      },
+      {
+        "title": "Fattura PM PMT2026/2 - SIMULAZIONE",
+        "size": 2226,
+        "exists": true
+      },
+      {
+        "title": "Fattura PM PMT2026/3 - SIMULAZIONE",
+        "size": 2230,
+        "exists": true
+      },
+      {
+        "title": "Mandato gestione Quokka360 - SIMULAZIONE",
+        "size": 3093,
+        "exists": true
+      }
+    ],
+    "overdueOpen": 0,
+    "documents": 39,
+    "unencryptedRecipients": 0
+  },
+  "invoices": [
+    {
+      "id": "a7112026-1117-4000-9000-000000000110",
+      "number": "PMT2026/1",
+      "month": 10,
+      "total": 403.84,
+      "versionId": "fecf68da-f6bf-40b1-ab4a-f9430ae2394e",
+      "commission": 148.84,
+      "charges": 255
+    },
+    {
+      "id": "a7112026-1117-4000-9000-000000000111",
+      "number": "PMT2026/2",
+      "month": 11,
+      "total": 2323.8,
+      "versionId": "429b5398-0164-4778-87b6-7354c2d2504e",
+      "commission": 793.8,
+      "charges": 1530
+    },
+    {
+      "id": "a7112026-1117-4000-9000-000000000112",
+      "number": "PMT2026/3",
+      "month": 12,
+      "total": 2019.2,
+      "versionId": "9b1d0213-d039-427e-bf26-e734bc4be75b",
+      "commission": 744.2,
+      "charges": 1275
+    }
+  ],
+  "files": [
+    {
+      "id": "cd3577fd-43d8-4267-a9b5-f83e10348c34",
+      "versionId": "598eb8f4-a911-4bce-8ded-fa0f25cb422d",
+      "title": "Fattura PM PMT2026/1 - SIMULAZIONE",
+      "kind": "owner",
+      "docType": 5,
+      "key": "owner-documents/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/cd3577fd-43d8-4267-a9b5-f83e10348c34/598eb8f4-a911-4bce-8ded-fa0f25cb422d.pdf",
+      "fileName": "fattura-PMT2026-10.pdf",
+      "size": 2228,
+      "sha256": "12e42a752212a2c7be9c165d985324b5c1b0b98b12e765e27634040ae998a0c6"
+    },
+    {
+      "id": "42209b59-5eb4-4e25-8e8e-2eab88f182de",
+      "versionId": "2a535652-ff3f-4703-bec6-6c7021c4d525",
+      "title": "Fattura PM PMT2026/2 - SIMULAZIONE",
+      "kind": "owner",
+      "docType": 5,
+      "key": "owner-documents/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/42209b59-5eb4-4e25-8e8e-2eab88f182de/2a535652-ff3f-4703-bec6-6c7021c4d525.pdf",
+      "fileName": "fattura-PMT2026-11.pdf",
+      "size": 2226,
+      "sha256": "e21096704c3fb034b5db251817915c0b0cfc8bb62d7c70d9db67a08a73b02169"
+    },
+    {
+      "id": "6d88444e-14a4-479b-935c-b2fc067b02a6",
+      "versionId": "7dc48030-516d-4b2e-af1b-eeeeeb3f78c1",
+      "title": "Fattura PM PMT2026/3 - SIMULAZIONE",
+      "kind": "owner",
+      "docType": 5,
+      "key": "owner-documents/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/6d88444e-14a4-479b-935c-b2fc067b02a6/7dc48030-516d-4b2e-af1b-eeeeeb3f78c1.pdf",
+      "fileName": "fattura-PMT2026-12.pdf",
+      "size": 2230,
+      "sha256": "f5076ac7618b045f9dc296b9f282a4c01552d0b44b8ab991b7a8fb293b498351"
+    },
+    {
+      "id": "fb4e2220-bb60-4996-9cc1-f0fb58a441a6",
+      "versionId": "258ec23f-c84b-4549-9237-1b329d07e3e1",
+      "title": "Mandato gestione Quokka360 - SIMULAZIONE",
+      "kind": "owner",
+      "docType": 1,
+      "key": "owner-documents/ad979b3b-e739-49d6-84a4-c2c1e4f8f1e8/fb4e2220-bb60-4996-9cc1-f0fb58a441a6/258ec23f-c84b-4549-9237-1b329d07e3e1.pdf",
+      "fileName": "quokka360-mandato-simulato.pdf",
+      "size": 3093,
+      "sha256": "bfce9971ee0d59479cc01f59a704ed6b30c87d9d2109b71c43786ed30786ca29"
+    },
+    {
+      "id": "81ebf3ae-ad62-4926-b871-cb06665e62ad",
+      "versionId": "77c30015-21db-43ae-8d9a-53066b2a5345",
+      "title": "CIN - facsimile dimostrativo",
+      "kind": "property",
+      "docType": "CinCertificate",
+      "key": "properties/36e556c2-943e-44d7-86db-dea0567ea8a1/documents/TEST-CinCertificate.pdf",
+      "fileName": "TEST-CinCertificate.pdf",
+      "size": 1934,
+      "sha256": "4b18e2f298ef14065169a4a6fd6ad125bb5a2ab335e142fb7e1b581490c04368"
+    },
+    {
+      "id": "ce65f5e8-6067-48bb-bd86-d7e36a66ac0f",
+      "versionId": "9244181d-2a16-4341-97b3-a2d241a34b2e",
+      "title": "Licenza ricettiva - facsimile dimostrativo",
+      "kind": "property",
+      "docType": "PropertyLicense",
+      "key": "properties/36e556c2-943e-44d7-86db-dea0567ea8a1/documents/TEST-PropertyLicense.pdf",
+      "fileName": "TEST-PropertyLicense.pdf",
+      "size": 1957,
+      "sha256": "b1ad497cedb349a88f7952aaa016d889330159d4b464f848f35a75418dabff47"
+    },
+    {
+      "id": "c7f72ce0-59b8-47cc-8c1e-88fda127f80c",
+      "versionId": "cc5b3507-262f-4264-b999-cde4dbcfb377",
+      "title": "APE - facsimile dimostrativo",
+      "kind": "property",
+      "docType": "Ape",
+      "key": "properties/36e556c2-943e-44d7-86db-dea0567ea8a1/documents/TEST-Ape.pdf",
+      "fileName": "TEST-Ape.pdf",
+      "size": 1935,
+      "sha256": "54655559e56dde83e3136ced4756d6534a2f0f8255ec79bd39e6298245b0b557"
+    }
+  ],
+  "jobs": [
+    {
+      "month": 10,
+      "action": 1,
+      "id": 112559
+    },
+    {
+      "month": 11,
+      "action": 1,
+      "id": 112582
+    },
+    {
+      "month": 12,
+      "action": 1,
+      "id": 112583
+    },
+    {
+      "month": 10,
+      "action": 2,
+      "id": 112584
+    },
+    {
+      "month": 11,
+      "action": 2,
+      "id": 112588
+    },
+    {
+      "month": 12,
+      "action": 2,
+      "id": 112589
+    },
+    {
+      "month": 10,
+      "action": 3,
+      "id": 112590
+    },
+    {
+      "month": 11,
+      "action": 3,
+      "id": 112594
+    },
+    {
+      "month": 12,
+      "action": 3,
+      "id": 112595
+    },
+    {
+      "month": 10,
+      "action": 4,
+      "id": 112602
+    },
+    {
+      "month": 11,
+      "action": 4,
+      "id": 112603
+    },
+    {
+      "month": 12,
+      "action": 4,
+      "id": 112604
+    }
+  ],
+  "limitations": [
+    "Synthetic demonstration, no real submissions, legal attestations or financial transfers.",
+    "November and December statements include future stays; periods remain open.",
+    "CHF/EUR demo rate 1.04 is synthetic.",
+    "Swiss police receipts mapped to legacy generic manual-proof slot for cockpit compatibility; no Italian Alloggiati reports created for Switzerland.",
+    "Chiara must be invited manually Thursday 19 November; no invitation sent.",
+    "Owner Hotmail account not linked to owner portal because existing host/admin roles conflict; agency console reports available."
+  ]
+}
