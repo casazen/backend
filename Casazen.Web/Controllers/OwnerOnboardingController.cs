@@ -104,13 +104,13 @@ public sealed class OwnerOnboardingController(
     [ProducesResponseType(typeof(OwnerReadinessDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<OwnerReadinessDto>> GetReadiness(CancellationToken cancellationToken)
+    public async Task<ActionResult<OwnerReadinessDto>> GetReadiness(CancellationToken cancellationToken, [FromQuery] Guid? propertyId = null)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         var scope = orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
         if (scope is null)
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
-        return Ok(OwnerReadinessDto.From(await owners.GetReadinessAsync(scope, cancellationToken)));
+        return Ok(OwnerReadinessDto.From(await owners.GetReadinessAsync(scope, cancellationToken, propertyId: propertyId)));
     }
 }

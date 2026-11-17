@@ -179,8 +179,8 @@ public class PropertyComplianceStatusService(
         var safety = SafetyChecklistRules.Evaluate(safetyChecklist);
         var safetyComplete = safety.IsComplete;
 
-        return
-        [
+        var steps = new List<ComplianceActivationStep>
+        {
             new ComplianceActivationStep(
                 "base-data",
                 "Dati base proprietà",
@@ -246,7 +246,11 @@ public class PropertyComplianceStatusService(
                 MessageArgs = safetyComplete ? null : [safety.Blockers.Count],
                 Blockers = safety.Blockers.Select(b => new ActivationBlocker(b.Code, b.MessageKey, b.MessageArgs)).ToList(),
             },
-        ];
+        };
+        // Do not advertise a completed Italian obligation for a Swiss property.
+        if (!CinFormat.IsRequiredForCountry(property.Country))
+            steps.RemoveAll(step => step.Id == "cin");
+        return steps;
     }
 
     public Task<PropertyComplianceCheck> ReevaluateAsync(Guid propertyId, CancellationToken cancellationToken = default) =>

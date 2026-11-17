@@ -6,6 +6,10 @@ using Casazen.Core.Multitenancy;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Jobs;
+using Hangfire;
+using Hangfire.Common;
+using Hangfire.States;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
@@ -121,7 +125,8 @@ public class ChannelMappingProofTests
             .ReturnsAsync([new OctorateRoom { Id = "956528", Name = "Double Room", Adults = 2 }]);
         client.Setup(c => c.GetConnectionsAsync("1001", It.IsAny<CancellationToken>()))
             .ReturnsAsync([new OctorateChannelConnection("77", "142", "Booking.com", "BK-123456", "ACTIVE")]);
-        var service = Service(db, client.Object, Resolver(granted));
+        var jobs = new Mock<IBackgroundJobClient>();
+        var service = Service(db, client.Object, Resolver(granted), jobs: jobs.Object);
 
         // A collaborator «Solo alcuni» who was given another property cannot confirm the listing to this one.
         var unreachable = await Assert.ThrowsAsync<NotFoundException>(
@@ -135,6 +140,7 @@ public class ChannelMappingProofTests
 
         // Refused before anything was read or written.
         client.VerifyNoOtherCalls();
+        jobs.VerifyNoOtherCalls();
         var untouched = await db.OctorateListingMappings.AsNoTracking().SingleAsync();
         Assert.Equal(OctorateMappingStatus.Proposed, untouched.Status);
         Assert.Null(untouched.ConfirmedByUserId);
@@ -147,6 +153,9 @@ public class ChannelMappingProofTests
         Assert.Equal(Admin, confirmed.ConfirmedByUserId);
         Assert.NotNull(confirmed.ConfirmedAt);
         Assert.Equal("956528", confirmed.OctorateProductId);
+        jobs.Verify(j => j.Create(It.Is<Job>(job => job.Type == typeof(OctorateBookingImportJob)
+            && job.Method.Name == nameof(OctorateBookingImportJob.ExecutePropertyAsync)
+            && (Guid)job.Args[0] == OrgA && (Guid)job.Args[1] == mine), It.IsAny<EnqueuedState>()), Times.Once);
         Assert.Equal("""{"142":"BK-123456"}""", confirmed.ChannelIdsJson);
 
         // The property is now confirmed to this listing: another listing cannot take it.
@@ -267,7 +276,8 @@ public class ChannelMappingProofTests
         IHostScopeResolver? resolver = null,
         IPropertyService? propertyService = null,
         IEntitlementService? entitlements = null,
-        IInternalActivityService? activities = null)
+        IInternalActivityService? activities = null,
+        IBackgroundJobClient? jobs = null)
     {
         var host = new Mock<IHostEnvironment>();
         host.SetupGet(h => h.EnvironmentName).Returns("Staging");
@@ -283,7 +293,7 @@ public class ChannelMappingProofTests
             Microsoft.Extensions.Options.Options.Create(new OctorateOptions()),
             host.Object,
             TimeProvider.System,
-            NullLogger<ChannelMappingService>.Instance);
+            NullLogger<ChannelMappingService>.Instance, jobs: jobs);
     }
 
     /// <summary>

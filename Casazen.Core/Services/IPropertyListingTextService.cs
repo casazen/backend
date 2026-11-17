@@ -33,7 +33,10 @@ public sealed record ListingTextBasis(int Photos, string? Comune, string? Provin
 /// <param name="Title">At most <see cref="ListingTextLimits.TitleMaxLength"/> characters; <c>null</c> without the AI.</param>
 /// <param name="Description">At most <see cref="ListingTextLimits.DescriptionMaxLength"/> characters, paragraphs separated by a blank line.</param>
 /// <param name="BasedOn">What the text was (or would have been) written from.</param>
-public sealed record ListingTextSuggestion(bool AiUsed, string? Reason, string? Title, string? Description, ListingTextBasis BasedOn);
+public sealed record ListingTextSuggestion(bool AiUsed, string? Reason, string? Title, string? Description, ListingTextBasis BasedOn)
+{
+    public IReadOnlyDictionary<string, string>? Fields { get; init; }
+}
 
 /// <summary>
 /// «Suggerisci un testo» (the wizard «Aggiungi immobile»): the AI writes the headline and the description of a listing from the photos the host
@@ -48,6 +51,9 @@ public interface IPropertyListingTextService
     /// photos of the gallery, cover first. An answer of the AI for the same data and photos is reused for a while, unless
     /// <paramref name="regenerate"/> asks for a new text.
     /// </summary>
+    Task<ListingTextSuggestion> SuggestFieldsAsync(
+        Property property, IReadOnlyList<AiImage> photos, string language, bool regenerate, CancellationToken cancellationToken = default);
+
     Task<ListingTextSuggestion> SuggestAsync(
         Property property,
         IReadOnlyList<AiImage> photos,

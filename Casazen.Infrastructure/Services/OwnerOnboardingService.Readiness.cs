@@ -9,7 +9,7 @@ namespace Casazen.Infrastructure.Services;
 
 public sealed partial class OwnerOnboardingService
 {
-    public async Task<OwnerReadinessReport> GetReadinessAsync(HostScope scope, CancellationToken ct, bool listEveryOwner = false)
+    public async Task<OwnerReadinessReport> GetReadinessAsync(HostScope scope, CancellationToken ct, bool listEveryOwner = false, Guid? propertyId = null)
     {
         ArgumentNullException.ThrowIfNull(scope);
         var today = Today();
@@ -18,13 +18,18 @@ public sealed partial class OwnerOnboardingService
         // The properties inside the reach, then what hangs on them: the periods, the owners of the org that hold one, the mandates, the invitations.
         var properties = await db.Properties
             .AsNoTracking()
-            .Where(p => p.OrgId == scope.OrgId)
+            .Where(p => p.OrgId == scope.OrgId && (propertyId == null || p.Id == propertyId))
             .InScope(scope)
             .Select(p => new { p.Id, p.Name })
             .ToListAsync(ct);
         var propertyIds = properties.Select(p => p.Id).ToHashSet();
         var periods = await LoadPeriodsAsync(scope, propertyIds, ct);
         var owners = await LoadVisibleOwnersAsync(scope, ct);
+        if (propertyId.HasValue)
+        {
+            var scopedOwnerIds = periods.Select(p => p.OwnerId).ToHashSet();
+            owners = owners.Where(owner => scopedOwnerIds.Contains(owner.Id)).ToList();
+        }
 
         // The mandates of each owner: those of its ownerships in reach (the shape of before E13) and its own, which cover all its properties
         // (E13/F01/US01/T01). An owner is only ever judged on its own mandates.

@@ -358,6 +358,67 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
         Assert.NotEqual(OnboardingFlowTodo.EntityIdOf(orgId, OnboardingFlow.Bookings), OnboardingFlowTodo.EntityIdOf(orgId, OnboardingFlow.Listings));
     }
 
+    [Theory]
+    [InlineData(SenderSource.OrganizationDefault, ComplianceSenderType.Manual, true, false, FlowCheckOutcomes.Pass)]
+    [InlineData(SenderSource.OrganizationDefault, ComplianceSenderType.ChannelManager, true, false, FlowCheckOutcomes.Pass)]
+    [InlineData(SenderSource.OrganizationDefault, ComplianceSenderType.Manual, true, true, FlowCheckOutcomes.Pass)]
+    [InlineData(SenderSource.Stored, ComplianceSenderType.Manual, true, false, FlowCheckOutcomes.Pass)]
+    [InlineData(SenderSource.DefaultNotConnected, ComplianceSenderType.Manual, true, false, FlowCheckOutcomes.Fail)]
+    [InlineData(SenderSource.DefaultConnected, ComplianceSenderType.ChannelManager, true, true, FlowCheckOutcomes.Fail)]
+    [InlineData(SenderSource.OrganizationDefault, ComplianceSenderType.Manual, false, true, FlowCheckOutcomes.Skipped)]
+    public async Task ComplianceDryRun_AcceptsPersistedAccountChoices_ButNotImplicitFallbacks(
+        SenderSource source, ComplianceSenderType sender, bool applies, bool missingGuests, string expected)
+    {
+        var bookingId = await SeedImportedBookingAsync(_world.Granted, HostScopeScenario.Now.UtcDateTime, otaCommission: null);
+        var booking = await _db.Bookings.SingleAsync(b => b.Id == bookingId);
+        var state = WizardState(bookingId, _world.Granted.Id, _world.OrgId, source, missingGuests);
+        state = state with { Sender = state.Sender with { AlloggiatiSender = sender, IstatSender = sender, Applies = applies } };
+        var wizard = new Mock<ICheckInWizardService>(MockBehavior.Strict);
+        wizard.Setup(w => w.GetStateAsync(bookingId, Ct)).ReturnsAsync(state);
+
+        var answer = await new CheckInComplianceDryRunCheck(wizard.Object).RunAsync(
+            new FlowDryRunContext(_world.OrgId, _world.Granted.Id, booking), Ct);
+
+        Assert.Equal(expected, answer.Outcome);
+        if (!applies)
+            Assert.Equal([FlowCheckReasons.NotApplicable], answer.Reasons);
+        else
+        {
+            Assert.Equal(source is not (SenderSource.Stored or SenderSource.OrganizationDefault), answer.Reasons.Contains(FlowCheckReasons.SenderMissing));
+            Assert.Equal(missingGuests, answer.Reasons.Contains(FlowCheckReasons.GuestDataMissing));
+        }
+        wizard.Verify(w => w.GetStateAsync(bookingId, Ct), Times.Once);
+        wizard.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData(ComplianceSenderType.Manual)]
+    [InlineData(ComplianceSenderType.ChannelManager)]
+    public async Task ComplianceReadiness_AccountChoiceMeetsSingleSender_WithoutProvingOperationalActivation(ComplianceSenderType choice)
+    {
+        var org = await _db.Orgs.SingleAsync(o => o.Id == _world.OrgId);
+        org.DefaultComplianceSender = choice;
+        await _db.SaveChangesAsync();
+        var statuses = await FlowStatus([]).GetStatusesAsync(
+            _world.OrgWide, [_world.Granted.Id], [OnboardingFlow.CheckInCompliance], Ct);
+        var state = Assert.Single(statuses);
+        Assert.True(state.Prerequisites.Single(p => p.Key == OnboardingPrerequisiteKeys.SingleSender).Met);
+        Assert.False(state.Prerequisites.Single(p => p.Key == OnboardingPrerequisiteKeys.Connection).Met);
+        Assert.NotEqual(OnboardingFlowStates.Active, state.State);
+
+        // An explicit conflicting property record cannot be hidden by the valid account preference.
+        _db.PropertyComplianceSenders.Add(new PropertyComplianceSender
+        {
+            OrgId = _world.OrgId, PropertyId = _world.Granted.Id,
+            AlloggiatiSender = ComplianceSenderType.Manual, IstatSender = ComplianceSenderType.ChannelManager,
+            LastChangedAt = HostScopeScenario.Now.UtcDateTime, LastChangedByUserId = _world.OwnerUserId,
+        });
+        await _db.SaveChangesAsync();
+        var overridden = Assert.Single(await FlowStatus([]).GetStatusesAsync(
+            _world.OrgWide, [_world.Granted.Id], [OnboardingFlow.CheckInCompliance], Ct));
+        Assert.False(overridden.Prerequisites.Single(p => p.Key == OnboardingPrerequisiteKeys.SingleSender).Met);
+    }
+
     private AppDbContext NewDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).AddInterceptors(_saves).Options);
 
