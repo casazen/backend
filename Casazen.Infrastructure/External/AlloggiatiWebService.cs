@@ -451,7 +451,7 @@ public class AlloggiatiWebService(
 
     private async Task<Booking> LoadBookingAsync(Guid bookingId, bool tracking)
     {
-        var query = context.Bookings.Include(b => b.Guest).AsQueryable();
+        var query = context.Bookings.Include(b => b.Guest).Include(b => b.Property).AsQueryable();
         if (!tracking)
             query = query.AsNoTracking();
 
