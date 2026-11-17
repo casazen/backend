@@ -460,6 +460,7 @@ app.UseAuthentication();
 app.UseTenantResolution();
 // A deactivated account gets 403 account_inactive on every authenticated request, before any policy (PL-03, A1-04).
 app.UseInactiveAccountBlock();
+app.UseMiddleware<Casazen.Web.Middleware.CommercialAccessMiddleware>();
 app.UseAuthorization();
 app.UseRateLimiter();
 

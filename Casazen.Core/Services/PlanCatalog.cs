@@ -30,7 +30,8 @@ public static class PlanCatalog
     [
         new(PlanTier.Starter, "Starter", 3, 2, "Fino a 3 proprietà — ideale per iniziare."),
         new(PlanTier.Pro, "Pro", 50, 10, "Fino a 50 proprietà — per operatori in crescita."),
-        new(PlanTier.Scale, "Scale", int.MaxValue, int.MaxValue, "Proprietà illimitate — per agenzie e PM."),
+        new(PlanTier.Scale, "Scale", int.MaxValue, int.MaxValue, "Proprietà illimitate — per operatori in crescita."),
+        new(PlanTier.Agency, "Agency", int.MaxValue, int.MaxValue, "Per property manager: fatturazione per camera."),
     ];
 
     public static IReadOnlyList<Entry> All => Entries;

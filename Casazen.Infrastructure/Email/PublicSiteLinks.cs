@@ -426,6 +426,7 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         "/app/long-rent/settings/plan",
         "/app/long-rent/settings/billing",
         AccountBillingPagePath,
+        "/onboarding",
     };
 
     /// <summary>True when <paramref name="path"/> is exactly one of <see cref="BillingReturnPagePaths"/>.</summary>

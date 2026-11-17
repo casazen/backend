@@ -39,6 +39,9 @@ public class UserDetailDto : UserSummaryDto
     /// <see cref="OnboardingRequired"/>: it never gates an endpoint.
     /// </summary>
     public bool? HasProperties { get; set; }
+    public bool CommercialSetupRequired { get; set; }
+    public string[] CommercialEnabledAddons { get; set; } = [];
+    public Casazen.Core.Services.CommercialSignup? CommercialSignup { get; set; }
 
     /// <summary>
     /// Own profile only (<c>GET/PUT /api/users/me</c>), <c>null</c> elsewhere: Auth0 says the account's email address was

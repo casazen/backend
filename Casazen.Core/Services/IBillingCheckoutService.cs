@@ -23,4 +23,6 @@ public interface IBillingCheckoutService
         string successUrl,
         string cancelUrl,
         CancellationToken cancellationToken = default);
+
+    Task<string> StartCommercialCheckoutAsync(Guid orgId, PlanTier planTier, string successUrl, string cancelUrl, CommercialSignup selection, CancellationToken cancellationToken = default);
 }

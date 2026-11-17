@@ -40,6 +40,13 @@ public class Org
     /// </summary>
     public bool IsAgencyTierDowngraded { get; set; }
 
+    /// <summary>Issue #896: server-validated commercial draft; no paid access is granted by this field.</summary>
+    public string? CommercialSignupJson { get; set; }
+    public bool CommercialPaymentConfirmed { get; set; }
+    public string? CommercialPaidAddonsJson { get; set; }
+    public int CommercialRoomAllowance { get; set; }
+
+
     /// <summary>Business identity, independent of billing tier. Private owners cannot invite collaborators.</summary>
     public bool IsAgency { get; set; }
 

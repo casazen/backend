@@ -4,7 +4,7 @@ using Casazen.Core.Entities.Enums;
 namespace Casazen.Core.Services;
 
 /// <summary>A Stripe Checkout Session in subscription mode, with the plan tier stored in its metadata.</summary>
-public sealed record StripeCheckoutSession(string Id, string Url, PlanTier? PlanTier);
+public sealed record StripeCheckoutSession(string Id, string Url, PlanTier? PlanTier, string? ConfigurationKey = null, string? ReturnUrl = null);
 
 /// <summary>A Stripe subscription of a customer, with its raw Stripe status (<c>active</c>, <c>incomplete</c>…).</summary>
 public sealed record StripeSubscriptionSummary(string Id, string Status);
@@ -26,6 +26,8 @@ public interface IStripeBillingService
     Task<string> EnsureCustomerAsync(Org org, CancellationToken cancellationToken = default);
 
     Task<StripeCheckoutSession> CreateCheckoutSessionAsync(Org org, PlanTier planTier, string successUrl, string cancelUrl, CancellationToken cancellationToken = default);
+
+    Task<StripeCheckoutSession> CreateCommercialCheckoutSessionAsync(Org org, PlanTier planTier, string successUrl, string cancelUrl, CommercialSignup selection, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
     /// <summary>Open (not completed, not expired) subscription-mode Checkout Sessions of the customer.</summary>
     Task<IReadOnlyList<StripeCheckoutSession>> ListOpenCheckoutSessionsAsync(string customerId, CancellationToken cancellationToken = default);

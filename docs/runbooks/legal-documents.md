@@ -449,3 +449,5 @@ Translations (German, French and Spanish of the Ticino notice) are not written: 
 
 `CheckInLegalTextsTests` (unit): production serves only approved versions, a consent can refer only to the served version and keeps its hash, the files that ship match the manifest, an approved
 text needs its approval, a text never brings a tag of its own.
+
+The commercial signup introduces the Agency plan. The historical `2026-10-v1` terms remain unchanged; the draft `2026-11-v2` adds the Agency plan and its per-room monthly price in Italian and English. Have the draft reviewed before activation, then configure the new ToS version and effective date per environment; activating it will request acceptance of the updated terms.
