@@ -84,6 +84,13 @@ public static class RoutineActionRules
         };
     }
 
+    public static bool HasRequiredFields(RoutineAction action) => action.Type switch
+    {
+        RoutineActionType.MessageToGuest => Guid.TryParse(action.GetString("templateId"), out var id) && id != Guid.Empty,
+        RoutineActionType.AddTag => CrmProfileRules.TryNormalizeTags([action.GetString("tag")], out _),
+        _ => true,
+    };
+
     /// <summary>A member that is missing counts 0; one that is there must be a whole number of 0 or more.</summary>
     private static bool TryReadWhole(RoutineAction action, string name, out int value)
     {

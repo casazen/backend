@@ -350,7 +350,7 @@ public class RoutineActionsTests
         var routine = await rig.SeedRoutineAsync(
             OrgA,
             RoutineEventType.BookingConfirmed,
-            RoutineRig.Actions(("CreateActivity", CreateActivityConfig("Ok")), ("NotifyOwner", null), ("Wait", """{"hours":1}""")));
+            RoutineRig.Actions(("CreateActivity", CreateActivityConfig("Ok")), ("AddTag", """{"tag":"vip"}"""), ("Wait", """{"hours":1}""")));
 
         await using var db = rig.NewDb();
         var result = await rig.Service(db).SimulateAsync(OrgA, routine.Id, RoutineRig.PayloadOf(booking));
@@ -368,21 +368,10 @@ public class RoutineActionsTests
         var all = RoutineActionCatalog.All(new TestFeatureFlags());
 
         Assert.Equal(Enum.GetValues<RoutineActionType>(), all.Select(a => a.Type));
-        Assert.Equal(
-            [RoutineActionType.CreateActivity, RoutineActionType.RequestReview, RoutineActionType.Wait, RoutineActionType.CreateCleaningRequest],
-            all.Where(a => a.Available).Select(a => a.Type).Order());
         Assert.All(all.Where(a => a.Available), a => Assert.Null(a.Code));
-        Assert.All(all.Where(a => !a.Available), a => Assert.Equal(RoutineCodes.ActionNotAvailable, a.Code));
-        Assert.Equal(
-            [
-                RoutineActionType.MessageToGuest,
-                RoutineActionType.NotifyOwner,
-                RoutineActionType.NotifyStaff,
-                RoutineActionType.NotifyTeam,
-                RoutineActionType.SendAccessCode,
-                RoutineActionType.AddTag,
-            ],
-            all.Where(a => !a.Available).Select(a => a.Type));
+        var crm = Assert.Single(all, action => !action.Available);
+        Assert.Equal(RoutineActionType.AddTag, crm.Type);
+        Assert.Equal(RoutineCodes.ActionNotAvailable, crm.Code);
     }
 
     [Fact]
@@ -397,22 +386,11 @@ public class RoutineActionsTests
         }
     }
 
-    /// <summary>Today no action waits on a flag: every flag on changes nothing (E05/F07 makes MessageToGuest depend on its own).</summary>
     [Fact]
-    public void Catalog_DoesNotChangeWithTheFlagsOfOtherFeatures()
+    public void Catalog_AllActionsAreAvailableWhenCrmIsEnabled()
     {
-        var off = RoutineActionCatalog.All(new TestFeatureFlags());
-        var on = RoutineActionCatalog.All(new TestFeatureFlags([.. FeatureFlags.All]));
-
-        Assert.Equal(off, on);
-    }
-
-    [Fact]
-    public void Catalog_AnActionFromTheEnumThatIsNotListed_IsNotAvailable()
-    {
-        Assert.All(
-            Enum.GetValues<RoutineActionType>().Where(t => t is not (RoutineActionType.Wait or RoutineActionType.CreateActivity or RoutineActionType.RequestReview or RoutineActionType.CreateCleaningRequest)),
-            type => Assert.False(RoutineActionCatalog.IsAvailable(type, new TestFeatureFlags())));
+        Assert.All(RoutineActionCatalog.All(new TestFeatureFlags(FeatureFlags.CrmMarketing)),
+            action => Assert.True(action.Available));
     }
 
     // ─── No pretend texts ────────────────────────────────────────────────────────

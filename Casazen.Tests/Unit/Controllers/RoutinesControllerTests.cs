@@ -365,7 +365,7 @@ public class RoutinesControllerTests : IAsyncLifetime
         });
         Assert.True(items.Single(i => i.Type == nameof(RoutineActionType.Wait)).Available);
         Assert.True(items.Single(i => i.Type == nameof(RoutineActionType.CreateActivity)).Available);
-        var notYet = items.Single(i => i.Type == nameof(RoutineActionType.NotifyOwner));
+        var notYet = items.Single(i => i.Type == nameof(RoutineActionType.AddTag));
         Assert.False(notYet.Available);
         Assert.Equal(RoutineCodes.ActionNotAvailable, notYet.Code);
     }
