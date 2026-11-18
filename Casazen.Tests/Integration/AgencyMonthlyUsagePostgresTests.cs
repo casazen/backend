@@ -23,8 +23,8 @@ public class AgencyMonthlyUsagePostgresTests
         var property = new Property { OrgId = org.Id, OwnerId = "host", Name = "One sellable unit", Bedrooms = 4, Address = "Street 1", IsActive = true };
         db.Properties.Add(property);
         await db.SaveChangesAsync();
-        var start = DateTime.UtcNow.Date.AddDays(-1);
-        var end = start.AddDays(2);
+        var start = TimeProvider.System.GetUtcNow().UtcDateTime.AddHours(-1);
+        var end = start.AddHours(2);
         Assert.Equal(0, await AgencyUsageJob.CountAsync(db, org.Id, start, end, default));
         org.IsAgency = true;
         await db.SaveChangesAsync();
