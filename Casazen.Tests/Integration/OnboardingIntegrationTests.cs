@@ -56,11 +56,9 @@ public class OnboardingIntegrationTests : IClassFixture<CasazenWebApplicationFac
     }
 
     [Fact]
-    public async Task PostOnboarding_Both_RequiresAnExistingOrganization()
+    public async Task PostOnboarding_Both_ReturnsBothHostRoles()
     {
-        using var client = _factory.CreateAuthenticatedClient($"auth0|onboarding-both-{Guid.NewGuid():N}", roles: string.Empty);
-        var response = await client.PostAsJsonAsync("/api/users/onboarding", ValidOnboardingPayload("Both"));
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        await AssertOnboardingSuccess("Both", ["PropertyOwner", "LongTermLandlord"]);
     }
 
     private async Task AssertOnboardingSuccess(string rentalType, string[] expectedRoles)
