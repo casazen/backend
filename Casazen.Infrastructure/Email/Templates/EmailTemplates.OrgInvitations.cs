@@ -49,7 +49,10 @@ public static partial class EmailTemplates
             .Button("OrgInvitation_Cta", acceptUrl)
             .LinkFallback("OrgInvitation_LinkFallback", acceptUrl)
             .Muted("OrgInvitation_Expires", builder.FormatInstant(expiresAtUtc), inviterName)
-            .Build("OrgInvitation_Subject", inviterName, orgName);
+            .Build("OrgInvitation_Subject", inviterName, orgName) with
+            {
+                AccountInvitation = new("team", acceptUrl, expiresAtUtc),
+            };
     }
 
     /// <summary>
@@ -72,7 +75,10 @@ public static partial class EmailTemplates
             .LinkFallback("OrgInvitationReminder_LinkFallback", acceptUrl)
             .Muted("OrgInvitationReminder_NewLink")
             .Muted("OrgInvitationReminder_Expires", builder.FormatInstant(expiresAtUtc))
-            .Build("OrgInvitationReminder_Subject", orgName, builder.FormatDate(expiresAtUtc));
+            .Build("OrgInvitationReminder_Subject", orgName, builder.FormatDate(expiresAtUtc)) with
+            {
+                AccountInvitation = new("team", acceptUrl, expiresAtUtc),
+            };
     }
 
     /// <summary>

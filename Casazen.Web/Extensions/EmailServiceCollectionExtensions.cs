@@ -58,6 +58,11 @@ public static class EmailServiceCollectionExtensions
         // E15/F01/US02/T02: the signed link of the package sent to the accountant, built and checked in one place (the secret of the signed links, 30 days).
         services.AddSingleton<AccountantPackageLinks>();
         services.AddScoped<IEmailQueue, HangfireEmailQueue>();
+        services.AddOptions<Auth0InvitationOptions>()
+            .Bind(configuration.GetSection("Auth0:AccountInvitations"))
+            .Validate(options => options.IsValid(), "Auth0 account invitations require an organization, a SPA client and a database connection.")
+            .ValidateOnStart();
+        services.AddScoped<Auth0InvitationLinks>();
         services.AddScoped<EmailDeliveryJob>();
         // Check-in link email with its outcome recorded on the session (CO-09).
         services.AddScoped<IGuestCheckInLinkEmailQueue, GuestCheckInLinkEmailQueue>();
