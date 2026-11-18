@@ -494,15 +494,38 @@ public class StripeWebhookHandler(
             if (baseItem is not null && subscription.Metadata?.GetValueOrDefault("commercialConfiguration") == commercial.Fingerprint)
             {
                 org.CommercialPaymentConfirmed = true;
-                org.CommercialRoomAllowance = commercial.Profile == "agency" ? checked((int)baseItem.Quantity) : 0;
+                var metered = commercial.Profile == "agency" && subscription.Metadata?.GetValueOrDefault(AgencyUsagePricing.MetadataKey) == AgencyUsagePricing.Version &&
+                    baseItem.Price?.Id == AgencyUsagePricing.PriceId(commercialConfiguration, AgencyUsagePricing.Base);
+                if (!metered) org.CommercialRoomAllowance = commercial.Profile == "agency" ? checked((int)baseItem.Quantity) : 0;
                 var paidTier = stripeBillingService.MapPriceIdToTier(baseItem.Price.Id)!.Value;
                 var paidAddons = CommercialAddon.All.Where(a =>
-                    (commercial.Addons.Contains(a.Code) && CommercialPricing.IsIncluded(paidTier, a.Code) && CommercialPricing.IsEnabled(commercialConfiguration, a.Code)) ||
-                    (CommercialPricing.Price(commercialConfiguration, a.Code, paidTier) is { } priceId && subscription.Items!.Data.Any(i =>
-                        i.Price?.Id == priceId && i.Quantity >= baseItem.Quantity)))
+                {
+                    if (!metered && commercial.Addons.Contains(a.Code) && CommercialPricing.IsIncluded(paidTier, a.Code) && CommercialPricing.IsEnabled(commercialConfiguration, a.Code))
+                        return true;
+                    var priceId = metered ? AgencyUsagePricing.PriceId(commercialConfiguration, a.Code) : CommercialPricing.Price(commercialConfiguration, a.Code, paidTier);
+                    return priceId is not null && subscription.Items!.Data.Any(i => i.Price?.Id == priceId && (metered || i.Quantity >= baseItem.Quantity));
+                })
                     .Select(a => a.Code).ToArray();
+                if (metered)
+                {
+                    var events = paidAddons.Prepend(AgencyUsagePricing.Base).Select(AgencyUsagePricing.EventName).ToArray();
+                    await dbContext.Database.ExecuteSqlInterpolatedAsync($"""
+                        INSERT INTO "AgencyUsageContracts" ("SubscriptionId","OrgId","CustomerId","Events","StartedAt")
+                        VALUES ({subscription.Id},{org.Id},{subscription.CustomerId},{events},{subscription.StartDate})
+                        ON CONFLICT ("SubscriptionId") DO UPDATE SET "Events" = EXCLUDED."Events", "ReportedUnits" = NULL
+                        WHERE "AgencyUsageContracts"."Events" IS DISTINCT FROM EXCLUDED."Events"
+                        """);
+                    paidAddons = [.. paidAddons.Union(AgencyUsagePricing.Included.Where(c => commercial.Addons.Contains(c)))];
+                }
                 org.CommercialPaidAddonsJson = System.Text.Json.JsonSerializer.Serialize(paidAddons);
             }
+        }
+        if (status == SubscriptionStatus.Canceled && subscription.Metadata?.GetValueOrDefault(AgencyUsagePricing.MetadataKey) == AgencyUsagePricing.Version)
+        {
+            var ended = subscription.EndedAt ?? DateTime.UtcNow;
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE "AgencyUsageContracts" SET "EndedAt" = {ended} WHERE "SubscriptionId" = {subscription.Id} AND "EndedAt" IS NULL
+                """);
         }
         org.UpdatedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync();

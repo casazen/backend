@@ -60,7 +60,7 @@ public sealed class BillingCheckoutService(
         else
         {
             await EnsureNoSubscriptionOnStripeAsync(org, cancellationToken);
-            reusable = await SettleOpenSessionsAsync(org, planTier, successUrl, selection?.Fingerprint, cancellationToken);
+            reusable = await SettleOpenSessionsAsync(org, planTier, successUrl, selection, cancellationToken);
         }
 
         var session = reusable ?? (selection is null
@@ -99,10 +99,11 @@ public sealed class BillingCheckoutService(
     /// Returns an open session for <paramref name="planTier"/> to reuse, and expires every other open session of the
     /// customer so that at most one checkout can be completed.
     /// </summary>
-    private async Task<StripeCheckoutSession?> SettleOpenSessionsAsync(Org org, PlanTier planTier, string successUrl, string? configurationKey, CancellationToken cancellationToken)
+    private async Task<StripeCheckoutSession?> SettleOpenSessionsAsync(Org org, PlanTier planTier, string successUrl, CommercialSignup? selection, CancellationToken cancellationToken)
     {
         var open = await stripeBillingService.ListOpenCheckoutSessionsAsync(org.StripeCustomerId!, cancellationToken);
-        var reusable = open.FirstOrDefault(s => s.PlanTier == planTier && s.ConfigurationKey == configurationKey && (configurationKey is null || s.ReturnUrl == successUrl));
+        var reusable = open.FirstOrDefault(s => s.PlanTier == planTier && s.ConfigurationKey == selection?.Fingerprint && (selection is null || s.ReturnUrl == successUrl) &&
+            (selection?.Profile != "agency" || s.AgencyBilling == AgencyUsagePricing.Version));
 
         foreach (var session in open.Where(s => !ReferenceEquals(s, reusable)))
         {

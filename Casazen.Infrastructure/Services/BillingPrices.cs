@@ -52,7 +52,7 @@ public static class BillingPrices
                 return entry.Tier;
         }
 
-        return null;
+        return priceId == AgencyUsagePricing.PriceId(configuration, AgencyUsagePricing.Base) ? PlanTier.Agency : null;
     }
 
     /// <summary>
@@ -87,7 +87,7 @@ public static class BillingPrices
         return problems;
     }
 
-    private static bool IsPriceId(string? value) =>
+    internal static bool IsPriceId(string? value) =>
         !string.IsNullOrEmpty(value)
         && value.StartsWith(PriceIdPrefix, StringComparison.Ordinal)
         && value.Length > PriceIdPrefix.Length

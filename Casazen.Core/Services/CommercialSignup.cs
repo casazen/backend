@@ -16,8 +16,6 @@ public sealed record CommercialSignup
     public string? RentalArea { get; init; }
 
     [System.Text.Json.Serialization.JsonIgnore]
-    public int Quantity => Profile == "agency" ? Rooms : 1;
-    [System.Text.Json.Serialization.JsonIgnore]
     public string RentalType => RentalArea ?? (Profile == "long-rent" ? "LongTerm" : "ShortTerm");
     public static CommercialSignup? Read(string? json) => string.IsNullOrEmpty(json) ? null : JsonSerializer.Deserialize<CommercialSignup>(json);
     public string Serialize() => JsonSerializer.Serialize(this);

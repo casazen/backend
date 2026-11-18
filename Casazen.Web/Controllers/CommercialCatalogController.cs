@@ -14,6 +14,9 @@ public sealed class CommercialCatalogController(IConfiguration configuration) : 
     {
         a.Code,
         a.Context,
+        AgencyIncluded = AgencyUsagePricing.Included.Contains(a.Code),
+        AgencyPurchasable = AgencyUsagePricing.Available(configuration, a.Code),
+        AgencyPriceMonthly = AgencyUsagePricing.AddonAmount(configuration, a.Code),
         PriceMonthly = configuration.GetValue<decimal?>($"Billing:Addons:{a.Code}:PriceMonthly"),
         OwnerOffer = new
         {

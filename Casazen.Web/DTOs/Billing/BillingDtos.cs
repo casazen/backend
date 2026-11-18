@@ -1,10 +1,14 @@
 namespace Casazen.Web.DTOs.Billing;
 
+public sealed record AgencyBandDto(int UpTo, decimal UnitPrice);
+public sealed record AgencyTariffDto(bool Purchasable, decimal Minimum, int QuoteFrom, AgencyBandDto[] Bands);
+
 public class PlanCatalogDto
 {
     public string Tier { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public decimal PriceMonthly { get; set; }
+    public AgencyTariffDto? AgencyTariff { get; set; }
     public string BillingUnit { get; set; } = "plan";
     public string Currency { get; set; } = "EUR";
     public int UnitAllowance { get; set; }

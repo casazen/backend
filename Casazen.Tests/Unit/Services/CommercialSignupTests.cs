@@ -6,11 +6,11 @@ namespace Casazen.Tests.Unit.Services;
 public class CommercialSignupTests
 {
     [Fact]
-    public void Agency_ThreeRooms_AreThreeBillableUnits()
+    public void Agency_LegacyRoomCount_PreservesSavedDraftFingerprint()
     {
         var selection = new CommercialSignup { Profile = "agency", AgencyName = "Demo Agency", PlanTier = "Agency", Rooms = 3, Addons = ["channels"] };
         Assert.Null(selection.Validate());
-        Assert.Equal(3, selection.Quantity);
+        Assert.Equal(3, selection.Rooms);
         Assert.Equal("ShortTerm", selection.RentalType);
         var restored = CommercialSignup.Read(selection.Serialize());
         Assert.NotNull(restored);
