@@ -17,7 +17,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-15.30";
+    public const string Version = "2026-11-18.1";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -76,6 +76,7 @@ public static class DemoShowcaseCatalog
         /// </summary>
         public const string TenantMaintenanceRequest = "tenant-maintenance-request";
         public const string BookingUpcoming = "booking-upcoming";
+        public const string TodayArrivalNeedsCheckIn = "today-arrival-needs-checkin";
         public const string BookingPast = "booking-past";
         public const string BookingManualLight = "booking-manual-light";
         public const string HostInvitePending = "host-invite-pending";
@@ -393,6 +394,7 @@ public static class DemoShowcaseCatalog
         Scenario.LandlordBankLink,
         Scenario.TenantMaintenanceRequest,
         Scenario.BookingUpcoming,
+        Scenario.TodayArrivalNeedsCheckIn,
         Scenario.BookingPast,
         Scenario.BookingManualLight,
         Scenario.HostInvitePending,
@@ -857,6 +859,14 @@ public static class DemoShowcaseCatalog
             Bookings:
             [
                 new("arrivo", "Giulia", "Bianchi", "ospite.demo.arrivo@example.com", 14, 4, BookingStatus.Confirmed, Scenario.BookingUpcoming),
+                new(
+                    "arrivo-oggi-test", "Piet", "Jansen", "test.arrivo.oggi@example.com", 0, 2, BookingStatus.Confirmed,
+                    Scenario.TodayArrivalNeedsCheckIn, BookingSource.Manual,
+                    Guests:
+                    [
+                        new("Piet", "Jansen", StayGuestType.HeadOfFamily, 52),
+                        new("Mila", "Jansen", StayGuestType.FamilyMember, 50, BirthPlaceMissing: true),
+                    ]),
                 // NF-97 (Scenario.ReportCollections): the guest paid in cash at the arrival, as the host recorded it.
                 new(
                     "partito",

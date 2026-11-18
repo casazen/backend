@@ -1741,7 +1741,7 @@ public class DemoEnvironmentService(
         if (template.Publish)
             await compliance.ActivateAsync(property.Id, cancellationToken);
 
-        var today = DateOnly.FromDateTime(UtcNow());
+        var today = clock.TodayInRomeAsDateOnly();
         foreach (var booking in template.Bookings)
             await CreateBookingAsync(orgId, property, booking, today, cancellationToken);
     }
