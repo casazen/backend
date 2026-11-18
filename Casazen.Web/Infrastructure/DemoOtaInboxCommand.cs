@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -38,8 +39,8 @@ public static class DemoOtaInboxCommand
             ?? throw new InvalidOperationException("A demo inbox payload is required.");
         var payload = JsonSerializer.Deserialize<Payload>(json)
             ?? throw new InvalidOperationException("Invalid demo inbox payload.");
-        // The native builders use the fail-closed tenant filter, including outside an HTTP request.
-        scope.ServiceProvider.GetRequiredService<IRequestTenantContext>().SetOrgId(payload.OrgId);
+        // Enable the native builders' tenant filter in this background scope, as the event handlers do.
+        scope.ServiceProvider.GetRequiredService<IBackgroundTenantScope>().EnterOrg(payload.OrgId);
         await using var transaction = await db.Database.BeginTransactionAsync();
         var result = await ImportAsync(db, payload, DateTime.UtcNow);
         if (payload.RepairFiscalBookingIds is { Count: > 0 })
