@@ -12,6 +12,7 @@ using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.SiteProfile;
 using Casazen.Core.Suppliers;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data.Seeds;
 using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Services;
@@ -249,10 +250,11 @@ public class DemoShowcaseTests
         await db.SaveChangesAsync();
 
         var stays = DemoShowcaseCatalog.Properties.SelectMany(p => p.Bookings).Where(b => b.Status == BookingStatus.Confirmed);
+        var today = RomeCalendar.DateInRome(RoutineRig.Now.UtcDateTime);
         foreach (var nights in new[] { 2, 4 })
         {
             var stay = stays.First(b => b.Nights == nights);
-            var arrival = RoutineRig.Now.UtcDateTime.Date.AddDays(stay.CheckInOffsetDays);
+            var arrival = today.AddDays(stay.CheckInOffsetDays).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
             var booking = await rig.SeedBookingAsync(orgId, stay.Source, stay.Status, checkIn: arrival, checkOut: arrival.AddDays(stay.Nights));
             var payload = RoutineRig.PayloadOf(booking);
             await rig.TriggerAsync(orgId, routine.EventType, payload);
