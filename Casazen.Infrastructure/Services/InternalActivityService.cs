@@ -149,11 +149,11 @@ public class InternalActivityService(
 
     // ─── The "To do" list (ADR-026) ─────────────────────────────────────────────
 
-    public async Task<IReadOnlyList<InternalActivity>> GetPendingAsync(HostScope scope, CancellationToken ct)
+    public async Task<IReadOnlyList<InternalActivity>> GetPendingAsync(HostScope scope, CancellationToken ct, bool excludeRoutineTasks = false)
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        return await OpenTodos(scope)
+        return await OpenTodos(scope, excludeRoutineTasks)
             .OrderByDescending(a => a.Urgency ?? ActivityUrgency.Low)
             .ThenBy(a => a.Deadline == null)
             .ThenBy(a => a.Deadline)
@@ -164,11 +164,11 @@ public class InternalActivityService(
             .ToListAsync(ct);
     }
 
-    public Task<int> CountUrgentAsync(HostScope scope, CancellationToken ct)
+    public Task<int> CountUrgentAsync(HostScope scope, CancellationToken ct, bool excludeRoutineTasks = false)
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        return OpenTodos(scope).CountAsync(a => a.Urgency == ActivityUrgency.High, ct);
+        return OpenTodos(scope, excludeRoutineTasks).CountAsync(a => a.Urgency == ActivityUrgency.High, ct);
     }
 
     public async Task<Guid> CreateAsync(CreateTodoRequest request, CancellationToken ct)
@@ -382,7 +382,11 @@ public class InternalActivityService(
     }
 
     /// <summary>The open "To do" rows the scope reaches (ADR-026-R4: a closed row is kept, never listed).</summary>
-    private IQueryable<InternalActivity> OpenTodos(HostScope scope) => Todos(scope).Where(a => a.CompletedAt == null);
+    private IQueryable<InternalActivity> OpenTodos(HostScope scope, bool excludeRoutineTasks = false)
+    {
+        var open = Todos(scope).Where(a => a.CompletedAt == null);
+        return excludeRoutineTasks ? open.Where(a => a.ActivityType != nameof(ActivityType.RoutineTask)) : open;
+    }
 
     private Task<Guid?> OpenTodoIdAsync(Guid orgId, string type, string entityType, Guid entityId, CancellationToken ct) =>
         context.InternalActivities

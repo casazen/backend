@@ -140,3 +140,7 @@ public sealed class SetRoutineTestModeDto
     [Required(ErrorMessage = "RoutineTestModeRequired")]
     public bool? TestMode { get; init; }
 }
+
+public sealed record RoutineInstructionDto([Required, StringLength(500)] string Instruction);
+
+public sealed record RoutineActionSuggestion(string? Type);

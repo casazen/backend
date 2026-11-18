@@ -1763,22 +1763,18 @@ public static class DemoShowcaseCatalog
     ];
 
     /// <summary>
-    /// Automation routines demo (E01/F04/US01/T03, NF-21): two routines the API would save, marked as showcase rows. One is active: two days before a
-    /// check-in it raises a To do for the stay (<c>CreateActivity</c>, an action that runs). The other is in test mode: a day before a check-out it
-    /// waits two hours and then raises the To do, simulated, so the log of the routine shows runs that changed nothing. The others are the ready routines of the
-    /// check-out: «Pulizia al check-out» (E24/F01/US01/T02, <c>CreateCleaningRequest</c>) and «Richiesta di recensione» (E26/F01/US01/T01): a day after the check-out it
-    /// asks the guest of a direct stay for a review (<c>RequestReview</c>), in test mode because the guests of the showcase are invented and nothing is sent to them.
-    /// They only hold actions the engine can run (<c>RoutineActionCatalog</c>), so the active ones are routines the activation accepts; the texts say DEMO or TEST.
+    /// The demo schedules cleaning automatically. Both examples that create personal reminders are simulations,
+    /// as is the review invitation for the invented guests.
     /// </summary>
     public static IReadOnlyList<DemoRoutineTemplate> Routines { get; } =
     [
         new(
             "checkin-todo",
-            "Controlla l'arrivo (DEMO)",
+            "Promemoria arrivo (TEST)",
             RoutineEventType.BeforeCheckin,
             2,
             [new DemoRoutineAction(RoutineActionType.CreateActivity, """{"text":"Controlla l'arrivo e le chiavi (DEMO)","dueInDays":1}""")],
-            false,
+            true,
             Scenario.RoutineActive),
         new(
             "checkout-followup",

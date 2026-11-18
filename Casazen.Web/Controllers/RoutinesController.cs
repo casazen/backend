@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.Text.Json;
 using Casazen.Core.Authorization;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
+using Casazen.Infrastructure.Services;
 using Casazen.Core.Models;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
@@ -68,6 +70,45 @@ public sealed class RoutinesController(
     [ProducesResponseType(typeof(IReadOnlyList<RoutineActionCatalogItemDto>), StatusCodes.Status200OK)]
     public ActionResult<IReadOnlyList<RoutineActionCatalogItemDto>> Actions() =>
         Ok(RoutineActionCatalog.All(featureFlags).Select(RoutineActionCatalogItemDto.From).ToList());
+
+    /// <summary>Suggests a runnable operation for the editor. Saving the routine is a separate request.</summary>
+    [HttpPost("suggest-action")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [AiRateLimit]
+    [RequestSizeLimit(4096)]
+    public async Task<ActionResult<RoutineActionSuggestion>> SuggestAction(
+        RoutineInstructionDto dto, [FromServices] IAiProvider ai, CancellationToken cancellationToken)
+    {
+        var scope = await ResolveWriterScopeAsync(cancellationToken);
+        if (scope.Problem is not null)
+            return scope.Problem;
+
+        var instruction = ServiceRequestAssistPrompt.CleanText(dto.Instruction);
+        if (instruction.Length == 0)
+            return Ok(new RoutineActionSuggestion(null));
+
+        var request = new AiRequest(instruction, [], """
+            Match the user's description to exactly one CasaZen operation.
+            CreateCleaningRequest schedules cleaning with the property's configured cleaner.
+            RequestReview invites an eligible guest to leave a review.
+            Answer with the exact operation name only. Answer NONE if the request is ambiguous,
+            includes other operations, conditions or delays, or cannot be fulfilled by that operation alone.
+            """, Temperature: 0, MaxCompletionTokens: 32, DisableThinking: true);
+        var cacheKey = $"routine-action:{scope.Value!.OrgId:N}:{ServiceRequestAssistPrompt.CacheKey(request)}";
+        var answer = await ai.GenerateAsync(request, AiModelTier.Economy, cacheKey, cancellationToken);
+        if (!answer.ProviderConfigured)
+            return StatusCode(StatusCodes.Status503ServiceUnavailable);
+
+        var type = answer.Content?.Trim() switch
+        {
+            nameof(RoutineActionType.CreateCleaningRequest) => RoutineActionType.CreateCleaningRequest,
+            nameof(RoutineActionType.RequestReview) => RoutineActionType.RequestReview,
+            _ => (RoutineActionType?)null,
+        };
+        return Ok(new RoutineActionSuggestion(type is { } action && RoutineActionCatalog.IsAvailable(action, featureFlags)
+            ? action.ToString()
+            : null));
+    }
 
     /// <summary>One routine of the org.</summary>
     [HttpGet("{id:guid}")]

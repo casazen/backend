@@ -39,7 +39,7 @@ public class ActivitiesController(
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<TodoActivityDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<IReadOnlyList<TodoActivityDto>>> List(CancellationToken cancellationToken)
+    public async Task<ActionResult<IReadOnlyList<TodoActivityDto>>> List(CancellationToken cancellationToken, [FromQuery] bool excludeRoutineTasks = false)
     {
         if (User.GetUserId() is not { Length: > 0 })
             return Unauthorized();
@@ -53,7 +53,7 @@ public class ActivitiesController(
         if (importedListings is not null)
             await importedListings.ReconcileAsync(scope, cancellationToken);
 
-        var items = await activities.GetPendingAsync(scope, cancellationToken);
+        var items = await activities.GetPendingAsync(scope, cancellationToken, excludeRoutineTasks);
         return Ok(items.Select(TodoActivityDto.From).ToList());
     }
 
@@ -62,7 +62,7 @@ public class ActivitiesController(
     [HttpGet("count")]
     [ProducesResponseType(typeof(TodoCountDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<TodoCountDto>> UrgentCount(CancellationToken cancellationToken)
+    public async Task<ActionResult<TodoCountDto>> UrgentCount(CancellationToken cancellationToken, [FromQuery] bool excludeRoutineTasks = false)
     {
         if (User.GetUserId() is not { Length: > 0 })
             return Unauthorized();
@@ -76,7 +76,7 @@ public class ActivitiesController(
         if (importedListings is not null)
             await importedListings.ReconcileAsync(scope, cancellationToken);
 
-        return Ok(new TodoCountDto(await activities.CountUrgentAsync(scope, cancellationToken)));
+        return Ok(new TodoCountDto(await activities.CountUrgentAsync(scope, cancellationToken, excludeRoutineTasks)));
     }
 
     /// <summary>

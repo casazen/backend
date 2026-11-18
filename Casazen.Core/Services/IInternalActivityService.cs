@@ -88,10 +88,10 @@ public interface IInternalActivityService
     /// last), then by creation; at most <see cref="TodoLimits.MaxPendingItems"/>. The single source of the list for web,
     /// mobile, email and push.
     /// </summary>
-    Task<IReadOnlyList<InternalActivity>> GetPendingAsync(HostScope scope, CancellationToken ct);
+    Task<IReadOnlyList<InternalActivity>> GetPendingAsync(HostScope scope, CancellationToken ct, bool excludeRoutineTasks = false);
 
     /// <summary>How many of the open items <see cref="GetPendingAsync"/> reaches are <see cref="ActivityUrgency.High"/>: the nav badge.</summary>
-    Task<int> CountUrgentAsync(HostScope scope, CancellationToken ct);
+    Task<int> CountUrgentAsync(HostScope scope, CancellationToken ct, bool excludeRoutineTasks = false);
 
     /// <summary>
     /// Raises a "To do" item and returns its id, which the caller keeps to close the item later. Idempotent: while an item of

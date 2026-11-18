@@ -55,6 +55,27 @@ public class ActivityTodoListTests : IAsyncLifetime
         Assert.Equal(deadline, dto.DueAt);
     }
 
+    [Fact]
+    public async Task DashboardExcludesRoutineRemindersBeforeThePageLimitAndUrgentCount()
+    {
+        var service = Service();
+        for (var i = 0; i < TodoLimits.MaxPendingItems; i++)
+            await service.CreateAsync(CheckIn(_world.Granted.Id, Guid.NewGuid()) with
+            {
+                Type = ActivityType.RoutineTask,
+                Action = ActivityAction.ReviewBooking,
+                Urgency = ActivityUrgency.High,
+            }, Ct);
+        var manual = await service.CreateAsync(CheckIn(_world.Granted.Id, Guid.NewGuid()) with { Urgency = ActivityUrgency.Low }, Ct);
+
+        var controller = Controller(_world.OwnerUserId, _world.OrgWide);
+        Assert.Equal(manual, Assert.Single(Items(await controller.List(Ct, excludeRoutineTasks: true))).Id);
+        Assert.DoesNotContain(Items(await controller.List(Ct)), item => item.Id == manual);
+        var count = Assert.IsType<OkObjectResult>((await controller.UrgentCount(Ct, excludeRoutineTasks: true)).Result);
+        Assert.Equal(0, Assert.IsType<TodoCountDto>(count.Value).Count);
+        Assert.Equal(TodoLimits.MaxPendingItems, await service.CountUrgentAsync(_world.OrgWide, Ct));
+    }
+
     /// <summary>
     /// Proof (permission, privacy; ADR-026-R2, R3): through <c>GET /api/me/activities</c> the collaborator «Solo alcuni» sees
     /// only the item of the property it was given, never the item of the property it was not given, the organization-level item

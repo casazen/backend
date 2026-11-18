@@ -32,6 +32,38 @@ public class CleaningAtCheckoutRoutineTests
         { CleaningAutomationOutcome.ModuleOff, null, RoutineActionOutcomes.Failed, RoutineCodes.ActionError },
     };
 
+    [Theory]
+    [InlineData("YES", true, RoutineActionOutcomes.Done, null)]
+    [InlineData("NO", true, RoutineActionOutcomes.Skipped, RoutineCodes.AiConditionFalse)]
+    [InlineData("UNKNOWN", true, RoutineActionOutcomes.Blocked, RoutineCodes.AiFactsMissing)]
+    [InlineData("YES", false, RoutineActionOutcomes.Failed, RoutineCodes.AiUnavailable)]
+    public async Task AgentEvaluatesOnceAndDispatchesOnlyTheConfiguredOperation(
+        string answer, bool configured, string outcome, string? code)
+    {
+        var rig = new RoutineRig();
+        var booking = await rig.SeedBookingAsync(OrgA);
+        var ai = new Mock<IAiProvider>(MockBehavior.Strict);
+        ai.Setup(p => p.GenerateAsync(It.IsAny<AiRequest>(), AiModelTier.Economy, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AiGenerationResult(answer, 1, 1, AiModelTier.Economy, false, configured));
+        rig.Ai = ai.Object;
+        var cleaning = new Mock<ICleaningAutomationService>(MockBehavior.Strict);
+        cleaning.Setup(c => c.CreateForStayAsync(OrgA, booking.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CleaningAutomationResult(CleaningAutomationOutcome.Created, null));
+        rig.Cleaning = cleaning.Object;
+        await rig.SeedRoutineAsync(OrgA, RoutineEventType.AfterCheckout,
+            RoutineRig.Actions(("CreateCleaningRequest", """{"aiCondition":"Only for stays of at least three nights"}""")));
+
+        await rig.TriggerAsync(OrgA, RoutineEventType.AfterCheckout, RoutineRig.PayloadOf(booking), "checkout");
+        await rig.TriggerAsync(OrgA, RoutineEventType.AfterCheckout, RoutineRig.PayloadOf(booking), "checkout");
+
+        var result = Assert.Single(RoutineRig.ResultOf(await rig.SingleExecutionAsync()).Actions);
+        Assert.Equal((outcome, code), (result.Outcome, result.Code));
+        Assert.Single(ai.Invocations);
+        Assert.Equal(outcome == RoutineActionOutcomes.Done ? 1 : 0, cleaning.Invocations.Count);
+        await using var db = rig.NewDb();
+        Assert.Empty(db.InternalActivities);
+    }
+
     /// <summary>What the automation answers is what the log says: done for a cleaning made or already there, blocked for a property with no cleaner or a stay that does not happen, failed with the code of the rule.</summary>
     [Theory]
     [MemberData(nameof(Answers))]

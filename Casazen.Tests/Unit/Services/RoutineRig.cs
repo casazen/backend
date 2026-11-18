@@ -51,6 +51,8 @@ internal sealed class RoutineRig
     /// <summary>The feature flags the engine reads: the module is on (<see cref="FeatureFlags.Routines"/>), every other flag off until a test turns it on.</summary>
     public TestFeatureFlags Flags { get; } = new(FeatureFlags.Routines);
 
+    public IAiProvider? Ai { get; set; }
+
     /// <summary>The automation of the cleaning at check-out the engine runs for <c>CreateCleaningRequest</c> (E24/F01/US01/T02): none until a test gives one.</summary>
     public ICleaningAutomationService? Cleaning { get; set; }
 
@@ -77,7 +79,8 @@ internal sealed class RoutineRig
             time,
             NullLogger<RoutineService>.Instance,
             Cleaning,
-            Reviews(db, time));
+            Reviews(db, time),
+            Ai);
     }
 
     /// <summary>The service of the invitation of the reviews (the host's button and the action of a routine) over <paramref name="db"/>, queuing into <see cref="Emails"/>.</summary>

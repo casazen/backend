@@ -199,10 +199,8 @@ public class DemoShowcaseTests
                 Assert.All(routine.Actions, action => Assert.True(RoutineActionCatalog.IsAvailable(action.Type, flags), $"{routine.Key}: {action.Type} cannot run, so it cannot be active"));
         });
 
-        var active = Assert.Single(routines, r => r.Scenario == DemoShowcaseCatalog.Scenario.RoutineActive);
-        Assert.False(active.IsTestMode);
-        Assert.Equal((RoutineEventType.BeforeCheckin, 2), (active.EventType, active.DaysBefore));
-        Assert.Equal([RoutineActionType.CreateActivity], active.Actions.Select(a => a.Type));
+        Assert.All(routines.Where(r => r.Actions.Any(a => a.Type == RoutineActionType.CreateActivity)),
+            reminder => Assert.True(reminder.IsTestMode));
 
         var test = Assert.Single(routines, r => r.Scenario == DemoShowcaseCatalog.Scenario.RoutineTestMode);
         Assert.True(test.IsTestMode);
