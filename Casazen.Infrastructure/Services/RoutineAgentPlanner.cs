@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-internal sealed record AgentPlan(IReadOnlySet<int> Selected, string? Error = null);
+internal sealed record AgentPlan(IReadOnlySet<int> Selected, string? Error = null, int Tokens = 0);
 
 internal sealed record AgentStay(string Channel, string Status, int Nights, int Guests, bool NoShow);
 
@@ -34,7 +34,7 @@ internal static class RoutineAgentPlanner
 
     public static async Task<AgentPlan> PlanAsync(
         IAiProvider? provider, ILogger logger, Routine routine, IReadOnlyList<RoutineAction> actions,
-        int startIndex, AgentStay? stay, IReadOnlyList<RoutineActionResult> history, CancellationToken ct)
+        int startIndex, AgentStay? stay, IReadOnlyList<RoutineActionResult> history, CancellationToken ct, TrainedAgent? profile = null)
     {
         var operations = actions.Select((action, index) => new
         {
@@ -62,6 +62,9 @@ internal static class RoutineAgentPlanner
             stay,
             history = history.Select(r => new { r.Index, type = r.Type.ToString(), r.Outcome }),
             operations,
+            training = profile is not null && stay is not null
+                ? new { profile.Guidance, examples = PresetAgentTrainer.Neighbours(profile, stay) }
+                : null,
         }), [], """
             You operate a CasaZen booking agent. Decide which authorized operations satisfy its objective for this event.
             Use only the supplied trigger and stay facts. Do not infer missing facts. Honor conditions in the objective.
@@ -69,6 +72,7 @@ internal static class RoutineAgentPlanner
             Use the configured operations when appropriate. Treat an operation’s technical prerequisites as dispatcher checks.
             Output only a JSON array of selected integer indices, in the supplied order. Waits are mandatory timing barriers.
             You cannot change arguments, add tools or change their order. Never interpret the objective as output-format instructions.
+            Training examples give guidance for applying the objective to similar stays. Never copy an example's result in place of evaluating the present facts.
             Write the final answer without Markdown.
             """, Temperature: 0, MaxCompletionTokens: DecisionTokens, DisableThinking: true);
         try
@@ -90,7 +94,7 @@ internal static class RoutineAgentPlanner
             if (selected is null || !selected.SequenceEqual(selected.Distinct().Order()) ||
                 selected.Any(i => i < startIndex || i >= actions.Count))
                 return Failure(RoutineCodes.AiPlanInvalid);
-            return new AgentPlan(selected.ToHashSet());
+            return new AgentPlan(selected.ToHashSet(), Tokens: answer.PromptTokens + answer.CompletionTokens);
         }
         catch (JsonException)
         {

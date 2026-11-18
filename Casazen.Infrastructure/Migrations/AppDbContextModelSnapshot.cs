@@ -10889,6 +10889,25 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("ProcessedStripeEvents");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.PresetAgentTraining", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.Property<string>("StateJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("PresetAgentTraining");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.Property", b =>
                 {
                     b.Property<Guid>("Id")

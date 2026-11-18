@@ -8487,4 +8487,16 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="CheckInVerifiedNumberMismatch" xml:space="preserve"><value>Il numero inserito deve corrispondere al documento verificato.</value></data>
   <data name="CheckInIdentityAlreadyVerified" xml:space="preserve"><value>La verifica dell’identità è già stata completata.</value></data>
   <data name="CheckInPrivacyAcknowledgementRequired" xml:space="preserve"><value>Conferma di aver preso visione dell’informativa prima di inviare i dati.</value></data>
+  <data name="AgentTrainingExamples" xml:space="preserve">
+    <value>Inserisci esempi diversi con entrambe le decisioni e usa scenari di verifica distinti.</value>
+  </data>
+  <data name="AgentTrainingRegression" xml:space="preserve">
+    <value>La versione candidata deve completare tutti i test e ottenere almeno lo stesso risultato della versione attiva.</value>
+  </data>
+  <data name="AgentTrainingRestore" xml:space="preserve">
+    <value>Non è disponibile una versione da ripristinare.</value>
+  </data>
+  <data name="AgentTrainingChanged" xml:space="preserve">
+    <value>La configurazione è cambiata in un’altra sessione. Ricarica il playground e riprova.</value>
+  </data>
 </root>
