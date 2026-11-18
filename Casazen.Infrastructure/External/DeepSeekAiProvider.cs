@@ -235,13 +235,21 @@ public class DeepSeekAiProvider(
             messages.Add(new { role = "user", content = parts });
         }
 
-        var payload = new
+        var payload = new Dictionary<string, object?>
         {
-            model = config.Model,
-            messages,
-            max_tokens = maxTokens,
-            temperature = request.Temperature ?? 0.2,
+            ["model"] = config.Model,
+            ["messages"] = messages,
+            ["max_tokens"] = maxTokens,
+            ["temperature"] = request.Temperature ?? 0.2,
         };
+        if (request.DisableThinking
+            && string.Equals(config.Provider, AiOptions.DeepSeekProvider, StringComparison.OrdinalIgnoreCase)
+            && (config.Model.StartsWith("deepseek-v4-", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(config.Model, "deepseek-flash", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(config.Model, "deepseek-pro", StringComparison.OrdinalIgnoreCase)))
+        {
+            payload["thinking"] = new { type = "disabled" };
+        }
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"{config.OpenAiBaseUrl.TrimEnd('/')}/chat/completions");
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.ApiKey);
