@@ -69,7 +69,10 @@ public sealed class PresetAgentTrainer(AppDbContext db, IServiceScopeFactory sco
         });
         return await SaveAsync(row, state with
         {
-            Candidate = candidate, Draft = draft, Results = results, LastVersion = candidate.Version,
+            Candidate = candidate,
+            Draft = draft,
+            Results = results,
+            LastVersion = candidate.Version,
         }, ct);
 
         async Task<AgentScore> ScoreAsync(AgentExample example, TrainedAgent? profile, CancellationToken token)
@@ -97,7 +100,9 @@ public sealed class PresetAgentTrainer(AppDbContext db, IServiceScopeFactory sco
 
         return await SaveAsync(row, state with
         {
-            Active = restore ? state.Previous : state.Candidate, Previous = state.Active, Candidate = null,
+            Active = restore ? state.Previous : state.Candidate,
+            Previous = state.Active,
+            Candidate = null,
         }, ct);
     }
 
