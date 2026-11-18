@@ -34,6 +34,7 @@ public class CleaningAtCheckoutRoutineTests
 
     [Theory]
     [InlineData("YES", true, RoutineActionOutcomes.Done, null)]
+    [InlineData("<think>YES was considered</think>\nNO", true, RoutineActionOutcomes.Skipped, RoutineCodes.AiConditionFalse)]
     [InlineData("NO", true, RoutineActionOutcomes.Skipped, RoutineCodes.AiConditionFalse)]
     [InlineData("UNKNOWN", true, RoutineActionOutcomes.Blocked, RoutineCodes.AiFactsMissing)]
     [InlineData("YES", false, RoutineActionOutcomes.Failed, RoutineCodes.AiUnavailable)]
