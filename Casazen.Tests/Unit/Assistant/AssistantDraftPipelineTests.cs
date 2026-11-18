@@ -828,6 +828,21 @@ public sealed class AssistantDraftPipelineTests : IDisposable
     }
 
     [Fact]
+    public async Task AnEmptyDraftResponse_IsRetriedOnceAndCanStillProduceADraft()
+    {
+        await _rig.SeedAsync();
+        _rig.Ai.DraftResponses.Enqueue(string.Empty);
+        var message = await _rig.GuestWritesAsync("Dove posso parcheggiare?");
+
+        var outcome = await _rig.Service().ProcessInboundAsync(_rig.OrgId, _rig.Key, message.Id, AssistantProcessOptions.Automatic);
+
+        Assert.Equal(AssistantDecision.Drafted, outcome.Decision);
+        Assert.Equal([AiModelTier.Economy, AiModelTier.Standard, AiModelTier.Standard], _rig.Ai.Calls.Select(call => call.Tier));
+        Assert.All(_rig.Ai.Calls, call => Assert.True(call.Request.DisableThinking));
+        Assert.Single(await _rig.Db.ApprovalQueueItems.ToListAsync());
+    }
+
+    [Fact]
     public async Task AnAnswerOfTheDraftThatCannotBeUsed_IsNotHandled_AndNeverAnEmptyDraftInTheQueue()
     {
         await _rig.SeedAsync();

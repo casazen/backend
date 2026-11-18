@@ -80,6 +80,25 @@ public class DeepSeekAiProviderImagesTests
         Assert.Equal(JsonValueKind.String, body.RootElement.GetProperty("messages")[1].GetProperty("content").ValueKind);
     }
 
+    [Theory]
+    [InlineData(AiOptions.DeepSeekProvider, "deepseek-v4-flash", true)]
+    [InlineData(AiOptions.DeepSeekProvider, "deepseek-chat", false)]
+    [InlineData(AiOptions.CompatibleProvider, "deepseek-v4-flash", false)]
+    public async Task GenerateAsync_DirectAnswer_OnlySendsTheThinkingToggleToSupportedDeepSeekModels(
+        string providerName, string model, bool expectsToggle)
+    {
+        var handler = new RecordingHandler(_ => Ok(ChatAnswer));
+        var options = Options(providerName);
+        options.Model = model;
+
+        await Provider(handler).GenerateAsync(Request(0) with { DisableThinking = true }, AiModelTier.Standard, "k", options);
+
+        using var body = JsonDocument.Parse(Assert.Single(handler.Bodies));
+        Assert.Equal(expectsToggle, body.RootElement.TryGetProperty("thinking", out var thinking));
+        if (expectsToggle)
+            Assert.Equal("disabled", thinking.GetProperty("type").GetString());
+    }
+
     [Fact]
     public async Task GenerateAsync_ImagesRefused_SendsTheTextAloneOnce()
     {

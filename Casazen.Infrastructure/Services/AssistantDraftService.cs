@@ -348,11 +348,14 @@ public sealed class AssistantDraftService(
             var promptFacts = facts
                 .Select(fact => new AssistantPromptFact(fact.Topic, AssistantPromptBuilder.Minimize(fact.Text, input.Names, PiiScrubber.Scrub)))
                 .ToList();
-            var drafted = await CallAsync(
-                AssistantPromptBuilder.BuildDraft(input.Transcript, promptFacts, input.Rules, info.Code, language, greetByName: input.Values.GuestName is not null),
-                AiModelTier.Standard,
-                AssistantPromptBuilder.CallLabel("draft", input.MessageId),
-                ct);
+            var request = AssistantPromptBuilder.BuildDraft(
+                input.Transcript, promptFacts, input.Rules, info.Code, language, greetByName: input.Values.GuestName is not null);
+            var drafted = await CallAsync(request, AiModelTier.Standard, AssistantPromptBuilder.CallLabel("draft", input.MessageId), ct);
+            if (drafted.Failure is null && string.IsNullOrWhiteSpace(drafted.Content))
+            {
+                drafted = await CallAsync(request, AiModelTier.Standard, AssistantPromptBuilder.CallLabel("draft-retry", input.MessageId), ct);
+            }
+
             lastTier = drafted.Tier ?? lastTier;
             if (drafted.Failure is { } draftFailure)
                 return new Composition(classification, info, resolved, sensitive, null, facts, null, false, null, lastTier, draftFailure);

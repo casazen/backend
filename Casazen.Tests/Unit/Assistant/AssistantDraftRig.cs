@@ -272,6 +272,8 @@ internal sealed class ScriptedAiProvider : IAiProvider
 
     public string Draft { get; set; } = ParkingDraft;
 
+    public Queue<string> DraftResponses { get; } = new();
+
     public Exception? Throw { get; set; }
 
     public bool Configured { get; set; } = true;
@@ -285,7 +287,9 @@ internal sealed class ScriptedAiProvider : IAiProvider
         if (Throw is { } failure)
             throw failure;
 
-        var content = tier == AiModelTier.Economy ? Classification : Draft;
+        var content = tier == AiModelTier.Economy
+            ? Classification
+            : DraftResponses.TryDequeue(out var draft) ? draft : Draft;
         return Task.FromResult(new AiGenerationResult(content, 10, 10, tier, FromCache: false, ProviderConfigured: Configured));
     }
 }

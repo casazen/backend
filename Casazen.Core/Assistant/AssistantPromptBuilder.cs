@@ -260,7 +260,7 @@ public static partial class AssistantPromptBuilder
     public static AiRequest BuildClassification(IReadOnlyList<AssistantPromptMessage> conversation)
     {
         ArgumentNullException.ThrowIfNull(conversation);
-        return new AiRequest(ConversationBlock(conversation), [], ClassificationSystemPrompt(), Temperature: 0.0, MaxCompletionTokens: ClassificationMaxTokens);
+        return new AiRequest(ConversationBlock(conversation), [], ClassificationSystemPrompt(), Temperature: 0.0, MaxCompletionTokens: ClassificationMaxTokens, DisableThinking: true);
     }
 
     /// <summary>
@@ -285,7 +285,7 @@ public static partial class AssistantPromptBuilder
         user.AppendLine(CultureInfo.InvariantCulture, $"SITUATION: {situationCode}");
         user.AppendLine();
         user.Append(ConversationBlock(conversation));
-        return new AiRequest(user.ToString(), [], DraftSystemPrompt(facts, rules, language, greetByName), Temperature: 0.3, MaxCompletionTokens: DraftMaxTokens);
+        return new AiRequest(user.ToString(), [], DraftSystemPrompt(facts, rules, language, greetByName), Temperature: 0.3, MaxCompletionTokens: DraftMaxTokens, DisableThinking: true);
     }
 
     /// <summary>The label of a call for the provider (it caches nothing of it): the kind of call, the version of the instructions and the message.</summary>
