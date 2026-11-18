@@ -160,6 +160,7 @@ public class RoutineEventHandlerTests
         var routine = NewRoutine(OrgA, RoutineEventType.BookingConfirmed, "{}", "[]", active: true);
         await using (var seed = database.CreateContext())
         {
+            seed.Orgs.Add(new OrgEntity { Id = OrgA, Slug = "routine-once" });
             seed.Routines.Add(routine);
             await seed.SaveChangesAsync();
         }
@@ -205,7 +206,7 @@ public class RoutineEventHandlerTests
                 Mock.Of<IBackgroundJobClient>(),
                 new TestFeatureFlags(FeatureFlags.Routines),
                 TimeProvider.System,
-                NullLogger<RoutineService>.Instance),
+                NullLogger<RoutineService>.Instance, ai: RoutineRig.SelectAllOperations()),
             NullLogger<RoutineEventHandler>.Instance);
 
     private async Task HandleAsync(DomainEvent domainEvent)
@@ -228,6 +229,8 @@ public class RoutineEventHandlerTests
     {
         await using var db = NewDb();
         var routine = NewRoutine(orgId, type, eventConfig, actionsJson, active);
+        if (!await db.Orgs.AnyAsync(o => o.Id == orgId))
+            db.Orgs.Add(new OrgEntity { Id = orgId, Slug = orgId.ToString("N") });
         db.Routines.Add(routine);
         await db.SaveChangesAsync();
         return routine;

@@ -30,6 +30,7 @@ public class StripeWebhookSubscriptionStateTests
             ["Billing:Prices:Pro"] = ProPrice,
             ["Billing:Prices:Scale"] = ScalePrice,
             ["Billing:PastDueGraceDays"] = "7",
+            ["Billing:Addons:ai-agents:PriceId"] = "price_agents",
             ["Billing:OwnerAddons:fiscal:PriceId"] = "price_fiscal",
         })
         .Build();
@@ -206,7 +207,7 @@ public class StripeWebhookSubscriptionStateTests
     public async Task CommercialSignup_GrantsSelectedIncludedAndPaidModulesAfterConfirmation()
     {
         var org = await SeedOrgAsync(SubscriptionStatus.Incomplete, PlanTier.Starter, "sub_new");
-        var signup = new CommercialSignup { PlanTier = "Pro", Addons = ["direct-booking", "channels", "fiscal", "crm"] };
+        var signup = new CommercialSignup { PlanTier = "Pro", Addons = ["direct-booking", "channels", "ai-agents", "fiscal", "crm"] };
         var trackedOrg = await _db.Orgs.FindAsync(org.Id);
         trackedOrg!.CommercialSignupJson = signup.Serialize();
         await _db.SaveChangesAsync();
@@ -214,12 +215,13 @@ public class StripeWebhookSubscriptionStateTests
         var subscription = (Stripe.Subscription)evt.Data.Object;
         subscription.Metadata["commercialConfiguration"] = signup.Fingerprint;
         subscription.Items.Data[0].Quantity = 1;
+        subscription.Items.Data.Add(new SubscriptionItem { Price = new Price { Id = "price_agents" }, Quantity = 1 });
         subscription.Items.Data.Add(new SubscriptionItem { Price = new Price { Id = "price_fiscal" }, Quantity = 1 });
         await HandleAsync(evt);
         var paid = await ReloadAsync(org.Id);
         Assert.True(paid.CommercialPaymentConfirmed);
         // Direct booking is included. Fiscal has a paid line. Channels is disabled; CRM has no paid line.
-        Assert.Equal(new[] { "direct-booking", "fiscal" }, System.Text.Json.JsonSerializer.Deserialize<string[]>(paid.CommercialPaidAddonsJson!));
+        Assert.Equal(new[] { "direct-booking", "ai-agents", "fiscal" }, System.Text.Json.JsonSerializer.Deserialize<string[]>(paid.CommercialPaidAddonsJson!));
     }
 
     private async Task<OrgEntity> SeedOrgAsync(

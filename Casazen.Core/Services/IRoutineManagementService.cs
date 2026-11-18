@@ -42,6 +42,7 @@ public static class RoutineLimits
 /// <param name="Actions">1 to <see cref="RoutineLimits.MaxActions"/> actions, each <c>{ type, config }</c>.</param>
 /// <param name="TestMode">Test mode: the routine simulates its actions (new routines: off).</param>
 /// <param name="Active">Whether the routine runs (new routines: off).</param>
+/// <param name="AgentObjective">Instructions for selecting the configured actions for each event.</param>
 public sealed record RoutineCommand(
     string? Name,
     string? EventType,
@@ -49,7 +50,8 @@ public sealed record RoutineCommand(
     JsonElement? Condition,
     IReadOnlyList<RoutineActionInput>? Actions,
     bool? TestMode,
-    bool? Active);
+    bool? Active,
+    string? AgentObjective = null);
 
 /// <summary>One action of a routine as a caller writes it: the type by name and its configuration.</summary>
 /// <param name="Type">The name of a <see cref="Entities.Enums.RoutineActionType"/> member.</param>

@@ -45,6 +45,8 @@ public class CleaningAtCheckoutRoutineTests
         var ai = new Mock<IAiProvider>(MockBehavior.Strict);
         ai.Setup(p => p.GenerateAsync(It.IsAny<AiRequest>(), AiModelTier.Economy, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AiGenerationResult(answer, 1, 1, AiModelTier.Economy, false, configured));
+        ai.Setup(p => p.GenerateAsync(It.IsAny<AiRequest>(), AiModelTier.Economy, It.Is<string>(k => k.StartsWith("agent-plan:")), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AiGenerationResult("[0]", 1, 1, AiModelTier.Economy, false));
         rig.Ai = ai.Object;
         var cleaning = new Mock<ICleaningAutomationService>(MockBehavior.Strict);
         cleaning.Setup(c => c.CreateForStayAsync(OrgA, booking.Id, It.IsAny<CancellationToken>()))
@@ -58,7 +60,7 @@ public class CleaningAtCheckoutRoutineTests
 
         var result = Assert.Single(RoutineRig.ResultOf(await rig.SingleExecutionAsync()).Actions);
         Assert.Equal((outcome, code), (result.Outcome, result.Code));
-        Assert.Single(ai.Invocations);
+        Assert.Equal(2, ai.Invocations.Count);
         Assert.Equal(outcome == RoutineActionOutcomes.Done ? 1 : 0, cleaning.Invocations.Count);
         await using var db = rig.NewDb();
         Assert.Empty(db.InternalActivities);

@@ -4049,6 +4049,7 @@
   <data name="RoutineNotFound" xml:space="preserve">
     <value>Routine not found among those of your organization.</value>
   </data>
+  <data name="AgentObjectiveInvalid" xml:space="preserve"><value>The objective can contain up to 500 characters.</value></data>
   <data name="RoutineNameInvalid" xml:space="preserve">
     <value>The routine name must be 1 to {0} characters.</value>
   </data>

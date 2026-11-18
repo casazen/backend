@@ -45,7 +45,7 @@ public sealed record CommercialAddon(string Code, string Context)
     public static readonly CommercialAddon[] All = [
         new("channels", "short-rent"), new("direct-booking", "short-rent"),
         new("compliance", "short-rent"), new("identification", "short-rent"),
-        new("messages-ai", "short-rent"), new("operations", "all"),
+        new("messages-ai", "short-rent"), new("ai-agents", "short-rent"), new("operations", "all"),
         new("fiscal", "all"), new("revenue", "short-rent"), new("crm", "short-rent")
     ];
 }

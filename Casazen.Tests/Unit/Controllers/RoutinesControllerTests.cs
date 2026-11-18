@@ -201,7 +201,7 @@ public class RoutinesControllerTests : IAsyncLifetime
         // routine.types.ts: id, orgId, name, eventType, eventConfig, conditionJson, actionsJson, testMode, active.
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(one, Web));
         Assert.Equal(
-            ["actionsJson", "active", "conditionJson", "eventConfig", "eventType", "id", "name", "orgId", "testMode"],
+            ["actionsJson", "active", "agentObjective", "conditionJson", "eventConfig", "eventType", "id", "name", "orgId", "testMode"],
             json.RootElement.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
         Assert.Equal(JsonValueKind.String, json.RootElement.GetProperty("eventConfig").ValueKind);
         Assert.Equal(JsonValueKind.String, json.RootElement.GetProperty("actionsJson").ValueKind);

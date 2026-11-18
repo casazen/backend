@@ -69,6 +69,7 @@ public class RoutineManagementService(
         var routine = new Routine
         {
             OrgId = orgId,
+            AgentObjective = definition.AgentObjective,
             Name = definition.Name,
             EventType = definition.EventType,
             EventConfig = definition.EventConfig,
@@ -91,6 +92,7 @@ public class RoutineManagementService(
         var routine = await FindAsync(orgId, id, cancellationToken);
         var definition = Define(command, routine);
 
+        routine.AgentObjective = definition.AgentObjective;
         routine.Name = definition.Name;
         routine.EventType = definition.EventType;
         routine.EventConfig = definition.EventConfig;
@@ -184,7 +186,8 @@ public class RoutineManagementService(
         string ConditionJson,
         string ActionsJson,
         bool TestMode,
-        bool Active);
+        bool Active,
+        string? AgentObjective);
 
     /// <summary>
     /// The routine that <paramref name="command"/> makes of <paramref name="existing"/> (a new one when there is none): what the command leaves out
@@ -220,7 +223,11 @@ public class RoutineManagementService(
         if (active && !testMode)
             RequireAvailableActions(actions);
 
-        return new Definition(name, eventType, eventConfig, string.IsNullOrWhiteSpace(conditionJson) ? "{}" : conditionJson, actionsJson, testMode, active);
+        var objective = (command.AgentObjective ?? existing?.AgentObjective)?.Trim();
+        if (objective?.Length > 500)
+            throw new DomainRuleException("agent_objective_invalid", "AgentObjectiveInvalid");
+
+        return new Definition(name, eventType, eventConfig, string.IsNullOrWhiteSpace(conditionJson) ? "{}" : conditionJson, actionsJson, testMode, active, string.IsNullOrEmpty(objective) ? null : objective);
     }
 
     private static string ValidName(string? name)

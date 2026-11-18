@@ -104,6 +104,9 @@ public class RoutineService(
             .Where(routineFilter)
             .ToList();
 
+        if (routines.Count == 0 || !await HasAgentAccessAsync(orgId, cancellationToken))
+            return;
+
         logger.LogInformation(
             "Triggering {Count} routine(s) for org {OrgId} event {EventType} with ID {EventId}",
             routines.Count, orgId, eventType, eventId);
@@ -181,6 +184,13 @@ public class RoutineService(
             "Resuming routine execution {ExecutionId} for routine {RoutineId} at action {NextActionIndex}",
             executionId, execution.RoutineId, saved.NextActionIndex);
 
+        if (!await HasAgentAccessAsync(execution.OrgId, cancellationToken))
+        {
+            await EndAsync(execution, RoutineExecutionOutcomes.Failed,
+                new RoutineExecutionResult(results, null, saved.NextActionIndex, RoutineCodes.AiSubscriptionRequired), cancellationToken);
+            return;
+        }
+
         var run = new Run(db, execution.OrgId, RoutinePayload.FromJson(saved.PayloadJson));
         await RunAsync(routine, execution, run, results, saved.NextActionIndex, resumed: true, cancellationToken);
     }
@@ -206,6 +216,9 @@ public class RoutineService(
         var verdict = await EvaluateConditionAsync(routine, run, cancellationToken);
         var actionsValid = RoutineAction.TryParseList(routine.ActionsJson, out var actions);
 
+        var plan = actionsValid && verdict == ConditionVerdict.Met
+            ? await PlanAsync(routine, run, actions, 0, [], cancellationToken)
+            : null;
         var simulated = new List<RoutineSimulatedAction>();
         for (var index = 0; index < actions.Count; index++)
         {
@@ -214,14 +227,18 @@ public class RoutineService(
             // What stops it for real: a guardrail, or no implementation (the routine in test mode may hold any action; live it would fail).
             var reason = await CheckGuardrailsAsync(run, action, cancellationToken)
                          ?? (RoutineActionCatalog.IsAvailable(action.Type, featureFlags) ? null : RoutineCodes.ActionNotAvailable);
+            if (reason is null && plan is not null)
+                reason = plan.Error ?? (Selected(plan, index, action) ? null : RoutineCodes.AiNotSelected);
+            if (reason is null && plan is not null)
+                reason = (await EvaluateAiConditionAsync(orgId, index, action, run, cancellationToken))?.Code;
             simulated.Add(new RoutineSimulatedAction(index, action.Type, action.ConfigElement, reason is not null, reason));
         }
 
         var matched = verdict == ConditionVerdict.Met;
         var code = verdict == ConditionVerdict.Invalid
             ? RoutineCodes.ConditionInvalid
-            : actionsValid ? null : RoutineCodes.ActionsInvalid;
-        return new RoutineSimulationResult(routine.Id, routine.Name, matched, matched && actionsValid, simulated, code);
+            : actionsValid ? plan?.Error : RoutineCodes.ActionsInvalid;
+        return new RoutineSimulationResult(routine.Id, routine.Name, matched, matched && actionsValid && plan?.Error is null && (plan?.Selected.Count > 0 || actions.Count == 0), simulated, code);
     }
 
     private async Task ExecuteRoutineAsync(
@@ -328,6 +345,14 @@ public class RoutineService(
                               && routine.EventType != RoutineEventType.BookingCanceled
                               && await run.BookingIsGoneAsync(cancellationToken);
 
+            var plan = bookingGone ? null : await PlanAsync(routine, run, actions, startIndex, results, cancellationToken);
+            if (plan?.Error is { } planningError)
+            {
+                await EndAsync(execution, RoutineExecutionOutcomes.Failed,
+                    new RoutineExecutionResult(results, null, startIndex, planningError), cancellationToken);
+                return;
+            }
+
             var next = startIndex;
             for (var index = startIndex; index < actions.Count; index++)
             {
@@ -354,6 +379,20 @@ public class RoutineService(
                     continue;
                 }
 
+                if (!Selected(plan!, index, action))
+                {
+                    results.Add(RoutineActionResult.Skipped(index, action.Type, RoutineCodes.AiNotSelected));
+                    continue;
+                }
+
+                if (await EvaluateAiConditionAsync(routine.OrgId, index, action, run, cancellationToken) is { } decision)
+                {
+                    results.Add(decision);
+                    if (decision.Outcome == RoutineActionOutcomes.Failed)
+                        break;
+                    continue;
+                }
+
                 // Test mode (AC-NF26-7): no case runs, no wait is scheduled
                 if (routine.TestMode)
                 {
@@ -371,8 +410,7 @@ public class RoutineService(
                     return;
                 }
 
-                var result = await EvaluateAiConditionAsync(routine.OrgId, index, action, run, cancellationToken)
-                             ?? await ExecuteActionAsync(routine, execution, index, action, run.Payload, cancellationToken);
+                var result = await ExecuteActionAsync(routine, execution, index, action, run.Payload, cancellationToken);
                 results.Add(result);
                 if (result.Outcome == RoutineActionOutcomes.Failed)
                     break;
@@ -399,6 +437,29 @@ public class RoutineService(
             throw;
         }
     }
+
+    private async Task<bool> HasAgentAccessAsync(Guid orgId, CancellationToken ct)
+    {
+        var org = await db.Orgs.AsNoTracking().Where(o => o.Id == orgId)
+            .Select(o => new { o.CommercialSignupJson, o.CommercialPaymentConfirmed, o.SubscriptionStatus, o.CommercialPaidAddonsJson })
+            .FirstOrDefaultAsync(ct);
+        // Existing contracts retain access under the same rules as the commercial API middleware.
+        return org is not null && (org.CommercialSignupJson is null ||
+            (org.CommercialPaymentConfirmed && org.SubscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.PastDue &&
+             (System.Text.Json.JsonSerializer.Deserialize<string[]>(org.CommercialPaidAddonsJson ?? "[]") ?? []).Contains("ai-agents")));
+    }
+
+    private async Task<AgentPlan> PlanAsync(Routine routine, Run run, IReadOnlyList<RoutineAction> actions,
+        int start, IReadOnlyList<RoutineActionResult> history, CancellationToken ct)
+    {
+        var booking = await run.BookingAsync(ct);
+        var stay = booking is null ? null : new AgentStay(booking.Source.ToString(), booking.Status.ToString(),
+            (booking.CheckOutDate.Date - booking.CheckInDate.Date).Days, booking.NumberOfGuests, booking.NoShowAt.HasValue);
+        return await RoutineAgentPlanner.PlanAsync(ai, logger, routine, actions, start, stay, history, ct);
+    }
+
+    private static bool Selected(AgentPlan plan, int index, RoutineAction action) =>
+        plan.Selected.Contains(index) || (action.Type == RoutineActionType.Wait && plan.Selected.Any(i => i > index));
 
     private async Task<RoutineActionResult?> EvaluateAiConditionAsync(
         Guid orgId, int index, RoutineAction action, Run run, CancellationToken ct)

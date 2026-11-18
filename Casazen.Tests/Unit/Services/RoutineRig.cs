@@ -51,7 +51,20 @@ internal sealed class RoutineRig
     /// <summary>The feature flags the engine reads: the module is on (<see cref="FeatureFlags.Routines"/>), every other flag off until a test turns it on.</summary>
     public TestFeatureFlags Flags { get; } = new(FeatureFlags.Routines);
 
-    public IAiProvider? Ai { get; set; }
+    public IAiProvider Ai { get; set; } = SelectAllOperations();
+
+    internal static IAiProvider SelectAllOperations()
+    {
+        var provider = new Mock<IAiProvider>(MockBehavior.Strict);
+        provider.Setup(p => p.GenerateAsync(It.IsAny<AiRequest>(), AiModelTier.Economy, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns((AiRequest request, AiModelTier tier, string _, CancellationToken _) =>
+            {
+                using var input = JsonDocument.Parse(request.Prompt);
+                var indices = input.RootElement.GetProperty("operations").EnumerateArray().Select(o => o.GetProperty("index").GetInt32());
+                return Task.FromResult(new AiGenerationResult(JsonSerializer.Serialize(indices), 1, 1, tier, false));
+            });
+        return provider.Object;
+    }
 
     /// <summary>The automation of the cleaning at check-out the engine runs for <c>CreateCleaningRequest</c> (E24/F01/US01/T02): none until a test gives one.</summary>
     public ICleaningAutomationService? Cleaning { get; set; }
@@ -114,6 +127,8 @@ internal sealed class RoutineRig
         string eventConfig = "{}")
     {
         await using var db = NewDb();
+        if (!await db.Orgs.AnyAsync(o => o.Id == orgId))
+            db.Orgs.Add(new OrgEntity { Id = orgId, Slug = orgId.ToString("N") });
         var routine = new Routine
         {
             OrgId = orgId,
