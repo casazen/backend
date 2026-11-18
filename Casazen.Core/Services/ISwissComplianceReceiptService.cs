@@ -43,7 +43,7 @@ public interface ISwissComplianceReceiptService
 }
 
 public sealed record SwissComplianceReceiptItem(SwissComplianceReceipt Receipt, bool HasFile);
-public sealed record SwissComplianceReceiptPage(IReadOnlyList<SwissComplianceReceiptItem> Items, int Page, int PageSize, int TotalCount);
+public sealed record SwissComplianceReceiptPage(IReadOnlyList<SwissComplianceReceiptItem> Items, int Page, int PageSize, int TotalCount, bool IsTicinoProperty);
 public sealed record SwissComplianceReceiptFile(Stream Content, string FileName, string ContentType);
 
 /// <summary>What a Swiss compliance receipt is about (ADR-016); stored in <see cref="SwissComplianceReceipt.Type"/>.</summary>

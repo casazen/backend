@@ -107,7 +107,7 @@ public sealed class SwissComplianceReceiptService(
         foreach (var row in rows)
             items.Add(new SwissComplianceReceiptItem(row, await storage.ExistsAsync(StorageBucket.Private,
                 StorageKeys.SwissComplianceReceipt(row.OrgId, row.PropertyId, row.Id), cancellationToken)));
-        return new SwissComplianceReceiptPage(items, page, pageSize, total);
+        return new SwissComplianceReceiptPage(items, page, pageSize, total, await ticinoNotifications.IsPropertyInTicinoAsync(propertyId));
     }
 
     public async Task<SwissComplianceReceiptFile> OpenFileAsync(Guid propertyId, Guid receiptId, CancellationToken cancellationToken = default)
@@ -126,7 +126,7 @@ public sealed class SwissComplianceReceiptService(
                 ?? throw new CryptographicException("Receipt payload exceeds its maximum size.");
             payload = JsonSerializer.Deserialize<StoredFile>(_protector.CreateProtector(key).Unprotect(bytes))
                 ?? throw new CryptographicException("Missing receipt payload.");
-            if (payload.Content is null || payload.Content.Length is 0 or > SwissComplianceReceipts.MaxFileBytes
+            if (payload.Content is null || payload.Content.LongLength is 0 or > SwissComplianceReceipts.MaxFileBytes
                 || !string.Equals(Convert.ToHexString(SHA256.HashData(payload.Content)), row.UploadedFileHash, StringComparison.OrdinalIgnoreCase))
                 throw new CryptographicException("Receipt content hash mismatch.");
         }

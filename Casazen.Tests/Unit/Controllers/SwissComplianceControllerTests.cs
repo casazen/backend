@@ -52,7 +52,7 @@ public class SwissComplianceControllerTests
                 "receipt.pdf", "application/pdf", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SwissComplianceReceipt { OrgId = OrgId, PropertyId = GivenProperty, Type = "Police", Reference = "REF-1" });
         _receipts.Setup(s => s.ListAsync(GivenProperty, 1, 50, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SwissComplianceReceiptPage([], 1, 50, 0));
+            .ReturnsAsync(new SwissComplianceReceiptPage([], 1, 50, 0, IsTicinoProperty: true));
         _receipts.Setup(s => s.OpenFileAsync(GivenProperty, GivenProperty, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SwissComplianceReceiptFile(Stream.Null, "receipt.pdf", "application/pdf"));
 

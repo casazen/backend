@@ -118,9 +118,9 @@ public sealed record SwissReceiptResponse(
 
 /// <summary>No storage key or public URL is exposed; HasFile distinguishes retained originals from legacy hash-only rows.</summary>
 public sealed record SwissReceiptArchiveItem(SwissReceiptResponse Receipt, bool HasFile);
-public sealed record SwissReceiptPageResponse(IReadOnlyList<SwissReceiptArchiveItem> Items, int Page, int PageSize, int TotalCount)
+public sealed record SwissReceiptPageResponse(IReadOnlyList<SwissReceiptArchiveItem> Items, int Page, int PageSize, int TotalCount, bool IsTicinoProperty)
 {
     public static SwissReceiptPageResponse From(SwissComplianceReceiptPage page) => new(
         page.Items.Select(item => new SwissReceiptArchiveItem(SwissReceiptResponse.From(item.Receipt), item.HasFile)).ToList(),
-        page.Page, page.PageSize, page.TotalCount);
+        page.Page, page.PageSize, page.TotalCount, page.IsTicinoProperty);
 }
