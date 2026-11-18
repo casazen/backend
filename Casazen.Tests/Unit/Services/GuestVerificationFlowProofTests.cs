@@ -390,6 +390,18 @@ public class GuestVerificationFlowProofTests
         Assert.Single(world.Alerts);
         Assert.Single(await world.Queue().GetPendingVerificationsAsync("auth0|operator", world.Scope));
 
+        var activities = new InternalActivityService(world.Db, NullLogger<InternalActivityService>.Instance, world.Clock);
+        var todo = await activities.CreateAsync(new CreateTodoRequest
+        {
+            Type = ActivityType.IdentityVerification,
+            Action = ActivityAction.VerifyIdentity,
+            EntityType = InternalActivity.BookingEntityType,
+            EntityId = first.BookingId,
+            PropertyId = first.Booking.PropertyId,
+            Urgency = ActivityUrgency.High,
+        }, CancellationToken.None);
+        Assert.Equal(1, await activities.CountUrgentAsync(world.Scope, CancellationToken.None));
+
         // The operator asks for a new photo: a third link, an operator row that opens the way and is not a decision.
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         var third = await world.PrepareNewLinkAsync(second);
@@ -397,6 +409,9 @@ public class GuestVerificationFlowProofTests
         checkIn.Setup(s => s.IssueLinkAsync(first.BookingId, world.OrgId))
             .ReturnsAsync(new IssuedCheckInLink(third.Id, "token", Now.UtcDateTime.AddDays(10)));
         Assert.True(await world.Queue(checkIn.Object).RequestNewPhotoAsync(first.BookingId, world.Scope, "auth0|operator"));
+        Assert.Equal("auth0|operator", (await world.Db.InternalActivities.SingleAsync(a => a.Id == todo)).ClosedBy);
+        Assert.Empty(await activities.GetPendingAsync(world.Scope, CancellationToken.None));
+        Assert.Equal(0, await activities.CountUrgentAsync(world.Scope, CancellationToken.None));
         var reopen = await world.Db.BiometricVerificationLogs.SingleAsync(l => l.Method == VerificationMethod.Operator);
         Assert.Equal(BiometricOutcome.Escalate, reopen.Outcome);
         Assert.Equal("auth0|operator", reopen.OperatorUserId);
@@ -510,7 +525,8 @@ public class GuestVerificationFlowProofTests
             checkIn ?? Mock.Of<IGuestCheckInService>(),
             NullLogger<VerificationQueueService>.Instance,
             Clock,
-            AccessCodes());
+            AccessCodes(),
+            new InternalActivityService(Db, NullLogger<InternalActivityService>.Instance, Clock));
 
         /// <summary>A property (in another country when said) with a lock code, and the municipality of its canton when there is one.</summary>
         public async Task<Guid> AddPropertyAsync(string country, string? municipalityCode, string? canton)

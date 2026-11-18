@@ -148,16 +148,6 @@ public class VerificationQueueService(
             return false;
         }
 
-        // A booking with the operator (rejected, or a hand-off still open) answers «operator» in any session, a new link included: asking the guest
-        // for a new photo is the operator opening the way again, and it is written down before the link exists.
-        var withOperator = await VerificationHandOff.IsWithOperatorAsync(db, bookingId, cancellationToken);
-
-        // Generate a new check-in link by issuing a new session (invalidates the old one)
-        var newLink = await guestCheckInService.IssueLinkAsync(bookingId, booking.OrgId);
-        if (withOperator)
-            await AddReopenAsync(session, operatorUserId, cancellationToken);
-
-        // Send email to guest with the new check-in link (AC-NF12-5)
         if (!links.IsConfigured)
         {
             logger.LogWarning(
@@ -166,6 +156,13 @@ public class VerificationQueueService(
             return false;
         }
 
+        // Keep the old link and hand-off usable if the email cannot be queued. This includes legacy escalations without OperatorRequestedAt.
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        var withOperator = await VerificationHandOff.IsWithOperatorAsync(db, bookingId, cancellationToken)
+                           || await PendingSessions(scope).AnyAsync(s => s.BookingId == bookingId, cancellationToken);
+        var newLink = await guestCheckInService.IssueLinkAsync(bookingId, booking.OrgId);
         var checkInLink = links.GuestCheckIn(newLink.Token);
         var guestName = $"{guest.FirstName} {guest.LastName}".Trim();
         var propertyName = booking.Property.Name;
@@ -185,6 +182,15 @@ public class VerificationQueueService(
                 bookingId);
             return false;
         }
+
+        // The email now contains the new link. Finish persisting it even if the HTTP client disconnects.
+        if (withOperator)
+        {
+            await AddReopenAsync(session, operatorUserId, CancellationToken.None);
+            await CloseTodoAsync(session.OrgId, bookingId, operatorUserId, CancellationToken.None);
+        }
+        if (transaction is not null)
+            await transaction.CommitAsync(CancellationToken.None);
 
         logger.LogInformation(
             "Requested new photo for booking {BookingId}, new session {SessionId} issued, email queued",
@@ -473,10 +479,7 @@ public class VerificationQueueService(
     private IQueryable<GuestCheckInSession> PendingSessions(HostScope scope) =>
         SessionsInScope(scope)
             .Where(s => db.Bookings.Any(b => b.Id == s.BookingId && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null))
-            // The one definition of a session that waits for an operator, shared with the compliance traffic light (VerificationOperatorRules).
-            .Where(VerificationOperatorRules.NeedsOperator)
-            .Where(s => !db.BiometricVerificationLogs.Any(l =>
-                l.BookingId == s.BookingId && l.Method == VerificationMethod.Operator && l.CreatedAt >= (s.OperatorRequestedAt ?? s.CreatedAt)));
+            .Unanswered(db);
 
     /// <summary>
     /// Stages the operator row that opens the way again (the operator asked the guest for a new photo while the booking was with the operator): it

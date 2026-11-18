@@ -173,7 +173,7 @@ public sealed class ComplianceStatusService(
         if (!forReport && featureFlags.IsEnabled(FeatureFlags.CheckInIdentityVerification))
         {
             var upcoming = stays.Where(s => s.CheckInDate >= today && s.ArrivedAt == null).ToList();
-            await AddIdentityAsync(items, universe, upcoming, propertyNames, settings.IdentityRedHoursBeforeArrival, nowUtc, ct);
+            await AddIdentityAsync(items, universe, scope.OrgId, upcoming, propertyNames, settings.IdentityRedHoursBeforeArrival, nowUtc, ct);
         }
 
         var months = window is null
@@ -499,6 +499,7 @@ public sealed class ComplianceStatusService(
     private async Task AddIdentityAsync(
         List<ComplianceStatusItem> items,
         Universe universe,
+        Guid orgId,
         IReadOnlyList<StayRow> upcoming,
         IReadOnlyDictionary<Guid, string> propertyNames,
         int redHoursBeforeArrival,
@@ -517,33 +518,31 @@ public sealed class ComplianceStatusService(
         var sessions = (await db.GuestCheckInSessions
                 .AsNoTracking()
                 .Where(s => bookingIds.Contains(s.BookingId))
-                .Select(s => new SessionRow(s.Id, s.BookingId, s.OperatorRequestedAt, s.CreatedAt))
-                .ToListAsync(ct))
-            .GroupBy(s => s.BookingId)
-            .ToDictionary(g => g.Key, g => g.OrderByDescending(s => s.CreatedAt).First());
-
-        // Which sessions wait for an operator: the definition of the operator queue itself (VerificationOperatorRules), read in the same shape, so the
-        // stay the queue lists is the stay painted red here (a request of the guest, a refused consent, a review, the attempts used, a session not expired).
-        var waitingForOperator = (await db.GuestCheckInSessions
-                .AsNoTracking()
-                .Where(s => bookingIds.Contains(s.BookingId))
-                .Where(VerificationOperatorRules.NeedsOperator)
-                .Select(s => s.Id)
+                .Select(s => s.BookingId)
+                .Distinct()
                 .ToListAsync(ct))
             .ToHashSet();
 
-        var logsOfBooking = (await db.BiometricVerificationLogs
+        var waitingForOperator = (await db.GuestCheckInSessions.Unanswered(db)
+                .Where(s => bookingIds.Contains(s.BookingId))
+                .Select(s => s.BookingId)
+                .Distinct()
+                .ToListAsync(ct))
+            .ToHashSet();
+        var awaitingPhoto = (await VerificationHandOff.AwaitingReplacementPhoto(db, orgId)
+                .Where(id => bookingIds.Contains(id)).ToListAsync(ct)).ToHashSet();
+
+        var logs = (await db.BiometricVerificationLogs
                 .AsNoTracking()
                 .Where(l => bookingIds.Contains(l.BookingId))
                 .Select(l => new LogRow(l.Id, l.BookingId, l.Outcome, l.Method == VerificationMethod.Operator, l.CreatedAt))
                 .ToListAsync(ct))
             .GroupBy(l => l.BookingId)
-            .ToDictionary(g => g.Key, g => g.ToList());
-        var logs = logsOfBooking.ToDictionary(pair => pair.Key, pair => pair.Value.OrderByDescending(l => l.CreatedAt).First());
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.CreatedAt).First());
 
         foreach (var stay in upcoming)
         {
-            if (!sessions.TryGetValue(stay.Id, out var session))
+            if (!sessions.Contains(stay.Id))
                 continue;
 
             // The one rule of the gate of the access code (AccessCodeService): the verification passed when the LATEST row of its log is an
@@ -558,17 +557,6 @@ public sealed class ComplianceStatusService(
                     log.CreatedAt);
             }
 
-            // An operator is needed when the session waits for one and no row of an operator answered the hand-off since (a decision, or the
-            // new photo asked for): the same reading as the queue.
-            DateTime? lastOperatorRow = logsOfBooking.TryGetValue(stay.Id, out var rows)
-                ? rows.Where(l => l.ByOperator).Select(l => (DateTime?)l.CreatedAt).Max()
-                : null;
-            var operatorNeeded = proof is null
-                                 && waitingForOperator.Contains(session.Id)
-                                 && !VerificationOperatorRules.IsDecided(
-                                     VerificationOperatorRules.HandOffStartedAt(session.OperatorRequestedAt, session.CreatedAt),
-                                     lastOperatorRow);
-
             var arrivalStart = RomeCalendar.StartOfDayUtc(stay.CheckInDate);
             var verdict = ComplianceLightRules.Identity(new IdentityFacts
             {
@@ -576,7 +564,8 @@ public sealed class ComplianceStatusService(
                 NowUtc = nowUtc,
                 RedHoursBeforeArrival = redHoursBeforeArrival,
                 Proof = proof,
-                OperatorDecisionNeeded = operatorNeeded,
+                OperatorDecisionNeeded = waitingForOperator.Contains(stay.Id),
+                ReplacementPhotoRequested = awaitingPhoto.Contains(stay.Id),
             });
 
             items.Add(new ComplianceStatusItem(
@@ -880,8 +869,6 @@ public sealed class ComplianceStatusService(
         string? ErrorFields,
         int Attempts,
         DateTime UpdatedAt);
-
-    private sealed record SessionRow(Guid Id, Guid BookingId, DateTime? OperatorRequestedAt, DateTime CreatedAt);
 
     private sealed record LogRow(Guid Id, Guid BookingId, BiometricOutcome Outcome, bool ByOperator, DateTime CreatedAt);
 }

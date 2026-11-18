@@ -1,4 +1,6 @@
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -21,6 +23,24 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public static class VerificationHandOff
 {
+    /// <summary>The sessions that still need a decision, including hand-offs from an older link of the same booking.</summary>
+    internal static IQueryable<GuestCheckInSession> Unanswered(this IQueryable<GuestCheckInSession> sessions, AppDbContext db) =>
+        sessions.Where(VerificationOperatorRules.NeedsOperator)
+            .Where(s => !db.BiometricVerificationLogs.Any(l =>
+                l.BookingId == s.BookingId && l.Method == VerificationMethod.Operator && l.CreatedAt >= (s.OperatorRequestedAt ?? s.CreatedAt)));
+
+    /// <summary>Before this fix an answered hand-off could leave an open To do. Hide it also on a direct read of the list or badge.</summary>
+    internal static IQueryable<Guid> AwaitingReplacementPhoto(AppDbContext db, Guid orgId)
+    {
+        var unanswered = db.GuestCheckInSessions.Unanswered(db);
+        return db.BiometricVerificationLogs
+            .Where(l => l.OrgId == orgId && l.Method == VerificationMethod.Operator && l.Outcome == BiometricOutcome.Escalate
+                        && !db.BiometricVerificationLogs.Any(newer => newer.BookingId == l.BookingId && newer.CreatedAt > l.CreatedAt
+                             && (newer.Method == VerificationMethod.Operator || newer.Outcome == BiometricOutcome.Accept))
+                        && !unanswered.Any(s => s.BookingId == l.BookingId))
+            .Select(l => l.BookingId);
+    }
+
     /// <summary>The bookings among <paramref name="bookingIds"/> that are with an operator: rejected by one, or with a hand-off still open.</summary>
     public static async Task<HashSet<Guid>> BookingsWithOperatorAsync(
         AppDbContext db,

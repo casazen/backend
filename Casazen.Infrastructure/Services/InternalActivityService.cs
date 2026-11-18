@@ -384,7 +384,9 @@ public class InternalActivityService(
     /// <summary>The open "To do" rows the scope reaches (ADR-026-R4: a closed row is kept, never listed).</summary>
     private IQueryable<InternalActivity> OpenTodos(HostScope scope, bool excludeRoutineTasks = false)
     {
-        var open = Todos(scope).Where(a => a.CompletedAt == null);
+        var awaitingPhoto = VerificationHandOff.AwaitingReplacementPhoto(context, scope.OrgId);
+        var open = Todos(scope).Where(a => a.CompletedAt == null &&
+            (a.Action != ActivityAction.VerifyIdentity || a.EntityId == null || !awaitingPhoto.Contains(a.EntityId.Value)));
         return excludeRoutineTasks ? open.Where(a => a.ActivityType != nameof(ActivityType.RoutineTask)) : open;
     }
 
