@@ -80,10 +80,16 @@ public sealed class AgencyUsageJob(AppDbContext db, IStripeBillingService stripe
             }
             if (!send && observed < next && observed != contract.EndedAt) return;
             await using var tx = await db.Database.BeginTransactionAsync(ct);
-            await db.Database.ExecuteSqlInterpolatedAsync($"""
+            if (units >= AgencyUsagePricing.QuoteFrom)
+                await db.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO "AgencyCustomQuotes" ("SubscriptionId","Month","Units") VALUES ({contract.SubscriptionId},{DateOnly.FromDateTime(month)},{units})
+                    ON CONFLICT ("SubscriptionId","Month") DO UPDATE SET "Units" = GREATEST("AgencyCustomQuotes"."Units", EXCLUDED."Units")
+                    """, ct);
+            var advanced = await db.Database.ExecuteSqlInterpolatedAsync($"""
                 UPDATE "AgencyUsageContracts" SET "ReportedAt" = {observed}, "ReportedUnits" = {units}
-                WHERE "SubscriptionId" = {contract.SubscriptionId}
+                WHERE "SubscriptionId" = {contract.SubscriptionId} AND ("ReportedAt" IS NULL OR "ReportedAt" <= {observed})
                 """, ct);
+            if (advanced == 0) return;
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 UPDATE "Orgs" SET "CommercialRoomAllowance" = {units} WHERE "Id" = {contract.OrgId} AND "SubscriptionId" = {contract.SubscriptionId}
                 """, ct);

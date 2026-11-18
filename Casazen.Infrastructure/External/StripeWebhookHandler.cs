@@ -507,7 +507,8 @@ public class StripeWebhookHandler(
                     await dbContext.Database.ExecuteSqlInterpolatedAsync($"""
                         INSERT INTO "AgencyUsageContracts" ("SubscriptionId","OrgId","CustomerId","Events","StartedAt")
                         VALUES ({subscription.Id},{org.Id},{subscription.CustomerId},{events},{subscription.StartDate})
-                        ON CONFLICT ("SubscriptionId") DO UPDATE SET "Events" = EXCLUDED."Events"
+                        ON CONFLICT ("SubscriptionId") DO UPDATE SET "Events" = EXCLUDED."Events", "ReportedUnits" = NULL
+                        WHERE "AgencyUsageContracts"."Events" IS DISTINCT FROM EXCLUDED."Events"
                         """);
                     paidAddons = [.. paidAddons.Union(AgencyUsagePricing.Included.Where(c => commercial.Addons.Contains(c)))];
                 }

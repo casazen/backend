@@ -22,6 +22,11 @@ public sealed class AgencyMeteredBilling : Migration
             "ReportedAt" timestamptz, "ReportedUnits" integer
         );
 
+        CREATE TABLE "AgencyCustomQuotes" (
+            "SubscriptionId" text NOT NULL REFERENCES "AgencyUsageContracts" ("SubscriptionId"),
+            "Month" date NOT NULL, "Units" integer NOT NULL, PRIMARY KEY ("SubscriptionId","Month")
+        );
+
         CREATE FUNCTION casazen_agency_unit_activity() RETURNS trigger LANGUAGE plpgsql AS $$
         DECLARE observed timestamptz := clock_timestamp();
         BEGIN
@@ -53,6 +58,6 @@ public sealed class AgencyMeteredBilling : Migration
     protected override void Down(MigrationBuilder migrationBuilder) => migrationBuilder.Sql("""
         DROP TRIGGER agency_unit_activity ON "Properties";
         DROP FUNCTION casazen_agency_unit_activity();
-        DROP TABLE "AgencyUsageContracts","AgencyUnitActivity";
+        DROP TABLE "AgencyCustomQuotes","AgencyUsageContracts","AgencyUnitActivity";
         """);
 }
