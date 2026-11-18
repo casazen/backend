@@ -62,7 +62,9 @@ public class ActivityTodoListTests : IAsyncLifetime
         for (var i = 0; i < TodoLimits.MaxPendingItems; i++)
             await service.CreateAsync(CheckIn(_world.Granted.Id, Guid.NewGuid()) with
             {
-                Type = ActivityType.RoutineTask, Action = ActivityAction.ReviewBooking, Urgency = ActivityUrgency.High,
+                Type = ActivityType.RoutineTask,
+                Action = ActivityAction.ReviewBooking,
+                Urgency = ActivityUrgency.High,
             }, Ct);
         var manual = await service.CreateAsync(CheckIn(_world.Granted.Id, Guid.NewGuid()) with { Urgency = ActivityUrgency.Low }, Ct);
 
