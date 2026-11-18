@@ -119,12 +119,13 @@ jobs:
       TEST_POSTGRES_CONNECTION: Host=localhost;Port=5432;Username=postgres;Password=postgres;Include Error Detail=true
 
     steps:
-      # Local document OCR tools (tesseract + poppler): first step, installed in the background while the checkout, the
-      # .NET setup and the download of the build output run; "Wait for the OCR tools" below joins it.
-      - name: Install local document OCR tools (background)
+      - name: Install local document OCR tools
         run: |
-          (sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends tesseract-ocr tesseract-ocr-ita tesseract-ocr-eng poppler-utils) > "$RUNNER_TEMP/ocr-install.log" 2>&1 &
-          echo $! > "$RUNNER_TEMP/ocr-install.pid"
+          sudo apt-get -o Acquire::Retries=3 update -qq
+          sudo apt-get -o Acquire::Retries=3 -o DPkg::Lock::Timeout=120 install -y --no-install-recommends \
+            tesseract-ocr tesseract-ocr-ita tesseract-ocr-eng poppler-utils
+          tesseract --version
+          pdftoppm -v
 
       # The source tree is needed at the same path as in the build job: the tests read the content root of Casazen.Web
       # and the seed files from it.
@@ -146,15 +147,6 @@ jobs:
         with:
           name: test-plan
           path: ci-plan
-
-      - name: Wait for the OCR tools
-        run: |
-          while kill -0 "$(cat "$RUNNER_TEMP/ocr-install.pid")" 2>/dev/null; do sleep 1; done
-          if ! command -v tesseract >/dev/null || ! command -v pdftoppm >/dev/null; then
-            cat "$RUNNER_TEMP/ocr-install.log"
-            echo "::error::tesseract / poppler were not installed"
-            exit 1
-          fi
 
       - name: Shard plan matches the matrix
         run: |

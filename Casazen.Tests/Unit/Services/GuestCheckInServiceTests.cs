@@ -86,7 +86,10 @@ public class GuestCheckInServiceTests
 
         seed.Db.OrgSiteDocuments.Add(new OrgSiteDocument
         {
-            Org = org, Kind = OrgSiteDocumentKind.Privacy, Version = 2, WithdrawnAt = DateTime.UtcNow,
+            Org = org,
+            Kind = OrgSiteDocumentKind.Privacy,
+            Version = 2,
+            WithdrawnAt = DateTime.UtcNow,
         });
         await seed.Db.SaveChangesAsync();
         Assert.Null((await svc.GetPublicViewAsync(token))?.PrivacyNoticeOrgSlug);
