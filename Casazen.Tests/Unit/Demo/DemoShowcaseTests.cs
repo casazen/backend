@@ -14,6 +14,8 @@ using Casazen.Core.SiteProfile;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data.Seeds;
 using Casazen.Infrastructure.Events;
+using Casazen.Infrastructure.Services;
+using Microsoft.EntityFrameworkCore;
 using Casazen.Tests.Unit.Services;
 using Xunit;
 
@@ -228,6 +230,41 @@ public class DemoShowcaseTests
         Assert.Equal((RoutineEventType.AfterCheckout, 1), (review.EventType, review.DaysBefore));
         Assert.Equal([RoutineActionType.RequestReview], review.Actions.Select(a => a.Type));
         Assert.Contains(DemoShowcaseCatalog.Scenario.RoutineReviewRequest, DemoShowcaseCatalog.Scenarios);
+    }
+
+    [Fact]
+    public async Task PausedLinenCheck_SimulatesLongAndShortShowcaseStays_WithoutOpeningAnyWork()
+    {
+        var template = Assert.Single(DemoShowcaseCatalog.Routines, r => r.Scenario == DemoShowcaseCatalog.Scenario.RoutinePausedLinenCheck);
+        var orgId = Guid.NewGuid();
+        var routine = DemoEnvironmentService.BuildShowcaseRoutine(orgId, template);
+        Assert.False(routine.Active);
+        Assert.True(routine.TestMode);
+        Assert.Equal(RoutineEventType.AfterCheckout, routine.EventType);
+
+        var rig = new RoutineRig();
+        await using var db = rig.NewDb();
+        db.Orgs.Add(new OrgEntity { Id = orgId, Slug = "linen-test" });
+        db.Routines.Add(routine);
+        await db.SaveChangesAsync();
+
+        var stays = DemoShowcaseCatalog.Properties.SelectMany(p => p.Bookings).Where(b => b.Status == BookingStatus.Confirmed);
+        foreach (var nights in new[] { 2, 4 })
+        {
+            var stay = stays.First(b => b.Nights == nights);
+            var arrival = RoutineRig.Now.UtcDateTime.Date.AddDays(stay.CheckInOffsetDays);
+            var booking = await rig.SeedBookingAsync(orgId, stay.Source, stay.Status, checkIn: arrival, checkOut: arrival.AddDays(stay.Nights));
+            var payload = RoutineRig.PayloadOf(booking);
+            await rig.TriggerAsync(orgId, routine.EventType, payload);
+            var result = await rig.Service(db).SimulateAsync(orgId, routine.Id, payload);
+            Assert.Equal(nights == 4, result.ConditionsMatched);
+            Assert.Equal(nights == 4, result.WouldExecute);
+            Assert.Equal(RoutineActionType.CreateActivity, Assert.Single(result.Actions).Type);
+        }
+
+        Assert.Empty(await rig.ExecutionsAsync());
+        Assert.Empty(await db.InternalActivities.ToListAsync());
+        Assert.Empty(rig.Scheduled);
     }
 
     /// <summary>

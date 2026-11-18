@@ -320,7 +320,7 @@ public class DemoEnvironmentService(
     /// One routine of the demo host, as the API would save it: active, a time trigger of <see cref="DemoRoutineTemplate.DaysBefore"/> days, no condition, and
     /// the actions of its template (in test mode when it says so). Marked as showcase data, so the next reset deletes it.
     /// </summary>
-    private async Task CreateRoutineAsync(Guid orgId, DemoRoutineTemplate template, CancellationToken cancellationToken)
+    internal static Routine BuildShowcaseRoutine(Guid orgId, DemoRoutineTemplate template)
     {
         var actions = template.Actions
             .Select(action => new
@@ -329,17 +329,22 @@ public class DemoEnvironmentService(
                 config = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(action.ConfigJson),
             })
             .ToList();
-        var routine = new Routine
+        return new Routine
         {
             OrgId = orgId,
             Name = template.Name,
             EventType = template.EventType,
             EventConfig = System.Text.Json.JsonSerializer.Serialize(new { days = template.DaysBefore }),
-            ConditionJson = "{}",
+            ConditionJson = template.ConditionJson,
             ActionsJson = System.Text.Json.JsonSerializer.Serialize(actions),
             TestMode = template.IsTestMode,
-            Active = true,
+            Active = template.Active,
         };
+    }
+
+    private async Task CreateRoutineAsync(Guid orgId, DemoRoutineTemplate template, CancellationToken cancellationToken)
+    {
+        var routine = BuildShowcaseRoutine(orgId, template);
         db.Routines.Add(routine);
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.Routine, routine.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
