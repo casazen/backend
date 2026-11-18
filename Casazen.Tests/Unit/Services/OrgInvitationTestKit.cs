@@ -180,7 +180,8 @@ internal sealed class OrgInvitationTestKit
     public async Task<(OrgEntity Org, User Owner)> SeedOwnerOrgAsync(
         string ownerId = "auth0|owner",
         PlanTier tier = PlanTier.Pro,
-        SubscriptionStatus status = SubscriptionStatus.Active)
+        SubscriptionStatus status = SubscriptionStatus.Active,
+        RentalType rentalType = RentalType.ShortTerm)
     {
         OrgEntity org;
         await using (var db = NewDb())
@@ -194,7 +195,7 @@ internal sealed class OrgInvitationTestKit
             await db.SaveChangesAsync();
         }
 
-        return (org, await SeedOwnerOfOrgAsync(org.Id, ownerId));
+        return (org, await SeedOwnerOfOrgAsync(org.Id, ownerId, rentalType));
     }
 
     /// <summary>
@@ -202,16 +203,19 @@ internal sealed class OrgInvitationTestKit
     /// membership, the org member row, the account membership and the consents of the org. For the migration tests, whose org was
     /// written with SQL at the schema before the migration (<c>LegacyOrgRows</c>) and gets its people after it.
     /// </summary>
-    public async Task<User> SeedOwnerOfOrgAsync(Guid orgId, string ownerId = "auth0|owner")
+    public async Task<User> SeedOwnerOfOrgAsync(Guid orgId, string ownerId = "auth0|owner", RentalType rentalType = RentalType.ShortTerm)
     {
         await using var db = NewDb();
         var owner = AddUser(db, ownerId, orgId, UserRole.PropertyOwner);
         owner.Email = $"{ownerId.Replace("auth0|", string.Empty, StringComparison.Ordinal)}@example.com";
         owner.FirstName = "Giulia";
         owner.LastName = "Rinaldi";
-        owner.RentalType = RentalType.ShortTerm;
+        owner.RentalType = rentalType;
         owner.OnboardingCompletedAt = Now;
-        AddMembership(db, ownerId, "short-rent", "property_owner");
+        if (rentalType is RentalType.ShortTerm or RentalType.Both)
+            AddMembership(db, ownerId, "short-rent", "property_owner");
+        if (rentalType is RentalType.LongTerm or RentalType.Both)
+            AddMembership(db, ownerId, "long-rent", "long_term_landlord");
         AddConsents(db, ownerId, orgId);
         await db.SaveChangesAsync();
 

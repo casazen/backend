@@ -95,13 +95,25 @@ public class OrgInvitationServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_AreasAreCleanedUp_KeepingTheValidOnesOnce()
+    public async Task CreateAsync_AreasAreCleanedUp_KeepingTheActiveOnesOnce()
     {
         var (org, _) = await _kit.SeedOwnerOrgAsync();
 
         var sent = await CreateAsync(Request(org.Id, areas: [" Short-Rent ", "long-rent", "SHORT-RENT", "account", "admin", "x"]));
 
-        Assert.Equal(["short-rent", "long-rent"], sent.Invitation.Areas);
+        Assert.Equal(["short-rent"], sent.Invitation.Areas);
+    }
+
+    [Fact]
+    public async Task CreateAsync_DisabledAreaOnly_RefusesWithoutSending()
+    {
+        var (org, _) = await _kit.SeedOwnerOrgAsync(rentalType: RentalType.LongTerm);
+
+        var error = await Assert.ThrowsAsync<DomainRuleException>(
+            () => CreateAsync(Request(org.Id, role: OrgRole.Admin, areas: ["short-rent"])));
+
+        Assert.Equal(OrgMembershipErrors.AreaRequired, error.Code);
+        Assert.Empty(_kit.Emails.Snapshot());
     }
 
     [Theory]
@@ -335,7 +347,8 @@ public class OrgInvitationServiceTests
         Assert.Contains("Giulia Rinaldi", body);
         Assert.Contains("Casa Rossi", body);
         Assert.Contains("Contabile", body);
-        Assert.Contains("Affitti brevi, Affitti lunghi", body);
+        Assert.Contains("Affitti brevi", body);
+        Assert.DoesNotContain("Affitti lunghi", body);
         Assert.Contains("anna.leone@example.com", body);
     }
 
@@ -800,7 +813,7 @@ public class OrgInvitationServiceTests
         Assert.Equal(
             ("Casa Rossi", "anna.leone@example.com", "Anna Leone", OrgRole.Accountant, invitation.ExpiresAt),
             (preview.OrgName, preview.Email, preview.Name, preview.Role, preview.ExpiresAt));
-        Assert.Equal(["short-rent", "long-rent"], preview.Areas);
+        Assert.Equal(["short-rent"], preview.Areas);
     }
 
     [Fact]

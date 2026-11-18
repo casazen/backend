@@ -70,7 +70,7 @@ public sealed partial class OrgInvitationService(
             throw new DomainRuleException(OrgMembershipErrors.ScopeNotSupported, "OrgMemberScopeNotSupported");
         }
 
-        var areas = NormalizeAreas(request.Areas);
+        var areas = await ActiveInvitationAreasAsync(request.OrgId, request.Areas, cancellationToken);
         if (areas.Count == 0)
             throw new DomainRuleException(OrgMembershipErrors.AreaRequired, "OrgMemberAreaRequired");
 
@@ -86,7 +86,11 @@ public sealed partial class OrgInvitationService(
         // Every property is a live property of the org, and the inviter reaches it: the owner and the administrators, who are
         // the only ones who invite (RequireManagerAsync), reach every property of their org (HostScopeResolver).
         if (propertyIds.Count > 0)
-            await EnsurePropertiesOfTheOrgAsync(request.OrgId, propertyIds, cancellationToken);
+        {
+            var propertyCount = await PropertiesInAreas(request.OrgId, areas).CountAsync(p => propertyIds.Contains(p.Id), cancellationToken);
+            if (propertyCount != propertyIds.Count)
+                throw new DomainRuleException(OrgMembershipErrors.PropertyUnknown, "OrgMemberPropertyUnknown");
+        }
 
         // A missing public URL is a configuration error, found before anything is saved.
         publicSiteLinks.EnsureConfigured();
@@ -225,6 +229,10 @@ public sealed partial class OrgInvitationService(
                 await seats.EnsureSeatAvailableAsync(orgId, cancellationToken);
             }
 
+            invitation.Areas = await ActiveInvitationAreasAsync(orgId, invitation.Areas, cancellationToken);
+            if (invitation.Areas.Count == 0)
+                throw new DomainRuleException(OrgMembershipErrors.AreaRequired, "OrgMemberAreaRequired");
+
             previousLastSentAt = invitation.LastSentAt;
             previousSendLog = [.. invitation.SendLog];
 
@@ -340,13 +348,14 @@ public sealed partial class OrgInvitationService(
         var hash = OrgInvitationTokens.Hash(normalized);
         var now = Now;
 
-        // One query, the same for every outcome. IgnoreQueryFilters: anonymous, there is no tenant.
+        // IgnoreQueryFilters: anonymous, there is no tenant.
         var row = await (
                 from i in db.OrgInvitations.IgnoreQueryFilters().AsNoTracking()
                 join o in db.Orgs.AsNoTracking() on i.OrgId equals o.Id
                 where i.TokenHash == hash
                 select new
                 {
+                    i.OrgId,
                     i.TokenHash,
                     i.Status,
                     i.ExpiresAt,
@@ -370,24 +379,37 @@ public sealed partial class OrgInvitationService(
             || row.OrgType != OrgType.Host)
             return null;
 
+        var areas = await ActiveInvitationAreasAsync(row.OrgId, row.Areas, cancellationToken);
+        if (areas.Count == 0)
+            return null;
+
         return new OrgInvitationPreview(
             string.IsNullOrWhiteSpace(row.OrgName) ? row.FallbackName : row.OrgName,
             row.Email,
             row.Name,
             row.Role,
-            row.Areas.ToList(),
+            areas,
             row.ExpiresAt);
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────────
 
-    private static List<string> NormalizeAreas(IEnumerable<string>? areas) =>
-        (areas ?? [])
+    // Onboarding projects the agency's rental choice into the owner's context memberships. An administrator
+    // sending an invitation can have different memberships from the owner.
+    private async Task<List<string>> ActiveInvitationAreasAsync(Guid orgId, IEnumerable<string>? requested, CancellationToken cancellationToken)
+    {
+        var active = await (
+            from owner in db.OrgMembers.IgnoreQueryFilters()
+            join context in db.UserContextMemberships on owner.UserId equals context.UserId
+            where owner.OrgId == orgId && owner.Role == OrgRole.Owner && owner.Status == OrgMemberStatus.Active &&
+                  (context.ContextKey == OrgRoleCatalog.ShortRent || context.ContextKey == OrgRoleCatalog.LongRent)
+            select context.ContextKey).ToListAsync(cancellationToken);
+        return (requested ?? [])
             .Select(a => (a ?? string.Empty).Trim())
-            .Where(OrgRoleCatalog.IsRentalContext)
             .Select(a => a.ToLowerInvariant())
-            .Distinct()
+            .Intersect(active)
             .ToList();
+    }
 
     /// <summary>
     /// 403 <see cref="OrgInvitationErrors.OwnerRequired"/> unless <paramref name="actor"/> may give this invitation's role
@@ -505,16 +527,12 @@ public sealed partial class OrgInvitationService(
         .ToList();
 
     /// <summary>
-    /// 422 <see cref="OrgMembershipErrors.PropertyUnknown"/> unless every id is a live property of the org. The tenant filter is
-    /// lifted and the org explicit (the soft-delete filter stays on: a deleted property is not one), like the rest of this service.
+    /// Live properties of the destination agency in the rental areas covered by the invitation.
     /// </summary>
-    private async Task EnsurePropertiesOfTheOrgAsync(Guid orgId, IReadOnlyCollection<Guid> propertyIds, CancellationToken cancellationToken)
+    private IQueryable<Property> PropertiesInAreas(Guid orgId, IReadOnlyCollection<string> areas)
     {
-        var ids = propertyIds.ToList();
-        var known = await db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking()
-            .CountAsync(p => p.OrgId == orgId && ids.Contains(p.Id), cancellationToken);
-        if (known != ids.Count)
-            throw new DomainRuleException(OrgMembershipErrors.PropertyUnknown, "OrgMemberPropertyUnknown");
+        var properties = db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking().Where(p => p.OrgId == orgId);
+        return OrgRoleCatalog.SingleModeOf(areas) is { } mode ? properties.Where(p => p.RentalMode == mode) : properties;
     }
 
     // ─── The cap on the emails (AM-02c, decision AM-D15) ────────────────────────────────────────────────
