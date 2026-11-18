@@ -455,7 +455,9 @@ public class RoutineService(
         var booking = await run.BookingAsync(ct);
         var stay = booking is null ? null : new AgentStay(booking.Source.ToString(), booking.Status.ToString(),
             (booking.CheckOutDate.Date - booking.CheckInDate.Date).Days, booking.NumberOfGuests, booking.NoShowAt.HasValue);
-        return await RoutineAgentPlanner.PlanAsync(ai, logger, routine, actions, start, stay, history, ct);
+        var preset = PresetAgentCatalog.Match(routine, actions);
+        var trained = preset is null ? null : await PresetAgentTrainer.ActiveAsync(db, preset, ct);
+        return await RoutineAgentPlanner.PlanAsync(ai, logger, routine, actions, start, stay, history, ct, trained);
     }
 
     private static bool Selected(AgentPlan plan, int index, RoutineAction action) =>

@@ -492,6 +492,7 @@ public static class ServiceCollectionExtensions
         // NF-26: Automation routines (ADR-022).
         services.AddScoped<RoutineBookingActions>();
         services.AddScoped<IRoutineService, RoutineService>();
+        services.AddScoped<PresetAgentTrainer>();
         // E01/F04/US01/T03: the routines of an org for the routines page (api/routines, behind Features:Routines); the engine above runs them.
         services.AddScoped<IRoutineManagementService, RoutineManagementService>();
         // E24/F01/US01 (NF-120, decision O11): the default cleaner of a property with the price and the time agreed (api/properties/{id}/cleaning-setup, no flag of its own), the
