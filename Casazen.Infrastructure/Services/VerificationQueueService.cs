@@ -156,12 +156,30 @@ public class VerificationQueueService(
             return false;
         }
 
-        // Keep the old link and hand-off usable if the email cannot be queued. This includes legacy escalations without OperatorRequestedAt.
-        await using var transaction = db.Database.IsRelational()
-            ? await db.Database.BeginTransactionAsync(cancellationToken)
-            : null;
-        var withOperator = await VerificationHandOff.IsWithOperatorAsync(db, bookingId, cancellationToken)
-                           || await PendingSessions(scope).AnyAsync(s => s.BookingId == bookingId, cancellationToken);
+        await using var requestLock = await PostgresAdvisoryLocks.TryAcquireSessionLockAsync(
+            db, PostgresAdvisoryLocks.Scope.VerificationPhotoRequest, bookingId.ToString("N"), cancellationToken);
+        if (requestLock is null)
+            throw new DomainConflictException("verification_photo_request_in_progress", "ConflictDetail");
+
+        // A repeat of a completed request must not invalidate the link already in the guest's mailbox.
+        var now = UtcNow();
+        if (await VerificationHandOff.AwaitingReplacementPhoto(db, scope.OrgId).ContainsAsync(bookingId, cancellationToken)
+            && await db.GuestCheckInSessions.AnyAsync(s => s.BookingId == bookingId && s.ExpiresAt > now
+                && (s.Status == GuestCheckInSessionStatus.Inviato || s.Status == GuestCheckInSessionStatus.InCompilazione), cancellationToken))
+            return true;
+
+        var pending = await PendingSessions(scope).Where(s => s.BookingId == bookingId)
+            .OrderByDescending(s => s.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+        var withOperator = pending is not null || await VerificationHandOff.IsWithOperatorAsync(db, bookingId, cancellationToken);
+
+        // Replacing a legacy escalated link must not remove the hand-off if the email queue refuses the request.
+        if (pending is { OperatorRequestedAt: null })
+        {
+            pending.OperatorRequestedAt = pending.CreatedAt;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        // Hangfire is independent of EF. Commit the usable link before publishing it, and keep the hand-off until queueing succeeds.
         var newLink = await guestCheckInService.IssueLinkAsync(bookingId, booking.OrgId);
         var checkInLink = links.GuestCheckIn(newLink.Token);
         var guestName = $"{guest.FirstName} {guest.LastName}".Trim();
@@ -186,11 +204,12 @@ public class VerificationQueueService(
         // The email now contains the new link. Finish persisting it even if the HTTP client disconnects.
         if (withOperator)
         {
-            await AddReopenAsync(session, operatorUserId, CancellationToken.None);
+            await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(CancellationToken.None) : null;
+            await AddReopenAsync(pending ?? session, operatorUserId, CancellationToken.None);
             await CloseTodoAsync(session.OrgId, bookingId, operatorUserId, CancellationToken.None);
+            if (transaction is not null)
+                await transaction.CommitAsync(CancellationToken.None);
         }
-        if (transaction is not null)
-            await transaction.CommitAsync(CancellationToken.None);
 
         logger.LogInformation(
             "Requested new photo for booking {BookingId}, new session {SessionId} issued, email queued",

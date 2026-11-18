@@ -42,7 +42,7 @@ public sealed class CheckInHostFallbackPostgresTests : IClassFixture<CheckInHost
     public CheckInHostFallbackPostgresTests(FallbackFactory factory) => _factory = factory;
 
     [PostgresFact]
-    public async Task RequestPhoto_FailedQueueKeepsTheOldLinkAndTodo_SuccessClosesTheTodo()
+    public async Task RequestPhoto_FailedQueueKeepsTheTodo_SuccessAndRetryIssueOnlyOneEmailedLink()
     {
         var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
         var oldSession = await AddSessionAsync(seed.BookingId, GuestCheckInSessionStatus.InCompilazione, DateTime.UtcNow.AddDays(3));
@@ -63,12 +63,17 @@ public sealed class CheckInHostFallbackPostgresTests : IClassFixture<CheckInHost
         var failing = new VerificationQueueService(db, Mock.Of<IEmailQueue>(), scope.ServiceProvider.GetRequiredService<PublicSiteLinks>(),
             scope.ServiceProvider.GetRequiredService<IGuestCheckInService>(), NullLogger<VerificationQueueService>.Instance, activities: activities);
         Assert.False(await failing.RequestNewPhotoAsync(seed.BookingId, hostScope, seed.OwnerId));
-        Assert.Equal(GuestCheckInSessionStatus.InCompilazione, await db.GuestCheckInSessions.Where(s => s.Id == oldSession).Select(s => s.Status).SingleAsync());
+        Assert.Contains(await failing.GetPendingVerificationsAsync(seed.OwnerId, hostScope), v => v.BookingId == seed.BookingId);
         Assert.Contains(await activities.GetPendingAsync(hostScope, CancellationToken.None), a => a.Id == todoId);
 
         using var host = _factory.CreateAuthenticatedClient(seed.OwnerId, OwnerRole);
-        var sent = await host.PostAsync($"/api/verification/{seed.BookingId}/request-photo", null);
-        Assert.Equal(HttpStatusCode.OK, sent.StatusCode);
+        var path = $"/api/verification/{seed.BookingId}/request-photo";
+        var concurrent = await Task.WhenAll(host.PostAsync(path, null), host.PostAsync(path, null));
+        Assert.Contains(concurrent, r => r.StatusCode == HttpStatusCode.OK);
+        Assert.All(concurrent, r => Assert.Contains(r.StatusCode, new[] { HttpStatusCode.OK, HttpStatusCode.Conflict }));
+        Assert.Equal(HttpStatusCode.OK, (await host.PostAsync(path, null)).StatusCode);
+        // Initial session, failed email attempt, and exactly one successful request. Neither duplicate replaces the emailed link.
+        Assert.Equal(3, await db.GuestCheckInSessions.CountAsync(s => s.BookingId == seed.BookingId));
         var pending = await host.GetFromJsonAsync<JsonElement>("/api/verification/pending");
         Assert.DoesNotContain(pending.EnumerateArray(), row => row.GetProperty("bookingId").GetGuid() == seed.BookingId);
         Assert.Equal(seed.OwnerId, await db.InternalActivities.Where(a => a.Id == todoId).Select(a => a.ClosedBy).SingleAsync());

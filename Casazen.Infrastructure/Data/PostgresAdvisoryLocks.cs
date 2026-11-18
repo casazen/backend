@@ -45,6 +45,9 @@ internal static class PostgresAdvisoryLocks
         /// <summary>Cancellation of one booking: a double click cancels and refunds once (BK-02).</summary>
         BookingCancellation = 1_006,
 
+        /// <summary>One replacement-photo request per booking across link creation, email queueing and hand-off resolution.</summary>
+        VerificationPhotoRequest = 1_954,
+
         /// <summary>
         /// Payments the host records on one booking (key: booking id, <c>bookingId.ToString("N")</c>): the idempotency key, the
         /// balance and the insert are decided one request at a time, so a double click writes one payment and two receipts never

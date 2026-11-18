@@ -80,6 +80,7 @@ public class VerificationController(
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> RequestNewPhoto(Guid bookingId)
     {
         var userId = GetUserId();
