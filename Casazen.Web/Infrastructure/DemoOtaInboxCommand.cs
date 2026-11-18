@@ -38,6 +38,8 @@ public static class DemoOtaInboxCommand
             ?? throw new InvalidOperationException("A demo inbox payload is required.");
         var payload = JsonSerializer.Deserialize<Payload>(json)
             ?? throw new InvalidOperationException("Invalid demo inbox payload.");
+        // The native builders use the fail-closed tenant filter, including outside an HTTP request.
+        scope.ServiceProvider.GetRequiredService<IRequestTenantContext>().SetOrgId(payload.OrgId);
         await using var transaction = await db.Database.BeginTransactionAsync();
         var result = await ImportAsync(db, payload, DateTime.UtcNow);
         if (payload.RepairFiscalBookingIds is { Count: > 0 })
