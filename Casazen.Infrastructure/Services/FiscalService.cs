@@ -292,7 +292,10 @@ public partial class FiscalService(
     /// </summary>
     private async Task<bool> IsShortRentalContractAsync(Booking booking, CancellationToken cancellationToken = default)
     {
-        if (!IsShortStay(booking.CheckInDate, booking.CheckOutDate))
+        if (!IsShortStay(booking.CheckInDate, booking.CheckOutDate)
+            || !await db.Properties.IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
+                .AnyAsync(p => p.Id == booking.PropertyId && p.OrgId == booking.OrgId
+                    && p.Country == "IT", cancellationToken))
             return false;
 
         var taxYear = booking.CheckInDate.Year;
@@ -399,8 +402,9 @@ public partial class FiscalService(
         // keeps its line in the year's reports. One deleted before the year started is left out.
         var properties = await db.Properties.AsNoTracking()
             .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
-            .Where(p => p.OrgId == orgId && (!p.IsDeleted || p.DeletedAt == null || p.DeletedAt >= yearStart))
-            .Select(p => new { p.Id, p.Name, p.IsActive, p.TaxpayerFiscalCode })
+            .Where(p => p.OrgId == orgId && p.Country == "IT"
+                && (!p.IsDeleted || p.DeletedAt == null || p.DeletedAt >= yearStart))
+            .Select(p => new { p.Id, p.Name, p.IsActive, p.IsDeleted, p.TaxpayerFiscalCode })
             .ToListAsync(cancellationToken);
 
         // The properties the caller reaches, only when it does not reach them all: one query in SQL (InScope), because the
@@ -427,7 +431,7 @@ public partial class FiscalService(
             .Select(p =>
             {
                 var shortStay = shortStayPropertyIds.Contains(p.Id);
-                var candidate = shortStay || (p.IsActive && !leasedPropertyIds.Contains(p.Id));
+                var candidate = shortStay || (!p.IsDeleted && p.IsActive && !leasedPropertyIds.Contains(p.Id));
                 var taxpayerCode = NormalizeFiscalCode(p.TaxpayerFiscalCode);
                 return new YearProperty(
                     p.Id, p.Name, taxpayerCode ?? orgKey, taxpayerCode, candidate, shortStay, inScope is null || inScope.Contains(p.Id));
