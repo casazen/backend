@@ -49,8 +49,12 @@ public sealed class StorefrontChatService(AppDbContext db, TimeProvider? clock =
 
             thread = new StorefrontChatThread
             {
-                Id = Guid.NewGuid(), OrgId = orgId, PropertyId = propertyId, AccessHash = hash,
-                VisitorName = visitorName, VisitorEmail = visitorEmail,
+                Id = Guid.NewGuid(),
+                OrgId = orgId,
+                PropertyId = propertyId,
+                AccessHash = hash,
+                VisitorName = visitorName,
+                VisitorEmail = visitorEmail,
             };
             db.StorefrontChatThreads.Add(thread);
         }
@@ -147,8 +151,13 @@ public sealed class StorefrontChatService(AppDbContext db, TimeProvider? clock =
         var now = Now();
         var message = new StorefrontChatMessage
         {
-            Id = Guid.NewGuid(), OrgId = thread.OrgId, ThreadId = thread.Id, Direction = direction,
-            IdempotencyKey = key, Text = body, SentAt = now,
+            Id = Guid.NewGuid(),
+            OrgId = thread.OrgId,
+            ThreadId = thread.Id,
+            Direction = direction,
+            IdempotencyKey = key,
+            Text = body,
+            SentAt = now,
         };
         db.StorefrontChatMessages.Add(message);
         thread.LastMessageAt = now;
