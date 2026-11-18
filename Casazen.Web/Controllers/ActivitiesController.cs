@@ -128,6 +128,7 @@ public class ActivitiesController(
 /// <param name="Urgency">How urgent it is.</param>
 /// <param name="Reason">Why it was raised, one line (a code), never personal data.</param>
 /// <param name="CreatedAt">When it was raised (UTC).</param>
+/// <param name="ScheduledAt">When the work is planned (UTC), independently of its deadline.</param>
 public sealed record TodoActivityDto(
     Guid Id,
     string ActivityType,
@@ -138,7 +139,8 @@ public sealed record TodoActivityDto(
     DateTime? DueAt,
     ActivityUrgency Urgency,
     string? Reason,
-    DateTime CreatedAt)
+    DateTime CreatedAt,
+    DateTime? ScheduledAt = null)
 {
     /// <summary>The item of a "To do" row (one that <see cref="IInternalActivityService.GetPendingAsync"/> returns).</summary>
     public static TodoActivityDto From(InternalActivity activity)
@@ -157,7 +159,8 @@ public sealed record TodoActivityDto(
             activity.Deadline,
             activity.Urgency ?? ActivityUrgency.Low,
             activity.Reason,
-            activity.CreatedAt);
+            activity.CreatedAt,
+            activity.ScheduledAt);
     }
 }
 
