@@ -27,33 +27,24 @@ public sealed class AgencyUsageJob(AppDbContext db, IStripeBillingService stripe
     public async Task ExecuteAsync(CancellationToken ct)
     {
         var now = clock.GetUtcNow().UtcDateTime;
-        var contracts = await db.Database.SqlQuery<Contract>($"""
-            SELECT * FROM "AgencyUsageContracts" WHERE "EndedAt" IS NULL OR "ReportedAt" IS NULL OR "ReportedAt" < "EndedAt"
+        var subscriptions = await db.Database.SqlQuery<string>($"""
+            SELECT "SubscriptionId" AS "Value" FROM "AgencyUsageContracts" WHERE "EndedAt" IS NULL OR "ReportedAt" IS NULL OR "ReportedAt" < "EndedAt"
             """).ToListAsync(ct);
         List<Exception> failures = [];
-        foreach (var contract in contracts)
+        foreach (var subscriptionId in subscriptions)
         {
-            try { await ReportAsync(contract, now, ct); }
+            try { await ReportAsync(subscriptionId, now, ct); }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
-                logger.LogError(ex, "Could not report Agency inventory for subscription {SubscriptionId}", contract.SubscriptionId);
+                logger.LogError(ex, "Could not report Agency inventory for subscription {SubscriptionId}", subscriptionId);
                 failures.Add(ex);
             }
         }
         if (failures.Count > 0) throw new AggregateException(failures);
     }
 
-    public async Task<bool> CloseInvoicePeriodAsync(string subscriptionId, DateTime periodEnd, CancellationToken ct)
-    {
-        var contract = await db.Database.SqlQuery<Contract>($"""
-            SELECT * FROM "AgencyUsageContracts" WHERE "SubscriptionId" = {subscriptionId}
-            """).SingleOrDefaultAsync(ct);
-        if (contract is null || periodEnd > clock.GetUtcNow().UtcDateTime) return false;
-        var end = contract.EndedAt is { } ended && ended < periodEnd ? ended : periodEnd;
-        if (contract.ReportedAt >= end) return true;
-        await ReportAsync(contract, end, ct);
-        return true;
-    }
+    public Task<bool> CloseInvoicePeriodAsync(string subscriptionId, DateTime periodEnd, CancellationToken ct) =>
+        periodEnd > clock.GetUtcNow().UtcDateTime ? Task.FromResult(false) : ReportAsync(subscriptionId, periodEnd, ct);
 
     public static Task<int> CountAsync(AppDbContext db, Guid orgId, DateTime from, DateTime until, CancellationToken ct) =>
         db.Database.SqlQuery<int>($"""
@@ -61,13 +52,20 @@ public sealed class AgencyUsageJob(AppDbContext db, IStripeBillingService stripe
             WHERE "OrgId" = {orgId} AND "StartedAt" < {until} AND ("EndedAt" IS NULL OR "EndedAt" > {from})
             """).SingleAsync(ct);
 
-    private async Task ReportAsync(Contract contract, DateTime now, CancellationToken ct)
+    private async Task<bool> ReportAsync(string subscriptionId, DateTime now, CancellationToken ct)
     {
-        var until = contract.EndedAt is { } end && end < now ? end : now;
-        var cursor = contract.ReportedAt ?? contract.StartedAt;
-        int? previousUnits = contract.ReportedUnits;
-        while (cursor < until)
+        while (true)
         {
+            // invoice.created and the recurring sweep may arrive together. Lock this subscription
+            // through submission and cursor advancement, independently of every other agency.
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            var contract = await db.Database.SqlQuery<Contract>($"""
+                SELECT * FROM "AgencyUsageContracts" WHERE "SubscriptionId" = {subscriptionId} FOR UPDATE
+                """).SingleOrDefaultAsync(ct);
+            if (contract is null) return false;
+            var until = contract.EndedAt is { } end && end < now ? end : now;
+            var cursor = contract.ReportedAt ?? contract.StartedAt;
+            if (cursor >= until) return true;
             var month = new DateTime(cursor.Year, cursor.Month, 1, 0, 0, 0, DateTimeKind.Utc);
             var next = month.AddMonths(1);
             var observed = until < next ? until : next;
@@ -77,7 +75,7 @@ public sealed class AgencyUsageJob(AppDbContext db, IStripeBillingService stripe
             // The last aggregator replaces the snapshot. Retrying after Stripe's 24h request-key
             // lifetime still yields the same quantity. On month rollover the final sample belongs
             // to the previous month; the cursor advances only after every selected meter succeeds.
-            bool send = cursor == month || units != previousUnits;
+            bool send = cursor == month || units != contract.ReportedUnits;
             if (send)
             {
                 var stamp = observed == next || observed == contract.EndedAt ? observed.AddTicks(-1) : observed;
@@ -90,24 +88,21 @@ public sealed class AgencyUsageJob(AppDbContext db, IStripeBillingService stripe
                 if (units >= AgencyUsagePricing.QuoteFrom)
                     logger.LogWarning("Agency {OrgId} reached {Units} units in {Month:yyyy-MM}; a custom quote is required", contract.OrgId, units, month);
             }
-            if (!send && observed < next && observed != contract.EndedAt) return;
-            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            if (!send && observed < next && observed != contract.EndedAt) return true;
             if (units >= AgencyUsagePricing.QuoteFrom)
                 await db.Database.ExecuteSqlInterpolatedAsync($"""
                     INSERT INTO "AgencyCustomQuotes" ("SubscriptionId","Month","Units") VALUES ({contract.SubscriptionId},{DateOnly.FromDateTime(month)},{units})
                     ON CONFLICT ("SubscriptionId","Month") DO UPDATE SET "Units" = GREATEST("AgencyCustomQuotes"."Units", EXCLUDED."Units")
                     """, ct);
-            var advanced = await db.Database.ExecuteSqlInterpolatedAsync($"""
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
                 UPDATE "AgencyUsageContracts" SET "ReportedAt" = {observed}, "ReportedUnits" = {units}
-                WHERE "SubscriptionId" = {contract.SubscriptionId} AND ("ReportedAt" IS NULL OR "ReportedAt" <= {observed})
+                WHERE "SubscriptionId" = {contract.SubscriptionId}
                 """, ct);
-            if (advanced == 0) return;
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 UPDATE "Orgs" SET "CommercialRoomAllowance" = {units} WHERE "Id" = {contract.OrgId} AND "SubscriptionId" = {contract.SubscriptionId}
                 """, ct);
             await tx.CommitAsync(ct);
-            previousUnits = units;
-            cursor = observed;
+            if (observed == until) return true;
         }
     }
 }

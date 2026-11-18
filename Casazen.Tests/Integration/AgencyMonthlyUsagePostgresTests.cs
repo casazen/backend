@@ -40,6 +40,40 @@ public class AgencyMonthlyUsagePostgresTests
     }
 
     [PostgresFact]
+    public async Task EmptyAgencyAndCustomQuote_PublishActualCountsAndRecordOneQuote()
+    {
+        await using var database = await PostgresTestDatabase.CreateMigratedAsync();
+        await using var db = database.CreateContext();
+        var orgId = Guid.NewGuid();
+        var start = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc);
+        var eventName = AgencyUsagePricing.EventName("base");
+        var events = new[] { eventName };
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "AgencyUsageContracts" ("SubscriptionId","OrgId","CustomerId","Events","StartedAt")
+            VALUES ('sub-test',{orgId},'cus-test',{events},{start});
+            """);
+        var stripe = new Mock<IStripeBillingService>();
+        var clock = new FakeTimeProvider(start.AddHours(1));
+        var job = new AgencyUsageJob(db, stripe.Object, clock, NullLogger<AgencyUsageJob>.Instance);
+        await job.ExecuteAsync(default);
+        stripe.Verify(s => s.ReportAgencyUnitsAsync("cus-test", eventName, 0, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Once);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "AgencyUnitActivity" ("OrgId","PropertyId","StartedAt")
+            SELECT {orgId}, gen_random_uuid(), {start.AddDays(1)} FROM generate_series(1,400)
+            """);
+        clock.SetUtcNow(start.AddMonths(1));
+        await using var otherDb = database.CreateContext();
+        var webhook = new AgencyUsageJob(otherDb, stripe.Object, clock, NullLogger<AgencyUsageJob>.Instance);
+        var reports = await Task.WhenAll(job.CloseInvoicePeriodAsync("sub-test", start.AddMonths(1), default),
+            webhook.CloseInvoicePeriodAsync("sub-test", start.AddMonths(1), default));
+        Assert.All(reports, closed => Assert.True(closed));
+        stripe.Verify(s => s.ReportAgencyUnitsAsync("cus-test", eventName, 400, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(400, await db.Database.SqlQuery<int>($"""
+            SELECT "Units" AS "Value" FROM "AgencyCustomQuotes" WHERE "SubscriptionId" = 'sub-test'
+            """).SingleAsync());
+    }
+
+    [PostgresFact]
     public async Task RetryAcrossRollover_UsesLastSnapshot_ForDistinctUnitsDuringEachMonth()
     {
         await using var database = await PostgresTestDatabase.CreateMigratedAsync();
