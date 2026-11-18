@@ -72,6 +72,7 @@ public class RoutinesControllerTests : IAsyncLifetime
             "GET |List|",
             "GET actions|Actions|",
             "GET {id:guid}|Get|",
+            $"POST suggest-action|SuggestAction|{CasazenPolicies.PropertyWrite}",
             $"POST |Create|{CasazenPolicies.PropertyWrite}",
             $"PUT {{id:guid}}|Update|{CasazenPolicies.PropertyWrite}",
             $"DELETE {{id:guid}}|Delete|{CasazenPolicies.PropertyWrite}",
@@ -124,6 +125,7 @@ public class RoutinesControllerTests : IAsyncLifetime
             ProblemOf(await controller.Delete(id, Ct)),
             ProblemOf(await controller.SetActive(id, new SetRoutineActiveDto { Active = true }, Ct)),
             ProblemOf(await controller.SetTestMode(id, new SetRoutineTestModeDto { TestMode = true }, Ct)),
+            ProblemOf(await controller.SuggestAction(new RoutineInstructionDto("Organizza le pulizie"), new Mock<IAiProvider>(MockBehavior.Strict).Object, Ct)),
             ProblemOf(await controller.Simulate(id, RoutineRig.Json("""{"bookingId":"b"}"""), Ct)),
         };
 
@@ -366,6 +368,21 @@ public class RoutinesControllerTests : IAsyncLifetime
         var notYet = items.Single(i => i.Type == nameof(RoutineActionType.NotifyOwner));
         Assert.False(notYet.Available);
         Assert.Equal(RoutineCodes.ActionNotAvailable, notYet.Code);
+    }
+
+    [Theory]
+    [InlineData("CreateCleaningRequest", "CreateCleaningRequest")]
+    [InlineData("RequestReview", "RequestReview")]
+    [InlineData("CreateActivity", null)]
+    [InlineData("invented", null)]
+    public async Task SuggestAction_OnlySuggestsConcreteAutomaticOperations(string modelAnswer, string? expected)
+    {
+        var ai = new Mock<IAiProvider>(MockBehavior.Strict);
+        ai.Setup(p => p.GenerateAsync(It.IsAny<AiRequest>(), AiModelTier.Economy, It.IsAny<string>(), Ct))
+            .ReturnsAsync(new AiGenerationResult(modelAnswer, 1, 1, AiModelTier.Economy, false));
+        var controller = Controller(Mock.Of<IRoutineManagementService>(), Mock.Of<IRoutineService>(), administrator: true);
+        var response = await controller.SuggestAction(new RoutineInstructionDto("Organizza le pulizie"), ai.Object, Ct);
+        Assert.Equal(expected, Assert.IsType<RoutineActionSuggestion>(Assert.IsType<OkObjectResult>(response.Result).Value).Type);
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────────

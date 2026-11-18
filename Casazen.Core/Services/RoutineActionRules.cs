@@ -71,6 +71,11 @@ public static class RoutineActionRules
     {
         ArgumentNullException.ThrowIfNull(action);
 
+        if (action.Config.ContainsKey("aiCondition") &&
+            (action.Type is not (RoutineActionType.CreateCleaningRequest or RoutineActionType.RequestReview)
+             || action.GetString("aiCondition")?.Trim() is not { Length: > 0 and <= 500 }))
+            return false;
+
         return action.Type switch
         {
             RoutineActionType.Wait => WaitDelay(action) is not null,

@@ -11,6 +11,10 @@ namespace Casazen.Core.Models;
 /// </summary>
 public static class RoutineCodes
 {
+    public const string AiFactsMissing = "routine_ai_condition_unknown";
+    public const string AiConditionFalse = "routine_ai_condition_false";
+    public const string AiUnavailable = "routine_ai_unavailable";
+
     /// <summary>The condition of the routine is not a valid one (a field routines do not know, an operator the field does not take, a value missing): the routine does not run and its execution says so.</summary>
     public const string ConditionInvalid = "routine_condition_invalid";
 
