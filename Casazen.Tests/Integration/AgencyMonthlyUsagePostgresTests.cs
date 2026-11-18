@@ -73,6 +73,11 @@ public class AgencyMonthlyUsagePostgresTests
         var clock = new FakeTimeProvider(july.AddHours(1));
         var job = new AgencyUsageJob(db, stripe.Object, clock, NullLogger<AgencyUsageJob>.Instance);
         await Assert.ThrowsAsync<AggregateException>(() => job.ExecuteAsync(default));
+        // Stripe's invoice.created can retry before the next sweep. Closing the June
+        // invoice flushes June's final quantity; advancing the recurring job starts July anew.
+        Assert.True(await job.CloseInvoicePeriodAsync("sub-test", july, default));
+        Assert.True(await job.CloseInvoicePeriodAsync("sub-test", july, default));
+        Assert.False(await job.CloseInvoicePeriodAsync("no-subscription", july, default));
         await job.ExecuteAsync(default);
         await job.ExecuteAsync(default);
         foreach (var name in events)

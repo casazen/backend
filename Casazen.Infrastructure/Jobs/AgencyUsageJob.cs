@@ -43,6 +43,18 @@ public sealed class AgencyUsageJob(AppDbContext db, IStripeBillingService stripe
         if (failures.Count > 0) throw new AggregateException(failures);
     }
 
+    public async Task<bool> CloseInvoicePeriodAsync(string subscriptionId, DateTime periodEnd, CancellationToken ct)
+    {
+        var contract = await db.Database.SqlQuery<Contract>($"""
+            SELECT * FROM "AgencyUsageContracts" WHERE "SubscriptionId" = {subscriptionId}
+            """).SingleOrDefaultAsync(ct);
+        if (contract is null || periodEnd > clock.GetUtcNow().UtcDateTime) return false;
+        var end = contract.EndedAt is { } ended && ended < periodEnd ? ended : periodEnd;
+        if (contract.ReportedAt >= end) return true;
+        await ReportAsync(contract, end, ct);
+        return true;
+    }
+
     public static Task<int> CountAsync(AppDbContext db, Guid orgId, DateTime from, DateTime until, CancellationToken ct) =>
         db.Database.SqlQuery<int>($"""
             SELECT count(DISTINCT "PropertyId")::integer AS "Value" FROM "AgencyUnitActivity"

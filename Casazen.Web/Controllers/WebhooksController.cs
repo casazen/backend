@@ -4,10 +4,9 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
-using Microsoft.EntityFrameworkCore;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Configuration;
 using Casazen.Web.Infrastructure;
@@ -94,11 +93,8 @@ public class WebhooksController : ControllerBase
                 invoice.Parent?.SubscriptionDetails is { } details &&
                 details.Metadata?.GetValueOrDefault(AgencyUsagePricing.MetadataKey) == AgencyUsagePricing.Version)
             {
-                var db = HttpContext.RequestServices.GetRequiredService<AppDbContext>();
-                var closed = await db.Database.SqlQuery<bool>($"""
-                    SELECT EXISTS (SELECT 1 FROM "AgencyUsageContracts" WHERE "SubscriptionId" = {details.SubscriptionId}
-                      AND "ReportedAt" >= {invoice.PeriodEnd}) AS "Value"
-                    """).SingleAsync(HttpContext.RequestAborted);
+                var usage = HttpContext.RequestServices.GetRequiredService<AgencyUsageJob>();
+                var closed = await usage.CloseInvoicePeriodAsync(details.SubscriptionId, invoice.PeriodEnd, HttpContext.RequestAborted);
                 if (!closed)
                 {
                     _logger.LogWarning("Waiting for Agency usage through {PeriodEnd} before acknowledging invoice {InvoiceId}", invoice.PeriodEnd, invoice.Id);
