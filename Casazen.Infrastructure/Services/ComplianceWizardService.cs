@@ -343,6 +343,7 @@ public class ComplianceWizardService(
             .Where(b => b.OrgId == scope.OrgId)
             .InScope(scope)
             .Where(OpenableStayRules.CanShow)
+            .Where(AlloggiatiStatusRules.ItalianProperties)
             .Where(b => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
             .Where(b => b.CheckInDate <= today)
             .Select(b => new

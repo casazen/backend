@@ -398,6 +398,32 @@ public class StayAlertServiceChk12Tests : IDisposable
         Assert.Empty(await StatesAsync(StayAlertType.ShortStayAtRisk));
     }
 
+    [Theory]
+    [InlineData("CH", false)]
+    [InlineData("CH", true)]
+    [InlineData(" ch ", false)]
+    [InlineData(" ch ", true)]
+    public async Task RunAsync_SwissStay_NeverCreatesAnItalianPoliceAlert_WhileItalianStayIsStillAlerted(string country, bool withModule)
+    {
+        var italian = await SeedStayAsync();
+        var swiss = await SeedStayAsync();
+        (await _db.Properties.SingleAsync(p => p.Id == swiss.PropertyId)).Country = country;
+        await _db.SaveChangesAsync();
+        Status(italian, AlloggiatiWebStatus.DaInviare, dataComplete: false);
+        Status(swiss, AlloggiatiWebStatus.NotDue, dataComplete: false);
+        _clock.SetUtcNow(new DateTimeOffset(2026, 11, 4, 9, 0, 0, TimeSpan.Zero));
+
+        var result = await Service(withModule).RunAsync();
+
+        Assert.Equal(1, result.Sent);
+        VerifySent(italian, StayAlertKind.GuestDataMissing, Times.Once());
+        _notifications.Verify(n => n.SendStayAlertAsync(It.Is<StayAlert>(a => a.BookingId == swiss.Id), It.IsAny<CancellationToken>()), Times.Never());
+        _alloggiati.Verify(a => a.GetStatusAsync(swiss.Id), Times.Never());
+        Assert.DoesNotContain(await _db.StayAlertStates.ToListAsync(), s => s.BookingId == swiss.Id);
+        _followUp.Verify(f => f.OpenTodoAsync(It.Is<CreateTodoRequest>(r => r.EntityId == swiss.Id), It.IsAny<CancellationToken>()), Times.Never());
+        _followUp.Verify(f => f.PopupAsync(It.Is<ComplianceAlertPopup>(r => r.EntityId == swiss.Id), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never());
+    }
+
     [Fact]
     public async Task RunAsync_WithoutTheNewServices_BehavesAsItAlwaysDid()
     {

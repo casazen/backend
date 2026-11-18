@@ -419,6 +419,12 @@ if (PropertyComplianceCheckJob.IsRecalculateCommand(args))
 }
 
 app.LogDataProtectionKeyProtection();
+if (args.Contains(DemoOtaInboxCommand.Command, StringComparer.Ordinal))
+{
+    Environment.ExitCode = await DemoOtaInboxCommand.RunAsync(app);
+    return;
+}
+
 app.LogOpenAccess();
 
 // Swagger (must be before Authentication to allow anonymous access to swagger.json)

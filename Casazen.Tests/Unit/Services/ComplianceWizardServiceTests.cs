@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -43,7 +44,8 @@ public class ComplianceWizardServiceTests
     internal static ComplianceWizardService CreateService(
         AppDbContext db,
         TimeProvider? timeProvider = null,
-        IConfiguration? configuration = null)
+        IConfiguration? configuration = null,
+        bool trafficLights = false)
     {
         var alloggiati = new Mock<IAlloggiatiWebService>();
         alloggiati.Setup(a => a.IsStayDataCompleteAsync(It.IsAny<Guid>())).ReturnsAsync(false);
@@ -67,6 +69,12 @@ public class ComplianceWizardServiceTests
             NullLogger<StayLifecycleService>.Instance,
             timeProvider);
 
+        var status = new Mock<IComplianceStatusService>();
+        status.Setup(s => s.EvaluateAsync(It.IsAny<HostScope>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ComplianceStatusResult.Empty);
+        var flags = new Mock<IFeatureFlags>();
+        flags.Setup(f => f.IsEnabled(FeatureFlags.ComplianceTrafficLight)).Returns(trafficLights);
+
         return new ComplianceWizardService(
             db,
             alloggiati.Object,
@@ -74,7 +82,9 @@ public class ComplianceWizardServiceTests
             new TouristTaxQuoteService(new TouristTaxRateRepository(db), NullLogger<TouristTaxQuoteService>.Instance),
             CreateStatusService(db, configuration ?? CreateConfig(), timeProvider),
             Mock.Of<ILogger<ComplianceWizardService>>(),
-            timeProvider);
+            timeProvider,
+            status.Object,
+            featureFlags: flags.Object);
     }
 
     /// <summary>The real evaluation of the blockers (CO-06): the wizard has no copy of its own.</summary>
@@ -550,6 +560,63 @@ public class ComplianceWizardServiceTests
         Assert.Equal(ComplianceCockpitAction.SendAlloggiati, manualItem.Action);
         Assert.Equal(manual.Id, manualItem.BookingId);
         Assert.Equal(ComplianceCockpitAction.ResolveAlloggiatiFailure, summary.AlloggiatiFailures.Items.Single().Action);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Summary_TenSwissStays_DoNotCreateItalianPoliceTasks_AndItalianUnsentAndFailedStaysRemain(bool trafficLights)
+    {
+        await using var db = CreateDb($"{nameof(Summary_TenSwissStays_DoNotCreateItalianPoliceTasks_AndItalianUnsentAndFailedStaysRemain)}-{trafficLights}");
+        var italian = await SeedPropertyAsync(db);
+        italian.Country = " it ";
+        var lugano = await SeedPropertyAsync(db, italian.OrgId, city: "Lugano");
+        var ascona = await SeedPropertyAsync(db, italian.OrgId, city: "Ascona");
+        lugano.Country = "CH";
+        ascona.Country = " ch ";
+        var today = new DateTime(2026, 11, 18, 0, 0, 0, DateTimeKind.Utc);
+        var clock = new FixedTimeProvider(new DateTimeOffset(2026, 11, 18, 8, 0, 0, TimeSpan.Zero));
+
+        Booking Stay(Property property, string name)
+        {
+            var guest = new Guest { FirstName = name, LastName = "Test", OrgId = italian.OrgId };
+            db.Guests.Add(guest);
+            var stay = BuildBooking(property, guest, today.AddDays(1), BookingStatus.CheckedIn);
+            db.Bookings.Add(stay);
+            return stay;
+        }
+
+        void Report(Booking stay, AlloggiatiWebStatus state) => db.AlloggiatiWebReports.Add(new AlloggiatiWebReport
+        {
+            OrgId = stay.OrgId,
+            BookingId = stay.Id,
+            GuestId = stay.GuestId,
+            Status = state,
+        });
+
+        for (var index = 0; index < 5; index++)
+        {
+            Stay(lugano, $"Lugano{index}");
+            var swiss = Stay(ascona, $"Ascona{index}");
+            // Even a stale Italian failure on a foreign property must not create an Italian obligation.
+            if (index == 0)
+                Report(swiss, AlloggiatiWebStatus.Rifiutato);
+        }
+        var unsent = Stay(italian, "DaInviare");
+        var rejected = Stay(italian, "Rifiutato");
+        Report(rejected, AlloggiatiWebStatus.Rifiutato);
+        var declared = Stay(italian, "Inviato");
+        Report(declared, AlloggiatiWebStatus.InviatoManualmente);
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db, clock, trafficLights: trafficLights).GetSummaryAsync(new HostScope(italian.OrgId));
+
+        Assert.Equal(1, summary.AlloggiatiManualRequired.Count);
+        Assert.Equal(unsent.Id, Assert.Single(summary.AlloggiatiManualRequired.Items).BookingId);
+        Assert.Equal(1, summary.AlloggiatiFailures.Count);
+        Assert.Equal(rejected.Id, Assert.Single(summary.AlloggiatiFailures.Items).BookingId);
+        Assert.Empty(summary.ReceiptsToUpload.Items);
+        Assert.Empty(summary.ManualSendsRequired.Items);
     }
 
     [Fact]
