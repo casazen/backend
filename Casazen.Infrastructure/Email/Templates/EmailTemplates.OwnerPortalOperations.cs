@@ -32,7 +32,10 @@ public static partial class EmailTemplates
             .Button("OwnerContactInvitation_Cta", acceptUrl)
             .LinkFallback("OwnerContactInvitation_LinkFallback", acceptUrl)
             .Muted("OwnerContactInvitation_Expires", builder.FormatInstant(expiresAtUtc))
-            .Build("OwnerContactInvitation_Subject", agencyName);
+            .Build("OwnerContactInvitation_Subject", agencyName) with
+        {
+            AccountInvitation = new("owner-contact", acceptUrl, expiresAtUtc),
+        };
     }
 
     /// <summary>The owner side is told that the agency wrote: the agency and the link to the conversation, nothing of the message.</summary>

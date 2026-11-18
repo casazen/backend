@@ -1,3 +1,4 @@
+using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
 using Hangfire;
 using Microsoft.Extensions.Logging;
@@ -10,7 +11,10 @@ namespace Casazen.Infrastructure.Email;
 /// Where an answer to the email goes, when it is not the sender: the address of a visitor who wrote to the host through the booking
 /// site (DB-03b). <c>null</c> for every other email, which is queued exactly as before.
 /// </param>
-public sealed record EmailContent(string Subject, string HtmlBody, string? ReplyTo = null);
+public sealed record EmailContent(string Subject, string HtmlBody, string? ReplyTo = null)
+{
+    public AccountInvitationEmail? AccountInvitation { get; init; }
+}
 
 /// <summary>
 /// Queues emails for delivery in a Hangfire job (<see cref="EmailDeliveryJob"/>), so the provider is never called
@@ -52,11 +56,14 @@ public sealed class HangfireEmailQueue(
             // An email without a reply-to goes through the job it always went through, so the jobs already waiting in the queue during a
             // deploy still find their method; the reply-to has a job of its own.
             var replyTo = string.IsNullOrWhiteSpace(content.ReplyTo) ? null : content.ReplyTo.Trim();
-            var jobId = replyTo is null
+            var jobId = content.AccountInvitation is { } invitation
                 ? backgroundJobClient.Enqueue<EmailDeliveryJob>(job =>
-                    job.SendAsync(to.Trim(), content.Subject, content.HtmlBody, template))
-                : backgroundJobClient.Enqueue<EmailDeliveryJob>(job =>
-                    job.SendWithReplyToAsync(to.Trim(), content.Subject, content.HtmlBody, template, replyTo));
+                    job.SendAccountInvitationAsync(to.Trim(), content.Subject, content.HtmlBody, template, invitation, CancellationToken.None))
+                : replyTo is null
+                    ? backgroundJobClient.Enqueue<EmailDeliveryJob>(job =>
+                        job.SendAsync(to.Trim(), content.Subject, content.HtmlBody, template))
+                    : backgroundJobClient.Enqueue<EmailDeliveryJob>(job =>
+                        job.SendWithReplyToAsync(to.Trim(), content.Subject, content.HtmlBody, template, replyTo));
             logger.LogInformation("Email {Template} queued (job {JobId})", template, jobId);
             return true;
         }
@@ -73,7 +80,10 @@ public sealed class HangfireEmailQueue(
 /// after the last attempt, or on a permanent error, the job is removed so the recipient and body do not stay in the
 /// Hangfire tables (each failure is logged).
 /// </summary>
-public sealed class EmailDeliveryJob(IEmailService emailService, ILogger<EmailDeliveryJob> logger)
+public sealed class EmailDeliveryJob(
+    IEmailService emailService,
+    ILogger<EmailDeliveryJob> logger,
+    Auth0InvitationLinks? invitationLinks = null)
 {
     public const int MaxAttempts = 5;
 
@@ -85,6 +95,29 @@ public sealed class EmailDeliveryJob(IEmailService emailService, ILogger<EmailDe
     [AutomaticRetry(Attempts = MaxAttempts, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
     public Task SendWithReplyToAsync(string to, string subject, string htmlBody, string template, string replyTo) =>
         DeliverAsync(to, subject, htmlBody, template, replyTo);
+
+    [AutomaticRetry(Attempts = MaxAttempts, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
+    public async Task SendAccountInvitationAsync(
+        string to, string subject, string htmlBody, string template, AccountInvitationEmail invitation, CancellationToken cancellationToken)
+    {
+        if (invitationLinks?.Enabled == true)
+        {
+            var original = EmailHtmlBuilder.Encode(invitation.Url);
+            if (!htmlBody.Contains(original, StringComparison.Ordinal))
+                throw new InvalidOperationException("The invitation link is missing from the email.");
+
+            var link = await invitationLinks.CreateAsync(to, invitation, cancellationToken);
+            if (link is null)
+            {
+                logger.LogInformation("Email {Template} skipped: invitation expired", template);
+                return;
+            }
+
+            htmlBody = htmlBody.Replace(original, EmailHtmlBuilder.Encode(link), StringComparison.Ordinal);
+        }
+
+        await DeliverAsync(to, subject, htmlBody, template, replyTo: null);
+    }
 
     private async Task DeliverAsync(string to, string subject, string htmlBody, string template, string? replyTo)
     {
