@@ -72,4 +72,6 @@
   <data name="GuestVideoCall_Hint" xml:space="preserve">
     <value>Anschließend schließt der Gastgeber die Identitätsprüfung ab. Wenn Sie diese Anfrage nicht erwartet haben, ignorieren Sie diese E-Mail.</value>
   </data>
+  <data name="Guest_InvoiceRequest" xml:space="preserve"><value>Benötigen Sie eine Rechnung für diesen Aufenthalt? Wenden Sie sich über die Kontaktdaten der Buchung an die Unterkunft und nennen Sie den Rechnungsempfänger.</value></data>
+  <data name="Guest_InvoiceCta" xml:space="preserve"><value>Rechnung anfordern</value></data>
 </root>

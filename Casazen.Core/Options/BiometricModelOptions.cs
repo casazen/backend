@@ -37,18 +37,14 @@ public class BiometricModelOptions
         Path = "MlModels/biometrics/2.7_80x80_MiniFASNetV2.onnx",
     };
 
-    /// <summary>
-    /// Face recognition (AuraFace-v1, Apache-2.0, ~260 MB): over 100 MB, so external: downloaded from <see cref="ModelFileOptions.DownloadUrl"/> and
-    /// verified by SHA-256 (ADR-013-R8). SFace (OpenCV Zoo, Apache-2.0, 128 values, <see cref="RecognitionMean"/> 0 and <see cref="RecognitionStd"/> 1)
-    /// is the documented fallback: only these settings change.
-    /// </summary>
+    /// <summary>SFace 2021dec, distributed with the API under the OpenCV Zoo model license.</summary>
     public ModelFileOptions FaceRecognition { get; set; } = new()
     {
-        Name = "AuraFace-v1",
-        Version = "1.0.0",
+        Name = "SFace",
+        Version = "2021dec",
         License = "Apache-2.0",
-        Provenance = "Trained by its authors on a dataset licensed for commercial use; to be confirmed in the DPIA (ADR-013 gate).",
-        Path = "MlModels/biometrics/glintr100.onnx",
+        Provenance = "OpenCV Zoo face_recognition_sface, 2021dec release.",
+        Path = "MlModels/biometrics/face_recognition_sface_2021dec.onnx",
     };
 
     /// <summary>Longest side of the picture given to the detector, in pixels (multiples of 32 are used). Default 640.</summary>
@@ -79,10 +75,10 @@ public class BiometricModelOptions
     public int RecognitionInputSize { get; set; } = 112;
 
     /// <summary>Value taken from every pixel before the recognition model (127.5 for AuraFace and ArcFace models, 0 for SFace).</summary>
-    public double RecognitionMean { get; set; } = 127.5;
+    public double RecognitionMean { get; set; }
 
     /// <summary>Divisor of every pixel after the mean (127.5 for AuraFace and ArcFace models, 1 for SFace).</summary>
-    public double RecognitionStd { get; set; } = 127.5;
+    public double RecognitionStd { get; set; } = 1;
 
     /// <summary>True when the recognition model wants red, green, blue (all the models above); false for blue, green, red.</summary>
     public bool RecognitionRgbOrder { get; set; } = true;

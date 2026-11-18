@@ -41,6 +41,7 @@ public class EmailTextsParityTests
     {
         var guestCheckInKeys = Keys("EmailTexts.resx")
             .Where(k => k.StartsWith("GuestCheckInLink_", StringComparison.Ordinal)
+                        || k.StartsWith("Guest_Invoice", StringComparison.Ordinal)
                         || k.StartsWith("GuestCheckInReminder_", StringComparison.Ordinal)
                         || k.StartsWith("GuestCheckInChat_", StringComparison.Ordinal)
                         || k.StartsWith("GuestVideoCall_", StringComparison.Ordinal))

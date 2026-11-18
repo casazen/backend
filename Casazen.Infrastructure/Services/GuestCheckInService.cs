@@ -332,6 +332,22 @@ public class GuestCheckInService(
             .FirstOrDefaultAsync();
     }
 
+    public async Task<bool> RequestInvoiceAsync(string token, GuestCheckInInvoice invoice, CancellationToken ct)
+    {
+        var session = await GetUsableSessionByTokenAsync(token);
+        if (session is null)
+            return false;
+        if (invoice.NeedInvoice)
+        {
+            if (invoice.Data.HasContent)
+                await _invoiceData.SaveAsync(session.BookingId, invoice.Data, InvoiceDataSource.CheckIn, save: false, ct: ct);
+            await _invoiceData.MarkRequestedAsync(session.BookingId, true, save: false, ct: ct);
+            await db.SaveChangesAsync(ct);
+        }
+
+        return true;
+    }
+
     public async Task<GuestCheckInSubmitResult> SubmitAsync(string token, GuestCheckInSubmitRequest request)
     {
         var session = await GetUsableSessionByTokenAsync(token);
@@ -347,7 +363,31 @@ public class GuestCheckInService(
         var (consentErrors, marketingEmail) = ValidateMarketingConsent(request, marketingVersion);
 
         // Every guest: kinds and order, document only for single guests and heads, shape of the codes.
-        var guestErrors = await _stayGuests.ValidateAsync(request.Guests);
+        var guestErrors = (await _stayGuests.ValidateAsync(request.Guests)).ToList();
+        if (IdentityVerificationFlowService.VerifiedNumberMismatch(session, request.Guests) is { } mismatch)
+            guestErrors.Add(new(mismatch, nameof(StayGuestInput.DocumentNumber), "CheckInVerifiedNumberMismatch"));
+        var capacity = Math.Max(1, session.Booking.NumberOfGuests);
+        if (request.Guests.Count > capacity)
+            guestErrors.Add(new(null, nameof(request.Guests), "CheckInBookingCapacity", capacity));
+        if (guestErrors.Count == 0)
+        {
+            var roster = await _stayGuests.GetForBookingAsync(session.Booking);
+            foreach (var booked in roster.Where(row => row.Position < capacity))
+            {
+                var entry = request.Guests.ElementAtOrDefault(booked.Position);
+                if ((!string.IsNullOrWhiteSpace(booked.FirstName) && !CheckInGuestMatch.SameName(booked.FirstName, entry?.FirstName)) ||
+                    (!string.IsNullOrWhiteSpace(booked.LastName) && !CheckInGuestMatch.SameName(booked.LastName, entry?.LastName)))
+                    guestErrors.Add(new(booked.Position, nameof(StayGuestInput.FirstName), "CheckInBookedGuestMismatch"));
+            }
+            for (var i = 0; i < request.Guests.Count; i++)
+            {
+                var entry = request.Guests[i];
+                var number = AlloggiatiRecordRules.NormalizeDocumentNumber(entry.DocumentNumber);
+                if (Enum.TryParse<StayGuestType>(entry.Type, true, out var kind) && AlloggiatiRecordRules.RequiresDocument(kind)
+                    && (number.Length < 4 || !number.Any(char.IsAsciiDigit)))
+                    guestErrors.Add(new(i, nameof(entry.DocumentNumber), "CheckInDocumentNumberPlausibility"));
+            }
+        }
         if (consentErrors.Count + guestErrors.Count > 0)
             return new GuestCheckInSubmitResult { Success = false, ValidationErrors = [.. consentErrors, .. guestErrors] };
 
@@ -642,7 +682,7 @@ public class GuestCheckInService(
                 OrgId = guest.OrgId,
                 GuestId = guest.Id,
                 Purpose = GuestConsentPurpose.PrivacyNotice,
-                Action = GuestConsentAction.NoticePresented,
+                Action = request.PrivacyNoticeAcknowledged == true ? GuestConsentAction.NoticeAcknowledged : GuestConsentAction.NoticePresented,
                 Version = noticeVersion,
                 Source = GuestConsentSource.GuestPortal,
                 IpAddress = ipAddress,

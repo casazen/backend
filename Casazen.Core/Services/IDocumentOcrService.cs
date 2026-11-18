@@ -23,6 +23,8 @@ public class DocumentOcrResult
 {
     /// <summary>Full name extracted from document.</summary>
     public string? FullName { get; set; }
+    public string? GivenNames { get; set; }
+    public string? Surname { get; set; }
 
     /// <summary>Document number extracted.</summary>
     public string? DocumentNumber { get; set; }

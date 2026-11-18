@@ -8,6 +8,8 @@ using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.AspNetCore.Hosting;
+using Casazen.Core.Options;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
@@ -112,7 +114,7 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
     public async Task GetContext_AfterCompletion_ReturnsOnlyCompletedStatusWithoutPii()
     {
         Assert.True(_factory.UsesPostgreSql);
-        var seed = await _factory.SeedConfirmedBookingWithTokenAsync(completeGuestData: true);
+        var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
         var token = await CreateSessionAsync(seed.BookingId);
         var client = _factory.CreateClient();
         _ = await client.GetAsync($"/api/public/checkin/{token}");
@@ -135,12 +137,35 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
     }
 
     [Fact]
+    public async Task InvoiceLink_RecordsTheRequestWithoutCompletingCheckIn()
+    {
+        var (token, sessionId, _) = await SeedSessionAsync();
+        var client = _factory.CreateClient();
+        using var request = new StringContent("""{"needInvoice":true}""", Encoding.UTF8, "application/json");
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync($"/api/public/checkin/{token}/invoice", request)).StatusCode);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var session = await db.GuestCheckInSessions.SingleAsync(s => s.Id == sessionId);
+        Assert.False(session.IsCompleted);
+        Assert.True(await db.BookingInvoiceData.AnyAsync(i => i.BookingId == session.BookingId && i.InvoiceRequested));
+    }
+
+    [Fact]
     public async Task Submit_FrontendSamplePayload_Returns200AndCompletesSession()
     {
         var (token, sessionId, guestId) = await SeedSessionAsync();
         var client = _factory.CreateClient();
         var payload = await File.ReadAllTextAsync(
             Path.Combine(System.AppContext.BaseDirectory, "Fixtures", "public-checkin-submit.frontend.json"));
+
+        using (var fixture = _factory.Services.CreateScope())
+        {
+            var setup = fixture.ServiceProvider.GetRequiredService<AppDbContext>();
+            var booked = (await setup.Guests.FindAsync(guestId))!;
+            booked.FirstName = "Giulia";
+            booked.LastName = "Bianchi";
+            await setup.SaveChangesAsync();
+        }
 
         var response = await client.PostAsync(
             $"/api/public/checkin/{token}",
@@ -234,7 +259,9 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
     public async Task Submit_MarketingConsentNotOffered_Returns400OnMarketingConsent()
     {
         var (token, _, _) = await SeedSessionAsync();
-        var client = _factory.CreateClient();
+        await using var noMarketing = _factory.WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services => services.PostConfigure<GdprOptions>(options => options.MarketingConsentVersion = null)));
+        var client = noMarketing.CreateClient();
         _ = await client.GetAsync($"/api/public/checkin/{token}");
 
         var response = await client.PostAsync($"/api/public/checkin/{token}", BuildSubmitContent(marketingConsent: true));

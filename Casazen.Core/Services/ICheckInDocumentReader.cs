@@ -37,4 +37,6 @@ public sealed record CheckInDocumentFields(
     string? Citizenship,
     string? DocumentKind,
     string? DocumentNumber,
-    string? IssuePlace);
+    string? IssuePlace,
+    string? DocumentIssuedOn = null,
+    string? DocumentExpiresOn = null);

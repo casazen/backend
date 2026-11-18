@@ -369,6 +369,8 @@ public class PublicCheckInSubmitRequest
     /// </summary>
     public bool MarketingConsent { get; set; }
 
+    public bool? PrivacyNoticeAcknowledged { get; set; }
+
     /// <summary>
     /// The guest ticked the e-mail box of the consent step (NF-05). Default <c>false</c>; requires <see cref="MarketingEmail"/>.
     /// </summary>
@@ -790,6 +792,8 @@ public class CheckInDocumentReadResponse
     public bool Read { get; set; }
     public string? Reason { get; set; }
     public CheckInDocumentFields? Guest { get; set; }
+    public int? GuestPosition { get; set; }
+    public bool ConfirmGuest { get; set; }
 
     public static CheckInDocumentReadResponse From(CheckInDocumentRead read) => new()
     {

@@ -2873,4 +2873,6 @@
   <data name="AgencyInvite_NextSteps" xml:space="preserve">
     <value>Create your account using the invited email and complete the initial setup. You can then invite unlimited collaborators. This invitation does not grant access to the staff console.</value>
   </data>
+  <data name="Guest_InvoiceRequest" xml:space="preserve"><value>Do you need an invoice for this stay? Contact the property using your booking details and specify the invoice recipient.</value></data>
+  <data name="Guest_InvoiceCta" xml:space="preserve"><value>Request an invoice</value></data>
 </root>

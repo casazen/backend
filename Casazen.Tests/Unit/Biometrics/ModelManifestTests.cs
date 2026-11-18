@@ -49,11 +49,11 @@ public sealed class ModelManifestTests
     }
 
     [Fact]
-    public void Manifest_SFace_IsTheDocumentedAlternativeOfTheRecognitionModel()
+    public void Manifest_SFace_IsTheBundledRecognitionModel()
     {
         var sface = Assert.Single(Entries(), e => Text(e, "id") == "sface");
 
-        Assert.True(Bool(sface, "alternative"));
+        Assert.False(Bool(sface, "alternative"));
         Assert.Equal("face_recognition", Text(sface, "role"));
         Assert.Equal("Apache-2.0", sface.GetProperty("license").GetProperty("id").GetString());
 

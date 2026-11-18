@@ -8479,4 +8479,10 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="InternalActivityManagedAutomatically" xml:space="preserve">
     <value>Questa attività si aggiorna automaticamente quando completi la procedura collegata.</value>
   </data>
+  <data name="CheckInBookingCapacity" xml:space="preserve"><value>La prenotazione prevede al massimo {0} ospiti.</value></data>
+  <data name="CheckInBookedGuestMismatch" xml:space="preserve"><value>Il nome deve corrispondere a quello della prenotazione. Per correggere la prenotazione contatta la struttura.</value></data>
+  <data name="CheckInDocumentNumberPlausibility" xml:space="preserve"><value>Controlla il numero stampato sul documento, comprese le cifre.</value></data>
+  <data name="CheckInIdentityIncomplete" xml:space="preserve"><value>Completa la verifica dell’identità prima di inviare i dati.</value></data>
+  <data name="CheckInVerifiedNumberMismatch" xml:space="preserve"><value>Il numero inserito deve corrispondere al documento verificato.</value></data>
+  <data name="CheckInIdentityAlreadyVerified" xml:space="preserve"><value>La verifica dell’identità è già stata completata.</value></data>
 </root>

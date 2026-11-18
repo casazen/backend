@@ -1,38 +1,5 @@
-# MlModels: model files of the identity verification (E03/F04/US01)
+# Check-in models
 
-The face check and the document reading of the guest check-in (behind `Features__CheckInIdentityVerification`, off by default) run models in the
-API process, from memory. The small model files ship with the application from this folder; the large one is downloaded. **A file is used only
-when its SHA-256 equals the one pinned in the configuration**: a missing file, a missing hash or a different one means "not available", and the
-check-in goes to the operator or to the guided manual entry. Reference: `docs/TECHNICAL.md` (Identity verification models, Identity document
-reading) and `docs/runbooks/deploy-checklist.md` (sections `Biometrics` and `MrzOcr`).
+The API publishes YuNet, MiniFASNetV2, SFace, OCR-B and the Italian and English Tesseract visual-zone models alongside their licenses. Each model is checked against its SHA-256 pin before use. SFace runs locally and takes RGB pixels in the range 0–255.
 
-**No model file is committed yet and no hash is pinned.** The files below must be added by the operator after reading their licence and
-training-data note (ADR-013 gates: model licence review, DPIA). Everything is prepared so that the delivery is one command once the product
-owner allows it (decision O7): [`models.manifest.json`](models.manifest.json) lists every model with its source, licence, size and the
-variables to pin, [`scripts/biometrics/fetch-models.mjs`](../../scripts/biometrics/fetch-models.mjs) downloads and verifies them and prints
-the Railway variable lines, [`scripts/biometrics/export_minifasnet.py`](../../scripts/biometrics/export_minifasnet.py) is the recipe that
-exports MiniFASNetV2 to ONNX, and [`docs/runbooks/biometric-models.md`](../../docs/runbooks/biometric-models.md) has the exact steps.
-**Never run the script or the recipe, and never commit a model file, without that permission.**
-`GET /api/admin/biometrics/status` (platform administrators) and the `biometrics` entry of `/api/health/ready` say which model is missing and why.
-
-| Path | What | Source | Licence | Pin | Size |
-|---|---|---|---|---|---|
-| `biometrics/face_detection_yunet_2023mar.onnx` | YuNet face detector | OpenCV Zoo, `models/face_detection_yunet` | MIT | `Biometrics__FaceDetector__Sha256` | ~230 KB |
-| `biometrics/2.7_80x80_MiniFASNetV2.onnx` | MiniFASNetV2 anti-spoofing, ONNX export of the PyTorch weights `2.7_80x80_MiniFASNetV2.pth` | Silent-Face-Anti-Spoofing (minivision-ai), `resources/anti_spoof_models`; export with `torch.onnx.export`, input `1x3x80x80`, output `1x3` (class 1 is the real face) | Apache-2.0 | `Biometrics__AntiSpoofing__Sha256` | ~2 MB |
-| `biometrics/glintr100.onnx` | AuraFace-v1 face recognition (over 100 MB: **not committed**, downloaded to this path) | Hugging Face `fal/AuraFace-v1`; set `Biometrics__FaceRecognition__DownloadUrl` to a pinned revision | Apache-2.0 | `Biometrics__FaceRecognition__Sha256` | ~260 MB |
-| `ocr/ocrb.traineddata` | OCR-B language data of Tesseract for the MRZ lines (`mrz.traineddata` of tesseractMRZ works with `MrzOcr__MrzLanguage=mrz`) | Tesseract community language data | Apache-2.0 | `MrzOcr__Mrz__Sha256` | a few MB |
-
-The Italian and English language files of the printed fields (`MrzOcr__VisualZoneItalian__*`, `MrzOcr__VisualZoneEnglish__*`) are the ones of the
-`tesseract-ocr-ita` and `tesseract-ocr-eng` packages of the image (`/usr/share/tesseract-ocr/5/tessdata`): pin their hashes the same way.
-
-## Adding a file
-
-1. Download it from its official source and read the licence and the training-data note; record them in `Biometrics__<Model>__License` and
-   `Biometrics__<Model>__Provenance` if they differ from the committed ones.
-2. `sha256sum <file>` (or `Get-FileHash -Algorithm SHA256 <file>`): 64 hexadecimal characters.
-3. Put the hash in the configuration (`Casazen.Web/appsettings.json` or the Railway variable) and, for the small files, the file in this folder
-   (a file of 100 MB or less may be in the repository, ADR-013-R8). The large file is never committed.
-4. Deploy. The start of the API logs the name, version, licence, training-data provenance and weight hash of every model it loaded (ADR-013-R14).
-
-SFace (OpenCV Zoo `face_recognition_sface_2021dec.onnx`, Apache-2.0) is the documented fallback for the recognition model: set
-`Biometrics__FaceRecognition__Name=SFace`, `__Path`, `__Sha256`, `Biometrics__RecognitionMean=0` and `Biometrics__RecognitionStd=1`.
+The [manifest](models.manifest.json) records the face and MRZ models’ sources and export details. The [runbook](../../docs/runbooks/biometric-models.md) describes verification, the visual-zone model source, environment overrides and health reporting.

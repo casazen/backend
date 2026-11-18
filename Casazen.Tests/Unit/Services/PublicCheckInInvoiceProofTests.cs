@@ -193,7 +193,7 @@ public class PublicCheckInInvoiceProofTests
         var bookingId = Guid.NewGuid();
         var propertyId = Guid.NewGuid();
 
-        db.Guests.Add(new Guest { Id = guestId, FirstName = "Mario", LastName = "Rossi", Email = "mario@example.com" });
+        db.Guests.Add(new Guest { Id = guestId, FirstName = "Luigi", LastName = "Verdi", Email = "mario@example.com" });
         db.Properties.Add(new Property
         {
             Id = propertyId,

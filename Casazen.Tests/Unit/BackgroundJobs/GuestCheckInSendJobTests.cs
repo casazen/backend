@@ -324,7 +324,9 @@ public class GuestCheckInSendJobTests
             s => s.SendEmailAsync("anna.offerte@example.com", It.IsAny<string>(), It.IsAny<string>()),
             Times.Never);
         var links = System.Text.RegularExpressions.Regex.Matches(html, "href=\"([^\"]+)\"").Select(m => m.Groups[1].Value).ToList();
-        Assert.Matches("^https://public\\.example/checkin/[0-9a-f]{64}$", Assert.Single(links));
+        var link = Assert.Single(links, url => !url.Contains('?'));
+        Assert.Matches("^https://public\\.example/checkin/[0-9a-f]{64}$", link);
+        Assert.Equal(new[] { link, link + "?invoice=1" }, links);
         Assert.DoesNotContain("unsubscribe", html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("disiscri", html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("newsletter", html, StringComparison.OrdinalIgnoreCase);

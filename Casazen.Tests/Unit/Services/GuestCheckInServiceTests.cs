@@ -24,7 +24,7 @@ public class GuestCheckInServiceTests
             .UseInMemoryDatabase($"checkin-{Guid.NewGuid()}")
             .Options);
 
-    private static async Task<Seed> SeedAsync()
+    private static async Task<Seed> SeedAsync(int capacity = 1)
     {
         var db = NewDb();
         var orgId = Guid.NewGuid();
@@ -57,6 +57,7 @@ public class GuestCheckInServiceTests
         {
             Id = bookingId,
             PropertyId = propertyId,
+            NumberOfGuests = capacity,
             GuestId = guestId,
             OrgId = orgId,
             CheckInDate = TimeProvider.System.TodayInRome().AddDays(3),
@@ -163,6 +164,29 @@ public class GuestCheckInServiceTests
         Assert.Null(result);
     }
 
+    [Theory]
+    [InlineData("CheckInBookingCapacity")]
+    [InlineData("CheckInBookedGuestMismatch")]
+    [InlineData("CheckInDocumentNumberPlausibility")]
+    public async Task Submit_RejectsInconsistentRegistrationBeforeSaving(string reason)
+    {
+        await using var seed = await SeedAsync();
+        var service = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await service.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest(documentNumber: reason == "CheckInDocumentNumberPlausibility" ? "ASDFGH" : "AB123456");
+        if (reason == "CheckInBookingCapacity")
+            request.Guests = [request.Guests[0], request.Guests[0]];
+        if (reason == "CheckInBookedGuestMismatch")
+        {
+            var booked = (await seed.Db.Guests.FindAsync(seed.GuestId))!;
+            booked.FirstName = "Luca";
+            await seed.Db.SaveChangesAsync();
+        }
+        var result = await service.SubmitAsync(token, request);
+        Assert.Contains(result.ValidationErrors, e => e.MessageKey == reason);
+        Assert.Empty(await seed.Db.StayGuests.ToListAsync());
+    }
+
     [Fact]
     public async Task Submit_ValidDataWithConsent_ReturnsSuccess()
     {
@@ -198,7 +222,7 @@ public class GuestCheckInServiceTests
     [Fact]
     public async Task Submit_FamilyOfThree_SavesOneRowPerGuestInOrderAndDocumentOnlyForTheHead()
     {
-        await using var seed = await SeedAsync();
+        await using var seed = await SeedAsync(capacity: 3);
         var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
         var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
         var request = BuildValidSubmitRequest(type: "HeadOfFamily");
@@ -216,7 +240,7 @@ public class GuestCheckInServiceTests
         Assert.Equal(
             new[] { StayGuestType.HeadOfFamily, StayGuestType.FamilyMember, StayGuestType.FamilyMember },
             rows.Select(r => r.Type));
-        Assert.Equal(new[] { "Luigi", "Anna", "Luca" }, rows.Select(r => r.FirstName));
+        Assert.Equal(new[] { "Mario", "Anna", "Luca" }, rows.Select(r => r.FirstName));
         Assert.Equal("YA1234567", rows[0].DocumentNumber);
         Assert.All(rows.Skip(1), r =>
         {
@@ -229,7 +253,7 @@ public class GuestCheckInServiceTests
     [Fact]
     public async Task Submit_HeadOfFamilyWithoutDocument_ReturnsDocumentErrorsOnTheHeadOnly()
     {
-        await using var seed = await SeedAsync();
+        await using var seed = await SeedAsync(capacity: 2);
         var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
         var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
         var request = BuildValidSubmitRequest(type: "HeadOfFamily", documentType: "", documentNumber: "");
@@ -247,7 +271,7 @@ public class GuestCheckInServiceTests
     [Fact]
     public async Task Submit_MemberWithoutHead_ReturnsCompositionError()
     {
-        await using var seed = await SeedAsync();
+        await using var seed = await SeedAsync(capacity: 2);
         var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
         var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
         var request = BuildValidSubmitRequest();
@@ -951,8 +975,8 @@ public class GuestCheckInServiceTests
             new StayGuestInput
             {
                 Type = type,
-                FirstName = "Luigi",
-                LastName = "Verdi",
+                FirstName = "Mario",
+                LastName = "Rossi",
                 DateOfBirth = dateOfBirth ?? new DateTime(1990, 5, 15, 0, 0, 0, DateTimeKind.Utc),
                 Gender = gender,
                 BornInItaly = true,
