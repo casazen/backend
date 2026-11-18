@@ -187,10 +187,21 @@ public class AlloggiatiReportSchedulingTests
     {
         var orgId = Guid.NewGuid();
         var guest = new Guest { Id = Guid.NewGuid(), OrgId = orgId, FirstName = "Anna", LastName = "Bianchi", Email = "anna@example.com" };
+        var property = new Property
+        {
+            Id = Guid.NewGuid(),
+            OrgId = orgId,
+            OwnerId = "auth0|test-host",
+            Name = "Casa Test",
+            Address = "Via Test 1",
+            City = "Roma",
+            PostalCode = "00100",
+            Country = "IT",
+        };
         var booking = new Booking
         {
             Id = Guid.NewGuid(),
-            PropertyId = Guid.NewGuid(),
+            PropertyId = property.Id,
             OrgId = orgId,
             GuestId = guest.Id,
             CheckInDate = CheckIn,
@@ -199,6 +210,7 @@ public class AlloggiatiReportSchedulingTests
             Source = BookingSource.Direct,
             NumberOfGuests = 1,
         };
+        db.Properties.Add(property);
         db.Guests.Add(guest);
         db.Bookings.Add(booking);
         await db.SaveChangesAsync();

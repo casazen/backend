@@ -810,6 +810,26 @@ public class AlloggiatiWebServiceTests
             CreateService(db, CheckIn).BuildRecordFileAsync(Guid.NewGuid()));
     }
 
+    [Fact]
+    public async Task SwissStay_IsNotDue_NotListed_AndNeverCreatesItalianReport()
+    {
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db);
+        var property = await db.Properties.SingleAsync();
+        property.Country = "CH";
+        await db.SaveChangesAsync();
+        var service = CreateService(db, CheckIn.AddDays(2));
+
+        var status = await service.GetStatusAsync(booking.Id);
+        Assert.Equal(AlloggiatiWebStatus.NotDue, status.Status);
+        Assert.False(status.IsOverdue);
+        Assert.Empty(await service.GetSummaryAsync(new HostScope(booking.OrgId), null));
+        Assert.Null(await service.ReserveReportAsync(booking.Id));
+        var manual = await service.MarkSentManuallyAsync(booking.Id, CheckIn);
+        Assert.Equal(AlloggiatiWebStatus.NotDue, manual.Status);
+        Assert.Empty(db.AlloggiatiWebReports);
+    }
+
     private static async Task SeedSyntheticCodeTablesAsync(AppDbContext db)
     {
         var import = new AlloggiatiCodeTableImport { Table = AlloggiatiCodeTable.Comuni, SourceFileName = "TEST", SourceVersion = "TEST", Sha256 = new string('0', 64), ImportedBy = "test" };

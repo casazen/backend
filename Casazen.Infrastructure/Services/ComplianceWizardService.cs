@@ -679,14 +679,15 @@ public class ComplianceWizardService(
             true)
         { LabelKey = "CheckoutStepStaySummary" };
 
+        var policeComplete = alloggiati.Sent || AlloggiatiStatusRules.IsNotDue(alloggiati.Status);
         var alloggiatiStep = new ComplianceActivationStep(
             CheckoutWizardSteps.Alloggiati,
             "Alloggiati Web",
-            alloggiati.Sent ? "complete" : "warning",
+            policeComplete ? "complete" : "warning",
             false)
         {
             LabelKey = "CheckoutStepAlloggiati",
-            MessageKey = alloggiati.Sent
+            MessageKey = policeComplete
                 ? null
                 : AlloggiatiStatusRules.IsFailure(alloggiati.Status)
                     ? "CheckoutAlloggiatiFailed"

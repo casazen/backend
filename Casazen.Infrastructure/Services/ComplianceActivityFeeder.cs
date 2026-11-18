@@ -4,6 +4,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -360,7 +361,7 @@ public sealed class ComplianceActivityFeeder(
         var stays = (await db.Bookings
                 .AsNoTracking()
                 .Where(b => ids.Contains(b.Id))
-                .Select(b => new { b.Id, b.Status, b.NoShowAt, b.CheckInDate })
+                .Select(b => new { b.Id, b.Status, b.NoShowAt, b.CheckInDate, b.Property.Country })
                 .ToListAsync(ct))
             .ToDictionary(b => b.Id);
 
@@ -372,7 +373,7 @@ public sealed class ComplianceActivityFeeder(
                     return true;
 
                 var owes = AlloggiatiStatusRules.ActiveBookingStatuses.Contains(stay.Status) && stay.NoShowAt is null;
-                if (!owes)
+                if (!owes || (activity.Action != ActivityAction.VerifyIdentity && !TouristTaxComune.IsItalianCountry(stay.Country)))
                     return true;
 
                 // The identity is looked at for the stays arriving soon only, whatever their age; the Alloggiati status only within the lookback.

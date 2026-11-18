@@ -29,6 +29,25 @@ public class ComplianceStatusServiceTests
 
     private static DateTime Day(int offsetFromToday) => new DateTime(2026, 11, 6, 0, 0, 0, DateTimeKind.Utc).AddDays(offsetFromToday);
 
+    [Fact]
+    public async Task SwissStay_HasNoItalianPoliceObligation_InCockpitAndBookingStatus()
+    {
+        var world = await World.SeedAsync();
+        var (stay, _) = await world.AddStayAsync(world.Granted, checkInOffset: -2);
+        await using var db = world.Db();
+        (await db.Properties.SingleAsync(p => p.Id == world.Granted.Id)).Country = "CH";
+        await db.SaveChangesAsync();
+
+        var service = world.StatusService(db);
+        var cockpit = await service.EvaluateAsync(world.OrgWide, CancellationToken.None);
+        Assert.DoesNotContain(cockpit.Items, i => i.Kind == ComplianceItemKind.Alloggiati && i.BookingId == stay.Id);
+        var status = await service.GetStayStatusAsync(world.OrgWide, stay.Id, CancellationToken.None);
+        Assert.NotNull(status);
+        Assert.Equal(AlloggiatiWebStatus.NotDue, status.Status);
+        Assert.Null(status.Verdict);
+        Assert.Empty(status.Actions);
+    }
+
     // ─── The reach of the caller ────────────────────────────────────────────────────────────────────────
 
     [Fact]
