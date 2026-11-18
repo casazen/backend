@@ -16,6 +16,20 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
     private const string SubscriptionMode = "subscription";
     private const string PlanTierMetadataKey = "planTier";
 
+    public async Task ReportAgencyUnitsAsync(string customerId, string eventName, int units, DateTime timestamp, CancellationToken ct)
+    {
+        await new Stripe.Billing.MeterEventService(CreateClient()).CreateAsync(new()
+        {
+            EventName = eventName,
+            Timestamp = timestamp,
+            Payload = new Dictionary<string, string>
+            {
+                ["stripe_customer_id"] = customerId,
+                ["value"] = units.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            },
+        }, cancellationToken: ct);
+    }
+
     public async Task<string> EnsureCustomerAsync(Org org, CancellationToken cancellationToken = default)
     {
 
@@ -49,7 +63,8 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
     {
 
         // The controller refuses the tier first (PL-11); this guard keeps a missing id a 422, never a Stripe call.
-        var priceId = BillingPrices.Resolve(configuration, planTier)
+        var metered = selection?.Profile == "agency";
+        var priceId = (metered ? AgencyUsagePricing.PriceId(configuration, AgencyUsagePricing.Base) : BillingPrices.Resolve(configuration, planTier))
             ?? throw new DomainRuleException(BillingPrices.PlanUnavailableCode, BillingPrices.PlanUnavailableMessageKey);
 
         var metadata = new Dictionary<string, string>
@@ -59,9 +74,14 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
             ["basePriceId"] = priceId,
         };
 
+        if (metered)
+        {
+            foreach (var code in selection!.Addons.Except(AgencyUsagePricing.Included).Prepend(AgencyUsagePricing.Base))
+                await AgencyUsagePricing.ValidateAsync(CreateClient(), configuration, code, cancellationToken);
+        }
         if (selection is not null) metadata["commercialConfiguration"] = selection.Fingerprint;
         var options = BuildCommercialCheckoutOptions(org.StripeCustomerId, priceId, successUrl, cancelUrl, metadata, selection,
-            code => CommercialPricing.Price(configuration, code, planTier));
+            code => metered ? AgencyUsagePricing.PriceId(configuration, code) : CommercialPricing.Price(configuration, code, planTier));
         var service = new SessionService(CreateClient());
         var session = await service.CreateAsync(
             options,
@@ -79,14 +99,23 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
     {
         if (selection?.Validate() is not null) throw new ArgumentException("Invalid commercial selection", nameof(selection));
         var options = BuildCheckoutSessionOptions(customerId, priceId, successUrl, cancelUrl, metadata);
-        options.LineItems[0].Quantity = selection?.Quantity ?? 1;
+        var agency = selection?.Profile == "agency";
+        if (agency)
+        {
+            metadata[AgencyUsagePricing.MetadataKey] = AgencyUsagePricing.Version;
+            options.PaymentMethodCollection = "always";
+            options.SubscriptionData.BillingMode = new() { Type = "flexible" };
+            var now = DateTime.UtcNow;
+            options.SubscriptionData.BillingCycleAnchor = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
+            options.LineItems[0].Quantity = null;
+        }
         PlanCatalog.TryParseTier(selection?.PlanTier, out var selectedTier);
         foreach (var code in selection?.Addons ?? [])
         {
-            if (CommercialPricing.IsIncluded(selectedTier, code)) continue;
+            if ((agency && AgencyUsagePricing.Included.Contains(code)) || CommercialPricing.IsIncluded(selectedTier, code)) continue;
             var price = addonPrice(code)
                 ?? throw new DomainRuleException("commercial_addon_unavailable", BillingPrices.PlanUnavailableMessageKey);
-            options.LineItems.Add(new SessionLineItemOptions { Price = price, Quantity = selection!.Quantity });
+            options.LineItems.Add(new SessionLineItemOptions { Price = price, Quantity = agency ? null : 1 });
         }
         return options;
     }
@@ -152,7 +181,7 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
                 session.Metadata?.GetValueOrDefault("basePriceId") != BillingPrices.Resolve(configuration, quotedTier))
                 tier = null;
             sessions.Add(new StripeCheckoutSession(session.Id, session.Url, tier,
-                session.Metadata?.GetValueOrDefault("commercialConfiguration"), session.SuccessUrl));
+                session.Metadata?.GetValueOrDefault("commercialConfiguration"), session.SuccessUrl, session.Metadata?.GetValueOrDefault(AgencyUsagePricing.MetadataKey)));
         }
 
         return sessions;

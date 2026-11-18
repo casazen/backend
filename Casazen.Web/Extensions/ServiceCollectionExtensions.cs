@@ -594,6 +594,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDomainVerificationService, DomainVerificationService>();
         services.AddScoped<IDomainRecheckService, DomainRecheckService>();
         services.TryAddSingleton(TimeProvider.System);
+        services.AddScoped<Casazen.Infrastructure.Jobs.AgencyUsageJob>();
         services.AddScoped<IOrgDomainService, OrgDomainService>();
         services.AddScoped<IEntitlementService, EntitlementService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();

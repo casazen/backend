@@ -35,11 +35,13 @@ public class BillingController(
     public ActionResult<IEnumerable<PlanCatalogDto>> GetPlans() =>
         Ok(PlanCatalog.All.Select(e =>
         {
+            var agency = e.Tier == PlanTier.Agency;
             var priceId = BillingPrices.Resolve(configuration, e.Tier);
             return new PlanCatalogDto
             {
                 Tier = e.Tier.ToString(),
                 DisplayName = configuration[$"Billing:Display:{e.Tier}:Name"] ?? e.DisplayName,
+                AgencyTariff = agency ? new AgencyTariffDto(AgencyUsagePricing.PriceId(configuration, AgencyUsagePricing.Base) is not null, AgencyUsagePricing.Minimum, AgencyUsagePricing.QuoteFrom, AgencyUsagePricing.Bands.Select(b => new AgencyBandDto(b.UpTo, b.UnitPrice)).ToArray()) : null,
                 PriceMonthly = configuration.GetValue<decimal>($"Billing:Display:{e.Tier}:PriceMonthly", 0m),
                 Currency = "EUR",
                 BillingUnit = e.Tier == PlanTier.Agency ? "room" : "plan",
@@ -83,7 +85,7 @@ public class BillingController(
         if (request.CommercialSignup is { } selected &&
             (selected.Validate() is not null || selected.PlanTier != request.PlanTier))
             return BadRequest(new { code = "commercial_selection_invalid" });
-        if (request.CommercialSignup?.Addons.Any(code => !CommercialPricing.IsAvailable(configuration, code, planTier)) == true)
+        if (request.CommercialSignup?.Addons.Any(code => !(request.CommercialSignup.Profile == "agency" ? AgencyUsagePricing.Available(configuration, code) : CommercialPricing.IsAvailable(configuration, code, planTier))) == true)
             return UnprocessableEntity(new { code = "commercial_addon_unavailable" });
 
         if (string.IsNullOrWhiteSpace(request.BillingCountry) || request.BillingCountry.Trim().Length != 2)
@@ -104,7 +106,7 @@ public class BillingController(
         if (!IsAllowedReturnUrl(request.SuccessUrl) || !IsAllowedReturnUrl(request.CancelUrl))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingReturnUrlNotAllowed");
 
-        if (BillingPrices.Resolve(configuration, planTier) is null)
+        if ((request.CommercialSignup?.Profile == "agency" ? AgencyUsagePricing.PriceId(configuration, AgencyUsagePricing.Base) : BillingPrices.Resolve(configuration, planTier)) is null)
         {
             return this.ApiProblem(
                 StatusCodes.Status422UnprocessableEntity,
