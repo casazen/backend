@@ -52,7 +52,8 @@ public class RoutineService(
     ILogger<RoutineService> logger,
     ICleaningAutomationService? cleaning = null,
     IHostReviewService? reviews = null,
-    IAiProvider? ai = null) : IRoutineService
+    IAiProvider? ai = null,
+    RoutineBookingActions? bookingActions = null) : IRoutineService
 {
     /// <summary>
     /// The unique index on <c>RoutineExecutions (RoutineId, EventId)</c> (migration <c>AddRoutineEngine</c>): a second execution of
@@ -514,6 +515,10 @@ public class RoutineService(
                     return await CreateCleaningRequestAsync(routine, actionIndex, action, payload, cancellationToken);
                 case RoutineActionType.RequestReview:
                     return await RequestReviewAsync(routine, actionIndex, action, payload, cancellationToken);
+                default:
+                    if (bookingActions is not null)
+                        return await bookingActions.ExecuteAsync(routine.OrgId, execution.Id, actionIndex, action, payload, cancellationToken);
+                    break;
             }
         }
 

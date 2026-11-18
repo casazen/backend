@@ -303,6 +303,10 @@ public static class PushDeliveryKeys
 /// <summary><c>data.type</c> of each push, one per kind of event (the app opens <c>data.route</c>).</summary>
 public static class PushTypes
 {
+    public const string RoutineOwner = "routine-notify-owner";
+    public const string RoutineStaff = "routine-notify-staff";
+    public const string RoutineTeam = "routine-notify-team";
+
     public const string ServiceRequestCreated = "service-request-created";
 
     /// <summary>A new request was accepted automatically for a regular host (SP-04d): pushed to the supplier org instead of <see cref="ServiceRequestCreated"/>.</summary>
