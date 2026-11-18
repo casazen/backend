@@ -248,6 +248,7 @@ public sealed class MessageThreadDto
     public string? PropertyName { get; init; }
     public bool Unassigned { get; init; }
     public string? GuestName { get; init; }
+    public string? VisitorEmail { get; init; }
     public int UnreadCount { get; init; }
     public bool NeedsReply { get; init; }
     public bool Anonymized { get; init; }
@@ -268,6 +269,7 @@ public sealed class MessageThreadDto
         PropertyName = thread.PropertyName,
         Unassigned = thread.Unassigned,
         GuestName = thread.GuestName,
+        VisitorEmail = thread.VisitorEmail,
         UnreadCount = thread.UnreadCount,
         NeedsReply = thread.NeedsReply,
         Anonymized = thread.Anonymized,

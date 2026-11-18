@@ -18,6 +18,7 @@ public static class MessagesHubServiceCollectionExtensions
 
         // E05/F02/US01/T01 (NF-61, NF-64): the list, the thread detail, the read mark, the badges and the attachment of the hub.
         services.AddScoped<IMessageHubService, MessageHubService>();
+        services.AddScoped<StorefrontChatService>();
 
         // E05/F02/US02/T01 (NF-63): the write side of the hub, a reply to a conversation, the channel through which a guest is reached and the first message.
         services.AddScoped<IMessageReplyService, MessageReplyService>();

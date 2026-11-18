@@ -28,6 +28,8 @@ internal static class PostgresAdvisoryLocks
         /// <summary>Org provisioning of one user (one org per user).</summary>
         OrgProvisioningUser = 1_001,
 
+        StorefrontChat = 1_948,
+
         /// <summary>Allocation of one org slug (unique <c>Orgs.Slug</c>).</summary>
         OrgSlug = 1_002,
 

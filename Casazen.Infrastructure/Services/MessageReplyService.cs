@@ -100,6 +100,13 @@ public sealed class MessageReplyService(
         ArgumentNullException.ThrowIfNull(scope);
         CheckAuthor(origin, ruleCode);
 
+        if (key.Source == MessageThreadSource.Storefront)
+        {
+            if (origin != MessageOrigin.Person)
+                throw ThreadNotFound();
+            return await new StorefrontChatService(db, _clock).ReplyAsync(scope, key, idempotencyKey, text, ct);
+        }
+
         return key.Source == MessageThreadSource.Direct
             ? await ReplyDirectAsync(scope, key, text, idempotencyKey, userId, ct)
             : await ReplyOtaAsync(scope, key, text, idempotencyKey, userId, origin, ruleCode, ct);

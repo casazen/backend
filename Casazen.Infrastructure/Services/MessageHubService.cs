@@ -44,6 +44,7 @@ public sealed class MessageHubService(
     private const int OtaSource = (int)MessageThreadSource.Ota;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+    private StorefrontChatService Storefront => new(db, _clock);
 
     public async Task<MessageHubPage> ListAsync(
         HostScope scope,
@@ -85,6 +86,9 @@ public sealed class MessageHubService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
+        if (key.Source == MessageThreadSource.Storefront)
+            return await Storefront.GetForHostAsync(scope, key, cancellationToken);
+
         return key.Source == MessageThreadSource.Ota
             ? await GetOtaThreadAsync(scope, key, includeAmounts, cancellationToken)
             : await GetDirectThreadAsync(scope, key, includeAmounts, cancellationToken);
@@ -97,6 +101,9 @@ public sealed class MessageHubService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
+        if (key.Source == MessageThreadSource.Storefront)
+            return await Storefront.MarkReadAsync(scope, key, cancellationToken);
+
         if (key.Source == MessageThreadSource.Direct)
         {
             // The booking is within reach, or it is a 404 (the same check as the detail): only then is the existing service asked.
@@ -148,6 +155,14 @@ public sealed class MessageHubService(
         var items = (await guestMessages.ListUnreadForHostAsync(scope, cancellationToken))
             .Select(t => new MessageHubUnreadThread(MessageThreadKey.ForDirect(t.BookingId), t.BookingId, t.UnreadCount))
             .ToList();
+        var storefront = await Storefront.InHostScope(scope).AsNoTracking()
+            .Where(t => t.UnreadCount > 0)
+            .OrderByDescending(t => t.LastMessageAt).ThenBy(t => t.Id)
+            .Take(GuestMessageRules.UnreadThreadsMax)
+            .Select(t => new { t.Id, t.UnreadCount })
+            .ToListAsync(cancellationToken);
+        items.AddRange(storefront.Select(t => new MessageHubUnreadThread(
+            new MessageThreadKey(MessageThreadSource.Storefront, t.Id), null, t.UnreadCount)));
         if (!includeOta)
             return items;
 
@@ -271,7 +286,28 @@ public sealed class MessageHubService(
                 NeedsReply = !x.Thread.IsArchived && x.Thread.LastMessageDirection == OtaMessageDirection.Inbound,
             });
 
-        return direct.Concat(ota);
+        var storefront = Storefront.InHostScope(scope).AsNoTracking()
+            .Select(t => new HubRow
+            {
+                Source = (int)MessageThreadSource.Storefront,
+                KeyId = t.Id,
+                Channel = (int)MessageHubChannel.Storefront,
+                Kind = (int)MessageHubThreadKind.Request,
+                PropertyId = t.PropertyId,
+                PropertyName = t.Property.Name,
+                BookingId = null,
+                BookingCode = null,
+                GuestName = t.VisitorName,
+                CheckInDate = null,
+                CheckOutDate = null,
+                BookingStatus = null,
+                IsArchived = false,
+                LastMessageAt = t.LastMessageAt,
+                UnreadCount = t.UnreadCount,
+                NeedsReply = t.NeedsReply,
+            });
+
+        return direct.Concat(ota).Concat(storefront);
     }
 
     private static IQueryable<HubRow> Filtered(IQueryable<HubRow> rows, MessageHubFilter filter)
@@ -391,6 +427,22 @@ public sealed class MessageHubService(
             }
         }
 
+        var storefrontIds = pageRows.Where(r => r.Source == (int)MessageThreadSource.Storefront).Select(r => r.KeyId).ToList();
+        if (storefrontIds.Count > 0)
+        {
+            var latest = await db.StorefrontChatThreads.AsNoTracking()
+                .Where(t => t.OrgId == orgId && storefrontIds.Contains(t.Id))
+                .Select(t => t.Messages.Where(m => m.OrgId == orgId)
+                    .OrderByDescending(m => m.SentAt).ThenByDescending(m => m.Id).FirstOrDefault())
+                .ToListAsync(cancellationToken);
+            foreach (var message in latest.OfType<StorefrontChatMessage>())
+            {
+                var key = new MessageThreadKey(MessageThreadSource.Storefront, message.ThreadId);
+                var origin = message.Direction == OtaMessageDirection.Inbound ? MessageOrigin.Guest : MessageOrigin.Person;
+                result[key] = new LastMessage(origin, GuestMessageRules.Preview(message.Text));
+            }
+        }
+
         return result;
     }
 
@@ -424,6 +476,9 @@ public sealed class MessageHubService(
     /// <summary>A conversation of a channel is archived or not; a direct one is open until the seventh day after the check-out (the rule of <see cref="GuestMessageRules.StateOf"/>).</summary>
     private static MessageHubThreadState StateOf(HubRow row, DateTime now)
     {
+        if ((MessageThreadSource)row.Source == MessageThreadSource.Storefront)
+            return MessageHubThreadState.Open;
+
         if ((MessageThreadSource)row.Source == MessageThreadSource.Ota)
             return row.IsArchived ? MessageHubThreadState.Archived : MessageHubThreadState.Open;
 

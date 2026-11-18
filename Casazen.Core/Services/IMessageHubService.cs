@@ -116,6 +116,7 @@ public enum MessageHubChannel
     Booking = 2,
     Vrbo = 3,
     Expedia = 4,
+    Storefront = 5,
 }
 
 /// <summary>What a conversation is about: a reservation, or a request with no booking yet (an inquiry). The numbers are those of <see cref="OtaThreadKind"/>; a direct conversation is always a reservation.</summary>
@@ -289,4 +290,5 @@ public sealed record MessageThreadView(
     Guid? CustomerGuestId,
     MessageThreadActions Actions,
     IReadOnlyList<MessageHubMessage> Messages,
-    bool HasEarlierMessages);
+    bool HasEarlierMessages,
+    string? VisitorEmail = null);

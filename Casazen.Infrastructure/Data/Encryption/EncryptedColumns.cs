@@ -363,6 +363,8 @@ public static class EncryptedColumns
         new EncryptedEntity<OtaMessage>(
             OtaMessageTextPurpose,
             nameof(OtaMessage.Text)),
+        new EncryptedEntity<StorefrontChatThread>("Casazen.StorefrontChat.Contact", nameof(StorefrontChatThread.VisitorEmail)),
+        new EncryptedEntity<StorefrontChatMessage>("Casazen.StorefrontChat.Text", nameof(StorefrontChatMessage.Text)),
         // NF-83: the recipient snapshot of a fiscal document and its XML (E06/F01/US02/T01), and the snapshot of its issuer (E11/F01/US01/T01).
         new EncryptedEntity<FiscalDocument>(
             FiscalDocumentPurpose,
