@@ -77,7 +77,7 @@ public class GuestCheckInServiceTests
         await using var seed = await SeedAsync();
         var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
         var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
-        var org = new Org { Id = seed.OrgId, Slug = "test-property", Name = "Test Property" };
+        var org = new Casazen.Core.Entities.Org { Id = seed.OrgId, Slug = "test-property", Name = "Test Property" };
         seed.Db.Orgs.Add(org);
         seed.Db.OrgSiteDocuments.Add(new OrgSiteDocument { Org = org, Kind = OrgSiteDocumentKind.Privacy, Version = 1 });
         await seed.Db.SaveChangesAsync();
