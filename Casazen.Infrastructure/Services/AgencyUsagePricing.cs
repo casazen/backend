@@ -1,4 +1,3 @@
-using Casazen.Core.Services;
 using Microsoft.Extensions.Configuration;
 using Stripe;
 
@@ -15,8 +14,12 @@ public static class AgencyUsagePricing
     public static readonly (int UpTo, decimal UnitPrice)[] Bands = [(49, 11m), (149, 9.90m), (399, 8.80m)];
     public static readonly string[] Included = ["channels", "direct-booking", "compliance", "operations", "fiscal"];
     public static string EventName(string code) => "casazen_agency_units_v1_" + code.Replace('-', '_');
-    public static string? PriceId(IConfiguration configuration, string code) =>
-        BillingPrices.IsPriceId(configuration[$"Billing:AgencyUsage:Prices:{code}"]?.Trim()) ? configuration[$"Billing:AgencyUsage:Prices:{code}"]!.Trim() : null;
+    public static string? PriceId(IConfiguration configuration, string code)
+    {
+        var price = configuration[$"Billing:AgencyUsage:Prices:{code}"]?.Trim();
+        return BillingPrices.IsPriceId(price) ? price : null;
+    }
+
     public static decimal? AddonAmount(IConfiguration configuration, string code) => configuration.GetValue<decimal?>($"Billing:AgencyUsage:Monthly:{code}");
     public static bool Available(IConfiguration configuration, string code) =>
         CommercialPricing.IsEnabled(configuration, code) && (Included.Contains(code) || (PriceId(configuration, code) != null && AddonAmount(configuration, code) > 0));
@@ -25,8 +28,16 @@ public static class AgencyUsagePricing
     // owner/legacy price or collecting a different amount from the estimate.
     public static async Task ValidateAsync(StripeClient client, IConfiguration config, string code, CancellationToken ct)
     {
-        var price = await new PriceService(client).GetAsync(PriceId(config, code),
-            new PriceGetOptions { Expand = ["tiers"] }, cancellationToken: ct);
+        var id = PriceId(config, code) ?? throw Unavailable();
+        Price price;
+        try
+        {
+            price = await new PriceService(client).GetAsync(id, new PriceGetOptions { Expand = ["tiers"] }, cancellationToken: ct);
+        }
+        catch (StripeException ex) when (ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            throw Unavailable();
+        }
         if (!price.Active || price.Currency != "eur" || price.TaxBehavior != "exclusive" ||
             price.Recurring is not { Interval: "month", IntervalCount: 1, UsageType: "metered", Meter: not null } ||
             !MatchesTariff(price, code, AddonAmount(config, code)))
@@ -42,8 +53,8 @@ public static class AgencyUsagePricing
         if (price.BillingScheme != "tiered" || price.TiersMode != "volume" || price.Tiers is null) return false;
         // Stripe bills the flat fee of the first tier even at zero units. The final tier
         // intentionally has no automated charge: 400+ requires a negotiated quote.
-        var expected = code == Base
-            ? new (long? UpTo, decimal Flat, decimal Unit)[] { (9, Minimum * 100, 0), (49, 0, 1100), (149, 0, 990), (399, 0, 880), (null, 0, 0) }
+        (long? UpTo, decimal Flat, decimal Unit)[] expected = code == Base
+            ? [(9, Minimum * 100, 0), .. Bands.Select(b => ((long?)b.UpTo, 0m, b.UnitPrice * 100)), (null, 0, 0)]
             : new (long? UpTo, decimal Flat, decimal Unit)[] { (399, 0, (addon ?? -1m) * 100), (null, 0, 0) };
         return price.Tiers.Count == expected.Length && price.Tiers.Zip(expected).All(pair =>
             pair.First.UpTo == pair.Second.UpTo && (pair.First.FlatAmountDecimal ?? 0) == pair.Second.Flat &&

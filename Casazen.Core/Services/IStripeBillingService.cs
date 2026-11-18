@@ -23,6 +23,8 @@ public sealed record StripeCustomerTaxId(string Type, string Value, string? Veri
 /// </summary>
 public interface IStripeBillingService
 {
+    Task ReportAgencyUnitsAsync(string customerId, string eventName, int units, DateTime timestamp, CancellationToken ct) => throw new NotSupportedException();
+
     Task<string> EnsureCustomerAsync(Org org, CancellationToken cancellationToken = default);
 
     Task<StripeCheckoutSession> CreateCheckoutSessionAsync(Org org, PlanTier planTier, string successUrl, string cancelUrl, CancellationToken cancellationToken = default);

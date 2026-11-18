@@ -36,13 +36,13 @@ public class BillingController(
         Ok(PlanCatalog.All.Select(e =>
         {
             var agency = e.Tier == PlanTier.Agency;
-            var priceId = agency ? AgencyUsagePricing.PriceId(configuration, AgencyUsagePricing.Base) : BillingPrices.Resolve(configuration, e.Tier);
+            var priceId = BillingPrices.Resolve(configuration, e.Tier);
             return new PlanCatalogDto
             {
                 Tier = e.Tier.ToString(),
                 DisplayName = configuration[$"Billing:Display:{e.Tier}:Name"] ?? e.DisplayName,
-                AgencyTariff = agency ? new { minimum = AgencyUsagePricing.Minimum, quoteFrom = AgencyUsagePricing.QuoteFrom, bands = AgencyUsagePricing.Bands.Select(b => new { b.UpTo, b.UnitPrice }) } : null,
-                PriceMonthly = agency ? AgencyUsagePricing.Bands[0].UnitPrice : configuration.GetValue<decimal>($"Billing:Display:{e.Tier}:PriceMonthly", 0m),
+                AgencyTariff = agency ? new AgencyTariffDto(AgencyUsagePricing.PriceId(configuration, AgencyUsagePricing.Base) is not null, AgencyUsagePricing.Minimum, AgencyUsagePricing.QuoteFrom, AgencyUsagePricing.Bands.Select(b => new AgencyBandDto(b.UpTo, b.UnitPrice)).ToArray()) : null,
+                PriceMonthly = configuration.GetValue<decimal>($"Billing:Display:{e.Tier}:PriceMonthly", 0m),
                 Currency = "EUR",
                 BillingUnit = e.Tier == PlanTier.Agency ? "room" : "plan",
                 UnitAllowance = e.MaxProperties == int.MaxValue ? -1 : e.MaxProperties,

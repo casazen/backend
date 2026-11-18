@@ -16,6 +16,20 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
     private const string SubscriptionMode = "subscription";
     private const string PlanTierMetadataKey = "planTier";
 
+    public async Task ReportAgencyUnitsAsync(string customerId, string eventName, int units, DateTime timestamp, CancellationToken ct)
+    {
+        await new Stripe.Billing.MeterEventService(CreateClient()).CreateAsync(new()
+        {
+            EventName = eventName,
+            Timestamp = timestamp,
+            Payload = new Dictionary<string, string>
+            {
+                ["stripe_customer_id"] = customerId,
+                ["value"] = units.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            },
+        }, cancellationToken: ct);
+    }
+
     public async Task<string> EnsureCustomerAsync(Org org, CancellationToken cancellationToken = default)
     {
 

@@ -4,7 +4,10 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Services;
+using Microsoft.EntityFrameworkCore;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Configuration;
 using Casazen.Web.Infrastructure;
@@ -83,6 +86,25 @@ public class WebhooksController : ControllerBase
                 stripeEvent.Type,
                 stripeEvent.Id,
                 stripeEvent.ApiVersion);
+
+            // Acknowledging invoice.created allows Stripe to finalize the invoice. For Agency
+            // month-end cycles, let the meter reporter close the period before starting that clock.
+            if (stripeEvent.Type == "invoice.created" && string.IsNullOrEmpty(stripeEvent.Account) &&
+                stripeEvent.Data.Object is Invoice { BillingReason: "subscription_cycle" } invoice &&
+                invoice.Parent?.SubscriptionDetails is { } details &&
+                details.Metadata?.GetValueOrDefault(AgencyUsagePricing.MetadataKey) == AgencyUsagePricing.Version)
+            {
+                var db = HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+                var closed = await db.Database.SqlQuery<bool>($"""
+                    SELECT EXISTS (SELECT 1 FROM "AgencyUsageContracts" WHERE "SubscriptionId" = {details.SubscriptionId}
+                      AND "ReportedAt" >= {invoice.PeriodEnd}) AS "Value"
+                    """).SingleAsync(HttpContext.RequestAborted);
+                if (!closed)
+                {
+                    _logger.LogWarning("Waiting for Agency usage through {PeriodEnd} before acknowledging invoice {InvoiceId}", invoice.PeriodEnd, invoice.Id);
+                    return StatusCode(StatusCodes.Status503ServiceUnavailable);
+                }
+            }
 
             // Queue the event for background processing
             // This allows us to respond within 3 seconds while processing happens asynchronously
