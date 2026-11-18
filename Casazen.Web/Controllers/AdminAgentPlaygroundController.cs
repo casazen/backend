@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
@@ -27,10 +28,17 @@ public sealed class AdminAgentPlaygroundController(PresetAgentTrainer trainer, I
     public async Task<ActionResult<AgentTrainingState>> Train(string key, TrainAgentRequest request, CancellationToken ct) =>
         CanTrain ? Ok(await trainer.TrainAsync(key, request.Draft, request.Revision, ct)) : Forbid();
 
+    [HttpPost("{key}/train-with-ai")]
+    [AiRateLimit]
+    [RequestSizeLimit(5_000)]
+    public async Task<ActionResult<AgentTrainingState>> TrainWithAi(string key, TrainAgentWithAiRequest request, CancellationToken ct) =>
+        CanTrain ? Ok(await trainer.TrainFromPromptAsync(key, request.Prompt, request.Revision, ct)) : Forbid();
+
     [HttpPut("{key}/active")]
     public async Task<ActionResult<AgentTrainingState>> Activate(string key, ActivateAgentRequest request, CancellationToken ct) =>
         CanTrain ? Ok(await trainer.ActivateAsync(key, request.Revision, request.Restore, ct)) : Forbid();
 }
 
 public sealed record TrainAgentRequest(int Revision, AgentTrainingDraft Draft);
+public sealed record TrainAgentWithAiRequest(int Revision, [Required, StringLength(PresetAgentTrainer.MaxGuidanceLength)] string Prompt);
 public sealed record ActivateAgentRequest(int Revision, bool Restore);

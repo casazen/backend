@@ -8499,4 +8499,10 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="AgentTrainingChanged" xml:space="preserve">
     <value>The configuration changed in another session. Reload the playground and try again.</value>
   </data>
+  <data name="AgentTrainingPrompt" xml:space="preserve">
+    <value>Describe the behavior you want to train in the instructions.</value>
+  </data>
+  <data name="AgentTrainingGeneration" xml:space="preserve">
+    <value>AI did not generate valid scenarios. Specify when to perform and when to skip the action, then try again.</value>
+  </data>
 </root>
