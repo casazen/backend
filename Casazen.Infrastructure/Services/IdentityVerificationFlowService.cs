@@ -223,10 +223,12 @@ public sealed class IdentityVerificationFlowService(
                 case DocumentSide.Front:
                     front = picture;
                     frontHash = Sha256(bytes);
-                    var replacedFront = kept?.Front is not null && kept.PhotoSha256 != frontHash;
-                    back = replacedFront ? null : kept?.Back;
+                    var previousNumber = kept?.Back?.NumberProof ?? kept?.Front?.NumberProof;
+                    var changedDocument = kept?.Front is not null && previousNumber is not null
+                        && picture.NumberProof is not null && previousNumber != picture.NumberProof;
+                    back = changedDocument ? null : kept?.Back;
                     backHash = back is null ? null : kept!.BackSha256;
-                    if (replacedFront && kept!.Back is not null)
+                    if (changedDocument && kept!.Back is not null)
                         await DeleteStoredDocumentAsync(session, ct);
                     break;
                 default:
