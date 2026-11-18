@@ -11,7 +11,7 @@ public interface ISwissComplianceReceiptService
 {
     /// <summary>
     /// Records the receipt of a submission of a Ticino property: the SHA-256 of the file and the reference chosen by the host
-    /// are kept, the file itself is read to be hashed and is not stored. The receipt belongs to the org of the property (never to
+    /// are kept and the file is encrypted in private storage. The receipt belongs to the org of the property (never to
     /// one the caller names).
     /// </summary>
     /// <param name="propertyId">Property in canton Ticino (TI).</param>
@@ -30,7 +30,21 @@ public interface ISwissComplianceReceiptService
         string reference,
         Stream receipt,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Records and retains the original receipt, including its download name and content type.</summary>
+    Task<SwissComplianceReceipt> RecordAsync(Guid propertyId, SwissComplianceFileType type, DateTime reportDate,
+        string reference, Stream receipt, string fileName, string contentType, CancellationToken cancellationToken = default);
+
+    /// <summary>Receipt metadata of one authorized property. Old hash-only receipts remain listed with HasFile=false.</summary>
+    Task<SwissComplianceReceiptPage> ListAsync(Guid propertyId, int page = 1, int pageSize = 50, CancellationToken cancellationToken = default);
+
+    /// <summary>The original bytes of a receipt, through tenant-scoped private storage; never an object-store URL.</summary>
+    Task<SwissComplianceReceiptFile> OpenFileAsync(Guid propertyId, Guid receiptId, CancellationToken cancellationToken = default);
 }
+
+public sealed record SwissComplianceReceiptItem(SwissComplianceReceipt Receipt, bool HasFile);
+public sealed record SwissComplianceReceiptPage(IReadOnlyList<SwissComplianceReceiptItem> Items, int Page, int PageSize, int TotalCount);
+public sealed record SwissComplianceReceiptFile(Stream Content, string FileName, string ContentType);
 
 /// <summary>What a Swiss compliance receipt is about (ADR-016); stored in <see cref="SwissComplianceReceipt.Type"/>.</summary>
 public enum SwissComplianceFileType

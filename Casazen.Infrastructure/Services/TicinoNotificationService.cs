@@ -11,8 +11,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// Ticino police notification XML generator (notifiche.ti.ch format, ADR-016).
-/// Generates daily XML files for overnight stays in Ticino properties per cantonal regulation.
+/// Working XML summary of overnight stays in Ticino (ADR-016).
+/// The current structure is not the official notifiche.ti.ch import schema; it must not be presented as a verified submission file.
 /// </summary>
 public class TicinoNotificationService(AppDbContext context) : ITicinoNotificationService
 {
@@ -36,7 +36,8 @@ public class TicinoNotificationService(AppDbContext context) : ITicinoNotificati
                 .FirstOrDefaultAsync(m => m.MunicipalityCode == property.SwissMunicipalityCode, cancellationToken)
             : null;
 
-        if (municipality?.CantonCode != TicinoCantonCode)
+        if (!string.Equals(property.Country?.Trim(), "CH", StringComparison.OrdinalIgnoreCase)
+            || municipality?.CantonCode != TicinoCantonCode)
             throw new DomainRuleException(
                 "property_not_in_ticino",
                 "PropertyNotInTicino",
@@ -48,13 +49,15 @@ public class TicinoNotificationService(AppDbContext context) : ITicinoNotificati
             .AsNoTracking()
             .Include(b => b.Guest)
             .Include(b => b.Property)
-            .Where(b => b.PropertyId == propertyId
-                && b.Status == BookingStatus.Confirmed
+            .Where(b => b.OrgId == property.OrgId && b.PropertyId == propertyId
+                && (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn || b.Status == BookingStatus.CheckedOut)
                 && DateOnly.FromDateTime(b.CheckInDate) <= reportDateOnly
                 && DateOnly.FromDateTime(b.CheckOutDate) > reportDateOnly)
+            .OrderBy(b => b.CheckInDate)
+            .ThenBy(b => b.Id)
             .ToListAsync(cancellationToken);
 
-        // Generate XML in official notifiche.ti.ch format
+        // A working summary only: see docs/compliance/ticino-import-format.md for the verified official schema and remaining inputs.
         var xml = GenerateNotificationXml(property, stays, reportDate);
         var reference = $"TI-{property.Id:N}-{reportDate:yyyyMMdd}";
         var fileHash = ComputeSha256Hash(xml);
@@ -68,7 +71,8 @@ public class TicinoNotificationService(AppDbContext context) : ITicinoNotificati
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.Id == propertyId);
 
-        if (property?.SwissMunicipalityCode == null)
+        if (!string.Equals(property?.Country?.Trim(), "CH", StringComparison.OrdinalIgnoreCase)
+            || property?.SwissMunicipalityCode == null)
             return false;
 
         var municipality = await context.SwissMunicipalities
@@ -80,8 +84,7 @@ public class TicinoNotificationService(AppDbContext context) : ITicinoNotificati
 
     private static string GenerateNotificationXml(Property property, List<Booking> stays, DateTime reportDate)
     {
-        // Official Ticino police notification XML format (ADR-016)
-        // Simplified structure - actual format per official schema
+        // Internal summary, not the official registrationForms/registration import format.
         var notification = new XElement("TicinoNotification",
             new XElement("Header",
                 new XElement("ReportDate", reportDate.ToString("yyyy-MM-dd")),

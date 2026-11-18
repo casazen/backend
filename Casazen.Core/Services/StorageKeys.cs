@@ -66,6 +66,10 @@ public static partial class StorageKeys
     public static string PropertyDocument(Guid propertyId, string fileName) =>
         $"properties/{propertyId}/documents/{fileName}";
 
+    /// <summary>An encrypted Swiss receipt; private bucket, never a public URL or an uploaded filename.</summary>
+    public static string SwissComplianceReceipt(Guid orgId, Guid propertyId, Guid receiptId) =>
+        $"orgs/{orgId}/properties/{propertyId}/swiss-receipts/{receiptId}.bin";
+
     /// <summary>The start of the key of every guest's document (<see cref="GuestDocument"/>): the photos of identity documents a verification kept and the legacy scans.</summary>
     public const string GuestDocumentPrefix = "guest-documents/";
 

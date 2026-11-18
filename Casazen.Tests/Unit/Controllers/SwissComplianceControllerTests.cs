@@ -30,7 +30,7 @@ public class SwissComplianceControllerTests
     private static readonly Guid OtherProperty = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000002");
     private static readonly DateOnly Night = new(2026, 10, 25);
 
-    public static TheoryData<string> Endpoints => new() { "ticino-notification", "otr-report", "upload-receipt" };
+    public static TheoryData<string> Endpoints => new() { "ticino-notification", "otr-report", "upload-receipt", "list-receipts", "download-receipt" };
 
     private readonly Mock<ITicinoNotificationService> _ticino = new();
     private readonly Mock<IOtrTaxService> _otr = new();
@@ -48,8 +48,13 @@ public class SwissComplianceControllerTests
             .ReturnsAsync(new OtrTaxResult("PropertyId", "OTR-ref", "hash"));
         _receipts
             .Setup(s => s.RecordAsync(
-                GivenProperty, SwissComplianceFileType.Police, It.IsAny<DateTime>(), "REF-1", It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+                GivenProperty, SwissComplianceFileType.Police, It.IsAny<DateTime>(), "REF-1", It.IsAny<Stream>(),
+                "receipt.pdf", "application/pdf", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SwissComplianceReceipt { OrgId = OrgId, PropertyId = GivenProperty, Type = "Police", Reference = "REF-1" });
+        _receipts.Setup(s => s.ListAsync(GivenProperty, 1, 50, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwissComplianceReceiptPage([], 1, 50, 0));
+        _receipts.Setup(s => s.OpenFileAsync(GivenProperty, GivenProperty, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwissComplianceReceiptFile(Stream.Null, "receipt.pdf", "application/pdf"));
 
         // A collaborator «Solo alcuni» of the org, given GivenProperty only; every permission of its role is held.
         var controller = NewController(GivenPropertyOnly());
@@ -64,8 +69,11 @@ public class SwissComplianceControllerTests
         _ticino.Verify(s => s.GenerateDailyNotificationAsync(OtherProperty, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
         _otr.Verify(s => s.GeneratePeriodReportAsync(OtherProperty, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
         _receipts.Verify(
-            s => s.RecordAsync(OtherProperty, It.IsAny<SwissComplianceFileType>(), It.IsAny<DateTime>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()),
+            s => s.RecordAsync(OtherProperty, It.IsAny<SwissComplianceFileType>(), It.IsAny<DateTime>(), It.IsAny<string>(), It.IsAny<Stream>(),
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);
+        _receipts.Verify(s => s.ListAsync(OtherProperty, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        _receipts.Verify(s => s.OpenFileAsync(OtherProperty, It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     private static UserAuthorizationSnapshot GivenPropertyOnly() => new(
@@ -107,6 +115,8 @@ public class SwissComplianceControllerTests
             propertyId, new TicinoNotificationRequest { ReportDate = Night }, CancellationToken.None)).Result,
         "otr-report" => (await controller.GenerateOtrReport(
             propertyId, new OtrReportRequest { FromDate = Night, ToDate = Night.AddDays(6) }, CancellationToken.None)).Result,
+        "list-receipts" => (await controller.ListReceipts(propertyId)).Result,
+        "download-receipt" => await controller.DownloadReceipt(propertyId, GivenProperty),
         _ => (await controller.UploadReceipt(propertyId, ReceiptForm(), CancellationToken.None)).Result,
     };
 
@@ -118,7 +128,11 @@ public class SwissComplianceControllerTests
             Type = "police",
             ReportDate = Night,
             Reference = "REF-1",
-            File = new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", "receipt.pdf"),
+            File = new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", "receipt.pdf")
+            {
+                Headers = new HeaderDictionary(),
+                ContentType = "application/pdf",
+            },
         };
     }
 }

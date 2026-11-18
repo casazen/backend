@@ -58,6 +58,35 @@ public class SwissComplianceController(
     private const string CsvContentType = "text/csv";
     private const long MaxReceiptRequestBytes = SwissComplianceReceipts.MaxFileBytes + 64 * 1024;
 
+    /// <summary>Lists recorded Swiss receipts, including legacy hash-only evidence without a retained original.</summary>
+    [HttpGet("receipts")]
+    [Authorize(Policy = CasazenPolicies.GuestRead)]
+    [ProducesResponseType(typeof(SwissReceiptPageResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<SwissReceiptPageResponse>> ListReceipts(
+        Guid propertyId, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken cancellationToken = default)
+    {
+        var denied = await AuthorizeAsync(propertyId, BookingOperations.Read, cancellationToken);
+        if (denied is not null)
+            return denied;
+        var result = await receipts.ListAsync(propertyId, page, pageSize, cancellationToken);
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(SwissReceiptPageResponse.From(result));
+    }
+
+    /// <summary>Downloads the verified original from private storage after the same tenant and property-scope checks.</summary>
+    [HttpGet("receipts/{receiptId:guid}/file")]
+    [Authorize(Policy = CasazenPolicies.GuestRead)]
+    public async Task<ActionResult> DownloadReceipt(Guid propertyId, Guid receiptId, CancellationToken cancellationToken = default)
+    {
+        var denied = await AuthorizeAsync(propertyId, BookingOperations.Read, cancellationToken);
+        if (denied is not null)
+            return denied;
+        var file = await receipts.OpenFileAsync(propertyId, receiptId, cancellationToken);
+        Response.Headers.CacheControl = "private, no-store";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return File(file.Content, file.ContentType, file.FileName);
+    }
+
     /// <summary>
     /// Generates the police notification of one night for a Ticino property (notifiche.ti.ch, ADR-016): the confirmed stays that
     /// include <c>reportDate</c>. A night with no stay still gives a valid file with an empty list of stays.
@@ -163,7 +192,7 @@ public class SwissComplianceController(
     /// Records the receipt of a file the host submitted on the cantonal portal (AC-NF15-3): <c>multipart/form-data</c> with
     /// <c>type</c> (<c>Police</c> or <c>OTR</c>, case-insensitive), <c>reportDate</c> (<c>2026-10-25</c>: the night of a police
     /// notification, the first day of an OTR period), <c>reference</c> (up to 200 characters) and <c>file</c> (the receipt, not
-    /// empty, up to 10 MB). The file is read to compute its SHA-256 and is not stored; the receipt belongs to the property's org.
+    /// empty, up to 10 MB). The original is encrypted in private storage and hashed; the receipt belongs to the property's org.
     /// Nothing is deduplicated: sending the same receipt twice records two.
     /// </summary>
     /// <param name="propertyId">The property.</param>
@@ -172,7 +201,7 @@ public class SwissComplianceController(
     /// <returns>
     /// 201 with <see cref="SwissReceiptResponse"/>: <c>id</c>, <c>propertyId</c>, <c>type</c> (<c>Police</c> or <c>OTR</c>),
     /// <c>reportDate</c>, <c>reference</c> (trimmed), <c>fileHash</c> (SHA-256 of the file) and <c>uploadedAt</c>. There is no
-    /// <c>Location</c>: the receipts cannot be read back yet.
+    /// <c>Location</c>; metadata and originals are available through the receipts endpoints.
     /// </returns>
     /// <response code="201">The receipt was recorded.</response>
     /// <response code="400">
@@ -214,7 +243,7 @@ public class SwissComplianceController(
 
         await using var content = file.OpenReadStream();
         var receipt = await receipts.RecordAsync(
-            propertyId, type, AsDay(form.ReportDate!.Value), form.Reference!, content, cancellationToken);
+            propertyId, type, AsDay(form.ReportDate!.Value), form.Reference!, content, file.FileName, file.ContentType, cancellationToken);
 
         logger.LogInformation(
             "User {UserId} recorded the Swiss {Type} receipt {ReceiptId} of property {PropertyId}",
