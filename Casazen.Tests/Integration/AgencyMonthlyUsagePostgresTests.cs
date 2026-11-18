@@ -18,7 +18,7 @@ public class AgencyMonthlyUsagePostgresTests
     {
         await using var database = await PostgresTestDatabase.CreateMigratedAsync();
         await using var db = database.CreateContext();
-        var org = new Org { Slug = "unit-billing", IsAgency = true, Name = "Agency" };
+        var org = new Casazen.Core.Entities.Org { Slug = "unit-billing", IsAgency = true, Name = "Agency" };
         db.Orgs.Add(org);
         var property = new Property { OrgId = org.Id, OwnerId = "host", Name = "One sellable unit", Bedrooms = 4, Address = "Street 1", IsActive = false };
         db.Properties.Add(property);
