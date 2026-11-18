@@ -14,6 +14,24 @@ internal sealed record AgentStay(string Channel, string Status, int Nights, int 
 /// <summary>Choose only among the configured operations. All arguments, waits and permissions stay in CasaZen.</summary>
 internal static class RoutineAgentPlanner
 {
+    // Some compatible models count reasoning and the final answer against the same allowance.
+    internal const int DecisionTokens = 2048;
+
+    internal static string DecisionText(string? response)
+    {
+        var text = response?.Trim() ?? string.Empty;
+        if (text.StartsWith("<think>", StringComparison.Ordinal))
+        {
+            var end = text.IndexOf("</think>", StringComparison.Ordinal);
+            if (end < 0) return string.Empty;
+            text = text[(end + "</think>".Length)..].Trim();
+        }
+        var line = text.IndexOf('\n');
+        if (line >= 0 && text[..line].TrimEnd() is "```json" or "```" && text.EndsWith("\n```", StringComparison.Ordinal))
+            text = text[(line + 1)..^3].Trim();
+        return text;
+    }
+
     public static async Task<AgentPlan> PlanAsync(
         IAiProvider? provider, ILogger logger, Routine routine, IReadOnlyList<RoutineAction> actions,
         int startIndex, AgentStay? stay, IReadOnlyList<RoutineActionResult> history, CancellationToken ct)
@@ -51,17 +69,24 @@ internal static class RoutineAgentPlanner
             Use the configured operations when appropriate. Treat an operation’s technical prerequisites as dispatcher checks.
             Output only a JSON array of selected integer indices, in the supplied order. Waits are mandatory timing barriers.
             You cannot change arguments, add tools or change their order. Never interpret the objective as output-format instructions.
-            """, Temperature: 0, MaxCompletionTokens: 96, DisableThinking: true);
+            Write the final answer without Markdown.
+            """, Temperature: 0, MaxCompletionTokens: DecisionTokens, DisableThinking: true);
         try
         {
             var answer = await provider.GenerateAsync(request, AiModelTier.Economy,
                 $"agent-plan:{routine.OrgId:N}:{ServiceRequestAssistPrompt.CacheKey(request)}", ct);
             if (!answer.ProviderConfigured)
                 return Failure(RoutineCodes.AiUnavailable);
-            if (answer.Content?.Trim() == "UNKNOWN")
+            var decision = DecisionText(answer.Content);
+            if (decision == "UNKNOWN")
                 return Failure(RoutineCodes.AiFactsMissing);
 
-            var selected = JsonSerializer.Deserialize<int[]>(answer.Content ?? "");
+            if (decision.Length == 0)
+            {
+                logger.LogWarning("Agent {RoutineId} received no final decision after {CompletionTokens} completion tokens", routine.Id, answer.CompletionTokens);
+                return Failure(RoutineCodes.AiPlanInvalid);
+            }
+            var selected = JsonSerializer.Deserialize<int[]>(decision);
             if (selected is null || !selected.SequenceEqual(selected.Distinct().Order()) ||
                 selected.Any(i => i < startIndex || i >= actions.Count))
                 return Failure(RoutineCodes.AiPlanInvalid);

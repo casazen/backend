@@ -14,6 +14,9 @@ public class RoutineAgentTests
 
     [Theory]
     [InlineData("[0]", true, RoutineActionOutcomes.Done, null)]
+    [InlineData("<think>Compare the configured actions</think>\n```json\n[0]\n```", true, RoutineActionOutcomes.Done, null)]
+    [InlineData("<think>[0]", true, null, RoutineCodes.AiPlanInvalid)]
+    [InlineData("Selected [0]", true, null, RoutineCodes.AiPlanInvalid)]
     [InlineData("[]", true, RoutineActionOutcomes.Skipped, null)]
     [InlineData("[0,0]", true, null, RoutineCodes.AiPlanInvalid)]
     [InlineData("[1]", true, null, RoutineCodes.AiPlanInvalid)]
