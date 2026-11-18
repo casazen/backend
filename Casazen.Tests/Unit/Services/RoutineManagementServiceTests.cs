@@ -127,10 +127,10 @@ public class RoutineManagementServiceTests
         var service = rig.Management(db);
         var routine = await service.CreateAsync(
             OrgA,
-            Command(actions: [CreateTodo, Act("NotifyOwner"), Act("AddTag", """{"tag":"vip"}"""), Act("NotifyOwner")], active: false));
+            Command(actions: [CreateTodo, Act("AddTag", """{"tag":"vip"}"""), Act("AddTag", """{"tag":"vip"}""")], active: false));
 
         var byTheSwitch = await RefusedAsync(() => service.SetActiveAsync(OrgA, routine.Id, true));
-        var byACreate = await RefusedAsync(() => service.CreateAsync(OrgA, Command(actions: [Act("NotifyStaff")], active: true)));
+        var byACreate = await RefusedAsync(() => service.CreateAsync(OrgA, Command(actions: [Act("AddTag", """{"tag":"vip"}""")], active: true)));
         // A change that only says "active" keeps the actions the routine has, so it is judged with them.
         var byAnUpdate = await RefusedAsync(() => service.UpdateAsync(OrgA, routine.Id, new RoutineCommand(null, null, null, null, null, null, true)));
 
@@ -139,8 +139,8 @@ public class RoutineManagementServiceTests
             Assert.Equal(RoutineCodes.ActionNotAvailable, error.Code);
             Assert.Equal("RoutineActionNotAvailable", error.MessageKey);
         });
-        Assert.Equal(["NotifyOwner", "AddTag"], Assert.IsAssignableFrom<IEnumerable<string>>(byTheSwitch.Extensions["actions"]));
-        Assert.Equal("NotifyOwner, AddTag", Assert.Single(byTheSwitch.MessageArgs));
+        Assert.Equal(["AddTag"], Assert.IsAssignableFrom<IEnumerable<string>>(byTheSwitch.Extensions["actions"]));
+        Assert.Equal("AddTag", Assert.Single(byTheSwitch.MessageArgs));
         Assert.False((await RoutinesOfAsync(rig, OrgA)).Single(r => r.Id == routine.Id).Active);
 
         // In test mode it may hold any action, and be active.
@@ -166,7 +166,7 @@ public class RoutineManagementServiceTests
         Assert.False(routine.Active);
 
         var active = await service.SetActiveAsync(OrgA, routine.Id, true);
-        var gaining = await RefusedAsync(() => service.UpdateAsync(OrgA, routine.Id, Command(actions: [CreateTodo, Act("NotifyStaff")])));
+        var gaining = await RefusedAsync(() => service.UpdateAsync(OrgA, routine.Id, Command(actions: [CreateTodo, Act("AddTag", """{"tag":"vip"}""")])));
 
         Assert.True(active.Active);
         Assert.Equal(RoutineCodes.ActionNotAvailable, gaining.Code);

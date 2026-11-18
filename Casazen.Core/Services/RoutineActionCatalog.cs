@@ -22,16 +22,6 @@ public sealed record RoutineActionAvailability(RoutineActionType Type, bool Avai
 /// </remarks>
 public static class RoutineActionCatalog
 {
-    /// <summary>
-    /// The actions that run, by name: whether each is available with the given flags. <c>Wait</c> (E01/F04/US01/T01) and <c>CreateActivity</c>
-    /// (E01/F04/US01/T02) always are. <c>MessageToGuest</c> becomes available while <c>FeatureFlags.ScheduledMessages</c> is on (E05/F07/US01/T03:
-    /// until then the message goes nowhere, and the access code with it: it is released only through the variables of the messages) and
-    /// <c>SendCrmReminder</c> with E07/F02/US03/T01. <c>CreateCleaningRequest</c> (E24/F01/US01/T02) always is: it is the cleaning of the stay for the default
-    /// cleaner of its property, and the whole module is behind <c>Features:Routines</c>. <c>RequestReview</c> always is too (E26/F01/US01/T01): the invitation of
-    /// the review site, once for each direct booking, that a booking of a portal, of the host or of a stay that is not to be reviewed skips with its reason. Not
-    /// available, and not listed: <c>NotifyOwner</c>, <c>NotifyStaff</c> and <c>NotifyTeam</c> (what a notification of a routine is, a To do, a push or an e-mail,
-    /// is a product decision of the notification preferences of E05), <c>SendAccessCode</c> and <c>AddTag</c>.
-    /// </summary>
     private static readonly IReadOnlyDictionary<string, Func<IFeatureFlags, bool>> Runnable =
         new Dictionary<string, Func<IFeatureFlags, bool>>(StringComparer.Ordinal)
         {
@@ -39,7 +29,12 @@ public static class RoutineActionCatalog
             [nameof(RoutineActionType.CreateActivity)] = static _ => true,
             [nameof(RoutineActionType.RequestReview)] = static _ => true,
             [nameof(RoutineActionType.CreateCleaningRequest)] = static _ => true,
-            ["SendCrmReminder"] = static _ => true,
+            [nameof(RoutineActionType.MessageToGuest)] = static _ => true,
+            [nameof(RoutineActionType.NotifyOwner)] = static _ => true,
+            [nameof(RoutineActionType.NotifyStaff)] = static _ => true,
+            [nameof(RoutineActionType.NotifyTeam)] = static _ => true,
+            [nameof(RoutineActionType.SendAccessCode)] = static _ => true,
+            [nameof(RoutineActionType.AddTag)] = static flags => flags.IsEnabled(FeatureFlags.CrmMarketing),
         };
 
     /// <summary>Every action of <see cref="RoutineActionType"/>, in the order of the enum, with whether it is available with <paramref name="featureFlags"/>.</summary>

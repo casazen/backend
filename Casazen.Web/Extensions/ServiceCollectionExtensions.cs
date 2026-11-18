@@ -490,6 +490,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IConditionEvaluator, ConditionEvaluator>();
         services.AddScoped<ICampaignService, CampaignService>();
         // NF-26: Automation routines (ADR-022).
+        services.AddScoped<RoutineBookingActions>();
         services.AddScoped<IRoutineService, RoutineService>();
         // E01/F04/US01/T03: the routines of an org for the routines page (api/routines, behind Features:Routines); the engine above runs them.
         services.AddScoped<IRoutineManagementService, RoutineManagementService>();

@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -226,7 +227,7 @@ public sealed class InAppNotificationJob(
         switch (notification.AudienceKind)
         {
             case PushAudienceKind.BookingHosts:
-                return await BookingHostsAsync(notification.AudienceId, cancellationToken);
+                return await BookingHostsAsync(notification.AudienceId, notification.Type, cancellationToken);
             case PushAudienceKind.PropertyHosts:
                 return await PropertyHostsAsync(notification.AudienceId, cancellationToken);
             case PushAudienceKind.SupplierOrg:
@@ -245,7 +246,7 @@ public sealed class InAppNotificationJob(
         }
     }
 
-    private async Task<Recipients> BookingHostsAsync(Guid bookingId, CancellationToken cancellationToken)
+    private async Task<Recipients> BookingHostsAsync(Guid bookingId, string type, CancellationToken cancellationToken)
     {
         // IgnoreQueryFilters: background job without a tenant; the recipients are limited to the booking's org.
         var booking = await db.Bookings
@@ -260,7 +261,15 @@ public sealed class InAppNotificationJob(
             return Recipients.None;
         }
 
-        return await HostsAsync(booking.OrgId, booking.PropertyId, booking.ResponsibleUserId, booking.OwnerId, cancellationToken);
+        var hosts = HostNotificationAudience.UsersToTell(db, booking.OrgId, booking.PropertyId, booking.ResponsibleUserId, booking.OwnerId);
+        if (type == PushTypes.RoutineStaff)
+            hosts = hosts.Where(user => user.Id == booking.ResponsibleUserId);
+        if (type == PushTypes.RoutineOwner)
+            hosts = HostNotificationAudience.AdministratorsToTell(db, booking.OrgId)
+                .Where(user => db.OrgMembers.Any(member => member.OrgId == booking.OrgId && member.UserId == user.Id &&
+                    member.Status == OrgMemberStatus.Active && member.Role == OrgRole.Owner));
+
+        return Recipients.Of(booking.OrgId, await hosts.Select(user => user.Id).ToListAsync(cancellationToken));
     }
 
     private async Task<Recipients> PropertyHostsAsync(Guid propertyId, CancellationToken cancellationToken)

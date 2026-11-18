@@ -361,7 +361,14 @@ public class RoutineManagementService(
             .Distinct(StringComparer.Ordinal)
             .ToList();
         if (unavailable.Count == 0)
+        {
+            for (var index = 0; index < actions.Count; index++)
+            {
+                if (!RoutineActionRules.HasRequiredFields(actions[index]))
+                    throw ActionConfigInvalid(index, actions[index].Type);
+            }
             return;
+        }
 
         throw new DomainRuleException(RoutineCodes.ActionNotAvailable, "RoutineActionNotAvailable", string.Join(", ", unavailable))
         {

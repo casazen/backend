@@ -36,15 +36,18 @@ public class CommercialAgencyIntegrationTests(CasazenWebApplicationFactory facto
         Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/properties")).StatusCode);
     }
 
-    [Fact]
-    public async Task NewAgency_CreatesNamedOrganization_AndMakesFounderItsOwnerAdministrator()
+    [Theory]
+    [InlineData("ShortTerm")]
+    [InlineData("LongTerm")]
+    [InlineData("Both")]
+    public async Task NewAgency_CreatesNamedOrganization_AndMakesFounderItsOwnerAdministrator(string area)
     {
         var userId = $"auth0|agency-founder-{Guid.NewGuid():N}";
         using var client = factory.CreateAuthenticatedClient(userId, roles: string.Empty);
         var response = await client.PostAsJsonAsync("/api/users/onboarding", new
         {
-            rentalType = "ShortTerm",
-            commercialSignup = new { profile = "agency", agencyName = "Nuova Agenzia", planTier = "Agency", rooms = 3, addons = Array.Empty<string>() },
+            rentalType = area,
+            commercialSignup = new { profile = "agency", rentalArea = area, agencyName = "Nuova Agenzia", planTier = "Agency", rooms = 3, addons = Array.Empty<string>() },
             consents = new
             {
                 tosAccepted = true,
@@ -64,6 +67,8 @@ public class CommercialAgencyIntegrationTests(CasazenWebApplicationFactory facto
         var org = await db.Orgs.SingleAsync(o => o.Id == user.OrgId);
         Assert.Equal("Nuova Agenzia", org.Name);
         Assert.True(org.IsAgency);
+        Assert.Equal(area, user.RentalType?.ToString());
+        Assert.Equal(area, Casazen.Core.Services.CommercialSignup.Read(org.CommercialSignupJson)!.RentalArea);
         Assert.False(org.CommercialPaymentConfirmed);
         var founder = await db.OrgMembers.IgnoreQueryFilters().SingleAsync(m => m.UserId == userId);
         Assert.Equal(org.Id, founder.OrgId);
