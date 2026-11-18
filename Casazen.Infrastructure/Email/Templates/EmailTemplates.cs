@@ -323,9 +323,9 @@ public static partial class EmailTemplates
             .LinkFallback("SupplierInvite_LinkFallback", signupUrl)
             .Muted("SupplierInvite_Expires", builder.FormatInstant(expiresAtUtc))
             .Build("SupplierInvite_Subject") with
-            {
-                AccountInvitation = new("supplier", signupUrl, expiresAtUtc),
-            };
+        {
+            AccountInvitation = new("supplier", signupUrl, expiresAtUtc),
+        };
     }
 
     /// <summary>
@@ -357,9 +357,9 @@ public static partial class EmailTemplates
             .LinkFallback("HostInvite_LinkFallback", signupUrl)
             .Muted("HostInvite_Expires", builder.FormatInstant(expiresAtUtc))
             .Build(isAgency ? "AgencyInvite_Subject" : "HostInvite_Subject") with
-            {
-                AccountInvitation = new("host", signupUrl, expiresAtUtc),
-            };
+        {
+            AccountInvitation = new("host", signupUrl, expiresAtUtc),
+        };
     }
 
     private static string InvoiceLink(string checkInUrl) =>

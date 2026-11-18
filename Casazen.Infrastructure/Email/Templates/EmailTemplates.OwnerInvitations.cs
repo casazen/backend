@@ -28,8 +28,8 @@ public static partial class EmailTemplates
             .LinkFallback("OwnerInvitation_LinkFallback", acceptUrl)
             .Muted("OwnerInvitation_Expires", builder.FormatInstant(expiresAtUtc))
             .Build("OwnerInvitation_Subject", agencyName) with
-            {
-                AccountInvitation = new("owner", acceptUrl, expiresAtUtc),
-            };
+        {
+            AccountInvitation = new("owner", acceptUrl, expiresAtUtc),
+        };
     }
 }
