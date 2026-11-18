@@ -98,10 +98,10 @@ public class MessageHubNpgsqlTranslationTests
         Assert.True(statements.Count >= 6, $"{filter}/{scope}: only {statements.Count} of the 6 statements were reached.");
 
         var page = Assert.Single(statements, IsThePage);
-        Assert.Equal(1, CountOf(page, "UNION ALL"));
+        Assert.Equal(2, CountOf(page, "UNION ALL"));
         Assert.Contains("ORDER BY", page, StringComparison.Ordinal);
         Assert.Contains("OFFSET", page, StringComparison.Ordinal);
-        Assert.Equal(1, CountOf(statements.First(), "UNION ALL"));
+        Assert.Equal(2, CountOf(statements.First(), "UNION ALL"));
         Assert.StartsWith("SELECT COUNT", statements.First().TrimStart(), StringComparison.OrdinalIgnoreCase);
 
         // What is searched and ordered is plain columns: the words of a message (encrypted at rest) and the address of a file are in no statement
@@ -126,15 +126,18 @@ public class MessageHubNpgsqlTranslationTests
         var orgWidePage = Assert.Single(orgWide, IsThePage);
 
         // One EXISTS on the grants of the person for each source, none for the whole org; every source names the org of the scope.
-        Assert.Equal(2, CountOf(restrictedPage, "PropertyMemberAccesses"));
+        Assert.Equal(3, CountOf(restrictedPage, "PropertyMemberAccesses"));
         Assert.Equal(0, CountOf(orgWidePage, "PropertyMemberAccesses"));
-        Assert.Equal(2, CountOf(restrictedPage, "\"OrgId\" = @"));
-        Assert.Equal(2, CountOf(orgWidePage, "\"OrgId\" = @"));
+        Assert.Equal(3, CountOf(restrictedPage, "\"OrgId\" = @"));
+        Assert.Equal(3, CountOf(orgWidePage, "\"OrgId\" = @"));
     }
 
     /// <summary>The statement of the page: it selects the columns of the row of the list from the concatenation of the two sources.</summary>
     private static bool IsThePage(string sql) =>
-        sql.TrimStart().StartsWith("SELECT u.\"Source\"", StringComparison.Ordinal) && sql.Contains("UNION ALL", StringComparison.Ordinal);
+        sql.TrimStart().StartsWith("SELECT ", StringComparison.Ordinal)
+        && sql.Contains("\"Source\"", StringComparison.Ordinal)
+        && sql.Contains("UNION ALL", StringComparison.Ordinal)
+        && sql.Contains("OFFSET", StringComparison.Ordinal);
 
     private static int CountOf(string text, string needle)
     {

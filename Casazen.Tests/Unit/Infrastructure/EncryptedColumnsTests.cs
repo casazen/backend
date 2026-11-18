@@ -150,6 +150,8 @@ public class EncryptedColumnsTests
                 "StayGuest.TaxExemptionCode:Casazen.Guest.Document",
                 // NF-46: the same reason on the confirmed tax of the stay (kept 10 years, cleared with the guest's data).
                 "StayTouristTaxGuest.ExemptionCode:Casazen.Guest.Document",
+                "StorefrontChatMessage.Text:Casazen.StorefrontChat.Text",
+                "StorefrontChatThread.VisitorEmail:Casazen.StorefrontChat.Contact",
                 // E20/F03/US01/T01 (decision O5): the credentials of the support vault.
                 "SupportVaultSecret.ExtraCode:Casazen.SupportVault",
                 "SupportVaultSecret.Password:Casazen.SupportVault",
