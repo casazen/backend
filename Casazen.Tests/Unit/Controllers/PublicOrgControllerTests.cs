@@ -331,6 +331,7 @@ public class PublicOrgControllerTests
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var dto = Assert.IsType<PublicOrgDto>(ok.Value);
         Assert.Null(dto.ContactEmail);
+        Assert.True(dto.CanContactHost);
     }
 
     [Fact]
@@ -346,6 +347,21 @@ public class PublicOrgControllerTests
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var dto = Assert.IsType<PublicOrgDto>(ok.Value);
         Assert.Equal("contact@casazen-milan.it", dto.ContactEmail);
+    }
+
+    [Fact]
+    public async Task GetOrg_WithoutAContactAddress_DoesNotOfferTheContactForm()
+    {
+        var org = BuildOrg("no-recipient");
+        org.ContactEmail = null;
+        _orgService.Setup(s => s.GetPublicBySlugAsync("no-recipient", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(org);
+
+        var result = await _controller.GetOrg("no-recipient", CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var dto = Assert.IsType<PublicOrgDto>(ok.Value);
+        Assert.False(dto.CanContactHost);
     }
 
     // ── Canonical URL (BK-15) ───────────────────────────────────────────────────

@@ -22,6 +22,9 @@ public class PublicOrgDto
     /// </summary>
     public string? ContactEmail { get; set; }
 
+    /// <summary>Whether the public contact form has a configured recipient, independently of address visibility.</summary>
+    public bool CanContactHost { get; set; }
+
     public string? HeroImageUrl { get; set; }
     public string? Tagline { get; set; }
 
@@ -98,6 +101,7 @@ public class PublicOrgDto
         PrimaryColor = org.ThemeColor,
         ThemeColor = org.ThemeColor,
         ContactEmail = org.ContactEmailPublic && !string.IsNullOrWhiteSpace(org.ContactEmail) ? org.ContactEmail : null,
+        CanContactHost = !string.IsNullOrWhiteSpace(org.ContactEmail),
         HeroImageUrl = org.HeroImageUrl,
         Tagline = org.Tagline,
         Subtitle = org.Subtitle,
