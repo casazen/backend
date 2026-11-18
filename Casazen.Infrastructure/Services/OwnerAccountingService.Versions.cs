@@ -58,10 +58,24 @@ public sealed partial class OwnerAccountingService
         var ofMonth = entries.Where(e => e.PeriodYear == year && e.PeriodMonth == month).ToList();
         var hash = Hash(ofMonth);
 
+        // A balance is money in a currency, not a bare number. A month without entries retains the currency of the
+        // outstanding balance; changing currency while another currency is still owed needs an explicit conversion.
+        var priorBalances = entries.Where(e => new Period(e.PeriodYear, e.PeriodMonth).IsBefore(year, month))
+            .GroupBy(e => e.StatementCurrency, StringComparer.Ordinal)
+            .Select(group => new { Currency = group.Key, Amount = group.Sum(e => e.Amount) })
+            .Where(balance => balance.Amount != 0m)
+            .ToList();
+        var currencies = ofMonth.Select(e => e.StatementCurrency).Distinct(StringComparer.Ordinal).ToList();
+        var currency = currencies.Count > 0 ? currencies[0]
+            : priorBalances.FirstOrDefault()?.Currency ?? previous?.Currency ?? StayCurrency.Normalize(null);
+        if (priorBalances.Any(balance => balance.Currency != currency))
+            throw new DomainConflictException(OwnerAccountingErrors.StatementCurrencyConflict, "OwnerStatementCurrencyConflict");
+
         // The opening balance is what the earlier months say now: a correction posted in an earlier month changes it, and a version cut before it is no longer
         // the picture of the ledger even though the lines of its own month are the same.
-        var opening = entries.Where(e => new Period(e.PeriodYear, e.PeriodMonth).IsBefore(year, month)).Sum(e => e.Amount);
-        var sameLines = previous is not null && !row.IsDirty && string.Equals(previous.EntriesSha256, hash, StringComparison.Ordinal) && previous.OpeningBalance == opening;
+        var opening = priorBalances.Sum(balance => balance.Amount);
+        var sameLines = previous is not null && !row.IsDirty && previous.Currency == currency
+            && string.Equals(previous.EntriesSha256, hash, StringComparison.Ordinal) && previous.OpeningBalance == opening;
         if (sameLines && previous is { Status: OwnerStatementVersionStatus.Approved or OwnerStatementVersionStatus.Published })
         {
             if (skipWhenCurrent)
@@ -89,7 +103,6 @@ public sealed partial class OwnerAccountingService
         // changes nothing more).
         if (skipWhenCurrent && sameLines && previous is not null && SameIssues(previous, issues))
             return new GenerateOutcome(previous, false);
-        var currencies = ofMonth.Select(e => e.StatementCurrency).Distinct(StringComparer.Ordinal).ToList();
 
         var version = new OwnerStatementVersion
         {
@@ -99,7 +112,7 @@ public sealed partial class OwnerAccountingService
             PeriodMonth = month,
             VersionNumber = versions.Count == 0 ? 1 : versions.Max(v => v.VersionNumber) + 1,
             Status = issues.Any(i => i.Blocking) ? OwnerStatementVersionStatus.Flagged : OwnerStatementVersionStatus.Draft,
-            Currency = currencies.Count > 0 ? currencies[0] : previous?.Currency ?? StayCurrency.Normalize(null),
+            Currency = currency,
             CutoffAt = now,
             OpeningBalance = opening,
             Revenue = SumOf(ofMonth, OwnerLedgerEntryType.BookingRevenue),
@@ -425,14 +438,22 @@ public sealed partial class OwnerAccountingService
             ct);
         if (dirty || later)
             throw new DomainConflictException(OwnerAccountingErrors.PeriodDirty, "OwnerPeriodDirty");
-        if (!string.Equals(Hash(await EntriesOfAsync(version, ct)), version.EntriesSha256, StringComparison.Ordinal))
+        var entries = await EntriesOfAsync(version, ct);
+        if (!string.Equals(Hash(entries), version.EntriesSha256, StringComparison.Ordinal))
             throw new DomainConflictException(OwnerAccountingErrors.LedgerImmutable, "OwnerLedgerImmutable");
+        if (entries.Any(entry => entry.StatementCurrency != version.Currency))
+            throw new DomainConflictException(OwnerAccountingErrors.StatementCurrencyConflict, "OwnerStatementCurrencyConflict");
 
         // The balance carried in from the earlier months is part of the picture: a line posted there after the cut-off makes this version stale too.
-        var opening = await db.OwnerLedgerEntries.AsNoTracking()
+        var priorBalances = await db.OwnerLedgerEntries.AsNoTracking()
             .Where(e => e.OrgId == version.OrgId && e.PropertyOwnerId == version.PropertyOwnerId
                 && (e.PeriodYear < version.PeriodYear || (e.PeriodYear == version.PeriodYear && e.PeriodMonth < version.PeriodMonth)))
-            .SumAsync(e => e.Amount, ct);
+            .GroupBy(e => e.StatementCurrency)
+            .Select(group => new { Currency = group.Key, Amount = group.Sum(e => e.Amount) })
+            .ToListAsync(ct);
+        if (priorBalances.Any(balance => balance.Amount != 0m && balance.Currency != version.Currency))
+            throw new DomainConflictException(OwnerAccountingErrors.StatementCurrencyConflict, "OwnerStatementCurrencyConflict");
+        var opening = priorBalances.Where(balance => balance.Currency == version.Currency).Sum(balance => balance.Amount);
         if (opening != version.OpeningBalance)
             throw new DomainConflictException(OwnerAccountingErrors.PeriodDirty, "OwnerPeriodDirty");
     }

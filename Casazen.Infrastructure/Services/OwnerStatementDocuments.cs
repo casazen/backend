@@ -462,7 +462,12 @@ public sealed class OwnerStatementDocuments(
             // default), or an account of the agency whose commissions it does not recharge: no invoice of the property manager carries it.
             AgencyHoldsPortalAccount: entry.EntryType == OwnerLedgerEntryType.ChannelFee
                 && booking is not null
-                && portalAccounts.RechargesCommissionOf(entry.PropertyId ?? booking.PropertyId, booking.Source));
+                && portalAccounts.RechargesCommissionOf(entry.PropertyId ?? booking.PropertyId, booking.Source))
+        {
+            LedgerEvidence = new OwnerStatementLedgerEvidence(
+                entry.SourceType, entry.SourceId, entry.SourceReference, entry.ServiceDate, entry.RecognitionDate, entry.PaymentDate,
+                entry.OriginalAmount, entry.OriginalCurrency, entry.StatementCurrency, entry.FxRate, entry.FxSource, entry.FxDate),
+        };
     }
 
     /// <summary>The booking a ledger line is about: the source of a stay line or a flat fee, the booking a payment is of (its reference, with no dashes); none for a charge, a wire or a payout.</summary>
