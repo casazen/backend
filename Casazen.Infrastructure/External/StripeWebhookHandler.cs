@@ -495,8 +495,11 @@ public class StripeWebhookHandler(
             {
                 org.CommercialPaymentConfirmed = true;
                 org.CommercialRoomAllowance = commercial.Profile == "agency" ? checked((int)baseItem.Quantity) : 0;
-                var paidAddons = CommercialAddon.All.Where(a => subscription.Items!.Data.Any(i =>
-                    i.Price?.Id == CommercialPricing.Price(commercialConfiguration!, a.Code) && i.Quantity >= baseItem.Quantity))
+                var paidTier = stripeBillingService.MapPriceIdToTier(baseItem.Price.Id)!.Value;
+                var paidAddons = CommercialAddon.All.Where(a =>
+                    (commercial.Addons.Contains(a.Code) && CommercialPricing.IsIncluded(paidTier, a.Code) && CommercialPricing.IsEnabled(commercialConfiguration, a.Code)) ||
+                    (CommercialPricing.Price(commercialConfiguration, a.Code, paidTier) is { } priceId && subscription.Items!.Data.Any(i =>
+                        i.Price?.Id == priceId && i.Quantity >= baseItem.Quantity)))
                     .Select(a => a.Code).ToArray();
                 org.CommercialPaidAddonsJson = System.Text.Json.JsonSerializer.Serialize(paidAddons);
             }
