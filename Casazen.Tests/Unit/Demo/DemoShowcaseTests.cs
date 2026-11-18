@@ -107,6 +107,20 @@ public class DemoShowcaseTests
     }
 
     [Fact]
+    public void TodayArrival_IsConfirmedOnTheResetDay_WithGuestDataToComplete()
+    {
+        var house = Assert.Single(DemoShowcaseCatalog.Properties,
+            p => p.Bookings.Any(b => b.Scenario == DemoShowcaseCatalog.Scenario.TodayArrivalNeedsCheckIn));
+        var stay = Assert.Single(house.Bookings, b => b.Scenario == DemoShowcaseCatalog.Scenario.TodayArrivalNeedsCheckIn);
+
+        Assert.Equal(0, stay.CheckInOffsetDays);
+        Assert.Equal(BookingStatus.Confirmed, stay.Status);
+        Assert.Contains(stay.Guests!, guest => guest.BirthPlaceMissing);
+        Assert.DoesNotContain(house.Bookings, other => other != stay && other.Status != BookingStatus.Cancelled
+            && other.CheckInOffsetDays < stay.Nights && other.CheckInOffsetDays + other.Nights > 0);
+    }
+
+    [Fact]
     public void Catalog_CoversEveryScenario_WithUniqueKeys()
     {
         var keys = DemoShowcaseCatalog.Properties.Select(p => p.Key).ToList();
