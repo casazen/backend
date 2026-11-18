@@ -409,6 +409,7 @@ public class PropertyService(
             Unit = property.Unit,
             City = property.City,
             PostalCode = property.PostalCode,
+            Country = property.Country,
             Bedrooms = property.Bedrooms,
             Bathrooms = property.Bathrooms,
             MaxGuests = property.MaxGuests,

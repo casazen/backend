@@ -15,6 +15,7 @@ public class PropertyDetailResponse
     public string? Unit { get; set; }
     public string City { get; set; } = string.Empty;
     public string PostalCode { get; set; } = string.Empty;
+    public string Country { get; set; } = string.Empty;
     public int Bedrooms { get; set; }
     public int Bathrooms { get; set; }
     public int MaxGuests { get; set; }
