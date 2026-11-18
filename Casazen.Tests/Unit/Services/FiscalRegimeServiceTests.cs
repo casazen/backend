@@ -444,9 +444,15 @@ public class FiscalRegimeServiceTests
     [Fact]
     public async Task ApplyWithholding_OtaAuto_DirectSkipped()
     {
-        var sut = CreateService(CreateDb());
+        await using var db = CreateDb();
+        var orgId = Guid.NewGuid();
+        SeedOrg(db, orgId);
+        var property = SeedProperty(db, orgId, "Italian OTA rental");
+        var otaBooking = SeedStay(db, property, new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc),
+            nights: 3, source: BookingSource.Airbnb);
+        await db.SaveChangesAsync();
+        var sut = CreateService(db);
         var otaPayment = new Payment { Amount = 100m };
-        var otaBooking = new Booking { Source = BookingSource.Airbnb };
         await sut.ApplyWithholdingOnCreateAsync(otaPayment, otaBooking, null, null);
         Assert.Equal(21m, otaPayment.OtaWithholdingTax);
         Assert.True(otaPayment.WithholdingTaxApplied);
