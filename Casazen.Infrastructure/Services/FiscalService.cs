@@ -293,8 +293,9 @@ public partial class FiscalService(
     private async Task<bool> IsShortRentalContractAsync(Booking booking, CancellationToken cancellationToken = default)
     {
         if (!IsShortStay(booking.CheckInDate, booking.CheckOutDate)
-            || !await db.Properties.AnyAsync(p => p.Id == booking.PropertyId && p.OrgId == booking.OrgId
-                && p.Country == "IT", cancellationToken))
+            || !await db.Properties.IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
+                .AnyAsync(p => p.Id == booking.PropertyId && p.OrgId == booking.OrgId
+                    && p.Country == "IT", cancellationToken))
             return false;
 
         var taxYear = booking.CheckInDate.Year;

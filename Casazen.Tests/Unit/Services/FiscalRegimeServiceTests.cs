@@ -715,7 +715,8 @@ public class FiscalRegimeServiceTests
         await using var db = CreateDb();
         SeedOrg(db, orgId);
         var property = SeedProperty(db, orgId, "Historical rental");
-        SeedStay(db, property, new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc), nights: 3);
+        var booking = SeedStay(db, property, new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc),
+            nights: 3, source: BookingSource.Airbnb);
         property.IsDeleted = true;
         property.DeletedAt = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc);
         await db.SaveChangesAsync();
@@ -724,6 +725,10 @@ public class FiscalRegimeServiceTests
 
         Assert.Equal(property.Id, Assert.Single(snapshot.Properties).PropertyId);
         Assert.Equal(1, snapshot.StrPropertyCount);
+
+        var payment = new Payment { Amount = 100m };
+        await CreateService(db).ApplyWithholdingOnCreateAsync(payment, booking, null, null);
+        Assert.Equal(21m, payment.OtaWithholdingTax);
     }
 
     [Theory]
