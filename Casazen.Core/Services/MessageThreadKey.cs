@@ -11,6 +11,8 @@ public enum MessageThreadSource
 
     /// <summary>A conversation of a channel (Airbnb, Booking.com, Vrbo, Expedia) copied from the channel manager: <c>OtaMessageThread</c>.</summary>
     Ota = 1,
+
+    Storefront = 2,
 }
 
 /// <summary>
@@ -34,6 +36,8 @@ public readonly record struct MessageThreadKey(MessageThreadSource Source, Guid 
     public const string InvalidCode = "thread_key_invalid";
 
     /// <summary>The longest key there is: the longer prefix and a guid with dashes. Anything longer is not parsed.</summary>
+    public const string StorefrontPrefix = "site:";
+
     public const int MaxLength = 7 + 36;
 
     /// <summary>The key of the conversation of a channel stored in the row <paramref name="threadId"/>.</summary>
@@ -59,6 +63,11 @@ public readonly record struct MessageThreadKey(MessageThreadSource Source, Guid 
             source = MessageThreadSource.Ota;
             rest = value[OtaPrefix.Length..];
         }
+        else if (value.StartsWith(StorefrontPrefix, StringComparison.Ordinal))
+        {
+            source = MessageThreadSource.Storefront;
+            rest = value[StorefrontPrefix.Length..];
+        }
         else if (value.StartsWith(DirectPrefix, StringComparison.Ordinal))
         {
             source = MessageThreadSource.Direct;
@@ -82,5 +91,10 @@ public readonly record struct MessageThreadKey(MessageThreadSource Source, Guid 
 
     /// <summary>The key as text: <c>ota:{id}</c> or <c>direct:{id}</c>, the guid with dashes in lower case.</summary>
     public override string ToString() =>
-        (Source == MessageThreadSource.Ota ? OtaPrefix : DirectPrefix) + Id.ToString("D", CultureInfo.InvariantCulture);
+        (Source switch
+        {
+            MessageThreadSource.Ota => OtaPrefix,
+            MessageThreadSource.Storefront => StorefrontPrefix,
+            _ => DirectPrefix,
+        }) + Id.ToString("D", CultureInfo.InvariantCulture);
 }

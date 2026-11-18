@@ -4467,6 +4467,42 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("GuestSegments");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.StorefrontChatThread", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid");
+                    b.Property<Guid>("OrgId").HasColumnType("uuid");
+                    b.Property<Guid>("PropertyId").HasColumnType("uuid");
+                    b.Property<string>("AccessHash").IsRequired().HasMaxLength(64).HasColumnType("character varying(64)");
+                    b.Property<string>("VisitorName").IsRequired().HasMaxLength(100).HasColumnType("character varying(100)");
+                    b.Property<string>("VisitorEmail").IsRequired().HasColumnType("text");
+                    b.Property<DateTime>("LastMessageAt").HasColumnType("timestamp with time zone");
+                    b.Property<bool>("NeedsReply").HasColumnType("boolean");
+                    b.Property<int>("UnreadCount").HasColumnType("integer");
+
+                    b.HasKey("Id");
+                    b.HasIndex("PropertyId");
+                    b.HasIndex("OrgId", "LastMessageAt");
+                    b.HasIndex("OrgId", "PropertyId", "AccessHash").IsUnique();
+                    b.ToTable("StorefrontChatThreads");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.StorefrontChatMessage", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid");
+                    b.Property<Guid>("OrgId").HasColumnType("uuid");
+                    b.Property<Guid>("ThreadId").HasColumnType("uuid");
+                    b.Property<string>("IdempotencyKey").IsRequired().HasMaxLength(64).HasColumnType("character varying(64)");
+                    b.Property<int>("Direction").HasColumnType("integer");
+                    b.Property<string>("Text").IsRequired().HasColumnType("text");
+                    b.Property<DateTime>("SentAt").HasColumnType("timestamp with time zone");
+                    b.Property<DateTime?>("ReadAt").HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+                    b.HasIndex("ThreadId", "SentAt");
+                    b.HasIndex("ThreadId", "Direction", "IdempotencyKey").IsUnique();
+                    b.ToTable("StorefrontChatMessages");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.GuestThread", b =>
                 {
                     b.Property<Guid>("Id")
@@ -19112,6 +19148,27 @@ namespace Casazen.Infrastructure.Migrations
                         .HasForeignKey("OrgId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.StorefrontChatMessage", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.StorefrontChatThread", null)
+                        .WithMany("Messages")
+                        .HasForeignKey("ThreadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.StorefrontChatThread", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Property", "Property")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Property");
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.GuestThread", b =>

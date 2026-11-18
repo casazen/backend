@@ -464,6 +464,9 @@ public class AppDbContext(
     public DbSet<ReviewInvite> ReviewInvites { get; set; } = null!;
 
     // The messages between the guest of a direct booking and the host: one thread per booking (DB-14a)
+    public DbSet<StorefrontChatThread> StorefrontChatThreads { get; set; } = null!;
+    public DbSet<StorefrontChatMessage> StorefrontChatMessages { get; set; } = null!;
+
     public DbSet<GuestThread> GuestThreads { get; set; } = null!;
     public DbSet<GuestMessage> GuestMessages { get; set; } = null!;
 
@@ -1977,6 +1980,7 @@ public class AppDbContext(
 
         // A retried send with the same key loses the race on UIX_GuestMessages_ThreadId_IdempotencyKey (23505) and reads the first message.
         modelBuilder.ApplyConfiguration(new GuestMessageConfiguration());
+        StorefrontChatConfiguration.Configure(modelBuilder);
 
         // ─── The OTA conversations, copied from the channel manager (E05/F01/US01/T01, ADR-032) ───────────────
         // One thread per Octorate thread and organization (UIX_OtaMessageThreads_OrgId_OctorateThreadId), one message per Octorate message

@@ -9,6 +9,8 @@ namespace Casazen.Web.Infrastructure;
 /// </summary>
 public static class RateLimitPolicies
 {
+    public const string StorefrontChatRead = "storefront-chat-read";
+    public const string StorefrontChatWrite = "storefront-chat-write";
     /// <summary>Anonymous catalogue reads: public org, its properties, property search/detail, availability, supplier showcase.</summary>
     public const string PublicRead = "PublicRead";
 

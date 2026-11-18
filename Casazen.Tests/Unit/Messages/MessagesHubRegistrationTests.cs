@@ -31,7 +31,7 @@ public class MessagesHubRegistrationTests
     /// The exact list of what <c>AddMessagesHub</c> registers is photographed here: a service added to it is added to this test.
     /// </summary>
     [Fact]
-    public void AddMessagesHub_RegistersTheReplyTheTemplatesAndTheTranslation_AsTheWholeListOfServices()
+    public void AddMessagesHub_RegistersTheExpectedInboxAndStorefrontServices()
     {
         var services = new ServiceCollection();
 
@@ -41,10 +41,10 @@ public class MessagesHubRegistrationTests
         Assert.Equal(typeof(MessageTemplateService), Assert.Single(services, d => d.ServiceType == typeof(IMessageTemplateService)).ImplementationType);
         Assert.Equal(typeof(MessageTranslationService), Assert.Single(services, d => d.ServiceType == typeof(IMessageTranslationService)).ImplementationType);
         Assert.All(
-            new[] { typeof(IMessageHubService), typeof(IMessageReplyService), typeof(IMessageTemplateService), typeof(IMessageTranslationService) },
+            new[] { typeof(IMessageHubService), typeof(IMessageReplyService), typeof(IMessageTemplateService), typeof(IMessageTranslationService), typeof(StorefrontChatService) },
             type => Assert.Equal(ServiceLifetime.Scoped, Assert.Single(services, d => d.ServiceType == type).Lifetime));
 
-        // Of the types of the application, these five and no other (the rest of the descriptors are the framework's: the typed client).
+        // Of the types of the application, these six and no other (the rest of the descriptors are the framework's: the typed client).
         Assert.Equal(
             [
                 nameof(IMessageHubService),
@@ -52,6 +52,7 @@ public class MessagesHubRegistrationTests
                 nameof(IMessageTemplateService),
                 nameof(IMessageTranslationService),
                 nameof(IOtaAttachmentFetcher),
+                nameof(StorefrontChatService),
             ],
             services.Select(d => d.ServiceType).Where(t => t.Namespace?.StartsWith("Casazen.", StringComparison.Ordinal) == true).Select(t => t.Name).Order());
     }

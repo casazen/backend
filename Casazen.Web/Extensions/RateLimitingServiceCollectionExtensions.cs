@@ -58,6 +58,8 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.PublicSupplierQuote, 30, OneMinute),
         new(RateLimitPolicies.PublicSupplierBookingCreate, 5, TimeSpan.FromMinutes(10)),
         new(RateLimitPolicies.PublicContact, 5, TimeSpan.FromMinutes(10)),
+        new(RateLimitPolicies.StorefrontChatRead, 90, TimeSpan.FromMinutes(1)),
+        new(RateLimitPolicies.StorefrontChatWrite, 15, TimeSpan.FromMinutes(1)),
         new(RateLimitPolicies.PublicInvitationLookup, 20, OneMinute),
         new(RateLimitPolicies.PublicReviewSubmit, 10, TimeSpan.FromMinutes(10)),
         new(RateLimitPolicies.GuestMessageSend, 30, TimeSpan.FromMinutes(10)),

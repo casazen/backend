@@ -25,6 +25,8 @@ public class PublicOrgDto
     /// <summary>Whether the public contact form has a configured recipient, independently of address visibility.</summary>
     public bool CanContactHost { get; set; }
 
+    public bool StorefrontChatEnabled { get; set; }
+
     public string? HeroImageUrl { get; set; }
     public string? Tagline { get; set; }
 
@@ -101,6 +103,7 @@ public class PublicOrgDto
         PrimaryColor = org.ThemeColor,
         ThemeColor = org.ThemeColor,
         ContactEmail = org.ContactEmailPublic && !string.IsNullOrWhiteSpace(org.ContactEmail) ? org.ContactEmail : null,
+        StorefrontChatEnabled = true,
         CanContactHost = !string.IsNullOrWhiteSpace(org.ContactEmail),
         HeroImageUrl = org.HeroImageUrl,
         Tagline = org.Tagline,
