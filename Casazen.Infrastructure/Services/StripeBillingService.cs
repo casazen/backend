@@ -56,11 +56,12 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
         {
             ["orgId"] = org.Id.ToString(),
             [PlanTierMetadataKey] = planTier.ToString(),
+            ["basePriceId"] = priceId,
         };
 
         if (selection is not null) metadata["commercialConfiguration"] = selection.Fingerprint;
         var options = BuildCommercialCheckoutOptions(org.StripeCustomerId, priceId, successUrl, cancelUrl, metadata, selection,
-            code => CommercialPricing.Price(configuration, code));
+            code => CommercialPricing.Price(configuration, code, planTier));
         var service = new SessionService(CreateClient());
         var session = await service.CreateAsync(
             options,
@@ -79,8 +80,10 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
         if (selection?.Validate() is not null) throw new ArgumentException("Invalid commercial selection", nameof(selection));
         var options = BuildCheckoutSessionOptions(customerId, priceId, successUrl, cancelUrl, metadata);
         options.LineItems[0].Quantity = selection?.Quantity ?? 1;
+        PlanCatalog.TryParseTier(selection?.PlanTier, out var selectedTier);
         foreach (var code in selection?.Addons ?? [])
         {
+            if (CommercialPricing.IsIncluded(selectedTier, code)) continue;
             var price = addonPrice(code)
                 ?? throw new DomainRuleException("commercial_addon_unavailable", BillingPrices.PlanUnavailableMessageKey);
             options.LineItems.Add(new SessionLineItemOptions { Price = price, Quantity = selection!.Quantity });
@@ -144,6 +147,10 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
                              PlanCatalog.TryParseTier(raw, out var parsed)
                 ? parsed
                 : null;
+            // A pre-rotation session still quotes the old base tariff. Let the checkout service expire it.
+            if (tier is { } quotedTier && configuration[$"Billing:CheckoutPrices:{quotedTier}"] is not null &&
+                session.Metadata?.GetValueOrDefault("basePriceId") != BillingPrices.Resolve(configuration, quotedTier))
+                tier = null;
             sessions.Add(new StripeCheckoutSession(session.Id, session.Url, tier,
                 session.Metadata?.GetValueOrDefault("commercialConfiguration"), session.SuccessUrl));
         }
