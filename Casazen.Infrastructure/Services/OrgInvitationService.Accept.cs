@@ -109,6 +109,10 @@ public sealed partial class OrgInvitationService
                 throw new DomainConflictException(OrgInvitationErrors.UserHasOrganization, "InvitationUserHasOrganization");
             await EnsureOldOrgIsEmptyAsync(lockedPlan, request.UserId, cancellationToken);
 
+            invitation.Areas = await ActiveInvitationAreasAsync(invitation.OrgId, invitation.Areas, cancellationToken);
+            if (invitation.Areas.Count == 0)
+                throw Gone(OrgInvitationErrors.Invalid, "InvitationInvalid");
+
             var user = await db.Users.FirstAsync(u => u.Id == request.UserId, cancellationToken);
             await LeaveTheOldOrgAsync(user, lockedPlan, now, cancellationToken);
 
@@ -139,8 +143,9 @@ public sealed partial class OrgInvitationService
             // in the save below. One deleted since the invitation was written is skipped without an error.
             if (propertyScope == PropertyScope.Selected)
             {
+                var allowedProperties = PropertiesInAreas(invitation.OrgId, invitation.Areas).Select(p => p.Id);
                 var carried = await db.OrgInvitationProperties.IgnoreQueryFilters().AsNoTracking()
-                    .Where(p => p.OrgId == invitation.OrgId && p.InvitationId == invitation.Id)
+                    .Where(p => p.OrgId == invitation.OrgId && p.InvitationId == invitation.Id && allowedProperties.Contains(p.PropertyId))
                     .Select(p => p.PropertyId)
                     .ToListAsync(cancellationToken);
                 if (carried.Count > 0)

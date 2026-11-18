@@ -85,7 +85,7 @@ public class BillingController(
         if (request.CommercialSignup is { } selected &&
             (selected.Validate() is not null || selected.PlanTier != request.PlanTier))
             return BadRequest(new { code = "commercial_selection_invalid" });
-        if (request.CommercialSignup?.Addons.Any(code => !(request.CommercialSignup.Profile == "agency" ? AgencyUsagePricing.Available(configuration, code) : CommercialPricing.IsAvailable(configuration, code))) == true)
+        if (request.CommercialSignup?.Addons.Any(code => !(request.CommercialSignup.Profile == "agency" ? AgencyUsagePricing.Available(configuration, code) : CommercialPricing.IsAvailable(configuration, code, planTier))) == true)
             return UnprocessableEntity(new { code = "commercial_addon_unavailable" });
 
         if (string.IsNullOrWhiteSpace(request.BillingCountry) || request.BillingCountry.Trim().Length != 2)

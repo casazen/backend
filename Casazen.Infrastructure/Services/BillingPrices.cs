@@ -35,7 +35,7 @@ public static class BillingPrices
     /// </summary>
     public static string? Resolve(IConfiguration configuration, PlanTier tier)
     {
-        var value = configuration[$"{SectionName}:{tier}"]?.Trim();
+        var value = (configuration[$"Billing:CheckoutPrices:{tier}"] ?? configuration[$"{SectionName}:{tier}"])?.Trim();
         return IsPriceId(value) ? value : null;
     }
 
@@ -47,7 +47,8 @@ public static class BillingPrices
 
         foreach (var entry in PlanCatalog.All)
         {
-            if (string.Equals(Resolve(configuration, entry.Tier), priceId, StringComparison.Ordinal))
+            if (IsPriceId(priceId) && (string.Equals(Resolve(configuration, entry.Tier), priceId, StringComparison.Ordinal) ||
+                string.Equals(configuration[$"{SectionName}:{entry.Tier}"]?.Trim(), priceId, StringComparison.Ordinal)))
                 return entry.Tier;
         }
 
@@ -76,8 +77,8 @@ public static class BillingPrices
         }
 
         var shared = PlanCatalog.All
-            .Select(e => (e.Tier, PriceId: Resolve(configuration, e.Tier)))
-            .Where(p => p.PriceId is not null)
+            .SelectMany(e => new[] { Resolve(configuration, e.Tier), configuration[$"{SectionName}:{e.Tier}"]?.Trim() }
+                .Where(IsPriceId).Distinct(StringComparer.Ordinal).Select(priceId => (e.Tier, PriceId: priceId)))
             .GroupBy(p => p.PriceId, StringComparer.Ordinal)
             .Where(g => g.Count() > 1)
             .Select(g => string.Join(" and ", g.Select(p => VariableName(p.Tier))));

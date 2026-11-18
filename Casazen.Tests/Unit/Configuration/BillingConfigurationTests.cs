@@ -28,6 +28,15 @@ public class BillingConfigurationTests
     };
 
     [Fact]
+    public void CheckoutTariffRotation_PreservesExistingSubscriptionPriceMapping()
+    {
+        var config = With(AllPrices, new Dictionary<string, string?> { ["Billing:CheckoutPrices:Pro"] = "price_new" });
+        Assert.Equal("price_new", BillingPrices.Resolve(config, PlanTier.Pro));
+        Assert.Equal(PlanTier.Pro, BillingPrices.TierOf(config, "price_new"));
+        Assert.Equal(PlanTier.Pro, BillingPrices.TierOf(config, "price_1ProLive"));
+    }
+
+    [Fact]
     public void Startup_ProductionWithLiveKeyAndCommittedAppsettingsWithoutPriceIds_FailsNamingEveryPlan()
     {
         // The real appsettings.json: a price id committed there would silently satisfy the validation.
