@@ -146,7 +146,26 @@ public sealed record OwnerStatementLine(
     decimal SharePercent,
     decimal Amount,
     bool Reversal,
-    bool AgencyHoldsPortalAccount);
+    bool AgencyHoldsPortalAccount)
+{
+    /// <summary>The immutable ledger evidence behind this line, including its management FX rate (not an IVA exchange rate).</summary>
+    public OwnerStatementLedgerEvidence? LedgerEvidence { get; init; }
+}
+
+/// <summary>Original money, dates and source references stored by the ledger, preserved in the reconciliation appendix of the CSV.</summary>
+public sealed record OwnerStatementLedgerEvidence(
+    OwnerLedgerSourceType SourceType,
+    Guid? SourceId,
+    string? SourceReference,
+    DateOnly ServiceDate,
+    DateOnly RecognitionDate,
+    DateOnly? PaymentDate,
+    decimal OriginalAmount,
+    string OriginalCurrency,
+    string StatementCurrency,
+    decimal FxRate,
+    string? FxSource,
+    DateOnly? FxDate);
 
 /// <summary>
 /// The tourist tax of one stay of the statement, collected by the agency: for information only, to be remitted to the municipality or the cantonal tourist

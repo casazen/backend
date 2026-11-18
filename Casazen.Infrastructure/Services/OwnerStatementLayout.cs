@@ -50,6 +50,7 @@ public static class OwnerStatementLayout
         "StatementFileRechargeExpense", "StatementFileWithholdingLine", "StatementFileCorrectionLine", "StatementFilePaymentToOwner",
         "StatementFilePaymentFromOwner", "StatementFileReversal", "StatementFileNetOpening", "StatementFileNetPeriod", "StatementFileNetPayments",
         "StatementFileNetClosing", "StatementFileLinesHash", "StatementFileChannelDirect", "StatementFileChannelManual", "StatementFileChannelOther",
+        "StatementFileLedgerEvidence", "StatementFileLedgerEvidenceNote",
     ];
 
     /// <summary>The part a ledger line is in. A type nobody mapped is an error (a test lists every type), never a line shown under another part.</summary>
@@ -213,6 +214,25 @@ public static class OwnerStatementLayout
                 null,
                 tax.Amount,
                 tax.Currency));
+        }
+
+        var evidenceLines = content.Lines.Where(line => line.LedgerEvidence is not null).ToList();
+        if (evidenceLines.Count > 0)
+        {
+            rows.Add(Cells(texts.Get("StatementFileLedgerEvidence", language)));
+            rows.Add(Cells(texts.Get("StatementFileLedgerEvidenceNote", language)));
+            // Stable technical column names allow reconciliation without changing the original nine-column statement table.
+            rows.Add(Cells("ledger_entry_id", "source_type", "source_id", "source_reference", "service_date", "recognition_date", "payment_date",
+                "original_amount", "original_currency", "statement_amount", "statement_currency", "fx_rate", "fx_source", "fx_date"));
+            foreach (var line in evidenceLines)
+            {
+                var evidence = line.LedgerEvidence!;
+                rows.Add(Cells(line.EntryId, evidence.SourceType.ToString(), evidence.SourceId, evidence.SourceReference,
+                    evidence.ServiceDate, evidence.RecognitionDate, evidence.PaymentDate, evidence.OriginalAmount, evidence.OriginalCurrency,
+                    line.Amount, evidence.StatementCurrency,
+                    // CsvWriter treats decimals as money (two places): an FX rate must retain every stored significant digit.
+                    evidence.FxRate.ToString("G29", ItalianNumbers), evidence.FxSource, evidence.FxDate));
+            }
         }
 
         rows.Add(Cells(texts.Get("StatementFileLinesHash", language, content.EntriesSha256)));

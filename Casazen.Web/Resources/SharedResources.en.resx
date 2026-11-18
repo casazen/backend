@@ -6732,6 +6732,15 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OwnerStatementFlagged" xml:space="preserve">
     <value>The version has blocking issues: resolve them and generate a new version before approving it.</value>
   </data>
+  <data name="OwnerStatementCurrencyConflict" xml:space="preserve">
+    <value>The outstanding balance is in a different currency from the statement. First record a traceable conversion or settle that balance: currencies cannot be added without an exchange rate.</value>
+  </data>
+  <data name="StatementFileLedgerEvidence" xml:space="preserve">
+    <value>Reconciliation detail: original amounts, exchange rates and dates</value>
+  </data>
+  <data name="StatementFileLedgerEvidenceNote" xml:space="preserve">
+    <value>The exchange rates shown are the management rates of the statement. They do not replace fiscal VAT exchange rates.</value>
+  </data>
   <data name="OwnerStatementNotDraft" xml:space="preserve">
     <value>Only a draft version can be approved.</value>
   </data>

@@ -584,6 +584,28 @@ public class OwnerStatementDocumentsTests
         Assert.All(box, c => Assert.Equal("CHF", c[8]));
     }
 
+    [Fact]
+    public async Task StatementCsv_PreservesTheOriginalMoneyFullFxRateAndLedgerDates()
+    {
+        var world = await World.CreateAsync(convertedStay: true);
+
+        var file = await world.Documents.GetCsvAsync(world.OrgId, world.VersionId, "it");
+        var rows = Encoding.UTF8.GetString(file.Content).TrimStart('﻿').Split("\r\n", StringSplitOptions.RemoveEmptyEntries)
+            .Select(row => row.Split(';')).ToList();
+        var header = Assert.Single(rows, row => row[0] == "ledger_entry_id");
+        Assert.Equal(14, header.Length);
+        var original = await world.Db.OwnerLedgerEntries.AsNoTracking().SingleAsync(entry => entry.OriginalCurrency == "EUR");
+        var evidence = Assert.Single(rows, row => row[0] == original.Id.ToString());
+
+        Assert.Equal("Booking", evidence[1]);
+        Assert.Equal(world.PortalBookingId.ToString(), evidence[2]);
+        Assert.Equal(world.PortalBookingId.ToString("N"), evidence[3]);
+        Assert.Equal(new[] { "2026-10-05", "2026-10-08", "", "535,00", "EUR", "500,00", "CHF", "0,93457944", "TEST BCE", "2026-10-05" }, evidence[4..]);
+        Assert.Contains(rows, row => row[0].Contains("Non sostituiscono i cambi fiscali IVA", StringComparison.Ordinal));
+        // The original statement table remains usable by existing importers.
+        Assert.Contains(rows, row => row.Length == 9 && row[0] == "Soggiorni" && row[7] == "500,00" && row[8] == "CHF");
+    }
+
     /// <summary>The label of the commission of the channels follows who holds the portal account of the listing: the owner (V1, the default), or the agency (V2) with the invoice number.</summary>
     [Fact]
     public async Task StatementPdf_ChannelFeesLabelFollowsWhoHoldsThePortalAccount_Test()
@@ -846,7 +868,7 @@ public class OwnerStatementDocumentsTests
                 NullLogger<OwnerCollaborationService>.Instance);
         }
 
-        public static async Task<World> CreateAsync(bool approved = false, Casazen.Core.Options.SwissTouristTaxOptions? swiss = null)
+        public static async Task<World> CreateAsync(bool approved = false, Casazen.Core.Options.SwissTouristTaxOptions? swiss = null, bool convertedStay = false)
         {
             var world = new World(
                 new AppDbContext(
@@ -854,7 +876,7 @@ public class OwnerStatementDocumentsTests
                     new StatementTenant(),
                     new EphemeralDataProtectionProvider()),
                 swiss ?? new Casazen.Core.Options.SwissTouristTaxOptions());
-            await world.SeedAsync(approved);
+            await world.SeedAsync(approved, convertedStay);
             return world;
         }
 
@@ -898,7 +920,7 @@ public class OwnerStatementDocumentsTests
             Db.ChangeTracker.Clear();
         }
 
-        private async Task SeedAsync(bool approved)
+        private async Task SeedAsync(bool approved, bool convertedStay)
         {
             Db.Orgs.Add(new OrgEntity { Id = OrgId, Name = "TEST Agenzia Lugano", DisplayName = "TEST Agenzia Lugano", Slug = "test-agenzia", PlanTier = PlanTier.Agency });
             Db.Orgs.Add(new OrgEntity { Id = OtherOrgId, Name = "TEST Altra Agenzia", DisplayName = "TEST Altra Agenzia", Slug = "test-altra", PlanTier = PlanTier.Agency });
@@ -944,6 +966,16 @@ public class OwnerStatementDocumentsTests
                 Entry(OwnerLedgerEntryType.OwnerPayment, OwnerLedgerSourceType.WireBatch, Guid.NewGuid(), null, -400m, new DateOnly(2026, 11, 5), 10, null, new DateOnly(2026, 11, 5)),
             };
             var september = Entry(OwnerLedgerEntryType.BookingRevenue, OwnerLedgerSourceType.Booking, Guid.NewGuid(), null, 100m, new DateOnly(2026, 9, 20), 0);
+            if (convertedStay)
+            {
+                var converted = october[0];
+                converted.OriginalCurrency = "EUR";
+                converted.SourceAmount = 535m;
+                converted.OriginalAmount = 535m;
+                converted.FxRate = 0.93457944m;
+                converted.FxSource = "TEST BCE";
+                converted.FxDate = new DateOnly(2026, 10, 5);
+            }
             september.PeriodMonth = 9;
             Db.OwnerLedgerEntries.AddRange(october);
             Db.OwnerLedgerEntries.Add(september);

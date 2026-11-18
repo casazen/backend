@@ -375,6 +375,93 @@ public class OwnerAccountingCloseTests
         Assert.Equal("TEST-IT@1", Assert.Single(lines, e => e.ReversesEntryId is null && e.RuleVersion is not null).RuleVersion);
     }
 
+    [Fact]
+    public async Task OwnerStatement_AnOutstandingChfBalanceCannotBecomeANominalEuroBalance()
+    {
+        var world = await World.CreateAsync();
+        var owner = await world.OwnerAsync("CH", "EUR");
+        await world.Service.PostCorrectionAsync(OrgId, new OwnerCorrectionCommand
+        {
+            OwnerId = owner,
+            Amount = 100m,
+            Currency = "CHF",
+            Date = new DateOnly(2026, 9, 20),
+            Description = "TEST CHF balance",
+        }, null);
+        await world.Service.PostCorrectionAsync(OrgId, new OwnerCorrectionCommand
+        {
+            OwnerId = owner,
+            Amount = 50m,
+            Currency = "EUR",
+            Date = new DateOnly(2026, 10, 20),
+            Description = "TEST EUR movement",
+        }, null);
+
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() => world.Service.GenerateVersionAsync(OrgId, owner, 2026, 10, null));
+
+        Assert.Equal(OwnerAccountingErrors.StatementCurrencyConflict, error.Code);
+        Assert.Empty(await world.Db.OwnerStatementVersions.ToListAsync());
+        Assert.Equal(2, await world.Db.OwnerLedgerEntries.CountAsync());
+        var readiness = await world.Service.GetReadinessAsync(OrgId, 2026, 10);
+        Assert.Contains(readiness.Owners.Single(row => row.OwnerId == owner).Issues, issue => issue.Code == OwnerReadinessCodes.CurrencyMixed);
+    }
+
+    [Fact]
+    public async Task OwnerStatement_AnEmptyMonthKeepsTheCurrencyOfItsOutstandingBalance()
+    {
+        var world = await World.CreateAsync();
+        var owner = await world.OwnerAsync("CH", "CHF");
+        await world.Service.PostCorrectionAsync(OrgId, new OwnerCorrectionCommand
+        {
+            OwnerId = owner,
+            Amount = 100m,
+            Currency = "CHF",
+            Date = new DateOnly(2026, 9, 20),
+            Description = "TEST CHF balance",
+        }, null);
+
+        var version = await world.Service.GenerateVersionAsync(OrgId, owner, 2026, 10, null);
+
+        Assert.Equal(("CHF", 100m, 100m, 0), (version.Currency, version.OpeningBalance, version.ClosingBalance, version.EntryCount));
+
+        // A legacy draft incorrectly labelled EUR must not pass the approval guard either.
+        version.Currency = "EUR";
+        await world.Db.SaveChangesAsync();
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() => world.Service.ApproveVersionAsync(OrgId, version.Id, null));
+        Assert.Equal(OwnerAccountingErrors.StatementCurrencyConflict, error.Code);
+
+        var regenerated = await world.Service.GenerateVersionAsync(OrgId, owner, 2026, 10, null);
+        Assert.Equal(("CHF", 100m, 100m, 0), (regenerated.Currency, regenerated.OpeningBalance, regenerated.ClosingBalance, regenerated.EntryCount));
+    }
+
+    [Fact]
+    public async Task OwnerStatement_ASettledPreviousCurrencyDoesNotBlockTheNewCurrency()
+    {
+        var world = await World.CreateAsync();
+        var owner = await world.OwnerAsync("CH", "EUR");
+        foreach (var amount in new[] { 100m, -100m })
+            await world.Service.PostCorrectionAsync(OrgId, new OwnerCorrectionCommand
+            {
+                OwnerId = owner,
+                Amount = amount,
+                Currency = "CHF",
+                Date = new DateOnly(2026, 9, 20),
+                Description = "TEST CHF settlement",
+            }, null);
+        await world.Service.PostCorrectionAsync(OrgId, new OwnerCorrectionCommand
+        {
+            OwnerId = owner,
+            Amount = 50m,
+            Currency = "EUR",
+            Date = new DateOnly(2026, 10, 20),
+            Description = "TEST EUR movement",
+        }, null);
+
+        var version = await world.Service.GenerateVersionAsync(OrgId, owner, 2026, 10, null);
+
+        Assert.Equal(("EUR", 0m, 50m), (version.Currency, version.OpeningBalance, version.ClosingBalance));
+    }
+
     /// <summary>The balance carried in from an earlier month is part of a version: a line posted there after the cut-off makes the later version stale.</summary>
     [Fact]
     public async Task OwnerStatement_EarlierMonthChangeMakesTheLaterVersionStale_Test()

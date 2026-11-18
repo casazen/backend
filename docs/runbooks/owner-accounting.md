@@ -126,6 +126,9 @@ accounting for Swiss owners, and the retention law that applies (Italy at least 
   `{ property, checkIn, checkOut, channel, bookingCode, currency, amount }`, for information only and outside every total): the very rows the owner portal reads for
   the version, both from `IOwnerStatementDocuments.GetContentAsync` (FIX/RES-OWNERS), so it answers 409 `owner_ledger_immutable` when the lines no longer give the totals
   the version stores, as the files do.
+- **Currency carried forward:** earlier balances are grouped by statement currency. A month without entries retains its outstanding balance's currency.
+  A non-zero balance in another currency blocks generation/approval/publication with 409 `owner_statement_currency_conflict` and is reported as
+  `currency_mixed` in readiness. Settle it or record a traceable conversion before switching currency; no implicit exchange rate or nominal CHF/EUR sum is used.
 - **Readiness** (`GET …/periods/{y}/{m}/readiness`): issues of a property (`ownership_missing`, `ownership_share_gap`, `source_amount_missing`,
   `channel_commission_missing`) have no owner of
   their own and are listed for the org, **and** hold back the statement of every owner of that property (a source left out of the ledger is a line missing
@@ -361,6 +364,9 @@ E13 (its PDF and the owner portal), the VAT summary of E15 and the TD17 of E17 (
   «To do» cannot be raised, that is an error in the log with the same ids.
 - **Language and numbers.** The files are Italian unless `lang=en` is asked (no language is kept for an owner yet); the stored PDF is Italian. Amounts in the PDF follow the
   currency of the version: `1'234.50` for CHF, `1.234,50` for any other. The CSV uses the one CSV writer (decimal comma, no thousands separator).
+  Its original nine-column statement table is followed by a reconciliation appendix with stable technical headers: ledger/source identifiers,
+  service/recognition/payment dates, original amount/currency, statement amount/currency and the stored FX rate, source and date. FX rates retain
+  their full stored precision. These are **management** exchange rates; the appendix does not claim to calculate or replace fiscal VAT exchange rates.
 - **Owner portal** (`GET api/owner-portal/statements`, `…/statements/{id}`, `…/statements/{id}/pdf`, `…/invoices`, `…/invoices/{id}/pdf`): the owner of the `owner_id`
   claim and the delegated contacts that hold `accounting.read` (403 otherwise); another owner's statement or invoice is the same 404 as a missing one; never a guest;
   behind `Features:AgencyTier` (ON in test): with the flag off the lists stay empty and a statement or an invoice is not there. The invoices are the issued documents

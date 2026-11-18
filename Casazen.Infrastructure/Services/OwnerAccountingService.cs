@@ -175,10 +175,10 @@ public sealed partial class OwnerAccountingService(
         // What the earlier months say now, against the balance a version carried in: a line posted there after its cut-off makes the version stale.
         var openings = (await db.OwnerLedgerEntries.AsNoTracking()
                 .Where(e => e.OrgId == orgId && (e.PeriodYear < year || (e.PeriodYear == year && e.PeriodMonth < month)))
-                .GroupBy(e => e.PropertyOwnerId)
-                .Select(g => new { Owner = g.Key, Sum = g.Sum(e => e.Amount) })
+                .GroupBy(e => new { e.PropertyOwnerId, e.StatementCurrency })
+                .Select(g => new { Owner = g.Key.PropertyOwnerId, Currency = g.Key.StatementCurrency, Sum = g.Sum(e => e.Amount) })
                 .ToListAsync(ct))
-            .ToDictionary(x => x.Owner, x => x.Sum);
+            .GroupBy(balance => balance.Owner).ToDictionary(group => group.Key, group => group.ToList());
 
         var result = new List<OwnerPeriodReadiness>();
         foreach (var owner in owners)
@@ -196,6 +196,12 @@ public sealed partial class OwnerAccountingService(
             else
             {
                 issues = LedgerIssues(plan, live, owner);
+                var balances = openings.GetValueOrDefault(owner);
+                var currency = live.FirstOrDefault(entry => entry.PropertyOwnerId == owner)?.StatementCurrency
+                    ?? balances?.FirstOrDefault(balance => balance.Sum != 0m)?.Currency ?? latest?.Currency;
+                if (balances?.Any(balance => balance.Sum != 0m && balance.Currency != currency) == true
+                    && !issues.Any(issue => issue.Code == OwnerReadinessCodes.CurrencyMixed))
+                    issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.CurrencyMixed, owner));
                 if (latest is null)
                 {
                     issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.StatementMissing, owner));
@@ -205,7 +211,9 @@ public sealed partial class OwnerAccountingService(
                     if (latest.Status is OwnerStatementVersionStatus.Draft or OwnerStatementVersionStatus.Flagged)
                         issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.StatementNotApproved, owner, SourceId: latest.Id));
                     var atCutoff = all.Where(e => e.PropertyOwnerId == owner && e.PostedAt <= latest.CutoffAt);
-                    if (!string.Equals(Hash(atCutoff), latest.EntriesSha256, StringComparison.Ordinal) || openings.GetValueOrDefault(owner) != latest.OpeningBalance)
+                    var opening = balances?.Where(balance => balance.Currency == latest.Currency).Sum(balance => balance.Sum) ?? 0m;
+                    if (latest.Currency != currency || opening != latest.OpeningBalance
+                        || !string.Equals(Hash(atCutoff), latest.EntriesSha256, StringComparison.Ordinal))
                         issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.LedgerStatementImbalance, owner, SourceId: latest.Id));
                     if (latest.ClosingBalance < 0m)
                         issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.NegativeBalance, owner, SourceId: latest.Id));

@@ -348,6 +348,7 @@ public static class OwnerAccountingErrors
     public const string VersionNotFound = "owner_statement_version_not_found";
     public const string VersionUnchanged = "owner_statement_unchanged";
     public const string VersionFlagged = "owner_statement_flagged";
+    public const string StatementCurrencyConflict = "owner_statement_currency_conflict";
     public const string VersionNotDraft = "owner_statement_not_draft";
     public const string VersionNotApproved = "owner_statement_not_approved";
     public const string VersionNotPublished = "owner_statement_not_published";

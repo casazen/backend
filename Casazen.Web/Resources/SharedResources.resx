@@ -6732,6 +6732,15 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerStatementFlagged" xml:space="preserve">
     <value>La versione ha problemi bloccanti: risolvili e genera una nuova versione prima di approvarla.</value>
   </data>
+  <data name="OwnerStatementCurrencyConflict" xml:space="preserve">
+    <value>Il saldo aperto è in una valuta diversa dal rendiconto. Prima registra una conversione tracciabile o chiudi quel saldo: le valute non possono essere sommate senza cambio.</value>
+  </data>
+  <data name="StatementFileLedgerEvidence" xml:space="preserve">
+    <value>Dettaglio di riconciliazione: importi originali, cambi e date</value>
+  </data>
+  <data name="StatementFileLedgerEvidenceNote" xml:space="preserve">
+    <value>I cambi riportati sono quelli gestionali del rendiconto. Non sostituiscono i cambi fiscali IVA.</value>
+  </data>
   <data name="OwnerStatementNotDraft" xml:space="preserve">
     <value>Si approva solo una versione in bozza.</value>
   </data>
