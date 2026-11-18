@@ -11,6 +11,12 @@ public class GuestCheckInOptions
     public const int MinSessionLifetimeDays = 1;
     public const int MaxSessionLifetimeDays = 60;
 
+    /// <summary>Version of the notice displayed only in the guest check-in portal.</summary>
+    public string? PrivacyNoticeVersion { get; set; }
+
+    /// <summary>Version of the voluntary channel consent displayed only in the guest check-in portal.</summary>
+    public string? MarketingConsentVersion { get; set; }
+
     /// <summary>The daily send job emails the link to confirmed stays starting within this many days. Default 3.</summary>
     public int SendWindowDays { get; set; } = 3;
 

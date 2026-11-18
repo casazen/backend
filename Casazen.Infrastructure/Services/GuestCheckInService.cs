@@ -46,6 +46,10 @@ public class GuestCheckInService(
     private readonly GuestCheckInOptions _options = options?.Value ?? new GuestCheckInOptions();
     private readonly GdprOptions _gdpr = gdprOptions?.Value ?? new GdprOptions();
 
+    // Existing deployments can supply their own text versions across guest portals.
+    private string? PrivacyVersion => GdprOptions.Normalize(_gdpr.PrivacyNoticeVersion) ?? GdprOptions.Normalize(_options.PrivacyNoticeVersion);
+    private string? MarketingVersion => GdprOptions.Normalize(_gdpr.MarketingConsentVersion) ?? GdprOptions.Normalize(_options.MarketingConsentVersion);
+
     private readonly IAlloggiatiCodeTableService _codeTables =
         codeTableService ?? new AlloggiatiCodeTableService(db, NullLogger<AlloggiatiCodeTableService>.Instance);
 
@@ -207,9 +211,9 @@ public class GuestCheckInService(
             DeclaredGuests = Math.Max(1, booking.NumberOfGuests),
             Guests = guests.Select(ToPrefill).ToList(),
             AvailableCodeTables = tables.Where(t => t.RowCount > 0).Select(t => t.Table).ToList(),
-            PrivacyNoticeVersion = GdprOptions.Normalize(_gdpr.PrivacyNoticeVersion),
+            PrivacyNoticeVersion = PrivacyVersion,
             PrivacyNoticeOrgSlug = privacyNoticeOrgSlug,
-            MarketingConsentVersion = GdprOptions.Normalize(_gdpr.MarketingConsentVersion),
+            MarketingConsentVersion = MarketingVersion,
 
             // Data minimization (ADR-030-R1): the page asks a statistical field only where the region requires it, as the ISTAT region table says
             // (E21/F01/US01/T01): none for a comune that is not in the list, for a region without a row and for a row that is not verified.
@@ -367,7 +371,7 @@ public class GuestCheckInService(
 
         // The marketing consent is offered only with a versioned text (Gdpr:MarketingConsentVersion, CO-15). The per-channel
         // consent (NF-05) is checked here too, and its errors come with the ones of the guests: one answer, every error.
-        var marketingVersion = GdprOptions.Normalize(_gdpr.MarketingConsentVersion);
+        var marketingVersion = MarketingVersion;
         var (consentErrors, marketingEmail) = ValidateMarketingConsent(request, marketingVersion);
 
         // Every guest: kinds and order, document only for single guests and heads, shape of the codes.
@@ -685,7 +689,7 @@ public class GuestCheckInService(
         var ip = request.ConsentIpAddress.Length > 50 ? request.ConsentIpAddress[..50] : request.ConsentIpAddress;
         var ipAddress = string.IsNullOrWhiteSpace(ip) ? null : ip;
 
-        if (GdprOptions.Normalize(_gdpr.PrivacyNoticeVersion) is { } noticeVersion)
+        if (PrivacyVersion is { } noticeVersion)
         {
             db.GuestConsentRecords.Add(new GuestConsentRecord
             {
@@ -702,7 +706,7 @@ public class GuestCheckInService(
         else
         {
             logger.LogWarning(
-                "Gdpr:PrivacyNoticeVersion is not configured: the privacy notice shown for guest {GuestId} is not recorded",
+                "No check-in privacy notice version is configured: the privacy notice shown for guest {GuestId} is not recorded",
                 guest.Id);
         }
 

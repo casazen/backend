@@ -260,7 +260,7 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
     {
         var (token, _, _) = await SeedSessionAsync();
         await using var noMarketing = _factory.WithWebHostBuilder(builder =>
-            builder.ConfigureServices(services => services.PostConfigure<GdprOptions>(options => options.MarketingConsentVersion = null)));
+            builder.ConfigureServices(services => services.PostConfigure<GuestCheckInOptions>(options => options.MarketingConsentVersion = null)));
         var client = noMarketing.CreateClient();
         _ = await client.GetAsync($"/api/public/checkin/{token}");
 
