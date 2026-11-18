@@ -30,6 +30,7 @@ public class StripeWebhookSubscriptionStateTests
             ["Billing:Prices:Pro"] = ProPrice,
             ["Billing:Prices:Scale"] = ScalePrice,
             ["Billing:PastDueGraceDays"] = "7",
+            ["Billing:OwnerAddons:fiscal:PriceId"] = "price_fiscal",
         })
         .Build();
 
@@ -201,6 +202,26 @@ public class StripeWebhookSubscriptionStateTests
         Assert.True(stored.PastDueSince > oldStart);
     }
 
+    [Fact]
+    public async Task CommercialSignup_GrantsSelectedIncludedAndPaidModulesAfterConfirmation()
+    {
+        var org = await SeedOrgAsync(SubscriptionStatus.Incomplete, PlanTier.Starter, "sub_new");
+        var signup = new CommercialSignup { PlanTier = "Pro", Addons = ["direct-booking", "channels", "fiscal", "crm"] };
+        var trackedOrg = await _db.Orgs.FindAsync(org.Id);
+        trackedOrg!.CommercialSignupJson = signup.Serialize();
+        await _db.SaveChangesAsync();
+        var evt = Subscription("customer.subscription.created", "sub_new", "active", org, ProPrice);
+        var subscription = (Stripe.Subscription)evt.Data.Object;
+        subscription.Metadata["commercialConfiguration"] = signup.Fingerprint;
+        subscription.Items.Data[0].Quantity = 1;
+        subscription.Items.Data.Add(new SubscriptionItem { Price = new Price { Id = "price_fiscal" }, Quantity = 1 });
+        await HandleAsync(evt);
+        var paid = await ReloadAsync(org.Id);
+        Assert.True(paid.CommercialPaymentConfirmed);
+        // Direct booking is included. Fiscal has a paid line. Channels is disabled; CRM has no paid line.
+        Assert.Equal(new[] { "direct-booking", "fiscal" }, System.Text.Json.JsonSerializer.Deserialize<string[]>(paid.CommercialPaidAddonsJson!));
+    }
+
     private async Task<OrgEntity> SeedOrgAsync(
         SubscriptionStatus status,
         PlanTier tier,
@@ -247,7 +268,8 @@ public class StripeWebhookSubscriptionStateTests
             TestCheckoutPaymentSettlement.Create(_db),
             TestDeferredCharges.Create(_db),
             Mock.Of<ISupplierPaymentWebhookService>(),
-            NullLogger<StripeWebhookHandler>.Instance);
+            NullLogger<StripeWebhookHandler>.Instance,
+            commercialConfiguration: Config);
         await handler.HandleEventAsync(stripeEvent, WebhookSource.Platform);
         _db.ChangeTracker.Clear();
     }

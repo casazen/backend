@@ -18,6 +18,25 @@ public class CommercialSignupTests
     }
 
     [Fact]
+    public void LegacyCheckout_RetainsSerializedFormUsedForStripeFingerprint()
+    {
+        const string persisted = """{"Profile":"long-rent","PlanTier":"Pro","Rooms":1,"AgencyName":null,"Addons":["fiscal"]}""";
+        Assert.Equal(persisted, CommercialSignup.Read(persisted)!.Serialize());
+    }
+
+    [Theory]
+    [InlineData("LongTerm", false)]
+    [InlineData("ShortTerm", true)]
+    [InlineData("Both", true)]
+    [InlineData("unknown", false)]
+    public void SelectedArea_DeterminesEligibleExtras(string area, bool allowsChannels)
+    {
+        var signup = new CommercialSignup { RentalArea = area, PlanTier = "Pro", Addons = ["channels"] };
+        Assert.Equal(allowsChannels, signup.Validate() is null);
+        Assert.Equal(area, CommercialSignup.Read(signup.Serialize())!.RentalType);
+    }
+
+    [Fact]
     public void NewAgency_NeedsItsOwnName()
     {
         Assert.NotNull(new CommercialSignup { Profile = "agency", PlanTier = "Agency" }.Validate());

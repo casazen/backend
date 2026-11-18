@@ -20,9 +20,21 @@ public class CommercialCheckoutTests
         Assert.Equal("price_channels", options.LineItems[1].Price);
         Assert.Equal("subscription", options.Mode);
     }
+    [Theory]
+    [InlineData("Pro")]
+    [InlineData("Scale")]
+    public void OwnerIncludedModules_ChargeOnlyBasePrice(string tier)
+    {
+        var options = StripeBillingService.BuildCommercialCheckoutOptions("cus_test", "price_base",
+            "https://example.test", "https://example.test", [],
+            new CommercialSignup { PlanTier = tier, Addons = ["channels", "direct-booking", "compliance", "operations"] },
+            _ => throw new InvalidOperationException("Included modules do not need a Stripe price"));
+        Assert.Equal("price_base", Assert.Single(options.LineItems).Price);
+    }
+
     [Fact]
     public void MissingAddonPrice_RefusesCheckoutInsteadOfSilentlyDroppingTheCharge() =>
         Assert.Throws<DomainRuleException>(() => StripeBillingService.BuildCommercialCheckoutOptions("cus_test", "price_pro",
             "https://example.test", "https://example.test", [],
-            new CommercialSignup { PlanTier = "Pro", Addons = ["channels"] }, _ => null));
+            new CommercialSignup { PlanTier = "Pro", Addons = ["fiscal"] }, _ => null));
 }

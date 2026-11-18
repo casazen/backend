@@ -282,7 +282,7 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
         var preview = await service.LookupAsync(open);
         Assert.NotNull(preview);
         Assert.Equal(("Casa Rossi", "open@example.com", OrgRole.PropertyManager), (preview.OrgName, preview.Email, preview.Role));
-        Assert.Equal(["long-rent", "short-rent"], preview.Areas.Order());
+        Assert.Equal(["short-rent"], preview.Areas);
         Assert.Null(await service.LookupAsync(revoked));
         Assert.Null(await service.LookupAsync(expired));
         Assert.Null(await service.LookupAsync(new string('a', 64)));

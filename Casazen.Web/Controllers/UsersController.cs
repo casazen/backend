@@ -408,11 +408,9 @@ public class UsersController(
             return ToConsentError(validationError);
 
         // Legacy clients may omit the selection, but their new host organization still starts behind
-        // the payment gate. The initial setup activates one rental area only.
-        if (!hadHostOrg && rentalType == RentalType.Both)
-            return UnprocessableEntity(new { code = "commercial_single_area_required" });
+        // the payment gate with the requested rental areas.
         var initialSelection = dto.CommercialSignup ?? (!hadHostOrg
-            ? new CommercialSignup { Profile = rentalType == RentalType.LongTerm ? "long-rent" : "owner" }
+            ? new CommercialSignup { Profile = rentalType == RentalType.LongTerm ? "long-rent" : "owner", RentalArea = rentalType == RentalType.Both ? "Both" : null }
             : null);
 
         var (user, rolesAssigned, roleSync) = await userService.CompleteOnboardingAsync(
