@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
@@ -286,7 +285,7 @@ public class VerificationController(
         return orgId == null ? null : await hostScopeResolver.ResolveAsync(userId, GetJwtRoles(), orgId.Value);
     }
 
-    private string? GetUserId() => User.FindFirstValue(ClaimTypes.NameIdentifier);
+    private string? GetUserId() => User.GetUserId();
 
     private IReadOnlySet<string> GetJwtRoles() => User.GetRoles();
 }
