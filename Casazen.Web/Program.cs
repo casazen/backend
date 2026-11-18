@@ -28,6 +28,12 @@ using Microsoft.OpenApi.Models;
 
 using Stripe;
 
+if (args is ["--ensure-agency-test-meter"])
+{
+    await AgencyTestMeter.EnsureAsync();
+    return;
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Data Protection keys persisted in the database (not the ephemeral container disk): FD-07 / A9-04. Outside
