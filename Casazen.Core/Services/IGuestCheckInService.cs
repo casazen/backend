@@ -199,6 +199,8 @@ public sealed class GuestCheckInPublicView
     /// <summary>Version of the privacy notice the portal shows (<c>Gdpr:PrivacyNoticeVersion</c>), or null when not configured.</summary>
     public string? PrivacyNoticeVersion { get; init; }
 
+    public string? PrivacyNoticeOrgSlug { get; init; }
+
     /// <summary>Version of the marketing consent text; null when not configured, and then the consent is not offered.</summary>
     public string? MarketingConsentVersion { get; init; }
 

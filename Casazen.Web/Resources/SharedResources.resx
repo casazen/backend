@@ -8485,4 +8485,5 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="CheckInIdentityIncomplete" xml:space="preserve"><value>Completa la verifica dell’identità prima di inviare i dati.</value></data>
   <data name="CheckInVerifiedNumberMismatch" xml:space="preserve"><value>Il numero inserito deve corrispondere al documento verificato.</value></data>
   <data name="CheckInIdentityAlreadyVerified" xml:space="preserve"><value>La verifica dell’identità è già stata completata.</value></data>
+  <data name="CheckInPrivacyAcknowledgementRequired" xml:space="preserve"><value>Conferma di aver preso visione dell’informativa prima di inviare i dati.</value></data>
 </root>

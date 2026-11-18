@@ -6,6 +6,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.SiteDocuments;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -188,6 +189,12 @@ public class GuestCheckInService(
 
         // Two booleans and nothing of the stored data: the link is anonymous, the fiscal code, the VAT number, the address and the PEC never leave.
         var invoice = await _invoiceData.GetAsync(booking.Id);
+        var privacyNoticeOrgSlug = await db.OrgSiteDocuments
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(d => d.OrgId == booking.OrgId && d.Kind == OrgSiteDocumentKind.Privacy)
+            .OrderByDescending(d => d.Version)
+            .Select(d => d.WithdrawnAt == null ? d.Org.Slug : null)
+            .FirstOrDefaultAsync();
         return new GuestCheckInPublicView
         {
             InvoiceRequested = invoice?.InvoiceRequested ?? false,
@@ -201,6 +208,7 @@ public class GuestCheckInService(
             Guests = guests.Select(ToPrefill).ToList(),
             AvailableCodeTables = tables.Where(t => t.RowCount > 0).Select(t => t.Table).ToList(),
             PrivacyNoticeVersion = GdprOptions.Normalize(_gdpr.PrivacyNoticeVersion),
+            PrivacyNoticeOrgSlug = privacyNoticeOrgSlug,
             MarketingConsentVersion = GdprOptions.Normalize(_gdpr.MarketingConsentVersion),
 
             // Data minimization (ADR-030-R1): the page asks a statistical field only where the region requires it, as the ISTAT region table says
@@ -364,6 +372,8 @@ public class GuestCheckInService(
 
         // Every guest: kinds and order, document only for single guests and heads, shape of the codes.
         var guestErrors = (await _stayGuests.ValidateAsync(request.Guests)).ToList();
+        if (request.PrivacyNoticeAcknowledged == false)
+            guestErrors.Add(new(null, nameof(request.PrivacyNoticeAcknowledged), "CheckInPrivacyAcknowledgementRequired"));
         if (IdentityVerificationFlowService.VerifiedNumberMismatch(session, request.Guests) is { } mismatch)
             guestErrors.Add(new(mismatch, nameof(StayGuestInput.DocumentNumber), "CheckInVerifiedNumberMismatch"));
         var capacity = Math.Max(1, session.Booking.NumberOfGuests);

@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Core.SiteDocuments;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -68,6 +69,27 @@ public class GuestCheckInServiceTests
 
         await db.SaveChangesAsync();
         return new Seed(db, bookingId, guestId, orgId);
+    }
+
+    [Fact]
+    public async Task PublicView_LinksOnlyTheCurrentlyPublishedPropertyPrivacyNotice()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var org = new Org { Id = seed.OrgId, Slug = "test-property", Name = "Test Property" };
+        seed.Db.Orgs.Add(org);
+        seed.Db.OrgSiteDocuments.Add(new OrgSiteDocument { Org = org, Kind = OrgSiteDocumentKind.Privacy, Version = 1 });
+        await seed.Db.SaveChangesAsync();
+
+        Assert.Equal(org.Slug, (await svc.GetPublicViewAsync(token))?.PrivacyNoticeOrgSlug);
+
+        seed.Db.OrgSiteDocuments.Add(new OrgSiteDocument
+        {
+            Org = org, Kind = OrgSiteDocumentKind.Privacy, Version = 2, WithdrawnAt = DateTime.UtcNow,
+        });
+        await seed.Db.SaveChangesAsync();
+        Assert.Null((await svc.GetPublicViewAsync(token))?.PrivacyNoticeOrgSlug);
     }
 
     [Fact]
@@ -165,6 +187,7 @@ public class GuestCheckInServiceTests
     }
 
     [Theory]
+    [InlineData("CheckInPrivacyAcknowledgementRequired")]
     [InlineData("CheckInBookingCapacity")]
     [InlineData("CheckInBookedGuestMismatch")]
     [InlineData("CheckInDocumentNumberPlausibility")]
@@ -174,6 +197,8 @@ public class GuestCheckInServiceTests
         var service = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
         var token = await service.CreateSessionAsync(seed.BookingId, seed.OrgId);
         var request = BuildValidSubmitRequest(documentNumber: reason == "CheckInDocumentNumberPlausibility" ? "ASDFGH" : "AB123456");
+        if (reason == "CheckInPrivacyAcknowledgementRequired")
+            request.PrivacyNoticeAcknowledged = false;
         if (reason == "CheckInBookingCapacity")
             request.Guests = [request.Guests[0], request.Guests[0]];
         if (reason == "CheckInBookedGuestMismatch")

@@ -1131,7 +1131,7 @@ public sealed class IdentityVerificationFlowService(
 
 /// <summary>
 /// One picture of the attempt as the session keeps it (E22/F01/US01/T02): whether a face was found on it (null: not looked for, as on a back, or the models
-/// could not say), whether its light, glare and blur were good (null: not assessed) and, when its MRZ was read, the checks made on it. Flags only.
+/// could not say), whether its light, glare and blur were good (null: not assessed) and, when its MRZ was read, the checks made on it. A session-scoped proof binds the number to the final submission.
 /// </summary>
 internal sealed record StoredDocumentPicture(bool? Face, bool? QualityOk, DocumentCheck? Mrz, string? NumberProof = null);
 

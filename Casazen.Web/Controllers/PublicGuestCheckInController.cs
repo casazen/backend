@@ -96,6 +96,7 @@ public class PublicGuestCheckInController(
             Guests = view.Guests?.Select(PublicCheckInGuestPrefill.From).ToList(),
             AvailableCodeTables = view.AvailableCodeTables,
             PrivacyNoticeVersion = view.PrivacyNoticeVersion,
+            PrivacyNoticeOrgSlug = view.PrivacyNoticeOrgSlug,
             MarketingConsentVersion = view.MarketingConsentVersion,
             // Two booleans, never the data (E06/F02/US01/T03): the link is anonymous.
             InvoiceRequested = view.InvoiceRequested,

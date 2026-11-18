@@ -43,6 +43,9 @@ public class PublicCheckInContextResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? PrivacyNoticeVersion { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PrivacyNoticeOrgSlug { get; set; }
+
     /// <summary>
     /// Version of the optional marketing consent text; absent when the consent is not offered (CO-15). Absent: do not show the
     /// consent step, the server rejects every marketing consent field set to true (<see cref="PublicCheckInSubmitRequest"/>).
