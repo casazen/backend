@@ -50,9 +50,10 @@ public class OrgInvitationAcceptanceTests
     private async Task<(Guid OrgId, OrgInvitation Invitation, string Token)> OrgWithInvitationForNewUserAsync(
         OrgRole role = OrgRole.Collaborator,
         string[]? areas = null,
-        PropertyScope scope = PropertyScope.All)
+        PropertyScope scope = PropertyScope.All,
+        RentalType rentalType = RentalType.ShortTerm)
     {
-        var (org, _) = await _kit.SeedOwnerOrgAsync();
+        var (org, _) = await _kit.SeedOwnerOrgAsync(rentalType: rentalType);
         await _kit.SeedNewUserAsync(AnnaId, AnnaEmail);
         var (invitation, token) = await _kit.SeedInvitationAsync(org.Id, AnnaEmail, role, areas: areas);
         if (scope != PropertyScope.All)
@@ -135,12 +136,21 @@ public class OrgInvitationAcceptanceTests
     [InlineData(OrgRole.Accountant, new[] { "short-rent" }, new[] { "account/org_accountant", "short-rent/accountant" })]
     public async Task AcceptAsync_EachRoleGetsTheMembershipsOfItsAreas(OrgRole role, string[] areas, string[] expected)
     {
-        var (_, _, token) = await OrgWithInvitationForNewUserAsync(role, areas);
+        var (_, _, token) = await OrgWithInvitationForNewUserAsync(role, areas, rentalType: RentalType.Both);
 
         var accepted = await AcceptAsync(token);
 
         Assert.Equal(role, accepted.Role);
         Assert.Equal(expected, await _kit.MembershipsAsync(AnnaId));
+    }
+
+    [Fact]
+    public async Task AcceptAsync_LegacyAdminInvitationOnlyGrantsCurrentlyActiveAreas()
+    {
+        var (_, _, token) = await OrgWithInvitationForNewUserAsync(OrgRole.Admin, ["short-rent", "long-rent"]);
+        var accepted = await AcceptAsync(token);
+        Assert.Equal(["short-rent"], accepted.Areas);
+        Assert.Equal(["account/org_admin", "short-rent/property_manager"], await _kit.MembershipsAsync(AnnaId));
     }
 
     [Fact]
