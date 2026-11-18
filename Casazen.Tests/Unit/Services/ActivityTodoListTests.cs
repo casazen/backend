@@ -38,6 +38,23 @@ public class ActivityTodoListTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _db.DisposeAsync();
 
+    [Fact]
+    public void TodoDto_KeepsTheScheduledTimeSeparateFromTheDeadline()
+    {
+        var scheduled = new DateTime(2026, 11, 24, 8, 0, 0, DateTimeKind.Utc);
+        var deadline = scheduled.AddHours(5);
+        var dto = TodoActivityDto.From(new InternalActivity
+        {
+            ActivityType = nameof(ActivityType.RoutineTask),
+            Action = ActivityAction.ReviewBooking,
+            ScheduledAt = scheduled,
+            Deadline = deadline,
+        });
+
+        Assert.Equal(scheduled, dto.ScheduledAt);
+        Assert.Equal(deadline, dto.DueAt);
+    }
+
     /// <summary>
     /// Proof (permission, privacy; ADR-026-R2, R3): through <c>GET /api/me/activities</c> the collaborator «Solo alcuni» sees
     /// only the item of the property it was given, never the item of the property it was not given, the organization-level item
