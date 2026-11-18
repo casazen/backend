@@ -45,6 +45,8 @@ public static class BillingPrices
         if (string.IsNullOrWhiteSpace(priceId))
             return null;
 
+        if (priceId == AgencyUsagePricing.PriceId(configuration, AgencyUsagePricing.Base)) return PlanTier.Agency;
+
         foreach (var entry in PlanCatalog.All)
         {
             if (string.Equals(Resolve(configuration, entry.Tier), priceId, StringComparison.Ordinal))
@@ -86,7 +88,7 @@ public static class BillingPrices
         return problems;
     }
 
-    private static bool IsPriceId(string? value) =>
+    internal static bool IsPriceId(string? value) =>
         !string.IsNullOrEmpty(value)
         && value.StartsWith(PriceIdPrefix, StringComparison.Ordinal)
         && value.Length > PriceIdPrefix.Length

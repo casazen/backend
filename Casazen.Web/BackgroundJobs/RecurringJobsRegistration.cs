@@ -23,6 +23,10 @@ public static class RecurringJobsRegistration
     /// <param name="routineOptions">The interval of the time triggers of the routines (section <c>Routine</c>); the defaults when omitted.</param>
     public static void Configure(IRecurringJobManager recurringJobManager, IFeatureFlags featureFlags, RoutineOptions? routineOptions = null)
     {
+        recurringJobManager.AddOrUpdate<AgencyUsageJob>(
+            "agency-monthly-unit-usage", job => job.ExecuteAsync(CancellationToken.None),
+            "*/5 * * * *", new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         ConfigureOtaPartnerJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OtaPartnerApi));
 
         // E02/F02: the jobs of the Octorate connector (bookings and calendar), only while the connector is on.

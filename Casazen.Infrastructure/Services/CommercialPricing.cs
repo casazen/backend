@@ -6,6 +6,9 @@ namespace Casazen.Infrastructure.Services;
 public static class CommercialPricing
 {
     public static bool IsAvailable(IConfiguration configuration, string code)
+        => Price(configuration, code) is not null && IsEnabled(configuration, code);
+
+    public static bool IsEnabled(IConfiguration configuration, string code)
     {
         var flag = code switch
         {
@@ -16,8 +19,7 @@ public static class CommercialPricing
             "identification" => "CheckInIdentityVerification",
             _ => null,
         };
-        return Price(configuration, code) is not null &&
-            (flag is null || configuration.GetValue<bool>($"Features:{flag}"));
+        return flag is null || configuration.GetValue<bool>($"Features:{flag}");
     }
 
     public static string? Price(IConfiguration configuration, string code)

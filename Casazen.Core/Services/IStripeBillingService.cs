@@ -4,7 +4,7 @@ using Casazen.Core.Entities.Enums;
 namespace Casazen.Core.Services;
 
 /// <summary>A Stripe Checkout Session in subscription mode, with the plan tier stored in its metadata.</summary>
-public sealed record StripeCheckoutSession(string Id, string Url, PlanTier? PlanTier, string? ConfigurationKey = null, string? ReturnUrl = null);
+public sealed record StripeCheckoutSession(string Id, string Url, PlanTier? PlanTier, string? ConfigurationKey = null, string? ReturnUrl = null, string? AgencyBilling = null);
 
 /// <summary>A Stripe subscription of a customer, with its raw Stripe status (<c>active</c>, <c>incomplete</c>…).</summary>
 public sealed record StripeSubscriptionSummary(string Id, string Status);
