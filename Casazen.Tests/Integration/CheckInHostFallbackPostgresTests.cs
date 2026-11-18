@@ -2,7 +2,9 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -19,6 +21,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
@@ -37,6 +40,45 @@ public sealed class CheckInHostFallbackPostgresTests : IClassFixture<CheckInHost
     private readonly List<IServiceScope> _scopes = [];
 
     public CheckInHostFallbackPostgresTests(FallbackFactory factory) => _factory = factory;
+
+    [PostgresFact]
+    public async Task RequestPhoto_FailedQueueKeepsTheTodo_SuccessAndRetryIssueOnlyOneEmailedLink()
+    {
+        var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
+        var oldSession = await AddSessionAsync(seed.BookingId, GuestCheckInSessionStatus.InCompilazione, DateTime.UtcNow.AddDays(3));
+        await UpdateAsync<GuestCheckInSession>(oldSession, s => s.BiometricOutcome = BiometricOutcome.Escalate);
+        var hostScope = new HostScope(await OrgOfAsync(seed.BookingId));
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var activities = scope.ServiceProvider.GetRequiredService<IInternalActivityService>();
+        var todoId = await activities.CreateAsync(new CreateTodoRequest
+        {
+            Type = ActivityType.IdentityVerification,
+            Action = ActivityAction.VerifyIdentity,
+            EntityType = InternalActivity.BookingEntityType,
+            EntityId = seed.BookingId,
+            PropertyId = seed.PropertyId,
+            Urgency = ActivityUrgency.High,
+        }, CancellationToken.None);
+        var failing = new VerificationQueueService(db, Mock.Of<IEmailQueue>(), scope.ServiceProvider.GetRequiredService<PublicSiteLinks>(),
+            scope.ServiceProvider.GetRequiredService<IGuestCheckInService>(), NullLogger<VerificationQueueService>.Instance, activities: activities);
+        Assert.False(await failing.RequestNewPhotoAsync(seed.BookingId, hostScope, seed.OwnerId));
+        Assert.Contains(await failing.GetPendingVerificationsAsync(seed.OwnerId, hostScope), v => v.BookingId == seed.BookingId);
+        Assert.Contains(await activities.GetPendingAsync(hostScope, CancellationToken.None), a => a.Id == todoId);
+
+        using var host = _factory.CreateAuthenticatedClient(seed.OwnerId, OwnerRole);
+        var path = $"/api/verification/{seed.BookingId}/request-photo";
+        var concurrent = await Task.WhenAll(host.PostAsync(path, null), host.PostAsync(path, null));
+        Assert.Contains(concurrent, r => r.StatusCode == HttpStatusCode.OK);
+        Assert.All(concurrent, r => Assert.Contains(r.StatusCode, new[] { HttpStatusCode.OK, HttpStatusCode.Conflict }));
+        Assert.Equal(HttpStatusCode.OK, (await host.PostAsync(path, null)).StatusCode);
+        // Initial session, failed email attempt, and exactly one successful request. Neither duplicate replaces the emailed link.
+        Assert.Equal(3, await db.GuestCheckInSessions.CountAsync(s => s.BookingId == seed.BookingId));
+        var pending = await host.GetFromJsonAsync<JsonElement>("/api/verification/pending");
+        Assert.DoesNotContain(pending.EnumerateArray(), row => row.GetProperty("bookingId").GetGuid() == seed.BookingId);
+        Assert.Equal(seed.OwnerId, await db.InternalActivities.Where(a => a.Id == todoId).Select(a => a.ClosedBy).SingleAsync());
+        Assert.DoesNotContain(await activities.GetPendingAsync(hostScope, CancellationToken.None), a => a.Id == todoId);
+    }
 
     [PostgresFact]
     public async Task ResendLink_EmailRejectedByProvider_LinkStaysUsableCopyableAndReminderPossible()

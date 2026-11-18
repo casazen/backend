@@ -204,6 +204,7 @@ public sealed record ComplianceVerdict
         OctorateHandoffTopic? handoffTopic)
     {
         Light = light;
+        NeedsAttention = light != ComplianceLight.Green;
         Reason = reason;
         EvidenceClass = evidenceClass;
         EvidenceSource = evidenceSource;
@@ -233,8 +234,8 @@ public sealed record ComplianceVerdict
     /// <summary>The Octorate handoff the host can use to check an outcome CasaZen cannot see; <c>null</c> when none applies.</summary>
     public OctorateHandoffTopic? HandoffTopic { get; }
 
-    /// <summary>True when a person can act on it: anything that is not green.</summary>
-    public bool NeedsAttention => Light != ComplianceLight.Green;
+    /// <summary>Whether the host has an outstanding task. A requested replacement photo is pending with the guest.</summary>
+    public bool NeedsAttention { get; private init; }
 
     internal static ComplianceVerdict Proven(ComplianceProof proof, string reason)
     {
@@ -261,6 +262,9 @@ public sealed record ComplianceVerdict
             null,
             null,
             topic);
+
+    internal static ComplianceVerdict AwaitingReplacementPhoto() =>
+        InProgress(ComplianceReasonCodes.SelfieAwaited) with { NeedsAttention = false };
 
     internal static ComplianceVerdict ActionNeeded(
         string reason,
@@ -506,6 +510,9 @@ public sealed record IdentityFacts
 
     /// <summary>An operator has to decide: the comparison asked for a review or the attempts are used, and nobody decided yet.</summary>
     public bool OperatorDecisionNeeded { get; init; }
+
+    /// <summary>The operator asked the guest to send a replacement photo.</summary>
+    public bool ReplacementPhotoRequested { get; init; }
 }
 
 /// <summary>The facts of the police send of the channel manager of a property.</summary>
@@ -670,6 +677,9 @@ public static class ComplianceLightRules
 
         if (facts.OperatorDecisionNeeded)
             return ComplianceVerdict.ActionNeeded(ComplianceReasonCodes.OperatorDecisionRequired);
+
+        if (facts.ReplacementPhotoRequested)
+            return ComplianceVerdict.AwaitingReplacementPhoto();
 
         return facts.NowUtc >= facts.ArrivalStartUtc.AddHours(-Math.Max(0, facts.RedHoursBeforeArrival))
             ? ComplianceVerdict.ActionNeeded(ComplianceReasonCodes.IdentityMissing)

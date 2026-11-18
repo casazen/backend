@@ -498,6 +498,43 @@ public class ComplianceStatusServiceTests
         Assert.StartsWith("biometric-log:", accepted.ProofReference, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task RequestedPhoto_HidesAnExistingUrgentTodoUntilAnotherHandOff()
+    {
+        var world = await World.SeedAsync();
+        world.IdentityOn = true;
+        var (stay, _) = await world.AddStayAsync(world.Granted, checkInOffset: 0);
+        await world.AddSessionAsync(stay, operatorRequested: true);
+        await using var db = world.Db();
+        var activities = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, world.Clock);
+        async Task FeedAsync(ComplianceStatusResult status)
+        {
+            using var cache = new MemoryCache(new MemoryCacheOptions());
+            await new ComplianceActivityFeeder(activities, db, cache, NullLogger<ComplianceActivityFeeder>.Instance)
+                .FeedAsync(world.OrgWide, status, CancellationToken.None);
+        }
+        await FeedAsync(await world.StatusService(db).EvaluateAsync(world.OrgWide, CancellationToken.None));
+        var oldTodo = await db.InternalActivities.AsNoTracking().SingleAsync(a => a.EntityId == stay.Id && a.Action == ActivityAction.VerifyIdentity);
+
+        // A photo request recorded before the fix can leave an open row. Direct reads hide it even before reconciliation.
+        await world.AddVerificationLogAsync(stay, BiometricOutcome.Escalate, byOperator: true);
+        Assert.DoesNotContain(await activities.GetPendingAsync(world.OrgWide, CancellationToken.None), a => a.Id == oldTodo.Id);
+        var waiting = await world.StatusService(db).EvaluateAsync(world.OrgWide, CancellationToken.None);
+        var verdict = IdentityOf(waiting, stay);
+        Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.SelfieAwaited, false), (verdict.Light, verdict.Reason, verdict.NeedsAttention));
+        await FeedAsync(waiting);
+        Assert.NotNull((await db.InternalActivities.AsNoTracking().SingleAsync(a => a.Id == oldTodo.Id)).CompletedAt);
+        Assert.Empty(await db.InternalActivities.Where(a => a.EntityId == stay.Id && a.Action == ActivityAction.VerifyIdentity && a.CompletedAt == null).ToListAsync());
+
+        var session = await db.GuestCheckInSessions.SingleAsync(s => s.BookingId == stay.Id);
+        session.OperatorRequestedAt = Start.UtcDateTime.AddHours(2);
+        await db.SaveChangesAsync();
+        var reopened = await world.StatusService(db).EvaluateAsync(world.OrgWide, CancellationToken.None);
+        Assert.Equal(ComplianceReasonCodes.OperatorDecisionRequired, IdentityOf(reopened, stay).Reason);
+        await FeedAsync(reopened);
+        Assert.Contains(await activities.GetPendingAsync(world.OrgWide, CancellationToken.None), a => a.Action == ActivityAction.VerifyIdentity && a.EntityId == stay.Id && a.Id != oldTodo.Id);
+    }
+
     // ─── Properties: connection, credentials, CIN, rate, periods ────────────────────────────────────────
 
     [Fact]
