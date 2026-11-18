@@ -50,12 +50,30 @@ public sealed class AgencyMeteredBilling : Migration
         END $$;
         CREATE TRIGGER agency_unit_activity AFTER INSERT OR DELETE OR UPDATE OF "IsActive","IsPaused","IsDeleted","IsTestData","OrgId"
         ON "Properties" FOR EACH ROW EXECUTE FUNCTION casazen_agency_unit_activity();
+        CREATE FUNCTION casazen_agency_inventory_changed() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+            IF NEW."IsAgency" THEN
+                INSERT INTO "AgencyUnitActivity" ("OrgId","PropertyId","StartedAt")
+                SELECT NEW."Id",p."Id",statement_timestamp() FROM "Properties" p
+                WHERE p."OrgId"=NEW."Id" AND p."IsActive" AND NOT p."IsDeleted" AND NOT p."IsPaused" AND NOT p."IsTestData"
+                ON CONFLICT DO NOTHING;
+            ELSE
+                UPDATE "AgencyUnitActivity" SET "EndedAt" = statement_timestamp()
+                WHERE "OrgId"=NEW."Id" AND "EndedAt" IS NULL;
+            END IF;
+            RETURN NEW;
+        END $$;
+        CREATE TRIGGER agency_inventory_changed AFTER UPDATE OF "IsAgency" ON "Orgs"
+        FOR EACH ROW WHEN (OLD."IsAgency" IS DISTINCT FROM NEW."IsAgency") EXECUTE FUNCTION casazen_agency_inventory_changed();
+
         INSERT INTO "AgencyUnitActivity" ("OrgId","PropertyId","StartedAt")
         SELECT p."OrgId",p."Id",statement_timestamp() FROM "Properties" p JOIN "Orgs" o ON o."Id"=p."OrgId"
         WHERE o."IsAgency" AND p."IsActive" AND NOT p."IsDeleted" AND NOT p."IsPaused" AND NOT p."IsTestData";
         """);
 
     protected override void Down(MigrationBuilder migrationBuilder) => migrationBuilder.Sql("""
+        DROP TRIGGER agency_inventory_changed ON "Orgs";
+        DROP FUNCTION casazen_agency_inventory_changed();
         DROP TRIGGER agency_unit_activity ON "Properties";
         DROP FUNCTION casazen_agency_unit_activity();
         DROP TABLE "AgencyCustomQuotes","AgencyUsageContracts","AgencyUnitActivity";

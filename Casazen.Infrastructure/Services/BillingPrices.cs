@@ -45,15 +45,13 @@ public static class BillingPrices
         if (string.IsNullOrWhiteSpace(priceId))
             return null;
 
-        if (priceId == AgencyUsagePricing.PriceId(configuration, AgencyUsagePricing.Base)) return PlanTier.Agency;
-
         foreach (var entry in PlanCatalog.All)
         {
             if (string.Equals(Resolve(configuration, entry.Tier), priceId, StringComparison.Ordinal))
                 return entry.Tier;
         }
 
-        return null;
+        return priceId == AgencyUsagePricing.PriceId(configuration, AgencyUsagePricing.Base) ? PlanTier.Agency : null;
     }
 
     /// <summary>

@@ -18,15 +18,15 @@ public class AgencyMonthlyUsagePostgresTests
     {
         await using var database = await PostgresTestDatabase.CreateMigratedAsync();
         await using var db = database.CreateContext();
-        var org = new Casazen.Core.Entities.Org { Slug = "unit-billing", IsAgency = true, Name = "Agency" };
+        var org = new Casazen.Core.Entities.Org { Slug = "unit-billing", IsAgency = false, Name = "Agency" };
         db.Orgs.Add(org);
-        var property = new Property { OrgId = org.Id, OwnerId = "host", Name = "One sellable unit", Bedrooms = 4, Address = "Street 1", IsActive = false };
+        var property = new Property { OrgId = org.Id, OwnerId = "host", Name = "One sellable unit", Bedrooms = 4, Address = "Street 1", IsActive = true };
         db.Properties.Add(property);
         await db.SaveChangesAsync();
         var start = DateTime.UtcNow.Date.AddDays(-1);
         var end = start.AddDays(2);
         Assert.Equal(0, await AgencyUsageJob.CountAsync(db, org.Id, start, end, default));
-        property.IsActive = true;
+        org.IsAgency = true;
         await db.SaveChangesAsync();
         property.IsPaused = true;
         await db.SaveChangesAsync();
