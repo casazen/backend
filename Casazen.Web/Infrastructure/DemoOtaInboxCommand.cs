@@ -204,23 +204,30 @@ public static class DemoOtaInboxCommand
                 profile.CleaningFeeTreatment, DateOnly.FromDateTime(booking.CheckOutDate));
             var built = await builder.BuildAsync(booking.Id, rule, builder.PlatformCollectedChannelsOf(organization));
             var amounts = FiscalDocumentTotals.FromGross(GuestDocumentLineBuilder.LinesOf(built.Lines, document, organization), rule.StampDuty);
-            db.FiscalDocumentLines.RemoveRange(document.Lines);
-            document.Lines.Clear();
+            var existingLines = document.Lines.ToDictionary(line => line.LineNumber);
+            var expectedLineNumbers = amounts.Lines.Select(line => line.LineNumber).ToHashSet();
+            db.FiscalDocumentLines.RemoveRange(existingLines.Values.Where(line => !expectedLineNumbers.Contains(line.LineNumber)));
             foreach (var line in amounts.Lines)
-                document.Lines.Add(new FiscalDocumentLine
+            {
+                if (!existingLines.TryGetValue(line.LineNumber, out var stored))
                 {
-                    OrgId = orgId,
-                    DocumentId = document.Id,
-                    LineNumber = line.LineNumber,
-                    LineType = line.LineType,
-                    Description = line.Description,
-                    Quantity = line.Quantity,
-                    UnitPrice = line.UnitPrice,
-                    TotalPrice = line.TotalPrice,
-                    VatRatePercent = line.VatRatePercent,
-                    VatNatureCode = line.NatureCode,
-                    VatAmount = line.VatAmount,
-                });
+                    stored = new FiscalDocumentLine
+                    {
+                        OrgId = orgId,
+                        DocumentId = document.Id,
+                        LineNumber = line.LineNumber,
+                    };
+                    db.FiscalDocumentLines.Add(stored);
+                }
+                stored.LineType = line.LineType;
+                stored.Description = line.Description;
+                stored.Quantity = line.Quantity;
+                stored.UnitPrice = line.UnitPrice;
+                stored.TotalPrice = line.TotalPrice;
+                stored.VatRatePercent = line.VatRatePercent;
+                stored.VatNatureCode = line.NatureCode;
+                stored.VatAmount = line.VatAmount;
+            }
             document.TaxableBase = amounts.TaxableBase;
             document.VatAmount = amounts.VatAmount;
             document.StampDuty = amounts.StampDuty;
