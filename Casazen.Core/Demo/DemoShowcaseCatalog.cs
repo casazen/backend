@@ -17,7 +17,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-18.1";
+    public const string Version = "2026-11-18.2";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -112,6 +112,7 @@ public static class DemoShowcaseCatalog
         public const string WireBatchGenerated = "wire-batch-generated";
         public const string RoutineActive = "routine-active";
         public const string RoutineTestMode = "routine-test-mode";
+        public const string RoutinePausedLinenCheck = "routine-paused-linen-check";
 
         /// <summary>
         /// The ready routine «Richiesta di recensione» (E26/F01/US01/T01, NF-21, NF-69): the day after the check-out, at the check-out time of the house, the
@@ -425,6 +426,7 @@ public static class DemoShowcaseCatalog
         Scenario.WireBatchGenerated,
         Scenario.RoutineActive,
         Scenario.RoutineTestMode,
+        Scenario.RoutinePausedLinenCheck,
         Scenario.RoutineReviewRequest,
         Scenario.PropertyWizardFields,
         Scenario.PropertySiteProfile,
@@ -1773,8 +1775,8 @@ public static class DemoShowcaseCatalog
     ];
 
     /// <summary>
-    /// The demo schedules cleaning automatically. Both examples that create personal reminders are simulations,
-    /// as is the review invitation for the invented guests.
+    /// The demo schedules cleaning automatically. Personal reminders and review invitations use test mode.
+    /// The linen check is paused so the host can preview it against stays of different lengths.
     /// </summary>
     public static IReadOnlyList<DemoRoutineTemplate> Routines { get; } =
     [
@@ -1809,6 +1811,17 @@ public static class DemoShowcaseCatalog
             [new DemoRoutineAction(RoutineActionType.CreateCleaningRequest, "{}")],
             false,
             Scenario.CleaningAtCheckout),
+
+        new(
+            "controllo-biancheria",
+            "Controllo biancheria dopo soggiorni di almeno 4 notti (TEST)",
+            RoutineEventType.AfterCheckout,
+            0,
+            [new DemoRoutineAction(RoutineActionType.CreateActivity, """{"text":"Verifica la biancheria dopo la pulizia (TEST)","dueInDays":0}""")],
+            true,
+            Scenario.RoutinePausedLinenCheck,
+            Active: false,
+            ConditionJson: """{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"stayDuration","operator":"greaterThan","value":3}]}]}"""),
 
         // E26/F01/US01/T01: the ready routine «Richiesta di recensione»: an offset of one day after the check-out time of the property on its own clock; in test mode, because
         // the guests of the showcase are invented and nothing is sent to them.
@@ -2816,8 +2829,8 @@ public sealed record DemoWireBatchTemplate(
     string Scenario);
 
 /// <summary>
-/// An automation routine demo (NF-21, NF-26): demonstrates an active routine and one in test mode. It becomes a <c>Routine</c> row marked as showcase data
-/// (<c>TestDataEntities.Routine</c>): active in both cases, <paramref name="IsTestMode"/> says whether it simulates its actions. The event is a time trigger
+/// An automation routine demo (NF-21, NF-26): can be scheduled, simulated or left paused. It becomes a <c>Routine</c> row marked as showcase data
+/// (<c>TestDataEntities.Routine</c>): <paramref name="Active"/> controls scheduling and <paramref name="IsTestMode"/> controls side effects. The event is a time trigger
 /// of <paramref name="DaysBefore"/> days (<c>{ "days": N }</c>), before the check-in or the check-out, or after it for the events «after».
 /// </summary>
 public sealed record DemoRoutineTemplate(
@@ -2827,7 +2840,9 @@ public sealed record DemoRoutineTemplate(
     int DaysBefore,
     IReadOnlyList<DemoRoutineAction> Actions,
     bool IsTestMode,
-    string Scenario);
+    string Scenario,
+    bool Active = true,
+    string ConditionJson = "{}");
 
 /// <summary>An action of a demo routine: its type and its configuration as the JSON object the editor writes (<c>{ "text": "…", "dueInDays": 1 }</c>).</summary>
 public sealed record DemoRoutineAction(RoutineActionType Type, string ConfigJson);
