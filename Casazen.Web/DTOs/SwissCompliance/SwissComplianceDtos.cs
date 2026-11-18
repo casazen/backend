@@ -81,8 +81,7 @@ public sealed class UploadSwissReceiptForm
     public string? Reference { get; set; }
 
     /// <summary>
-    /// The receipt file, any type, not empty, at most 10 MB. It is read to compute its SHA-256 and then discarded: the host
-    /// keeps the original.
+    /// The receipt file, any type, not empty, at most 10 MB. Its original bytes are encrypted and retained in private storage.
     /// </summary>
     [Required(ErrorMessage = "SwissReceiptFileRequired")]
     public IFormFile? File { get; set; }
@@ -115,4 +114,13 @@ public sealed record SwissReceiptResponse(
         receipt.Reference,
         receipt.UploadedFileHash,
         receipt.UploadedAt);
+}
+
+/// <summary>No storage key or public URL is exposed; HasFile distinguishes retained originals from legacy hash-only rows.</summary>
+public sealed record SwissReceiptArchiveItem(SwissReceiptResponse Receipt, bool HasFile);
+public sealed record SwissReceiptPageResponse(IReadOnlyList<SwissReceiptArchiveItem> Items, int Page, int PageSize, int TotalCount, bool IsTicinoProperty)
+{
+    public static SwissReceiptPageResponse From(SwissComplianceReceiptPage page) => new(
+        page.Items.Select(item => new SwissReceiptArchiveItem(SwissReceiptResponse.From(item.Receipt), item.HasFile)).ToList(),
+        page.Page, page.PageSize, page.TotalCount, page.IsTicinoProperty);
 }
