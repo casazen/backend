@@ -13689,6 +13689,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool>("Active")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("AgentObjective")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("ConditionJson")
                         .IsRequired()
                         .HasColumnType("text");

@@ -59,8 +59,10 @@ Prezzi mensili, IVA esclusa; **pagamento annuale −10 %**. Oltre 100 proprietà
 |---|---:|---:|---:|---:|---:|---:|---|
 | **Free** | € 0 | — | 1 | non previste | 1 | 1 | Marketplace fornitori con Garanzia, calendario iCal, pagina pubblica dell'immobile con richiesta di prenotazione "paga in struttura" approvata dall'host, cockpit compliance in sola lettura, app. Marchio "Powered by CasaZen" |
 | **Starter** | € 29 | € 26 | 3 | non previste | 3 | 2 | Sito di prenotazione diretta con checkout Stripe sul proprio conto (sottodominio CasaZen), wizard di compliance (CIN, imposta di soggiorno, sicurezza), portale ospite e file Alloggiati, check-out guidato, suggerimenti stagionali, locazioni lunghe (contratti, RLI assistita, canone). Channel manager via API in opzione a € 4/unità |
-| **Pro** | € 79 | € 71 | 10 | € 8 | 50 | 10 | Channel manager via API incluso (Airbnb, Booking.com, Vrbo, Expedia), dominio proprio senza marchio CasaZen, temi e branding, routine (libreria pronta), inbox con risposte AI in bozza (fase 2), dispositivi smart (serrature € 7/serratura), check-in biometrico opzionale (€ 0,75 a verifica) |
-| **Scale** | € 199 | € 179 | 25 | € 7 | 100 | illimitate | Routine avanzate e AI automatica (fase 2), persone illimitate con ruoli, supporto prioritario, export e API |
+| **Pro** | € 79 | € 71 | 10 | € 8 | 50 | 10 | Channel manager via API incluso (Airbnb, Booking.com, Vrbo, Expedia), dominio proprio senza marchio CasaZen, temi e branding, inbox con risposte AI in bozza (fase 2), dispositivi smart (serrature € 7/serratura), check-in biometrico opzionale (€ 0,75 a verifica) |
+| **Scale** | € 199 | € 179 | 25 | € 7 | 100 | illimitate | AI automatica per i messaggi (fase 2), persone illimitate con ruoli, supporto prioritario, export e API |
+
+**AI Agents** è un modulo mensile separato per gli affitti brevi, selezionabile durante la registrazione con Pro, Scale o Agency. Comprende la libreria di agenti, gli obiettivi personalizzati e l’esecuzione automatica sugli eventi di CasaZen. Il catalogo commerciale mostra il prezzo del modulo prima del pagamento.
 
 ### 4.1 Margine lordo per piano
 
@@ -105,8 +107,8 @@ Prezzi per unità al mese, IVA esclusa, con **pagamento annuale** (+10 % con pag
 
 | Pacchetto | 10-49 | 50-149 | 150-399 | Cosa contiene |
 |---|---:|---:|---:|---|
-| **Base** | € 10 | € 9 | € 8 | Gestionale, channel manager via API con contenuti, chat e recensioni, inbox con risposte AI in bozza, sito diretto, check-in online, adempimenti via API (Alloggiati, ISTAT, feratel) e file pronti per quelli senza API, portale proprietari con rendiconti, fatture SDI per conto dell'agenzia e file di bonifico, routine, fornitori e staff propri, app |
-| **+ AI e Marketing** | +€ 4 | +€ 4 | +€ 4 | Risposte AI inviate in automatico sopra una soglia di confidenza, routine create da una frase, CRM, campagne email e WhatsApp |
+| **Base** | € 10 | € 9 | € 8 | Gestionale, channel manager via API con contenuti, chat e recensioni, inbox con risposte AI in bozza, sito diretto, check-in online, adempimenti via API (Alloggiati, ISTAT, feratel) e file pronti per quelli senza API, portale proprietari con rendiconti, fatture SDI per conto dell'agenzia e file di bonifico, fornitori e staff propri, app |
+| **+ AI e Marketing** | +€ 4 | +€ 4 | +€ 4 | Risposte AI inviate in automatico sopra una soglia di confidenza, CRM, campagne email e WhatsApp |
 | **Tutto compreso** | **€ 15** | **€ 14** | **€ 13** | Base + AI e Marketing + **6 verifiche d'identità per unità al mese** |
 | Check-in biometrico | € 0,75 a verifica | | | Documento e volto all'ingresso con alternativa in videochiamata; NFC +€ 0,20; nel B2B è il predefinito |
 | Serrature smart | € 7 per serratura al mese | | | Codice per soggiorno rilasciato dopo l'identificazione; hardware escluso |

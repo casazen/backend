@@ -17,6 +17,7 @@ public static class CommercialPricing
     {
         var flag = code switch
         {
+            "ai-agents" => "Routines",
             "channels" => "OctorateConnector",
             "messages-ai" => "MessageAssistant",
             "fiscal" => "FiscalDocumentIssuance",

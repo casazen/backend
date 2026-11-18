@@ -1,3 +1,4 @@
+using Casazen.Infrastructure.Services;
 using Stripe;
 using Stripe.Billing;
 
@@ -6,9 +7,9 @@ namespace Casazen.Web.Configuration;
 /// <summary>Explicit operator command for the CasaZen test catalog. No web host or database is started.</summary>
 internal static class AgencyTestMeter
 {
-    internal static async Task EnsureAsync()
+    internal static async Task EnsureAsync(string module)
     {
-        const string eventName = "casazen_agency_units_v1_base";
+        var eventName = AgencyUsagePricing.EventName(module);
         var key = Environment.GetEnvironmentVariable("Stripe__SecretKey");
         if (key is null || !(key.StartsWith("sk_test_", StringComparison.Ordinal) || key.StartsWith("rk_test_", StringComparison.Ordinal)))
             throw new InvalidOperationException("A sandbox Stripe key is required.");
@@ -28,7 +29,7 @@ internal static class AgencyTestMeter
         }
         found ??= await meters.CreateAsync(new MeterCreateOptions
         {
-            DisplayName = "CasaZen TEST – Agency monthly active sellable units",
+            DisplayName = module == AgencyUsagePricing.Base ? "CasaZen TEST – Agency monthly active sellable units" : "CasaZen AI Agents – active sellable units",
             EventName = eventName,
             DefaultAggregation = new() { Formula = "last" },
             CustomerMapping = new() { Type = "by_id", EventPayloadKey = "stripe_customer_id" },

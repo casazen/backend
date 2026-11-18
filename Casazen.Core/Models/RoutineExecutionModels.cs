@@ -11,6 +11,9 @@ namespace Casazen.Core.Models;
 /// </summary>
 public static class RoutineCodes
 {
+    public const string AiPlanInvalid = "routine_ai_plan_invalid";
+    public const string AiNotSelected = "routine_ai_not_selected";
+    public const string AiSubscriptionRequired = "routine_ai_subscription_required";
     public const string AiFactsMissing = "routine_ai_condition_unknown";
     public const string AiConditionFalse = "routine_ai_condition_false";
     public const string AiUnavailable = "routine_ai_unavailable";

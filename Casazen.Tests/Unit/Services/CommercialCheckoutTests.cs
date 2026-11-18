@@ -37,9 +37,9 @@ public class CommercialCheckoutTests
     {
         var options = StripeBillingService.BuildCommercialCheckoutOptions("cus_test", "price_agency",
             "https://example.test/onboarding?checkout=success", "https://example.test/onboarding?checkout=cancel", [],
-            new CommercialSignup { Profile = "agency", AgencyName = "Demo Agency", PlanTier = "Agency", Rooms = 37, Addons = ["channels", "revenue"] },
+            new CommercialSignup { Profile = "agency", AgencyName = "Demo Agency", PlanTier = "Agency", Rooms = 37, Addons = ["channels", "revenue", "ai-agents"] },
             code => "price_" + code);
-        Assert.Equal(2, options.LineItems.Count);
+        Assert.Equal(3, options.LineItems.Count);
         Assert.All(options.LineItems, item => Assert.Null(item.Quantity));
         Assert.Equal("always", options.PaymentMethodCollection);
         Assert.Equal("flexible", options.SubscriptionData.BillingMode.Type);
@@ -47,6 +47,7 @@ public class CommercialCheckoutTests
         Assert.Equal(AgencyUsagePricing.Version, options.SubscriptionData.Metadata[AgencyUsagePricing.MetadataKey]);
         Assert.Equal("price_agency", options.LineItems[0].Price);
         Assert.Equal("price_revenue", options.LineItems[1].Price);
+        Assert.Equal("price_ai-agents", options.LineItems[2].Price);
         Assert.Equal("subscription", options.Mode);
     }
     [Theory]

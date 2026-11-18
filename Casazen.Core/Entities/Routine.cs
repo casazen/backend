@@ -23,6 +23,9 @@ public class Routine : ITenantOwned
     [MaxLength(200)]
     public string Name { get; set; } = string.Empty;
 
+    [MaxLength(500)]
+    public string? AgentObjective { get; set; }
+
     /// <summary>Event type that triggers this routine (AC-NF26-2).</summary>
     public RoutineEventType EventType { get; set; }
 

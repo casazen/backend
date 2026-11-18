@@ -57,6 +57,7 @@ public sealed class CommercialAccessMiddleware(RequestDelegate next)
     public static string? ModuleForController(string? controller) => controller switch
     {
         "Octorate" or "OctorateMapping" or "OctorateExistingInventory" or "BookingOctorateSync" => "channels",
+        "Routines" => "ai-agents",
         "Verification" => "identification",
         "Compliance" or "ComplianceAutopilot" or "ComplianceArchive" or "ComplianceConnectionHealth" or "PropertyIstatCredentials" or "Alloggiati" or "Istat" or "OctorateComplianceHandoff" => "compliance",
         "Connect" or "OrgDomain" or "OrgSiteDocuments" or "OrgBranding" => "direct-booking",

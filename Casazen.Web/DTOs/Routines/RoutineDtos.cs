@@ -19,7 +19,8 @@ public sealed record RoutineDto(
     string ConditionJson,
     string ActionsJson,
     bool TestMode,
-    bool Active)
+    bool Active,
+    string? AgentObjective = null)
 {
     public static RoutineDto From(Routine routine)
     {
@@ -34,7 +35,8 @@ public sealed record RoutineDto(
             routine.ConditionJson,
             routine.ActionsJson,
             routine.TestMode,
-            routine.Active);
+            routine.Active,
+            routine.AgentObjective);
     }
 }
 
@@ -98,6 +100,9 @@ public abstract class RoutineWriteDto
 {
     public string? Name { get; init; }
 
+    [StringLength(500)]
+    public string? AgentObjective { get; init; }
+
     public string? EventType { get; init; }
 
     public JsonElement? EventConfig { get; init; }
@@ -118,7 +123,8 @@ public abstract class RoutineWriteDto
             Condition,
             Actions?.Select(action => new RoutineActionInput(action?.Type, action?.Config)).ToList(),
             TestMode,
-            Active);
+            Active,
+            AgentObjective);
 }
 
 /// <summary>A new routine: a name, an event type and actions; it starts off and not in test mode unless it says so.</summary>
