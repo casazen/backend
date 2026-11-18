@@ -356,6 +356,9 @@ public static partial class EmailTemplates
             .Build(isAgency ? "AgencyInvite_Subject" : "HostInvite_Subject");
     }
 
+    private static string InvoiceLink(string checkInUrl) =>
+        Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(checkInUrl, "invoice", "1");
+
     /// <summary>Tokenized self check-in link, to the guest.</summary>
     /// <param name="expiresAtUtc">End of validity of the link (CO-09: configurable lifetime), shown in Italian time.</param>
     public static EmailContent GuestCheckInLink(
@@ -371,7 +374,9 @@ public static partial class EmailTemplates
             .Paragraph("GuestCheckInLink_Greeting", guestName)
             .Paragraph("GuestCheckInLink_Body", propertyName, checkInDate)
             .Paragraph("GuestCheckInLink_Instructions")
+            .Paragraph("Guest_InvoiceRequest")
             .Button("GuestCheckInLink_Cta", checkInUrl)
+            .Button("Guest_InvoiceCta", InvoiceLink(checkInUrl))
             .Muted("GuestCheckInLink_Validity", builder.FormatInstant(expiresAtUtc))
             .Build("GuestCheckInLink_Subject", propertyName);
     }
@@ -394,7 +399,9 @@ public static partial class EmailTemplates
         return builder
             .Paragraph("GuestCheckInReminder_Greeting", guestName)
             .Paragraph("GuestCheckInReminder_Body", propertyName, checkInDate)
+            .Paragraph("Guest_InvoiceRequest")
             .Button("GuestCheckInReminder_Cta", checkInUrl)
+            .Button("Guest_InvoiceCta", InvoiceLink(checkInUrl))
             .Muted("GuestCheckInReminder_Validity", builder.FormatInstant(expiresAtUtc))
             .Build("GuestCheckInReminder_Subject", propertyName);
     }
@@ -622,6 +629,9 @@ public static partial class EmailTemplates
         }
 
         CheckInBlock(builder, checkIn);
+        builder.Paragraph("Guest_InvoiceRequest");
+        if (checkIn?.LinkUrl is { } invoiceLink)
+            builder.Button("Guest_InvoiceCta", InvoiceLink(invoiceLink));
         builder
             .Button("Booking_MyBookingsCta", myBookingsUrl)
             .LinkFallback("Booking_LinkFallback", myBookingsUrl)

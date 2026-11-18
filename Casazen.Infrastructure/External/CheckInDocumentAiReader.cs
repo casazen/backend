@@ -12,15 +12,18 @@ namespace Casazen.Infrastructure.External;
 public sealed class CheckInDocumentAiReader(
     IAiProvider ai,
     TimeProvider timeProvider,
-    ILogger<CheckInDocumentAiReader> logger) : ICheckInDocumentReader
+    ILogger<CheckInDocumentAiReader> logger,
+    IMrzExtractionService mrz,
+    IDocumentOcrService ocr) : ICheckInDocumentReader
 {
     private const string Prompt =
         """
         You read one identity document (passport, identity card or driving licence).
         Reply with one JSON object and no other text. Use null for any field you cannot read.
-        Do not guess. Dates are yyyy-MM-dd.
+        Read the printed labels carefully, including compound names. Cross-check against the machine-readable zone when visible.
+        Do not guess. Dates are yyyy-MM-dd. issuePlace is the issuing municipality or country, never the place of birth.
         Schema:
-        {"firstName":null,"lastName":null,"gender":null,"dateOfBirth":null,"bornInItaly":null,"birthPlace":null,"birthProvince":null,"citizenship":null,"documentKind":null,"documentNumber":null,"issuePlace":null}
+        {"firstName":null,"lastName":null,"gender":null,"dateOfBirth":null,"bornInItaly":null,"birthPlace":null,"birthProvince":null,"citizenship":null,"documentKind":null,"documentNumber":null,"issuePlace":null,"documentIssuedOn":null,"documentExpiresOn":null}
         gender is "Male" or "Female".
         bornInItaly is true only when the place of birth is in Italy.
         birthProvince is the two-letter Italian province code, or null.
@@ -38,33 +41,59 @@ public sealed class CheckInDocumentAiReader(
         if (mediaType is null)
             return CheckInDocumentRead.Failed("unsupported_file");
 
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(12));
         AiGenerationResult answer;
         try
         {
             answer = await ai.GenerateAsync(
-                new AiRequest(Prompt, [new AiImage(mediaType, bytes)], Temperature: 0),
+                new AiRequest(Prompt, [new AiImage(mediaType, bytes)], Temperature: 0, MaxCompletionTokens: 400, DisableThinking: true),
                 AiModelTier.Economy,
                 "checkin-document",
-                cancellationToken);
+                deadline.Token);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning("Check-in document read failed ({ErrorType})", ex.GetType().Name);
-            return CheckInDocumentRead.Failed("unreadable");
+            return await ReadLocalAsync(bytes, "unreadable", cancellationToken);
         }
 
-        if (!answer.ProviderConfigured)
-            return CheckInDocumentRead.Failed("unavailable");
+        if (!answer.ProviderConfigured || answer.ImagesRead == 0)
+            return await ReadLocalAsync(bytes, "unavailable", cancellationToken);
 
         var fields = CheckInDocumentFieldsParser.Parse(answer.Content, timeProvider.TodayInRomeAsDateOnly());
-        if (fields is null)
+        if (fields?.FirstName is null || fields.LastName is null)
         {
             logger.LogInformation("Check-in document read returned no usable field (imagesRead={ImagesRead})", answer.ImagesRead);
-            return CheckInDocumentRead.Failed(answer.ImagesRead == 0 ? "unavailable" : "unreadable");
+            return await ReadLocalAsync(bytes, "unreadable", cancellationToken);
         }
 
         logger.LogInformation("Check-in document read returned fields");
         return new CheckInDocumentRead(true, null, fields);
+    }
+
+    private async Task<CheckInDocumentRead> ReadLocalAsync(byte[] bytes, string reason, CancellationToken ct)
+    {
+        static string? Day(DateTime? date) => date?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        static string? Gender(string? sex) => sex switch { "M" => "Male", "F" => "Female", _ => null };
+
+        using var stream = new MemoryStream(bytes, writable: false);
+        var machine = await mrz.ExtractAsync(stream, ct);
+        if (machine is { CheckDigitsValid: true, GivenNames: not null, Surname: not null })
+        {
+            var kind = machine.DocumentType switch { "Passport" => "Passport", "IdCard" => "IdentityCard", _ => null };
+            return new(true, null, new(machine.GivenNames, machine.Surname, Gender(machine.Sex), Day(machine.DateOfBirth),
+                null, null, null, machine.Nationality, kind, machine.DocumentNumber, null, null, Day(machine.ExpirationDate)));
+        }
+
+        stream.Position = 0;
+        var printed = await ocr.ExtractAsync(stream, ct);
+        if (printed is not { GivenNames: not null, Surname: not null })
+            return CheckInDocumentRead.Failed(reason);
+
+        return new(true, null, new(printed.GivenNames, printed.Surname, Gender(printed.Sex), Day(printed.DateOfBirth),
+            null, null, null, printed.Nationality, null, printed.DocumentNumber, printed.PlaceOfIssue,
+            Day(printed.DateOfIssue), Day(printed.ExpirationDate)));
     }
 
     private static async Task<byte[]?> ReadLimitedAsync(Stream content, CancellationToken cancellationToken)

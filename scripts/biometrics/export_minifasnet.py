@@ -10,7 +10,7 @@ What the application expects of the file (Casazen.Infrastructure/Services/AntiSp
   - output 1x3: class 0 = print attack, class 1 = real face, class 2 = screen attack (logits are fine: the application applies the softmax).
 
 Exact versions the recipe is written against (a comment, not a lock: write the ones you really used in the notes of the manifest entry):
-    pip install torch==2.2.2 onnx==1.16.0 onnxruntime==1.17.1 numpy==1.26.4
+    pip install torch==2.5.1 onnx==1.16.2 onnxruntime==1.20.1 numpy==1.26.4
 
 Steps, once the product owner says yes:
     git clone https://github.com/minivision-ai/Silent-Face-Anti-Spoofing
@@ -48,7 +48,7 @@ def load_model(repo: Path, weights: Path):
     from src.model_lib.MiniFASNet import MiniFASNetV2  # the code of the release, not ours
 
     model = MiniFASNetV2(embedding_size=128, conv6_kernel=kernel_size(80, 80), drop_p=0.2, num_classes=3, img_channel=3)
-    state = torch.load(weights, map_location="cpu")
+    state = torch.load(weights, map_location="cpu", weights_only=True)
     # The release saved the weights of a DataParallel model: its keys start with "module.", the model of this script has none.
     state = {key[len("module."):] if key.startswith("module.") else key: value for key, value in state.items()}
     model.load_state_dict(state)

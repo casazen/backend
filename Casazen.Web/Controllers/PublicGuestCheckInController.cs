@@ -96,6 +96,7 @@ public class PublicGuestCheckInController(
             Guests = view.Guests?.Select(PublicCheckInGuestPrefill.From).ToList(),
             AvailableCodeTables = view.AvailableCodeTables,
             PrivacyNoticeVersion = view.PrivacyNoticeVersion,
+            PrivacyNoticeOrgSlug = view.PrivacyNoticeOrgSlug,
             MarketingConsentVersion = view.MarketingConsentVersion,
             // Two booleans, never the data (E06/F02/US01/T03): the link is anonymous.
             InvoiceRequested = view.InvoiceRequested,
@@ -169,10 +170,12 @@ public class PublicGuestCheckInController(
     /// </summary>
     [HttpPost("{token}/read-document")]
     [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
-    [RequestSizeLimit(CheckInDocumentLimits.MaxImageBytes)]
-    public async Task<ActionResult<CheckInDocumentReadResponse>> ReadDocument(string token, IFormFile? file)
+    [RequestSizeLimit(CheckInDocumentLimits.MaxImageBytes + 64 * 1024)]
+    [RequestFormLimits(MemoryBufferThreshold = CheckInDocumentLimits.MaxImageBytes + 64 * 1024)]
+    public async Task<ActionResult<CheckInDocumentReadResponse>> ReadDocument(string token, IFormFile? file, [FromServices] IStayGuestService stayGuests)
     {
-        if (await checkInService.GetSessionByTokenAsync(token) is null)
+        var session = await checkInService.GetSessionByTokenAsync(token);
+        if (session is null)
             return NotFound();
 
         if (file is null || file.Length == 0)
@@ -183,7 +186,26 @@ public class PublicGuestCheckInController(
         if (read.Reason is "unsupported_file" or "too_large")
             return this.ApiProblem(StatusCodes.Status400BadRequest, $"checkin_document_{read.Reason}", "CheckInDocumentRejected");
 
-        return Ok(CheckInDocumentReadResponse.From(read));
+        var response = CheckInDocumentReadResponse.From(read);
+        if (read.Fields is { } fields)
+        {
+            var roster = await stayGuests.GetForBookingAsync(session.Booking, HttpContext.RequestAborted);
+            var match = CheckInGuestMatch.Find(roster.Take(Math.Max(1, session.Booking.NumberOfGuests)).ToList(), fields);
+            if (match is null)
+                return Ok(CheckInDocumentReadResponse.From(CheckInDocumentRead.Failed("guest_mismatch")));
+
+            response.GuestPosition = match.Value.Position;
+            response.ConfirmGuest = match.Value.Confirm;
+        }
+
+        return Ok(response);
+    }
+
+    [HttpPost("{token}/invoice")]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckInSubmit)]
+    public async Task<IActionResult> RequestInvoice(string token, PublicCheckInInvoiceDto request, CancellationToken ct)
+    {
+        return await checkInService.RequestInvoiceAsync(token, request.ToInput(), ct) ? NoContent() : NotFound();
     }
 
     /// <summary>
@@ -203,6 +225,14 @@ public class PublicGuestCheckInController(
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
 
+        if (featureFlags.IsEnabled(FeatureFlags.CheckInIdentityVerification)
+            && await checkInService.GetSessionByTokenAsync(token) is { } session)
+        {
+            var state = await verificationFlow.GetStateAsync(session, HttpContext.RequestAborted);
+            if (state.Step != IdentityVerificationSteps.Done && !state.OperatorRequested)
+                return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, "identity_verification_incomplete", "CheckInIdentityIncomplete");
+        }
+
         var ip = ClientIp.GetString(HttpContext) ?? string.Empty;
 
         var submitRequest = new GuestCheckInSubmitRequest
@@ -213,6 +243,7 @@ public class PublicGuestCheckInController(
             MarketingConsentWhatsApp = request.MarketingConsentWhatsApp,
             MarketingEmail = request.MarketingEmail,
             ConsentIpAddress = ip,
+            PrivacyNoticeAcknowledged = request.PrivacyNoticeAcknowledged,
             Invoice = request.Invoice?.ToInput(),
         };
 
@@ -363,6 +394,9 @@ public class PublicGuestCheckInController(
         var session = await checkInService.GetSessionByTokenAsync(token);
         if (session is null)
             return NotFound();
+
+        if (session.BiometricOutcome == Casazen.Core.Entities.Enums.BiometricOutcome.Accept)
+            return this.ApiProblem(StatusCodes.Status409Conflict, "identity_already_verified", "CheckInIdentityAlreadyVerified");
 
         if (!DocumentSides.TryParse(side, out var documentSide))
             return this.ApiProblem(StatusCodes.Status400BadRequest, "document_side_invalid", "CheckInDocumentSideInvalid");

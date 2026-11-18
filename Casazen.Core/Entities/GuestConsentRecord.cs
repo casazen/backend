@@ -90,6 +90,8 @@ public enum GuestConsentAction
 
     /// <summary>The consent ended with the configured retention period (<c>Gdpr:Retention:Marketing</c>).</summary>
     Expired = 4,
+
+    NoticeAcknowledged = 5,
 }
 
 /// <summary>Who recorded the row. Stored as an integer: never renumber.</summary>

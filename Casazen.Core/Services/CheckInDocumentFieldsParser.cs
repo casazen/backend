@@ -34,7 +34,11 @@ public static class CheckInDocumentFieldsParser
                 Text(root, "citizenship", 100),
                 DocumentKind(root),
                 DocumentNumber(root),
-                Text(root, "issuePlace", 100));
+                Text(root, "issuePlace", 100),
+                Date(root, "documentIssuedOn", today, past: true),
+                Date(root, "documentExpiresOn", today, past: false));
+            if (string.CompareOrdinal(fields.DocumentIssuedOn, fields.DocumentExpiresOn) > 0)
+                fields = fields with { DocumentExpiresOn = null };
 
             var any = fields.FirstName is not null
                 || fields.LastName is not null

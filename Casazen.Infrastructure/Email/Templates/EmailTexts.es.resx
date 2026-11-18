@@ -72,4 +72,6 @@
   <data name="GuestVideoCall_Hint" xml:space="preserve">
     <value>Después, el anfitrión concluye la verificación de identidad. Si no esperabas esta solicitud, ignora este correo.</value>
   </data>
+  <data name="Guest_InvoiceRequest" xml:space="preserve"><value>¿Necesitas una factura para esta estancia? Contacta con el alojamiento a través de tu reserva e indica a nombre de quién debe emitirse.</value></data>
+  <data name="Guest_InvoiceCta" xml:space="preserve"><value>Solicitar factura</value></data>
 </root>

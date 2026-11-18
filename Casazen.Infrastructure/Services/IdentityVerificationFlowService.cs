@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -202,7 +203,8 @@ public sealed class IdentityVerificationFlowService(
             var picture = new StoredDocumentPicture(
                 FaceOf(assessment, side),
                 QualityOf(assessment),
-                mrzReading.Result is null ? null : Check(mrzReading.Result, context.Identity));
+                mrzReading.Result is null ? null : Check(mrzReading.Result, context.Identity),
+                DocumentNumberProof(session, reading.Fields?.DocumentNumber));
 
             // The attempt keeps up to two pictures: a side sent again replaces its own and leaves the other, a single picture replaces both.
             var kept = side == DocumentSide.Single ? null : ReadCheck(session);
@@ -221,8 +223,13 @@ public sealed class IdentityVerificationFlowService(
                 case DocumentSide.Front:
                     front = picture;
                     frontHash = Sha256(bytes);
-                    back = kept?.Back;
-                    backHash = kept?.Back is null ? null : kept.BackSha256;
+                    var previousNumber = kept?.Back?.NumberProof ?? kept?.Front?.NumberProof;
+                    var changedDocument = kept?.Front is not null && previousNumber is not null
+                        && picture.NumberProof is not null && previousNumber != picture.NumberProof;
+                    back = changedDocument ? null : kept?.Back;
+                    backHash = back is null ? null : kept!.BackSha256;
+                    if (changedDocument && kept!.Back is not null)
+                        await DeleteStoredDocumentAsync(session, ct);
                     break;
                 default:
                     front = picture;
@@ -234,6 +241,8 @@ public sealed class IdentityVerificationFlowService(
 
             // The face must come from the front (or the single picture), the MRZ from any side.
             var check = CombineChecks(front?.Mrz, back?.Mrz, side);
+            if (front?.NumberProof is { } frontNumber && back?.NumberProof is { } backNumber && frontNumber != backNumber)
+                check = check with { DocumentNumberConsistent = false };
             var mrzRead = front?.Mrz is not null || back?.Mrz is not null;
             var frontGood = front is not null && front.Face != false && front.QualityOk != false;
             var backGood = back is null || back.Mrz is not null || back.QualityOk != false;
@@ -245,7 +254,7 @@ public sealed class IdentityVerificationFlowService(
             AddMissingSideGuidance(guidance, side, mrzReading.Result is not null, mrzRead, frontGood);
 
             session.DocumentCheckJson = JsonSerializer.Serialize(
-                new StoredDocumentCheck(check, frontHash, now, backHash, front, back, side != DocumentSide.Single),
+                new StoredDocumentCheck(check, frontHash, now, backHash, front, back, side != DocumentSide.Single, context.VerifyingGuestPosition),
                 Json);
             session.UpdatedAt = now;
 
@@ -901,6 +910,23 @@ public sealed class IdentityVerificationFlowService(
         return sides;
     }
 
+    private static string? DocumentNumberProof(GuestCheckInSession session, string? number)
+    {
+        var normalized = AlloggiatiRecordRules.NormalizeDocumentNumber(number);
+        return normalized.Length == 0 ? null : Convert.ToHexString(HMACSHA256.HashData(
+            Encoding.UTF8.GetBytes(session.TokenHash), Encoding.UTF8.GetBytes(normalized)));
+    }
+
+    internal static int? VerifiedNumberMismatch(GuestCheckInSession session, IReadOnlyList<StayGuestInput> guests)
+    {
+        if (session.BiometricOutcome != BiometricOutcome.Accept || ReadCheck(session) is not { } stored)
+            return null;
+        var proof = stored.Back is { Mrz.CheckDigitsValid: true } back ? back.NumberProof : stored.Front?.NumberProof;
+        if (proof is null) return null;
+        var position = stored.VerifyingGuestPosition;
+        return DocumentNumberProof(session, guests.ElementAtOrDefault(position)?.DocumentNumber) == proof ? null : position;
+    }
+
     private static StoredDocumentCheck? ReadCheck(GuestCheckInSession session)
     {
         if (string.IsNullOrWhiteSpace(session.DocumentCheckJson))
@@ -1107,9 +1133,9 @@ public sealed class IdentityVerificationFlowService(
 
 /// <summary>
 /// One picture of the attempt as the session keeps it (E22/F01/US01/T02): whether a face was found on it (null: not looked for, as on a back, or the models
-/// could not say), whether its light, glare and blur were good (null: not assessed) and, when its MRZ was read, the checks made on it. Flags only.
+/// could not say), whether its light, glare and blur were good (null: not assessed) and, when its MRZ was read, the checks made on it. A session-scoped proof binds the number to the final submission.
 /// </summary>
-internal sealed record StoredDocumentPicture(bool? Face, bool? QualityOk, DocumentCheck? Mrz);
+internal sealed record StoredDocumentPicture(bool? Face, bool? QualityOk, DocumentCheck? Mrz, string? NumberProof = null);
 
 /// <summary>
 /// The checks of the document as the session keeps them (<see cref="GuestCheckInSession.DocumentCheckJson"/>): the flags across the pictures
@@ -1125,4 +1151,5 @@ internal sealed record StoredDocumentCheck(
     string? BackSha256 = null,
     StoredDocumentPicture? Front = null,
     StoredDocumentPicture? Back = null,
-    bool TwoSided = false);
+    bool TwoSided = false,
+    int VerifyingGuestPosition = 0);

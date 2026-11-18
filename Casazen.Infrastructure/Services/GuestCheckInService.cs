@@ -6,6 +6,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.SiteDocuments;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -44,6 +45,10 @@ public class GuestCheckInService(
     private readonly IInvoiceDataService _invoiceData = invoiceDataService ?? new InvoiceDataService(db, timeProvider: timeProvider);
     private readonly GuestCheckInOptions _options = options?.Value ?? new GuestCheckInOptions();
     private readonly GdprOptions _gdpr = gdprOptions?.Value ?? new GdprOptions();
+
+    // Existing deployments can supply their own text versions across guest portals.
+    private string? PrivacyVersion => GdprOptions.Normalize(_gdpr.PrivacyNoticeVersion) ?? GdprOptions.Normalize(_options.PrivacyNoticeVersion);
+    private string? MarketingVersion => GdprOptions.Normalize(_gdpr.MarketingConsentVersion) ?? GdprOptions.Normalize(_options.MarketingConsentVersion);
 
     private readonly IAlloggiatiCodeTableService _codeTables =
         codeTableService ?? new AlloggiatiCodeTableService(db, NullLogger<AlloggiatiCodeTableService>.Instance);
@@ -188,6 +193,12 @@ public class GuestCheckInService(
 
         // Two booleans and nothing of the stored data: the link is anonymous, the fiscal code, the VAT number, the address and the PEC never leave.
         var invoice = await _invoiceData.GetAsync(booking.Id);
+        var privacyNoticeOrgSlug = await db.OrgSiteDocuments
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(d => d.OrgId == booking.OrgId && d.Kind == OrgSiteDocumentKind.Privacy)
+            .OrderByDescending(d => d.Version)
+            .Select(d => d.WithdrawnAt == null ? d.Org.Slug : null)
+            .FirstOrDefaultAsync();
         return new GuestCheckInPublicView
         {
             InvoiceRequested = invoice?.InvoiceRequested ?? false,
@@ -200,8 +211,9 @@ public class GuestCheckInService(
             DeclaredGuests = Math.Max(1, booking.NumberOfGuests),
             Guests = guests.Select(ToPrefill).ToList(),
             AvailableCodeTables = tables.Where(t => t.RowCount > 0).Select(t => t.Table).ToList(),
-            PrivacyNoticeVersion = GdprOptions.Normalize(_gdpr.PrivacyNoticeVersion),
-            MarketingConsentVersion = GdprOptions.Normalize(_gdpr.MarketingConsentVersion),
+            PrivacyNoticeVersion = PrivacyVersion,
+            PrivacyNoticeOrgSlug = privacyNoticeOrgSlug,
+            MarketingConsentVersion = MarketingVersion,
 
             // Data minimization (ADR-030-R1): the page asks a statistical field only where the region requires it, as the ISTAT region table says
             // (E21/F01/US01/T01): none for a comune that is not in the list, for a region without a row and for a row that is not verified.
@@ -332,6 +344,22 @@ public class GuestCheckInService(
             .FirstOrDefaultAsync();
     }
 
+    public async Task<bool> RequestInvoiceAsync(string token, GuestCheckInInvoice invoice, CancellationToken ct)
+    {
+        var session = await GetUsableSessionByTokenAsync(token);
+        if (session is null)
+            return false;
+        if (invoice.NeedInvoice)
+        {
+            if (invoice.Data.HasContent)
+                await _invoiceData.SaveAsync(session.BookingId, invoice.Data, InvoiceDataSource.CheckIn, save: false, ct: ct);
+            await _invoiceData.MarkRequestedAsync(session.BookingId, true, save: false, ct: ct);
+            await db.SaveChangesAsync(ct);
+        }
+
+        return true;
+    }
+
     public async Task<GuestCheckInSubmitResult> SubmitAsync(string token, GuestCheckInSubmitRequest request)
     {
         var session = await GetUsableSessionByTokenAsync(token);
@@ -343,11 +371,37 @@ public class GuestCheckInService(
 
         // The marketing consent is offered only with a versioned text (Gdpr:MarketingConsentVersion, CO-15). The per-channel
         // consent (NF-05) is checked here too, and its errors come with the ones of the guests: one answer, every error.
-        var marketingVersion = GdprOptions.Normalize(_gdpr.MarketingConsentVersion);
+        var marketingVersion = MarketingVersion;
         var (consentErrors, marketingEmail) = ValidateMarketingConsent(request, marketingVersion);
 
         // Every guest: kinds and order, document only for single guests and heads, shape of the codes.
-        var guestErrors = await _stayGuests.ValidateAsync(request.Guests);
+        var guestErrors = (await _stayGuests.ValidateAsync(request.Guests)).ToList();
+        if (request.PrivacyNoticeAcknowledged == false)
+            guestErrors.Add(new(null, nameof(request.PrivacyNoticeAcknowledged), "CheckInPrivacyAcknowledgementRequired"));
+        if (IdentityVerificationFlowService.VerifiedNumberMismatch(session, request.Guests) is { } mismatch)
+            guestErrors.Add(new(mismatch, nameof(StayGuestInput.DocumentNumber), "CheckInVerifiedNumberMismatch"));
+        var capacity = Math.Max(1, session.Booking.NumberOfGuests);
+        if (request.Guests.Count > capacity)
+            guestErrors.Add(new(null, nameof(request.Guests), "CheckInBookingCapacity", capacity));
+        if (guestErrors.Count == 0)
+        {
+            var roster = await _stayGuests.GetForBookingAsync(session.Booking);
+            foreach (var booked in roster.Where(row => row.Position < capacity))
+            {
+                var entry = request.Guests.ElementAtOrDefault(booked.Position);
+                if ((!string.IsNullOrWhiteSpace(booked.FirstName) && !CheckInGuestMatch.SameName(booked.FirstName, entry?.FirstName)) ||
+                    (!string.IsNullOrWhiteSpace(booked.LastName) && !CheckInGuestMatch.SameName(booked.LastName, entry?.LastName)))
+                    guestErrors.Add(new(booked.Position, nameof(StayGuestInput.FirstName), "CheckInBookedGuestMismatch"));
+            }
+            for (var i = 0; i < request.Guests.Count; i++)
+            {
+                var entry = request.Guests[i];
+                var number = AlloggiatiRecordRules.NormalizeDocumentNumber(entry.DocumentNumber);
+                if (Enum.TryParse<StayGuestType>(entry.Type, true, out var kind) && AlloggiatiRecordRules.RequiresDocument(kind)
+                    && (number.Length < 4 || !number.Any(char.IsAsciiDigit)))
+                    guestErrors.Add(new(i, nameof(entry.DocumentNumber), "CheckInDocumentNumberPlausibility"));
+            }
+        }
         if (consentErrors.Count + guestErrors.Count > 0)
             return new GuestCheckInSubmitResult { Success = false, ValidationErrors = [.. consentErrors, .. guestErrors] };
 
@@ -635,14 +689,14 @@ public class GuestCheckInService(
         var ip = request.ConsentIpAddress.Length > 50 ? request.ConsentIpAddress[..50] : request.ConsentIpAddress;
         var ipAddress = string.IsNullOrWhiteSpace(ip) ? null : ip;
 
-        if (GdprOptions.Normalize(_gdpr.PrivacyNoticeVersion) is { } noticeVersion)
+        if (PrivacyVersion is { } noticeVersion)
         {
             db.GuestConsentRecords.Add(new GuestConsentRecord
             {
                 OrgId = guest.OrgId,
                 GuestId = guest.Id,
                 Purpose = GuestConsentPurpose.PrivacyNotice,
-                Action = GuestConsentAction.NoticePresented,
+                Action = request.PrivacyNoticeAcknowledged == true ? GuestConsentAction.NoticeAcknowledged : GuestConsentAction.NoticePresented,
                 Version = noticeVersion,
                 Source = GuestConsentSource.GuestPortal,
                 IpAddress = ipAddress,
@@ -652,7 +706,7 @@ public class GuestCheckInService(
         else
         {
             logger.LogWarning(
-                "Gdpr:PrivacyNoticeVersion is not configured: the privacy notice shown for guest {GuestId} is not recorded",
+                "No check-in privacy notice version is configured: the privacy notice shown for guest {GuestId} is not recorded",
                 guest.Id);
         }
 

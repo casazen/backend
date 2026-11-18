@@ -358,6 +358,22 @@ public class IdentityTwoSidedDocumentTests
         Assert.Equal(2, session.BiometricAttempts);
     }
 
+    [Fact]
+    public async Task TwoSided_ReadingANewDocumentOnTheFront_DiscardsThePreviousBack()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        await world.DocumentAsync(session, Pic("FACE", 1), DocumentSide.Front);
+        await world.DocumentAsync(session, Pic("MRZ", 2), DocumentSide.Back);
+
+        await world.DocumentAsync(session, Pic("FACE-MRZ-OTHER", 3), DocumentSide.Front);
+
+        var state = await world.Flow().GetStateAsync(session, CancellationToken.None);
+        Assert.Equal([DocumentSides.Front], state.DocumentSides);
+        Assert.Single(world.Storage.Objects);
+        Assert.Equal(0, session.BiometricAttempts);
+    }
+
     /// <summary>The MRZ may come from any side: a card that has it on the front needs no back.</summary>
     [Fact]
     public async Task TwoSided_MrzOnTheFront_NeedsNoBack()
@@ -914,7 +930,7 @@ public class IdentityTwoSidedDocumentTests
                 DocumentType = "IdCard",
                 Surname = "TEST",
                 GivenNames = "TEST",
-                DocumentNumber = "CA00000AA",
+                DocumentNumber = label.Contains("OTHER", StringComparison.Ordinal) ? "CA11111AA" : "CA00000AA",
                 DateOfBirth = label.Contains("MINOR", StringComparison.Ordinal) ? new DateTime(2014, 5, 5) : new DateTime(1990, 1, 1),
                 ExpirationDate = new DateTime(2030, 1, 1),
                 IsExpired = false,

@@ -33,6 +33,8 @@ public interface IGuestCheckInService
     /// <summary>Marks <see cref="GuestCheckInSessionStatus.Scaduto"/> the open sessions whose expiry has passed (A5-27). Returns how many.</summary>
     Task<int> ExpireStaleSessionsAsync(CancellationToken cancellationToken = default);
 
+    Task<bool> RequestInvoiceAsync(string token, GuestCheckInInvoice invoice, CancellationToken ct);
+
     /// <summary>Submit guest data. Returns result indicating success or duplicate.</summary>
     Task<GuestCheckInSubmitResult> SubmitAsync(string token, GuestCheckInSubmitRequest request);
 
@@ -84,6 +86,8 @@ public class GuestCheckInSubmitRequest
     /// recorded on the guest and in <see cref="GuestConsentRecord"/> only); the per-channel consent is below.
     /// </summary>
     public bool MarketingConsent { get; set; }
+
+    public bool? PrivacyNoticeAcknowledged { get; set; }
 
     /// <summary>The guest ticked the e-mail channel of the per-channel marketing consent (NF-05).</summary>
     public bool MarketingConsentEmail { get; set; }
@@ -194,6 +198,8 @@ public sealed class GuestCheckInPublicView
 
     /// <summary>Version of the privacy notice the portal shows (<c>Gdpr:PrivacyNoticeVersion</c>), or null when not configured.</summary>
     public string? PrivacyNoticeVersion { get; init; }
+
+    public string? PrivacyNoticeOrgSlug { get; init; }
 
     /// <summary>Version of the marketing consent text; null when not configured, and then the consent is not offered.</summary>
     public string? MarketingConsentVersion { get; init; }

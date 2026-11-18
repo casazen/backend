@@ -43,6 +43,9 @@ public class PublicCheckInContextResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? PrivacyNoticeVersion { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PrivacyNoticeOrgSlug { get; set; }
+
     /// <summary>
     /// Version of the optional marketing consent text; absent when the consent is not offered (CO-15). Absent: do not show the
     /// consent step, the server rejects every marketing consent field set to true (<see cref="PublicCheckInSubmitRequest"/>).
@@ -368,6 +371,8 @@ public class PublicCheckInSubmitRequest
     /// <c>false</c> and send the channels below.
     /// </summary>
     public bool MarketingConsent { get; set; }
+
+    public bool? PrivacyNoticeAcknowledged { get; set; }
 
     /// <summary>
     /// The guest ticked the e-mail box of the consent step (NF-05). Default <c>false</c>; requires <see cref="MarketingEmail"/>.
@@ -790,6 +795,8 @@ public class CheckInDocumentReadResponse
     public bool Read { get; set; }
     public string? Reason { get; set; }
     public CheckInDocumentFields? Guest { get; set; }
+    public int? GuestPosition { get; set; }
+    public bool ConfirmGuest { get; set; }
 
     public static CheckInDocumentReadResponse From(CheckInDocumentRead read) => new()
     {

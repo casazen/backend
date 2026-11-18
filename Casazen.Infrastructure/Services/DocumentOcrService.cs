@@ -215,6 +215,8 @@ public class DocumentOcrService(
         var result = new DocumentOcrResult { Confidence = FallbackConfidence };
         var surname = values.TryGetValue(Field.Surname, out var rawSurname) ? Name(rawSurname) : null;
         var given = values.TryGetValue(Field.GivenNames, out var rawGiven) ? Name(rawGiven) : null;
+        result.GivenNames = given;
+        result.Surname = surname;
         result.FullName = surname is null && given is null ? null : string.Join(' ', new[] { given, surname }.Where(part => part is not null));
         result.DocumentNumber = values.TryGetValue(Field.DocumentNumber, out var rawNumber) ? Number(rawNumber) : null;
         result.DateOfBirth = values.TryGetValue(Field.DateOfBirth, out var rawBirth) ? Date(rawBirth, new DateOnly(1900, 1, 1), now) : null;
