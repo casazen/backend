@@ -2,11 +2,36 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Xunit;
+using Stripe;
 
 namespace Casazen.Tests.Unit.Services;
 
 public class CommercialCheckoutTests
 {
+    [Fact]
+    public void AgencyPrice_MustMatchApprovedVolumeBandsMinimumAndQuoteThreshold()
+    {
+        var price = new Price
+        {
+            BillingScheme = "tiered",
+            TiersMode = "volume",
+            Tiers =
+            [
+                new() { UpTo = 9, FlatAmountDecimal = 10000 },
+                new() { UpTo = 49, UnitAmountDecimal = 1100 },
+                new() { UpTo = 149, UnitAmountDecimal = 990 },
+                new() { UpTo = 399, UnitAmountDecimal = 880 },
+                new() { UnitAmountDecimal = 0 },
+            ],
+        };
+        Assert.True(AgencyUsagePricing.MatchesTariff(price, AgencyUsagePricing.Base, null));
+        price.Tiers[1].UnitAmountDecimal = 1000;
+        Assert.False(AgencyUsagePricing.MatchesTariff(price, AgencyUsagePricing.Base, null));
+        price.Tiers[1].UnitAmountDecimal = 1100;
+        price.Tiers[^1].UnitAmountDecimal = 880;
+        Assert.False(AgencyUsagePricing.MatchesTariff(price, AgencyUsagePricing.Base, null));
+    }
+
     [Fact]
     public void Agency_CollectsPaymentMethodWithOnlyMeteredLinesAndNoDeclaredQuantity()
     {
