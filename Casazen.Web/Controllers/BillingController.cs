@@ -43,6 +43,7 @@ public class BillingController(
                 DisplayName = configuration[$"Billing:Display:{e.Tier}:Name"] ?? e.DisplayName,
                 AgencyTariff = agency ? new AgencyTariffDto(AgencyUsagePricing.PriceId(configuration, AgencyUsagePricing.Base) is not null, AgencyUsagePricing.Minimum, AgencyUsagePricing.QuoteFrom, AgencyUsagePricing.Bands.Select(b => new AgencyBandDto(b.UpTo, b.UnitPrice)).ToArray()) : null,
                 PriceMonthly = configuration.GetValue<decimal>($"Billing:Display:{e.Tier}:PriceMonthly", 0m),
+                PricesIncludeVat = configuration.GetValue<bool>("Billing:PricesIncludeVat"),
                 Currency = "EUR",
                 BillingUnit = e.Tier == PlanTier.Agency ? "room" : "plan",
                 UnitAllowance = e.MaxProperties == int.MaxValue ? -1 : e.MaxProperties,

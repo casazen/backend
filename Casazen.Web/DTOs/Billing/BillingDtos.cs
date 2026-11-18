@@ -8,6 +8,7 @@ public class PlanCatalogDto
     public string Tier { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public decimal PriceMonthly { get; set; }
+    public bool PricesIncludeVat { get; set; }
     public AgencyTariffDto? AgencyTariff { get; set; }
     public string BillingUnit { get; set; } = "plan";
     public string Currency { get; set; } = "EUR";

@@ -21,6 +21,9 @@ public static class AgencyUsagePricing
     }
 
     public static decimal? AddonAmount(IConfiguration configuration, string code) => configuration.GetValue<decimal?>($"Billing:AgencyUsage:Monthly:{code}");
+    public static bool MatchesPriceId(IConfiguration configuration, string code, string? id) =>
+        BillingPrices.IsPriceId(id) && (id == PriceId(configuration, code) || id == configuration[$"Billing:AgencyUsage:PreviousPrices:{code}"]);
+
     public static bool Available(IConfiguration configuration, string code) =>
         CommercialPricing.IsEnabled(configuration, code) && (Included.Contains(code) || (PriceId(configuration, code) != null && AddonAmount(configuration, code) > 0));
 
@@ -38,7 +41,8 @@ public static class AgencyUsagePricing
         {
             throw Unavailable();
         }
-        if (!price.Active || price.Currency != "eur" || price.TaxBehavior != "exclusive" ||
+        var taxBehavior = config.GetValue<bool>("Billing:PricesIncludeVat") ? "inclusive" : "exclusive";
+        if (!price.Active || price.Currency != "eur" || price.TaxBehavior != taxBehavior ||
             price.Recurring is not { Interval: "month", IntervalCount: 1, UsageType: "metered", Meter: not null } ||
             !MatchesTariff(price, code, AddonAmount(config, code)))
             throw Unavailable();

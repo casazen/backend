@@ -48,11 +48,12 @@ public static class BillingPrices
         foreach (var entry in PlanCatalog.All)
         {
             if (IsPriceId(priceId) && (string.Equals(Resolve(configuration, entry.Tier), priceId, StringComparison.Ordinal) ||
-                string.Equals(configuration[$"{SectionName}:{entry.Tier}"]?.Trim(), priceId, StringComparison.Ordinal)))
+                string.Equals(configuration[$"{SectionName}:{entry.Tier}"]?.Trim(), priceId, StringComparison.Ordinal) ||
+                configuration.GetSection($"Billing:PreviousPrices:{entry.Tier}").GetChildren().Any(previous => previous.Value == priceId)))
                 return entry.Tier;
         }
 
-        return priceId == AgencyUsagePricing.PriceId(configuration, AgencyUsagePricing.Base) ? PlanTier.Agency : null;
+        return AgencyUsagePricing.MatchesPriceId(configuration, AgencyUsagePricing.Base, priceId) ? PlanTier.Agency : null;
     }
 
     /// <summary>
@@ -78,6 +79,7 @@ public static class BillingPrices
 
         var shared = PlanCatalog.All
             .SelectMany(e => new[] { Resolve(configuration, e.Tier), configuration[$"{SectionName}:{e.Tier}"]?.Trim() }
+                .Concat(configuration.GetSection($"Billing:PreviousPrices:{e.Tier}").GetChildren().Select(previous => previous.Value))
                 .Where(IsPriceId).Distinct(StringComparer.Ordinal).Select(priceId => (e.Tier, PriceId: priceId)))
             .GroupBy(p => p.PriceId, StringComparer.Ordinal)
             .Where(g => g.Count() > 1)

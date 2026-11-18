@@ -28,9 +28,10 @@ using Microsoft.OpenApi.Models;
 
 using Stripe;
 
-if (args is ["--ensure-agency-test-meter"] or ["--ensure-agency-test-meter", "ai-agents"])
+if (args is ["--ensure-agency-test-meter", .. var modules])
 {
-    await AgencyTestMeter.EnsureAsync(args.Length == 2 ? args[1] : AgencyUsagePricing.Base);
+    foreach (var module in modules.Length == 0 ? [AgencyUsagePricing.Base] : modules)
+        await AgencyTestMeter.EnsureAsync(module);
     return;
 }
 

@@ -56,14 +56,14 @@ public sealed class CommercialAccessMiddleware(RequestDelegate next)
     }
     public static string? ModuleForController(string? controller) => controller switch
     {
-        "Octorate" or "OctorateMapping" or "OctorateExistingInventory" or "BookingOctorateSync" => "channels",
+        "Ota" or "OtaIntegrations" or "Octorate" or "OctorateMapping" or "OctorateExistingInventory" or "BookingOctorateSync" => "channels",
         "Routines" => "ai-agents",
         "Verification" => "identification",
-        "Compliance" or "ComplianceAutopilot" or "ComplianceArchive" or "ComplianceConnectionHealth" or "PropertyIstatCredentials" or "Alloggiati" or "Istat" or "OctorateComplianceHandoff" => "compliance",
+        "Compliance" or "ComplianceAutopilot" or "ComplianceArchive" or "ComplianceConnectionHealth" or "OrgComplianceSender" or "PropertyIstatCredentials" or "Alloggiati" or "Istat" or "OctorateComplianceHandoff" => "compliance",
         "Connect" or "OrgDomain" or "OrgSiteDocuments" or "OrgBranding" => "direct-booking",
         "AssistantRules" or "AssistantDrafts" or "AssistantKnowledge" or "AssistantSituations" => "messages-ai",
         "ServiceRequests" or "ServiceRequestSuppliers" or "ServiceRequestAssist" or "LongRentServiceRequests" => "operations",
-        "FiscalDocuments" or "FiscalDocumentSettings" or "FiscalDocumentSdi" or "FiscalDocumentExports" or "LongRentFiscal" => "fiscal",
+        "FiscalDocuments" or "FiscalDocumentSettings" or "FiscalDocumentSdi" or "FiscalDocumentExports" or "OctorateDocuments" or "LongRentFiscal" => "fiscal",
         "PricingAdapter" => "revenue",
         "Crm" or "CrmContacts" => "crm",
         _ => null,

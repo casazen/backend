@@ -1,3 +1,4 @@
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Stripe;
 using Stripe.Billing;
@@ -9,6 +10,9 @@ internal static class AgencyTestMeter
 {
     internal static async Task EnsureAsync(string module)
     {
+        if (module != AgencyUsagePricing.Base && !CommercialAddon.All.Any(addon => addon.Code == module && !AgencyUsagePricing.Included.Contains(module)))
+            throw new ArgumentException("Unknown Agency usage module.", nameof(module));
+
         var eventName = AgencyUsagePricing.EventName(module);
         var key = Environment.GetEnvironmentVariable("Stripe__SecretKey");
         if (key is null || !(key.StartsWith("sk_test_", StringComparison.Ordinal) || key.StartsWith("rk_test_", StringComparison.Ordinal)))
@@ -29,7 +33,7 @@ internal static class AgencyTestMeter
         }
         found ??= await meters.CreateAsync(new MeterCreateOptions
         {
-            DisplayName = module == AgencyUsagePricing.Base ? "CasaZen TEST – Agency monthly active sellable units" : "CasaZen AI Agents – active sellable units",
+            DisplayName = $"CasaZen TEST – Agency {module} – monthly active sellable units",
             EventName = eventName,
             DefaultAggregation = new() { Formula = "last" },
             CustomerMapping = new() { Type = "by_id", EventPayloadKey = "stripe_customer_id" },
@@ -40,6 +44,6 @@ internal static class AgencyTestMeter
             found.ValueSettings.EventPayloadKey != "value")
             throw new InvalidOperationException("Existing test meter has incompatible aggregation or event mapping.");
 
-        Console.WriteLine($"CasaZen Agency test meter: {found.Id}");
+        Console.WriteLine($"CasaZen Agency test meter ({module}): {found.Id}");
     }
 }

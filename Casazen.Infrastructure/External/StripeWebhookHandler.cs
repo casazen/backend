@@ -495,15 +495,17 @@ public class StripeWebhookHandler(
             {
                 org.CommercialPaymentConfirmed = true;
                 var metered = commercial.Profile == "agency" && subscription.Metadata?.GetValueOrDefault(AgencyUsagePricing.MetadataKey) == AgencyUsagePricing.Version &&
-                    baseItem.Price?.Id == AgencyUsagePricing.PriceId(commercialConfiguration, AgencyUsagePricing.Base);
+                    AgencyUsagePricing.MatchesPriceId(commercialConfiguration, AgencyUsagePricing.Base, baseItem.Price?.Id);
                 if (!metered) org.CommercialRoomAllowance = commercial.Profile == "agency" ? checked((int)baseItem.Quantity) : 0;
                 var paidTier = stripeBillingService.MapPriceIdToTier(baseItem.Price.Id)!.Value;
                 var paidAddons = CommercialAddon.All.Where(a =>
                 {
                     if (!metered && commercial.Addons.Contains(a.Code) && CommercialPricing.IsIncluded(paidTier, a.Code) && CommercialPricing.IsEnabled(commercialConfiguration, a.Code))
                         return true;
-                    var priceId = metered ? AgencyUsagePricing.PriceId(commercialConfiguration, a.Code) : CommercialPricing.Price(commercialConfiguration, a.Code, paidTier);
-                    return priceId is not null && subscription.Items!.Data.Any(i => i.Price?.Id == priceId && (metered || i.Quantity >= baseItem.Quantity));
+                    if (metered)
+                        return subscription.Items!.Data.Any(i => AgencyUsagePricing.MatchesPriceId(commercialConfiguration, a.Code, i.Price?.Id));
+                    var priceId = CommercialPricing.Price(commercialConfiguration, a.Code, paidTier);
+                    return priceId is not null && subscription.Items!.Data.Any(i => i.Price?.Id == priceId && i.Quantity >= baseItem.Quantity);
                 })
                     .Select(a => a.Code).ToArray();
                 if (metered)
