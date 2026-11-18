@@ -94,6 +94,7 @@ public sealed class StayAlertService(
 
         var bookings = await db.Bookings
             .AsNoTracking()
+            .Where(AlloggiatiStatusRules.ItalianProperties)
             .Where(b => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status)
                 && b.NoShowAt == null
                 && b.CheckInDate >= firstCheckIn
