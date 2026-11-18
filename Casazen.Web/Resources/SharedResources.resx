@@ -8499,4 +8499,10 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="AgentTrainingChanged" xml:space="preserve">
     <value>La configurazione è cambiata in un’altra sessione. Ricarica il playground e riprova.</value>
   </data>
+  <data name="AgentTrainingPrompt" xml:space="preserve">
+    <value>Scrivi nelle istruzioni il comportamento che vuoi addestrare.</value>
+  </data>
+  <data name="AgentTrainingGeneration" xml:space="preserve">
+    <value>L’AI non ha generato scenari validi. Specifica i criteri per eseguire e per saltare l’azione, poi riprova.</value>
+  </data>
 </root>
