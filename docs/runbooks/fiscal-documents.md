@@ -804,15 +804,22 @@ document of another org, or one that is not a TD17, is 404.
 day of the issue, like every document of the package, so the TD17 of October that is issued on 3 November is in the package of November) are in `fatture-proprietari/autofatture/`, which is owner accounting
 (`agency.statement.view` and the whole org, as the invoices to the owners beside it): **a register for each issuer** (the agency in V2, an owner company in V1: `registro-{issuer}.csv` and `.xlsx`) with the
 kind «Autofattura TD17», the number, the day, the foreign supplier in the column a guest document has its recipient in, the month of the commissions it integrates, the taxable amount, the VAT, the stamp
-duty, the total, the currency and then the country and the VAT number of the supplier, the VAT of each document for each rate as its lines store it, and the totals for each rate; and the PDF and the XML of
+duty, the total, the currency, then the country and the VAT number of the supplier and its state with the SDI («Stato SDI», the words of the export of the documents), the VAT of each document for each rate as its lines store it, and the totals for each rate; and the PDF and the XML of
 each document. The VAT file of the issuer (`iva/iva-{issuer}.csv`) carries them as the class «Autofatture TD17» (month, rate, taxable amount, VAT, total, documents), whatever the regime of
 the issuer (a TD17 integrates the VAT at the rate of the settings), but only with the owner accounting: a TD17 of an owner company is that owner's cost of its portal, so, like the portal commissions,
-a caller without `agency.statement.view` (or that reaches only some properties) finds none of it, not even as a figure. The **portal commissions of the accounts the agency holds** (V2) are `fatture-proprietari/commissioni-portali-v2.csv` and `.xlsx`: one row
+a caller without `agency.statement.view` (or that reaches only some properties) finds none of it, not even as a figure, and the VAT file of an Italian issuer says so in a last table «Autofatture TD17 non incluse in questo file» (the reason is the one of the omitted folders: `agency.statement.view` and the whole org), never a file that reads as «no TD17». The **portal commissions of the accounts the agency holds** (V2) are `fatture-proprietari/commissioni-portali-v2.csv` and `.xlsx`: one row
 for each statement month, owner, channel and currency (the commission as a positive amount, the stays that carry it and the treatment, «Riaddebitata al proprietario» or «A carico dell'agenzia» by
 `RechargePortalCommissions`) and the totals for each channel and currency; they come from the owner ledger through the resolver of the holders (`IPortalAccountHolderResolver`: the same test as the invoice to
 the owner), the amounts are the ledger's and never recomputed, and they are the lines the TD17 of the agency integrates (the TD17 leaves out what is not in euro or belongs to a stay that is not active any
 more) and, when recharged, the ones the invoices to the owners recharge. Both families are written only for a period that has them: a period with no
 TD17 and no commission of that kind has the same files, with the same content, as before.
+
+**A TD17 the SDI rejected** (⚖ the prudent default, a choice of the PO and the accountant to confirm before `Features__AccountantPackage` is turned on): a rejected invoice counts as not issued, and a TD17 has no
+correction that would replace it, so in CasaZen it stays `Issued` with the SDI state `rejected` (the page of the self-billed invoices shows it). The package never leaves it out in silence: the register of its
+issuer lists it with its own amounts and the state «Scartata» (column «Stato SDI»), and a note under the register and under the VAT file says how many are left out. But it is in neither table of the rates of the
+register (the totals are the ones of the valid TD17), not in the class «Autofatture TD17» of the VAT file, it has no PDF and no XML in `fatture-proprietari/autofatture/`, and it is not a document of the package
+(it counts neither in the documents of the log nor against `DocumentArchive:MaxExportFiles`). An issuer whose TD17 are all rejected still has its register and its VAT file, with the note and no figure. The package
+has no other rule about the SDI state: a guest document or an invoice to an owner the SDI rejected stays in it as issued until its correction discards it, as it always did; nothing else changes.
 
 **Not in this slice** (so it is not silently missing): a credit note or a correction of an issued TD17 (it is not credited from here: the accountant decides how to correct it; `POST …/sdi/correct` of a TD17
 answers 422 `self_billing_not_correctable` and no «Correggi la fattura» is raised for a TD17 the SDI rejected); the posting

@@ -70,6 +70,9 @@ internal static class PackageLabels
     public const string ColSupplierCountry = "AccPkgColSupplierCountry";
     public const string ColSupplierVat = "AccPkgColSupplierVat";
     public const string ClassSelfBilled = "AccPkgClassSelfBilled";
+    public const string VatSelfBilledOmittedTitle = "AccPkgVatSelfBilledOmittedTitle";
+    public const string SelfBilledRejectedTitle = "AccPkgSelfBilledRejectedTitle";
+    public const string SelfBilledRejectedReason = "AccPkgSelfBilledRejectedReason";
     public const string PortalCommissionsTitle = "AccPkgPortalCommissionsTitle";
     public const string PortalCommissionsTotalsTitle = "AccPkgPortalCommissionsTotalsTitle";
     public const string ColPortalCommission = "AccPkgColPortalCommission";

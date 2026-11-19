@@ -82,7 +82,7 @@ public sealed class AccountantPackageService(
             ? await AccountantPackageFacts.IssuedDocuments(db, scope, period, FiscalDocumentPurpose.OwnerInvoice).CountAsync(cancellationToken)
             : 0;
         var selfBilledCount = ownerAccounting && access.Includes(AccountantPackageFolders.OwnerInvoices)
-            ? await AccountantPackageFacts.IssuedDocuments(db, scope, period, FiscalDocumentPurpose.SelfBilling).CountAsync(cancellationToken)
+            ? await AccountantPackageFacts.IssuedSelfBilledWithFiles(db, scope, period).CountAsync(cancellationToken)
             : 0;
         CheckCaps(guestCount + ownerCount + selfBilledCount, limits);
 
@@ -99,7 +99,8 @@ public sealed class AccountantPackageService(
         // The VAT of an issuer is made of everything it issued: the invoices to the owners enter it as figures for each rate, with no name, for any caller that reaches the whole org
         // (they belong to no property, so a restricted scope reads none, and the file says so). They are files of the package only with the owner accounting. The self-billed invoices (TD17)
         // enter it too, but only with the owner accounting: a TD17 of an owner company is that owner's cost of its portal, so, like the portal commissions, a caller without the
-        // owner accounting finds none of it, not even as a figure.
+        // owner accounting finds none of it, not even as a figure, and the VAT file of an Italian issuer says so. A TD17 the SDI rejected is passed with the others: the VAT file lists it in a note and
+        // leaves it out of its figures (a rejected invoice counts as not issued).
         var vatOwnerInvoices = ownerAccounting
             ? ownerInvoices
             : scope.IsOrgWide ? await AccountantPackageFacts.ReadAsync(db, scope, period, FiscalDocumentPurpose.OwnerInvoice, cancellationToken) : [];
@@ -201,8 +202,9 @@ public sealed class AccountantPackageService(
 
     /// <summary>
     /// The self-billed invoices (TD17) issued in the period (owner accounting, the whole org: a TD17 spans the properties of its holder): a register for each issuer (the agency that holds the
-    /// portal account in V2, an owner company in V1), with the VAT of each document for each rate and the totals, and the PDF and the XML of each document, in
-    /// <see cref="AccountantPackageStructure.SelfBilledFolder"/>. A period with no TD17 adds nothing: the package is the one it always was.
+    /// portal account in V2, an owner company in V1), with the state of each document with the SDI, the VAT of each document for each rate and the totals, and the PDF and the XML of each
+    /// document, in <see cref="AccountantPackageStructure.SelfBilledFolder"/>. A TD17 the SDI rejected is listed in the register with its state and is counted nowhere else: no total by rate, no PDF
+    /// and no XML (a rejected invoice counts as not issued, ⚖ the choice of the PO and the accountant). A period with no TD17 adds nothing: the package is the one it always was.
     /// </summary>
     private async Task PlanSelfBilledAsync(
         Plan plan,
@@ -225,10 +227,12 @@ public sealed class AccountantPackageService(
             plan.AddTables(folder, "registro-" + slugs[group.Key], AccountantPackageDocuments.SelfBilledRegister([.. group], suppliers, issuer, period, t));
         }
 
-        foreach (var document in selfBilled)
+        // A TD17 the SDI rejected counts as not issued: its row is in the register with its state, and it has no PDF and no XML (⚖ the choice of the PO and the accountant).
+        var withFiles = selfBilled.Where(d => !d.IsRejectedSelfBilled).ToList();
+        foreach (var document in withFiles)
             PlanDocumentFiles(plan, folder, document, t);
 
-        plan.Documents += selfBilled.Count;
+        plan.Documents += withFiles.Count;
     }
 
     /// <summary>
@@ -439,7 +443,7 @@ public sealed class AccountantPackageService(
         IReadOnlyDictionary<string, string> slugs,
         PackageTexts t)
     {
-        var coverage = new VatCoverage(OwnerInvoices: scope.IsOrgWide, PortalCommissions: ownerAccounting);
+        var coverage = new VatCoverage(OwnerInvoices: scope.IsOrgWide, PortalCommissions: ownerAccounting, SelfBilled: ownerAccounting);
         foreach (var issuer in IssuersOf(guest, owner, fallback, current))
         {
             var mine = guest.Concat(owner).Where(d => AccountantPackageFacts.IssuerOf(d.IssuerSnapshot, fallback).Key == issuer.Key).ToList();

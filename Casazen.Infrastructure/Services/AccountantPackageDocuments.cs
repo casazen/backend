@@ -37,10 +37,11 @@ internal sealed record PackageCuRow(string? OwnerName, decimal GrossBase, decima
 /// </summary>
 /// <param name="OwnerInvoices">The invoices to the owners are in the tables.</param>
 /// <param name="PortalCommissions">The portal commissions of the accounts the agency holds are in the tables.</param>
-internal sealed record VatCoverage(bool OwnerInvoices, bool PortalCommissions)
+/// <param name="SelfBilled">The self-billed invoices (TD17) are in the tables of an Italian issuer (owner accounting: the file says so when they are not).</param>
+internal sealed record VatCoverage(bool OwnerInvoices, bool PortalCommissions, bool SelfBilled)
 {
     /// <summary>Everything is in.</summary>
-    public static VatCoverage Whole { get; } = new(true, true);
+    public static VatCoverage Whole { get; } = new(true, true, true);
 }
 
 /// <summary>
@@ -134,8 +135,10 @@ internal static class AccountantPackageDocuments
     /// <summary>
     /// The register of the self-billed invoices (TD17) of one issuer, written only for a period that has some (the holder that issues them: the agency in V2, an owner company in V1): one
     /// row for each document, in the columns of the other registers (its kind, number, day, the foreign supplier where the recipient stands, the month of the commissions it integrates,
-    /// taxable amount, VAT, stamp duty, total, currency) and then the country and the VAT number of the supplier; then the VAT of each document for each rate, as the lines store it, and the
-    /// totals for each rate. The kind says «Autofattura TD17», never a plain invoice: its «recipient» is the portal it integrates, not a customer.
+    /// taxable amount, VAT, stamp duty, total, currency) and then the country and the VAT number of the supplier and the state of the document with the SDI; then the VAT of each document for
+    /// each rate, as the lines store it, and the totals for each rate. The kind says «Autofattura TD17», never a plain invoice: its «recipient» is the portal it integrates, not a customer.
+    /// A TD17 the SDI rejected counts as not issued (⚖ the choice of the PO and the accountant): it is a row of the register with its state «Scartata», it is in none of the two tables of the
+    /// rates, and a note says how many are left out.
     /// </summary>
     public static IReadOnlyList<ReportTable> SelfBilledRegister(
         IReadOnlyList<PackageDocument> documents,
@@ -165,6 +168,7 @@ internal static class AccountantPackageDocuments
                 t["FiscalExportColCurrency"],
                 t[PackageLabels.ColSupplierCountry],
                 t[PackageLabels.ColSupplierVat],
+                t["FiscalExportColSdiState"],
             ]);
         foreach (var d in documents)
         {
@@ -181,10 +185,17 @@ internal static class AccountantPackageDocuments
                 ReportCell.Money(d.Sign * d.Total),
                 d.Currency,
                 supplier?.CountryCode,
-                supplier?.VatNumber);
+                supplier?.VatNumber,
+                FiscalDocumentExports.SdiLabel(d.SdiStatus, t.Source, t.Language));
         }
 
-        return [register, RateDetail(documents, t), RateTotals(documents, t)];
+        // A TD17 the SDI rejected counts as not issued: it is a row of the register with its state, and it is in no total by rate (⚖ the choice of the PO and the accountant).
+        var counted = documents.Where(d => !d.IsRejectedSelfBilled).ToList();
+        List<ReportTable> tables = [register, RateDetail(counted, t), RateTotals(counted, t)];
+        if (counted.Count < documents.Count)
+            tables.Add(RejectedSelfBilledNote(documents.Count - counted.Count, t));
+
+        return tables;
     }
 
     /// <summary>
@@ -345,6 +356,22 @@ internal static class AccountantPackageDocuments
         return note;
     }
 
+    /// <summary>The note of the VAT file of an Italian issuer for a caller who may not read the owner accounting: the self-billed invoices (TD17) are not in it, and the reason is the one of the omitted folders.</summary>
+    private static ReportTable SelfBilledNote(PackageTexts t)
+    {
+        var note = new ReportTable(t[PackageLabels.VatSelfBilledOmittedTitle], [t[PackageLabels.IndexColReason]]);
+        note.Add(t[PackageLabels.OmittedOwnerAccounting]);
+        return note;
+    }
+
+    /// <summary>The note that says how many self-billed invoices (TD17) the SDI rejected are left out of the figures of a register or of a VAT file: a rejected invoice counts as not issued.</summary>
+    private static ReportTable RejectedSelfBilledNote(int rejected, PackageTexts t)
+    {
+        var note = new ReportTable(t[PackageLabels.SelfBilledRejectedTitle], [t[PackageLabels.IndexColReason]]);
+        note.Add(t.Get(PackageLabels.SelfBilledRejectedReason, rejected));
+        return note;
+    }
+
     private static IReadOnlyList<ReportTable> SwissVat(
         AgencyIssuer issuer, IReadOnlyList<PackageDocument> documents, IReadOnlyList<AgencyPortalCommissionBorneRow> portalCommissions, VatCoverage coverage, PackageTexts t)
     {
@@ -402,8 +429,10 @@ internal static class AccountantPackageDocuments
         return [returnBase, outside, portals, OwnerInvoicesNote(t)];
     }
 
-    private static IReadOnlyList<ReportTable> ItalianVat(AgencyIssuer issuer, IReadOnlyList<PackageDocument> documents, VatCoverage coverage, PackageTexts t)
+    private static IReadOnlyList<ReportTable> ItalianVat(AgencyIssuer issuer, IReadOnlyList<PackageDocument> allDocuments, VatCoverage coverage, PackageTexts t)
     {
+        // A TD17 the SDI rejected counts as not issued: it is in no figure of the file, and a note says how many are left out (⚖ the choice of the PO and the accountant).
+        var documents = allDocuments.Where(d => !d.IsRejectedSelfBilled).ToList();
         var table = new ReportTable(
             t.Get(PackageLabels.VatItalyTitle, IssuerLabel(issuer)),
             [
@@ -439,10 +468,17 @@ internal static class AccountantPackageDocuments
                 group.Select(x => x.Document.Id).Distinct().Count());
         }
 
-        if (coverage.OwnerInvoices)
-            return [table];
+        List<ReportTable> tables = [table];
+        if (documents.Count < allDocuments.Count)
+            tables.Add(RejectedSelfBilledNote(allDocuments.Count - documents.Count, t));
 
-        return [table, OwnerInvoicesNote(t)];
+        if (!coverage.OwnerInvoices)
+            tables.Add(OwnerInvoicesNote(t));
+
+        if (!coverage.SelfBilled)
+            tables.Add(SelfBilledNote(t));
+
+        return tables;
     }
 
     /// <summary>

@@ -43,6 +43,15 @@ internal sealed record PackageDocument(
 {
     /// <summary>The sign a document counts with: a credit note takes away what it credits (it stores positive amounts).</summary>
     public decimal Sign => Kind == FiscalDocumentKind.CreditNote ? -1m : 1m;
+
+    /// <summary>The state of the document with the SDI (one of <see cref="FiscalDocumentSdiStatuses"/>), as it is stored: the register of the self-billed invoices says it.</summary>
+    public string SdiStatus { get; init; } = FiscalDocumentSdiStatuses.NotApplicable;
+
+    /// <summary>
+    /// True for a self-billed invoice (TD17) the SDI rejected: a rejected invoice counts as not issued, so the package lists it in the register of the TD17 with its state and counts it nowhere
+    /// else (no total by rate, no VAT figure, no PDF and no XML). The TD17 has no correction that would replace it, so it stays issued in CasaZen with that state (⚖ the choice of the PO and the accountant).
+    /// </summary>
+    public bool IsRejectedSelfBilled => Purpose == FiscalDocumentPurpose.SelfBilling && SdiStatus == FiscalDocumentSdiStatuses.Rejected;
 }
 
 /// <summary>One VAT rate of a document: the taxable amount and the stored VAT, as the document states them (a credit note still positive). A rate that is not stated is <c>null</c>.</summary>
@@ -103,6 +112,15 @@ internal static class AccountantPackageFacts
     }
 
     /// <summary>
+    /// The self-billed invoices (TD17) of <see cref="IssuedDocuments"/> that have files in the package: the ones the SDI did not reject (a rejected invoice counts as not issued: the register lists
+    /// it with its state and no PDF or XML is written for it, <see cref="PackageDocument.IsRejectedSelfBilled"/>). The number the caps of the package are first checked against.
+    /// </summary>
+    public static IQueryable<FiscalDocument> IssuedSelfBilledWithFiles(AppDbContext db, HostScope scope, AccountantPackagePeriod period)
+    {
+        return IssuedDocuments(db, scope, period, FiscalDocumentPurpose.SelfBilling).Where(d => d.SdiStatus != FiscalDocumentSdiStatuses.Rejected);
+    }
+
+    /// <summary>
     /// The documents of <see cref="IssuedDocuments"/> as <see cref="PackageDocument"/>, oldest first (the day of the issue, then the series and the number): the query, not run, so a
     /// test can read how a provider translates it (<see cref="ReadAsync"/> runs it).
     /// </summary>
@@ -139,7 +157,10 @@ internal static class AccountantPackageFacts
                 d.Lines
                     .OrderBy(l => l.LineNumber)
                     .Select(l => new PackageDocumentLine(l.LineNumber, l.LineType, l.TotalPrice, l.VatRatePercent, l.VatNatureCode, l.VatAmount))
-                    .ToList()));
+                    .ToList())
+            {
+                SdiStatus = d.SdiStatus,
+            });
     }
 
     /// <summary>The documents of <see cref="Documents"/>, read.</summary>

@@ -7558,6 +7558,15 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="AccPkgClassSelfBilled" xml:space="preserve">
     <value>Autofatture TD17</value>
   </data>
+  <data name="AccPkgVatSelfBilledOmittedTitle" xml:space="preserve">
+    <value>Autofatture TD17 non incluse in questo file</value>
+  </data>
+  <data name="AccPkgSelfBilledRejectedTitle" xml:space="preserve">
+    <value>Autofatture TD17 scartate dal SDI, escluse dalle cifre</value>
+  </data>
+  <data name="AccPkgSelfBilledRejectedReason" xml:space="preserve">
+    <value>Autofatture TD17 scartate dal SDI: {0}. Una fattura scartata si considera non emessa: è elencata nel registro delle autofatture con il suo stato, ma non entra nei totali per aliquota né nell'IVA e non ha PDF o XML.</value>
+  </data>
   <data name="AccPkgPortalCommissionsTitle" xml:space="preserve">
     <value>Commissioni dei portali sui conti intestati all'agenzia (V2), dal {0} al {1}, come le registra il libro mastro dei proprietari, per mese del rendiconto, proprietario e canale; la colonna Trattamento dice se l'agenzia le riaddebita al proprietario con la sua fattura o le sostiene</value>
   </data>
