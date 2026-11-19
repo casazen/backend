@@ -152,7 +152,9 @@ public sealed class StayGuestsAutoSendService(
         var guests = (await stayGuests.GetForBookingAsync(booking, ct)).Where(g => g.Id != Guid.Empty).ToList();
         var issues = CheckInReadinessRules.Evaluate(new CheckInReadinessInput(
             guests, null, DateOnly.FromDateTime(booking.CheckInDate), booking.NumberOfGuests, OctorateReceivesGuests: true, []));
-        if (issues.Any(i => i.Blocking))
+        // The same rule as the confirmation of the wizard (CheckInReadinessRules.SendBlockers). The statistical fields of a region are not read here: they are
+        // warnings in every evaluation, so they can never hold the guests back from the police communication.
+        if (CheckInReadinessRules.SendBlockers(issues).Count > 0)
             return new StayGuestsAutoSendResult(StayGuestsAutoSendOutcome.GuestsNotComplete);
 
         // The privacy rule of the identity check: while it is on, no guest leaves before a passed verification (the latest one, as the gate of the
