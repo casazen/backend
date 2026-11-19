@@ -85,6 +85,10 @@ public class EncryptedColumnsTests
                 "OtaIntegration.ApiSecret:Casazen.OtaIntegration.Secrets",
                 // ADR-032-R3: the words of the conversations of the guests with the channels, copied from the channel manager.
                 "OtaMessage.Text:Casazen.Message.Content",
+                // NF-69: what a guest wrote in a review of a channel, the reply of the host and the host's own review of the guest (E05/F06/US01/T01).
+                "OtaReview.GuestReviewText:Casazen.Review.Content",
+                "OtaReview.HostReplyText:Casazen.Review.Content",
+                "OtaReview.HostReviewJson:Casazen.Review.Content",
                 // NF-111: the subject of a conversation of the owner inbox (E07/F07/US01/T02).
                 "OwnerConversation.Subject:Casazen.OwnerPortal.Message",
                 // ADR-012, NF-109: the identifiers, the address and the bank account of the fiscal profile of an owner (E06/F05/US02/T01).

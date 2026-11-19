@@ -478,6 +478,10 @@ public class AppDbContext(
     public DbSet<OtaMessageSyncState> OtaMessageSyncStates { get; set; } = null!;
     public DbSet<MessageTemplate> MessageTemplates { get; set; } = null!;
 
+    // What the channel manager says about the reviews of a booking of a channel (Airbnb): the guest's review, the host's reply and the host's own review, with the state
+    // of each and of the read; the words are encrypted (E05/F06/US01/T01, ADR-032, NF-69). The reviews of the booking site are the Reviews above.
+    public DbSet<OtaReview> OtaReviews { get; set; } = null!;
+
     // The assistant that answers the guests' messages (E05/F05/US01/T01, NF-66, NF-67): the knowledge base of a property and of an organization (the free text
     // encrypted), the rules of the organization and the exceptions of a property, what it does in each situation, the lessons it proposes, the log of what it
     // decided for each message (ids and codes only) and the changes of trust level it proposes
@@ -1991,6 +1995,10 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new OtaMessageConfiguration());
         modelBuilder.ApplyConfiguration(new OtaMessageSyncStateConfiguration());
         modelBuilder.ApplyConfiguration(new MessageTemplateConfiguration());
+
+        // The reviews of the channels (E05/F06/US01/T01, NF-69): one row per organization, booking and channel (UIX_OtaReviews_OrgId_BookingId_Channel); the words of the
+        // guest, the reply and the review of the host are encrypted (EncryptedColumns); xmin is the concurrency token, so a reply is saved, and sent, once.
+        modelBuilder.ApplyConfiguration(new OtaReviewConfiguration());
 
         // ─── The AI assistant (E05/F05/US01/T01, NF-66, NF-67, ADR-032) ───────────────
         // The free text of a host (the entries of the knowledge base, the lessons, the response templates) is encrypted by EncryptedColumns; the decision log holds ids
