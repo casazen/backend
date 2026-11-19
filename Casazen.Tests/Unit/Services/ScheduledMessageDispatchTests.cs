@@ -4,6 +4,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Moq;
@@ -755,6 +756,60 @@ public class ScheduledMessageDispatchTests
         Assert.Empty(rig.Sent);
         rig.CheckIn.Verify(c => c.IssueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
         Assert.Equal(ScheduledMessageStatus.Sent, (await rig.RowAsync(row.Id)).Status);
+    }
+
+    // ------------------------------------------------------------------------------------------------------------------------------------
+    // An outage of the way to the guest
+    // ------------------------------------------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// PROOF TEST: <c>Attempts</c> counts the tries that reached the channel. An outage of the channel manager (the way to the guest cannot be read) reached nothing, so however many passes of the sweep it lasts
+    /// the message keeps all its tries: it stays <c>Failed</c> with the code and no count, nobody is told about it (the host is told when the tries are used), and the pass after the outage sends it, once.
+    /// </summary>
+    [Fact]
+    public async Task AnOutageOfTheWayToTheGuest_UsesNoTry_HoweverLongItLasts_AndTheMessageGoesOutOnceWhenItEnds()
+    {
+        var rig = new ScheduledMessageRig { ChannelThrows = new OctorateServerException(500) };
+        var (_, booking, _, _, row) = await SeedAsync(rig);
+
+        for (var pass = 0; pass < ScheduledMessageRules.MaxSendAttempts + 3; pass++)
+        {
+            await using var db = rig.NewDb();
+            Assert.Equal(1, await rig.Dispatcher(db).SweepAsync(Now.AddMinutes(pass * 20)));
+        }
+
+        var failing = await rig.RowAsync(row.Id);
+        Assert.Equal(ScheduledMessageStatus.Failed, failing.Status);
+        Assert.Equal(0, failing.Attempts);
+        Assert.Equal("octorate_unavailable", failing.BlockedReason);
+        Assert.Empty(rig.Sent);
+        Assert.Empty(await rig.OpenTodosAsync(booking.Id));
+        Assert.Empty(await rig.BellAsync());
+
+        rig.ChannelThrows = null;
+        await using (var db = rig.NewDb())
+            Assert.Equal(1, await rig.Dispatcher(db).SweepAsync(Now.AddMinutes(200)));
+
+        Assert.Single(rig.Sent);
+        var sent = await rig.RowAsync(row.Id);
+        Assert.Equal(ScheduledMessageStatus.Sent, sent.Status);
+        Assert.Equal(1, sent.Attempts);
+    }
+
+    /// <summary>A message that never reached the channel is not sent days late: the sweep ends it as it ends a planned message that is more than a day overdue.</summary>
+    [Fact]
+    public async Task AMessageThatFailedBeforeTheChannelWasReached_IsNotSentMoreThanADayLate()
+    {
+        var rig = new ScheduledMessageRig();
+        var (_, _, _, _, row) = await SeedAsync(rig, rowStatus: ScheduledMessageStatus.Failed, plannedAt: Now.AddHours(-25));
+
+        await using (var db = rig.NewDb())
+            await rig.Dispatcher(db).SweepAsync(Now);
+
+        Assert.Empty(rig.Sent);
+        var ended = await rig.RowAsync(row.Id);
+        Assert.Equal(ScheduledMessageStatus.Expired, ended.Status);
+        Assert.Equal(ScheduledMessageReasons.Missed, ended.SkipReason);
     }
 
     // ------------------------------------------------------------------------------------------------------------------------------------

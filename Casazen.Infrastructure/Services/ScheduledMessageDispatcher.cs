@@ -285,8 +285,8 @@ public sealed class ScheduledMessageDispatcher(
         }
         catch (Exception ex) when (ex is OctorateException or DomainException or NotFoundException)
         {
-            // The way to the guest could not be read (a limit, an outage): nothing was sent, and it is tried again.
-            return await FailAsync(row, CodeOf(ex), now, userId, ct);
+            // The way to the guest could not be read (a limit, an outage): nothing reached the channel, so it counts as no try, and it is tried again.
+            return await FailAsync(row, CodeOf(ex), now, userId, ct, counted: false);
         }
 
         if (channel.Channel == MessageContactChannel.None)
@@ -539,14 +539,21 @@ public sealed class ScheduledMessageDispatcher(
         return new ScheduledMessageDispatchResult(ScheduledMessageDispatchOutcome.Blocked, ScheduledMessageStatus.Blocked, reason);
     }
 
-    private async Task<ScheduledMessageDispatchResult> FailAsync(ScheduledMessage row, string code, DateTime now, string? userId, CancellationToken ct)
+    /// <summary>
+    /// The send did not end: the row is <c>Failed</c> with the code and the sweep tries again. <paramref name="counted"/>: the try reached the channel and counts (four in all, then the host is told); a failure
+    /// before the channel was reached (the way to the guest could not be read: a limit, an outage of the gateway) counts nothing, so an outage does not use the tries of every message due while it lasts.
+    /// A row that never reached the channel is not sent days late either: the sweep ends it like a planned message that is more than a day overdue.
+    /// </summary>
+    private async Task<ScheduledMessageDispatchResult> FailAsync(ScheduledMessage row, string code, DateTime now, string? userId, CancellationToken ct, bool counted = true)
     {
         var applied = await SaveFinalAsync(
             row,
             r =>
             {
                 r.Status = ScheduledMessageStatus.Failed;
-                r.Attempts++;
+                if (counted)
+                    r.Attempts++;
+
                 r.BlockedReason = Cut(code);
                 r.LastCheckedAt = null;
                 r.UpdatedAt = now;
@@ -559,7 +566,7 @@ public sealed class ScheduledMessageDispatcher(
         logger.LogWarning("Scheduled message {MessageId} of org {OrgId} failed ({Code}), attempt {Attempts}", row.Id, row.OrgId, code, row.Attempts);
 
         // The sweep tries again; the host is told when the tries are used (or asked for it: the person who pressed «Send now» sees the answer itself).
-        if (row.Attempts >= ScheduledMessageRules.MaxSendAttempts && userId is null)
+        if (counted && row.Attempts >= ScheduledMessageRules.MaxSendAttempts && userId is null)
         {
             await RaiseTodoAsync(row, code, ct);
             await AlertAsync(row, ScheduledMessageAlertKinds.Failed, null, now);
@@ -1092,9 +1099,10 @@ public sealed class ScheduledMessageDispatcher(
         var failed = ScheduledMessageStatus.Failed;
         var checkedOutBefore = RomeCalendar.TodayAt(new DateTimeOffset(DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc))).AddDays(-1);
 
+        // A message that never reached the channel (planned, or failed before it: the way to the guest could not be read) is not sent days late; a blocked one, or one the channel had, waits for the check-out.
         var stale = await db.ScheduledMessages
             .IgnoreQueryFilters([Tenant])
-            .Where(m => (m.Status == scheduled && m.PlannedAtUtc <= tooLate)
+            .Where(m => ((m.Status == scheduled || (m.Status == failed && m.Attempts == 0)) && m.PlannedAtUtc <= tooLate)
                         || ((m.Status == blocked || m.Status == failed) && m.PlannedAtUtc <= tooLate && m.Booking.CheckOutDate <= checkedOutBefore))
             .OrderBy(m => m.PlannedAtUtc)
             .Take(ScheduledMessageRules.SweepBatchSize)
@@ -1102,7 +1110,8 @@ public sealed class ScheduledMessageDispatcher(
 
         foreach (var row in stale)
         {
-            var reason = row.Status == ScheduledMessageStatus.Scheduled ? ScheduledMessageReasons.Missed : ScheduledMessageReasons.CheckOutReached;
+            var neverReached = row.Status == ScheduledMessageStatus.Scheduled || (row.Status == ScheduledMessageStatus.Failed && row.Attempts == 0);
+            var reason = neverReached && row.PlannedAtUtc <= tooLate ? ScheduledMessageReasons.Missed : ScheduledMessageReasons.CheckOutReached;
             row.Status = ScheduledMessageStatus.Expired;
             row.SkipReason = reason;
             row.ActivityId = null;

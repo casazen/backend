@@ -44,7 +44,13 @@ internal sealed class ScheduledMessageRig
     {
         Replies
             .Setup(r => r.ChooseChannelAsync(It.IsAny<HostScope>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((HostScope _, Guid bookingId, CancellationToken _) => Channel ?? new MessageContactOptions(MessageContactChannel.Direct, MessageThreadKey.ForDirect(bookingId), null, true, false));
+            .ReturnsAsync((HostScope _, Guid bookingId, CancellationToken _) =>
+            {
+                if (ChannelThrows is { } outage)
+                    throw outage;
+
+                return Channel ?? new MessageContactOptions(MessageContactChannel.Direct, MessageThreadKey.ForDirect(bookingId), null, true, false);
+            });
         Replies
             .Setup(r => r.StartConversationAsync(
                 It.IsAny<HostScope>(),
@@ -117,6 +123,9 @@ internal sealed class ScheduledMessageRig
 
     /// <summary>How the guest is reached; <c>null</c> = the conversation of the direct booking.</summary>
     public MessageContactOptions? Channel { get; set; }
+
+    /// <summary>What the message layer throws when it is asked how the guest is reached (a limit, an outage of the channel manager); <c>null</c> = it answers.</summary>
+    public Exception? ChannelThrows { get; set; }
 
     /// <summary>The lock code the access code service gives; <c>null</c> = the guest is not verified.</summary>
     public string? AccessCode { get; set; }
