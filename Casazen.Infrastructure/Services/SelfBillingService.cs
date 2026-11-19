@@ -120,9 +120,17 @@ public sealed class SelfBillingService(
             outcomes.Add(OutcomeOf(draft, group, existing is null ? SelfBillingResults.Created : SelfBillingResults.Updated, changedSinceIssue: false));
         }
 
-        // A draft the ledger no longer supports (its commissions are gone, its holder or its portal changed) is dropped: it has no number, and the month shows what is true.
+        // A draft the ledger no longer supports (its commissions are gone, its holder or its portal changed) is dropped: it has no number, and the month shows what is true. The exception is the
+        // replacement of a TD17 the SDI rejected (FIX/BE-TD17-CORRECTION): it holds the number that TD17 gave up, so dropping it would leave a hole in the numbering of the series and the rejected
+        // TD17 could not be corrected again. It is kept as it is (the accountant decides what the number is for) and the warning carries ids only.
         foreach (var stale in live.Where(d => d.Status == FiscalDocumentStatus.Draft && !matched.Contains(d.Id)))
         {
+            if (FiscalDocumentService.HoldsAReplacedNumber(stale))
+            {
+                logger.LogWarning("Self-billed invoice draft {DocumentId} of org {OrgId} holds the number of a rejected TD17 and the ledger no longer supports it: kept, not discarded", stale.Id, orgId);
+                continue;
+            }
+
             stale.Status = FiscalDocumentStatus.Discarded;
             stale.UpdatedAt = UtcNow;
             discarded++;
@@ -147,8 +155,11 @@ public sealed class SelfBillingService(
     {
         ArgumentNullException.ThrowIfNull(criteria);
 
+        // The drafts and the issued ones, and the originals a correction replaced (discarded, a draft or an issued TD17 holds their number): the history of a number is never hidden from the list. A
+        // discarded draft nothing replaces is not listed.
         var query = db.FiscalDocuments.AsNoTracking()
-            .Where(d => d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.Kind != DocumentKind.CreditNote && d.Status != FiscalDocumentStatus.Discarded);
+            .Where(d => d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.Kind != DocumentKind.CreditNote
+                        && (d.Status != FiscalDocumentStatus.Discarded || db.FiscalDocuments.Any(r => r.OrgId == orgId && r.ReplacesDocumentId == d.Id)));
         if (criteria.Year is { } year && criteria.Month is { } month)
             query = query.Where(d => d.PeriodYear == year && d.PeriodMonth == month);
 
@@ -159,8 +170,9 @@ public sealed class SelfBillingService(
             .Take(MaxListRows)
             .ToListAsync(ct);
         var info = await HolderInfoAsync(orgId, found, ct);
+        var corrections = await CorrectionFactsAsync(orgId, found, ct);
         return found
-            .Select(d => RowOf(d, info))
+            .Select(d => RowOf(d, info, corrections))
             .OrderByDescending(r => r.PeriodYear)
             .ThenByDescending(r => r.PeriodMonth)
             .ThenBy(r => r.HolderName, StringComparer.CurrentCultureIgnoreCase)
@@ -626,7 +638,47 @@ public sealed class SelfBillingService(
     private async Task<SelfBillingDetail> DetailOfAsync(Guid orgId, FiscalDocument document, decimal estimated, CancellationToken ct)
     {
         var info = await HolderInfoAsync(orgId, [document], ct);
-        return new SelfBillingDetail(document, RowOf(document, info), estimated);
+        return new SelfBillingDetail(document, RowOf(document, info, await CorrectionFactsAsync(orgId, [document], ct)), estimated);
+    }
+
+    /// <summary>
+    /// What a row says about the correction of a TD17 (FIX/BE-TD17-CORRECTION): the rejected documents that have an issued credit note (they are not corrected) and, for each discarded original, the
+    /// TD17 that replaces it (the newest, when a replacement was itself rejected and replaced).
+    /// </summary>
+    private sealed record CorrectionFacts(IReadOnlySet<Guid> Credited, IReadOnlyDictionary<Guid, Guid> ReplacedBy)
+    {
+        public static CorrectionFacts None { get; } = new(new HashSet<Guid>(), new Dictionary<Guid, Guid>());
+    }
+
+    private async Task<CorrectionFacts> CorrectionFactsAsync(Guid orgId, IReadOnlyCollection<FiscalDocument> found, CancellationToken ct)
+    {
+        var rejected = found.Where(d => d.Status == FiscalDocumentStatus.Issued && d.SdiStatus == FiscalDocumentSdiStatuses.Rejected).Select(d => d.Id).ToList();
+        var discarded = found.Where(d => d.Status == FiscalDocumentStatus.Discarded).Select(d => d.Id).ToList();
+        if (rejected.Count == 0 && discarded.Count == 0)
+            return CorrectionFacts.None;
+
+        var credited = new HashSet<Guid>();
+        if (rejected.Count > 0)
+        {
+            credited.UnionWith(await db.FiscalDocuments.AsNoTracking()
+                .Where(c => c.OrgId == orgId && c.CreditedDocumentId != null && rejected.Contains(c.CreditedDocumentId.Value) && c.Status == FiscalDocumentStatus.Issued)
+                .Select(c => c.CreditedDocumentId!.Value)
+                .ToListAsync(ct));
+        }
+
+        var replacedBy = new Dictionary<Guid, Guid>();
+        if (discarded.Count > 0)
+        {
+            var replacements = await db.FiscalDocuments.AsNoTracking()
+                .Where(r => r.OrgId == orgId && r.ReplacesDocumentId != null && discarded.Contains(r.ReplacesDocumentId.Value))
+                .OrderBy(r => r.CreatedAt)
+                .Select(r => new { Original = r.ReplacesDocumentId!.Value, r.Id })
+                .ToListAsync(ct);
+            foreach (var replacement in replacements)
+                replacedBy[replacement.Original] = replacement.Id;
+        }
+
+        return new CorrectionFacts(credited, replacedBy);
     }
 
     /// <summary>
@@ -662,12 +714,13 @@ public sealed class SelfBillingService(
                 Clean(p.LegalName) ?? orgName));
     }
 
-    private SelfBillingRow RowOf(FiscalDocument document, IReadOnlyDictionary<Guid, HolderInfo> info)
+    private SelfBillingRow RowOf(FiscalDocument document, IReadOnlyDictionary<Guid, HolderInfo> info, CorrectionFacts corrections)
     {
         var holder = document.IssuerProfileId is { } id && info.TryGetValue(id, out var found) ? found : new HolderInfo(SelfBillingHolderKind.Agency, null, string.Empty);
 
-        // An issued document names its holder as it was at the issue, never as the profile says today.
-        var name = document.Status == FiscalDocumentStatus.Issued && FiscalIssuerSnapshot.FromJson(document.IssuerSnapshot) is { } snapshot && snapshot.DisplayName.Length > 0
+        // An issued document names its holder as it was at the issue, never as the profile says today: the original a correction discarded was issued, so it does too.
+        var wasIssued = document.Status is FiscalDocumentStatus.Issued or FiscalDocumentStatus.Discarded;
+        var name = wasIssued && FiscalIssuerSnapshot.FromJson(document.IssuerSnapshot) is { } snapshot && snapshot.DisplayName.Length > 0
             ? snapshot.DisplayName
             : holder.Name;
         var year = document.PeriodYear ?? 0;
@@ -689,7 +742,10 @@ public sealed class SelfBillingService(
             document.VatAmount,
             document.Total,
             document.Currency,
-            document.SdiStatus);
+            document.SdiStatus,
+            SelfBillingRules.IsCorrectable(document, corrections.Credited.Contains(document.Id)),
+            document.ReplacesDocumentId,
+            corrections.ReplacedBy.TryGetValue(document.Id, out var replacedBy) ? replacedBy : null);
     }
 
     private async Task<Dictionary<Guid, string>> PropertyNamesAsync(Guid orgId, IReadOnlyList<Guid> propertyIds, CancellationToken ct) =>

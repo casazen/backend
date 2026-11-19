@@ -6824,7 +6824,10 @@ Once active, the function works on the data the channel manager already holds.</
     <value>A TD17 self-billed invoice is prepared, issued and discarded from the self-billed invoices.</value>
   </data>
   <data name="SelfBillingNotCorrectable" xml:space="preserve">
-    <value>A TD17 self-billed invoice cannot be corrected from here: if the SDI rejected it, read the reason on the self-billed invoices and agree with your accountant how to put it right.</value>
+    <value>A TD17 self-billed invoice cannot be corrected from here: if the SDI rejected it, correct it and send it again from the self-billed invoices.</value>
+  </data>
+  <data name="SelfBillingCorrectionNotApplicable" xml:space="preserve">
+    <value>Only a TD17 self-billed invoice the SDI rejected, with no credit note issued, is corrected this way.</value>
   </data>
   <data name="SelfBillingLineCommissions" xml:space="preserve">
     <value>Intermediation commissions {0} - {1} - {2}</value>

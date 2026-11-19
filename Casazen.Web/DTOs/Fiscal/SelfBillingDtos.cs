@@ -7,6 +7,10 @@ namespace Casazen.Web.DTOs.Fiscal;
 /// One self-billed invoice (TD17) of the list (<c>GET api/fiscal/self-billing</c>, E17/F01/US03/T01): stable codes (never a display text), the stored amounts in
 /// <see cref="Currency"/>, the holder it is made for (<c>Agency</c> or <c>Owner</c>), the foreign portal (the cedente), the month of the commissions and the day it is to be
 /// issued by, and the state towards the SDI. The fiscal data of the holder and of the portal are on the document, <c>GET api/fiscal/documents/{id}</c>, and its PDF and XML.
+/// The correction of a TD17 the SDI rejected (FIX/BE-TD17-CORRECTION, <c>POST api/fiscal/self-billing/{id}/correct</c>) is told by three fields: <see cref="CanCorrect"/> (the button «Correggi e rimanda»
+/// is offered: the document is issued and rejected, with its number and no issued credit note), <see cref="ReplacesDocumentId"/> (this draft, or this TD17 issued after it, replaces that rejected one
+/// and holds its number) and <see cref="ReplacedByDocumentId"/> (this one is the rejected original the correction discarded: its <c>Status</c> is <c>Discarded</c>, it keeps its number and its
+/// <c>SdiStatus</c> <c>rejected</c> for the history, and the draft that replaces it is that id).
 /// </summary>
 public sealed record SelfBillingListItemDto(
     Guid Id,
@@ -25,7 +29,10 @@ public sealed record SelfBillingListItemDto(
     decimal VatAmount,
     decimal Total,
     string Currency,
-    string SdiStatus)
+    string SdiStatus,
+    bool CanCorrect,
+    Guid? ReplacesDocumentId,
+    Guid? ReplacedByDocumentId)
 {
     public static SelfBillingListItemDto From(SelfBillingRow row)
     {
@@ -47,7 +54,10 @@ public sealed record SelfBillingListItemDto(
             row.VatAmount,
             row.Total,
             row.Currency,
-            row.SdiStatus);
+            row.SdiStatus,
+            row.CanCorrect,
+            row.ReplacesDocumentId,
+            row.ReplacedByDocumentId);
     }
 }
 

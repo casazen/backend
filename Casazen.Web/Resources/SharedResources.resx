@@ -6824,7 +6824,10 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>L'autofattura TD17 si prepara, si emette e si scarta dalle autofatture.</value>
   </data>
   <data name="SelfBillingNotCorrectable" xml:space="preserve">
-    <value>Un'autofattura TD17 non si corregge da qui: se lo SDI l'ha respinta, il motivo si legge nelle autofatture e come sistemarla si decide con il commercialista.</value>
+    <value>Un'autofattura TD17 non si corregge da qui: se lo SDI l'ha respinta, correggila e rimandala dalle autofatture.</value>
+  </data>
+  <data name="SelfBillingCorrectionNotApplicable" xml:space="preserve">
+    <value>Si corregge così solo un'autofattura TD17 scartata dallo SDI e senza una nota di credito emessa.</value>
   </data>
   <data name="SelfBillingLineCommissions" xml:space="preserve">
     <value>Commissioni di intermediazione {0} - {1} - {2}</value>

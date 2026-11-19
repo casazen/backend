@@ -44,6 +44,10 @@ public sealed partial class FiscalDocumentService
         var document = await RequireAsync(documentId, ct);
         RequireCasazenDraft(document);
         RequireSelfBilling(document);
+
+        // The replacement of a TD17 the SDI rejected (FIX/BE-TD17-CORRECTION) holds the number that TD17 gave up: discarded, the number would be lost (a hole in the numbering of the series) and the rejected
+        // TD17 could not be corrected again. It is issued, never discarded: 422 document_replacement_holds_number.
+        RequireNotAHeldNumber(document);
         document.Status = FiscalDocumentStatus.Discarded;
         document.UpdatedAt = UtcNow;
         await db.SaveChangesAsync(ct);
