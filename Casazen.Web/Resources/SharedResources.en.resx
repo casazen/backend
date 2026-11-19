@@ -6382,6 +6382,12 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="FiscalDocPdfPaymentUnknown" xml:space="preserve">
     <value>not stated</value>
   </data>
+  <data name="FiscalDocPdfPaymentPortalPart" xml:space="preserve">
+    <value>paid through the portal for {0} {1}</value>
+  </data>
+  <data name="FiscalDocPdfToCollectAtProperty" xml:space="preserve">
+    <value>Tourist tax to be collected at the property: {0} {1}</value>
+  </data>
   <data name="FiscalDocPdfCourtesyCopy" xml:space="preserve">
     <value>Courtesy copy of the electronic invoice: the document valid for tax purposes is the XML file sent to the Exchange System.</value>
   </data>
@@ -6408,6 +6414,9 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="FiscalDocPdfChToCollect" xml:space="preserve">
     <value>To be collected</value>
+  </data>
+  <data name="FiscalDocPdfChPaidPortalPart" xml:space="preserve">
+    <value>Paid through the portal: {0} {1}</value>
   </data>
   <data name="FiscalDocumentNotFound" xml:space="preserve">
     <value>Fiscal document not found.</value>
@@ -6498,6 +6507,9 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="FiscalDocLineTouristTaxCh" xml:space="preserve">
     <value>Tourist tax (not subject to VAT)</value>
+  </data>
+  <data name="FiscalDocLineToCollectNote" xml:space="preserve">
+    <value>{0} - tax to be collected at the property</value>
   </data>
   <data name="FiscalDocLineCredit" xml:space="preserve">
     <value>Credit of document {0}: {1}</value>

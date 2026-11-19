@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 
@@ -53,6 +54,22 @@ public sealed record FiscalDocumentDto
     /// portal collected the stay and pays it out) or <c>Outside</c> (the agency collected it outside CasaZen).
     /// </summary>
     public string PaymentChannel { get; init; } = string.Empty;
+
+    /// <summary>
+    /// What the portal collected of the document of a booking whose portal left the tourist tax to the host (FIX/BE-PORTAL-TAXLINE): the total less that tax, <c>450.00</c> of the <c>462.00</c> of
+    /// a stay with <c>12.00</c> of tourist tax. Derived from the stored lines (<see cref="FiscalDocumentPortalCollection"/>); <c>null</c>, and left out of the answer, for every other document
+    /// (the list never has it: its rows carry no lines). <see cref="PaymentState"/> stays the stored one and <see cref="Total"/> is always the whole document.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public decimal? AmountPaidViaPortal { get; init; }
+
+    /// <summary>
+    /// The tourist tax the portal did not collect, to collect at the property (<c>12.00</c> in the example of <see cref="AmountPaidViaPortal"/>): the line of the tourist tax of the document
+    /// (<see cref="FiscalDocumentLineDto.ToCollectAtProperty"/>). <c>null</c>, and left out of the answer, when <see cref="AmountPaidViaPortal"/> is.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public decimal? AmountToCollectAtProperty { get; init; }
+
     public string SdiStatus { get; init; } = string.Empty;
     public string? SdiErrorCode { get; init; }
     public DateTime? SdiStatusUpdatedAt { get; init; }
@@ -79,7 +96,10 @@ public sealed record FiscalDocumentDto
     /// </summary>
     public static FiscalDocumentDto ForList(FiscalDocument document) => Build(document, withIssuer: false);
 
-    private static FiscalDocumentDto Build(FiscalDocument document, bool withIssuer) => new()
+    private static FiscalDocumentDto Build(FiscalDocument document, bool withIssuer) =>
+        Build(document, withIssuer, FiscalDocumentPortalCollection.SplitOf(document));
+
+    private static FiscalDocumentDto Build(FiscalDocument document, bool withIssuer, PortalCollectionSplit? split) => new()
     {
         Id = document.Id,
         BookingId = document.BookingId,
@@ -112,6 +132,8 @@ public sealed record FiscalDocumentDto
         VatNatureCode = document.VatNatureCode,
         PaymentState = document.PaymentState.ToString(),
         PaymentChannel = document.PaymentChannel.ToString(),
+        AmountPaidViaPortal = split?.PaidViaPortal,
+        AmountToCollectAtProperty = split?.ToCollectAtTheProperty,
         SdiStatus = document.SdiStatus,
         SdiErrorCode = document.SdiErrorCode,
         SdiStatusUpdatedAt = document.SdiStatusUpdatedAt,
@@ -121,7 +143,7 @@ public sealed record FiscalDocumentDto
         ReplacesDocumentId = document.ReplacesDocumentId,
         CreatedAt = document.CreatedAt,
         UpdatedAt = document.UpdatedAt,
-        Lines = document.Lines.OrderBy(l => l.LineNumber).Select(FiscalDocumentLineDto.From).ToList(),
+        Lines = document.Lines.OrderBy(l => l.LineNumber).Select(l => FiscalDocumentLineDto.From(l, split?.IsToCollect(l) == true)).ToList(),
         Issuer = withIssuer ? FiscalDocumentIssuerDto.From(document.IssuerSnapshot) : null,
     };
 }
@@ -129,7 +151,8 @@ public sealed record FiscalDocumentDto
 /// <summary>
 /// A line of a fiscal document: what it is (<see cref="LineType"/>, the name of <c>FiscalLineType</c>: <c>Accommodation</c>, <c>Cleaning</c>, <c>ExtraService</c>, <c>TouristTax</c>, <c>Commission</c>,
 /// <c>Recharge</c>, <c>AdvancedExpense</c> or <c>Other</c>), its amounts net of VAT, its VAT rate and nature code, and the VAT of the line as it was computed (<see cref="VatAmount"/>; <c>null</c> for a line
-/// written before it was stored, which the reader then works out from its rate).
+/// written before it was stored, which the reader then works out from its rate). <see cref="ToCollectAtProperty"/> is true for the line of tourist tax a portal left to the host, which the guest pays at the
+/// property and the document does not declare paid (FIX/BE-PORTAL-TAXLINE); it is left out of the answer for every other line.
 /// </summary>
 public sealed record FiscalDocumentLineDto(
     int LineNumber,
@@ -140,10 +163,11 @@ public sealed record FiscalDocumentLineDto(
     decimal VatRatePercent,
     string? VatNatureCode,
     string LineType,
-    decimal? VatAmount)
+    decimal? VatAmount,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool ToCollectAtProperty = false)
 {
-    public static FiscalDocumentLineDto From(FiscalDocumentLine line) =>
-        new(line.LineNumber, line.Description, line.Quantity, line.UnitPrice, line.TotalPrice, line.VatRatePercent, line.VatNatureCode, line.LineType.ToString(), line.VatAmount);
+    public static FiscalDocumentLineDto From(FiscalDocumentLine line, bool toCollectAtProperty = false) =>
+        new(line.LineNumber, line.Description, line.Quantity, line.UnitPrice, line.TotalPrice, line.VatRatePercent, line.VatNatureCode, line.LineType.ToString(), line.VatAmount, toCollectAtProperty);
 }
 
 /// <summary>

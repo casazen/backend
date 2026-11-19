@@ -6382,6 +6382,12 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocPdfPaymentUnknown" xml:space="preserve">
     <value>non indicato</value>
   </data>
+  <data name="FiscalDocPdfPaymentPortalPart" xml:space="preserve">
+    <value>pagato tramite il portale per {0} {1}</value>
+  </data>
+  <data name="FiscalDocPdfToCollectAtProperty" xml:space="preserve">
+    <value>Tassa di soggiorno da riscuotere in struttura: {0} {1}</value>
+  </data>
   <data name="FiscalDocPdfCourtesyCopy" xml:space="preserve">
     <value>Copia di cortesia della fattura elettronica: il documento valido ai fini fiscali è il file XML trasmesso al Sistema di Interscambio.</value>
   </data>
@@ -6408,6 +6414,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="FiscalDocPdfChToCollect" xml:space="preserve">
     <value>Da incassare</value>
+  </data>
+  <data name="FiscalDocPdfChPaidPortalPart" xml:space="preserve">
+    <value>Pagata tramite il portale: {0} {1}</value>
   </data>
   <data name="FiscalDocumentNotFound" xml:space="preserve">
     <value>Documento fiscale non trovato.</value>
@@ -6498,6 +6507,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="FiscalDocLineTouristTaxCh" xml:space="preserve">
     <value>Tassa di soggiorno (non soggetta all'IVA)</value>
+  </data>
+  <data name="FiscalDocLineToCollectNote" xml:space="preserve">
+    <value>{0} - tassa da riscuotere in struttura</value>
   </data>
   <data name="FiscalDocLineCredit" xml:space="preserve">
     <value>Storno del documento {0}: {1}</value>

@@ -84,13 +84,15 @@ public class ItalianAgencyScenarioTests
 
         // B8a, flat A: the receipt in the name of the owner (its sezionale, its fiscal code, the agency as the one who issues for it), the stamp duty over 77.47 charged to nobody
         // (the owner bears it, the total is what the guest pays), the tourist tax on its own line. A portal sends no invoice data: made out to the guest of the booking, by name only.
-        // KNOWN DEFECT (register of the residual defects, left to its own fix): a document of a booking of a portal is always «paid through the portal», also for the line of the
-        // tourist tax the portal does not collect and nobody recorded. The payment state asserted here is the code as it is, not the state to reach.
+        // FIX/BE-PORTAL-TAXLINE: the document of a booking of a portal is paid through the portal for what the portal collected (450.00), never for the line of the tourist tax the portal
+        // does not collect and nobody recorded (12.00): that is to collect at the property. The stored state is still the one of the channel (the portal collected), the total is the
+        // whole document, and the PDF says the rest.
         var receipt = await AssertReceiptAsync(
             world, stays.A, "RIC2026/1", Day(10, 6), [(FiscalLineType.Accommodation, 450.00m, 0m, "N2.2", 0m), (FiscalLineType.TouristTax, 12.00m, 0m, "N1", 0m)], 462.00m,
             FiscalPaymentChannel.Portal, FiscalDocumentPaymentState.Paid);
         AssertRecipientIsTheGuestByName(receipt, "TEST Ospite Portale");
-        await AssertReceiptPdfAsync(world, receipt, ("462,00", "2,00"), "Pagamento: pagato");
+        await AssertReceiptPdfAsync(world, receipt, ("462,00", "2,00"), "Pagamento: pagato tramite il portale per EUR 450,00");
+        await AssertTheTaxIsToCollectAsync(world, receipt);
         await AssertTheGuestGotTheDocumentAsync(world, receipt, stays.A, "Ricevuta", World.OwnerAName);
 
         // B8b, flat B: the FatturaPA of the company (cedente), the agency its third-party issuer (TZ), the sezionale SRL, the VAT of the stay at 10%, the tourist tax N1 outside the
@@ -98,7 +100,8 @@ public class ItalianAgencyScenarioTests
         var invoice = await AssertCompanyInvoiceAsync(
             world, stays.B, "SRL2026/1", Day(10, 7), [(FiscalLineType.Accommodation, 409.09m, 10m, null, 40.91m), (FiscalLineType.TouristTax, 12.00m, 0m, "N1", 0m)],
             (421.09m, 40.91m, 462.00m), FiscalPaymentChannel.Portal, FiscalDocumentPaymentState.Paid);
-        await AssertCompanyPdfAsync(world, invoice, ("421,09", "40,91", "462,00"), "Pagamento: pagato");
+        await AssertCompanyPdfAsync(world, invoice, ("421,09", "40,91", "462,00"), "Pagamento: pagato tramite il portale per EUR 450,00");
+        await AssertTheTaxIsToCollectAsync(world, invoice);
         await AssertTheGuestGotTheDocumentAsync(world, invoice, stays.B, "Fattura", World.OwnerBName);
         await AssertTheSdiStatesAsync(world, invoice);
 
@@ -1053,6 +1056,18 @@ public class ItalianAgencyScenarioTests
         Assert.Contains(payment, text, StringComparison.Ordinal);
         Assert.Contains("Copia di cortesia della fattura elettronica", text, StringComparison.Ordinal);
         AssertNoSupplierName(text);
+    }
+
+    /// <summary>
+    /// FIX/BE-PORTAL-TAXLINE: the document of a booking of a portal says that the tourist tax the portal did not collect is to collect at the property (12.00), in a paragraph of its own and as the
+    /// note of its line; the total of the document is not touched.
+    /// </summary>
+    private static async Task AssertTheTaxIsToCollectAsync(World world, FiscalDocument document)
+    {
+        var text = TextOf(await world.PdfContentAsync(document.Id));
+        Assert.Contains("Tassa di soggiorno da riscuotere in struttura: EUR 12,00", text, StringComparison.Ordinal);
+        Assert.Contains("Imposta di soggiorno riscossa per conto del comune - tassa da riscuotere in struttura", text, StringComparison.Ordinal);
+        Assert.Contains("Totale documento | 462,00", text, StringComparison.Ordinal);
     }
 
     /// <summary>The invoice of the agency for the services it charged the guest (the cleaning, 60.00 at 22%): in its own series and in its own name, paid with the stay.</summary>
