@@ -942,7 +942,8 @@ public class SwissAgencyScenarioTests
 
     /// <summary>
     /// C6: the payout of what the published version owes the owner (no withholding in Switzerland) and its wire file, <c>pain.001.001.09.ch.03</c>, checked here
-    /// against the stand-in schema of the tests (the official one is not in the repository: <see cref="Wire_ThePayoutFile_ValidatesAgainstTheOfficialSwissSchema"/>).
+    /// against the stand-in schema of the tests (the scenario is about the payout and its amounts; the validation against the official schema embedded in the build is
+    /// <see cref="Wire_ThePayoutFile_ValidatesAgainstTheOfficialSwissSchema"/>).
     /// </summary>
     private static async Task AssertPayoutAndWireAsync(World world, OwnerStatementVersion published, decimal net)
     {
@@ -1065,8 +1066,9 @@ public class SwissAgencyScenarioTests
 }
 
 /// <summary>
-/// A fact that needs the official schema of the Swiss wire file (<c>pain.001.001.09.ch.03.xsd</c>, <see cref="Pain001SchemaProvider"/>): it is not in the repository until
-/// an operator adds it with its checksum (docs/runbooks/wire-transfers.md), so until then the test is reported as skipped, with the reason, everywhere.
+/// A fact that needs the official schema of the Swiss wire file (<c>pain.001.001.09.ch.03.xsd</c>, <see cref="Pain001SchemaProvider"/>): the file is in the repository,
+/// embedded in the build and pinned by its checksum (docs/runbooks/wire-transfers.md), so the test runs. The skip, reported with its reason, is only for a build that
+/// lacks the file, which is no longer the normal state.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class SwissWireSchemaFactAttribute : FactAttribute
@@ -1075,8 +1077,8 @@ public sealed class SwissWireSchemaFactAttribute : FactAttribute
     {
         if (!Pain001SchemaProvider.HasOfficialSchema(WireTransferErrors.SwissCurrency))
         {
-            Skip = "The official schema pain.001.001.09.ch.03.xsd is not in the repository (Casazen.Infrastructure/Payments/Schemas/Swiss): "
-                + "the wire file is validated against the stand-in schema of the tests only; see docs/runbooks/wire-transfers.md to add it.";
+            Skip = "The official schema pain.001.001.09.ch.03.xsd is not in this build (Casazen.Infrastructure/Payments/Schemas/Swiss): "
+                + "the wire file is validated against the stand-in schema of the tests only; see docs/runbooks/wire-transfers.md to restore it.";
         }
     }
 }
