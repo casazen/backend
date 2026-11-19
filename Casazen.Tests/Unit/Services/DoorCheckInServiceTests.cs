@@ -14,8 +14,12 @@ using Casazen.Web.Extensions;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -500,6 +504,60 @@ public class DoorCheckInServiceTests
         world.Clock.SetUtcNow(Now + DoorCheckInRules.FailureWindow + TimeSpan.FromMinutes(1));
         Assert.False(tracker.IsLocked(world.OtherDoorToken));
         Assert.True((await service.OpenAsync(world.OtherDoorToken, new DoorCheckInInput("FGH7K2M9PQ", null, Today))).Found);
+    }
+
+    /// <summary>
+    /// Shape of the door endpoint (E22/F01/US02 post-review): the body of an anonymous call is small (2 KB, as the other anonymous calls of the guests), and next to the policy per client IP and
+    /// door token, which a client that changes the token at every request does not meet twice, a limit per client IP over every door applies: 30 a minute, the 31st is a 429 with Retry-After before
+    /// the door is read, and another client has its own budget.
+    /// </summary>
+    [Fact]
+    public async Task DoorCheckIn_TheEndpointHasASmallBody_AndAClientHasOneBudgetOverEveryDoor_Test()
+    {
+        var method = typeof(PublicDoorCheckInController).GetMethod(nameof(PublicDoorCheckInController.Open))!;
+        var size = Assert.Single(method.GetCustomAttributes(typeof(RequestSizeLimitAttribute), inherit: true).Cast<RequestSizeLimitAttribute>());
+        Assert.Equal((long?)PublicDoorCheckInController.MaxRequestBytes, ((IRequestSizeLimitMetadata)size).MaxRequestBodySize);
+        Assert.Equal(2048, PublicDoorCheckInController.MaxRequestBytes);
+        Assert.Single(method.GetCustomAttributes(typeof(DoorCheckInIpRateLimitAttribute), inherit: true));
+        Assert.Contains(
+            new ServiceCollection().AddCasazenRateLimiting(),
+            descriptor => descriptor.ServiceType == typeof(DoorCheckInIpRateLimiter) && descriptor.Lifetime == ServiceLifetime.Singleton);
+
+        using var limiter = new DoorCheckInIpRateLimiter(new ConfigurationBuilder().Build());
+        Assert.Equal("PublicDoorCheckInPerIp", limiter.PolicyName);
+        Assert.Equal(TimeSpan.FromMinutes(1), limiter.Window);
+        var filter = new DoorCheckInIpRateLimitFilter(limiter, NullLogger<DoorCheckInIpRateLimitFilter>.Instance);
+
+        for (var request = 1; request <= 30; request++)
+            Assert.True((await RunAsync("203.0.113.7")).ActionRan);
+
+        var over = await RunAsync("203.0.113.7");
+        Assert.False(over.ActionRan);
+        Assert.Equal(StatusCodes.Status429TooManyRequests, Assert.IsType<ObjectResult>(over.Result).StatusCode);
+        Assert.InRange(int.Parse(over.Http.Response.Headers.RetryAfter.ToString()), 1, 60);
+        Assert.True((await RunAsync("203.0.113.8")).ActionRan);
+
+        async Task<(bool ActionRan, IActionResult? Result, DefaultHttpContext Http)> RunAsync(string address)
+        {
+            // The answer is localized from the resources of the product, so the context needs the localizer.
+            var http = new DefaultHttpContext { RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider() };
+            http.Connection.RemoteIpAddress = IPAddress.Parse(address);
+            var context = new ActionExecutingContext(
+                new ActionContext(http, new RouteData(), new ActionDescriptor()),
+                [],
+                new Dictionary<string, object?>(),
+                controller: new object());
+            var ran = false;
+            await filter.OnActionExecutionAsync(
+                context,
+                () =>
+                {
+                    ran = true;
+                    return Task.FromResult(new ActionExecutedContext(context, [], controller: new object()));
+                });
+
+            return (ran, context.Result, http);
+        }
     }
 
     /// <summary>The stays, the properties and the check-in service that issues a link, in an in-memory database; the clock says 10:00 of 2026-11-20 in Rome.</summary>
