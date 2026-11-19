@@ -813,6 +813,93 @@ public class ScheduledMessageDispatchTests
     }
 
     // ------------------------------------------------------------------------------------------------------------------------------------
+    // The host while a send is under way
+    // ------------------------------------------------------------------------------------------------------------------------------------
+
+    /// <summary>Holds the send of the message layer «under way» until the test lets it go, and returns the task of the dispatch that is waiting in it.</summary>
+    private static async Task<(Task<ScheduledMessageDispatchResult> UnderWay, TaskCompletionSource Release)> StartASendAndHoldItAsync(ScheduledMessageRig rig, Guid id)
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        rig.SendGate = async () =>
+        {
+            entered.TrySetResult();
+            await release.Task;
+        };
+        var underWay = DispatchAsync(rig, id, ScheduledMessageDispatchMode.Routine);
+        await entered.Task;
+        return (underWay, release);
+    }
+
+    /// <summary>
+    /// PROOF TEST: the host is not told «skipped» for a message that goes out. While a send holds the row (claimed less than the lease ago) its «Edit» and its «Skip» are refused with 409
+    /// <c>scheduled_message_in_progress</c>, as «Send now» is: the text was read when the send began, the message may be in the channel already, and nothing the host does changes what the guest gets. The message goes
+    /// out as it was and the row is sent, not skipped and not edited.
+    /// </summary>
+    [Fact]
+    public async Task WhileASendHoldsTheRow_EditAndSkipAreRefused_AndTheMessageGoesOutAsItWas()
+    {
+        var rig = new ScheduledMessageRig();
+        var (_, _, _, _, row) = await SeedAsync(rig);
+        var (underWay, release) = await StartASendAndHoldItAsync(rig, row.Id);
+        var scope = new HostScope(OrgA);
+        var clock = new FixedTimeProvider(ScheduledMessageRig.Now.AddSeconds(30));
+
+        foreach (var attempt in new Func<ScheduledMessageService, Task>[]
+                 {
+                     service => service.EditAsync(scope, row.Id, "Cambiato (TEST)", ScheduledMessageRig.Owner),
+                     service => service.SkipAsync(scope, row.Id, ScheduledMessageRig.Owner),
+                 })
+        {
+            await using var db = rig.NewDb();
+            var refused = await Assert.ThrowsAsync<DomainConflictException>(() => attempt(rig.Service(db, clock)));
+            Assert.Equal(ScheduledMessageErrors.InProgress, refused.Code);
+        }
+
+        release.SetResult();
+        var result = await underWay;
+
+        Assert.Equal(ScheduledMessageDispatchOutcome.Sent, result.Outcome);
+        var saved = await rig.RowAsync(row.Id);
+        Assert.Equal(ScheduledMessageStatus.Sent, saved.Status);
+        Assert.Null(saved.TextOverride);
+        Assert.Null(saved.SkippedByUserId);
+        Assert.Equal("Ciao Giulia, benvenuto a Casa Rosa (TEST)! (TEST)", Assert.Single(rig.Sent).Text);
+        Assert.Empty(await rig.BellAsync());
+    }
+
+    /// <summary>
+    /// A skip that lands when the claim has lapsed (the send under way took longer than the lease, so the host was not held off) is the host's decision and is not undone by the send that finishes later: the row
+    /// stays skipped, with the time and the place of the send beside it, because the message did go out.
+    /// </summary>
+    [Fact]
+    public async Task ASkipThatLandsWhenTheClaimHasLapsed_IsNotUndoneByTheSendThatFinishesLater()
+    {
+        var rig = new ScheduledMessageRig();
+        var (_, _, _, _, row) = await SeedAsync(rig);
+        var (underWay, release) = await StartASendAndHoldItAsync(rig, row.Id);
+        var later = new FixedTimeProvider(ScheduledMessageRig.Now.Add(ScheduledMessageRules.ClaimLease).AddMinutes(1));
+
+        await using (var db = rig.NewDb())
+        {
+            var skipped = await rig.Service(db, later).SkipAsync(new HostScope(OrgA), row.Id, ScheduledMessageRig.Owner);
+            Assert.Equal(ScheduledMessageStatus.Skipped, skipped.Status);
+        }
+
+        release.SetResult();
+        var result = await underWay;
+
+        Assert.Equal(ScheduledMessageDispatchOutcome.Sent, result.Outcome);
+        Assert.Equal(ScheduledMessageStatus.Skipped, result.Status);
+        var saved = await rig.RowAsync(row.Id);
+        Assert.Equal(ScheduledMessageStatus.Skipped, saved.Status);
+        Assert.Equal(ScheduledMessageReasons.Person, saved.SkipReason);
+        Assert.Equal(ScheduledMessageRig.Owner, saved.SkippedByUserId);
+        Assert.Equal(Now, saved.SentAt);
+        Assert.Equal(1, rig.Delivered);
+    }
+
+    // ------------------------------------------------------------------------------------------------------------------------------------
     // The release of the access code
     // ------------------------------------------------------------------------------------------------------------------------------------
 

@@ -307,6 +307,8 @@ public sealed class ScheduledMessageService(
         if (!row.IsOpen)
             throw new DomainConflictException(ScheduledMessageErrors.NotEditable, ScheduledMessageErrors.NotEditableMessageKey);
 
+        RefuseWhileASendHoldsIt(row);
+
         // The same rules as the composer of the hub: an empty text goes back to the template; a text that is too long is 422; a name that is not a variable is 422.
         string? clean = null;
         if (!string.IsNullOrWhiteSpace(text))
@@ -334,6 +336,8 @@ public sealed class ScheduledMessageService(
         var row = await OwnRowAsync(scope, id, ct);
         if (!row.IsOpen)
             throw new DomainConflictException(ScheduledMessageErrors.NotEditable, ScheduledMessageErrors.NotEditableMessageKey);
+
+        RefuseWhileASendHoldsIt(row);
 
         var now = Now();
         row.Status = ScheduledMessageStatus.Skipped;
@@ -591,6 +595,17 @@ public sealed class ScheduledMessageService(
             Code = ScheduledMessageErrors.NotFound,
             MessageKey = ScheduledMessageErrors.NotFoundMessageKey,
         };
+
+    /// <summary>
+    /// A row a send holds (claimed less than <see cref="ScheduledMessageRules.ClaimLease"/> ago) is on its way: the text was read when the send began and the message may be in the channel already, so
+    /// an edit would not be the one that goes and a skip would answer «skipped» for a message that goes out. 409 <c>scheduled_message_in_progress</c>, as for «Send now»; the claim of a process that
+    /// died has lapsed after the lease and does not hold the host off.
+    /// </summary>
+    private void RefuseWhileASendHoldsIt(ScheduledMessage row)
+    {
+        if (row.LastCheckedAt is { } held && Now() - held < ScheduledMessageRules.ClaimLease)
+            throw new DomainConflictException(ScheduledMessageErrors.InProgress, ScheduledMessageErrors.InProgressMessageKey);
+    }
 
     private async Task SaveOwnAsync(CancellationToken ct)
     {

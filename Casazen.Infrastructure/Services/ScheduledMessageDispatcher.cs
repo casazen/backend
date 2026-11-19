@@ -479,19 +479,24 @@ public sealed class ScheduledMessageDispatcher(
         var outside = !ScheduledMessagePlanner.IsInsideWindow(now, RomeCalendar.ZoneOf(facts.Timezone), from, to);
         var key = threadKey?.ToString();
 
-        // The message is out: this outcome is the truth, even over a change somebody made to the row after the claim.
+        // The facts of the send are the row's whatever happened to it meanwhile: the message is out. Its status is another matter: a skip of the host that landed while the message was on its way (the lease of the claim
+        // had lapsed, so the host was not held off) is not undone, so the row stays skipped with the time and the place of the send beside it; only a row that is still open becomes sent.
         await SaveFinalAsync(
             row,
             r =>
             {
-                r.Status = ScheduledMessageStatus.Sent;
+                if (r.IsOpen)
+                {
+                    r.Status = ScheduledMessageStatus.Sent;
+                    r.BlockedReason = state == OtaMessageDeliveryState.ManualVerify ? ManualVerifyCode : null;
+                    r.SkipReason = null;
+                    r.ActivityId = null;
+                }
+
                 r.Attempts++;
                 r.SentAt = now;
                 r.SentThreadKey = key is { Length: <= ScheduledMessage.SentThreadKeyMaxLength } ? key : null;
                 r.OutsideHours = outside;
-                r.BlockedReason = state == OtaMessageDeliveryState.ManualVerify ? ManualVerifyCode : null;
-                r.SkipReason = null;
-                r.ActivityId = null;
                 r.LastCheckedAt = null;
                 r.UpdatedAt = now;
             },
@@ -509,7 +514,7 @@ public sealed class ScheduledMessageDispatcher(
         if (outside)
             await AlertAsync(row, ScheduledMessageAlertKinds.OutsideHours, mode == ScheduledMessageDispatchMode.SendNow ? userId : null, now);
 
-        return new ScheduledMessageDispatchResult(ScheduledMessageDispatchOutcome.Sent, ScheduledMessageStatus.Sent, row.BlockedReason);
+        return new ScheduledMessageDispatchResult(ScheduledMessageDispatchOutcome.Sent, row.Status, row.BlockedReason);
     }
 
     private async Task<ScheduledMessageDispatchResult> BlockAsync(
@@ -642,11 +647,17 @@ public sealed class ScheduledMessageDispatcher(
     }
 
     /// <summary>
-    /// Saves what a send decided. A change somebody made to the row after the claim (the host edited or skipped it) makes the save fail on the <c>xmin</c>: the row is read again and the outcome is written
-    /// over it when it is what happened (a message that went out), or only if the row is still open when it is a decision of the system (a skip of the host is not undone).
+    /// Saves what a send decided, on what the row says NOW and not on what it said at the claim: the row is read again first, and a change somebody made after the claim (the host skipped it when the lease had
+    /// lapsed, the booking was cancelled) is seen before the outcome is applied; one that lands between the read and the save fails the save on the <c>xmin</c> and the row is read again. A decision of the system
+    /// (<paramref name="onlyIfStillOpen"/>) is written only if the row is still open (a skip of the host is not undone); the outcome of a message that went out is applied to the facts of the row (when, where) in
+    /// any case, but its <see cref="ScheduledMessage.Status"/> is only the caller's to change on a row that is still open.
     /// </summary>
     private async Task<bool> SaveFinalAsync(ScheduledMessage row, Action<ScheduledMessage> apply, bool onlyIfStillOpen, CancellationToken ct)
     {
+        await db.Entry(row).ReloadAsync(ct);
+        if (onlyIfStillOpen && !row.IsOpen)
+            return false;
+
         apply(row);
         try
         {
