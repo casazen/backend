@@ -57,14 +57,14 @@ public sealed record FiscalDocumentDto
 
     /// <summary>
     /// What the portal collected of the document of a booking whose portal left the tourist tax to the host (FIX/BE-PORTAL-TAXLINE): the total less that tax, <c>450.00</c> of the <c>462.00</c> of
-    /// a stay with <c>12.00</c> of tourist tax. Derived from the stored lines (<see cref="FiscalDocumentPortalCollection"/>); <c>null</c>, and left out of the answer, for every other document
+    /// a stay with <c>12.00</c> of tourist tax. Derived from the stored lines and from the collection of the stay (<see cref="FiscalDocumentPortalCollection"/>); <c>null</c>, and left out of the answer, for every other document
     /// (the list never has it: its rows carry no lines). <see cref="PaymentState"/> stays the stored one and <see cref="Total"/> is always the whole document.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public decimal? AmountPaidViaPortal { get; init; }
 
     /// <summary>
-    /// The tourist tax the portal did not collect, to collect at the property (<c>12.00</c> in the example of <see cref="AmountPaidViaPortal"/>): the line of the tourist tax of the document
+    /// The tourist tax the portal did not collect and the collection of the stay (E25) does not record as collected, to collect at the property (<c>12.00</c> in the example of <see cref="AmountPaidViaPortal"/>; <c>7.00</c> when 5.00 were paid online): the line of the tourist tax of the document
     /// (<see cref="FiscalDocumentLineDto.ToCollectAtProperty"/>). <c>null</c>, and left out of the answer, when <see cref="AmountPaidViaPortal"/> is.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

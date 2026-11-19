@@ -22,9 +22,9 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Currency.</b> The currency of the document, named in the headers: this code never writes one.</item>
 /// <item><b>Courtesy copy.</b> A document with FatturaPA XML says it is the courtesy copy of the electronic invoice; a draft carries the watermark of a
 /// draft.</item>
-/// <item><b>The tourist tax of a portal.</b> The document of a booking of a portal that left the tourist tax to the host is not «paid» for that line
-/// (<see cref="FiscalDocumentPortalCollection"/>, FIX/BE-PORTAL-TAXLINE): the line carries «tassa da riscuotere in struttura», and the payment says what the portal collected and
-/// what is still to collect at the property. Every other document says what it said before.</item>
+/// <item><b>The tourist tax of a portal.</b> The document of a booking of a portal that left the tourist tax to the host is not «paid» for that line, unless the collection of the stay (E25)
+/// records it as collected (<see cref="FiscalDocumentPortalCollection"/>, FIX/BE-PORTAL-TAXLINE): the line carries «da pagare in struttura» (the Swiss layout, which says «tassa», has its own words), and the
+/// payment says what the portal collected and what is still to collect at the property. Every other document says what it said before.</item>
 /// </list>
 /// </remarks>
 public static class FiscalDocumentPdfs
@@ -336,10 +336,11 @@ public static class FiscalDocumentPdfs
 
     /// <summary>
     /// The description of a line of a document, with the note that its tax is to be collected at the property when it is the line of tourist tax the portal left to the host
-    /// (<paramref name="split"/>, FIX/BE-PORTAL-TAXLINE); the description as it is for every other line. Shared by the two layouts.
+    /// (<paramref name="split"/>, FIX/BE-PORTAL-TAXLINE); the description as it is for every other line. Shared by the two layouts, each with the words of its own tax (<paramref name="noteKey"/>):
+    /// the Italian layout calls it «imposta» (the default key), the Swiss one «tassa».
     /// </summary>
-    internal static string WithToCollectNote(PortalCollectionSplit? split, FiscalDocumentLine line, string description, IDocumentTexts texts, string language) =>
-        split?.IsToCollect(line) == true ? texts.Get("FiscalDocLineToCollectNote", language, description) : description;
+    internal static string WithToCollectNote(PortalCollectionSplit? split, FiscalDocumentLine line, string description, IDocumentTexts texts, string language, string noteKey = "FiscalDocLineToCollectNote") =>
+        split?.IsToCollect(line) == true ? texts.Get(noteKey, language, description) : description;
 
     private static IReadOnlyList<string> Row(params string[] cells) => cells;
 

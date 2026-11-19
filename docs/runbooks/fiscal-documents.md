@@ -340,17 +340,28 @@ Example: 2 guests × 3 nights × CHF 2.00 = CHF 12.00, out of VAT.
 
 **The tourist tax a portal left to the host** (`FiscalDocumentPortalCollection`, FIX/BE-PORTAL-TAXLINE). The document of a booking whose portal collected the money (`Portal`) is «paid through the
 portal» for what the portal collected, **not for its line of tourist tax**: the line builder draws that line only when the portal does *not* collect the tax (above), so on a portal document it
-is a tax the guest owes at the property, and nothing on the document records that anyone collected it (the finding of the Swiss scenario: 12.00 of tax declared paid in a 462.00 document,
-and nobody cashed it). The rule is **derived, never stored**, from the lines, the total and the channel the document keeps (no column, no migration, so the documents issued before are read the same
-way): `FiscalDocumentPortalCollection.SplitOf` gives the part paid through the portal (the total less the tax lines: 450.00) and the part to collect at the property (12.00), and `null` for every
-other document (another channel, a credit note, an owner invoice, a self-billed invoice, a document CasaZen did not issue, a portal document with no such line), which says what it said.
-It is read by the two layouts of the PDF (the line of the tax carries «- tassa da riscuotere in struttura» / «- tax to be collected at the property»; the payment says «Pagata tramite il portale:
-CHF 450.00» and «Tassa di soggiorno da riscuotere in struttura: CHF 12.00» in the Swiss layout, «Pagamento: pagato tramite il portale per EUR 450,00» and the same second paragraph in the Italian one) and by
-`FiscalDocumentDto` (`amountPaidViaPortal`, `amountToCollectAtProperty` and `toCollectAtProperty` on the line of the tax, each **left out of the answer** when it does not apply, so the answer
-of every other document is what it was; the list has no lines, so no row has them). The total, the lines and the stored `PaymentState` (`Paid`) do not change, and the lists and the exports still
-show the stored state. **⚖ Product owner, open:** the default is «a tax nobody recorded is never declared paid»; the other choice is the whole document paid through the portal, as before. It
-is changed in `FiscalDocumentPortalCollection.SplitOf` (nothing else reads the portal's share). **Not read:** the collection of the tourist tax recorded on the stay (`StayTouristTax`, E25: paid
-online or «Pagata in struttura») does not remove the note, as no document reads that record. **Rollback:** revert the change; no data was written. The frontend adopts the new members in a slice of its own.
+is a tax the guest owes at the property unless the collection of the stay records it as collected (the finding of the Swiss scenario: 12.00 of tax declared paid in a 462.00 document,
+and nobody cashed it). The rule is **derived, never stored**, from the lines, the total, the channel the document keeps and the collection of the tax of the stay (no column, no migration, so the documents
+issued before are read the same way): `FiscalDocumentPortalCollection.SplitOf` gives the part paid through the portal (the total less the tax lines: 450.00) and the part still to collect at the property (12.00),
+and `null` for every other document (another channel, a credit note, an owner invoice, a self-billed invoice, a document CasaZen did not issue, a portal document with no such line, one whose tax is all recorded as
+collected), which says what it said.
+**What E25 records comes off the part to collect** (one rule for Switzerland and Italy). The collection of the tax of the stay (`StayTouristTax`, E25) says what was collected, and
+`FiscalDocumentService.ApplyCollectedTouristTaxAsync` reads it once, for every reader of the document, into `FiscalDocument.TouristTaxCollected` (a property that is not stored): all of the tax when the host recorded it
+**paid at the property**, else what the guest **paid online** net of the refunds (`CollectedAmount` less `RefundedAmount`), never more than the tax lines. No record: the whole tax is to collect (450.00 through the portal
+and 12.00 to collect). A part recorded (5.00 online): only the rest (7.00) is to collect, and the portal part is still what the portal collected (450.00), so the two parts add up to the total only while nothing is
+recorded. All of it recorded: nothing is to collect, no note, and the document says what it said when no tax was left to the host («Pagata tramite il portale» / «Pagamento: pagato»). The record is read where the
+document is built for the person who asks: `GET api/fiscal/documents/{id}`, the answers of the create, the refresh and the issue of a document (the replacement of a rejected invoice is a refresh), the PDF of the
+agency, of the accountant package and of the owner portal (which names the org: the portal has no tenant); the list has no lines and reads nothing.
+It is read by the two layouts of the PDF, each with the words of its own tax: the Swiss layout says «tassa» (the line of the tax carries «- tassa da riscuotere in struttura» / «- tax to be collected at the property»;
+the payment says «Pagata tramite il portale: CHF 450.00» and «Tassa di soggiorno da riscuotere in struttura: CHF 12.00»); the Italian layout says «imposta», as its line does («Imposta di soggiorno riscossa per conto
+del comune»), and never «riscossa» and «da riscuotere» together (the line carries «- da pagare in struttura» / «- payable at the property»; the payment says «Pagamento: pagato tramite il portale per EUR 450,00» and
+«Imposta di soggiorno da pagare in struttura: EUR 12,00»). The API reads it too: `FiscalDocumentDto` (`amountPaidViaPortal`, `amountToCollectAtProperty` and `toCollectAtProperty` on the line of the tax, each **left out
+of the answer** when it does not apply, so the answer of every other document is what it was; the list has no lines, so no row has them). The members come out of `GET api/fiscal/documents/{id}`, the answers of
+`POST api/fiscal/documents`, `.../{id}/refresh` and `.../{id}/issue`, and the replacement of a rejected invoice; **not** out of the list, the document card of a booking (`GET api/bookings/{id}/fiscal-documents`) or the payment
+ledger, which keep the stored `PaymentState` (`Paid` for the whole total) as the exports do. The total, the lines and the stored `PaymentState` do not change. **⚖ Product owner, open:** the default is «a tax nobody
+recorded is never declared paid»; the other choice is the whole document paid through the portal, as before. It is changed in `FiscalDocumentPortalCollection.SplitOf` (nothing else reads the portal's share). For
+Italy the PO still has to confirm the rule itself (a stay of a portal whose tax the host collects is «to collect» unless E25 records it; whether a tax included in the price a portal reports counts as collected is his
+call). **Rollback:** revert the change; no data was written. The frontend adopts the new members in a slice of its own.
 
 **When the booking changes.** `IFiscalDocumentService.ApplyBookingChangeAsync` follows a change of the booking: a **draft** is made again from it (or discarded when the booking is no
 longer active and nothing was collected for it; kept with a «To do» when money was collected or when it cannot be made again); an **issued** document is **never** rewritten: it is corrected
@@ -927,7 +938,7 @@ flat, so the numbers of the invoices of the agency, which both flats share, are 
 
 | Origin | Flat A (receipt) | Flat B (invoice of the company) | Statement of October, flat A: gross, channel fee, commission, VAT of the invoice, cleaning → net | Withholding of flat A, F24 |
 |---|---|---|---|---|
-| Booking.com through Octorate (450.00, commission 67.50, tax 12.00, collected by the portal) | 450.00 + 12.00 = 462.00, stamp 2.00, «Pagamento: pagato tramite il portale per EUR 450,00» and «Tassa di soggiorno da riscuotere in struttura: EUR 12,00» | 409.09 + VAT 40.91 + 12.00 = 462.00, the same two paragraphs | 450.00, −67.50, −90.00, −30.80, −50.00 → 211.70 (flat B: −35.20, −70.00 → 187.30) | none (the portal pays the owner): the contract is in the communication of 30 June |
+| Booking.com through Octorate (450.00, commission 67.50, tax 12.00, collected by the portal) | 450.00 + 12.00 = 462.00, stamp 2.00, «Pagamento: pagato tramite il portale per EUR 450,00» and «Imposta di soggiorno da pagare in struttura: EUR 12,00» (the scenario records nothing of the collection of the tax in E25) | 409.09 + VAT 40.91 + 12.00 = 462.00, the same two paragraphs | 450.00, −67.50, −90.00, −30.80, −50.00 → 211.70 (flat B: −35.20, −70.00 → 187.30) | none (the portal pays the owner): the contract is in the communication of 30 June |
 | Agency's own site (the «direct» channel, 402.00 by bank transfer recorded by hand) | 390.00 + 12.00 = 402.00 | 354.55 + VAT 35.45 + 12.00 | 390.00, 0, −78.00, −28.16, −50.00 → 233.84 (B: 209.44) | 81.90 → paid 151.94 |
 | CasaZen site (Stripe 432.00, fee 12.48 borne by the agency) | 360.00 + 12.00 = 372.00, and the invoice of the agency for the cleaning 49.18 + VAT 10.82 = 60.00 | 327.27 + VAT 32.73 + 12.00 = 372.00, and the cleaning of the agency | 420.00, 0, −84.00, −29.48, −50.00 → 256.52 (B: 232.12) | 88.20 → paid 168.32 |
 | By hand (312.00 in cash) | 300.00 + 12.00 = 312.00 | 272.73 + VAT 27.27 + 12.00 | 300.00, 0, −60.00, −24.20, −50.00 → 165.80 (B: 141.40) | 63.00 → paid 102.80 |
@@ -970,7 +981,7 @@ and is reported as skipped, with its reason, until the file is added (`docs/runb
 **What the scenario shows** (facts of the code as it is, for the decisions of the PO and of the accountant):
 
 - The document of a booking of a portal was always «Pagamento: pagato», also for the line of the tourist tax of Como that Booking.com does not collect and nobody recorded (the same
-  defect as in Switzerland). Fixed (FIX/BE-PORTAL-TAXLINE): «Pagamento: pagato tramite il portale per EUR 450,00» and the tax «da riscuotere in struttura: EUR 12,00»; the total is still 462.00.
+  defect as in Switzerland). Fixed (FIX/BE-PORTAL-TAXLINE): «Pagamento: pagato tramite il portale per EUR 450,00» and the tax «da pagare in struttura: EUR 12,00» (nothing of its collection is recorded in E25 in this scenario; what E25 records comes off it); the total is still 462.00.
 - The base of the withholding of a stay is the gross of the ledger without the tourist tax, so the stay of the CasaZen site is 420.00 with the cleaning of 60.00 that the agency bills the
   guest as its own service (a document of the agency, not of the owner): the 21% is taken on the 420.00 (⚖ R3, the base of the commission is the same).
 - The accountant package has no sales-register row for the commission of a portal the agency holds the account of in Italy (the Swiss file has one, for the purchase tax): the TD17 is

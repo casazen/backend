@@ -1060,13 +1060,14 @@ public class ItalianAgencyScenarioTests
 
     /// <summary>
     /// FIX/BE-PORTAL-TAXLINE: the document of a booking of a portal says that the tourist tax the portal did not collect is to collect at the property (12.00), in a paragraph of its own and as the
-    /// note of its line; the total of the document is not touched.
+    /// note of its line; the total of the document is not touched. The scenario records nothing of the collection of the tax in E25 (it sets only the channel rule of the comune, which says the host collects,
+    /// and never confirms, declares or collects the tax of a stay), so the whole 12.00 is still to collect: the case of «no record» (a recorded collection comes off it, <c>PortalBookingDocument_*</c>).
     /// </summary>
     private static async Task AssertTheTaxIsToCollectAsync(World world, FiscalDocument document)
     {
         var text = TextOf(await world.PdfContentAsync(document.Id));
-        Assert.Contains("Tassa di soggiorno da riscuotere in struttura: EUR 12,00", text, StringComparison.Ordinal);
-        Assert.Contains("Imposta di soggiorno riscossa per conto del comune - tassa da riscuotere in struttura", text, StringComparison.Ordinal);
+        Assert.Contains("Imposta di soggiorno da pagare in struttura: EUR 12,00", text, StringComparison.Ordinal);
+        Assert.Contains("Imposta di soggiorno riscossa per conto del comune - da pagare in struttura", text, StringComparison.Ordinal);
         Assert.Contains("Totale documento | 462,00", text, StringComparison.Ordinal);
     }
 

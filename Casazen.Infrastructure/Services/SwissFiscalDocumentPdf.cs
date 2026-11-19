@@ -99,7 +99,7 @@ public static class SwissFiscalDocumentPdf
                 {
                     var cells = new List<string>
                     {
-                        FiscalDocumentPdfs.WithToCollectNote(split, l, Description(l, texts, language), texts, language),
+                        FiscalDocumentPdfs.WithToCollectNote(split, l, Description(l, texts, language), texts, language, "FiscalDocLineToCollectNoteCh"),
                         l.Quantity.ToString("0.##", SwissNumbers),
                         Money(l.UnitPrice),
                         Money(l.TotalPrice),
@@ -298,7 +298,7 @@ public static class SwissFiscalDocumentPdf
         if (split.PaidViaPortal > 0m)
             yield return new PdfParagraph(texts.Get("FiscalDocPdfChPaidPortalPart", language, document.Currency, Money(split.PaidViaPortal)), Bold: true);
 
-        yield return new PdfParagraph(texts.Get("FiscalDocPdfToCollectAtProperty", language, document.Currency, Money(split.ToCollectAtTheProperty)), Bold: true);
+        yield return new PdfParagraph(texts.Get("FiscalDocPdfChToCollectAtProperty", language, document.Currency, Money(split.ToCollectAtTheProperty)), Bold: true);
     }
 
     private static NumberFormatInfo CreateSwissNumbers()
