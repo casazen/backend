@@ -105,4 +105,11 @@ public enum ActivityAction
     /// («Copia link») and the reason it has not gone by itself. About the booking. The numbers from 110 are the check-in link and the chat of the portal (epic E23).
     /// </summary>
     CopyCheckInLink = 110,
+
+    /// <summary>
+    /// A scheduled message of a booking is held back or failed (E05/F07/US01/T03, NF-71): the booking, <c>/app/short-rent/bookings/{id}</c>, where its timeline lists the messages with
+    /// «Edit», «Skip» and «Send now» (the web app adds the entry to its <c>ACTION_ROUTE_MAP</c> in E05/F07/US02/T01). About the booking. The numbers from 120 are the scheduled
+    /// messages (feature E05/F07).
+    /// </summary>
+    FixScheduledMessage = 120,
 }
