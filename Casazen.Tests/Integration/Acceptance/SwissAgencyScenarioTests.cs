@@ -455,8 +455,8 @@ public class SwissAgencyScenarioTests
             portalCommissionRow: "Booking.com;67,50;CHF");
     }
 
-    // Variante V2 senza riaddebito (⚖ I10 I11): l'account Booking.com e' dell'agenzia che non riaddebita le commissioni: nessun riaddebito nella fattura PM e il
-    // rendiconto non cita la fattura per la commissione.
+    // Variante V2 senza riaddebito (⚖ I10 I11): l'account Booking.com e' dell'agenzia che non riaddebita le commissioni: nessun riaddebito nella fattura PM, il
+    // rendiconto non cita la fattura per la commissione e non dice che la fattura del portale e' a nome del proprietario (V1): la riga ha un'etichetta propria.
     [Fact]
     [Trait("Scenario", "C2 C4")]
     public async Task Variant_V2_WithoutTheRecharge_NoRechargeOnThePmInvoice_AndTheStatementNeverNamesItForTheCommission()
@@ -488,6 +488,15 @@ public class SwissAgencyScenarioTests
         Assert.DoesNotContain("riaddebitate dal gestore", StatementTextOf(statement), StringComparison.Ordinal);
         var detail = OwnerPortalStatementDetailDto.From(await world.PortalStatementAsTheOwnerAsync(month.Published.Id));
         Assert.False(Assert.Single(detail.Sections.Single(s => s.Section == "channelFees").Lines).ChannelFeeRechargedByAgency);
+
+        // The portal bills the agency, so the line is not the owner's portal invoice either (the sentence of V1): it has a label of its own, in the PDF and as a flag of the
+        // owner portal, and the net is the one asserted above, the same as V1.
+        Assert.True(Assert.Single(statement.Of(OwnerStatementSection.ChannelFees)).AgencyHoldsPortalAccountWithoutRecharge);
+        var text = StatementTextOf(statement);
+        Assert.Contains("Commissioni del portale (account del portale intestato al gestore, senza riaddebito in fattura)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Trattenuta dal portale", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("fattura del portale a tuo nome", text, StringComparison.Ordinal);
+        Assert.True(Assert.Single(detail.Sections.Single(s => s.Section == "channelFees").Lines).ChannelFeeBilledToAgencyNotRecharged);
     }
 
     // Variante del portale che incassa la tassa (⚖ C4 C5): prenotazione Airbnb tramite Octorate, nessuna riga della tassa di Ticino nel documento e nessuna nel

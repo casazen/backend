@@ -7366,6 +7366,9 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="StatementFileChannelFeesAgencyInvoice" xml:space="preserve">
     <value>Portal commissions recharged by the property manager (invoice no. {0})</value>
   </data>
+  <data name="StatementFileChannelFeesAgencyNotRecharged" xml:space="preserve">
+    <value>Portal commissions (portal account held by the property manager, no recharge on an invoice)</value>
+  </data>
   <data name="StatementFileCommissionInvoice" xml:space="preserve">
     <value>Property manager invoice no. {0}</value>
   </data>

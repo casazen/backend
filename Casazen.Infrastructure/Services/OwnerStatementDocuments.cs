@@ -37,7 +37,9 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Who holds the portal account.</b> The channel fee of a stay is flagged as recharged by the agency when the invoice of the property manager recharges it:
 /// the agency holds the account of the listing on that portal and the organization recharges the commissions of the accounts it holds
 /// (<see cref="PortalAccountHolders.RechargesCommissionOf"/> of <see cref="IPortalAccountHolderResolver"/>, E14, ⚖ I10 I11, the very test of the invoice), so the
-/// label «riaddebitate dal gestore (fattura n. …)» never names an invoice without that recharge; otherwise it is «Trattenuta dal portale». A service built without
+/// label «riaddebitate dal gestore (fattura n. …)» never names an invoice without that recharge. An account of the agency whose commissions the organization does not
+/// recharge (<see cref="PortalAccountHolders.IsAgencyAccountWithoutRecharge"/>: the portal bills the agency, no invoice carries the commission) has a label of its own, and
+/// only an account of the owner (V1) is «Trattenuta dal portale (fattura del portale a tuo nome)». A service built without
 /// the resolver reads every listing as V1.</item>
 /// <item><b>Language.</b> There is no language kept for an owner yet: Italian unless the caller asks for English. The stored PDF is in Italian.</item>
 /// <item><b>The notice of the publication.</b> The e-mail that tells the owner is queued after the publication was saved. A notice that cannot be prepared or queued never
@@ -430,7 +432,8 @@ public sealed class OwnerStatementDocuments(
 
     /// <summary>
     /// The line of a ledger entry: its part, its day, the stay (days, channel, code) and property it is about, and, for the commission a portal kept, whether the
-    /// invoice of the property manager recharges it (<paramref name="portalAccounts"/>: the agency holds the account of the listing on that portal and recharges).
+    /// invoice of the property manager recharges it (<paramref name="portalAccounts"/>: the agency holds the account of the listing on that portal and recharges), or the
+    /// agency holds the account and does not recharge it (<see cref="OwnerStatementLine.AgencyHoldsPortalAccountWithoutRecharge"/>).
     /// </summary>
     private static OwnerStatementLine LineOf(OwnerLedgerEntry entry, BookingFacts? booking, string? propertyName, PortalAccountHolders portalAccounts)
     {
@@ -464,6 +467,11 @@ public sealed class OwnerStatementDocuments(
                 && booking is not null
                 && portalAccounts.RechargesCommissionOf(entry.PropertyId ?? booking.PropertyId, booking.Source))
         {
+            // The other half of the test of the invoice: the account of the agency whose commissions it does not recharge. The portal bills the agency, so the line is not
+            // the owner's portal invoice (V1) and no invoice of the property manager recharges it; the amount is the one of the ledger line either way.
+            AgencyHoldsPortalAccountWithoutRecharge = entry.EntryType == OwnerLedgerEntryType.ChannelFee
+                && booking is not null
+                && portalAccounts.IsAgencyAccountWithoutRecharge(entry.PropertyId ?? booking.PropertyId, booking.Source),
             LedgerEvidence = new OwnerStatementLedgerEvidence(
                 entry.SourceType, entry.SourceId, entry.SourceReference, entry.ServiceDate, entry.RecognitionDate, entry.PaymentDate,
                 entry.OriginalAmount, entry.OriginalCurrency, entry.StatementCurrency, entry.FxRate, entry.FxSource, entry.FxDate),

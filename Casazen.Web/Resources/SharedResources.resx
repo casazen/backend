@@ -7366,6 +7366,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="StatementFileChannelFeesAgencyInvoice" xml:space="preserve">
     <value>Commissioni del portale riaddebitate dal gestore (fattura n. {0})</value>
   </data>
+  <data name="StatementFileChannelFeesAgencyNotRecharged" xml:space="preserve">
+    <value>Commissioni del portale (account del portale intestato al gestore, senza riaddebito in fattura)</value>
+  </data>
   <data name="StatementFileCommissionInvoice" xml:space="preserve">
     <value>Fattura del gestore n. {0}</value>
   </data>
