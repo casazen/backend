@@ -46,6 +46,13 @@ public interface IGuestMessageService
     Task<SentGuestMessage> ReplyAsHostAsync(Guid bookingId, string? text, string? idempotencyKey, string? userId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// A message of the host side that no person wrote: the one a routine planned (E05/F07/US01). The same errors, key and rules as <see cref="ReplyAsHostAsync"/>, but the message is stored with the origin
+    /// <see cref="Entities.Enums.MessageOrigin.Automation"/> and it <b>answers nobody</b>: the guest's messages stay unread and the thread still waits for its answer in «Da rispondere», as the
+    /// automatic messages of the channels do (<c>OtaMessage.Origin</c>). It is still the latest message of the thread.
+    /// </summary>
+    Task<SentGuestMessage> ReplyAsAutomationAsync(Guid bookingId, string? text, string? idempotencyKey, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Marks the guest's messages as read by the host, up to the last one written. With the caller's <paramref name="userId"/>, the
     /// caller's unread «guest-message» in-app notifications of the booking are marked as read too (and the new count is published).
     /// </summary>

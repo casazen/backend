@@ -53,7 +53,8 @@ public class RoutineService(
     ICleaningAutomationService? cleaning = null,
     IHostReviewService? reviews = null,
     IAiProvider? ai = null,
-    RoutineBookingActions? bookingActions = null) : IRoutineService
+    RoutineBookingActions? bookingActions = null,
+    IScheduledMessageService? scheduledMessages = null) : IRoutineService
 {
     /// <summary>
     /// The unique index on <c>RoutineExecutions (RoutineId, EventId)</c> (migration <c>AddRoutineEngine</c>): a second execution of
@@ -578,6 +579,10 @@ public class RoutineService(
                     return await CreateCleaningRequestAsync(routine, actionIndex, action, payload, cancellationToken);
                 case RoutineActionType.RequestReview:
                     return await RequestReviewAsync(routine, actionIndex, action, payload, cancellationToken);
+                case RoutineActionType.MessageToGuest when scheduledMessages is not null && featureFlags.IsEnabled(FeatureFlags.ScheduledMessages):
+                    // E05/F07/US01/T03: with the scheduled messages on, the message goes through the plan (one row for the booking, the routine and the action), the one place that sends; with the flag
+                    // off the case below does what it did before. There is one switch and one send for each flag state, never two sends for one action.
+                    return await MessageToGuestAsync(routine, actionIndex, payload, cancellationToken);
                 default:
                     if (bookingActions is not null)
                         return await bookingActions.ExecuteAsync(routine.OrgId, execution.Id, actionIndex, action, payload, cancellationToken);
@@ -589,6 +594,24 @@ public class RoutineService(
             "Routine {RoutineId} execution {ExecutionId}: action {ActionType} is not available",
             routine.Id, execution.Id, action.Type);
         return RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ActionNotAvailable);
+    }
+
+    /// <summary>
+    /// <c>MessageToGuest</c> with the scheduled messages on (E05/F07/US01/T03, NF-71): the row of the booking, the routine and the action is found or written and sent when its time has come
+    /// (<see cref="IScheduledMessageService.OnRoutineActionAsync"/>, the routine firing IS the moment). <c>done</c> when it went out, waits for the send window or was handled already; <c>blocked</c> with the code
+    /// when a piece of data is missing (the guardrails of the engine have already run); <c>skipped</c> when it does not go out (the rules of the channel, no way to the guest); <c>failed</c> when the channel
+    /// did not take it. An event that names no booking of the org is blocked like the other booking actions.
+    /// </summary>
+    private async Task<RoutineActionResult> MessageToGuestAsync(
+        Routine routine,
+        int actionIndex,
+        IReadOnlyDictionary<string, object?> payload,
+        CancellationToken cancellationToken)
+    {
+        if (!RoutinePayload.TryGetId(payload, "bookingId", out var bookingId))
+            return RoutineActionResult.Blocked(actionIndex, RoutineActionType.MessageToGuest, "booking_not_found");
+
+        return await scheduledMessages!.OnRoutineActionAsync(routine.Id, actionIndex, bookingId, cancellationToken);
     }
 
     /// <summary>
@@ -950,16 +973,8 @@ public class RoutineService(
             if (booking is null)
                 return (_marketingConsent = false).Value;
 
-            var consented = await db.Guests
-                .AsNoTracking()
-                .AnyAsync(
-                    g => g.Id == booking.GuestId
-                         && g.OrgId == orgId
-                         && g.MarketingConsent
-                         && !g.IsDeleted
-                         && !g.ErasureRequested
-                         && g.DataAnonymizedDate == null,
-                    cancellationToken);
+            // The one reading of the consent, shared with the scheduled messages (CampaignConsent).
+            var consented = await CampaignConsent.IsGrantedAsync(db, orgId, booking.GuestId, cancellationToken);
             return (_marketingConsent = consented).Value;
         }
     }

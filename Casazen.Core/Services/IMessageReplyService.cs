@@ -81,6 +81,20 @@ public interface IMessageReplyService
         string? idempotencyKey,
         string? userId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// <see cref="StartConversationAsync(HostScope, Guid, string?, string?, string?, CancellationToken)"/> for a message that is not written by a person (E05/F07/US01/T03): a message of a
+    /// routine planned by the host is <see cref="MessageOrigin.Automation"/> (no user, never shown as written by a person, it answers nobody). A conversation of a channel gets the origin on its
+    /// message; the guest area of a direct booking and an e-mail have no origin of their own and carry it as the host's words. Never <see cref="MessageOrigin.Guest"/>.
+    /// </summary>
+    Task<MessageReplyResult> StartConversationAsync(
+        HostScope scope,
+        Guid bookingId,
+        string? text,
+        string? idempotencyKey,
+        string? userId,
+        MessageOrigin origin,
+        CancellationToken ct = default);
 }
 
 /// <summary>How a guest can be written to from CasaZen (<see cref="MessageContactOptions.Channel"/>).</summary>

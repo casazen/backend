@@ -51,6 +51,9 @@ public class HostNotifyingPathsArchitectureTests
         // AiDraftToApprove (E05/F04): an item of the approval queue waits for a decision.
         "EmailTemplates.Names.HostApprovalToDecide",
 
+        // ScheduledMessageIssue (E05/F07/US01): a scheduled message is held back, did not go out, was skipped or went out outside the send window.
+        "EmailTemplates.Names.HostScheduledMessageIssue",
+
         // The counter of the bell and the popup alerts: whoever writes a row of either for a host tells it something.
         "InAppNotifications.Add",
         "PopupAlerts.Add",
@@ -162,6 +165,7 @@ public class HostNotifyingPathsArchitectureTests
     [InlineData("Casazen.Infrastructure/Services/NotificationPreferenceService.cs")]
     [InlineData("Casazen.Infrastructure/Services/HostMessageAlertDelivery.cs")]
     [InlineData("Casazen.Infrastructure/Services/ApprovalAlertDelivery.cs")]
+    [InlineData("Casazen.Infrastructure/Services/ScheduledMessageAlertDelivery.cs")]
     public void TheService_AndTheDeliveryOfTheMessageAlerts_AreInsideTheRule(string file)
     {
         var code = CodeWithoutComments(File.ReadAllText(Path.Combine(FindRepositoryRoot(), file.Replace('/', Path.DirectorySeparatorChar))));
@@ -195,6 +199,19 @@ public class HostNotifyingPathsArchitectureTests
             "Casazen.Infrastructure", "Services", "ApprovalQueueService.cs")));
 
         Assert.Contains("ApprovalAlertDelivery", code, StringComparison.Ordinal);
+        Assert.Empty(NoticesIn(code));
+        Assert.DoesNotContain("OrgMembers", code, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Casazen.Infrastructure/Services/ScheduledMessageDispatcher.cs")]
+    [InlineData("Casazen.Infrastructure/Services/ScheduledMessageService.cs")]
+    public void TheScheduledMessages_TellTheHostsOnlyThroughTheDelivery(string file)
+    {
+        // The dispatch and the plan raise the alert of a message held back, skipped or sent late through the one delivery, which asks the service (E05/F07/US01): they write no notice of their own.
+        var code = CodeWithoutComments(File.ReadAllText(Path.Combine(FindRepositoryRoot(), file.Replace('/', Path.DirectorySeparatorChar))));
+
+        Assert.Contains("ScheduledMessageAlertDelivery", code, StringComparison.Ordinal);
         Assert.Empty(NoticesIn(code));
         Assert.DoesNotContain("OrgMembers", code, StringComparison.Ordinal);
     }
