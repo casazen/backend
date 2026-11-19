@@ -46,6 +46,12 @@ public class SelfBillingOptions
     /// <summary>The version of the choices stored on the documents (see <see cref="DefaultRuleVersion"/>).</summary>
     public string RuleVersion { get; set; } = DefaultRuleVersion;
 
+    /// <summary>
+    /// The monthly run that makes the drafts of the month that ended (<c>SelfBilling:MonthlyDrafts</c>, FIX/BE-TD17-ALERTS): <b>off by default</b>, so nothing is drafted by time until
+    /// somebody turns it on.
+    /// </summary>
+    public SelfBillingMonthlyDraftsOptions MonthlyDrafts { get; set; } = new();
+
     /// <summary>True when <see cref="VatRatePercent"/> can be integrated: above 0 and at most 100.</summary>
     public bool HasValidVatRate => VatRatePercent is > 0m and <= 100m;
 
@@ -84,6 +90,17 @@ public class SelfBillingOptions
 
     /// <summary>How many entries of <see cref="Portals"/> are ignored (not a portal, incomplete, in Italy, or a channel already given): the generation logs it.</summary>
     public int IgnoredPortalEntries() => (Portals?.Count ?? 0) - ConfiguredPortals().Count;
+}
+
+/// <summary>
+/// The section <c>SelfBilling:MonthlyDrafts</c> (FIX/BE-TD17-ALERTS, ⚖): the Hangfire job <c>self-billing-monthly-drafts</c> makes, for every agency with commissions in the owner ledger of the month
+/// that ended, the same drafts as <c>POST api/fiscal/self-billing/drafts</c> and raises the «Da fare» to check and issue them. It never issues: the issue stays a person's action, behind
+/// <c>agency.invoice.manage</c> and <c>Features:FiscalDocumentIssuance</c>. Documented in <c>docs/runbooks/deploy-checklist.md</c> § 2.
+/// </summary>
+public class SelfBillingMonthlyDraftsOptions
+{
+    /// <summary>Whether the monthly run does anything. <b>false</b> by default: with it off the job is a no-op (no organization is read, no lock is taken, nothing is written).</summary>
+    public bool Enabled { get; set; }
 }
 
 /// <summary>One entry of <c>SelfBilling:Portals</c>: the legal entity of a foreign portal as it appears on its invoices (⚖: verify it against a real invoice of the portal).</summary>

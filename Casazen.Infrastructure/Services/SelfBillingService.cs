@@ -29,10 +29,12 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Only active stays.</b> The ledger is posted by hand (the month-end posting), so the line of a stay cancelled or marked no-show since is still alive until the next posting:
 /// the bookings are read for their channel, their check-out day and whether they are active now (<see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/> and no no-show, the one definition),
 /// and a stay that is not is reported as not due (<see cref="SelfBillingNotDueReasons.StayNotActive"/>), in the drafts and at the issue.</item>
+/// <item><b>The «Da fare» of the drafts and the monthly run</b> (FIX/BE-TD17-ALERTS, <c>SelfBillingService.MonthlyDrafts.cs</c>): the generation, the issue and the discard keep the
+/// item of the month in step with the drafts that are left (<paramref name="activities"/>, nothing without it); only the monthly run raises it.</item>
 /// <item><b>Logs</b> carry ids and counts: never a name, a VAT number or an amount.</item>
 /// </list>
 /// </remarks>
-public sealed class SelfBillingService(
+public sealed partial class SelfBillingService(
     AppDbContext db,
     IFiscalDocumentService documents,
     IDocumentIssuerService issuers,
@@ -41,7 +43,8 @@ public sealed class SelfBillingService(
     IDocumentTexts texts,
     IOptions<SelfBillingOptions> options,
     TimeProvider time,
-    ILogger<SelfBillingService> logger) : ISelfBillingService
+    ILogger<SelfBillingService> logger,
+    IInternalActivityService? activities = null) : ISelfBillingService
 {
     /// <summary>The most TD17 one call of the list answers (the newest periods first).</summary>
     public const int MaxListRows = 1000;
@@ -133,6 +136,9 @@ public sealed class SelfBillingService(
         if (transaction is not null)
             await transaction.CommitAsync(ct);
 
+        // The «Da fare» of the month follows the drafts that are left: a generation that dropped the last one closes it (it never raises it: that is the monthly run's).
+        await TrySyncDraftsTodoAsync(orgId, year, month, ct);
+
         logger.LogInformation(
             "Self-billed invoice drafts of org {OrgId} for {Year}-{Month} by {UserId}: {Created} made, {Updated} made again, {Issued} issued already, {Discarded} discarded, {Failed} holders refused, {NotDue} commissions not due, {Ignored} portal entries ignored",
             orgId, year, month, userId, created, updated, alreadyIssued, discarded, plan.Failed.Count, plan.NotDue.Count, options.Value.IgnoredPortalEntries());
@@ -218,17 +224,25 @@ public sealed class SelfBillingService(
         }
 
         var issued = await documents.IssueSelfBillingAsync(draft.Id, composition.Rule, options.Value.EffectiveSeriesPattern, userId, ct);
+
+        // The last draft of the month issued: its «Da fare» to check and issue is done.
+        await TrySyncDraftsTodoAsync(orgId, year, month, ct);
         return await DetailOfAsync(orgId, issued, 0m, ct);
     }
 
     public async Task DiscardDraftAsync(Guid orgId, Guid documentId, CancellationToken ct = default)
     {
         var found = await db.FiscalDocuments.AsNoTracking()
-            .AnyAsync(d => d.Id == documentId && d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.Kind != DocumentKind.CreditNote, ct);
-        if (!found)
-            throw DocumentNotFound(documentId);
+            .Where(d => d.Id == documentId && d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.Kind != DocumentKind.CreditNote)
+            .Select(d => new { d.PeriodYear, d.PeriodMonth })
+            .FirstOrDefaultAsync(ct)
+            ?? throw DocumentNotFound(documentId);
 
         await documents.DiscardSelfBillingDraftAsync(documentId, ct);
+
+        // The last draft of the month discarded: its «Da fare» to check and issue is done.
+        if (found.PeriodYear is { } year && found.PeriodMonth is { } month)
+            await TrySyncDraftsTodoAsync(orgId, year, month, ct);
     }
 
     // ---------------------------------------------------------------- the plan: who needs a TD17 for which commissions

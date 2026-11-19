@@ -2736,6 +2736,12 @@
   <data name="TodoReason_CompanyTenantDecision" xml:space="preserve">
     <value>The tenant is a company and the property belongs to a private owner: decide whether the stay stays a short let (with the withholding) or not. The tax agency (circular 24/E of 2017) says the short-let regime does not apply when the tenant is a company; the Court of Cassation (12395/2024) says only the landlord counts, if the use is residential. Check with the accountant and record the decision.</value>
   </data>
+  <data name="TodoReason_SelfBillingRejected" xml:space="preserve">
+    <value>The SDI rejected a self-billed invoice (TD17): for the tax office it counts as not issued. Open it in the self-billed invoices to see its state and decide with your accountant how to correct it.</value>
+  </data>
+  <data name="TodoReason_SelfBillingDraftsToReview" xml:space="preserve">
+    <value>The self-billed invoices (TD17) of the month are ready as drafts: check the amounts against the portals' invoices and issue them by the deadline.</value>
+  </data>
   <data name="OwnerContactInvitation_Subject" xml:space="preserve">
     <value>Invitation to the owner portal of {0}</value>
   </data>

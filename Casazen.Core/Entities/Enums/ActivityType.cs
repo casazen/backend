@@ -199,4 +199,21 @@ public enum ActivityType
     /// keeps clear of 130 to 139, the cleaning at check-out (epic E24), and of the values the tasks that run in parallel append.
     /// </summary>
     CleaningVatToState = 140,
+
+    /// <summary>
+    /// The SDI rejected a self-billed invoice (TD17, FIX/BE-TD17-ALERTS): for the tax office it was not issued, and a TD17 has no correction in CasaZen (<c>self_billing_not_correctable</c>), so
+    /// this item is the agency's alert, not the «Correggi la fattura» of an invoice to a guest. About the rejected document (entity type <c>FiscalDocument</c>), organization-level (a TD17 spans the
+    /// properties of its holder), leading to the self-billed invoices (<see cref="ActivityAction.ReviewSelfBilling"/>, which carries the document id); urgent. Raised once for each document (the
+    /// event of the rejection is delivered more than once), listed only to who holds <c>agency.invoice.manage</c>, and closed by the system when the document is corrected, credited or accepted by
+    /// the SDI. The numbers from 170 are the self-billed invoices (epic E17): they keep clear of 150 and 160, which the tasks that run in parallel take after 140.
+    /// </summary>
+    SelfBillingRejected = 170,
+
+    /// <summary>
+    /// The drafts of the self-billed invoices (TD17) of a month wait for the agency to check and issue them (FIX/BE-TD17-ALERTS): raised by the monthly run
+    /// (<c>SelfBilling:MonthlyDrafts:Enabled</c>) once for each organization and month, about the month (entity type <c>SelfBillingPeriod:yyyy-MM</c>, the id is the organization's),
+    /// organization-level, leading to the self-billed invoices (<see cref="ActivityAction.ReviewSelfBilling"/>); its deadline is the day the TD17 is issued by (<c>SelfBilling:IssueByDay</c>).
+    /// Listed only to who holds <c>agency.invoice.manage</c>, and closed by the system when no draft of the month is left open (every one issued or discarded).
+    /// </summary>
+    SelfBillingDraftsToReview = 171,
 }

@@ -2736,6 +2736,12 @@
   <data name="TodoReason_CompanyTenantDecision" xml:space="preserve">
     <value>Il conduttore è una società e l'immobile è di un proprietario privato: decidi se il soggiorno resta una locazione breve (con la ritenuta) oppure no. Per l'Agenzia delle Entrate (circolare 24/E del 2017) con una società come conduttore il regime delle locazioni brevi non vale; per la Cassazione (12395/2024) conta solo il locatore, se l'uso è abitativo. Sentito il commercialista, registra la decisione.</value>
   </data>
+  <data name="TodoReason_SelfBillingRejected" xml:space="preserve">
+    <value>Il Sistema di Interscambio ha scartato un'autofattura (TD17): per il fisco non risulta emessa. Aprila tra le autofatture per vederne lo stato e decidi con il commercialista come correggerla.</value>
+  </data>
+  <data name="TodoReason_SelfBillingDraftsToReview" xml:space="preserve">
+    <value>Le autofatture (TD17) del mese sono pronte in bozza: controlla gli importi con le fatture dei portali ed emettile entro la scadenza.</value>
+  </data>
   <data name="OwnerContactInvitation_Subject" xml:space="preserve">
     <value>Invito al portale proprietari di {0}</value>
   </data>

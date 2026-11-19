@@ -59,6 +59,21 @@ public interface ISelfBillingService
 
     /// <summary>The draft discarded (no number is consumed): its holder, portal and month are free for a new draft. 404 <c>fiscal_document_not_found</c>; 422 <c>document_not_draft</c>.</summary>
     Task DiscardDraftAsync(Guid orgId, Guid documentId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The organizations the monthly run looks at for <paramref name="year"/>-<paramref name="month"/> (FIX/BE-TD17-ALERTS): the active ones on the agency plan (not downgraded to reads only) that
+    /// have <see cref="OwnerLedgerEntryType.ChannelFee"/> lines in the owner ledger of the month, whatever the tenant of the caller; the organization is the key, never a request value.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> OrgsWithCommissionsAsync(int year, int month, CancellationToken ct = default);
+
+    /// <summary>
+    /// The monthly run of one organization (FIX/BE-TD17-ALERTS): the drafts of the month made once with <see cref="CreateDraftsForPeriodAsync"/> (the call a person's click on «make the drafts» makes, with
+    /// no user), then the «Da fare» <see cref="ActivityType.SelfBillingDraftsToReview"/> raised once when a draft of the month is open. <b>Idempotent</b>: a month that has a TD17 in
+    /// any state (a draft, an issued one, a discarded one) is already made, so a second run, a retry or a trigger by hand makes no second draft and a draft a person discarded stays discarded;
+    /// the «Da fare» is raised once while it is open (and never for a month with no draft open). It never issues anything: the issue stays a person's action. The same 422 as the drafts
+    /// (<c>self_billing_not_configured</c>, <c>self_billing_period_not_ended</c>).
+    /// </summary>
+    Task<SelfBillingMonthlyRun> RunMonthlyDraftsAsync(Guid orgId, int year, int month, CancellationToken ct = default);
 }
 
 /// <summary>Who a TD17 is made for.</summary>
@@ -126,6 +141,13 @@ public sealed record SelfBillingGeneration(
     IReadOnlyList<SelfBillingFailure> Failed,
     IReadOnlyList<SelfBillingNotDue> NotDue,
     bool LedgerPosted);
+
+/// <summary>What the monthly run did for one organization (<see cref="ISelfBillingService.RunMonthlyDraftsAsync"/>): counts only, no amount, name or number.</summary>
+/// <param name="AlreadyMade">The month already had a TD17 (made by an earlier run, by a person, or discarded): the drafts were not made again.</param>
+/// <param name="Created">The drafts made now.</param>
+/// <param name="Updated">The drafts made again now (always 0 for a month that was already made).</param>
+/// <param name="OpenDrafts">The drafts of the month still open after the run: while there are some, the «Da fare» <see cref="ActivityType.SelfBillingDraftsToReview"/> stands.</param>
+public sealed record SelfBillingMonthlyRun(int Year, int Month, bool AlreadyMade, int Created, int Updated, int OpenDrafts);
 
 /// <summary>One TD17 of a generation.</summary>
 /// <param name="Result">One of <see cref="SelfBillingResults"/>.</param>
@@ -218,6 +240,33 @@ public static class SelfBillingErrors
     /// to a guest and holds its number, and a TD17 is not one (FIX/RES-DOCS). Its rejection is read on the self-billed invoices; nothing is made, changed or raised for it here.
     /// </summary>
     public const string NotCorrectable = "self_billing_not_correctable";
+}
+
+/// <summary>
+/// The «To do» items of the self-billed invoices (FIX/BE-TD17-ALERTS): no personal data in them, an id and a code; both are organization-level (a TD17 spans the properties of its holder), so only a
+/// caller who reaches the whole organization is shown them, and the web layer shows them only to who holds <c>agency.invoice.manage</c>, the permission of <c>api/fiscal/self-billing</c>
+/// (<see cref="ActivityTypes"/>: the list and the badge leave them out for anybody else).
+/// </summary>
+public static class SelfBillingTodos
+{
+    /// <summary>The kind of entity of the item of a rejected TD17: the document, as for every item of the fiscal documents.</summary>
+    public const string RejectedEntityType = FiscalDocumentTodos.EntityType;
+
+    /// <summary>The start of the kind of entity of the item of a month: <c>SelfBillingPeriod:yyyy-MM</c>. The id of that item is the organization's.</summary>
+    public const string PeriodEntityTypePrefix = "SelfBillingPeriod:";
+
+    /// <summary>The key, in <c>EmailTexts</c> (Italian and English), of the reason of the item of a rejected TD17.</summary>
+    public const string RejectedReasonKey = "TodoReason_SelfBillingRejected";
+
+    /// <summary>The key, in <c>EmailTexts</c> (Italian and English), of the reason of the item of the drafts of a month.</summary>
+    public const string DraftsReasonKey = "TodoReason_SelfBillingDraftsToReview";
+
+    /// <summary>The items that need <c>agency.invoice.manage</c> to be listed: both are about the self-billed invoices, which only a person holding it reads, issues or discards.</summary>
+    public static IReadOnlyList<ActivityType> ActivityTypes { get; } = [ActivityType.SelfBillingRejected, ActivityType.SelfBillingDraftsToReview];
+
+    /// <summary>The kind of entity of the item of a month: <c>SelfBillingPeriod:2026-10</c>.</summary>
+    public static string PeriodEntityType(int year, int month) =>
+        string.Create(CultureInfo.InvariantCulture, $"{PeriodEntityTypePrefix}{year:D4}-{month:D2}");
 }
 
 /// <summary>The rules of the TD17 that need no database.</summary>
