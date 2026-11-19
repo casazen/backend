@@ -16,6 +16,7 @@ namespace Casazen.Infrastructure.Services;
 /// The «Da fare» of an electronic invoice the SDI rejected (E17/F01/US02/T03, NF-86, ADR-026, ADR-022): the consumer of <see cref="DomainEventType.FiscalDocumentSdiRejected"/> raises the item
 /// «Correggi la fattura» (type <c>FiscalDocument</c>, action <see cref="ActivityAction.CorrectInvoice"/>, reason <c>sdi_rejected</c>, urgency high, entity the document), and closes it when the
 /// invoice is corrected (<see cref="DomainEventType.FiscalDocumentCorrected"/>) or credited (<see cref="DomainEventType.FiscalDocumentCreditNoteIssued"/>, the credited document of its payload).
+/// A self-billed invoice (TD17) gets an item of its own, <see cref="ActivityType.SelfBillingRejected"/> (FIX/BE-TD17-ALERTS), never this one.
 /// The org is the event's (ADR-022-R6). The reason in plain words is read by the client from <c>GET api/fiscal/documents/{id}/sdi</c>: the item names the document and a code, never a word of it.
 /// </summary>
 /// <remarks>
@@ -24,8 +25,12 @@ namespace Casazen.Infrastructure.Services;
 /// nothing, so an event delivered again does no harm. A failure (the database) is logged with the type of the error and thrown again, so the outbox delivers the event again.</item>
 /// <item><b>No item for what is not rejected any more.</b> The events are not delivered in order: a rejection whose document was corrected, or credited, before the event was delivered raises nothing
 /// (its closing event found no item and went away, so an item raised now would never close).</item>
-/// <item><b>No item for a self-billed invoice.</b> A TD17 the SDI rejected (<see cref="FiscalDocumentPurpose.SelfBilling"/>) raises nothing here: «Correggi la fattura» leads to the correction of an
-/// invoice to a guest, which a TD17 has not (<see cref="SelfBillingErrors.NotCorrectable"/>); its rejection is read on the self-billed invoices (FIX/RES-DOCS).</item>
+/// <item><b>The org is the event's.</b> A document of another organization than the event's is not found: nothing is raised for it, and the items closed are the event's own.</item>
+/// <item><b>A self-billed invoice (TD17) gets its own item.</b> A TD17 the SDI rejected (<see cref="FiscalDocumentPurpose.SelfBilling"/>) raises no «Correggi la fattura»: that item leads to the
+/// correction of an invoice to a guest, which a TD17 has not (<see cref="SelfBillingErrors.NotCorrectable"/>). It raises <see cref="ActivityType.SelfBillingRejected"/> instead (action
+/// <see cref="ActivityAction.ReviewSelfBilling"/>, entity the document, organization-level because a TD17 spans the properties of its holder, urgency high), once for each document, listed only to who
+/// holds <c>agency.invoice.manage</c> and closed by the system when the document is corrected (<see cref="DomainEventType.FiscalDocumentCorrected"/>), credited, or accepted by the SDI
+/// (<see cref="DomainEventType.FiscalDocumentSdiDelivered"/>). A TD17 has no booking, so no push goes out for it (there is no organization-level audience yet).</item>
 /// <item><b>The property of the item.</b> The property of the document; a document with none (an owner invoice), or whose property is gone, gets an item of the organization.</item>
 /// <item><b>Live, not only listed.</b> The hosts of the booking of the document are told with a push once the item is raised (<see cref="FiscalDocumentLiveRefresh.TellOfRejection"/>): the bell
 /// gets its entry and the open pages read the document and the «To do» again, with no reload. One push per document (stable delivery key), best effort after the item is saved.</item>
@@ -42,8 +47,11 @@ public sealed class FiscalDocumentRejectionHandler(
     {
         ArgumentNullException.ThrowIfNull(domainEvent);
 
-        if (domainEvent.EntityId == Guid.Empty || domainEvent.Type is not (DomainEventType.FiscalDocumentSdiRejected or DomainEventType.FiscalDocumentCorrected or DomainEventType.FiscalDocumentCreditNoteIssued))
+        if (domainEvent.EntityId == Guid.Empty
+            || domainEvent.Type is not (DomainEventType.FiscalDocumentSdiRejected or DomainEventType.FiscalDocumentSdiDelivered or DomainEventType.FiscalDocumentCorrected or DomainEventType.FiscalDocumentCreditNoteIssued))
+        {
             return;
+        }
 
         try
         {
@@ -52,14 +60,23 @@ public sealed class FiscalDocumentRejectionHandler(
                 case DomainEventType.FiscalDocumentSdiRejected:
                     await RaiseAsync(domainEvent, ct);
                     break;
+                case DomainEventType.FiscalDocumentSdiDelivered:
+                    // The SDI accepted the document: the alert of a self-billed invoice it had rejected is done (an invoice to a guest that was delivered never had one to correct).
+                    await CloseAsync(domainEvent, domainEvent.EntityId, ct, nameof(ActivityAction.ReviewSelfBilling));
+                    break;
                 case DomainEventType.FiscalDocumentCorrected:
-                    // The rejected document is discarded: every «To do» still open on it is done, the one of its correction and one to look at it.
+                    // The rejected document is discarded: every «To do» still open on it is done, the one of its correction and one to look at it (and the alert of a self-billed invoice).
                     await CloseAsync(domainEvent, domainEvent.EntityId, ct);
                     await CloseAsync(domainEvent, domainEvent.EntityId, ct, nameof(ActivityAction.ReviewFiscalDocument));
+                    await CloseAsync(domainEvent, domainEvent.EntityId, ct, nameof(ActivityAction.ReviewSelfBilling));
                     break;
                 default:
                     if (CreditedDocumentOf(domainEvent) is { } credited)
+                    {
                         await CloseAsync(domainEvent, credited, ct);
+                        await CloseAsync(domainEvent, credited, ct, nameof(ActivityAction.ReviewSelfBilling));
+                    }
+
                     break;
             }
         }
@@ -79,9 +96,11 @@ public sealed class FiscalDocumentRejectionHandler(
     private async Task RaiseAsync(DomainEvent domainEvent, CancellationToken ct)
     {
         var documentId = domainEvent.EntityId;
+
+        // The document of the event's own org: an event never raises an item for another organization's document.
         var document = await db.FiscalDocuments
             .AsNoTracking()
-            .Where(d => d.Id == documentId)
+            .Where(d => d.Id == documentId && d.OrgId == domainEvent.OrgId)
             .Select(d => new { d.OrgId, d.PropertyId, d.BookingId, d.Source, d.Status, d.SdiStatus, d.Purpose })
             .FirstOrDefaultAsync(ct);
         if (document is null || document.Source != FiscalDocumentSource.CasaZen)
@@ -96,20 +115,20 @@ public sealed class FiscalDocumentRejectionHandler(
             return;
         }
 
-        // A self-billed invoice (TD17) has no correction (422 self_billing_not_correctable): «Correggi la fattura» would lead nowhere, and its page of the self-billed invoices shows the rejection.
-        if (document.Purpose == FiscalDocumentPurpose.SelfBilling)
-        {
-            logger.LogInformation("Event {EventId}: fiscal document {DocumentId} is a self-billed invoice: no «To do» to correct it raised", domainEvent.Id, documentId);
-            return;
-        }
-
         // The events are not delivered in order: an owner invoice credited since (its credit note issued, the way an owner invoice is corrected) had its closing event delivered before this
-        // one, so an item raised now would never close. A guest invoice is never credited once rejected: one that has a credit note issued before (while it was with the SDI) or only the
-        // draft of one still gets its item, since its correction is what the host has to see to.
-        if (document.Purpose == FiscalDocumentPurpose.OwnerInvoice
+        // one, so an item raised now would never close; the same for a self-billed invoice. A guest invoice is never credited once rejected: one that has a credit note issued before (while it
+        // was with the SDI) or only the draft of one still gets its item, since its correction is what the host has to see to.
+        if (document.Purpose is FiscalDocumentPurpose.OwnerInvoice or FiscalDocumentPurpose.SelfBilling
             && await db.FiscalDocuments.AsNoTracking().AnyAsync(d => d.CreditedDocumentId == documentId && d.Status == FiscalDocumentStatus.Issued, ct))
         {
             logger.LogInformation("Event {EventId}: fiscal document {DocumentId} was credited since: no «To do» raised", domainEvent.Id, documentId);
+            return;
+        }
+
+        // A self-billed invoice (TD17) has no correction (422 self_billing_not_correctable): «Correggi la fattura» would lead nowhere, so the agency gets the alert of its own instead.
+        if (document.Purpose == FiscalDocumentPurpose.SelfBilling)
+        {
+            await RaiseSelfBillingAsync(domainEvent, documentId, document.OrgId, ct);
             return;
         }
 
@@ -147,6 +166,29 @@ public sealed class FiscalDocumentRejectionHandler(
         // The live notice (bell, pop-up, open pages) only for a document of a booking. Best effort: the item is saved, so nothing here fails the event.
         if (push is not null && document.BookingId is not null)
             await TellTheHostsAsync(documentId, document.OrgId, document.BookingId, ct);
+    }
+
+    /// <summary>
+    /// The alert of a rejected self-billed invoice (FIX/BE-TD17-ALERTS): one <see cref="ActivityType.SelfBillingRejected"/> for the document (raising it again while it is open returns the open one, so an
+    /// event delivered twice raises one), organization-level (a TD17 has no property and spans the properties of its holder), high urgency, leading to the self-billed invoices with the id of the
+    /// document, with the words of the organization's language and no datum of the document or of the SDI's answer. No push: the document has no booking to tell the hosts of.
+    /// </summary>
+    private async Task RaiseSelfBillingAsync(DomainEvent domainEvent, Guid documentId, Guid orgId, CancellationToken ct)
+    {
+        await activities.CreateAsync(
+            new CreateTodoRequest
+            {
+                Type = ActivityType.SelfBillingRejected,
+                Action = ActivityAction.ReviewSelfBilling,
+                EntityType = SelfBillingTodos.RejectedEntityType,
+                EntityId = documentId,
+                Urgency = ActivityUrgency.High,
+                OrgId = orgId,
+                Reason = await BookingTodoItems.ReasonAsync(db, orgId, SelfBillingTodos.RejectedReasonKey, ct),
+            },
+            ct);
+
+        logger.LogInformation("Event {EventId}: «To do» «self-billed invoice rejected» raised for document {DocumentId} of org {OrgId}", domainEvent.Id, documentId, orgId);
     }
 
     private async Task TellTheHostsAsync(Guid documentId, Guid orgId, Guid? bookingId, CancellationToken ct)

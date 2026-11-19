@@ -149,11 +149,15 @@ public class InternalActivityService(
 
     // ─── The "To do" list (ADR-026) ─────────────────────────────────────────────
 
-    public async Task<IReadOnlyList<InternalActivity>> GetPendingAsync(HostScope scope, CancellationToken ct, bool excludeRoutineTasks = false)
+    public async Task<IReadOnlyList<InternalActivity>> GetPendingAsync(
+        HostScope scope,
+        CancellationToken ct,
+        bool excludeRoutineTasks = false,
+        IReadOnlyCollection<ActivityType>? excludeTypes = null)
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        return await OpenTodos(scope, excludeRoutineTasks)
+        return await OpenTodos(scope, excludeRoutineTasks, excludeTypes)
             .OrderByDescending(a => a.Urgency ?? ActivityUrgency.Low)
             .ThenBy(a => a.Deadline == null)
             .ThenBy(a => a.Deadline)
@@ -164,11 +168,27 @@ public class InternalActivityService(
             .ToListAsync(ct);
     }
 
-    public Task<int> CountUrgentAsync(HostScope scope, CancellationToken ct, bool excludeRoutineTasks = false)
+    public Task<int> CountUrgentAsync(
+        HostScope scope,
+        CancellationToken ct,
+        bool excludeRoutineTasks = false,
+        IReadOnlyCollection<ActivityType>? excludeTypes = null)
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        return OpenTodos(scope, excludeRoutineTasks).CountAsync(a => a.Urgency == ActivityUrgency.High, ct);
+        return OpenTodos(scope, excludeRoutineTasks, excludeTypes).CountAsync(a => a.Urgency == ActivityUrgency.High, ct);
+    }
+
+    public async Task<bool> AnyOpenAsync(Guid orgId, IReadOnlyCollection<ActivityType> types, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(types);
+        if (types.Count == 0)
+            return false;
+
+        var names = types.Select(type => type.ToString()).ToList();
+        return await context.InternalActivities
+            .AsNoTracking()
+            .AnyAsync(a => a.OrgId == orgId && a.Action != null && a.CompletedAt == null && names.Contains(a.ActivityType), ct);
     }
 
     public async Task<Guid> CreateAsync(CreateTodoRequest request, CancellationToken ct)
@@ -382,12 +402,22 @@ public class InternalActivityService(
     }
 
     /// <summary>The open "To do" rows the scope reaches (ADR-026-R4: a closed row is kept, never listed).</summary>
-    private IQueryable<InternalActivity> OpenTodos(HostScope scope, bool excludeRoutineTasks = false)
+    private IQueryable<InternalActivity> OpenTodos(HostScope scope, bool excludeRoutineTasks = false, IReadOnlyCollection<ActivityType>? excludeTypes = null)
     {
         var awaitingPhoto = VerificationHandOff.AwaitingReplacementPhoto(context, scope.OrgId);
         var open = Todos(scope).Where(a => a.CompletedAt == null &&
             (a.Action != ActivityAction.VerifyIdentity || a.EntityId == null || !awaitingPhoto.Contains(a.EntityId.Value)));
-        return excludeRoutineTasks ? open.Where(a => a.ActivityType != nameof(ActivityType.RoutineTask)) : open;
+        if (excludeRoutineTasks)
+            open = open.Where(a => a.ActivityType != nameof(ActivityType.RoutineTask));
+
+        // The kinds of item the web layer keeps from the caller (it holds no permission to act on them): an empty list leaves out nothing, never «everything».
+        if (excludeTypes is { Count: > 0 })
+        {
+            var hidden = excludeTypes.Select(type => type.ToString()).ToList();
+            open = open.Where(a => !hidden.Contains(a.ActivityType));
+        }
+
+        return open;
     }
 
     private Task<Guid?> OpenTodoIdAsync(Guid orgId, string type, string entityType, Guid entityId, CancellationToken ct) =>
