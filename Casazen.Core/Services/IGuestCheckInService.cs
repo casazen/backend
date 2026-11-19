@@ -30,6 +30,15 @@ public interface IGuestCheckInService
     /// </summary>
     Task<IssuedCheckInLink> IssueLinkAsync(Guid bookingId, Guid orgId);
 
+    /// <summary>
+    /// A new link for the booking that keeps what the guest already did (the guest at the door, E22/F01/US02). When the booking has an open link (<see cref="GuestCheckInSession.IsOpen"/>
+    /// and not past its expiry) that very session gets a new token and a new expiry: the old link stops working at once, and the consent to the biometric verification, the document
+    /// read, the language and the attempts of the face check already spent stay on it (a new session starts with none, so a guest could have the attempts again at every opening). Any other
+    /// open link of the booking is expired. A booking with no open link gets a new session, as <see cref="IssueLinkAsync"/> makes it. In both cases the delivery of the previous link,
+    /// if the booking had one that waited, ends (the link it carried is dead).
+    /// </summary>
+    Task<IssuedCheckInLink> ReissueLinkAsync(Guid bookingId, Guid orgId);
+
     /// <summary>Marks <see cref="GuestCheckInSessionStatus.Scaduto"/> the open sessions whose expiry has passed (A5-27). Returns how many.</summary>
     Task<int> ExpireStaleSessionsAsync(CancellationToken cancellationToken = default);
 
