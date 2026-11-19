@@ -292,12 +292,33 @@ public sealed class ScheduledMessageDispatcher(
         if (channel.Channel == MessageContactChannel.None)
             return await SkipBySystemAsync(row, SkipReasonOf(channel.Reason), now, ct);
 
-        if (channel.Channel == MessageContactChannel.Ota && channel.ThreadKey is { } threadKey && await IsRequestThreadAsync(row, threadKey, ct))
-            return await SkipBySystemAsync(row, ScheduledMessageReasons.ChannelRule, now, ct);
+        OtaThreadFacts? otaThread = null;
+        if (channel.Channel == MessageContactChannel.Ota && channel.ThreadKey is { } threadKey)
+        {
+            otaThread = await OtaThreadOfAsync(row, threadKey, ct);
+            if (otaThread is { Kind: OtaThreadKind.Request })
+                return await SkipBySystemAsync(row, ScheduledMessageReasons.ChannelRule, now, ct);
+        }
 
         // A message that is already there (a send that went out and was never saved): only the row is brought up to date, nothing is released, issued or sent.
         if (await AlreadyWrittenAsync(row, channel, ct))
             return await SentAsync(row, now, channel.ThreadKey, OtaMessageDeliveryState.Sent, mode, userId, facts, ct);
+
+        // What can refuse the message is checked before the first thing that has a side effect (a code released is logged, a link issued ends the session of the guest). The link: the public address,
+        // and the check-in of the stay (IssueLinkAsync refuses nothing, so the rules of the other senders of a link are applied here).
+        var usesLink = used.Contains(MessageTemplateRenderer.CheckInLinkVariable);
+        if (usesLink)
+        {
+            if (!links.IsConfigured)
+                return await BlockAsync(row, ScheduledMessageReasons.VariableMissing(MessageTemplateRenderer.CheckInLinkVariable), wasBlocked, previousReason, now, ct);
+
+            if (await CheckInLinkRefusalAsync(row, facts, now, mode == ScheduledMessageDispatchMode.SendNow, ct) is { } refusal)
+            {
+                return refusal.Waits
+                    ? await BlockAsync(row, refusal.Reason, wasBlocked, previousReason, now, ct)
+                    : await SkipBySystemAsync(row, refusal.Reason, now, ct, alert: false, counted: false);
+            }
+        }
 
         string? accessCode = null;
         if (used.Contains(MessageTemplateRenderer.AccessCodeVariable))
@@ -309,29 +330,67 @@ public sealed class ScheduledMessageDispatcher(
             accessCode = released.Code;
         }
 
+        // The text is tried with the rules of the message layer before the link exists: a stand-in of the length of a real link takes its place. A text that cannot go out never costs the guest the link it holds.
+        var reviewLink = used.Contains(MessageTemplateRenderer.ReviewLinkVariable) ? ReviewLinkOf(facts, conversation) : null;
+        var standIn = usesLink ? links.GuestCheckIn(new string('0', CheckInTokenLength)) : null;
+        var trial = RenderOrReason(body, values with { CheckInLink = standIn, AccessCode = accessCode, ReviewLink = reviewLink }, out var trialReason);
+        if (trial is null)
+            return await BlockAsync(row, trialReason!, wasBlocked, previousReason, now, ct);
+
+        switch (TextRefusalOf(channel, otaThread, trial))
+        {
+            case MessageChannelRules.ContactDetailsCode:
+                return await SkipBySystemAsync(row, ScheduledMessageReasons.ChannelRule, now, ct);
+            case { } invalid:
+                return await BlockAsync(row, invalid == MessageChannelRules.TextInvalidCode ? TextInvalidCode : invalid, wasBlocked, previousReason, now, ct);
+        }
+
+        // The link is issued now, right before the send: this is the last step that can still stop the message, and the one that replaces the link the guest holds.
         string? checkInLink = null;
-        if (used.Contains(MessageTemplateRenderer.CheckInLinkVariable))
+        if (usesLink)
         {
             checkInLink = await IssueCheckInLinkAsync(row, ct);
             if (checkInLink is null)
                 return await BlockAsync(row, ScheduledMessageReasons.VariableMissing(MessageTemplateRenderer.CheckInLinkVariable), wasBlocked, previousReason, now, ct);
         }
 
-        var reviewLink = used.Contains(MessageTemplateRenderer.ReviewLinkVariable) ? ReviewLinkOf(facts, conversation) : null;
-        string text;
+        var text = RenderOrReason(body, values with { CheckInLink = checkInLink, AccessCode = accessCode, ReviewLink = reviewLink }, out var reason);
+        if (text is null)
+            return await BlockAsync(row, reason!, wasBlocked, previousReason, now, ct);
+
+        return await SendAsync(row, scope, channel, text, now, mode, userId, facts, ct);
+    }
+
+    /// <summary>The length of the token of a check-in link (64 hexadecimal characters, <c>GuestCheckInService</c>): the stand-in the text is tried with has the length of a real link.</summary>
+    private const int CheckInTokenLength = 64;
+
+    /// <summary>The text of the template filled with <paramref name="values"/>; <c>null</c> with the reason the message is held back when the renderer refuses it (a variable with no value, a text that is not valid).</summary>
+    private static string? RenderOrReason(Body body, MessageTemplateValues values, out string? reason)
+    {
         try
         {
-            text = MessageTemplateRenderer.Render(body.Text, values with { CheckInLink = checkInLink, AccessCode = accessCode, ReviewLink = reviewLink }, body.Culture);
+            reason = null;
+            return MessageTemplateRenderer.Render(body.Text, values, body.Culture);
         }
         catch (DomainRuleException ex)
         {
-            var reason = ex.Code == MessageTemplateRenderer.MissingCode && ex.MessageArgs.Count > 0
+            reason = ex.Code == MessageTemplateRenderer.MissingCode && ex.MessageArgs.Count > 0
                 ? ScheduledMessageReasons.VariableMissing(ex.MessageArgs[0]?.ToString() ?? "unknown")
                 : TextInvalidCode;
-            return await BlockAsync(row, reason, wasBlocked, previousReason, now, ct);
+            return null;
         }
+    }
 
-        return await SendAsync(row, scope, channel, text, now, mode, userId, facts, ct);
+    /// <summary>
+    /// What the message layer would refuse in <paramref name="text"/> for this way to the guest, answered before anything is issued: a code of <see cref="MessageChannelRules"/> (<see cref="MessageChannelRules.TextInvalidCode"/>,
+    /// <see cref="MessageChannelRules.ContactDetailsCode"/> for a portal whose rules do not take a link), or <c>null</c> when it would take it. The same rule, with the same inputs, as <c>MessageReplyService</c>.
+    /// </summary>
+    private static string? TextRefusalOf(MessageContactOptions channel, OtaThreadFacts? thread, string text)
+    {
+        if (channel.Channel == MessageContactChannel.Ota && thread is { } ota)
+            return MessageChannelRules.CheckOutgoing(ota.Source, ota.Kind, text);
+
+        return GuestMessageRules.NormalizeText(text) is { Length: <= GuestMessageRules.TextMaxLength } ? null : MessageChannelRules.TextInvalidCode;
     }
 
     private async Task<ScheduledMessageDispatchResult> SendAsync(
@@ -866,9 +925,58 @@ public sealed class ScheduledMessageDispatcher(
         return new Release(null, await accessCodes.GetHoldReasonAsync(row.BookingId, ct) is not null ? ScheduledMessageReasons.AccessCodeHeld : ScheduledMessageReasons.IdNotVerified);
     }
 
+    /// <summary>Why a message that names the check-in link does not go: the reason, and whether it waits (<c>Blocked</c>, tried again) or ends (<c>Skipped</c>).</summary>
+    private sealed record CheckInLinkRefusal(string Reason, bool Waits);
+
     /// <summary>
-    /// Issues the link of the check-in at this moment (the previous one stops working) and ends the delivery of the link the portal chat was carrying, which is replaced. <c>null</c> when no link can be
-    /// made: the public address is not set, or the check-in does not take a link (not open, already completed).
+    /// The rules every automatic sender of a check-in link applies, read before the link is issued (<c>IGuestCheckInService.IssueLinkAsync</c> refuses nothing: it expires every open session of the booking, the
+    /// one the guest is filling in included, and starts another). <c>GuestCheckInAccessRules</c>, the rules of the daily job and of the e-mail that confirms the booking: the stay takes a link (confirmed or checked
+    /// in, not over) and its check-in is not done (<see cref="ScheduledMessageReasons.CheckInNotOpen"/>, <see cref="ScheduledMessageReasons.CheckInCompleted"/>: the data or the communication were sent);
+    /// <c>VerificationHandOff</c>: the verification is not with an operator, because a new session would start it again against the decision of a person (<see cref="ScheduledMessageReasons.CheckInWithOperator"/>);
+    /// and the guest is not filling the check-in in right now (<see cref="ScheduledMessageReasons.CheckInInProgress"/>, the only one that waits: the session ends or expires, and «Send now» is the host's
+    /// own decision to replace it). <c>null</c> when a link may be issued.
+    /// </summary>
+    private async Task<CheckInLinkRefusal?> CheckInLinkRefusalAsync(ScheduledMessage row, BookingFacts facts, DateTime now, bool hostAsked, CancellationToken ct)
+    {
+        var instant = new DateTimeOffset(DateTime.SpecifyKind(now, DateTimeKind.Utc));
+
+        // The window of days before the arrival is the daily job's own: a host who plans a message earlier chose it, so only «done» and «not applicable» refuse here.
+        var access = await GuestCheckInAccessRules.ReadAsync(
+            db,
+            row.BookingId,
+            facts.Status,
+            facts.CheckInDate,
+            facts.CheckOutDate,
+            DateOnly.FromDateTime(RomeCalendar.TodayAt(instant)),
+            now,
+            sendWindowDays: 0,
+            ct);
+        switch (access.Status)
+        {
+            case GuestCheckInAccessStatus.Completed:
+                return new CheckInLinkRefusal(ScheduledMessageReasons.CheckInCompleted, false);
+            case GuestCheckInAccessStatus.NotApplicable:
+                return new CheckInLinkRefusal(ScheduledMessageReasons.CheckInNotOpen, false);
+        }
+
+        if (await VerificationHandOff.IsWithOperatorAsync(db, row.BookingId, ct))
+            return new CheckInLinkRefusal(ScheduledMessageReasons.CheckInWithOperator, false);
+
+        if (!hostAsked && await db.GuestCheckInSessions
+                .IgnoreQueryFilters([Tenant])
+                .AsNoTracking()
+                .AnyAsync(s => s.BookingId == row.BookingId && s.OrgId == row.OrgId && s.Status == GuestCheckInSessionStatus.InCompilazione && s.ExpiresAt > now, ct))
+        {
+            return new CheckInLinkRefusal(ScheduledMessageReasons.CheckInInProgress, true);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Issues the link of the check-in at this moment (the previous one stops working) and ends the delivery of the link the portal chat was carrying, which is replaced. Called last, right before the send, once
+    /// every rule that can refuse the message has passed (<see cref="CheckInLinkRefusalAsync"/>, the text tried with a stand-in): never for a message that does not go out. <c>null</c> when no link can be made
+    /// (the public address is not set, or the service refuses the booking).
     /// </summary>
     private async Task<string?> IssueCheckInLinkAsync(ScheduledMessage row, CancellationToken ct)
     {
@@ -905,12 +1013,17 @@ public sealed class ScheduledMessageDispatcher(
     // The conversation
     // ------------------------------------------------------------------------------------------------------------------------------------
 
-    /// <summary>A scheduled message is for the conversation of a reservation, never for a request that has no booking behind it.</summary>
-    private async Task<bool> IsRequestThreadAsync(ScheduledMessage row, MessageThreadKey threadKey, CancellationToken ct) =>
+    /// <summary>The portal and the kind of a conversation of a channel: what the rules of the channel read (<see cref="MessageChannelRules.CheckOutgoing"/>).</summary>
+    private sealed record OtaThreadFacts(OtaChannel Source, OtaThreadKind Kind);
+
+    /// <summary>The conversation of the channel the message would go to, in the org of the row; <c>null</c> when it is not there. A scheduled message is for the conversation of a reservation, never for a request that has no booking behind it.</summary>
+    private async Task<OtaThreadFacts?> OtaThreadOfAsync(ScheduledMessage row, MessageThreadKey threadKey, CancellationToken ct) =>
         await db.OtaMessageThreads
             .IgnoreQueryFilters([Tenant])
             .AsNoTracking()
-            .AnyAsync(t => t.Id == threadKey.Id && t.OrgId == row.OrgId && t.Kind == OtaThreadKind.Request, ct);
+            .Where(t => t.Id == threadKey.Id && t.OrgId == row.OrgId)
+            .Select(t => new OtaThreadFacts(t.ChannelSource, t.Kind))
+            .FirstOrDefaultAsync(ct);
 
     /// <summary>The message layer already holds a message written for this row and it did not fail: the row is only to be marked as sent.</summary>
     private async Task<bool> AlreadyWrittenAsync(ScheduledMessage row, MessageContactOptions channel, CancellationToken ct)

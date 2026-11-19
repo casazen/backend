@@ -758,6 +758,210 @@ public class ScheduledMessageDispatchTests
     }
 
     // ------------------------------------------------------------------------------------------------------------------------------------
+    // The check-in link
+    // ------------------------------------------------------------------------------------------------------------------------------------
+
+    private const string LinkBody = "Il check-in online: {{check_in_link}} (TEST)";
+
+    private static async Task AddCheckInSessionAsync(
+        ScheduledMessageRig rig,
+        Booking booking,
+        GuestCheckInSessionStatus status,
+        DateTime? expiresAt = null,
+        DateTime? operatorRequestedAt = null)
+    {
+        await using var db = rig.NewDb();
+        db.GuestCheckInSessions.Add(new GuestCheckInSession
+        {
+            BookingId = booking.Id,
+            OrgId = booking.OrgId,
+            TokenHash = Guid.NewGuid().ToString("N"),
+            ExpiresAt = expiresAt ?? Now.AddDays(7),
+            Status = status,
+            OperatorRequestedAt = operatorRequestedAt,
+            CreatedAt = Now.AddHours(-2),
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task AddOperatorRejectionAsync(ScheduledMessageRig rig, Booking booking)
+    {
+        await using var db = rig.NewDb();
+        db.BiometricVerificationLogs.Add(new BiometricVerificationLog
+        {
+            OrgId = booking.OrgId,
+            BookingId = booking.Id,
+            GuestId = booking.GuestId,
+            Outcome = BiometricOutcome.Reject,
+            Method = VerificationMethod.Operator,
+            Attempts = 1,
+            ModelName = "operator",
+            ModelVersion = "1",
+            ThresholdsJson = "{}",
+            CreatedAt = Now.AddMinutes(-30),
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task AssertNoLinkWasIssuedAsync(ScheduledMessageRig rig, Guid rowId, string reason, ScheduledMessageStatus status)
+    {
+        rig.CheckIn.Verify(c => c.IssueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
+        Assert.Empty(rig.Sent);
+        var saved = await rig.RowAsync(rowId);
+        Assert.Equal(status, saved.Status);
+        Assert.Equal(reason, status == ScheduledMessageStatus.Skipped ? saved.SkipReason : saved.BlockedReason);
+        Assert.Equal(0, saved.Attempts);
+    }
+
+    /// <summary>
+    /// PROOF TEST: the check-in link never reopens a check-in that is done. <c>IssueLinkAsync</c> refuses nothing (it expires every open session of the booking and starts another), so the dispatch applies the
+    /// rules the other automatic senders of a link apply: a guest who completed the check-in (the data were sent, or the Alloggiati Web communication is done) gets no link and no message that is made of one:
+    /// the message is skipped with the reason, nobody is alerted (it is the normal course for a guest who checked in early), and no link was issued.
+    /// </summary>
+    [Theory]
+    [InlineData(GuestCheckInSessionStatus.Completo)]
+    [InlineData(GuestCheckInSessionStatus.AlloggiatiInviato)]
+    public async Task ACheckInThatIsDone_GetsNoLink_TheMessageIsSkipped(GuestCheckInSessionStatus status)
+    {
+        var rig = new ScheduledMessageRig();
+        var (_, booking, _, _, row) = await SeedAsync(rig, LinkBody);
+        await AddCheckInSessionAsync(rig, booking, status);
+
+        var result = await DispatchAsync(rig, row.Id);
+
+        Assert.Equal(ScheduledMessageDispatchOutcome.Skipped, result.Outcome);
+        Assert.Equal(ScheduledMessageReasons.CheckInCompleted, result.Code);
+        await AssertNoLinkWasIssuedAsync(rig, row.Id, ScheduledMessageReasons.CheckInCompleted, ScheduledMessageStatus.Skipped);
+        Assert.Empty(await rig.BellAsync());
+        Assert.Empty(await rig.OpenTodosAsync(booking.Id));
+    }
+
+    [Theory]
+    [InlineData(AlloggiatiWebStatus.Inviato)]
+    [InlineData(AlloggiatiWebStatus.InviatoManualmente)]
+    public async Task ACommunicationAlreadySentToThePolice_GetsNoLink_TheMessageIsSkipped(AlloggiatiWebStatus status)
+    {
+        var rig = new ScheduledMessageRig();
+        var (_, booking, _, _, row) = await SeedAsync(rig, LinkBody);
+        await using (var db = rig.NewDb())
+        {
+            db.AlloggiatiWebReports.Add(new AlloggiatiWebReport { BookingId = booking.Id, GuestId = booking.GuestId, OrgId = booking.OrgId, Status = status, ReportedAt = new DateTime(2026, 11, 17, 0, 0, 0, DateTimeKind.Utc) });
+            await db.SaveChangesAsync();
+        }
+
+        var result = await DispatchAsync(rig, row.Id);
+
+        Assert.Equal(ScheduledMessageReasons.CheckInCompleted, result.Code);
+        await AssertNoLinkWasIssuedAsync(rig, row.Id, ScheduledMessageReasons.CheckInCompleted, ScheduledMessageStatus.Skipped);
+    }
+
+    /// <summary>
+    /// PROOF TEST: a new session would start the identity verification again and could open the lock code against the decision of a person, so a stay whose verification is with an operator (rejected by one, or a
+    /// hand-off still open) gets no link from a message either: the daily job skips such a stay for the same reason.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AStayWhoseVerificationIsWithAnOperator_GetsNoLink_TheMessageIsSkipped(bool handOffStillOpen)
+    {
+        var rig = new ScheduledMessageRig();
+        var (_, booking, _, _, row) = await SeedAsync(rig, LinkBody);
+        if (handOffStillOpen)
+            await AddCheckInSessionAsync(rig, booking, GuestCheckInSessionStatus.Scaduto, operatorRequestedAt: Now.AddMinutes(-20));
+        else
+            await AddOperatorRejectionAsync(rig, booking);
+
+        var result = await DispatchAsync(rig, row.Id);
+
+        Assert.Equal(ScheduledMessageDispatchOutcome.Skipped, result.Outcome);
+        Assert.Equal(ScheduledMessageReasons.CheckInWithOperator, result.Code);
+        await AssertNoLinkWasIssuedAsync(rig, row.Id, ScheduledMessageReasons.CheckInWithOperator, ScheduledMessageStatus.Skipped);
+    }
+
+    [Fact]
+    public async Task AStayThatTakesNoLink_ItIsOver_GetsNone_TheMessageIsSkipped()
+    {
+        var rig = new ScheduledMessageRig();
+        var (_, _, _, _, row) = await SeedAsync(rig, LinkBody, status: BookingStatus.CheckedOut);
+
+        var result = await DispatchAsync(rig, row.Id);
+
+        Assert.Equal(ScheduledMessageReasons.CheckInNotOpen, result.Code);
+        await AssertNoLinkWasIssuedAsync(rig, row.Id, ScheduledMessageReasons.CheckInNotOpen, ScheduledMessageStatus.Skipped);
+    }
+
+    /// <summary>
+    /// A guest who is filling the check-in in right now would lose the session to a new link: the message waits (blocked, with ONE «To do» and one alert, tried again by the sweep) until the session ends or
+    /// expires, and goes out then, with its link. «Send now» is the host's own decision to replace the session, so it is not held.
+    /// </summary>
+    [Fact]
+    public async Task AGuestFillingTheCheckInIn_KeepsTheSession_TheMessageWaitsForItToEnd_AndTheHostMayReplaceItBySendingNow()
+    {
+        var rig = new ScheduledMessageRig();
+        var (_, booking, _, _, row) = await SeedAsync(rig, LinkBody);
+        await AddCheckInSessionAsync(rig, booking, GuestCheckInSessionStatus.InCompilazione, expiresAt: Now.AddMinutes(25));
+
+        var waiting = await DispatchAsync(rig, row.Id);
+        var again = await DispatchAsync(rig, row.Id, ScheduledMessageDispatchMode.Sweep, now: Now.AddMinutes(20));
+
+        Assert.Equal(ScheduledMessageDispatchOutcome.Blocked, waiting.Outcome);
+        Assert.Equal(ScheduledMessageReasons.CheckInInProgress, waiting.Code);
+        Assert.Equal(ScheduledMessageDispatchOutcome.Blocked, again.Outcome);
+        await AssertNoLinkWasIssuedAsync(rig, row.Id, ScheduledMessageReasons.CheckInInProgress, ScheduledMessageStatus.Blocked);
+        Assert.Single(await rig.OpenTodosAsync(booking.Id));
+        Assert.Equal(2, (await rig.BellAsync()).Count);
+
+        // The session ran out: the message goes, with a new link, and the «To do» closes.
+        var sent = await DispatchAsync(rig, row.Id, ScheduledMessageDispatchMode.Sweep, now: Now.AddMinutes(40));
+
+        Assert.Equal(ScheduledMessageDispatchOutcome.Sent, sent.Outcome);
+        rig.CheckIn.Verify(c => c.IssueLinkAsync(booking.Id, OrgA), Times.Once);
+        var text = Assert.Single(rig.Sent).Text!;
+        Assert.StartsWith("Il check-in online: https://", text, StringComparison.Ordinal);
+        Assert.EndsWith("/checkin/token-1 (TEST)", text, StringComparison.Ordinal);
+        Assert.Empty(await rig.OpenTodosAsync(booking.Id));
+
+        // The host who asks for «Send now» does not wait for the session to end.
+        var other = new ScheduledMessageRig();
+        var (_, held, _, _, heldRow) = await SeedAsync(other, LinkBody);
+        await AddCheckInSessionAsync(other, held, GuestCheckInSessionStatus.InCompilazione, expiresAt: Now.AddMinutes(25));
+
+        var byHand = await DispatchAsync(other, heldRow.Id, ScheduledMessageDispatchMode.SendNow, ScheduledMessageRig.Owner);
+
+        Assert.Equal(ScheduledMessageDispatchOutcome.Sent, byHand.Outcome);
+        other.CheckIn.Verify(c => c.IssueLinkAsync(held.Id, OrgA), Times.Once);
+    }
+
+    /// <summary>
+    /// PROOF TEST: the link is issued last, right before the send, and never for a message that does not go out. A text the message layer would refuse (here, too long once the link is in it) is held back with the
+    /// stand-in of the link, before anything is issued; a message whose access code cannot be released is held back before the link too, so a guest who is not verified never loses the link it holds.
+    /// </summary>
+    [Fact]
+    public async Task TheLinkIsIssuedLast_NeverForAMessageThatDoesNotGoOut()
+    {
+        var tooLong = new ScheduledMessageRig();
+        var (_, _, _, _, longRow) = await SeedAsync(tooLong, new string('a', 1990) + " {{check_in_link}}");
+
+        var refused = await DispatchAsync(tooLong, longRow.Id);
+
+        Assert.Equal(ScheduledMessageDispatchOutcome.Blocked, refused.Outcome);
+        Assert.Equal("message_text_invalid", refused.Code);
+        tooLong.CheckIn.Verify(c => c.IssueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
+        Assert.Empty(tooLong.Sent);
+
+        var notVerified = new ScheduledMessageRig { AccessCode = null };
+        var (property, booking, _, _, codeRow) = await SeedAsync(notVerified, "Il codice è {{access_code}}, il check-in: {{check_in_link}} (TEST)");
+        await AddPropertyAccessCodeAsync(notVerified, property);
+
+        var held = await DispatchAsync(notVerified, codeRow.Id);
+
+        Assert.Equal(ScheduledMessageReasons.IdNotVerified, held.Code);
+        notVerified.CheckIn.Verify(c => c.IssueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
+        Assert.Empty(notVerified.Sent);
+        Assert.Single(await notVerified.OpenTodosAsync(booking.Id));
+    }
+
+    // ------------------------------------------------------------------------------------------------------------------------------------
     // Campaigns
     // ------------------------------------------------------------------------------------------------------------------------------------
 
