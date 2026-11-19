@@ -556,20 +556,105 @@ public class ScheduledMessageDispatchTests
         Assert.Equal(2, (await rig.BellAsync()).Count);
     }
 
+    /// <summary>
+    /// PROOF TEST: what the message layer says of a message is the state of the row. A message whose outcome nobody knows (it may have left) is not «sent»: the row is <c>Failed</c> with <c>manual_verify</c> and
+    /// the sweep asks again with the key of the row, so the message layer finds the message it holds and writes no second (the guest gets it once); when the message layer knows it left, the row follows it.
+    /// </summary>
     [Fact]
-    public async Task AnOutcomeNobodyKnows_IsASentMessage_ThatIsNeverSentAgain()
+    public async Task AnOutcomeNobodyKnows_IsAFailedTry_NeverASentMessage_AndTheKeyFindsTheMessageSoNothingIsWrittenTwice()
     {
         var rig = new ScheduledMessageRig { State = OtaMessageDeliveryState.ManualVerify };
         var (_, _, _, _, row) = await SeedAsync(rig);
 
+        var first = await DispatchAsync(rig, row.Id);
+
+        Assert.Equal(ScheduledMessageDispatchOutcome.Failed, first.Outcome);
+        Assert.Equal("manual_verify", first.Code);
+        var tried = await rig.RowAsync(row.Id);
+        Assert.Equal(ScheduledMessageStatus.Failed, tried.Status);
+        Assert.Equal("manual_verify", tried.BlockedReason);
+        Assert.Equal(1, tried.Attempts);
+        Assert.Null(tried.SentAt);
+
+        await using (var db = rig.NewDb())
+            Assert.Equal(1, await rig.Dispatcher(db).SweepAsync(Now.AddMinutes(20)));
+
+        Assert.Equal(1, rig.Delivered);
+        Assert.Equal(2, (await rig.RowAsync(row.Id)).Attempts);
+
+        rig.State = OtaMessageDeliveryState.Sent;
+        await using (var db = rig.NewDb())
+            Assert.Equal(1, await rig.Dispatcher(db).SweepAsync(Now.AddMinutes(40)));
+
+        var sent = await rig.RowAsync(row.Id);
+        Assert.Equal(ScheduledMessageStatus.Sent, sent.Status);
+        Assert.Null(sent.BlockedReason);
+        Assert.NotNull(sent.SentAt);
+        Assert.Equal(1, rig.Delivered);
+    }
+
+    /// <summary>
+    /// A message the channel manager holds and has not taken (created, waiting for the authorization of the channel) is not a message that went out, as it is not for the routine that writes straight to the
+    /// message layer; one whose outcome nobody knows is not either. The row is tried again with the same key (nothing is written twice), and when the four tries are used the host is told, once, and the
+    /// sweep leaves it.
+    /// </summary>
+    [Theory]
+    [InlineData(OtaMessageDeliveryState.ManualVerify, "manual_verify")]
+    [InlineData(OtaMessageDeliveryState.Created, "message_unconfirmed")]
+    [InlineData(OtaMessageDeliveryState.WaitingAuthorization, "message_unconfirmed")]
+    public async Task AMessageTheChannelHoldsButHasNotTaken_IsNotSent_AndTheHostIsToldWhenTheTriesAreUsed(OtaMessageDeliveryState state, string code)
+    {
+        var rig = new ScheduledMessageRig { State = state };
+        var (_, booking, _, _, row) = await SeedAsync(rig);
+
+        await DispatchAsync(rig, row.Id);
+        for (var pass = 1; pass < ScheduledMessageRules.MaxSendAttempts; pass++)
+        {
+            await using var db = rig.NewDb();
+            await rig.Dispatcher(db).SweepAsync(Now.AddMinutes(20 * pass));
+        }
+
+        var saved = await rig.RowAsync(row.Id);
+        Assert.Equal(ScheduledMessageStatus.Failed, saved.Status);
+        Assert.Equal(ScheduledMessageRules.MaxSendAttempts, saved.Attempts);
+        Assert.Equal(code, saved.BlockedReason);
+        Assert.Equal(1, rig.Delivered);
+        Assert.Single(await rig.OpenTodosAsync(booking.Id));
+        Assert.Equal(2, (await rig.BellAsync()).Count);
+
+        await using (var db = rig.NewDb())
+            Assert.Equal(0, await rig.Dispatcher(db).SweepAsync(Now.AddMinutes(200)));
+    }
+
+    /// <summary>
+    /// The same rule where the message is found, not sent: a message the message layer already holds for the row (a send that went out and was never saved, or one still waiting) is read for its real state. A message
+    /// the channel took is only marked sent; one that waits, or whose outcome nobody knows, is a failed try. In both nothing is issued, taken, released or sent again.
+    /// </summary>
+    [Theory]
+    [InlineData(OtaMessageDeliveryState.ManualVerify, "manual_verify")]
+    [InlineData(OtaMessageDeliveryState.Created, "message_unconfirmed")]
+    [InlineData(OtaMessageDeliveryState.WaitingAuthorization, "message_unconfirmed")]
+    public async Task AMessageTheMessageLayerAlreadyHolds_IsNotMarkedSentWhenItIsNotSent_AndNothingIsIssuedTakenOrSentAgain(OtaMessageDeliveryState state, string code)
+    {
+        var threadId = Guid.NewGuid();
+        var rig = new ScheduledMessageRig { Channel = new MessageContactOptions(MessageContactChannel.Ota, MessageThreadKey.ForOta(threadId), null, false, false), AccessCode = "4321" };
+        var (property, _, _, _, row) = await SeedAsync(rig, "Check-in: {{check_in_link}}, codice {{access_code}} (TEST)");
+        await AddPropertyAccessCodeAsync(rig, property);
+        await using (var db = rig.NewDb())
+        {
+            db.OtaMessages.Add(new OtaMessage { OrgId = OrgA, ThreadId = threadId, Direction = OtaMessageDirection.Outbound, Text = "x", IdempotencyKey = $"sm-{row.Id:N}", DeliveryState = state });
+            await db.SaveChangesAsync();
+        }
+
         var result = await DispatchAsync(rig, row.Id);
 
-        Assert.Equal(ScheduledMessageDispatchOutcome.Sent, result.Outcome);
-        var saved = await rig.RowAsync(row.Id);
-        Assert.Equal(ScheduledMessageStatus.Sent, saved.Status);
-        Assert.Equal("manual_verify", saved.BlockedReason);
-        Assert.Equal(ScheduledMessageDispatchOutcome.NothingToDo, (await DispatchAsync(rig, row.Id, ScheduledMessageDispatchMode.SendNow, "auth0|owner")).Outcome);
-        Assert.Single(rig.Sent);
+        Assert.Equal(ScheduledMessageDispatchOutcome.Failed, result.Outcome);
+        Assert.Equal(code, result.Code);
+        Assert.Empty(rig.Sent);
+        rig.CheckIn.Verify(c => c.IssueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
+        Assert.Empty(rig.Taken);
+        Assert.Empty(rig.Released);
+        Assert.Equal((ScheduledMessageStatus.Failed, 1), ((await rig.RowAsync(row.Id)).Status, (await rig.RowAsync(row.Id)).Attempts));
     }
 
     [Fact]

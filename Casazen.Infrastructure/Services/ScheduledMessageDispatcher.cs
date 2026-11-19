@@ -62,8 +62,11 @@ public sealed class ScheduledMessageDispatcher(
     /// <summary>The code of a text the renderer refuses (empty, too long, a name that is not a variable).</summary>
     internal const string TextInvalidCode = "message_text_invalid";
 
-    /// <summary>The code of a message whose outcome nobody knows: it may have left, it is never sent again.</summary>
+    /// <summary>The code of a message whose outcome nobody knows: it may have left. It is never written again (the key of the row finds it); the row waits, tried again, for the message layer to know.</summary>
     internal const string ManualVerifyCode = "manual_verify";
+
+    /// <summary>The code of a message the channel manager holds and has not accepted (created, waiting for the authorization of the channel): not a message that went out. Same as the routine's <c>routine_message_unconfirmed</c>.</summary>
+    internal const string UnconfirmedCode = "message_unconfirmed";
 
     /// <summary>A message planned for a moment that passed more than this long ago is not sent late by the sweep: it expires.</summary>
     internal static readonly TimeSpan MaxLateness = TimeSpan.FromHours(24);
@@ -300,9 +303,10 @@ public sealed class ScheduledMessageDispatcher(
                 return await SkipBySystemAsync(row, ScheduledMessageReasons.ChannelRule, now, ct);
         }
 
-        // A message that is already there (a send that went out and was never saved): only the row is brought up to date, nothing is released, issued or sent.
-        if (await AlreadyWrittenAsync(row, channel, ct))
-            return await SentAsync(row, now, channel.ThreadKey, OtaMessageDeliveryState.Sent, mode, userId, facts, ct);
+        // A message that is already there (a send that went out and was never saved, or one the message layer still holds): the row is brought up to date with what the message layer says of it, and nothing is
+        // released, issued or sent again.
+        if (await WrittenStateAsync(row, channel, ct) is { } written)
+            return await EndOfSendAsync(row, now, channel.ThreadKey, written, mode, userId, facts, ct);
 
         // What can refuse the message is checked before the first thing that has a side effect (a code released is logged, a link issued ends the session of the guest). The link: the public address,
         // and the check-in of the stay (IssueLinkAsync refuses nothing, so the rules of the other senders of a link are applied here).
@@ -458,8 +462,31 @@ public sealed class ScheduledMessageDispatcher(
         if (codeChannel is not null && !result.Replayed)
             await accessCodes.RecordReleaseAsync(row.BookingId, codeChannel, ct);
 
-        return await SentAsync(row, now, result.ThreadKey, result.State, mode, userId, facts, ct);
+        return await EndOfSendAsync(row, now, result.ThreadKey, result.State, mode, userId, facts, ct);
     }
+
+    /// <summary>
+    /// What the message layer says of the message is the state of the row, as for the routine that writes straight to it (<c>RoutineBookingActions</c>, which counts only <c>Sent</c>): only a message the channel
+    /// took is <c>Sent</c>. One whose outcome nobody knows (<see cref="OtaMessageDeliveryState.ManualVerify"/>: it may have left) is <c>Failed</c> with <see cref="ManualVerifyCode"/>, and one the channel manager
+    /// holds but has not accepted (<see cref="OtaMessageDeliveryState.Created"/>, <see cref="OtaMessageDeliveryState.WaitingAuthorization"/>) is <c>Failed</c> with <see cref="UnconfirmedCode"/>. The sweep tries
+    /// them again with the key of the row, so the message layer finds the message it has and never writes a second: when its state becomes <c>Sent</c> the row follows it, when it is refused the next key sends it
+    /// again, and when the tries are used (four) the host is told.
+    /// </summary>
+    private Task<ScheduledMessageDispatchResult> EndOfSendAsync(
+        ScheduledMessage row,
+        DateTime now,
+        MessageThreadKey? threadKey,
+        OtaMessageDeliveryState state,
+        ScheduledMessageDispatchMode mode,
+        string? userId,
+        BookingFacts facts,
+        CancellationToken ct) =>
+        state switch
+        {
+            OtaMessageDeliveryState.Sent => SentAsync(row, now, threadKey, mode, userId, facts, ct),
+            OtaMessageDeliveryState.ManualVerify => FailAsync(row, ManualVerifyCode, now, userId, ct),
+            _ => FailAsync(row, UnconfirmedCode, now, userId, ct),
+        };
 
     // ------------------------------------------------------------------------------------------------------------------------------------
     // How a send ends
@@ -469,7 +496,6 @@ public sealed class ScheduledMessageDispatcher(
         ScheduledMessage row,
         DateTime now,
         MessageThreadKey? threadKey,
-        OtaMessageDeliveryState state,
         ScheduledMessageDispatchMode mode,
         string? userId,
         BookingFacts facts,
@@ -488,7 +514,7 @@ public sealed class ScheduledMessageDispatcher(
                 if (r.IsOpen)
                 {
                     r.Status = ScheduledMessageStatus.Sent;
-                    r.BlockedReason = state == OtaMessageDeliveryState.ManualVerify ? ManualVerifyCode : null;
+                    r.BlockedReason = null;
                     r.SkipReason = null;
                     r.ActivityId = null;
                 }
@@ -1056,33 +1082,46 @@ public sealed class ScheduledMessageDispatcher(
             .Select(t => new OtaThreadFacts(t.ChannelSource, t.Kind))
             .FirstOrDefaultAsync(ct);
 
-    /// <summary>The message layer already holds a message written for this row and it did not fail: the row is only to be marked as sent.</summary>
-    private async Task<bool> AlreadyWrittenAsync(ScheduledMessage row, MessageContactOptions channel, CancellationToken ct)
+    /// <summary>
+    /// What the message layer says of a message it already holds for this row (a message that did not fail: one refused by the channel has the key of the next attempt), or <c>null</c> when it holds none. The
+    /// state is the message layer's own: <see cref="OtaMessageDeliveryState.Sent"/> when the channel took it, <see cref="OtaMessageDeliveryState.ManualVerify"/> when nobody knows whether it left,
+    /// <see cref="OtaMessageDeliveryState.Created"/> or <see cref="OtaMessageDeliveryState.WaitingAuthorization"/> when it waits. A message of a direct conversation is in the guest area as soon as it is written: sent.
+    /// </summary>
+    private async Task<OtaMessageDeliveryState?> WrittenStateAsync(ScheduledMessage row, MessageContactOptions channel, CancellationToken ct)
     {
         var prefix = ScheduledMessageRules.SendKeyOf(row.Id);
         if (channel.Channel == MessageContactChannel.Ota && channel.ThreadKey is { } ota)
         {
-            return await db.OtaMessages
+            var states = await db.OtaMessages
                 .IgnoreQueryFilters([Tenant])
                 .AsNoTracking()
-                .AnyAsync(
+                .Where(
                     m => m.OrgId == row.OrgId
                          && m.ThreadId == ota.Id
                          && m.IdempotencyKey != null
                          && m.IdempotencyKey.StartsWith(prefix)
-                         && m.DeliveryState != OtaMessageDeliveryState.Error,
-                    ct);
+                         && m.DeliveryState != OtaMessageDeliveryState.Error)
+                .Select(m => m.DeliveryState)
+                .ToListAsync(ct);
+            if (states.Count == 0)
+                return null;
+
+            // More than one is not expected; if there is, what the channel took counts, then what nobody knows, then what waits.
+            return states.Contains(OtaMessageDeliveryState.Sent)
+                ? OtaMessageDeliveryState.Sent
+                : states.Contains(OtaMessageDeliveryState.ManualVerify) ? OtaMessageDeliveryState.ManualVerify : states[0];
         }
 
-        if (channel.Channel == MessageContactChannel.Direct)
-        {
-            return await db.GuestMessages
+        if (channel.Channel == MessageContactChannel.Direct
+            && await db.GuestMessages
                 .IgnoreQueryFilters([Tenant])
                 .AsNoTracking()
-                .AnyAsync(m => m.OrgId == row.OrgId && m.Thread.BookingId == row.BookingId && m.IdempotencyKey != null && m.IdempotencyKey.StartsWith(prefix), ct);
+                .AnyAsync(m => m.OrgId == row.OrgId && m.Thread.BookingId == row.BookingId && m.IdempotencyKey != null && m.IdempotencyKey.StartsWith(prefix), ct))
+        {
+            return OtaMessageDeliveryState.Sent;
         }
 
-        return false;
+        return null;
     }
 
     /// <summary>
