@@ -1,7 +1,10 @@
+using Casazen.Core.Events;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.Services;
+using Casazen.Infrastructure.Services.ApprovalActions;
 
 namespace Casazen.Web.Extensions;
 
@@ -22,6 +25,14 @@ public static class OtaReviewsServiceCollectionExtensions
         services.AddOptions<OctorateReviewsOptions>().BindConfiguration(OctorateReviewsOptions.SectionName);
         services.AddScoped<IOtaReviewService, OtaReviewService>();
         services.AddScoped<OtaReviewSyncJob>();
+
+        // E05/F06/US01/T03 (NF-69, AI-06): the drafts of the replies. A guest's review (ReviewReceived, direct or of a channel) sends the assistant to work in a job of its own; the draft only goes to the
+        // approval queue, and the reply leaves, once, from the action of the type ReviewReply when a person approves it. Behind Features:MessageAssistant (the handler, the job and the
+        // endpoint ask the flag; the switches of the organization and of the property are asked by the drafter). The reviews in the hub need no registration of their own: the hub reads them.
+        services.AddScoped<IReviewReplyDrafter, ReviewReplyDrafter>();
+        services.AddScoped<IApprovalOriginAction, ReviewReplyApprovalAction>();
+        services.AddScoped<IEventHandler<DomainEvent>, ReviewReceivedHandler>();
+        services.AddScoped<ReviewReplyDraftJob>();
 
         return services;
     }

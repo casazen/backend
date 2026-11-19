@@ -79,6 +79,51 @@ case, an object or a list, bare or in `data`) and lives in one file, `Octorate/O
 is none of the shapes is an `octorate_unavailable` error, **never** an empty review. The bodies of the two writes (`{ "text" }`; `categoryRatings`, `publicReview`, `privateReview`) are
 documented too and are checked on the first real Airbnb property (pilot).
 
+## The reviews in the hub of messages (E05/F06/US01/T03)
+
+The hub lists the reviews next to the conversations, **under their own filter**: `GET api/messages?includeOta=true&kind=review` answers the reviews of the booking site (key `review:{id}`) and the
+published reviews of the channels (key `otareview:{id}`) in one statement, paged in the database, newest first (the instant the review was published), narrowed to the properties the caller
+reaches (a collaborator «Solo alcuni» lists only its own; a review of another org does not exist for it). Each row is a hub item: `threadKey`, `source` (`Review` or `OtaReview`), `channel`, `kind`
+`Review`, the property, the booking id and code, the name of the guest, the first 120 characters of the review (for the host only), `rating` and `needsReply` (published and not answered; a reply whose
+outcome is not known counts as sent). **The default view has no review**: «Da rispondere» is the conversations. The words of a review are read for the rows of the page only, after the statement
+(the text of a review of a channel is encrypted at rest and is never searched).
+
+`GET api/messages/reviews/{threadKey}` (`booking.read`, the caller's reach in SQL) opens one review: the stars and the categories, the words of the guest, the host's reply and its state, the host's own
+review and its window (a review of a channel), the booking card (the amounts only for a caller who may read payments) and `capabilities` (`canReply`, `canHostReview`, `reason`): for a channel the table of
+`OtaReviewCapabilities` narrowed by the connector and the listing, for the booking site a reply once and no review of the host. A review is **not a conversation**: its key is a 404 `thread_not_found`
+for every endpoint of a conversation (the detail, the mark as read, the reply, the templates, the drafts of the messages), and the key of a conversation is a 404 `review_not_found` for the detail of a
+review; a review that is not there, is of another org, is out of the reach or was never published answers 404 `review_not_found`.
+
+## The drafts of the replies (E05/F06/US01/T03, NF-69, AI-06, PO-09)
+
+**Never automatic: a reply to a review is public.** The assistant writes a draft for the host to approve, and nothing else; the reply leaves, once, from the approve action of the queue.
+
+1. A guest's review appears (`DomainEventType.ReviewReceived`: the booking site or the first time a channel review is seen published). `ReviewReceivedHandler` queues `ReviewReplyDraftJob` when
+   `Features__MessageAssistant` is on and the organization switched its assistant on (the exception of the property and the budget are asked by the drafter).
+2. `ReviewReplyDrafter` (Standard tier of the AI provider, through the monthly budget as the draft of a message) writes the reply from the stars and the words of the review, **without the names** (the guest,
+   the host, the codes of the booking and the reference on the channel manager, the contact data and the long numbers are taken out by `AssistantPromptBuilder.Minimize`, and the instructions forbid greeting
+   by a name), in the language of the review, with the tone and the signature of the rules of the property, at most 800 characters signature included. The server checks the answer for what a reply
+   never says and queues nothing that breaks a rule: a promise or an offer of money or of a gift (refund, compensation, discount, voucher, free night, in the languages of the reviews), a mention of being an
+   AI, a link, an address or a number to call, a placeholder left in the text (`ReviewReplyPromptBuilder.Violation`).
+3. The draft is an item of the approval queue (`ReviewReply`, origin action `SendReviewReply`, the property, no confidence score, `ThreadKey` the key of the review, `ItemId` the id of the review).
+   A review that has a draft waiting, or one approved in the last seven days, gets no second one from the automatic path; a person who asks (`POST api/reviews/{reviewKey}/draft`, `booking.write`, the reach
+   of the caller, limited like the other AI endpoints) gets a new one and the one that waited is rejected with the reason `regenerated`. Without the assistant, a provider, budget, or for a review that is not
+   published, is answered or cannot be answered (the connector is off, the listing is not confirmed, the channel has no integration) **there is no draft** and the reason is the code of the answer and of the log:
+   `assistant_disabled`, `ai_provider_not_configured`, `ai_budget_exceeded`, `ai_provider_error`, `ai_invalid_answer`, `draft_rule_violation`, `draft_too_long`, `already_answered`, `already_drafted`,
+   `ota_review_not_published`, `ota_review_channel_not_supported`, `reply_not_possible`.
+4. Approving the item runs `ReviewReplyApprovalAction`: a review of Airbnb is answered through `IOtaReviewService.ReplyAsync` (the safe send above) with the key `approval-{item}-{hash of the text}` (a colon
+   would be refused as `idempotency_key_invalid`, so the form of the messages is the one used), a review of the booking site through `IHostReviewService.ReplyAsync` (once: a second reply is
+   `review_reply_already_sent`). A refusal comes back as a **failed action**: the item stays pending with the code (409 `approval_origin_action_failed`, `originActionError`), the host edits and tries again; the
+   retry of a text the channel refused sends with the next key. An outcome that is not known counts as done and is checked on the channel, never sent again. A rejection does nothing: nothing was sent.
+   A key that does not name the review of the item (a conversation, another review) sends nothing.
+
+Privacy: the review is the guest's personal data. The log carries ids, codes and counters, never a word of the review, the reply or a name; the erasure of a guest empties the words of the reviews of its stays and the
+drafts of the replies to them (`GuestDataEraser`).
+
+**Demo** (`demo-environment.md`): the scenario `reviews` writes two invented reviews of past stays of the house `appartamento-brera`, one on the booking site and one of Airbnb, each with its draft waiting in
+the queue (all saying TEST), marked as showcase data (`Review`, `OtaReview`, `ApprovalQueueItem`); the reset deletes them with their drafts before the houses go. The review of the channel has no
+channel manager behind it, so its reply cannot leave from the demo.
+
 ## Where things are
 
 | Piece | File |
@@ -91,6 +136,9 @@ documented too and are checked on the first real Airbnb property (pilot).
 | The job | `Casazen.Infrastructure/Jobs/OtaReviewSyncJob.cs` |
 | Endpoints | `BookingReviewsController`, `OtaReviewsController` |
 | Registration | `AddOtaReviews` (`Casazen.Web/Extensions/OtaReviewsServiceCollectionExtensions.cs`) |
+| The reviews in the hub (list, detail, the key of a review) | `Casazen.Infrastructure/Services/MessageHubService.Reviews.cs`, `MessageThreadsController.GetReview` |
+| The drafter, the handler, the job | `ReviewReplyDrafter`, `ReviewReplyPromptBuilder` (the instructions and the rules a reply never breaks), `ReviewReceivedHandler`, `ReviewReplyDraftJob` |
+| What approving does | `Casazen.Infrastructure/Services/ApprovalActions/ReviewReplyApprovalAction.cs`; the endpoint `ReviewDraftsController` |
 
 ## Privacy
 

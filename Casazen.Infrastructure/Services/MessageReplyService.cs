@@ -100,6 +100,10 @@ public sealed class MessageReplyService(
         ArgumentNullException.ThrowIfNull(scope);
         CheckAuthor(origin, ruleCode);
 
+        // The key of a review is not a conversation: nothing is ever written to it through the reply of a conversation (E05/F06/US01/T03).
+        if (key.IsReview)
+            throw ThreadNotFound();
+
         if (key.Source == MessageThreadSource.Storefront)
         {
             if (origin != MessageOrigin.Person)

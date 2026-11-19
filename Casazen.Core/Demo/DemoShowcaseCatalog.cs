@@ -17,7 +17,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-18.2";
+    public const string Version = "2026-11-19.1";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -140,6 +140,13 @@ public static class DemoShowcaseCatalog
         /// yet. They are rows of the hub only: nothing is read from, or sent to, a channel manager.
         /// </summary>
         public const string MessageHub = "message-hub";
+
+        /// <summary>
+        /// The reviews of the guests and the drafts of the replies (E05/F06/US01/T03, NF-69, AI-06): two invented reviews of past stays of one house, saying TEST, one on the booking site (a direct
+        /// stay) and one of Airbnb, each with the draft of the reply the assistant would write waiting in the approval queue. They are rows of CasaZen only: nothing is read from, or sent to, a
+        /// channel manager, so the reply of the review of the channel cannot leave from the demo, and approving one sends nothing but the reply of the booking site.
+        /// </summary>
+        public const string Reviews = "reviews";
 
         /// <summary>
         /// The templates of the host for the messages to the guests (E05/F02/US02/T02, NF-63): three invented templates, all saying TEST, in Italian and
@@ -442,6 +449,7 @@ public static class DemoShowcaseCatalog
         Scenario.TouristTaxPerGuest,
         Scenario.TouristTaxChannelCollected,
         Scenario.MessageHub,
+        Scenario.Reviews,
         Scenario.MessageTemplates,
         Scenario.CheckInWizardExpected,
         Scenario.CheckInWizardArrived,
@@ -1994,6 +2002,36 @@ public static class DemoShowcaseCatalog
     ];
 
     /// <summary>
+    /// The reviews of the demo (E05/F06/US01/T03, NF-69, AI-06), written for the org at reset next to the past stays of the house they are about: the review of a direct stay on the booking site
+    /// (the host has not answered) and the one of an Airbnb stay (a row of the copy the sync would write, with no connection to a channel manager behind it), each with the draft of the reply
+    /// waiting in the approval queue (an item of type <c>ReviewReply</c>, written by the assistant, never sent). Everything in them is invented and says TEST; the drafts keep the rules of a
+    /// reply (no promise of money, no mention of an AI, no link). Marked as showcase data (<c>TestDataEntities.Review</c>, <c>OtaReview</c>, <c>ApprovalQueueItem</c>), deleted by the next reset.
+    /// </summary>
+    public static IReadOnlyList<DemoReviewTemplate> Reviews { get; } =
+    [
+        new(
+            "recensione-diretta",
+            DemoReviewKind.Direct,
+            "appartamento-brera",
+            "tassa-da-versare",
+            5m,
+            "Appartamento curatissimo e host gentile (TEST): ci siamo trovati benissimo, torneremo volentieri.",
+            45,
+            "Grazie di cuore per le belle parole (TEST)! Siamo felici che il soggiorno vi sia piaciuto e speriamo di rivedervi presto.",
+            Scenario.Reviews),
+        new(
+            "recensione-airbnb",
+            DemoReviewKind.Airbnb,
+            "appartamento-brera",
+            "tassa-senza-importo",
+            4m,
+            "Posizione ottima (TEST), casa pulita; la sera si sente un po’ il rumore della strada.",
+            26,
+            "Grazie per la recensione (TEST)! Teniamo conto del suggerimento sul rumore e ci auguriamo di ospitarvi di nuovo.",
+            Scenario.Reviews),
+    ];
+
+    /// <summary>
     /// The message templates of the demo host (E05/F02/US02/T02, NF-63), written for the org at reset: a welcome in Italian, the same welcome in
     /// English, and a reminder of the departure. Together they use the eight variables a template may have (guest, house, booking code, the dates and the
     /// times of the stay, the host), so a client can try them on a conversation of the hub and in the new message. Invented and saying TEST, they point
@@ -2895,6 +2933,40 @@ public sealed record DemoMessageThreadTemplate(
     OtaChannel? Channel,
     string? GuestName,
     IReadOnlyList<DemoMessageTemplate> Messages,
+    string Scenario);
+
+/// <summary>Where a demo review is kept: the booking site (<c>Review</c>), or a channel (<c>OtaReview</c>, Airbnb).</summary>
+public enum DemoReviewKind
+{
+    /// <summary>The review of a direct stay on the booking site.</summary>
+    Direct = 0,
+
+    /// <summary>The review of an Airbnb stay, as the channel manager would have reported it.</summary>
+    Airbnb = 1,
+}
+
+/// <summary>
+/// A review of the demo with the draft of the reply to it (E05/F06/US01/T03, NF-69): invented like the rest of the demo, written for the org at reset next to the stay it is about and
+/// marked as showcase data (<c>TestDataEntities.Review</c> or <c>OtaReview</c>, and <c>ApprovalQueueItem</c> for the draft), so the next reset deletes it.
+/// </summary>
+/// <param name="Key">Stable key of the review inside the template.</param>
+/// <param name="Kind">Where it is kept.</param>
+/// <param name="PropertyKey">The demo property (<see cref="DemoPropertyTemplate.Key"/>) it belongs to.</param>
+/// <param name="BookingKey">The demo stay (<see cref="DemoBookingTemplate.Key"/>) of that property it is about: a stay that is over, of the public checkout for <see cref="DemoReviewKind.Direct"/>, of Airbnb for <see cref="DemoReviewKind.Airbnb"/>.</param>
+/// <param name="Rating">The stars, 1 to 5 (a whole number for the booking site).</param>
+/// <param name="Text">What the guest wrote (it says TEST).</param>
+/// <param name="PublishedDaysAgo">How many days before the reset the review was published.</param>
+/// <param name="DraftReply">The draft of the reply waiting for approval (it says TEST and keeps the rules of a reply).</param>
+/// <param name="Scenario">The scenario it exercises.</param>
+public sealed record DemoReviewTemplate(
+    string Key,
+    DemoReviewKind Kind,
+    string PropertyKey,
+    string BookingKey,
+    decimal Rating,
+    string Text,
+    int PublishedDaysAgo,
+    string DraftReply,
     string Scenario);
 
 /// <summary>A message of a demo conversation: who wrote it, how long before the reset, what it says (it says TEST) and whether the host read it.</summary>

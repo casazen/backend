@@ -54,6 +54,9 @@ internal sealed class OtaReviewHarness
     /// <summary>2026-11-20 09:00 in Rome.</summary>
     public static readonly DateTimeOffset Now = new(2026, 11, 20, 8, 0, 0, TimeSpan.Zero);
 
+    /// <summary>The day of <see cref="Now"/> as a date (midnight UTC), written out: the stays of the world end some days before it.</summary>
+    public static readonly DateTime TodayUtc = new(2026, 11, 20, 0, 0, 0, DateTimeKind.Utc);
+
     private readonly string _database;
     private readonly Dictionary<Guid, List<ChannelMappingRow>> _rows = [];
 
@@ -146,7 +149,7 @@ internal sealed class OtaReviewHarness
     {
         await using var db = NewDb();
         var guest = new Guest { OrgId = orgId, FirstName = "Giulietta", LastName = "Verdi", Email = $"{Guid.NewGuid():N}@example.com" };
-        var checkOut = Now.UtcDateTime.Date.AddDays(-endedDaysAgo);
+        var checkOut = TodayUtc.AddDays(-endedDaysAgo);
         var booking = new Booking
         {
             OrgId = orgId,
@@ -220,6 +223,38 @@ internal sealed class OtaReviewHarness
         Client
             .Setup(c => c.GetReviewAsync(stay.Accommodation, stay.Refer, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OctorateReview(null, null));
+
+    /// <summary>A review of the booking site (E05/F06/US01/T03) of a stay, published <paramref name="publishedMinutesAgo"/> minutes before <see cref="Now"/>, with the words and the stars given.</summary>
+    public async Task<Review> AddSiteReviewAsync(ReviewStay stay, string? text = "Soggiorno piacevole, host disponibile.", int rating = 5, string? hostReply = null, int publishedMinutesAgo = 60)
+    {
+        await using var db = NewDb();
+        var review = new Review
+        {
+            OrgId = stay.OrgId,
+            PropertyId = stay.PropertyId,
+            BookingId = stay.BookingId,
+            Rating = rating,
+            Text = text,
+            AuthorName = "Ospite",
+            StayEndedOn = TodayUtc.AddDays(-3),
+            Status = ReviewStatus.Published,
+            PublishedAt = Now.UtcDateTime.AddMinutes(-publishedMinutesAgo),
+            HostReply = hostReply,
+            HostRepliedAt = hostReply is null ? null : Now.UtcDateTime,
+        };
+        db.Reviews.Add(review);
+        await db.SaveChangesAsync();
+        return review;
+    }
+
+    /// <summary>The instant the guest's review of a channel was published is set (the read of the channel manager gives the one of its own, a day before <see cref="Now"/>).</summary>
+    public async Task SetPublishedAtAsync(ReviewStay stay, int minutesAgo)
+    {
+        await using var db = NewDb();
+        var row = await db.OtaReviews.SingleAsync(r => r.BookingId == stay.BookingId);
+        row.GuestReviewPublishedAt = Now.UtcDateTime.AddMinutes(-minutesAgo);
+        await db.SaveChangesAsync();
+    }
 
     /// <summary>Reads the stay from the channel manager (the sync of the job) and returns the row it made.</summary>
     public async Task<OtaReview> SyncAsync(ReviewStay stay)
