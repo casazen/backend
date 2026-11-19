@@ -2804,6 +2804,20 @@
   <data name="Push_CheckInLinkFailed_Body" xml:space="preserve">
     <value>{0}: il link del check-in non è arrivato all'ospite in automatico. Apri la prenotazione, copialo e invialo tu.</value>
   </data>
+  <!-- E05/F06/US01/T02 (NF-69): the pushes to the host about the reviews of the channels: a review appeared, and a reply or a host review that did not reach the channel. The property
+       only: never the guest, the mark or a word of the review. No supplier is named. -->
+  <data name="Push_OtaReviewReceived_Title" xml:space="preserve">
+    <value>Nuova recensione</value>
+  </data>
+  <data name="Push_OtaReviewReceived_Body" xml:space="preserve">
+    <value>{0}: un ospite ha lasciato una recensione. Apri la prenotazione per leggerla e rispondere.</value>
+  </data>
+  <data name="Push_OtaReviewActionFailed_Title" xml:space="preserve">
+    <value>Risposta alla recensione non consegnata</value>
+  </data>
+  <data name="Push_OtaReviewActionFailed_Body" xml:space="preserve">
+    <value>{0}: la tua risposta o la tua recensione non è arrivata sul canale. Apri la prenotazione e riprova.</value>
+  </data>
   <data name="TodoReason_CheckInLinkToSend" xml:space="preserve">
     <value>Il link del check-in non è ancora arrivato all'ospite: copialo dalla prenotazione e invialo tu.</value>
   </data>

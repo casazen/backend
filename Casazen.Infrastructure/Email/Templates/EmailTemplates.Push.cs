@@ -194,6 +194,19 @@ public static partial class EmailTemplates
     public static PushText CheckInLinkFailedPush(CultureInfo culture, string propertyName) =>
         Push(culture, "Push_CheckInLinkFailed", propertyName);
 
+    /// <summary>
+    /// A guest left a review on a channel (E05/F06/US01/T02, NF-69), to the host: the property only, never the guest, the mark or a word of the review; the host opens the booking
+    /// and reads it there.
+    /// </summary>
+    public static PushText OtaReviewReceivedPush(CultureInfo culture, string propertyName) =>
+        Push(culture, "Push_OtaReviewReceived", propertyName);
+
+    /// <summary>
+    /// A reply to a review, or the host's own review, did not reach the channel (E05/F06/US01/T02), to the host: the property only; the host opens the booking and tries again.
+    /// </summary>
+    public static PushText OtaReviewActionFailedPush(CultureInfo culture, string propertyName) =>
+        Push(culture, "Push_OtaReviewActionFailed", propertyName);
+
     /// <summary>Check-out day of a stay, to the host (CO-10 stay alert).</summary>
     public static PushText CheckoutReminderPush(CultureInfo culture, string propertyName) =>
         Push(culture, "Push_CheckoutReminder", propertyName);

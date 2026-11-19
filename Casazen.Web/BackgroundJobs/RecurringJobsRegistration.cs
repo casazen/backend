@@ -411,6 +411,7 @@ public static class RecurringJobsRegistration
             recurringJobManager.RemoveIfExists(OctorateCheckInRetryJob.RecurringJobId);
             recurringJobManager.RemoveIfExists(OtaMessageReconcileJob.RecurringJobId);
             recurringJobManager.RemoveIfExists(OtaMessageDeepReconcileJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(OtaReviewSyncJob.RecurringJobId);
             recurringJobManager.RemoveIfExists(ListingStatusSyncJob.RecurringJobId);
             recurringJobManager.RemoveIfExists(ListingChannelHealthJob.RecurringJobId);
             recurringJobManager.RemoveIfExists(ListingOutsideChangeJob.RecurringJobId);
@@ -453,6 +454,13 @@ public static class RecurringJobsRegistration
             OtaMessageDeepReconcileJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             OtaMessageDeepReconcileJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // E05/F06/US01/T02 (NF-69, OCT-12): the reviews of the Airbnb bookings, read one booking at a time (the API has no list), every six hours.
+        recurringJobManager.AddOrUpdate<OtaReviewSyncJob>(
+            OtaReviewSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OtaReviewSyncJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         // E02/F03/US01/T07: the follow-up of the publications of the listings (every 15 minutes), the channels that went silent (daily) and the
