@@ -576,6 +576,91 @@ public class IstatRegionServiceTests : IAsyncLifetime
         Assert.Equal(RomeCalendar.StartOfDayUtc(new DateOnly(2026, 11, 20)), (await IstatItemAsync())!.DueAt);
     }
 
+    // ─── Who sends the ISTAT communication ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The one rule of the sender of the ISTAT communication: only the channel manager, and only where the table says it does not cover the region, gives
+    /// way to the host (manual). A region covered or not verified, and every other sender, are left as they are.
+    /// </summary>
+    [Fact]
+    public void IstatSenderFor_OnlyTheChannelManagerWhereItDoesNotCoverTheRegion_BecomesManual()
+    {
+        Assert.Equal(ComplianceSenderType.Manual, IstatRegionResolver.IstatSenderFor(ComplianceSenderType.ChannelManager, IstatCoverage.NotCovered));
+        Assert.Equal(ComplianceSenderType.ChannelManager, IstatRegionResolver.IstatSenderFor(ComplianceSenderType.ChannelManager, IstatCoverage.Covered));
+        Assert.Equal(ComplianceSenderType.ChannelManager, IstatRegionResolver.IstatSenderFor(ComplianceSenderType.ChannelManager, IstatCoverage.Unknown));
+        foreach (var coverage in Enum.GetValues<IstatCoverage>())
+        {
+            Assert.Equal(ComplianceSenderType.Manual, IstatRegionResolver.IstatSenderFor(ComplianceSenderType.Manual, coverage));
+            Assert.Equal(ComplianceSenderType.CasaZen, IstatRegionResolver.IstatSenderFor(ComplianceSenderType.CasaZen, coverage));
+        }
+    }
+
+    /// <summary>
+    /// Where the channel manager does not cover the region it does not send the ISTAT communication, so the property is not «handled outside»: the cockpit
+    /// asks the host for the monthly proof (the period is open, no handoff to the panel) and the coverage of the property says the sender is manual and the
+    /// next step the portal of the region, the two answers of the same rule. Where the region is covered or not verified, the channel manager keeps it and both
+    /// answers say so; after the deadline the item is red whoever sends.
+    /// </summary>
+    [Fact]
+    public async Task IstatSender_WhereTheChannelManagerDoesNotCoverTheRegion_IsManual_ForTheCockpitAndForTheCoverage()
+    {
+        var world = await ComplianceStatusServiceTests.World.SeedAsync();
+        await world.AddComuneAsync("015146", regionIstatCode: "03");
+        world.Granted.ComuneIstatCode = "015146";
+        world.Granted.City = "Milano";
+        await world.SaveAsync(world.Granted);
+        await world.AddStayAsync(world.Granted, checkInOffset: -10, nights: 2, status: BookingStatus.CheckedOut, touristTax: 12m);
+        world.Senders[world.Granted.Id] = ComplianceSenderType.ChannelManager;
+
+        async Task SetRowAsync(IstatCoverage coverage, int day)
+        {
+            await using var db = world.Db();
+            var row = await db.IstatRegionRules.FirstOrDefaultAsync(r => r.RegionIstatCode == "03", Ct);
+            if (row is null)
+            {
+                row = new IstatRegionRule { RegionIstatCode = "03", RegionName = "Lombardia", SourceUrl = Source };
+                db.IstatRegionRules.Add(row);
+            }
+
+            row.DeadlineKind = IstatDeadlineKind.Monthly;
+            row.DeadlineDay = day;
+            row.OctorateCoverage = coverage;
+            await db.SaveChangesAsync(Ct);
+        }
+
+        async Task<(ComplianceStatusItem Item, IstatCoverageView Coverage)> AnswersAsync()
+        {
+            await using var db = world.Db();
+            var status = await world.StatusService(db).EvaluateAsync(world.OrgWide, Ct);
+            var item = status.Items.Single(i => i.Kind == ComplianceItemKind.Istat && i.Period == "2026-10");
+            var coverage = await Service(ComplianceSenderType.ChannelManager, db).GetCoverageAsync(world.Granted.Id, Ct);
+            return (item, coverage);
+        }
+
+        // Not verified, then covered (the day 10 is still ahead on the 6th): the channel manager has it, in the cockpit and in the coverage.
+        foreach (var coverage in new[] { IstatCoverage.Unknown, IstatCoverage.Covered })
+        {
+            await SetRowAsync(coverage, day: 10);
+            var (item, answer) = await AnswersAsync();
+            Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.ExternalVerificationRequired), (item.Verdict.Light, item.Verdict.Reason));
+            Assert.Equal(OctorateHandoffTopic.Istat, item.Verdict.HandoffTopic);
+            Assert.Equal(ComplianceSenderType.ChannelManager, answer.IstatSender);
+        }
+
+        // Not covered: nobody outside sends it. The cockpit asks the host for the proof of the month and sends it nowhere, the coverage says manual and the portal.
+        await SetRowAsync(IstatCoverage.NotCovered, day: 10);
+        var (open, manual) = await AnswersAsync();
+        Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.PeriodOpen), (open.Verdict.Light, open.Verdict.Reason));
+        Assert.Null(open.Verdict.HandoffTopic);
+        Assert.Equal(ComplianceCockpitAction.UploadIstatProof, open.Action);
+        Assert.Equal((ComplianceSenderType.Manual, IstatNextStep.ManualPortal), (manual.IstatSender, manual.NextStep));
+
+        // Past the deadline it is red, as for every other sender.
+        await SetRowAsync(IstatCoverage.NotCovered, day: 5);
+        var (overdue, _) = await AnswersAsync();
+        Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.DeadlineOverdue), (overdue.Verdict.Light, overdue.Verdict.Reason));
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────
 
     private static void AssertSeededRowIsToVerify(IstatRegionRule row)
@@ -589,15 +674,15 @@ public class IstatRegionServiceTests : IAsyncLifetime
             Assert.StartsWith("https://", row.PortalUrl, StringComparison.Ordinal);
     }
 
-    private IstatRegionService Service()
+    private IstatRegionService Service(ComplianceSenderType sender = ComplianceSenderType.Manual, AppDbContext? db = null)
     {
         var senders = new Mock<IPropertySenderStore>();
         senders
             .Setup(s => s.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid id, CancellationToken _) => new PropertySenderInfo(
-                id, _org, ComplianceSenderType.Manual, ComplianceSenderType.Manual, SenderSource.DefaultNotConnected, true, null, null));
+                id, _org, sender, sender, SenderSource.DefaultNotConnected, true, null, null));
         return new IstatRegionService(
-            _db,
+            db ?? _db,
             senders.Object,
             Microsoft.Extensions.Options.Options.Create(_compliance),
             NullLogger<IstatRegionService>.Instance,

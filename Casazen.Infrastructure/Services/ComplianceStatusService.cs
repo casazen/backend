@@ -692,6 +692,10 @@ public sealed class ComplianceStatusService(
             var territory = territoryOf.GetValueOrDefault(property.ComuneIstatCode?.Trim() ?? string.Empty);
             var istatDay = IstatRegionResolver.DeadlineDay(territory?.Rule, territory?.RegionCode, settings.IstatDeadlineDays);
 
+            // Who sends it: the sender of the property, but not the channel manager where it does not cover the region (the host uses the portal of the
+            // region, so nothing is handled outside). The same rule as the coverage of the property, so the two always say the same.
+            var istatSender = IstatRegionResolver.IstatSenderFor(sender, territory?.Rule?.OctorateCoverage ?? IstatCoverage.Unknown);
+
             foreach (var month in months)
             {
                 var inMonth = propertyStays.Where(s => MonthOf(s.CheckInDate) == month).ToList();
@@ -702,7 +706,7 @@ public sealed class ComplianceStatusService(
                 if (istatDay is { } deadlineDay
                     && ComplianceLightRules.Istat(new IstatFacts
                     {
-                        Sender = sender,
+                        Sender = istatSender,
                         Today = todayDate,
                         PeriodStart = month,
                         DeadlineDay = deadlineDay,

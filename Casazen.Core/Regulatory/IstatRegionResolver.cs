@@ -63,6 +63,17 @@ public static class IstatRegionResolver
     }
 
     /// <summary>
+    /// Who sends the ISTAT communication of a property once the coverage of its region is known: the sender of the property (ISTAT follows Alloggiati),
+    /// except that the channel manager does not send it for a region it does not cover (<see cref="IstatCoverage.NotCovered"/>): the host uses the portal of
+    /// the region, so the sender is manual. A coverage not verified, or verified as covered, leaves the sender as it is. The one rule of the coverage of a
+    /// property and of the ISTAT item of the cockpit, so the two always say the same and a property is never «handled outside» where nobody outside does it.
+    /// </summary>
+    /// <param name="sender">The sender of the property (the Alloggiati one).</param>
+    /// <param name="coverage">Whether the channel manager covers the region of the property.</param>
+    public static ComplianceSenderType IstatSenderFor(ComplianceSenderType sender, IstatCoverage coverage) =>
+        sender == ComplianceSenderType.ChannelManager && coverage == IstatCoverage.NotCovered ? ComplianceSenderType.Manual : sender;
+
+    /// <summary>
     /// What the host does next: connect it in the panel when the region is covered, use the portal of the region when it is not, ask support when
     /// the coverage is not verified. An unknown coverage is never <see cref="IstatNextStep.ConnectInPanel"/>.
     /// </summary>

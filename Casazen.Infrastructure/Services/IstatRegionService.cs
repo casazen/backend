@@ -172,7 +172,8 @@ public sealed class IstatRegionService(
             IstatRegionResolver.RequiredFields(rule),
             RequiredGuestFieldsKnown: rule?.RequiredGuestFields is not null,
             coverage,
-            sender.IstatSender,
+            // The cockpit reads the same rule: where the channel manager does not cover the region, nobody outside sends it and the host does.
+            IstatRegionResolver.IstatSenderFor(sender.IstatSender, coverage),
             next,
             next == IstatNextStep.AskSupport ? OnboardingAssistContexts.PanelIstat : null,
             rule?.SourceUrl,
