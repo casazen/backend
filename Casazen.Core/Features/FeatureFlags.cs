@@ -332,6 +332,17 @@ public static class FeatureFlags
     /// </summary>
     public const string PurgeDocumentsAfterReceipt = "PurgeDocumentsAfterReceipt";
 
+    /// <summary>
+    /// E05/F07/US01/T01 (NF-71, MSG-11, ADR-022-R11): the scheduled messages of the routines, <b>off by default</b> and turned on only in the test environment until the product owner
+    /// confirms the send window and the retry times (<c>Messaging:ScheduledMessages</c>). Off, nothing is planned (the hourly job <c>scheduled-message-plan</c> and the handler of the booking
+    /// events do nothing), the sweep <c>scheduled-message-sweep</c> is not scheduled, the three endpoints of <c>ScheduledMessagesController</c> answer 404 before authentication, and the
+    /// action <c>MessageToGuest</c> of a routine does what it did before (it writes to the conversation of the booking with the template it names, no row of the plan, no variable of the
+    /// check-in link or of the access code). On, the action goes through the plan: the message is planned for each booking, edited or skipped by the host, and sent once, whichever of the
+    /// routine, the sweep and «Send now» reaches it first. It works on the routines, so it also needs <see cref="Routines"/> on: with the module of the routines closed nothing is planned or
+    /// sent, whatever this flag says. It needs no variable to start. The frontend reads the key <c>scheduledMessages</c>.
+    /// </summary>
+    public const string ScheduledMessages = "ScheduledMessages";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -365,5 +376,6 @@ public static class FeatureFlags
         SdiSubmission,
         TaxReportingExports,
         PurgeDocumentsAfterReceipt,
+        ScheduledMessages,
     ];
 }

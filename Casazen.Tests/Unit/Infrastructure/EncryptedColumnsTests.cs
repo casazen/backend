@@ -127,6 +127,8 @@ public class EncryptedColumnsTests
                 "PropertyQuesturaCredentials.Password:Casazen.PropertyQuesturaCredentials",
                 "PropertyQuesturaCredentials.Username:Casazen.PropertyQuesturaCredentials",
                 "PropertyQuesturaCredentials.WsKey:Casazen.PropertyQuesturaCredentials",
+                // NF-71: the host's edit of the text of a scheduled message for one booking, the same purpose as the words of the conversations (E05/F07/US01/T01).
+                "ScheduledMessage.TextOverride:Casazen.Message.Content",
                 // SP-10: the private customers of the suppliers, the booking that waits for their e-mail check (the same data
                 // before it is a customer: one purpose) and the place of the work of a request from the public showcase.
                 "ServiceCustomer.Email:Casazen.ServiceCustomer",
