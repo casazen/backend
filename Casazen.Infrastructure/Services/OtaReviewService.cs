@@ -55,7 +55,15 @@ public sealed partial class OtaReviewService(
 
     // ─── The read ───
 
-    public async Task<OtaReviewSyncResult> SyncBookingAsync(Guid bookingId, CancellationToken ct = default)
+    public Task<OtaReviewSyncResult> SyncBookingAsync(Guid bookingId, CancellationToken ct = default) =>
+        ReadBookingAsync(bookingId, rethrowFailure: false, ct);
+
+    /// <summary>
+    /// The read of one booking. <paramref name="rethrowFailure"/> is for a person who asked for it now (<see cref="RefreshAsync"/>): a read the channel manager refused is stored on the row
+    /// (its code and the time of the next read) and then raised as what it is (409 <c>review_not_available</c>, 502 <c>octorate_unavailable</c>, ...), so the answer is an error with its code
+    /// and not a 200 that hides it in <c>lastSyncError</c>. The sync of the job gets the failure as a result and goes on with the next booking.
+    /// </summary>
+    private async Task<OtaReviewSyncResult> ReadBookingAsync(Guid bookingId, bool rethrowFailure, CancellationToken ct)
     {
         var orgId = orgScope.OrgId;
         if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
@@ -81,13 +89,15 @@ public sealed partial class OtaReviewService(
         if (OtaChannelMapper.Of(booking.Source) is not { } channel || !OtaReviewCapabilities.For(channel).CanRead)
             return new OtaReviewSyncResult(OtaReviewSyncOutcome.ChannelNotIntegrated);
 
-        // A stay that does not happen (a request, a cancelled one, a no-show) has nothing to review: the one definition of an active stay.
+        // A stay that does not happen (a request, a cancelled one, a no-show) has nothing to review, and one with no reservation on the channel manager has nothing to ask for: the one
+        // definition of an active stay.
         if (!AlloggiatiStatusRules.ActiveBookingStatuses.Contains(booking.Status) || booking.NoShow
             || string.IsNullOrWhiteSpace(booking.OctorateReservationId))
         {
-            return new OtaReviewSyncResult(OtaReviewSyncOutcome.NotReadable);
+            return new OtaReviewSyncResult(OtaReviewSyncOutcome.NotReviewable);
         }
 
+        // The listing of the property is the one nobody confirmed: nothing can be read for it (OCT-04).
         var accommodation = await AccommodationOfAsync(orgId, booking.PropertyId, ct);
         if (accommodation is null)
             return new OtaReviewSyncResult(OtaReviewSyncOutcome.NotReadable);
@@ -110,12 +120,20 @@ public sealed partial class OtaReviewService(
         }
         catch (OctorateException ex)
         {
-            return await StoreFailureAsync(orgId, booking, channel, refer, ex.Code, ct);
+            var failed = await StoreFailureAsync(orgId, booking, channel, refer, ex.Code, ct);
+            if (rethrowFailure)
+                throw;
+
+            return failed;
         }
         catch (ArgumentException)
         {
-            // A reference or an accommodation the client could not take: nothing left CasaZen.
-            return await StoreFailureAsync(orgId, booking, channel, refer, OctorateRequestRejectedException.RejectedCode, ct);
+            // A reference or an accommodation the client could not take: nothing left CasaZen. For a person it is a booking with no usable reference on the channel manager.
+            var failed = await StoreFailureAsync(orgId, booking, channel, refer, OctorateRequestRejectedException.RejectedCode, ct);
+            if (rethrowFailure)
+                throw new DomainRuleException(OtaReviewErrorCodes.BookingNotReviewable, "OtaReviewBookingNotReviewable");
+
+            return failed;
         }
 
         return await StoreAsync(orgId, booking, channel, refer, answer, ct);
@@ -327,13 +345,24 @@ public sealed partial class OtaReviewService(
             };
         }
 
-        var result = await SyncBookingAsync(bookingId, ct);
+        // What came of the read is what the answer says: a read the channel manager refused is raised by ReadBookingAsync with its own code (it is stored on the row first, so the ten minutes
+        // count and the state is there), and a booking that cannot be read is an error of its own, never a 200 with an empty list.
+        var result = await ReadBookingAsync(bookingId, rethrowFailure: true, ct);
         switch (result.Outcome)
         {
             case OtaReviewSyncOutcome.ConnectorOff:
                 throw OctorateAuthException.NotConnected();
+            case OtaReviewSyncOutcome.BookingNotFound:
+                throw BookingNotFound(bookingId);
+            case OtaReviewSyncOutcome.ChannelNotIntegrated:
+                throw new DomainRuleException(OtaReviewErrorCodes.ChannelNotIntegrated, "OtaReviewChannelNotIntegrated");
+            case OtaReviewSyncOutcome.NotReviewable:
+                throw new DomainRuleException(OtaReviewErrorCodes.BookingNotReviewable, "OtaReviewBookingNotReviewable");
             case OtaReviewSyncOutcome.NotReadable:
                 throw new DomainConflictException(OtaReviewErrorCodes.MappingNotConfirmed, "MessageMappingNotConfirmed");
+            case OtaReviewSyncOutcome.Failed:
+                // Raised by ReadBookingAsync already; a result that says so and no exception would be a read that failed and was told as a success.
+                throw new OctorateServerException(null);
         }
 
         return await ListForBookingAsync(scope, bookingId, ct);
@@ -680,7 +709,10 @@ public sealed partial class OtaReviewService(
                 b.OctorateReservationId,
                 b.Guest.DataAnonymizedDate != null || b.Guest.IsDeleted))
             .FirstOrDefaultAsync(ct)
-        ?? throw new NotFoundException($"Booking {bookingId} not found") { Code = OtaReviewErrorCodes.BookingNotFound, MessageKey = "BookingNotFound" };
+        ?? throw BookingNotFound(bookingId);
+
+    private static NotFoundException BookingNotFound(Guid bookingId) =>
+        new($"Booking {bookingId} not found") { Code = OtaReviewErrorCodes.BookingNotFound, MessageKey = "BookingNotFound" };
 
     /// <summary>The accommodation of the confirmed listing of a property; <c>null</c> while the property has none.</summary>
     private async Task<string?> AccommodationOfAsync(Guid orgId, Guid propertyId, CancellationToken ct)

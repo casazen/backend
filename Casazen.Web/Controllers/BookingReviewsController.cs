@@ -44,8 +44,11 @@ public class BookingReviewsController(
 
     /// <summary>
     /// Reads the booking from the channel manager now, at most once every ten minutes for a booking: 429 <c>ota_review_refresh_too_soon</c> with <c>retryAfterSeconds</c> after that.
-    /// Answers the reviews as they are after the read. 404 <c>booking_not_found</c>; 409 <c>octorate_not_connected</c> or <c>mapping_not_confirmed</c> when nothing can be read; 422
-    /// <c>channel_not_integrated</c> for a booking whose channel has no integration for reviews.
+    /// Answers the reviews as they are after the read, and nothing else is a 200: 404 <c>booking_not_found</c>; 409 <c>octorate_not_connected</c> or <c>mapping_not_confirmed</c> (the listing
+    /// of the property is not confirmed) when nothing can be read, and <c>review_not_available</c> when the channel manager does not give the reviews of the accommodation; 422
+    /// <c>channel_not_integrated</c> for a booking whose channel has no integration for reviews and <c>ota_review_booking_not_reviewable</c> for a stay that did not happen (cancelled, no-show)
+    /// or has no reference on the channel manager; 502 <c>octorate_unavailable</c> (or the other code of the channel manager) when the read failed, which is also stored on the booking
+    /// (<c>lastSyncError</c>) and counts for the ten minutes.
     /// </summary>
     [HttpPost("refresh")]
     [ProducesResponseType(typeof(BookingReviewsDto), StatusCodes.Status200OK)]
@@ -54,6 +57,7 @@ public class BookingReviewsController(
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
     public async Task<ActionResult<BookingReviewsDto>> Refresh(Guid id, CancellationToken cancellationToken)
     {
         var scope = await AuthorizedScopeAsync(id, cancellationToken);

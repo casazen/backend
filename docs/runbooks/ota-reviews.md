@@ -38,7 +38,9 @@ run goes on. **Nothing is invented**: no row is made for a channel with no integ
 and no reply, and a published review is never taken back by a later read that says less.
 
 `POST api/bookings/{id}/reviews/refresh` (`booking.read`, the caller's reach on the property) reads one booking now, at most **once every ten minutes**: 429 `ota_review_refresh_too_soon`
-with `retryAfterSeconds`; 422 `channel_not_integrated`; 409 `octorate_not_connected` / `mapping_not_confirmed` when nothing can be read.
+with `retryAfterSeconds`; 422 `channel_not_integrated`, and `ota_review_booking_not_reviewable` for a stay that did not happen (cancelled, no-show) or has no reference on the channel manager; 409
+`octorate_not_connected` / `mapping_not_confirmed` (the listing is not confirmed) when nothing can be read. **A read that failed is not a 200**: the code of the channel manager is stored on the row
+(`lastSyncError`, which also counts for the ten minutes) and raised as it is (409 `review_not_available`, 502 `octorate_unavailable`, ...).
 
 The first time the channel manager shows the guest's review published, **one** domain event `ReviewReceived` is recorded (dedup key `ota-review:{id}`, ids only: the review, the
 booking, the property) in the same save as the row, so the routines of the host that wait for a review start from it, and the hosts of the booking are told: a **bell entry, a pop-up

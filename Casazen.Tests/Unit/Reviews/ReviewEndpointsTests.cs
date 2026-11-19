@@ -319,6 +319,55 @@ public class ReviewEndpointsTests
     }
 
     /// <summary>
+    /// The answer of the refresh through the real error middleware: a read the channel manager refused is a 409 with its code, a channel manager that does not answer a 502, a stay that did not happen a
+    /// 422 with its own code, a house whose listing nobody confirmed a 409 <c>mapping_not_confirmed</c>, and a failed read counts for the ten minutes (429); only a read that worked is a 200.
+    /// </summary>
+    [Fact]
+    public async Task BookingReviewsController_Refresh_AReadThatDidNotWorkIsAnErrorWithItsCode_AndOnlyAReadThatWorkedIsA200()
+    {
+        var s = await SeedAsync();
+        var h = s.H;
+        var cancelled = await h.AddStayAsync(h.Granted.OrgId, h.Granted.PropertyId, OtaReviewHarness.GrantedAccommodation, "HMCANCELED", status: BookingStatus.Cancelled);
+        h.WithdrawListing(h.Hidden.OrgId, OtaReviewHarness.HiddenAccommodation);
+        await using var rig = Owner(h);
+        var controller = rig.Bookings();
+        h.Clock.Advance(TimeSpan.FromMinutes(11));
+
+        h.Client
+            .Setup(c => c.GetReviewAsync(h.Granted.Accommodation, h.Granted.Refer, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(OctorateAuthException.ReviewNotAvailable(403));
+        var refused = await AnswerOfAsync(() => controller.Refresh(h.Granted.BookingId, CancellationToken.None));
+        Assert.Equal(StatusCodes.Status409Conflict, refused.Status);
+        Assert.Equal(OtaReviewErrorCodes.ReviewNotAvailable, refused.Code);
+
+        var tooSoon = await AnswerOfAsync(() => controller.Refresh(h.Granted.BookingId, CancellationToken.None));
+        Assert.Equal(StatusCodes.Status429TooManyRequests, tooSoon.Status);
+        Assert.Equal(OtaReviewErrorCodes.RefreshTooSoon, tooSoon.Code);
+
+        h.Clock.Advance(TimeSpan.FromMinutes(11));
+        h.Client
+            .Setup(c => c.GetReviewAsync(h.Granted.Accommodation, h.Granted.Refer, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OctorateServerException(503));
+        var down = await AnswerOfAsync(() => controller.Refresh(h.Granted.BookingId, CancellationToken.None));
+        Assert.Equal(StatusCodes.Status502BadGateway, down.Status);
+        Assert.Equal("octorate_unavailable", down.Code);
+
+        var notReviewable = await AnswerOfAsync(() => controller.Refresh(cancelled.BookingId, CancellationToken.None));
+        Assert.Equal(StatusCodes.Status422UnprocessableEntity, notReviewable.Status);
+        Assert.Equal(OtaReviewErrorCodes.BookingNotReviewable, notReviewable.Code);
+
+        var noListing = await AnswerOfAsync(() => controller.Refresh(h.Hidden.BookingId, CancellationToken.None));
+        Assert.Equal(StatusCodes.Status409Conflict, noListing.Status);
+        Assert.Equal(OtaReviewErrorCodes.MappingNotConfirmed, noListing.Code);
+
+        h.Clock.Advance(TimeSpan.FromMinutes(11));
+        h.ChannelHasReview(h.Granted);
+        var worked = await AnswerOfAsync(() => controller.Refresh(h.Granted.BookingId, CancellationToken.None));
+        Assert.Equal(StatusCodes.Status200OK, worked.Status);
+        Assert.Null(worked.Code);
+    }
+
+    /// <summary>
     /// PROOF TEST: permission rule (NF-69, T03). The detail of a review of the hub is read in the reach of the caller: a collaborator «Solo alcuni» opens the reviews of its house (of a channel and of the
     /// booking site) and gets the 404 <c>review_not_found</c> for the others, for a review of another org and for a missing one.
     /// </summary>
@@ -413,6 +462,28 @@ public class ReviewEndpointsTests
             return null;
 
         return code is JsonElement json ? json.GetString() : code?.ToString();
+    }
+
+    /// <summary>What a call becomes through the real error middleware: the status of the answer and the <c>code</c> of its problem (<c>null</c> for an answer that is not a problem).</summary>
+    private static async Task<(int Status, string? Code)> AnswerOfAsync(Func<Task> call)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddLocalization();
+        var context = new DefaultHttpContext { RequestServices = services.BuildServiceProvider() };
+        context.Request.Method = HttpMethods.Post;
+        context.Request.Path = "/api/bookings/booking/reviews/refresh";
+        context.Response.Body = new MemoryStream();
+
+        await new ErrorHandlingMiddleware(_ => call(), NullLogger<ErrorHandlingMiddleware>.Instance).InvokeAsync(context);
+
+        context.Response.Body.Position = 0;
+        var body = await new StreamReader(context.Response.Body).ReadToEndAsync();
+        if (string.IsNullOrWhiteSpace(body))
+            return (context.Response.StatusCode, null);
+
+        using var json = JsonDocument.Parse(body);
+        return (context.Response.StatusCode, json.RootElement.TryGetProperty("code", out var code) ? code.GetString() : null);
     }
 
     private static IOrgContextResolver Orgs()

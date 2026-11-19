@@ -39,7 +39,10 @@ public interface IOtaReviewService
     /// <summary>
     /// Reads the booking now (<see cref="SyncBookingAsync"/>) at most once every <see cref="OtaReviewPollSchedule.RefreshInterval"/>: <see cref="Exceptions.DomainTooManyRequestsException"/>
     /// <c>ota_review_refresh_too_soon</c> (429) with <c>retryAfterSeconds</c> after that; <see cref="Exceptions.DomainRuleException"/> <c>channel_not_integrated</c> (422) for a
-    /// booking whose channel has no integration for reviews. Answers the reviews of the booking as they are after the read.
+    /// booking whose channel has no integration for reviews. Answers the reviews of the booking as they are after the read. <b>Nothing is told as a success that was not one:</b> a booking that
+    /// did not happen or has no reference on the channel manager is <see cref="Exceptions.DomainRuleException"/> <c>ota_review_booking_not_reviewable</c> (422), a property whose listing nobody
+    /// confirmed is <see cref="Exceptions.DomainConflictException"/> <c>mapping_not_confirmed</c> (409), and a read the channel manager refused is stored on the row (its code and the time of the
+    /// next read) and raised with its own code (409 <c>review_not_available</c>, 502 <c>octorate_unavailable</c>, ...).
     /// </summary>
     Task<BookingReviewsView> RefreshAsync(HostScope scope, Guid bookingId, CancellationToken ct = default);
 
@@ -122,6 +125,9 @@ public static class OtaReviewErrorCodes
 
     /// <summary>The booking is not there, is of another org or is out of the reach of the caller (404).</summary>
     public const string BookingNotFound = "booking_not_found";
+
+    /// <summary>The stay has no reviews to read: it did not happen (a request, a cancelled booking, a no-show) or it has no usable reference on the channel manager (422).</summary>
+    public const string BookingNotReviewable = "ota_review_booking_not_reviewable";
 }
 
 /// <summary>How a read of one booking ended.</summary>
@@ -139,11 +145,14 @@ public enum OtaReviewSyncOutcome
     /// <summary>The channel of the booking has no integration for reviews: nothing was read, and no row was made.</summary>
     ChannelNotIntegrated = 3,
 
-    /// <summary>The property of the booking has no confirmed listing, or the booking has no reservation on the channel manager: nothing can be read.</summary>
+    /// <summary>The property of the booking has no confirmed listing (nobody decided it, OCT-04): nothing can be read for it.</summary>
     NotReadable = 4,
 
     /// <summary>The channel manager did not give the reviews (<see cref="OtaReviewSyncResult.ErrorCode"/> says why); the row stores the code and waits for the next read.</summary>
     Failed = 5,
+
+    /// <summary>The stay has no reviews to read: it did not happen (a request, a cancelled booking, a no-show) or it has no reservation on the channel manager. Nothing was read, and no row was made.</summary>
+    NotReviewable = 6,
 }
 
 /// <summary>What <see cref="IOtaReviewService.SyncBookingAsync"/> did for one booking: how it ended, the code of a failure, and whether the guest's review became published now.</summary>

@@ -8539,6 +8539,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OtaReviewRefreshTooSoon" xml:space="preserve">
     <value>Le recensioni di questa prenotazione sono state lette da poco: riprova tra qualche minuto.</value>
   </data>
+  <data name="OtaReviewBookingNotReviewable" xml:space="preserve">
+    <value>Per questa prenotazione non ci sono recensioni da leggere: il soggiorno non c’è stato (prenotazione annullata o ospite non presentato) oppure non ha un riferimento utilizzabile sul canale.</value>
+  </data>
   <data name="OctorateReviewNotAvailable" xml:space="preserve">
     <value>Le recensioni di questo immobile non sono disponibili nel channel manager (di solito manca un permesso o il canale non è collegato): per ora non si possono leggere.</value>
   </data>

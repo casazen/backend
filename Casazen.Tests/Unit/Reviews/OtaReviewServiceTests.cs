@@ -169,7 +169,7 @@ public class OtaReviewServiceTests
     }
 
     [Fact]
-    public async Task SyncBooking_AStayThatDoesNotHappenOrHasNoListingOrNoReservation_IsNotReadable()
+    public async Task SyncBooking_AStayThatDoesNotHappenOrHasNoReservation_IsNotReviewable_AndOneWithNoListingIsNotReadable()
     {
         var h = await OtaReviewHarness.CreateAsync();
         var orgId = h.Granted.OrgId;
@@ -186,14 +186,22 @@ public class OtaReviewServiceTests
 
         h.WithdrawListing(h.Hidden.OrgId, OtaReviewHarness.HiddenAccommodation);
 
-        foreach (var stay in new[] { cancelled, pending, noReservation, noShow, h.Hidden })
+        // A stay that does not happen, or that has no reservation on the channel manager, has nothing to review; a house whose listing nobody confirmed cannot be read.
+        foreach (var (stay, outcome) in new[]
+                 {
+                     (cancelled, OtaReviewSyncOutcome.NotReviewable),
+                     (pending, OtaReviewSyncOutcome.NotReviewable),
+                     (noReservation, OtaReviewSyncOutcome.NotReviewable),
+                     (noShow, OtaReviewSyncOutcome.NotReviewable),
+                     (h.Hidden, OtaReviewSyncOutcome.NotReadable),
+                 })
         {
             await using var db = h.NewDb();
             OtaReviewSyncResult result;
             using (h.Scope.Use(stay.OrgId))
                 result = await h.Service(db).SyncBookingAsync(stay.BookingId);
 
-            Assert.Equal(OtaReviewSyncOutcome.NotReadable, result.Outcome);
+            Assert.Equal(outcome, result.Outcome);
         }
 
         h.Client.Verify(c => c.GetReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -706,6 +714,71 @@ public class OtaReviewServiceTests
         var off = await Assert.ThrowsAsync<OctorateAuthException>(() => rig.Service.RefreshAsync(h.World.OrgWide, h.Granted.BookingId));
         Assert.True(off.IsNotConnected);
         h.Client.Verify(c => c.GetReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>A refresh that did not read anything is never a 200: a read the channel manager refused is stored and then raised with its own code, and it counts for the ten minutes.</summary>
+    [Fact]
+    public async Task Refresh_AReadTheChannelManagerRefuses_IsStoredThenRaisedWithItsCode_AndItCountsForTheTenMinutes()
+    {
+        var h = await OtaReviewHarness.CreateAsync();
+        await PublishAsync(h, h.Granted);
+        await using var rig = h.AsRequestOf(h.Granted.OrgId);
+
+        // The channel manager does not give the reviews of the accommodation: 409 with its code, and the row remembers it (what was read before stays).
+        h.Clock.Advance(TimeSpan.FromMinutes(11));
+        h.Client
+            .Setup(c => c.GetReviewAsync(h.Granted.Accommodation, h.Granted.Refer, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(OctorateAuthException.ReviewNotAvailable(403));
+        var refused = await Assert.ThrowsAsync<OctorateAuthException>(() => rig.Service.RefreshAsync(h.World.OrgWide, h.Granted.BookingId));
+        Assert.True(refused.IsReviewNotAvailable);
+        Assert.Equal(409, refused.ResponseStatusCode);
+        var stored = await h.ReviewOfAsync(h.Granted);
+        Assert.Equal(OtaReviewErrorCodes.ReviewNotAvailable, stored.LastSyncError);
+        Assert.True(stored.GuestReviewPublished);
+
+        // A read that failed counts for the ten minutes as one that worked.
+        var tooSoon = await Assert.ThrowsAsync<DomainTooManyRequestsException>(() => rig.Service.RefreshAsync(h.World.OrgWide, h.Granted.BookingId));
+        Assert.Equal(OtaReviewErrorCodes.RefreshTooSoon, tooSoon.Code);
+
+        // The channel manager did not answer: 502 with its code.
+        h.Clock.Advance(TimeSpan.FromMinutes(11));
+        h.Client
+            .Setup(c => c.GetReviewAsync(h.Granted.Accommodation, h.Granted.Refer, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OctorateServerException(503));
+        var down = await Assert.ThrowsAsync<OctorateServerException>(() => rig.Service.RefreshAsync(h.World.OrgWide, h.Granted.BookingId));
+        Assert.Equal(502, down.ResponseStatusCode);
+        Assert.Equal(down.Code, (await h.ReviewOfAsync(h.Granted)).LastSyncError);
+
+        // A read that works again is the answer, and the error is gone.
+        h.Clock.Advance(TimeSpan.FromMinutes(11));
+        h.ChannelHasReview(h.Granted);
+        var list = await rig.Service.RefreshAsync(h.World.OrgWide, h.Granted.BookingId);
+        Assert.Single(list.Items);
+        Assert.Null(list.LastSyncError);
+    }
+
+    [Fact]
+    public async Task Refresh_AStayThatDidNotHappenOrHasNoReference_IsA422WithItsOwnCode_AndAHouseWithNoListingIsA409()
+    {
+        var h = await OtaReviewHarness.CreateAsync();
+        var orgId = h.Granted.OrgId;
+        var cancelled = await h.AddStayAsync(orgId, h.Granted.PropertyId, OtaReviewHarness.GrantedAccommodation, "HMCANCELED", status: BookingStatus.Cancelled);
+        var noReference = await h.AddStayAsync(orgId, h.Granted.PropertyId, OtaReviewHarness.GrantedAccommodation, string.Empty);
+        h.WithdrawListing(h.Hidden.OrgId, OtaReviewHarness.HiddenAccommodation);
+        await using var rig = h.AsRequestOf(orgId);
+
+        foreach (var stay in new[] { cancelled, noReference })
+        {
+            var notReviewable = await Assert.ThrowsAsync<DomainRuleException>(() => rig.Service.RefreshAsync(h.World.OrgWide, stay.BookingId));
+            Assert.Equal(OtaReviewErrorCodes.BookingNotReviewable, notReviewable.Code);
+        }
+
+        var noListing = await Assert.ThrowsAsync<DomainConflictException>(() => rig.Service.RefreshAsync(h.World.OrgWide, h.Hidden.BookingId));
+        Assert.Equal(OtaReviewErrorCodes.MappingNotConfirmed, noListing.Code);
+
+        // Nothing was asked of the channel manager and no row was made.
+        h.Client.Verify(c => c.GetReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Empty(await h.ReadAsync(db => db.OtaReviews.ToListAsync()));
     }
 
     // ─── Tenant and reach ───
