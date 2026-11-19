@@ -692,6 +692,112 @@ public class OwnerStatementDocumentsTests
         Assert.Equal((false, false), (ownerAccount.AgencyHoldsPortalAccount, ownerAccount.AgencyHoldsPortalAccountWithoutRecharge));
     }
 
+    /// <summary>
+    /// Trust: each commission of a channel is told under the label of its own account, in one statement. An organization whose Booking.com accounts are the owner's (V1) but one, the listing
+    /// «TEST Casa Locarno», whose account is the agency's with the recharge turned off (the override of a listing and portal, read through the real resolver), has two commissions of different
+    /// amounts: the one of the owner's listing is under the sentence of V1 and the one of the agency's listing under the label of its own, each in a table with the total of its own lines, in the
+    /// order of the kinds and not in the order of the days (the agency's listing is the earlier day). The same in English, and the totals are the ones the version stores.
+    /// </summary>
+    [Fact]
+    public async Task StatementChannelFees_AnOwnerListingAndAnAgencyListingWithoutRecharge_AreTwoGroupsEachUnderItsOwnLabel_Test()
+    {
+        var texts = new ResxDocumentTexts();
+        var (world, content) = await StatementOfAnOwnerListingAndAnAgencyListingAsync();
+
+        // The lines: each carries the flags of its own account, the amounts are the ones the ledger posted, and the totals are the ones the version stores (both commissions are in them).
+        var fees = content.Of(OwnerStatementSection.ChannelFees);
+        var owner = Assert.Single(fees, line => line.PropertyName == "TEST Casa Lugano");
+        var agency = Assert.Single(fees, line => line.PropertyName == "TEST Casa Locarno");
+        Assert.Equal(2, fees.Count);
+        Assert.Equal((-75m, false, false), (owner.Amount, owner.AgencyHoldsPortalAccount, owner.AgencyHoldsPortalAccountWithoutRecharge));
+        Assert.Equal((-42m, false, true), (agency.Amount, agency.AgencyHoldsPortalAccount, agency.AgencyHoldsPortalAccountWithoutRecharge));
+        Assert.Equal(OwnerStatementTotals.Of(world.Version), content.Totals);
+        Assert.Equal((-117m, 538m, 238m), (content.Totals.ChannelFees, content.Totals.Period, content.Totals.ClosingBalance));
+
+        // The owner portal reads the same two facts line by line.
+        var portal = OwnerPortalStatementSectionDto.From(OwnerStatementSection.ChannelFees, fees).Lines.ToDictionary(line => line.Property!);
+        Assert.Equal((false, false), (portal["TEST Casa Lugano"].ChannelFeeRechargedByAgency, portal["TEST Casa Lugano"].ChannelFeeBilledToAgencyNotRecharged));
+        Assert.Equal((false, true), (portal["TEST Casa Locarno"].ChannelFeeRechargedByAgency, portal["TEST Casa Locarno"].ChannelFeeBilledToAgencyNotRecharged));
+
+        // The words in Italian: the sentence of V1 over the owner's listing and, after it though its day is earlier, the label of its own over the agency's, each with a table and its own total.
+        var italian = ChannelFeeBlocks(OwnerStatementLayout.Pdf(content, texts), texts, "it");
+        Assert.Equal(new[] { true, false, true, false }, italian.Select(block => block is PdfParagraph).ToArray());
+        Assert.Equal(new PdfParagraph("Trattenuta dal portale (fattura del portale a tuo nome)", Bold: true), italian[0]);
+        Assert.Equal(new PdfParagraph("Commissioni del portale (account del portale intestato al gestore, senza riaddebito in fattura)", Bold: true), italian[2]);
+        Assert.Equal(new[] { ("TEST Casa Lugano", "Booking.com", Chf(-75m)), ("Totale", string.Empty, Chf(-75m)) }, ChannelFeeCells(italian[1]));
+        Assert.Equal(new[] { ("TEST Casa Locarno", "Booking.com", Chf(-42m)), ("Totale", string.Empty, Chf(-42m)) }, ChannelFeeCells(italian[3]));
+
+        // The two tables keep the columns they always had.
+        var columns = new[]
+        {
+            texts.Get("StatementFileColProperty", "it"),
+            texts.Get("StatementFileColStay", "it"),
+            texts.Get("StatementFileColChannel", "it"),
+            texts.Get("StatementFileColAmount", "it", "CHF"),
+        };
+        Assert.All(new[] { italian[1], italian[3] }, table => Assert.Equal(columns, Assert.IsType<PdfTable>(table).Columns.Select(column => column.Header).ToArray()));
+
+        // The same two groups, in the same order, in English.
+        var english = ChannelFeeBlocks(OwnerStatementLayout.Pdf(await world.Documents.GetContentAsync(world.OrgId, world.VersionId, "en"), texts), texts, "en");
+        Assert.Equal(new[] { true, false, true, false }, english.Select(block => block is PdfParagraph).ToArray());
+        Assert.Equal(
+            new[] { "Withheld by the portal (portal invoice in your name)", "Portal commissions (portal account held by the property manager, no recharge on an invoice)" },
+            english.OfType<PdfParagraph>().Select(paragraph => paragraph.Text).ToArray());
+        Assert.Equal(new[] { "TEST Casa Lugano", "TEST Casa Locarno" }, english.OfType<PdfTable>().Select(table => table.Rows[0][0]).ToArray());
+    }
+
+    /// <summary>
+    /// Trust, the three kinds of commission in one statement (asked of the layout with the flags set by hand: an organization recharges all the accounts it holds or none, so the real resolver never
+    /// gives the recharge and the account without it together): the account of the owner (V1), the recharge of the agency with the invoice of the property manager, and the account of the agency without
+    /// the recharge. They are three groups, each a label and a table of its own, in that order whatever the order of the lines; the first two are what the statement had before the third kind existed
+    /// (the same blocks as a statement without it) and the third only follows them.
+    /// </summary>
+    [Fact]
+    public async Task StatementChannelFees_TheThreeKindsInOneStatement_AreThreeGroupsInOrder_AndTheFirstTwoAreAsBefore_Test()
+    {
+        var texts = new ResxDocumentTexts();
+        var (_, content) = await StatementOfAnOwnerListingAndAnAgencyListingAsync();
+        var fees = content.Of(OwnerStatementSection.ChannelFees);
+        var owner = fees.Single(line => line.PropertyName == "TEST Casa Lugano");
+        var withoutRecharge = fees.Single(line => line.PropertyName == "TEST Casa Locarno");
+        var recharged = owner with { EntryId = Guid.NewGuid(), PropertyName = "TEST Casa Como", Amount = -30m, AgencyHoldsPortalAccount = true };
+
+        // The statement with the given commissions of the channels (the other parts are the ones of the statement above), with an invoice of the property manager linked.
+        OwnerStatementContent Statement(params OwnerStatementLine[] channelFees)
+        {
+            var lines = content.Lines.Where(line => line.Section != OwnerStatementSection.ChannelFees).Concat(channelFees).ToList();
+            return content with
+            {
+                Lines = lines,
+                Totals = OwnerStatementLayout.TotalsOf(content.Totals.OpeningBalance, lines),
+                OwnerInvoiceNumber = "PM2026/7",
+                OwnerInvoiceDate = new DateOnly(2026, 11, 12),
+            };
+        }
+
+        // The lines come in an order that is neither the one of the kinds nor the one of the days: the layout makes the groups.
+        var three = ChannelFeeBlocks(OwnerStatementLayout.Pdf(Statement(withoutRecharge, recharged, owner), texts), texts, "it");
+        Assert.Equal(new[] { true, false, true, false, true, false }, three.Select(block => block is PdfParagraph).ToArray());
+        Assert.Equal(
+            new[]
+            {
+                new PdfParagraph("Trattenuta dal portale (fattura del portale a tuo nome)", Bold: true),
+                new PdfParagraph("Commissioni del portale riaddebitate dal gestore (fattura n. PM2026/7)", Bold: true),
+                new PdfParagraph("Commissioni del portale (account del portale intestato al gestore, senza riaddebito in fattura)", Bold: true),
+            },
+            three.OfType<PdfParagraph>().ToArray());
+        Assert.Equal(new[] { ("TEST Casa Lugano", "Booking.com", Chf(-75m)), ("Totale", string.Empty, Chf(-75m)) }, ChannelFeeCells(three[1]));
+        Assert.Equal(new[] { ("TEST Casa Como", "Booking.com", Chf(-30m)), ("Totale", string.Empty, Chf(-30m)) }, ChannelFeeCells(three[3]));
+        Assert.Equal(new[] { ("TEST Casa Locarno", "Booking.com", Chf(-42m)), ("Totale", string.Empty, Chf(-42m)) }, ChannelFeeCells(three[5]));
+
+        // As before: without the third kind the part has exactly the first two groups, and with it the same blocks come first: the new kind only follows them.
+        var before = ChannelFeeBlocks(OwnerStatementLayout.Pdf(Statement(recharged, owner), texts), texts, "it");
+        Assert.Equal(new[] { true, false, true, false }, before.Select(block => block is PdfParagraph).ToArray());
+        Assert.Equal(before.OfType<PdfParagraph>().ToArray(), three.Take(4).OfType<PdfParagraph>().ToArray());
+        Assert.Equal(TextOf(before), TextOf(three.Take(4)));
+        Assert.DoesNotContain("senza riaddebito in fattura", TextOf(before), StringComparison.Ordinal);
+    }
+
     /// <summary>The day a statement says it was published is the day in Rome, as the other documents write their days: 23:30 UTC is already the next day there, winter and summer time.</summary>
     [Fact]
     public async Task StatementFiles_PublishedDayIsTheDayInRome_Test()
@@ -814,6 +920,43 @@ public class OwnerStatementDocumentsTests
     /// <summary>The rows of the table of the part «Netto» that closes the statement (the one with the opening and the closing balance).</summary>
     private static IReadOnlyList<IReadOnlyList<string>> NetTable(PdfDocumentContent content, IDocumentTexts texts) =>
         content.Blocks.OfType<PdfTable>().Single(t => t.Rows.Any(r => r[0] == texts.Get("StatementFileNetClosing", "it"))).Rows;
+
+    /// <summary>
+    /// The statement of an organization whose Booking.com accounts are the owner's (V1) but one: the listing «TEST Casa Locarno», whose account is the agency's, with the recharge of the commissions
+    /// turned off (the override of a listing and portal, read through the real resolver). Each listing has the commission its portal kept: 75.00 on «TEST Casa Lugano» (the 8th of October) and 42.00
+    /// on «TEST Casa Locarno» (the 2nd), so that the order of the days is not the order of the kinds.
+    /// </summary>
+    private static async Task<(World World, OwnerStatementContent Content)> StatementOfAnOwnerListingAndAnAgencyListingAsync()
+    {
+        // A version that is not published yet (approved): the append-only guard refuses any change of a published one, and the totals this version stores follow the second commission.
+        var world = await World.CreateAsync(approved: true, readsPortalAccounts: true);
+        world.Db.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile { OrgId = world.OrgId, PortalAccountHolder = PortalAccountHolder.Owner, RechargePortalCommissions = false });
+        await world.Db.SaveChangesAsync();
+
+        var agencyListing = await world.AddListingWithPortalFeeAsync("TEST Casa Locarno", -42m, 2);
+        world.Db.PropertyChannelAccountHolders.Add(
+            new PropertyChannelAccountHolder { OrgId = world.OrgId, PropertyId = agencyListing, Channel = nameof(BookingSource.BookingCom), Holder = PortalAccountHolder.Agency });
+        await world.Db.SaveChangesAsync();
+
+        return (world, await world.Documents.GetContentAsync(world.OrgId, world.VersionId, "it"));
+    }
+
+    /// <summary>The blocks of the part «Commissioni dei canali» of a statement: what follows its heading, up to the heading of the next part.</summary>
+    private static List<PdfBlock> ChannelFeeBlocks(PdfDocumentContent content, IDocumentTexts texts, string language)
+    {
+        var blocks = content.Blocks.ToList();
+        var heading = texts.Get("StatementFileChannelFeesHeading", language);
+        var start = blocks.FindIndex(block => block is PdfHeading found && found.Text == heading);
+        Assert.True(start >= 0, "the statement has the part of the commissions of the channels");
+        return blocks.Skip(start + 1).TakeWhile(block => block is not PdfHeading).ToList();
+    }
+
+    /// <summary>The cells of a table of the commissions that do not depend on the days of the stay: the property, the channel and the amount (the row of the total has no channel).</summary>
+    private static (string Property, string Channel, string Amount)[] ChannelFeeCells(PdfBlock table) =>
+        [.. Assert.IsType<PdfTable>(table).Rows.Select(row => (row[0], row[2], row[3]))];
+
+    /// <summary>An amount as the statement writes it in francs.</summary>
+    private static string Chf(decimal amount) => OwnerStatementLayout.Money(amount, "CHF");
 
     /// <summary>All the text of some blocks, one line each.</summary>
     private static string TextOf(IEnumerable<PdfBlock> blocks) => string.Join(
@@ -983,6 +1126,46 @@ public class OwnerStatementDocumentsTests
             change(booking);
             await Db.SaveChangesAsync();
             Db.ChangeTracker.Clear();
+        }
+
+        /// <summary>
+        /// A second listing of the owner with a Booking.com stay and the commission its portal kept on it (<paramref name="fee"/>, negative), posted on the <paramref name="day"/> of October: the
+        /// statement has then a second commission of a channel, of another listing. The totals the version stores follow the new line, as the ones of a version cut from these lines do:
+        /// for a version that is not published yet (<c>approved: true</c>), because the append-only guard refuses any change of a published one.
+        /// </summary>
+        public async Task<Guid> AddListingWithPortalFeeAsync(string name, decimal fee, int day)
+        {
+            var propertyId = Guid.NewGuid();
+            var bookingId = Guid.NewGuid();
+            var checkOut = new DateTime(2026, 10, day, 10, 0, 0, DateTimeKind.Utc);
+            Db.Properties.Add(new Property { Id = propertyId, OrgId = OrgId, OwnerId = "auth0|agency", Name = name, Address = "Via 2", City = "Locarno", Currency = "CHF" });
+            Db.Bookings.Add(new Booking
+            {
+                Id = bookingId,
+                OrgId = OrgId,
+                PropertyId = propertyId,
+                CheckInDate = checkOut.AddDays(-3).AddHours(4),
+                CheckOutDate = checkOut,
+                Source = BookingSource.BookingCom,
+                TouristTax = 0m,
+                TotalPrice = 400m,
+                Status = BookingStatus.Confirmed,
+            });
+            var entry = Entry(OwnerLedgerEntryType.ChannelFee, OwnerLedgerSourceType.Booking, bookingId, bookingId.ToString("N"), fee, new DateOnly(2026, 10, day), 11);
+            entry.PropertyId = propertyId;
+            Db.OwnerLedgerEntries.Add(entry);
+            await Db.SaveChangesAsync();
+
+            await Tamper(
+                Db,
+                VersionId,
+                version =>
+                {
+                    version.ChannelFees += fee;
+                    version.ClosingBalance += fee;
+                    version.EntryCount += 1;
+                });
+            return propertyId;
         }
 
         private async Task SeedAsync(bool approved, bool convertedStay)
