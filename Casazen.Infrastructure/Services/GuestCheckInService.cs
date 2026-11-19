@@ -103,6 +103,52 @@ public class GuestCheckInService(
         }
     }
 
+    public async Task<IssuedCheckInLink> ReissueLinkAsync(Guid bookingId, Guid orgId)
+    {
+        var now = UtcNow();
+        var open = await db.GuestCheckInSessions
+            .Where(s => s.BookingId == bookingId && s.OrgId == orgId && OpenLinkStatuses.Contains(s.Status) && s.ExpiresAt >= now)
+            .ToListAsync();
+
+        IssuedCheckInLink link;
+        if (open.Count == 0)
+        {
+            link = await IssueLinkAsync(bookingId, orgId);
+        }
+        else
+        {
+            // The session the guest is working on wins over one that was never opened; of two alike the newest.
+            var kept = open
+                .OrderByDescending(s => s.Status == GuestCheckInSessionStatus.InCompilazione)
+                .ThenByDescending(s => s.CreatedAt)
+                .First();
+
+            // Only the token and the expiry change: the consent, the document read, the language and the attempts spent stay on the session.
+            var rawToken = GenerateToken();
+            kept.TokenHash = ComputeSha256Hex(rawToken);
+            kept.ExpiresAt = now.Add(_options.SessionLifetime);
+
+            // The e-mail of the old link, if it had one, carried a link that is dead now: the new one is a link to copy.
+            kept.LinkEmailStatus = GuestCheckInLinkEmailStatus.NotRequested;
+            kept.LinkEmailError = null;
+            kept.SentAt = null;
+            kept.UpdatedAt = now;
+
+            foreach (var other in open.Where(s => s.Id != kept.Id))
+            {
+                other.Status = GuestCheckInSessionStatus.Scaduto;
+                other.UpdatedAt = now;
+            }
+
+            await db.SaveChangesAsync();
+            logger.LogInformation("Check-in link of booking {BookingId} renewed on session {SessionId}", bookingId, kept.Id);
+            link = new IssuedCheckInLink(kept.Id, rawToken, kept.ExpiresAt);
+        }
+
+        await EndLinkDeliveryAsync(orgId, bookingId, CheckInLinkEndReasons.LinkReplaced);
+        return link;
+    }
+
     public async Task<int> ExpireStaleSessionsAsync(CancellationToken cancellationToken = default)
     {
         var now = UtcNow();
@@ -509,6 +555,25 @@ public class GuestCheckInService(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "The delivery of the link of session {SessionId}, booking {BookingId} could not be ended", session.Id, session.BookingId);
+        }
+    }
+
+    /// <summary>
+    /// The delivery of the link of a booking, if it had one that waited (E23/F01/US01/T01), ends because <paramref name="reason"/> (a link replaced the one it carried), and the host's «To do» to
+    /// carry the link closes. Best effort after the link is saved: whatever goes wrong here is logged and never fails the new link.
+    /// </summary>
+    private async Task EndLinkDeliveryAsync(Guid orgId, Guid bookingId, string reason)
+    {
+        if (linkDeliveries is null)
+            return;
+
+        try
+        {
+            await linkDeliveries.EndAsync(orgId, bookingId, reason);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "The delivery of the link of booking {BookingId} could not be ended ({Reason})", bookingId, reason);
         }
     }
 

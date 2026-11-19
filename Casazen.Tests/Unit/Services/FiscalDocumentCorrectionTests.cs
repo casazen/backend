@@ -167,10 +167,13 @@ public class FiscalDocumentCorrectionTests
         recorder.Verify(r => r.Record(DomainEventType.FiscalDocumentCorrected, rejected.Id, It.IsAny<object>(), $"fiscal-document-corrected:{rejected.Id:N}", OrgId), Times.Never);
         Assert.False((await rig.Sdi.GetStateAsync(rejected.Id))!.CanCorrect);
 
-        // The SDI rejected it: no generic «Correggi la fattura» for the TD17 (its page shows the rejection), while the rejection of an invoice to a guest raises it.
+        // The SDI rejected it: no generic «Correggi la fattura» for the TD17 (it leads to a correction a TD17 has not): the agency gets the alert of its own (FIX/BE-TD17-ALERTS), while the
+        // rejection of an invoice to a guest raises «Correggi la fattura».
         var handler = new FiscalDocumentRejectionHandler(db, activities, new ResxDocumentTexts(), NullLogger<FiscalDocumentRejectionHandler>.Instance);
         await handler.HandleAsync(Event(DomainEventType.FiscalDocumentSdiRejected, rejected.Id, "{}"), CancellationToken.None);
-        Assert.Empty(await db.InternalActivities.AsNoTracking().Where(a => a.Action != null).ToListAsync());
+        Assert.Empty(await db.InternalActivities.AsNoTracking().Where(a => a.Action == ActivityAction.CorrectInvoice).ToListAsync());
+        var alert = Assert.Single(await db.InternalActivities.AsNoTracking().Where(a => a.Action != null).ToListAsync());
+        Assert.Equal((rejected.Id, ActivityAction.ReviewSelfBilling, nameof(ActivityType.SelfBillingRejected)), (alert.EntityId!.Value, alert.Action!.Value, alert.ActivityType));
 
         var guestInvoice = new FiscalDocument
         {
@@ -188,7 +191,7 @@ public class FiscalDocumentCorrectionTests
         db.FiscalDocuments.Add(guestInvoice);
         await db.SaveChangesAsync();
         await handler.HandleAsync(Event(DomainEventType.FiscalDocumentSdiRejected, guestInvoice.Id, "{}"), CancellationToken.None);
-        var raised = Assert.Single(await db.InternalActivities.AsNoTracking().Where(a => a.Action != null).ToListAsync());
+        var raised = Assert.Single(await db.InternalActivities.AsNoTracking().Where(a => a.Action == ActivityAction.CorrectInvoice).ToListAsync());
         Assert.Equal((guestInvoice.Id, ActivityAction.CorrectInvoice), (raised.EntityId!.Value, raised.Action!.Value));
     }
 

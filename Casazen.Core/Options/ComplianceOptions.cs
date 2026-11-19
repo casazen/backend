@@ -44,9 +44,10 @@ public class ComplianceOptions
     /// <summary>
     /// An <b>override</b> of the day of the following month by which the ISTAT communication of a month is due, per region (the three-letter code of the
     /// region, <c>LOM</c>, as <see cref="RequiredDocuments"/>): <c>Compliance__IstatDeadlineDays__LOM=10</c>. The deadline of a region comes from the ISTAT
-    /// region table (<c>IstatRegionRules</c>, E21/F01/US01/T01, edited by the platform staff); a day set here wins over the table's. <b>Empty by default,
-    /// and a region with no day here and none in the table is «to define»</b>: it produces no ISTAT item, because CasaZen never guesses a deadline
-    /// (E03/F02/US01/T03).
+    /// region table (<c>IstatRegionRules</c>, E21/F01/US01/T01, edited by the platform staff); a day set here wins over the table's, and it only moves the day:
+    /// it cannot turn a region off (the staff do that, by setting the row to «unknown»). A value that is not a day of the month (1 to 31) is ignored, with a
+    /// warning in the log, and the table's day stands. <b>Empty by default, and a region with no day here and none in the table is «to define»</b>: it
+    /// produces no ISTAT item, because CasaZen never guesses a deadline (E03/F02/US01/T03).
     /// </summary>
     public Dictionary<string, int> IstatDeadlineDays { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 

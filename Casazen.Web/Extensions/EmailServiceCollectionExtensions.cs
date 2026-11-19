@@ -67,6 +67,8 @@ public static class EmailServiceCollectionExtensions
         // Check-in link email with its outcome recorded on the session (CO-09).
         services.AddScoped<IGuestCheckInLinkEmailQueue, GuestCheckInLinkEmailQueue>();
         services.AddScoped<GuestCheckInLinkEmailJob>();
+        // The confirmation e-mail of a direct booking that carries a check-in link, with the outcome of the link recorded on its session (E23/F02/US01/T01).
+        services.AddScoped<BookingConfirmationEmailJob>();
 
         return services;
     }

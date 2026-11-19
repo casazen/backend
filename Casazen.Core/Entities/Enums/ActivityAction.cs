@@ -86,6 +86,13 @@ public enum ActivityAction
     CorrectInvoice = 31,
 
     /// <summary>
+    /// A self-billed invoice (TD17) waits for the agency (FIX/BE-TD17-ALERTS): the self-billed invoices, <c>/app/account/self-billing</c> (the frontend adds the entry to its
+    /// <c>ACTION_ROUTE_MAP</c>). For <see cref="ActivityType.SelfBillingRejected"/> the entity is the rejected document (the item carries its id, <c>FiscalDocument</c>); for
+    /// <see cref="ActivityType.SelfBillingDraftsToReview"/> it is the month (<c>SelfBillingPeriod:yyyy-MM</c>, the id is the organization's). Organization-level: no property.
+    /// </summary>
+    ReviewSelfBilling = 32,
+
+    /// <summary>
     /// An owner stay waits for the agency (E07/F07/US01/T01, NF-111): a request to approve or reject, or a block the channel manager refused, to send again
     /// or to cancel. Leads to the owner stays of the console. About the owner stay. The numbers 40 to 49 are the owner portal operations (epic E07/F07).
     /// </summary>

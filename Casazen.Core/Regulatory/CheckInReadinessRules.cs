@@ -62,7 +62,10 @@ public static class CheckInIssueCodes
     /// <summary>The booking is mirrored on Octorate and a name Octorate requires of a complete guest is missing (blocking).</summary>
     public const string OctorateFieldMissing = "octorate_field_missing";
 
-    /// <summary>A statistical field the region requires is empty (blocking).</summary>
+    /// <summary>
+    /// A statistical field the region requires is empty (a warning, never blocking): the ISTAT statistic is not a reason to hold the guests back from the
+    /// police communication, which is a legal obligation with a deadline (<see cref="CheckInReadinessRules.SendBlockers"/>).
+    /// </summary>
     public const string GuestFieldRequired = "guest_field_required";
 
     /// <summary>The document expires before the arrival: a warning, the host records what the guest showed.</summary>
@@ -116,6 +119,19 @@ public static class CheckInReadinessRules
         AlloggiatiRecordRules.FieldDocumentIssuePlace,
         FieldDocumentExpiresOn,
     };
+
+    /// <summary>
+    /// The issues that keep the guests of a stay from going to the channel manager, which sends the police communication on: the blocking ones, and
+    /// <b>never</b> a statistical field a region requires (<see cref="CheckInIssueCodes.GuestFieldRequired"/>, even if one were ever built as blocking). The
+    /// Alloggiati communication is a legal obligation with a deadline; the ISTAT statistic is not, and CasaZen does not pass those fields to the channel
+    /// manager. A missing one stays a warning in the wizard and holds nothing back. The one rule of the confirmation and the next step of the wizard and of
+    /// the automatic send, so the two never disagree on when a stay is ready.
+    /// </summary>
+    public static IReadOnlyList<CheckInIssue> SendBlockers(IEnumerable<CheckInIssue> issues)
+    {
+        ArgumentNullException.ThrowIfNull(issues);
+        return [.. issues.Where(i => i.Blocking && i.Code != CheckInIssueCodes.GuestFieldRequired)];
+    }
 
     /// <summary>The issues of the stay: blocking ones first per guest, then the warnings, then the stay as a whole.</summary>
     public static IReadOnlyList<CheckInIssue> Evaluate(CheckInReadinessInput input)
@@ -200,7 +216,10 @@ public static class CheckInReadinessRules
             yield return new CheckInIssue(guest.Position, CheckInIssueCodes.OctorateFieldMissing, residence, true);
     }
 
-    /// <summary>The statistical fields the region requires and the guest left empty; a field the region does not require is never asked.</summary>
+    /// <summary>
+    /// The statistical fields the region requires and the guest left empty, as warnings (never blocking, see <see cref="SendBlockers"/>); a field the region
+    /// does not require is never asked.
+    /// </summary>
     private static IEnumerable<CheckInIssue> RequiredIssues(StayGuest guest, IReadOnlyCollection<string> required)
     {
         foreach (var field in required)
@@ -214,7 +233,7 @@ public static class CheckInReadinessRules
             };
             var known = field is IstatGuestFieldLists.TourismTypeField or IstatGuestFieldLists.TravelWayField or IstatGuestFieldLists.EducationLevelField;
             if (known && string.IsNullOrWhiteSpace(value))
-                yield return new CheckInIssue(guest.Position, CheckInIssueCodes.GuestFieldRequired, CamelCase(field), true);
+                yield return new CheckInIssue(guest.Position, CheckInIssueCodes.GuestFieldRequired, CamelCase(field), Blocking: false);
         }
     }
 

@@ -432,6 +432,11 @@ it gets the 422 and the page reads the texts again.
 one in the manifest; a version whose Italian file is missing or does not match is not served, with an error in the log (names only). `LegalTexts_HashMatchesFile_Test` checks the
 files that ship. Compute a hash with `tr -d '\r' < file.md | sha256sum`.
 
+**What is kept, and for how long.** The registry is read once per process, because what the files say is the same at every read: a missing manifest, a manifest that does not parse, a hash that does not match
+and an approval that is not written stay out until the process restarts. A failure of the file system (an I/O error, a permission error: a volume that is slow at the start, a file that is being replaced) says nothing
+about the files, so it is **not** kept for the life of the process: the registry as far as it could be read is served meanwhile (fail-closed, never a text that was not checked) and the files are read again after 60 seconds
+(`CheckInLegalTexts.TransientRetryInterval`); the log says it (`... is read again in 60 seconds`). `LegalTexts_AnErrorOfTheFileSystem_IsReadAgainAfterTheInterval_AndWhatTheFilesSayIsNot_Test` proves it.
+
 ### How the legal approval is recorded
 
 The approval is a pull request to `develop` (GitHub flow) that a person of CasaZen opens with the written approval of the lawyer in hand:

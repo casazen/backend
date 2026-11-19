@@ -54,13 +54,38 @@ public static class IstatRegionResolver
     /// <param name="rule">The row of the territory, or null.</param>
     /// <param name="regionCode">CasaZen's three-letter code of the region (<c>LOM</c>), or null when the region is unknown.</param>
     /// <param name="overrides">The configured days by region code (<c>Compliance:IstatDeadlineDays</c>), or null.</param>
-    public static int? DeadlineDay(IstatRegionRule? rule, string? regionCode, IReadOnlyDictionary<string, int>? overrides)
+    /// <param name="onInvalidOverride">
+    /// Called with the region code and the value when the day configured for the region is not a day of the month (1 to 31): such a value is ignored, never
+    /// used, so the cockpit (which has no item for a day out of range) and the answer for a property never disagree. The caller logs it.
+    /// </param>
+    public static int? DeadlineDay(
+        IstatRegionRule? rule,
+        string? regionCode,
+        IReadOnlyDictionary<string, int>? overrides,
+        Action<string, int>? onInvalidOverride = null)
     {
         if (regionCode is not null && overrides is not null && overrides.TryGetValue(regionCode, out var configured))
-            return configured;
+        {
+            if (configured is >= 1 and <= 31)
+                return configured;
+
+            // Not a day of the month: the table's day (or none) stands, as if nothing were configured.
+            onInvalidOverride?.Invoke(regionCode, configured);
+        }
 
         return rule?.MonthlyDeadlineDay;
     }
+
+    /// <summary>
+    /// Who sends the ISTAT communication of a property once the coverage of its region is known: the sender of the property (ISTAT follows Alloggiati),
+    /// except that the channel manager does not send it for a region it does not cover (<see cref="IstatCoverage.NotCovered"/>): the host uses the portal of
+    /// the region, so the sender is manual. A coverage not verified, or verified as covered, leaves the sender as it is. The one rule of the coverage of a
+    /// property and of the ISTAT item of the cockpit, so the two always say the same and a property is never «handled outside» where nobody outside does it.
+    /// </summary>
+    /// <param name="sender">The sender of the property (the Alloggiati one).</param>
+    /// <param name="coverage">Whether the channel manager covers the region of the property.</param>
+    public static ComplianceSenderType IstatSenderFor(ComplianceSenderType sender, IstatCoverage coverage) =>
+        sender == ComplianceSenderType.ChannelManager && coverage == IstatCoverage.NotCovered ? ComplianceSenderType.Manual : sender;
 
     /// <summary>
     /// What the host does next: connect it in the panel when the region is covered, use the portal of the region when it is not, ask support when
