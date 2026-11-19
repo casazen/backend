@@ -16,7 +16,8 @@ namespace Casazen.Web.Controllers;
 /// <remarks>
 /// Everything that does not open answers the one <see cref="NotFoundCode"/> 404, with the same body: an unknown or made-up door token, a stay of another property, a wrong code, surname
 /// or date, a check-in already completed. The answer never says which part was wrong and never holds booking data besides the token. Five attempts a minute for each client IP and door token
-/// (<see cref="RateLimitPolicies.PublicDoorCheckIn"/>, 429 <c>rate_limited</c> beyond). The answer holds a secret that opens the guest page, so it is private
+/// (<see cref="RateLimitPolicies.PublicDoorCheckIn"/>, 429 <c>rate_limited</c> beyond); next to it the failed attempts of a door count for every client together
+/// (<see cref="IDoorCheckInFailureTracker"/>), and a door that had its <see cref="DoorCheckInRules.FailureLimit"/> answers the same 404 to everything, the right data included. The answer holds a secret that opens the guest page, so it is private
 /// (<c>Cache-Control: no-store</c>).
 /// </remarks>
 [ApiController]

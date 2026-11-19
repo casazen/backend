@@ -29,7 +29,8 @@ public interface IDoorCheckInService
     /// only when exactly one stay matches) and gives it a check-in link: the open link of the stay is renewed in place (<see cref="IGuestCheckInService.ReissueLinkAsync"/>: only
     /// the hash of a token is stored, so the link that exists cannot be given back; the session gets a new token and the old one dies, with the consent, the document read and the
     /// attempts already spent kept on it), or a new session is made when the stay has no open link. Everything that does not open (an unknown or made-up door token, a stay of another
-    /// property, wrong data, a check-in already completed) answers the same <see cref="DoorCheckInResult.NotFound"/>, never which part was wrong.
+    /// property, wrong data, a check-in already completed, a door that already had its <see cref="DoorCheckInRules.FailureLimit"/> failed attempts) answers the same
+    /// <see cref="DoorCheckInResult.NotFound"/>, never which part was wrong.
     /// </summary>
     Task<DoorCheckInResult> OpenAsync(string doorToken, DoorCheckInInput input, CancellationToken cancellationToken = default);
 }
@@ -53,6 +54,21 @@ public sealed record DoorCheckInResult(string? Token)
     public bool Found => Token is not null;
 }
 
+/// <summary>
+/// The failed attempts of each door, counted for every client together (E22/F01/US02 post-review): the limit of the endpoint is per client IP, so a surname and a date could be guessed from
+/// many addresses at no cost. A door that had <see cref="DoorCheckInRules.FailureLimit"/> failed attempts within <see cref="DoorCheckInRules.FailureWindow"/> is closed to everybody, the right data
+/// included, and answers the same <see cref="DoorCheckInResult.NotFound"/> as for any wrong datum (the answer never tells that the door is closed). Counters live in memory, per replica; only the
+/// doors that exist are counted, so a made-up token costs nothing; a replaced token (<c>Rigenera</c>) is a new door with no failures.
+/// </summary>
+public interface IDoorCheckInFailureTracker
+{
+    /// <summary>True when the door of <paramref name="doorToken"/> has had its failed attempts of the window: nothing opens it until the oldest of them is out of the window.</summary>
+    bool IsLocked(string doorToken);
+
+    /// <summary>Counts one failed attempt of the door (a well formed request that opened no stay). True when it is the one that closes the door.</summary>
+    bool RecordFailure(string doorToken);
+}
+
 /// <summary>The rules of the door that do not need a database: which stays can use it and how a surname is compared.</summary>
 public static class DoorCheckInRules
 {
@@ -61,6 +77,15 @@ public static class DoorCheckInRules
 
     /// <summary>Longest text of a booking code or surname the door reads: longer is not a code and not a surname.</summary>
     public const int InputMaxLength = 100;
+
+    /// <summary>
+    /// Failed attempts a door takes within <see cref="FailureWindow"/>, from every client together, before it closes to everybody: the limit per client IP does not bound a guess (a
+    /// surname and a date) spread over many addresses. Only the attempts that do not open count, the ones that open never do.
+    /// </summary>
+    public const int FailureLimit = 20;
+
+    /// <summary>The window of <see cref="FailureLimit"/>: a failed attempt counts for this long.</summary>
+    public static readonly TimeSpan FailureWindow = TimeSpan.FromHours(1);
 
     /// <summary>
     /// True when a stay can use the door on <paramref name="today"/> (the Europe/Rome day): it arrives yesterday, today or tomorrow, or it is in progress

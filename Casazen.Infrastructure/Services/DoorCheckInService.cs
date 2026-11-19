@@ -19,13 +19,16 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>The link</b> is the open link of the stay, renewed in place (<see cref="IGuestCheckInService.ReissueLinkAsync"/>): a new token and a new expiry on the same session, so the old
 /// link dies but the consent, the document read, the language and the attempts of the face check already spent stay with the guest; a stay with no open link gets a new session.</para>
 /// <para><b>Privacy.</b> Nothing but the token leaves, and every way of not finding a stay is the same <see cref="DoorCheckInResult.NotFound"/>. The log says the property and the
-/// outcome, never a code, a surname or a date that was typed. The rate limit is the policy of the endpoint.</para>
+/// outcome, never a code, a surname or a date that was typed. The rate limits are the ones of the endpoint (per client IP); next to them the failed attempts of each door are counted
+/// for every client together (<see cref="IDoorCheckInFailureTracker"/>, <see cref="DoorCheckInRules.FailureLimit"/> within <see cref="DoorCheckInRules.FailureWindow"/>): a door that had them is
+/// closed to everybody, with the same <see cref="DoorCheckInResult.NotFound"/>, the right data included; the attempts that open never count.</para>
 /// </remarks>
 public sealed class DoorCheckInService(
     AppDbContext db,
     IGuestCheckInService checkIn,
     ILogger<DoorCheckInService> logger,
-    TimeProvider? timeProvider = null) : IDoorCheckInService
+    TimeProvider? timeProvider = null,
+    IDoorCheckInFailureTracker? failures = null) : IDoorCheckInService
 {
     /// <summary>Attempts to make or replace a token when another request wins at the same time (or, one in 2^192, makes the same token).</summary>
     private const int MaxAttempts = 3;
@@ -112,6 +115,13 @@ public sealed class DoorCheckInService(
         if (property is null)
             return DoorCheckInResult.NotFound;
 
+        // A door that had its failed attempts, from every client together, is closed to everybody and answers like any wrong datum: the right data would not open it either.
+        if (failures?.IsLocked(doorToken) == true)
+        {
+            logger.LogInformation("Door check-in of property {PropertyId}: the door is closed, too many failed attempts", property.Id);
+            return DoorCheckInResult.NotFound;
+        }
+
         var today = _clock.TodayInRomeAsDateOnly();
         var windowStart = RomeCalendar.StartOfDayUtc(today.AddDays(-1));
         var windowEnd = RomeCalendar.StartOfDayUtc(today.AddDays(2));
@@ -150,6 +160,7 @@ public sealed class DoorCheckInService(
         if (matches.Count != 1)
         {
             logger.LogInformation("Door check-in of property {PropertyId}: no stay matched", property.Id);
+            RecordFailure(doorToken, property.Id);
             return DoorCheckInResult.NotFound;
         }
 
@@ -160,6 +171,7 @@ public sealed class DoorCheckInService(
         if (current?.IsCompleted == true)
         {
             logger.LogInformation("Door check-in of property {PropertyId}: the stay has no check-in left to do", property.Id);
+            RecordFailure(doorToken, property.Id);
             return DoorCheckInResult.NotFound;
         }
 
@@ -197,6 +209,20 @@ public sealed class DoorCheckInService(
         property.UpdatedAt = now;
         await db.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    /// <summary>
+    /// Counts a failed attempt of the door (a well formed request that opened no stay, whatever the reason: a stay whose check-in is complete counts too, so the count never says that the data
+    /// were right). A request that is not even shaped like an attempt (no date, not a code, not a surname) is no guess and counts for nothing.
+    /// </summary>
+    private void RecordFailure(string doorToken, Guid propertyId)
+    {
+        if (failures?.RecordFailure(doorToken) == true)
+        {
+            logger.LogWarning(
+                "Door check-in of property {PropertyId}: {Limit} failed attempts, the door is closed until some of them are out of the window",
+                propertyId, DoorCheckInRules.FailureLimit);
+        }
     }
 
     private DateTime UtcNow() => _clock.GetUtcNow().UtcDateTime;

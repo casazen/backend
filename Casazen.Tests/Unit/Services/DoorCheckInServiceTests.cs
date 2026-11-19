@@ -427,6 +427,81 @@ public class DoorCheckInServiceTests
         };
     }
 
+    /// <summary>
+    /// Permission (E22/F01/US02 post-review): the failed attempts of a door count for every client together, because the limit per IP does not bound a surname and a date guessed from many
+    /// addresses. A door with its 20 failed attempts of the hour is closed to everybody, the right data included, with the same 404 as for any wrong datum (no oracle); the attempts that open
+    /// never count; the failures age out; another door, a made-up token and the door after «Rigenera» are not touched.
+    /// </summary>
+    [Fact]
+    public async Task DoorCheckIn_TooManyFailedAttemptsAtOneDoor_CloseItToEverybodyWithTheSameAnswer_Test()
+    {
+        await using var world = await World.CreateAsync();
+        await world.AddStayAsync(world.Property.Id, "Rossi", Code, Today);
+        await world.AddStayAsync(world.OtherProperty.Id, "Verdi", "FGH7K2M9PQ", Today);
+        var tracker = new DoorCheckInFailureTracker(world.Clock);
+        var service = world.Service(tracker);
+        var controller = world.Controller(service);
+        var right = new DoorCheckInInput(Code, null, Today);
+        var wrong = new[]
+        {
+            new DoorCheckInInput("BCDEF23457", null, Today),    // a code that does not exist
+            new DoorCheckInInput(Code, null, Today.AddDays(1)), // the right code, the wrong date
+            new DoorCheckInInput(null, "Bianchi", Today),       // a surname nobody has
+        };
+
+        // The attempts that open never count, however many.
+        for (var attempt = 0; attempt < DoorCheckInRules.FailureLimit + 5; attempt++)
+            Assert.True((await service.OpenAsync(world.DoorToken, right)).Found);
+
+        // One failure short of the limit the door still opens.
+        for (var attempt = 0; attempt < DoorCheckInRules.FailureLimit - 1; attempt++)
+            Assert.Equal(DoorCheckInResult.NotFound, await service.OpenAsync(world.DoorToken, wrong[attempt % wrong.Length]));
+
+        Assert.False(tracker.IsLocked(world.DoorToken));
+        Assert.True((await service.OpenAsync(world.DoorToken, right)).Found);
+
+        // The failure that reaches the limit closes the door: nothing opens it now, the right data neither.
+        Assert.Equal(DoorCheckInResult.NotFound, await service.OpenAsync(world.DoorToken, wrong[0]));
+        Assert.True(tracker.IsLocked(world.DoorToken));
+        Assert.Equal(DoorCheckInResult.NotFound, await service.OpenAsync(world.DoorToken, right));
+        world.CheckIn.Invocations.Clear();
+        Assert.Equal(DoorCheckInResult.NotFound, await service.OpenAsync(world.DoorToken, right));
+        world.CheckIn.Verify(c => c.ReissueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
+
+        // At the endpoint it is the same 404, with the same code and text, as for a wrong datum: the answer never says that the door is closed.
+        var closed = Assert.IsType<ObjectResult>(
+            (await controller.Open(world.DoorToken, new DoorCheckInRequest { BookingCode = Code, ArrivalDate = Today }, CancellationToken.None)).Result);
+        var guess = Assert.IsType<ObjectResult>(
+            (await controller.Open(world.DoorToken, new DoorCheckInRequest { BookingCode = "BCDEF23457", ArrivalDate = Today }, CancellationToken.None)).Result);
+        var closedDetails = Assert.IsType<ProblemDetails>(closed.Value);
+        var guessDetails = Assert.IsType<ProblemDetails>(guess.Value);
+        Assert.Equal(StatusCodes.Status404NotFound, closed.StatusCode);
+        Assert.Equal(guess.StatusCode, closed.StatusCode);
+        Assert.Equal(PublicDoorCheckInController.NotFoundCode, closedDetails.Extensions["code"]?.ToString());
+        Assert.Equal(guessDetails.Extensions["code"]?.ToString(), closedDetails.Extensions["code"]?.ToString());
+        Assert.Equal(guessDetails.Detail, closedDetails.Detail);
+
+        // Another door is not touched, and a made-up token costs nothing (it is not a door, so it is not counted).
+        Assert.True((await service.OpenAsync(world.OtherDoorToken, new DoorCheckInInput("FGH7K2M9PQ", null, Today))).Found);
+        for (var attempt = 0; attempt < DoorCheckInRules.FailureLimit + 5; attempt++)
+            Assert.Equal(DoorCheckInResult.NotFound, await service.OpenAsync(new string('x', 32), wrong[0]));
+        Assert.False(tracker.IsLocked(new string('x', 32)));
+
+        // «Rigenera» gives a new door with no failures: the stay opens at the new token.
+        var rotated = await service.RotateTokenAsync(world.OrgId, world.Property.Id);
+        Assert.True((await service.OpenAsync(rotated!, right)).Found);
+
+        // The failures age out: the second door, closed by its own, opens again when they are out of the window.
+        for (var attempt = 0; attempt < DoorCheckInRules.FailureLimit; attempt++)
+            Assert.Equal(DoorCheckInResult.NotFound, await service.OpenAsync(world.OtherDoorToken, wrong[0]));
+        Assert.True(tracker.IsLocked(world.OtherDoorToken));
+        Assert.Equal(DoorCheckInResult.NotFound, await service.OpenAsync(world.OtherDoorToken, new DoorCheckInInput("FGH7K2M9PQ", null, Today)));
+
+        world.Clock.SetUtcNow(Now + DoorCheckInRules.FailureWindow + TimeSpan.FromMinutes(1));
+        Assert.False(tracker.IsLocked(world.OtherDoorToken));
+        Assert.True((await service.OpenAsync(world.OtherDoorToken, new DoorCheckInInput("FGH7K2M9PQ", null, Today))).Found);
+    }
+
     /// <summary>The stays, the properties and the check-in service that issues a link, in an in-memory database; the clock says 10:00 of 2026-11-20 in Rome.</summary>
     private sealed class World : IAsyncDisposable
     {
@@ -478,6 +553,10 @@ public class DoorCheckInServiceTests
 
         /// <summary>The door with the real check-in service on the same database, to see what the sessions hold after it.</summary>
         public DoorCheckInService Service(IGuestCheckInService checkIn) => new(Db, checkIn, NullLogger<DoorCheckInService>.Instance, Clock);
+
+        /// <summary>The door that counts the failed attempts of each door for every client together.</summary>
+        public DoorCheckInService Service(IDoorCheckInFailureTracker failures) =>
+            new(Db, CheckIn.Object, NullLogger<DoorCheckInService>.Instance, Clock, failures);
 
         public GuestCheckInService RealCheckIn(ICheckInLinkDeliveryService? deliveries = null) =>
             new(Db, NullLogger<GuestCheckInService>.Instance, timeProvider: Clock, linkDeliveries: deliveries);
