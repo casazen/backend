@@ -91,8 +91,14 @@ public static class AccessCodeReleaseChannels
     /// <summary>A screen of a guest-facing page (the channel of before E03/F04/US02).</summary>
     public const string Screen = "screen";
 
+    /// <summary>A scheduled message of a routine written in the conversation of the booking on a portal (the chat of the channel manager, E05/F07/US01/T03).</summary>
+    public const string PortalChat = "portal-chat";
+
+    /// <summary>A scheduled message of a routine written in the guest area of a direct booking (the conversation of the booking site, E05/F07/US01/T03).</summary>
+    public const string GuestArea = "guest-area";
+
     /// <summary>Every channel; any other value is refused.</summary>
-    public static IReadOnlyList<string> All { get; } = [CheckInScreen, Email, Operator, Screen];
+    public static IReadOnlyList<string> All { get; } = [CheckInScreen, Email, Operator, Screen, PortalChat, GuestArea];
 }
 
 /// <summary>Why the lock code of a stay is held back from the guest (<see cref="IAccessCodeService.GetHoldReasonAsync"/>); the codes the guest page reads.</summary>

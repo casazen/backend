@@ -118,12 +118,22 @@ public sealed class MessageReplyService(
         return (await ChooseAsync(scope, bookingId, ct)).Options;
     }
 
+    public Task<MessageReplyResult> StartConversationAsync(
+        HostScope scope,
+        Guid bookingId,
+        string? text,
+        string? idempotencyKey,
+        string? userId,
+        CancellationToken ct = default) =>
+        StartConversationAsync(scope, bookingId, text, idempotencyKey, userId, MessageOrigin.Person, ct);
+
     public async Task<MessageReplyResult> StartConversationAsync(
         HostScope scope,
         Guid bookingId,
         string? text,
         string? idempotencyKey,
         string? userId,
+        MessageOrigin origin,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
@@ -140,7 +150,7 @@ public sealed class MessageReplyService(
         switch (choice.Options.Channel)
         {
             case MessageContactChannel.Ota or MessageContactChannel.Direct when choice.Options.ThreadKey is { } threadKey:
-                return await ReplyAsync(scope, threadKey, text, idempotencyKey, userId, MessageOrigin.Person, null, ct);
+                return await ReplyAsync(scope, threadKey, text, idempotencyKey, userId, origin, null, ct);
             case MessageContactChannel.Email:
                 return await SendByEmailAsync(scope, choice, text, idempotencyKey, userId, ct);
             default:

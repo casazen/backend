@@ -53,6 +53,9 @@ internal sealed class RoutineRig
 
     public IAiProvider Ai { get; set; } = SelectAllOperations();
 
+    /// <summary>The scheduled messages the engine hands <c>MessageToGuest</c> to while <see cref="FeatureFlags.ScheduledMessages"/> is on (E05/F07/US01/T03): none until a test gives one.</summary>
+    public IScheduledMessageService? ScheduledMessages { get; set; }
+
     internal static IAiProvider SelectAllOperations()
     {
         var provider = new Mock<IAiProvider>(MockBehavior.Strict);
@@ -93,7 +96,8 @@ internal sealed class RoutineRig
             NullLogger<RoutineService>.Instance,
             Cleaning,
             Reviews(db, time),
-            Ai);
+            Ai,
+            scheduledMessages: ScheduledMessages);
     }
 
     /// <summary>The service of the invitation of the reviews (the host's button and the action of a routine) over <paramref name="db"/>, queuing into <see cref="Emails"/>.</summary>
