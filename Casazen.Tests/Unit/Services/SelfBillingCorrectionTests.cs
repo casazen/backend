@@ -25,6 +25,8 @@ using AllowAnonymousAttribute = Microsoft.AspNetCore.Authorization.AllowAnonymou
 using AuthorizeAttribute = Microsoft.AspNetCore.Authorization.AuthorizeAttribute;
 using CasazenPolicies = Casazen.Web.Authorization.CasazenPolicies;
 using FeatureGateAttribute = Casazen.Web.Infrastructure.FeatureGateAttribute;
+using SelfBillingOptions = Casazen.Core.Options.SelfBillingOptions;
+using SelfBillingPortalOptions = Casazen.Core.Options.SelfBillingPortalOptions;
 
 namespace Casazen.Tests.Unit.Services;
 
@@ -322,7 +324,8 @@ public class SelfBillingCorrectionTests
 
     /// <summary>
     /// PROOF TEST: data rule. The month that no longer supports a replacement (its commissions were reversed) never drops it: the draft holds the number of a rejected TD17, so discarding it would leave
-    /// a hole in the numbering. It is kept as it is, still holding its number, and the host cannot discard it either.
+    /// a hole in the numbering. It is kept as it is, still holding its number, and the host cannot discard it either. The answer of the drafts, the list and the detail say why it cannot be issued (a
+    /// code, no personal data): nothing in the ledger gives its holder a TD17 for its portal, and, once the holder cannot issue, the failure of the holder.
     /// </summary>
     [Fact]
     public async Task RejectedSelfBilling_Correction_TheMonthNeverDropsTheDraftHoldingTheNumber_Test()
@@ -347,6 +350,12 @@ public class SelfBillingCorrectionTests
         Assert.Contains(await rig.Service.ListAsync(rig.OrgId, new SelfBillingCriteria(2026, 10)), r => r.Id == replacement.Id && r.Status == FiscalDocumentStatus.Draft);
         Assert.Equal([1], await SequenceNumbersAsync(rig));
 
+        // The answer says why the draft is kept (ids, the name of the portal, the number and a code), and so do the list and the detail of the draft.
+        var held = Assert.Single(generation.Kept!);
+        Assert.Equal((replacement.Id, SelfBillingHolderKind.Owner, (Guid?)rig.Company, "Booking.com B.V.", "TD17-2026/1", SelfBillingKeptReasons.NotInLedger), (held.DocumentId, held.HolderKind, held.HolderOwnerId, held.PortalName, held.Number, held.Reason));
+        Assert.Equal(SelfBillingKeptReasons.NotInLedger, Assert.Single(await rig.Service.ListAsync(rig.OrgId, new SelfBillingCriteria(2026, 10)), r => r.Id == replacement.Id).KeptReason);
+        Assert.Equal(SelfBillingKeptReasons.NotInLedger, (await rig.Service.GetAsync(rig.OrgId, replacement.Id)).Row.KeptReason);
+
         // A draft nobody replaces is dropped as it always was (the rule of the guard is the held number, nothing else).
         var other = rig.Fee(rig.Company, rig.Mountain, await rig.StayAsync(rig.Mountain, BookingSource.Airbnb, new DateTime(2026, 10, 12)), 60.00m);
         await rig.AddAsync(other);
@@ -355,9 +364,126 @@ public class SelfBillingCorrectionTests
         Assert.Equal(1, (await rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, Host)).Discarded);
         Assert.Equal(FiscalDocumentStatus.Discarded, (await rig.DocumentAsync(airbnb)).Status);
         Assert.Equal(FiscalDocumentStatus.Draft, (await rig.DocumentAsync(replacement.Id)).Status);
+
+        // The holder loses what it needs to issue: the reason is the code of its failure, in the answer and in the list.
+        var profile = await rig.Db.OrgFiscalIssuerProfiles.SingleAsync(p => p.Id == rig.CompanyProfile);
+        (profile.AddressStreet, profile.PostalCode, profile.City) = (null, null, null);
+        await rig.Db.SaveChangesAsync();
+        rig.Db.ChangeTracker.Clear();
+        var refused = Assert.Single((await rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, Host)).Kept!);
+        Assert.Equal((replacement.Id, FiscalDocumentErrors.OwnerIssuerMissing), (refused.DocumentId, refused.Reason));
+        Assert.Equal(FiscalDocumentErrors.OwnerIssuerMissing, Assert.Single(await rig.Service.ListAsync(rig.OrgId, new SelfBillingCriteria(2026, 10)), r => r.Id == replacement.Id).KeptReason);
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule (the number of a rejected TD17 is never lost, and never given twice). The cause of the rejection was the VAT number of the portal in <c>SelfBilling:Portals</c>, put right
+    /// after the rejection: the key of the portal (country and VAT code) changed and the TD17 did not. The drafts of the month adopt the draft that holds the number: ONE draft for the holder, portal
+    /// and month, the same one, with its series and its number (no second TD17, no hole), made again with the portal of the settings and then issued under that number with the new VAT number in the
+    /// file. The same when what was put right is the country of the portal. Before the month is made again the draft says nothing is wrong (the month would adopt it).
+    /// </summary>
+    [Fact]
+    public async Task RejectedSelfBilling_Correction_APortalPutRightInTheSettings_IsAdoptedNotDuplicated_Test()
+    {
+        await using var rig = await SelfBillingRig.CreateAsync();
+        var (rejected, _) = await RejectedFirstAsync(rig);
+        var replacement = await CorrectionsOf(rig, Mock.Of<IDomainEventRecorder>()).StartSelfBillingCorrectionAsync(rig.OrgId, rejected.Id, Host);
+
+        // The VAT number of the portal was wrong: the host puts it right in the settings. The month does not make a second draft: it makes again the one that holds the number.
+        var settings = SelfBillingRig.Shipped();
+        PortalOf(settings, BookingSource.BookingCom).VatNumber = "NL805734958B09";
+        var vatFixed = rig.ServiceWith(settings);
+        Assert.Null(Assert.Single(await vatFixed.ListAsync(rig.OrgId, new SelfBillingCriteria(2026, 10)), r => r.Id == replacement.Id).KeptReason);
+        var first = await vatFixed.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, Host);
+        Assert.Equal((0, 1, 1, 0), (first.Created, first.Updated, first.AlreadyIssued, first.Discarded));
+        Assert.Null(first.Kept);
+        var outcome = Assert.Single(first.Drafts, d => d.PortalName == "Booking.com B.V.");
+        Assert.Equal((replacement.Id, SelfBillingResults.Updated), (outcome.DocumentId, outcome.Result));
+        var adopted = await rig.DocumentAsync(replacement.Id);
+        Assert.Equal((FiscalDocumentStatus.Draft, (int?)1, "TD17-2026/1", (Guid?)rejected.Id, "NL805734958B09"), (adopted.Status, adopted.SequenceNumber, adopted.Number, adopted.ReplacesDocumentId, adopted.RecipientVatNumber));
+        Assert.Equal(3, await rig.Db.FiscalDocuments.AsNoTracking().CountAsync(d => d.Purpose == FiscalDocumentPurpose.SelfBilling && d.PeriodMonth == 10));
+        Assert.Equal(2, await rig.Db.FiscalDocuments.AsNoTracking().CountAsync(d => d.Purpose == FiscalDocumentPurpose.SelfBilling && d.PeriodMonth == 10 && d.Status != FiscalDocumentStatus.Discarded));
+        Assert.Equal([1, 2], await SequenceNumbersAsync(rig));
+
+        // The portal was in another country: the host puts that right too. The same draft again, with the same number.
+        settings = SelfBillingRig.Shipped();
+        (PortalOf(settings, BookingSource.BookingCom).Country, PortalOf(settings, BookingSource.BookingCom).VatNumber) = ("BE", "BE0805734958");
+        var countryFixed = rig.ServiceWith(settings);
+        var second = await countryFixed.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, Host);
+        Assert.Equal((0, 1, 1, 0), (second.Created, second.Updated, second.AlreadyIssued, second.Discarded));
+        Assert.Equal(replacement.Id, Assert.Single(second.Drafts, d => d.PortalName == "Booking.com B.V.").DocumentId);
+        var moved = await rig.DocumentAsync(replacement.Id);
+        Assert.Equal((FiscalDocumentStatus.Draft, (int?)1, "BE", "BE0805734958"), (moved.Status, moved.SequenceNumber, moved.RecipientCountryCode, moved.RecipientVatNumber));
+        Assert.Equal(3, await rig.Db.FiscalDocuments.AsNoTracking().CountAsync(d => d.Purpose == FiscalDocumentPurpose.SelfBilling && d.PeriodMonth == 10));
+
+        // Then issued under the number it holds, with the portal of the settings in the file; nothing else is numbered.
+        var issued = (await countryFixed.IssueAsync(rig.OrgId, replacement.Id, confirm: true, Host)).Document;
+        Assert.Equal((FiscalDocumentStatus.Issued, (int?)1, "TD17-2026/1", (Guid?)rejected.Id), (issued.Status, issued.SequenceNumber, issued.Number, issued.ReplacesDocumentId));
+        var supplier = XDocument.Parse(issued.FatturaPaXml!).Descendants("CedentePrestatore").Single();
+        Assert.Equal(("BE", "0805734958"), (supplier.Descendants("IdPaese").Single().Value, supplier.Descendants("IdCodice").Single().Value));
+        Assert.Equal([1, 2], await SequenceNumbersAsync(rig));
+        Assert.Equal(2, (await rig.Db.FiscalNumberSequences.AsNoTracking().SingleAsync()).LastNumber);
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule. A draft that holds the number of a rejected TD17 is adopted only by the group of the same holder and the same legal name of the portal. With the VAT numbers of both portals
+    /// of the holder put right, each of its two replacements is made again for its own portal and keeps its own number (neither is taken by the other group, whatever the order of the groups). A portal
+    /// that is now another legal entity (its name changed with its VAT number) adopts nothing: its old draft is kept as it is, still holding its number, and says why (its portal is not in the
+    /// settings: <c>portal_not_configured</c>, in the answer and in the list), it cannot be issued (409) nor discarded, and the group gets a draft of its own.
+    /// </summary>
+    [Fact]
+    public async Task RejectedSelfBilling_Correction_AdoptionIsByHolderAndPortalName_Test()
+    {
+        await using var rig = await SelfBillingRig.CreateAsync();
+        var (booking, airbnb) = await RejectedFirstAsync(rig);
+        await RejectedBySdiAsync(rig, airbnb.Id);
+        var corrections = CorrectionsOf(rig, Mock.Of<IDomainEventRecorder>());
+        var bookingDraft = await corrections.StartSelfBillingCorrectionAsync(rig.OrgId, booking.Id, Host);
+        var airbnbDraft = await corrections.StartSelfBillingCorrectionAsync(rig.OrgId, airbnb.Id, Host);
+        Assert.Equal([1, 2], await SequenceNumbersAsync(rig));
+
+        // The VAT numbers of both portals are put right: each draft is adopted by the group of its own portal, with its own number.
+        var settings = SelfBillingRig.Shipped();
+        PortalOf(settings, BookingSource.BookingCom).VatNumber = "NL805734958B019";
+        PortalOf(settings, BookingSource.Airbnb).VatNumber = "IE9827384L9";
+        var bothFixed = rig.ServiceWith(settings);
+        var first = await bothFixed.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, Host);
+        Assert.Equal((0, 2, 0, 0), (first.Created, first.Updated, first.AlreadyIssued, first.Discarded));
+        Assert.Null(first.Kept);
+        var ofBooking = await rig.DocumentAsync(bookingDraft.Id);
+        var ofAirbnb = await rig.DocumentAsync(airbnbDraft.Id);
+        Assert.Equal(("Booking.com B.V.", "NL805734958B019", (int?)1, "TD17-2026/1"), (ofBooking.RecipientName, ofBooking.RecipientVatNumber, ofBooking.SequenceNumber, ofBooking.Number));
+        Assert.Equal(("Airbnb Ireland UC", "IE9827384L9", (int?)2, "TD17-2026/2"), (ofAirbnb.RecipientName, ofAirbnb.RecipientVatNumber, ofAirbnb.SequenceNumber, ofAirbnb.Number));
+        Assert.Equal(2, await rig.Db.FiscalDocuments.AsNoTracking().CountAsync(d => d.Purpose == FiscalDocumentPurpose.SelfBilling && d.PeriodMonth == 10 && d.Status == FiscalDocumentStatus.Draft));
+
+        // The portal of Booking.com is now another legal entity (its name changed with its VAT number): its old draft is not adopted by a group of another legal name.
+        settings = SelfBillingRig.Shipped();
+        PortalOf(settings, BookingSource.Airbnb).VatNumber = "IE9827384L9";
+        (PortalOf(settings, BookingSource.BookingCom).Name, PortalOf(settings, BookingSource.BookingCom).VatNumber) = ("Booking.com International B.V.", "NL111111111B01");
+        var renamed = rig.ServiceWith(settings);
+        var second = await renamed.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, Host);
+        Assert.Equal((1, 1, 0, 0), (second.Created, second.Updated, second.AlreadyIssued, second.Discarded));
+        var fresh = Assert.Single(second.Drafts, d => d.Result == SelfBillingResults.Created);
+        Assert.NotEqual(bookingDraft.Id, fresh.DocumentId);
+        var held = Assert.Single(second.Kept!);
+        Assert.Equal((bookingDraft.Id, "Booking.com B.V.", "TD17-2026/1", SelfBillingKeptReasons.PortalNotConfigured), (held.DocumentId, held.PortalName, held.Number, held.Reason));
+        var stillHeld = await rig.DocumentAsync(bookingDraft.Id);
+        Assert.Equal((FiscalDocumentStatus.Draft, (int?)1, "NL805734958B019"), (stillHeld.Status, stillHeld.SequenceNumber, stillHeld.RecipientVatNumber));
+        Assert.Equal(airbnbDraft.Id, Assert.Single(second.Drafts, d => d.PortalName == "Airbnb Ireland UC").DocumentId);
+
+        // The list says the same, only for that draft; the host can neither issue nor discard it.
+        var rows = await renamed.ListAsync(rig.OrgId, new SelfBillingCriteria(2026, 10));
+        Assert.Equal(SelfBillingKeptReasons.PortalNotConfigured, Assert.Single(rows, r => r.Id == bookingDraft.Id).KeptReason);
+        Assert.All(rows.Where(r => r.Id != bookingDraft.Id), r => Assert.Null(r.KeptReason));
+        Assert.Equal(FiscalDocumentErrors.DraftOutdated, (await Assert.ThrowsAsync<DomainConflictException>(() => renamed.IssueAsync(rig.OrgId, bookingDraft.Id, confirm: true, Host))).Code);
+        Assert.Equal(FiscalDocumentSdiErrors.ReplacementHoldsNumber, (await Assert.ThrowsAsync<DomainRuleException>(() => renamed.DiscardDraftAsync(rig.OrgId, bookingDraft.Id))).Code);
+        Assert.Equal([1, 2], await SequenceNumbersAsync(rig));
     }
 
     // ---------------------------------------------------------------- helpers
+
+    /// <summary>The entry of <paramref name="settings"/> (a copy of the shipped settings a test changes) that names the portal of <paramref name="channel"/>.</summary>
+    private static SelfBillingPortalOptions PortalOf(SelfBillingOptions settings, BookingSource channel) =>
+        settings.Portals.Single(p => p.Channel == channel.ToString());
 
     private static FiscalDocumentCorrectionService CorrectionsOf(SelfBillingRig rig, IDomainEventRecorder recorder) =>
         new(rig.Db, recorder, rig.Clock, NullLogger<FiscalDocumentCorrectionService>.Instance);
