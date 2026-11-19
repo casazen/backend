@@ -102,7 +102,7 @@ public class AccountantPackageSelfBilledTests
 
     /// <summary>
     /// PROOF TEST: money rule. The portal commissions of the accounts the agency holds (V2) are in the package, one row for each statement month, owner and channel: the amount is the one of the
-    /// owner ledger (a listing whose account the owner holds is not in it), it ties to the figure of the agency summary, the treatment says whether it is recharged to the owner or borne by the agency
+    /// owner ledger (a listing whose account the owner holds is not in it), it ties to the figure of the agency summary, the treatment says whether it is recharged to the owner or not charged back on an invoice
     /// (<c>RechargePortalCommissions</c>), and a reversal cancels the line it reverses out of the table.
     /// </summary>
     [Fact]
@@ -126,13 +126,13 @@ public class AccountantPackageSelfBilledTests
         Assert.DoesNotContain("150,00", Text(files[PortalCommissionsPath]), StringComparison.Ordinal);
         AssertTheIndex(files);
 
-        // The agency that does not recharge the commissions bears them: the same amount, said so.
+        // The agency that does not recharge the commissions: the same amount, said as not charged back on an invoice (the label never says who bears it).
         var profile = await rig.Db.OrgFiscalIssuerProfiles.SingleAsync(p => p.OrgId == rig.OrgId);
         profile.RechargePortalCommissions = false;
         await rig.Db.SaveChangesAsync();
         rig.Db.ChangeTracker.Clear();
         var (_, borne) = await BuildAsync(rig, AccountantPackageAccess.Full, October);
-        Assert.Equal(new[] { "2026-10", "TEST Proprietario", "Booking.com", "CHF", "1", "120,00", "A carico dell'agenzia" }, Assert.Single(Blocks(borne[PortalCommissionsPath])[0].Skip(2)));
+        Assert.Equal(new[] { "2026-10", "TEST Proprietario", "Booking.com", "CHF", "1", "120,00", "Non riaddebitata in fattura" }, Assert.Single(Blocks(borne[PortalCommissionsPath])[0].Skip(2)));
 
         // A reversal and the line it reverses cancel out: nothing is left to list, and the table is not written.
         var original = await rig.Db.OwnerLedgerEntries.AsNoTracking().SingleAsync(e => e.EntryType == OwnerLedgerEntryType.ChannelFee && e.PropertyId == lake);

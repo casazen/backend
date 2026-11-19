@@ -7583,7 +7583,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>Riaddebitata al proprietario</value>
   </data>
   <data name="AccPkgTreatmentBorne" xml:space="preserve">
-    <value>A carico dell'agenzia</value>
+    <value>Non riaddebitata in fattura</value>
   </data>
   <data name="AccPkgStatementsTitle" xml:space="preserve">
     <value>Rendiconti pubblicati ai proprietari, per mese di competenza (ultima versione pubblicata)</value>

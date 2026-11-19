@@ -200,7 +200,7 @@ internal static class AccountantPackageDocuments
 
     /// <summary>
     /// The portal commissions of the accounts the agency holds (V2) as the owner ledger says them, one row for each statement month, owner, channel and currency: the commission as a positive
-    /// amount, the stays that carry it and whether the organization recharges it to the owner on its invoice or bears it itself; then the totals for each channel and currency. They are the
+    /// amount, the stays that carry it and whether the organization recharges it to the owner on its invoice or not (the label never says who bears it when it does not); then the totals for each channel and currency. They are the
     /// ledger lines the self-billed invoice of the agency integrates (the TD17 itself leaves out what is not in euro or belongs to a stay that is not active any more) and, when recharged,
     /// the lines of the invoice to the owner that recharge a portal: the amounts are the ledger's, never recomputed.
     /// </summary>
