@@ -14,6 +14,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Data.Seeds;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Authorization;
+using Casazen.Tests.Unit.Logging;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.Compliance;
@@ -26,6 +27,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -448,6 +450,37 @@ public class IstatRegionServiceTests : IAsyncLifetime
         Assert.Equal(("04", "TN", IstatCoverage.NotCovered), (province.RegionIstatCode, province.ProvinceCode, province.OctorateCoverage));
     }
 
+    /// <summary>
+    /// An address the table would refuse is a refusal of the service, never a failure of the database: the check of the table (<c>LIKE 'https://%'</c>) is
+    /// case-sensitive, so the scheme of an https address, which may be written in any case, is stored in lower case; an address with no «//» after the scheme,
+    /// or with no host, is not an https address (422). Whatever is stored starts with «https://».
+    /// </summary>
+    [Fact]
+    public async Task IstatRegions_Update_AnUpperCaseHttpsScheme_IsStoredInLowerCase_AndAnAddressWithoutTheSlashesIsRefused()
+    {
+        var service = Service();
+
+        var saved = await service.UpdateAsync(
+            Update("03", source: "HTTPS://WWW.Example.gov.it/Flussi", portal: "Https://Portale.example.it/Guida"), Staff, Ct);
+
+        Assert.Equal(("https://WWW.Example.gov.it/Flussi", "https://Portale.example.it/Guida"), (saved.SourceUrl, saved.PortalUrl));
+        var stored = await _db.IstatRegionRules.AsNoTracking().SingleAsync(r => r.RegionIstatCode == "03" && r.ProvinceCode == null, Ct);
+        Assert.StartsWith("https://", stored.SourceUrl, StringComparison.Ordinal);
+        Assert.StartsWith("https://", stored.PortalUrl, StringComparison.Ordinal);
+
+        foreach (var address in new[] { "https:example.gov.it", "https:/example.gov.it", "https:\\\\example.gov.it", "https://", "HTTPS://" })
+        {
+            var source = await Assert.ThrowsAsync<DomainRuleException>(() => service.UpdateAsync(Update("03", source: address), Staff, Ct));
+            Assert.Equal(IstatRegionErrors.SourceInvalidCode, source.Code);
+            var portal = await Assert.ThrowsAsync<DomainRuleException>(() => service.UpdateAsync(Update("03", portal: address), Staff, Ct));
+            Assert.Equal(IstatRegionErrors.PortalInvalidCode, portal.Code);
+        }
+
+        // The refusals changed nothing.
+        var after = await _db.IstatRegionRules.AsNoTracking().SingleAsync(r => r.RegionIstatCode == "03" && r.ProvinceCode == null, Ct);
+        Assert.Equal(("https://WWW.Example.gov.it/Flussi", "https://Portale.example.it/Guida"), (after.SourceUrl, after.PortalUrl));
+    }
+
     // ─── The deadline of the cockpit ─────────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -545,6 +578,184 @@ public class IstatRegionServiceTests : IAsyncLifetime
         Assert.Equal(RomeCalendar.StartOfDayUtc(new DateOnly(2026, 11, 20)), (await IstatItemAsync())!.DueAt);
     }
 
+    /// <summary>
+    /// A day configured for a region in <c>Compliance:IstatDeadlineDays</c> that is not a day of the month is ignored, and reported to the caller (which logs it):
+    /// the cockpit has no item for a day out of 1 to 31, so using it would silence the region there while the coverage of a property still said «monthly, day 40».
+    /// The table's day (or none) stands. A day of the month, the first and the last included, still overrides, and nothing is reported.
+    /// </summary>
+    [Fact]
+    public void IstatDeadlineDay_AConfiguredDayOutsideTheMonth_IsIgnored_AndReported()
+    {
+        var monthly = new IstatRegionRule { DeadlineKind = IstatDeadlineKind.Monthly, DeadlineDay = 5 };
+        var reported = new List<(string Region, int Day)>();
+        int[] invalid = [0, -3, 32, 40, int.MaxValue];
+
+        foreach (var day in invalid)
+        {
+            var overrides = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["lom"] = day };
+            Assert.Equal(5, IstatRegionResolver.DeadlineDay(monthly, "LOM", overrides, (region, configured) => reported.Add((region, configured))));
+            Assert.Null(IstatRegionResolver.DeadlineDay(new IstatRegionRule(), "LOM", overrides));
+        }
+
+        Assert.All(reported, entry => Assert.Equal("LOM", entry.Region));
+        Assert.Equal(invalid, reported.Select(entry => entry.Day));
+
+        reported.Clear();
+        foreach (var day in new[] { 1, 17, 31 })
+        {
+            var overrides = new Dictionary<string, int> { ["LOM"] = day };
+            Assert.Equal(day, IstatRegionResolver.DeadlineDay(monthly, "LOM", overrides, (region, configured) => reported.Add((region, configured))));
+        }
+
+        Assert.Empty(reported);
+    }
+
+    /// <summary>
+    /// The coverage of a property and the ISTAT item of the cockpit both ignore a day configured for a region that is not a day of the month: the coverage
+    /// answers the day of the table (or none) and warns, naming the region and the day and nothing else; the item keeps the table's day instead of vanishing.
+    /// </summary>
+    [Fact]
+    public async Task IstatDeadlineOverride_OutsideTheMonth_IsIgnoredByTheCoverageAndTheCockpit_WithAWarning()
+    {
+        var log = new CapturingLogger<IstatRegionService>();
+        var service = Service(logger: log);
+        var como = await AddPropertyAsync("013075");
+        var firenze = await AddPropertyAsync("048017");
+        _compliance.IstatDeadlineDays["LOM"] = 40;
+        _compliance.IstatDeadlineDays["TOS"] = 0;
+
+        var lombardia = await service.GetCoverageAsync(como.Id, Ct);
+        var toscana = await service.GetCoverageAsync(firenze.Id, Ct);
+
+        // The table says monthly, day 5 for Lombardia and nothing for Toscana: that is what the answers say, not «day 40».
+        Assert.Equal((IstatDeadlineKind.Monthly, 5), (lombardia.DeadlineKind, lombardia.DeadlineDay));
+        Assert.Equal(IstatDeadlineKind.Unknown, toscana.DeadlineKind);
+        Assert.Null(toscana.DeadlineDay);
+
+        var warnings = log.Entries.Where(entry => entry.Level == LogLevel.Warning).ToList();
+        Assert.Equal(2, warnings.Count);
+        Assert.Contains(warnings, entry => entry.Values["RegionCode"] is "LOM" && entry.Values["ConfiguredDay"] is 40);
+        Assert.Contains(warnings, entry => entry.Values["RegionCode"] is "TOS" && entry.Values["ConfiguredDay"] is 0);
+        Assert.DoesNotContain(
+            warnings,
+            entry => entry.Message.Contains(como.Id.ToString(), StringComparison.OrdinalIgnoreCase) || entry.Message.Contains(_org.ToString(), StringComparison.OrdinalIgnoreCase));
+
+        // The cockpit: the same day outside the month leaves the day of the table in force (the month is still open on the 6th, due on the 10th).
+        var world = await ComplianceStatusServiceTests.World.SeedAsync();
+        await world.AddComuneAsync("015146", regionIstatCode: "03");
+        world.Granted.ComuneIstatCode = "015146";
+        world.Granted.City = "Milano";
+        await world.SaveAsync(world.Granted);
+        await world.AddStayAsync(world.Granted, checkInOffset: -10, nights: 2, status: BookingStatus.CheckedOut, touristTax: 12m);
+        await using (var db = world.Db())
+        {
+            db.IstatRegionRules.Add(new IstatRegionRule
+            {
+                RegionIstatCode = "03",
+                RegionName = "Lombardia",
+                SourceUrl = Source,
+                DeadlineKind = IstatDeadlineKind.Monthly,
+                DeadlineDay = 10,
+            });
+            await db.SaveChangesAsync(Ct);
+        }
+
+        foreach (var day in new[] { 0, 32, 99 })
+        {
+            world.Options.IstatDeadlineDays["LOM"] = day;
+            await using var db = world.Db();
+            var status = await world.StatusService(db).EvaluateAsync(world.OrgWide, Ct);
+            var item = Assert.Single(status.Items, i => i.Kind == ComplianceItemKind.Istat && i.Period == "2026-10");
+            Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.PeriodOpen), (item.Verdict.Light, item.Verdict.Reason));
+            Assert.Equal(RomeCalendar.StartOfDayUtc(new DateOnly(2026, 11, 10)), item.DueAt);
+        }
+    }
+
+    // ─── Who sends the ISTAT communication ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The one rule of the sender of the ISTAT communication: only the channel manager, and only where the table says it does not cover the region, gives
+    /// way to the host (manual). A region covered or not verified, and every other sender, are left as they are.
+    /// </summary>
+    [Fact]
+    public void IstatSenderFor_OnlyTheChannelManagerWhereItDoesNotCoverTheRegion_BecomesManual()
+    {
+        Assert.Equal(ComplianceSenderType.Manual, IstatRegionResolver.IstatSenderFor(ComplianceSenderType.ChannelManager, IstatCoverage.NotCovered));
+        Assert.Equal(ComplianceSenderType.ChannelManager, IstatRegionResolver.IstatSenderFor(ComplianceSenderType.ChannelManager, IstatCoverage.Covered));
+        Assert.Equal(ComplianceSenderType.ChannelManager, IstatRegionResolver.IstatSenderFor(ComplianceSenderType.ChannelManager, IstatCoverage.Unknown));
+        foreach (var coverage in Enum.GetValues<IstatCoverage>())
+        {
+            Assert.Equal(ComplianceSenderType.Manual, IstatRegionResolver.IstatSenderFor(ComplianceSenderType.Manual, coverage));
+            Assert.Equal(ComplianceSenderType.CasaZen, IstatRegionResolver.IstatSenderFor(ComplianceSenderType.CasaZen, coverage));
+        }
+    }
+
+    /// <summary>
+    /// Where the channel manager does not cover the region it does not send the ISTAT communication, so the property is not «handled outside»: the cockpit
+    /// asks the host for the monthly proof (the period is open, no handoff to the panel) and the coverage of the property says the sender is manual and the
+    /// next step the portal of the region, the two answers of the same rule. Where the region is covered or not verified, the channel manager keeps it and both
+    /// answers say so; after the deadline the item is red whoever sends.
+    /// </summary>
+    [Fact]
+    public async Task IstatSender_WhereTheChannelManagerDoesNotCoverTheRegion_IsManual_ForTheCockpitAndForTheCoverage()
+    {
+        var world = await ComplianceStatusServiceTests.World.SeedAsync();
+        await world.AddComuneAsync("015146", regionIstatCode: "03");
+        world.Granted.ComuneIstatCode = "015146";
+        world.Granted.City = "Milano";
+        await world.SaveAsync(world.Granted);
+        await world.AddStayAsync(world.Granted, checkInOffset: -10, nights: 2, status: BookingStatus.CheckedOut, touristTax: 12m);
+        world.Senders[world.Granted.Id] = ComplianceSenderType.ChannelManager;
+
+        async Task SetRowAsync(IstatCoverage coverage, int day)
+        {
+            await using var db = world.Db();
+            var row = await db.IstatRegionRules.FirstOrDefaultAsync(r => r.RegionIstatCode == "03", Ct);
+            if (row is null)
+            {
+                row = new IstatRegionRule { RegionIstatCode = "03", RegionName = "Lombardia", SourceUrl = Source };
+                db.IstatRegionRules.Add(row);
+            }
+
+            row.DeadlineKind = IstatDeadlineKind.Monthly;
+            row.DeadlineDay = day;
+            row.OctorateCoverage = coverage;
+            await db.SaveChangesAsync(Ct);
+        }
+
+        async Task<(ComplianceStatusItem Item, IstatCoverageView Coverage)> AnswersAsync()
+        {
+            await using var db = world.Db();
+            var status = await world.StatusService(db).EvaluateAsync(world.OrgWide, Ct);
+            var item = status.Items.Single(i => i.Kind == ComplianceItemKind.Istat && i.Period == "2026-10");
+            var coverage = await Service(ComplianceSenderType.ChannelManager, db).GetCoverageAsync(world.Granted.Id, Ct);
+            return (item, coverage);
+        }
+
+        // Not verified, then covered (the day 10 is still ahead on the 6th): the channel manager has it, in the cockpit and in the coverage.
+        foreach (var coverage in new[] { IstatCoverage.Unknown, IstatCoverage.Covered })
+        {
+            await SetRowAsync(coverage, day: 10);
+            var (item, answer) = await AnswersAsync();
+            Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.ExternalVerificationRequired), (item.Verdict.Light, item.Verdict.Reason));
+            Assert.Equal(OctorateHandoffTopic.Istat, item.Verdict.HandoffTopic);
+            Assert.Equal(ComplianceSenderType.ChannelManager, answer.IstatSender);
+        }
+
+        // Not covered: nobody outside sends it. The cockpit asks the host for the proof of the month and sends it nowhere, the coverage says manual and the portal.
+        await SetRowAsync(IstatCoverage.NotCovered, day: 10);
+        var (open, manual) = await AnswersAsync();
+        Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.PeriodOpen), (open.Verdict.Light, open.Verdict.Reason));
+        Assert.Null(open.Verdict.HandoffTopic);
+        Assert.Equal(ComplianceCockpitAction.UploadIstatProof, open.Action);
+        Assert.Equal((ComplianceSenderType.Manual, IstatNextStep.ManualPortal), (manual.IstatSender, manual.NextStep));
+
+        // Past the deadline it is red, as for every other sender.
+        await SetRowAsync(IstatCoverage.NotCovered, day: 5);
+        var (overdue, _) = await AnswersAsync();
+        Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.DeadlineOverdue), (overdue.Verdict.Light, overdue.Verdict.Reason));
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────
 
     private static void AssertSeededRowIsToVerify(IstatRegionRule row)
@@ -558,18 +769,21 @@ public class IstatRegionServiceTests : IAsyncLifetime
             Assert.StartsWith("https://", row.PortalUrl, StringComparison.Ordinal);
     }
 
-    private IstatRegionService Service()
+    private IstatRegionService Service(
+        ComplianceSenderType sender = ComplianceSenderType.Manual,
+        AppDbContext? db = null,
+        ILogger<IstatRegionService>? logger = null)
     {
         var senders = new Mock<IPropertySenderStore>();
         senders
             .Setup(s => s.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid id, CancellationToken _) => new PropertySenderInfo(
-                id, _org, ComplianceSenderType.Manual, ComplianceSenderType.Manual, SenderSource.DefaultNotConnected, true, null, null));
+                id, _org, sender, sender, SenderSource.DefaultNotConnected, true, null, null));
         return new IstatRegionService(
-            _db,
+            db ?? _db,
             senders.Object,
             Microsoft.Extensions.Options.Options.Create(_compliance),
-            NullLogger<IstatRegionService>.Instance,
+            logger ?? NullLogger<IstatRegionService>.Instance,
             _clock);
     }
 

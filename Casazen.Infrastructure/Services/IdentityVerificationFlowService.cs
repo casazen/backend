@@ -200,14 +200,19 @@ public sealed class IdentityVerificationFlowService(
             }
 
             var now = UtcNow();
+
+            // The proofs of the numbers are made with the key the first picture of the attempt was made with, and keep it (StoredDocumentCheck.ProofKey): a new
+            // token of the session (the guest at the door gets one without losing the attempt, IGuestCheckInService.ReissueLinkAsync) must not change them.
+            var previous = ReadCheck(session);
+            var proofKey = previous?.ProofKey ?? session.TokenHash;
             var picture = new StoredDocumentPicture(
                 FaceOf(assessment, side),
                 QualityOf(assessment),
                 mrzReading.Result is null ? null : Check(mrzReading.Result, context.Identity),
-                DocumentNumberProof(session, reading.Fields?.DocumentNumber));
+                DocumentNumberProof(proofKey, reading.Fields?.DocumentNumber));
 
             // The attempt keeps up to two pictures: a side sent again replaces its own and leaves the other, a single picture replaces both.
-            var kept = side == DocumentSide.Single ? null : ReadCheck(session);
+            var kept = side == DocumentSide.Single ? null : previous;
             StoredDocumentPicture? front;
             StoredDocumentPicture? back;
             string frontHash;
@@ -254,7 +259,7 @@ public sealed class IdentityVerificationFlowService(
             AddMissingSideGuidance(guidance, side, mrzReading.Result is not null, mrzRead, frontGood);
 
             session.DocumentCheckJson = JsonSerializer.Serialize(
-                new StoredDocumentCheck(check, frontHash, now, backHash, front, back, side != DocumentSide.Single, context.VerifyingGuestPosition),
+                new StoredDocumentCheck(check, frontHash, now, backHash, front, back, side != DocumentSide.Single, context.VerifyingGuestPosition, proofKey),
                 Json);
             session.UpdatedAt = now;
 
@@ -910,11 +915,11 @@ public sealed class IdentityVerificationFlowService(
         return sides;
     }
 
-    private static string? DocumentNumberProof(GuestCheckInSession session, string? number)
+    private static string? DocumentNumberProof(string key, string? number)
     {
         var normalized = AlloggiatiRecordRules.NormalizeDocumentNumber(number);
         return normalized.Length == 0 ? null : Convert.ToHexString(HMACSHA256.HashData(
-            Encoding.UTF8.GetBytes(session.TokenHash), Encoding.UTF8.GetBytes(normalized)));
+            Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(normalized)));
     }
 
     internal static int? VerifiedNumberMismatch(GuestCheckInSession session, IReadOnlyList<StayGuestInput> guests)
@@ -924,7 +929,7 @@ public sealed class IdentityVerificationFlowService(
         var proof = stored.Back is { Mrz.CheckDigitsValid: true } back ? back.NumberProof : stored.Front?.NumberProof;
         if (proof is null) return null;
         var position = stored.VerifyingGuestPosition;
-        return DocumentNumberProof(session, guests.ElementAtOrDefault(position)?.DocumentNumber) == proof ? null : position;
+        return DocumentNumberProof(stored.ProofKey ?? session.TokenHash, guests.ElementAtOrDefault(position)?.DocumentNumber) == proof ? null : position;
     }
 
     private static StoredDocumentCheck? ReadCheck(GuestCheckInSession session)
@@ -1142,7 +1147,8 @@ internal sealed record StoredDocumentPicture(bool? Face, bool? QualityOk, Docume
 /// (<see cref="Check"/>), the SHA-256 of the picture with the face (<see cref="PhotoSha256"/>, empty while only the back was sent) and of the back
 /// (<see cref="BackSha256"/>), to recognise them when they come again with the selfie in Ticino, when. For a document of two sides
 /// (<see cref="TwoSided"/>) what each picture showed. A record written before the two-sided document has none of the optional members and reads as a
-/// single picture. No value read on the document.
+/// single picture. No value read on the document. <c>ProofKey</c> is the key the proofs of the numbers (<see cref="StoredDocumentPicture.NumberProof"/>) were made with, the token hash the session
+/// had when its first picture came: a session that gets a new token keeps it, so its proofs still verify; a record without it uses the token hash of the session, as before.
 /// </summary>
 internal sealed record StoredDocumentCheck(
     DocumentCheck Check,
@@ -1152,4 +1158,5 @@ internal sealed record StoredDocumentCheck(
     StoredDocumentPicture? Front = null,
     StoredDocumentPicture? Back = null,
     bool TwoSided = false,
-    int VerifyingGuestPosition = 0);
+    int VerifyingGuestPosition = 0,
+    string? ProofKey = null);

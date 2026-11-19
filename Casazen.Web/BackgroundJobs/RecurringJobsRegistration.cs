@@ -495,13 +495,15 @@ public static class RecurringJobsRegistration
     /// <summary>
     /// The documents of the stays that ended (E12/F01/US01/T02, NF-83, NF-112): the drafts, and their issue when the profile issues without a person, every day at 05:10
     /// Europe/Rome, only with <see cref="FeatureFlags.FiscalDocumentIssuance"/> on. With the flag off nothing is drafted or issued by time and the schedule of an earlier deploy is
-    /// removed (<c>RemoveIfExists</c>).
+    /// removed (<c>RemoveIfExists</c>). The same flag schedules the monthly drafts of the self-billed invoices (FIX/BE-TD17-ALERTS), the 5th of every month at 07:30 Europe/Rome, which do nothing
+    /// unless <c>SelfBilling:MonthlyDrafts:Enabled</c> is on (off by default, read at each run).
     /// </summary>
     private static void ConfigureFiscalDocumentJobs(IRecurringJobManager recurringJobManager, bool enabled)
     {
         if (!enabled)
         {
             recurringJobManager.RemoveIfExists(FiscalDocumentsDueJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(SelfBillingMonthlyDraftsJob.RecurringJobId);
             return;
         }
 
@@ -509,6 +511,12 @@ public static class RecurringJobsRegistration
             FiscalDocumentsDueJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             FiscalDocumentsDueJob.Cron,
+            new RecurringJobOptions { TimeZone = RomeCalendar.TimeZone });
+
+        recurringJobManager.AddOrUpdate<SelfBillingMonthlyDraftsJob>(
+            SelfBillingMonthlyDraftsJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            SelfBillingMonthlyDraftsJob.Cron,
             new RecurringJobOptions { TimeZone = RomeCalendar.TimeZone });
     }
 

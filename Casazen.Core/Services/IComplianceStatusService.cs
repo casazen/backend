@@ -535,7 +535,10 @@ public sealed record CredentialsFacts
 /// <summary>The facts of the ISTAT communication of one month of a property.</summary>
 public sealed record IstatFacts
 {
-    /// <summary>Who sends it (ISTAT follows Alloggiati).</summary>
+    /// <summary>
+    /// Who sends it: the Alloggiati sender (ISTAT follows Alloggiati), except where the channel manager does not cover the region, where the host does
+    /// (<see cref="Casazen.Core.Regulatory.IstatRegionResolver.IstatSenderFor"/>). Only the channel manager makes it «held outside».
+    /// </summary>
     public required ComplianceSenderType Sender { get; init; }
 
     /// <summary>Today in Europe/Rome.</summary>

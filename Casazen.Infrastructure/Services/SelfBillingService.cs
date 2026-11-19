@@ -29,10 +29,12 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Only active stays.</b> The ledger is posted by hand (the month-end posting), so the line of a stay cancelled or marked no-show since is still alive until the next posting:
 /// the bookings are read for their channel, their check-out day and whether they are active now (<see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/> and no no-show, the one definition),
 /// and a stay that is not is reported as not due (<see cref="SelfBillingNotDueReasons.StayNotActive"/>), in the drafts and at the issue.</item>
+/// <item><b>The «Da fare» of the drafts and the monthly run</b> (FIX/BE-TD17-ALERTS, <c>SelfBillingService.MonthlyDrafts.cs</c>): the generation, the issue and the discard keep the
+/// item of the month in step with the drafts that are left (<paramref name="activities"/>, nothing without it); only the monthly run raises it.</item>
 /// <item><b>Logs</b> carry ids and counts: never a name, a VAT number or an amount.</item>
 /// </list>
 /// </remarks>
-public sealed class SelfBillingService(
+public sealed partial class SelfBillingService(
     AppDbContext db,
     IFiscalDocumentService documents,
     IDocumentIssuerService issuers,
@@ -41,7 +43,8 @@ public sealed class SelfBillingService(
     IDocumentTexts texts,
     IOptions<SelfBillingOptions> options,
     TimeProvider time,
-    ILogger<SelfBillingService> logger) : ISelfBillingService
+    ILogger<SelfBillingService> logger,
+    IInternalActivityService? activities = null) : ISelfBillingService
 {
     /// <summary>The most TD17 one call of the list answers (the newest periods first).</summary>
     public const int MaxListRows = 1000;
@@ -51,7 +54,15 @@ public sealed class SelfBillingService(
 
     private DateTime UtcNow => time.GetUtcNow().UtcDateTime;
 
-    public async Task<SelfBillingGeneration> CreateDraftsForPeriodAsync(Guid orgId, int year, int month, string? userId, CancellationToken ct = default)
+    public Task<SelfBillingGeneration> CreateDraftsForPeriodAsync(Guid orgId, int year, int month, string? userId, CancellationToken ct = default) =>
+        GenerateDraftsAsync(orgId, year, month, userId, onlyMissing: false, ct);
+
+    /// <summary>
+    /// The generation of the drafts of a month. With <paramref name="onlyMissing"/> (the monthly run) a holder and portal that already has a TD17 of the month in <b>any</b> state (a draft, an
+    /// issued one, one a person discarded) is left alone: no draft is made again, updated or dropped, so a draft a person discarded stays discarded; only the holders that have none get a draft,
+    /// which is how the ones refused by an earlier run are tried again without a second draft for the others. Without it (a person's click) the drafts are made again from the ledger.
+    /// </summary>
+    private async Task<SelfBillingGeneration> GenerateDraftsAsync(Guid orgId, int year, int month, string? userId, bool onlyMissing, CancellationToken ct)
     {
         if (year is < 2000 or > 2100 || month is < 1 or > 12)
             throw new DomainRuleException(SelfBillingErrors.PeriodInvalid, "SelfBillingPeriodInvalid");
@@ -65,7 +76,7 @@ public sealed class SelfBillingService(
         var live = await db.FiscalDocuments
             .Include(d => d.Lines)
             .Where(d => d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.PeriodYear == year && d.PeriodMonth == month
-                        && d.Status != FiscalDocumentStatus.Discarded && d.Kind != DocumentKind.CreditNote)
+                        && (onlyMissing || d.Status != FiscalDocumentStatus.Discarded) && d.Kind != DocumentKind.CreditNote)
             .ToListAsync(ct);
 
         var last = new DateOnly(year, month, 1).AddMonths(1).AddDays(-1);
@@ -79,6 +90,10 @@ public sealed class SelfBillingService(
             var existing = live.FirstOrDefault(d => IsDocumentOf(d, group));
             if (existing is not null)
                 matched.Add(existing.Id);
+
+            // The monthly run makes what is missing and nothing else: whoever has a TD17 of the month in any state (a discarded one included) is not made again.
+            if (onlyMissing && existing is not null)
+                continue;
 
             if (existing is { Status: FiscalDocumentStatus.Issued })
             {
@@ -120,18 +135,26 @@ public sealed class SelfBillingService(
             outcomes.Add(OutcomeOf(draft, group, existing is null ? SelfBillingResults.Created : SelfBillingResults.Updated, changedSinceIssue: false));
         }
 
-        // A draft the ledger no longer supports (its commissions are gone, its holder or its portal changed) is dropped: it has no number, and the month shows what is true.
-        foreach (var stale in live.Where(d => d.Status == FiscalDocumentStatus.Draft && !matched.Contains(d.Id)))
+        // A draft the ledger no longer supports (its commissions are gone, its holder or its portal changed) is dropped: it has no number, and the month shows what is true. The monthly run
+        // touches no draft that exists.
+        if (!onlyMissing)
         {
-            stale.Status = FiscalDocumentStatus.Discarded;
-            stale.UpdatedAt = UtcNow;
-            discarded++;
+            foreach (var stale in live.Where(d => d.Status == FiscalDocumentStatus.Draft && !matched.Contains(d.Id)))
+            {
+                stale.Status = FiscalDocumentStatus.Discarded;
+                stale.UpdatedAt = UtcNow;
+                discarded++;
+            }
         }
 
         if (discarded > 0)
             await db.SaveChangesAsync(ct);
         if (transaction is not null)
             await transaction.CommitAsync(ct);
+
+        // The «Da fare» of the month follows the drafts that are left: a generation that dropped the last one closes it (it never raises it: that is the monthly run's), and its words follow the
+        // holders refused now.
+        await TrySyncDraftsTodoAsync(orgId, year, month, plan.Failed.Count, ct);
 
         logger.LogInformation(
             "Self-billed invoice drafts of org {OrgId} for {Year}-{Month} by {UserId}: {Created} made, {Updated} made again, {Issued} issued already, {Discarded} discarded, {Failed} holders refused, {NotDue} commissions not due, {Ignored} portal entries ignored",
@@ -218,17 +241,25 @@ public sealed class SelfBillingService(
         }
 
         var issued = await documents.IssueSelfBillingAsync(draft.Id, composition.Rule, options.Value.EffectiveSeriesPattern, userId, ct);
+
+        // The last draft of the month issued: its «Da fare» to check and issue is done.
+        await TrySyncDraftsTodoAsync(orgId, year, month, null, ct);
         return await DetailOfAsync(orgId, issued, 0m, ct);
     }
 
     public async Task DiscardDraftAsync(Guid orgId, Guid documentId, CancellationToken ct = default)
     {
         var found = await db.FiscalDocuments.AsNoTracking()
-            .AnyAsync(d => d.Id == documentId && d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.Kind != DocumentKind.CreditNote, ct);
-        if (!found)
-            throw DocumentNotFound(documentId);
+            .Where(d => d.Id == documentId && d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.Kind != DocumentKind.CreditNote)
+            .Select(d => new { d.PeriodYear, d.PeriodMonth })
+            .FirstOrDefaultAsync(ct)
+            ?? throw DocumentNotFound(documentId);
 
         await documents.DiscardSelfBillingDraftAsync(documentId, ct);
+
+        // The last draft of the month discarded: its «Da fare» to check and issue is done.
+        if (found.PeriodYear is { } year && found.PeriodMonth is { } month)
+            await TrySyncDraftsTodoAsync(orgId, year, month, null, ct);
     }
 
     // ---------------------------------------------------------------- the plan: who needs a TD17 for which commissions

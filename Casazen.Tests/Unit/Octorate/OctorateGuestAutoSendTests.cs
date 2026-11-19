@@ -6,6 +6,7 @@ using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Octorate;
 using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Events;
@@ -182,6 +183,54 @@ public class OctorateGuestAutoSendTests
         Assert.Equal(StayGuestsAutoSendOutcome.NotMirrored, (await local.AutoSend().TrySendAsync(OrgA, local.BookingId, CancellationToken.None)).Outcome);
 
         Assert.All([incomplete, cancelled, noShow, local], w => Assert.Empty(w.Sent));
+    }
+
+    /// <summary>
+    /// A statistical field the region requires (ISTAT) never holds the guests back from the channel manager, which sends the police communication on: the
+    /// automatic send applies the same rule as the confirmation of the wizard (<c>CheckInReadinessRules.SendBlockers</c>; the proof of the wizard is in
+    /// <c>CheckInWizardServiceTests</c>). Here the region of the property requires the kind of tourism and no guest of the stay has given it: the guests are
+    /// written all the same, and a field of the Alloggiati record that is missing still stops them.
+    /// </summary>
+    [Fact]
+    public async Task AStayWhoseRegionRequiresAStatisticalField_IsWrittenAllTheSame_TheStatisticIsNotWhatTheChannelManagerNeeds()
+    {
+        var w = await World.CreateAsync();
+        await using (var db = w.NewDb())
+        {
+            var booking = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == w.BookingId);
+            var property = await db.Properties.SingleAsync(p => p.Id == booking.PropertyId);
+            property.ComuneIstatCode = "013075";
+            db.Comuni.Add(new Comune
+            {
+                IstatCode = "013075",
+                Name = "Como",
+                DisplayName = "Como",
+                NormalizedName = "como",
+                SearchText = "como",
+                ProvinceCode = "CO",
+                RegionIstatCode = "03",
+                RegionName = "Lombardia",
+            });
+            db.IstatRegionRules.Add(new IstatRegionRule
+            {
+                RegionIstatCode = "03",
+                RegionName = "Lombardia",
+                SourceUrl = "https://www.example.gov.it/flussi",
+                RequiredGuestFields = IstatGuestFieldLists.TourismTypeField,
+                VerifiedAt = Now.UtcDateTime,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var written = await w.AutoSend().TrySendAsync(OrgA, w.BookingId, CancellationToken.None);
+
+        Assert.Equal(StayGuestsAutoSendOutcome.Sent, written.Outcome);
+        Assert.Equal(2, w.Sent.Count);
+
+        // A field the Alloggiati record needs is another matter: it still holds the guests back.
+        var held = await World.CreateAsync();
+        await held.EditGuestAsync(0, g => g.DocumentNumber = string.Empty);
+        Assert.Equal(StayGuestsAutoSendOutcome.GuestsNotComplete, (await held.AutoSend().TrySendAsync(OrgA, held.BookingId, CancellationToken.None)).Outcome);
     }
 
     [Fact]
