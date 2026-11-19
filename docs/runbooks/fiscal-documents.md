@@ -862,7 +862,8 @@ proportion to the lines; the deposit is the revenue of the owner, without a clea
 listing told the owner that the portal billed it while the invoice of the property manager recharged the commission. The channel fee that the invoice recharges (the
 agency holds the account and recharges, the test of the invoice) is now «Commissioni del portale riaddebitate dal gestore (fattura n. …)», in the published PDF and on
 the owner portal (`Variant_V2_*`, read as the owner reads it: the request of an owner has no org, and the resolver reads the holders whatever the tenant of the
-caller); an account of the agency whose commissions it does not recharge never names the invoice (`Variant_V2_WithoutTheRecharge_*`).
+caller); an account of the agency whose commissions it does not recharge never names the invoice and has a label of its own, «Commissioni del portale (account del portale
+intestato al gestore, senza riaddebito in fattura)», never the sentence of V1 (`Variant_V2_WithoutTheRecharge_*`).
 
 **What the scenario shows** (facts of the code as it is, for the decisions of the PO and of the accountant):
 

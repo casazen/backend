@@ -349,11 +349,19 @@ E13 (its PDF and the owner portal), the VAT summary of E15 and the TD17 of E17 (
   collected by the agency and to be remitted to the municipality or the cantonal tourist office, and is never added to or taken from the net.
 - **Who holds the portal account.** The label of the commission of the channels follows it: «Trattenuta dal portale (fattura del portale a tuo nome)» when the owner
   holds the account (V1), «Commissioni del portale riaddebitate dal gestore (fattura n. …)» when the invoice of the property manager recharges it (V2 with
-  `RechargePortalCommissions` on). The test is the one of the owner invoice (`PortalAccountHolders.RechargesCommissionOf` of `IPortalAccountHolderResolver`, E14), so
-  the statement and the invoice never tell the owner two different things (E19/F01/US01/T01): an account of the agency whose commissions it does not recharge is never
-  labelled as recharged and never names the invoice. **Known gap:** that line is labelled «Trattenuta dal portale (fattura del portale a tuo nome)» although the portal
-  bills the agency; a label of its own needs new texts. The owner portal reads the same flag (`channelFeeRechargedByAgency`): the resolver reads the holders whatever
-  the tenant of the caller, since the request of an owner has no org of its own.
+  `RechargePortalCommissions` on), «Commissioni del portale (account del portale intestato al gestore, senza riaddebito in fattura)» (key
+  `StatementFileChannelFeesAgencyNotRecharged`; English «Portal commissions (portal account held by the property manager, no recharge on an invoice)») when the agency holds
+  the account and does not recharge (V2 with `RechargePortalCommissions` off: the portal bills the agency, so the sentence of V1 would be wrong). The test is the one of the
+  owner invoice (`PortalAccountHolders.RechargesCommissionOf` of `IPortalAccountHolderResolver`, E14, and its other half `IsAgencyAccountWithoutRecharge`), so the statement
+  and the invoice never tell the owner two different things (E19/F01/US01/T01): an account of the agency whose commissions it does not recharge is never labelled as recharged,
+  never names the invoice and is never labelled as the owner's portal invoice. Only the words follow it: the commission is a line of the ledger, in the totals and in the net
+  exactly as for any other channel fee. **Open point (PO):** that deduction is the same for an account of the agency that does not recharge (the scenario
+  `Variant_V2_WithoutTheRecharge_*` pins it), while the accountant package (backend#983, `AccPkgTreatmentBorne`) lists the same commission as «A carico dell'agenzia»; which of the two is the intent is not
+  decided, so the label says only what is certain (whose account it is, no recharge on an invoice) and never who bears the cost. The owner portal reads the same flags
+  (`channelFeeRechargedByAgency`, and `channelFeeBilledToAgencyNotRecharged` for the account of the agency that does not recharge; the web app shows a note for the first
+  only): the resolver reads the holders whatever the tenant of the caller, since the request of an owner has no org of its own. The CSV has no such label (its description
+  column holds the description of the ledger line, for the channel fees of any account) and the e-mail of the publication never carries a line. A published version keeps the
+  PDF it was published with (a stored file never changes): the new label is in the drafts and in the PDF of a new version.
 - **Published = stored.** Publishing a version builds its PDF once, stores it with its SHA-256 as an owner document of type statement (the id of the document is the
   id of the version) and tells the people of the owner portal who read the statements of the owner by e-mail: the agency and the link to the page «Contabilità», never an
   amount, a period or a line. The owner downloads exactly the stored file. A version published before this release has no stored PDF: the agency gets a PDF built

@@ -631,6 +631,67 @@ public class OwnerStatementDocumentsTests
         Assert.DoesNotContain("Trattenuta dal portale", rechargedText, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Money and trust: an account of the agency whose commissions it does not recharge (V2 without the recharge) is not the owner's portal invoice (V1) and no invoice of the property
+    /// manager carries it, so the statement tells it in words of its own, in both languages, and never with the sentence of V1 or the one of the recharge, which names an invoice. Only the
+    /// words change: the commission is the same line in the same totals and the net is the one the version stores (the one of the same statement read with no holder at all). Read through
+    /// the real resolver, V1 and V2 with the recharge keep their own flags: the three cases never overlap.
+    /// </summary>
+    [Fact]
+    public async Task StatementV2WithoutRecharge_ShowsItsOwnLabel_AndNoDeduction_Test()
+    {
+        var texts = new ResxDocumentTexts();
+        var plain = await World.CreateAsync();
+        var asV1 = await plain.Documents.GetContentAsync(plain.OrgId, plain.VersionId, "it");
+
+        var world = await World.CreateAsync(readsPortalAccounts: true);
+        var profile = new OrgFiscalIssuerProfile { OrgId = world.OrgId, PortalAccountHolder = PortalAccountHolder.Agency, RechargePortalCommissions = false };
+        world.Db.OrgFiscalIssuerProfiles.Add(profile);
+        await world.Db.SaveChangesAsync();
+
+        var italian = await world.Documents.GetContentAsync(world.OrgId, world.VersionId, "it");
+
+        // Money: the label is all that changes. The commission is the ledger line, the same amount in the same part, and the net is the one the version stores.
+        var fee = Assert.Single(italian.Of(OwnerStatementSection.ChannelFees));
+        Assert.Equal((-75m, false, true), (fee.Amount, fee.AgencyHoldsPortalAccount, fee.AgencyHoldsPortalAccountWithoutRecharge));
+        Assert.Equal(asV1.Totals, italian.Totals);
+        Assert.Equal(OwnerStatementTotals.Of(world.Version), italian.Totals);
+        Assert.Equal((-75m, 580m, 280m), (italian.Totals.ChannelFees, italian.Totals.Period, italian.Totals.ClosingBalance));
+
+        // The words in Italian, with an invoice of the property manager linked: its own label, never the sentence of V1 or the one of the recharge, which would name that invoice.
+        var invoiced = italian with { OwnerInvoiceNumber = "PM2026/7", OwnerInvoiceDate = new DateOnly(2026, 11, 12) };
+        var italianText = TextOf(OwnerStatementLayout.Pdf(invoiced, texts).Blocks);
+        Assert.Contains("Commissioni del portale (account del portale intestato al gestore, senza riaddebito in fattura)", italianText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Trattenuta dal portale", italianText, StringComparison.Ordinal);
+        Assert.DoesNotContain("fattura del portale a tuo nome", italianText, StringComparison.Ordinal);
+        Assert.DoesNotContain("riaddebitate dal gestore", italianText, StringComparison.Ordinal);
+        Assert.DoesNotContain("(fattura n. PM2026/7)", italianText, StringComparison.Ordinal);
+
+        // The words in English, which are not the Italian ones.
+        var english = await world.Documents.GetContentAsync(world.OrgId, world.VersionId, "en");
+        var englishText = TextOf(OwnerStatementLayout.Pdf(english with { OwnerInvoiceNumber = "PM2026/7", OwnerInvoiceDate = new DateOnly(2026, 11, 12) }, texts).Blocks);
+        Assert.Contains("Portal commissions (portal account held by the property manager, no recharge on an invoice)", englishText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Withheld by the portal", englishText, StringComparison.Ordinal);
+        Assert.DoesNotContain("portal invoice in your name", englishText, StringComparison.Ordinal);
+        Assert.DoesNotContain("recharged by the property manager", englishText, StringComparison.Ordinal);
+        Assert.NotEqual(texts.Get("StatementFileChannelFeesAgencyNotRecharged", "it"), texts.Get("StatementFileChannelFeesAgencyNotRecharged", "en"));
+
+        // The owner portal gets the same fact next to the flag of the recharge, so that it can say it too: the two are never true together.
+        var portal = Assert.Single(OwnerPortalStatementSectionDto.From(OwnerStatementSection.ChannelFees, italian.Of(OwnerStatementSection.ChannelFees)).Lines);
+        Assert.Equal((-75m, false, true), (portal.Amount, portal.ChannelFeeRechargedByAgency, portal.ChannelFeeBilledToAgencyNotRecharged));
+
+        // The same listing in the other two cases, through the same resolver: the recharge keeps its own flag and the account of the owner has neither.
+        profile.RechargePortalCommissions = true;
+        await world.Db.SaveChangesAsync();
+        var recharged = Assert.Single((await world.Documents.GetContentAsync(world.OrgId, world.VersionId, "it")).Of(OwnerStatementSection.ChannelFees));
+        Assert.Equal((true, false), (recharged.AgencyHoldsPortalAccount, recharged.AgencyHoldsPortalAccountWithoutRecharge));
+
+        profile.PortalAccountHolder = PortalAccountHolder.Owner;
+        await world.Db.SaveChangesAsync();
+        var ownerAccount = Assert.Single((await world.Documents.GetContentAsync(world.OrgId, world.VersionId, "it")).Of(OwnerStatementSection.ChannelFees));
+        Assert.Equal((false, false), (ownerAccount.AgencyHoldsPortalAccount, ownerAccount.AgencyHoldsPortalAccountWithoutRecharge));
+    }
+
     /// <summary>The day a statement says it was published is the day in Rome, as the other documents write their days: 23:30 UTC is already the next day there, winter and summer time.</summary>
     [Fact]
     public async Task StatementFiles_PublishedDayIsTheDayInRome_Test()
@@ -793,7 +854,7 @@ public class OwnerStatementDocumentsTests
     {
         public static readonly DateTime Cutoff = new(2026, 11, 10, 8, 0, 0, DateTimeKind.Utc);
 
-        private World(AppDbContext db, Casazen.Core.Options.SwissTouristTaxOptions swiss)
+        private World(AppDbContext db, Casazen.Core.Options.SwissTouristTaxOptions swiss, bool readsPortalAccounts)
         {
             Db = db;
             Clock = new FakeTimeProvider(new DateTimeOffset(Cutoff.AddDays(1)));
@@ -814,6 +875,9 @@ public class OwnerStatementDocumentsTests
                 new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, Clock),
                 Clock,
                 NullLogger<OwnerStatementDocuments>.Instance,
+
+                // A statement built without the resolver reads every listing as V1: a test of the account holders asks for the real one, over the same database.
+                holders: readsPortalAccounts ? new PortalAccountHolderResolver(db) : null,
                 documentLines: new GuestDocumentLineBuilder(db, new ResxDocumentTexts(), Options.Create(new Casazen.Core.Options.FiscalDocumentRulesOptions()), Options.Create(swiss)));
         }
 
@@ -868,14 +932,15 @@ public class OwnerStatementDocumentsTests
                 NullLogger<OwnerCollaborationService>.Instance);
         }
 
-        public static async Task<World> CreateAsync(bool approved = false, Casazen.Core.Options.SwissTouristTaxOptions? swiss = null, bool convertedStay = false)
+        public static async Task<World> CreateAsync(bool approved = false, Casazen.Core.Options.SwissTouristTaxOptions? swiss = null, bool convertedStay = false, bool readsPortalAccounts = false)
         {
             var world = new World(
                 new AppDbContext(
                     new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OwnerStatementDocuments_{Guid.NewGuid()}").Options,
                     new StatementTenant(),
                     new EphemeralDataProtectionProvider()),
-                swiss ?? new Casazen.Core.Options.SwissTouristTaxOptions());
+                swiss ?? new Casazen.Core.Options.SwissTouristTaxOptions(),
+                readsPortalAccounts);
             await world.SeedAsync(approved, convertedStay);
             return world;
         }

@@ -130,7 +130,7 @@ public enum OwnerStatementSection
 /// <param name="SharePercent">The part of the source the owner holds.</param>
 /// <param name="Amount">The signed amount in the currency of the statement: positive is owed to the owner.</param>
 /// <param name="Reversal">True when the line reverses another (<c>ReversesEntryId</c>).</param>
-/// <param name="AgencyHoldsPortalAccount">True when the agency holds the portal account of the listing (V2): the commission of the channel is recharged by the property manager.</param>
+/// <param name="AgencyHoldsPortalAccount">True when the agency holds the portal account of the listing (V2) and recharges the commission of the channel on its invoice (the test of the invoice): false for an account of the owner (V1) and for one of the agency that does not recharge (<see cref="OwnerStatementLine.AgencyHoldsPortalAccountWithoutRecharge"/>).</param>
 public sealed record OwnerStatementLine(
     Guid EntryId,
     OwnerStatementSection Section,
@@ -148,6 +148,14 @@ public sealed record OwnerStatementLine(
     bool Reversal,
     bool AgencyHoldsPortalAccount)
 {
+    /// <summary>
+    /// True when the agency holds the portal account of the listing (V2) and does not recharge the commissions of the accounts it holds: the portal bills the agency and no
+    /// invoice of the property manager carries the commission to the owner, so the statement says neither that the portal invoice is in the owner's name (V1) nor that the
+    /// property manager recharges it. Only the words follow it: the amount of the line is in the totals like that of any other channel fee. Never true together with
+    /// <see cref="AgencyHoldsPortalAccount"/>.
+    /// </summary>
+    public bool AgencyHoldsPortalAccountWithoutRecharge { get; init; }
+
     /// <summary>The immutable ledger evidence behind this line, including its management FX rate (not an IVA exchange rate).</summary>
     public OwnerStatementLedgerEvidence? LedgerEvidence { get; init; }
 }
