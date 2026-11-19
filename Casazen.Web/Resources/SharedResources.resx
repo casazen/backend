@@ -7546,6 +7546,48 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="AccPkgOutsideOther" xml:space="preserve">
     <value>Altre operazioni senza IVA</value>
   </data>
+  <data name="AccPkgSelfBilledRegisterTitle" xml:space="preserve">
+    <value>Autofatture TD17 (integrazione dell'IVA sulle fatture dei portali esteri), dal {1} al {2}, per data di emissione. Emittente: {0}</value>
+  </data>
+  <data name="AccPkgColSupplier" xml:space="preserve">
+    <value>Fornitore estero (cedente)</value>
+  </data>
+  <data name="AccPkgColSupplierCountry" xml:space="preserve">
+    <value>Paese del fornitore</value>
+  </data>
+  <data name="AccPkgColSupplierVat" xml:space="preserve">
+    <value>Partita IVA del fornitore</value>
+  </data>
+  <data name="AccPkgClassSelfBilled" xml:space="preserve">
+    <value>Autofatture TD17</value>
+  </data>
+  <data name="AccPkgVatSelfBilledOmittedTitle" xml:space="preserve">
+    <value>Autofatture TD17 non incluse in questo file</value>
+  </data>
+  <data name="AccPkgSelfBilledRejectedTitle" xml:space="preserve">
+    <value>Autofatture TD17 scartate dal SDI, escluse dalle cifre</value>
+  </data>
+  <data name="AccPkgSelfBilledRejectedReason" xml:space="preserve">
+    <value>Autofatture TD17 scartate dal SDI: {0}. Una fattura scartata si considera non emessa: è elencata nel registro delle autofatture con il suo stato, ma non entra nei totali per aliquota né nell'IVA e non ha PDF o XML.</value>
+  </data>
+  <data name="AccPkgPortalCommissionsTitle" xml:space="preserve">
+    <value>Commissioni dei portali sui conti intestati all'agenzia (V2), dal {0} al {1}, come le registra il libro mastro dei proprietari, per mese del rendiconto, proprietario e canale; la colonna Trattamento dice se l'agenzia le riaddebita al proprietario con la sua fattura o le sostiene</value>
+  </data>
+  <data name="AccPkgPortalCommissionsTotalsTitle" xml:space="preserve">
+    <value>Totali per canale e valuta</value>
+  </data>
+  <data name="AccPkgColPortalCommission" xml:space="preserve">
+    <value>Commissione del portale</value>
+  </data>
+  <data name="AccPkgColTreatment" xml:space="preserve">
+    <value>Trattamento</value>
+  </data>
+  <data name="AccPkgTreatmentRecharged" xml:space="preserve">
+    <value>Riaddebitata al proprietario</value>
+  </data>
+  <data name="AccPkgTreatmentBorne" xml:space="preserve">
+    <value>Non riaddebitata in fattura</value>
+  </data>
   <data name="AccPkgStatementsTitle" xml:space="preserve">
     <value>Rendiconti pubblicati ai proprietari, per mese di competenza (ultima versione pubblicata)</value>
   </data>

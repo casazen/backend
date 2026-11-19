@@ -185,8 +185,24 @@ public static class AccountantPackageStructure
     /// <summary>The issued documents of the guests (PDF, XML when there is one) and their register, one for each issuer.</summary>
     public const string GuestDocumentsFolder = "documenti-ospiti";
 
-    /// <summary>The issued invoices of the agency to the owners (PDF, XML when Italian) and their register. Owner accounting.</summary>
+    /// <summary>
+    /// The issued invoices of the agency to the owners (PDF, XML when Italian) and their register. Owner accounting. A period that has them also holds, in this folder, the self-billed
+    /// invoices (<see cref="SelfBilledFolder"/>) and the portal commissions of the accounts the agency holds (<see cref="PortalCommissionsFile"/>): both are about the same commissions the
+    /// invoices to the owners recharge, and both are owner accounting too.
+    /// </summary>
     public const string OwnerInvoicesFolder = "fatture-proprietari";
+
+    /// <summary>
+    /// The self-billed invoices (TD17) issued in the period: a register for each issuer, and the PDF and the XML of each document (a subfolder of <see cref="OwnerInvoicesFolder"/>, owner
+    /// accounting). Unlike the other folders its files are written only when the period has a TD17: a period with none is the package it always was.
+    /// </summary>
+    public const string SelfBilledFolder = OwnerInvoicesFolder + "/autofatture";
+
+    /// <summary>
+    /// The name, without its extension, of the table of the portal commissions of the accounts the agency holds (V2) in <see cref="OwnerInvoicesFolder"/>. Written only when the period has
+    /// one of those commissions, like <see cref="SelfBilledFolder"/>.
+    /// </summary>
+    public const string PortalCommissionsFile = "commissioni-portali-v2";
 
     /// <summary>The published statements of the owners (PDF and CSV). Owner accounting.</summary>
     public const string StatementsFolder = "rendiconti";
