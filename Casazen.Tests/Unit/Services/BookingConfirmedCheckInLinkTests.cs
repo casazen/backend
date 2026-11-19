@@ -8,6 +8,7 @@ using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
 using Casazen.Tests.Unit.Push;
@@ -47,6 +48,9 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
     private readonly IOptions<GuestCheckInOptions> _options = Microsoft.Extensions.Options.Options.Create(new GuestCheckInOptions { SendWindowDays = 3, SessionLifetimeDays = 7 });
     private readonly CapturingLogger<BookingNotifier> _notifierLog = new();
     private readonly CapturingLogger<CheckInLinkDeliveryService> _deliveryLog = new();
+
+    /// <summary>The job client of <see cref="BookingConfirmationEmailJob"/>: what it schedules for a temporary failure is what the tests read.</summary>
+    private readonly Mock<Hangfire.IBackgroundJobClient> _scheduler = new();
     private readonly GuestCheckInService _checkIn;
     private readonly CheckInLinkDeliveryService _deliveries;
 
@@ -72,8 +76,9 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
 
     /// <summary>
     /// PROOF TEST: data rule (AC1). A direct booking confirmed with the arrival inside the window gets ONE confirmation that carries a working check-in link, issued the way the job
-    /// issues it (one session, the lifetime of the job) and recorded as sent by e-mail on the session and in the delivery record; nothing is queued for the guest but that e-mail, and the
-    /// next run of the daily job finds a usable link and sends nothing more. The link is in no log and in no row.
+    /// issues it (one session, the lifetime of the job). The link is «in attesa» (the session says queued, the delivery record Email / Sending) until the provider accepts the e-mail, and
+    /// then it is sent, on the session and in the delivery record; nothing is queued for the guest but that e-mail, and the next run of the daily job finds a usable link and sends nothing
+    /// more. The link is in no log and in no row.
     /// </summary>
     [Fact]
     public async Task ConfirmedInsideWindow_LinkInConfirmation_NoDuplicateFromJob_Test()
@@ -102,9 +107,21 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         Assert.Equal(Now.UtcDateTime.AddDays(7), session.ExpiresAt);
         Assert.NotNull(await _checkIn.GetSessionByTokenAsync(token));
 
-        // Sent with the confirmation: the session says so as the e-mail of the link would, and the delivery record is Email / Sent, with no token in it.
-        Assert.Equal(GuestCheckInLinkEmailStatus.Sent, session.LinkEmailStatus);
-        Assert.Equal(Now.UtcDateTime, session.SentAt);
+        // «In attesa» while the e-mail is with the queue: the session says queued, with no time of sending, and the delivery record is Email / Sending with no token in it. The e-mail
+        // knows the session of its link, so that the job that sends it can write the outcome there.
+        Assert.Equal(new CheckInLinkEmail(bookingId, session.Id), confirmation.Content.CheckInLink);
+        Assert.Equal(GuestCheckInLinkEmailStatus.Queued, session.LinkEmailStatus);
+        Assert.Null(session.SentAt);
+        var waiting = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync(d => d.BookingId == bookingId);
+        Assert.Equal((CheckInLinkChannel.Email, CheckInLinkDeliveryState.Sending), (waiting.Channel, waiting.State));
+        Assert.Equal(session.Id, waiting.SessionId);
+        Assert.Null(waiting.LinkToken);
+
+        // Sent when the provider accepts it: the session says so as the e-mail of the link would, and the delivery record is Email / Sent.
+        await RunConfirmationJobAsync(EmailSendResult.Sent());
+        var sent = await _db.GuestCheckInSessions.AsNoTracking().SingleAsync(s => s.BookingId == bookingId);
+        Assert.Equal(GuestCheckInLinkEmailStatus.Sent, sent.LinkEmailStatus);
+        Assert.Equal(Now.UtcDateTime, sent.SentAt);
         var row = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync(d => d.BookingId == bookingId);
         Assert.Equal((CheckInLinkChannel.Email, CheckInLinkDeliveryState.Sent), (row.Channel, row.State));
         Assert.Equal(session.Id, row.SessionId);
@@ -230,7 +247,7 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
 
     /// <summary>
     /// A confirmation that cannot be queued (no e-mail provider, a queue that refuses it) leaves no link behind: the session just issued would stop the job from sending one, so it is
-    /// taken back (it expires, nothing is recorded as sent) and the job issues and sends a link at its next run.
+    /// taken back (it expires, it is failed with its code, nothing is recorded as sent) and the job issues and sends a link at its next run.
     /// </summary>
     [Fact]
     public async Task ConfirmationNotQueued_TheLinkIsTakenBack_AndTheJobSendsIt()
@@ -243,8 +260,11 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         Assert.Empty(_emails.Snapshot());
         var taken = await _db.GuestCheckInSessions.AsNoTracking().SingleAsync(s => s.BookingId == bookingId);
         Assert.Equal(GuestCheckInSessionStatus.Scaduto, taken.Status);
+        Assert.Equal(GuestCheckInLinkEmailStatus.Failed, taken.LinkEmailStatus);
+        Assert.Equal(GuestCheckInLinkEmailErrors.QueueFailed, taken.LinkEmailError);
         Assert.Null(taken.SentAt);
-        Assert.Empty(await _db.CheckInLinkDeliveries.AsNoTracking().ToListAsync());
+        var row = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync(d => d.BookingId == bookingId);
+        Assert.Equal((CheckInLinkChannel.Email, CheckInLinkDeliveryState.Failed, GuestCheckInLinkEmailErrors.QueueFailed), (row.Channel, row.State, row.LastErrorCode));
 
         var linkEmails = QueuedLinkEmails();
         await Job(linkEmails, _clock).ExecuteAsync();
@@ -254,10 +274,90 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         Assert.Contains(sessions, s => s.Status == GuestCheckInSessionStatus.Inviato);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (CO-09, A5-26: never «sent» when nothing left). The provider refuses the e-mail that carries the link (a refusal that is final): the link is NOT sent, the
+    /// session and the delivery record say failed with the code, and the link, which nobody has, is taken back, so that the next run of the daily job issues and e-mails a new one, once.
+    /// The confirmation itself is not sent again, and nothing is retried.
+    /// </summary>
+    [Fact]
+    public async Task ConfirmationRefusedByTheProvider_LinkFailedAndTakenBack_AndTheJobSendsOneNewLink()
+    {
+        var bookingId = await SeedAsync(daysUntilArrival: 2);
+        await Notifier().BookingConfirmedAsync(bookingId, BookingConfirmationKind.PaidOnline);
+
+        await RunConfirmationJobAsync(new EmailSendResult(false, "InvalidRecipient", IsTransient: false));
+
+        var failed = await _db.GuestCheckInSessions.AsNoTracking().SingleAsync(s => s.BookingId == bookingId);
+        Assert.Equal(GuestCheckInLinkEmailStatus.Failed, failed.LinkEmailStatus);
+        Assert.Equal(GuestCheckInLinkEmailErrors.Rejected, failed.LinkEmailError);
+        Assert.Equal(GuestCheckInSessionStatus.Scaduto, failed.Status);
+        Assert.Null(failed.SentAt);
+        var row = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync(d => d.BookingId == bookingId);
+        Assert.Equal((CheckInLinkChannel.Email, CheckInLinkDeliveryState.Failed, GuestCheckInLinkEmailErrors.Rejected), (row.Channel, row.State, row.LastErrorCode));
+        _scheduler.Verify(c => c.Create(It.IsAny<Hangfire.Common.Job>(), It.IsAny<Hangfire.States.IState>()), Times.Never);
+
+        // No usable link is left, so the daily job issues one and e-mails it, once: never a second link while the first may still reach the guest.
+        var linkEmails = QueuedLinkEmails();
+        await Job(linkEmails, _clock).ExecuteAsync();
+        linkEmails.Verify(q => q.QueueAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        var sessions = await _db.GuestCheckInSessions.AsNoTracking().Where(s => s.BookingId == bookingId).ToListAsync();
+        Assert.Equal(2, sessions.Count);
+        Assert.Single(sessions, s => s.Status == GuestCheckInSessionStatus.Inviato);
+        Assert.Single(_emails.Snapshot(), e => e.To == GuestEmail);
+    }
+
+    /// <summary>
+    /// A temporary provider error is tried again by the job of the confirmation (the next attempt is scheduled and the link stays «in attesa», not sent and not failed), and the last
+    /// attempt that fails gives failed with its own code, not delivered: the link is taken back as for a refusal.
+    /// </summary>
+    [Fact]
+    public async Task ConfirmationTemporarilyNotDelivered_IsTriedAgain_AndFailsAfterTheLastAttempt()
+    {
+        var bookingId = await SeedAsync(daysUntilArrival: 2);
+        await Notifier().BookingConfirmedAsync(bookingId, BookingConfirmationKind.PaidOnline);
+        var transient = new EmailSendResult(false, "RateLimitExceeded", IsTransient: true);
+
+        await RunConfirmationJobAsync(transient, attempt: 1);
+
+        _scheduler.Verify(
+            c => c.Create(
+                It.Is<Hangfire.Common.Job>(job => job.Type == typeof(BookingConfirmationEmailJob) && (int)job.Args[6] == 2),
+                It.IsAny<Hangfire.States.IState>()),
+            Times.Once);
+        var waiting = await _db.GuestCheckInSessions.AsNoTracking().SingleAsync(s => s.BookingId == bookingId);
+        Assert.Equal(GuestCheckInLinkEmailStatus.Queued, waiting.LinkEmailStatus);
+        Assert.Equal(GuestCheckInSessionStatus.Inviato, waiting.Status);
+
+        await RunConfirmationJobAsync(transient, attempt: BookingConfirmationEmailJob.MaxAttempts);
+
+        var failed = await _db.GuestCheckInSessions.AsNoTracking().SingleAsync(s => s.BookingId == bookingId);
+        Assert.Equal(GuestCheckInLinkEmailStatus.Failed, failed.LinkEmailStatus);
+        Assert.Equal(GuestCheckInLinkEmailErrors.NotDelivered, failed.LinkEmailError);
+        Assert.Equal(GuestCheckInSessionStatus.Scaduto, failed.Status);
+        var row = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync(d => d.BookingId == bookingId);
+        Assert.Equal((CheckInLinkDeliveryState.Failed, GuestCheckInLinkEmailErrors.NotDelivered), (row.State, row.LastErrorCode));
+        _scheduler.Verify(c => c.Create(It.IsAny<Hangfire.Common.Job>(), It.IsAny<Hangfire.States.IState>()), Times.Once);
+    }
+
     // ---- The data every test runs on ---------------------------------------------------------------------------------------------------
 
     private BookingNotifier Notifier(IGuestCheckInService? checkIn = null) =>
         new(_db, _emails, EmailTestHelpers.Links(), _pushes, _notifierLog, checkIn ?? _checkIn, _deliveries, _options, _clock);
+
+    /// <summary>
+    /// What the Hangfire worker does with the confirmation that was queued for the guest: the job of the confirmation runs it with the arguments the queue gave it, the provider
+    /// answering <paramref name="result"/>.
+    /// </summary>
+    private async Task RunConfirmationJobAsync(EmailSendResult result, int attempt = 1)
+    {
+        var (to, content, template) = Assert.Single(_emails.Snapshot(), e => e.To == GuestEmail);
+        var link = Assert.IsType<CheckInLinkEmail>(content.CheckInLink);
+        var emailService = new Mock<IEmailService>();
+        emailService.Setup(s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(result);
+        var job = new BookingConfirmationEmailJob(emailService.Object, _deliveries, _scheduler.Object, NullLogger<BookingConfirmationEmailJob>.Instance);
+
+        await job.SendAsync(to!, content.Subject, content.HtmlBody, template, link.BookingId, link.SessionId, attempt);
+    }
 
     /// <summary>The real daily job over the same database, with the queue of the link e-mails watched: its calls are what a duplicate would be.</summary>
     private GuestCheckInSendJob Job(Mock<IGuestCheckInLinkEmailQueue> linkEmails, TimeProvider clock) =>

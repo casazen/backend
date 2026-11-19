@@ -14,7 +14,16 @@ namespace Casazen.Infrastructure.Email;
 public sealed record EmailContent(string Subject, string HtmlBody, string? ReplyTo = null)
 {
     public AccountInvitationEmail? AccountInvitation { get; init; }
+
+    /// <summary>
+    /// The check-in link this e-mail carries (E23/F02/US01/T01: the confirmation of a direct booking whose check-in is open): its delivery is the delivery of the link, so the job that
+    /// sends it (<see cref="BookingConfirmationEmailJob"/>) writes the real outcome on the session and on the delivery row of the booking. <c>null</c> for every other e-mail.
+    /// </summary>
+    public CheckInLinkEmail? CheckInLink { get; init; }
 }
+
+/// <summary>The booking and the check-in session of the link an e-mail carries (<see cref="EmailContent.CheckInLink"/>). Ids only: never the token.</summary>
+public sealed record CheckInLinkEmail(Guid BookingId, Guid SessionId);
 
 /// <summary>
 /// Queues emails for delivery in a Hangfire job (<see cref="EmailDeliveryJob"/>), so the provider is never called
@@ -56,14 +65,18 @@ public sealed class HangfireEmailQueue(
             // An email without a reply-to goes through the job it always went through, so the jobs already waiting in the queue during a
             // deploy still find their method; the reply-to has a job of its own.
             var replyTo = string.IsNullOrWhiteSpace(content.ReplyTo) ? null : content.ReplyTo.Trim();
-            var jobId = content.AccountInvitation is { } invitation
-                ? backgroundJobClient.Enqueue<EmailDeliveryJob>(job =>
-                    job.SendAccountInvitationAsync(to.Trim(), content.Subject, content.HtmlBody, template, invitation, CancellationToken.None))
-                : replyTo is null
+            // The e-mail that carries a check-in link has a job of its own, which records on the session whether the link really left (E23/F02/US01/T01).
+            var jobId = content.CheckInLink is { } checkInLink
+                ? backgroundJobClient.Enqueue<BookingConfirmationEmailJob>(job =>
+                    job.SendAsync(to.Trim(), content.Subject, content.HtmlBody, template, checkInLink.BookingId, checkInLink.SessionId, 1))
+                : content.AccountInvitation is { } invitation
                     ? backgroundJobClient.Enqueue<EmailDeliveryJob>(job =>
-                        job.SendAsync(to.Trim(), content.Subject, content.HtmlBody, template))
-                    : backgroundJobClient.Enqueue<EmailDeliveryJob>(job =>
-                        job.SendWithReplyToAsync(to.Trim(), content.Subject, content.HtmlBody, template, replyTo));
+                        job.SendAccountInvitationAsync(to.Trim(), content.Subject, content.HtmlBody, template, invitation, CancellationToken.None))
+                    : replyTo is null
+                        ? backgroundJobClient.Enqueue<EmailDeliveryJob>(job =>
+                            job.SendAsync(to.Trim(), content.Subject, content.HtmlBody, template))
+                        : backgroundJobClient.Enqueue<EmailDeliveryJob>(job =>
+                            job.SendWithReplyToAsync(to.Trim(), content.Subject, content.HtmlBody, template, replyTo));
             logger.LogInformation("Email {Template} queued (job {JobId})", template, jobId);
             return true;
         }

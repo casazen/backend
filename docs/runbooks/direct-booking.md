@@ -318,21 +318,33 @@ showed "Nessuna prenotazione trovata" plus an error.
 
   | `checkIn.status` when the booking is confirmed | What the email says | What the system does |
   |---|---|---|
-  | `Open` | The button **«Fai il check-in online»** (EN: «Check in online»), the usual fallback link under it and «Il link è valido fino al …» | Issues the link the way the daily job does (`IGuestCheckInService.IssueLinkAsync`: one session, the lifetime above) and puts it in the confirmation. **No second email**: the confirmation is the delivery. Once the confirmation is queued, the session says `LinkEmailStatus = Sent` with `SentAt`, and `CheckInLinkDeliveries` has the row of the booking as `Email` / `Sent` with no token. The next run of `guest-checkin-send` finds a usable link and queues nothing |
+  | `Open` | The button **«Fai il check-in online»** (EN: «Check in online»), the usual fallback link under it and «Il link è valido fino al …» | Issues the link the way the daily job does (`IGuestCheckInService.IssueLinkAsync`: one session, the lifetime above) and puts it in the confirmation. **No second email**: the confirmation is the delivery. The link is **«in attesa»** while the email is with the queue: the session says `LinkEmailStatus = Queued` (no `SentAt`) and `CheckInLinkDeliveries` has the row of the booking as `Email` / `Sending` with no token, both written before the email is queued. The job of the confirmation (`BookingConfirmationEmailJob`) turns them into `Sent` (with `SentAt`) when the provider accepts the email, or into `Failed` (see below). The next run of `guest-checkin-send` finds a usable link and queues nothing |
   | `NotYetOpen` | `Il link per il check-in online ti arriverà via email il {opensOn}. Da quel giorno puoi anche richiederlo in «Le mie prenotazioni».` (the day written like the other dates of the email) | Nothing: no link, no record. The job sends the link on that day, as it always did |
   | `Completed` or `NotApplicable` | Nothing about the check-in | Nothing |
 
   When the link cannot be issued (an error while the session is saved) the confirmation still goes out, with no link and the
   sentence of the day the job runs next (tomorrow on the Europe/Rome calendar; when the job would no longer select the stay
   that day, only `Puoi richiedere il link per il check-in online in «Le mie prenotazioni».`); no session exists, so the job
-  issues and sends the link at its next run, as it does today. When the confirmation itself cannot be queued (no email
-  provider, a queue that refuses it) the link just issued is taken back (its session expires, nothing is recorded as sent),
-  because a usable link would stop the job from sending one. Without `App:PublicSiteBaseUrl`, or for a guest with no address,
-  no link is issued at all.
-  Logs: `The check-in link of booking {BookingId} could not be issued for its confirmation`, `Check-in link of booking {BookingId} taken back: its confirmation was not queued`,
-  `The state of the online check-in of booking {BookingId} could not be read for its confirmation`, `The check-in link of booking {BookingId} could not be settled after its confirmation`
-  (the record of a link that went out, or the taking back of one that did not, failed); never the address, the name or the link.
-  The link is in the body of the queued email (Hangfire keeps the arguments of a job, as it does for the check-in link email of the job).
+  issues and sends the link at its next run, as it does today. A link is **never «sent» when nothing left** (CO-09, A5-26):
+  when the confirmation cannot be queued (no email provider, a queue that refuses it), when the provider refuses it
+  (`LinkEmailError = rejected`), when no attempt delivers it (`not_delivered`: `BookingConfirmationEmailJob` tries up to 5
+  times, with delays of 1, 3, 10 and 30 minutes) or when the provider is not configured (`provider_not_configured`), the session
+  says `LinkEmailStatus = Failed` with the code, the delivery row says `Email` / `Failed` with the same code, and the link is
+  taken back (its session expires: nobody has it, only its hash is stored, and a usable link would stop the job from sending
+  one), so `guest-checkin-send` issues a new link and emails it, with an outcome of its own, at its next run. A link the guest
+  already opened is left alone: the email did reach them. The confirmation itself is not sent again. Without
+  `App:PublicSiteBaseUrl`, or for a guest with no address, no link is issued at all.
+  **The row follows the later links.** The row describes the link it was written for; the reminder of the missing data, a link
+  the guest asked for in «Le mie prenotazioni», the compliance autopilot and the daily job after an expiry issue other links
+  without touching it, so `GET api/bookings/{id}/checkin/link-delivery` reads an `Email` row against the newest link of the
+  booking: the state of that link's email (`Sent`, `Sending` while queued, `Failed` with its code) while it is open, and a row
+  that ended (`link_expired`) when the newest link is no longer open. It never answers `Email` / `Sent` for a link that expired
+  or was replaced.
+  Logs: `The check-in link of booking {BookingId} could not be issued for its confirmation`, `The check-in link of booking {BookingId} could not be recorded as queued with its confirmation`,
+  `Check-in link of booking {BookingId} taken back: its confirmation was not queued`, `The state of the online check-in of booking {BookingId} could not be read for its confirmation`,
+  `The outcome of the confirmation e-mail of booking {BookingId} could not be recorded on its check-in link`; never the address, the name or the link.
+  The link is in the body of the queued email (Hangfire keeps the arguments of a job, as it does for the check-in link email of the job; a failed job is deleted).
+  The host is told of the new booking (bell, pop-up, email) right after the confirmation is queued, before anything of the link is settled, and whatever happens to the request.
 
 ### 8.3 Checks
 
@@ -345,7 +357,8 @@ showed "Nessuna prenotazione trovata" plus an error.
    "link sent".
 5. Test mode, the link in the confirmation (E23/F02/US01/T01): complete a checkout for a stay that starts within 3 days → the
    confirmation email has the button «Fai il check-in online» and the link opens the check-in; the booking page of the host
-   shows the link as sent; run `guest-checkin-send` from the Hangfire dashboard → no second email and no new session.
+   shows the link as sent once the email left (`link-delivery` says `Email` / `Sending` while it is queued, then `Sent`); run
+   `guest-checkin-send` from the Hangfire dashboard → no second email and no new session.
    A stay that starts in 10 days → the confirmation says the day (arrival minus 3) and has no link.
 
 ```sql
@@ -363,8 +376,9 @@ per-address cool-down against mail bombing.
 Code: `Casazen.Core/Services/BookingCodes.cs`, `IGuestBookingLookupService.cs`,
 `Casazen.Infrastructure/Services/GuestBookingLookupService.cs`, `Casazen.Web/Infrastructure/GuestBookingEmailRateLimiter.cs`,
 `PublicBookingsController.cs`, `BookingNotifier.cs`, `PublicSiteLinks.GuestBookings`; the link in the confirmation:
-`Casazen.Infrastructure/Services/GuestCheckInAccessRules.cs`, `CheckInLinkDeliveryService.RecordSentByEmailAsync`,
-`EmailTemplates.GuestBookingConfirmed` (`BookingCheckInNotice`), test `BookingConfirmedCheckInLinkTests`. Frontend:
+`Casazen.Infrastructure/Services/GuestCheckInAccessRules.cs`, `CheckInLinkDeliveryService.RecordEmailQueuedAsync` / `RecordEmailSentAsync` / `RecordEmailFailedAsync`,
+`Casazen.Infrastructure/Email/BookingConfirmationEmailJob.cs`, `EmailTemplates.GuestBookingConfirmed` (`BookingCheckInNotice`), tests `BookingConfirmedCheckInLinkTests`
+and, on PostgreSQL, `BookingEmailsPostgresTests`. Frontend:
 `src/features/public-booking/guest-bookings-page.tsx`, `src/lib/booking-code.ts`, `checkout-outcome-page.tsx`
 (`BookingReference`). Tests: `GuestBookingLookupPostgresTests`, `BookingCodesTests`, `DirectCheckoutIntegrationTests`,
 `BookingEmailsPostgresTests`, `BookingNotifierTests`, `PublicSiteLinksTests`; vitest `guest-bookings-page.test.tsx`,
