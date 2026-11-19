@@ -4263,6 +4263,9 @@
   <data name="WireDebitAccountMissing" xml:space="preserve">
     <value>The issuer profile has no IBAN for the account to debit: add it in the «Fatturazione» setup. No batch was saved.</value>
   </data>
+  <data name="WireDebitIbanNotSwiss" xml:space="preserve">
+    <value>The IBAN of the account to debit in the issuer profile is not Swiss or Liechtenstein: a CHF transfer is a domestic payment, which a Swiss bank executes only from an account it holds. Enter a Swiss or Liechtenstein IBAN in the «Fatturazione» setup. No batch was saved.</value>
+  </data>
   <data name="WireOwnerAddressMissing" xml:space="preserve">
     <value>{0} owners have no complete address (street, postal code, town and country), which the wire file needs: complete the data of the owners listed. No batch was saved.</value>
   </data>

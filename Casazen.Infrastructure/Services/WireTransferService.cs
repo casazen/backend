@@ -150,6 +150,16 @@ public sealed class WireTransferService(
             throw new DomainRuleException(WireTransferErrors.DebitAccountInvalid, "InvalidDebitAccountIban");
         }
 
+        // The Swiss file is a domestic payment: a Swiss bank executes the debit of an account it holds, a Swiss or Liechtenstein IBAN, and the file names that bank by its
+        // institution identifier. A foreign debit IBAN would leave the bank unnamed and a payment no Swiss bank executes, so the batch is refused. EUR is unchanged: its
+        // debtor agent is «not provided» and the bank reads the account from the IBAN, whatever bank it is.
+        if (flavor == Pain001Flavor.Swiss && !WireIban.IsSwiss(debitAccount))
+        {
+            // NEVER log the IBAN itself (ADR-012-R2)
+            logger.LogWarning("The issuer profile of org {OrgId} has a debit IBAN that is not Swiss or Liechtenstein, which a CHF batch needs", orgId);
+            throw new DomainRuleException(WireTransferErrors.DebitIbanNotSwiss, "WireDebitIbanNotSwiss");
+        }
+
         // The creditors: every owner of the batch with a complete structured address and an IBAN that is a creditor account of a normal transfer in the area of the file.
         var creditors = await CreditorsAsync(orgId, payouts, flavor, cancellationToken);
 

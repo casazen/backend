@@ -20,10 +20,10 @@ public interface IWireTransferService
     /// <summary>
     /// Create a wire batch from the given confirmed payouts. Validates that every payout belongs to the caller's org, is confirmed (never reversed), comes from a
     /// published statement version, is in the same currency (EUR or CHF), has a net amount above zero with at most two decimals and is in no other batch; that
-    /// the issuer profile of the org has its name, structured address and a valid IBAN; that every owner has a valid IBAN (never a QR-IBAN; in the area of the file:
-    /// Swiss or Liechtenstein in CHF, the SEPA area in EUR) and a structured address; and that the file validates against the official schema of its format and the
-    /// rules of its message: all before anything is saved (<see cref="WireTransferErrors"/>). The batch, its payouts and its file are written by one save. Returns
-    /// the batch and the XML file content.
+    /// the issuer profile of the org has its name, structured address and a valid IBAN (a Swiss or Liechtenstein one for a CHF batch, whose bank is Swiss); that
+    /// every owner has a valid IBAN (never a QR-IBAN; in the area of the file: Swiss or Liechtenstein in CHF, the SEPA area in EUR) and a structured address; and
+    /// that the file validates against the official schema of its format and the rules of its message: all before anything is saved (<see cref="WireTransferErrors"/>).
+    /// The batch, its payouts and its file are written by one save. Returns the batch and the XML file content.
     /// </summary>
     /// <param name="orgId">The caller's org ID (from tenant context).</param>
     /// <param name="payoutIds">IDs of the confirmed payouts to pay. An empty list is never «all the payouts».</param>
@@ -215,6 +215,12 @@ public static class WireTransferErrors
 
     /// <summary>The IBAN of the issuer profile does not pass the check digits.</summary>
     public const string DebitAccountInvalid = "invalid_debit_account_iban";
+
+    /// <summary>
+    /// The IBAN of the issuer profile, the account that is debited, is not Swiss or Liechtenstein while the batch is in CHF: the Swiss file is a domestic payment
+    /// that a Swiss bank executes from an account it holds, and the writer cannot name the bank of a foreign account. A EUR batch takes any valid debit IBAN.
+    /// </summary>
+    public const string DebitIbanNotSwiss = "wire_debit_iban_not_swiss";
 
     /// <summary>An owner has no complete structured address (street, postal code, town and country): the creditor of the file cannot be written. Lists the owner ids.</summary>
     public const string OwnerAddressMissing = "wire_owner_address_missing";
