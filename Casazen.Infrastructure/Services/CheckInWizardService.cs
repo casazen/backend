@@ -77,7 +77,9 @@ public sealed class CheckInWizardService(
         var booking = await LoadBookingAsync(bookingId, cancellationToken);
         var state = await BuildStateAsync(booking, cancellationToken);
 
-        var blocking = state.Issues.Where(i => i.Blocking).ToList();
+        // What keeps the guests from going to the channel manager: the one rule of the wizard and of the automatic send. A statistical field the region
+        // requires is a warning in the state and never one of these.
+        var blocking = CheckInReadinessRules.SendBlockers(state.Issues);
         if (blocking.Count > 0)
         {
             throw new DomainRuleException(CheckInWizardCodes.NotReady, "CheckInNotReady")
@@ -105,9 +107,10 @@ public sealed class CheckInWizardService(
         OctorateCheckInView octorateView,
         StayAttendance attendance)
     {
-        var blocking = issues.Where(i => i.Blocking).ToList();
+        // The same rule as the confirmation: a statistical field of the region (a warning) never sends the host back to the guests.
+        var blocking = CheckInReadinessRules.SendBlockers(issues);
         if (savedGuests == 0
-            || blocking.Any(i => (i.Code is CheckInIssueCodes.GuestFieldMissing or CheckInIssueCodes.GuestFieldRequired) && !IsDocumentField(i.Field)))
+            || blocking.Any(i => i.Code is CheckInIssueCodes.GuestFieldMissing && !IsDocumentField(i.Field)))
         {
             return CheckInWizardSteps.Guests;
         }

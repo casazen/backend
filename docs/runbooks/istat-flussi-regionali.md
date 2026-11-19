@@ -104,16 +104,25 @@ obbligatori, e per le altre regioni non lo dicono. Dove una riga dice «famiglia
 
 ### Come si usa
 
-- **Staff.** `GET api/admin/istat-regions` elenca le righe e `PUT api/admin/istat-regions` ne salva una, per territorio, con la fonte https obbligatoria: salvare dice
+- **Staff.** `GET api/admin/istat-regions` elenca le righe e `PUT api/admin/istat-regions` ne salva una, per territorio, con la fonte https obbligatoria (anche il portale è un indirizzo https completo, `https://` e un host: lo schema si scrive in qualunque maiuscolo e si salva minuscolo, un indirizzo senza `//` è un 422): salvare dice
   «ho letto la riga sulla fonte», quindi `VerifiedAt` diventa il giorno indicato o oggi. Ogni salvataggio lascia una riga in `RegulatoryDataAuditEntries`
   (`EntityType = IstatRegionRule`: chi, quando, quali campi da che valore a quale) e non crea mai una riga. Solo il ruolo `AdminOnly`.
 - **Cruscotto e avvisi.** Il giorno di scadenza del mese ISTAT è il giorno mensile della riga; `Compliance:IstatDeadlineDays` resta solo come **sovrascrittura** (un giorno
-  impostato per la regione vince sulla tabella). Una regione senza giorno né in tabella né in configurazione non ha la voce ISTAT: nessuna scadenza è inventata.
+  impostato per la regione vince sulla tabella, ma sposta solo il giorno: non spegne la regione, per quello serve la riga dello staff a `Unknown`; un valore che non è un giorno del mese, da 1 a 31, è ignorato con un avviso nel log e vale il giorno della tabella). Una regione senza giorno né in tabella né in configurazione non ha la voce ISTAT: nessuna scadenza è inventata.
 - **Pagina dell'ospite e wizard del check-in.** Chiedono solo i campi statistici della riga della regione dell'immobile; senza riga, con la riga non verificata o con lista vuota non ne chiedono nessuno
-  (minimizzazione dei dati).
+  (minimizzazione dei dati). Un campo richiesto e mancante è un **avviso** del wizard (`guest_field_required`, mai bloccante): non ferma la conferma né l'invio degli ospiti al
+  channel manager, e nemmeno l'invio automatico, perché la comunicazione Alloggiati è un obbligo di legge a termine e la statistica ISTAT no (una sola regola per i due: `CheckInReadinessRules.SendBlockers`).
 - **Per immobile.** `GET api/properties/{propertyId}/istat-coverage` (lettura dell'immobile, dietro `Features:OctorateOnboarding`) risponde regione, sistema, portale, scadenza, campi richiesti,
-  copertura, mittente ISTAT (lo stesso di Alloggiati) e il passo successivo: `ConnectInPanel` se la regione è coperta, `ManualPortal` se non lo è (guida al portale
+  copertura, mittente ISTAT (lo stesso di Alloggiati, ma `Manual` dove la regione è `NotCovered`: il channel manager non la invia e l'host usa il portale regionale; la voce ISTAT del cruscotto dice lo stesso: mese aperto, prova da caricare, nessun rimando al pannello) e il passo successivo: `ConnectInPanel` se la regione è coperta, `ManualPortal` se non lo è (guida al portale
   regionale e prova mensile), `AskSupport` se non è verificata (contesto `panelIstat`). Un immobile fuori dall'Italia non ha regione né passo successivo.
+
+### Rollback e spegnimento di una regione
+
+- **Rollback.** È il **revert del codice**, e solo dopo la migrazione `Down` (`AddIstatRegionRules` elimina la tabella; le righe di audit in `RegulatoryDataAuditEntries` restano). Il codice non ha una
+  guardia per la tabella mancante: la pagina dell'ospite (pubblica, senza flag), il wizard del check-in e il cruscotto leggono `IstatRegionRules` e con il codice ancora in linea e la tabella tolta
+  darebbero errore. La migrazione `FixIstatDeadlineCheck` (la scadenza mensile vuole il giorno) si annulla con il suo `Down`, che rimette il vincolo di prima.
+- **Spegnere una regione.** Serve la riga dello staff a `Unknown` (scadenza `Unknown`, copertura `Unknown`, campi richiesti non verificati): `PUT api/admin/istat-regions`. `Compliance:IstatDeadlineDays`
+  **sposta solo il giorno** e non spegne nulla; un valore fuori da 1-31 è ignorato con un avviso nel log e vale il giorno della tabella.
 
 ### Punto aperto: i campi statistici verso il channel manager
 
