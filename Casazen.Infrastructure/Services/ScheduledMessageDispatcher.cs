@@ -320,14 +320,18 @@ public sealed class ScheduledMessageDispatcher(
             }
         }
 
+        // The code is taken, not released: nothing is logged until the message that carries it has gone (RecordReleaseAsync, after the send). A message that is refused, blocked on something else or fails leaves no
+        // line that says a code reached a guest, and a retry writes none either.
         string? accessCode = null;
+        string? codeChannel = null;
         if (used.Contains(MessageTemplateRenderer.AccessCodeVariable))
         {
-            var released = await ReleaseAccessCodeAsync(row, channel, ct);
-            if (released.Code is null)
-                return await BlockAsync(row, released.Reason!, wasBlocked, previousReason, now, ct);
+            codeChannel = ScheduledMessageRules.ReleaseChannelOf(channel.Channel);
+            var taken = await TakeAccessCodeAsync(row, codeChannel, ct);
+            if (taken.Code is null)
+                return await BlockAsync(row, taken.Reason!, wasBlocked, previousReason, now, ct);
 
-            accessCode = released.Code;
+            accessCode = taken.Code;
         }
 
         // The text is tried with the rules of the message layer before the link exists: a stand-in of the length of a real link takes its place. A text that cannot go out never costs the guest the link it holds.
@@ -358,7 +362,7 @@ public sealed class ScheduledMessageDispatcher(
         if (text is null)
             return await BlockAsync(row, reason!, wasBlocked, previousReason, now, ct);
 
-        return await SendAsync(row, scope, channel, text, now, mode, userId, facts, ct);
+        return await SendAsync(row, scope, channel, text, codeChannel, now, mode, userId, facts, ct);
     }
 
     /// <summary>The length of the token of a check-in link (64 hexadecimal characters, <c>GuestCheckInService</c>): the stand-in the text is tried with has the length of a real link.</summary>
@@ -398,6 +402,7 @@ public sealed class ScheduledMessageDispatcher(
         HostScope scope,
         MessageContactOptions channel,
         string text,
+        string? codeChannel,
         DateTime now,
         ScheduledMessageDispatchMode mode,
         string? userId,
@@ -448,6 +453,10 @@ public sealed class ScheduledMessageDispatcher(
 
         if (result.State == OtaMessageDeliveryState.Error)
             return await FailAsync(row, result.ErrorCode ?? "message_not_sent", now, userId, ct);
+
+        // The message is in the hands of the message layer: the code it carries has gone, or may have: this is the moment the release is written (once: a message found again under its key is not a second release).
+        if (codeChannel is not null && !result.Replayed)
+            await accessCodes.RecordReleaseAsync(row.BookingId, codeChannel, ct);
 
         return await SentAsync(row, now, result.ThreadKey, result.State, mode, userId, facts, ct);
     }
@@ -915,7 +924,11 @@ public sealed class ScheduledMessageDispatcher(
     /// <summary>The result of the release of the access code: the code, or the reason it cannot be given.</summary>
     private sealed record Release(string? Code, string? Reason);
 
-    private async Task<Release> ReleaseAccessCodeAsync(ScheduledMessage row, MessageContactOptions channel, CancellationToken ct)
+    /// <summary>
+    /// Takes the code for the message through the gate of the release (verification of the guest, the stay, the hold of the tourist tax: <see cref="IAccessCodeService.GetReleasableCodeAsync"/>, ADR-022-R11) and
+    /// writes nothing: the line of the release log is written after the send (<see cref="IAccessCodeService.RecordReleaseAsync"/>).
+    /// </summary>
+    private async Task<Release> TakeAccessCodeAsync(ScheduledMessage row, string codeChannel, CancellationToken ct)
     {
         // A property with no code set is a thing the host fills in; a stay whose guest is not verified is a thing the guest does: two different reasons.
         var hasCode = await db.PropertyAccessCodes
@@ -925,7 +938,7 @@ public sealed class ScheduledMessageDispatcher(
         if (!hasCode)
             return new Release(null, ScheduledMessageReasons.VariableMissing(MessageTemplateRenderer.AccessCodeVariable));
 
-        var code = await accessCodes.ReleaseToGuestAsync(row.BookingId, ScheduledMessageRules.ReleaseChannelOf(channel.Channel), ct);
+        var code = await accessCodes.GetReleasableCodeAsync(row.BookingId, codeChannel, ct);
         if (!string.IsNullOrEmpty(code))
             return new Release(code, null);
 

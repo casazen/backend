@@ -68,12 +68,20 @@ internal sealed class ScheduledMessageRig
 
                 return Send(scope, bookingId, text, key, userId, origin);
             });
+        // The dispatch takes the code (nothing is logged) and writes the line of the release only once the message has gone: a test sees both.
         AccessCodes
-            .Setup(a => a.ReleaseToGuestAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(a => a.GetReleasableCodeAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid _, string channel, CancellationToken _) =>
             {
-                Released.Add(channel);
+                Taken.Add(channel);
                 return AccessCode;
+            });
+        AccessCodes
+            .Setup(a => a.RecordReleaseAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns((Guid _, string channel, CancellationToken _) =>
+            {
+                Released.Add(channel);
+                return Task.CompletedTask;
             });
         AccessCodes
             .Setup(a => a.GetHoldReasonAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -144,8 +152,11 @@ internal sealed class ScheduledMessageRig
     /// <summary>Every call of the send of the message layer, with what it was given.</summary>
     public List<SentMessage> Sent { get; } = [];
 
-    /// <summary>The channels the access code was released through.</summary>
+    /// <summary>The channels the access code was released through: the lines of the release log that were written (after the message went).</summary>
     public List<string> Released { get; } = [];
+
+    /// <summary>The channels the access code was taken for (the gate was asked; nothing was logged).</summary>
+    public List<string> Taken { get; } = [];
 
     /// <summary>The events the alerts asked the preferences about.</summary>
     public List<NotificationEventContext> Contexts { get; } = [];

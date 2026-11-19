@@ -813,6 +813,56 @@ public class ScheduledMessageDispatchTests
     }
 
     // ------------------------------------------------------------------------------------------------------------------------------------
+    // The release of the access code
+    // ------------------------------------------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// PROOF TEST: privacy and audit rule (ADR-022-R11). The release log says a code reached a guest only for a message that went out. The code is taken first (the gate of the verification is asked, nothing
+    /// is logged) and the line of the release is written after the send: two sends that fail leave no line, and the message that goes out in the end leaves ONE, not one for each retry.
+    /// </summary>
+    [Fact]
+    public async Task TheReleaseOfTheCodeIsLoggedOnlyForAMessageThatWentOut_NotForAFailedOne_NorOncePerRetry()
+    {
+        var rig = new ScheduledMessageRig { AccessCode = "4321", SendThrows = new OctorateServerException(500) };
+        var (property, _, _, _, row) = await SeedAsync(rig, "Il codice è {{access_code}} (TEST)");
+        await AddPropertyAccessCodeAsync(rig, property);
+
+        await DispatchAsync(rig, row.Id);
+        await using (var db = rig.NewDb())
+            await rig.Dispatcher(db).SweepAsync(Now.AddMinutes(20));
+
+        Assert.Equal(2, rig.Taken.Count);
+        Assert.Empty(rig.Released);
+        Assert.Equal(0, rig.Delivered);
+        Assert.Equal(2, (await rig.RowAsync(row.Id)).Attempts);
+
+        rig.SendThrows = null;
+        await using (var db = rig.NewDb())
+            await rig.Dispatcher(db).SweepAsync(Now.AddMinutes(40));
+
+        Assert.Equal(1, rig.Delivered);
+        Assert.Equal(AccessCodeReleaseChannels.GuestArea, Assert.Single(rig.Released));
+        Assert.Equal(ScheduledMessageStatus.Sent, (await rig.RowAsync(row.Id)).Status);
+    }
+
+    /// <summary>A message that is held back for something else asks for no code: the link of a check-in that is done refuses the message before the gate of the code is asked, so nothing is taken and nothing is logged.</summary>
+    [Fact]
+    public async Task ACodeIsTakenOnlyWhenNothingElseHoldsTheMessageBack()
+    {
+        var rig = new ScheduledMessageRig { AccessCode = "4321" };
+        var (property, booking, _, _, row) = await SeedAsync(rig, "Il codice è {{access_code}}, il check-in {{check_in_link}} (TEST)");
+        await AddPropertyAccessCodeAsync(rig, property);
+        await AddCheckInSessionAsync(rig, booking, GuestCheckInSessionStatus.Completo);
+
+        var result = await DispatchAsync(rig, row.Id);
+
+        Assert.Equal(ScheduledMessageReasons.CheckInCompleted, result.Code);
+        Assert.Empty(rig.Taken);
+        Assert.Empty(rig.Released);
+        Assert.Empty(rig.Sent);
+    }
+
+    // ------------------------------------------------------------------------------------------------------------------------------------
     // The check-in link
     // ------------------------------------------------------------------------------------------------------------------------------------
 
