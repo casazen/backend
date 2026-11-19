@@ -4031,6 +4031,18 @@
   <data name="TrustedSupplierNotFound" xml:space="preserve">
     <value>Trusted supplier not found</value>
   </data>
+  <data name="TrustedSupplierInviteEmailInvalid" xml:space="preserve">
+    <value>Enter a valid email address for the supplier.</value>
+  </data>
+  <data name="TrustedSupplierPropertyInvalid" xml:space="preserve">
+    <value>One of the chosen properties does not exist or does not belong to your organization.</value>
+  </data>
+  <data name="TrustedSupplierInviteComuneMissing" xml:space="preserve">
+    <value>To invite a supplier, first add a property with its municipality: the invite is for the municipality of your properties.</value>
+  </data>
+  <data name="TrustedSupplierAlreadyAdded" xml:space="preserve">
+    <value>This supplier is already one of your trusted suppliers.</value>
+  </data>
   <data name="ApprovalItemNotFound" xml:space="preserve">
     <value>Approval item not found</value>
   </data>
