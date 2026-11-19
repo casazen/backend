@@ -339,7 +339,70 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         _scheduler.Verify(c => c.Create(It.IsAny<Hangfire.Common.Job>(), It.IsAny<Hangfire.States.IState>()), Times.Once);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule. The delivery row of a stay that went by e-mail describes the link it was written for; the reminder, a link the guest asks for, the autopilot and the daily
+    /// job after an expiry issue other links without touching it. <c>GET link-delivery</c> (<see cref="ICheckInLinkDeliveryService.GetAsync"/>) reads the row against the newest link of the
+    /// booking: it follows the state of that link's e-mail and it never says «sent» for a link that expired or was replaced.
+    /// </summary>
+    [Fact]
+    public async Task LinkDelivery_OfAnEmailRow_FollowsTheNewestLink_AndIsNeverSentForALinkThatIsOver_Test()
+    {
+        var bookingId = await SeedAsync(daysUntilArrival: 2);
+        await Notifier().BookingConfirmedAsync(bookingId, BookingConfirmationKind.PaidOnline);
+        await RunConfirmationJobAsync(EmailSendResult.Sent());
+        var orgId = (await _db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId)).OrgId;
+        var afterExpiry = DeliveriesAt(new FixedTimeProvider(Now.AddDays(30)));
+
+        // The link of the confirmation, while it is open: sent by e-mail. Once it expired and nobody issued another: the row is over, it does not say «sent» any more.
+        var sent = await _deliveries.GetAsync(orgId, bookingId, includeLink: false);
+        Assert.Equal((CheckInLinkChannel.Email, CheckInLinkDeliveryState.Sent), (sent!.Channel, sent.State));
+        Assert.Null(sent.EndedAt);
+        var expired = await afterExpiry.GetAsync(orgId, bookingId, includeLink: false);
+        Assert.NotNull(expired!.EndedAt);
+        Assert.Equal(CheckInLinkEndReasons.LinkExpired, expired.EndedReason);
+
+        // Another link of the booking replaces it (the reminder, the guest, the autopilot, the job after an expiry), an hour later: the row follows the e-mail of that one.
+        var laterCheckIn = new GuestCheckInService(_db, NullLogger<GuestCheckInService>.Instance, options: _options, timeProvider: new FixedTimeProvider(Now.AddHours(1)));
+        var second = await laterCheckIn.IssueLinkAsync(bookingId, orgId);
+        var secondSession = await _db.GuestCheckInSessions.SingleAsync(s => s.Id == second.SessionId);
+        secondSession.LinkEmailStatus = GuestCheckInLinkEmailStatus.Failed;
+        secondSession.LinkEmailError = GuestCheckInLinkEmailErrors.Rejected;
+        await _db.SaveChangesAsync();
+        var failed = await _deliveries.GetAsync(orgId, bookingId, includeLink: false);
+        Assert.Equal((CheckInLinkChannel.Email, CheckInLinkDeliveryState.Failed, GuestCheckInLinkEmailErrors.Rejected), (failed!.Channel, failed.State, failed.LastErrorCode));
+        Assert.Null(failed.EndedAt);
+
+        secondSession.LinkEmailStatus = GuestCheckInLinkEmailStatus.Sent;
+        secondSession.LinkEmailError = null;
+        secondSession.SentAt = Now.UtcDateTime.AddHours(1);
+        await _db.SaveChangesAsync();
+        var sentAgain = await _deliveries.GetAsync(orgId, bookingId, includeLink: false);
+        Assert.Equal(CheckInLinkDeliveryState.Sent, sentAgain!.State);
+        Assert.Equal(secondSession.SentAt, sentAgain.SentAt);
+        Assert.Equal(secondSession.ExpiresAt, sentAgain.ExpiresAt);
+        Assert.Null(sentAgain.EndedAt);
+
+        // That link expires too: never «sent» for a link that is over.
+        var overToo = await afterExpiry.GetAsync(orgId, bookingId, includeLink: false);
+        Assert.NotNull(overToo!.EndedAt);
+        Assert.Equal(CheckInLinkEndReasons.LinkExpired, overToo.EndedReason);
+    }
+
     // ---- The data every test runs on ---------------------------------------------------------------------------------------------------
+
+    /// <summary>The service of the delivery on another clock: what the host would read after the links expired.</summary>
+    private CheckInLinkDeliveryService DeliveriesAt(TimeProvider clock) =>
+        new(
+            _db,
+            Mock.Of<IGuestCheckInLinkEmailQueue>(),
+            Mock.Of<IMessageReplyService>(),
+            Mock.Of<IGuestContactInfoService>(),
+            Mock.Of<IOctorateBookingTargets>(),
+            Mock.Of<IInternalActivityService>(),
+            new TestFeatureFlags(),
+            EmailTestHelpers.Links(),
+            _deliveryLog,
+            clock);
 
     private BookingNotifier Notifier(IGuestCheckInService? checkIn = null) =>
         new(_db, _emails, EmailTestHelpers.Links(), _pushes, _notifierLog, checkIn ?? _checkIn, _deliveries, _options, _clock);

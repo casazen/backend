@@ -302,7 +302,66 @@ public sealed class CheckInLinkDeliveryService(
             }
         }
 
-        return ViewOf(delivery, expiresAt, link);
+        var view = ViewOf(delivery, expiresAt, link);
+
+        // E23/F02/US01/T01: a row that went by e-mail describes the link it was written for. The reminder of the missing data, a link the guest asks for, the compliance autopilot and the
+        // daily job after an expiry issue other links without touching it, so the row is read against the newest link of the booking and never says «sent» for a link that is over.
+        return delivery.Channel == CheckInLinkChannel.Email && delivery.EndedAt is null
+            ? await FollowNewestLinkAsync(delivery, view, ct)
+            : view;
+    }
+
+    /// <summary>
+    /// The view of an e-mail row that has not ended, read against the newest check-in link of its booking. Its own link is the newest: the row is the truth while the link is open, a failure
+    /// stays what the host sees (the link was taken back), and a delivery that was in flight or sent for a link that is over is over. A later link exists: the state of its e-mail is where the
+    /// link of the booking stands (<c>Sent</c>, <c>Sending</c> while queued, <c>Failed</c> with its code; a link nobody e-mailed is the host's to carry), and it is over when that link is.
+    /// </summary>
+    private async Task<CheckInLinkDeliveryView> FollowNewestLinkAsync(CheckInLinkDelivery delivery, CheckInLinkDeliveryView view, CancellationToken ct)
+    {
+        var newest = await db.GuestCheckInSessions
+            .AsNoTracking()
+            .Where(s => s.BookingId == delivery.BookingId && s.OrgId == delivery.OrgId)
+            .OrderByDescending(s => s.CreatedAt)
+            .Select(s => new { s.Id, s.Status, s.ExpiresAt, s.SentAt, s.LinkEmailStatus, s.LinkEmailError, s.UpdatedAt })
+            .FirstOrDefaultAsync(ct);
+        if (newest is null)
+            return view;
+
+        var openStatus = newest.Status is GuestCheckInSessionStatus.Inviato or GuestCheckInSessionStatus.InCompilazione;
+        var open = openStatus && newest.ExpiresAt >= Now();
+        var completed = newest.Status is GuestCheckInSessionStatus.Completo or GuestCheckInSessionStatus.AlloggiatiInviato;
+        var endedAt = openStatus ? newest.ExpiresAt : newest.UpdatedAt;
+        var endedReason = completed ? CheckInLinkEndReasons.CheckInCompleted : CheckInLinkEndReasons.LinkExpired;
+
+        if (newest.Id == delivery.SessionId)
+        {
+            return open || delivery.State == CheckInLinkDeliveryState.Failed
+                ? view
+                : view with
+                {
+                    EndedAt = endedAt,
+                    EndedReason = endedReason,
+                };
+        }
+
+        var emailed = newest.LinkEmailStatus is GuestCheckInLinkEmailStatus.Sent or GuestCheckInLinkEmailStatus.Queued or GuestCheckInLinkEmailStatus.Failed;
+        var state = newest.LinkEmailStatus switch
+        {
+            GuestCheckInLinkEmailStatus.Sent => CheckInLinkDeliveryState.Sent,
+            GuestCheckInLinkEmailStatus.Queued => CheckInLinkDeliveryState.Sending,
+            GuestCheckInLinkEmailStatus.Failed => CheckInLinkDeliveryState.Failed,
+            _ => CheckInLinkDeliveryState.WaitingContact,
+        };
+        return new CheckInLinkDeliveryView(
+            emailed ? CheckInLinkChannel.Email : CheckInLinkChannel.Manual,
+            state,
+            0,
+            newest.LinkEmailStatus == GuestCheckInLinkEmailStatus.Failed ? newest.LinkEmailError : null,
+            newest.SentAt,
+            open ? null : endedAt,
+            open ? null : endedReason,
+            newest.ExpiresAt,
+            null);
     }
 
     public async Task EndAsync(Guid orgId, Guid bookingId, string reason, CancellationToken ct = default)
