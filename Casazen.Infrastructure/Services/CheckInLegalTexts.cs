@@ -17,12 +17,16 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>Files.</b> <c>{Legal:ContentPath}/checkin/manifest.json</c> (default <c>LegalDocuments</c> next to the API, the folder of the other legal documents) and the Markdown file of each
 /// language it names. The manifest lists the versions of each kind in time order: the <b>last</b> one that can be served is the active one. Production serves the last <b>approved</b> one;
 /// every other environment (<c>Staging</c>, <c>Development</c>, <c>Testing</c>) the last one, draft or approved, flagged with <c>isDraft</c>. The texts change only with a deploy: they are read
-/// once per process.</para>
+/// once per process, but for what a failure of the file system kept from being read (see below).</para>
 /// <para><b>Integrity.</b> A language is served only when the SHA-256 of its file (line endings as <c>\n</c>, so a checkout on Windows and one on Linux agree) is the one of the manifest;
 /// an approved entry must say who approved it and when; a version needs its Italian file, the reference. What does not hold is logged (names and versions only, never a text) and
 /// not served: a text that was changed after it was recorded is never shown to a guest.</para>
 /// <para><b>Fail-closed.</b> A missing or unreadable manifest serves nothing; the callers then keep the identity step closed and hand the guest to an operator
 /// (<c>legal_text_not_approved</c>).</para>
+/// <para><b>What is kept, and for how long.</b> What the files say is the same at every read, so a missing manifest, a text that does not parse, a hash that does not match or an approval that is
+/// not written stay out for the life of the process. A failure of the file system (<see cref="IOException"/>, <see cref="UnauthorizedAccessException"/>) says nothing about the files and may be gone
+/// in a minute (a volume that is slow at the start, a file that is being replaced): the registry as far as it could be read is served (fail-closed, never a text that was not checked) and read
+/// again after <see cref="TransientRetryInterval"/>, so one bad moment does not close the identity step until the next restart.</para>
 /// </remarks>
 public sealed partial class CheckInLegalTexts(
     IConfiguration configuration,
@@ -34,6 +38,9 @@ public sealed partial class CheckInLegalTexts(
 
     /// <summary>The manifest of the registry in <see cref="FolderName"/>.</summary>
     public const string ManifestFileName = "manifest.json";
+
+    /// <summary>How long a registry that a failure of the file system kept from being read in full is served as it is before it is read again.</summary>
+    public static readonly TimeSpan TransientRetryInterval = TimeSpan.FromSeconds(60);
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -47,6 +54,21 @@ public sealed partial class CheckInLegalTexts(
     private readonly ConcurrentDictionary<(string Kind, string Version, string Language, bool NotArchived), string> _rendered = new();
     private readonly object _loadLock = new();
     private volatile Registry? _loaded;
+    private TimeProvider _clock = TimeProvider.System;
+    private ILegalFileReader _files = PhysicalFiles.Instance;
+
+    /// <summary>The registry with the clock and the files of the caller: what the tests use to make the file system fail.</summary>
+    internal CheckInLegalTexts(
+        IConfiguration configuration,
+        IHostEnvironment environment,
+        ILogger<CheckInLegalTexts> logger,
+        TimeProvider clock,
+        ILegalFileReader files)
+        : this(configuration, environment, logger)
+    {
+        _clock = clock;
+        _files = files;
+    }
 
     public IReadOnlyList<CheckInLegalText> GetForStay(bool documentNotArchived, string? language)
     {
@@ -107,14 +129,23 @@ public sealed partial class CheckInLegalTexts(
         return null;
     }
 
+    /// <summary>The registry as it was read, read again when a failure of the file system kept it from being read in full and the interval has passed.</summary>
     private Registry Current()
     {
-        if (_loaded is { } loaded)
+        if (_loaded is { } loaded && !MustBeReadAgain(loaded))
             return loaded;
 
         lock (_loadLock)
-            return _loaded ??= Load();
+        {
+            if (_loaded is { } again && !MustBeReadAgain(again))
+                return again;
+
+            return _loaded = Load();
+        }
     }
+
+    private bool MustBeReadAgain(Registry registry) =>
+        registry.RetryAt is { } retryAt && _clock.GetUtcNow().UtcDateTime >= retryAt;
 
     private Registry Load()
     {
@@ -123,24 +154,36 @@ public sealed partial class CheckInLegalTexts(
         Manifest? manifest;
         try
         {
-            if (!File.Exists(manifestPath))
+            if (!_files.Exists(manifestPath))
             {
                 logger.LogWarning("Check-in legal texts: no manifest in {Folder}, no text is served", folder);
                 return Registry.Empty;
             }
 
-            manifest = JsonSerializer.Deserialize<Manifest>(File.ReadAllText(manifestPath, Encoding.UTF8), Json);
+            manifest = JsonSerializer.Deserialize<Manifest>(_files.ReadAllText(manifestPath), Json);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        catch (JsonException ex)
         {
+            // The manifest is what it is: the next read says the same, so this is kept until the process restarts.
             logger.LogError(ex, "Check-in legal texts: the manifest in {Folder} cannot be read, no text is served", folder);
             return Registry.Empty;
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The file system said no: nothing is known about the manifest, so nothing is served for now and it is read again later.
+            logger.LogError(
+                ex,
+                "Check-in legal texts: the manifest in {Folder} cannot be read, no text is served for now and it is read again in {Seconds} seconds",
+                folder,
+                (int)TransientRetryInterval.TotalSeconds);
+            return new Registry([], RetryAt());
+        }
 
         var versions = new List<TextVersion>();
+        var fileSystemFailed = false;
         foreach (var entry in manifest?.Texts ?? [])
         {
-            if (TryBuild(entry, folder, out var version, out var problem) && version is not null)
+            if (TryBuild(entry, folder, out var version, out var problem, out var transient) && version is not null)
             {
                 if (versions.Any(v => v.Kind == version.Kind && v.Version == version.Version))
                     logger.LogError("Check-in legal text {Kind} {Version} is listed twice in the manifest: the second one is not served", version.Kind, version.Version);
@@ -150,9 +193,13 @@ public sealed partial class CheckInLegalTexts(
                 continue;
             }
 
+            fileSystemFailed |= transient;
             logger.LogError(
-                "Check-in legal text {Kind} {Version} is not served: {Problem} (docs/runbooks/legal-documents.md)",
-                entry.Kind, entry.Version, problem);
+                "Check-in legal text {Kind} {Version} is not served{Again}: {Problem} (docs/runbooks/legal-documents.md)",
+                entry.Kind,
+                entry.Version,
+                transient ? $", it is read again in {(int)TransientRetryInterval.TotalSeconds} seconds" : string.Empty,
+                problem);
         }
 
         if (environment.IsProduction())
@@ -166,12 +213,19 @@ public sealed partial class CheckInLegalTexts(
             }
         }
 
-        return new Registry(versions);
+        return new Registry(versions, fileSystemFailed ? RetryAt() : null);
     }
 
-    private static bool TryBuild(ManifestText entry, string folder, out TextVersion? version, out string problem)
+    private DateTime RetryAt() => _clock.GetUtcNow().UtcDateTime + TransientRetryInterval;
+
+    /// <summary>
+    /// A version of the manifest as it is served, or the problem that keeps it out. <paramref name="transient"/> is true when the problem is a failure of the file system and not
+    /// something the files say: the version is read again later instead of being left out for the life of the process.
+    /// </summary>
+    private bool TryBuild(ManifestText entry, string folder, out TextVersion? version, out string problem, out bool transient)
     {
         version = null;
+        transient = false;
         if (!CheckInLegalTextKinds.IsKnown(entry.Kind))
         {
             problem = "unknown kind";
@@ -218,7 +272,7 @@ public sealed partial class CheckInLegalTexts(
                 return false;
             }
 
-            if (!TryRead(folder, file, out var text, out var hash, out var readProblem))
+            if (!TryRead(folder, file, out var text, out var hash, out var readProblem, out transient))
             {
                 problem = $"{language}: {readProblem}";
                 return false;
@@ -240,11 +294,15 @@ public sealed partial class CheckInLegalTexts(
         return true;
     }
 
-    /// <summary>The text of a file of the registry and its SHA-256, only when the file is where the manifest says and its hash is the recorded one.</summary>
-    private static bool TryRead(string folder, ManifestFile? file, out string text, out string hash, out string problem)
+    /// <summary>
+    /// The text of a file of the registry and its SHA-256, only when the file is where the manifest says and its hash is the recorded one. <paramref name="transient"/> is true only when the file
+    /// system failed to read it (the same file may read in a minute); a file that is missing or whose hash is not the recorded one says the same at every read.
+    /// </summary>
+    private bool TryRead(string folder, ManifestFile? file, out string text, out string hash, out string problem, out bool transient)
     {
         text = string.Empty;
         hash = string.Empty;
+        transient = false;
         var name = file?.File?.Trim();
         if (string.IsNullOrEmpty(name)
             || !string.Equals(name, Path.GetFileName(name), StringComparison.Ordinal)
@@ -257,16 +315,17 @@ public sealed partial class CheckInLegalTexts(
         try
         {
             var path = Path.Combine(folder, name);
-            if (!File.Exists(path))
+            if (!_files.Exists(path))
             {
                 problem = "the file does not exist";
                 return false;
             }
 
-            hash = Sha256OfText(File.ReadAllBytes(path), out text);
+            hash = Sha256OfText(_files.ReadAllBytes(path), out text);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            transient = true;
             problem = "the file cannot be read";
             return false;
         }
@@ -314,9 +373,21 @@ public sealed partial class CheckInLegalTexts(
 
     private sealed record TextVersion(string Kind, string Version, bool IsDraft, string ReferenceHash, IReadOnlyDictionary<string, string> Markdown);
 
-    private sealed record Registry(IReadOnlyList<TextVersion> Versions)
+    /// <summary>The versions that can be served and, when a failure of the file system kept something from being read, the instant to read the files again.</summary>
+    private sealed record Registry(IReadOnlyList<TextVersion> Versions, DateTime? RetryAt = null)
     {
         public static Registry Empty { get; } = new([]);
+    }
+
+    private sealed class PhysicalFiles : ILegalFileReader
+    {
+        public static PhysicalFiles Instance { get; } = new();
+
+        public bool Exists(string path) => File.Exists(path);
+
+        public string ReadAllText(string path) => File.ReadAllText(path, Encoding.UTF8);
+
+        public byte[] ReadAllBytes(string path) => File.ReadAllBytes(path);
     }
 
     private sealed class Manifest
@@ -345,4 +416,14 @@ public sealed partial class CheckInLegalTexts(
 
         public string? Sha256 { get; set; }
     }
+}
+
+/// <summary>The files the registry of the check-in legal texts reads: the real ones, or, in a test, ones that fail the way a file system does.</summary>
+internal interface ILegalFileReader
+{
+    bool Exists(string path);
+
+    string ReadAllText(string path);
+
+    byte[] ReadAllBytes(string path);
 }
