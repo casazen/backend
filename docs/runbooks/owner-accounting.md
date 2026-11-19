@@ -691,10 +691,11 @@ payload column of `TaxReportingDatasets` exists, it is encrypted through `Encryp
 ## Tourist tax at year end (E18/F01/US02/T03)
 
 Acceptance steps C9 and D3 of `pilota-flusso-completo-2026-11-14.md`: the agency collects the tourist tax and answers for it to the comune. Three exports of the year, **CSV or Excel**
-(`GET api/tourist-tax/year-end/{year}/…?format=csv|xlsx`, `payment.read` like the rest of the controller, `no-store`), behind `Features:TaxReportingExports` (404 before authentication while it is
-off). **Nothing is filed by CasaZen**, nothing is recomputed (⚖ T2: the format a comune asks varies, so the files carry every field the data has), and there is **no migration**. They need a
-scope that reaches the whole org: 403 `tourist_tax_year_end_needs_whole_org` before anything is read (a declaration of some of the properties would be false, and the payments belong to the org);
-400 `report_invalid_format` (there is no JSON of them) and `fiscal_report_period_invalid` (a year outside 2000-2100). The texts are those of the resource files, in the language of the request.
+(`GET api/tourist-tax/year-end/{year}/…?format=csv|xlsx`, `payment.read` like the rest of the controller, `no-store`) and, for a screen, **the same three as JSON** (`?format=json`: «JSON read» below), behind
+`Features:TaxReportingExports` (404 before authentication while it is off). **Nothing is filed by CasaZen**, nothing is recomputed (⚖ T2: the format a comune asks varies, so the files carry every
+field the data has), and there is **no migration**. They need a scope that reaches the whole org: 403 `tourist_tax_year_end_needs_whole_org` before anything is read (a declaration of some of the
+properties would be false, and the payments belong to the org); 400 `report_invalid_format` (the format has to be named, `csv`, `xlsx` or `json`: a request that names none is refused, as it always was)
+and `fiscal_report_period_invalid` (a year outside 2000-2100). The texts are those of the resource files, in the language of the request.
 **The stays are the ones that happened**: the one definition of an active stay (`AlloggiatiStatusRules`: confirmed, checked in or checked out, and never a no-show), which the tourist tax report
 the summary reads now applies too (it used a copy of the list that did not leave the no-shows out: a stay whose guests never came owes no tax in any reader).
 
@@ -721,6 +722,20 @@ the summary reads now applies too (it used a copy of the list that did not leave
   (none issued yet: told apart, never counted as untaxed) and **the francs of the documents** (`FiscalDocumentLine` of type tourist tax of the documents in the currency of the property: E12,
   never a calculation). **A property in Switzerland whose canton is not known** (no Swiss municipality on it, or one the registry of the municipalities lacks: the field is optional) may be in
   Ticino, so it is in the count with its stays and a note in the last column («Cantone non determinato…»), never dropped in silence (`TicinoPropertyCount.CantonUnknown`). Every query names the org.
+- **JSON read** (FIX/BE-YEAREND-JSON: the screen could not read the figures, the reasons or the unknown cantons from a file). `?format=json` on each of the three addresses answers the typed result of the
+  service as JSON (`TouristTaxYearEndDtos.cs`): camel case, amounts as numbers to the cent (the summaries, the totals and the payments are the DTOs of `GET api/tourist-tax/summary`, so they say them again in
+  whole cents), days as ISO dates (`yyyy-MM-dd`), enums as names (`status`: `NothingOwed`, `ToPay`, `Paid`, `Overpaid`; `by`: `Month`, `Quarter`), `Cache-Control: no-store`. **It is the road of the files**:
+  the same three actions, so the same flag, the same policy `payment.read`, the same 403 for a scope that does not reach the whole org and the same 400 for a year or a `by` that is not valid, and the same
+  decision on `guest.read` (the service decides it from the `withExemptionReasons` the controller passes: nothing is decided or computed in the controller or in the client). **The default has not changed**: a
+  request with no `format` is still 400 `report_invalid_format`, so a client asks `json` by name; the files are the bytes they were.
+  - `declaration`: `{ year, currency: "EUR", comuni: [{ summary, taxedStays, staysWithoutAmount: [{ reason, stays, guests, guestNights }], exemptions: [{ reason, stays, guests, guestNights }] }], total }`; `summary`
+    and `total` are the ones of `GET summary`, with `paid`, `balance`, `status` and `remittances` always there (the year-end needs the whole org). **`exemptions[].reason` is the server's**: with `guest.read` the
+    codes of the catalogue (`resident`, `health_care`...) and `erased`; without it `minor_age` and one `restricted` row that counts the others, and no code anywhere in the answer (art. 9 GDPR).
+  - `agent-account`: `{ year, by, currency: "EUR", rows: [{ comune, period, from, to, isYear, stays, nights, guests, collected, staysWithoutAmount, remitted, balance }], remittances, total }`.
+  - `ticino`: `{ year, dueDate, cantonUnknownCount, properties: [{ propertyId, propertyName, address, city, municipalityCode, currency, stays, nights, taxedStays, taxedNights, untaxedStays, untaxedNights,
+    staysWithoutDocument, nightsWithoutDocument, touristTax, cantonUnknown }] }`: `cantonUnknown` stays on each property that may be in Ticino and `cantonUnknownCount` is the number of those, so the screen
+    says it without counting; `touristTax` is a number in the `currency` of the property (CHF).
 - **Proof.** `TouristTaxYearEndExportsTests` (`TouristTaxYearEnd_ExemptionReasonsOnlyToWhoHoldsGuestRead_Test`: the reasons with and without `guest.read`, in the data and in the file;
   `TouristTaxYearEnd_DueMinusRemittedPerMunicipality_Test`: due less remitted per comune to the cent, the reasons and the exemptions, the quarters adding
-  up to the year, the files; the count of Ticino from the documents; the whole-org refusal and the rules).
+  up to the year, the files; the count of Ticino from the documents; the whole-org refusal and the rules) and `TouristTaxYearEndJsonTests` (the JSON read: `YearEndDeclarationJson_WithoutGuestRead_HidesTheReasons_Test`,
+  `YearEndJson_NeedsTheWholeOrganization_Test`, `TicinoJson_CountsTheUnknownCantons_Test`, and `YearEndJson_IsAskedByName_AndTheFilesAreStillTheFiles_Test`: the format named, the same 400s, the CSV the exporter's).
