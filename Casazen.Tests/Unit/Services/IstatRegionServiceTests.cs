@@ -448,6 +448,37 @@ public class IstatRegionServiceTests : IAsyncLifetime
         Assert.Equal(("04", "TN", IstatCoverage.NotCovered), (province.RegionIstatCode, province.ProvinceCode, province.OctorateCoverage));
     }
 
+    /// <summary>
+    /// An address the table would refuse is a refusal of the service, never a failure of the database: the check of the table (<c>LIKE 'https://%'</c>) is
+    /// case-sensitive, so the scheme of an https address, which may be written in any case, is stored in lower case; an address with no «//» after the scheme,
+    /// or with no host, is not an https address (422). Whatever is stored starts with «https://».
+    /// </summary>
+    [Fact]
+    public async Task IstatRegions_Update_AnUpperCaseHttpsScheme_IsStoredInLowerCase_AndAnAddressWithoutTheSlashesIsRefused()
+    {
+        var service = Service();
+
+        var saved = await service.UpdateAsync(
+            Update("03", source: "HTTPS://WWW.Example.gov.it/Flussi", portal: "Https://Portale.example.it/Guida"), Staff, Ct);
+
+        Assert.Equal(("https://WWW.Example.gov.it/Flussi", "https://Portale.example.it/Guida"), (saved.SourceUrl, saved.PortalUrl));
+        var stored = await _db.IstatRegionRules.AsNoTracking().SingleAsync(r => r.RegionIstatCode == "03" && r.ProvinceCode == null, Ct);
+        Assert.StartsWith("https://", stored.SourceUrl, StringComparison.Ordinal);
+        Assert.StartsWith("https://", stored.PortalUrl, StringComparison.Ordinal);
+
+        foreach (var address in new[] { "https:example.gov.it", "https:/example.gov.it", "https:\\\\example.gov.it", "https://", "HTTPS://" })
+        {
+            var source = await Assert.ThrowsAsync<DomainRuleException>(() => service.UpdateAsync(Update("03", source: address), Staff, Ct));
+            Assert.Equal(IstatRegionErrors.SourceInvalidCode, source.Code);
+            var portal = await Assert.ThrowsAsync<DomainRuleException>(() => service.UpdateAsync(Update("03", portal: address), Staff, Ct));
+            Assert.Equal(IstatRegionErrors.PortalInvalidCode, portal.Code);
+        }
+
+        // The refusals changed nothing.
+        var after = await _db.IstatRegionRules.AsNoTracking().SingleAsync(r => r.RegionIstatCode == "03" && r.ProvinceCode == null, Ct);
+        Assert.Equal(("https://WWW.Example.gov.it/Flussi", "https://Portale.example.it/Guida"), (after.SourceUrl, after.PortalUrl));
+    }
+
     // ─── The deadline of the cockpit ─────────────────────────────────────────────────────────────────────
 
     /// <summary>
