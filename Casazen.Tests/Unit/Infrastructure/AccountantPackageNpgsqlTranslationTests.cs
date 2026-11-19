@@ -32,10 +32,14 @@ public class AccountantPackageNpgsqlTranslationTests
         ["guest-documents-count"] = (db, scope) => AccountantPackageFacts.IssuedDocuments(db, scope, Year, FiscalDocumentPurpose.GuestStay).CountAsync(),
         ["guest-documents"] = (db, scope) => AccountantPackageFacts.ReadAsync(db, scope, Year, FiscalDocumentPurpose.GuestStay, CancellationToken.None),
         ["owner-invoices"] = (db, scope) => AccountantPackageFacts.ReadAsync(db, scope, Year, FiscalDocumentPurpose.OwnerInvoice, CancellationToken.None),
+        ["self-billed-documents"] = (db, scope) => AccountantPackageFacts.ReadAsync(db, scope, Year, FiscalDocumentPurpose.SelfBilling, CancellationToken.None),
+        ["self-billed-with-files-count"] = (db, scope) => AccountantPackageFacts.IssuedSelfBilledWithFiles(db, scope, Year).CountAsync(),
+        ["self-billed-suppliers"] = (db, _) => AccountantPackageFacts.SelfBilledSuppliersAsync(db, OrgId, [Guid.NewGuid()], CancellationToken.None),
         ["current-issuer"] = (db, _) => AccountantPackageFacts.CurrentIssuerAsync(db, OrgId, CancellationToken.None),
         ["owner-names"] = (db, _) => AccountantPackageFacts.OwnerNamesAsync(db, OrgId, [Guid.NewGuid()], CancellationToken.None),
         ["swiss-cantons"] = (db, _) => AccountantPackageFacts.SwissCantonsAsync(db, OrgId, [Guid.NewGuid()], CancellationToken.None),
         ["portal-commissions"] = (db, _) => AccountantPackageFacts.PortalCommissionsBorneAsync(db, new PortalAccountHolderResolver(db), OrgId, Year, CancellationToken.None),
+        ["portal-commission-lines"] = (db, _) => AccountantPackageFacts.PortalCommissionLinesAsync(db, new PortalAccountHolderResolver(db), OrgId, Year, CancellationToken.None),
     };
 
     /// <summary>
@@ -47,10 +51,14 @@ public class AccountantPackageNpgsqlTranslationTests
         ["guest-documents-count"] = 1,
         ["guest-documents"] = 1,
         ["owner-invoices"] = 0,
+        ["self-billed-documents"] = 0,
+        ["self-billed-with-files-count"] = 0,
+        ["self-billed-suppliers"] = 1,
         ["current-issuer"] = 2,
         ["owner-names"] = 1,
         ["swiss-cantons"] = 1,
         ["portal-commissions"] = 1,
+        ["portal-commission-lines"] = 1,
     };
 
     public static TheoryData<string, string> EveryCallWithEveryScope()

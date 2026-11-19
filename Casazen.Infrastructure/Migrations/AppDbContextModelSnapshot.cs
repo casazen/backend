@@ -4913,7 +4913,7 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.ToTable("IstatRegionRules", t =>
                         {
-                            t.HasCheckConstraint("CK_IstatRegionRules_Deadline", "(\"DeadlineKind\" = 2 AND \"DeadlineDay\" BETWEEN 1 AND 31) OR (\"DeadlineKind\" <> 2 AND \"DeadlineDay\" IS NULL)");
+                            t.HasCheckConstraint("CK_IstatRegionRules_Deadline", "(\"DeadlineKind\" = 2 AND \"DeadlineDay\" IS NOT NULL AND \"DeadlineDay\" BETWEEN 1 AND 31) OR (\"DeadlineKind\" <> 2 AND \"DeadlineDay\" IS NULL)");
 
                             t.HasCheckConstraint("CK_IstatRegionRules_Enums", "\"DeadlineKind\" IN (0, 1, 2) AND \"OctorateCoverage\" IN (0, 1, 2)");
 

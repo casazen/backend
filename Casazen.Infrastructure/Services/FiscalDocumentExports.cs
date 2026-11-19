@@ -118,7 +118,7 @@ public static class FiscalDocumentExports
         _ => texts.Get("FiscalExportPaymentUnknown", language),
     };
 
-    private static string SdiLabel(string status, IDocumentTexts texts, string language) => status switch
+    internal static string SdiLabel(string status, IDocumentTexts texts, string language) => status switch
     {
         FiscalDocumentSdiStatuses.NotApplicable => texts.Get("FiscalExportSdiNotApplicable", language),
         FiscalDocumentSdiStatuses.ToSend => texts.Get("FiscalExportSdiToSend", language),

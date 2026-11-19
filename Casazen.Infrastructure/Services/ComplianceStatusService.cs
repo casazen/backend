@@ -621,6 +621,9 @@ public sealed class ComplianceStatusService(
         // The region of each comune and its row of the ISTAT region table (platform data): the deadline of the region comes from the table, and
         // Compliance:IstatDeadlineDays overrides it. A comune that is not in the list, or a region without a monthly day, has no deadline.
         var territoryOf = await IstatRegionService.FindForComuniAsync(db, properties.Select(p => p.ComuneIstatCode), ct);
+
+        // A day configured for a region that is not a day of the month is ignored and warned about, once for each region in an evaluation.
+        var warnedOverrides = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var declaredRates = !propertyChecks
             ? []
             : await db.OrgTouristTaxRates
@@ -690,7 +693,19 @@ public sealed class ComplianceStatusService(
             // The ISTAT deadline of the region of the comune: the monthly day of its row of the table, or the one configured for the region; a region
             // with neither is «to define» and gets no item.
             var territory = territoryOf.GetValueOrDefault(property.ComuneIstatCode?.Trim() ?? string.Empty);
-            var istatDay = IstatRegionResolver.DeadlineDay(territory?.Rule, territory?.RegionCode, settings.IstatDeadlineDays);
+            var istatDay = IstatRegionResolver.DeadlineDay(
+                territory?.Rule,
+                territory?.RegionCode,
+                settings.IstatDeadlineDays,
+                (region, configured) =>
+                {
+                    if (warnedOverrides.Add(region))
+                        logger.LogWarning(IstatRegionService.InvalidOverrideMessage, region, configured);
+                });
+
+            // Who sends it: the sender of the property, but not the channel manager where it does not cover the region (the host uses the portal of the
+            // region, so nothing is handled outside). The same rule as the coverage of the property, so the two always say the same.
+            var istatSender = IstatRegionResolver.IstatSenderFor(sender, territory?.Rule?.OctorateCoverage ?? IstatCoverage.Unknown);
 
             foreach (var month in months)
             {
@@ -702,7 +717,7 @@ public sealed class ComplianceStatusService(
                 if (istatDay is { } deadlineDay
                     && ComplianceLightRules.Istat(new IstatFacts
                     {
-                        Sender = sender,
+                        Sender = istatSender,
                         Today = todayDate,
                         PeriodStart = month,
                         DeadlineDay = deadlineDay,

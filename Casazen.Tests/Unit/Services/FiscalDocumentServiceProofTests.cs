@@ -1,3 +1,4 @@
+using System.Globalization;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -9,6 +10,7 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.DTOs.Fiscal;
 using Casazen.Web.Resources;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -458,6 +460,128 @@ public class FiscalDocumentServiceProofTests
         var creditNote = await invoiceService.CreateCreditNoteAsync(invoice.Id, 100m, "TEST rimborso parziale", confirm: true, null);
         Assert.Equal(FiscalDocumentSdiStatuses.ToSend, creditNote.SdiStatus);
         Assert.Equal("<p:FatturaElettronica/>", creditNote.FatturaPaXml);
+    }
+
+    /// <summary>
+    /// PROOF TEST: money rule (review of FIX/BE-PORTAL-TAXLINE). The guest document of a portal booking reads the collection of the tourist tax of the stay (E25) once, for the document the API gives and for
+    /// its PDF alike, in Switzerland and in Italy: nothing recorded is «to collect at the property» as before (450.00 through the portal, 12.00 to collect); 5.00 paid online leaves only 7.00 to collect; the tax
+    /// recorded paid at the property leaves nothing to collect, no note, and the document says it is paid in full.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PortalBookingDocument_ReadsTheCollectionOfTheTouristTax_ForTheApiAndThePdf_Test(bool swiss)
+    {
+        await using var db = NewDb();
+        var booking = await SeedAsync(db, BookingSource.BookingCom);
+        var service = Service(db);
+        var document = await AddPortalDocumentAsync(db, booking, swiss);
+
+        // No record of the collection: the tax is to collect at the property, as before.
+        await AssertTheTouristTaxAsync(service, document.Id, swiss, toCollect: 12m);
+
+        // The guest paid 5.00 of it online: only the rest is to collect.
+        var record = new StayTouristTax
+        {
+            OrgId = OrgId,
+            BookingId = booking,
+            Total = 12m,
+            AmountDue = 12m,
+            CollectionStatus = TouristTaxCollectionStatus.PaidOnline,
+            CollectedAmount = 5m,
+            CollectedAt = Now.UtcDateTime,
+        };
+        db.StayTouristTaxes.Add(record);
+        await db.SaveChangesAsync();
+        await AssertTheTouristTaxAsync(service, document.Id, swiss, toCollect: 7m);
+
+        // The host recorded that the guest paid it at the property: nothing is to collect and the document is paid in full.
+        record.CollectionStatus = TouristTaxCollectionStatus.PaidAtProperty;
+        await db.SaveChangesAsync();
+        await AssertTheTouristTaxAsync(service, document.Id, swiss, toCollect: null);
+    }
+
+    /// <summary>What the document says of the tourist tax, in the answer of the API and in the PDF: <paramref name="toCollect"/> still to collect at the property, or <c>null</c> for nothing (paid in full).</summary>
+    private static async Task AssertTheTouristTaxAsync(FiscalDocumentService service, Guid id, bool swiss, decimal? toCollect)
+    {
+        var culture = swiss ? CultureInfo.InvariantCulture : CultureInfo.GetCultureInfo("it-IT");
+
+        // The document the API gives...
+        decimal? paidViaPortal = toCollect is null ? null : 450m;
+        var dto = FiscalDocumentDto.From((await service.GetAsync(id))!);
+        Assert.Equal((paidViaPortal, toCollect), (dto.AmountPaidViaPortal, dto.AmountToCollectAtProperty));
+        Assert.Equal(toCollect is not null, Assert.Single(dto.Lines, l => l.LineType == "TouristTax").ToCollectAtProperty);
+
+        // ...and its PDF say the same.
+        var text = TextOf(await service.PdfContentAsync(id, "it"));
+        if (toCollect is { } rest)
+        {
+            var amount = rest.ToString("0.00", culture);
+            Assert.Contains(swiss ? "Pagata tramite il portale: CHF 450.00" : "Pagamento: pagato tramite il portale per EUR 450,00", text, StringComparison.Ordinal);
+            Assert.Contains(swiss ? $"Tassa di soggiorno da riscuotere in struttura: CHF {amount}" : $"Imposta di soggiorno da pagare in struttura: EUR {amount}", text, StringComparison.Ordinal);
+            Assert.Contains(swiss ? "- tassa da riscuotere in struttura" : "- da pagare in struttura", text, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.DoesNotContain("in struttura", text, StringComparison.Ordinal);
+            Assert.Contains(swiss ? "Pagata tramite il portale" : "Pagamento: pagato", text, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>The issued guest document of a booking of a portal (the money collected by the portal): the stay of 450.00 and the tourist tax of 12.00 outside the VAT, 462.00 in all; a Swiss invoice or an Italian receipt.</summary>
+    private static async Task<FiscalDocument> AddPortalDocumentAsync(AppDbContext db, Guid bookingId, bool swiss)
+    {
+        var amounts = FiscalDocumentTotals.FromGross(
+            [
+                new FiscalDocumentGrossLine("Soggiorno di 3 notti", 1m, 450m, swiss ? 3.8m : 0m, swiss ? null : "N2.2", FiscalLineType.Accommodation),
+                new FiscalDocumentGrossLine("Imposta di soggiorno riscossa per conto del comune", 1m, 12m, 0m, swiss ? null : "N1", FiscalLineType.TouristTax),
+            ],
+            null);
+        var issuer = swiss
+            ? new FiscalIssuerSnapshot { LegalName = "TEST Agenzia Sagl", CountryCode = "CH", VatRegistered = true, SwissVatNumber = "CHE-109.322.551", Regime = DocumentRegime.SwissVatRegistered }
+            : new FiscalIssuerSnapshot { LegalName = "TEST Mario Rossi", CountryCode = "IT", FiscalCode = "RSSMRA70A01H501S", Regime = DocumentRegime.PrivatePerson, VirtualStampConfirmed = true };
+        var document = new FiscalDocument
+        {
+            OrgId = OrgId,
+            BookingId = bookingId,
+            Kind = swiss ? DocumentKind.Invoice : DocumentKind.Receipt,
+            Status = FiscalDocumentStatus.Issued,
+            Series = "2026",
+            SequenceNumber = 1,
+            Number = "2026/1",
+            IssueDate = new DateOnly(2026, 11, 5),
+            Currency = swiss ? "CHF" : "EUR",
+            RecipientName = "TEST Ospite Portale",
+            TaxableBase = amounts.TaxableBase,
+            VatAmount = amounts.VatAmount,
+            StampDuty = amounts.StampDuty,
+            Total = amounts.Total,
+            PaymentState = FiscalDocumentPaymentState.Paid,
+            PaymentChannel = FiscalPaymentChannel.Portal,
+            SdiStatus = FiscalDocumentSdiStatuses.NotApplicable,
+            IssuerSnapshot = issuer.ToJson(),
+        };
+        foreach (var line in amounts.Lines)
+        {
+            document.Lines.Add(new FiscalDocumentLine
+            {
+                OrgId = OrgId,
+                DocumentId = document.Id,
+                LineNumber = line.LineNumber,
+                LineType = line.LineType,
+                Description = line.Description,
+                Quantity = line.Quantity,
+                UnitPrice = line.UnitPrice,
+                TotalPrice = line.TotalPrice,
+                VatRatePercent = line.VatRatePercent,
+                VatNatureCode = line.NatureCode,
+                VatAmount = line.VatAmount,
+            });
+        }
+
+        db.FiscalDocuments.Add(document);
+        await db.SaveChangesAsync();
+        return document;
     }
 
     private static string Snapshot(FiscalDocument d) =>

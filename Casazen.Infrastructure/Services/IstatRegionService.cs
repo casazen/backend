@@ -34,6 +34,15 @@ public sealed class IstatRegionService(
 {
     private const string EmptyValue = "(none)";
 
+    private const string HttpsPrefix = "https://";
+
+    /// <summary>
+    /// The warning of a day configured for a region in <c>Compliance:IstatDeadlineDays</c> that is not a day of the month. It names the region and the value
+    /// and nothing else (no organization, property or person); the day is ignored and the one of the table stands.
+    /// </summary>
+    internal const string InvalidOverrideMessage =
+        "Compliance:IstatDeadlineDays for region {RegionCode} is {ConfiguredDay}, not a day of the month from 1 to 31: ignored, the day of the ISTAT region table is used";
+
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     public async Task<IReadOnlyList<IstatRegionRule>> ListAsync(CancellationToken ct)
@@ -150,8 +159,12 @@ public sealed class IstatRegionService(
         var match = await FindForComuneAsync(db, property.ComuneIstatCode, ct);
         var rule = match?.Rule;
 
-        // The deadline of the cockpit: the row's monthly day, or the day configured for the region, which overrides it.
-        var day = IstatRegionResolver.DeadlineDay(rule, match?.RegionCode, options.Value.IstatDeadlineDays);
+        // The deadline of the cockpit: the row's monthly day, or the day configured for the region, which overrides it (a day out of 1 to 31 is ignored).
+        var day = IstatRegionResolver.DeadlineDay(
+            rule,
+            match?.RegionCode,
+            options.Value.IstatDeadlineDays,
+            (region, configured) => logger.LogWarning(InvalidOverrideMessage, region, configured));
         var kind = day is not null ? IstatDeadlineKind.Monthly : rule?.DeadlineKind ?? IstatDeadlineKind.Unknown;
         var coverage = rule?.OctorateCoverage ?? IstatCoverage.Unknown;
         var next = IstatRegionResolver.NextStep(coverage);
@@ -170,7 +183,8 @@ public sealed class IstatRegionService(
             IstatRegionResolver.RequiredFields(rule),
             RequiredGuestFieldsKnown: rule?.RequiredGuestFields is not null,
             coverage,
-            sender.IstatSender,
+            // The cockpit reads the same rule: where the channel manager does not cover the region, nobody outside sends it and the host does.
+            IstatRegionResolver.IstatSenderFor(sender.IstatSender, coverage),
             next,
             next == IstatNextStep.AskSupport ? OnboardingAssistContexts.PanelIstat : null,
             rule?.SourceUrl,
@@ -227,14 +241,23 @@ public sealed class IstatRegionService(
             StringComparer.Ordinal);
     }
 
-    /// <summary>The address as an absolute https one within the column, or null when it is not one.</summary>
+    /// <summary>
+    /// The address as an absolute https one within the column, or null when it is not one. What it returns satisfies the checks of the table
+    /// (<c>LIKE 'https://%'</c>, which is case-sensitive) as well, so an address the database would refuse is a refusal of the service (422) and never a
+    /// failure of the database (500): the scheme may be written in any case (RFC 3986), it is stored in lower case, and an address with no <c>//</c> after
+    /// the scheme or with no host is not an https address.
+    /// </summary>
     private static string? HttpsAddress(string? value)
     {
         var trimmed = value?.Trim();
         if (string.IsNullOrEmpty(trimmed) || trimmed.Length > IstatRegionRule.UrlMaxLength)
             return null;
 
-        return Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps ? trimmed : null;
+        if (!trimmed.StartsWith(HttpsPrefix, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var address = HttpsPrefix + trimmed[HttpsPrefix.Length..];
+        return Uri.TryCreate(address, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps && uri.Host.Length > 0 ? address : null;
     }
 
     private static NotFoundException TerritoryNotFound() =>

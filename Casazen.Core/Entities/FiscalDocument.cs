@@ -225,6 +225,14 @@ public class FiscalDocument : ITenantOwned
 
     public FiscalDocumentPaymentState PaymentState { get; set; } = FiscalDocumentPaymentState.Unknown;
 
+    /// <summary>
+    /// The part of the tourist tax of the stay that its collection (E25, <see cref="StayTouristTax"/>) records as collected: what the guest paid online net of the refunds, or the whole tax once the host
+    /// recorded it paid at the property (FIX/BE-PORTAL-TAXLINE). <b>Never stored</b> (no column): the readers of the guest document of a portal set it from the record of the stay
+    /// (<c>FiscalDocumentService</c>) and <see cref="FiscalDocumentPortalCollection.SplitOf"/> reads it. Zero for every other document and until it is read: nothing recorded.
+    /// </summary>
+    [NotMapped]
+    public decimal TouristTaxCollected { get; set; }
+
     /// <summary>One of <see cref="FiscalDocumentSdiStatuses"/>.</summary>
     [Required, MaxLength(SdiStatusMaxLength)]
     public string SdiStatus { get; set; } = FiscalDocumentSdiStatuses.NotApplicable;

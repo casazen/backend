@@ -73,7 +73,12 @@ validated against, the currency does (`Pain001SchemaProvider`), and the files of
   control sum, `ReqdExctnDt/Dt`, the **debtor** (the agency: name and structured address from the issuer profile), its IBAN and the debtor agent: the **institution
   identifier** of the debit IBAN (characters 5 to 9 of a Swiss or Liechtenstein IBAN) as a member of the Swiss bank clearing (`ClrSysMmbId`, `ClrSysId/Cd` `CHBCC`),
   because the Swiss schema takes a BIC or a clearing member there and no `Othr`; an IBAN that carries no institution identifier leaves the bank unnamed (an empty
-  `FinInstnId`, which the schema also takes: the bank reads the account from the IBAN). Batch booking is on.
+  `FinInstnId`, which the schema also takes: the bank reads the account from the IBAN), and so does a **QR-IBAN** (institution 30000 to 31999: the account of a QR-bill, a
+  credit-side account whose identifier is no member of the bank clearing, so naming it would name a bank that does not exist). The issuer profile refuses a QR-IBAN as its
+  `Iban` today, but legacy data can still hold one: the batch is made and its file names no bank (`DebtorAgent_QrIban_NamesNoBank_Test`). **The debit IBAN of a CHF batch is a
+  Swiss or Liechtenstein one** (the file is a domestic payment, which a Swiss bank executes from an account it holds): any other is refused with 422
+  `wire_debit_iban_not_swiss` and nothing is saved (`ChfBatch_FromANonSwissDebitIban_IsRefused_Test`); a EUR batch is unchanged, it takes any valid debit IBAN (its debtor
+  agent is «not provided»). Batch booking is on.
 - **One `CdtTrfTxInf` per payout:** the unique `EndToEndId` (`CZ` and the id of the payout without hyphens, 34 characters), the amount in the currency with two
   decimals, the **creditor** (the owner: the legal name, or the first and last name, and the structured address of the owner registry, E13), the creditor IBAN and the
   remittance **«Rendiconto MM/AAAA»** (the period of the statement version of the payout). No creditor agent: a domestic IBAN identifies the bank.
@@ -141,7 +146,7 @@ behind. Every refusal is 422 with a stable code, and **no message, argument, exc
 | 7 | The net amount of every transfer is greater than zero and has at most two decimals (never zero, never negative, never rounded in silence) | `wire_amount_invalid` |
 | 8 | No payout is already in a batch | `payouts_already_in_batch` |
 | 9 | The issuer profile has its legal name and a complete structured address (street, postal code, town, country) | `wire_debtor_incomplete` |
-| 10 | The issuer profile has an IBAN and it passes the check digits (mod 97) | `wire_debit_account_missing`, `invalid_debit_account_iban` |
+| 10 | The issuer profile has an IBAN, it passes the check digits (mod 97) and, for a CHF batch, it is a Swiss or Liechtenstein IBAN (the Swiss file is a domestic payment, debited from an account a Swiss bank holds; a EUR batch takes any valid debit IBAN, its debtor agent is «not provided») | `wire_debit_account_missing`, `invalid_debit_account_iban`, `wire_debit_iban_not_swiss` |
 | 11 | Every owner has a complete structured address (both files write it), an IBAN, that has the length of its country and passes the check digits (the definition of the owner registry, `OwnerFieldRules.IsValidIban`), that is **not a QR-IBAN** (the account of a QR-bill, never the creditor account of a normal transfer: institution 30000 to 31999 of a Swiss or Liechtenstein IBAN) and that is in the area of the file: in CHF Swiss or Liechtenstein (a CHF transfer to a foreign IBAN is not a domestic payment, which this file does not cover), in EUR in the SEPA area (`OwnerFieldRules.IsSepaIban`: a EUR transfer to another IBAN is not a SEPA credit transfer, which this file does not cover). One refusal at a time, in this order, listing every owner that fails it | `wire_owner_address_missing`, `wire_owner_iban_missing`, `owner_invalid_iban`, `wire_owner_qr_iban`, `wire_owner_iban_not_swiss`, `wire_owner_iban_not_sepa` |
 | 12 | The file validates against the **official schema of its currency** (`Pain001SchemaProvider`, `XsdValidator`: EUR the ISO `pain.001.001.09.xsd`, CHF the Swiss `pain.001.001.09.ch.03.xsd`) | `wire_batch_xml_invalid` (the number of errors and the line and position of the first five), `wire_batch_schema_unavailable` |
 | 13 | The file is what its lines say (`Pain001Checks`, in the namespace of the message of the currency): the control sum and the number of operations of the header and of the payment are the sum and the count of the transfers, and the batch's; every amount is positive with two decimals and has the currency of the batch written next to it; every end-to-end id is there and is unique. **In EUR also the rules of the SEPA credit transfer:** every payment has the service level `SEPA` and the charge bearer `SLEV`, and the debtor and every creditor have a structured or hybrid address | `wire_batch_content_invalid` (the names of the broken ISO elements: `CtrlSum`, `NbOfTxs`, `InstdAmt`, `Ccy`, `EndToEndId`, and for EUR `SvcLvl`, `ChrgBr`, `PstlAdr`) |
@@ -155,7 +160,11 @@ The schemas are **not** written or rebuilt by hand: they are the files their pub
 schema set; a set is accepted only if it has the namespace of the message CasaZen writes for that currency (`Pain001SchemaProvider.NamespaceOf`), because otherwise the
 validation would only warn that it has no schema for the root element and the file would pass. The two messages share their namespace, so a file in the wrong folder would
 compile all the same: the file names are fixed (`pain.001.001.09.xsd` in `Iso`, `pain.001.001.09.ch.03.xsd` in `Swiss`) and
-`Pain001SchemaProvider_EmbeddedFiles_CompileOrSayWhy_Test` fails when a folder holds anything else.
+`Pain001SchemaProvider_EmbeddedFiles_CompileOrSayWhy_Test` fails when a folder holds anything else. The **content** is pinned too, by the table below:
+`EmbeddedSchemas_HaveTheChecksumsOfTheRunbook_Test` reads the SHA-256 column of it, computes the SHA-256 of each embedded file and fails when they differ (a file that was
+edited, replaced or put in the other folder, such as the ISO schema renamed into `Swiss/`, or a checksum of this table that is not the one of the build), and
+`SwissSchema_RejectsTheOtherShapeOfTheDebtorAgent_Test` shows that the two schemas differ in a way that matters: the Swiss one refuses the debtor agent
+`FinInstnId/Othr/Id` that the ISO one takes.
 
 | File | Folder | Version | Source (taken on 2026-11-15) | SHA-256 |
 |---|---|---|---|---|
@@ -177,16 +186,20 @@ The wire page of the frontend is behind the flag `agencyTier` (off by default); 
 What the proofs do now: `Pain001V09_ChfBatch_ValidAgainstOfficialXsd_Test` and `Pain001V09_EurBatch_ValidAgainstIsoXsd_Test` are no longer skipped: each writes a batch with
 the service, validates the file against the official schema of its currency (no stand-in) and checks that an altered file does not validate (the EUR one also the SEPA rules
 of `Pain001Checks`); `WireBatch_OfficialSchema_ValidatesTheFile_OrTheBatchIsRefused_Test` takes its validating branch in both currencies;
-`Pain001SchemaProvider_EmbeddedFiles_CompileOrSayWhy_Test` checks that each folder holds exactly its file and that both compile; and `Wire_ThePayoutFile_ValidatesAgainstTheOfficialSwissSchema`
+`Pain001SchemaProvider_EmbeddedFiles_CompileOrSayWhy_Test` checks that each folder holds exactly its file and that both compile; `EmbeddedSchemas_HaveTheChecksumsOfTheRunbook_Test`
+checks that each embedded file is byte for byte the one the table above records; `SwissSchema_RejectsTheOtherShapeOfTheDebtorAgent_Test` checks that the Swiss schema refuses the
+shape of the debtor agent the ISO schema takes (so a swapped schema fails, which the altered-file proofs that remove `MsgId` would not notice); and `Wire_ThePayoutFile_ValidatesAgainstTheOfficialSwissSchema`
 of the acceptance scenario of the Swiss agency (a PostgreSQL test, so in CI) validates its CHF file against the official schema too. The EUR file validated as the writer
-wrote it; the Swiss one needed one change of the writer, the debtor agent (see «The Swiss file»).
+wrote it; the Swiss one needed one change of the writer, the debtor agent (see «The Swiss file»). The conditional skip of the proofs that need an official file
+(`OfficialPain001SchemaFact`) stays for a build that lacks one, which is no longer the normal state: the checksum test fails in such a build.
 
 **Adding or updating a schema (operator):**
 
 1. Download the file from the publication of its publisher (the pages above), never from a mirror or a package.
 2. Put it in the folder of its currency unchanged (no reformatting, no change of line endings: `.gitattributes` marks `Payments/Schemas/**/*.xsd` as `-text`
    so the bytes, and the checksum, are the same on every machine). Nothing a schema refers to is ever fetched (no resolver): the files must be self-contained.
-3. Record in the table above the exact address of the file, its version and its SHA-256 (`sha256sum <file>`).
+3. Record in the table above the exact address of the file, its version and its SHA-256 (`sha256sum <file>`), in the last cell of its row, which starts with the file name
+   in backticks: `EmbeddedSchemas_HaveTheChecksumsOfTheRunbook_Test` reads it from there, so a file whose checksum is not recorded (or is recorded wrongly) fails that test.
 4. Run `Pain001V09Tests` and `Pain001ValidationProofTests`: with the file in, `Pain001V09_EurBatch_ValidAgainstIsoXsd_Test` (or the CHF one) stops being skipped, writes a
    batch, validates the file against the official schema and checks that an altered file does not validate; `Pain001SchemaProvider_EmbeddedFiles_CompileOrSayWhy_Test`
    fails with the reason (`Pain001SchemaProvider.LoadProblem`) when a file is embedded and does not compile, has another target namespace or is not the file of its folder.
@@ -232,7 +245,8 @@ external entity and no network connection** is ever opened by the validation (`W
 - The execution date is independent of the `PaidOn` day of the payouts (the day the withholding was decided on); the bank file asks for the date of the request.
 - EUR is the ISO 20022 `pain.001.001.09` message with the SEPA rules of the EPC since E16/F01/US02/T01. It is **not CBI** (⚖ T3): a bank that takes only the CBI format of the
   Italian corporate banking channels cannot take it as it is, and the CBI message is a follow-up of the plan, not built.
-- Only Swiss and Liechtenstein IBANs are paid in CHF (a domestic payment); cross-border CHF payments need creditor agent data this file does not carry.
+- Only Swiss and Liechtenstein IBANs are paid in CHF (a domestic payment); cross-border CHF payments need creditor agent data this file does not carry. The account that is
+  debited is Swiss or Liechtenstein too (`wire_debit_iban_not_swiss`): a Swiss bank does not execute the debit of a foreign account, and the file could not name its bank.
 - Only IBANs of the SEPA area are paid in EUR (`wire_owner_iban_not_sepa`); an owner on another IBAN is paid outside this file, because that payment needs the BIC and the
   charges of a cross-border transfer, which a SEPA credit transfer does not carry. The SEPA area is the list the owner registry keeps (`OwnerFieldRules`): a country that joined
   the scheme after it was written is refused until the list is updated there, never paid in a file that says `SEPA` by mistake.
@@ -243,7 +257,9 @@ external entity and no network connection** is ever opened by the validation (`W
 `Pain001V09Tests` (no database, no network): the four proofs of E16/F01/US01/T01 (`Pain001V09_ChfBatch_ValidAgainstOfficialXsd_Test`, against the official Swiss schema;
 `WireBatch_AmountIsPayoutNet_Test`; `WireBatch_XmlEncryptedAtRest_Test`; `WireBatch_ConfirmOtherOrganization404_Test`), the proof of E16/F01/US02/T01
 (`Pain001V09_EurBatch_ValidAgainstIsoXsd_Test`, against the official ISO schema), the Swiss message and its element order, the debtor agent of the Swiss file against the
-official schema (`Pain001V09Writer_SwissDebtorAgent_IsTheInstitutionOfTheIban_OrNoBank_AndValidates_Test`), the EUR message and its element order
+official schema (`Pain001V09Writer_SwissDebtorAgent_IsTheInstitutionOfTheIban_OrNoBank_AndValidates_Test`, with a QR-IBAN among its cases; `DebtorAgent_QrIban_NamesNoBank_Test`; and
+`SwissSchema_RejectsTheOtherShapeOfTheDebtorAgent_Test`, which tells the two official schemas apart), the debit IBAN of a CHF batch
+(`ChfBatch_FromANonSwissDebitIban_IsRefused_Test`), the EUR message and its element order
 (`Pain001V09_EurFile_IsTheSepaMessageWithStructuredAddresses_Test`, `Pain001V09Writer_EurPaymentsHaveTheSepaRules_Test`), the characters of the SEPA texts
 (`Pain001Text_Clean_SepaCharacters_AreTheLatinSetOfTheEpc_Test`), the SEPA rules checked on the finished file
 (`Pain001Checks_SepaRulesOfTheEurFile_AreCheckedByTheNameOfTheElement_Test`, `Pain001Checks_HybridAddressAndAnOptionalBic_AreSepaToo_AndTheSwissFileIsNotAsked_Test`), the owners
@@ -253,7 +269,8 @@ official schema (`Pain001V09Writer_SwissDebtorAgent_IsTheInstitutionOfTheIban_Or
 (`WireBatch_PayoutAlreadyInABatch_IsRefused_Test`, `WireBatch_PayoutsThatCannotBePaid_AreRefused_Test`), the execution date, the retired request, the list without IBANs
 and the texts and IBANs of the file. `Pain001ValidationProofTests`: an invalid file is refused and no batch row is written (`WireBatch_InvalidXml_NeverSaved_Test`), the
 amounts and the lines of the file (`WireFile_AmountsAreExactDecimals_SumAndCountMatchTheRows_Test`, `Pain001Checks_ReportABrokenRule_ByTheNameOfTheElement_Test`), the
-currency, the empty list, the official schema (`WireBatch_OfficialSchema_ValidatesTheFile_OrTheBatchIsRefused_Test`), the loader that compiles the embedded files
+currency, the empty list, the official schema (`WireBatch_OfficialSchema_ValidatesTheFile_OrTheBatchIsRefused_Test`), the checksums of the embedded files against this runbook
+(`EmbeddedSchemas_HaveTheChecksumsOfTheRunbook_Test`), the loader that compiles the embedded files
 (`Pain001SchemaProvider_Load_CompilesTheFiles_AndSaysWhyWhenItCannot_Test`, with stand-in files: a good one, none, a broken one, one with a DTD, another schema, the schema of the
 `pain.001.001.03` message CasaZen no longer writes), the names of the embedded files and the permission. The other tests that need to get past the validation give the
 service a schema of their own (`Pain001TestSchemas`: an accepting one and a rejecting one, the same for both currencies because the two messages share a namespace, stand-ins

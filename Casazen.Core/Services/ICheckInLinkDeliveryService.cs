@@ -37,13 +37,27 @@ public interface ICheckInLinkDeliveryService
     Task<CheckInLinkDeliveryView> DeliverAsync(Guid bookingId, IssuedCheckInLink link, CancellationToken ct = default);
 
     /// <summary>
-    /// The link went to the guest inside an e-mail the caller has already queued: the confirmation of a direct booking (E23/F02/US01/T01). Writes (or starts again) the row of the
-    /// booking as <see cref="CheckInLinkDeliveryState.Sent"/> by <see cref="CheckInLinkChannel.Email"/> for <paramref name="link"/>, with no token (the link is in the guest's mailbox and
-    /// nobody has to carry it), and marks the check-in session of the link as sent (the e-mail status <c>Sent</c> and the time), as the e-mail of the link does. <b>No e-mail of its own
-    /// is queued</b>: the confirmation is the delivery, so the daily job finds a usable link and sends nothing more. A booking that does not exist is a
-    /// <see cref="Exceptions.NotFoundException"/>.
+    /// The link is about to go to the guest inside an e-mail the caller queues itself: the confirmation of a direct booking (E23/F02/US01/T01). Writes (or starts again) the row of the
+    /// booking as <see cref="CheckInLinkDeliveryState.Sending"/> («in attesa»: the e-mail is not with the provider yet) by <see cref="CheckInLinkChannel.Email"/> for
+    /// <paramref name="link"/>, with no token (the link is in the e-mail and nobody has to carry it), and marks the check-in session of the link as <c>Queued</c>. <b>Never «sent»</b>:
+    /// only <see cref="RecordEmailSentAsync"/>, once the provider accepted the e-mail, says so (CO-09, A5-26). <b>No e-mail of its own is queued</b>: the confirmation is the
+    /// delivery, so the daily job finds a usable link and sends nothing more. A booking that does not exist is a <see cref="Exceptions.NotFoundException"/>.
     /// </summary>
-    Task RecordSentByEmailAsync(Guid bookingId, IssuedCheckInLink link, CancellationToken ct = default);
+    Task RecordEmailQueuedAsync(Guid bookingId, IssuedCheckInLink link, CancellationToken ct = default);
+
+    /// <summary>
+    /// The provider accepted the e-mail that carries the link of <paramref name="sessionId"/>: the session says <c>Sent</c> with the time, as the e-mail of the link does, and the row
+    /// of the booking, if it is still the one of this link, <see cref="CheckInLinkDeliveryState.Sent"/> (and its «To do» to carry the link, if any, is closed). Idempotent; a session that is
+    /// not the booking's changes nothing.
+    /// </summary>
+    Task RecordEmailSentAsync(Guid bookingId, Guid sessionId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The e-mail that carries the link of <paramref name="sessionId"/> did not reach the provider (refused, not delivered after the attempts, not queued: <paramref name="errorCode"/>, one
+    /// of <see cref="Entities.GuestCheckInLinkEmailErrors"/>): the session and the row say <c>Failed</c> with the code, and the link is <b>taken back</b>, its session expires, because nobody
+    /// has it (only its hash is stored) and a usable link would stop the daily job from sending one. A link the guest already opened is left alone: the e-mail did reach them.
+    /// </summary>
+    Task RecordEmailFailedAsync(Guid bookingId, Guid sessionId, string errorCode, CancellationToken ct = default);
 
     /// <summary>
     /// The hourly pass: tries again the rows that wait for something that may have changed (the chat of a listing that reads again, a thread that arrived, a day after

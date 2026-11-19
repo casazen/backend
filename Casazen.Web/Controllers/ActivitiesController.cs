@@ -20,6 +20,10 @@ namespace Casazen.Web.Controllers;
 /// <para>The answer is <see cref="TodoActivityDto"/>, never the <see cref="InternalActivity"/> entity: no staff user, rate, note
 /// or person (ADR-026-R3); the client reads the detail from the API of the entity. It is private and never cached. This
 /// controller is not <c>InternalActivitiesController</c>, the agency-plan staff API, which stays as it is.</para>
+/// <para><b>The self-billed invoices (FIX/BE-TD17-ALERTS).</b> The items about them (<see cref="SelfBillingTodos.ActivityTypes"/>) are listed, and counted
+/// in the badge, only to a caller who holds <c>agency.invoice.manage</c>, the policy of <c>api/fiscal/self-billing</c> (<see cref="CasazenPolicies.AgencyInvoiceManage"/>): the
+/// «Do now» of those items leads to a page that refuses everybody else. They are organization-level, so a caller restricted to some properties never reaches
+/// them (no property), whatever it is allowed to do. The decision is made here, in the web layer; the service only leaves out the types it is told to.</para>
 /// </remarks>
 [ApiController]
 [Route("api/me/activities")]
@@ -29,7 +33,8 @@ public class ActivitiesController(
     IHostScopeResolver hostScopeResolver,
     IOrgContextResolver orgContextResolver,
     OnboardingTodoReconciler? onboardingTodos = null,
-    ImportedListingTodoReconciler? importedListings = null) : ControllerBase
+    ImportedListingTodoReconciler? importedListings = null,
+    IAuthorizationService? authorization = null) : ControllerBase
 {
     /// <summary>
     /// The open "To do" items the caller reaches, sorted by the server: the most urgent first, then by deadline (the ones
@@ -53,7 +58,7 @@ public class ActivitiesController(
         if (importedListings is not null)
             await importedListings.ReconcileAsync(scope, cancellationToken);
 
-        var items = await activities.GetPendingAsync(scope, cancellationToken, excludeRoutineTasks);
+        var items = await activities.GetPendingAsync(scope, cancellationToken, excludeRoutineTasks, await HiddenTypesAsync(scope, cancellationToken));
         return Ok(items.Select(TodoActivityDto.From).ToList());
     }
 
@@ -76,7 +81,7 @@ public class ActivitiesController(
         if (importedListings is not null)
             await importedListings.ReconcileAsync(scope, cancellationToken);
 
-        return Ok(new TodoCountDto(await activities.CountUrgentAsync(scope, cancellationToken, excludeRoutineTasks)));
+        return Ok(new TodoCountDto(await activities.CountUrgentAsync(scope, cancellationToken, excludeRoutineTasks, await HiddenTypesAsync(scope, cancellationToken))));
     }
 
     /// <summary>
@@ -110,6 +115,22 @@ public class ActivitiesController(
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
+    }
+
+    /// <summary>
+    /// The kinds of item the caller is not shown: the ones about the self-billed invoices unless it holds <c>agency.invoice.manage</c> (the policy of their endpoints). A scope that is not the
+    /// whole org needs no check, it reaches no organization-level item at all; the permission is looked up only when the org has such an item open (this runs on every page of the shell, and
+    /// almost never does); without the authorization service nothing is shown (never «everything»).
+    /// </summary>
+    private async Task<IReadOnlyCollection<ActivityType>?> HiddenTypesAsync(HostScope scope, CancellationToken cancellationToken)
+    {
+        if (!scope.IsOrgWide || !await activities.AnyOpenAsync(scope.OrgId, SelfBillingTodos.ActivityTypes, cancellationToken))
+            return null;
+
+        if (authorization is not null && (await authorization.AuthorizeAsync(User, CasazenPolicies.AgencyInvoiceManage)).Succeeded)
+            return null;
+
+        return SelfBillingTodos.ActivityTypes;
     }
 }
 
