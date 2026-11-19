@@ -602,6 +602,32 @@ public class MessageReplyProofTests : IAsyncLifetime
         Assert.Equal(0, await RowsWithKeyAsync());
     }
 
+    /// <summary>
+    /// A message nobody wrote (the one a routine planned) answers nobody on a direct conversation either, as it does on the channels: it goes through the door of the automatic messages of the direct service, which
+    /// leaves the guest's messages unread and the thread waiting for its answer, and it is told as automatic.
+    /// </summary>
+    [Fact]
+    public async Task DirectReply_OfAnAutomaticMessage_GoesThroughTheAutomaticDoor_NeverThatOfAPersonWhoAnswers()
+    {
+        var rig = new MessageReplyRig(_db);
+        var written = new SentGuestMessage(
+            new GuestThreadMessage(Guid.NewGuid(), GuestMessageSender.Host, "Benvenuti", MessageHubTestKit.Now.UtcDateTime), false, false);
+        rig.Direct
+            .Setup(g => g.ReplyAsAutomationAsync(_world.GrantedDirectBooking.Id, "Benvenuti", Key, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(written);
+
+        var result = await rig.Service.ReplyAsync(
+            _world.Scope.OrgWide, MessageThreadKey.ForDirect(_world.GrantedDirectBooking.Id), "Benvenuti", Key, null, MessageOrigin.Automation, null);
+
+        Assert.Equal(MessageContactChannel.Direct, result.Channel);
+        Assert.Equal(OtaMessageDeliveryState.Sent, result.State);
+        Assert.Equal(MessageOrigin.Automation, result.Message!.Origin);
+        rig.Direct.Verify(g => g.ReplyAsAutomationAsync(_world.GrantedDirectBooking.Id, "Benvenuti", Key, It.IsAny<CancellationToken>()), Times.Once);
+        rig.Direct.Verify(
+            g => g.ReplyAsHostAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     // ---- Through which channel a guest is reached --------------------------------------------------------------------------------------------
 
     [Fact]

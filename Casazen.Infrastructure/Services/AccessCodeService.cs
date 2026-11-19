@@ -116,6 +116,16 @@ public class AccessCodeService : IAccessCodeService
 
     public async Task<string?> ReleaseToGuestAsync(Guid bookingId, string channel, CancellationToken ct = default)
     {
+        var code = await GetReleasableCodeAsync(bookingId, channel, ct);
+        if (code is null)
+            return null;
+
+        await RecordReleaseAsync(bookingId, channel, ct);
+        return code;
+    }
+
+    public async Task<string?> GetReleasableCodeAsync(Guid bookingId, string channel, CancellationToken ct = default)
+    {
         // E03/F04/US02: the log records how the code left, so the channel is one of the known ones (never a free text).
         if (!AccessCodeReleaseChannels.All.Contains(channel, StringComparer.Ordinal))
             throw new ArgumentException($"Unknown release channel '{channel}'.", nameof(channel));
@@ -160,10 +170,25 @@ public class AccessCodeService : IAccessCodeService
         if (accessCode == null)
             return null;
 
+        // EF converter handles decryption
+        return accessCode.EncryptedCode;
+    }
+
+    public async Task RecordReleaseAsync(Guid bookingId, string channel, CancellationToken ct = default)
+    {
+        if (!AccessCodeReleaseChannels.All.Contains(channel, StringComparer.Ordinal))
+            throw new ArgumentException($"Unknown release channel '{channel}'.", nameof(channel));
+
+        var orgId = await _db.Bookings
+            .AsNoTracking()
+            .Where(b => b.Id == bookingId)
+            .Select(b => b.Property.OrgId)
+            .SingleAsync(ct);
+
         // Log the release WITHOUT the code itself (AC-NF13-4, AC-NF13-9)
         var releaseLog = new AccessCodeReleaseLog
         {
-            OrgId = booking.Property.OrgId,
+            OrgId = orgId,
             BookingId = bookingId,
             Channel = channel,
             ReleasedAt = DateTime.UtcNow
@@ -174,9 +199,6 @@ public class AccessCodeService : IAccessCodeService
         _logger.LogInformation(
             "Access code released for booking {BookingId} via {Channel}",
             bookingId, channel);
-
-        // EF converter handles decryption
-        return accessCode.EncryptedCode;
     }
 
     public async Task<string?> GetHoldReasonAsync(Guid bookingId, CancellationToken ct = default) =>

@@ -22,7 +22,7 @@ public interface IMessageTemplateService
 
     /// <summary>
     /// Creates a template. 422 <c>message_template_invalid</c> (name, language or body missing or too long) or <c>template_variable_unknown</c> (a
-    /// variable that is not one of the eight); 409 <c>message_template_exists</c> for a second template with the same name and language.
+    /// variable that is not one of the thirteen of <see cref="MessageTemplateRenderer.Variables"/>); 409 <c>message_template_exists</c> for a second template with the same name and language.
     /// </summary>
     Task<MessageTemplateItem> CreateAsync(
         HostScope scope,

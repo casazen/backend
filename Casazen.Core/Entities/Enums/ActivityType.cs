@@ -199,4 +199,13 @@ public enum ActivityType
     /// keeps clear of 130 to 139, the cleaning at check-out (epic E24), and of the values the tasks that run in parallel append.
     /// </summary>
     CleaningVatToState = 140,
+
+    /// <summary>
+    /// A message of a routine could not go out and the host has to look at it (E05/F07/US01/T03, NF-71): it is blocked for a piece of data it has no value for (a variable, the access
+    /// code of a guest who is not verified) or its last send failed for good. About the booking (entity type <c>Booking</c>), leading to the booking where the message is edited or sent
+    /// by hand (<see cref="ActivityAction.FixScheduledMessage"/>), with the code of the reason (<c>variable_missing:access_code</c>, <c>id_not_verified</c>), never the words of the
+    /// message. One open item for each booking, shared by its blocked messages; closed by the system when the last one is sent, skipped, expired, or the booking is cancelled. The number 150
+    /// keeps clear of the values the tasks that run in parallel append between 140 and 149.
+    /// </summary>
+    ScheduledMessageIssue = 150,
 }
