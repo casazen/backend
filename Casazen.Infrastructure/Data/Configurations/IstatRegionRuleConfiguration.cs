@@ -39,6 +39,13 @@ internal sealed class IstatRegionRuleConfiguration : IEntityTypeConfiguration<Is
     /// <summary>Name of the check that the required fields are a list of the three statistical fields.</summary>
     public const string RequiredFieldsCheckName = "CK_IstatRegionRules_RequiredGuestFields";
 
+    /// <summary>
+    /// The condition of <see cref="RequiredFieldsCheckName"/>: the names of the three statistical fields, written out. A test compares them with
+    /// <c>IstatRegionResolver.FieldNames</c> and <c>IstatGuestFieldLists.ByField</c>, so a fourth field cannot be added to one and not to the others.
+    /// </summary>
+    public const string RequiredFieldsCheckSql =
+        "\"RequiredGuestFields\" IS NULL OR \"RequiredGuestFields\" ~ '^((TourismType|TravelWay|EducationLevel)(,(TourismType|TravelWay|EducationLevel))*)?$'";
+
     /// <summary>Name of the check that the deadline kind and the coverage are values of their enums.</summary>
     public const string EnumsCheckName = "CK_IstatRegionRules_Enums";
 
@@ -61,9 +68,7 @@ internal sealed class IstatRegionRuleConfiguration : IEntityTypeConfiguration<Is
             t.HasCheckConstraint(SourceCheckName, "\"SourceUrl\" LIKE 'https://%'");
             t.HasCheckConstraint(PortalCheckName, "\"PortalUrl\" IS NULL OR \"PortalUrl\" LIKE 'https://%'");
             t.HasCheckConstraint(DeadlineCheckName, DeadlineCheckSql);
-            t.HasCheckConstraint(
-                RequiredFieldsCheckName,
-                "\"RequiredGuestFields\" IS NULL OR \"RequiredGuestFields\" ~ '^((TourismType|TravelWay|EducationLevel)(,(TourismType|TravelWay|EducationLevel))*)?$'");
+            t.HasCheckConstraint(RequiredFieldsCheckName, RequiredFieldsCheckSql);
             t.HasCheckConstraint(EnumsCheckName, "\"DeadlineKind\" IN (0, 1, 2) AND \"OctorateCoverage\" IN (0, 1, 2)");
         });
         entity.HasData(IstatRegionRuleSeed.Build());
