@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
@@ -11,10 +12,13 @@ using Casazen.Infrastructure.External;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit.Email;
 using Casazen.Tests.Unit.Push;
+using Casazen.Web.BackgroundJobs;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Stripe;
 using Xunit;
 using PaymentMethod = Casazen.Core.Entities.PaymentMethod;
@@ -75,6 +79,65 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
         Assert.Contains("<strong>Giulia Bianchi</strong> ha prenotato", toHost.Content.HtmlBody);
         Assert.Contains("Pagamento online ricevuto: <strong>362,00 €</strong>.", toHost.Content.HtmlBody);
         Assert.Contains($"href=\"{PublicSite}/app/short-rent/bookings/{seed.BookingId:D}\"", toHost.Content.HtmlBody);
+    }
+
+    /// <summary>
+    /// E23/F02/US01/T01 on real PostgreSQL, with the services of the application (the branch the other tests do not reach: they book a stay 40 days ahead): a booking confirmed with the
+    /// arrival inside the check-in window gets a confirmation that carries a working link, which is «in attesa» (one session, queued; the row Email / Sending) until the provider takes the
+    /// e-mail, then sent (the session Sent with its time; the row Email / Sent), and the next run of the daily job sends nothing more: no second session, no second e-mail.
+    /// </summary>
+    [PostgresFact]
+    public async Task HandleEventAsync_PaymentSucceededWithTheCheckInOpen_LinkInTheConfirmationSentOnce_NoSecondSendFromTheJob()
+    {
+        var host = await SeedHostAsync();
+        var seed = await SeedCheckoutHoldAsync(host, PaymentOption.Immediate, daysAhead: 2);
+
+        await HandleAsync(PaymentSucceeded(seed.IntentId, host.Account), WebhookSource.Connected);
+
+        var guest = Assert.Single(Emails(seed));
+        var token = Regex.Match(guest.Content.HtmlBody, $"{Regex.Escape(PublicSite)}/checkin/([0-9a-f]{{64}})").Groups[1].Value;
+        Assert.Equal(64, token.Length);
+        Assert.Contains("Fai il check-in online</a>", guest.Content.HtmlBody);
+        var link = Assert.IsType<CheckInLinkEmail>(guest.Content.CheckInLink);
+        Assert.Equal(seed.BookingId, link.BookingId);
+
+        // «In attesa» until the provider took the e-mail: the one session of the booking is queued with no time of sending, and the row says Email / Sending.
+        var waiting = await LoadCheckInAsync(seed.BookingId);
+        var queued = Assert.Single(waiting.Sessions);
+        Assert.Equal(Casazen.Infrastructure.Services.GuestCheckInService.HashToken(token), queued.TokenHash);
+        Assert.Equal(link.SessionId, queued.Id);
+        Assert.Equal(GuestCheckInSessionStatus.Inviato, queued.Status);
+        Assert.Equal(GuestCheckInLinkEmailStatus.Queued, queued.LinkEmailStatus);
+        Assert.Null(queued.SentAt);
+        Assert.Equal((CheckInLinkChannel.Email, CheckInLinkDeliveryState.Sending), (waiting.Row.Channel, waiting.Row.State));
+        Assert.Null(waiting.Row.LinkToken);
+
+        // The job of the confirmation, the provider accepting the e-mail: sent.
+        await RunConfirmationJobAsync(guest, link);
+        var sent = await LoadCheckInAsync(seed.BookingId);
+        var sentSession = Assert.Single(sent.Sessions);
+        Assert.Equal(GuestCheckInLinkEmailStatus.Sent, sentSession.LinkEmailStatus);
+        Assert.NotNull(sentSession.SentAt);
+        Assert.Equal((CheckInLinkChannel.Email, CheckInLinkDeliveryState.Sent), (sent.Row.Channel, sent.Row.State));
+
+        // The next run of the daily job finds a usable link: no second session and no second e-mail.
+        await using (var scope = _factory.Services.CreateAsyncScope())
+            await scope.ServiceProvider.GetRequiredService<GuestCheckInSendJob>().ExecuteAsync();
+        Assert.Single((await LoadCheckInAsync(seed.BookingId)).Sessions);
+        Assert.Single(Emails(seed));
+    }
+
+    /// <summary>
+    /// The optional services of the check-in link of <c>BookingNotifier</c> (the check-in, the delivery, the options, the clock) are given by the container: built without them it says
+    /// nothing about the check-in and issues no link, in silence. The job of the confirmation is registered too.
+    /// </summary>
+    [PostgresFact]
+    public void Container_ResolvesTheNotifierWithItsCheckInServices_AndTheJobOfTheConfirmation()
+    {
+        using var scope = _factory.Services.CreateScope();
+
+        Assert.True(scope.ServiceProvider.GetRequiredService<Casazen.Infrastructure.Services.BookingNotifier>().IssuesCheckInLinks);
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<BookingConfirmationEmailJob>());
     }
 
     [PostgresFact]
@@ -199,6 +262,34 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
     private List<(string? To, EmailContent Content, string Template)> Emails(BookingSeed seed) =>
         _factory.Emails.Snapshot().Where(e => e.To == seed.GuestEmail).ToList();
 
+    /// <summary>The sessions of the check-in link of the booking and its delivery row, as the database holds them.</summary>
+    private async Task<(List<GuestCheckInSession> Sessions, CheckInLinkDelivery Row)> LoadCheckInAsync(Guid bookingId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var sessions = await db.GuestCheckInSessions.AsNoTracking().Where(s => s.BookingId == bookingId).ToListAsync();
+        var row = await db.CheckInLinkDeliveries.AsNoTracking().SingleAsync(d => d.BookingId == bookingId);
+        return (sessions, row);
+    }
+
+    /// <summary>
+    /// What the Hangfire worker does with the confirmation that carries a link: the job of the confirmation, on the real delivery service of the application and a provider that accepts
+    /// the e-mail.
+    /// </summary>
+    private async Task RunConfirmationJobAsync((string? To, EmailContent Content, string Template) email, CheckInLinkEmail link)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var emailService = new Mock<IEmailService>();
+        emailService.Setup(s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(EmailSendResult.Sent());
+        var job = new BookingConfirmationEmailJob(
+            emailService.Object,
+            scope.ServiceProvider.GetRequiredService<ICheckInLinkDeliveryService>(),
+            Mock.Of<Hangfire.IBackgroundJobClient>(),
+            NullLogger<BookingConfirmationEmailJob>.Instance);
+
+        await job.SendAsync(email.To!, email.Content.Subject, email.Content.HtmlBody, email.Template, link.BookingId, link.SessionId, 1);
+    }
+
     /// <summary>Pushes queued about the booking (MO-04).</summary>
     private List<QueuedPushRecord> Pushes(BookingSeed seed) =>
         _factory.Pushes.Queued.Where(p => p.Payload.BookingId == seed.BookingId).ToList();
@@ -305,11 +396,11 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
     /// A checkout hold made 5 minutes ago (valid): 3 nights, 300 lodging + 50 cleaning + 12 tourist tax = 362. Immediate:
     /// a pending PaymentIntent; deferred: a pending SetupIntent.
     /// </summary>
-    private async Task<BookingSeed> SeedCheckoutHoldAsync(HostSeed host, PaymentOption option)
+    private async Task<BookingSeed> SeedCheckoutHoldAsync(HostSeed host, PaymentOption option, int daysAhead = 40)
     {
         var deferred = option == PaymentOption.OnCancellationDeadline;
         var intentId = deferred ? $"seti_bk10_{Guid.NewGuid():N}" : $"pi_bk10_{Guid.NewGuid():N}";
-        var (booking, guest) = NewBooking(host, BookingStatus.Pending, option, minutesAgo: 5);
+        var (booking, guest) = NewBooking(host, BookingStatus.Pending, option, minutesAgo: 5, daysAhead);
         booking.StripeSetupIntentId = deferred ? intentId : null;
         var payment = new Payment
         {
@@ -371,10 +462,10 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
         return new BookingSeed(booking.Id, intentId, guest.Email, booking.FreeRefundDeadline);
     }
 
-    private static (Booking Booking, Guest Guest) NewBooking(HostSeed host, BookingStatus status, PaymentOption option, int minutesAgo)
+    private static (Booking Booking, Guest Guest) NewBooking(HostSeed host, BookingStatus status, PaymentOption option, int minutesAgo, int daysAhead = 40)
     {
         var createdAt = DateTime.UtcNow.AddMinutes(-minutesAgo);
-        var checkIn = TimeProvider.System.TodayInRome().AddDays(40);
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(daysAhead);
         var guest = new Guest
         {
             OrgId = host.OrgId,

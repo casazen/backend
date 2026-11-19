@@ -48,6 +48,12 @@ public sealed class BookingNotifier(
     TimeProvider? timeProvider = null)
 {
     /// <summary>
+    /// The four optional services of the check-in link were given (the check-in, the delivery, its options, the clock): the container gives them. Built without them the notifier says
+    /// nothing about the check-in and issues no link, in silence, so a test over the real container reads this (E23/F02/US01/T01).
+    /// </summary>
+    internal bool IssuesCheckInLinks => checkIn is not null && linkDeliveries is not null && checkInOptions is not null && timeProvider is not null;
+
+    /// <summary>
     /// The booking has just become confirmed (<paramref name="kind"/>): confirmation to the guest and, unless the host
     /// confirmed it (<see cref="BookingConfirmationKind.OnSite"/>), the new booking to the host. Skipped when the booking
     /// is no longer confirmed (cancelled in the meantime).
