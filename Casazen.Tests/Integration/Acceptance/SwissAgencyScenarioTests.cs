@@ -65,8 +65,9 @@ public class SwissAgencyScenarioTests
 
         // The portal sends no invoice data and the agency types none: the document is made out to the guest of the booking, by name only (FIX/DOC-RECIPIENT).
         // B7, B8a: the document after the stay: the stay at 3.8% and the tourist tax of Ticino (2 guests x 3 nights x CHF 2.00, Booking.com does not collect it).
-        // KNOWN DEFECT (register of the residual defects, left to its own fix): a document of a booking of a portal is always «paid through the portal», also for
-        // the line of the tax the portal does not collect and nobody recorded. The payment state asserted here is the code as it is, not the state to reach.
+        // FIX/BE-PORTAL-TAXLINE: the document of a booking of a portal is paid through the portal for what the portal collected (450.00), never for the line of the tax the portal does not
+        // collect and nobody recorded (12.00): that is to collect at the property. The stored state is still the one of the channel (the portal collected), the total is the whole document,
+        // and the PDF says the rest.
         var document = await IssuedAfterTheStayAsync(world, booking, Day(10, 6), "2026/1");
         AssertRecipientIsTheGuestByName(document, "TEST Ospite Portale");
         AssertDocument(
@@ -75,7 +76,10 @@ public class SwissAgencyScenarioTests
             (445.53m, 16.47m, 462.00m),
             FiscalPaymentChannel.Portal,
             FiscalDocumentPaymentState.Paid);
-        await AssertGuestPdfAsync(world, document, "Pagata tramite il portale", ("445.53", "16.47", "462.00"));
+        await AssertGuestPdfAsync(world, document, "Pagata tramite il portale: CHF 450.00", ("445.53", "16.47", "462.00"));
+        var guestPdf = TextOf(await world.PdfContentAsync(document.Id));
+        Assert.Contains("Tassa di soggiorno da riscuotere in struttura: CHF 12.00", guestPdf, StringComparison.Ordinal);
+        Assert.Contains("Tassa di soggiorno (non soggetta all'IVA) - tassa da riscuotere in struttura", guestPdf, StringComparison.Ordinal);
 
         // B8b: the e-mail with the link, to the relay address of the portal.
         AssertTheGuestGotTheDocument(world, document, await world.GuestEmailOfAsync(booking), "Fattura");
@@ -318,7 +322,7 @@ public class SwissAgencyScenarioTests
         await world.RecordPaymentByHandAsync(manual, 312m, PaymentMethod.CashOnArrival, Day(10, 23));
         var manualDocument = await IssuedAfterTheStayAsync(world, manual, Day(10, 27), "2026/4");
 
-        // KNOWN DEFECT (see Origin_BookingCom_*): «paid through the portal» also for the tax of Ticino the portal does not collect.
+        // The stored state of the portal document is the one of its channel; its PDF is paid through the portal for the stay only (see Origin_BookingCom_*, FIX/BE-PORTAL-TAXLINE).
         AssertDocument(
             portalDocument,
             [(FiscalLineType.Accommodation, 433.53m, 3.8m, 16.47m), (FiscalLineType.TouristTax, 12.00m, 0m, 0m)],

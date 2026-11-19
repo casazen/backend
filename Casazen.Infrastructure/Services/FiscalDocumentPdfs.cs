@@ -22,6 +22,9 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Currency.</b> The currency of the document, named in the headers: this code never writes one.</item>
 /// <item><b>Courtesy copy.</b> A document with FatturaPA XML says it is the courtesy copy of the electronic invoice; a draft carries the watermark of a
 /// draft.</item>
+/// <item><b>The tourist tax of a portal.</b> The document of a booking of a portal that left the tourist tax to the host is not «paid» for that line, unless the collection of the stay (E25)
+/// records it as collected (<see cref="FiscalDocumentPortalCollection"/>, FIX/BE-PORTAL-TAXLINE): the line carries «da pagare in struttura» (the Swiss layout, which says «tassa», has its own words), and the
+/// payment says what the portal collected and what is still to collect at the property. Every other document says what it said before.</item>
 /// </list>
 /// </remarks>
 public static class FiscalDocumentPdfs
@@ -91,6 +94,8 @@ public static class FiscalDocumentPdfs
         if (SelfBillingPeriodLabel(document) is { } selfBillingPeriod)
             blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfSelfBillingPeriod", language, selfBillingPeriod)));
 
+        // The tourist tax a portal left to the host is not declared paid (FIX/BE-PORTAL-TAXLINE): its line says so, and so does the payment below.
+        var split = FiscalDocumentPortalCollection.SplitOf(document);
         var lines = document.Lines.OrderBy(l => l.LineNumber).ToList();
         blocks.Add(new PdfHeading(texts.Get("FiscalDocPdfLinesHeading", language)));
         blocks.Add(new PdfTable(
@@ -104,7 +109,7 @@ public static class FiscalDocumentPdfs
             ],
             lines.Select(l => Row(
                     l.LineNumber.ToString(CultureInfo.InvariantCulture),
-                    l.Description,
+                    WithToCollectNote(split, l, l.Description, texts, language),
                     l.Quantity.ToString("0.##", DocumentLanguages.CultureOf(language)),
                     DocumentLanguages.Money(l.UnitPrice, language),
                     DocumentLanguages.Money(l.TotalPrice, language),
@@ -151,7 +156,7 @@ public static class FiscalDocumentPdfs
             blocks.Add(new PdfParagraph(stamp));
 
         if (document.Purpose == FiscalDocumentPurpose.GuestStay)
-            blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfPayment", language, PaymentLabel(document.PaymentState, texts, language))));
+            blocks.AddRange(PaymentBlocks(document, split, texts, language));
         else if (document.Purpose == FiscalDocumentPurpose.OwnerInvoice && document.Kind != DocumentKind.CreditNote && settlement is not null)
         {
             // An Italian owner invoice has no QR-bill: offset in the statement, or to pay as the property manager says.
@@ -309,6 +314,33 @@ public static class FiscalDocumentPdfs
         FiscalDocumentPaymentState.ToCollect => texts.Get("FiscalDocPdfPaymentToCollect", language),
         _ => texts.Get("FiscalDocPdfPaymentUnknown", language),
     };
+
+    /// <summary>
+    /// «Pagamento: …» of the document of a stay: its payment state, as it always was. The document of a booking of a portal that left a tourist tax to the host
+    /// (<paramref name="split"/>, FIX/BE-PORTAL-TAXLINE) says instead what the portal collected and, in a paragraph of its own, the tax still to collect at the property.
+    /// </summary>
+    private static IEnumerable<PdfBlock> PaymentBlocks(FiscalDocument document, PortalCollectionSplit? split, IDocumentTexts texts, string language)
+    {
+        if (split is null)
+        {
+            yield return new PdfParagraph(texts.Get("FiscalDocPdfPayment", language, PaymentLabel(document.PaymentState, texts, language)));
+            yield break;
+        }
+
+        var collected = split.PaidViaPortal > 0m
+            ? texts.Get("FiscalDocPdfPaymentPortalPart", language, document.Currency, DocumentLanguages.Money(split.PaidViaPortal, language))
+            : PaymentLabel(FiscalDocumentPaymentState.ToCollect, texts, language);
+        yield return new PdfParagraph(texts.Get("FiscalDocPdfPayment", language, collected));
+        yield return new PdfParagraph(texts.Get("FiscalDocPdfToCollectAtProperty", language, document.Currency, DocumentLanguages.Money(split.ToCollectAtTheProperty, language)));
+    }
+
+    /// <summary>
+    /// The description of a line of a document, with the note that its tax is to be collected at the property when it is the line of tourist tax the portal left to the host
+    /// (<paramref name="split"/>, FIX/BE-PORTAL-TAXLINE); the description as it is for every other line. Shared by the two layouts, each with the words of its own tax (<paramref name="noteKey"/>):
+    /// the Italian layout calls it «imposta» (the default key), the Swiss one «tassa».
+    /// </summary>
+    internal static string WithToCollectNote(PortalCollectionSplit? split, FiscalDocumentLine line, string description, IDocumentTexts texts, string language, string noteKey = "FiscalDocLineToCollectNote") =>
+        split?.IsToCollect(line) == true ? texts.Get(noteKey, language, description) : description;
 
     private static IReadOnlyList<string> Row(params string[] cells) => cells;
 

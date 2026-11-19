@@ -431,6 +431,9 @@ public sealed class OwnerIssuedDocumentsExport(
     {
         var orgId = document.OrgId;
         await ApplyCurrentPaymentStateAsync(document, ct);
+
+        // The tourist tax of a portal booking that the collection of the stay records as collected is not «to collect» here either: the owner gets what the agency's PDF says (the portal has no tenant, so the org is named).
+        await FiscalDocumentService.ApplyCollectedTouristTaxAsync(db, document, ct, orgId);
         var credited = document.CreditedDocumentId is { } creditedId
             ? await db.FiscalDocuments.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking().FirstOrDefaultAsync(d => d.Id == creditedId && d.OrgId == orgId, ct)
             : null;
