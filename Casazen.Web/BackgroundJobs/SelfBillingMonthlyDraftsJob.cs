@@ -19,8 +19,11 @@ namespace Casazen.Web.BackgroundJobs;
 /// <item><b>Off by default.</b> It does nothing unless <c>SelfBilling:MonthlyDrafts:Enabled</c> is true and <c>Features:FiscalDocumentIssuance</c> is on (both read at each run): with either off it
 /// returns before it opens a scope, so it reads no organization, takes no lock (the generation of the drafts takes the lock <c>SelfBilling</c> of each organization) and writes nothing.
 /// It is registered while the issuance is on (and removed otherwise), like the other jobs of the fiscal documents.</item>
-/// <item><b>Idempotent.</b> A month that already has a TD17 (a draft, an issued one, a discarded one) is not made again, and the «Da fare» is raised once while a draft is open: a retry, a second run
-/// or a trigger from the dashboard makes no second draft and no second item, and a draft a person discarded stays discarded.</item>
+/// <item><b>Idempotent.</b> A holder that already has a TD17 of the month (a draft, an issued one, a discarded one) is not made again, and the «Da fare» is raised once while a draft is open: a retry, a
+/// second run or a trigger from the dashboard makes no second draft for it and no second item, and a draft a person discarded stays discarded.</item>
+/// <item><b>A month with a holder refused is not a month done.</b> A holder that needs a TD17 and could not get one (its issuer profile is not complete) is counted by the run, logged as a warning
+/// (codes and counts only) and tried again by the next run; the organizations «made now» are the ones that got a draft in this run (<c>Created</c> above 0), not the ones the run looked at. The schedule is
+/// monthly, so «the next run» of that month is a retry of this job or a trigger by hand; the drafts of the page of the self-billed invoices make the missing ones at any time.</item>
 /// <item><b>Each organization in a scope of its own, under its own tenant</b> (<see cref="IBackgroundTenantScope"/>): its own <c>DbContext</c>, so what one organization does never leaks into the
 /// next, and an organization that fails does not stop the others.</item>
 /// <item><b>Failures are not swallowed.</b> Once every organization was tried the run fails with them all (so Hangfire runs it again, and shows it in the schedule): the ones already made are
@@ -71,6 +74,8 @@ public class SelfBillingMonthlyDraftsJob(
             orgIds = await listing.ServiceProvider.GetRequiredService<ISelfBillingService>().OrgsWithCommissionsAsync(period.Year, period.Month, ct);
 
         var made = 0;
+        var refusedOrganizations = 0;
+        var refusedHolders = 0;
         var failures = new List<Exception>();
         foreach (var orgId in orgIds)
         {
@@ -80,8 +85,15 @@ public class SelfBillingMonthlyDraftsJob(
                 await using var scope = scopeFactory.CreateAsyncScope();
                 scope.ServiceProvider.GetRequiredService<IBackgroundTenantScope>().EnterOrg(orgId);
                 var run = await scope.ServiceProvider.GetRequiredService<ISelfBillingService>().RunMonthlyDraftsAsync(orgId, period.Year, period.Month, ct);
-                if (!run.AlreadyMade)
+
+                // «Made» is what got a draft in this run, not what the run looked at; the holders refused are counted too (their codes are logged by the run, for each organization).
+                if (run.Created > 0)
                     made++;
+                if (run.Refused > 0)
+                {
+                    refusedOrganizations++;
+                    refusedHolders += run.Refused;
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -103,6 +115,17 @@ public class SelfBillingMonthlyDraftsJob(
             orgIds.Count,
             made,
             failures.Count);
+        if (refusedHolders > 0)
+        {
+            // Not a month done: somebody needs a TD17 and cannot have one yet. The run does not fail for it (the next run, or the page of the self-billed invoices, makes the missing drafts).
+            logger.LogWarning(
+                "Self-billed drafts of {Year}-{Month}: {Organizations} organizations have {Holders} holders that need a TD17 and could not get one; they are tried again by the next run",
+                period.Year,
+                period.Month,
+                refusedOrganizations,
+                refusedHolders);
+        }
+
         if (failures.Count > 0)
             throw new AggregateException($"{failures.Count} organizations did not get the self-billed drafts of {period.Year}-{period.Month}", failures);
     }

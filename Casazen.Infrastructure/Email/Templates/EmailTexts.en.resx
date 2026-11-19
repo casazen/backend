@@ -2742,6 +2742,9 @@
   <data name="TodoReason_SelfBillingDraftsToReview" xml:space="preserve">
     <value>The self-billed invoices (TD17) of the month are ready as drafts: check the amounts against the portals' invoices and issue them by the deadline.</value>
   </data>
+  <data name="TodoReason_SelfBillingDraftsRefused" xml:space="preserve">
+    <value>Some of the month's self-billed invoices (TD17) are ready as drafts, but at least one holder could not get theirs because the details of its issuer profile are missing: fill them in and make the drafts again from the self-billed invoices page, then check the amounts and issue everything by the deadline.</value>
+  </data>
   <data name="OwnerContactInvitation_Subject" xml:space="preserve">
     <value>Invitation to the owner portal of {0}</value>
   </data>

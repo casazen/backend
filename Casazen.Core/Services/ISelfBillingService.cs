@@ -67,10 +67,13 @@ public interface ISelfBillingService
     Task<IReadOnlyList<Guid>> OrgsWithCommissionsAsync(int year, int month, CancellationToken ct = default);
 
     /// <summary>
-    /// The monthly run of one organization (FIX/BE-TD17-ALERTS): the drafts of the month made once with <see cref="CreateDraftsForPeriodAsync"/> (the call a person's click on «make the drafts» makes, with
-    /// no user), then the «Da fare» <see cref="ActivityType.SelfBillingDraftsToReview"/> raised once when a draft of the month is open. <b>Idempotent</b>: a month that has a TD17 in
-    /// any state (a draft, an issued one, a discarded one) is already made, so a second run, a retry or a trigger by hand makes no second draft and a draft a person discarded stays discarded;
-    /// the «Da fare» is raised once while it is open (and never for a month with no draft open). It never issues anything: the issue stays a person's action. The same 422 as the drafts
+    /// The monthly run of one organization (FIX/BE-TD17-ALERTS): the drafts of the month that are missing, made with the plan of <see cref="CreateDraftsForPeriodAsync"/> (the call a person's click on
+    /// «make the drafts» makes, with no user), then the «Da fare» <see cref="ActivityType.SelfBillingDraftsToReview"/> raised once when a draft of the month is open. <b>Idempotent</b>: a holder
+    /// that has a TD17 of the month in any state (a draft, an issued one, a discarded one) is left alone, so a second run, a retry or a trigger by hand makes no second draft for it and a draft a
+    /// person discarded stays discarded; a holder that needs a TD17 and could not get one (an incomplete issuer profile) is <b>counted and reported</b> in the answer
+    /// (<see cref="SelfBillingMonthlyRun.Refused"/>), its code logged as a warning and said in the words of the «Da fare», and it is tried again by the next run, so a month in which somebody was
+    /// refused is never reported as done. The «Da fare» is raised once while it is open (and never for a month with no draft open), and the run closes the items of the other months of the
+    /// organization that have no draft left open (a close that failed after a change is put right here). It never issues anything: the issue stays a person's action. The same 422 as the drafts
     /// (<c>self_billing_not_configured</c>, <c>self_billing_period_not_ended</c>).
     /// </summary>
     Task<SelfBillingMonthlyRun> RunMonthlyDraftsAsync(Guid orgId, int year, int month, CancellationToken ct = default);
@@ -142,12 +145,14 @@ public sealed record SelfBillingGeneration(
     IReadOnlyList<SelfBillingNotDue> NotDue,
     bool LedgerPosted);
 
-/// <summary>What the monthly run did for one organization (<see cref="ISelfBillingService.RunMonthlyDraftsAsync"/>): counts only, no amount, name or number.</summary>
-/// <param name="AlreadyMade">The month already had a TD17 (made by an earlier run, by a person, or discarded): the drafts were not made again.</param>
-/// <param name="Created">The drafts made now.</param>
-/// <param name="Updated">The drafts made again now (always 0 for a month that was already made).</param>
+/// <summary>What the monthly run did for one organization (<see cref="ISelfBillingService.RunMonthlyDraftsAsync"/>): counts and codes only, no amount, name or number.</summary>
+/// <param name="AlreadyMade">The month already had a TD17 before the run (made by an earlier run, by a person, or discarded): the holders that have one were left alone.</param>
+/// <param name="Created">The drafts made now, for the holders that had none.</param>
+/// <param name="Updated">Always 0: the run never touches a draft that exists (the shape of the answer is the one of the generation).</param>
 /// <param name="OpenDrafts">The drafts of the month still open after the run: while there are some, the «Da fare» <see cref="ActivityType.SelfBillingDraftsToReview"/> stands.</param>
-public sealed record SelfBillingMonthlyRun(int Year, int Month, bool AlreadyMade, int Created, int Updated, int OpenDrafts);
+/// <param name="Refused">The holders that need a TD17 and could not get one now (an incomplete issuer profile): counted, never named. Above 0 the month is not complete, and they are tried again by the next run.</param>
+/// <param name="RefusedCodes">The distinct codes of their reasons, sorted (<c>owner_issuer_missing</c>, <c>issuer_profile_incomplete</c>): never a name, a VAT number or a field.</param>
+public sealed record SelfBillingMonthlyRun(int Year, int Month, bool AlreadyMade, int Created, int Updated, int OpenDrafts, int Refused, IReadOnlyList<string> RefusedCodes);
 
 /// <summary>One TD17 of a generation.</summary>
 /// <param name="Result">One of <see cref="SelfBillingResults"/>.</param>
@@ -261,12 +266,34 @@ public static class SelfBillingTodos
     /// <summary>The key, in <c>EmailTexts</c> (Italian and English), of the reason of the item of the drafts of a month.</summary>
     public const string DraftsReasonKey = "TodoReason_SelfBillingDraftsToReview";
 
+    /// <summary>
+    /// The key, in <c>EmailTexts</c> (Italian and English), of the reason of the item of the drafts of a month while some holder was refused (it needs a TD17 and has no issuer profile to make
+    /// it with): the same item, other words; the item is never closed or raised again for it.
+    /// </summary>
+    public const string DraftsRefusedReasonKey = "TodoReason_SelfBillingDraftsRefused";
+
     /// <summary>The items that need <c>agency.invoice.manage</c> to be listed: both are about the self-billed invoices, which only a person holding it reads, issues or discards.</summary>
     public static IReadOnlyList<ActivityType> ActivityTypes { get; } = [ActivityType.SelfBillingRejected, ActivityType.SelfBillingDraftsToReview];
 
     /// <summary>The kind of entity of the item of a month: <c>SelfBillingPeriod:2026-10</c>.</summary>
     public static string PeriodEntityType(int year, int month) =>
         string.Create(CultureInfo.InvariantCulture, $"{PeriodEntityTypePrefix}{year:D4}-{month:D2}");
+
+    /// <summary>The month of the kind of entity <see cref="PeriodEntityType"/> builds (<c>SelfBillingPeriod:2026-10</c>): <c>false</c> for anything else.</summary>
+    public static bool TryParsePeriodEntityType(string? entityType, out int year, out int month)
+    {
+        year = 0;
+        month = 0;
+        if (entityType is null || !entityType.StartsWith(PeriodEntityTypePrefix, StringComparison.Ordinal))
+            return false;
+
+        var parts = entityType[PeriodEntityTypePrefix.Length..].Split('-');
+        return parts.Length == 2
+               && int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out year)
+               && int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out month)
+               && year is >= 2000 and <= 2100
+               && month is >= 1 and <= 12;
+    }
 }
 
 /// <summary>The rules of the TD17 that need no database.</summary>

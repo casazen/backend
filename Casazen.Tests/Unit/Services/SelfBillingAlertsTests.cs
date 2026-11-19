@@ -13,6 +13,7 @@ using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Logging;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Controllers;
 using Casazen.Web.Infrastructure;
@@ -24,6 +25,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -78,6 +80,9 @@ public class SelfBillingAlertsTests
         Assert.DoesNotContain("00417", item.Reason, StringComparison.Ordinal);
 
         // The correction discards the document, the credit of a document and the acceptance of the SDI close the item of that document, by the system, and nobody else's.
+        // This closing is SYNTHETIC: no flow of CasaZen brings a rejected TD17 to any of the three (a TD17 has no correction and no credit note, and the state machine of the SDI ignores a delivery after
+        // a rejection), so the states and the events below are set by hand. Until the slice S053 brings the correction of a rejected TD17 the item stays open, urgency High, by choice: these closing
+        // paths are proven here for the day that flow exists.
         await SetDocumentAsync(rig, corrected.Id, d => d.Status = FiscalDocumentStatus.Discarded);
         await handler.HandleAsync(Event(rig.OrgId, DomainEventType.FiscalDocumentCorrected, corrected.Id), Ct);
         await handler.HandleAsync(Event(rig.OrgId, DomainEventType.FiscalDocumentCreditNoteIssued, Guid.NewGuid(), CreditNotePayloadOf(credited.Id)), Ct);
@@ -174,6 +179,140 @@ public class SelfBillingAlertsTests
     }
 
     /// <summary>
+    /// PROOF TEST: data rule. The monthly run puts right the items of the other months: the close that follows an issue, a discard or a generation is best effort, and an item whose close failed would
+    /// stay open for ever. The run closes the items «Autofatture da controllare» of its organization of any month that have no draft left open, keeps the item of a month that still has an open draft,
+    /// and an organization that is not in the run keeps its own.
+    /// </summary>
+    [Fact]
+    public async Task MonthlySelfBillingDrafts_CloseTheItemsOfOtherMonthsThatHaveNoDraftLeft_Test()
+    {
+        await using var rig = await SelfBillingRig.CreateAsync();
+        await rig.StandardMonthAsync();
+        var enabled = SelfBillingRig.Shipped();
+        enabled.MonthlyDrafts.Enabled = true;
+        var activities = ActivitiesOf(rig);
+        var service = ServiceOf(rig, enabled, activities);
+
+        // Another agency, not in the run (no commission in October), with the item of August and no draft.
+        var other = Guid.NewGuid();
+        await rig.AddAsync(
+            new OrgEntity
+            {
+                Id = other,
+                Name = "TEST Altra Agenzia",
+                Slug = $"test-{other:N}"[..20],
+                DisplayName = "TEST Altra Agenzia",
+                ContactEmail = "altra@example.com",
+                PlanTier = PlanTier.Agency,
+            });
+
+        // The items of past months of the first agency: August has no draft any more (its close failed after the last one was issued), September still has an open draft.
+        var august = await activities.CreateAsync(DraftsTodo(rig.OrgId, 2026, 8), Ct);
+        var september = await activities.CreateAsync(DraftsTodo(rig.OrgId, 2026, 9), Ct);
+        var othersAugust = await activities.CreateAsync(DraftsTodo(other, 2026, 8), Ct);
+        var septemberDraft = Td17(rig.OrgId, 7);
+        septemberDraft.Status = FiscalDocumentStatus.Draft;
+        septemberDraft.SdiStatus = FiscalDocumentSdiStatuses.NotApplicable;
+        septemberDraft.PeriodMonth = 9;
+        await rig.AddAsync(septemberDraft);
+
+        await JobOf(ProviderOf(service, []).GetRequiredService<IServiceScopeFactory>(), rig, enabled, issuance: true).ExecuteAsync(Ct);
+
+        var items = (await rig.Db.InternalActivities.AsNoTracking().Where(a => a.Action != null).ToListAsync()).ToDictionary(a => a.Id);
+        Assert.Equal((InternalActivity.ClosedBySystem, true), (items[august].ClosedBy, items[august].CompletedAt is not null));
+        Assert.Null(items[september].CompletedAt);
+        Assert.Null(items[othersAugust].CompletedAt);
+
+        // The month the run made has its own open item; nothing else was raised.
+        var october = Assert.Single(items.Values, a => a.EntityType == SelfBillingTodos.PeriodEntityType(2026, 10));
+        Assert.Null(october.CompletedAt);
+        Assert.Equal(4, items.Count);
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule (a tax duty is never shown as done). A holder that needs a TD17 and cannot have one yet (no issuer profile) next to one that can: the run makes the draft of the valid
+    /// one, counts the refused one and gives its code, logs it as a warning (the code and the count, nothing of the holder), says it in the words of the item without closing it or raising it again,
+    /// and does not count the organization as «made» when it made nothing; once the profile is complete the next run makes the missing draft and no second one for the holder that had its own, the
+    /// item goes back to its plain words, and a draft a person discarded stays discarded.
+    /// </summary>
+    [Fact]
+    public async Task MonthlySelfBillingDrafts_ARefusedHolderIsReportedAndTriedAgain_WithoutASecondDraftForTheOthers_Test()
+    {
+        await using var rig = await SelfBillingRig.CreateAsync();
+        await rig.AddAsync(rig.Fee(rig.Company, rig.Lake, await rig.StayAsync(rig.Lake, BookingSource.BookingCom, new DateTime(2026, 10, 5)), 100.00m));
+        await rig.AddAsync(rig.Fee(rig.NoProfileCompany, rig.Garden, await rig.StayAsync(rig.Garden, BookingSource.Airbnb, new DateTime(2026, 10, 9)), 10.00m));
+        var enabled = SelfBillingRig.Shipped();
+        enabled.MonthlyDrafts.Enabled = true;
+        var serviceLog = new CapturingLogger<SelfBillingService>();
+        var jobLog = new CapturingLogger<SelfBillingMonthlyDraftsJob>();
+        var service = ServiceOf(rig, enabled, ActivitiesOf(rig), serviceLog);
+        var job = JobOf(ProviderOf(service, []).GetRequiredService<IServiceScopeFactory>(), rig, enabled, issuance: true, jobLog);
+
+        // The first run: the valid holder gets its draft, the other one is refused, counted and reported with its code.
+        var first = await service.RunMonthlyDraftsAsync(rig.OrgId, 2026, 10, Ct);
+        Assert.Equal((false, 1, 1, 1), (first.AlreadyMade, first.Created, first.OpenDrafts, first.Refused));
+        Assert.Equal([FiscalDocumentErrors.OwnerIssuerMissing], first.RefusedCodes);
+        var companyDraft = Assert.Single(await DocumentsAsync(rig));
+        var warning = Assert.Single(serviceLog.Entries, e => e.Level == LogLevel.Warning && e.Values.ContainsKey("Refused"));
+        Assert.Equal((1, FiscalDocumentErrors.OwnerIssuerMissing), ((int)warning.Values["Refused"]!, (string)warning.Values["Codes"]!));
+        Assert.DoesNotContain("Senza", serviceLog.AllOutput, StringComparison.Ordinal);
+        Assert.DoesNotContain("01234567898", serviceLog.AllOutput, StringComparison.Ordinal);
+
+        // The item stands with the words that tell of the holder refused.
+        var item = Assert.Single(await rig.Db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.SelfBillingDraftsToReview)).ToListAsync());
+        Assert.Null(item.CompletedAt);
+        Assert.Contains("incompleti", item.Reason, StringComparison.Ordinal);
+
+        // The run again with the profile still incomplete (a retry, a trigger by hand): no second draft, the refusal is reported again, and nothing is «made now».
+        await job.ExecuteAsync(Ct);
+        Assert.Equal([companyDraft.Id], (await DocumentsAsync(rig)).Select(d => d.Id));
+        Assert.Equal(0, MadeBy(jobLog));
+        Assert.Contains(jobLog.Entries, e => e.Level == LogLevel.Warning && e.Values.TryGetValue("Holders", out var holders) && (int)holders! == 1);
+
+        // The owner completes its profile: the next run makes the missing draft only; the holder that had its draft keeps it, and the same item goes back to its plain words (not closed, not raised again).
+        await rig.AddAsync(
+            new OrgFiscalIssuerProfile
+            {
+                OrgId = rig.OrgId,
+                PropertyOwnerId = rig.NoProfileCompany,
+                DocumentRegime = DocumentRegime.VatOrdinary,
+                VatRegistered = true,
+                LegalName = "TEST Senza Profilo Srl",
+                VatNumber = "01234567898",
+                FiscalCode = "01234567898",
+                AddressStreet = "Via del Giardino",
+                AddressCivic = "4",
+                PostalCode = "22100",
+                City = "Como",
+                Province = "CO",
+                CountryCode = "IT",
+                IssuerSdiRecipientCode = "SPR1234",
+                IssuerPec = "senzaprofilo@pec.example.com",
+            });
+        jobLog.Entries.Clear();
+        await job.ExecuteAsync(Ct);
+        var both = await DocumentsAsync(rig);
+        Assert.Equal(2, both.Count);
+        Assert.Contains(companyDraft.Id, both.Select(d => d.Id));
+        Assert.All(both, d => Assert.Equal(FiscalDocumentStatus.Draft, d.Status));
+        Assert.Equal(1, MadeBy(jobLog));
+        Assert.DoesNotContain(jobLog.Entries, e => e.Level == LogLevel.Warning);
+        var same = Assert.Single(await rig.Db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.SelfBillingDraftsToReview)).ToListAsync());
+        Assert.Equal((item.Id, true), (same.Id, same.CompletedAt is null));
+        Assert.DoesNotContain("incompleti", same.Reason, StringComparison.Ordinal);
+
+        // A person discards the first draft: the next run does not bring it back, makes nothing, and the item stands for the other draft.
+        await service.DiscardDraftAsync(rig.OrgId, companyDraft.Id, Ct);
+        jobLog.Entries.Clear();
+        await job.ExecuteAsync(Ct);
+        var states = (await DocumentsAsync(rig)).ToDictionary(d => d.Id, d => d.Status);
+        Assert.Equal(2, states.Count);
+        Assert.Equal(FiscalDocumentStatus.Discarded, states[companyDraft.Id]);
+        Assert.Equal(0, MadeBy(jobLog));
+        Assert.Null(Assert.Single(await rig.Db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.SelfBillingDraftsToReview)).ToListAsync()).CompletedAt);
+    }
+
+    /// <summary>
     /// The run of every organization is isolated: it enters the tenant of each, an organization that fails does not stop the others (the run fails at the end with them all so that Hangfire repeats it),
     /// and it asks for the month that ended by the calendar of Rome.
     /// </summary>
@@ -187,7 +326,7 @@ public class SelfBillingAlertsTests
         var service = new Mock<ISelfBillingService>();
         service.Setup(s => s.OrgsWithCommissionsAsync(2026, 10, It.IsAny<CancellationToken>())).ReturnsAsync([first, second]);
         service.Setup(s => s.RunMonthlyDraftsAsync(first, 2026, 10, It.IsAny<CancellationToken>())).ThrowsAsync(new DomainRuleException(SelfBillingErrors.NotConfigured, "SelfBillingNotConfigured"));
-        service.Setup(s => s.RunMonthlyDraftsAsync(second, 2026, 10, It.IsAny<CancellationToken>())).ReturnsAsync(new SelfBillingMonthlyRun(2026, 10, false, 2, 0, 2));
+        service.Setup(s => s.RunMonthlyDraftsAsync(second, 2026, 10, It.IsAny<CancellationToken>())).ReturnsAsync(new SelfBillingMonthlyRun(2026, 10, false, 2, 0, 2, 0, []));
         var enabled = SelfBillingRig.Shipped();
         enabled.MonthlyDrafts.Enabled = true;
         var job = JobOf(ProviderOf(service.Object, entered).GetRequiredService<IServiceScopeFactory>(), rig, enabled, issuance: true);
@@ -386,7 +525,7 @@ public class SelfBillingAlertsTests
     private static FiscalDocumentRejectionHandler HandlerOf(Casazen.Infrastructure.Data.AppDbContext db, IInternalActivityService activities) =>
         new(db, activities, new ResxDocumentTexts(), NullLogger<FiscalDocumentRejectionHandler>.Instance);
 
-    private static SelfBillingService ServiceOf(SelfBillingRig rig, SelfBillingOptions options, IInternalActivityService? activities = null) => new(
+    private static SelfBillingService ServiceOf(SelfBillingRig rig, SelfBillingOptions options, IInternalActivityService? activities = null, ILogger<SelfBillingService>? logger = null) => new(
         rig.Db,
         rig.Documents,
         rig.Issuers,
@@ -395,15 +534,18 @@ public class SelfBillingAlertsTests
         new ResxDocumentTexts(),
         Options.Create(options),
         rig.Clock,
-        NullLogger<SelfBillingService>.Instance,
+        logger ?? NullLogger<SelfBillingService>.Instance,
         activities);
 
-    private static SelfBillingMonthlyDraftsJob JobOf(IServiceScopeFactory scopes, SelfBillingRig rig, SelfBillingOptions options, bool issuance) => new(
+    private static SelfBillingMonthlyDraftsJob JobOf(IServiceScopeFactory scopes, SelfBillingRig rig, SelfBillingOptions options, bool issuance, ILogger<SelfBillingMonthlyDraftsJob>? logger = null) => new(
         scopes,
         issuance ? new TestFeatureFlags(FeatureFlags.FiscalDocumentIssuance) : new TestFeatureFlags(),
         Options.Create(options),
-        NullLogger<SelfBillingMonthlyDraftsJob>.Instance,
+        logger ?? NullLogger<SelfBillingMonthlyDraftsJob>.Instance,
         rig.Clock);
+
+    /// <summary>The number of organizations the last run of the job counted as «made now» (the structured value of its summary line).</summary>
+    private static int MadeBy(CapturingLogger<SelfBillingMonthlyDraftsJob> log) => (int)log.Entries.Last(e => e.Values.ContainsKey("Made")).Values["Made"]!;
 
     /// <summary>A provider whose scopes hand out <paramref name="service"/> and record the organizations entered as the tenant.</summary>
     private static ServiceProvider ProviderOf(ISelfBillingService service, List<Guid> entered)
@@ -465,11 +607,13 @@ public class SelfBillingAlertsTests
         Reason = "rejected",
     };
 
-    private static CreateTodoRequest DraftsTodo(Guid orgId) => new()
+    private static CreateTodoRequest DraftsTodo(Guid orgId) => DraftsTodo(orgId, 2026, 10);
+
+    private static CreateTodoRequest DraftsTodo(Guid orgId, int year, int month) => new()
     {
         Type = ActivityType.SelfBillingDraftsToReview,
         Action = ActivityAction.ReviewSelfBilling,
-        EntityType = SelfBillingTodos.PeriodEntityType(2026, 10),
+        EntityType = SelfBillingTodos.PeriodEntityType(year, month),
         EntityId = orgId,
         Urgency = ActivityUrgency.Medium,
         OrgId = orgId,
