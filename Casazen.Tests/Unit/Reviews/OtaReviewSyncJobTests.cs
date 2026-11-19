@@ -223,6 +223,60 @@ public class OtaReviewSyncJobTests
         ReadTimes(h, h.Granted, Times.Exactly(2));
     }
 
+    /// <summary>
+    /// An action nobody confirmed (a reply whose call had no answer) is read again whatever the age of the stay: the window of sixty days is lifted for it, also after a read that failed, and the
+    /// read ends it (an error the host can act on after an hour); a stay of the same age with nothing waiting stays out.
+    /// </summary>
+    [Fact]
+    public async Task Job_AnActionNobodyConfirmedOnAStayOlderThanTheWindow_IsReadAgain_AndEndsAsAnErrorTheHostCanActOn()
+    {
+        var h = await OtaReviewHarness.CreateAsync();
+        await h.ConnectAsync(h.Granted.OrgId);
+        h.ChannelHasNothing(h.Granted);
+        h.ChannelHasNothing(h.Hidden);
+        var orgId = h.Granted.OrgId;
+
+        // Two stays that ended forty days ago, each with the review of the guest out; the host replied to one, and the call to the channel manager had no answer.
+        var waiting = await h.AddStayAsync(orgId, h.Granted.PropertyId, OtaReviewHarness.GrantedAccommodation, "HMOLD00001", endedDaysAgo: 40);
+        var quiet = await h.AddStayAsync(orgId, h.Granted.PropertyId, OtaReviewHarness.GrantedAccommodation, "HMOLD00002", endedDaysAgo: 40);
+        h.ChannelHasReview(waiting);
+        h.ChannelHasReview(quiet);
+        var review = await h.SyncAsync(waiting);
+        await h.SyncAsync(quiet);
+        h.Client
+            .Setup(c => c.SendHostReplyAsync(waiting.Accommodation, waiting.Refer, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OctorateServerException(503));
+        await using (var rig = h.AsRequestOf(orgId))
+            await rig.Service.ReplyAsync(review.Id, "Grazie di cuore!", "reply-key-0001", "auth0|titolare");
+        Assert.Equal(OtaReviewActionState.ManualVerify, (await h.ReviewOfAsync(waiting)).HostReplyState);
+
+        // Thirty days later both stays are seventy days old, past the window: the one that waits for nothing is not read, the unconfirmed one is, and a read that fails does not end the wait.
+        h.Clock.Advance(TimeSpan.FromDays(30));
+        h.Client.Invocations.Clear();
+        h.Client
+            .Setup(c => c.GetReviewAsync(waiting.Accommodation, waiting.Refer, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OctorateServerException(503));
+        await RunAsync(h);
+
+        ReadTimes(h, waiting, Times.Once());
+        ReadTimes(h, quiet, Times.Never());
+        var failed = await h.ReviewOfAsync(waiting);
+        Assert.Equal(OtaReviewActionState.ManualVerify, failed.HostReplyState);
+        Assert.Equal(h.Clock.GetUtcNow().UtcDateTime.AddHours(6), failed.NextPollAt);
+
+        // The next run reads it again: the channel manager still shows no reply and more than an hour has passed since it was asked, so it is an error the host can act on.
+        h.Clock.Advance(TimeSpan.FromHours(7));
+        h.ChannelHasReview(waiting);
+        await RunAsync(h);
+
+        ReadTimes(h, waiting, Times.Exactly(2));
+        ReadTimes(h, quiet, Times.Never());
+        var ended = await h.ReviewOfAsync(waiting);
+        Assert.Equal(OtaReviewActionState.Error, ended.HostReplyState);
+        Assert.Equal(OtaReviewErrorCodes.ReplyNotDelivered, ended.HostReplyError);
+        Assert.Null(ended.NextPollAt);
+    }
+
     // ─── The schedule and the registrations ───
 
     private static IFeatureFlags Flags(bool octorateConnector)

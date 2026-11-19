@@ -176,7 +176,11 @@ public sealed partial class OtaReviewService(
             row.LastSyncedAt = now;
             row.LastSyncError = Clip(code, OtaReview.ErrorCodeMaxLength);
             row.PollCount++;
-            row.NextPollAt = OtaReviewPollSchedule.NextPollAfterFailure(now, booking.CheckOutDate, code);
+            row.NextPollAt = OtaReviewPollSchedule.NextPollAfterFailure(
+                now,
+                booking.CheckOutDate,
+                code,
+                unconfirmedAction: row.HostReplyState == OtaReviewActionState.ManualVerify || row.HostReviewState == OtaReviewActionState.ManualVerify);
             row.UpdatedAt = now;
             await db.SaveChangesAsync(ct);
             if (transaction is not null)

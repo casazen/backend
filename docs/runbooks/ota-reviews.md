@@ -28,7 +28,8 @@ and through the same bucket of calls as every other call to Octorate):
   no no-show), with a reservation on the channel manager, whose check-out was in the **last 60 days** and is not in the future;
 - that are **due**: never read first (the stay that ended last first), then the ones whose `NextPollAt` has come (the most overdue first), within the cap of the run for the whole run;
 - the **cadence** of a booking: every 6 hours in the first 14 days after the check-out, then once a day until day 60, and **no more** once the guest's review is out and the host's own
-  review is sent or closed. A reply or a host's review whose outcome is not known keeps the booking in the schedule until a read settles it.
+  review is sent or closed. A reply or a host's review whose outcome is not known keeps the booking in the schedule until a read settles it, **whatever the age of the stay**: the window
+  of sixty days is lifted for it (also after a read that failed), and only a stay that happens, of a property with a confirmed listing and a reservation on the channel manager, is read.
 
 An org is read only down to its last 30 calls of the minute (`RateReserve`): the rest is for the host who replies and for the chat. When Octorate says it is over its limits the run of
 that org stops and the booking is read at the next run. A failure of one booking is stored on its row as a **code** (`LastSyncError`: `review_not_available` for a 403 without an error of

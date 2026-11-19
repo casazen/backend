@@ -115,6 +115,20 @@ public class OtaReviewRulesTests
     }
 
     [Fact]
+    public void PollSchedule_AFailedReadOfAnUnconfirmedAction_IsReadAgainWhateverTheWindowSays()
+    {
+        var after = CheckOut.AddDays(OtaReviewPollSchedule.WindowDays + 5);
+
+        // The window is over and nothing waits: the booking leaves the schedule. An action nobody confirmed stays in it, with the pace of the failure.
+        Assert.Null(OtaReviewPollSchedule.NextPollAfterFailure(after, CheckOut, "octorate_unavailable"));
+        Assert.Equal(after.AddHours(6), OtaReviewPollSchedule.NextPollAfterFailure(after, CheckOut, "octorate_unavailable", unconfirmedAction: true));
+        Assert.Equal(after.AddHours(24), OtaReviewPollSchedule.NextPollAfterFailure(after, CheckOut, OtaReviewErrorCodes.ReviewNotAvailable, unconfirmedAction: true));
+
+        // Inside the window the flag changes nothing.
+        Assert.Equal(Now.AddHours(6), OtaReviewPollSchedule.NextPollAfterFailure(Now, CheckOut, "octorate_unavailable", unconfirmedAction: true));
+    }
+
+    [Fact]
     public void PollSchedule_TheWindowOfAStay_IsTheTimeBetweenItsCheckOutAndSixtyDaysAfter()
     {
         Assert.False(OtaReviewPollSchedule.IsInWindow(CheckOut, CheckOut.AddHours(-1)));

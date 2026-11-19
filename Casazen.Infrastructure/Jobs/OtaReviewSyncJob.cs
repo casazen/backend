@@ -25,7 +25,9 @@ namespace Casazen.Infrastructure.Jobs;
 /// no-show: the one definition), whose check-out is within the last <see cref="OtaReviewPollSchedule.WindowDays"/> days and not in the future, with a reservation on the channel
 /// manager, and that are due: never read, or whose <c>NextPollAt</c> has come. The cadence is the row's (every six hours in the first fourteen days after the check-out, then once a
 /// day until day sixty, and no more once the guest's review is out and the host's own review is sent or closed). The ones never read come first, the most recent stay first, then the
-/// most overdue.</item>
+/// most overdue. <b>An action whose outcome nobody confirmed</b> (a reply or a host's review that is <c>ManualVerify</c>) is read again whatever the window says, so a stay older than
+/// sixty days is read too while it waits (it is how the action ends: found on the channel, or an error the host can act on after an hour); only the window is lifted, the stay still has
+/// to be one that happens, of a property with a confirmed listing and a reservation on the channel manager.</item>
 /// <item><b>The calls of the org.</b> Each org is read for itself under <see cref="IOctorateOrgScope.Use"/>, through the same bucket of calls as every other call to Octorate; the run
 /// of an org stops when its bucket is down to <see cref="RateReserve"/> (what is left is for the host who replies and for the chat) or when Octorate says it is over its limits, and
 /// the bookings left are read at the next run. A failure of one booking is stored on its row as a code by the service and the next booking is read; a failure nobody foresaw is
@@ -162,8 +164,8 @@ public class OtaReviewSyncJob(
         var from = now.AddDays(-OtaReviewPollSchedule.WindowDays);
         BookingStatus[] active = AlloggiatiStatusRules.ActiveBookingStatuses;
 
-        // The stays that happen, of a property with a listing, ended inside the window of the reviews, with a reservation on the channel manager.
-        var stays = db.Bookings
+        // The stays that happen, of a property with a listing, that are over, with a reservation on the channel manager: the window of the reviews is not asked yet.
+        var happened = db.Bookings
             .AsNoTracking()
             .Where(b => b.OrgId == orgId
                         && b.Source == BookingSource.Airbnb
@@ -171,8 +173,10 @@ public class OtaReviewSyncJob(
                         && active.Contains(b.Status)
                         && b.NoShowAt == null
                         && b.OctorateReservationId != null
-                        && b.CheckOutDate <= now
-                        && b.CheckOutDate > from);
+                        && b.CheckOutDate <= now);
+
+        // ...and the ones that ended inside the window of the reviews.
+        var stays = happened.Where(b => b.CheckOutDate > from);
 
         // Never read: no row of the review yet.
         var neverRead = await stays
@@ -187,14 +191,17 @@ public class OtaReviewSyncJob(
         if (ids.Count >= limit)
             return ids;
 
-        // The rows whose time has come, on a stay that still counts: the most overdue first.
+        // The rows whose time has come, on a stay that still counts: the most overdue first. A row with an action nobody confirmed (a reply or a host's review in ManualVerify) counts
+        // whatever the age of the stay: only a read ends it, so the window of sixty days does not leave it behind.
         var overdue = await db.OtaReviews
             .AsNoTracking()
             .Where(r => r.OrgId == orgId
                         && r.Channel == OtaChannel.Airbnb
                         && r.NextPollAt != null
                         && r.NextPollAt <= now
-                        && stays.Any(b => b.Id == r.BookingId))
+                        && (stays.Any(b => b.Id == r.BookingId)
+                            || ((r.HostReplyState == OtaReviewActionState.ManualVerify || r.HostReviewState == OtaReviewActionState.ManualVerify)
+                                && happened.Any(b => b.Id == r.BookingId))))
             .OrderBy(r => r.NextPollAt)
             .ThenBy(r => r.Id)
             .Select(r => r.BookingId)

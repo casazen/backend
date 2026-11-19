@@ -72,12 +72,14 @@ public static class OtaReviewPollSchedule
     /// <summary>
     /// When the booking is read next after a read that failed with <paramref name="errorCode"/>: a failure that may pass (the channel manager did not answer, its limit was
     /// reached) is read again at the next run, the others (no permission for the reviews, a refusal, a reference it does not know) after <see cref="FailureBackoff"/>, so a
-    /// booking that cannot be read does not use the calls of the org every six hours. <c>null</c> once the window of the stay is over.
+    /// booking that cannot be read does not use the calls of the org every six hours. <c>null</c> once the window of the stay is over, <b>except</b> for a booking with an action whose
+    /// outcome nobody confirmed (<paramref name="unconfirmedAction"/>): it is read again whatever the window says, as <see cref="NextPollAt"/> has it, because a read that failed does not
+    /// end the wait and only a read ends it.
     /// </summary>
-    public static DateTime? NextPollAfterFailure(DateTime nowUtc, DateTime checkOutUtc, string errorCode)
+    public static DateTime? NextPollAfterFailure(DateTime nowUtc, DateTime checkOutUtc, string errorCode, bool unconfirmedAction = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(errorCode);
-        if (nowUtc >= checkOutUtc.AddDays(WindowDays))
+        if (!unconfirmedAction && nowUtc >= checkOutUtc.AddDays(WindowDays))
             return null;
 
         var transient = errorCode is "octorate_unavailable" or "octorate_rate_limited";
