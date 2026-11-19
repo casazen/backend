@@ -54,10 +54,24 @@ public static class IstatRegionResolver
     /// <param name="rule">The row of the territory, or null.</param>
     /// <param name="regionCode">CasaZen's three-letter code of the region (<c>LOM</c>), or null when the region is unknown.</param>
     /// <param name="overrides">The configured days by region code (<c>Compliance:IstatDeadlineDays</c>), or null.</param>
-    public static int? DeadlineDay(IstatRegionRule? rule, string? regionCode, IReadOnlyDictionary<string, int>? overrides)
+    /// <param name="onInvalidOverride">
+    /// Called with the region code and the value when the day configured for the region is not a day of the month (1 to 31): such a value is ignored, never
+    /// used, so the cockpit (which has no item for a day out of range) and the answer for a property never disagree. The caller logs it.
+    /// </param>
+    public static int? DeadlineDay(
+        IstatRegionRule? rule,
+        string? regionCode,
+        IReadOnlyDictionary<string, int>? overrides,
+        Action<string, int>? onInvalidOverride = null)
     {
         if (regionCode is not null && overrides is not null && overrides.TryGetValue(regionCode, out var configured))
-            return configured;
+        {
+            if (configured is >= 1 and <= 31)
+                return configured;
+
+            // Not a day of the month: the table's day (or none) stands, as if nothing were configured.
+            onInvalidOverride?.Invoke(regionCode, configured);
+        }
 
         return rule?.MonthlyDeadlineDay;
     }

@@ -36,6 +36,13 @@ public sealed class IstatRegionService(
 
     private const string HttpsPrefix = "https://";
 
+    /// <summary>
+    /// The warning of a day configured for a region in <c>Compliance:IstatDeadlineDays</c> that is not a day of the month. It names the region and the value
+    /// and nothing else (no organization, property or person); the day is ignored and the one of the table stands.
+    /// </summary>
+    internal const string InvalidOverrideMessage =
+        "Compliance:IstatDeadlineDays for region {RegionCode} is {ConfiguredDay}, not a day of the month from 1 to 31: ignored, the day of the ISTAT region table is used";
+
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     public async Task<IReadOnlyList<IstatRegionRule>> ListAsync(CancellationToken ct)
@@ -152,8 +159,12 @@ public sealed class IstatRegionService(
         var match = await FindForComuneAsync(db, property.ComuneIstatCode, ct);
         var rule = match?.Rule;
 
-        // The deadline of the cockpit: the row's monthly day, or the day configured for the region, which overrides it.
-        var day = IstatRegionResolver.DeadlineDay(rule, match?.RegionCode, options.Value.IstatDeadlineDays);
+        // The deadline of the cockpit: the row's monthly day, or the day configured for the region, which overrides it (a day out of 1 to 31 is ignored).
+        var day = IstatRegionResolver.DeadlineDay(
+            rule,
+            match?.RegionCode,
+            options.Value.IstatDeadlineDays,
+            (region, configured) => logger.LogWarning(InvalidOverrideMessage, region, configured));
         var kind = day is not null ? IstatDeadlineKind.Monthly : rule?.DeadlineKind ?? IstatDeadlineKind.Unknown;
         var coverage = rule?.OctorateCoverage ?? IstatCoverage.Unknown;
         var next = IstatRegionResolver.NextStep(coverage);

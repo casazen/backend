@@ -108,7 +108,7 @@ obbligatori, e per le altre regioni non lo dicono. Dove una riga dice «famiglia
   «ho letto la riga sulla fonte», quindi `VerifiedAt` diventa il giorno indicato o oggi. Ogni salvataggio lascia una riga in `RegulatoryDataAuditEntries`
   (`EntityType = IstatRegionRule`: chi, quando, quali campi da che valore a quale) e non crea mai una riga. Solo il ruolo `AdminOnly`.
 - **Cruscotto e avvisi.** Il giorno di scadenza del mese ISTAT è il giorno mensile della riga; `Compliance:IstatDeadlineDays` resta solo come **sovrascrittura** (un giorno
-  impostato per la regione vince sulla tabella). Una regione senza giorno né in tabella né in configurazione non ha la voce ISTAT: nessuna scadenza è inventata.
+  impostato per la regione vince sulla tabella, ma sposta solo il giorno: non spegne la regione, per quello serve la riga dello staff a `Unknown`; un valore che non è un giorno del mese, da 1 a 31, è ignorato con un avviso nel log e vale il giorno della tabella). Una regione senza giorno né in tabella né in configurazione non ha la voce ISTAT: nessuna scadenza è inventata.
 - **Pagina dell'ospite e wizard del check-in.** Chiedono solo i campi statistici della riga della regione dell'immobile; senza riga, con la riga non verificata o con lista vuota non ne chiedono nessuno
   (minimizzazione dei dati).
 - **Per immobile.** `GET api/properties/{propertyId}/istat-coverage` (lettura dell'immobile, dietro `Features:OctorateOnboarding`) risponde regione, sistema, portale, scadenza, campi richiesti,
