@@ -244,6 +244,12 @@ public sealed class ScheduledMessageDispatcher(
             return await EndAsync(row, ScheduledMessageStatus.Cancelled, ScheduledMessageReasons.ConditionNotMet, now, ct);
         }
 
+        // A campaign goes only to a guest who gave the marketing consent (ADR-022-R11), read as the engine reads it (CampaignConsent). The engine reads it when the routine fires, but the sweep sends what the
+        // routine did not: a row the engine blocked is still planned, so the consent is read here too, whoever asks (the routine, the sweep, «Send now»: a guest who withdrew the consent is not written to).
+        // Nothing reached the channel and it is the expected end of a campaign for a guest who said no: no count of a try, no alert.
+        if (held.IsCampaign && !await CampaignConsent.IsGrantedAsync(db, row.OrgId, facts.GuestId, ct))
+            return await SkipBySystemAsync(row, ScheduledMessageReasons.CampaignNeedsConsent, now, ct, alert: false, counted: false);
+
         var scope = new HostScope(row.OrgId);
         var language = await GuestLanguageAsync(row, facts, ct);
         var body = await BodyOfAsync(row, language, ct);
@@ -503,14 +509,20 @@ public sealed class ScheduledMessageDispatcher(
         return new ScheduledMessageDispatchResult(ScheduledMessageDispatchOutcome.Failed, ScheduledMessageStatus.Failed, code);
     }
 
-    private async Task<ScheduledMessageDispatchResult> SkipBySystemAsync(ScheduledMessage row, string reason, DateTime now, CancellationToken ct)
+    /// <summary>
+    /// The system decided the message does not go out. <paramref name="alert"/>: the people who reach the property are told, as for a message the channel refused; a skip that is the normal course of a message
+    /// (a campaign for a guest who did not consent, a link for a check-in that is done) tells nobody. <paramref name="counted"/>: it counts as a try; a decision made before the channel was reached does not.
+    /// </summary>
+    private async Task<ScheduledMessageDispatchResult> SkipBySystemAsync(ScheduledMessage row, string reason, DateTime now, CancellationToken ct, bool alert = true, bool counted = true)
     {
         var applied = await SaveFinalAsync(
             row,
             r =>
             {
                 r.Status = ScheduledMessageStatus.Skipped;
-                r.Attempts++;
+                if (counted)
+                    r.Attempts++;
+
                 r.SkipReason = reason;
                 r.SkippedByUserId = null;
                 r.SkippedAt = now;
@@ -526,7 +538,9 @@ public sealed class ScheduledMessageDispatcher(
         logger.LogInformation("Scheduled message {MessageId} of org {OrgId} skipped by the system: {Reason}", row.Id, row.OrgId, reason);
 
         await CloseTodoAsync(row, ct);
-        await AlertAsync(row, ScheduledMessageAlertKinds.Skipped, null, now);
+        if (alert)
+            await AlertAsync(row, ScheduledMessageAlertKinds.Skipped, null, now);
+
         return new ScheduledMessageDispatchResult(ScheduledMessageDispatchOutcome.Skipped, ScheduledMessageStatus.Skipped, reason);
     }
 
@@ -669,7 +683,8 @@ public sealed class ScheduledMessageDispatcher(
         DateTime CheckInDate,
         DateTime CheckOutDate,
         int NumberOfGuests,
-        DateTime CreatedAt)
+        DateTime CreatedAt,
+        Guid GuestId)
     {
         /// <summary>A stay that happens: confirmed, checked in or checked out, not a no-show (the one definition of the time triggers).</summary>
         public bool Happens => !NoShow && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(Status);
@@ -698,11 +713,12 @@ public sealed class ScheduledMessageDispatcher(
                 b.CheckInDate,
                 b.CheckOutDate,
                 b.NumberOfGuests,
-                b.CreatedAt))
+                b.CreatedAt,
+                b.GuestId))
             .FirstOrDefaultAsync(ct);
 
-    /// <summary>The routine a row stands for, when it is still active, not in test mode, and still holds a <c>MessageToGuest</c> at the place of the row: its id and its condition.</summary>
-    private sealed record HeldAction(Guid RoutineId, string ConditionJson);
+    /// <summary>The routine a row stands for, when it is still active, not in test mode, and still holds a <c>MessageToGuest</c> at the place of the row: its id, its condition and whether the action is a campaign.</summary>
+    private sealed record HeldAction(Guid RoutineId, string ConditionJson, bool IsCampaign);
 
     /// <summary>The routine of the row with its condition, when the routine is still active, not in test mode, and still holds a <c>MessageToGuest</c> at that place; <c>null</c> otherwise.</summary>
     private async Task<HeldAction?> ActionOfAsync(ScheduledMessage row, CancellationToken ct)
@@ -720,7 +736,7 @@ public sealed class ScheduledMessageDispatcher(
             return null;
 
         return row.ActionIndex >= 0 && row.ActionIndex < actions.Count && actions[row.ActionIndex].Type == RoutineActionType.MessageToGuest
-            ? new HeldAction(routineId, routine.ConditionJson)
+            ? new HeldAction(routineId, routine.ConditionJson, actions[row.ActionIndex].IsOnUnlessFalse(ScheduledMessagePlanner.CampaignMarker))
             : null;
     }
 

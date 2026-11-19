@@ -827,4 +827,80 @@ public class ScheduledMessageServiceTests
         Assert.Empty(rig.Sent);
         Assert.Empty(await rig.RowsAsync(foreign.Id));
     }
+
+    // ------------------------------------------------------------------------------------------------------------------------------------
+    // What the engine decides, and the campaigns
+    // ------------------------------------------------------------------------------------------------------------------------------------
+
+    private static string CampaignActions(MessageTemplate template) => $$$"""[{"type":"MessageToGuest","config":{"templateId":"{{{template.Id}}}","isCampaign":true}}]""";
+
+    /// <summary>
+    /// PROOF TEST: privacy rule (ADR-022-R11, campaigns only with the marketing consent). A message the routine marks as a campaign is planned only for a guest who gave the consent, read as the engine reads it:
+    /// a stay whose guest has none gets no row, one that had a row loses it («Cancelled», <c>campaign_needs_consent</c>) when the consent goes, and gets it back when the consent comes back.
+    /// </summary>
+    [Fact]
+    public async Task ACampaign_IsPlannedOnlyForAGuestWhoGaveTheMarketingConsent_AndCancelledWhenTheConsentGoes()
+    {
+        var rig = new ScheduledMessageRig();
+        var (_, booking, template) = await StayAsync(rig);
+        await rig.SeedRoutineAsync(OrgA, template, actionsJson: CampaignActions(template));
+
+        Assert.Equal(0, await PlanAsync(rig, booking.Id));
+        Assert.Empty(await rig.RowsAsync(booking.Id));
+
+        await rig.SetMarketingConsentAsync(booking, true);
+        Assert.Equal(1, await PlanAsync(rig, booking.Id));
+        var planned = Assert.Single(await rig.RowsAsync(booking.Id));
+        Assert.Equal(ScheduledMessageStatus.Scheduled, planned.Status);
+        Assert.Equal(FirstMoment, planned.PlannedAtUtc);
+
+        await rig.SetMarketingConsentAsync(booking, false);
+        Assert.Equal(1, await PlanAsync(rig, booking.Id));
+        var withdrawn = Assert.Single(await rig.RowsAsync(booking.Id));
+        Assert.Equal(ScheduledMessageStatus.Cancelled, withdrawn.Status);
+        Assert.Equal(ScheduledMessageReasons.CampaignNeedsConsent, withdrawn.SkipReason);
+        Assert.Equal(RoutineCodes.CampaignNeedsConsent, ScheduledMessageReasons.CampaignNeedsConsent);
+
+        await rig.SetMarketingConsentAsync(booking, true);
+        await PlanAsync(rig, booking.Id);
+        Assert.Equal(ScheduledMessageStatus.Scheduled, Assert.Single(await rig.RowsAsync(booking.Id)).Status);
+    }
+
+    /// <summary>
+    /// A message the engine decides (a routine on an event the plan cannot foresee, an action with a condition the AI judges, a routine with an objective for its agent) is written when the routine fires and the
+    /// engine let it through; the plan never closes its open row for being «no longer planned», or the message the engine approved but the send window held back would be cancelled before the sweep sends it.
+    /// It is closed with its stay, and a routine that is off still loses its rows.
+    /// </summary>
+    [Fact]
+    public async Task TheOpenRowOfAMessageTheEngineDecides_IsNotClosedByThePlan_ButWithItsStayOrItsRoutine()
+    {
+        var rig = new ScheduledMessageRig();
+        var (_, booking, template) = await StayAsync(rig);
+        var onPayment = await rig.SeedRoutineAsync(OrgA, template, eventType: RoutineEventType.PaymentSucceeded, eventConfig: "{}");
+        var withCondition = await rig.SeedRoutineAsync(
+            OrgA,
+            template,
+            actionsJson: $$$"""[{"type":"MessageToGuest","config":{"templateId":"{{{template.Id}}}","aiCondition":"only for stays of four nights or more"}}]""");
+        var rowOnPayment = await rig.SeedRowAsync(booking, onPayment, template);
+        var rowWithCondition = await rig.SeedRowAsync(booking, withCondition, template);
+
+        Assert.Equal(0, await PlanAsync(rig, booking.Id));
+        Assert.Equal(ScheduledMessageStatus.Scheduled, (await rig.RowAsync(rowOnPayment.Id)).Status);
+        Assert.Equal(ScheduledMessageStatus.Scheduled, (await rig.RowAsync(rowWithCondition.Id)).Status);
+
+        // A routine that is switched off loses its row, as ever.
+        await ChangeRoutineAsync(rig, withCondition.Id, r => r.Active = false);
+        Assert.Equal(1, await PlanAsync(rig, booking.Id));
+        Assert.Equal(ScheduledMessageStatus.Scheduled, (await rig.RowAsync(rowOnPayment.Id)).Status);
+        var switchedOff = await rig.RowAsync(rowWithCondition.Id);
+        Assert.Equal(ScheduledMessageStatus.Cancelled, switchedOff.Status);
+        Assert.Equal(ScheduledMessageReasons.RoutineInactive, switchedOff.SkipReason);
+
+        // And the row goes with the stay.
+        await ChangeBookingAsync(rig, booking.Id, b => b.Status = BookingStatus.Cancelled);
+        await PlanAsync(rig, booking.Id);
+        var gone = await rig.RowAsync(rowOnPayment.Id);
+        Assert.Equal(ScheduledMessageStatus.Cancelled, gone.Status);
+        Assert.Equal(ScheduledMessageReasons.BookingCancelled, gone.SkipReason);
+    }
 }

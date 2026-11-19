@@ -429,7 +429,7 @@ public class DemoEnvironmentService(
             return;
 
         var planned = ScheduledMessagePlanner
-            .Plan(new PlanningRoutine(routine.Id, routine.Name, routine.EventType, routine.EventConfig, routine.ActionsJson, routine.Active, routine.TestMode), stay.Planning, new ScheduledMessageOptions())
+            .Plan(new PlanningRoutine(routine.Id, routine.Name, routine.EventType, routine.EventConfig, routine.ActionsJson, routine.Active, routine.TestMode, routine.AgentObjective), stay.Planning, new ScheduledMessageOptions())
             .FirstOrDefault();
         if (planned is null)
         {

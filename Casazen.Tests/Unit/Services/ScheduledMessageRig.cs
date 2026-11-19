@@ -283,6 +283,15 @@ internal sealed class ScheduledMessageRig
         return booking;
     }
 
+    /// <summary>The marketing consent of the guest of the booking, the flag the campaigns and the guardrail of the engine read.</summary>
+    public async Task SetMarketingConsentAsync(Booking booking, bool granted)
+    {
+        await using var db = NewDb();
+        var guest = await db.Guests.SingleAsync(g => g.Id == booking.GuestId);
+        guest.MarketingConsent = granted;
+        await db.SaveChangesAsync();
+    }
+
     public async Task<MessageTemplate> SeedTemplateAsync(Guid orgId, string body, string name = "Arrivo (TEST)", string language = "it", bool active = true)
     {
         await using var db = NewDb();

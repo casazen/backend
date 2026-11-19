@@ -973,16 +973,8 @@ public class RoutineService(
             if (booking is null)
                 return (_marketingConsent = false).Value;
 
-            var consented = await db.Guests
-                .AsNoTracking()
-                .AnyAsync(
-                    g => g.Id == booking.GuestId
-                         && g.OrgId == orgId
-                         && g.MarketingConsent
-                         && !g.IsDeleted
-                         && !g.ErasureRequested
-                         && g.DataAnonymizedDate == null,
-                    cancellationToken);
+            // The one reading of the consent, shared with the scheduled messages (CampaignConsent).
+            var consented = await CampaignConsent.IsGrantedAsync(db, orgId, booking.GuestId, cancellationToken);
             return (_marketingConsent = consented).Value;
         }
     }

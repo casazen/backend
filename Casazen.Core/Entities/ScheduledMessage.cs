@@ -162,6 +162,24 @@ public static class ScheduledMessageReasons
     /// <summary>The stay is held back for the tourist tax before the access code (the organization asked for it).</summary>
     public const string AccessCodeHeld = "access_code_held";
 
+    /// <summary>
+    /// The message is a campaign (<c>isCampaign</c>) and the guest did not give the marketing consent (ADR-022-R11): the same code as the guardrail of the engine
+    /// (<see cref="Models.RoutineCodes.CampaignNeedsConsent"/>). The message is not planned for such a guest and one planned before the consent went is cancelled with it; if it reaches the dispatch it is skipped.
+    /// </summary>
+    public const string CampaignNeedsConsent = "campaign_needs_consent";
+
+    /// <summary>The message names the check-in link and the guest already completed the online check-in (or the communication was sent): there is nothing to link to, and a new link would reopen it.</summary>
+    public const string CheckInCompleted = "check_in_completed";
+
+    /// <summary>The message names the check-in link and the identity verification of the stay is with an operator (rejected by one, or a hand-off still open): a new link would start the verification again against the decision of a person.</summary>
+    public const string CheckInWithOperator = "check_in_with_operator";
+
+    /// <summary>The message names the check-in link and the stay does not take one: it is not confirmed or checked in, or it is over.</summary>
+    public const string CheckInNotOpen = "check_in_not_open";
+
+    /// <summary>The message names the check-in link and the guest is filling in the check-in right now: a new link would end the session the guest is using. It waits (blocked) until the session ends.</summary>
+    public const string CheckInInProgress = "check_in_in_progress";
+
     /// <summary>The prefix of the reason of a message that names a variable the booking has no value for: <c>variable_missing:{name}</c>.</summary>
     public const string VariableMissingPrefix = "variable_missing:";
 

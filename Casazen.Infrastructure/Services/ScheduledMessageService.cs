@@ -64,7 +64,7 @@ public sealed class ScheduledMessageService(
             .IgnoreQueryFilters([Tenant])
             .AsNoTracking()
             .Where(r => r.OrgId == stay.OrgId)
-            .Select(r => new RoutineRow(new PlanningRoutine(r.Id, r.Name, r.EventType, r.EventConfig, r.ActionsJson, r.Active, r.TestMode), r.ConditionJson))
+            .Select(r => new RoutineRow(new PlanningRoutine(r.Id, r.Name, r.EventType, r.EventConfig, r.ActionsJson, r.Active, r.TestMode, r.AgentObjective), r.ConditionJson))
             .ToListAsync(ct);
         var rows = await db.ScheduledMessages
             .IgnoreQueryFilters([Tenant])
@@ -75,6 +75,8 @@ public sealed class ScheduledMessageService(
         var changed = 0;
         var kept = new HashSet<(Guid RoutineId, int ActionIndex)>();
         var notMet = new HashSet<Guid>();
+        var withoutConsent = new HashSet<(Guid RoutineId, int ActionIndex)>();
+        bool? consent = null;
         var facts = RoutineConditionFacts.OfBooking(stay.PropertyId, stay.Source, stay.Planning.CheckInDate, stay.Planning.CheckOutDate, stay.NumberOfGuests, stay.Planning.CreatedAt);
         foreach (var entry in routines)
         {
@@ -92,6 +94,17 @@ public sealed class ScheduledMessageService(
 
             foreach (var planned in plan)
             {
+                // A campaign goes only to a guest who gave the marketing consent (ADR-022-R11), read as the engine reads it: a stay whose guest has none gets no row, and a row it had is cancelled below.
+                if (planned.IsCampaign)
+                {
+                    consent ??= await CampaignConsent.IsGrantedAsync(db, stay.OrgId, stay.GuestId, ct);
+                    if (consent != true)
+                    {
+                        withoutConsent.Add((routine.Id, planned.ActionIndex));
+                        continue;
+                    }
+                }
+
                 kept.Add((routine.Id, planned.ActionIndex));
                 var row = rows.FirstOrDefault(r => r.RoutineId == routine.Id && r.ActionIndex == planned.ActionIndex);
                 if (row is null)
@@ -112,11 +125,19 @@ public sealed class ScheduledMessageService(
 
         // What no routine plans any more (switched off, deleted, the action gone, a stay that does not happen, or one that does not meet the condition of the routine) does not go out.
         var stayHappens = stay.Planning.Status is not BookingStatus.Cancelled && !stay.Planning.NoShow && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(stay.Planning.Status);
+        var routinesById = routines.ToDictionary(r => r.Planning.Id, r => r.Planning);
         foreach (var row in rows.Where(r => r.IsOpen && !(r.RoutineId is { } routineId && kept.Contains((routineId, r.ActionIndex)))))
         {
+            // The row of a message the engine decides (an event that cannot be foreseen, an agent objective, a condition the AI judges) is not one the plan writes, so it is not one the plan
+            // closes for being «no longer planned»: the dispatch checks the stay, the routine and the condition when it sends. It is closed only with its stay.
+            if (stayHappens && row.RoutineId is { } owner && routinesById.TryGetValue(owner, out var ownerRoutine) && ScheduledMessagePlanner.IsEngineOwned(ownerRoutine, row.ActionIndex))
+                continue;
+
             var reason = !stayHappens
                 ? ScheduledMessageReasons.BookingCancelled
-                : row.RoutineId is { } held && notMet.Contains(held) ? ScheduledMessageReasons.ConditionNotMet : ScheduledMessageReasons.RoutineInactive;
+                : row.RoutineId is { } noConsent && withoutConsent.Contains((noConsent, row.ActionIndex))
+                    ? ScheduledMessageReasons.CampaignNeedsConsent
+                    : row.RoutineId is { } held && notMet.Contains(held) ? ScheduledMessageReasons.ConditionNotMet : ScheduledMessageReasons.RoutineInactive;
             Close(row, ScheduledMessageStatus.Cancelled, reason, now);
             changed++;
         }
@@ -380,7 +401,7 @@ public sealed class ScheduledMessageService(
             .IgnoreQueryFilters([Tenant])
             .AsNoTracking()
             .Where(r => r.Id == routineId)
-            .Select(r => new { r.OrgId, Planning = new PlanningRoutine(r.Id, r.Name, r.EventType, r.EventConfig, r.ActionsJson, r.Active, r.TestMode) })
+            .Select(r => new { r.OrgId, Planning = new PlanningRoutine(r.Id, r.Name, r.EventType, r.EventConfig, r.ActionsJson, r.Active, r.TestMode, r.AgentObjective) })
             .FirstOrDefaultAsync(ct);
         if (found is null
             || !RoutineAction.TryParseList(found.Planning.ActionsJson, out var actions)
@@ -455,7 +476,7 @@ public sealed class ScheduledMessageService(
     // ------------------------------------------------------------------------------------------------------------------------------------
 
     /// <summary>What the plan reads of a booking: its org and property, the facts the planner needs, and the two more the condition of a routine can read (where it comes from, how many guests).</summary>
-    private sealed record Stay(Guid OrgId, Guid PropertyId, BookingSource Source, int NumberOfGuests, PlanningBooking Planning);
+    private sealed record Stay(Guid OrgId, Guid PropertyId, BookingSource Source, int NumberOfGuests, PlanningBooking Planning, Guid GuestId);
 
     /// <summary>A routine as the plan reads it: what the planner needs, and its condition (read by the evaluator of the engine).</summary>
     private sealed record RoutineRow(PlanningRoutine Planning, string ConditionJson);
@@ -480,7 +501,8 @@ public sealed class ScheduledMessageService(
                     b.ConfirmedAt,
                     b.Property.CheckInFrom,
                     b.Property.CheckOutBy,
-                    b.Property.Timezone)))
+                    b.Property.Timezone),
+                b.GuestId))
             .FirstOrDefaultAsync(ct);
 
     private static ScheduledMessage NewRow(Stay stay, PlanningRoutine routine, PlannedMessage planned, DateTime now) => new()
@@ -505,7 +527,7 @@ public sealed class ScheduledMessageService(
     private static int Follow(ScheduledMessage row, PlanningRoutine routine, PlannedMessage planned, DateTime gone, DateTime now)
     {
         if (row.Status == ScheduledMessageStatus.Cancelled
-            && row.SkipReason is ScheduledMessageReasons.RoutineInactive or ScheduledMessageReasons.BookingCancelled or ScheduledMessageReasons.ConditionNotMet
+            && row.SkipReason is ScheduledMessageReasons.RoutineInactive or ScheduledMessageReasons.BookingCancelled or ScheduledMessageReasons.ConditionNotMet or ScheduledMessageReasons.CampaignNeedsConsent
             && planned.PlannedAtUtc >= gone)
         {
             row.Status = ScheduledMessageStatus.Scheduled;

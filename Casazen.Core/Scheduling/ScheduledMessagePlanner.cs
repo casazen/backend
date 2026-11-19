@@ -17,7 +17,8 @@ namespace Casazen.Core.Scheduling;
 /// <param name="ActionsJson">The actions, as the engine reads them.</param>
 /// <param name="Active">Only an active routine plans anything.</param>
 /// <param name="TestMode">A routine in test mode simulates: it plans nothing.</param>
-public sealed record PlanningRoutine(Guid Id, string Name, RoutineEventType EventType, string EventConfig, string ActionsJson, bool Active, bool TestMode);
+/// <param name="AgentObjective">The objective the host wrote for the agent of the routine (<c>Routine.AgentObjective</c>): an instruction the AI judges against the stay when the routine fires, so a routine that has one is the engine's.</param>
+public sealed record PlanningRoutine(Guid Id, string Name, RoutineEventType EventType, string EventConfig, string ActionsJson, bool Active, bool TestMode, string? AgentObjective = null);
 
 /// <summary>The facts of a booking the planner needs: the stay, the moment it was made or confirmed, and the clock of its property.</summary>
 /// <param name="CheckInDate">The check-in date as stored (a calendar date, midnight UTC).</param>
@@ -43,7 +44,8 @@ public sealed record PlanningBooking(
 /// <param name="ActionIndex">The position of the <c>MessageToGuest</c> action in the routine.</param>
 /// <param name="TemplateRef">The id of the template the action names.</param>
 /// <param name="PlannedAtUtc">When it goes out (UTC), inside the send window of the property.</param>
-public sealed record PlannedMessage(int ActionIndex, string TemplateRef, DateTime PlannedAtUtc);
+/// <param name="IsCampaign">The action is marked as a campaign (<c>isCampaign</c>, read as the engine reads it: any value but <c>false</c>): it goes only to a guest who gave the marketing consent.</param>
+public sealed record PlannedMessage(int ActionIndex, string TemplateRef, DateTime PlannedAtUtc, bool IsCampaign = false);
 
 /// <summary>
 /// The messages the active routines will send for a booking, and when (E05/F07/US01/T02, NF-71): pure, no database and no clock.
@@ -58,6 +60,9 @@ public sealed record PlannedMessage(int ActionIndex, string TemplateRef, DateTim
 /// moment of the event. Every <c>Wait</c> before the message adds its delay.</item>
 /// <item><b>Never outside the send window.</b> A moment before the window waits for it, one after it waits for the next morning (<see cref="IntoWindow"/>): a message is never planned for the middle
 /// of the night. What goes out outside the window anyway (a late sweep, «Send now») is flagged by the dispatch.</item>
+/// <item><b>What the engine decides is not planned.</b> An action with an <c>aiCondition</c> and every action of a routine that has an agent objective is judged by the AI against the stay when the routine
+/// fires: the plan neither foresees nor evaluates it (<see cref="IsEngineOwned"/>). Its row is written when the routine fires and the engine let it through, like the one of an event that cannot be foreseen.
+/// A campaign (<c>isCampaign</c>) is planned, with <see cref="PlannedMessage.IsCampaign"/> set, because the consent it needs is the guest's and is read where the message is planned and again where it is sent.</item>
 /// </list>
 /// </remarks>
 public static class ScheduledMessagePlanner
@@ -87,6 +92,10 @@ public static class ScheduledMessagePlanner
         if (!routine.Active || routine.TestMode || !IsPlannable(routine.EventType) || !HappensStay(booking))
             return [];
 
+        // A routine with an objective for its agent is judged by the AI against the stay when it fires: the engine's, not the plan's.
+        if (HasAgentObjective(routine))
+            return [];
+
         if (!RoutineAction.TryParseList(routine.ActionsJson, out var actions))
             return [];
 
@@ -114,11 +123,53 @@ public static class ScheduledMessagePlanner
             if (action.Type != RoutineActionType.MessageToGuest || !RoutineActionRules.HasRequiredFields(action))
                 continue;
 
+            // The condition an AI reads (aiCondition) is the engine's: it is neither foreseen nor evaluated here.
+            if (HasAiCondition(action))
+                continue;
+
             var templateRef = action.GetString("templateId")!.Trim();
-            planned.Add(new PlannedMessage(index, templateRef, IntoWindow(moment + waited, zone, from, to)));
+            planned.Add(new PlannedMessage(index, templateRef, IntoWindow(moment + waited, zone, from, to), action.IsOnUnlessFalse(CampaignMarker)));
         }
 
         return planned;
+    }
+
+    /// <summary>The member of the configuration of an action that marks a campaign, read closed in the doubt as the guardrail of the engine reads it (<c>RoutineService.CheckGuardrailsAsync</c>).</summary>
+    public const string CampaignMarker = "isCampaign";
+
+    /// <summary>The member of the configuration of an action that holds a condition the AI judges (<c>RoutineService.EvaluateAiConditionAsync</c>).</summary>
+    public const string AiConditionMember = "aiCondition";
+
+    /// <summary>The routine has an objective for its agent: the AI judges the stay against it when the routine fires.</summary>
+    private static bool HasAgentObjective(PlanningRoutine routine) => !string.IsNullOrWhiteSpace(routine.AgentObjective);
+
+    /// <summary>The action holds a condition the AI judges: the engine reads it, in the same way (<c>action.Config.ContainsKey("aiCondition")</c>).</summary>
+    public static bool HasAiCondition(RoutineAction action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        return action.Config.ContainsKey(AiConditionMember);
+    }
+
+    /// <summary>
+    /// Whether the <c>MessageToGuest</c> of the routine at <paramref name="actionIndex"/> is one the engine decides and the plan does not foresee: a routine on an event that cannot be foreseen, one with an
+    /// objective for its agent, or an action with an <c>aiCondition</c>. Such a row is written when the routine fires and the engine let it through, and the plan leaves it alone (it never closes it for
+    /// being «no longer planned»). <c>false</c> for a routine that is off, in test mode or no longer holds a message at that place: those rows are the plan's to close.
+    /// </summary>
+    public static bool IsEngineOwned(PlanningRoutine routine, int actionIndex)
+    {
+        ArgumentNullException.ThrowIfNull(routine);
+
+        if (!routine.Active || routine.TestMode || !RoutineAction.TryParseList(routine.ActionsJson, out var actions))
+            return false;
+
+        if (actionIndex < 0 || actionIndex >= actions.Count)
+            return false;
+
+        var action = actions[actionIndex];
+        if (action.Type != RoutineActionType.MessageToGuest || !RoutineActionRules.HasRequiredFields(action))
+            return false;
+
+        return !IsPlannable(routine.EventType) || HasAgentObjective(routine) || HasAiCondition(action);
     }
 
     /// <summary>

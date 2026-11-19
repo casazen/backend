@@ -756,4 +756,80 @@ public class ScheduledMessageDispatchTests
         rig.CheckIn.Verify(c => c.IssueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
         Assert.Equal(ScheduledMessageStatus.Sent, (await rig.RowAsync(row.Id)).Status);
     }
+
+    // ------------------------------------------------------------------------------------------------------------------------------------
+    // Campaigns
+    // ------------------------------------------------------------------------------------------------------------------------------------
+
+    /// <summary>A booking with a routine whose only action is a campaign (<c>isCampaign</c>) and its planned message, due half an hour ago.</summary>
+    private static async Task<(Booking Booking, ScheduledMessage Row)> SeedCampaignAsync(ScheduledMessageRig rig, Property property, bool consent)
+    {
+        var booking = await rig.SeedBookingAsync(property);
+        await rig.SetMarketingConsentAsync(booking, consent);
+        var template = await rig.SeedTemplateAsync(OrgA, "Un'offerta per te, {{guest_name}}! (TEST)", name: $"Offerta {Guid.NewGuid():N} (TEST)");
+        var routine = await rig.SeedRoutineAsync(OrgA, template, actionsJson: $$$"""[{"type":"MessageToGuest","config":{"templateId":"{{{template.Id}}}","isCampaign":true}}]""");
+        return (booking, await rig.SeedRowAsync(booking, routine, template));
+    }
+
+    /// <summary>
+    /// PROOF TEST: privacy rule (ADR-022-R11, campaigns only with the marketing consent). The engine reads the consent when the routine fires, but the sweep sends what the routine did not, so a message the engine
+    /// blocked would still go out: the dispatch reads the consent too, as the engine reads it, for the routine, for the sweep and for «Send now». A campaign for a guest who did not agree is skipped with the code
+    /// of the guardrail, nothing is sent, nobody is alerted (it is the normal end of a campaign for that guest), and it does not count as a try; for a guest who agreed it goes out as any message.
+    /// </summary>
+    [Theory]
+    [InlineData(ScheduledMessageDispatchMode.Routine)]
+    [InlineData(ScheduledMessageDispatchMode.Sweep)]
+    [InlineData(ScheduledMessageDispatchMode.SendNow)]
+    public async Task ACampaign_GoesOnlyToAGuestWhoGaveTheMarketingConsent_WhoeverAsksForTheSend(ScheduledMessageDispatchMode mode)
+    {
+        var rig = new ScheduledMessageRig();
+        var property = await rig.SeedPropertyAsync(OrgA);
+        var (_, withoutConsent) = await SeedCampaignAsync(rig, property, consent: false);
+        var (_, withConsent) = await SeedCampaignAsync(rig, property, consent: true);
+        var userId = mode == ScheduledMessageDispatchMode.SendNow ? ScheduledMessageRig.Owner : null;
+
+        var refused = await DispatchAsync(rig, withoutConsent.Id, mode, userId);
+
+        Assert.Equal(ScheduledMessageDispatchOutcome.Skipped, refused.Outcome);
+        Assert.Equal(ScheduledMessageReasons.CampaignNeedsConsent, refused.Code);
+        Assert.Empty(rig.Sent);
+        var skipped = await rig.RowAsync(withoutConsent.Id);
+        Assert.Equal(ScheduledMessageStatus.Skipped, skipped.Status);
+        Assert.Equal(ScheduledMessageReasons.CampaignNeedsConsent, skipped.SkipReason);
+        Assert.Null(skipped.SkippedByUserId);
+        Assert.Equal(0, skipped.Attempts);
+        Assert.Empty(await rig.BellAsync());
+        Assert.Empty(rig.Push.Queued);
+
+        var sent = await DispatchAsync(rig, withConsent.Id, mode, userId);
+
+        Assert.Equal(ScheduledMessageDispatchOutcome.Sent, sent.Outcome);
+        var message = Assert.Single(rig.Sent);
+        Assert.Equal("Un'offerta per te, Giulia! (TEST)", message.Text);
+        Assert.Equal(ScheduledMessageStatus.Sent, (await rig.RowAsync(withConsent.Id)).Status);
+    }
+
+    /// <summary>
+    /// The case the review found: the routine fired and the engine BLOCKED the campaign (the guardrail), so the row stayed planned; the sweep then reaches it after the catch-up time. The consent that the
+    /// guardrail read is read again, and the campaign for the guest who did not agree does not go; the guest who agreed later gets none either, because the row ended.
+    /// </summary>
+    [Fact]
+    public async Task ACampaignTheEngineBlocked_IsNotSentBy_TheSweepThatReachesTheRowAfterTheCatchUp()
+    {
+        var rig = new ScheduledMessageRig();
+        var property = await rig.SeedPropertyAsync(OrgA);
+        var (booking, row) = await SeedCampaignAsync(rig, property, consent: false);
+
+        await using (var db = rig.NewDb())
+            Assert.Equal(1, await rig.Dispatcher(db).SweepAsync(Now));
+
+        Assert.Empty(rig.Sent);
+        Assert.Equal(ScheduledMessageStatus.Skipped, (await rig.RowAsync(row.Id)).Status);
+
+        await rig.SetMarketingConsentAsync(booking, true);
+        await using (var db = rig.NewDb())
+            Assert.Equal(0, await rig.Dispatcher(db).SweepAsync(Now.AddMinutes(30)));
+
+        Assert.Empty(rig.Sent);
+    }
 }

@@ -23,7 +23,8 @@ public class ScheduledMessagePlannerTests
         string eventConfig = "{}",
         string? actions = null,
         bool active = true,
-        bool testMode = false) =>
+        bool testMode = false,
+        string? agentObjective = null) =>
         new(
             Guid.NewGuid(),
             "Messaggio (TEST)",
@@ -31,7 +32,8 @@ public class ScheduledMessagePlannerTests
             eventConfig,
             actions ?? $$$"""[{"type":"MessageToGuest","config":{"templateId":"{{{Template}}}"}}]""",
             active,
-            testMode);
+            testMode,
+            agentObjective);
 
     private static PlanningBooking Stay(
         DateOnly checkIn,
@@ -269,5 +271,61 @@ public class ScheduledMessagePlannerTests
         Assert.True(ScheduledMessagePlanner.IsInsideWindow(new DateTime(2026, 11, 20, 20, 0, 0, DateTimeKind.Utc), rome, from, to)); // 21:00 Rome
         Assert.False(ScheduledMessagePlanner.IsInsideWindow(new DateTime(2026, 11, 20, 6, 59, 0, DateTimeKind.Utc), rome, from, to)); // 07:59 Rome
         Assert.False(ScheduledMessagePlanner.IsInsideWindow(new DateTime(2026, 11, 20, 22, 0, 0, DateTimeKind.Utc), rome, from, to)); // 23:00 Rome
+    }
+
+    /// <summary>
+    /// What the AI judges when the routine fires is the engine's, not the plan's: an action with an <c>aiCondition</c> is neither foreseen nor evaluated (the other messages of the routine are planned as ever),
+    /// and a routine with an objective for its agent plans nothing.
+    /// </summary>
+    [Fact]
+    public void AnActionWithAnAiCondition_IsNotPlanned_AndARoutineWithAnAgentObjective_PlansNothing()
+    {
+        var actions = $$$"""[{"type":"MessageToGuest","config":{"templateId":"{{{Template}}}","aiCondition":"only for stays of four nights or more"}},{"type":"MessageToGuest","config":{"templateId":"{{{Template}}}"}}]""";
+        var booking = Stay(new DateOnly(2026, 11, 20), new DateOnly(2026, 11, 23), checkInFrom: new TimeOnly(15, 0));
+
+        var planned = Assert.Single(ScheduledMessagePlanner.Plan(Routine(RoutineEventType.BeforeCheckin, """{"days":1}""", actions), booking, Options));
+        Assert.Equal(1, planned.ActionIndex);
+
+        Assert.Empty(ScheduledMessagePlanner.Plan(Routine(RoutineEventType.BeforeCheckin, """{"days":1}""", agentObjective: "Only for guests who come from abroad"), booking, Options));
+        Assert.Single(ScheduledMessagePlanner.Plan(Routine(RoutineEventType.BeforeCheckin, """{"days":1}""", agentObjective: "   "), booking, Options));
+    }
+
+    /// <summary>
+    /// The campaign marker is read as the guardrail of the engine reads it (<c>RoutineAction.IsOnUnlessFalse</c>): anything but the JSON <c>false</c> marks a campaign, so a marker that is not spelled as
+    /// a boolean never lets a message through without the consent.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"templateId":"__T__","isCampaign":true}""", true)]
+    [InlineData("""{"templateId":"__T__","isCampaign":"false"}""", true)]
+    [InlineData("""{"templateId":"__T__","isCampaign":0}""", true)]
+    [InlineData("""{"templateId":"__T__","isCampaign":null}""", true)]
+    [InlineData("""{"templateId":"__T__","isCampaign":false}""", false)]
+    [InlineData("""{"templateId":"__T__"}""", false)]
+    public void ACampaign_IsMarkedOnThePlannedMessage_AsTheEngineReadsTheMarker(string config, bool expected)
+    {
+        var actions = "[{\"type\":\"MessageToGuest\",\"config\":" + config.Replace("__T__", Template) + "}]";
+        var booking = Stay(new DateOnly(2026, 11, 20), new DateOnly(2026, 11, 23), checkInFrom: new TimeOnly(15, 0));
+
+        var planned = Assert.Single(ScheduledMessagePlanner.Plan(Routine(RoutineEventType.BeforeCheckin, """{"days":1}""", actions), booking, Options));
+
+        Assert.Equal(expected, planned.IsCampaign);
+    }
+
+    [Fact]
+    public void TheMessagesTheEngineDecides_AreEngineOwned_AndTheOnesThePlanWritesAreNot()
+    {
+        var withCondition = $$$"""[{"type":"MessageToGuest","config":{"templateId":"{{{Template}}}","aiCondition":"x"}}]""";
+
+        // An event that cannot be foreseen, an agent objective and an aiCondition belong to the engine; a message of a time trigger with none of them is the plan's.
+        Assert.True(ScheduledMessagePlanner.IsEngineOwned(Routine(RoutineEventType.PaymentSucceeded), 0));
+        Assert.True(ScheduledMessagePlanner.IsEngineOwned(Routine(RoutineEventType.BeforeCheckin, """{"days":1}""", agentObjective: "Only for guests who come from abroad"), 0));
+        Assert.True(ScheduledMessagePlanner.IsEngineOwned(Routine(RoutineEventType.BeforeCheckin, """{"days":1}""", withCondition), 0));
+        Assert.False(ScheduledMessagePlanner.IsEngineOwned(Routine(RoutineEventType.BeforeCheckin, """{"days":1}"""), 0));
+
+        // A routine that is off or in test mode, an index past the actions and an action that is not a message are not the engine's: the plan closes those rows.
+        Assert.False(ScheduledMessagePlanner.IsEngineOwned(Routine(RoutineEventType.PaymentSucceeded, active: false), 0));
+        Assert.False(ScheduledMessagePlanner.IsEngineOwned(Routine(RoutineEventType.PaymentSucceeded, testMode: true), 0));
+        Assert.False(ScheduledMessagePlanner.IsEngineOwned(Routine(RoutineEventType.PaymentSucceeded), 3));
+        Assert.False(ScheduledMessagePlanner.IsEngineOwned(Routine(RoutineEventType.PaymentSucceeded, actions: """[{"type":"CreateActivity","config":{"text":"x"}}]"""), 0));
     }
 }
