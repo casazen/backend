@@ -388,7 +388,43 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         Assert.Equal(CheckInLinkEndReasons.LinkExpired, overToo.EndedReason);
     }
 
+    /// <summary>
+    /// A request that is cancelled right after the confirmation of the guest was queued (a guest who closes the page, a job that stops with the application) must not make the host
+    /// lose the alert of the new booking: the e-mail to the host and the push are queued before anything of the link is settled, and nothing of the link is awaited with the token of
+    /// the request.
+    /// </summary>
+    [Fact]
+    public async Task RequestCancelledAfterTheConfirmationIsQueued_TheHostIsStillTold()
+    {
+        var bookingId = await SeedAsync(daysUntilArrival: 2);
+        using var cancellation = new CancellationTokenSource();
+        var notifier = new BookingNotifier(
+            _db, new CancellingEmailQueue(_emails, cancellation, GuestEmail), EmailTestHelpers.Links(), _pushes, _notifierLog, _checkIn, _deliveries, _options, _clock);
+
+        await notifier.BookingConfirmedAsync(bookingId, BookingConfirmationKind.PaidOnline, cancellation.Token);
+
+        Assert.True(cancellation.IsCancellationRequested);
+        Assert.Single(_emails.Snapshot(), e => e.To == GuestEmail);
+        Assert.Single(_emails.Snapshot(), e => e.Template == EmailTemplates.Names.HostBookingConfirmed);
+        Assert.Single(_pushes.Queued);
+        var row = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync(d => d.BookingId == bookingId);
+        Assert.Equal((CheckInLinkChannel.Email, CheckInLinkDeliveryState.Sending), (row.Channel, row.State));
+    }
+
     // ---- The data every test runs on ---------------------------------------------------------------------------------------------------
+
+    /// <summary>The queue of the e-mails that cancels the request the moment it takes the e-mail to the guest.</summary>
+    private sealed class CancellingEmailQueue(IEmailQueue inner, CancellationTokenSource cancellation, string guestEmail) : IEmailQueue
+    {
+        public bool Enqueue(string? to, EmailContent content, string template)
+        {
+            var queued = inner.Enqueue(to, content, template);
+            if (to == guestEmail)
+                cancellation.Cancel();
+
+            return queued;
+        }
+    }
 
     /// <summary>The service of the delivery on another clock: what the host would read after the links expired.</summary>
     private CheckInLinkDeliveryService DeliveriesAt(TimeProvider clock) =>

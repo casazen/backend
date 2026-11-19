@@ -109,10 +109,12 @@ public sealed class BookingNotifier(
                 : content;
         });
 
-        await TakeBackCheckInAsync(data, confirmationCheckIn, queued, cancellationToken);
-
+        // The host is told of the new booking (e-mail, push, bell) the moment the e-mail of the guest is with the queue, BEFORE anything of the link is settled: no await with the token of
+        // the request sits between the two, so a request that is cancelled right after the confirmation was queued cannot make the host lose the alert.
         if (kind != BookingConfirmationKind.OnSite)
             AlertHostOfNewBooking(data, kind);
+
+        await TakeBackCheckInAsync(data, confirmationCheckIn, queued);
     }
 
     /// <summary>
@@ -218,19 +220,20 @@ public sealed class BookingNotifier(
     /// <summary>
     /// After the confirmation was handed to the queue: when it carries a link and the queue did not take it (no provider, a queue that refused it), the link is taken back, it is <c>Failed</c>
     /// and its session expires (<see cref="ICheckInLinkDeliveryService.RecordEmailFailedAsync"/>), so that the daily job issues and sends one at its next run. A confirmation that was queued
-    /// is settled by <see cref="BookingConfirmationEmailJob"/>, not here. Never throws: a failure is logged with the booking only.
+    /// is settled by <see cref="BookingConfirmationEmailJob"/>, not here. A step of the change that is already committed: it does not take the token of the request (a request that is
+    /// cancelled must not leave a link behind that nobody has). Never throws: a failure is logged with the booking only.
     /// </summary>
-    private async Task TakeBackCheckInAsync(BookingEmailData data, ConfirmationCheckIn? confirmationCheckIn, bool queued, CancellationToken cancellationToken)
+    private async Task TakeBackCheckInAsync(BookingEmailData data, ConfirmationCheckIn? confirmationCheckIn, bool queued)
     {
         if (queued || confirmationCheckIn?.Link is not { } issued || linkDeliveries is null)
             return;
 
         try
         {
-            await linkDeliveries.RecordEmailFailedAsync(data.BookingId, issued.SessionId, GuestCheckInLinkEmailErrors.QueueFailed, cancellationToken);
+            await linkDeliveries.RecordEmailFailedAsync(data.BookingId, issued.SessionId, GuestCheckInLinkEmailErrors.QueueFailed, CancellationToken.None);
             logger.LogWarning("Check-in link of booking {BookingId} taken back: its confirmation was not queued", data.BookingId);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
             logger.LogError(ex, "The check-in link of booking {BookingId} could not be taken back after its confirmation was not queued", data.BookingId);
         }
