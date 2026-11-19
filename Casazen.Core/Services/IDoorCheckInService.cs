@@ -26,9 +26,10 @@ public interface IDoorCheckInService
     /// <summary>
     /// The guest at the door: finds the stay of THAT property that <paramref name="input"/> says (not cancelled, not a no-show, not checked out, arriving
     /// yesterday, today or tomorrow or already in progress, with the arrival date the guest typed and the booking code or the surname it typed, and
-    /// only when exactly one stay matches) and issues its check-in link, which replaces the one that was open (<see cref="IGuestCheckInService.IssueLinkAsync"/>:
-    /// only the hash of a token is stored, so an existing link cannot be given back). Everything that does not open (an unknown or made-up door token, a stay of another property,
-    /// wrong data, a check-in already completed) answers the same <see cref="DoorCheckInResult.NotFound"/>, never which part was wrong.
+    /// only when exactly one stay matches) and gives it a check-in link: the open link of the stay is renewed in place (<see cref="IGuestCheckInService.ReissueLinkAsync"/>: only
+    /// the hash of a token is stored, so the link that exists cannot be given back; the session gets a new token and the old one dies, with the consent, the document read and the
+    /// attempts already spent kept on it), or a new session is made when the stay has no open link. Everything that does not open (an unknown or made-up door token, a stay of another
+    /// property, wrong data, a check-in already completed) answers the same <see cref="DoorCheckInResult.NotFound"/>, never which part was wrong.
     /// </summary>
     Task<DoorCheckInResult> OpenAsync(string doorToken, DoorCheckInInput input, CancellationToken cancellationToken = default);
 }

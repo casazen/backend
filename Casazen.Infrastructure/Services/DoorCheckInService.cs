@@ -16,6 +16,8 @@ namespace Casazen.Infrastructure.Services;
 /// (<see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/> without the stays already checked out, and no no-show mark), that arrive yesterday, today or tomorrow or are in
 /// progress (<see cref="DoorCheckInRules.IsAtTheDoor"/>, days of Europe/Rome), with the arrival date the guest typed and, as it typed, the booking code or the surname of the
 /// booker or of a guest who leaves a document. It is found only when <b>exactly one</b> stay matches: a surname that two stays share opens none.</para>
+/// <para><b>The link</b> is the open link of the stay, renewed in place (<see cref="IGuestCheckInService.ReissueLinkAsync"/>): a new token and a new expiry on the same session, so the old
+/// link dies but the consent, the document read, the language and the attempts of the face check already spent stay with the guest; a stay with no open link gets a new session.</para>
 /// <para><b>Privacy.</b> Nothing but the token leaves, and every way of not finding a stay is the same <see cref="DoorCheckInResult.NotFound"/>. The log says the property and the
 /// outcome, never a code, a surname or a date that was typed. The rate limit is the policy of the endpoint.</para>
 /// </remarks>
@@ -161,7 +163,9 @@ public sealed class DoorCheckInService(
             return DoorCheckInResult.NotFound;
         }
 
-        var link = await checkIn.IssueLinkAsync(stay.Id, stay.OrgId);
+        // The open link of the stay is renewed in place (a new token, the old one dead), so the consent, the document read and the attempts of the face check spent on it stay:
+        // a new session would start with none, and a guest could have the attempts again at every opening of the door.
+        var link = await checkIn.ReissueLinkAsync(stay.Id, stay.OrgId);
         logger.LogInformation("Door check-in of property {PropertyId}: a link was issued for booking {BookingId}", property.Id, stay.Id);
         return new DoorCheckInResult(link.Token);
     }

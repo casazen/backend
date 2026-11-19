@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using System.Threading.RateLimiting;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -50,14 +51,14 @@ public class DoorCheckInServiceTests
         Assert.Equal(DoorCheckInResult.NotFound, byCode);
         Assert.Equal(DoorCheckInResult.NotFound, bySurname);
         Assert.Equal(DoorCheckInResult.NotFound, otherOrg);
-        world.CheckIn.Verify(c => c.IssueLinkAsync(otherPropertyStay.Id, It.IsAny<Guid>()), Times.Never);
-        world.CheckIn.Verify(c => c.IssueLinkAsync(otherOrgStay.Id, It.IsAny<Guid>()), Times.Never);
-        world.CheckIn.Verify(c => c.IssueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
+        world.CheckIn.Verify(c => c.ReissueLinkAsync(otherPropertyStay.Id, It.IsAny<Guid>()), Times.Never);
+        world.CheckIn.Verify(c => c.ReissueLinkAsync(otherOrgStay.Id, It.IsAny<Guid>()), Times.Never);
+        world.CheckIn.Verify(c => c.ReissueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
 
         // The door of the other property finds its own stay with the same data.
         var other = await world.Service().OpenAsync(world.OtherDoorToken, new DoorCheckInInput("FGH7K2M9PQ", null, Today));
         Assert.True(other.Found);
-        world.CheckIn.Verify(c => c.IssueLinkAsync(otherPropertyStay.Id, world.OrgId), Times.Once);
+        world.CheckIn.Verify(c => c.ReissueLinkAsync(otherPropertyStay.Id, world.OrgId), Times.Once);
     }
 
     [Fact]
@@ -70,7 +71,7 @@ public class DoorCheckInServiceTests
         var result = await world.Service().OpenAsync(world.DoorToken, new DoorCheckInInput("abcde-12345", null, Today));
 
         Assert.Equal(new DoorCheckInResult(World.IssuedToken), result);
-        world.CheckIn.Verify(c => c.IssueLinkAsync(stay.Id, world.OrgId), Times.Once);
+        world.CheckIn.Verify(c => c.ReissueLinkAsync(stay.Id, world.OrgId), Times.Once);
     }
 
     [Theory]
@@ -85,7 +86,7 @@ public class DoorCheckInServiceTests
         var result = await world.Service().OpenAsync(world.DoorToken, new DoorCheckInInput(null, typed, Today));
 
         Assert.True(result.Found);
-        world.CheckIn.Verify(c => c.IssueLinkAsync(stay.Id, world.OrgId), Times.Once);
+        world.CheckIn.Verify(c => c.ReissueLinkAsync(stay.Id, world.OrgId), Times.Once);
     }
 
     [Fact]
@@ -173,7 +174,7 @@ public class DoorCheckInServiceTests
         Assert.Equal(StatusCodes.Status404NotFound, first.Status);
         Assert.Equal(PublicDoorCheckInController.NotFoundCode, first.Code);
         Assert.All(answers, answer => Assert.Equal(first, answer));
-        world.CheckIn.Verify(c => c.IssueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
+        world.CheckIn.Verify(c => c.ReissueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
 
         // The one that opens answers the token and nothing else.
         var ok = Assert.IsType<OkObjectResult>(
@@ -305,6 +306,127 @@ public class DoorCheckInServiceTests
         }
     }
 
+    /// <summary>
+    /// Data and permission (E22/F01/US02 post-review): the guest at the door never gets the attempts of the face check again. A guest that spent two of its three attempts and opens the door
+    /// gets the SAME session with a new token: every earlier link is dead, the counter stays at two (the third attempt is the last), and the consent, the document read and the language stay with it.
+    /// </summary>
+    [Fact]
+    public async Task DoorCheckIn_SecondOpening_KeepsTheAttemptsAlreadySpent_Test()
+    {
+        await using var world = await World.CreateAsync();
+        var stay = await world.AddStayAsync(world.Property.Id, "Rossi", Code, Today);
+        var deliveries = new Mock<ICheckInLinkDeliveryService>();
+        deliveries.Setup(d => d.EndAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        var checkIn = world.RealCheckIn(deliveries.Object);
+        var emailedLink = await checkIn.CreateSessionAsync(stay.Id, world.OrgId);
+        var session = await world.Db.GuestCheckInSessions.SingleAsync(s => s.BookingId == stay.Id);
+        session.Status = GuestCheckInSessionStatus.InCompilazione;
+        session.BiometricAttempts = 2;
+        session.BiometricConsentAt = Now.UtcDateTime;
+        session.BiometricConsentVersion = "checkin-biometric-2026-11";
+        session.BiometricConsentTextHash = new string('a', 64);
+        var documentCheck = new DocumentCheck(true, true, false, true, true, true, true, false);
+        var documentJson = JsonSerializer.Serialize(
+            new StoredDocumentCheck(documentCheck, "front-photo", DateTime.UnixEpoch, Front: new StoredDocumentPicture(true, true, documentCheck, "front-proof"), ProofKey: "first-link"),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        session.DocumentCheckJson = documentJson;
+        session.Language = "de";
+        session.LinkEmailStatus = GuestCheckInLinkEmailStatus.Sent;
+        session.SentAt = Now.UtcDateTime;
+        await world.Db.SaveChangesAsync();
+        var service = world.Service(checkIn);
+
+        var first = await service.OpenAsync(world.DoorToken, new DoorCheckInInput(Code, null, Today));
+        var second = await service.OpenAsync(world.DoorToken, new DoorCheckInInput(Code, null, Today));
+
+        Assert.True(first.Found);
+        Assert.True(second.Found);
+        Assert.NotEqual(first.Token, second.Token);
+        var kept = await world.Db.GuestCheckInSessions.AsNoTracking().SingleAsync(s => s.BookingId == stay.Id);
+        Assert.Equal(session.Id, kept.Id);
+        Assert.Equal(GuestCheckInSessionStatus.InCompilazione, kept.Status);
+        Assert.Equal(2, kept.BiometricAttempts);
+        Assert.NotNull(kept.BiometricConsentAt);
+        Assert.Equal("checkin-biometric-2026-11", kept.BiometricConsentVersion);
+        Assert.Equal(new string('a', 64), kept.BiometricConsentTextHash);
+        Assert.Equal(documentJson, kept.DocumentCheckJson);
+        Assert.Equal("de", kept.Language);
+        Assert.Equal(GuestCheckInService.HashToken(second.Token!), kept.TokenHash);
+
+        // The e-mail of the old link told of a link that is dead: the renewed one is a link to copy. The delivery of the dead link ended each time.
+        Assert.Equal(GuestCheckInLinkEmailStatus.NotRequested, kept.LinkEmailStatus);
+        Assert.Null(kept.SentAt);
+        deliveries.Verify(d => d.EndAsync(world.OrgId, stay.Id, CheckInLinkEndReasons.LinkReplaced, It.IsAny<CancellationToken>()), Times.Exactly(2));
+
+        // Every earlier link is dead; the last one opens the same session.
+        Assert.Null(await checkIn.GetSessionByTokenAsync(emailedLink));
+        Assert.Null(await checkIn.GetSessionByTokenAsync(first.Token!));
+        var current = Assert.IsType<GuestCheckInSession>(await checkIn.GetSessionByTokenAsync(second.Token!));
+        Assert.Equal(session.Id, current.Id);
+
+        // The face check says it too: one attempt left, so the third attempt is the last.
+        var state = await world.Flow().GetStateAsync(current, CancellationToken.None);
+        Assert.Equal(1, state.AttemptsRemaining);
+    }
+
+    /// <summary>
+    /// A stay with no open link gets a new session, as before; a link past its expiry is not renewed (its window is over): it is expired and a new session is made. Of two open links the one the
+    /// guest works on is kept with its attempts, and the other one is expired.
+    /// </summary>
+    [Fact]
+    public async Task DoorCheckIn_NoOpenLink_MakesANewSession_AndTwoOpenLinksKeepTheOneInProgress()
+    {
+        await using var world = await World.CreateAsync();
+        var noLink = await world.AddStayAsync(world.Property.Id, "Rossi", Code, Today);
+        var pastExpiry = await world.AddStayAsync(world.Property.Id, "Verdi", "FGH7K2M9PQ", Today);
+        var twoLinks = await world.AddStayAsync(world.Property.Id, "Neri", "RSTV3WXYZ4", Today);
+        var checkIn = world.RealCheckIn();
+        var oldToken = await checkIn.CreateSessionAsync(pastExpiry.Id, world.OrgId);
+        var past = await world.Db.GuestCheckInSessions.SingleAsync(s => s.BookingId == pastExpiry.Id);
+        past.ExpiresAt = Now.UtcDateTime.AddHours(-1);
+        past.BiometricAttempts = 2;
+        var neverOpened = NewSession(twoLinks.Id, world.OrgId, GuestCheckInSessionStatus.Inviato, 0, Now.UtcDateTime.AddHours(-2));
+        var inProgress = NewSession(twoLinks.Id, world.OrgId, GuestCheckInSessionStatus.InCompilazione, 1, Now.UtcDateTime.AddHours(-3));
+        world.Db.GuestCheckInSessions.AddRange(neverOpened, inProgress);
+        await world.Db.SaveChangesAsync();
+        var service = world.Service(checkIn);
+
+        var fresh = await service.OpenAsync(world.DoorToken, new DoorCheckInInput(Code, null, Today));
+        var afterExpiry = await service.OpenAsync(world.DoorToken, new DoorCheckInInput("FGH7K2M9PQ", null, Today));
+        var kept = await service.OpenAsync(world.DoorToken, new DoorCheckInInput("RSTV3WXYZ4", null, Today));
+
+        Assert.True(fresh.Found);
+        Assert.Single(await world.Db.GuestCheckInSessions.AsNoTracking().Where(s => s.BookingId == noLink.Id).ToListAsync());
+        Assert.NotNull(await checkIn.GetSessionByTokenAsync(fresh.Token!));
+
+        Assert.True(afterExpiry.Found);
+        var pastSessions = await world.Db.GuestCheckInSessions.AsNoTracking().Where(s => s.BookingId == pastExpiry.Id).ToListAsync();
+        Assert.Equal(2, pastSessions.Count);
+        Assert.Equal(GuestCheckInSessionStatus.Scaduto, pastSessions.Single(s => s.Id == past.Id).Status);
+        Assert.Equal(0, pastSessions.Single(s => s.Id != past.Id).BiometricAttempts);
+        Assert.Null(await checkIn.GetSessionByTokenAsync(oldToken));
+
+        Assert.True(kept.Found);
+        var twoSessions = await world.Db.GuestCheckInSessions.AsNoTracking().Where(s => s.BookingId == twoLinks.Id).ToListAsync();
+        Assert.Equal(GuestCheckInSessionStatus.Scaduto, twoSessions.Single(s => s.Id == neverOpened.Id).Status);
+        var stillOpen = twoSessions.Single(s => s.Id == inProgress.Id);
+        Assert.Equal(GuestCheckInSessionStatus.InCompilazione, stillOpen.Status);
+        Assert.Equal(1, stillOpen.BiometricAttempts);
+        Assert.Equal(GuestCheckInService.HashToken(kept.Token!), stillOpen.TokenHash);
+
+        static GuestCheckInSession NewSession(Guid bookingId, Guid orgId, GuestCheckInSessionStatus status, int attempts, DateTime createdAt) => new()
+        {
+            BookingId = bookingId,
+            OrgId = orgId,
+            TokenHash = GuestCheckInService.HashToken(Guid.NewGuid().ToString("N")),
+            ExpiresAt = Now.UtcDateTime.AddDays(3),
+            Status = status,
+            BiometricAttempts = attempts,
+            CreatedAt = createdAt,
+            UpdatedAt = createdAt,
+        };
+    }
+
     /// <summary>The stays, the properties and the check-in service that issues a link, in an in-memory database; the clock says 10:00 of 2026-11-20 in Rome.</summary>
     private sealed class World : IAsyncDisposable
     {
@@ -316,7 +438,7 @@ public class DoorCheckInServiceTests
         private World()
         {
             Db = new AppDbContext(_options, null, new EphemeralDataProtectionProvider());
-            CheckIn.Setup(c => c.IssueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
+            CheckIn.Setup(c => c.ReissueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
                 .ReturnsAsync((Guid bookingId, Guid _) => new IssuedCheckInLink(Guid.NewGuid(), IssuedToken, Now.UtcDateTime.AddDays(7)));
         }
 
@@ -353,6 +475,27 @@ public class DoorCheckInServiceTests
         }
 
         public DoorCheckInService Service() => new(Db, CheckIn.Object, NullLogger<DoorCheckInService>.Instance, Clock);
+
+        /// <summary>The door with the real check-in service on the same database, to see what the sessions hold after it.</summary>
+        public DoorCheckInService Service(IGuestCheckInService checkIn) => new(Db, checkIn, NullLogger<DoorCheckInService>.Instance, Clock);
+
+        public GuestCheckInService RealCheckIn(ICheckInLinkDeliveryService? deliveries = null) =>
+            new(Db, NullLogger<GuestCheckInService>.Instance, timeProvider: Clock, linkDeliveries: deliveries);
+
+        /// <summary>The flow of the identity verification, with fakes for everything but the state it reads from the session.</summary>
+        public IdentityVerificationFlowService Flow() => new(
+            Db,
+            Mock.Of<IIdentityVerificationAgent>(),
+            Mock.Of<IVerificationOperatorAlerts>(),
+            Mock.Of<IAccessCodeService>(),
+            Mock.Of<IEmailQueue>(),
+            Mock.Of<IMrzExtractionService>(),
+            Mock.Of<IDocumentOcrService>(),
+            new StayGuestService(Db, Mock.Of<IAlloggiatiCodeTableService>()),
+            Mock.Of<IFileStorage>(),
+            new EphemeralDataProtectionProvider(),
+            Clock,
+            NullLogger<IdentityVerificationFlowService>.Instance);
 
         public PublicDoorCheckInController Controller(DoorCheckInService service) => new(service)
         {
