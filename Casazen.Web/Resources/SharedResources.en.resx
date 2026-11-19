@@ -7543,6 +7543,39 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="AccPkgOutsideOther" xml:space="preserve">
     <value>Other operations without VAT</value>
   </data>
+  <data name="AccPkgSelfBilledRegisterTitle" xml:space="preserve">
+    <value>Self-billed invoices TD17 (integration of the VAT on the invoices of foreign portals), from {1} to {2}, by issue date. Issuer: {0}</value>
+  </data>
+  <data name="AccPkgColSupplier" xml:space="preserve">
+    <value>Foreign supplier (seller)</value>
+  </data>
+  <data name="AccPkgColSupplierCountry" xml:space="preserve">
+    <value>Supplier country</value>
+  </data>
+  <data name="AccPkgColSupplierVat" xml:space="preserve">
+    <value>Supplier VAT number</value>
+  </data>
+  <data name="AccPkgClassSelfBilled" xml:space="preserve">
+    <value>Self-billed invoices TD17</value>
+  </data>
+  <data name="AccPkgPortalCommissionsTitle" xml:space="preserve">
+    <value>Portal commissions on the accounts held by the agency (V2), from {0} to {1}, as the owner ledger records them, by statement month, owner and channel; the Treatment column says whether the agency recharges them to the owner on its invoice or bears them</value>
+  </data>
+  <data name="AccPkgPortalCommissionsTotalsTitle" xml:space="preserve">
+    <value>Totals by channel and currency</value>
+  </data>
+  <data name="AccPkgColPortalCommission" xml:space="preserve">
+    <value>Portal commission</value>
+  </data>
+  <data name="AccPkgColTreatment" xml:space="preserve">
+    <value>Treatment</value>
+  </data>
+  <data name="AccPkgTreatmentRecharged" xml:space="preserve">
+    <value>Recharged to the owner</value>
+  </data>
+  <data name="AccPkgTreatmentBorne" xml:space="preserve">
+    <value>Borne by the agency</value>
+  </data>
   <data name="AccPkgStatementsTitle" xml:space="preserve">
     <value>Statements published to the owners, by month (latest published version)</value>
   </data>

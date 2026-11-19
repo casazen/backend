@@ -800,10 +800,24 @@ The PDF and the XML are the ones of every document (`GET api/fiscal/documents/{i
 (`api/fiscal/documents`) neither make again, issue, credit nor discard a TD17: 422 `document_self_billing`. A caller who reaches only some properties is refused on every action (403); a
 document of another org, or one that is not a TD17, is 404.
 
+**In the accountant package** (FIX/BE-ACCOUNTANT-GAPS, `AccountantPackageService`; the structure of the ZIP is in [`TECHNICAL.md`](../TECHNICAL.md) § Accountant package). The TD17 issued in the period (counted by the
+day of the issue, like every document of the package, so the TD17 of October that is issued on 3 November is in the package of November) are in `fatture-proprietari/autofatture/`, which is owner accounting
+(`agency.statement.view` and the whole org, as the invoices to the owners beside it): **a register for each issuer** (the agency in V2, an owner company in V1: `registro-{issuer}.csv` and `.xlsx`) with the
+kind «Autofattura TD17», the number, the day, the foreign supplier in the column a guest document has its recipient in, the month of the commissions it integrates, the taxable amount, the VAT, the stamp
+duty, the total, the currency and then the country and the VAT number of the supplier, the VAT of each document for each rate as its lines store it, and the totals for each rate; and the PDF and the XML of
+each document. The VAT file of the issuer (`iva/iva-{issuer}.csv`) carries them as the class «Autofatture TD17» (month, rate, taxable amount, VAT, total, documents), whatever the regime of
+the issuer (a TD17 integrates the VAT at the rate of the settings), but only with the owner accounting: a TD17 of an owner company is that owner's cost of its portal, so, like the portal commissions,
+a caller without `agency.statement.view` (or that reaches only some properties) finds none of it, not even as a figure. The **portal commissions of the accounts the agency holds** (V2) are `fatture-proprietari/commissioni-portali-v2.csv` and `.xlsx`: one row
+for each statement month, owner, channel and currency (the commission as a positive amount, the stays that carry it and the treatment, «Riaddebitata al proprietario» or «A carico dell'agenzia» by
+`RechargePortalCommissions`) and the totals for each channel and currency; they come from the owner ledger through the resolver of the holders (`IPortalAccountHolderResolver`: the same test as the invoice to
+the owner), the amounts are the ledger's and never recomputed, and they are the lines the TD17 of the agency integrates (the TD17 leaves out what is not in euro or belongs to a stay that is not active any
+more) and, when recharged, the ones the invoices to the owners recharge. Both families are written only for a period that has them: a period with no
+TD17 and no commission of that kind has the same files, with the same content, as before.
+
 **Not in this slice** (so it is not silently missing): a credit note or a correction of an issued TD17 (it is not credited from here: the accountant decides how to correct it; `POST …/sdi/correct` of a TD17
 answers 422 `self_billing_not_correctable` and no «Correggi la fattura» is raised for a TD17 the SDI rejected); the posting
 of the integrated VAT to the owner ledger (the TD17 is neutral for the holder: the VAT is due and deductible); the invoice number and date of the portal as the related document; the
-submission to the SDI (not made by the issue: the document is `to_send` and the channel of *SDI submission, outcomes and correction* above sends it like every Italian electronic invoice); the accountant package and the VAT register (E15, E19). No migration: nothing is stored beyond the existing columns of
+submission to the SDI (not made by the issue: the document is `to_send` and the channel of *SDI submission, outcomes and correction* above sends it like every Italian electronic invoice). The accountant package and its VAT file hold the TD17 since FIX/BE-ACCOUNTANT-GAPS (above). No migration: nothing is stored beyond the existing columns of
 `FiscalDocuments`. **Rollback:** switch `Features:FiscalDocumentIssuance` off (the endpoints answer 404) or empty `SelfBilling:Portals` (nothing is made: 422 `self_billing_not_configured`); an
 issued TD17 stays what it is (ten years).
 
@@ -847,7 +861,7 @@ and its PDF is the Swiss layout. The month is then posted, its version generated
 and recharges at 8.1%, its VAT posted to the ledger and the version generated again with it), the version approved and published (its PDF in the owner portal), the
 package of October built (the index lists every file with its SHA-256; the VAT of the quarter for each rate) and the owner paid with a `pain.001.001.09.ch.03` file.
 The invoice is offset in the statement, so it has no QR-bill; `QrBill_OnlyWhenTheOwnerOwesTheAgency` shows the QR-bill of a month in which the owner owes the agency.
-The variant V2 recharges the commission of Booking.com on the invoice of the property manager and lists it in the VAT file of the agency for information.
+The variant V2 recharges the commission of Booking.com on the invoice of the property manager and lists it in the VAT file of the agency for information (and, since FIX/BE-ACCOUNTANT-GAPS, in the table of the portal commissions of the package, `fatture-proprietari/commissioni-portali-v2.csv`).
 The variant of the portal that collects the tax (an Airbnb reservation imported from Octorate, Airbnb in `PlatformCollectedTouristTaxChannels`) bills the stay only:
 no line of the tax of Ticino on the document, the gross without it, nothing in the box of the tax of the statement nor in the tax of the agency summary.
 
@@ -856,7 +870,8 @@ full Stripe refund (a credit note of the whole document; nothing posted for the 
 proportion to the lines; the deposit is the revenue of the owner, without a cleaning fee).
 
 **The wire file** is checked against the stand-in schema of the tests; `Wire_ThePayoutFile_ValidatesAgainstTheOfficialSwissSchema` validates it against the official
-`pain.001.001.09.ch.03.xsd` and is reported as skipped, with its reason, until the file is added (`docs/runbooks/wire-transfers.md`).
+`pain.001.001.09.ch.03.xsd`, which is embedded in the build since FIX/WIRE-XSD (backend#890): the proof runs in CI against the embedded file and is no longer reported as skipped (the file, its
+version and its SHA-256: the table «Official schemas» of `docs/runbooks/wire-transfers.md`).
 
 **Fixed with the scenario:** the statement read every listing as V1 (the resolver of E14 was not wired into `OwnerStatementDocuments`), so the statement of a V2
 listing told the owner that the portal billed it while the invoice of the property manager recharged the commission. The channel fee that the invoice recharges (the
@@ -932,7 +947,8 @@ per comune and the account of the agent (the stays, the tax owed, the payment of
 **The variants**:
 - **V2** (the agency holds the Booking.com account of both flats): the commission comes from the rule of the agency (15%), the invoice of the property manager recharges it
   («Riaddebito commissioni Booking.com») and so does the statement; the TD17 is the agency's (one for the two stays, 135.00 + VAT 29.70, the estimate accepted at the issue), none for the owners;
-  the portal now pays the agency, so the agency withholds 21% of the stay of the private owner (94.50).
+  the portal now pays the agency, so the agency withholds 21% of the stay of the private owner (94.50). The package of October lists the commission (67.50 of each owner, «Riaddebitata al
+  proprietario») in `commissioni-portali-v2`, and the package of November holds the TD17 of the agency (a register, its PDF and its XML, and the class «Autofatture TD17» of the VAT file of the agency).
 - **Airbnb** (the portal collects the tourist tax of Como and withholds for a private Italian host, ⚖ R5): no line of the tax on the receipt, nothing in the box of the statement,
   no withholding of the agency («already withheld by the portal»: never twice), and the contract in the communication of 30 June.
 - **Flat B exempt N4** (⚖ I1): the stay N4 and the tourist tax N1 are outside the VAT and over 77.47, so the invoice of the company carries the stamp duty of 2.00 (`DatiBollo`).
@@ -946,8 +962,9 @@ per comune and the account of the agent (the stays, the tax owed, the payment of
 **The changes (B12)**: a cancellation with a full Stripe refund after the documents were issued at once: the receipt is reversed by a credit note of its own kind and series (no XML),
 the invoices of the company and of the agency by a TD04 each (linked to the credited invoice, valid against the schema), and nothing is posted for the stays in October.
 
-**The wire file** is checked against the stand-in schema of the tests; `Wire_ThePayoutFile_ValidatesAgainstTheOfficialIsoSchema` validates it against the official `pain.001.001.09.xsd`
-and is reported as skipped, with its reason, until the file is added (`docs/runbooks/wire-transfers.md`).
+**The wire file** is checked against the stand-in schema of the tests; `Wire_ThePayoutFile_ValidatesAgainstTheOfficialIsoSchema` validates it against the official ISO `pain.001.001.09.xsd`,
+which is embedded in the build since FIX/WIRE-XSD (backend#890): the proof runs in CI against the embedded file, with no skip left in the test (FIX/BE-ACCOUNTANT-GAPS; the file, its version and its
+SHA-256: the table «Official schemas» of `docs/runbooks/wire-transfers.md`). If it fails, the writer (`Pain001V09Writer`) is what changes, never the schema.
 
 **What the scenario shows** (facts of the code as it is, for the decisions of the PO and of the accountant):
 
@@ -955,8 +972,9 @@ and is reported as skipped, with its reason, until the file is added (`docs/runb
   residual defect as in Switzerland; the assertion is marked).
 - The base of the withholding of a stay is the gross of the ledger without the tourist tax, so the stay of the CasaZen site is 420.00 with the cleaning of 60.00 that the agency bills the
   guest as its own service (a document of the agency, not of the owner): the 21% is taken on the 420.00 (⚖ R3, the base of the commission is the same).
-- The accountant package has no sales-register row for the commission of a portal the agency holds the account of in Italy (the Swiss file has one, for the purchase tax): the TD17 is
-  its document. The TD17 itself is not in the package of the month (its file is the sales documents and the invoices of the property manager).
+- The commission of a portal the agency holds the account of (V2) and the TD17 that integrates it are in the package of the month of their issue and of the statement (FIX/BE-ACCOUNTANT-GAPS, found
+  here: the package had neither): the TD17 in `fatture-proprietari/autofatture/` and in the class «Autofatture TD17» of the sales register of its issuer, the commission in
+  `fatture-proprietari/commissioni-portali-v2.csv`. The Italian VAT file still has no row «for information» of the commission of the portal (the Swiss one has it, for the purchase tax): its row is the TD17's.
 - The numbers of the documents of the agency that two flats share depend on the order the daily run reads two stays that ended on the same day (the id of the booking): the scenario ends
   the stays of the two flats on different days so that the numbers are fixed.
 

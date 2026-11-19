@@ -821,8 +821,8 @@ public class ItalianAgencyScenarioTests
 
     // ---------------------------------------------------------------- the official schema of the wire file
 
-    // Bonifico: il file pain.001.001.09 dei pagamenti ai proprietari e' valido per lo schema ufficiale ISO (il test e' saltato, con il motivo, finche' lo schema non e' nel repository).
-    [IsoWireSchemaFact]
+    // Bonifico: il file pain.001.001.09 dei pagamenti ai proprietari e' valido per lo schema ufficiale ISO, incorporato nel build dal FIX/WIRE-XSD (backend#890): la prova gira in CI senza alcun salto.
+    [Fact]
     [Trait("Scenario", "C6")]
     public async Task Wire_ThePayoutFile_ValidatesAgainstTheOfficialIsoSchema()
     {
@@ -1294,7 +1294,7 @@ public class ItalianAgencyScenarioTests
     /// <summary>
     /// C5, C6: the agency pays each owner what its published statement owes it, on the second of November; the withholding is decided on the facts of the ledger (the amount, the code,
     /// the rule, or the reason) and a retry with the same key is the same payout; then the wire file of the two payouts (<c>pain.001.001.09</c>, euro), checked against the stand-in
-    /// schema of the tests (the official one is not in the repository: <see cref="Wire_ThePayoutFile_ValidatesAgainstTheOfficialIsoSchema"/>).
+    /// schema of the tests (the official one, embedded in the build, validates the same file in <see cref="Wire_ThePayoutFile_ValidatesAgainstTheOfficialIsoSchema"/>).
     /// </summary>
     private static async Task<(OwnerPayoutResult A, OwnerPayoutResult B)> PayTheOwnersAsync(World world, (MonthEnd A, MonthEnd B) months, Payout forA, Payout forB)
     {
@@ -1555,7 +1555,17 @@ public class ItalianAgencyScenarioTests
         Assert.Contains("2026-11;1919;233,10;16/12/2026;;generato, non trasmesso;IT-STR-WITHHOLDING@2026.1", Text(november["ritenute/f24.csv"]), StringComparison.Ordinal);
         var year = await world.PackageAsync(Year2026);
         Assert.Contains("TEST Mario Rossi;1110,00;233,10;1", Text(year["ritenute/cu-2026.csv"]), StringComparison.Ordinal);
-        AssertEveryXmlIsValid(year, 8);
+
+        // The TD17 of the company (issued on 3 November for the commissions of October) is in the package of November and in the one of the year, with its register, its PDF and its XML (FIX/BE-ACCOUNTANT-GAPS):
+        // the eight XML of the documents of October and the one of the TD17, all valid against the official schema.
+        foreach (var package in new[] { november, year })
+        {
+            Assert.Contains("TD17-2026/1", Text(package["fatture-proprietari/autofatture/registro-it-09876543217.csv"]), StringComparison.Ordinal);
+            Assert.Contains("fatture-proprietari/autofatture/2026-11-03-TD17-2026-1.pdf", package.Keys);
+            Assert.Contains("fatture-proprietari/autofatture/2026-11-03-TD17-2026-1.xml", package.Keys);
+        }
+
+        AssertEveryXmlIsValid(year, 9);
     }
 
     /// <summary>The index of the ZIP lists every file and no other, with the SHA-256 of its bytes.</summary>
@@ -1707,22 +1717,5 @@ public class ItalianAgencyScenarioTests
         }
 
         return rows;
-    }
-}
-
-/// <summary>
-/// A fact that needs the official schema of the SEPA wire file (<c>pain.001.001.09.xsd</c>, <see cref="Pain001SchemaProvider"/>): it is not in the repository until an operator adds it
-/// with its checksum (docs/runbooks/wire-transfers.md), so until then the test is reported as skipped, with the reason, everywhere.
-/// </summary>
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class IsoWireSchemaFactAttribute : FactAttribute
-{
-    public IsoWireSchemaFactAttribute()
-    {
-        if (!Pain001SchemaProvider.HasOfficialSchema(WireTransferErrors.SepaCurrency))
-        {
-            Skip = "The official schema pain.001.001.09.xsd is not in the repository (Casazen.Infrastructure/Payments/Schemas/Iso): "
-                + "the wire file is validated against the stand-in schema of the tests only; see docs/runbooks/wire-transfers.md to add it.";
-        }
     }
 }

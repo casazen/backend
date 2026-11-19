@@ -81,7 +81,10 @@ public sealed class AccountantPackageService(
         var ownerCount = ownerAccounting && access.Includes(AccountantPackageFolders.OwnerInvoices)
             ? await AccountantPackageFacts.IssuedDocuments(db, scope, period, FiscalDocumentPurpose.OwnerInvoice).CountAsync(cancellationToken)
             : 0;
-        CheckCaps(guestCount + ownerCount, limits);
+        var selfBilledCount = ownerAccounting && access.Includes(AccountantPackageFolders.OwnerInvoices)
+            ? await AccountantPackageFacts.IssuedDocuments(db, scope, period, FiscalDocumentPurpose.SelfBilling).CountAsync(cancellationToken)
+            : 0;
+        CheckCaps(guestCount + ownerCount + selfBilledCount, limits);
 
         var fallback = await AccountantPackageFacts.CurrentIssuerAsync(db, scope.OrgId, cancellationToken);
         var current = AccountantPackageFacts.IssuerOf(fallback);
@@ -89,14 +92,25 @@ public sealed class AccountantPackageService(
         var ownerInvoices = ownerAccounting
             ? await AccountantPackageFacts.ReadAsync(db, scope, period, FiscalDocumentPurpose.OwnerInvoice, cancellationToken)
             : [];
+        var selfBilled = ownerAccounting
+            ? await AccountantPackageFacts.ReadAsync(db, scope, period, FiscalDocumentPurpose.SelfBilling, cancellationToken)
+            : [];
 
         // The VAT of an issuer is made of everything it issued: the invoices to the owners enter it as figures for each rate, with no name, for any caller that reaches the whole org
-        // (they belong to no property, so a restricted scope reads none, and the file says so). They are files of the package only with the owner accounting.
+        // (they belong to no property, so a restricted scope reads none, and the file says so). They are files of the package only with the owner accounting. The self-billed invoices (TD17)
+        // enter it too, but only with the owner accounting: a TD17 of an owner company is that owner's cost of its portal, so, like the portal commissions, a caller without the
+        // owner accounting finds none of it, not even as a figure.
         var vatOwnerInvoices = ownerAccounting
             ? ownerInvoices
             : scope.IsOrgWide ? await AccountantPackageFacts.ReadAsync(db, scope, period, FiscalDocumentPurpose.OwnerInvoice, cancellationToken) : [];
+        IReadOnlyList<PackageDocument> vatWholeOrg = selfBilled.Count == 0 ? vatOwnerInvoices : [.. vatOwnerInvoices, .. selfBilled];
 
-        var slugs = SlugsOf(IssuersOf(guestDocuments, vatOwnerInvoices, fallback, current));
+        // The portal commissions of the accounts the agency holds come from the owner ledger: the owner accounting only, read once for the Swiss VAT file and for the V2 table.
+        var portalLines = ownerAccounting && (access.Includes(AccountantPackageFolders.Vat) || access.Includes(AccountantPackageFolders.OwnerInvoices))
+            ? await AccountantPackageFacts.PortalCommissionLinesAsync(db, holders, scope.OrgId, period, cancellationToken)
+            : [];
+
+        var slugs = SlugsOf(IssuersOf(guestDocuments, vatWholeOrg, fallback, current));
         // The folders the access holds (every one for the screens, the ones the agency chose for the package it sends every month): a folder that is not one of them is neither read nor written. The documents of
         // the guests and the invoices to the owners are read for the VAT and the tourist tax whatever is chosen: only their own folders are left out.
         if (access.Includes(AccountantPackageFolders.GuestDocuments))
@@ -105,7 +119,11 @@ public sealed class AccountantPackageService(
         if (ownerAccounting)
         {
             if (access.Includes(AccountantPackageFolders.OwnerInvoices))
+            {
                 PlanOwnerInvoices(plan, ownerInvoices, current, period, t);
+                await PlanSelfBilledAsync(plan, scope.OrgId, selfBilled, fallback, slugs, period, t, cancellationToken);
+                await PlanPortalCommissionsAsync(plan, scope.OrgId, portalLines, period, t, cancellationToken);
+            }
 
             if (access.Includes(AccountantPackageFolders.Statements))
                 await PlanStatementsAsync(plan, scope.OrgId, period, t, cancellationToken);
@@ -118,7 +136,7 @@ public sealed class AccountantPackageService(
             await PlanAgencySummaryAsync(plan, scope, access, period, t, cancellationToken);
 
         if (access.Includes(AccountantPackageFolders.Vat))
-            await PlanVatAsync(plan, scope, ownerAccounting, guestDocuments, vatOwnerInvoices, fallback, current, slugs, period, t, cancellationToken);
+            PlanVat(plan, scope, ownerAccounting, guestDocuments, vatWholeOrg, AccountantPackageFacts.BorneOf(portalLines), fallback, current, slugs, t);
 
         if (access.Includes(AccountantPackageFolders.TouristTax))
             await PlanTouristTaxAsync(plan, scope, period, guestDocuments, t, cancellationToken);
@@ -181,6 +199,54 @@ public sealed class AccountantPackageService(
         plan.Documents += invoices.Count;
     }
 
+    /// <summary>
+    /// The self-billed invoices (TD17) issued in the period (owner accounting, the whole org: a TD17 spans the properties of its holder): a register for each issuer (the agency that holds the
+    /// portal account in V2, an owner company in V1), with the VAT of each document for each rate and the totals, and the PDF and the XML of each document, in
+    /// <see cref="AccountantPackageStructure.SelfBilledFolder"/>. A period with no TD17 adds nothing: the package is the one it always was.
+    /// </summary>
+    private async Task PlanSelfBilledAsync(
+        Plan plan,
+        Guid orgId,
+        IReadOnlyList<PackageDocument> selfBilled,
+        FiscalIssuerSnapshot fallback,
+        IReadOnlyDictionary<string, string> slugs,
+        AccountantPackagePeriod period,
+        PackageTexts t,
+        CancellationToken cancellationToken)
+    {
+        if (selfBilled.Count == 0)
+            return;
+
+        var folder = AccountantPackageStructure.SelfBilledFolder;
+        var suppliers = await AccountantPackageFacts.SelfBilledSuppliersAsync(db, orgId, [.. selfBilled.Select(d => d.Id)], cancellationToken);
+        foreach (var group in selfBilled.GroupBy(d => AccountantPackageFacts.IssuerOf(d.IssuerSnapshot, fallback).Key).OrderBy(g => g.Key, StringComparer.Ordinal))
+        {
+            var issuer = AccountantPackageFacts.IssuerOf(group.First().IssuerSnapshot, fallback);
+            plan.AddTables(folder, "registro-" + slugs[group.Key], AccountantPackageDocuments.SelfBilledRegister([.. group], suppliers, issuer, period, t));
+        }
+
+        foreach (var document in selfBilled)
+            PlanDocumentFiles(plan, folder, document, t);
+
+        plan.Documents += selfBilled.Count;
+    }
+
+    /// <summary>
+    /// The portal commissions of the accounts the agency holds (V2) of the statement months of the period, from the owner ledger (owner accounting): the table for each month, owner and channel
+    /// and its totals, in <see cref="AccountantPackageStructure.OwnerInvoicesFolder"/>. A period with none adds nothing.
+    /// </summary>
+    private async Task PlanPortalCommissionsAsync(
+        Plan plan, Guid orgId, IReadOnlyList<PortalCommissionLine> lines, AccountantPackagePeriod period, PackageTexts t, CancellationToken cancellationToken)
+    {
+        var rows = AccountantPackageFacts.PortalCommissionRowsOf(lines);
+        if (rows.Count == 0)
+            return;
+
+        var names = await AccountantPackageFacts.OwnerNamesAsync(db, orgId, [.. rows.Select(r => r.OwnerId).Distinct()], cancellationToken);
+        var named = rows.Select(r => r with { OwnerName = names.GetValueOrDefault(r.OwnerId) }).ToList();
+        plan.AddTables(AccountantPackageStructure.OwnerInvoicesFolder, AccountantPackageStructure.PortalCommissionsFile, AccountantPackageDocuments.PortalCommissions(named, period, t));
+    }
+
     /// <summary>The PDF of a document CasaZen issued and its XML when it has one: the ones the screens download. A document imported from another system has neither.</summary>
     private void PlanDocumentFiles(Plan plan, string folder, PackageDocument document, PackageTexts t)
     {
@@ -188,7 +254,7 @@ public sealed class AccountantPackageService(
             return;
 
         var stem = $"{DocumentArchiveExport.Date(document.IssueDate)}-{DocumentArchiveExport.Sanitize(document.Number ?? document.Id.ToString("N"))}";
-        var label = $"{AccountantPackageDocuments.KindLabel(document.Kind, t)} {document.Number}".Trim();
+        var label = $"{AccountantPackageDocuments.KindLabel(document, t)} {document.Number}".Trim();
         var id = document.Id;
         plan.AddDocumentFile(
             folder,
@@ -357,25 +423,22 @@ public sealed class AccountantPackageService(
     }
 
     /// <summary>
-    /// The VAT tables of every issuer of the period: the documents of the guests and the invoices to the owners (as figures for each rate, for a caller that reaches the whole org) and,
-    /// with the owner accounting, the portal commissions of the agency (for information). What the caller cannot read is said in the file (<see cref="VatCoverage"/>).
+    /// The VAT tables of every issuer of the period: the documents of the guests, the invoices to the owners (as figures for each rate, for a caller that reaches the whole org) and, with the owner
+    /// accounting, the self-billed invoices (TD17, <paramref name="owner"/> holds them with the invoices to the owners) and the portal commissions of the agency (for information,
+    /// <paramref name="portalCommissions"/>, read from the owner ledger). What the caller cannot read is said in the file (<see cref="VatCoverage"/>).
     /// </summary>
-    private async Task PlanVatAsync(
+    private static void PlanVat(
         Plan plan,
         HostScope scope,
         bool ownerAccounting,
         IReadOnlyList<PackageDocument> guest,
         IReadOnlyList<PackageDocument> owner,
+        IReadOnlyList<AgencyPortalCommissionBorneRow> portalCommissions,
         FiscalIssuerSnapshot fallback,
         AgencyIssuer current,
         IReadOnlyDictionary<string, string> slugs,
-        AccountantPackagePeriod period,
-        PackageTexts t,
-        CancellationToken cancellationToken)
+        PackageTexts t)
     {
-        var portalCommissions = ownerAccounting
-            ? await AccountantPackageFacts.PortalCommissionsBorneAsync(db, holders, scope.OrgId, period, cancellationToken)
-            : [];
         var coverage = new VatCoverage(OwnerInvoices: scope.IsOrgWide, PortalCommissions: ownerAccounting);
         foreach (var issuer in IssuersOf(guest, owner, fallback, current))
         {
