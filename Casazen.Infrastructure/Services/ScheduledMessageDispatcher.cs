@@ -26,13 +26,17 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Once.</b> A try claims the row first (<see cref="ScheduledMessage.LastCheckedAt"/> held for <see cref="ScheduledMessageRules.ClaimLease"/>, saved with the <c>xmin</c> of the row): the routine that
 /// fires, the sweep and «Send now» arriving together find the row held and do nothing. The message goes out with the key of the row (<see cref="ScheduledMessageRules.SendKeyOf"/>), so even a claim that
 /// lapsed (a process that died) cannot write the message twice: the message layer finds the one that exists. A row that already has its message is only marked sent, never sent again.</item>
-/// <item><b>Order of what is checked.</b> The booking (a stay that does not happen: cancelled); the routine and its action (inactive: cancelled); the text (the host's edit, else the template in the language of the guest,
-/// Italian when there is none); the variables the booking has no value for (blocked); the way to the guest (the rules of the channel and a missing way: skipped by the system); only then the two things that have a side
-/// effect: the access code is released (<see cref="IAccessCodeService.ReleaseToGuestAsync"/>, never without the verification of the guest, ADR-022-R11) and the check-in link is issued (the previous one stops
-/// working), so nothing is released or replaced for a message that is not going out.</item>
-/// <item><b>What the channel answers is the state of the row.</b> A refusal of the rules is a skip of the system with an alert; a message the channel did not take, or a channel that could not be reached, is <c>Failed</c>
-/// with its code, and the sweep tries again (a refused message with the key of the next attempt); an outcome nobody knows is a message that may have left, so the row is <c>Sent</c> and it is never sent again. An
-/// unexpected failure (not an answer of the channel) is recorded on the row and thrown, so whoever can try again does.</item>
+/// <item><b>Order of what is checked.</b> The booking (a stay that does not happen: cancelled); the routine and its action (inactive: cancelled); its condition (cancelled); the marketing consent of a campaign
+/// (<c>isCampaign</c>: skipped, <see cref="CampaignConsent"/>, ADR-022-R11: the engine reads it when the routine fires, the sweep sends what the routine did not); the text (the host's edit, else the template in
+/// the language of the guest, Italian when there is none); the variables the booking has no value for (blocked); the way to the guest (the rules of the channel and a missing way: skipped by the system); a
+/// message that is already there (only the row is brought up to date); the rules of the check-in link (<c>GuestCheckInAccessRules</c>, <c>VerificationHandOff</c>: a check-in that is done or with an operator skips,
+/// a guest filling it in waits); the access code TAKEN through the gate of the verification of the guest (<see cref="IAccessCodeService.GetReleasableCodeAsync"/>, ADR-022-R11: nothing is logged); the text tried
+/// with the rules of the message layer and a stand-in for the link. Only then the things that have a side effect, last, right before the send: the check-in link is issued (the previous one stops working)
+/// and, once the message layer has the message, the release of the code is logged (<see cref="IAccessCodeService.RecordReleaseAsync"/>). Nothing is issued or logged for a message that is not going out.</item>
+/// <item><b>What the message layer answers is the state of the row.</b> Only a message the channel took is <c>Sent</c>. A refusal of the rules is a skip of the system with an alert; a message the channel did not take, a
+/// channel that could not be reached, one the channel manager holds without having taken it (<c>message_unconfirmed</c>) and one whose outcome nobody knows (<c>manual_verify</c>: it may have left) are <c>Failed</c>
+/// with their code, and the sweep tries again: a refused message with the key of the next attempt, a held one with the same key, so the message layer finds it and never writes a second. A failure before the channel
+/// was reached (the way to the guest could not be read) counts no try. An unexpected failure (not an answer of the channel) is recorded on the row and thrown, so whoever can try again does.</item>
 /// <item><b>The host.</b> A blocked message raises ONE «To do» for the booking (shared by its blocked messages, closed when none is left) and alerts the people who reach the property, once; a skip of the system
 /// and a message that went out outside the send window alert them too (<see cref="ScheduledMessageAlertDelivery"/>). Nothing is said of the words of the message.</item>
 /// <item><b>Logs</b> carry the row, the org, the state and a code: never a word of a message, a link, a code or an address.</item>

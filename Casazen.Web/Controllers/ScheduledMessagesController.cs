@@ -49,8 +49,8 @@ public class ScheduledMessagesController(
 
     /// <summary>
     /// Edits the text of one message for this booking only: <c>{ text }</c>, or an empty text to go back to the template of the routine. 404 for a message out of the reach; 409
-    /// <c>scheduled_message_not_editable</c> for one that was sent, skipped, cancelled or expired, <c>scheduled_message_changed</c> when somebody else changed it meanwhile; 422 <c>message_text_invalid</c>,
-    /// <c>template_variable_unknown</c>.
+    /// <c>scheduled_message_not_editable</c> for one that was sent, skipped, cancelled or expired, <c>scheduled_message_in_progress</c> while a send holds it (the text was read when the send began),
+    /// <c>scheduled_message_changed</c> when somebody else changed it meanwhile; 422 <c>message_text_invalid</c>, <c>template_variable_unknown</c>.
     /// </summary>
     [HttpPut("api/scheduled-messages/{id:guid}")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
@@ -72,7 +72,8 @@ public class ScheduledMessagesController(
     }
 
     /// <summary>
-    /// «Skip»: the message will not be sent; the other people who reach the property are told. 404 for a message out of the reach; 409 <c>scheduled_message_not_editable</c> for one that already ended.
+    /// «Skip»: the message will not be sent; the other people who reach the property are told. 404 for a message out of the reach; 409 <c>scheduled_message_not_editable</c> for one that already ended,
+    /// <c>scheduled_message_in_progress</c> for one a send holds (it is on its way: the answer «skipped» would not be true).
     /// </summary>
     [HttpPost("api/scheduled-messages/{id:guid}/skip")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]

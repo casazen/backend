@@ -29,12 +29,12 @@ the claim of a send relies on.
 | `Status` | Meaning | Open |
 |---|---|---|
 | `Scheduled` (1) | Planned: goes out at `PlannedAtUtc` | yes |
-| `Sent` (2) | The message layer took it (`SentThreadKey`, `SentAt`; `BlockedReason = manual_verify` when nobody knows if it left: it is **never sent again**) | no |
-| `Skipped` (3) | A person (`person`, `SkippedByUserId`) or the system (`channel_rule`, `contact_unavailable`, `mapping_not_confirmed`) decided it does not go out | no |
-| `Blocked` (4) | Held back for a piece of data: `variable_missing:{name}`, `id_not_verified`, `access_code_held`, `template_missing`, `message_text_invalid`; tried again by the sweep | yes |
-| `Failed` (5) | The channel did not take it (its code in `BlockedReason`); tried again by the sweep, four tries in all (`Attempts` counts the tries that reached the channel, not the passes of the sweep over a blocked message) | yes |
-| `Cancelled` (6) | The booking does not happen (`booking_cancelled`), the routine is off or no longer holds it (`routine_inactive`) or the stay does not meet its condition (`condition_not_met`); it comes back if the cause goes away and its moment has not passed | no |
-| `Expired` (7) | Its moment passed for good: `missed` (more than a day late, or it moved into the past), `check_out_reached` (still blocked or failed the day after the check-out) | no |
+| `Sent` (2) | The message layer says the channel took it (`SentThreadKey`, `SentAt`): only a message in the state `Sent`. If a skip of the host landed while the send was under way after its lease had lapsed, the row stays `Skipped` with `SentAt` beside it (the message did go out) | no |
+| `Skipped` (3) | A person (`person`, `SkippedByUserId`) or the system decided it does not go out: `channel_rule`, `contact_unavailable`, `mapping_not_confirmed` (with an alert) and, as the normal course of a message and with no alert, `campaign_needs_consent`, `check_in_completed`, `check_in_with_operator`, `check_in_not_open` | no |
+| `Blocked` (4) | Held back for a piece of data: `variable_missing:{name}`, `id_not_verified`, `access_code_held`, `template_missing`, `message_text_invalid`, `check_in_in_progress` (the guest is filling the check-in in); tried again by the sweep | yes |
+| `Failed` (5) | The channel did not take it (its code in `BlockedReason`), or the message layer holds it without having taken it (`message_unconfirmed`: created or waiting for the authorization of the channel; `manual_verify`: nobody knows whether it left); tried again by the sweep, four tries in all (`Attempts` counts the tries that reached the channel, not the passes of the sweep over a blocked message nor a failure to read the way to the guest). A held message is asked again with the same key: the message layer finds it and writes no second | yes |
+| `Cancelled` (6) | The booking does not happen (`booking_cancelled`), the routine is off or no longer holds it (`routine_inactive`), the stay does not meet its condition (`condition_not_met`) or the guest of a campaign has no marketing consent (`campaign_needs_consent`); it comes back if the cause goes away and its moment has not passed | no |
+| `Expired` (7) | Its moment passed for good: `missed` (more than a day late, or it moved into the past; also a failed one that never reached the channel), `check_out_reached` (still blocked or failed the day after the check-out) | no |
 
 ## 3. The plan
 
@@ -45,7 +45,10 @@ the claim of a send relies on.
   order give the same result.
 * **What.** Only an **active** routine that is **not in test mode** and holds a `MessageToGuest` with a template. The routines of other organizations are never read. A stay that
   does not happen (pending, cancelled, no-show) gets nothing. The **condition** of the routine (`ConditionJson`, ADR-014: channel, nights, guests, lead time) is read as the engine reads
-  it when the routine fires: a stay that does not meet it gets no message, and a condition nobody can read plans nothing.
+  it when the routine fires: a stay that does not meet it gets no message, and a condition nobody can read plans nothing. A message marked as a **campaign** (`isCampaign`, read as the engine reads it)
+  is planned only for a guest who gave the **marketing consent** (`CampaignConsent`, the same reading as the guardrail of the engine): a guest without it gets no row, and a row it had is cancelled
+  (`campaign_needs_consent`) when the consent goes. **What the engine decides is not planned**: an action with an `aiCondition`, every action of a routine with an agent objective and an event that cannot be foreseen
+  are written when the routine fires and the engine let them through; the plan never closes such an open row for being «no longer planned» (only with its stay, or when its routine is off).
 * **At which moment.** The planner is pure (`ScheduledMessagePlanner`) and agrees with the time triggers of the engine (`TimeTrigger`): `BeforeCheckin`, `AfterCheckin`,
   `BeforeCheckout`, `AfterCheckout` are the check-in or check-out time of the property on its own clock (midnight when it has none) plus or minus the offset; `BookingNew` and
   `BookingConfirmed` are the moment of the booking; a `Wait` before the message adds its delay. The moment is brought **into the send window**. Events the plan cannot foresee
@@ -60,16 +63,26 @@ is on), the sweep and «Send now» all go through it.
 
 * **Once.** The row is **claimed** first (`LastCheckedAt` held for two minutes, saved with `xmin`): another actor at the same moment finds it held and does nothing. The message goes
   out with the key `sm-{id}` (`sm-{id}-2`, … after a message the channel refused), so even a claim that lapsed (a process that died) cannot write it twice: the message layer finds
-  the one that exists, and a message already in the conversation is only marked sent.
+  the one that exists, and a message already in the conversation is never written again: the row is brought up to date with its real state (below).
 * **Order of the checks.** The booking (a stay that does not happen: cancelled); the routine and its action (off or gone: cancelled; condition not met: cancelled; not for «Send now»,
-  which is the host's own decision); the text (the host's edit, else the template in the language of the guest, Italian when there is none); the variables the booking has no value for
-  (blocked); the way to the guest (`IMessageReplyService.ChooseChannelAsync`: none, a request of a portal or a mapping nobody decided is skipped by the system); only then the two things
-  that have a side effect: the access code and the check-in link. Nothing is released or replaced for a message that is not going out.
+  which is the host's own decision); the marketing consent of a campaign (skipped, `campaign_needs_consent`, for every actor: the engine reads it when the routine fires, but the sweep sends what the
+  routine did not, so a campaign the engine blocked is not sent later); the text (the host's edit, else the template in the language of the guest, Italian when there is none); the variables the booking
+  has no value for (blocked); the way to the guest (`IMessageReplyService.ChooseChannelAsync`: none, a request of a portal or a mapping nobody decided is skipped by the system); a message the message layer
+  already holds for the row (only the row is brought up to date); the rules of the check-in link; the access code **taken** (the gate of the verification, nothing logged); the text tried with the rules of
+  the message layer and a stand-in for the link. Only then, **last, right before the send**, the things that have a side effect: the check-in link is issued, and once the message layer has the message the
+  release of the code is logged. Nothing is issued, replaced or logged for a message that is not going out.
+* **What the message layer says of the message is the state of the row.** Only a message in the state `Sent` is `Sent` (as for the routine that writes straight to the message layer). `ManualVerify`
+  (nobody knows if it left) is `Failed` with `manual_verify`; `Created` or `WaitingAuthorization` (held by the channel manager, not taken) is `Failed` with `message_unconfirmed`. The sweep asks again
+  with the key of the row: the message layer finds the message and writes no second, the row follows it when it becomes `Sent`, and after four tries the host is told (the «To do» and the alert).
+  A failure to read how the guest is reached (a limit, an outage of the channel manager) reached nothing: it counts no try, the message is tried again at every pass, and it is not sent more than a day late.
+* **The host while a send is under way.** A row a send holds (claimed less than two minutes ago) refuses «Edit» and «Skip» with 409 `scheduled_message_in_progress`, as «Send now» does: the text was read when
+  the send began and the answer «skipped» would not be true. The claim of a process that died has lapsed after the lease and does not hold the host off; a skip that lands then is not undone by the send that
+  finishes later (the row stays skipped, with `SentAt` beside it).
 * **Time.** The routine and the sweep never send before `PlannedAtUtc` (a blocked message whose stay moved to later waits for its new time); «Send now» ignores it and the window.
   A message that goes out outside the window (late, or by hand) is flagged (`OutsideHours`) and the other hosts are told.
-* **What the channel answers is the state of the row.** A refusal of the rules of the channel (a link on a request of a portal) or a guest who cannot be reached is `Skipped`
-  by the system, with an alert; a message the channel did not take is `Failed` with its code and the sweep tries again (four tries in all, and after the fourth the hosts are told); an outcome nobody knows is `Sent` with
-  `manual_verify` and is never sent again; an unexpected failure (the database) is recorded on the row and thrown, so whoever can try again does.
+* **Other answers.** A refusal of the rules of the channel (a link on a request of a portal) or a guest who cannot be reached is `Skipped` by the system, with an alert; a message the channel did not take
+  is `Failed` with its code and the sweep tries again (four tries in all, and after the fourth the hosts are told); an unexpected failure (the database) is recorded on the row and thrown, so whoever
+  can try again does.
 * **The sweep** (`scheduled-message-sweep`, every 15 minutes): sends the planned messages overdue by more than `CatchUpMinutes`, tries again the blocked and failed ones every
   `BlockedRetryMinutes` once their time has come, and ends what has passed for good (a planned message more than a day late; a blocked or failed one the day after the check-out), closing its
   «To do». One row's failure never stops the others.
@@ -80,12 +93,19 @@ The thirteen variables of a template: the eight of the hub (guest, house, bookin
 the property in the language of the guest), `{{check_in_link}}`, `{{access_code}}`, `{{property_address}}` and `{{review_link}}`. A template that names a variable the booking has no value
 for **blocks** the message (never a literal `{{…}}` in what a guest reads).
 
-* **`{{check_in_link}}`** issues a **new** link of the online check-in **at the moment of the send** (the previous one stops working) and ends the delivery of the link that the portal chat was
-  carrying (`CheckInLinkEndReasons.LinkReplaced`). The daily job `guest-checkin-send` ([`alloggiati.md`](alloggiati.md)) and the delivery of the link ([`octorate-webhooks.md`](octorate-webhooks.md) § 4d)
-  issue links on their own: **use one of the two for a stay**, or the guest receives two messages with two links, the newest of which works.
-* **`{{access_code}}`** is given **only after the identity of the guest was verified** (ADR-022-R11): `IAccessCodeService.ReleaseToGuestAsync`, with the channel the message will use
+* **`{{check_in_link}}`** issues a **new** link of the online check-in **at the moment of the send, last, right before the send** (the previous one stops working) and ends the delivery of the link that the
+  portal chat was carrying (`CheckInLinkEndReasons.LinkReplaced`). `IGuestCheckInService.IssueLinkAsync` refuses nothing (it expires every open session of the booking, the one the guest is filling in included),
+  so the message applies the rules the other automatic senders apply (`GuestCheckInSendJob`, the e-mail that confirms the booking) **before** it issues anything: a guest who completed the check-in (the data or
+  the Alloggiati communication were sent) or a stay that takes no link (not confirmed or checked in, or over) gets the message **skipped** (`check_in_completed`, `check_in_not_open`); a stay whose identity
+  verification is with an operator (rejected by one, or a hand-off still open) gets it **skipped** (`check_in_with_operator`: a new session would start the verification again against the decision of a person);
+  a guest who is filling the check-in in right now keeps the session: the message is **blocked** (`check_in_in_progress`) until the session ends or expires («Send now» is the host's own decision and replaces it).
+  These skips tell nobody (they are the normal course for a guest who checked in early). The daily job `guest-checkin-send` ([`alloggiati.md`](alloggiati.md)) and the delivery of the link
+  ([`octorate-webhooks.md`](octorate-webhooks.md) § 4d) issue links on their own: **use one of the two for a stay**, or the guest receives two messages with two links, the newest of which works.
+* **`{{access_code}}`** is given **only after the identity of the guest was verified** (ADR-022-R11): `IAccessCodeService.GetReleasableCodeAsync`, with the channel the message will use
   (`portal-chat` for a portal, `guest-area` for a direct booking, `email`), answers `null` for a guest not verified or a stay held back for the tourist tax, and the message is blocked
-  (`id_not_verified`, `access_code_held`). A property with no code set blocks it as a missing variable. The code is never in a preview, a log or a notice.
+  (`id_not_verified`, `access_code_held`). A property with no code set blocks it as a missing variable. The code is **taken** (the gate is asked, nothing is logged) after the link and the text are verified;
+  the line of the release log (`AccessCodeReleaseLog`: channel and time, never the code) is written by `RecordReleaseAsync` only once the message layer has the message, and once: a message that is blocked,
+  refused or fails leaves no line, and a retry writes none. The code is never in a preview, a log or a notice.
 * **`{{review_link}}`** is the signed link of the review invitation of a **direct** booking (valid until the end of the review window); a booking of a portal has none.
 * A **preview** (the timeline) shows `[check_in_link]`, `[access_code]` and `[review_link]` and lists what the booking lacks: it issues no link and releases no code.
 * The composer of the hub fills only the first eight variables: it refuses a template that names one of the other five (`template_variable_missing`).
@@ -100,7 +120,8 @@ for **blocks** the message (never a literal `{{…}}` in what a guest reads).
   is left blocked or failed (sent, skipped, cancelled, expired, booking cancelled).
 * **Alerts** (`ScheduledMessageAlertDelivery`, notification type `ScheduledMessageIssue` of NF-65): a message blocked, failed for good, skipped by the system or by a person, or sent outside the
   window tells the people who reach the property **through the preferences** (`INotificationPreferenceService`: the bell with its live update, the push, the e-mail, the quiet hours), once for each
-  message, kind and person; the person who skipped or asked for «Send now» is not told about their own action. A push carries the name of the property and the route of the booking, never a
+  message, kind and person; the person who skipped or asked for «Send now» is not told about their own action. A skip that is the normal course of a message (a campaign for a guest without the consent,
+  a check-in link for a check-in that is done or with an operator) tells nobody: the timeline shows its reason. A push carries the name of the property and the route of the booking, never a
   word of the message, a name or an address.
 
 ## 6. Privacy and guardrails
@@ -108,6 +129,11 @@ for **blocks** the message (never a literal `{{…}}` in what a guest reads).
 * The words of a message are never logged; logs carry the row, the organization, the state and a code. No external supplier is ever named in a text for a host or a guest.
 * The edit of the host is encrypted at rest. The preview is `private, no-store`.
 * Nothing is sent with the flag off, with the routines closed, with a routine in test mode (the engine simulates the action) or for a stay that does not happen.
+* **Campaigns only with the consent** (ADR-022-R11): a message of a routine marked `isCampaign` goes only to a guest with the marketing consent (`Guest.MarketingConsent`, not erased or anonymized), read by the one
+  helper (`CampaignConsent`) the guardrail of the engine reads: where it is planned and where it is sent, for the routine, the sweep and «Send now». A guest who withdrew the consent gets nothing.
+* **What the AI judges stays with the engine.** An action with an `aiCondition` and every action of a routine with an agent objective are not planned and not evaluated by the plan or the sweep: their row is
+  written when the routine fires and the engine let them through. The selection of the operations an agent makes for a stay («omit what is inappropriate») is not replayed by the plan: a planned message is
+  what the routine says, so a host who wants a message to depend on the stay uses a **condition** of the routine (read by both) rather than an objective for the agent.
 
 ## 7. Turning it on and off
 
@@ -120,8 +146,8 @@ for **blocks** the message (never a literal `{{…}}` in what a guest reads).
 
 ## 8. Known limits
 
-* A message to a **direct** booking goes through the conversation of the stay, which does not store the origin of a message: an automatic message counts as the host's last message there
-  (for the channels of a portal the origin `Automation` is stored and it answers nobody).
+* A message to a **direct** booking goes through the conversation of the stay with the origin `Automation` stored on the message (`IGuestMessageService.ReplyAsAutomationAsync`): it is the latest message of the
+  thread and answers nobody, as on the channels of a portal (the question of the guest stays unread and in «Da rispondere»). The routine's `MessageToGuest` of the flag-off path goes through the same door.
 * The e-mail path of the message layer remembers its key in memory only: a crash between the queueing of an e-mail and the save of the row can issue the link and queue the e-mail again.
 * The claim of a row is proved on `xmin`, which the in-memory tests do not model: the unit tests prove the lease and the key; the race between two replicas is the database's.
 * The send window and the retry times are proposals (see § 1).

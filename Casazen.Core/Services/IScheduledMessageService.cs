@@ -54,13 +54,14 @@ public interface IScheduledMessageService
     /// <summary>
     /// Sets the text of one message for this booking only, or clears it (an empty text goes back to the template of the routine). Only a planned, blocked or failed message can be edited
     /// (409 <c>scheduled_message_not_editable</c>); a text that is too long or empty after the edit of a text is 422 <c>message_text_invalid</c>, a name that is not a variable 422
-    /// <c>template_variable_unknown</c>, as the composer of the hub. 404 for a row out of the reach. Two people on one row: the one that loses gets 409 <c>scheduled_message_changed</c>.
+    /// <c>template_variable_unknown</c>, as the composer of the hub. 404 for a row out of the reach. Two people on one row: the one that loses gets 409 <c>scheduled_message_changed</c>. A row a send holds
+    /// (claimed less than <see cref="ScheduledMessageRules.ClaimLease"/> ago) is 409 <c>scheduled_message_in_progress</c>: the text was read when the send began.
     /// </summary>
     Task<ScheduledMessageView> EditAsync(HostScope scope, Guid id, string? text, string userId, CancellationToken ct = default);
 
     /// <summary>
     /// «Skip»: a planned, blocked or failed message becomes <c>Skipped</c> (<c>person</c>), its «To do» is closed and the other people who reach the property are told (not the one who
-    /// skipped). 409 <c>scheduled_message_not_editable</c> for a message that already ended; 404 for a row out of the reach.
+    /// skipped). 409 <c>scheduled_message_not_editable</c> for a message that already ended, <c>scheduled_message_in_progress</c> for one a send holds; 404 for a row out of the reach.
     /// </summary>
     Task<ScheduledMessageView> SkipAsync(HostScope scope, Guid id, string userId, CancellationToken ct = default);
 
