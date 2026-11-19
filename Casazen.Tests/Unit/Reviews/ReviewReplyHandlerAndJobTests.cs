@@ -150,8 +150,10 @@ public sealed class ReviewReplyHandlerAndJobTests
     }
 
     /// <summary>
-    /// PROOF TEST: data rule (AC-NF69-4). The path that drafts — the handler, the job and the drafter — has no way to send a reply: none of them names a client of the channel manager, the service of
-    /// the replies of the booking site or a call that sends, so a reply can only leave through the approve action of the queue, after a person approved it.
+    /// PROOF TEST: data rule (AC-NF69-4). The path that drafts — the handler, the job and the drafter — has no way to send a reply, by structure: none of them names a client of the channel manager,
+    /// the service of the replies of a channel (<see cref="IOtaReviewService"/>, which sends), the service of the replies of the booking site or a call that sends; no parameter of their
+    /// constructors is, or implements, one of them; the drafter reads a review through <see cref="IOtaReviewReader"/>, which has no member that writes. So a reply can only leave through the
+    /// approve action of the queue, after a person approved it.
     /// </summary>
     [Fact]
     public void TheDraftingPath_HoldsNoWayToSendAReply_OnlyTheApproveActionDoes()
@@ -172,7 +174,7 @@ public sealed class ReviewReplyHandlerAndJobTests
 
         foreach (var (path, code) in sources)
         {
-            foreach (var forbidden in new[] { ".ReplyAsync(", "SendHostReplyAsync", "SendHostReviewAsync", "IHostReviewService", "IOctorateApiClient" })
+            foreach (var forbidden in new[] { ".ReplyAsync(", "SendHostReplyAsync", "SendHostReviewAsync", "IOtaReviewService", "IHostReviewService", "IOctorateApiClient" })
                 Assert.False(code.Contains(forbidden, StringComparison.Ordinal), $"{path} must not hold a way to send a reply: it mentions {forbidden}.");
         }
 
@@ -180,13 +182,19 @@ public sealed class ReviewReplyHandlerAndJobTests
         var action = File.ReadAllText(Path.Combine(SolutionRoot(), "Casazen.Infrastructure/Services/ApprovalActions/ReviewReplyApprovalAction.cs"));
         Assert.Contains(".ReplyAsync(", action, StringComparison.Ordinal);
 
-        // The constructors say the same: none takes a client or the service of the replies of the booking site.
+        // The constructors say the same, by type: none takes a client, the service of the replies of a channel or the one of the booking site, nor anything that implements them.
+        Type[] senders = [typeof(IOctorateApiClient), typeof(IOtaReviewService), typeof(IHostReviewService)];
         foreach (var type in new[] { typeof(ReviewReplyDraftJob), typeof(ReviewReceivedHandler), typeof(ReviewReplyDrafter) })
         {
             var parameters = type.GetConstructors().Single().GetParameters().Select(p => p.ParameterType).ToList();
-            Assert.DoesNotContain(typeof(IOctorateApiClient), parameters);
-            Assert.DoesNotContain(typeof(IHostReviewService), parameters);
+            Assert.DoesNotContain(parameters, parameter => senders.Any(sender => sender.IsAssignableFrom(parameter)));
         }
+
+        // The drafter reads a review through the interface that only reads, and that interface can never gain a member that writes.
+        var drafterParameters = typeof(ReviewReplyDrafter).GetConstructors().Single().GetParameters().Select(p => p.ParameterType).ToList();
+        Assert.Contains(typeof(IOtaReviewReader), drafterParameters);
+        Assert.Equal([nameof(IOtaReviewReader.GetAsync)], typeof(IOtaReviewReader).GetMethods().Select(m => m.Name));
+        Assert.Empty(typeof(IOtaReviewReader).GetProperties());
     }
 
     [Fact]
@@ -212,6 +220,7 @@ public sealed class ReviewReplyHandlerAndJobTests
             [
                 nameof(IApprovalOriginAction),
                 "IEventHandler`1",
+                nameof(IOtaReviewReader),
                 nameof(IOtaReviewService),
                 nameof(IReviewReplyDrafter),
                 nameof(OtaReviewSyncJob),

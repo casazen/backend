@@ -29,6 +29,8 @@ public static class OtaReviewsServiceCollectionExtensions
         // E05/F06/US01/T03 (NF-69, AI-06): the drafts of the replies. A guest's review (ReviewReceived, direct or of a channel) sends the assistant to work in a job of its own; the draft only goes to the
         // approval queue, and the reply leaves, once, from the action of the type ReviewReply when a person approves it. Behind Features:MessageAssistant (the handler, the job and the
         // endpoint ask the flag; the switches of the organization and of the property are asked by the drafter). The reviews in the hub need no registration of their own: the hub reads them.
+        // The drafter reads the review through the read-only part of the service of the reviews (the same instance of the scope), so the way of the drafts holds nothing that sends.
+        services.AddScoped<IOtaReviewReader>(provider => provider.GetRequiredService<IOtaReviewService>());
         services.AddScoped<IReviewReplyDrafter, ReviewReplyDrafter>();
         services.AddScoped<IApprovalOriginAction, ReviewReplyApprovalAction>();
         services.AddScoped<IEventHandler<DomainEvent>, ReviewReceivedHandler>();

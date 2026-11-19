@@ -19,8 +19,9 @@ namespace Casazen.Infrastructure.Services;
 /// <see cref="AssistantPromptBuilder.Minimize"/> with <see cref="PiiScrubber.Scrub"/>. A budget used up or a provider that fails is a reason, never a failed event: there is no draft and the
 /// code is logged.</item>
 /// <item><b>Nothing is sent.</b> The only write of this class is the item of the approval queue (<see cref="IApprovalQueueService.SubmitForApprovalAsync"/>) and the rejection of the one it
-/// supersedes; it holds no reference to a client of the channel manager and to the services that send a reply (<see cref="IOtaReviewService.ReplyAsync"/>,
-/// <see cref="IHostReviewService.ReplyAsync"/>): the reply leaves in the approve action only, after a person approved it.</item>
+/// supersedes. <b>It cannot send, by its types:</b> it reads the review of a channel through <see cref="IOtaReviewReader"/>, the part of the service of the reviews that only reads, and it takes
+/// no client of the channel manager, no <see cref="IOtaReviewService"/> and no <see cref="IHostReviewService"/>, so there is no <c>ReplyAsync</c> or send of a host's review within its reach
+/// (the architecture test of the drafting path keeps the constructor so): the reply leaves in the approve action only, after a person approved it.</item>
 /// <item><b>Once.</b> A review that has a draft waiting for approval, or one approved in the last days, gets no second one from the automatic path (an event delivered twice, two jobs): only a
 /// person who asks for a new draft writes another, and the one that waits is superseded.</item>
 /// <item><b>Logs</b> carry ids and codes: never a word of the review, a name, a code of the booking or a word of the draft.</item>
@@ -32,7 +33,7 @@ public sealed class ReviewReplyDrafter(
     IAiRuntimeSettings aiSettings,
     IAiProvider ai,
     IApprovalQueueService approvals,
-    IOtaReviewService otaReviews,
+    IOtaReviewReader otaReviews,
     ILogger<ReviewReplyDrafter> logger) : IReviewReplyDrafter
 {
     /// <summary>The reason a draft that was written longer than a reply can be is not queued.</summary>

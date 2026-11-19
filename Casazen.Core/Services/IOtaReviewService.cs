@@ -4,6 +4,18 @@ using Casazen.Core.Entities.Enums;
 namespace Casazen.Core.Services;
 
 /// <summary>
+/// The part of the service of the reviews that only reads (E05/F06/US01/T03, NF-69, AI-06): one review of a channel as the host sees it. It is what code that must <b>never send</b> a reply is
+/// given: the drafter of the replies writes a draft for a person to approve, and the reply leaves from the approve action alone, through <see cref="IOtaReviewService"/>. With the read in its
+/// own interface «the way of the drafts cannot send» is a fact of the types (the drafter has no <c>ReplyAsync</c> to call), and the architecture test keeps it so by forbidding the
+/// service that sends, and by pinning that this interface has no member that writes.
+/// </summary>
+public interface IOtaReviewReader
+{
+    /// <summary>One review of a channel, within the reach of <paramref name="scope"/>; <see cref="Exceptions.NotFoundException"/> <c>ota_review_not_found</c> (404) otherwise.</summary>
+    Task<OtaReviewView> GetAsync(HostScope scope, Guid reviewId, CancellationToken ct = default);
+}
+
+/// <summary>
 /// The reviews of the channels, read from the channel manager and answered through it (E05/F06/US01/T02, ADR-032, NF-69, OCT-12, OCT-13): Airbnb only. Octorate has no
 /// list per property, so every booking is read on its own; nothing is invented for the channels that have no integration for reviews, and no review is ever simulated.
 /// Behind <c>Features:OctorateConnector</c>.
@@ -19,7 +31,7 @@ namespace Casazen.Core.Services;
 /// hour turns it into <c>Error</c> (<see cref="OtaReviewErrorCodes.ReplyNotDelivered"/>), and only then may the host try again, with a new key.</para>
 /// <para><b>Personal data.</b> The words of the guest, of the reply and of the host's review are encrypted at rest and never logged.</para>
 /// </remarks>
-public interface IOtaReviewService
+public interface IOtaReviewService : IOtaReviewReader
 {
     /// <summary>
     /// Reads the reviews of one booking from the channel manager and stores what it says (the org is the one of <see cref="IOctorateOrgScope"/>). The row of the booking
@@ -45,9 +57,6 @@ public interface IOtaReviewService
     /// next read) and raised with its own code (409 <c>review_not_available</c>, 502 <c>octorate_unavailable</c>, ...).
     /// </summary>
     Task<BookingReviewsView> RefreshAsync(HostScope scope, Guid bookingId, CancellationToken ct = default);
-
-    /// <summary>One review of a channel, within the reach of <paramref name="scope"/>; <see cref="Exceptions.NotFoundException"/> <c>ota_review_not_found</c> (404) otherwise.</summary>
-    Task<OtaReviewView> GetAsync(HostScope scope, Guid reviewId, CancellationToken ct = default);
 
     /// <summary>The property of a review of the caller's org, for the authorization of the action; <c>null</c> when there is none.</summary>
     Task<Guid?> FindPropertyIdAsync(Guid reviewId, CancellationToken ct = default);

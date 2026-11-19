@@ -100,6 +100,9 @@ review; a review that is not there, is of another org, is out of the reach or wa
 ## The drafts of the replies (E05/F06/US01/T03, NF-69, AI-06, PO-09)
 
 **Never automatic: a reply to a review is public.** The assistant writes a draft for the host to approve, and nothing else; the reply leaves, once, from the approve action of the queue.
+**By structure, not by convention:** the handler, the job and the drafter take no client of the channel manager and neither service that sends (`IOtaReviewService`, `IHostReviewService`); the drafter
+reads a review through `IOtaReviewReader`, the read-only part of the service of the reviews (one member, `GetAsync`), and the architecture test `TheDraftingPath_HoldsNoWayToSendAReply_OnlyTheApproveActionDoes`
+keeps the constructors so.
 
 1. A guest's review appears (`DomainEventType.ReviewReceived`: the booking site or the first time a channel review is seen published). `ReviewReceivedHandler` queues `ReviewReplyDraftJob` when
    `Features__MessageAssistant` is on and the organization switched its assistant on (the exception of the property and the budget are asked by the drafter).
