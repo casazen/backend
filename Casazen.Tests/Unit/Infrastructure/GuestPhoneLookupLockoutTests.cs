@@ -119,6 +119,40 @@ public class GuestPhoneLookupLockoutTests
         }
     }
 
+    /// <summary>
+    /// Permission rule: a match clears the count, through the filter as the endpoint runs it (not only the <c>Reset</c> of the store). Four failed
+    /// attempts, then the right digits (200, and the code is no longer followed), then five more failed attempts are all answered 404 and only the
+    /// sixth, even with the right digits, is locked. A failure never clears the count: the fifth failure locks (see the first test of this class).
+    /// </summary>
+    [Fact]
+    public async Task Match_ClearsTheCount_ThroughTheFilter()
+    {
+        using var world = new GuestSessionPhoneWorld();
+        var (org, house) = await world.AddSiteAsync();
+        var booking = await world.AddBookingAsync(org, house, "anna@example.com", GuestSessionPhoneWorld.Phone);
+
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            var failed = await world.OpenAsync(GuestSessionPhoneWorld.PhoneBody(org, booking.BookingCode, GuestSessionPhoneWorld.WrongDigits));
+            Assert.Equal(StatusCodes.Status404NotFound, failed.Status);
+        }
+
+        Assert.Equal(1, world.Lockout.TrackedCodes);
+        var opened = await world.OpenAsync(GuestSessionPhoneWorld.PhoneBody(org, booking.BookingCode, GuestSessionPhoneWorld.RightDigits));
+        Assert.Equal(StatusCodes.Status200OK, opened.Status);
+        Assert.Equal(0, world.Lockout.TrackedCodes);
+
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var failed = await world.OpenAsync(GuestSessionPhoneWorld.PhoneBody(org, booking.BookingCode, GuestSessionPhoneWorld.WrongDigits));
+            Assert.Equal(StatusCodes.Status404NotFound, failed.Status);
+        }
+
+        var locked = await world.OpenAsync(GuestSessionPhoneWorld.PhoneBody(org, booking.BookingCode, GuestSessionPhoneWorld.RightDigits));
+        Assert.Equal(StatusCodes.Status429TooManyRequests, locked.Status);
+        Assert.False(locked.ActionRan);
+    }
+
     /// <summary>The lock lasts until the window of the code ends (60 minutes from its first attempt), then the code starts again; a match clears the count.</summary>
     [Fact]
     public void LockEndsWithTheWindow_AndAMatchClearsTheCount()
