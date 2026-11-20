@@ -35,6 +35,8 @@ public class OrgBillingAdminPolicyCoverageTests
         "OrgDomainController.GetDomain",
         "OrgDomainController.SetDomain",
         "OrgDomainController.VerifyDomain",
+        // E40/F01/US01: the surfaces of the agency's own domain.
+        "OrgDomainController.SetSurfaces",
     ];
 
     /// <summary>

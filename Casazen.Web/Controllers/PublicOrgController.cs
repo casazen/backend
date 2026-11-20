@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.DTOs;
+using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.SiteDocuments;
@@ -24,7 +25,8 @@ public class PublicOrgController(
     PublicOrgSiteUrls siteUrls,
     IOrgSiteDocumentService siteDocumentService,
     IOptions<GdprOptions> gdprOptions,
-    IPublicReviewService reviews) : ControllerBase
+    IPublicReviewService reviews,
+    IFeatureFlags? featureFlags = null) : ControllerBase
 {
     [HttpGet("{slug}")]
     [ProducesResponseType(typeof(PublicOrgDto), StatusCodes.Status200OK)]
@@ -43,6 +45,12 @@ public class PublicOrgController(
         dto.MarketingConsentVersion = GdprOptions.Normalize(gdprOptions.Value.MarketingConsentVersion);
         // E07/F04/US01/T02: the soft opt-in notice (art. 130 c. 4), shown only when its text has a version; null while the product owner has not set one.
         dto.SoftOptInNoticeVersion = GdprOptions.Normalize(gdprOptions.Value.SoftOptInNoticeVersion);
+        // E40/F01/US01: the embed shell on the CasaZen domain has no host to resolve; the rule is the one of resolve-host (HostSurfaceRules).
+        dto.EmbedEnabled = HostSurfaceRules.Evaluate(
+            org,
+            siteUrls.ServedMode(org),
+            featureFlags?.IsEnabled(FeatureFlags.WhiteLabelHost) ?? false,
+            featureFlags?.IsEnabled(FeatureFlags.SiteEmbed) ?? false).EmbedEnabled;
         return Ok(dto);
     }
 

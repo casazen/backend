@@ -1,4 +1,5 @@
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs.Orgs;
 using Casazen.Web.Infrastructure;
@@ -125,6 +126,46 @@ public class OrgDomainController(
         };
     }
 
+    /// <summary>
+    /// The surfaces of the agency's own domain (E40/F01/US01, NF-140..NF-142): guest area, owner portal and links on the verified custom
+    /// domain. 404 while <c>WhiteLabelHost</c> is off; the answer is the whole domain configuration.
+    /// </summary>
+    [HttpPut("surfaces")]
+    [FeatureGate(FeatureFlags.WhiteLabelHost)]
+    [ProducesResponseType(typeof(OrgDomainConfigDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrgDomainConfigDto>> SetSurfaces(
+        Guid orgId,
+        [FromBody] SetOrgDomainSurfacesRequest request,
+        CancellationToken cancellationToken)
+    {
+        var forbidden = await EnsureCallerOrgAsync(orgId, cancellationToken);
+        if (forbidden is not null)
+            return forbidden;
+
+        var result = await orgDomainService.SetSurfacesAsync(
+            orgId,
+            new OrgDomainSurfaceSettings(
+                request.GuestAreaOnOwnDomain!.Value,
+                request.OwnerPortalOnOwnDomain!.Value,
+                request.UseOwnDomainForLinks!.Value),
+            cancellationToken);
+
+        return result.Outcome switch
+        {
+            SetOrgDomainSurfacesOutcome.Success when result.Config is not null => Ok(Map(result.Config)),
+            SetOrgDomainSurfacesOutcome.NotFound => NotFound(),
+            SetOrgDomainSurfacesOutcome.PlanRequired => StatusCode(
+                StatusCodes.Status403Forbidden,
+                new { code = "plan_required", requiredPlan = "Pro" }),
+            _ => this.ApiProblem(
+                StatusCodes.Status400BadRequest, DomainNotConfiguredCode, "OrgDomainNotConfigured"),
+        };
+    }
+
     private async Task<ActionResult?> EnsureCallerOrgAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var callerOrgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
@@ -173,6 +214,23 @@ public class OrgDomainController(
             ActivationAvailable = config.Status.ActivationAvailable,
             AutoCheckActive = config.Status.AutoCheckActive,
         },
+        Surfaces = config.Surfaces is not { } surfaces
+            ? null
+            : new OrgDomainSurfacesDto
+            {
+                GuestAreaOnOwnDomain = surfaces.GuestAreaOnOwnDomain,
+                OwnerPortalOnOwnDomain = surfaces.OwnerPortalOnOwnDomain,
+                UseOwnDomainForLinks = surfaces.UseOwnDomainForLinks,
+                OwnerLoginHostState = surfaces.OwnerLoginHostState,
+                OwnerLoginAutomatic = surfaces.OwnerLoginAutomatic,
+                Effective = new OrgDomainEffectiveSurfacesDto
+                {
+                    GuestArea = surfaces.Effective.GuestArea,
+                    OwnerPortal = surfaces.Effective.OwnerPortal,
+                    OwnerLoginReady = surfaces.Effective.OwnerLoginReady,
+                    LinksOnOwnDomain = surfaces.Effective.GuestLinksOnOwnDomain || surfaces.Effective.OwnerLinksOnOwnDomain,
+                },
+            },
     };
 
     /// <summary>The explanation of a <see cref="DomainIssues"/> code in the language of the request; <c>null</c> without a code or for an unknown one.</summary>

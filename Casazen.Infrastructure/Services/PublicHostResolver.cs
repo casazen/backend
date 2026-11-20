@@ -1,6 +1,7 @@
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Email;
@@ -21,15 +22,18 @@ namespace Casazen.Infrastructure.Services;
 /// host: the orgs found in <paramref name="cache"/>, the hosts that resolved to nothing in the bounded
 /// <see cref="PublicHostMissCache"/> (the CORS check asks about every foreign origin, so a flood of made-up hosts must
 /// neither reach the database nor grow the memory). <see cref="InvalidateCacheForHost"/> drops both kinds when a domain is
-/// set or verified, a slug or the branding changes (<c>PublicHostCacheInvalidation</c>); a plan change reaches the cache
-/// when the entry expires.
+/// set or verified, a slug or the branding changes (<c>PublicHostCacheInvalidation</c>), or the surfaces of the domain are saved;
+/// a plan change or a flag change (<c>WhiteLabelHost</c>, <c>SiteEmbed</c>) reaches the cache when the entry expires.
+/// The surfaces of the answer (E40/F01/US01) come from <see cref="HostSurfaceRules"/> with the mode the host is served in: a
+/// platform subdomain never has any. Without <paramref name="featureFlags"/> (a test) every flag is off.
 /// </remarks>
 public class PublicHostResolver(
     IOrgService orgService,
     IEntitlementService entitlementService,
     IOptions<PublicHostOptions> options,
     IMemoryCache cache,
-    PublicHostMissCache? missCache = null) : IPublicHostResolver
+    PublicHostMissCache? missCache = null,
+    IFeatureFlags? featureFlags = null) : IPublicHostResolver
 {
     private const string CacheKeyPrefix = "PublicHostResolver:";
 
@@ -103,6 +107,11 @@ public class PublicHostResolver(
     private ResolveHostResponseDto BuildResponse(Org org, PublicHostMode publicHostMode)
     {
         var effectiveTier = entitlementService.ResolveEffectiveTier(org);
+        var surfaces = HostSurfaceRules.Evaluate(
+            org,
+            publicHostMode,
+            IsEnabled(FeatureFlags.WhiteLabelHost),
+            IsEnabled(FeatureFlags.SiteEmbed));
         return new ResolveHostResponseDto
         {
             OrgId = org.Id,
@@ -110,8 +119,13 @@ public class PublicHostResolver(
             PublicHostMode = publicHostMode,
             PlanTier = effectiveTier.ToString(),
             Branding = ResolveHostBrandingDto.FromOrg(org, effectiveTier),
+            Surfaces = new ResolveHostSurfacesDto { GuestArea = surfaces.GuestArea, OwnerPortal = surfaces.OwnerPortal },
+            OwnerLoginReady = surfaces.OwnerLoginReady,
+            EmbedEnabled = surfaces.EmbedEnabled,
         };
     }
+
+    private bool IsEnabled(string flag) => featureFlags?.IsEnabled(flag) ?? false;
 
     private string? TryExtractSubdomainLabel(string host)
     {

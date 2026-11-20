@@ -21,6 +21,52 @@ public class OrgDomainConfigDto
 
     /// <summary>Why the domain is pending or failed, when it was last checked and whether the platform can activate it (BK-17).</summary>
     public DomainStatusDto Status { get; set; } = new();
+
+    /// <summary>The surfaces of the agency's own domain (E40/F01/US01); <c>null</c> while the flag <c>WhiteLabelHost</c> is off.</summary>
+    public OrgDomainSurfacesDto? Surfaces { get; set; }
+}
+
+/// <summary>
+/// The surfaces of the agency's own domain (E40/F01/US01, NF-140..NF-142): the agency's choices, the state of the owner sign-in on the domain
+/// and what is really served (<see cref="Effective"/>: nothing until the domain is verified and paid for).
+/// </summary>
+public class OrgDomainSurfacesDto
+{
+    public bool GuestAreaOnOwnDomain { get; set; }
+    public bool OwnerPortalOnOwnDomain { get; set; }
+    public bool UseOwnDomainForLinks { get; set; }
+
+    /// <summary>The Auth0 registration of the domain for the owner sign-in (NF-141).</summary>
+    public OwnerLoginHostState OwnerLoginHostState { get; set; }
+
+    /// <summary>The registration is automatic (flag <c>Auth0HostSync</c>); otherwise CasaZen does it and the agency waits.</summary>
+    public bool OwnerLoginAutomatic { get; set; }
+
+    public OrgDomainEffectiveSurfacesDto Effective { get; set; } = new();
+}
+
+/// <summary>What the domain really serves now (<c>HostSurfaceRules</c>).</summary>
+public class OrgDomainEffectiveSurfacesDto
+{
+    public bool GuestArea { get; set; }
+    public bool OwnerPortal { get; set; }
+    public bool OwnerLoginReady { get; set; }
+
+    /// <summary>Some links CasaZen sends are built on the domain (the guest links, the owner links, or both).</summary>
+    public bool LinksOnOwnDomain { get; set; }
+}
+
+/// <summary>Request body for <c>PUT /api/orgs/{orgId}/domain/surfaces</c> (E40/F01/US01): the three choices, all required.</summary>
+public class SetOrgDomainSurfacesRequest
+{
+    [Required]
+    public bool? GuestAreaOnOwnDomain { get; set; }
+
+    [Required]
+    public bool? OwnerPortalOnOwnDomain { get; set; }
+
+    [Required]
+    public bool? UseOwnDomainForLinks { get; set; }
 }
 
 /// <summary>
