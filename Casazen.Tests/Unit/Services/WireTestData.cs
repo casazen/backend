@@ -84,7 +84,10 @@ internal static class WireTestData
         return new AppDbContext(options ?? NewOptions(), new WireTestTenant(orgId, filterEnabled), provider ?? new EphemeralDataProtectionProvider());
     }
 
-    /// <summary>The service of the tests: a schema of its own that accepts any content (the official ones are not in the repository), and the clock of <see cref="Now"/>.</summary>
+    /// <summary>
+    /// The service of the tests: a schema of its own that accepts any content (these tests are about the rules of the service, the proofs about the file validate against
+    /// the official schemas of the build), and the clock of <see cref="Now"/>.
+    /// </summary>
     public static WireTransferService NewService(AppDbContext db, ILogger<WireTransferService>? logger = null, Func<string, System.Xml.Schema.XmlSchemaSet>? schemas = null)
     {
         return new WireTransferService(db, logger ?? NullLogger<WireTransferService>.Instance, schemas ?? (_ => Pain001TestSchemas.Accepting()), Clock());

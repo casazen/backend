@@ -6,6 +6,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
+using Casazen.Core.Scheduling;
 using Casazen.Core.Services;
 using Casazen.Core.SiteProfile;
 using Casazen.Core.Utilities;
@@ -133,6 +134,7 @@ public class DemoEnvironmentService(
         // The drafts, the popup alerts, the tourist tax payments, the marketplace rows and the CRM profiles first: removing the showcase
         // properties drops every showcase marker of the org, and these are found by theirs.
         await RemoveShowcaseWizardDraftsAsync(orgId, cancellationToken);
+        await RemoveShowcaseScheduledMessagesAsync(orgId, cancellationToken);
         await RemoveShowcaseRoutinesAsync(orgId, cancellationToken);
         await RemoveShowcasePopupAlertsAsync(orgId, cancellationToken);
         await RemoveShowcaseTouristTaxRemittancesAsync(orgId, cancellationToken);
@@ -187,6 +189,10 @@ public class DemoEnvironmentService(
         // E01/F04/US01/T03: the routines of the demo host are of the org, not of a house, so they can come anywhere after the removal above.
         foreach (var routine in DemoShowcaseCatalog.Routines)
             await CreateRoutineAsync(orgId, routine, cancellationToken);
+
+        // E05/F07/US01/T02: the scheduled messages of the demo host are for the stays and the routine just created, so they come after both.
+        foreach (var message in DemoShowcaseCatalog.ScheduledMessages)
+            await CreateScheduledMessageAsync(orgId, ownerId, message, cancellationToken);
 
         // NF-100: the tourist tax payments of the demo host name the comune of a house just created, so they come after the houses.
         foreach (var remittance in DemoShowcaseCatalog.TouristTaxRemittances)
@@ -325,13 +331,17 @@ public class DemoEnvironmentService(
     /// One routine of the demo host, as the API would save it: active, a time trigger of <see cref="DemoRoutineTemplate.DaysBefore"/> days, no condition, and
     /// the actions of its template (in test mode when it says so). Marked as showcase data, so the next reset deletes it.
     /// </summary>
-    internal static Routine BuildShowcaseRoutine(Guid orgId, DemoRoutineTemplate template)
+    internal static Routine BuildShowcaseRoutine(Guid orgId, DemoRoutineTemplate template, Guid? messageTemplateId = null)
     {
+        // A routine that sends a message names its template by id, which exists only once the reset has written it: the catalog carries a placeholder id and the real one takes its place.
         var actions = template.Actions
             .Select(action => new
             {
                 type = action.Type.ToString(),
-                config = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(action.ConfigJson),
+                config = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(
+                    messageTemplateId is { } id
+                        ? action.ConfigJson.Replace(DemoShowcaseCatalog.MessageTemplatePlaceholderId, id.ToString("D"), StringComparison.Ordinal)
+                        : action.ConfigJson),
             })
             .ToList();
         return new Routine
@@ -347,12 +357,113 @@ public class DemoEnvironmentService(
         };
     }
 
-    private async Task CreateRoutineAsync(Guid orgId, DemoRoutineTemplate template, CancellationToken cancellationToken)
+    internal async Task CreateRoutineAsync(Guid orgId, DemoRoutineTemplate template, CancellationToken cancellationToken)
     {
-        var routine = BuildShowcaseRoutine(orgId, template);
+        Guid? messageTemplateId = null;
+        if (template.MessageTemplateKey is { } templateKey)
+        {
+            // The template the routine sends is the one the showcase wrote; when the host already had one with that name and language the showcase wrote none, and a routine with no template to send is not written.
+            messageTemplateId = await ShowcaseIdAsync(orgId, TestDataEntities.MessageTemplate, templateKey, cancellationToken);
+            if (messageTemplateId is null)
+            {
+                logger.LogInformation("Demo routine {Key} skipped: org {OrgId} has no showcase message template {TemplateKey} to send", template.Key, orgId, templateKey);
+                return;
+            }
+        }
+
+        var routine = BuildShowcaseRoutine(orgId, template, messageTemplateId);
         db.Routines.Add(routine);
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.Routine, routine.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+    }
+
+    /// <summary>
+    /// Deletes the scheduled messages the showcase wrote for the org, found by their markers (E05/F07/US01/T02), and the markers. A message of a real stay has no marker and is never touched. Runs before the
+    /// showcase routines and houses go: those removals drop the markers this one finds its rows by.
+    /// </summary>
+    internal async Task RemoveShowcaseScheduledMessagesAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var markers = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.ScheduledMessage)
+            .ToListAsync(cancellationToken);
+        if (markers.Count == 0)
+            return;
+
+        var ids = markers.Select(m => m.EntityId).ToList();
+        var rows = await db.ScheduledMessages.IgnoreQueryFilters([Tenant]).Where(m => m.OrgId == orgId && ids.Contains(m.Id)).ToListAsync(cancellationToken);
+        db.ScheduledMessages.RemoveRange(rows);
+        db.TestDataMarkers.RemoveRange(markers);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// One scheduled message of the demo host (E05/F07/US01/T02): the row the plan would have written for the stay and the routine of the template, at the time the plan gives it, in the state the template
+    /// says (planned, blocked for the reason it names, or skipped by the owner). Written only when the routine and the stay were written by this reset and the plan has a message to give for them (a stay
+    /// that does not happen, a routine that holds no message, plans none): nothing is invented for a stay the real plan would not have planned.
+    /// </summary>
+    internal async Task CreateScheduledMessageAsync(Guid orgId, string ownerId, DemoScheduledMessageTemplate template, CancellationToken cancellationToken)
+    {
+        var routineId = await ShowcaseIdAsync(orgId, TestDataEntities.Routine, template.RoutineKey, cancellationToken);
+        var bookingId = await ShowcaseIdAsync(orgId, TestDataEntities.Booking, template.BookingKey, cancellationToken);
+        if (routineId is null || bookingId is null)
+        {
+            logger.LogInformation("Demo scheduled message {Key} skipped: org {OrgId} has not the routine or the stay it is for", template.Key, orgId);
+            return;
+        }
+
+        var routine = await db.Routines.IgnoreQueryFilters([Tenant]).AsNoTracking().FirstOrDefaultAsync(r => r.Id == routineId && r.OrgId == orgId, cancellationToken);
+        var stay = await db.Bookings.IgnoreQueryFilters([Tenant]).AsNoTracking()
+            .Where(b => b.Id == bookingId && b.OrgId == orgId)
+            .Select(b => new
+            {
+                b.PropertyId,
+                Planning = new PlanningBooking(
+                    b.Id,
+                    b.Status,
+                    b.NoShowAt != null,
+                    b.CheckInDate,
+                    b.CheckOutDate,
+                    b.CreatedAt,
+                    b.ConfirmedAt,
+                    b.Property.CheckInFrom,
+                    b.Property.CheckOutBy,
+                    b.Property.Timezone),
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (routine is null || stay is null)
+            return;
+
+        var planned = ScheduledMessagePlanner
+            .Plan(new PlanningRoutine(routine.Id, routine.Name, routine.EventType, routine.EventConfig, routine.ActionsJson, routine.Active, routine.TestMode, routine.AgentObjective), stay.Planning, new ScheduledMessageOptions())
+            .FirstOrDefault();
+        if (planned is null)
+        {
+            logger.LogInformation("Demo scheduled message {Key} skipped: the plan has no message to give for its stay and routine", template.Key);
+            return;
+        }
+
+        var now = UtcNow();
+        var row = new ScheduledMessage
+        {
+            OrgId = orgId,
+            PropertyId = stay.PropertyId,
+            BookingId = stay.Planning.Id,
+            RoutineId = routine.Id,
+            RoutineName = routine.Name,
+            ActionIndex = planned.ActionIndex,
+            TemplateRef = planned.TemplateRef,
+            PlannedAtUtc = planned.PlannedAtUtc,
+            Status = template.Status,
+            BlockedReason = template.Status == ScheduledMessageStatus.Blocked ? template.Reason : null,
+            SkipReason = template.Status == ScheduledMessageStatus.Skipped ? template.Reason : null,
+            SkippedByUserId = template.Status == ScheduledMessageStatus.Skipped ? ownerId : null,
+            SkippedAt = template.Status == ScheduledMessageStatus.Skipped ? now : null,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        db.ScheduledMessages.Add(row);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.ScheduledMessage, row.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
     /// <summary>Deletes the wizard drafts the showcase wrote for the org, found by their markers (invented rows: nothing of a real person).</summary>

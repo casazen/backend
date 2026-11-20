@@ -65,8 +65,9 @@ public class SwissAgencyScenarioTests
 
         // The portal sends no invoice data and the agency types none: the document is made out to the guest of the booking, by name only (FIX/DOC-RECIPIENT).
         // B7, B8a: the document after the stay: the stay at 3.8% and the tourist tax of Ticino (2 guests x 3 nights x CHF 2.00, Booking.com does not collect it).
-        // KNOWN DEFECT (register of the residual defects, left to its own fix): a document of a booking of a portal is always «paid through the portal», also for
-        // the line of the tax the portal does not collect and nobody recorded. The payment state asserted here is the code as it is, not the state to reach.
+        // FIX/BE-PORTAL-TAXLINE: the document of a booking of a portal is paid through the portal for what the portal collected (450.00), never for the line of the tax the portal does not
+        // collect and nobody recorded (12.00): that is to collect at the property. The stored state is still the one of the channel (the portal collected), the total is the whole document,
+        // and the PDF says the rest.
         var document = await IssuedAfterTheStayAsync(world, booking, Day(10, 6), "2026/1");
         AssertRecipientIsTheGuestByName(document, "TEST Ospite Portale");
         AssertDocument(
@@ -75,7 +76,10 @@ public class SwissAgencyScenarioTests
             (445.53m, 16.47m, 462.00m),
             FiscalPaymentChannel.Portal,
             FiscalDocumentPaymentState.Paid);
-        await AssertGuestPdfAsync(world, document, "Pagata tramite il portale", ("445.53", "16.47", "462.00"));
+        await AssertGuestPdfAsync(world, document, "Pagata tramite il portale: CHF 450.00", ("445.53", "16.47", "462.00"));
+        var guestPdf = TextOf(await world.PdfContentAsync(document.Id));
+        Assert.Contains("Tassa di soggiorno da riscuotere in struttura: CHF 12.00", guestPdf, StringComparison.Ordinal);
+        Assert.Contains("Tassa di soggiorno (non soggetta all'IVA) - tassa da riscuotere in struttura", guestPdf, StringComparison.Ordinal);
 
         // B8b: the e-mail with the link, to the relay address of the portal.
         AssertTheGuestGotTheDocument(world, document, await world.GuestEmailOfAsync(booking), "Fattura");
@@ -318,7 +322,7 @@ public class SwissAgencyScenarioTests
         await world.RecordPaymentByHandAsync(manual, 312m, PaymentMethod.CashOnArrival, Day(10, 23));
         var manualDocument = await IssuedAfterTheStayAsync(world, manual, Day(10, 27), "2026/4");
 
-        // KNOWN DEFECT (see Origin_BookingCom_*): «paid through the portal» also for the tax of Ticino the portal does not collect.
+        // The stored state of the portal document is the one of its channel; its PDF is paid through the portal for the stay only (see Origin_BookingCom_*, FIX/BE-PORTAL-TAXLINE).
         AssertDocument(
             portalDocument,
             [(FiscalLineType.Accommodation, 433.53m, 3.8m, 16.47m), (FiscalLineType.TouristTax, 12.00m, 0m, 0m)],
@@ -451,8 +455,8 @@ public class SwissAgencyScenarioTests
             portalCommissionRow: "Booking.com;67,50;CHF");
     }
 
-    // Variante V2 senza riaddebito (⚖ I10 I11): l'account Booking.com e' dell'agenzia che non riaddebita le commissioni: nessun riaddebito nella fattura PM e il
-    // rendiconto non cita la fattura per la commissione.
+    // Variante V2 senza riaddebito (⚖ I10 I11): l'account Booking.com e' dell'agenzia che non riaddebita le commissioni: nessun riaddebito nella fattura PM, il
+    // rendiconto non cita la fattura per la commissione e non dice che la fattura del portale e' a nome del proprietario (V1): la riga ha un'etichetta propria.
     [Fact]
     [Trait("Scenario", "C2 C4")]
     public async Task Variant_V2_WithoutTheRecharge_NoRechargeOnThePmInvoice_AndTheStatementNeverNamesItForTheCommission()
@@ -484,6 +488,15 @@ public class SwissAgencyScenarioTests
         Assert.DoesNotContain("riaddebitate dal gestore", StatementTextOf(statement), StringComparison.Ordinal);
         var detail = OwnerPortalStatementDetailDto.From(await world.PortalStatementAsTheOwnerAsync(month.Published.Id));
         Assert.False(Assert.Single(detail.Sections.Single(s => s.Section == "channelFees").Lines).ChannelFeeRechargedByAgency);
+
+        // The portal bills the agency, so the line is not the owner's portal invoice either (the sentence of V1): it has a label of its own, in the PDF and as a flag of the
+        // owner portal, and the net is the one asserted above, the same as V1.
+        Assert.True(Assert.Single(statement.Of(OwnerStatementSection.ChannelFees)).AgencyHoldsPortalAccountWithoutRecharge);
+        var text = StatementTextOf(statement);
+        Assert.Contains("Commissioni del portale (account del portale intestato al gestore, senza riaddebito in fattura)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Trattenuta dal portale", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("fattura del portale a tuo nome", text, StringComparison.Ordinal);
+        Assert.True(Assert.Single(detail.Sections.Single(s => s.Section == "channelFees").Lines).ChannelFeeBilledToAgencyNotRecharged);
     }
 
     // Variante del portale che incassa la tassa (⚖ C4 C5): prenotazione Airbnb tramite Octorate, nessuna riga della tassa di Ticino nel documento e nessuna nel
@@ -942,7 +955,8 @@ public class SwissAgencyScenarioTests
 
     /// <summary>
     /// C6: the payout of what the published version owes the owner (no withholding in Switzerland) and its wire file, <c>pain.001.001.09.ch.03</c>, checked here
-    /// against the stand-in schema of the tests (the official one is not in the repository: <see cref="Wire_ThePayoutFile_ValidatesAgainstTheOfficialSwissSchema"/>).
+    /// against the stand-in schema of the tests (the scenario is about the payout and its amounts; the validation against the official schema embedded in the build is
+    /// <see cref="Wire_ThePayoutFile_ValidatesAgainstTheOfficialSwissSchema"/>).
     /// </summary>
     private static async Task AssertPayoutAndWireAsync(World world, OwnerStatementVersion published, decimal net)
     {
@@ -1065,8 +1079,9 @@ public class SwissAgencyScenarioTests
 }
 
 /// <summary>
-/// A fact that needs the official schema of the Swiss wire file (<c>pain.001.001.09.ch.03.xsd</c>, <see cref="Pain001SchemaProvider"/>): it is not in the repository until
-/// an operator adds it with its checksum (docs/runbooks/wire-transfers.md), so until then the test is reported as skipped, with the reason, everywhere.
+/// A fact that needs the official schema of the Swiss wire file (<c>pain.001.001.09.ch.03.xsd</c>, <see cref="Pain001SchemaProvider"/>): the file is in the repository,
+/// embedded in the build and pinned by its checksum (docs/runbooks/wire-transfers.md), so the test runs. The skip, reported with its reason, is only for a build that
+/// lacks the file, which is no longer the normal state.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class SwissWireSchemaFactAttribute : FactAttribute
@@ -1075,8 +1090,8 @@ public sealed class SwissWireSchemaFactAttribute : FactAttribute
     {
         if (!Pain001SchemaProvider.HasOfficialSchema(WireTransferErrors.SwissCurrency))
         {
-            Skip = "The official schema pain.001.001.09.ch.03.xsd is not in the repository (Casazen.Infrastructure/Payments/Schemas/Swiss): "
-                + "the wire file is validated against the stand-in schema of the tests only; see docs/runbooks/wire-transfers.md to add it.";
+            Skip = "The official schema pain.001.001.09.ch.03.xsd is not in this build (Casazen.Infrastructure/Payments/Schemas/Swiss): "
+                + "the wire file is validated against the stand-in schema of the tests only; see docs/runbooks/wire-transfers.md to restore it.";
         }
     }
 }

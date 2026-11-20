@@ -17,7 +17,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-19.1";
+    public const string Version = "2026-11-19.2";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -153,6 +153,13 @@ public static class DemoShowcaseCatalog
         /// in English, that use the variables of a stay (guest, house, code, dates and times, host) so the host can try them in the hub and in the new message.
         /// </summary>
         public const string MessageTemplates = "message-templates";
+
+        /// <summary>
+        /// The scheduled messages of the routines (E05/F07/US01/T02, NF-71): the ready routine «Messaggio di arrivo», active, that sends the arrival instructions the day before the check-in, and
+        /// on the timeline of three direct stays one message in each state the host meets: planned, held back (the house has no code of the lock to give), and skipped by a person.
+        /// Invented and saying TEST; the guests of the stays are at example.com. With the module off (<c>Features:ScheduledMessages</c>) they are rows nobody reads.
+        /// </summary>
+        public const string ScheduledMessages = "scheduled-messages";
 
         // NF-40, NF-45 (E03/F01/US01/T04): the host wizard "Guest check-in" in the four states of a stay, and a stay with data to complete.
         public const string CheckInWizardExpected = "checkin-wizard-expected";
@@ -451,6 +458,7 @@ public static class DemoShowcaseCatalog
         Scenario.MessageHub,
         Scenario.Reviews,
         Scenario.MessageTemplates,
+        Scenario.ScheduledMessages,
         Scenario.CheckInWizardExpected,
         Scenario.CheckInWizardArrived,
         Scenario.CheckInWizardDeparted,
@@ -1841,7 +1849,27 @@ public static class DemoShowcaseCatalog
             [new DemoRoutineAction(RoutineActionType.RequestReview, "{}")],
             true,
             Scenario.RoutineReviewRequest),
+
+        // E05/F07/US01/T02: the ready routine «Messaggio di arrivo»: the day before the check-in, at the check-in time of the property (the send window of the plan keeps it between 08:00 and
+        // 21:00 on its own clock), the arrival instructions of the template «Istruzioni di arrivo (TEST)». Active and not in test mode, or the plan would write nothing for it: the guests of the
+        // showcase are invented, and with the module of the scheduled messages off (the default) nothing is planned or sent. The id of the template does not exist until the reset writes it: the
+        // action carries the placeholder id and the reset puts the real one in.
+        new(
+            "messaggio-arrivo",
+            "Messaggio di arrivo (TEST)",
+            RoutineEventType.BeforeCheckin,
+            1,
+            [new DemoRoutineAction(RoutineActionType.MessageToGuest, $$"""{"templateId":"{{MessageTemplatePlaceholderId}}"}""")],
+            false,
+            Scenario.ScheduledMessages,
+            MessageTemplateKey: "istruzioni-arrivo-it"),
     ];
+
+    /// <summary>
+    /// The id the action <c>MessageToGuest</c> of a demo routine carries until the reset knows the template it sends (<see cref="DemoRoutineTemplate.MessageTemplateKey"/>): a valid, unused id, so the
+    /// routine of the catalog is one the API would save, and replaced at reset by the id of the template the showcase wrote.
+    /// </summary>
+    public const string MessageTemplatePlaceholderId = "00000000-0000-4000-8000-0000000000e5";
 
     /// <summary>
     /// The default cleaner of two demo properties (E24/F01/US01/T01, NF-120): Villa del Lago with the trusted supplier «Pulizie Express DEMO» at € 65.00 from 11:00 for two hours, Casa
@@ -2033,8 +2061,9 @@ public static class DemoShowcaseCatalog
 
     /// <summary>
     /// The message templates of the demo host (E05/F02/US02/T02, NF-63), written for the org at reset: a welcome in Italian, the same welcome in
-    /// English, and a reminder of the departure. Together they use the eight variables a template may have (guest, house, booking code, the dates and the
-    /// times of the stay, the host), so a client can try them on a conversation of the hub and in the new message. Invented and saying TEST, they point
+    /// English, and a reminder of the departure, then the two of the scheduled messages (the arrival instructions and the thanks with the review). Together they use the thirteen variables a
+    /// template may have (guest, house, booking code, the dates and the times of the stay, the host, and the check-in method, the check-in link, the access code, the address and the review
+    /// link), so a client can try them on a conversation of the hub and in the new message. Invented and saying TEST, they point
     /// at no house and no stay; a template the host already has with the same name and language is left alone. Marked as showcase data
     /// (<c>TestDataEntities.MessageTemplate</c>), deleted by the next reset.
     /// </summary>
@@ -2058,6 +2087,42 @@ public static class DemoShowcaseCatalog
             "it",
             "Ciao {{guest_name}}, un promemoria per la partenza da {{property_name}}: prenotazione {{booking_code}}, check-out il {{check_out_date}} entro le {{check_out_time}}. Grazie e buon viaggio! (TEST)",
             Scenario.MessageTemplates),
+
+        // E05/F07/US01/T03: the two templates of the scheduled messages, which use the five variables of the plan: the arrival (how to get in, the link of the check-in, the code of the lock, the address)
+        // and the thanks with the link of the review. The link, the code and the review link are filled when the message is sent, never in a preview.
+        new(
+            "istruzioni-arrivo-it",
+            "Istruzioni di arrivo (TEST)",
+            "it",
+            "Ciao {{guest_name}}, ecco come arrivare a {{property_name}} ({{property_address}}): {{check_in_method}}. Puoi fare il check-in online qui: {{check_in_link}}. Il codice della serratura è {{access_code}}. A presto, {{host_name}} (TEST)",
+            Scenario.MessageTemplates),
+        new(
+            "grazie-recensione-it",
+            "Grazie e recensione (TEST)",
+            "it",
+            "Grazie {{guest_name}} per aver soggiornato a {{property_name}}! Se ti va, racconta com'è andata: {{review_link}} (TEST)",
+            Scenario.MessageTemplates),
+    ];
+
+    /// <summary>
+    /// The scheduled messages of the demo host (E05/F07/US01/T02, NF-71), written for the org at reset on three direct stays of two houses: one planned (the stay of four days from now at Casa Trastevere,
+    /// in Roma), one held back for the access code (the stay of thirty days from now at Villa del Lago, which has its check-in method written but no code of the lock, so the variable the stay lacks is
+    /// the code), and one that the owner skipped (the stay of thirty days from now at Casa Trastevere). Each is for the routine «Messaggio di arrivo (TEST)» and is planned at the moment the plan would
+    /// give it, so the plan finds the rows where it would have written them and does not write them twice. With the module off (the default) nothing is planned or sent and nobody reads them. Marked as
+    /// showcase data (<c>TestDataEntities.ScheduledMessage</c>), deleted by the next reset.
+    /// </summary>
+    public static IReadOnlyList<DemoScheduledMessageTemplate> ScheduledMessages { get; } =
+    [
+        new("arrivo-pianificato", "casa-trastevere", "checkin-atteso", "messaggio-arrivo", ScheduledMessageStatus.Scheduled, null, Scenario.ScheduledMessages),
+        new(
+            "arrivo-trattenuto",
+            "villa-lago",
+            "tassa-per-ospite",
+            "messaggio-arrivo",
+            ScheduledMessageStatus.Blocked,
+            ScheduledMessageReasons.VariableMissing(Casazen.Core.Services.MessageTemplateRenderer.AccessCodeVariable),
+            Scenario.ScheduledMessages),
+        new("arrivo-saltato", "casa-trastevere", "crm-ritorno-in-arrivo", "messaggio-arrivo", ScheduledMessageStatus.Skipped, ScheduledMessageReasons.Person, Scenario.ScheduledMessages),
     ];
 
     /// <summary>
@@ -2870,6 +2935,9 @@ public sealed record DemoWireBatchTemplate(
 /// An automation routine demo (NF-21, NF-26): can be scheduled, simulated or left paused. It becomes a <c>Routine</c> row marked as showcase data
 /// (<c>TestDataEntities.Routine</c>): <paramref name="Active"/> controls scheduling and <paramref name="IsTestMode"/> controls side effects. The event is a time trigger
 /// of <paramref name="DaysBefore"/> days (<c>{ "days": N }</c>), before the check-in or the check-out, or after it for the events «after».
+/// <paramref name="MessageTemplateKey"/> is the key of the <see cref="DemoHostMessageTemplate"/> a <c>MessageToGuest</c> action of the routine sends: the reset writes the template first and puts its
+/// id in the action in place of <see cref="DemoShowcaseCatalog.MessageTemplatePlaceholderId"/>; when the host already had a template with that name and language the showcase wrote none, and the
+/// routine is not written (an action with no template is a routine that cannot run).
 /// </summary>
 public sealed record DemoRoutineTemplate(
     string Key,
@@ -2880,7 +2948,8 @@ public sealed record DemoRoutineTemplate(
     bool IsTestMode,
     string Scenario,
     bool Active = true,
-    string ConditionJson = "{}");
+    string ConditionJson = "{}",
+    string? MessageTemplateKey = null);
 
 /// <summary>An action of a demo routine: its type and its configuration as the JSON object the editor writes (<c>{ "text": "…", "dueInDays": 1 }</c>).</summary>
 public sealed record DemoRoutineAction(RoutineActionType Type, string ConfigJson);
@@ -2982,6 +3051,20 @@ public sealed record DemoMessageTemplate(bool FromGuest, int MinutesAgo, string 
 /// <param name="Body">The text, with its variables between double braces.</param>
 /// <param name="Scenario">The scenario it exercises.</param>
 public sealed record DemoHostMessageTemplate(string Key, string Name, string Language, string Body, string Scenario);
+
+/// <summary>
+/// A scheduled message of the demo host (E05/F07/US01/T02): the stay it is for (<paramref name="BookingKey"/>, of the house <paramref name="PropertyKey"/>), the routine that planned it
+/// (<paramref name="RoutineKey"/>, a <see cref="DemoRoutineTemplate"/> with a <c>MessageToGuest</c> action), where it stands (<paramref name="Status"/>: planned, blocked or skipped by a person)
+/// and why when it is held back or skipped (<paramref name="Reason"/>, a code of <c>ScheduledMessageReasons</c>).
+/// </summary>
+public sealed record DemoScheduledMessageTemplate(
+    string Key,
+    string PropertyKey,
+    string BookingKey,
+    string RoutineKey,
+    ScheduledMessageStatus Status,
+    string? Reason,
+    string Scenario);
 
 /// <summary>
 /// A popup alert of the demo host (NF-08, ADR-025): invented like the rest of the demo, written for the owner of the org at reset and

@@ -471,6 +471,10 @@ public static class EncryptedColumns
         new EncryptedEntity<CheckInLinkDelivery>(
             CheckInLinkTokenPurpose,
             nameof(CheckInLinkDelivery.LinkToken)),
+        // NF-71: the host's edit of the text of a scheduled message for one booking (E05/F07/US01/T01): a text written for a guest, the same purpose as the words of the conversations.
+        new EncryptedEntity<ScheduledMessage>(
+            OtaMessageTextPurpose,
+            nameof(ScheduledMessage.TextOverride)),
         // NF-101: the address the package of the accountant is sent to every month (E15/F01/US02/T01); the job asks only whether there is one (IS NOT NULL).
         new EncryptedEntity<AccountantPackageSettings>(
             AccountantPackagePurpose,

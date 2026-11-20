@@ -84,13 +84,15 @@ public class ItalianAgencyScenarioTests
 
         // B8a, flat A: the receipt in the name of the owner (its sezionale, its fiscal code, the agency as the one who issues for it), the stamp duty over 77.47 charged to nobody
         // (the owner bears it, the total is what the guest pays), the tourist tax on its own line. A portal sends no invoice data: made out to the guest of the booking, by name only.
-        // KNOWN DEFECT (register of the residual defects, left to its own fix): a document of a booking of a portal is always «paid through the portal», also for the line of the
-        // tourist tax the portal does not collect and nobody recorded. The payment state asserted here is the code as it is, not the state to reach.
+        // FIX/BE-PORTAL-TAXLINE: the document of a booking of a portal is paid through the portal for what the portal collected (450.00), never for the line of the tourist tax the portal
+        // does not collect and nobody recorded (12.00): that is to collect at the property. The stored state is still the one of the channel (the portal collected), the total is the
+        // whole document, and the PDF says the rest.
         var receipt = await AssertReceiptAsync(
             world, stays.A, "RIC2026/1", Day(10, 6), [(FiscalLineType.Accommodation, 450.00m, 0m, "N2.2", 0m), (FiscalLineType.TouristTax, 12.00m, 0m, "N1", 0m)], 462.00m,
             FiscalPaymentChannel.Portal, FiscalDocumentPaymentState.Paid);
         AssertRecipientIsTheGuestByName(receipt, "TEST Ospite Portale");
-        await AssertReceiptPdfAsync(world, receipt, ("462,00", "2,00"), "Pagamento: pagato");
+        await AssertReceiptPdfAsync(world, receipt, ("462,00", "2,00"), "Pagamento: pagato tramite il portale per EUR 450,00");
+        await AssertTheTaxIsToCollectAsync(world, receipt);
         await AssertTheGuestGotTheDocumentAsync(world, receipt, stays.A, "Ricevuta", World.OwnerAName);
 
         // B8b, flat B: the FatturaPA of the company (cedente), the agency its third-party issuer (TZ), the sezionale SRL, the VAT of the stay at 10%, the tourist tax N1 outside the
@@ -98,7 +100,8 @@ public class ItalianAgencyScenarioTests
         var invoice = await AssertCompanyInvoiceAsync(
             world, stays.B, "SRL2026/1", Day(10, 7), [(FiscalLineType.Accommodation, 409.09m, 10m, null, 40.91m), (FiscalLineType.TouristTax, 12.00m, 0m, "N1", 0m)],
             (421.09m, 40.91m, 462.00m), FiscalPaymentChannel.Portal, FiscalDocumentPaymentState.Paid);
-        await AssertCompanyPdfAsync(world, invoice, ("421,09", "40,91", "462,00"), "Pagamento: pagato");
+        await AssertCompanyPdfAsync(world, invoice, ("421,09", "40,91", "462,00"), "Pagamento: pagato tramite il portale per EUR 450,00");
+        await AssertTheTaxIsToCollectAsync(world, invoice);
         await AssertTheGuestGotTheDocumentAsync(world, invoice, stays.B, "Fattura", World.OwnerBName);
         await AssertTheSdiStatesAsync(world, invoice);
 
@@ -821,8 +824,8 @@ public class ItalianAgencyScenarioTests
 
     // ---------------------------------------------------------------- the official schema of the wire file
 
-    // Bonifico: il file pain.001.001.09 dei pagamenti ai proprietari e' valido per lo schema ufficiale ISO (il test e' saltato, con il motivo, finche' lo schema non e' nel repository).
-    [IsoWireSchemaFact]
+    // Bonifico: il file pain.001.001.09 dei pagamenti ai proprietari e' valido per lo schema ufficiale ISO, incorporato nel build dal FIX/WIRE-XSD (backend#890): la prova gira in CI senza alcun salto.
+    [Fact]
     [Trait("Scenario", "C6")]
     public async Task Wire_ThePayoutFile_ValidatesAgainstTheOfficialIsoSchema()
     {
@@ -1053,6 +1056,19 @@ public class ItalianAgencyScenarioTests
         Assert.Contains(payment, text, StringComparison.Ordinal);
         Assert.Contains("Copia di cortesia della fattura elettronica", text, StringComparison.Ordinal);
         AssertNoSupplierName(text);
+    }
+
+    /// <summary>
+    /// FIX/BE-PORTAL-TAXLINE: the document of a booking of a portal says that the tourist tax the portal did not collect is to collect at the property (12.00), in a paragraph of its own and as the
+    /// note of its line; the total of the document is not touched. The scenario records nothing of the collection of the tax in E25 (it sets only the channel rule of the comune, which says the host collects,
+    /// and never confirms, declares or collects the tax of a stay), so the whole 12.00 is still to collect: the case of «no record» (a recorded collection comes off it, <c>PortalBookingDocument_*</c>).
+    /// </summary>
+    private static async Task AssertTheTaxIsToCollectAsync(World world, FiscalDocument document)
+    {
+        var text = TextOf(await world.PdfContentAsync(document.Id));
+        Assert.Contains("Imposta di soggiorno da pagare in struttura: EUR 12,00", text, StringComparison.Ordinal);
+        Assert.Contains("Imposta di soggiorno riscossa per conto del comune - da pagare in struttura", text, StringComparison.Ordinal);
+        Assert.Contains("Totale documento | 462,00", text, StringComparison.Ordinal);
     }
 
     /// <summary>The invoice of the agency for the services it charged the guest (the cleaning, 60.00 at 22%): in its own series and in its own name, paid with the stay.</summary>
@@ -1294,7 +1310,7 @@ public class ItalianAgencyScenarioTests
     /// <summary>
     /// C5, C6: the agency pays each owner what its published statement owes it, on the second of November; the withholding is decided on the facts of the ledger (the amount, the code,
     /// the rule, or the reason) and a retry with the same key is the same payout; then the wire file of the two payouts (<c>pain.001.001.09</c>, euro), checked against the stand-in
-    /// schema of the tests (the official one is not in the repository: <see cref="Wire_ThePayoutFile_ValidatesAgainstTheOfficialIsoSchema"/>).
+    /// schema of the tests (the official one, embedded in the build, validates the same file in <see cref="Wire_ThePayoutFile_ValidatesAgainstTheOfficialIsoSchema"/>).
     /// </summary>
     private static async Task<(OwnerPayoutResult A, OwnerPayoutResult B)> PayTheOwnersAsync(World world, (MonthEnd A, MonthEnd B) months, Payout forA, Payout forB)
     {
@@ -1555,7 +1571,17 @@ public class ItalianAgencyScenarioTests
         Assert.Contains("2026-11;1919;233,10;16/12/2026;;generato, non trasmesso;IT-STR-WITHHOLDING@2026.1", Text(november["ritenute/f24.csv"]), StringComparison.Ordinal);
         var year = await world.PackageAsync(Year2026);
         Assert.Contains("TEST Mario Rossi;1110,00;233,10;1", Text(year["ritenute/cu-2026.csv"]), StringComparison.Ordinal);
-        AssertEveryXmlIsValid(year, 8);
+
+        // The TD17 of the company (issued on 3 November for the commissions of October) is in the package of November and in the one of the year, with its register, its PDF and its XML (FIX/BE-ACCOUNTANT-GAPS):
+        // the eight XML of the documents of October and the one of the TD17, all valid against the official schema.
+        foreach (var package in new[] { november, year })
+        {
+            Assert.Contains("TD17-2026/1", Text(package["fatture-proprietari/autofatture/registro-it-09876543217.csv"]), StringComparison.Ordinal);
+            Assert.Contains("fatture-proprietari/autofatture/2026-11-03-TD17-2026-1.pdf", package.Keys);
+            Assert.Contains("fatture-proprietari/autofatture/2026-11-03-TD17-2026-1.xml", package.Keys);
+        }
+
+        AssertEveryXmlIsValid(year, 9);
     }
 
     /// <summary>The index of the ZIP lists every file and no other, with the SHA-256 of its bytes.</summary>
@@ -1707,22 +1733,5 @@ public class ItalianAgencyScenarioTests
         }
 
         return rows;
-    }
-}
-
-/// <summary>
-/// A fact that needs the official schema of the SEPA wire file (<c>pain.001.001.09.xsd</c>, <see cref="Pain001SchemaProvider"/>): it is not in the repository until an operator adds it
-/// with its checksum (docs/runbooks/wire-transfers.md), so until then the test is reported as skipped, with the reason, everywhere.
-/// </summary>
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class IsoWireSchemaFactAttribute : FactAttribute
-{
-    public IsoWireSchemaFactAttribute()
-    {
-        if (!Pain001SchemaProvider.HasOfficialSchema(WireTransferErrors.SepaCurrency))
-        {
-            Skip = "The official schema pain.001.001.09.xsd is not in the repository (Casazen.Infrastructure/Payments/Schemas/Iso): "
-                + "the wire file is validated against the stand-in schema of the tests only; see docs/runbooks/wire-transfers.md to add it.";
-        }
     }
 }

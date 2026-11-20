@@ -14,7 +14,7 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// <list type="bullet">
 /// <item><b>The parts, in this order:</b> «Soggiorni» (the gross of each stay without the tourist tax), «Commissioni dei canali» (labelled by who holds the portal
-/// account of the listing: <c>V1</c> the owner, <c>V2</c> the agency), «Ritenuta» (only when present), «Provvigione del PM» (with the number of the owner invoice
+/// account of the listing: <c>V1</c> the owner, <c>V2</c> the agency, which recharges the commission on its invoice or does not), «Ritenuta» (only when present), «Provvigione del PM» (with the number of the owner invoice
 /// when one is linked, and the VAT that invoice adds on top of the commission and the recharges, a line of its own: <see cref="OwnerLedgerEntryType.AgencyVat"/>,
 /// which the version counts with the commission), «Riaddebiti e spese», «Rettifiche» (only when present) and «Netto» (the opening balance, the total of the period,
 /// the payments and the closing balance). The box «Tassa di soggiorno» follows, for information only: it is never added to or taken from the net.</item>
@@ -45,7 +45,8 @@ public static class OwnerStatementLayout
         "StatementFilePaymentsHeading", "StatementFileTouristTaxHeading", "StatementFileTouristTaxNote", "StatementFileTouristTaxNone",
         "StatementFileColProperty", "StatementFileColStay", "StatementFileColChannel", "StatementFileColShare", "StatementFileColDate",
         "StatementFileColDescription", "StatementFileColAmount", "StatementFileColAmountPlain", "StatementFileColGross", "StatementFileColItem", "StatementFileColSection",
-        "StatementFileChannelFeesOwner", "StatementFileChannelFeesAgency", "StatementFileChannelFeesAgencyInvoice", "StatementFileCommissionInvoice",
+        "StatementFileChannelFeesOwner", "StatementFileChannelFeesAgency", "StatementFileChannelFeesAgencyInvoice", "StatementFileChannelFeesAgencyNotRecharged",
+        "StatementFileCommissionInvoice",
         "StatementFileCommissionVat", "StatementFileCommissionVatInvoice", "StatementFileRechargeCleaning", "StatementFileRechargeLinen", "StatementFileRechargeCardFee", "StatementFileRechargeCharge",
         "StatementFileRechargeExpense", "StatementFileWithholdingLine", "StatementFileCorrectionLine", "StatementFilePaymentToOwner",
         "StatementFilePaymentFromOwner", "StatementFileReversal", "StatementFileNetOpening", "StatementFileNetPeriod", "StatementFileNetPayments",
@@ -284,18 +285,15 @@ public static class OwnerStatementLayout
             return;
         }
 
-        // The label follows who holds the portal account of the listing: the portal bills the owner (V1) or the agency, which recharges it (V2).
-        foreach (var heldByAgency in new[] { false, true })
+        // The label follows who holds the portal account of the listing and what the agency does with the commission: the portal bills the owner (V1), or the agency, which
+        // recharges it on its invoice (V2) or does not (V2 without the recharge: the portal invoice is not the owner's and no invoice of the property manager carries it).
+        foreach (var kind in new[] { PortalFeeKind.OwnerAccount, PortalFeeKind.AgencyRecharged, PortalFeeKind.AgencyNotRecharged })
         {
-            var group = lines.Where(line => line.AgencyHoldsPortalAccount == heldByAgency).ToList();
+            var group = lines.Where(line => PortalFeeKindOf(line) == kind).ToList();
             if (group.Count == 0)
                 continue;
 
-            blocks.Add(new PdfParagraph(
-                !heldByAgency ? texts.Get("StatementFileChannelFeesOwner", language)
-                : content.OwnerInvoiceNumber is { } number ? texts.Get("StatementFileChannelFeesAgencyInvoice", language, number)
-                : texts.Get("StatementFileChannelFeesAgency", language),
-                Bold: true));
+            blocks.Add(new PdfParagraph(PortalFeeLabel(kind, content, texts), Bold: true));
             var rows = group
                 .Select(line => Row(line.PropertyName ?? string.Empty, StayLabel(line, texts, language), ChannelLabel(line.Channel, texts, language), Money(line.Amount, content.Currency)))
                 .ToList();
@@ -528,6 +526,44 @@ public static class OwnerStatementLayout
             _ when line.Type == OwnerLedgerEntryType.OwnerExpense && line.BookingCode is not null => texts.Get("StatementFileRechargeCardFee", language),
             _ when line.Type == OwnerLedgerEntryType.OwnerExpense => texts.Get("StatementFileRechargeExpense", language),
             _ => texts.Get("StatementFileRechargeCharge", language),
+        };
+    }
+
+    /// <summary>How the commission a portal kept is told to the owner: who holds the portal account of the listing and what the agency does with the commission.</summary>
+    private enum PortalFeeKind
+    {
+        /// <summary>V1, the account of the owner: the portal bills the owner.</summary>
+        OwnerAccount,
+
+        /// <summary>V2 with the recharge: the portal bills the agency, which recharges the commission on its invoice.</summary>
+        AgencyRecharged,
+
+        /// <summary>V2 without the recharge: the portal bills the agency and no invoice of the property manager carries the commission.</summary>
+        AgencyNotRecharged,
+    }
+
+    /// <summary>The kind of a commission of a channel: the recharge of the invoice first (the test of the invoice), then the account of the agency without it, else the owner's account.</summary>
+    private static PortalFeeKind PortalFeeKindOf(OwnerStatementLine line)
+    {
+        if (line.AgencyHoldsPortalAccount)
+            return PortalFeeKind.AgencyRecharged;
+
+        return line.AgencyHoldsPortalAccountWithoutRecharge ? PortalFeeKind.AgencyNotRecharged : PortalFeeKind.OwnerAccount;
+    }
+
+    /// <summary>
+    /// The words above the table of a kind of commission. A recharge names the invoice of the property manager when one is issued; an account of the agency whose commissions it
+    /// does not recharge has a label of its own and never names an invoice, and never says the portal invoice is the owner's, as «Trattenuta dal portale» of V1 does.
+    /// </summary>
+    private static string PortalFeeLabel(PortalFeeKind kind, OwnerStatementContent content, IDocumentTexts texts)
+    {
+        var language = content.Language;
+        return kind switch
+        {
+            PortalFeeKind.AgencyRecharged when content.OwnerInvoiceNumber is { } number => texts.Get("StatementFileChannelFeesAgencyInvoice", language, number),
+            PortalFeeKind.AgencyRecharged => texts.Get("StatementFileChannelFeesAgency", language),
+            PortalFeeKind.AgencyNotRecharged => texts.Get("StatementFileChannelFeesAgencyNotRecharged", language),
+            _ => texts.Get("StatementFileChannelFeesOwner", language),
         };
     }
 

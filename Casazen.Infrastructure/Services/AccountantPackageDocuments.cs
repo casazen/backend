@@ -37,10 +37,11 @@ internal sealed record PackageCuRow(string? OwnerName, decimal GrossBase, decima
 /// </summary>
 /// <param name="OwnerInvoices">The invoices to the owners are in the tables.</param>
 /// <param name="PortalCommissions">The portal commissions of the accounts the agency holds are in the tables.</param>
-internal sealed record VatCoverage(bool OwnerInvoices, bool PortalCommissions)
+/// <param name="SelfBilled">The self-billed invoices (TD17) are in the tables of an Italian issuer (owner accounting: the file says so when they are not).</param>
+internal sealed record VatCoverage(bool OwnerInvoices, bool PortalCommissions, bool SelfBilled)
 {
     /// <summary>Everything is in.</summary>
-    public static VatCoverage Whole { get; } = new(true, true);
+    public static VatCoverage Whole { get; } = new(true, true, true);
 }
 
 /// <summary>
@@ -73,6 +74,17 @@ internal static class AccountantPackageDocuments
 
     /// <summary>The word of a kind of document (invoice, receipt, credit note): the one of the fiscal documents and their list.</summary>
     public static string KindLabel(FiscalDocumentKind kind, PackageTexts t) => FiscalDocumentPdfs.KindLabel(kind, t.Source, t.Language);
+
+    /// <summary>
+    /// The word of a document: its kind, except for a self-billed invoice (TD17), which is «Autofattura TD17» whatever its kind (the export of the list of the documents says the same): its recipient
+    /// is the foreign supplier it integrates, never a customer, so it is never read as an invoice to somebody.
+    /// </summary>
+    public static string KindLabel(PackageDocument document, PackageTexts t)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+
+        return document.Purpose == FiscalDocumentPurpose.SelfBilling ? t["FiscalExportKindSelfBilling"] : KindLabel(document.Kind, t);
+    }
 
     /// <summary>The name of an owner, or the word for an owner whose data was anonymized.</summary>
     public static string OwnerLabel(string? name, PackageTexts t) => string.IsNullOrWhiteSpace(name) ? t.Get("OwnerAnonymizedLabel") : name;
@@ -117,6 +129,140 @@ internal static class AccountantPackageDocuments
                 d.Currency);
         }
 
+        return [register, RateDetail(documents, t), RateTotals(documents, t)];
+    }
+
+    /// <summary>
+    /// The register of the self-billed invoices (TD17) of one issuer, written only for a period that has some (the holder that issues them: the agency in V2, an owner company in V1): one
+    /// row for each document, in the columns of the other registers (its kind, number, day, the foreign supplier where the recipient stands, the month of the commissions it integrates,
+    /// taxable amount, VAT, stamp duty, total, currency) and then the country and the VAT number of the supplier and the state of the document with the SDI; then the VAT of each document for
+    /// each rate, as the lines store it, and the totals for each rate. The kind says «Autofattura TD17», never a plain invoice: its «recipient» is the portal it integrates, not a customer.
+    /// A TD17 the SDI rejected counts as not issued (⚖ the choice of the PO and the accountant): it is a row of the register with its state «Scartata», it is in none of the two tables of the
+    /// rates, and a note says how many are left out.
+    /// </summary>
+    public static IReadOnlyList<ReportTable> SelfBilledRegister(
+        IReadOnlyList<PackageDocument> documents,
+        IReadOnlyDictionary<Guid, PackageSupplier> suppliers,
+        AgencyIssuer issuer,
+        AccountantPackagePeriod period,
+        PackageTexts t)
+    {
+        ArgumentNullException.ThrowIfNull(documents);
+        ArgumentNullException.ThrowIfNull(suppliers);
+        ArgumentNullException.ThrowIfNull(issuer);
+        ArgumentNullException.ThrowIfNull(period);
+        ArgumentNullException.ThrowIfNull(t);
+
+        var register = new ReportTable(
+            t.Get(PackageLabels.SelfBilledRegisterTitle, IssuerLabel(issuer), Day(period.From), Day(period.To)),
+            [
+                t["FiscalExportColKind"],
+                t["FiscalExportColNumber"],
+                t["FiscalExportColIssueDate"],
+                t[PackageLabels.ColSupplier],
+                t[PackageLabels.ColPeriod],
+                t["FiscalExportColTaxableBase"],
+                t["FiscalExportColVat"],
+                t["FiscalExportColStampDuty"],
+                t["FiscalExportColTotal"],
+                t["FiscalExportColCurrency"],
+                t[PackageLabels.ColSupplierCountry],
+                t[PackageLabels.ColSupplierVat],
+                t["FiscalExportColSdiState"],
+            ]);
+        foreach (var d in documents)
+        {
+            var supplier = suppliers.GetValueOrDefault(d.Id);
+            register.Add(
+                KindLabel(d, t),
+                d.Number,
+                ReportCell.Date(d.IssueDate),
+                d.RecipientName,
+                PeriodCell(d),
+                ReportCell.Money(d.Sign * d.TaxableBase),
+                ReportCell.Money(d.Sign * d.VatAmount),
+                ReportCell.Money(d.Sign * d.StampDuty),
+                ReportCell.Money(d.Sign * d.Total),
+                d.Currency,
+                supplier?.CountryCode,
+                supplier?.VatNumber,
+                FiscalDocumentExports.SdiLabel(d.SdiStatus, t.Source, t.Language));
+        }
+
+        // A TD17 the SDI rejected counts as not issued: it is a row of the register with its state, and it is in no total by rate (⚖ the choice of the PO and the accountant).
+        var counted = documents.Where(d => !d.IsRejectedSelfBilled).ToList();
+        List<ReportTable> tables = [register, RateDetail(counted, t), RateTotals(counted, t)];
+        if (counted.Count < documents.Count)
+            tables.Add(RejectedSelfBilledNote(documents.Count - counted.Count, t));
+
+        return tables;
+    }
+
+    /// <summary>
+    /// The portal commissions of the accounts the agency holds (V2) as the owner ledger says them, one row for each statement month, owner, channel and currency: the commission as a positive
+    /// amount, the stays that carry it and whether the organization recharges it to the owner on its invoice or not (the label never says who bears it when it does not); then the totals for each channel and currency. They are the
+    /// ledger lines the self-billed invoice of the agency integrates (the TD17 itself leaves out what is not in euro or belongs to a stay that is not active any more) and, when recharged,
+    /// the lines of the invoice to the owner that recharge a portal: the amounts are the ledger's, never recomputed.
+    /// </summary>
+    public static IReadOnlyList<ReportTable> PortalCommissions(IReadOnlyList<PackagePortalCommission> rows, AccountantPackagePeriod period, PackageTexts t)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        ArgumentNullException.ThrowIfNull(period);
+        ArgumentNullException.ThrowIfNull(t);
+
+        var table = new ReportTable(
+            t.Get(PackageLabels.PortalCommissionsTitle, Day(period.From), Day(period.To)),
+            [
+                t[PackageLabels.ColPeriod],
+                t[PackageLabels.ColOwner],
+                t[PackageLabels.ColChannel],
+                t["FiscalExportColCurrency"],
+                t[PackageLabels.SumStays],
+                t[PackageLabels.ColPortalCommission],
+                t[PackageLabels.ColTreatment],
+            ]);
+        foreach (var r in rows
+                     .OrderBy(r => r.Year)
+                     .ThenBy(r => r.Month)
+                     .ThenBy(r => r.OwnerName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(r => r.OwnerId)
+                     .ThenBy(r => r.Source)
+                     .ThenBy(r => r.Currency, StringComparer.Ordinal))
+        {
+            table.Add(
+                string.Create(CultureInfo.InvariantCulture, $"{r.Year:0000}-{r.Month:00}"),
+                OwnerLabel(r.OwnerName, t),
+                FiscalReportDocuments.ChannelLabel(r.Source.ToString()),
+                r.Currency,
+                r.Stays,
+                ReportCell.Money(r.Amount),
+                TreatmentLabel(r.Recharged, t));
+        }
+
+        var totals = new ReportTable(
+            t[PackageLabels.PortalCommissionsTotalsTitle],
+            [t[PackageLabels.ColChannel], t["FiscalExportColCurrency"], t[PackageLabels.ColTreatment], t[PackageLabels.ColPortalCommission]]);
+        foreach (var group in rows
+                     .GroupBy(r => (r.Source, r.Currency, r.Recharged))
+                     .OrderBy(g => g.Key.Source)
+                     .ThenBy(g => g.Key.Currency, StringComparer.Ordinal)
+                     .ThenByDescending(g => g.Key.Recharged))
+        {
+            totals.Add(
+                FiscalReportDocuments.ChannelLabel(group.Key.Source.ToString()),
+                group.Key.Currency,
+                TreatmentLabel(group.Key.Recharged, t),
+                ReportCell.Money(group.Sum(r => r.Amount)));
+        }
+
+        return [table, totals];
+    }
+
+    private static string TreatmentLabel(bool recharged, PackageTexts t) => recharged ? t[PackageLabels.TreatmentRecharged] : t[PackageLabels.TreatmentBorne];
+
+    /// <summary>The VAT of each document of a register for each rate, as the lines store it (credit notes negative): one row for each rate of each document.</summary>
+    private static ReportTable RateDetail(IReadOnlyList<PackageDocument> documents, PackageTexts t)
+    {
         var detail = new ReportTable(
             t[PackageLabels.RateDetailTitle],
             [t["FiscalExportColNumber"], t["FiscalExportColIssueDate"], t[PackageLabels.ColRate], t[PackageLabels.ColNature], t["FiscalExportColTaxableBase"], t["FiscalExportColVat"], t["FiscalExportColCurrency"]]);
@@ -132,7 +278,7 @@ internal static class AccountantPackageDocuments
                 document.Currency);
         }
 
-        return [register, detail, RateTotals(documents, t)];
+        return detail;
     }
 
     /// <summary>The totals of a set of documents for each currency, rate and nature code (credit notes taken away): the base the VAT is declared on.</summary>
@@ -210,6 +356,22 @@ internal static class AccountantPackageDocuments
         return note;
     }
 
+    /// <summary>The note of the VAT file of an Italian issuer for a caller who may not read the owner accounting: the self-billed invoices (TD17) are not in it, and the reason is the one of the omitted folders.</summary>
+    private static ReportTable SelfBilledNote(PackageTexts t)
+    {
+        var note = new ReportTable(t[PackageLabels.VatSelfBilledOmittedTitle], [t[PackageLabels.IndexColReason]]);
+        note.Add(t[PackageLabels.OmittedOwnerAccounting]);
+        return note;
+    }
+
+    /// <summary>The note that says how many self-billed invoices (TD17) the SDI rejected are left out of the figures of a register or of a VAT file: a rejected invoice counts as not issued.</summary>
+    private static ReportTable RejectedSelfBilledNote(int rejected, PackageTexts t)
+    {
+        var note = new ReportTable(t[PackageLabels.SelfBilledRejectedTitle], [t[PackageLabels.IndexColReason]]);
+        note.Add(t.Get(PackageLabels.SelfBilledRejectedReason, rejected));
+        return note;
+    }
+
     private static IReadOnlyList<ReportTable> SwissVat(
         AgencyIssuer issuer, IReadOnlyList<PackageDocument> documents, IReadOnlyList<AgencyPortalCommissionBorneRow> portalCommissions, VatCoverage coverage, PackageTexts t)
     {
@@ -267,8 +429,10 @@ internal static class AccountantPackageDocuments
         return [returnBase, outside, portals, OwnerInvoicesNote(t)];
     }
 
-    private static IReadOnlyList<ReportTable> ItalianVat(AgencyIssuer issuer, IReadOnlyList<PackageDocument> documents, VatCoverage coverage, PackageTexts t)
+    private static IReadOnlyList<ReportTable> ItalianVat(AgencyIssuer issuer, IReadOnlyList<PackageDocument> allDocuments, VatCoverage coverage, PackageTexts t)
     {
+        // A TD17 the SDI rejected counts as not issued: it is in no figure of the file, and a note says how many are left out (⚖ the choice of the PO and the accountant).
+        var documents = allDocuments.Where(d => !d.IsRejectedSelfBilled).ToList();
         var table = new ReportTable(
             t.Get(PackageLabels.VatItalyTitle, IssuerLabel(issuer)),
             [
@@ -304,19 +468,30 @@ internal static class AccountantPackageDocuments
                 group.Select(x => x.Document.Id).Distinct().Count());
         }
 
-        if (coverage.OwnerInvoices)
-            return [table];
+        List<ReportTable> tables = [table];
+        if (documents.Count < allDocuments.Count)
+            tables.Add(RejectedSelfBilledNote(allDocuments.Count - documents.Count, t));
 
-        return [table, OwnerInvoicesNote(t)];
+        if (!coverage.OwnerInvoices)
+            tables.Add(OwnerInvoicesNote(t));
+
+        if (!coverage.SelfBilled)
+            tables.Add(SelfBilledNote(t));
+
+        return tables;
     }
 
     /// <summary>
-    /// The class of a document in the sales register: a receipt, an invoice in the flat-rate regime, an ordinary invoice (a credit note follows the document it credits). The regime is the
+    /// The class of a document in the sales register: a self-billed invoice (TD17: the holder integrates the VAT of a foreign portal at the rate of the settings, whatever its regime, so its
+    /// regime says nothing), a receipt, an invoice in the flat-rate regime, an ordinary invoice (a credit note follows the document it credits). The regime is the
     /// one the document was issued under (its own issuer snapshot), because the issuer of a file is told by its country, tax number and name and a regime can change inside a period;
     /// a document with no snapshot (issued before it existed) takes the regime of <paramref name="issuer"/>.
     /// </summary>
     internal static SalesClass ClassOf(PackageDocument document, AgencyIssuer issuer)
     {
+        if (document.Purpose == FiscalDocumentPurpose.SelfBilling)
+            return SalesClass.SelfBilled;
+
         var kind = document.Kind == FiscalDocumentKind.CreditNote && document.CreditedKind is { } credited ? credited : document.Kind;
         if (kind == FiscalDocumentKind.Receipt)
             return SalesClass.Receipt;
@@ -331,12 +506,14 @@ internal static class AccountantPackageDocuments
         Ordinary = 1,
         FlatRate = 2,
         Receipt = 3,
+        SelfBilled = 4,
     }
 
     private static string ClassLabel(SalesClass salesClass, PackageTexts t) => salesClass switch
     {
         SalesClass.FlatRate => t[PackageLabels.ClassFlatRate],
         SalesClass.Receipt => t[PackageLabels.ClassReceipt],
+        SalesClass.SelfBilled => t[PackageLabels.ClassSelfBilled],
         _ => t[PackageLabels.ClassOrdinary],
     };
 

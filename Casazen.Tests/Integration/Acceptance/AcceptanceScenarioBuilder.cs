@@ -1657,7 +1657,7 @@ internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
 
     /// <summary>
     /// The wire file of the payouts (<c>pain.001.001.09.ch.03</c> for francs), validated against <paramref name="schemas"/>: the official schemas of the build when it is
-    /// <c>null</c> (422 <c>wire_batch_schema_unavailable</c> while they are not in the repository).
+    /// <c>null</c> (they are embedded in the build; only a build that lacks the file answers 422 <c>wire_batch_schema_unavailable</c>).
     /// </summary>
     public async Task<(WireBatch Batch, string Xml)> WireAsync(IReadOnlyList<Guid> payoutIds, DateOnly executionDate, Func<string, XmlSchemaSet>? schemas)
     {

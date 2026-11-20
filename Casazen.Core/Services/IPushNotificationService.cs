@@ -311,6 +311,21 @@ public static class PushDeliveryKeys
     /// </summary>
     public static string OtaReviewActionFailed(Guid otaReviewId, string action, DateTime requestedAtUtc) =>
         $"ota-review:{otaReviewId:N}:{action}-failed:{requestedAtUtc.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture)}";
+
+    /// <summary>
+    /// A scheduled message of a booking could not go out, or went out outside the send window, or was skipped (E05/F07/US01, NF-71), to one host user the preferences selected: one per message,
+    /// kind of problem and user, so an alert delivered again is one push and one notification. <paramref name="kind"/> is a code of <c>ScheduledMessageAlertKinds</c>; <paramref name="attempt"/>
+    /// tells a second block of the same message apart from the first (a message blocked, sent and blocked again after an edit). The key is also the delivery key of the in-app notification. A user id
+    /// too long for the 200 characters of a key is replaced by its SHA-256, so the key is stable and never refused.
+    /// </summary>
+    public static string ScheduledMessageIssue(Guid scheduledMessageId, string kind, int attempt, string userId)
+    {
+        var prefix = $"scheduled-message:{scheduledMessageId:N}:{kind}:{attempt}:";
+        var key = prefix + userId;
+        return key.Length <= 200
+            ? key
+            : prefix + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(userId)));
+    }
 }
 
 /// <summary><c>data.type</c> of each push, one per kind of event (the app opens <c>data.route</c>).</summary>
@@ -486,6 +501,12 @@ public static class PushTypes
     /// <c>entityId</c> is the booking, the route its detail. The host tries again from the review. No text is ever in it.
     /// </summary>
     public const string OtaReviewActionFailed = "ota-review-action-failed";
+
+    /// <summary>
+    /// A scheduled message of a booking was held back, failed, was skipped by the system or went out outside the send window (E05/F07/US01, NF-71): pushed to the one user the preferences selected and
+    /// written to the bell; <c>entityId</c> is the booking, the route its detail, which the open pages read again. Neither the words of the message, nor the guest, nor the link or the code is ever in it.
+    /// </summary>
+    public const string ScheduledMessageIssue = "scheduled-message-issue";
 
     /// <summary>
     /// Type of the push to the host when a service request reaches <paramref name="status"/>; <c>null</c> for a status that has

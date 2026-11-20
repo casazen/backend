@@ -102,15 +102,17 @@ public class TouristTaxSummaryController(
     }
 
     /// <summary>
-    /// The annual declaration data of the tourist tax per comune for the year as a CSV or an Excel file (E18/F01/US02/T03, NF-117, acceptance step C9): nights, guests, the stays with a tax and the
+    /// The annual declaration data of the tourist tax per comune for the year as a CSV or an Excel file, or, with <c>format=json</c>, as the data itself (<see cref="TouristTaxDeclarationDto"/>, FIX/BE-YEAREND-JSON: the typed
+    /// result of the service, what a screen shows) (E18/F01/US02/T03, NF-117, acceptance step C9): nights, guests, the stays with a tax and the
     /// stays with none with the reason, the exempt guests by reason (counts, never a guest; the reasons only for a caller that holds <c>guest.read</c>, art. 9 GDPR: the others get the age and one
     /// «restricted» row), the tax due, the tax remitted with the days and references of the payments, and the difference. It is made
     /// of the summary of the year (nothing recomputed) and nothing is filed by CasaZen. Behind <c>Features:TaxReportingExports</c> (404 before authentication while it is off); needs a scope that
-    /// reaches the whole org (403 <c>tourist_tax_year_end_needs_whole_org</c>). <c>format</c> is <c>csv</c> or <c>xlsx</c> (400 <c>report_invalid_format</c>); 400 <c>fiscal_report_period_invalid</c>
-    /// for a year the reports do not support. <c>Cache-Control: no-store</c>.
+    /// reaches the whole org (403 <c>tourist_tax_year_end_needs_whole_org</c>). <c>format</c> is <c>csv</c>, <c>xlsx</c> or <c>json</c> and has to be named (400 <c>report_invalid_format</c> for none or another); 400
+    /// <c>fiscal_report_period_invalid</c> for a year the reports do not support. The JSON takes the road of the files: same policy, same refusals, same decision on <c>guest.read</c>. <c>Cache-Control: no-store</c>.
     /// </summary>
     [HttpGet("year-end/{year:int}/declaration")]
     [FeatureGate(FeatureFlags.TaxReportingExports)]
+    [ProducesResponseType(typeof(TouristTaxDeclarationDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -127,6 +129,9 @@ public class TouristTaxSummaryController(
             // authorization service the answer is the restricted one: never the reasons by default.
             var withReasons = authorizationService is not null && (await authorizationService.AuthorizeAsync(User, CasazenPolicies.GuestRead)).Succeeded;
             var data = await summaries.GetDeclarationAsync(scope, year, withReasons, cancellationToken);
+            if (fileFormat == ReportFormat.Json)
+                return YearEndJson(TouristTaxDeclarationDto.From(data));
+
             var language = DocumentLanguages.Current;
             return this.ReportFile(
                 fileFormat,
@@ -140,12 +145,13 @@ public class TouristTaxSummaryController(
     }
 
     /// <summary>
-    /// The account of the agent («conto giudiziale») for the year as a CSV or an Excel file (E18/F01/US02/T03, acceptance step C9): for each comune the tax collected and remitted by <c>by=month</c>
-    /// (the default) or <c>by=quarter</c>, a line for the year and every payment with its day, period and reference. The format a comune asks varies: the file carries every field. Same gate, reach and
-    /// errors as the declaration; 400 <c>tourist_tax_account_invalid_period</c> for a <c>by</c> that is neither.
+    /// The account of the agent («conto giudiziale») for the year as a CSV or an Excel file, or, with <c>format=json</c>, as the data itself (<see cref="TouristTaxAgentAccountDto"/>) (E18/F01/US02/T03, acceptance step C9):
+    /// for each comune the tax collected and remitted by <c>by=month</c> (the default) or <c>by=quarter</c>, a line for the year and every payment with its day, period and reference. The format a comune asks
+    /// varies: the file carries every field. Same gate, reach and errors as the declaration; 400 <c>tourist_tax_account_invalid_period</c> for a <c>by</c> that is neither.
     /// </summary>
     [HttpGet("year-end/{year:int}/agent-account")]
     [FeatureGate(FeatureFlags.TaxReportingExports)]
+    [ProducesResponseType(typeof(TouristTaxAgentAccountDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -167,6 +173,9 @@ public class TouristTaxSummaryController(
         try
         {
             var data = await summaries.GetAgentAccountAsync(scope, year, period, cancellationToken);
+            if (fileFormat == ReportFormat.Json)
+                return YearEndJson(TouristTaxAgentAccountDto.From(data));
+
             var language = DocumentLanguages.Current;
             return this.ReportFile(
                 fileFormat,
@@ -180,12 +189,14 @@ public class TouristTaxSummaryController(
     }
 
     /// <summary>
-    /// The yearly count of the nights per property in Ticino for the year as a CSV or an Excel file (E18/F01/US02/T03, acceptance step D3), due by 5 January of the next year: the stays and the nights
+    /// The yearly count of the nights per property in Ticino for the year as a CSV or an Excel file, or, with <c>format=json</c>, as the data itself (<see cref="TicinoYearlyCountDto"/>, with <c>cantonUnknownCount</c>, the
+    /// number of the properties whose canton is not known: they stay in the count, flagged <c>cantonUnknown</c>) (E18/F01/US02/T03, acceptance step D3), due by 5 January of the next year: the stays and the nights
     /// of the year, the taxed and untaxed ones by their documents, those with no document issued yet (told apart) and the tourist tax of the documents in francs. Same gate, reach and errors as the
     /// declaration.
     /// </summary>
     [HttpGet("year-end/{year:int}/ticino")]
     [FeatureGate(FeatureFlags.TaxReportingExports)]
+    [ProducesResponseType(typeof(TicinoYearlyCountDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -199,6 +210,9 @@ public class TouristTaxSummaryController(
         try
         {
             var data = await summaries.GetTicinoYearlyCountAsync(scope, year, cancellationToken);
+            if (fileFormat == ReportFormat.Json)
+                return YearEndJson(TicinoYearlyCountDto.From(data));
+
             var language = DocumentLanguages.Current;
             return this.ReportFile(
                 fileFormat,
@@ -302,17 +316,28 @@ public class TouristTaxSummaryController(
     }
 
     /// <summary>
-    /// The format of a year-end export (E18/F01/US02/T03): <c>csv</c> or <c>xlsx</c> and nothing else, there is no JSON of these files. 400 <c>report_invalid_format</c> for anything else, before
-    /// anything is read.
+    /// The format of a year-end read (E18/F01/US02/T03, FIX/BE-YEAREND-JSON): <c>csv</c> or <c>xlsx</c> for the files and <c>json</c> for the data a screen shows. The format has to be named: a request that names none is
+    /// refused as it always was, so the default has not changed and no current client changes. 400 <c>report_invalid_format</c> for none or anything else, before anything is read.
     /// </summary>
     private ObjectResult? YearEndFormat(string? format, out ReportFormat fileFormat)
     {
         if (this.CheckFormat(format, out fileFormat) is { } problem)
             return problem;
 
-        return fileFormat == ReportFormat.Json
+        // CheckFormat takes a blank format for the JSON default of the other reports; the year-end reads have none.
+        return string.IsNullOrWhiteSpace(format)
             ? this.ApiProblem(StatusCodes.Status400BadRequest, ReportRequestChecks.InvalidFormatCode, "ReportInvalidFormat")
             : null;
+    }
+
+    /// <summary>
+    /// The data of a year-end read as the answer: the JSON of <paramref name="body"/> with <c>Cache-Control: no-store</c> like the files, because it is money and, for a caller that holds <c>guest.read</c>, the reasons of
+    /// the exemptions (art. 9 GDPR): never kept by a cache.
+    /// </summary>
+    private OkObjectResult YearEndJson(object body)
+    {
+        Response.Headers.CacheControl = "no-store";
+        return Ok(body);
     }
 
     /// <summary>The caller's reach (AM-03): the whole org for the roles that reach it, only the properties it was given otherwise; null without an org.</summary>

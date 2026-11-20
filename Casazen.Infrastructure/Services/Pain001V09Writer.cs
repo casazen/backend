@@ -256,8 +256,10 @@ internal static class Pain001V09Writer
     /// The debtor agent, the bank of the account that is debited. The ISO schema of the EUR file takes an «other identification» there, so the bank is left unnamed
     /// with <c>NOTPROVIDED</c> (it reads the account from the IBAN). The Swiss schema takes a BIC or a clearing member id and no «other identification» (a file with
     /// <c>Othr</c> there does not validate): the Swiss file names the bank by the institution identifier its IBAN carries (characters 5 to 9 of a Swiss or
-    /// Liechtenstein IBAN) as a member of the Swiss bank clearing; an IBAN that carries none leaves the bank unnamed, which that schema also takes (its three
-    /// identifications are optional), and the bank reads the account from the IBAN.
+    /// Liechtenstein IBAN) as a member of the Swiss bank clearing; an IBAN that carries none (a foreign one) and a QR-IBAN (the account of a QR-bill, whose
+    /// identifier 30000 to 31999 is no clearing member) leave the bank unnamed, which that schema also takes (its three identifications are optional), and the
+    /// bank reads the account from the IBAN. The service refuses a foreign debit IBAN for a CHF batch (<see cref="WireTransferErrors.DebitIbanNotSwiss"/>), so
+    /// in a file CasaZen produces the unnamed bank is the QR-IBAN of legacy data.
     /// </summary>
     private static XElement DebtorAgent(XNamespace ns, Pain001Flavor flavor, string debtorIban)
     {
@@ -278,10 +280,14 @@ internal static class Pain001V09Writer
         return new XElement(ns + "DbtrAgt", bank);
     }
 
-    /// <summary>The institution identifier of a Swiss or Liechtenstein IBAN (characters 5 to 9, five digits); <c>null</c> for any other IBAN.</summary>
+    /// <summary>
+    /// The institution identifier of a Swiss or Liechtenstein IBAN (characters 5 to 9, five digits); <c>null</c> for any other IBAN and for a QR-IBAN. A QR-IBAN
+    /// (30000 to 31999) is the account of a QR-bill, a credit-side account, and its identifier is no member of the Swiss bank clearing: naming it as one would
+    /// name a bank that does not exist. Legacy data can still hold one as the debit account, so the bank is left unnamed (the bank reads the account from the IBAN).
+    /// </summary>
     private static string? SwissInstitutionId(string iban)
     {
-        if (!WireIban.IsSwiss(iban))
+        if (!WireIban.IsSwiss(iban) || WireIban.IsQrIban(iban))
             return null;
 
         var institution = iban[4..9];

@@ -3953,7 +3953,25 @@
     <value>Questa conversazione non si può scrivere da CasaZen: il channel manager non indica chi scrive o l’identificativo della conversazione sul canale. Rispondi dal canale.</value>
   </data>
   <data name="MessageTemplateVariableUnknown" xml:space="preserve">
-    <value>Il modello usa «{0}», che non è una variabile valida. Quelle valide sono guest_name, property_name, booking_code, check_in_date, check_out_date, check_in_time, check_out_time e host_name, scritte tra doppie parentesi graffe.</value>
+    <value>Il modello usa «{0}», che non è una variabile valida. Quelle valide sono guest_name, property_name, booking_code, check_in_date, check_out_date, check_in_time, check_out_time, host_name, check_in_link, check_in_method, access_code, property_address e review_link, scritte tra doppie parentesi graffe.</value>
+  </data>
+  <data name="ScheduledMessageNotFound" xml:space="preserve">
+    <value>Il messaggio programmato non esiste o non è alla tua portata.</value>
+  </data>
+  <data name="ScheduledMessageNotEditable" xml:space="preserve">
+    <value>Il messaggio è già stato inviato, saltato, annullato o è scaduto: non si può più modificare né saltare.</value>
+  </data>
+  <data name="ScheduledMessageNotSendable" xml:space="preserve">
+    <value>Il messaggio è già stato inviato, saltato, annullato o è scaduto: non si può più inviare.</value>
+  </data>
+  <data name="ScheduledMessageBlocked" xml:space="preserve">
+    <value>Il messaggio non può partire: manca un dato (per esempio il codice d’accesso di un ospite non ancora verificato, o una variabile senza valore). Correggi il testo o completa il dato e riprova.</value>
+  </data>
+  <data name="ScheduledMessageInProgress" xml:space="preserve">
+    <value>Il messaggio è in invio in questo momento e non viene mai inviato due volte. Riprova tra un minuto.</value>
+  </data>
+  <data name="ScheduledMessageChanged" xml:space="preserve">
+    <value>Qualcuno ha modificato il messaggio mentre lo stavi cambiando. Ricarica la pagina e riprova.</value>
   </data>
   <data name="MessageTemplateVariableMissing" xml:space="preserve">
     <value>Per questa conversazione non c’è un valore per «{0}»: scegli un altro modello o completa il testo a mano.</value>
@@ -4262,6 +4280,9 @@
   </data>
   <data name="WireDebitAccountMissing" xml:space="preserve">
     <value>Nel profilo emittente manca l'IBAN del conto da addebitare: inseriscilo nella configurazione «Fatturazione». Nessun batch è stato salvato.</value>
+  </data>
+  <data name="WireDebitIbanNotSwiss" xml:space="preserve">
+    <value>L'IBAN del conto da addebitare, nel profilo emittente, non è svizzero né del Liechtenstein: un bonifico in CHF è un pagamento nazionale e una banca svizzera lo esegue solo da un suo conto. Inserisci un IBAN svizzero o del Liechtenstein nella configurazione «Fatturazione». Nessun batch è stato salvato.</value>
   </data>
   <data name="WireOwnerAddressMissing" xml:space="preserve">
     <value>{0} proprietari non hanno un indirizzo completo (via, CAP, località e paese), che il file di bonifico richiede: completa i dati dei proprietari indicati. Nessun batch è stato salvato.</value>
@@ -6382,6 +6403,12 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocPdfPaymentUnknown" xml:space="preserve">
     <value>non indicato</value>
   </data>
+  <data name="FiscalDocPdfPaymentPortalPart" xml:space="preserve">
+    <value>pagato tramite il portale per {0} {1}</value>
+  </data>
+  <data name="FiscalDocPdfToCollectAtProperty" xml:space="preserve">
+    <value>Imposta di soggiorno da pagare in struttura: {0} {1}</value>
+  </data>
   <data name="FiscalDocPdfCourtesyCopy" xml:space="preserve">
     <value>Copia di cortesia della fattura elettronica: il documento valido ai fini fiscali è il file XML trasmesso al Sistema di Interscambio.</value>
   </data>
@@ -6408,6 +6435,12 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="FiscalDocPdfChToCollect" xml:space="preserve">
     <value>Da incassare</value>
+  </data>
+  <data name="FiscalDocPdfChPaidPortalPart" xml:space="preserve">
+    <value>Pagata tramite il portale: {0} {1}</value>
+  </data>
+  <data name="FiscalDocPdfChToCollectAtProperty" xml:space="preserve">
+    <value>Tassa di soggiorno da riscuotere in struttura: {0} {1}</value>
   </data>
   <data name="FiscalDocumentNotFound" xml:space="preserve">
     <value>Documento fiscale non trovato.</value>
@@ -6498,6 +6531,12 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="FiscalDocLineTouristTaxCh" xml:space="preserve">
     <value>Tassa di soggiorno (non soggetta all'IVA)</value>
+  </data>
+  <data name="FiscalDocLineToCollectNote" xml:space="preserve">
+    <value>{0} - da pagare in struttura</value>
+  </data>
+  <data name="FiscalDocLineToCollectNoteCh" xml:space="preserve">
+    <value>{0} - tassa da riscuotere in struttura</value>
   </data>
   <data name="FiscalDocLineCredit" xml:space="preserve">
     <value>Storno del documento {0}: {1}</value>
@@ -7345,6 +7384,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="StatementFileChannelFeesAgencyInvoice" xml:space="preserve">
     <value>Commissioni del portale riaddebitate dal gestore (fattura n. {0})</value>
   </data>
+  <data name="StatementFileChannelFeesAgencyNotRecharged" xml:space="preserve">
+    <value>Commissioni del portale (account del portale intestato al gestore, senza riaddebito in fattura)</value>
+  </data>
   <data name="StatementFileCommissionInvoice" xml:space="preserve">
     <value>Fattura del gestore n. {0}</value>
   </data>
@@ -7542,6 +7584,48 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="AccPkgOutsideOther" xml:space="preserve">
     <value>Altre operazioni senza IVA</value>
+  </data>
+  <data name="AccPkgSelfBilledRegisterTitle" xml:space="preserve">
+    <value>Autofatture TD17 (integrazione dell'IVA sulle fatture dei portali esteri), dal {1} al {2}, per data di emissione. Emittente: {0}</value>
+  </data>
+  <data name="AccPkgColSupplier" xml:space="preserve">
+    <value>Fornitore estero (cedente)</value>
+  </data>
+  <data name="AccPkgColSupplierCountry" xml:space="preserve">
+    <value>Paese del fornitore</value>
+  </data>
+  <data name="AccPkgColSupplierVat" xml:space="preserve">
+    <value>Partita IVA del fornitore</value>
+  </data>
+  <data name="AccPkgClassSelfBilled" xml:space="preserve">
+    <value>Autofatture TD17</value>
+  </data>
+  <data name="AccPkgVatSelfBilledOmittedTitle" xml:space="preserve">
+    <value>Autofatture TD17 non incluse in questo file</value>
+  </data>
+  <data name="AccPkgSelfBilledRejectedTitle" xml:space="preserve">
+    <value>Autofatture TD17 scartate dal SDI, escluse dalle cifre</value>
+  </data>
+  <data name="AccPkgSelfBilledRejectedReason" xml:space="preserve">
+    <value>Autofatture TD17 scartate dal SDI: {0}. Una fattura scartata si considera non emessa: è elencata nel registro delle autofatture con il suo stato, ma non entra nei totali per aliquota né nell'IVA e non ha PDF o XML.</value>
+  </data>
+  <data name="AccPkgPortalCommissionsTitle" xml:space="preserve">
+    <value>Commissioni dei portali sui conti intestati all'agenzia (V2), dal {0} al {1}, come le registra il libro mastro dei proprietari, per mese del rendiconto, proprietario e canale; la colonna Trattamento dice se l'agenzia le riaddebita al proprietario con la sua fattura o le sostiene</value>
+  </data>
+  <data name="AccPkgPortalCommissionsTotalsTitle" xml:space="preserve">
+    <value>Totali per canale e valuta</value>
+  </data>
+  <data name="AccPkgColPortalCommission" xml:space="preserve">
+    <value>Commissione del portale</value>
+  </data>
+  <data name="AccPkgColTreatment" xml:space="preserve">
+    <value>Trattamento</value>
+  </data>
+  <data name="AccPkgTreatmentRecharged" xml:space="preserve">
+    <value>Riaddebitata al proprietario</value>
+  </data>
+  <data name="AccPkgTreatmentBorne" xml:space="preserve">
+    <value>Non riaddebitata in fattura</value>
   </data>
   <data name="AccPkgStatementsTitle" xml:space="preserve">
     <value>Rendiconti pubblicati ai proprietari, per mese di competenza (ultima versione pubblicata)</value>
