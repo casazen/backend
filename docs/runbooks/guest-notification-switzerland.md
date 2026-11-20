@@ -230,7 +230,7 @@ declaration is undone. A declaration with a regime code belongs to another canto
 
 - **Idempotent.** `POST …/declare` on a day that is declared already answers the declaration that exists (`created: false`), whoever repeats the call: `declaredAt` and `declaredBy` are the
   first person's, and nothing is told again. Two hosts pressing at the same moment: the unique index (§ 19) lets one in and the other gets the declaration that won (23505 is handled, not
-  an error). A `receiptId` the declaration does not have yet is **attached** to it (a host that declared first and uploaded the receipt later); a call without one never removes it.
+  an error). A `receiptId` is **attached** only to a declaration that has none (a host that declared first and uploaded the receipt later); a receipt already attached is never replaced by another, and a call without one never removes it.
 - **`receiptId`** is optional (decision D10) and must be a `Police` receipt of this property whose report date is the arrival day, as `POST …/upload-receipt` records it: another property's,
   another day's or another type's is refused with 422 `ticino_declaration_receipt_invalid`.
 - **A day that has not started** (after today in Europe/Zurich) cannot be declared: 422 `ticino_declaration_day_in_future`. It would close a day whose guests have not arrived and silence its

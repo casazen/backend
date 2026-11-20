@@ -194,7 +194,8 @@ public class SwissComplianceController(
     /// <summary>
     /// Declares an arrival day of a Ticino property as uploaded to the police portal, with or without the receipt (E30/F02/US02/T01, NF-128, decision D10): the day is closed like a day
     /// with a receipt (it is no longer one of the days to notify, so the alerts and the cockpit stop listing it) and shows who declared it and when. <b>Idempotent</b>: a day declared already
-    /// answers the declaration that exists (<c>created: false</c>), whoever repeats the call; a <c>receiptId</c> the declaration does not have yet is attached to it. The other hosts of the
+    /// answers the declaration that exists (<c>created: false</c>), whoever repeats the call; a <c>receiptId</c> is attached only to a declaration that has none (one already attached is never
+    /// replaced by another). The other hosts of the
     /// property are told live when a declaration is created (<c>ticino-notification-declared</c>). The answer holds no guest data.
     /// </summary>
     /// <param name="propertyId">The property.</param>

@@ -255,9 +255,10 @@ public class TicinoNotificationService(
         if (receiptId is { } receipt && !await IsPoliceReceiptOfTheDayAsync(property, day, receipt, cancellationToken))
             throw new DomainRuleException("ticino_declaration_receipt_invalid", "TicinoDeclarationReceiptInvalid");
 
-        // Idempotent: a day declared already answers the declaration that exists, whoever repeats the call. A receipt it does not have yet is attached; nothing else changes.
+        // Idempotent: a day declared already answers the declaration that exists, whoever repeats the call. A receipt is attached only to a declaration that has none (the host declared first and
+        // uploaded the receipt later); one already attached is never replaced in silence by another, and nothing else changes.
         var existing = await FirstDeclarationAsync(property, day, cancellationToken);
-        if (existing is not null && receiptId is { } attach && existing.ReceiptId != attach)
+        if (existing is not null && receiptId is { } attach && existing.ReceiptId is null)
         {
             existing.ReceiptId = attach;
             try

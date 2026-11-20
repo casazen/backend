@@ -342,6 +342,32 @@ public class TicinoDeclarationTests
     }
 
     [Fact]
+    public async Task Declare_ARepeatedCallWithAnotherReceipt_NeverReplacesTheReceiptAlreadyAttached()
+    {
+        // The receipt on the declaration is the one the first host recorded: a later call with another Police receipt of the same day (valid, but a different one) answers the declaration as
+        // it is and changes nothing, and the same receipt again is the same answer.
+        await using var db = NewDb();
+        var property = await SeedPropertyAsync(db);
+        AddUser(db, Anna, "Anna", "Rossi");
+        var first = AddReceipt(db, property, "Police");
+        var second = AddReceipt(db, property, "Police");
+        await db.SaveChangesAsync();
+        var push = new RecordingPush();
+        var service = new TicinoNotificationService(db, Clock, pushNotifications: push);
+
+        await service.DeclareDayAsync(property.Id, ArrivalDay, Anna, first);
+        var repeated = await service.DeclareDayAsync(property.Id, ArrivalDay, Bruno, second);
+        var sameAgain = await service.DeclareDayAsync(property.Id, ArrivalDay, Bruno, first);
+
+        Assert.False(repeated.Created);
+        Assert.Equal(first, repeated.ReceiptId);
+        Assert.Equal(first, sameAgain.ReceiptId);
+        var row = Assert.Single(await db.SwissNotificationDeclarations.AsNoTracking().ToListAsync());
+        Assert.Equal((Anna, first), (row.DeclaredByUserId, row.ReceiptId));
+        Assert.Single(push.Sent);
+    }
+
+    [Fact]
     public async Task Declare_AnUndoThatPassesBetweenTheReadAndTheSaveOfTheReceipt_LeavesTheDayDeclaredAgainByThisCall()
     {
         // The declaration is read, a co-host undoes it, and only then the receipt is saved on it: the row to update is gone. The call comes after the undo, so the day is declared again with the

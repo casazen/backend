@@ -70,8 +70,8 @@ public interface ITicinoNotificationService
     /// <summary>
     /// Declares an arrival day of a Ticino property as uploaded to the police portal, with or without the receipt (E30/F02/US02/T01, NF-128 AC1, decision D10): the day is closed
     /// (<see cref="ListPendingDaysAsync"/> no longer lists it) and shows who declared it and when. <b>Idempotent</b>: a day declared already answers the declaration that exists
-    /// (<see cref="TicinoDeclaration.Created"/> false), declared by whoever did it first, and nothing is told again; only a <paramref name="receiptId"/> the declaration does not have yet is
-    /// attached to it. A created declaration is told live to the hosts of the property (push, bell and open pages: <c>ticino-notification-declared</c>).
+    /// (<see cref="TicinoDeclaration.Created"/> false), declared by whoever did it first, and nothing is told again; a <paramref name="receiptId"/> is attached only to a declaration that has
+    /// none, and a receipt already attached is never replaced by another. A created declaration is told live to the hosts of the property (push, bell and open pages: <c>ticino-notification-declared</c>).
     /// Throws <c>property_not_found</c>, <c>property_not_in_ticino</c>, <c>ticino_declaration_day_in_future</c> (a day that has not started in Switzerland cannot be declared: it would
     /// silence the alerts of an arrival that has not happened) or <c>ticino_declaration_receipt_invalid</c> (the receipt is not a <c>Police</c> receipt of this property and day).
     /// </summary>
