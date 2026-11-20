@@ -246,12 +246,20 @@ public static class EncryptedColumns
             nameof(Guest.DocumentNumber),
             nameof(Guest.DocumentIssuingCountry)),
         // NF-46: the tourist tax exemption the host chose travels with the document, under the same purpose: its reason can reveal a
-        // health condition (art. 9 GDPR).
+        // health condition (art. 9 GDPR). NF-132 (casazen/backend#979): the home address of the guest (street, postal code, town), personal data of a
+        // person that is never searched, gets the treatment of every address added since E06 (the invoice data, the residence of a lease party).
         new EncryptedEntity<StayGuest>(
             GuestDocumentPurpose,
             nameof(StayGuest.DocumentNumber),
             nameof(StayGuest.DocumentIssuePlaceName),
-            nameof(StayGuest.TaxExemptionCode)),
+            nameof(StayGuest.TaxExemptionCode),
+            nameof(StayGuest.ResidenceStreet),
+            nameof(StayGuest.ResidencePostalCode),
+            nameof(StayGuest.ResidenceCityName)),
+        // NF-132: the plate of the car of the stay, typed at the check-in with the guests' data and never searched: the same purpose as them.
+        new EncryptedEntity<Booking>(
+            GuestDocumentPurpose,
+            nameof(Booking.VehiclePlate)),
         // NF-46: the same reason on the confirmed tax of the stay, kept 10 years for the comune's checks: encrypted too (art. 9 GDPR), and
         // cleared with the guest's data; only the kind of the exemption and the amount stay for the fiscal retention.
         new EncryptedEntity<StayTouristTaxGuest>(

@@ -512,6 +512,13 @@ internal static class PostgresAdvisoryLocks
         /// 24_000 to 24_099 are the cleaning at check-out (epic E24).
         /// </summary>
         CleaningAutomation = 24_011,
+
+        /// <summary>
+        /// The load of the seed of the Swiss localities and municipalities (single key, E29/F01/US01/T01): instances starting together write the two
+        /// tables one at a time, and the second finds the version stamp of the first and does nothing. Held until the commit. The values 29_000 to
+        /// 29_099 are the Swiss places and the guest-registration regimes (epic E29).
+        /// </summary>
+        SwissPlacesSeed = 29_011,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

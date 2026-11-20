@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261120135848_AddHostSurfaces")]
-    partial class AddHostSurfaces
+    [Migration("20261120151948_AddSwissGuestFields")]
+    partial class AddSwissGuestFields
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -1310,6 +1310,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("VehiclePlate")
+                        .HasColumnType("text");
 
                     b.HasKey("Id");
 
@@ -7357,13 +7360,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("FiscalDataRetentionUntil")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("GtmContainerId")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<bool>("GuestAreaOnOwnDomain")
-                        .HasColumnType("boolean");
-
                     b.Property<bool>("HasPartitaIva")
                         .HasColumnType("boolean");
 
@@ -7399,12 +7395,6 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("OrgType")
                         .HasColumnType("integer");
-
-                    b.Property<int>("OwnerLoginHostState")
-                        .HasColumnType("integer");
-
-                    b.Property<bool>("OwnerPortalOnOwnDomain")
-                        .HasColumnType("boolean");
 
                     b.Property<string>("PartitaIvaNumber")
                         .HasMaxLength(11)
@@ -7483,10 +7473,6 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("UseOwnDomainForLinks")
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true);
 
                     b.Property<string>("VatId")
                         .HasMaxLength(32)
@@ -15639,6 +15625,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("Position")
                         .HasColumnType("integer");
 
+                    b.Property<string>("ResidenceCityName")
+                        .HasColumnType("text");
+
                     b.Property<string>("ResidenceComuneCode")
                         .HasMaxLength(9)
                         .HasColumnType("character varying(9)");
@@ -15658,9 +15647,15 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool?>("ResidenceInItaly")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("ResidencePostalCode")
+                        .HasColumnType("text");
+
                     b.Property<string>("ResidenceProvince")
                         .HasMaxLength(2)
                         .HasColumnType("character varying(2)");
+
+                    b.Property<string>("ResidenceStreet")
+                        .HasColumnType("text");
 
                     b.Property<string>("TaxExemptionCode")
                         .HasColumnType("text");
@@ -16941,8 +16936,8 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
 
                     b.Property<DateTime>("UploadedAt")
                         .HasColumnType("timestamp with time zone");

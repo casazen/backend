@@ -966,7 +966,7 @@ a strict stand-in, never called, since a Swiss document has no XML.
 
 **The agency** (plan Agency, flags `FiscalDocumentIssuance`, `OwnerInvoicing`, `AccountantPackage`, `AgencyTier` on, the configuration shipped in `appsettings.json`):
 an issuer of Switzerland registered for the VAT (UID, IBAN, QR-IBAN) saved with `SaveSettingsAsync` as the wizard «Fatturazione» saves it, with the automatic issue and
-the e-mail to the guest on and Airbnb collecting the tourist tax of Ticino; one flat in Lugano (CHF, BFS 5113) owned by a private owner with a mandate of 20% «+ IVA» and a
+the e-mail to the guest on and Airbnb collecting the tourist tax of Ticino; one flat in Lugano (CHF, BFS 5192) owned by a private owner with a mandate of 20% «+ IVA» and a
 cleaning flat fee of CHF 80; the rule of the agency for Booking.com, 15%; the listing mapped on the channel manager; the account of Booking.com held by the owner (V1)
 or, in its variant, by the agency (V2).
 

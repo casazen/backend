@@ -724,11 +724,15 @@ the summary reads now applies too (it used a copy of the list that did not leave
   table of every payment of the year with its period, amount, day, reference and receipt. The periods add up to the year for what is owed; a payment that spans two periods is in the line of the
   year and in the table, in no period (the file says how the periods are counted in its title). 400 `tourist_tax_account_invalid_period` for another `by`.
 - **Ticino** (`…/ticino`, `TouristTaxSummaryService.GetTicinoYearlyCountAsync`, due by **5 January** of the next year: `TouristTaxYearEndRules.TicinoCountDue`). For each property in the canton `TI`
-  (the canton of its municipality, as the accountant package tells the Swiss tourist tax; a deleted property with stays is there too, one with none is not) the stays with check-in in the year
+  (the canton of its place, as the one resolver of the place of a Swiss property gives it, `IPropertySwissPlaceResolver`, E29/F01/US01/T02: the municipality the host confirmed on the property, or,
+  without it, the one its postal code and its town give; a deleted property with stays is there too, one with none is not) the stays with check-in in the year
   (confirmed, checked in or checked out; a stay is counted whole in the year of its check-in, ⚖ like the summary), their nights, **taxed** (the tourist tax lines of the issued documents of the
   stay add up to more than nothing, a credit note taking its amount away), **untaxed** (a document without a tax: the portal collects it, the guest is exempt, no rule), **without a document**
   (none issued yet: told apart, never counted as untaxed) and **the francs of the documents** (`FiscalDocumentLine` of type tourist tax of the documents in the currency of the property: E12,
-  never a calculation). **A property in Switzerland whose canton is not known** (no Swiss municipality on it, or one the registry of the municipalities lacks: the field is optional) may be in
+  never a calculation). **A municipality derived from the postal code and the town** (the host never confirmed one on the property: `TicinoPropertyCount.MunicipalityDerived`) is the municipality
+  of the row, with a note in the last column («Comune ricavato da CAP e località, da confermare nella scheda dell'immobile»): its canton is known, the municipality is still to be confirmed, and the
+  tourist tax of the documents is still charged only on a municipality the host confirmed, so the stays of that row may be untaxed. **A property in Switzerland whose canton is not known** (no place:
+  no municipality stored on it that the directory has and none its postal code and town give, or a postal code that leaves several municipalities, or two cantons, open) may be in
   Ticino, so it is in the count with its stays and a note in the last column («Cantone non determinato…»), never dropped in silence (`TicinoPropertyCount.CantonUnknown`). Every query names the org.
 - **JSON read** (FIX/BE-YEAREND-JSON: the screen could not read the figures, the reasons or the unknown cantons from a file). `?format=json` on each of the three addresses answers the typed result of the
   service as JSON (`TouristTaxYearEndDtos.cs`): camel case, amounts as numbers to the cent (the summaries, the totals and the payments are the DTOs of `GET api/tourist-tax/summary`, so they say them again in
@@ -740,10 +744,12 @@ the summary reads now applies too (it used a copy of the list that did not leave
     and `total` are the ones of `GET summary`, with `paid`, `balance`, `status` and `remittances` always there (the year-end needs the whole org). **`exemptions[].reason` is the server's**: with `guest.read` the
     codes of the catalogue (`resident`, `health_care`...) and `erased`; without it `minor_age` and one `restricted` row that counts the others, and no code anywhere in the answer (art. 9 GDPR).
   - `agent-account`: `{ year, by, currency: "EUR", rows: [{ comune, period, from, to, isYear, stays, nights, guests, collected, staysWithoutAmount, remitted, balance }], remittances, total }`.
-  - `ticino`: `{ year, dueDate, cantonUnknownCount, properties: [{ propertyId, propertyName, address, city, municipalityCode, currency, stays, nights, taxedStays, taxedNights, untaxedStays, untaxedNights,
-    staysWithoutDocument, nightsWithoutDocument, touristTax, cantonUnknown }] }`: `cantonUnknown` stays on each property that may be in Ticino and `cantonUnknownCount` is the number of those, so the screen
-    says it without counting; `touristTax` is a number in the `currency` of the property (CHF).
+  - `ticino`: `{ year, dueDate, cantonUnknownCount, properties: [{ propertyId, propertyName, address, city, municipalityCode, municipalityDerived, currency, stays, nights, taxedStays, taxedNights, untaxedStays,
+    untaxedNights, staysWithoutDocument, nightsWithoutDocument, touristTax, cantonUnknown }] }`: `municipalityCode` is the BFS number as text (the stored one, or the derived one when `municipalityDerived`
+    is true: the canton is known, the municipality is to be confirmed on the property; for a property whose canton is unknown the number stored on it, if any); `cantonUnknown` stays on each property that
+    may be in Ticino (no place or an ambiguous one) and `cantonUnknownCount` is the number of those, so the screen says it without counting; `touristTax` is a number in the `currency` of the property (CHF).
 - **Proof.** `TouristTaxYearEndExportsTests` (`TouristTaxYearEnd_ExemptionReasonsOnlyToWhoHoldsGuestRead_Test`: the reasons with and without `guest.read`, in the data and in the file;
   `TouristTaxYearEnd_DueMinusRemittedPerMunicipality_Test`: due less remitted per comune to the cent, the reasons and the exemptions, the quarters adding
-  up to the year, the files; the count of Ticino from the documents; the whole-org refusal and the rules) and `TouristTaxYearEndJsonTests` (the JSON read: `YearEndDeclarationJson_WithoutGuestRead_HidesTheReasons_Test`,
+  up to the year, the files; the count of Ticino from the documents; `TouristTaxYear_TicinoCount_ReadsTheCantonFromTheOneResolver_Test`: the canton read from the one resolver, a derived municipality
+  flagged and said in the file, an ambiguous postal code kept as unknown, a property placed outside Ticino left out; the whole-org refusal and the rules) and `TouristTaxYearEndJsonTests` (the JSON read: `YearEndDeclarationJson_WithoutGuestRead_HidesTheReasons_Test`,
   `YearEndJson_NeedsTheWholeOrganization_Test`, `TicinoJson_CountsTheUnknownCantons_Test`, and `YearEndJson_IsAskedByName_AndTheFilesAreStillTheFiles_Test`: the format named, the same 400s, the CSV the exporter's).

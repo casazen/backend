@@ -82,13 +82,18 @@ public static class CheckInIssueCodes
 /// <param name="DeclaredGuests">The guests the booking declares.</param>
 /// <param name="OctorateReceivesGuests">True when the booking is mirrored on Octorate and its guests are sent there.</param>
 /// <param name="RequiredGuestFields">The statistical fields the region requires (<see cref="IstatGuestFieldLists"/> names); empty when none.</param>
+/// <param name="InTicino">
+/// The property is in canton Ticino (NF-132): every guest the police file notifies on their own row (<see cref="TicinoPoliceFile.NotifiedPositions"/>)
+/// needs a document type and number, not only the head of the stay.
+/// </param>
 public sealed record CheckInReadinessInput(
     IReadOnlyList<StayGuest> Guests,
     IReadOnlyList<StayGuestCodes>? Codes,
     DateOnly Arrival,
     int DeclaredGuests,
     bool OctorateReceivesGuests,
-    IReadOnlyCollection<string> RequiredGuestFields);
+    IReadOnlyCollection<string> RequiredGuestFields,
+    bool InTicino = false);
 
 /// <summary>
 /// The checks of the check-in wizard (E03/F01/US01/T04, NF-40, NF-45), pure: no database, no call. The completeness of the Alloggiati record is
@@ -148,11 +153,21 @@ public static class CheckInReadinessRules
         foreach (var error in AlloggiatiRecordRules.CompositionErrors(guests.Select(g => g.Type).ToList()))
             issues.Add(new CheckInIssue(guests[error.Index].Position, CheckInIssueCodes.GuestFieldMissing, AlloggiatiRecordRules.FieldType, true));
 
+        // NF-132: in Ticino the police file notifies every adult (or every minor of a stay without adults) on their own row, with the type of their
+        // document: the check-in is not complete until each of them has one, family and group members included.
+        var notified = input.InTicino
+            ? TicinoPoliceFile.NotifiedPositions(
+                guests.Select(g => (g.Position, g.Type, g.DateOfBirth is { } born ? DateOnly.FromDateTime(born) : (DateOnly?)null)), input.Arrival)
+            : null;
+
         for (var index = 0; index < guests.Count; index++)
         {
             var guest = guests[index];
             var missing = AlloggiatiRecordRules.MissingFields(guest);
             issues.AddRange(missing.Select(field => new CheckInIssue(guest.Position, CheckInIssueCodes.GuestFieldMissing, field, true)));
+
+            if (notified is not null && notified.Contains(guest.Position))
+                issues.AddRange(TicinoDocumentIssues(guest, missing));
 
             if (input.OctorateReceivesGuests)
                 issues.AddRange(OctorateIssues(guest, missing));
@@ -214,6 +229,23 @@ public static class CheckInReadinessRules
         };
         if (residence is not null)
             yield return new CheckInIssue(guest.Position, CheckInIssueCodes.OctorateFieldMissing, residence, true);
+    }
+
+    /// <summary>
+    /// The document of a guest the Ticino police file notifies (NF-132): its type (the kind chosen or the code of the table) and its number, blocking. A field
+    /// the Alloggiati record already reports missing (a single guest or a head) is not reported twice.
+    /// </summary>
+    private static IEnumerable<CheckInIssue> TicinoDocumentIssues(StayGuest guest, IReadOnlyList<string> missing)
+    {
+        var hasKind = guest.DocumentType is GuestDocumentType.Passport or GuestDocumentType.IdentityCard or GuestDocumentType.DriversLicense;
+        if (!hasKind && string.IsNullOrWhiteSpace(guest.DocumentTypeCode) && !missing.Contains(AlloggiatiRecordRules.FieldDocumentType))
+            yield return new CheckInIssue(guest.Position, CheckInIssueCodes.GuestFieldMissing, AlloggiatiRecordRules.FieldDocumentType, true);
+
+        if (!AlloggiatiRecordRules.IsValidDocumentNumber(AlloggiatiRecordRules.NormalizeDocumentNumber(guest.DocumentNumber))
+            && !missing.Contains(AlloggiatiRecordRules.FieldDocumentNumber))
+        {
+            yield return new CheckInIssue(guest.Position, CheckInIssueCodes.GuestFieldMissing, AlloggiatiRecordRules.FieldDocumentNumber, true);
+        }
     }
 
     /// <summary>

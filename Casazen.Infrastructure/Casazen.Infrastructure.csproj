@@ -105,4 +105,13 @@
     <EmbeddedResource Include="Data\Seeds\comuni-centroidi.source.json" LogicalName="Casazen.Infrastructure.Data.Seeds.comuni-centroidi.source.json" />
   </ItemGroup>
 
+  <!--
+    The official Swiss localities and municipalities (E29/F01/US01/T01, NF-124): derived from the swisstopo directory of the localities by
+    scripts/build-swiss-places.mjs, compiled into the assembly and loaded at startup by SwissPlacesSeedHostedService (SwissMunicipalitySeed). A
+    build without the file has no seed and only logs a warning. Source, licence and how to refresh it: Data/Seeds/swiss/README.md.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Data\Seeds\swiss\swiss-localities.csv" LogicalName="Casazen.Infrastructure.Data.Seeds.swiss.swiss-localities.csv" Condition="Exists('Data\Seeds\swiss\swiss-localities.csv')" />
+  </ItemGroup>
+
 </Project>

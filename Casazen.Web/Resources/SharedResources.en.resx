@@ -322,10 +322,10 @@
     <value>The period cannot be longer than {0} days.</value>
   </data>
   <data name="SwissReceiptTypeRequired" xml:space="preserve">
-    <value>Provide the receipt type: Police or OTR.</value>
+    <value>Provide the document type: Police, OTR, ParentalAuthorization or GroupSheet.</value>
   </data>
   <data name="SwissReceiptTypeInvalid" xml:space="preserve">
-    <value>Invalid receipt type: use "Police" (police notification) or "OTR" (overnight report).</value>
+    <value>Invalid document type: use "Police" (police notification), "OTR" (overnight report), "ParentalAuthorization" (authorization of the parents of an unaccompanied minor) or "GroupSheet" (group sheet).</value>
   </data>
   <data name="SwissReceiptReferenceRequired" xml:space="preserve">
     <value>Provide the reference of the submission, for instance the confirmation number of the portal.</value>
@@ -338,6 +338,9 @@
   </data>
   <data name="SwissReceiptFileInvalid" xml:space="preserve">
     <value>The receipt file is empty or larger than {0} MB.</value>
+  </data>
+  <data name="SwissReceiptDateTooOld" xml:space="preserve">
+    <value>The date is more than {0} years ago: a document of this type is kept {0} years from its date, so the automatic retention would delete it at once. Check the date (the arrival day).</value>
   </data>
   <data name="BookingNotFound" xml:space="preserve">
     <value>Booking not found</value>
@@ -1515,6 +1518,9 @@
   </data>
   <data name="CheckInTaxExemptionInvalid" xml:space="preserve">
     <value>This tourist tax exemption reason cannot be chosen.</value>
+  </data>
+  <data name="CheckInVehiclePlateInvalid" xml:space="preserve">
+    <value>Invalid plate: use letters, digits and hyphens, at most {0} characters.</value>
   </data>
   <data name="CheckInDocumentProcessingFailed" xml:space="preserve">
     <value>Document processing failed. Please try again or enter the data manually.</value>
@@ -8627,5 +8633,26 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="TicinoFileFormatInvalid" xml:space="preserve">
     <value>Invalid file format: choose CSV or XML.</value>
+  </data>
+  <data name="SwissPlacesQueryTooLong" xml:space="preserve">
+    <value>The search for a locality can be at most 100 characters long.</value>
+  </data>
+  <data name="SwissMunicipalityUnknown" xml:space="preserve">
+    <value>This number is not a Swiss municipality of the official list.</value>
+  </data>
+  <data name="SwissMunicipalityCodeInvalid" xml:space="preserve">
+    <value>Give the Swiss municipality by its official FSO number, one to four digits (for example 5192 for Lugano).</value>
+  </data>
+  <data name="SwissMunicipalityNotApplicable" xml:space="preserve">
+    <value>A Swiss municipality can be set only for a property in Switzerland.</value>
+  </data>
+  <data name="SwissPlacesUnavailable" xml:space="preserve">
+    <value>The official list of the Swiss municipalities is not loaded yet: the municipality cannot be checked. Try again later.</value>
+  </data>
+  <data name="TtTicinoNoteMunicipalityDerived" xml:space="preserve">
+    <value>Municipality worked out from the postal code and the town, to be confirmed on the property</value>
+  </data>
+  <data name="TicinoNotAGroup" xml:space="preserve">
+    <value>This stay is not a group of at least {0} persons (group leader and group members): no group sheet is needed.</value>
   </data>
 </root>

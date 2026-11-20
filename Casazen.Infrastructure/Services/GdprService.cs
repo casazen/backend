@@ -118,6 +118,7 @@ public class GdprService(
                 b.AttributionMedium,
                 b.AttributionCampaign,
                 b.AttributionReferrerHost,
+                b.VehiclePlate,
                 b.CreatedAt,
                 Payments = b.Payments
                     .OrderBy(p => p.CreatedAt)
@@ -179,12 +180,14 @@ public class GdprService(
                 b.Id, b.BookingCode, b.PropertyName, DateOnly.FromDateTime(b.CheckInDate), DateOnly.FromDateTime(b.CheckOutDate),
                 b.Status, b.Source, b.NumberOfGuests, b.NumberOfAdults, b.NumberOfChildren, b.TotalPrice, b.TouristTaxAmount,
                 b.SpecialRequests, b.CreatedAt, b.Payments, b.ExpectedArrivalTime,
-                BookingAttribution.SourceForExport(b.AttributionSource), b.AttributionMedium, b.AttributionCampaign, b.AttributionReferrerHost)).ToList(),
+                BookingAttribution.SourceForExport(b.AttributionSource), b.AttributionMedium, b.AttributionCampaign, b.AttributionReferrerHost,
+                b.VehiclePlate)).ToList(),
             StayGuests = stayGuests.Select(s => new GuestExportStayGuest(
                 s.BookingId, s.Position, s.GuestId == guest.Id, s.Type, s.FirstName, s.LastName, s.Gender, ToDate(s.DateOfBirth),
                 s.BornInItaly, s.BirthComuneCode, s.BirthComuneName, s.BirthProvince, s.BirthCountryCode, s.BirthCountryName,
                 s.CitizenshipCode, s.CitizenshipName, s.DocumentType, s.DocumentTypeCode, s.DocumentNumber,
-                s.DocumentIssuePlaceCode, s.DocumentIssuePlaceName, s.DataSource, s.AnonymizedAt)).ToList(),
+                s.DocumentIssuePlaceCode, s.DocumentIssuePlaceName, s.DataSource, s.AnonymizedAt,
+                s.ResidenceStreet, s.ResidencePostalCode, s.ResidenceCityName)).ToList(),
             CheckInSessions = sessions,
             AlloggiatiCommunications = communications,
             Consents = new GuestExportConsents(

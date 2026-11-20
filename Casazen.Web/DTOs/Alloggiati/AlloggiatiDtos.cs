@@ -377,11 +377,22 @@ public class StayGuestDocumentNumberDto
     public string DocumentNumber { get; set; } = string.Empty;
 }
 
-/// <summary>Body of <c>PUT /api/alloggiati/{bookingId}/stay-guests</c>: every guest of the stay, in record order.</summary>
+/// <summary>
+/// Body of <c>PUT /api/alloggiati/{bookingId}/stay-guests</c> and <c>PUT /api/bookings/{id}/checkin-wizard/guests</c>: every guest of the stay, in record
+/// order, with their home (NF-132: <c>residenceStreet</c>, <c>residencePostalCode</c>, <c>residenceCityName</c>, whole truth like every field of a guest).
+/// </summary>
 public class ReplaceStayGuestsRequest
 {
     [Required(ErrorMessage = CheckInValidationKeys.FieldRequired)]
     public List<StayGuestSubmitDto> Guests { get; set; } = [];
+
+    /// <summary>
+    /// The plate of the car of the stay (NF-132, «Numero autovettura» of the Ticino police file). Not sent (<c>null</c>): the stored plate stays, so a
+    /// client that does not know the field never clears it; an empty text clears it. Spaces are removed and the letters upper-cased; letters, digits
+    /// and hyphens only, at most 20 (field <c>VehiclePlate</c>, <c>CheckInVehiclePlateInvalid</c>).
+    /// </summary>
+    [MaxLength(64, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
+    public string? VehiclePlate { get; set; }
 }
 
 /// <summary>One entry of an official Alloggiati table.</summary>

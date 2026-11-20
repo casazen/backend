@@ -32,7 +32,8 @@ public sealed partial class TouristTaxSummaryService(
     IFiscalReportingService fiscalReporting,
     IFileStorage storage,
     ILogger<TouristTaxSummaryService> logger,
-    TimeProvider? timeProvider = null) : ITouristTaxSummaryService
+    TimeProvider? timeProvider = null,
+    IPropertySwissPlaceResolver? swissPlaces = null) : ITouristTaxSummaryService
 {
     private const int ReadChunkBytes = 81920;
 

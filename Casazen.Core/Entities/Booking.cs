@@ -240,6 +240,14 @@ public class Booking : ITenantOwned
     [MaxLength(Services.ArrivalTimeRules.MaxLength)]
     public string? ExpectedArrivalTime { get; set; }
 
+    /// <summary>
+    /// Plate of the car the guests arrive with («Numero autovettura» of the Ticino police file, NF-132, casazen/backend#979); null when not given.
+    /// Optional, asked only where the property is in canton Ticino; stored upper case without spaces (<see cref="Regulatory.VehiclePlates"/>,
+    /// at most <see cref="Regulatory.VehiclePlates.MaxLength"/> characters, checked on input). Encrypted at rest (<c>EncryptedColumns</c>): the
+    /// column is <c>text</c>. Cleared with the guest's data when the guest is erased or the Alloggiati data retention runs.
+    /// </summary>
+    public string? VehiclePlate { get; set; }
+
     /// <summary>Payment option selected: Immediate (pay now), OnCancellationDeadline (pay on deadline), OnSite (pay at property).</summary>
     [Required]
     public PaymentOption PaymentOption { get; set; } = PaymentOption.Immediate;

@@ -11,12 +11,11 @@ namespace Casazen.Infrastructure.Services;
 
 /// <summary>
 /// Working CSV summary of overnight stays for the Ticino tourism organization (ADR-016).
-/// This is a count of nights, not a verified tax declaration or a submission receipt.
+/// This is a count of nights, not a verified tax declaration or a submission receipt. The property is in Ticino when the one resolver of the
+/// place of a Swiss property says so (<see cref="IPropertySwissPlaceResolver"/>, E29/F01/US01/T02).
 /// </summary>
-public class OtrTaxService(AppDbContext context) : IOtrTaxService
+public class OtrTaxService(AppDbContext context, IPropertySwissPlaceResolver? placeResolver = null) : IOtrTaxService
 {
-    private const string TicinoCantonCode = "TI";
-
     public async Task<OtrTaxResult> GeneratePeriodReportAsync(
         Guid propertyId,
         DateTime startDate,
@@ -29,14 +28,8 @@ public class OtrTaxService(AppDbContext context) : IOtrTaxService
             .FirstOrDefaultAsync(p => p.Id == propertyId, cancellationToken)
             ?? throw PropertyNotFound(propertyId);
 
-        var municipality = property.SwissMunicipalityCode != null
-            ? await context.SwissMunicipalities
-                .AsNoTracking()
-                .FirstOrDefaultAsync(m => m.MunicipalityCode == property.SwissMunicipalityCode, cancellationToken)
-            : null;
-
-        if (!string.Equals(property.Country?.Trim(), "CH", StringComparison.OrdinalIgnoreCase)
-            || municipality?.CantonCode != TicinoCantonCode)
+        var place = await (placeResolver ?? new PropertySwissPlaceResolver(context)).ResolveAsync(property, cancellationToken);
+        if (place?.IsInTicino != true)
             throw new DomainRuleException(
                 "property_not_in_ticino",
                 "PropertyNotInTicino",
