@@ -23,6 +23,8 @@ public sealed record PublicUrls(
     string? CustomDomainUrl);
 
 /// <summary>Owner-facing domain configuration snapshot for an org (#298 / US-024).</summary>
+/// <param name="Surfaces">The surfaces of the agency's own domain (E40/F01/US01), <c>null</c> while the flag <c>WhiteLabelHost</c> is off.</param>
+/// <param name="Tracking">The tracking of the agency's pages (E40/F01/US01/T04), <c>null</c> while the flag <c>SiteEmbed</c> is off.</param>
 public sealed record OrgDomainConfig(
     Guid OrgId,
     PublicHostMode PublicHostMode,
@@ -32,7 +34,60 @@ public sealed record OrgDomainConfig(
     bool CanUseCustomDomain,
     DnsInstructions? DnsInstructions,
     PublicUrls PublicUrls,
-    DomainStatusInfo Status);
+    DomainStatusInfo Status,
+    OrgDomainSurfaces? Surfaces = null,
+    OrgDomainTracking? Tracking = null);
+
+/// <summary>The tracking of the agency's pages (NF-149): its Google Tag Manager container (<see cref="GtmContainerIds"/>), or <c>null</c>.</summary>
+public sealed record OrgDomainTracking(string? GtmContainerId);
+
+public enum SetOrgDomainTrackingOutcome
+{
+    Success,
+    NotFound,
+
+    /// <summary>The text is no container id (<see cref="GtmContainerIds.TryNormalize"/>) — controller maps to 400 <c>gtm_container_id_invalid</c>.</summary>
+    Invalid,
+}
+
+public sealed record SetOrgDomainTrackingResult(
+    SetOrgDomainTrackingOutcome Outcome,
+    OrgDomainTracking? Tracking);
+
+/// <summary>
+/// The surfaces of the agency's own domain (E40/F01/US01, NF-140..NF-142): what the agency chose, the state of the owner sign-in on the
+/// domain and what is really served (<see cref="HostSurfaceRules"/>: nothing until the domain is verified and paid for).
+/// </summary>
+/// <param name="OwnerLoginAutomatic">The Auth0 registration of the domain is automatic (flag <c>Auth0HostSync</c>); otherwise CasaZen does it by hand.</param>
+public sealed record OrgDomainSurfaces(
+    bool GuestAreaOnOwnDomain,
+    bool OwnerPortalOnOwnDomain,
+    bool UseOwnDomainForLinks,
+    OwnerLoginHostState OwnerLoginHostState,
+    bool OwnerLoginAutomatic,
+    HostSurfaces Effective);
+
+/// <summary>The three choices of <c>PUT api/orgs/{orgId}/domain/surfaces</c> (E40/F01/US01).</summary>
+public sealed record OrgDomainSurfaceSettings(
+    bool GuestAreaOnOwnDomain,
+    bool OwnerPortalOnOwnDomain,
+    bool UseOwnDomainForLinks);
+
+public enum SetOrgDomainSurfacesOutcome
+{
+    Success,
+    NotFound,
+
+    /// <summary>The org's effective tier cannot use a custom domain: the surfaces follow the domain's plan — controller maps to 403 <c>plan_required</c>.</summary>
+    PlanRequired,
+
+    /// <summary>The org is not in the custom-domain mode or has no custom domain — controller maps to 400 <c>org_domain_not_configured</c>.</summary>
+    NotConfigured,
+}
+
+public sealed record SetOrgDomainSurfacesResult(
+    SetOrgDomainSurfacesOutcome Outcome,
+    OrgDomainConfig? Config);
 
 /// <summary>
 /// Honest state of the custom domain for the settings page (BK-17): why it is pending or failed, when it was last checked,
@@ -102,4 +157,23 @@ public interface IOrgDomainService
         CancellationToken cancellationToken = default);
 
     Task<VerifyOrgDomainResult> VerifyDomainAsync(Guid orgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Saves the surfaces of the agency's own domain (E40/F01/US01). Turning the owner portal on while the Auth0 state is
+    /// <see cref="OwnerLoginHostState.NotRequested"/> asks for the registration (<see cref="OwnerLoginHostState.Pending"/>). The cached
+    /// <c>resolve-host</c> answer of the domain is dropped. The flag <c>WhiteLabelHost</c> is the controller's gate.
+    /// </summary>
+    Task<SetOrgDomainSurfacesResult> SetSurfacesAsync(
+        Guid orgId,
+        OrgDomainSurfaceSettings settings,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Saves the Google Tag Manager container of the agency's pages (E40/F01/US01/T04, NF-149), normalized by <see cref="GtmContainerIds"/>; an
+    /// empty value clears it. The cached <c>resolve-host</c> answers of the org's hosts are dropped. The flag <c>SiteEmbed</c> is the controller's gate.
+    /// </summary>
+    Task<SetOrgDomainTrackingResult> SetTrackingAsync(
+        Guid orgId,
+        string? gtmContainerId,
+        CancellationToken cancellationToken = default);
 }

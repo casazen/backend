@@ -1,4 +1,7 @@
 using System.Net;
+using Casazen.Core.DTOs;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Services;
 using Casazen.Web.Configuration;
 using Casazen.Web.Controllers;
 using Casazen.Web.Extensions;
@@ -11,6 +14,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
@@ -217,6 +221,36 @@ public class CorsPolicyTests
 
         Assert.Equal(customDomain, Assert.Single(allowed.Headers.GetValues("Access-Control-Allow-Origin")));
         Assert.False(rejected.Headers.Contains("Access-Control-Allow-Origin"));
+    }
+
+    [Fact]
+    public async Task Preflight_OwnerPortalFromAnAgencyDomainThatServesIt_IsAllowedWithoutCredentials()
+    {
+        // E40/F01/US01/T02: the real source of the agency domains, over a resolver that serves the owner portal on that domain. The origin is
+        // reflected on the owner portal only, never with credentials and never as a wildcard; a host-console path gets nothing.
+        const string agency = "https://prenota.agenzia.test";
+        var resolver = new Mock<IPublicHostResolver>();
+        resolver
+            .Setup(r => r.ResolveAsync("prenota.agenzia.test", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolveHostResponseDto
+            {
+                OrgId = Guid.NewGuid(),
+                Slug = "agenzia",
+                PublicHostMode = PublicHostMode.CustomDomain,
+                Surfaces = new ResolveHostSurfacesDto { GuestArea = true, OwnerPortal = true },
+                OwnerLoginReady = true,
+            });
+        await using var app = await StartAsync(
+            Environments.Production,
+            new() { ["Cors:AllowedOrigins"] = WebApp },
+            services => services.AddScoped<ICorsOriginSource>(_ => new OrgHostCorsOriginSource(resolver.Object)));
+
+        using var portal = await PreflightAsync(app, agency, "/api/owner-portal/properties");
+        using var hostConsole = await PreflightAsync(app, agency, "/api/properties");
+
+        Assert.Equal(agency, Assert.Single(portal.Headers.GetValues("Access-Control-Allow-Origin")));
+        Assert.False(portal.Headers.Contains("Access-Control-Allow-Credentials"));
+        Assert.False(hostConsole.Headers.Contains("Access-Control-Allow-Origin"));
     }
 
     [Fact]

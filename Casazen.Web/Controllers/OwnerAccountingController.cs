@@ -531,7 +531,11 @@ public sealed record OwnerExternalDocumentDto(
 /// <summary>The legal hold of a month: set with its reason, or lifted.</summary>
 public sealed record OwnerLegalHoldRequest(bool Hold, string? Reason);
 
-/// <summary>A line of the owner ledger with its source and the facts of its amount.</summary>
+/// <summary>
+/// A line of the owner ledger with its source and the facts of its amount. <c>informational</c> is true for a line for information only (today the commission of a portal the
+/// agency bears, <see cref="OwnerLedgerEntryType.ChannelFeeBorneByAgency"/>, FIX/BE-V2-NO-RECHARGE): a client shows it and leaves it out of every total and balance of the
+/// owner (<see cref="OwnerLedgerBalance"/>), without having to know its type.
+/// </summary>
 public sealed record OwnerLedgerEntryDto(
     Guid Id,
     Guid OwnerId,
@@ -561,13 +565,14 @@ public sealed record OwnerLedgerEntryDto(
     decimal Amount,
     Guid? ReversesEntryId,
     string? Description,
-    DateTime PostedAt)
+    DateTime PostedAt,
+    bool Informational)
 {
     public static OwnerLedgerEntryDto From(OwnerLedgerEntry e) => new(
         e.Id, e.PropertyOwnerId, e.PropertyId, e.EntryType, e.SourceType, e.SourceId, e.SourceReference, e.SourceDocumentId, e.AttachmentReference,
         e.ServiceDate, e.RecognitionDate, e.PaymentDate, e.PeriodYear, e.PeriodMonth, e.PropertyOwnershipId, e.SharePercent, e.OriginalCurrency,
         e.SourceAmount, e.OriginalAmount, e.StatementCurrency, e.FxRate, e.FxSource, e.FxDate, e.TaxCode, e.RuleVersion, e.Amount, e.ReversesEntryId,
-        e.Description, e.PostedAt);
+        e.Description, e.PostedAt, !OwnerLedgerBalance.Counts(e.EntryType));
 }
 
 /// <summary>A version of an owner statement, without its published file (<c>…/published</c>).</summary>

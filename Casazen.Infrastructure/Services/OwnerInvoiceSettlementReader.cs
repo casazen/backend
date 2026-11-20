@@ -37,7 +37,9 @@ internal static class OwnerInvoiceSettlementReader
             .Select(g => new { Id = g.Key, Total = g.Sum(d => d.Total) })
             .ToDictionaryAsync(x => x.Id, x => x.Total, ct);
 
+        // The balance of the owner, month by month: a line for information only (the commission of a portal the agency bears) is in none of it.
         var months = await db.OwnerLedgerEntries.AsNoTracking()
+            .CountingInBalance()
             .Where(e => orgs.Contains(e.OrgId) && owners.Contains(e.PropertyOwnerId))
             .GroupBy(e => new { e.OrgId, e.PropertyOwnerId, e.PeriodYear, e.PeriodMonth })
             .Select(g => new { g.Key.OrgId, g.Key.PropertyOwnerId, g.Key.PeriodYear, g.Key.PeriodMonth, Amount = g.Sum(e => e.Amount) })

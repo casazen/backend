@@ -128,9 +128,9 @@ public enum OwnerStatementSection
 /// <param name="Reference">The reference of the line when it is not a stay (a payout reference, the kind of a flat fee, a month, the number of the owner invoice or of the credit note a line of VAT is of).</param>
 /// <param name="Description">The words of the agency for a charge, an expense or a correction.</param>
 /// <param name="SharePercent">The part of the source the owner holds.</param>
-/// <param name="Amount">The signed amount in the currency of the statement: positive is owed to the owner.</param>
+/// <param name="Amount">The signed amount in the currency of the statement: positive is owed to the owner. For a line for information only (<see cref="OwnerStatementLine.Informational"/>) the amount the ledger stores, which no balance counts.</param>
 /// <param name="Reversal">True when the line reverses another (<c>ReversesEntryId</c>).</param>
-/// <param name="AgencyHoldsPortalAccount">True when the agency holds the portal account of the listing (V2) and recharges the commission of the channel on its invoice (the test of the invoice): false for an account of the owner (V1) and for one of the agency that does not recharge (<see cref="OwnerStatementLine.AgencyHoldsPortalAccountWithoutRecharge"/>).</param>
+/// <param name="AgencyHoldsPortalAccount">True when the agency holds the portal account of the listing (V2) and recharges the commission of the channel on its invoice (the test of the invoice): false for an account of the owner (V1) and for one of the agency that does not recharge (<see cref="OwnerStatementLine.AgencyHoldsPortalAccountWithoutRecharge"/>, <see cref="OwnerStatementLine.AgencyAccountChargedWithoutRecharge"/>).</param>
 public sealed record OwnerStatementLine(
     Guid EntryId,
     OwnerStatementSection Section,
@@ -149,12 +149,26 @@ public sealed record OwnerStatementLine(
     bool AgencyHoldsPortalAccount)
 {
     /// <summary>
-    /// True when the agency holds the portal account of the listing (V2) and does not recharge the commissions of the accounts it holds: the portal bills the agency and no
-    /// invoice of the property manager carries the commission to the owner, so the statement says neither that the portal invoice is in the owner's name (V1) nor that the
-    /// property manager recharges it. Only the words follow it: the amount of the line is in the totals like that of any other channel fee. Never true together with
-    /// <see cref="AgencyHoldsPortalAccount"/>.
+    /// True for the commission of a portal account of the agency that the organization does not recharge (V2 without the recharge): the portal bills the agency, no invoice
+    /// of the property manager carries the commission, so the agency bears it and the owner is not charged (<see cref="OwnerLedgerEntryType.ChannelFeeBorneByAgency"/>,
+    /// decision 1 of 20/11/2026, FIX/BE-V2-NO-RECHARGE). The statement shows it under a label of its own, for information only (<see cref="Informational"/>): never with
+    /// the sentence of V1 or the one of the recharge, and in no total. Read from the line as the posting wrote it, never from the setting of today, so a statement keeps
+    /// saying what its lines are. Never true together with <see cref="AgencyHoldsPortalAccount"/>.
     /// </summary>
-    public bool AgencyHoldsPortalAccountWithoutRecharge { get; init; }
+    public bool AgencyHoldsPortalAccountWithoutRecharge => Type == OwnerLedgerEntryType.ChannelFeeBorneByAgency;
+
+    /// <summary>
+    /// True for a channel fee the owner was charged (a <see cref="OwnerLedgerEntryType.ChannelFee"/>) on a portal account of the agency that the organization does not
+    /// recharge now: a line posted before FIX/BE-V2-NO-RECHARGE (the deduction it removed), or before the posting that follows a change of the setting. It stays in the
+    /// totals as it was posted, so a statement cut from it reads as it was made, and it is told as what it is (the account of the agency, no recharge on an invoice), never
+    /// as a commission the agency bears and never with the sentence of V1. Never true together with <see cref="AgencyHoldsPortalAccount"/>.
+    /// </summary>
+    public bool AgencyAccountChargedWithoutRecharge { get; init; }
+
+    /// <summary>
+    /// True for a line for information only (<see cref="OwnerLedgerBalance.Counts"/>): the statement shows it, and no total of a part, of the period or of the net counts it.
+    /// </summary>
+    public bool Informational => !OwnerLedgerBalance.Counts(Type);
 
     /// <summary>The immutable ledger evidence behind this line, including its management FX rate (not an IVA exchange rate).</summary>
     public OwnerStatementLedgerEvidence? LedgerEvidence { get; init; }
@@ -195,9 +209,12 @@ public sealed record OwnerStatementTouristTax(
     string Currency,
     decimal Amount);
 
-/// <summary>The totals of a statement as its «Netto» part shows them: each part, the total of the period, the payments and the two balances.</summary>
+/// <summary>
+/// The totals of a statement as its «Netto» part shows them: each part, the total of the period, the payments and the two balances. A line for information only
+/// (<see cref="OwnerStatementLine.Informational"/>: the commission of a portal the agency bears) is in none of them.
+/// </summary>
 /// <param name="Gross">The gross of the stays, without the tourist tax (the owner's share).</param>
-/// <param name="ChannelFees">The commissions the portals kept (negative).</param>
+/// <param name="ChannelFees">The commissions the portals kept that the owner bears (negative): never the ones the agency bears.</param>
 /// <param name="Withholding">The withholding kept from the payouts (negative).</param>
 /// <param name="Commission">The commission of the property manager (negative).</param>
 /// <param name="Recharges">The recharges and the expenses (negative).</param>
@@ -220,7 +237,8 @@ public sealed record OwnerStatementTotals(
 {
     /// <summary>
     /// The totals a version stores, with the withholding as what its closing balance leaves over: a version has no column of its own for it, and every other type of ledger
-    /// line is in one of its columns, so the closing balance is the opening balance plus every column plus the withholding.
+    /// line that counts in the balance is in one of its columns, so the closing balance is the opening balance plus every column plus the withholding. A line for information
+    /// only is in no column and not in the closing balance (<see cref="OwnerLedgerBalance"/>), so it leaves the withholding as it is.
     /// </summary>
     public static OwnerStatementTotals Of(OwnerStatementVersion version)
     {

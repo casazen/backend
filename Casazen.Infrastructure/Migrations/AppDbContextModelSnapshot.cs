@@ -3502,6 +3502,20 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid?>("BookingId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("ClosedNotDueAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ClosedNotDueByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("ClosedNotDueNote")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ClosedNotDueReason")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -3737,6 +3751,8 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.ToTable("FiscalDocuments", t =>
                         {
+                            t.HasCheckConstraint("CK_FiscalDocuments_ClosedNotDue", "(\"ClosedNotDueAt\" IS NULL AND \"ClosedNotDueReason\" IS NULL AND \"ClosedNotDueByUserId\" IS NULL AND \"ClosedNotDueNote\" IS NULL) OR (\"ClosedNotDueAt\" IS NOT NULL AND \"ClosedNotDueReason\" IS NOT NULL AND \"SequenceNumber\" IS NOT NULL AND \"Status\" = 3)");
+
                             t.HasCheckConstraint("CK_FiscalDocuments_SdiStatus", "\"SdiStatus\" IN ('not_applicable', 'to_send', 'submitted', 'delivered', 'rejected', 'manual_declared', 'unknown')");
 
                             t.HasCheckConstraint("CK_FiscalDocuments_SequenceNumber", "\"SequenceNumber\" IS NULL OR \"SequenceNumber\" > 0");
@@ -7393,6 +7409,13 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("FiscalDataRetentionUntil")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("GtmContainerId")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<bool>("GuestAreaOnOwnDomain")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("HasPartitaIva")
                         .HasColumnType("boolean");
 
@@ -7428,6 +7451,12 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("OrgType")
                         .HasColumnType("integer");
+
+                    b.Property<int>("OwnerLoginHostState")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("OwnerPortalOnOwnDomain")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("PartitaIvaNumber")
                         .HasMaxLength(11)
@@ -7506,6 +7535,10 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("UseOwnDomainForLinks")
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
 
                     b.Property<string>("VatId")
                         .HasMaxLength(32)
@@ -16964,6 +16997,111 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("SwissMunicipalities");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.SwissNotificationDeclaration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("ArrivalDay")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("portal");
+
+                    b.Property<DateTime>("DeclaredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeclaredByUserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ReceiptId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RegimeCode")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
+
+                    b.HasIndex("ReceiptId");
+
+                    b.HasIndex("PropertyId", "ArrivalDay")
+                        .IsUnique()
+                        .HasDatabaseName("UX_SwissNotificationDeclarations_Property_Day")
+                        .HasFilter("\"RegimeCode\" IS NULL");
+
+                    b.HasIndex("PropertyId", "ArrivalDay", "RegimeCode")
+                        .IsUnique()
+                        .HasDatabaseName("UX_SwissNotificationDeclarations_Property_Day_Regime")
+                        .HasFilter("\"RegimeCode\" IS NOT NULL");
+
+                    b.ToTable("SwissNotificationDeclarations");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SwissNotificationFileEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("ArrivalDay")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("RowCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
+
+                    b.HasIndex("PropertyId", "ArrivalDay", "CreatedAt");
+
+                    b.ToTable("SwissNotificationFileEvents", t =>
+                        {
+                            t.HasCheckConstraint("CK_SwissNotificationFileEvents_Format", "\"Format\" IN ('csv', 'xml', 'register', 'groupSheet')");
+
+                            t.HasCheckConstraint("CK_SwissNotificationFileEvents_RowCount", "\"RowCount\" >= 0");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.TaxObligationEvidence", b =>
                 {
                     b.Property<Guid>("Id")
@@ -21875,6 +22013,41 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SwissNotificationDeclaration", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.SwissComplianceReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("ReceiptId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SwissNotificationFileEvent", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.TaxObligationEvidence", b =>

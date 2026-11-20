@@ -21,6 +21,73 @@ public class OrgDomainConfigDto
 
     /// <summary>Why the domain is pending or failed, when it was last checked and whether the platform can activate it (BK-17).</summary>
     public DomainStatusDto Status { get; set; } = new();
+
+    /// <summary>The surfaces of the agency's own domain (E40/F01/US01); <c>null</c> while the flag <c>WhiteLabelHost</c> is off.</summary>
+    public OrgDomainSurfacesDto? Surfaces { get; set; }
+
+    /// <summary>The tracking of the agency's pages (E40/F01/US01/T04); <c>null</c> while the flag <c>SiteEmbed</c> is off.</summary>
+    public OrgDomainTrackingDto? Tracking { get; set; }
+}
+
+/// <summary>
+/// The Google Tag Manager container of the agency's pages (NF-149): the answer of <c>PUT /api/orgs/{orgId}/domain/tracking</c> and the <c>tracking</c>
+/// block of the domain settings. <c>null</c> when the agency set none.
+/// </summary>
+public class OrgDomainTrackingDto
+{
+    public string? GtmContainerId { get; set; }
+}
+
+/// <summary>
+/// Request body for <c>PUT /api/orgs/{orgId}/domain/tracking</c> (E40/F01/US01/T04): <c>GTM-</c> plus 4 to 12 letters or digits (case and spaces around
+/// are forgiven), <c>null</c> or empty to clear it. The format is checked by <c>GtmContainerIds</c> only, so no length attribute here.
+/// </summary>
+public class SetOrgDomainTrackingRequest
+{
+    public string? GtmContainerId { get; set; }
+}
+
+/// <summary>
+/// The surfaces of the agency's own domain (E40/F01/US01, NF-140..NF-142): the agency's choices, the state of the owner sign-in on the domain
+/// and what is really served (<see cref="Effective"/>: nothing until the domain is verified and paid for).
+/// </summary>
+public class OrgDomainSurfacesDto
+{
+    public bool GuestAreaOnOwnDomain { get; set; }
+    public bool OwnerPortalOnOwnDomain { get; set; }
+    public bool UseOwnDomainForLinks { get; set; }
+
+    /// <summary>The Auth0 registration of the domain for the owner sign-in (NF-141).</summary>
+    public OwnerLoginHostState OwnerLoginHostState { get; set; }
+
+    /// <summary>The registration is automatic (flag <c>Auth0HostSync</c>); otherwise CasaZen does it and the agency waits.</summary>
+    public bool OwnerLoginAutomatic { get; set; }
+
+    public OrgDomainEffectiveSurfacesDto Effective { get; set; } = new();
+}
+
+/// <summary>What the domain really serves now (<c>HostSurfaceRules</c>).</summary>
+public class OrgDomainEffectiveSurfacesDto
+{
+    public bool GuestArea { get; set; }
+    public bool OwnerPortal { get; set; }
+    public bool OwnerLoginReady { get; set; }
+
+    /// <summary>Some links CasaZen sends are built on the domain (the guest links, the owner links, or both).</summary>
+    public bool LinksOnOwnDomain { get; set; }
+}
+
+/// <summary>Request body for <c>PUT /api/orgs/{orgId}/domain/surfaces</c> (E40/F01/US01): the three choices, all required.</summary>
+public class SetOrgDomainSurfacesRequest
+{
+    [Required]
+    public bool? GuestAreaOnOwnDomain { get; set; }
+
+    [Required]
+    public bool? OwnerPortalOnOwnDomain { get; set; }
+
+    [Required]
+    public bool? UseOwnDomainForLinks { get; set; }
 }
 
 /// <summary>

@@ -342,6 +342,18 @@
   <data name="SwissReceiptDateTooOld" xml:space="preserve">
     <value>The date is more than {0} years ago: a document of this type is kept {0} years from its date, so the automatic retention would delete it at once. Check the date (the arrival day).</value>
   </data>
+  <data name="SwissArrivalDayRequired" xml:space="preserve">
+    <value>Provide the arrival day.</value>
+  </data>
+  <data name="TicinoDayAlreadyDeclared" xml:space="preserve">
+    <value>This day is already notified to the cantonal police: declared as uploaded, or with a receipt recorded. Uploading the file to the portal again may create duplicates. Generate the file only if you really need it, and confirm.</value>
+  </data>
+  <data name="TicinoDeclarationDayInFuture" xml:space="preserve">
+    <value>You cannot declare a day that has not started yet as notified: the guests have not arrived.</value>
+  </data>
+  <data name="TicinoDeclarationReceiptInvalid" xml:space="preserve">
+    <value>The receipt is not a police receipt of this property for this arrival day.</value>
+  </data>
   <data name="BookingNotFound" xml:space="preserve">
     <value>Booking not found</value>
   </data>
@@ -3291,6 +3303,9 @@
   </data>
   <data name="OrgDomainNotConfigured" xml:space="preserve">
     <value>No custom domain is configured for this organization.</value>
+  </data>
+  <data name="OrgGtmContainerIdInvalid" xml:space="preserve">
+    <value>The Google Tag Manager container ID is not valid: it must be GTM- followed by 4 to 12 letters or digits (for example GTM-ABC123).</value>
   </data>
   <data name="OrgDomainVerificationFailed" xml:space="preserve">
     <value>Domain verification failed.</value>
@@ -6433,6 +6448,9 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="FiscalDocPdfToCollectAtProperty" xml:space="preserve">
     <value>Tourist tax payable at the property: {0} {1}</value>
   </data>
+  <data name="FiscalDocPdfToCollectReceiptNote" xml:space="preserve">
+    <value>The tourist tax amount is an estimate: when the property collects it, it issues a separate numbered receipt.</value>
+  </data>
   <data name="FiscalDocPdfCourtesyCopy" xml:space="preserve">
     <value>Courtesy copy of the electronic invoice: the document valid for tax purposes is the XML file sent to the Exchange System.</value>
   </data>
@@ -6547,6 +6565,9 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="FiscalDocLineLodging" xml:space="preserve">
     <value>Stay of {0} nights</value>
   </data>
+  <data name="FiscalDocLineLodgingTaxByPortal" xml:space="preserve">
+    <value>Stay of {0} nights. Tourist tax collected by the portal (ask the portal about any exemption)</value>
+  </data>
   <data name="FiscalDocLineCleaning" xml:space="preserve">
     <value>Final cleaning</value>
   </data>
@@ -6556,8 +6577,8 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="FiscalDocLineTouristTaxCh" xml:space="preserve">
     <value>Tourist tax (not subject to VAT)</value>
   </data>
-  <data name="FiscalDocLineToCollectNote" xml:space="preserve">
-    <value>{0} - payable at the property</value>
+  <data name="FiscalDocLineTouristTaxToCollect" xml:space="preserve">
+    <value>Tourist tax payable at the property</value>
   </data>
   <data name="FiscalDocLineToCollectNoteCh" xml:space="preserve">
     <value>{0} - tax to be collected at the property</value>
@@ -6892,6 +6913,18 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="SelfBillingCorrectionNotApplicable" xml:space="preserve">
     <value>Only a TD17 self-billed invoice the SDI rejected, with no credit note issued, is corrected this way.</value>
   </data>
+  <data name="SelfBillingNotClosable" xml:space="preserve">
+    <value>Only the replacement draft of a TD17 self-billed invoice rejected by the SDI that the month no longer supports is closed as no longer due: if its data are still valid, issue it.</value>
+  </data>
+  <data name="SelfBillingAlreadyClosed" xml:space="preserve">
+    <value>This draft was already closed for a different reason: the reason and the user on record are never changed.</value>
+  </data>
+  <data name="SelfBillingCloseReasonRequired" xml:space="preserve">
+    <value>State why you are closing it: credit note from the portal, holder no longer a taxable person, or duplicate or error.</value>
+  </data>
+  <data name="SelfBillingCloseNoteTooLong" xml:space="preserve">
+    <value>The note is too long: {0} characters at most.</value>
+  </data>
   <data name="SelfBillingLineCommissions" xml:space="preserve">
     <value>Intermediation commissions {0} - {1} - {2}</value>
   </data>
@@ -6909,6 +6942,9 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="BillingChannelsInvalid" xml:space="preserve">
     <value>The portal setting is not valid: check the field named.</value>
+  </data>
+  <data name="RechargeWaiverNotAcknowledged" xml:space="preserve">
+    <value>Turning the recharge off means the agency pays the commissions of the portal accounts it holds and the owners are no longer charged for them. Confirm that you waive the recharge, then save again.</value>
   </data>
   <data name="ChannelAccountHoldersInvalid" xml:space="preserve">
     <value>The list of the holders of the portal accounts is not valid: check the row and the field named.</value>
@@ -7412,6 +7448,9 @@ Once active, the function works on the data the channel manager already holds.</
     <value>Portal commissions recharged by the property manager (invoice no. {0})</value>
   </data>
   <data name="StatementFileChannelFeesAgencyNotRecharged" xml:space="preserve">
+    <value>Portal commission covered by the property manager, not deducted from your statement</value>
+  </data>
+  <data name="StatementFileChannelFeesAgencyCharged" xml:space="preserve">
     <value>Portal commissions (portal account held by the property manager, no recharge on an invoice)</value>
   </data>
   <data name="StatementFileCommissionInvoice" xml:space="preserve">
@@ -7652,7 +7691,43 @@ Once active, the function works on the data the channel manager already holds.</
     <value>Recharged to the owner</value>
   </data>
   <data name="AccPkgTreatmentBorne" xml:space="preserve">
-    <value>Not charged back on an invoice</value>
+    <value>Borne by the agency</value>
+  </data>
+  <data name="AccPkgUnusedNumbersTitle" xml:space="preserve">
+    <value>Unused numbers of the TD17 self-billed invoices (replacement drafts closed as no longer due), from {0} to {1}, by closing date. Every number stays reserved and is never reassigned: it is a documented gap in the issuer's series</value>
+  </data>
+  <data name="AccPkgColRejectedOn" xml:space="preserve">
+    <value>Date of the rejected document</value>
+  </data>
+  <data name="AccPkgColClosedOn" xml:space="preserve">
+    <value>Closed on</value>
+  </data>
+  <data name="AccPkgColCloseReason" xml:space="preserve">
+    <value>Reason for closing</value>
+  </data>
+  <data name="AccPkgColCloseNote" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="AccPkgColOriginalSdi" xml:space="preserve">
+    <value>SDI outcome of the original document</value>
+  </data>
+  <data name="AccPkgColSdiErrorCode" xml:space="preserve">
+    <value>SDI rejection code</value>
+  </data>
+  <data name="AccPkgColClosedBy" xml:space="preserve">
+    <value>Closed by</value>
+  </data>
+  <data name="AccPkgUserNoLongerPresent" xml:space="preserve">
+    <value>user no longer present</value>
+  </data>
+  <data name="AccPkgCloseReasonPortalCreditNote" xml:space="preserve">
+    <value>Credit note from the portal</value>
+  </data>
+  <data name="AccPkgCloseReasonHolderNoLongerSubject" xml:space="preserve">
+    <value>Holder no longer a taxable person</value>
+  </data>
+  <data name="AccPkgCloseReasonDuplicateOrError" xml:space="preserve">
+    <value>Duplicate or error</value>
   </data>
   <data name="AccPkgStatementsTitle" xml:space="preserve">
     <value>Statements published to the owners, by month (latest published version)</value>
@@ -7922,13 +7997,13 @@ Once active, the function works on the data the channel manager already holds.</
     <value>Portal commissions on the accounts held by the agency, by statement month (from the owner ledger)</value>
   </data>
   <data name="AccPkgSumMarginTitle" xml:space="preserve">
-    <value>Margin = commissions and recharges invoiced (taxable) less the portal commissions borne by the agency</value>
+    <value>Margin = commissions and recharges invoiced (taxable) less the portal commissions of the accounts the agency holds: the recharged ones come back with the recharges, the others are a cost of the agency, counted once</value>
   </data>
   <data name="AccPkgSumMargin" xml:space="preserve">
     <value>Margin</value>
   </data>
   <data name="AccPkgSumPortalBorne" xml:space="preserve">
-    <value>Portal commissions borne by the agency</value>
+    <value>Portal commissions of the agency's accounts</value>
   </data>
   <data name="AccPkgSumOwnersTitle" xml:space="preserve">
     <value>Report by owner: revenue and occupancy of the properties, by accrual</value>

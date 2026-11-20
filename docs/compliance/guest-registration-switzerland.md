@@ -111,4 +111,4 @@ data are kept.
 - **No other canton than the 26** and no other country than Italy and Switzerland.
 
 Code: `Casazen.Core/Regulatory/GuestRegistration/*` (the regime, the catalog, the duty rules, the readiness), `Casazen.Core/Services/IGuestRegistrationRegimeResolver.cs`,
-`Casazen.Infrastructure/Services/GuestRegistrationRegimeResolver.cs`, `Casazen.Web/Controllers/PropertyGuestRegistrationController.cs`. Runbook: [`guest-notification-switzerland.md`](../runbooks/guest-notification-switzerland.md) § 14-17.
+`Casazen.Infrastructure/Services/GuestRegistrationRegimeResolver.cs`, `Casazen.Web/Controllers/PropertyGuestRegistrationController.cs`. Runbook: [`guest-notification-switzerland.md`](../runbooks/guest-notification-switzerland.md) § 21-24.

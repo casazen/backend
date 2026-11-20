@@ -123,6 +123,7 @@ public sealed class AccountantPackageService(
             {
                 PlanOwnerInvoices(plan, ownerInvoices, current, period, t);
                 await PlanSelfBilledAsync(plan, scope.OrgId, selfBilled, fallback, slugs, period, t, cancellationToken);
+                await PlanUnusedNumbersAsync(plan, scope.OrgId, fallback, period, t, cancellationToken);
                 await PlanPortalCommissionsAsync(plan, scope.OrgId, portalLines, period, t, cancellationToken);
             }
 
@@ -233,6 +234,24 @@ public sealed class AccountantPackageService(
             PlanDocumentFiles(plan, folder, document, t);
 
         plan.Documents += withFiles.Count;
+    }
+
+    /// <summary>
+    /// The register of the <b>unused numbers</b> of the self-billed invoices (TD17, FIX/BE-TD17-JOB-EXIT): the numbers of the replacement drafts closed as «non più dovuta» in the period (the day of the closing), with the
+    /// reason, the SDI outcome of the rejected original and the user, in <see cref="AccountantPackageStructure.SelfBilledFolder"/> (owner accounting, the whole org, like the register of the TD17). The number stays
+    /// reserved and is never given again: the table documents the gap in the series. A period with none adds nothing: the package is the one it always was, byte for byte.
+    /// </summary>
+    private async Task PlanUnusedNumbersAsync(Plan plan, Guid orgId, FiscalIssuerSnapshot fallback, AccountantPackagePeriod period, PackageTexts t, CancellationToken cancellationToken)
+    {
+        var rows = await AccountantPackageFacts.UnusedNumbersAsync(db, orgId, period, cancellationToken);
+        if (rows.Count == 0)
+            return;
+
+        var names = await AccountantPackageFacts.UserNamesAsync(db, [.. rows.Where(r => r.ClosedByUserId != null).Select(r => r.ClosedByUserId!).Distinct(StringComparer.Ordinal)], cancellationToken);
+        plan.AddTables(
+            AccountantPackageStructure.SelfBilledFolder,
+            AccountantPackageStructure.UnusedNumbersFile,
+            AccountantPackageDocuments.UnusedNumbers(rows, names, fallback, period, t));
     }
 
     /// <summary>

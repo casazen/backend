@@ -122,6 +122,39 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Proof (E40/F01/US01/T03, NF-142, AC2): the invitation of an agency whose verified domain serves the owner portal links to that domain only once the
+    /// owner sign-in works there (<c>Ready</c>); while the Auth0 registration waits (<c>Pending</c>) the link stays on the CasaZen domain, where the owner can sign in.
+    /// </summary>
+    [Fact]
+    public async Task OwnerInvitation_AgencyDomainWithOwnerSignInReady_LinksToTheAgencyDomain_Test()
+    {
+        const string domain = "proprietari.agenzia-inviti.test";
+        var org = await _db.Orgs.SingleAsync(o => o.Id == _world.OrgId);
+        org.PlanTier = PlanTier.Pro;
+        org.PublicHostMode = PublicHostMode.CustomDomain;
+        org.CustomDomain = domain;
+        org.DomainVerificationStatus = DomainVerificationStatus.Verified;
+        org.OwnerPortalOnOwnDomain = true;
+        org.UseOwnDomainForLinks = true;
+        org.OwnerLoginHostState = OwnerLoginHostState.Pending;
+        await _db.SaveChangesAsync();
+        var waiting = await AddOwnerAsync("Anna Verdi", "anna@example.com");
+        var ready = await AddOwnerAsync("Bruno Neri", "bruno@example.com");
+
+        await Service(NewDb(), withAgencyLinks: true).CreateInvitationAsync(_world.OrgId, waiting, Admin, Ct);
+        var pending = _queue.Sent[^1].Content.HtmlBody;
+        org.OwnerLoginHostState = OwnerLoginHostState.Ready;
+        await _db.SaveChangesAsync();
+        await Service(NewDb(), withAgencyLinks: true).CreateInvitationAsync(_world.OrgId, ready, Admin, Ct);
+        var onTheDomain = _queue.Sent[^1].Content.HtmlBody;
+
+        Assert.Contains($"{PublicAddress}/portale-proprietari/invito?token=", pending, StringComparison.Ordinal);
+        Assert.DoesNotContain(domain, pending, StringComparison.Ordinal);
+        Assert.Contains($"https://{domain}/portale-proprietari/invito?token=", onTheDomain, StringComparison.Ordinal);
+        Assert.Matches("token=[0-9a-f]{64}", onTheDomain);
+    }
+
+    /// <summary>
     /// Proof (idempotency, permission): accepting twice with the same account finds it done and answers the same, with one identity and one line in
     /// the log; the token is single use for everybody else; an account whose e-mail is not verified, or is not the invited one, is refused.
     /// </summary>
@@ -651,11 +684,22 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
     private OwnerOnboardingService Onboarding(AppDbContext db) =>
         new(db, new ActivityLog(db, _clock), _clock, NullLogger<OwnerOnboardingService>.Instance);
 
-    private OwnerInvitationService Service(AppDbContext db)
+    private OwnerInvitationService Service(AppDbContext db, bool withAgencyLinks = false)
     {
         var links = new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = PublicAddress }));
+        AgencyDomainLinks? agencyLinks = null;
+        if (withAgencyLinks)
+        {
+            // E40/F01/US01/T03: the links of the agency's own domain, with WhiteLabelHost on and the stored tier taken as paid for.
+            var entitlements = new Mock<IEntitlementService>();
+            entitlements.Setup(e => e.ResolveEffectiveTier(It.IsAny<OrgEntity>())).Returns((OrgEntity o) => o.PlanTier);
+            var siteUrls = new PublicOrgSiteUrls(links, Options.Create(new Casazen.Core.Options.PublicHostOptions()), entitlements.Object);
+            agencyLinks = new AgencyDomainLinks(
+                db, links, siteUrls, new TestFeatureFlags(Casazen.Core.Features.FeatureFlags.WhiteLabelHost), NullLogger<AgencyDomainLinks>.Instance);
+        }
+
         return new OwnerInvitationService(
-            db, _queue, NullLogger<OwnerInvitationService>.Instance, links, new ActivityLog(db, _clock), Onboarding(db), _auth0.Object, _clock);
+            db, _queue, NullLogger<OwnerInvitationService>.Instance, links, new ActivityLog(db, _clock), Onboarding(db), _auth0.Object, _clock, agencyLinks);
     }
 
     private static AcceptOwnerInvitation Accept(string token, string sub, string email, bool verified = true) =>

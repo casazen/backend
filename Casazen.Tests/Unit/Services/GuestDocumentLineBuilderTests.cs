@@ -87,7 +87,8 @@ public class GuestDocumentLineBuilderTests
     /// PROOF TEST: money rule. A guest is never charged the tourist tax twice: Switzerland, no line for a channel the profile says collects it (Airbnb in Ticino, whatever the
     /// booking carries, and whether the rule or the booking gives the amount), a line for the channels that do not (Booking.com, direct); Italy, no line when the portal collects
     /// it (the active channel rule of the comune), a line when the host does (a rule that says so, a direct or a manual booking, the declaration of the host), the confirmed tax of
-    /// the stay before the amount of the booking, and no line while nobody has said who collects it for a channel.
+    /// the stay before the amount of the booking, and, while nobody has said who collects it for a channel, a line too: in Italy no portal is taken to collect the tax unless somebody says
+    /// so (FIX/BE-IT-TOURISTTAX-DEFAULTS), so the document of the booking says «da pagare in struttura» rather than nothing.
     /// </summary>
     [Fact]
     public async Task TouristTaxLine_NotAddedWhenPortalCollects_Test()
@@ -139,7 +140,7 @@ public class GuestDocumentLineBuilderTests
         Assert.Equal(12m, await Tax(hostCollectsByRule));
         Assert.Equal(12m, await Tax(directStay));
         Assert.Equal(12m, await Tax(manualStay));
-        Assert.Null(await Tax(nobodySaid));
+        Assert.Equal(12m, await Tax(nobodySaid));
         Assert.Equal(12m, await Tax(declared));
         Assert.Equal(9m, await Tax(confirmed));
 

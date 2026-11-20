@@ -21,7 +21,8 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>The owner accounting is whole-org and permission-bound.</b> Without <c>agency.statement.view</c> (the web layer) or with a scope that does not reach the whole org, the
 /// commissions, the invoices to the owners, the payouts, the wires, the margin and the report by owner are empty and the summary says so; nothing of the owner accounting is read.</item>
 /// <item><b>Margin.</b> The commissions and the recharges invoiced to the owners (taxable) less the commissions of the portals the agency holds the account of: the one cost
-/// CasaZen can tell the agency bears. The card fees and the other costs are in the report of the channel costs.</item>
+/// CasaZen can tell the agency bears. The ones it recharges come back with the recharges; the ones it does not recharge stay its cost, once (decision 1 of 20/11/2026: the owner
+/// is not charged them, FIX/BE-V2-NO-RECHARGE). The card fees and the other costs are in the report of the channel costs.</item>
 /// </list>
 /// </remarks>
 public sealed class AgencySummaryService(

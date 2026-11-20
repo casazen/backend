@@ -57,7 +57,8 @@ public sealed class CheckInLinkDeliveryService(
     PublicSiteLinks publicSiteLinks,
     ILogger<CheckInLinkDeliveryService> logger,
     TimeProvider? timeProvider = null,
-    IPushNotificationService? push = null) : ICheckInLinkDeliveryService
+    IPushNotificationService? push = null,
+    AgencyDomainLinks? agencyLinks = null) : ICheckInLinkDeliveryService
 {
     /// <summary>
     /// The codes of a failure worth a retry: the channel manager used up the calls of the org (<c>octorate_rate_limited</c>), or did not answer or answered something
@@ -298,7 +299,8 @@ public sealed class CheckInLinkDeliveryService(
                 && session.ExpiresAt >= Now()
                 && publicSiteLinks.IsConfigured)
             {
-                link = publicSiteLinks.GuestCheckIn(delivery.LinkToken);
+                // The link the host copies is the one the guest would get (E40/F01/US01/T03): on the agency's own domain when its guest area is there.
+                link = (await agencyLinks.ForOrgOrPlatformAsync(publicSiteLinks, orgId, ct)).GuestCheckIn(delivery.LinkToken);
             }
         }
 
@@ -513,7 +515,8 @@ public sealed class CheckInLinkDeliveryService(
             return ChatAttempt.Waiting(CheckInLinkDeliveryState.WaitingThread, MessageContactOptions.NoConversationReason);
 
         var key = await KeyOfAsync(booking, threadId.Value, token, ct);
-        var text = ChatText(booking, token, expiresAt, sessionLanguage);
+        var agency = await agencyLinks.ForOrgOrPlatformAsync(publicSiteLinks, booking.OrgId, ct);
+        var text = ChatText(agency, booking, token, expiresAt, sessionLanguage);
 
         MessageReplyResult result;
         try
@@ -610,9 +613,10 @@ public sealed class CheckInLinkDeliveryService(
     /// The text of the message: the language the guest chose on the check-in page, else the one of the country on the booking, else Italian followed by English in the
     /// same message (a stay from a portal comes with no country, and the guest's language is not known). Plain text, short, no name of a portal or of a supplier.
     /// </summary>
-    private string ChatText(Booking booking, string token, DateTime expiresAt, string? sessionLanguage)
+    private static string ChatText(AgencyLinks agency, Booking booking, string token, DateTime expiresAt, string? sessionLanguage)
     {
-        var url = publicSiteLinks.GuestCheckIn(token);
+        // E40/F01/US01/T03: on the agency's own domain when its guest area is served there, on the CasaZen domain otherwise.
+        var url = agency.GuestCheckIn(token);
         var language = GuestLanguages.Normalize(sessionLanguage) ?? GuestLanguages.OfCountry(booking.Guest?.Country);
 
         string Compose(string code) =>

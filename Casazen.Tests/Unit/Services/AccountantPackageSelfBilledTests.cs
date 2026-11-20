@@ -102,8 +102,8 @@ public class AccountantPackageSelfBilledTests
 
     /// <summary>
     /// PROOF TEST: money rule. The portal commissions of the accounts the agency holds (V2) are in the package, one row for each statement month, owner and channel: the amount is the one of the
-    /// owner ledger (a listing whose account the owner holds is not in it), it ties to the figure of the agency summary, the treatment says whether it is recharged to the owner or not charged back on an invoice
-    /// (<c>RechargePortalCommissions</c>), and a reversal cancels the line it reverses out of the table.
+    /// owner ledger (a listing whose account the owner holds is not in it), it ties to the figure of the agency summary, the treatment says whether it is recharged to the owner or borne by the agency
+    /// (<c>RechargePortalCommissions</c>, decision 1 of 20/11/2026), and a reversal cancels the line it reverses out of the table.
     /// </summary>
     [Fact]
     public async Task AccountantPackage_ContainsTheV2PortalCommission_Test()
@@ -126,13 +126,14 @@ public class AccountantPackageSelfBilledTests
         Assert.DoesNotContain("150,00", Text(files[PortalCommissionsPath]), StringComparison.Ordinal);
         AssertTheIndex(files);
 
-        // The agency that does not recharge the commissions: the same amount, said as not charged back on an invoice (the label never says who bears it).
+        // The agency that does not recharge the commissions bears them (decision 1 of 20/11/2026): the same amount, said so. (The posting writes such a commission as a line the
+        // agency bears, AccountantPackage_V2NotRecharged_IsAgencyCost_OnceInTheMargin_Test; here the line of before is read with the setting of today.)
         var profile = await rig.Db.OrgFiscalIssuerProfiles.SingleAsync(p => p.OrgId == rig.OrgId);
         profile.RechargePortalCommissions = false;
         await rig.Db.SaveChangesAsync();
         rig.Db.ChangeTracker.Clear();
         var (_, borne) = await BuildAsync(rig, AccountantPackageAccess.Full, October);
-        Assert.Equal(new[] { "2026-10", "TEST Proprietario", "Booking.com", "CHF", "1", "120,00", "Non riaddebitata in fattura" }, Assert.Single(Blocks(borne[PortalCommissionsPath])[0].Skip(2)));
+        Assert.Equal(new[] { "2026-10", "TEST Proprietario", "Booking.com", "CHF", "1", "120,00", "A carico dell'agenzia" }, Assert.Single(Blocks(borne[PortalCommissionsPath])[0].Skip(2)));
 
         // A reversal and the line it reverses cancel out: nothing is left to list, and the table is not written.
         var original = await rig.Db.OwnerLedgerEntries.AsNoTracking().SingleAsync(e => e.EntryType == OwnerLedgerEntryType.ChannelFee && e.PropertyId == lake);
@@ -142,6 +143,49 @@ public class AccountantPackageSelfBilledTests
         var (_, reversed) = await BuildAsync(rig, AccountantPackageAccess.Full, October);
         Assert.DoesNotContain(reversed.Keys, k => k.Contains(AccountantPackageStructure.PortalCommissionsFile, StringComparison.Ordinal));
         Assert.Empty((await rig.Summaries.GetAsync(rig.Scope, AccountantPackageAccess.Full, October)).PortalCommissionsBorne);
+    }
+
+    /// <summary>
+    /// PROOF TEST: money rule (FIX/BE-V2-NO-RECHARGE, decision 1 of 20/11/2026). The organization stops recharging the commissions of the accounts it holds, so the posting of the month stops
+    /// charging the commission of the lake house to the owner: it reverses the channel fee posted before and posts the commission again as a line the agency bears (as
+    /// <c>PostPeriodAsync</c> does). The owner's balance has none of it; the package lists it once, «A carico dell'agenzia»; the agency summary counts it once as the cost of the margin (120.00,
+    /// not 240.00: the reversed line and its reversal cancel out), the very margin of before, when the owner was charged it and the agency recharged it.
+    /// </summary>
+    [Fact]
+    public async Task AccountantPackage_V2NotRecharged_IsAgencyCost_OnceInTheMargin_Test()
+    {
+        await using var rig = await AccountantPackageRig.CreateAsync();
+        var (lake, stay) = await V2ListingAsync(rig);
+        var before = Assert.Single((await rig.Summaries.GetAsync(rig.Scope, AccountantPackageAccess.Full, October)).Margin);
+
+        var profile = await rig.Db.OrgFiscalIssuerProfiles.SingleAsync(p => p.OrgId == rig.OrgId);
+        profile.RechargePortalCommissions = false;
+        var original = await rig.Db.OwnerLedgerEntries.AsNoTracking().SingleAsync(e => e.EntryType == OwnerLedgerEntryType.ChannelFee && e.PropertyId == lake);
+        rig.Db.OwnerLedgerEntries.Add(Fee(rig, lake, stay, 10, 120.00m, reverses: original.Id));
+        var borneByAgency = Fee(rig, lake, stay, 10, -120.00m);
+        borneByAgency.EntryType = OwnerLedgerEntryType.ChannelFeeBorneByAgency;
+        rig.Db.OwnerLedgerEntries.Add(borneByAgency);
+        await rig.Db.SaveChangesAsync();
+        rig.Db.ChangeTracker.Clear();
+
+        // The owner is charged nothing of it: what counts in its balance nets to zero, and the line the agency bears is for information only.
+        var lines = await rig.Db.OwnerLedgerEntries.AsNoTracking().Where(e => e.PropertyId == lake && e.SourceId == stay).ToListAsync();
+        Assert.Equal(0m, lines.Where(e => OwnerLedgerBalance.Counts(e.EntryType)).Sum(e => e.Amount));
+        Assert.Equal(-120.00m, Assert.Single(lines, e => !OwnerLedgerBalance.Counts(e.EntryType)).Amount);
+
+        // The package: one row and one total, the commission borne by the agency.
+        var (_, files) = await BuildAsync(rig, AccountantPackageAccess.Full, October);
+        var blocks = Blocks(files[PortalCommissionsPath]);
+        Assert.Equal(new[] { "2026-10", "TEST Proprietario", "Booking.com", "CHF", "1", "120,00", "A carico dell'agenzia" }, Assert.Single(blocks[0].Skip(2)));
+        Assert.Equal(new[] { "Booking.com", "CHF", "A carico dell'agenzia", "120,00" }, Assert.Single(blocks[1].Skip(2)));
+        AssertTheIndex(files);
+
+        // The agency summary: the commission is the cost of the margin once, and the margin is the one of before.
+        var summary = await rig.Summaries.GetAsync(rig.Scope, AccountantPackageAccess.Full, October);
+        Assert.Equal(new AgencyPortalCommissionBorneRow(BookingSource.BookingCom, "CHF", 120.00m), Assert.Single(summary.PortalCommissionsBorne));
+        var margin = Assert.Single(summary.Margin);
+        Assert.Equal((120.00m, margin.Commissions + margin.Recharges - 120.00m), (margin.PortalCommissionsBorne, margin.Margin));
+        Assert.Equal(before, margin);
     }
 
     /// <summary>
@@ -360,7 +404,141 @@ public class AccountantPackageSelfBilledTests
         AssertTheIndex(files);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (FIX/BE-TD17-JOB-EXIT). The numbers closed as «non più dovuta» are in the package, in a register of the unused numbers next to the register of the TD17 (<c>numeri-non-utilizzati</c>, CSV and
+    /// Excel, listed in the index with their hash): for each one the issuer (its series is its own), the number, the day of the rejected original, the day of the closing, the reason in words, the note, the SDI outcome of the
+    /// original (its state and the code of the rejection) and the user (the name, else a fixed text: the id of a user is nowhere in the files). Only the closings of the period count, by the day of Rome (a closing at 00:30 of the 1st of December is
+    /// December's; a year has them all), never another organization's and never a draft that was discarded without a closing; only for who reads the owner accounting of the whole organization; a text a spreadsheet would
+    /// run as a formula (the note) is written as text in both files. <b>A period without a closing is the package it always was: no file, not a byte changed.</b>
+    /// </summary>
+    [Fact]
+    public async Task AccountantPackage_ListsTheUnusedNumbers_AndAPeriodWithoutThemIsUnchanged_Test()
+    {
+        await using var rig = await AccountantPackageRig.CreateAsync();
+        var unusedPath = $"{AccountantPackageStructure.SelfBilledFolder}/{AccountantPackageStructure.UnusedNumbersFile}.csv";
+        var (_, before) = await BuildAsync(rig, AccountantPackageAccess.Full, September);
+        Assert.DoesNotContain(before.Keys, k => k.Contains(AccountantPackageStructure.UnusedNumbersFile, StringComparison.Ordinal));
+
+        // Three numbers closed: one of the company on the 20th of November (a formula as its note), one of the same company at 00:30 of the 1st of December in Rome (23:30 UTC of the 30th), one of another issuer on the
+        // 2nd of December (a user that is gone); a draft discarded without a closing; and a closing of another organization.
+        var company = CompanyOf("TEST Immobiliare Lago Srl", CompanyVat);
+        var other = Guid.NewGuid();
+        var (rejectedA, closedA) = ClosedNumber(rig.OrgId, 1, new DateOnly(2026, 11, 3), new DateTime(2026, 11, 20, 10, 0, 0, DateTimeKind.Utc), company, SelfBillingCloseReasons.PortalCreditNote, "=SUM(1+1)", "auth0|agency");
+        var (rejectedC, closedC) = ClosedNumber(rig.OrgId, 2, new DateOnly(2026, 11, 5), new DateTime(2026, 11, 30, 23, 30, 0, DateTimeKind.Utc), company, SelfBillingCloseReasons.DuplicateOrError, "Duplicato della TD17 di ottobre, gia' emessa", "auth0|agency");
+        var (rejectedB, closedB) = ClosedNumber(rig.OrgId, 1, new DateOnly(2026, 11, 4), new DateTime(2026, 12, 2, 22, 30, 0, DateTimeKind.Utc), CompanyOf("TEST Casa Monte Srl", SecondCompanyVat), SelfBillingCloseReasons.HolderNoLongerSubject, null, "auth0|ghost");
+        var (rejectedX, closedX) = ClosedNumber(other, 9, new DateOnly(2026, 11, 3), new DateTime(2026, 11, 20, 10, 0, 0, DateTimeKind.Utc), CompanyOf("TEST Altra Societa Srl", "05555555555"), SelfBillingCloseReasons.PortalCreditNote, "TEST nota di un'altra agenzia", "auth0|altra");
+        var dropped = SelfBilled(rig.OrgId, 3, 10, new DateOnly(2026, 11, 6), company, "TEST Portale B.V.", "NL", "NL805734958B01", 10.00m);
+        (dropped.Status, dropped.SequenceNumber, dropped.IssueDate) = (FiscalDocumentStatus.Discarded, null, null);
+        rig.Db.Users.Add(new User { Id = "auth0|agency", Email = "mario.rossi@example.com", FirstName = "Mario", LastName = "Rossi", Role = UserRole.PropertyManager });
+        rig.Db.FiscalDocuments.AddRange(rejectedA, closedA, rejectedC, closedC, rejectedB, closedB, rejectedX, closedX, dropped);
+        await rig.Db.SaveChangesAsync();
+        rig.Db.ChangeTracker.Clear();
+        var columns = new[]
+        {
+            "Emittente", "Numero", "Data del documento scartato", "Chiusa il", "Motivo della chiusura", "Nota", "Esito SDI del documento originale", "Codice di scarto SDI", "Chiusa da",
+        };
+
+        // November: the number closed on the 20th, with every column (the closing of the 1st of December in Rome is December's), the issuer told apart, the note as text, the outcome of the rejected original.
+        var (_, november) = await BuildAsync(rig, AccountantPackageAccess.Full, November);
+        var register = Blocks(november[unusedPath]);
+        Assert.StartsWith("Numeri delle autofatture TD17 non utilizzati", register[0][0][0], StringComparison.Ordinal);
+        Assert.Contains("01/11/2026", register[0][0][0], StringComparison.Ordinal);
+        Assert.Contains("30/11/2026", register[0][0][0], StringComparison.Ordinal);
+        Assert.Equal(columns, register[0][1]);
+        Assert.Equal(
+            new[] { "TEST Immobiliare Lago Srl (IT 09876543217)", "TD17-2026/1", "03/11/2026", "20/11/2026", "Nota di credito del portale", "'=SUM(1+1)", "Scartata", "00417", "Mario Rossi" },
+            Assert.Single(register[0].Skip(2)));
+        using (var workbook = new ZipArchive(new MemoryStream(november[unusedPath.Replace(".csv", ".xlsx", StringComparison.Ordinal)]), ZipArchiveMode.Read))
+        using (var sheet = new StreamReader(workbook.GetEntry("xl/worksheets/sheet1.xml")!.Open(), Encoding.UTF8))
+        {
+            var xml = await sheet.ReadToEndAsync();
+            Assert.Contains("=SUM(1+1)", xml, StringComparison.Ordinal);
+            Assert.DoesNotContain("<f>", xml, StringComparison.Ordinal);
+        }
+
+        AssertTheIndex(november);
+
+        // December: the number closed at 00:30 of the 1st (Rome) and the one of the other issuer, oldest closing first; a user that is gone is named by a fixed text, never by the id the closing recorded, and a closing without a note has an empty cell.
+        var (_, december) = await BuildAsync(rig, AccountantPackageAccess.Full, AccountantPackagePeriod.OfMonth(2026, 12));
+        var decemberRows = Blocks(december[unusedPath])[0].Skip(2).ToList();
+        Assert.Equal(2, decemberRows.Count);
+        Assert.Equal(
+            new[] { "TEST Immobiliare Lago Srl (IT 09876543217)", "TD17-2026/2", "05/11/2026", "01/12/2026", "Duplicato o errore", "Duplicato della TD17 di ottobre, gia' emessa", "Scartata", "00417", "Mario Rossi" },
+            decemberRows[0]);
+        Assert.Equal(
+            new[] { "TEST Casa Monte Srl (IT 01112223334)", "TD17-2026/1", "04/11/2026", "02/12/2026", "Titolare non più soggetto passivo", string.Empty, "Scartata", "00417", "utente non più presente" },
+            decemberRows[1]);
+        using (var workbook = new ZipArchive(new MemoryStream(december[unusedPath.Replace(".csv", ".xlsx", StringComparison.Ordinal)]), ZipArchiveMode.Read))
+        using (var sheet = new StreamReader(workbook.GetEntry("xl/worksheets/sheet1.xml")!.Open(), Encoding.UTF8))
+        {
+            Assert.Contains("utente non più presente", await sheet.ReadToEndAsync(), StringComparison.Ordinal);
+        }
+
+        AssertTheIndex(december);
+
+        // A year has all three, oldest closing first; none of another organization or of a draft discarded without a closing is in any file.
+        var (_, year) = await BuildAsync(rig, AccountantPackageAccess.Full, Year2026);
+        Assert.Equal(new[] { "TD17-2026/1", "TD17-2026/2", "TD17-2026/1" }, Blocks(year[unusedPath])[0].Skip(2).Select(r => r[1]));
+        Assert.Equal(new[] { "20/11/2026", "01/12/2026", "02/12/2026" }, Blocks(year[unusedPath])[0].Skip(2).Select(r => r[3]));
+        foreach (var (path, content) in year.Where(f => f.Key.EndsWith(".csv", StringComparison.Ordinal)))
+        {
+            var text = Text(content);
+            foreach (var foreign in new[] { "TD17-2026/9", "TEST Altra Societa", "05555555555", "TEST nota di un'altra agenzia", "auth0|altra" })
+                Assert.False(text.Contains(foreign, StringComparison.Ordinal), $"{path} holds «{foreign}» of another organization");
+        }
+
+        // The id of a user is nowhere in the files, a user that is gone included (the fixed text is written instead): not in a CSV, not in any part of an Excel file. The id stays in the column of the database.
+        foreach (var files in new[] { november, december, year })
+            AssertNoUserIds(files, "auth0|ghost", "auth0|agency");
+
+        // Owner accounting of the whole organization only: without the permission, or for a caller who reaches only some properties, there is no register (and none of its words in any file).
+        var (_, withoutPermission) = await BuildAsync(rig, AccountantPackageAccess.WithoutOwnerAccounting, Year2026);
+        var (_, restricted) = await BuildAsync(rig, AccountantPackageAccess.Full, Year2026, new HostScope(rig.OrgId, GrantedToUserId: "auth0|lago"));
+        foreach (var files in new[] { withoutPermission, restricted })
+        {
+            Assert.DoesNotContain(files.Keys, k => k.Contains(AccountantPackageStructure.UnusedNumbersFile, StringComparison.Ordinal));
+            foreach (var (path, content) in files.Where(f => f.Key.EndsWith(".csv", StringComparison.Ordinal) && f.Key != AccountantPackageStructure.IndexFile))
+            {
+                var text = Text(content);
+                foreach (var word in new[] { "TD17-2026/2", "Mario Rossi", "Nota di credito del portale", "auth0|ghost" })
+                    Assert.False(text.Contains(word, StringComparison.Ordinal), $"{path} holds «{word}», which is owner accounting");
+            }
+        }
+
+        // A period without a closing is the package it always was: September has the same files with the same content as before the closings existed (no file, not a byte of the CSV changed).
+        var (_, after) = await BuildAsync(rig, AccountantPackageAccess.Full, September);
+        Assert.Equal(before.Keys.Order(StringComparer.Ordinal), after.Keys.Order(StringComparer.Ordinal));
+        foreach (var path in before.Keys.Where(k => k.EndsWith(".csv", StringComparison.Ordinal) && k != AccountantPackageStructure.IndexFile))
+            Assert.Equal(before[path], after[path]);
+    }
+
     // ---------------------------------------------------------------- the data
+
+    /// <summary>
+    /// A number closed as «non più dovuta»: the TD17 the SDI rejected (issued on <paramref name="issued"/>, discarded by its correction, its sequence number given up, rejected with the code 00417) and the replacement draft
+    /// that holds its number, discarded with the reason, the note, the user and the day of the closing (<paramref name="closedAt"/>, UTC).
+    /// </summary>
+    private static (FiscalDocument Original, FiscalDocument Closed) ClosedNumber(
+        Guid orgId, int sequence, DateOnly issued, DateTime closedAt, string issuerSnapshot, string reason, string? note, string? userId)
+    {
+        var original = SelfBilled(orgId, sequence, 10, issued, issuerSnapshot, "TEST Portale B.V.", "NL", "NL805734958B01", 67.50m);
+        original.Status = FiscalDocumentStatus.Discarded;
+        original.SequenceNumber = null;
+        original.SdiStatus = FiscalDocumentSdiStatuses.Rejected;
+        original.SdiErrorCode = "00417";
+        var closed = SelfBilled(orgId, sequence, 10, issued, issuerSnapshot, "TEST Portale B.V.", "NL", "NL805734958B01", 67.50m);
+        closed.Status = FiscalDocumentStatus.Discarded;
+        closed.IssueDate = null;
+        closed.IssuerSnapshot = null;
+        closed.FatturaPaXml = null;
+        closed.SdiStatus = FiscalDocumentSdiStatuses.NotApplicable;
+        closed.ReplacesDocumentId = original.Id;
+        closed.ClosedNotDueReason = reason;
+        closed.ClosedNotDueNote = note;
+        closed.ClosedNotDueAt = closedAt;
+        closed.ClosedNotDueByUserId = userId;
+        return (original, closed);
+    }
 
     /// <summary>Three TD17 of two owner companies (V1 holders): the first and the second issued in November for October, the third in December for November; a series of its own for each company.</summary>
     private static async Task<IReadOnlyList<FiscalDocument>> SeedSelfBilledAsync(AccountantPackageRig rig)
@@ -536,6 +714,31 @@ public class AccountantPackageSelfBilledTests
     }
 
     private static string Text(byte[] bytes) => Encoding.UTF8.GetString(bytes).TrimStart((char)0xFEFF);
+
+    /// <summary>No CSV file, and no part of an Excel file, holds the id of a user: the package names who closed a number by name, or by a fixed text when the user is gone.</summary>
+    private static void AssertNoUserIds(Dictionary<string, byte[]> files, params string[] ids)
+    {
+        foreach (var (path, content) in files.Where(f => f.Key.EndsWith(".csv", StringComparison.Ordinal) || f.Key.EndsWith(".xlsx", StringComparison.Ordinal)))
+        {
+            var texts = new List<string>();
+            if (path.EndsWith(".xlsx", StringComparison.Ordinal))
+            {
+                using var workbook = new ZipArchive(new MemoryStream(content), ZipArchiveMode.Read);
+                foreach (var entry in workbook.Entries)
+                {
+                    using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
+                    texts.Add(reader.ReadToEnd());
+                }
+            }
+            else
+            {
+                texts.Add(Text(content));
+            }
+
+            foreach (var id in ids)
+                Assert.False(texts.Any(text => text.Contains(id, StringComparison.Ordinal)), $"{path} holds the id of a user ({id})");
+        }
+    }
 
     /// <summary>An amount as the CSV writes it (a decimal comma, no thousands separator).</summary>
     private static decimal Money(string cell) => decimal.Parse(cell, NumberStyles.Number, Italian);

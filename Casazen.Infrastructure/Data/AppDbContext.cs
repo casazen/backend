@@ -107,6 +107,11 @@ public class AppDbContext(
     // The flats a receipt covers: one row for each flat of the org an Alloggiati receipt is about (E20/F02/US01/T01, decision O3)
     public DbSet<ManualComplianceProofProperty> ManualComplianceProofProperties { get; set; } = null!;
 
+    // The tracking of the police notification of the Swiss properties (E30/F02/US02/T01, NF-128): the declaration «I uploaded the file» of an arrival day and the audit of the files
+    // generated for it (no guest data)
+    public DbSet<SwissNotificationDeclaration> SwissNotificationDeclarations { get; set; } = null!;
+    public DbSet<SwissNotificationFileEvent> SwissNotificationFileEvents { get; set; } = null!;
+
     // Official ISTAT list of the comuni and the log of its imports (SU-04)
     public DbSet<Comune> Comuni { get; set; } = null!;
     public DbSet<ComuneImport> ComuneImports { get; set; } = null!;
@@ -718,6 +723,11 @@ public class AppDbContext(
 
         // E20/F02/US01/T01 (decision O3): the flats a receipt covers, one row for each, with the unique pair (proof, flat); a tenant row (TN-2).
         modelBuilder.ApplyConfiguration(new ManualComplianceProofPropertyConfiguration());
+
+        // E30/F02/US02/T01 (NF-128): the declaration «I uploaded the file» of an arrival day (one for each property, day and regime: two partial unique indexes, a null regime is the
+        // notification to the Ticino police) and the audit of the files generated for the police (a format and a number of rows, never a guest); tenant rows (TN-2).
+        modelBuilder.ApplyConfiguration(new SwissNotificationDeclarationConfiguration());
+        modelBuilder.ApplyConfiguration(new SwissNotificationFileEventConfiguration());
 
         // "Le mie prenotazioni" finds a booking by the org of the site and its code (BK-11).
         modelBuilder.Entity<Booking>()
@@ -1371,6 +1381,15 @@ public class AppDbContext(
             .HasIndex(o => o.Subdomain)
             .IsUnique()
             .HasFilter("\"Subdomain\" IS NOT NULL");
+
+        // Surfaces of the agency's own domain (E40/F01/US01): the guest area and the owner portal start off and the Auth0 state NotRequested
+        // (the defaults of their types), the links follow the domain: on for the orgs that exist too, it takes effect only once the domain is
+        // verified and a surface is on. EF always writes the value of the entity: left to generate it, an explicit false would be taken for
+        // «not set» and the insert would write true in its place.
+        modelBuilder.Entity<Org>()
+            .Property(o => o.UseOwnDomainForLinks)
+            .HasDefaultValue(true)
+            .ValueGeneratedNever();
 
         modelBuilder.Entity<PlatformInvoice>()
             .HasOne(i => i.Org)

@@ -89,6 +89,51 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// PROOF TEST (E40/F01/US01/T03, NF-142): the chat message of an org whose verified domain serves its guest area, with «use my domain for links» on,
+    /// carries the link on the agency's domain with the same token; without that the link is the CasaZen one (the test above).
+    /// </summary>
+    [Fact]
+    public async Task LinkDelivery_OrgOnItsOwnDomain_TheChatCarriesTheAgencyLink_Test()
+    {
+        const string domain = "prenota.agenzia-chat.test";
+        var org = await _db.Orgs.SingleAsync(o => o.Id == _world.Scope.OrgId);
+        org.PlanTier = PlanTier.Pro;
+        org.PublicHostMode = PublicHostMode.CustomDomain;
+        org.CustomDomain = domain;
+        org.DomainVerificationStatus = DomainVerificationStatus.Verified;
+        org.GuestAreaOnOwnDomain = true;
+        org.UseOwnDomainForLinks = true;
+        await _db.SaveChangesAsync();
+        var stay = await AddStayAsync();
+        var rig = new Rig(_db, _world, _clock, FeatureFlags.PortalChatCheckInLink, FeatureFlags.WhiteLabelHost);
+        rig.Messages.ChannelManagerAccepts("90001");
+        var platform = EmailTestHelpers.Links("https://public.test");
+        var entitlements = new Mock<IEntitlementService>();
+        entitlements.Setup(e => e.ResolveEffectiveTier(It.IsAny<OrgEntity>())).Returns((OrgEntity o) => o.PlanTier);
+        var siteUrls = new PublicOrgSiteUrls(platform, Microsoft.Extensions.Options.Options.Create(new PublicHostOptions()), entitlements.Object);
+        var service = new CheckInLinkDeliveryService(
+            _db,
+            rig.Emails.Object,
+            rig.Messages.Service,
+            rig.Contacts.Object,
+            rig.Messages.Targets.Object,
+            new InternalActivityService(_db, NullLogger<InternalActivityService>.Instance, _clock),
+            rig.Messages.Flags,
+            platform,
+            NullLogger<CheckInLinkDeliveryService>.Instance,
+            _clock,
+            rig.Push.Object,
+            new AgencyDomainLinks(_db, platform, siteUrls, rig.Messages.Flags, NullLogger<AgencyDomainLinks>.Instance));
+
+        var view = await service.DeliverAsync(stay.Booking.Id, stay.Link);
+
+        Assert.Equal(CheckInLinkDeliveryState.Sent, view.State);
+        var message = await _db.OtaMessages.AsNoTracking().SingleAsync(m => m.ThreadId == stay.Thread!.Id && m.Origin == MessageOrigin.Automation);
+        Assert.Contains($"https://{domain}/checkin/{stay.Token}", message.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("https://public.test/checkin/", message.Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// PROOF TEST: data rule (AC-NF122-2). While the chat of the listing is not in its license (the copy of the conversations said so) nothing is sent and no call is made: the
     /// row says <c>WaitingChatPermission</c> with the code, the host has ONE «To do» («Copia link»), and when the listing reads its chat again the next pass sends the link, once,
     /// and closes the «To do».

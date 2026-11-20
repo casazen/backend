@@ -70,7 +70,9 @@ public enum OrgActivityType
     /// language of the account. Subject: the org. No details: neither what changed nor the values are recorded. The contact email
     /// is not part of it (it has never had a line: the log would carry an address). It is the line of the other settings of the org
     /// too: the supplier backups, and, since E22/F01/US01/T03, the biometric settings (a change by an administrator of the org, and
-    /// the calibration of the thresholds that a platform administrator marks, whose actor is the staff user).
+    /// the calibration of the thresholds that a platform administrator marks, whose actor is the staff user). Since FIX/BE-V2-NO-RECHARGE
+    /// it records the acknowledged waiver of the recharge of the portal commissions too, the only line with a detail: the <c>part</c>
+    /// <c>portalCommissionRechargeWaiver</c> (the actor is who acknowledged it).
     /// </summary>
     OrgSettingsChanged = 24,
 

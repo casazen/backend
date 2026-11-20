@@ -455,10 +455,11 @@ public class SwissAgencyScenarioTests
             portalCommissionRow: "Booking.com;67,50;CHF");
     }
 
-    // Variante V2 senza riaddebito (⚖ I10 I11): l'account Booking.com e' dell'agenzia che non riaddebita le commissioni: nessun riaddebito nella fattura PM, il
-    // rendiconto non cita la fattura per la commissione e non dice che la fattura del portale e' a nome del proprietario (V1): la riga ha un'etichetta propria.
+    // Variante V2 senza riaddebito (⚖ I10 I11, decisione 1 del 20/11/2026, FIX/BE-V2-NO-RECHARGE): l'account Booking.com e' dell'agenzia che non riaddebita le commissioni:
+    // la commissione e' a carico dell'agenzia e il proprietario non la paga (chiusura 266.23 invece di 198.73), nessun riaddebito nella fattura PM, il rendiconto la mostra
+    // solo a titolo informativo con un'etichetta propria e non cita la fattura, il pacchetto la dice a carico dell'agenzia.
     [Fact]
-    [Trait("Scenario", "C2 C4")]
+    [Trait("Scenario", "C2 C4 C6 C8")]
     public async Task Variant_V2_WithoutTheRecharge_NoRechargeOnThePmInvoice_AndTheStatementNeverNamesItForTheCommission()
     {
         await using var world = await World.CreateAsync(agencyHoldsTheBookingAccount: true, rechargePortalCommissions: false);
@@ -467,36 +468,60 @@ public class SwissAgencyScenarioTests
         await world.GiveInvoiceDataAsync(booking, "TEST Ospite Portale");
         await IssuedAfterTheStayAsync(world, booking, Day(10, 6), "2026/1");
 
-        // The commission of the rule (15%) stays a cost of the owner and the invoice does not recharge it: the commission of the agency and the cleaning fee only.
+        // The commission of the rule (15%) is a cost of the agency: the owner is not charged it (no deduction: 266.23, where V1 closes at 198.73) and the invoice does not
+        // recharge it: the commission of the agency and the cleaning fee only.
         var month = await world.CloseMonthAsync(2026, 10, EndOfOctober);
         await AssertMonthAsync(
             world,
             month,
             new Expected(
                 Gross: 450.00m,
-                ChannelFees: -67.50m,
+                ChannelFees: 0m,
                 Commission: -90.00m,
                 Vat: -13.77m,
                 Recharges: -80.00m,
-                Closing: 198.73m,
+                Closing: 266.23m,
                 InvoiceLines: [(FiscalLineType.Commission, 90.00m, 8.1m, 7.29m), (FiscalLineType.Recharge, 80.00m, 8.1m, 6.48m)],
                 InvoiceTotals: (170.00m, 13.77m, 183.77m)));
 
+        // The ledger: the commission of the rule is a line for information only, never a channel fee the owner is charged.
+        var ledger = await world.LedgerOfAsync(2026, 10);
+        Assert.DoesNotContain(ledger, e => e.EntryType == OwnerLedgerEntryType.ChannelFee);
+        var borne = Assert.Single(ledger, e => e.EntryType == OwnerLedgerEntryType.ChannelFeeBorneByAgency);
+        Assert.Equal((-67.50m, (Guid?)booking, ChannelFeeSources.Rule(world.BookingComRuleId)), (borne.Amount, borne.SourceId, borne.RuleVersion));
+
         // The statement says what the invoice does: the line is not a recharge of the agency, and no label names invoice PM2026/1 for it, in the PDF or on the portal.
         var statement = await world.StatementOfAsync(month.Published.Id);
-        Assert.False(Assert.Single(statement.Of(OwnerStatementSection.ChannelFees)).AgencyHoldsPortalAccount);
+        var line = Assert.Single(statement.Of(OwnerStatementSection.ChannelFees));
+        Assert.False(line.AgencyHoldsPortalAccount);
         Assert.DoesNotContain("riaddebitate dal gestore", StatementTextOf(statement), StringComparison.Ordinal);
         var detail = OwnerPortalStatementDetailDto.From(await world.PortalStatementAsTheOwnerAsync(month.Published.Id));
-        Assert.False(Assert.Single(detail.Sections.Single(s => s.Section == "channelFees").Lines).ChannelFeeRechargedByAgency);
+        var portalPart = detail.Sections.Single(s => s.Section == "channelFees");
+        Assert.False(Assert.Single(portalPart.Lines).ChannelFeeRechargedByAgency);
 
-        // The portal bills the agency, so the line is not the owner's portal invoice either (the sentence of V1): it has a label of its own, in the PDF and as a flag of the
-        // owner portal, and the net is the one asserted above, the same as V1.
-        Assert.True(Assert.Single(statement.Of(OwnerStatementSection.ChannelFees)).AgencyHoldsPortalAccountWithoutRecharge);
+        // The portal bills the agency, which bears the commission: the line says so in words of its own, for information only (the commission shown, nothing taken from the net), in
+        // the PDF and as a flag of the owner portal, whose total of the part leaves it out; never the sentence of V1.
+        Assert.Equal((true, true, -67.50m), (line.AgencyHoldsPortalAccountWithoutRecharge, line.Informational, line.Amount));
         var text = StatementTextOf(statement);
-        Assert.Contains("Commissioni del portale (account del portale intestato al gestore, senza riaddebito in fattura)", text, StringComparison.Ordinal);
+        Assert.Contains("Commissione del portale sostenuta dall'agenzia, non addebitata al proprietario", text, StringComparison.Ordinal);
+        Assert.Contains("67.50", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("-67.50", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Trattenuta dal portale", text, StringComparison.Ordinal);
         Assert.DoesNotContain("fattura del portale a tuo nome", text, StringComparison.Ordinal);
-        Assert.True(Assert.Single(detail.Sections.Single(s => s.Section == "channelFees").Lines).ChannelFeeBilledToAgencyNotRecharged);
+        Assert.True(Assert.Single(portalPart.Lines).ChannelFeeBilledToAgencyNotRecharged);
+        Assert.Equal(0m, portalPart.Total);
+
+        // C8: the package says the agency bears it (and the VAT file of the agency still has the commission of the account it holds); C6: the owner is paid the net without it.
+        var package = await world.PackageAsync(October);
+        AssertPackage(
+            package,
+            guestDocuments: 1,
+            vatRows: ["2026-Q4;8,10;170,00;13,77;CHF;1", "2026-Q4;3,80;433,53;16,47;CHF;1"],
+            portalCommissionRow: "Booking.com;67,50;CHF");
+        var commissions = Text(package[AccountantPackageStructure.OwnerInvoicesFolder + "/" + AccountantPackageStructure.PortalCommissionsFile + ".csv"]);
+        Assert.Contains("A carico dell'agenzia", commissions, StringComparison.Ordinal);
+        Assert.DoesNotContain("Riaddebitata al proprietario", commissions, StringComparison.Ordinal);
+        await AssertPayoutAndWireAsync(world, month.Published, 266.23m);
     }
 
     // Variante del portale che incassa la tassa (⚖ C4 C5): prenotazione Airbnb tramite Octorate, nessuna riga della tassa di Ticino nel documento e nessuna nel
@@ -879,10 +904,11 @@ public class SwissAgencyScenarioTests
             (expected.Gross, expected.ChannelFees, 0m, expected.Commission + expected.Vat, expected.Recharges, 0m, 0m, 0m, expected.Closing),
             (totals.Gross, totals.ChannelFees, totals.Withholding, totals.Commission, totals.Recharges, totals.Corrections, totals.Payments, totals.OpeningBalance, totals.ClosingBalance));
 
-        // The lines of the statement: the stays without the tourist tax, the channel fees, the commission with the VAT of its invoice, the recharges.
+        // The lines of the statement: the stays without the tourist tax, the channel fees the owner bears (a commission the agency bears is a line for information only, in no
+        // total: FIX/BE-V2-NO-RECHARGE), the commission with the VAT of its invoice, the recharges.
         var statement = await world.StatementOfAsync(published.Id);
         Assert.Equal(expected.Gross, statement.Of(OwnerStatementSection.Stays).Sum(l => l.Amount));
-        Assert.Equal(expected.ChannelFees, statement.Of(OwnerStatementSection.ChannelFees).Sum(l => l.Amount));
+        Assert.Equal(expected.ChannelFees, statement.Of(OwnerStatementSection.ChannelFees).Where(l => !l.Informational).Sum(l => l.Amount));
         Assert.Equal(expected.Commission + expected.Vat, statement.Of(OwnerStatementSection.Commission).Sum(l => l.Amount));
         Assert.Equal(expected.Recharges, statement.Of(OwnerStatementSection.Recharges).Sum(l => l.Amount));
         Assert.Equal("PM2026/1", statement.OwnerInvoiceNumber);
@@ -893,7 +919,7 @@ public class SwissAgencyScenarioTests
         Assert.Equal((expected.Vat, (Guid?)month.Invoice.Id), (vat.Amount, vat.SourceDocumentId));
         Assert.Equal(expected.Commission, ledger.Where(e => e.EntryType == OwnerLedgerEntryType.AgencyCommission).Sum(e => e.Amount));
         Assert.Equal(expected.Gross, ledger.Where(e => e.EntryType == OwnerLedgerEntryType.BookingRevenue).Sum(e => e.Amount));
-        Assert.Equal(expected.Closing, ledger.Sum(e => e.Amount));
+        Assert.Equal(expected.Closing, ledger.Where(e => OwnerLedgerBalance.Counts(e.EntryType)).Sum(e => e.Amount));
 
         // The invoice of the property manager: in its own series, the Swiss rule of the last day of the month, no XML.
         var invoice = month.Invoice;

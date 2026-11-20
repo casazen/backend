@@ -92,9 +92,9 @@ public class FiscalDocumentServiceProofTests
 
         var draft = await service.CreateDraftAsync(portal, "auth0|host");
 
-        // The price of the host (350.00: 300.00 for the stay and 50.00 for the cleaning), without the tourist tax of the reservation: nobody has said that the host collects it
-        // for this channel (E12/F01/US01/T01), so the guest is never charged it twice.
-        Assert.Equal(350.00m, draft.Total);
+        // The price of the host (350.00: 300.00 for the stay and 50.00 for the cleaning) and the tourist tax of the reservation (12.00): nobody has said that the portal collects it
+        // for this channel, and in Italy no portal is taken to collect the tax unless somebody says so (FIX/BE-IT-TOURISTTAX-DEFAULTS), so it is the host's, «da pagare in struttura».
+        Assert.Equal(362.00m, draft.Total);
         var issued = await service.IssueAsync(draft.Id, confirm: true);
 
         Assert.Equal(FiscalDocumentStatus.Issued, issued.Status);
@@ -519,7 +519,14 @@ public class FiscalDocumentServiceProofTests
             var amount = rest.ToString("0.00", culture);
             Assert.Contains(swiss ? "Pagata tramite il portale: CHF 450.00" : "Pagamento: pagato tramite il portale per EUR 450,00", text, StringComparison.Ordinal);
             Assert.Contains(swiss ? $"Tassa di soggiorno da riscuotere in struttura: CHF {amount}" : $"Imposta di soggiorno da pagare in struttura: EUR {amount}", text, StringComparison.Ordinal);
-            Assert.Contains(swiss ? "- tassa da riscuotere in struttura" : "- da pagare in struttura", text, StringComparison.Ordinal);
+            if (swiss)
+                Assert.Contains("- tassa da riscuotere in struttura", text, StringComparison.Ordinal);
+            else
+            {
+                // The cell of the line of the tax says «da pagare in struttura» (a cell on its own: the paragraph of the payment has a colon after it), never «riscossa».
+                Assert.Contains("\nImposta di soggiorno da pagare in struttura\n", text, StringComparison.Ordinal);
+                Assert.DoesNotContain("riscossa per conto del comune", text, StringComparison.Ordinal);
+            }
         }
         else
         {

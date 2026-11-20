@@ -237,6 +237,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAuthorizationHandler, AgencyTierAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, AgencyPermissionAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, OwnerPortalAuthorizationHandler>();
+        services.AddScoped<IAuthorizationHandler, OwnerPortalHostOriginAuthorizationHandler>();
 
         // The complete policy set (TN-3): see CasazenPolicies for how to choose one.
         var builder = services.AddAuthorizationBuilder()
@@ -260,9 +261,13 @@ public static class ServiceCollectionExtensions
             .AddPolicy(CasazenPolicies.TenantAccount, policy => policy
                 .RequireAuthenticatedUser()
                 .RequireAssertion(context => !string.IsNullOrWhiteSpace(context.User.GetUserId())))
-            // Owner portal access (ADR-011): context=owner_portal claim, MUST NOT include host roles.
+            // Owner portal access (ADR-011): context=owner_portal claim, MUST NOT include host roles. E40/F01/US01/T02: a call from an agency's own
+            // domain also needs that agency in the owner's agency_ids (a separate requirement, so the two are AND-ed).
             .AddPolicy(CasazenPolicies.OwnerPortal, policy =>
-                policy.Requirements.Add(new OwnerPortalRequirement()));
+            {
+                policy.Requirements.Add(new OwnerPortalRequirement());
+                policy.Requirements.Add(new OwnerPortalHostOriginRequirement());
+            });
 
         foreach (var policyName in CasazenPolicies.ContextPolicies)
         {
@@ -593,6 +598,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICorsOriginSource, OrgHostCorsOriginSource>();
         // Where an org's public site lives (own host or platform path) and its canonical URLs (BK-16).
         services.AddScoped<PublicOrgSiteUrls>();
+        // The links CasaZen sends for an org, on the agency's own domain or on the CasaZen one (E40/F01/US01/T03).
+        services.AddScoped<Casazen.Infrastructure.Email.AgencyDomainLinks>();
         // Pages and sitemaps of the public site as crawlers read them (BK-15).
         services.AddScoped<Casazen.Web.Seo.IPublicSeoService, Casazen.Web.Seo.PublicSeoService>();
         services.AddScoped<IDnsTxtLookup, DnsClientTxtLookup>();

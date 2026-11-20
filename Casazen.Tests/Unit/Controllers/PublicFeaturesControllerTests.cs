@@ -48,4 +48,23 @@ public class PublicFeaturesControllerTests
         Assert.True(on["guestRegistrationRegimes"]);
         Assert.Single(on, feature => feature.Value);
     }
+
+    [Fact]
+    public void Get_SiteIntegrationFlags_AreExposedUnderTheirCamelCaseKeys()
+    {
+        // E40/F01/US01/T01: the frontend reads whiteLabelHost, auth0HostSync and siteEmbed (off by default, on only when set).
+        var off = Get(new Dictionary<string, string?>());
+        var on = Get(new Dictionary<string, string?>
+        {
+            ["Features:WhiteLabelHost"] = "true",
+            ["Features:Auth0HostSync"] = "true",
+            ["Features:SiteEmbed"] = "true",
+        });
+
+        foreach (var key in new[] { "whiteLabelHost", "auth0HostSync", "siteEmbed" })
+        {
+            Assert.False(off[key]);
+            Assert.True(on[key]);
+        }
+    }
 }
