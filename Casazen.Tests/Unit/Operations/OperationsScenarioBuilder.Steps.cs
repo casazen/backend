@@ -435,6 +435,25 @@ internal sealed partial class OperationsScenarioBuilder
         return await scope.Get<IVerificationQueueService>().RecordManualVerificationAsync(bookingId, WholeOrg, true, null, HostUser);
     }
 
+    /// <summary>The operator looks at the stay in its queue and refuses the identity of the guest, with the reason a refusal needs.</summary>
+    public async Task<bool> TheOperatorRejectsAsync(Guid bookingId)
+    {
+        await using var scope = Scope();
+        return await scope.Get<IVerificationQueueService>().RecordManualVerificationAsync(bookingId, WholeOrg, false, "TEST documento non leggibile", HostUser);
+    }
+
+    /// <summary>
+    /// The guests of the stay are offered to the channel manager now, as the consumer of the events, the retry and the sweep offer them (the consumer does exactly this on an event): the answer
+    /// says why they stay. A rejection of the operator records no event (only an approval does), so no event reaches the consumer after it: this is the evaluation that the next event, the retry or
+    /// the sweep would make, and it tells that the gate of the identity holds instead of leaving it to an event that never comes.
+    /// </summary>
+    public async Task<Casazen.Infrastructure.Octorate.StayGuestsAutoSendOutcome> TheGuestsAreOfferedAsync(Guid bookingId)
+    {
+        await using var scope = Scope(underTheOrg: false);
+        var answer = await scope.Get<Casazen.Infrastructure.Octorate.IStayGuestsAutoSendService>().TrySendAsync(OrgId, bookingId, CancellationToken.None);
+        return answer.Outcome;
+    }
+
     // ---------------------------------------------------------------- the ISTAT table
 
     /// <summary>The comuni and the table of the regions of the ISTAT communication, as the migrations leave them on a database (the in-memory one starts empty).</summary>

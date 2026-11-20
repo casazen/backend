@@ -11,6 +11,7 @@ using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Jobs;
 using Moq;
 using Xunit;
+using AutoSendOutcome = Casazen.Infrastructure.Octorate.StayGuestsAutoSendOutcome;
 using WebhookSource = Casazen.Infrastructure.External.WebhookSource;
 using World = Casazen.Tests.Unit.Operations.OperationsScenarioBuilder;
 
@@ -407,11 +408,14 @@ public class OperationsChainTests
             World.Member("Rita", "Rossi", new DateTime(1987, 5, 10, 0, 0, 0, DateTimeKind.Utc), Gender.Female));
         Assert.True(submit.Success, string.Join(", ", submit.ValidationErrors.Select(e => $"{e.Index}:{e.Field}:{e.MessageKey}")));
 
-        // B3: the data is complete, but nobody verified who the guest is: nothing leaves, whether no verification exists or the step has escalated to the operator.
+        // B3: the data is complete, but nobody verified who the guest is: nothing leaves, whether no verification exists or the step has escalated to the operator. The consumer of the events
+        // answers the registration of the guests; the escalation records no event, so the stay is offered to the channel manager again, as the retry and the sweep do, and says why it stays.
         await world.DeliverEventsAsync();
         Assert.Empty(world.GuestsWritten);
+        Assert.Equal(AutoSendOutcome.IdentityNotVerified, await world.TheGuestsAreOfferedAsync(bookingId));
         await world.TheIdentityWaitsForTheOperatorAsync(bookingId);
         await world.DeliverEventsAsync();
+        Assert.Equal(AutoSendOutcome.IdentityNotVerified, await world.TheGuestsAreOfferedAsync(bookingId));
         Assert.Empty(world.GuestsWritten);
 
         // The operator accepts the identity: the guests reach the channel manager, once, and only then.
@@ -423,6 +427,36 @@ public class OperationsChainTests
         world.At(World.InRome(World.Day(12, 2), 12));
         await world.DeliverEventsAsync();
         Assert.Equal(2, world.GuestsWritten.Count);
+    }
+
+    // Identificazione rifiutata: il rifiuto dell'operatore non e' un via libera (vale l'ultima riga del registro): gli ospiti non partono, nemmeno quando la stessa richiesta torna per un evento, per il ritentativo o per la scansione.
+    [Fact]
+    [Trait("Scenario", "B3 B5")]
+    public async Task OperationsChain_IdentityRejectedByTheOperator_Test()
+    {
+        await using var world = await World.CreateAsync(FeatureFlags.CheckInIdentityVerification);
+        world.At(World.InRome(World.Day(11, 20), 9));
+        var bookingId = await world.ImportPortalBookingAsync(world.PortalReservation(World.CheckInDay, World.CheckOutDay));
+        await world.DeliverEventsAsync();
+
+        // B2, B3: the host carries the link to the guest, who registers the two people; the step of the identity escalates to the operator.
+        world.At(World.InRome(World.Day(12, 2), 9));
+        var token = await world.HostIssuesTheLinkAsync(bookingId);
+        var submit = await world.GuestChecksInAsync(
+            token,
+            World.Head(),
+            World.Member("Rita", "Rossi", new DateTime(1987, 5, 10, 0, 0, 0, DateTimeKind.Utc), Gender.Female));
+        Assert.True(submit.Success, string.Join(", ", submit.ValidationErrors.Select(e => $"{e.Index}:{e.Field}:{e.MessageKey}")));
+        await world.DeliverEventsAsync();
+        await world.TheIdentityWaitsForTheOperatorAsync(bookingId);
+
+        // The operator looks at the stay and refuses: the latest row of the log is a rejection, which is no pass, so the data of the guests stays where it is, however the stay is offered to the
+        // channel manager again (an event, the retry, the sweep).
+        world.At(World.InRome(World.Day(12, 2), 10));
+        Assert.True(await world.TheOperatorRejectsAsync(bookingId));
+        await world.DeliverEventsAsync();
+        Assert.Equal(AutoSendOutcome.IdentityNotVerified, await world.TheGuestsAreOfferedAsync(bookingId));
+        Assert.Empty(world.GuestsWritten);
     }
 
     // ISTAT tramite il gestore delle camere: la regione dell'appartamento, «da verificare» finche' lo staff non l'ha verificata sulla fonte; poi la copertura, il passo successivo e la prova del mese in archivio.
