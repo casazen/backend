@@ -177,6 +177,43 @@ public class OwnerStatementDocumentsTests
     }
 
     /// <summary>
+    /// PROOF TEST: money rule (FIX/BE-IT-TOURISTTAX-DEFAULTS). Who collects the tax of an Italian stay is one rule for the box of the statement and for the guest document of the stay
+    /// (<c>ItalianPortalTouristTax.Decide</c>): the record of the stay wins over the list of the portals of the organization (Airbnb in the list and the host declared that it collected this stay itself:
+    /// the tax is billed on the document and is in the box, never in one and out of the other), and a portal the organization confirmed for one comune counts for the properties of that comune only.
+    /// </summary>
+    [Fact]
+    public async Task StatementPdf_TouristTaxOfAnItalianStay_FollowsTheRuleOfTheGuestDocument_Test()
+    {
+        var world = await World.CreateAsync();
+        async Task<decimal> BoxAsync() => (await world.Documents.GetContentAsync(world.OrgId, world.VersionId)).TouristTax.Sum(t => t.Amount);
+
+        // The organization says that Booking.com collects it (every comune): the 12 of the portal stay leaves the box, the 8 of the direct one stays.
+        var issuer = new OrgFiscalIssuerProfile { OrgId = world.OrgId, CountryCode = "IT" };
+        issuer.ConfirmPlatformCollectedTouristTaxChannels([BookingSource.BookingCom]);
+        world.Db.OrgFiscalIssuerProfiles.Add(issuer);
+        await world.Db.SaveChangesAsync();
+        Assert.Equal(8m, await BoxAsync());
+
+        // The host declared that it collected the tax of this very stay: the record of the stay wins, as it does on the guest document (a line billed), so the 12 is in the box again.
+        var record = new StayTouristTax { OrgId = world.OrgId, BookingId = world.PortalBookingId, DeclaredCollector = TouristTaxCollector.Host };
+        world.Db.StayTouristTaxes.Add(record);
+        await world.Db.SaveChangesAsync();
+        Assert.Equal(20m, await BoxAsync());
+
+        // A portal confirmed for one comune only: it counts for the property in that comune, and not for the same property in another one.
+        record.DeclaredCollector = null;
+        issuer.ConfirmPlatformCollectedTouristTaxChannels([]);
+        issuer.ConfirmPortalTouristTaxComuni([new Casazen.Core.TouristTax.PortalComune(BookingSource.BookingCom, "015146")]);
+        var property = await world.Db.Properties.SingleAsync();
+        property.ComuneIstatCode = "015146";
+        await world.Db.SaveChangesAsync();
+        Assert.Equal(8m, await BoxAsync());
+        property.ComuneIstatCode = "013075";
+        await world.Db.SaveChangesAsync();
+        Assert.Equal(20m, await BoxAsync());
+    }
+
+    /// <summary>
     /// Money: the tourist tax of a stay that owes nothing is not in the box. A cancelled booking, a request and a no-show can keep revenue (a payment the guest does not
     /// get back), but nobody collects a tax for a stay that never took place (the one definition of an active booking). The revenue stays in the lines, the net does not move.
     /// </summary>

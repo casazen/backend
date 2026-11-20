@@ -222,7 +222,7 @@ public sealed partial class FiscalDocumentService
                     var profile = await IssuerProfileAsync(booking, organization, document.IssuerProfileId, requireComplete: false, ct);
                     var rule = RuleOf(profile, booking);
                     var built = await _lines.BuildAsync(booking.Id, rule, platformCollected, ct);
-                    changed = !BillsWhatTheDocumentSays(document, GuestDocumentLineBuilder.LinesOf(built.Lines, document, organization), rule);
+                    changed = !BillsWhatTheDocumentSays(document, ComparableLinesOf(built, document, organization), rule);
                 }
 
                 if (changed)

@@ -3,6 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
+using Casazen.Core.TouristTax;
 
 namespace Casazen.Core.Entities;
 
@@ -210,6 +211,9 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     /// <c>PlatformCollectedTouristTaxChannels</c>). <c>null</c> = nothing confirmed yet (no channel is listed; for Switzerland the default of the
     /// configuration applies); <c>[]</c> = the issuer confirmed that no portal collects it (E11/F01/US01/T04). Read through
     /// <see cref="PlatformCollectedTouristTaxChannels"/>, confirmed through <see cref="ConfirmPlatformCollectedTouristTaxChannels"/>.
+    /// An Italian issuer that confirmed a portal for one comune (<see cref="PortalTouristTaxComuni"/>, FIX/BE-IT-TOURISTTAX-DEFAULTS) has the same column as an object,
+    /// <c>{"channels":[...],"comuni":[{"channel":"Airbnb","comuneIstat":"015146"}]}</c> (no <c>channels</c> member while the list for every comune is not confirmed): no migration, and an
+    /// issuer with no such confirmation keeps the plain array it always had, byte for byte.
     /// </summary>
     [Column("PlatformCollectedTouristTaxChannels", TypeName = "jsonb")]
     public string? PlatformCollectedTouristTaxChannelsJson { get; set; }
@@ -224,9 +228,7 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     public IReadOnlyList<BookingSource> PlatformCollectedTouristTaxChannels
     {
         get => ChannelsOf(PlatformCollectedTouristTaxChannelsJson);
-        set => PlatformCollectedTouristTaxChannelsJson = value is { Count: > 0 }
-            ? JsonSerializer.Serialize(value.Distinct().Order().Select(source => source.ToString()))
-            : null;
+        set => PlatformCollectedTouristTaxChannelsJson = ComposePlatformCollected(value is { Count: > 0 } ? value : null, PortalTouristTaxComuni);
     }
 
     /// <summary>
@@ -235,16 +237,34 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     /// does it only while this is false: a confirmed empty list means «no portal collects it», never «use the default».
     /// </summary>
     [NotMapped]
-    public bool PlatformCollectedTouristTaxChannelsConfirmed => PlatformCollectedTouristTaxChannelsJson is not null;
+    public bool PlatformCollectedTouristTaxChannelsConfirmed => ReadPlatformCollected(PlatformCollectedTouristTaxChannelsJson).ChannelsGiven;
 
     /// <summary>
     /// Confirms the channels whose portal collects the tourist tax itself: the list as it is (without duplicates), an empty one included, which is stored
-    /// as <c>[]</c> and says that no portal collects it.
+    /// as <c>[]</c> and says that no portal collects it. The portals the issuer confirmed for one comune (<see cref="PortalTouristTaxComuni"/>) are kept as they are.
     /// </summary>
     public void ConfirmPlatformCollectedTouristTaxChannels(IEnumerable<BookingSource> channels)
     {
         ArgumentNullException.ThrowIfNull(channels);
-        PlatformCollectedTouristTaxChannelsJson = JsonSerializer.Serialize(channels.Distinct().Order().Select(source => source.ToString()));
+        PlatformCollectedTouristTaxChannelsJson = ComposePlatformCollected(channels.Distinct().ToList(), PortalTouristTaxComuni);
+    }
+
+    /// <summary>
+    /// The portals the issuer confirmed for one comune (the proposal «Airbnb incassa a Milano», FIX/BE-IT-TOURISTTAX-DEFAULTS): the channel and the ISTAT code of the comune. They count only for a
+    /// property in that comune, never for the other comuni of the issuer, and are kept apart from <see cref="PlatformCollectedTouristTaxChannels"/> (the portals that collect it in every comune).
+    /// </summary>
+    [NotMapped]
+    public IReadOnlyList<PortalComune> PortalTouristTaxComuni => PortalComuniOf(PlatformCollectedTouristTaxChannelsJson);
+
+    /// <summary>
+    /// Confirms the portals that collect the tourist tax in one comune: the list as it is (without duplicates); an empty one takes every confirmation of a comune away (it never means «every comune»).
+    /// The list for every comune (<see cref="PlatformCollectedTouristTaxChannels"/>) and whether it was confirmed stay as they are.
+    /// </summary>
+    public void ConfirmPortalTouristTaxComuni(IEnumerable<PortalComune> comuni)
+    {
+        ArgumentNullException.ThrowIfNull(comuni);
+        var current = ReadPlatformCollected(PlatformCollectedTouristTaxChannelsJson);
+        PlatformCollectedTouristTaxChannelsJson = ComposePlatformCollected(current.ChannelsGiven ? current.Channels : null, [.. comuni]);
     }
 
     /// <summary>
@@ -284,25 +304,102 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     [NotMapped]
     public bool IsOwnerProfile => PropertyOwnerId is not null;
 
-    /// <summary>The channels of a stored JSON array of <see cref="BookingSource"/> names; an unreadable value is no channel.</summary>
-    public static IReadOnlyList<BookingSource> ChannelsOf(string? json)
+    /// <summary>
+    /// The channels of the stored column: the JSON array of <see cref="BookingSource"/> names (what every issuer has but the ones that confirmed a portal for one comune), or the <c>channels</c>
+    /// member of the object of those; an unreadable value is no channel.
+    /// </summary>
+    public static IReadOnlyList<BookingSource> ChannelsOf(string? json) => ReadPlatformCollected(json).Channels;
+
+    /// <summary>The portals confirmed for one comune in the stored column; none for the plain array and for an unreadable value.</summary>
+    public static IReadOnlyList<PortalComune> PortalComuniOf(string? json) => ReadPlatformCollected(json).Comuni;
+
+    /// <summary>True for the ISTAT code of a comune: six ASCII digits.</summary>
+    public static bool IsIstatCode(string? code) => code is { Length: 6 } && code.All(char.IsAsciiDigit);
+
+    /// <summary>What the column holds: whether the list for every comune was given (confirmed, an empty one included), that list, and the portals confirmed for one comune.</summary>
+    private sealed record PlatformCollectedSetting(bool ChannelsGiven, IReadOnlyList<BookingSource> Channels, IReadOnlyList<PortalComune> Comuni);
+
+    private static PlatformCollectedSetting ReadPlatformCollected(string? json)
     {
+        // Nothing stored is nothing confirmed; a blank or an unreadable value is stored, and says no channel (confirmed, as it always was).
+        if (json is null)
+            return new PlatformCollectedSetting(false, [], []);
+
         if (string.IsNullOrWhiteSpace(json))
-            return [];
+            return new PlatformCollectedSetting(true, [], []);
 
         try
         {
-            var names = JsonSerializer.Deserialize<string[]>(json) ?? [];
-            return names
-                .Select(name => Enum.TryParse<BookingSource>(name, ignoreCase: false, out var source) && Enum.IsDefined(source) ? source : (BookingSource?)null)
-                .OfType<BookingSource>()
-                .Distinct()
-                .ToList();
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind == JsonValueKind.Array)
+                return new PlatformCollectedSetting(true, ChannelNamesOf(root), []);
+
+            if (root.ValueKind != JsonValueKind.Object)
+                return new PlatformCollectedSetting(true, [], []);
+
+            var given = root.TryGetProperty("channels", out var channels) && channels.ValueKind == JsonValueKind.Array;
+            var comuni = root.TryGetProperty("comuni", out var list) && list.ValueKind == JsonValueKind.Array ? PortalComuniIn(list) : [];
+            return new PlatformCollectedSetting(given, given ? ChannelNamesOf(channels) : [], comuni);
         }
         catch (JsonException)
         {
-            return [];
+            return new PlatformCollectedSetting(true, [], []);
         }
+    }
+
+    private static List<BookingSource> ChannelNamesOf(JsonElement array) =>
+        array.EnumerateArray()
+            .Where(item => item.ValueKind == JsonValueKind.String)
+            .Select(item => Enum.TryParse<BookingSource>(item.GetString(), ignoreCase: false, out var source) && Enum.IsDefined(source) ? source : (BookingSource?)null)
+            .OfType<BookingSource>()
+            .Distinct()
+            .ToList();
+
+    private static List<PortalComune> PortalComuniIn(JsonElement list)
+    {
+        var comuni = new List<PortalComune>();
+        foreach (var item in list.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object
+                || !item.TryGetProperty("channel", out var channel) || channel.ValueKind != JsonValueKind.String
+                || !item.TryGetProperty("comuneIstat", out var istat) || istat.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var code = istat.GetString();
+            if (!Enum.TryParse<BookingSource>(channel.GetString(), ignoreCase: false, out var source) || !Enum.IsDefined(source) || !IsIstatCode(code))
+                continue;
+
+            var comune = new PortalComune(source, code!);
+            if (!comuni.Contains(comune))
+                comuni.Add(comune);
+        }
+
+        return comuni;
+    }
+
+    /// <summary>
+    /// The column as it is stored: the plain array of channel names when no portal is confirmed for a comune (as it always was), else the object with the <c>comuni</c> member (and the
+    /// <c>channels</c> member when the list for every comune was given). <c>null</c> when there is nothing to store.
+    /// </summary>
+    private static string? ComposePlatformCollected(IReadOnlyList<BookingSource>? channels, IReadOnlyList<PortalComune> comuni)
+    {
+        var names = channels?.Distinct().Order().Select(source => source.ToString()).ToList();
+        var confirmed = comuni
+            .Where(comune => IsIstatCode(comune.ComuneIstat))
+            .Distinct()
+            .OrderBy(comune => comune.Channel)
+            .ThenBy(comune => comune.ComuneIstat, StringComparer.Ordinal)
+            .Select(comune => new { channel = comune.Channel.ToString(), comuneIstat = comune.ComuneIstat })
+            .ToList();
+        if (confirmed.Count == 0)
+            return names is null ? null : JsonSerializer.Serialize(names);
+
+        return names is null
+            ? JsonSerializer.Serialize(new { comuni = confirmed })
+            : JsonSerializer.Serialize(new { channels = names, comuni = confirmed });
     }
 }
 
