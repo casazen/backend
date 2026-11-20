@@ -413,6 +413,24 @@ public class ComplianceAlertTicinoTests : IDisposable
 
     private static string Subject(RecordingEmailQueue queue, int index) => queue.Snapshot()[index].Content.Subject;
 
+    private static readonly DateTime DayDeadline = new(2026, 11, 20, 14, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>
+    /// A mock of the service of the days whose list, the one of the job (every org), still has the arrival day of <paramref name="tenant"/>: with no expected check-in
+    /// the first stage is due at 18:00 on the clock of the property, 17:00Z. What the detail of the day answers is up to the test.
+    /// </summary>
+    private static Mock<ITicinoNotificationService> DaysToNotifyWith(Tenant tenant)
+    {
+        IReadOnlyList<TicinoPendingDay> listed = [new TicinoPendingDay(tenant.OrgId, tenant.PropertyId, tenant.PropertyName, Day, 1, DayDeadline)];
+        var days = new Mock<ITicinoNotificationService>();
+        days.Setup(d => d.ListPendingDaysAsync(null, null, Day, It.IsAny<CancellationToken>())).ReturnsAsync(listed);
+        return days;
+    }
+
+    /// <summary>The detail of the arrival day of <paramref name="tenant"/> with <paramref name="pendingDays"/> as the days of the property still to notify.</summary>
+    private static TicinoNotificationDay DetailOfTheDay(Tenant tenant, IReadOnlyList<TicinoPendingDay> pendingDays) =>
+        new(tenant.PropertyId, Day, "NL-99999999", 1, new TicinoDayPlan([], []), 0, DayDeadline, pendingDays);
+
     // ─── Each stage once ───
 
     [Fact]
@@ -563,6 +581,53 @@ public class ComplianceAlertTicinoTests : IDisposable
         Assert.Equal(0, await RunAtAsync("2026-11-19T17:00:00Z"));
         Assert.Equal(0, await RunAtAsync("2026-11-20T14:00:00Z"));
         Assert.Empty(await _db.ComplianceAlertStates.ToListAsync());
+    }
+
+    [Fact]
+    public async Task TicinoAlerts_ADayThatClosesBetweenTheListAndTheSend_SendsNothingAndWritesNoState()
+    {
+        var tenant = await SeedTenantAsync("a");
+        var days = DaysToNotifyWith(tenant);
+        // A receipt closed the day after the job read the list: the detail of the day, read just before the stage is claimed, no longer has it among the days of the property to notify.
+        days.Setup(d => d.GetDayAsync(tenant.PropertyId, Day, It.IsAny<CancellationToken>())).ReturnsAsync(DetailOfTheDay(tenant, []));
+        _clock.SetUtcNow(new DateTimeOffset(2026, 11, 19, 17, 0, 0, TimeSpan.Zero));
+
+        var result = await Service(daysToNotify: days.Object).RunAsync();
+
+        // The first stage was due and the re-check ran: it stopped the alert before anything was claimed, queued, or even asked of the audience.
+        days.Verify(d => d.GetDayAsync(tenant.PropertyId, Day, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(0, result.Sent);
+        Assert.Empty(_emails.Snapshot());
+        Assert.Empty(_pushes.Queued);
+        Assert.Empty(await _db.ComplianceAlertStates.ToListAsync());
+        _recipients.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData("property_not_in_ticino")]
+    [InlineData("property_not_found")]
+    public async Task TicinoAlerts_APropertyThatIsNoLongerOfTicinoWhenTheDayIsRead_SendsNothingAndWritesNoState(string code)
+    {
+        var tenant = await SeedTenantAsync("a");
+        var days = DaysToNotifyWith(tenant);
+        // The property left canton Ticino (its municipality was changed) or is gone since the list was read: the service of the days says so when the detail of the day is asked.
+        Exception gone = code == "property_not_found"
+            ? new NotFoundException($"Property {tenant.PropertyId} not found") { Code = code, MessageKey = "PropertyNotFound" }
+            : new DomainRuleException(code, "PropertyNotInTicino", tenant.PropertyId);
+        days.Setup(d => d.GetDayAsync(tenant.PropertyId, Day, It.IsAny<CancellationToken>())).ThrowsAsync(gone);
+        _clock.SetUtcNow(new DateTimeOffset(2026, 11, 19, 17, 0, 0, TimeSpan.Zero));
+
+        var result = await Service(daysToNotify: days.Object).RunAsync();
+
+        days.Verify(d => d.GetDayAsync(tenant.PropertyId, Day, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(0, result.Sent);
+        Assert.Empty(_emails.Snapshot());
+        Assert.Empty(_pushes.Queued);
+        Assert.Empty(await _db.ComplianceAlertStates.ToListAsync());
+        _recipients.VerifyNoOtherCalls();
+
+        // An answer to expect, told at information level with ids only: neither a warning nor an error of the run.
+        Assert.DoesNotContain(_log.Entries, e => e.Level >= LogLevel.Warning);
     }
 
     [Fact]
