@@ -276,6 +276,42 @@ public class TicinoPoliceFileTests
     }
 
     [Fact]
+    public void TicinoCsv_Windows1252_AnAccentTypedAsLetterAndMark_IsTheLetterTheSetHolds_Test()
+    {
+        // A letter typed as a base and a combining mark (the form some keyboards, pastes and files give) is the same letter as the one in a single character:
+        // Windows-1252 holds «é» and «ë», so they are written as such and not counted; «ń» has no byte, so it is written «n» and counted once, never as a letter
+        // followed by a stray «?».
+        var decomposed = Stay(Adult("Jose\u0301", "Zoe\u0308") with { City = "Gdan\u0301sk" });
+        var whole = Stay(Adult("Jos\u00E9", "Zo\u00EB") with { City = "Gda\u0144sk" });
+
+        var file = TicinoPoliceFile.WriteCsvFile(TicinoPoliceFile.Plan(Structure, [decomposed], Today).Registrations, TicinoCsvCharset.Windows1252);
+        var typedWhole = TicinoPoliceFile.WriteCsvFile(TicinoPoliceFile.Plan(Structure, [whole], Today).Registrations, TicinoCsvCharset.Windows1252);
+
+        var row = Windows1252.GetString(file.Content).Split("\r\n")[1];
+        Assert.StartsWith("NL-12345678;Zo\u00EB;Jos\u00E9;", row, StringComparison.Ordinal);
+        Assert.Contains(";Gdansk;", row, StringComparison.Ordinal);
+        Assert.DoesNotContain("?", row, StringComparison.Ordinal);
+        Assert.Contains((byte)0xE9, file.Content);
+        Assert.Equal(1, file.TransliteratedCount);
+
+        // The same text typed as single characters gives the same bytes and the same count.
+        Assert.Equal(typedWhole.Content, file.Content);
+        Assert.Equal(typedWhole.TransliteratedCount, file.TransliteratedCount);
+    }
+
+    [Fact]
+    public void TicinoCsv_Windows1252_AnIllFormedText_IsWrittenWithAQuestionMark_NeverAnException_Test()
+    {
+        // A lone surrogate is no character: the composed form cannot be asked of such a text, which is written with «?» and counted as before.
+        var stay = Stay(Adult("Ann\uD800a", "Rossi"));
+
+        var file = TicinoPoliceFile.WriteCsvFile(TicinoPoliceFile.Plan(Structure, [stay], Today).Registrations, TicinoCsvCharset.Windows1252);
+
+        Assert.StartsWith("NL-12345678;Rossi;Ann?a;", Windows1252.GetString(file.Content).Split("\r\n")[1], StringComparison.Ordinal);
+        Assert.Equal(1, file.TransliteratedCount);
+    }
+
+    [Fact]
     public void Plan_AGuestWithoutAddress_IsStillARow_WithTheOptionalColumnsEmpty()
     {
         var guest = Adult("Anna", "Rossi") with

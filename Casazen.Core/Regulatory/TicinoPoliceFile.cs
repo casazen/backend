@@ -690,11 +690,13 @@ public static class TicinoPoliceFile
 
     /// <summary>
     /// The text with every character <paramref name="charset"/> can hold kept as it is, and the others without their accent or, as the last resort,
-    /// as <c>?</c>; <paramref name="transliterated"/> counts the characters that were changed (a character outside the basic plane counts once).
+    /// as <c>?</c>; <paramref name="transliterated"/> counts the characters that were changed (a character outside the basic plane counts once). The text is
+    /// read in its composed form first (<see cref="Composed"/>), so a letter typed as a base and a combining mark is the one letter the set holds.
     /// </summary>
     private static string Transliterate(string text, TicinoCsvCharset charset, out int transliterated)
     {
         transliterated = 0;
+        text = Composed(text);
         var builder = new StringBuilder(text.Length);
         var rest = text.AsSpan();
         while (!rest.IsEmpty)
@@ -714,6 +716,25 @@ public static class TicinoPoliceFile
         }
 
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// The text in its composed form (NFC): a letter typed as a base and a combining mark («e» and U+0301, as some keyboards, pastes and files give it) is the
+    /// one letter «é» that Windows-1252 holds, and not an «e» followed by a mark the set has no byte for, which would be written as a stray «?» and counted.
+    /// A text that is not well-formed UTF-16 (a lone surrogate, which <see cref="Transliterate"/> writes as «?») is left as it is: normalizing it would throw.
+    /// </summary>
+    private static string Composed(string text)
+    {
+        var rest = text.AsSpan();
+        while (!rest.IsEmpty)
+        {
+            if (Rune.DecodeFromUtf16(rest, out _, out var consumed) != OperationStatus.Done)
+                return text;
+
+            rest = rest[consumed..];
+        }
+
+        return text.Normalize(NormalizationForm.FormC);
     }
 
     /// <summary>The letter without its accent (<c>Ł</c> → <c>L</c>, <c>ș</c> → <c>s</c>), or empty when it has none to lose.</summary>

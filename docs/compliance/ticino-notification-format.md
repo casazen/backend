@@ -85,7 +85,8 @@ Id Struttura;Cognome;Nome;Data di nascita;Nazionalità;Data di arrivo;Data di pa
 - Lines ended by CRLF, no line break after the last row (as in the model).
 - Dates `dd.MM.yyyy`; document types `Passaporto`, `Carta identità`, `Altro`.
 - CasaZen replaces a semicolon inside a value with a comma, a double quote with an apostrophe, and a character the encoding cannot hold
-  with the same letter without its accent (`Ł` → `L`, `ș` → `s`) or, as the last resort, `?` (a Cyrillic or Greek letter). The day
+  with the same letter without its accent (`Ł` → `L`, `ș` → `s`) or, as the last resort, `?` (a Cyrillic or Greek letter); the text is composed (NFC)
+  first, so a letter typed as a base and a combining mark is the single letter the encoding holds. The day
   (`GET ticino-notification`) says how many characters were changed (`transliteratedCount`) and in which encoding (`csvCharset`), before the
   host downloads the file.
 

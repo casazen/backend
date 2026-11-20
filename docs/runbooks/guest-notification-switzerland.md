@@ -36,7 +36,8 @@ secret (CasaZen keeps no credential of the portal). The alerts of § 8-13 have t
 
 - **Windows-1252** (default, decision D8 ⚖ to confirm with the police): the official model `D-Modello_2.CSV` is single-byte (its «à» is
   the byte `0xE0`), and CasaZen writes the header of the model byte for byte. A character Windows-1252 cannot hold is written without its
-  accent (`Ł` → `L`, `ș` → `s`, `ř` → `r`) or, as the last resort, `?` (a Cyrillic, Greek or Chinese letter): never a broken byte.
+  accent (`Ł` → `L`, `ș` → `s`, `ř` → `r`) or, as the last resort, `?` (a Cyrillic, Greek or Chinese letter): never a broken byte. The text is
+  first composed (NFC): a letter typed as a base and a combining mark (`e` + U+0301) is the one letter `é`, which Windows-1252 holds, and is not counted.
 - **UTF-8** (`GuestNotifications__TicinoCsvEncoding=utf-8`): every letter as typed, no byte order mark. Use it only if the portal shows
   broken accents with Windows-1252 (see § 4).
 - The day says, before the download, the encoding (`csvCharset`) and how many characters of its rows the encoding cannot hold
