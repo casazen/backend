@@ -274,4 +274,11 @@ public static class RateLimitPolicies
     /// it is tight and partitioned by <b>person</b>: five in ten minutes, enough for a test and its retry.
     /// </summary>
     public const string AccountantPackageSend = "AccountantPackageSend";
+
+    /// <summary>
+    /// The agency's «retry» of the owner sign-in on its own domain (<c>POST api/orgs/{orgId}/domain/owner-login</c>, E40/F01/US02/T01, NF-141): with <c>Auth0HostSync</c> on each call
+    /// that finds the state not ready reads, and may write, the SPA application of the <b>shared</b> Auth0 tenant (the same Management API quota as the roles of every host) while it
+    /// holds a database connection under the advisory lock. Partitioned by <b>person</b>: five in ten minutes, enough for a retry after CasaZen fixed a scope and a second try.
+    /// </summary>
+    public const string OwnerLoginRetry = "OwnerLoginRetry";
 }

@@ -1,3 +1,4 @@
+using System.Reflection;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Options;
@@ -5,7 +6,12 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
+using Casazen.Web.Controllers;
+using Casazen.Web.Extensions;
+using Casazen.Web.Infrastructure;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -115,6 +121,19 @@ public sealed class OwnerLoginHostSyncTests : IDisposable
         Assert.Equal(RetryOwnerLoginOutcome.DomainNotVerified, result.Outcome);
         Assert.Equal(OwnerLoginHostState.Failed, await StoredStateAsync(org.Id));
         _registrar.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public void Retry_IsRateLimitedPerSignedInPerson_FiveEveryTenMinutes()
+    {
+        // The retry reads and may write the Auth0 tenant that every host shares, under a lock that holds a database connection: a loop of retries must not reach it.
+        var retry = typeof(OrgDomainController).GetMethod(nameof(OrgDomainController.RetryOwnerLogin))!;
+        Assert.Equal(RateLimitPolicies.OwnerLoginRetry, retry.GetCustomAttribute<EnableRateLimitingAttribute>()?.PolicyName);
+
+        var policy = Assert.Single(RateLimitingServiceCollectionExtensions.Policies, p => p.Name == RateLimitPolicies.OwnerLoginRetry);
+        Assert.Equal((true, false), (policy.PartitionByUser, policy.PartitionByToken));
+        var options = RateLimitingServiceCollectionExtensions.ResolveOptions(policy, new ConfigurationBuilder().Build());
+        Assert.Equal((5, TimeSpan.FromMinutes(10), 0), (options.PermitLimit, options.Window, options.QueueLimit));
     }
 
     // ─── Helpers ───────────────────────────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
@@ -173,10 +174,12 @@ public class OrgDomainController(
     /// The agency's «retry» of the owner sign-in on its verified domain (E40/F01/US02/T01, NF-141): with <c>Auth0HostSync</c> on the domain is registered in
     /// Auth0 again (idempotent; nothing is asked while it is ready already), with it off the request goes back to CasaZen (<c>Pending</c>). The answer is the
     /// whole domain configuration, <c>surfaces.ownerLoginHostState</c> updated. 404 while <c>WhiteLabelHost</c> is off, 403 for another org's id, 409
-    /// <c>org_domain_not_verified</c> without a verified custom domain.
+    /// <c>org_domain_not_verified</c> without a verified custom domain, 429 past five calls in ten minutes for the same person (<see cref="RateLimitPolicies.OwnerLoginRetry"/>:
+    /// the call reads and may write the Auth0 tenant that every host shares).
     /// </summary>
     [HttpPost("owner-login")]
     [FeatureGate(FeatureFlags.WhiteLabelHost)]
+    [EnableRateLimiting(RateLimitPolicies.OwnerLoginRetry)]
     [ProducesResponseType(typeof(OrgDomainConfigDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]

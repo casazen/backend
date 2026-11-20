@@ -27,6 +27,26 @@ public sealed class Auth0HostSyncOptions
 }
 
 /// <summary>
+/// The turn of the registrations of the hosts inside one process (E40/F01/US02/T01): a singleton, so every <see cref="Auth0HostRegistrar"/> of the process shares it. The advisory lock
+/// serializes the instances through the database; this keeps the registrations of one instance from queueing on the lock with a pooled connection each (the pool of the EF contexts is
+/// small, <c>Database:MaxPoolSize</c>, and the one that holds the lock keeps its connection through the calls to Auth0). Waiting here costs no connection.
+/// </summary>
+public sealed class Auth0HostRegistrationGate(TimeSpan? maxWait = null)
+{
+    /// <summary>How long a registration waits for its turn before it gives up with <c>busy</c> (the calls to Auth0 of the one in front last a few seconds).</summary>
+    public static readonly TimeSpan DefaultMaxWait = TimeSpan.FromSeconds(20);
+
+    private readonly SemaphoreSlim _turn = new(1, 1);
+    private readonly TimeSpan _maxWait = maxWait ?? DefaultMaxWait;
+
+    /// <summary>Waits for the turn; false when it did not come within the maximum wait. A cancellation of the caller is an exception.</summary>
+    public Task<bool> EnterAsync(CancellationToken cancellationToken) => _turn.WaitAsync(_maxWait, cancellationToken);
+
+    /// <summary>Gives the turn back; only after <see cref="EnterAsync"/> answered true.</summary>
+    public void Leave() => _turn.Release();
+}
+
+/// <summary>
 /// <see cref="IAuth0HostRegistrar"/> on the Auth0 Management API (E40/F01/US02/T01, NF-141, runbook <c>docs/runbooks/auth0.md</c> § 13): it reads the SPA
 /// application of the environment (<c>GET /clients/{id}</c>, the three lists only), writes the three lists back in <b>one</b> <c>PATCH /clients/{id}</c> and
 /// reads them again. The Management SDK client is made as <see cref="Auth0ManagementService"/> makes it (the cached client-credentials token of
@@ -41,7 +61,10 @@ public sealed class Auth0HostSyncOptions
 /// write, and the change is <see cref="Auth0HostRegistrationResult.Rejected"/> unless the read-back has it.</para>
 /// <para><b>One at a time.</b> The read, the write and the read-back are serialized across the instances by the advisory lock
 /// <see cref="PostgresAdvisoryLocks.Scope.Auth0HostRegistration"/> on the client id: two hosts registered at once would otherwise write each other's lists
-/// away. A change made by hand in the Auth0 dashboard during those calls is not covered.</para>
+/// away. A change made by hand in the Auth0 dashboard during those calls is not covered. The lock is taken on a pooled database connection (a small pool:
+/// <c>Database:MaxPoolSize</c>) and held through the calls to Auth0, so inside one process the turn is queued first (<see cref="Auth0HostRegistrationGate"/>): only the
+/// registration whose turn it is holds a connection, the others wait with none, and one that waits too long answers <see cref="Auth0HostRegistrationResult.Unavailable"/>
+/// (<c>busy</c>) instead of pinning the pool.</para>
 /// <para><b>Nothing secret leaves.</b> The Management token, the M2M client id and secret and the bodies of Auth0's errors are never logged, answered or put in
 /// an exception text: a log line says the operation, the result and a stable code (an HTTP status, the name of an exception type). The host is not logged
 /// either: the callers log the org and the result.</para>
@@ -51,8 +74,12 @@ public sealed partial class Auth0HostRegistrar(
     IHttpClientFactory httpClientFactory,
     IOptions<Auth0HostSyncOptions> options,
     AppDbContext dbContext,
-    ILogger<Auth0HostRegistrar> logger) : IAuth0HostRegistrar
+    ILogger<Auth0HostRegistrar> logger,
+    Auth0HostRegistrationGate? gate = null) : IAuth0HostRegistrar
 {
+    /// <summary>The turn of this process: the shared singleton, or (a test) a gate of the registrar's own.</summary>
+    private readonly Auth0HostRegistrationGate _gate = gate ?? new Auth0HostRegistrationGate();
+
     /// <summary>The members of the application the registrar reads: the three lists, nothing else.</summary>
     private const string ListFields = "callbacks,allowed_logout_urls,web_origins";
 
@@ -73,6 +100,22 @@ public sealed partial class Auth0HostRegistrar(
         if (clientId is null || !tokenProvider.IsConfigured)
             return Done(operation, Auth0HostRegistrationResult.NotConfigured, "not_configured");
 
+        // The turn of this process comes first and costs no connection; one that does not come in time is a busy answer, never a waiter on the database lock.
+        if (!await _gate.EnterAsync(cancellationToken))
+            return Done(operation, Auth0HostRegistrationResult.Unavailable, "busy");
+
+        try
+        {
+            return await ChangeInTurnAsync(operation, origin, clientId, register, cancellationToken);
+        }
+        finally
+        {
+            _gate.Leave();
+        }
+    }
+
+    private async Task<Auth0HostRegistrationResult> ChangeInTurnAsync(string operation, string origin, string clientId, bool register, CancellationToken cancellationToken)
+    {
         try
         {
             await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(

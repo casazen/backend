@@ -755,17 +755,20 @@ What the code does (`Auth0HostRegistrar`, `OwnerLoginHostSync`):
 |---|---|
 | A domain **becomes** verified (`Verifica ora` or the periodic check) | The administrators of the agency are told (`domain-verified`); the origin is registered: `Ready` on `Registered` or `AlreadyRegistered`, `Failed` on `Rejected` or `Unavailable`, `Pending` on `NotConfigured` (`Auth0__HostSync__ClientId` or the M2M credentials missing: no call is made). A domain found verified again, or demoted by its DNS, changes nothing in Auth0 |
 | The agency saves `ownerPortalOnOwnDomain` on while its domain is verified and its state is `NotRequested` or `Failed` | The same registration |
-| The agency retries: `POST api/orgs/{orgId}/domain/owner-login` (`RequireOrgBillingAdmin`, its own org only; 409 `org_domain_not_verified` without a verified domain) | The same registration; nothing is asked of Auth0 once the state is `Ready` |
+| The agency retries: `POST api/orgs/{orgId}/domain/owner-login` (`RequireOrgBillingAdmin`, its own org only; 409 `org_domain_not_verified` without a verified domain; 429 past five calls in ten minutes for the same person, policy `OwnerLoginRetry` of [proxy-ip.md](proxy-ip.md)) | The same registration; nothing is asked of Auth0 once the state is `Ready` |
 | The domain is removed or replaced, or the org deactivated | The periodic job (`domain-recheck`) removes it from the Vercel project, then removes exactly the three strings `https://{domain}` from the application. The row of `PendingDomainRemovals` stays (its `LastError` says `auth0_unavailable`, `auth0_rejected` or `auth0_not_configured`) and is tried again at every run until **both** removals succeeded. A domain another active org uses meanwhile stays in both |
 
 Every registration and removal reads the application (`GET /clients/{id}`, the three lists only), writes the three lists back **in one**
 `PATCH /clients/{id}` (Auth0 applies all of them or none), and reads them again: the change counts only if the read-back has it. A URL that is there
 already is not added again (nothing to write = no write), the other entries keep their order, and the first callback URL is never touched. The
-read-write-read is serialized across the instances by the advisory lock `Auth0HostRegistration` (40_021) on the client id. A change made by hand in the
+read-write-read is serialized across the instances by the advisory lock `Auth0HostRegistration` (40_021) on the client id. That lock sits on a pooled database
+connection (`Database:MaxPoolSize`, 6 by default) that is held through the calls to Auth0, so inside one instance the registrations first take turns
+(`Auth0HostRegistrationGate`, a singleton): the ones that wait hold no connection, and one that does not get its turn within 20 seconds answers `Unavailable`
+with the code `busy` (the agency sees `Failed` and retries). A change made by hand in the
 dashboard at the same second can still be overwritten: edit the lists by hand only while no domain is being verified, or with the flag off.
 
 The logs say `Auth0 host registration: <Result> (<code>)` and `Auth0 registration of the domain of org <orgId>: <Result>`; never the domain, never a
-token, a credential or the body of an answer of Auth0 (the codes are an HTTP status such as `http_403`, `rate_limited`, `invalid_host`,
+token, a credential or the body of an answer of Auth0 (the codes are an HTTP status such as `http_403`, `rate_limited`, `busy`, `invalid_host`,
 `read_back_mismatch`, `auth0_management_token_failed`, `auth0_management_credentials_rejected`). `http_403` usually means a missing scope (step 1);
 `http_404` a wrong `Auth0__HostSync__ClientId`.
 

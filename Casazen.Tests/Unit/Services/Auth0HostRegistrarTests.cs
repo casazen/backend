@@ -212,6 +212,49 @@ public sealed class Auth0HostRegistrarTests : IDisposable
     }
 
     [Fact]
+    public async Task Register_TwoHostsAtOnceInOneProcess_TakeTurns_NeitherWritesTheOthersListsAway()
+    {
+        // Two requests of the same process (the retry of two agencies, or the job and a click): they share the one gate, as the singleton of the API does.
+        ServeTheApplication(readDelayMilliseconds: 150);
+        var gate = new Auth0HostRegistrationGate();
+        var first = Registrar(gate: gate);
+        var second = Registrar(gate: gate);
+
+        var results = await Task.WhenAll(first.RegisterAsync(Host), second.RegisterAsync("prenota.altra-agenzia.example"));
+
+        // The second one read the application after the first one wrote it: both origins are in the three lists, after the platform's own.
+        Assert.Equal([Auth0HostRegistrationResult.Registered, Auth0HostRegistrationResult.Registered], results);
+        Assert.Equal(2, _requests.Count(r => r.Method == HttpMethod.Patch));
+        foreach (var list in new[] { _callbacks, _logoutUrls, _webOrigins })
+        {
+            Assert.Equal(PlatformOrigin, list[0]);
+            Assert.Contains(HostOrigin, list);
+            Assert.Contains(OtherAgencyOrigin, list);
+        }
+    }
+
+    [Fact]
+    public async Task Register_WhenTheTurnDoesNotComeInTime_IsBusy_AndAsksAuth0Nothing()
+    {
+        ServeTheApplication();
+        var gate = new Auth0HostRegistrationGate(TimeSpan.FromMilliseconds(50));
+        var log = new CapturingLogger<Auth0HostRegistrar>();
+        var registrar = new Auth0HostRegistrar(_tokenProvider.Object, Factory(_http), Options.Create(new Auth0HostSyncOptions { ClientId = SpaClientId }), _db, log, gate);
+
+        // Somebody else has the turn (a slow Auth0): no database connection is taken to wait, the answer is a retry later.
+        Assert.True(await gate.EnterAsync(CancellationToken.None));
+        var busy = await registrar.RegisterAsync(Host);
+        gate.Leave();
+
+        Assert.Equal(Auth0HostRegistrationResult.Unavailable, busy);
+        Assert.Empty(_requests);
+        Assert.Contains(log.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("busy", StringComparison.Ordinal));
+
+        // The turn is given back: the next call goes through.
+        Assert.Equal(Auth0HostRegistrationResult.Registered, await registrar.RegisterAsync(Host));
+    }
+
+    [Fact]
     public async Task Failure_LogsAndMessages_ContainNoCredentials()
     {
         const string M2mClientId = "m2m-client-SECRET-ID-4711";
@@ -271,8 +314,8 @@ public sealed class Auth0HostRegistrarTests : IDisposable
 
     // ─── Helpers ───────────────────────────────────────────────────────────────────────────────────
 
-    private Auth0HostRegistrar Registrar(string? clientId = SpaClientId) =>
-        new(_tokenProvider.Object, Factory(_http), Options.Create(new Auth0HostSyncOptions { ClientId = clientId }), _db, NullLogger<Auth0HostRegistrar>.Instance);
+    private Auth0HostRegistrar Registrar(string? clientId = SpaClientId, Auth0HostRegistrationGate? gate = null) =>
+        new(_tokenProvider.Object, Factory(_http), Options.Create(new Auth0HostSyncOptions { ClientId = clientId }), _db, NullLogger<Auth0HostRegistrar>.Instance, gate);
 
     private static IHttpClientFactory Factory(HttpMessageHandler handler)
     {
@@ -285,12 +328,18 @@ public sealed class Auth0HostRegistrarTests : IDisposable
     /// The application on the fake Management API: a read answers the three lists; a write replaces each list it carries (as Auth0 does), unless it is
     /// refused (<paramref name="patchStatus"/>) or silently dropped (<paramref name="applyPatch"/> false).
     /// </summary>
-    private void ServeTheApplication(HttpStatusCode patchStatus = HttpStatusCode.OK, bool applyPatch = true)
+    private void ServeTheApplication(HttpStatusCode patchStatus = HttpStatusCode.OK, bool applyPatch = true, int readDelayMilliseconds = 0)
     {
         _http.When(HttpMethod.Get, $"{ApiBase}/clients/{SpaClientId}").Respond(async request =>
         {
             await RecordAsync(request);
-            return Json(HttpStatusCode.OK, Application());
+            var answer = Json(HttpStatusCode.OK, Application());
+
+            // The answer is made before the wait: a read that is slow answers what the application was when it started.
+            if (readDelayMilliseconds > 0)
+                await Task.Delay(readDelayMilliseconds);
+
+            return answer;
         });
         _http.When(HttpMethod.Patch, $"{ApiBase}/clients/{SpaClientId}").Respond(async request =>
         {
