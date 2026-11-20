@@ -9,8 +9,9 @@ namespace Casazen.Infrastructure.GuestPortal;
 
 /// <summary>
 /// Makes the <see cref="PortalContext"/> of a resolved stay link (E50/F01/US01/T02, decision A3): the booking, the org, the property, the language, the
-/// kind of booking and what the guest may see. The only place that sets <see cref="PortalContext.CanSeeReserved"/>: today it is the completed check-in;
-/// the check-in of the portal (E51) refines it here.
+/// kind of booking and what the guest may see. The only place that sets <see cref="PortalContext.CanSeeReserved"/>: today it is the completed check-in of a
+/// stay to come or in progress (<see cref="GuestPortalRules.IsStayOpenToReservedData"/>: not a cancelled stay, a no-show or a stay checked out); the check-in
+/// of the portal (E51) refines it here.
 /// </summary>
 /// <remarks>
 /// Every read names the org and the booking of the link and ignores the tenant filter of the request (only that one: the soft delete of the properties
@@ -27,7 +28,7 @@ public class PortalContextFactory(AppDbContext db)
                 from b in db.Bookings.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
                 join o in db.Orgs on b.OrgId equals o.Id
                 where b.Id == link.BookingId && b.OrgId == link.OrgId
-                select new { b.PropertyId, b.Status, b.Source, b.CheckInDate, b.CheckOutDate, o.DefaultLanguage })
+                select new { b.PropertyId, b.Status, b.NoShowAt, b.Source, b.CheckInDate, b.CheckOutDate, o.DefaultLanguage })
             .AsNoTracking()
             .FirstOrDefaultAsync(cancellationToken);
         if (booking is null)
@@ -63,8 +64,9 @@ public class PortalContextFactory(AppDbContext db)
             IsDirect = booking.Source == BookingSource.Direct,
             CheckInCompleted = checkInCompleted,
 
-            // Reserved data (the precise address, the access, the door code, the Wi-Fi) only after the check-in (§5.1, AC-NF153-3).
-            CanSeeReserved = checkInCompleted,
+            // Reserved data (the precise address, the access, the door code, the Wi-Fi) only after the check-in (§5.1, AC-NF153-3) and only for a stay
+            // to come or in progress: a cancelled stay, a no-show and one already checked out keep the link but get none, as the lock code (GuestPortalRules).
+            CanSeeReserved = checkInCompleted && GuestPortalRules.IsStayOpenToReservedData(booking.Status, booking.NoShowAt),
             CheckInDate = booking.CheckInDate,
             CheckOutDate = booking.CheckOutDate,
         };

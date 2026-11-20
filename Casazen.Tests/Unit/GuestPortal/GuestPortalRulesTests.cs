@@ -87,6 +87,22 @@ public class GuestPortalRulesTests
         Assert.DoesNotContain(BookingStatus.Pending, GuestPortalRules.ResolvableStatuses);
     }
 
+    /// <summary>
+    /// Privacy rule (the reserved data close with the stay): a confirmed or checked-in stay that is not a no-show may be shown the reserved data once its
+    /// check-in is completed; a request, a cancelled stay, a stay already checked out and a no-show never may (the rule of the lock code).
+    /// </summary>
+    [Theory]
+    [InlineData(BookingStatus.Confirmed, false, true)]
+    [InlineData(BookingStatus.CheckedIn, false, true)]
+    [InlineData(BookingStatus.CheckedOut, false, false)]
+    [InlineData(BookingStatus.Cancelled, false, false)]
+    [InlineData(BookingStatus.Pending, false, false)]
+    [InlineData(BookingStatus.Confirmed, true, false)]
+    public void IsStayOpenToReservedData_OnlyAStayToComeOrInProgress_ThatIsNotANoShow(BookingStatus status, bool noShow, bool expected)
+    {
+        Assert.Equal(expected, GuestPortalRules.IsStayOpenToReservedData(status, noShow ? Now : null));
+    }
+
     [Theory]
     [InlineData("AbCdEfGhIjKlMnOpQrStUvWxYz012345", true)]
     [InlineData("abc-_DEF0123456789abcdef", true)]

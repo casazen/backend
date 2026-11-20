@@ -45,7 +45,9 @@ public sealed record PortalContext
 
     /// <summary>
     /// Whether the portal may show the reserved data of the stay (the precise address, the access instructions, the door code, the Wi-Fi): only
-    /// after the check-in is completed (§5.1 of the specification, AC-NF153-3). Set only by <c>PortalContextFactory</c>.
+    /// after the check-in is completed (§5.1 of the specification, AC-NF153-3) and only for a stay to come or in progress, a confirmed or checked-in
+    /// booking that is not a no-show: a cancelled stay, a no-show and a stay already checked out keep their link but never get it, even with a completed
+    /// check-in (<see cref="GuestPortalRules.IsStayOpenToReservedData"/>, the rule of the lock code). Set only by <c>PortalContextFactory</c>.
     /// </summary>
     public required bool CanSeeReserved { get; init; }
 

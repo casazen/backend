@@ -103,6 +103,46 @@ public class GuestPortalOverviewServiceTests
     }
 
     /// <summary>
+    /// Privacy rule (the reserved data close with the stay): the link of a cancelled stay, of a no-show and of a stay already checked out keeps opening,
+    /// and the check-in they completed stays a fact (<c>checkInCompleted</c>), but they get <c>canSeeReserved: false</c>, in the context and in the
+    /// overview, so none of the reserved data; the stay to come and the one in progress, with the same completed check-in, get it. The lock code of the
+    /// guest is refused to the same stays.
+    /// </summary>
+    [Theory]
+    [InlineData(BookingStatus.Confirmed, false, true)]
+    [InlineData(BookingStatus.CheckedIn, false, true)]
+    [InlineData(BookingStatus.CheckedOut, false, false)]
+    [InlineData(BookingStatus.Cancelled, false, false)]
+    [InlineData(BookingStatus.Confirmed, true, false)]
+    public async Task Context_CompletedCheckIn_ReservedDataOnlyForAStayToComeOrInProgress(BookingStatus status, bool noShow, bool expected)
+    {
+        using var world = new GuestPortalTestWorld();
+        world.Db.GuestCheckInSessions.Add(Session(world, GuestCheckInSessionStatus.Completo, "it", new DateTime(2026, 10, 5, 0, 0, 0, DateTimeKind.Utc)));
+        await world.Db.SaveChangesAsync();
+
+        // The link is made while the stay is confirmed, then the stay changes: the link goes on opening.
+        var token = (await world.LinkService().GetOrCreateAsync(world.Org.Id, world.Booking.Id, createdByUserId: null))!.Link.Token;
+        var booking = await world.Db.Bookings.SingleAsync(b => b.Id == world.Booking.Id);
+        booking.Status = status;
+        booking.NoShowAt = noShow ? GuestPortalTestWorld.Now.UtcDateTime : null;
+        await world.Db.SaveChangesAsync();
+
+        var (filter, accessor) = world.TokenFilter();
+        var (result, _, ran) = await GuestPortalTestWorld.RunAsync(filter, token);
+
+        Assert.Null(result);
+        Assert.True(ran);
+        var context = accessor.Current!;
+        Assert.True(context.CheckInCompleted);
+        Assert.Equal(expected, context.CanSeeReserved);
+
+        var overview = await world.OverviewService().GetAsync(context);
+        Assert.NotNull(overview);
+        Assert.True(overview.CheckInCompleted);
+        Assert.Equal(expected, overview.CanSeeReserved);
+    }
+
+    /// <summary>
     /// A section that throws is left out and logged with the id of the link and its key, never a failure of the overview; the next step is the proposal
     /// of the lowest priority that opens a section of the overview (one that throws and one that opens a section not offered are skipped); one «no» of a
     /// policy hides the paid services and so the services of the suppliers, whatever their flag says.

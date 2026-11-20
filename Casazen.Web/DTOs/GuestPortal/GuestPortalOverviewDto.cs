@@ -22,7 +22,10 @@ public sealed class GuestPortalOverviewDto
     /// <summary>The block in evidence, or <c>null</c> when no section proposes one.</summary>
     public GuestPortalNextStepDto? NextStep { get; init; }
 
-    /// <summary>Whether the sections may show the reserved data of the stay (only after the check-in).</summary>
+    /// <summary>
+    /// Whether the sections may show the reserved data of the stay: only after the check-in, and only for a stay to come or in progress (never for a
+    /// cancelled stay, a no-show or a stay already checked out).
+    /// </summary>
     public bool CanSeeReserved { get; init; }
 
     public bool CheckInCompleted { get; init; }

@@ -75,6 +75,17 @@ public static class GuestPortalRules
     public static bool IsEligibleStatus(BookingStatus status) => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(status);
 
     /// <summary>
+    /// True when the stay of <paramref name="status"/> and <paramref name="noShowAt"/> may be shown the reserved data of the house (the precise address,
+    /// the access instructions, the door code, the Wi-Fi) once its check-in is completed: a stay still to come or in progress, that is a confirmed or a
+    /// checked-in booking that is not a no-show. The link keeps opening for a cancelled stay, a no-show and a stay already checked out (the guest still
+    /// reads what it was), but they get no reserved data, whatever their check-in says: it is the rule of the lock code of the guest
+    /// (<c>IAccessCodeService.ReleaseToGuestAsync</c>: the one definition of an active stay, <see cref="AlloggiatiStatusRules.IsDue"/>, and not one
+    /// already over). Read only by <c>PortalContextFactory</c>, the one place that sets <see cref="PortalContext.CanSeeReserved"/>.
+    /// </summary>
+    public static bool IsStayOpenToReservedData(BookingStatus status, DateTime? noShowAt) =>
+        AlloggiatiStatusRules.ActiveBookingStatuses.Contains(status) && status != BookingStatus.CheckedOut && noShowAt is null;
+
+    /// <summary>
     /// The end of the 30th day after the departure, in UTC: <c>checkOutDate.Date + 31 days</c>. A departure on 13 October gives a link that opens
     /// until 13 November 00:00 UTC, the end of 12 November.
     /// </summary>
