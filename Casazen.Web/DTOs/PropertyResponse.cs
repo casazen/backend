@@ -103,6 +103,15 @@ public sealed class PropertyResponse
 
     /// <summary>The CIN is valid and its ISTAT comune differs from <see cref="ComuneIstatCode"/>: a non-blocking warning.</summary>
     public bool CinIstatMismatch { get; init; }
+
+    /// <summary>The «Numero identificativo LEAR / NO-LEAR» of the structure for the Ticino police file (casazen/backend#979); null until entered.</summary>
+    public string? TicinoStructureId { get; init; }
+
+    /// <summary>
+    /// The property is in canton Ticino, so its guests are notified to the cantonal police (notifiche.ti.ch) instead of Alloggiati Web. Known only
+    /// on <c>GET /api/properties/{id}</c>; false on the lists.
+    /// </summary>
+    public bool IsInTicino { get; init; }
     public string Timezone { get; init; } = "Europe/Rome";
     public Guid? CancellationPolicyId { get; init; }
     public int? CancellationFullRefundHours { get; init; }
@@ -169,7 +178,7 @@ public sealed class PropertyResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PropertyModeChangeDto? ScheduledModeChange { get; init; }
 
-    public static PropertyResponse From(Property property, PropertyOverview? overview = null)
+    public static PropertyResponse From(Property property, PropertyOverview? overview = null, bool isInTicino = false)
     {
         ArgumentNullException.ThrowIfNull(property);
         return new PropertyResponse
@@ -224,6 +233,8 @@ public sealed class PropertyResponse
             ComuneIstatCode = property.ComuneIstatCode,
             RegionCode = property.RegionCode,
             CinIstatMismatch = CinFormat.HasIstatComuneMismatch(property.CinCode, property.ComuneIstatCode),
+            TicinoStructureId = property.TicinoStructureId,
+            IsInTicino = isInTicino,
             Timezone = property.Timezone,
             CancellationPolicyId = property.CancellationPolicyId,
             CancellationFullRefundHours = property.CancellationFullRefundHours,

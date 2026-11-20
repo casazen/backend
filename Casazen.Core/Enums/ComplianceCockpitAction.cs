@@ -71,4 +71,11 @@ public enum ComplianceCockpitAction
 
     /// <summary>The police (Alloggiati Web) credentials kept in CasaZen were refused: the host sets them again. Target: the property.</summary>
     RenewPoliceCredentials,
+
+    /// <summary>
+    /// The guests who arrived at a property in canton Ticino on a day are not notified to the cantonal police yet (within 24 hours of the
+    /// arrival, notifiche.ti.ch; casazen/backend#979): the host downloads the file of the day, uploads it on the portal and records the receipt.
+    /// Target: the property, with the arrival day in <c>Period</c> (<c>yyyy-MM-dd</c>).
+    /// </summary>
+    NotifyTicinoPolice,
 }
