@@ -602,7 +602,6 @@ public static class GuestRegistrationRegimeCatalog
         Channel = GuestRegistrationChannel.EmailFile,
         DeadlineKind = GuestRegistrationDeadlineKind.None,
         DeadlineNoteKey = DeadlineNotVerifiedKey,
-        RetentionYears = 5,
         PrivateRentals = GuestRegistrationPrivateRentals.Unknown,
         LegalReferences = ["Gastgewerbegesetz (RB 554.51) § 18", "Ordinanza sul trattamento dei dati della polizia (RB 551.6) § 12"],
         Sources =
@@ -749,7 +748,6 @@ public static class GuestRegistrationRegimeCatalog
         Channel = GuestRegistrationChannel.VendorInterface,
         DeadlineKind = GuestRegistrationDeadlineKind.None,
         DeadlineNoteKey = DeadlineNotVerifiedKey,
-        RetentionYears = 3,
         PrivateRentals = GuestRegistrationPrivateRentals.Partial,
         LegalReferences = ["Polizeigesetz (PolG, LS 550.1) § 21 cpv. 4 e 5", "POLIS-Verordnung (LS 551.103) § 7b e § 18 cpv. 5 lett. r", "LStrI art. 16"],
         Sources =

@@ -71,17 +71,17 @@ host makes itself, E31), **Info**. Sentences for the user: `SharedResources` key
 | `CH-SH` | Report | portal | every day by 02:00 | – | Yes | Verified | Assisted | official brochure of 11/2023; which day the hour refers to is ambiguous |
 | `CH-SO` | Register | none | none | 3 | Partial | Partial | Register | private rentals when the activity is professional |
 | `CH-SZ` | Register | none | none | 2 | Partial | Partial | Register | only foreign guests; 2 years is a recommendation |
-| `CH-TG` | Report | e-mail file | not verified | 5 | Unknown | Partial | Assisted | the specification of the CSV and the code of the structure only through the police |
+| `CH-TG` | Report | e-mail file | not verified | – | Unknown | Partial | Assisted | the specification of the CSV and the code of the structure only through the police; the 5 years of the research are the deletion term of the police system, not the host's retention |
 | `CH-TI` | Report | portal file upload | 24 h from arrival | 5 | Yes | Verified | File | the file of E30; the 5 years are those of the group sheets and the parental authorizations |
 | `CH-UR` | Register | none | at arrival | – | Unknown | Partial | Register | an opinion of 2020 puts the retention at most 1 year |
 | `CH-VD` | Register | none | none | – | Yes | Verified | Register | register with a copy of the document, at the disposal of the authority (the page names no police recipient): CasaZen does not keep document images, the copy stays with the host |
 | `CH-VS` | Register | paper | not verified | – | Partial | Partial | Register | holiday lets without hotel services: the municipality (not confirmed) |
 | `CH-ZG` | Report | portal | at arrival | – | Yes | Verified | Assisted | fields and retention not verified |
-| `CH-ZH` | Report | interface of the management software | not verified | 3 | Partial | Partial | Assisted | «commercial» is not defined; the specification is not public |
+| `CH-ZH` | Report | interface of the management software | not verified | – | Partial | Partial | Assisted | «commercial» is not defined; the specification is not public; the 3 years of the research are the retention in the police system (text of 2014, partial), not the host's |
 | `CH-UNKNOWN` | Unknown | none | – | – | Unknown | Unverified | Info | the municipality is missing or ambiguous |
 
-**Retention.** The number is what the research gives for the canton: for the cantons that transmit (`CH-ZH`, `CH-TG`) it may be the retention of the data in the police system, not an obligation of
-the host; a recommendation (`CH-SZ`) or a maximum (`CH-UR`, left out) is said in the sentence. **Images.** `RetainDocumentImages` is `false` for every Swiss regime (decision D6): only the transcribed
+**Retention.** The number is what the research gives as the years the host keeps the data; a recommendation (`CH-SZ`) is said in the sentence. A number that is how long a police system keeps the data is not an obligation of
+the host and is left out (`null`): `CH-ZH` (3 years in the police system, text of 2014, partial), `CH-TG` (deletion 5 years after the departure) and `CH-UR` (an opinion of 2020: at most 1 year). **Images.** `RetainDocumentImages` is `false` for every Swiss regime (decision D6): only the transcribed
 data are kept.
 
 ## 4. The federal frame

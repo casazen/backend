@@ -147,7 +147,7 @@ public sealed record GuestRegistrationRegime
     /// <summary>The resource key of the note that says what the deadline is when the kind alone does not (a time, a doubt); <c>null</c> when it needs none.</summary>
     public string? DeadlineNoteKey { get; init; }
 
-    /// <summary>The years the registration data are kept, where the sources give a number (a recommendation or the retention of the police system included, as the entry says); <c>null</c> otherwise.</summary>
+    /// <summary>The years the host keeps the registration data, where the sources give a number for it (a recommendation included, as the entry says); <c>null</c> otherwise, and also when the only number is how long a police system keeps the data (Thurgau, Zurich): that is not the host's duty.</summary>
     public int? RetentionYears { get; init; }
 
     public required GuestRegistrationPrivateRentals PrivateRentals { get; init; }
