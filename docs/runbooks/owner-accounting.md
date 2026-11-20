@@ -162,7 +162,7 @@ booking line, and the month of the payment then posts it (the readiness says `un
 
 | Flow | Revenue (`BookingRevenue`) | Channel commission (`ChannelFee`) | Commission, flat fees, card fee |
 |---|---|---|---|
-| Portal (Booking.com, Airbnb, Expedia, Vrbo, the others of `FiscalCopy.IsOtaBookingSource`) collected by the portal or at the property | source `Booking`: the gross of the stay without the tourist tax, `OwnerLedgerRules.GrossOfStay` = `Booking.TotalPrice − Booking.TouristTax` (the room, the cleaning and the extras the portal charged; never the tourist tax, never the guest fee of the portal), never less than `Booking.BasePrice`, on the **check-out** (⚖ R1), the shares of that day | the commission of the reservation (`Booking.OtaCommission`, `RuleVersion` `payload`); without it the rule of the agency in force at the check-out (`channel-rule:{id}`) or the configured default (`channel-default`), its percent × its base; neither: `channel_commission_missing` (blocking, for every owner of the property), no fee. **Borne by the owner**, as before | commission of the mandate on its base; flat fees; no card fee |
+| Portal (Booking.com, Airbnb, Expedia, Vrbo, the others of `FiscalCopy.IsOtaBookingSource`) collected by the portal or at the property | source `Booking`: the gross of the stay without the tourist tax, `OwnerLedgerRules.GrossOfStay` = `Booking.TotalPrice − Booking.TouristTax` (the room, the cleaning and the extras the portal charged; never the tourist tax, never the guest fee of the portal), never less than `Booking.BasePrice`, on the **check-out** (⚖ R1), the shares of that day | the commission of the reservation (`Booking.OtaCommission`, `RuleVersion` `payload`); without it the rule of the agency in force at the check-out (`channel-rule:{id}`) or the configured default (`channel-default`), its percent × its base; neither: `channel_commission_missing` (blocking, for every owner of the property), no fee. **Borne by the owner** (V1, and V2 with the recharge); for a listing whose account the agency holds while the organization does not recharge, the line is `ChannelFeeBorneByAgency`, borne by the agency and for information only (see «Who holds the portal account») | commission of the mandate on its base; flat fees; no card fee |
 | The agency's own site outside CasaZen, a booking entered by hand: no payment recorded | source `Booking`: `Booking.BasePrice` (priced by CasaZen: the gross without the tourist tax, the cleaning included) on the check-out; a price the host agreed by hand (`Booking.PriceOverridden`) is an amount even when it is 0 (a stay for free: no revenue, nothing to tell) | none (not a portal) | commission; flat fees |
 | The same, the agency recorded the payment | source `Payment`: what it collected net of refunds and of its part of the tourist tax, on the **day of the recorded payment** (or the check-out for a profile `stay`) | none | commission; flat fees |
 | CasaZen showcase (card through Stripe) | source `Payment`, as above, on the payment day | none | commission; flat fees; `OwnerExpense` of the card fee (`Payment.ProviderFeeAmount`, in its currency) when `PassthroughPaymentFees` |
@@ -272,7 +272,8 @@ The invoice of the property manager to an owner (NF-114, D9): a `FiscalDocument`
     owner, art. 15 in Italy); the card fees the mandate passes on (`OwnerExpense` of a payment) are a cost the agency bears in its own name → one `Recharge`
     line per property;
   - `ChannelFee` → one `Recharge` line per portal «Riaddebito commissioni Booking.com», **only** for the listings whose portal account the agency holds (V2)
-    and only when the organization recharges them (⚖ I10, I11, below). A listing whose account the owner holds (V1, the default) has none.
+    and only when the organization recharges them (⚖ I10, I11, below). A listing whose account the owner holds (V1, the default) has none, and neither has the
+    commission the agency bears without the recharge (`ChannelFeeBorneByAgency`: the owner was not charged it, so nothing recharges it).
 - **VAT (⚖ R4).** The mandate of the owner in force on the last day of the month says it: `CommissionIncludesVat = false` (the default) makes the ledger amounts
   the taxable amounts and adds the VAT (`FiscalDocumentTotals.FromNet`: every line keeps its net to the cent, the VAT of a rate on the sum of its lines);
   `true` makes them the gross and takes the VAT out (`FromGross`). The rates are those of the catalog `FiscalDocuments:TaxRules` in force on the last day of
@@ -329,6 +330,40 @@ The holder of the account of a listing on a portal decides the recharge of its c
   cost («trattenuta del portale»).
 - **V2, the agency** (`PortalAccountHolder.Agency`): the portal invoices the agency; the commission reaches the owner as a recharge of the owner invoice, at the
   VAT of a recharge (the scheme of a mandate without representation, art. 3 c. 3 DPR 633/72), when `RechargePortalCommissions` is on (default on).
+- **V2 without the recharge** (`RechargePortalCommissions` off; FIX/BE-V2-NO-RECHARGE, decision 1 of `fatturazione/decisioni-fiscali-2026-11-20.md`, research
+  `fatturazione/ricerche/R1-commissioni-portali-v2.md`): **the owner is not charged the commission, the agency bears it.** The posting writes the commission of such a
+  listing as `ChannelFeeBorneByAgency` (type 11, the amount a `ChannelFee` would have) instead of a `ChannelFee`: a line **for information only**, which no balance of
+  the owner counts (`OwnerLedgerBalance`: the closing and the opening of a version, the readiness, the settlement of an owner invoice, the reconciliation of the
+  statements, the totals of a statement and of the owner portal). In the Swiss acceptance scenario the owner closes at 266.23 instead of 198.73. The TD17 of the agency,
+  the accountant package (its margin counts the commission once, as a cost of the agency) and the reconciliation of the payouts of the portals read it as the commission of
+  the portal. The test is the one of the owner invoice (`PortalAccountHolders.IsAgencyAccountWithoutRecharge`), read when the month is posted: **deducting a commission that
+  no document recharges is the one forbidden state**, and the two never disagree (with the recharge on the ledger deducts and the invoice recharges; with it off neither).
+  - **Why** (the sources of R1, opened on 20/11/2026): by law the expenses of the mandate are the principal's (Italy: art. 1719-1720 c.c.; Switzerland: art. 402 CO),
+    but in V2 the portal invoices the agency, so recovering the commission from the owner is a taxable recharge of a service that needs a document of the agency (Italy:
+    art. 3 c. 3 and art. 13 c. 2 lett. b DPR 633/72 until 31/12/2026, then the Testo unico IVA, D.Lgs. 10/2026; Switzerland: art. 20 LIVA). Without the recharge there
+    is no such document, so the commission stays the agency's. These are product defaults reasoned on the sources, not tax advice: **the confirmation of the mandate (that
+    it allows the agency to waive the reimbursement) and of the VAT treatment is for the accountant** (Italy) and the fiduciary (Switzerland) before the function is used
+    in production.
+  - **Turning the recharge off is a waiver** of the reimbursement the law gives the agency. A save of `PUT api/billing-setup/channels` that starts it (after it the recharge
+    is off and the agency holds at least one account, its default or the one of a listing; before it the recharge was on, or the agency held none) needs
+    `acknowledgeRechargeWaiver: true`, otherwise 422 `recharge_waiver_not_acknowledged` and nothing is saved; with it the activity log of the organization records who
+    acknowledged it and when (`OrgSettingsChanged` with the part `portalCommissionRechargeWaiver`, in the save of the change). The bulk write of the holders of the
+    listings asks the same when it starts the waiver (the recharge off, the agency not the default holder and holding no listing yet, and the write gives it one: the same
+    effect as making it the default holder): `PUT api/billing-setup/channel-account-holders?acknowledgeRechargeWaiver=true`, otherwise the same 422 and nothing is written;
+    with it the same activity line. A save or a write that keeps a waiver in place asks nothing. The frontend dialog is its own slice.
+  - **Not retroactive.** Statement versions already published are append-only and never rewritten (their stored totals, their published file and their PDF stay as they
+    were; a channel fee the owner was charged on such an account before this rule keeps its amount and is told as «Commissioni del portale (account del portale intestato
+    al gestore, senza riaddebito in fattura)», key `StatementFileChannelFeesAgencyCharged`). The next posting of a month **still open** reverses such a channel fee and posts
+    the commission as the agency's, so the version made after it follows the rule (an owner invoice already issued for that month keeps its lines: a credit note is the
+    agency's call, as for any source that changes after an invoice). A **closed** month is never posted again: its readiness tells, not blocking, `late_source_after_close`
+    for such a commission, and a correction in a later month is the agency's call.
+  - **Known limit: the label of a channel fee read again.** What a published version stores never changes (its totals, its published file, its stored PDF). The type of a
+    line says who bears a commission (`ChannelFeeBorneByAgency` is read from the line), but whether a `ChannelFee` of an account of the agency was recharged is not stored
+    with the line: when the lines are read again (the owner portal, the CSV, the PDF of a version not published, the accountant package) it follows the setting of today.
+    So after a waiver a statement published with the recharge is read again as «account intestato al gestore, senza riaddebito in fattura»
+    (`channelFeeChargedOnAgencyAccount`, not `channelFeeRechargedByAgency`) and the package lists its commission «A carico dell'agenzia», though its stored PDF and its
+    invoice say «riaddebitate dal gestore (fattura n. …)»; never as the account of the owner and never as a commission the owner was not charged. Reading the recharge from
+    the invoice of the version would need a marker on the lines of the invoice (not there today).
 
 The default of the organization and the recharge are on the profile of the issuer (`OrgFiscalIssuerProfile.PortalAccountHolder`, `RechargePortalCommissions`,
 migration `AddPortalAccountHolder`: the profiles that exist get the owner and the recharge on): they are the `values` of the section `channels` of the billing
@@ -349,19 +384,23 @@ E13 (its PDF and the owner portal), the VAT summary of E15 and the TD17 of E17 (
   collected by the agency and to be remitted to the municipality or the cantonal tourist office, and is never added to or taken from the net.
 - **Who holds the portal account.** The label of the commission of the channels follows it: «Trattenuta dal portale (fattura del portale a tuo nome)» when the owner
   holds the account (V1), «Commissioni del portale riaddebitate dal gestore (fattura n. …)» when the invoice of the property manager recharges it (V2 with
-  `RechargePortalCommissions` on), «Commissioni del portale (account del portale intestato al gestore, senza riaddebito in fattura)» (key
-  `StatementFileChannelFeesAgencyNotRecharged`; English «Portal commissions (portal account held by the property manager, no recharge on an invoice)») when the agency holds
-  the account and does not recharge (V2 with `RechargePortalCommissions` off: the portal bills the agency, so the sentence of V1 would be wrong). The test is the one of the
-  owner invoice (`PortalAccountHolders.RechargesCommissionOf` of `IPortalAccountHolderResolver`, E14, and its other half `IsAgencyAccountWithoutRecharge`), so the statement
-  and the invoice never tell the owner two different things (E19/F01/US01/T01): an account of the agency whose commissions it does not recharge is never labelled as recharged,
-  never names the invoice and is never labelled as the owner's portal invoice. Only the words follow it: the commission is a line of the ledger, in the totals and in the net
-  exactly as for any other channel fee. **Open point (PO):** that deduction is the same for an account of the agency that does not recharge (the scenario
-  `Variant_V2_WithoutTheRecharge_*` pins it), while the accountant package (backend#983, `AccPkgTreatmentBorne`) lists the same commission as «A carico dell'agenzia»; which of the two is the intent is not
-  decided, so the label says only what is certain (whose account it is, no recharge on an invoice) and never who bears the cost. The owner portal reads the same flags
-  (`channelFeeRechargedByAgency`, and `channelFeeBilledToAgencyNotRecharged` for the account of the agency that does not recharge; the web app shows a note for the first
-  only): the resolver reads the holders whatever the tenant of the caller, since the request of an owner has no org of its own. The CSV has no such label (its description
-  column holds the description of the ledger line, for the channel fees of any account) and the e-mail of the publication never carries a line. A published version keeps the
-  PDF it was published with (a stored file never changes): the new label is in the drafts and in the PDF of a new version.
+  `RechargePortalCommissions` on), «Commissione del portale sostenuta dall'agenzia, non addebitata al proprietario» (key `StatementFileChannelFeesAgencyNotRecharged`;
+  English «Portal commission covered by the property manager, not deducted from your statement») when the agency holds the account and does not recharge (V2 with
+  `RechargePortalCommissions` off). The test is the one of the owner invoice (`PortalAccountHolders.RechargesCommissionOf` of `IPortalAccountHolderResolver`, E14, and its
+  other half `IsAgencyAccountWithoutRecharge`), so the statement and the invoice never tell the owner two different things (E19/F01/US01/T01): an account of the agency whose
+  commissions it does not recharge is never labelled as recharged, never names the invoice and is never labelled as the owner's portal invoice. **The agency bears that
+  commission** (decision 1 of 20/11/2026, FIX/BE-V2-NO-RECHARGE, the PO decision that closed the open point of backend#983/#991; see «Who holds the portal account»): the
+  line is the `ChannelFeeBorneByAgency` the posting wrote, read from the line and never from the setting of today, **for information only**: the PDF shows it in a group of its
+  own after the other kinds, the commission as the positive amount the agency bears, and no total of the part, of the period or of the net counts it; the CSV writes it after
+  the net, in a part of its own (like the tourist tax box), never as a row of «Commissioni dei canali». A channel fee the owner was charged on such an account before that
+  rule (a line of a version made before it) keeps its amount in the totals and is told as «Commissioni del portale (account del portale intestato al gestore, senza riaddebito
+  in fattura)» (key `StatementFileChannelFeesAgencyCharged`), never as a commission the owner was not charged. The owner portal reads the same facts
+  (`channelFeeRechargedByAgency`; `channelFeeBilledToAgencyNotRecharged` for the commission the agency bears; `channelFeeChargedOnAgencyAccount` for a commission the
+  owner was charged on an account of the agency without the recharge; all three false is the account of the owner; and `informational`, true for a line whose amount is in
+  neither the `total` of its part nor the net; the web app shows a note for the first only until its own slice, see the known limit above): the resolver reads the holders
+  whatever the tenant of the caller, since the request of an owner has no org of its own. The lines of the ledger the screens of the agency read (`OwnerLedgerEntryDto`: a
+  version, the evidence, a correction) carry `informational` too, so a client leaves such a line out of its totals without knowing its type. The e-mail of the publication never carries a line. A published version keeps the PDF it was published with (a stored file
+  never changes): the new label is in the drafts and in the PDF of a new version.
 - **Published = stored.** Publishing a version builds its PDF once, stores it with its SHA-256 as an owner document of type statement (the id of the document is the
   id of the version) and tells the people of the owner portal who read the statements of the owner by e-mail: the agency and the link to the page «Contabilità», never an
   amount, a period or a line. The owner downloads exactly the stored file. A version published before this release has no stored PDF: the agency gets a PDF built

@@ -91,8 +91,10 @@ public class BillingSetupController(
     /// <summary>
     /// The endpoint of the section <c>channels</c> (E14/F01/US01/T01, ⚖ I10, I11): who holds the accounts of the portals by default (<c>portalAccountHolder</c>,
     /// <c>Owner</c> or <c>Agency</c>) and whether their commissions are recharged to the owners (<c>rechargePortalCommissions</c>); a member left out keeps its
-    /// value. Answers the section as saved. 422 <c>billing_channels_invalid</c>; 403 <c>fiscal_settings_need_whole_org</c>. Behind <c>Features:OwnerInvoicing</c>
-    /// too, like the invoices that use it: 404 while it is off.
+    /// value. Answers the section as saved. 422 <c>billing_channels_invalid</c>; 422 <c>recharge_waiver_not_acknowledged</c> for a save that turns the waiver of the recharge
+    /// on (the recharge off with an account of the agency) without <c>acknowledgeRechargeWaiver: true</c> (FIX/BE-V2-NO-RECHARGE: the agency then bears those commissions;
+    /// who acknowledged it and when go to the activity log); 403 <c>fiscal_settings_need_whole_org</c>. Behind <c>Features:OwnerInvoicing</c> too, like the invoices that
+    /// use it: 404 while it is off.
     /// </summary>
     [HttpPut(BillingSetupSections.Channels)]
     [FeatureGate(FeatureFlags.OwnerInvoicing)]
@@ -132,8 +134,10 @@ public class BillingSetupController(
     /// Writes the holders of the listings named, in bulk for many flats: <c>[{ propertyId, channel, holder }]</c>, <c>holder</c> <c>Owner</c> or <c>Agency</c>, or
     /// <c>null</c> to bring the listing back to the default; the listings not named keep theirs. Answers the whole list as saved. 422
     /// <c>channel_account_holders_invalid</c> (with the <c>index</c> and the <c>field</c>: an empty list, a property of another org, a channel that is not a portal,
-    /// a listing named twice); 409 <c>channel_account_holders_conflict</c>; 403 <c>fiscal_settings_need_whole_org</c>. A refusal saves nothing. Behind
-    /// <c>Features:OwnerInvoicing</c> too: 404 while it is off.
+    /// a listing named twice); 422 <c>recharge_waiver_not_acknowledged</c> for a write that starts the waiver of the recharge (the recharge off and the first listing of the
+    /// agency) without <c>?acknowledgeRechargeWaiver=true</c> (FIX/BE-V2-NO-RECHARGE: the agency then bears those commissions; who acknowledged it and when go to the activity
+    /// log); 409 <c>channel_account_holders_conflict</c>; 403 <c>fiscal_settings_need_whole_org</c>. A refusal saves nothing. Behind <c>Features:OwnerInvoicing</c> too: 404
+    /// while it is off.
     /// </summary>
     [HttpPut("channel-account-holders")]
     [FeatureGate(FeatureFlags.OwnerInvoicing)]
@@ -144,12 +148,13 @@ public class BillingSetupController(
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<List<ChannelAccountHolderDto>>> PutAccountHolders(
         [FromBody] List<ChannelAccountHolderCommand>? holders,
+        [FromQuery] bool acknowledgeRechargeWaiver,
         CancellationToken cancellationToken)
     {
         if (await WholeOrgAsync(cancellationToken) is not { } orgId)
             return NeedsWholeOrg();
 
-        var saved = await PortalAccounts.SaveAccountHoldersAsync(orgId, holders, User.GetUserId(), cancellationToken);
+        var saved = await PortalAccounts.SaveAccountHoldersAsync(orgId, holders, User.GetUserId(), acknowledgeRechargeWaiver, cancellationToken);
         return Ok(saved.Select(ChannelAccountHolderDto.From).ToList());
     }
 

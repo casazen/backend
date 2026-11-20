@@ -6913,6 +6913,9 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="BillingChannelsInvalid" xml:space="preserve">
     <value>The portal setting is not valid: check the field named.</value>
   </data>
+  <data name="RechargeWaiverNotAcknowledged" xml:space="preserve">
+    <value>Turning the recharge off means the agency pays the commissions of the portal accounts it holds and the owners are no longer charged for them. Confirm that you waive the recharge, then save again.</value>
+  </data>
   <data name="ChannelAccountHoldersInvalid" xml:space="preserve">
     <value>The list of the holders of the portal accounts is not valid: check the row and the field named.</value>
   </data>
@@ -7415,6 +7418,9 @@ Once active, the function works on the data the channel manager already holds.</
     <value>Portal commissions recharged by the property manager (invoice no. {0})</value>
   </data>
   <data name="StatementFileChannelFeesAgencyNotRecharged" xml:space="preserve">
+    <value>Portal commission covered by the property manager, not deducted from your statement</value>
+  </data>
+  <data name="StatementFileChannelFeesAgencyCharged" xml:space="preserve">
     <value>Portal commissions (portal account held by the property manager, no recharge on an invoice)</value>
   </data>
   <data name="StatementFileCommissionInvoice" xml:space="preserve">
@@ -7655,7 +7661,7 @@ Once active, the function works on the data the channel manager already holds.</
     <value>Recharged to the owner</value>
   </data>
   <data name="AccPkgTreatmentBorne" xml:space="preserve">
-    <value>Not charged back on an invoice</value>
+    <value>Borne by the agency</value>
   </data>
   <data name="AccPkgStatementsTitle" xml:space="preserve">
     <value>Statements published to the owners, by month (latest published version)</value>
@@ -7925,13 +7931,13 @@ Once active, the function works on the data the channel manager already holds.</
     <value>Portal commissions on the accounts held by the agency, by statement month (from the owner ledger)</value>
   </data>
   <data name="AccPkgSumMarginTitle" xml:space="preserve">
-    <value>Margin = commissions and recharges invoiced (taxable) less the portal commissions borne by the agency</value>
+    <value>Margin = commissions and recharges invoiced (taxable) less the portal commissions of the accounts the agency holds: the recharged ones come back with the recharges, the others are a cost of the agency, counted once</value>
   </data>
   <data name="AccPkgSumMargin" xml:space="preserve">
     <value>Margin</value>
   </data>
   <data name="AccPkgSumPortalBorne" xml:space="preserve">
-    <value>Portal commissions borne by the agency</value>
+    <value>Portal commissions of the agency's accounts</value>
   </data>
   <data name="AccPkgSumOwnersTitle" xml:space="preserve">
     <value>Report by owner: revenue and occupancy of the properties, by accrual</value>

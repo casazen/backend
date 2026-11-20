@@ -6,8 +6,8 @@ namespace Casazen.Core.Services;
 /// <summary>
 /// Who holds the account of a listing on a portal (E14/F01/US01/T01, ⚖ I10, acceptance step C2 of the pilot): the override of the listing and portal
 /// (<see cref="PropertyChannelAccountHolder"/>), else the default of the organization (<see cref="OrgFiscalIssuerProfile.PortalAccountHolder"/>, the owner
-/// when the organization has no profile). The one place the holder is read: the owner invoice (E14), the statement labels (E13), the VAT summary (E15)
-/// and the TD17 (E17) ask here, never the rows themselves.
+/// when the organization has no profile). The one place the holder is read: the owner invoice (E14), the posting of the owner ledger (who bears a commission,
+/// FIX/BE-V2-NO-RECHARGE), the statement labels (E13), the VAT summary (E15) and the TD17 (E17) ask here, never the rows themselves.
 /// </summary>
 public interface IPortalAccountHolderResolver
 {
@@ -46,8 +46,9 @@ public sealed record PortalAccountHolders(
 
     /// <summary>
     /// True when the account of <paramref name="propertyId"/> on <paramref name="channel"/> is the agency's (V2) and the organization does not recharge the commissions of
-    /// the accounts it holds (⚖ I11 off): the portal bills the agency and no invoice of the property manager carries the commission to the owner. The other half of
-    /// <see cref="RechargesCommissionOf"/>: for an account of the agency exactly one of the two is true, for an account of the owner (V1) neither is.
+    /// the accounts it holds (⚖ I11 off): the portal bills the agency and no invoice of the property manager carries the commission to the owner, so the agency bears it
+    /// and the posting of the owner ledger does not charge the owner (<see cref="OwnerLedgerEntryType.ChannelFeeBorneByAgency"/>, decision 1 of 20/11/2026). The other half
+    /// of <see cref="RechargesCommissionOf"/>: for an account of the agency exactly one of the two is true, for an account of the owner (V1) neither is.
     /// </summary>
     public bool IsAgencyAccountWithoutRecharge(Guid propertyId, BookingSource channel) =>
         !RechargePortalCommissions && Resolve(propertyId, channel) == PortalAccountHolder.Agency;

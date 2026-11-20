@@ -40,7 +40,7 @@ public sealed partial class SelfBillingService
         var withFees = await db.OwnerLedgerEntries
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
-            .Where(e => e.EntryType == OwnerLedgerEntryType.ChannelFee && e.PeriodYear == year && e.PeriodMonth == month)
+            .Where(e => (e.EntryType == OwnerLedgerEntryType.ChannelFee || e.EntryType == OwnerLedgerEntryType.ChannelFeeBorneByAgency) && e.PeriodYear == year && e.PeriodMonth == month)
             .Select(e => e.OrgId)
             .Distinct()
             .ToListAsync(ct);

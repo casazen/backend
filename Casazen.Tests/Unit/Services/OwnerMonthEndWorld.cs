@@ -30,7 +30,9 @@ internal sealed class OwnerMonthEndWorld
             defaults.ChannelCommissionDefaults[channel] = percent;
         var options = Microsoft.Extensions.Options.Options.Create(defaults);
         Fiscal = new OwnerFiscalProfileService(db, clock, NullLogger<OwnerFiscalProfileService>.Instance);
-        Service = new OwnerAccountingService(db, Fiscal, clock, NullLogger<OwnerAccountingService>.Instance, options, files);
+        // The posting reads who holds the portal accounts, as the container builds it (FIX/BE-V2-NO-RECHARGE): an agency that sets none is V1 everywhere.
+        Service = new OwnerAccountingService(
+            db, Fiscal, clock, NullLogger<OwnerAccountingService>.Instance, options, files, holders: new PortalAccountHolderResolver(db));
         Reconciliation = new OwnerReconciliationService(db, NullLogger<OwnerReconciliationService>.Instance);
     }
 

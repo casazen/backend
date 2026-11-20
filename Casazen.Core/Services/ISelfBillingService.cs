@@ -19,7 +19,7 @@ namespace Casazen.Core.Services;
 /// document plan, <see cref="DocumentPlanRules.SignatoryOf"/>); a private person has none (the portal charged the Italian VAT). <b>V2</b>, the agency holds it: the TD17 is the
 /// agency's (and the owner invoice recharges the commission, E14); a Swiss agency has none. A holder that needs a TD17 and cannot get one yet (its profile is incomplete) is
 /// reported, never invoiced by a guess.</item>
-/// <item><b>The amounts.</b> The taxable amount is the sum of the <see cref="OwnerLedgerEntryType.ChannelFee"/> lines of the month of the listings the holder holds, in the
+/// <item><b>The amounts.</b> The taxable amount is the sum of the channel fee lines (<see cref="OwnerLedgerBalance.IsChannelFee"/>: the ones the agency bears too) of the month of the listings the holder holds, in the
 /// currency of the stay (euro only: the TD17 of an Italian holder is in euro and nothing is converted), a reversal and the line it reverses cancelling out; one line for each
 /// property. The VAT is integrated at <see cref="SelfBillingOptions.VatRatePercent"/> (⚖, 22%) on top of it, never read from the tax rules of the sales documents (a flat-rate
 /// regime integrates the VAT too).</item>
@@ -70,7 +70,7 @@ public interface ISelfBillingService
 
     /// <summary>
     /// The organizations the monthly run looks at for <paramref name="year"/>-<paramref name="month"/> (FIX/BE-TD17-ALERTS): the active ones on the agency plan (not downgraded to reads only) that
-    /// have <see cref="OwnerLedgerEntryType.ChannelFee"/> lines in the owner ledger of the month, whatever the tenant of the caller; the organization is the key, never a request value.
+    /// have channel fee lines (<see cref="OwnerLedgerBalance.IsChannelFee"/>) in the owner ledger of the month, whatever the tenant of the caller; the organization is the key, never a request value.
     /// </summary>
     Task<IReadOnlyList<Guid>> OrgsWithCommissionsAsync(int year, int month, CancellationToken ct = default);
 

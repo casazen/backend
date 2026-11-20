@@ -110,6 +110,10 @@ public sealed partial class OwnerAccountingService
             .Where(r => r.OrgId == orgId)
             .ToListAsync(ct);
 
+        // Who holds the account of each listing on each portal and whether the organization recharges the commissions of the accounts it holds (⚖ I10, I11), read once:
+        // the commission of an account of the agency that is not recharged is the agency's (FIX/BE-V2-NO-RECHARGE). Without the resolver every listing is V1.
+        var portalAccounts = holders is null ? PortalAccountHolders.Defaults : await holders.ForOrgAsync(orgId, ct);
+
         var earliest = payments.Select(p => DateOnly.FromDateTime(p.PaidAt)).Append(period.First).Min().AddDays(-FxMaxAgeDays);
         var rates = await db.OwnerFxRates.AsNoTracking()
             .Where(r => r.OrgId == orgId && r.RateDate >= earliest && r.RateDate <= period.Last)
@@ -123,7 +127,7 @@ public sealed partial class OwnerAccountingService
         var contexts = new Dictionary<Guid, OwnerContext>();
         var builder = new PlanBuilder(orgId, plan, rates, period);
         var inputs = new PlanInputs(
-            orgId, period, plan, builder, contexts, ownerships, mandates, channelRules, accountingOptions?.Value ?? new OwnerAccountingOptions());
+            orgId, period, plan, builder, contexts, ownerships, mandates, channelRules, accountingOptions?.Value ?? new OwnerAccountingOptions(), portalAccounts);
 
         foreach (var payment in payments)
         {
@@ -179,7 +183,8 @@ public sealed partial class OwnerAccountingService
     /// The lines of a collected payment (a card payment through CasaZen or one the agency recorded): its revenue net of the refunds and of its part of the
     /// tourist tax (<see cref="OwnerLedgerRules.RevenueOfPayment"/>), recognized on the payment day or on the check-out for a profile with the rule
     /// <c>stay</c>; the commission of the mandate in force that day on its base; the card fee when the mandate passes it to the owner; with the first payment of
-    /// the booking, the channel commission of a portal. A share without a mandate in force is posted without commission and holds the version back.
+    /// the booking, the channel commission of a portal (borne by the owner or, for information only, by the agency: <see cref="ChannelFeeTypeOf"/>). A share without a
+    /// mandate in force is posted without commission and holds the version back.
     /// </summary>
     private async Task PlanPaymentAsync(PlanInputs inputs, PaymentSource payment, FeeBooking? feeBooking, CancellationToken ct)
     {
@@ -208,6 +213,7 @@ public sealed partial class OwnerAccountingService
         var revenue = Split(revenueTotal, shares);
         var fee = feeBooking is not null && feeBooking.FirstPaymentId == payment.Id ? ChannelFeeOf(inputs, feeBooking.Stay) : null;
         var fees = fee is null ? null : Split(fee.Amount, shares);
+        var feeType = feeBooking is null ? OwnerLedgerEntryType.ChannelFee : ChannelFeeTypeOf(inputs, feeBooking.Stay);
         var cardFee = payment.ProviderFee is > 0m ? payment.ProviderFee.Value : 0m;
         var cardFees = cardFee > 0m ? Split(cardFee, shares) : null;
         for (var i = 0; i < shares.Count; i++)
@@ -247,7 +253,7 @@ public sealed partial class OwnerAccountingService
                 inputs.Builder.Add(
                     source with
                     {
-                        Type = OwnerLedgerEntryType.ChannelFee,
+                        Type = feeType,
                         SourceType = OwnerLedgerSourceType.Booking,
                         SourceId = payment.BookingId,
                         Group = fee.Group,
@@ -265,7 +271,8 @@ public sealed partial class OwnerAccountingService
     /// The lines of a stay that checks out in the month. Without a collected payment (a portal, the agency's own site, a booking entered by hand) its revenue
     /// is the gross of the booking without the tourist tax (<see cref="StaySource.Gross"/>: the <see cref="Booking.BasePrice"/>, the cleaning included, of a booking
     /// priced by CasaZen; the total of the reservation less the tourist tax for a portal) recognized on the check-out (⚖ R1), with the commission of the mandate
-    /// and the channel commission of a portal. A price the host agreed by hand is an amount even when it is 0 (a stay for free): no revenue, nothing to tell.
+    /// and the channel commission of a portal (<see cref="ChannelFeeTypeOf"/>: the owner's, or the agency's for information only). A price the host agreed by hand is an
+    /// amount even when it is 0 (a stay for free): no revenue, nothing to tell.
     /// Every stay, whatever path posts its revenue, gets the flat fees of the mandate in force on the check-out, once (cleaning, linen: recharges of the agency); the cleaning
     /// only when the mandate recharges it at the flat rate (<see cref="CleaningRechargeMode.FlatRate"/>), because on the actual cost it comes from the cleaning requests.
     /// </summary>
@@ -310,7 +317,7 @@ public sealed partial class OwnerAccountingService
                 if (fee is not null && fees is not null)
                 {
                     inputs.Builder.Add(
-                        source with { Type = OwnerLedgerEntryType.ChannelFee, Group = fee.Group, SourceAmount = -fee.Amount, RuleVersion = fee.Source },
+                        source with { Type = ChannelFeeTypeOf(inputs, stay), Group = fee.Group, SourceAmount = -fee.Amount, RuleVersion = fee.Source },
                         share,
                         -fees[i],
                         context);
@@ -399,6 +406,18 @@ public sealed partial class OwnerAccountingService
         var group = "fee:" + reference + (terms.RuleId is { } ruleId ? ":rule:" + ruleId.ToString("N") : ":default");
         return amount > 0m ? new ChannelFee(amount, terms.Source, group) : null;
     }
+
+    /// <summary>
+    /// Who bears the commission a channel kept on <paramref name="stay"/> (FIX/BE-V2-NO-RECHARGE, decision 1 of 20/11/2026): the agency when it holds the account of the
+    /// listing on that channel and the organization does not recharge the commissions of the accounts it holds (<see cref="PortalAccountHolders.IsAgencyAccountWithoutRecharge"/>,
+    /// the very test the owner invoice makes: the portal bills the agency and no invoice of the property manager carries the commission), a line for information only
+    /// (<see cref="OwnerLedgerEntryType.ChannelFeeBorneByAgency"/>) that charges the owner nothing; else the owner, a <see cref="OwnerLedgerEntryType.ChannelFee"/> (V1, or V2 with the
+    /// recharge, where the owner invoice recharges it): deducting a commission no document recharges is the one state the decision forbids.
+    /// </summary>
+    private static OwnerLedgerEntryType ChannelFeeTypeOf(PlanInputs inputs, StaySource stay) =>
+        inputs.PortalAccounts.IsAgencyAccountWithoutRecharge(stay.PropertyId, stay.Source)
+            ? OwnerLedgerEntryType.ChannelFeeBorneByAgency
+            : OwnerLedgerEntryType.ChannelFee;
 
     /// <summary>
     /// The bookings among <paramref name="bookingIds"/> whose revenue the booking path posted in another month and that is still there (not reversed): the stay
@@ -727,7 +746,7 @@ public sealed partial class OwnerAccountingService
     /// <summary>A channel commission to post: the amount, where it comes from (the rule version of its line) and the group of its key.</summary>
     private sealed record ChannelFee(decimal Amount, string Source, string Group);
 
-    /// <summary>What the lines of a month are computed from, read once by <see cref="PlanAsync"/>.</summary>
+    /// <summary>What the lines of a month are computed from, read once by <see cref="PlanAsync"/>: the holders of the portal accounts decide who bears a channel commission.</summary>
     private sealed record PlanInputs(
         Guid OrgId,
         Period Period,
@@ -737,7 +756,8 @@ public sealed partial class OwnerAccountingService
         IReadOnlyList<PropertyOwnership> Ownerships,
         IReadOnlyList<OwnerMandate> Mandates,
         IReadOnlyList<OrgChannelCommissionRule> ChannelRules,
-        OwnerAccountingOptions Defaults);
+        OwnerAccountingOptions Defaults,
+        PortalAccountHolders PortalAccounts);
 
     private sealed record WireSource(
         Guid Id,
