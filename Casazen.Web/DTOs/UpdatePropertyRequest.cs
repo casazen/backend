@@ -75,6 +75,32 @@ public class UpdatePropertyRequest
         }
     }
 
+    /// <summary>
+    /// The Swiss municipality of the property (E29/F01/US01/T02, NF-124): its BFS number from the official directory (<c>GET /api/swiss/localities</c>),
+    /// a text of one to four digits such as <c>"5192"</c> (Lugano); 400 <c>validation_error</c> otherwise. Only for a property in Switzerland (the
+    /// country after a correction of an imported draft in the same request): 422 <c>swiss_municipality_not_applicable</c> otherwise; checked against
+    /// the directory when sent: 422 <c>swiss_municipality_unknown</c> / <c>swiss_places_unavailable</c>. <c>null</c> or empty clears it; leaving it out
+    /// keeps it. It is stored only when sent: the place the rules read without it (the one the postal code and the city give, <c>swissPlace</c> of
+    /// the record) is never stored by a save. A <c>city</c> or a <c>postalCode</c> changed <b>without</b> it clears the stored municipality, as for the
+    /// comune: the number no longer says where the property is; a corrected country clears it too.
+    /// </summary>
+    [RegularExpression(
+        Casazen.Core.Services.SwissPlaceErrorCodes.CodePattern,
+        ErrorMessage = Casazen.Core.Services.SwissPlaceErrorCodes.InvalidFormatMessageKey)]
+    public string? SwissMunicipalityCode
+    {
+        get;
+        set
+        {
+            field = value;
+            SwissMunicipalityCodeSent = true;
+        }
+    }
+
+    /// <summary>True when the body carries <see cref="SwissMunicipalityCode"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool SwissMunicipalityCodeSent { get; private set; }
+
     /// <summary>Geographic latitude in degrees, -90 to 90 (A2-33); more than 6 decimals are rounded.</summary>
     [Range(typeof(decimal), "-90", "90", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
         ErrorMessage = "PropertyLatitudeRange")]

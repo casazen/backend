@@ -116,6 +116,43 @@ Reference data, no personal data, for whoever may read properties (`SharedProper
 
 The BFS number is a **text of digits** everywhere in the API (`"5192"`), as the entity and the year-end report already had it.
 
+## The place of a property (one resolver)
+
+`IPropertySwissPlaceResolver` (`PropertySwissPlaceResolver`, E29/F01/US01/T02, decisions D3 and D4) is the one place that says where a Swiss property
+is. Every rule that depends on the canton reads it, instead of a copied «country CH and canton TI» test: the Ticino police notification
+(`TicinoNotificationService`: the day, the file, the days to notify of the cockpit), the OTR report (`OtrTaxService`), the year-end count of Ticino
+(`TouristTaxSummaryService.GetTicinoYearlyCountAsync` and its CSV/Excel), the policy of the identity documents (`IdentityVerificationFlowService`)
+and `isInTicino` of `GET /api/properties/{id}`.
+
+Rules (`SwissPlace { MunicipalityCode, MunicipalityName, CantonCode, Source, Ambiguous }`):
+
+1. A property whose country is not `CH` has no place.
+2. A stored `Property.SwissMunicipalityCode` that the directory has wins: `Source = Stored`.
+3. Otherwise the place is derived from the postal code and the city (`Source = Derived`): the four digits of the postal code (a `CH-` prefix and
+   spaces are ignored, `690000` gives `6900`; anything else, an Italian CAP for one, gives no place). The localities of that postal code all in one
+   municipality: that one. Several: the one whose official name equals the city (lower case, accents ignored), else the one with a locality of
+   that postal code named as the city. `6900` «Lugano» is Lugano (5192, TI); `6600` «Locarno» is Locarno (5113), although the locality Locarno
+   of 6600 lies in Muralto too: the name of the municipality decides before the one of the locality.
+4. Still several (or a city that names none of them) is **ambiguous**: `Ambiguous = true` with no municipality and no canton. The resolver never
+   chooses silently; the property is not «in Ticino» until the host chooses its municipality.
+5. Resolving only reads: a derived municipality is never stored behind the host's back.
+
+On the property:
+
+- `POST /api/properties` and `PUT /api/properties/{id}` accept `swissMunicipalityCode` (a text of one to four digits, 400 otherwise): checked
+  against the directory (422 `swiss_municipality_unknown`, or `swiss_places_unavailable` when the directory is not loaded) and accepted only for a
+  property in Switzerland (422 `swiss_municipality_not_applicable`; the create request has no country, so every property it creates is Italian and
+  refuses it). On update `null` or empty clears it, leaving it out keeps it, a `city` or `postalCode` changed without it clears it (as for the
+  comune), and the correction of the country of an imported draft clears it as it always did.
+- `GET /api/properties/{id}` gives `swissMunicipalityCode` (stored), `swissMunicipalityName` and `swissCantonCode` (of the stored municipality),
+  `swissPlace { municipalityCode, municipalityName, cantonCode, source, ambiguous }` (where the resolver places it, also when derived or ambiguous)
+  and `isInTicino` from it. The lists carry the stored code only.
+
+Not moved to the resolver (they read only a stored municipality, as before): the tourist tax line of a Swiss document
+(`GuestDocumentLineBuilder`, `TouristTaxCollectionService`) and the canton of the Swiss tourist tax in the accountant package
+(`AccountantPackageFacts.SwissCantonsAsync`): money is charged on a municipality the host confirmed. The year-end count marks a derived municipality
+(`municipalityDerived`, note «to be confirmed») so that a stay without a tourist tax line there is explained.
+
 ## Differences from Italian Comuni
 
 Unlike the Italian `Comuni` table (ISTAT codes, cadastral codes, provinces, regions, active/inactive rows with validity dates, an import log with

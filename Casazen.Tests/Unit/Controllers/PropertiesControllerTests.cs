@@ -2041,6 +2041,181 @@ public class PropertiesControllerTests
         Assert.Equal("invalid_document_file", problem.Extensions["code"]);
     }
 
+    // E29/F01/US01/T02 (NF-124): the Swiss municipality of a property on its create, update and record.
+
+    /// <summary>
+    /// Permission: the update path of the Swiss municipality is isolated by organization. A property of another organization is not found (the
+    /// tenant filter of the record) and one the caller may not change is forbidden: neither stores a municipality, and the directory is never asked.
+    /// </summary>
+    [Fact]
+    public async Task Property_SwissMunicipality_OtherOrganizationCannotSet_Test()
+    {
+        SetupUserClaims("auth0|attacker_user_456");
+        var resolver = new Mock<IPropertySwissPlaceResolver>(MockBehavior.Strict);
+        _controller.ControllerContext.HttpContext.RequestServices = new ServiceCollection()
+            .AddLogging()
+            .AddLocalization()
+            .AddSingleton(resolver.Object)
+            .BuildServiceProvider();
+        var otherOrgPropertyId = Guid.NewGuid();
+        _mockService.Setup(x => x.GetPropertyRecordAsync(otherOrgPropertyId)).ReturnsAsync((Property?)null);
+        var notTheCallers = new Property { Id = Guid.NewGuid(), OwnerId = "auth0|owner_user_123", Name = "TEST", Country = "CH", PostalCode = "6900", City = "Lugano" };
+        _mockService.Setup(x => x.GetPropertyRecordAsync(notTheCallers.Id)).ReturnsAsync(notTheCallers);
+
+        var hidden = await _controller.Update(otherOrgPropertyId, new UpdatePropertyRequest { SwissMunicipalityCode = "5192" });
+        var forbidden = await _controller.Update(notTheCallers.Id, new UpdatePropertyRequest { SwissMunicipalityCode = "5192" });
+
+        Assert.IsType<NotFoundResult>(hidden);
+        Assert.IsType<ForbidResult>(forbidden);
+        Assert.Null(notTheCallers.SwissMunicipalityCode);
+        _mockService.Verify(x => x.UpdatePropertyAsync(It.IsAny<Property>()), Times.Never);
+        resolver.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Update_SwissMunicipality_OnASwissProperty_StoresTheCheckedNumber_KeepsItWhenNotSent_AndClearsItWhenEmpty()
+    {
+        await using var db = SwissDirectory();
+        SetupSwissCaller("auth0|owner_user_123", db);
+        AllowAuthorization();
+        var property = new Property { Id = Guid.NewGuid(), OwnerId = "auth0|owner_user_123", Name = "TEST", Country = "CH", City = "Lugano", PostalCode = "6900" };
+        _mockService.Setup(x => x.GetPropertyRecordAsync(property.Id)).ReturnsAsync(property);
+        _mockService.Setup(x => x.UpdatePropertyAsync(It.IsAny<Property>())).ReturnsAsync(property);
+
+        Assert.IsType<NoContentResult>(await _controller.Update(property.Id, new UpdatePropertyRequest { SwissMunicipalityCode = "5192" }));
+        Assert.Equal("5192", property.SwissMunicipalityCode);
+
+        Assert.IsType<NoContentResult>(await _controller.Update(property.Id, new UpdatePropertyRequest { Name = "TEST 2", City = " lugano " }));
+        Assert.Equal("5192", property.SwissMunicipalityCode);
+
+        Assert.IsType<NoContentResult>(await _controller.Update(property.Id, new UpdatePropertyRequest { SwissMunicipalityCode = "" }));
+        Assert.Null(property.SwissMunicipalityCode);
+    }
+
+    [Fact]
+    public async Task Update_SwissMunicipality_OnAnItalianProperty_Is422_AndAnUnknownNumberIsRefused()
+    {
+        await using var db = SwissDirectory();
+        SetupSwissCaller("auth0|owner_user_123", db);
+        AllowAuthorization();
+        var italian = new Property { Id = Guid.NewGuid(), OwnerId = "auth0|owner_user_123", Name = "TEST", Country = "IT", City = "Como" };
+        var swiss = new Property { Id = Guid.NewGuid(), OwnerId = "auth0|owner_user_123", Name = "TEST", Country = "CH", City = "Lugano" };
+        _mockService.Setup(x => x.GetPropertyRecordAsync(italian.Id)).ReturnsAsync(italian);
+        _mockService.Setup(x => x.GetPropertyRecordAsync(swiss.Id)).ReturnsAsync(swiss);
+
+        var notApplicable = Assert.IsType<ObjectResult>(await _controller.Update(italian.Id, new UpdatePropertyRequest { Name = "Changed", SwissMunicipalityCode = "5192" }));
+        var unknown = await Assert.ThrowsAsync<DomainRuleException>(() => _controller.Update(swiss.Id, new UpdatePropertyRequest { SwissMunicipalityCode = "9999" }));
+
+        Assert.Equal(StatusCodes.Status422UnprocessableEntity, notApplicable.StatusCode);
+        Assert.Equal(SwissPlaceErrorCodes.NotApplicable, Assert.IsType<ProblemDetails>(notApplicable.Value).Extensions["code"]);
+        Assert.Equal("TEST", italian.Name);
+        Assert.Null(italian.SwissMunicipalityCode);
+        Assert.Equal(SwissPlaceErrorCodes.Unknown, unknown.Code);
+        Assert.Null(swiss.SwissMunicipalityCode);
+        _mockService.Verify(x => x.UpdatePropertyAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("Paradiso", null)]
+    [InlineData(null, "6901")]
+    public async Task Update_TheCityOrThePostalCodeWithoutTheMunicipality_ClearsTheStoredOne(string? city, string? postalCode)
+    {
+        await using var db = SwissDirectory();
+        SetupSwissCaller("auth0|owner_user_123", db);
+        AllowAuthorization();
+        var property = new Property
+        {
+            Id = Guid.NewGuid(),
+            OwnerId = "auth0|owner_user_123",
+            Name = "TEST",
+            Country = "CH",
+            City = "Lugano",
+            PostalCode = "6900",
+            SwissMunicipalityCode = "5192",
+        };
+        _mockService.Setup(x => x.GetPropertyRecordAsync(property.Id)).ReturnsAsync(property);
+        _mockService.Setup(x => x.UpdatePropertyAsync(It.IsAny<Property>())).ReturnsAsync(property);
+
+        Assert.IsType<NoContentResult>(await _controller.Update(property.Id, new UpdatePropertyRequest { City = city, PostalCode = postalCode }));
+
+        Assert.Null(property.SwissMunicipalityCode);
+    }
+
+    [Fact]
+    public async Task Create_WithASwissMunicipality_Is422_BecauseThePropertyItCreatesIsItalian()
+    {
+        await using var db = SwissDirectory();
+        SetupSwissCaller("auth0|owner_user_123", db);
+
+        var result = await _controller.Create(new CreatePropertyRequest
+        {
+            Name = "TEST",
+            Address = "Via Test 1",
+            City = "Lugano",
+            PostalCode = "6900",
+            Bathrooms = 1,
+            SwissMunicipalityCode = "5192",
+        });
+
+        var problem = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status422UnprocessableEntity, problem.StatusCode);
+        Assert.Equal(SwissPlaceErrorCodes.NotApplicable, Assert.IsType<ProblemDetails>(problem.Value).Extensions["code"]);
+        _mockService.Verify(x => x.CreatePropertyAsync(It.IsAny<Property>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetById_CarriesTheStoredMunicipality_AndWhereTheOneResolverPlacesTheProperty()
+    {
+        await using var db = SwissDirectory();
+        SetupSwissCaller("auth0|owner_user_123", db);
+        AllowAuthorization();
+        var derived = new Property { Id = Guid.NewGuid(), OwnerId = "auth0|owner_user_123", Name = "TEST", Country = "CH", City = "Lugano", PostalCode = "6900" };
+        var stored = new Property { Id = Guid.NewGuid(), OwnerId = "auth0|owner_user_123", Name = "TEST", Country = "CH", City = "Lugano", SwissMunicipalityCode = "5192" };
+        _mockService.Setup(x => x.GetPropertyRecordAsync(derived.Id)).ReturnsAsync(derived);
+        _mockService.Setup(x => x.GetPropertyRecordAsync(stored.Id)).ReturnsAsync(stored);
+
+        var fromPostalCode = Assert.IsType<PropertyResponse>(Assert.IsType<OkObjectResult>((await _controller.GetById(derived.Id)).Result).Value);
+        var chosen = Assert.IsType<PropertyResponse>(Assert.IsType<OkObjectResult>((await _controller.GetById(stored.Id)).Result).Value);
+
+        Assert.True(fromPostalCode.IsInTicino);
+        Assert.Null(fromPostalCode.SwissMunicipalityCode);
+        Assert.Null(fromPostalCode.SwissMunicipalityName);
+        Assert.Equal(("5192", "Lugano", "TI", SwissPlaceSource.Derived, false), (fromPostalCode.SwissPlace!.MunicipalityCode, fromPostalCode.SwissPlace.MunicipalityName, fromPostalCode.SwissPlace.CantonCode, fromPostalCode.SwissPlace.Source, fromPostalCode.SwissPlace.Ambiguous));
+        Assert.Null(derived.SwissMunicipalityCode);
+        Assert.True(chosen.IsInTicino);
+        Assert.Equal(("5192", "Lugano", "TI"), (chosen.SwissMunicipalityCode, chosen.SwissMunicipalityName, chosen.SwissCantonCode));
+        Assert.Equal(SwissPlaceSource.Stored, chosen.SwissPlace!.Source);
+    }
+
+    /// <summary>The caller of the Swiss municipality tests: claims, localization and the one resolver over <paramref name="db"/>.</summary>
+    private void SetupSwissCaller(string userId, AppDbContext db)
+    {
+        SetupUserClaims(userId);
+        _controller.ControllerContext.HttpContext.RequestServices = new ServiceCollection()
+            .AddLogging()
+            .AddLocalization()
+            .AddSingleton<IPropertySwissPlaceResolver>(new PropertySwissPlaceResolver(db))
+            .BuildServiceProvider();
+    }
+
+    /// <summary>A directory with Lugano (5192, TI) and its locality of the postal code 6900.</summary>
+    private static AppDbContext SwissDirectory()
+    {
+        var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = "5192", CantonCode = "TI", OfficialName = "Lugano" });
+        db.SwissLocalities.Add(new SwissLocality
+        {
+            PostalCode = "6900",
+            AddOn = "00",
+            Name = "Lugano",
+            NormalizedName = "lugano",
+            MunicipalityCode = "5192",
+            CantonCode = "TI",
+        });
+        db.SaveChanges();
+        return db;
+    }
+
     private void SetupUserClaims(string userId, IEnumerable<string>? roles = null)
     {
         var claims = new List<Claim>

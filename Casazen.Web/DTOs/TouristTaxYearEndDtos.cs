@@ -246,8 +246,17 @@ public sealed class TicinoPropertyCountDto
 
     public string City { get; init; } = string.Empty;
 
-    /// <summary>The Swiss municipality code stored on the property; <c>null</c> when there is none.</summary>
+    /// <summary>
+    /// The Swiss municipality of the property (BFS number): the one stored on it, or the one its postal code and town give (<see cref="MunicipalityDerived"/>,
+    /// E29/F01/US01/T02); for a property whose canton is not known, the number stored on it if any; <c>null</c> when there is none.
+    /// </summary>
     public string? MunicipalityCode { get; init; }
+
+    /// <summary>
+    /// True when <see cref="MunicipalityCode"/> was derived from the postal code and the town of the property, which stores none: its canton is known, the
+    /// municipality is still to be confirmed on the property (the file says so).
+    /// </summary>
+    public bool MunicipalityDerived { get; init; }
 
     /// <summary>The currency of the property and of <see cref="TouristTax"/>: CHF for a house in Switzerland.</summary>
     public string Currency { get; init; } = string.Empty;
@@ -272,7 +281,8 @@ public sealed class TicinoPropertyCountDto
     public decimal TouristTax { get; init; }
 
     /// <summary>
-    /// True for a property in Switzerland whose canton is not known (no Swiss municipality on it, or one the registry of the municipalities does not have): it may be in Ticino, so it is counted and flagged.
+    /// True for a property in Switzerland whose canton is not known (no Swiss municipality stored on it that the registry has, and none its postal code and town give, or several of them):
+    /// it may be in Ticino, so it is counted and flagged.
     /// </summary>
     public bool CantonUnknown { get; init; }
 
@@ -287,6 +297,7 @@ public sealed class TicinoPropertyCountDto
             Address = property.Address,
             City = property.City,
             MunicipalityCode = property.MunicipalityCode,
+            MunicipalityDerived = property.MunicipalityDerived,
             Currency = property.Currency,
             Stays = property.Stays,
             Nights = property.Nights,

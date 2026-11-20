@@ -18,12 +18,18 @@ namespace Casazen.Infrastructure.Services;
 /// no-show; the guests are the rows of the check-in (<see cref="StayGuest"/>), or the booker alone while there are none. Every read names the
 /// org of the property, so a context with its tenant filter off (a job) never mixes orgs.</para>
 /// <para><b>The day.</b> Switzerland and Italy share the time zone rules (CET/CEST): the calendar of Rome gives the day of Lugano.</para>
+/// <para><b>In Ticino.</b> A property is in Ticino when the one resolver of the place of a Swiss property says so
+/// (<see cref="IPropertySwissPlaceResolver"/>, E29/F01/US01/T02): its stored municipality, or the one its postal code and city give; an ambiguous
+/// postal code is not in Ticino until the host chooses the municipality.</para>
 /// </remarks>
-public class TicinoNotificationService(AppDbContext context, TimeProvider? timeProvider = null) : ITicinoNotificationService
+public class TicinoNotificationService(
+    AppDbContext context,
+    TimeProvider? timeProvider = null,
+    IPropertySwissPlaceResolver? placeResolver = null) : ITicinoNotificationService
 {
-    private const string TicinoCantonCode = "TI";
     private const string PoliceReceiptType = nameof(SwissComplianceFileType.Police);
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+    private readonly IPropertySwissPlaceResolver _places = placeResolver ?? new PropertySwissPlaceResolver(context);
 
     public async Task<TicinoNotificationDay> GetDayAsync(Guid propertyId, DateOnly day, CancellationToken cancellationToken = default)
     {
@@ -81,19 +87,25 @@ public class TicinoNotificationService(AppDbContext context, TimeProvider? timeP
         CancellationToken cancellationToken = default)
     {
         var propertyQuery = context.Properties.AsNoTracking()
-            .Where(p => p.Country.Trim().ToUpper() == "CH" && p.SwissMunicipalityCode != null);
+            .Where(p => p.Country.Trim().ToUpper() == "CH");
         if (orgId is { } onlyOrg)
             propertyQuery = propertyQuery.Where(p => p.OrgId == onlyOrg);
         if (propertyIds is not null)
             propertyQuery = propertyQuery.Where(p => propertyIds.Contains(p.Id));
 
-        var properties = await propertyQuery
-            .Join(
-                context.SwissMunicipalities.AsNoTracking().Where(m => m.CantonCode == TicinoCantonCode),
-                p => p.SwissMunicipalityCode,
-                m => m.MunicipalityCode,
-                (p, _) => new { p.Id, p.OrgId, p.Name })
+        // The Swiss properties the one resolver places in Ticino (the stored municipality, or the one the postal code and the city give).
+        var swiss = await propertyQuery
+            .Select(p => new { p.Id, p.OrgId, p.Name, p.Country, p.SwissMunicipalityCode, p.PostalCode, p.City })
             .ToListAsync(cancellationToken);
+        if (swiss.Count == 0)
+            return [];
+
+        var places = await _places.ResolveManyAsync(
+            [.. swiss.Select(p => new SwissPlaceLookup(p.Id, p.Country, p.SwissMunicipalityCode, p.PostalCode, p.City))], cancellationToken);
+        var properties = swiss
+            .Where(p => places.TryGetValue(p.Id, out var place) && place.IsInTicino)
+            .Select(p => new { p.Id, p.OrgId, p.Name })
+            .ToList();
         if (properties.Count == 0)
             return [];
 
@@ -154,15 +166,8 @@ public class TicinoNotificationService(AppDbContext context, TimeProvider? timeP
         return property;
     }
 
-    private async Task<bool> IsInTicinoAsync(Property property, CancellationToken cancellationToken)
-    {
-        if (!string.Equals(property.Country?.Trim(), "CH", StringComparison.OrdinalIgnoreCase) || property.SwissMunicipalityCode is null)
-            return false;
-
-        return await context.SwissMunicipalities
-            .AsNoTracking()
-            .AnyAsync(m => m.MunicipalityCode == property.SwissMunicipalityCode && m.CantonCode == TicinoCantonCode, cancellationToken);
-    }
+    private async Task<bool> IsInTicinoAsync(Property property, CancellationToken cancellationToken) =>
+        (await _places.ResolveAsync(property, cancellationToken))?.IsInTicino == true;
 
     private sealed record StayRead(TicinoStayFacts Facts, DateTime? ArrivedAt);
 

@@ -18,8 +18,8 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.SharedPropertyRead)]
 public class SwissPlacesController(ISwissPlacesDirectory directory) : ControllerBase
 {
-    /// <summary>Code of a BFS number the directory does not have (404).</summary>
-    public const string MunicipalityUnknownCode = "swiss_municipality_unknown";
+    /// <summary>Code of a BFS number the directory does not have (404); the same code as the 422 of a property save.</summary>
+    public const string MunicipalityUnknownCode = SwissPlaceErrorCodes.Unknown;
 
     /// <summary>
     /// The localities whose postal code starts with <paramref name="query"/> (one to four digits, <c>CH-</c> ignored) or whose name contains it
@@ -51,7 +51,7 @@ public class SwissPlacesController(ISwissPlacesDirectory directory) : Controller
     {
         var municipality = await directory.FindMunicipalityAsync(bfs, cancellationToken);
         return municipality is null
-            ? this.ApiProblem(StatusCodes.Status404NotFound, MunicipalityUnknownCode, "SwissMunicipalityUnknown")
+            ? this.ApiProblem(StatusCodes.Status404NotFound, MunicipalityUnknownCode, SwissPlaceErrorCodes.UnknownMessageKey)
             : Ok(SwissMunicipalityDto.From(municipality));
     }
 }

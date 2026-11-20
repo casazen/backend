@@ -8631,4 +8631,16 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="SwissMunicipalityUnknown" xml:space="preserve">
     <value>Questo numero non corrisponde a nessun comune svizzero dell'elenco ufficiale.</value>
   </data>
+  <data name="SwissMunicipalityCodeInvalid" xml:space="preserve">
+    <value>Indica il comune svizzero con il suo numero ufficiale UST, di una a quattro cifre (per esempio 5192 per Lugano).</value>
+  </data>
+  <data name="SwissMunicipalityNotApplicable" xml:space="preserve">
+    <value>Il comune svizzero si indica solo per un immobile in Svizzera.</value>
+  </data>
+  <data name="SwissPlacesUnavailable" xml:space="preserve">
+    <value>L'elenco ufficiale dei comuni svizzeri non è ancora caricato: il comune non si può verificare. Riprova più tardi.</value>
+  </data>
+  <data name="TtTicinoNoteMunicipalityDerived" xml:space="preserve">
+    <value>Comune ricavato da CAP e località, da confermare nella scheda dell'immobile</value>
+  </data>
 </root>
