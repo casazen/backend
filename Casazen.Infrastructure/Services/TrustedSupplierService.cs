@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -11,38 +12,40 @@ namespace Casazen.Infrastructure.Services;
 /// <inheritdoc cref="ITrustedSupplierService" />
 public sealed class TrustedSupplierService(
     AppDbContext db,
+    ISupplierService supplierService,
     IActivityLog activityLog,
-    ILogger<TrustedSupplierService> logger,
-    TimeProvider? timeProvider = null) : ITrustedSupplierService
+    ILogger<TrustedSupplierService> logger) : ITrustedSupplierService
 {
-    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
-    private static readonly TimeSpan InvitationExpiry = TimeSpan.FromDays(7);
+    /// <summary>The length of <see cref="SupplierInviteRecord.Email"/>.</summary>
+    private const int EmailMaxLength = 255;
 
-    public Task<InviteSupplierResult> InviteSupplierAsync(Guid orgId, InviteSupplierRequest request, string actorUserId)
+    public async Task<InviteSupplierResult> InviteSupplierAsync(Guid orgId, InviteSupplierRequest request, string actorUserId)
     {
-        // For wave 2, the invitation mechanism is simplified:
-        // Generate a token and return it. The actual invitation delivery
-        // (email, notification) is handled by the caller.
-        var token = Guid.NewGuid().ToString("N");
-        var expiresAt = _clock.GetUtcNow().Add(InvitationExpiry).UtcDateTime;
+        var email = request.Email?.Trim() ?? string.Empty;
+        if (email.Length == 0 || email.Length > EmailMaxLength || !new EmailAddressAttribute().IsValid(email))
+            throw new DomainRuleException("trusted_supplier_invite_email_invalid", "TrustedSupplierInviteEmailInvalid");
+
+        // Only the org's own properties can be assigned (the tenant filter keeps the others out of the count too).
+        var propertyIds = (request.PropertyIds ?? []).Distinct().ToList();
+        if (propertyIds.Count > 0
+            && await db.Properties.CountAsync(p => p.OrgId == orgId && propertyIds.Contains(p.Id)) != propertyIds.Count)
+            throw new DomainRuleException("trusted_supplier_property_invalid", "TrustedSupplierPropertyInvalid");
+
+        // A supplier with this email that already works for the org has nothing to accept.
+        var normalized = SupplierProfileEmailIndex.Normalize(email);
+        var alreadyTrusted = await db.TrustedSuppliers
+            .Where(ts => ts.OrgId == orgId)
+            .Join(db.SupplierProfiles, ts => ts.SupplierOrgId, sp => sp.OrgId, (ts, sp) => sp.Email)
+            .AnyAsync(profileEmail => profileEmail.Trim().ToLower() == normalized);
+        if (alreadyTrusted)
+            throw new DomainConflictException("trusted_supplier_already_added", "TrustedSupplierAlreadyAdded");
+
+        // The invite, its email and its acceptance are the ones of the supplier registration (#977).
+        var invite = await supplierService.CreateTrustedSupplierInviteAsync(orgId, email, propertyIds);
 
         logger.LogInformation(
-            "Trusted supplier invitation created: OrgId={OrgId} Email={Email} Actor={Actor} Token={Token}",
-            orgId, request.Email, actorUserId, token);
-
-        return Task.FromResult(new InviteSupplierResult(token, expiresAt));
-    }
-
-    public async Task<TrustedSupplier> AcceptInviteAsync(AcceptSupplierInviteRequest request, string actorUserId)
-    {
-        // For wave 2, accept the invitation and create the relationship.
-        // In a real implementation, we would validate the token against stored invitations.
-        // For now, we create the relationship directly.
-
-        // Note: In production, this would validate the token, check expiry,
-        // verify the supplier org exists, and ensure no duplicate relationship exists.
-
-        throw new NotImplementedException("AcceptInviteAsync requires invitation storage mechanism");
+            "Trusted supplier invite {InviteId} of org {OrgId} created by {Actor}", invite.InviteId, orgId, actorUserId);
+        return new InviteSupplierResult(invite.InviteId, invite.ExpiresAt);
     }
 
     public async Task<List<TrustedSupplier>> GetTrustedSuppliersAsync(Guid orgId)

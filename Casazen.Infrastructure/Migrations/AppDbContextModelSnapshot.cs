@@ -16245,6 +16245,9 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.PrimitiveCollection<List<Guid>>("AssignedPropertyIds")
+                        .HasColumnType("uuid[]");
+
                     b.Property<string>("CategoriesJson")
                         .HasColumnType("jsonb");
 
@@ -16263,6 +16266,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("InvitedByOrgId")
+                        .HasColumnType("uuid");
 
                     b.Property<bool>("IsUsed")
                         .HasColumnType("boolean");

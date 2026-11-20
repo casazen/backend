@@ -4049,6 +4049,18 @@
   <data name="TrustedSupplierNotFound" xml:space="preserve">
     <value>Fornitore di fiducia non trovato</value>
   </data>
+  <data name="TrustedSupplierInviteEmailInvalid" xml:space="preserve">
+    <value>Inserisci un indirizzo email valido per il fornitore.</value>
+  </data>
+  <data name="TrustedSupplierPropertyInvalid" xml:space="preserve">
+    <value>Uno degli immobili scelti non esiste o non è della tua organizzazione.</value>
+  </data>
+  <data name="TrustedSupplierInviteComuneMissing" xml:space="preserve">
+    <value>Per invitare un fornitore aggiungi prima un immobile con il suo comune: l'invito vale per il comune dei tuoi immobili.</value>
+  </data>
+  <data name="TrustedSupplierAlreadyAdded" xml:space="preserve">
+    <value>Questo fornitore è già tra i tuoi fornitori di fiducia.</value>
+  </data>
   <data name="ApprovalItemNotFound" xml:space="preserve">
     <value>Elemento da approvare non trovato</value>
   </data>
