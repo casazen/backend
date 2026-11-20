@@ -1747,6 +1747,15 @@
   <data name="GuestBookingEmailInvalid" xml:space="preserve">
     <value>Invalid email address.</value>
   </data>
+  <data name="GuestSessionProofRequired" xml:space="preserve">
+    <value>Enter the email address you booked with or the last 4 digits of your phone number.</value>
+  </data>
+  <data name="GuestSessionProofExclusive" xml:space="preserve">
+    <value>Use either the email address or the last 4 digits of the phone, not both.</value>
+  </data>
+  <data name="GuestSessionPhoneLast4Invalid" xml:space="preserve">
+    <value>Enter only the last 4 digits of the phone number you booked with.</value>
+  </data>
   <data name="PublicPropertyNotFound" xml:space="preserve">
     <value>This property is not available for online booking.</value>
   </data>

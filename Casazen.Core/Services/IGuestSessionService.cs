@@ -8,7 +8,9 @@ namespace Casazen.Core.Services;
 /// The session of the guest of a booking site, with no account (DB-06a, decision DB-D21). The guest proves one booking with its
 /// booking code and the email it was made with (the same check, the same uniform 404 and the same limits as "Le mie prenotazioni",
 /// <see cref="IGuestBookingLookupService"/>) and gets a signed token with a short life, to send as <c>Authorization: Bearer</c> to the
-/// endpoints of the guest area (<c>api/public/guest/*</c>, policy <c>GuestSession</c>). Nothing is stored: the token is the session.
+/// endpoints of the guest area (<c>api/public/guest/*</c>, policy <c>GuestSession</c>). Nothing is stored: the token is the session. With the flag
+/// <c>WhiteLabelHost</c> on the guest may prove the booking with the last four digits of the phone instead of the e-mail (NF-143) and gets the
+/// same session.
 /// </summary>
 /// <remarks>
 /// <para><b>For the features that live in the guest area</b> (messages, reviews…): an action protected by the policy
@@ -27,6 +29,16 @@ public interface IGuestSessionService
     /// </summary>
     /// <exception cref="Exceptions.NotFoundException"><see cref="GuestBookingLookupErrorCodes.NotFound"/>, the same whatever does not match.</exception>
     Task<GuestSessionOpened> OpenAsync(GuestBookingCredentials credentials, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Opens the same session for the booking of <paramref name="credentials"/> proved with the last four digits of the guest's phone instead of the
+    /// e-mail (NF-143; the caller decides that the flag <c>WhiteLabelHost</c> is on). A direct booking of the site whose phone ends with the typed
+    /// digits, compared in constant time; the token is the one of the e-mail proof (the hash of the booking's e-mail), so the session is the same.
+    /// A code that does not exist, is not a code or is of another site, a booking without a phone and wrong digits take one path and end in the
+    /// same <see cref="Exceptions.NotFoundException"/> as a wrong e-mail.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException"><see cref="GuestBookingLookupErrorCodes.NotFound"/>, the same whatever does not match.</exception>
+    Task<GuestSessionOpened> OpenAsync(GuestBookingPhoneCredentials credentials, CancellationToken cancellationToken = default);
 
     /// <summary>The ticket in <paramref name="accessToken"/>, or <c>null</c> when it is not a token of ours, was altered or has expired.</summary>
     GuestSessionTicket? Validate(string? accessToken);

@@ -1020,6 +1020,15 @@ public static class ServiceCollectionExtensions
         // The tokens are sealed with Data Protection (the key ring in the database), so every replica reads them.
         services.AddSingleton<GuestSessionTokens>();
         services.AddScoped<IGuestSessionService, GuestSessionService>();
+        // The lock of a booking code after repeated failures of the last four digits of the phone, the other proof of the guest session (NF-143,
+        // flag WhiteLabelHost; docs/runbooks/direct-booking.md § 8.4): its two settings are checked at startup, its counters live in memory, per replica.
+        services.AddOptions<GuestPhoneLookupLockoutOptions>()
+            .Configure<IConfiguration>(GuestPhoneLookupLockoutOptions.Read)
+            .Validate(
+                options => options.IsValid(),
+                $"{GuestPhoneLookupLockoutOptions.MaxFailuresKey} and {GuestPhoneLookupLockoutOptions.WindowMinutesKey} must be at least 1.")
+            .ValidateOnStart();
+        services.AddSingleton<GuestPhoneLookupLockout>();
         // The bookings of the guest who has an account (the mobile app, GuestAccountController): the direct bookings of any site whose guest
         // has the account's verified email, and the same guest-area session opened for them (docs/runbooks/direct-booking.md § 8.6).
         services.AddScoped<IGuestAccountBookingService, GuestAccountBookingService>();
