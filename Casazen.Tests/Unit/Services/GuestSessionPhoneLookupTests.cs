@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Casazen.Core.Entities.Enums;
+using Casazen.Core.Entities;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
