@@ -322,10 +322,10 @@
     <value>Il periodo non può superare {0} giorni.</value>
   </data>
   <data name="SwissReceiptTypeRequired" xml:space="preserve">
-    <value>Indica il tipo di ricevuta: Police oppure OTR.</value>
+    <value>Indica il tipo di documento: Police, OTR, ParentalAuthorization oppure GroupSheet.</value>
   </data>
   <data name="SwissReceiptTypeInvalid" xml:space="preserve">
-    <value>Tipo di ricevuta non valido: usa «Police» (notifica alla polizia) oppure «OTR» (rapporto dei pernottamenti).</value>
+    <value>Tipo di documento non valido: usa «Police» (notifica alla polizia), «OTR» (rapporto dei pernottamenti), «ParentalAuthorization» (autorizzazione dei genitori di un minore non accompagnato) oppure «GroupSheet» (scheda del gruppo).</value>
   </data>
   <data name="SwissReceiptReferenceRequired" xml:space="preserve">
     <value>Indica il riferimento dell'invio, per esempio il numero di conferma del portale.</value>
@@ -338,6 +338,9 @@
   </data>
   <data name="SwissReceiptFileInvalid" xml:space="preserve">
     <value>Il file della ricevuta è vuoto oppure supera {0} MB.</value>
+  </data>
+  <data name="SwissReceiptDateTooOld" xml:space="preserve">
+    <value>La data indicata è di oltre {0} anni fa: un documento di questo tipo si conserva {0} anni dalla sua data e la conservazione automatica lo cancellerebbe subito. Controlla la data (il giorno di arrivo).</value>
   </data>
   <data name="BookingNotFound" xml:space="preserve">
     <value>Prenotazione non trovata</value>
@@ -1515,6 +1518,9 @@
   </data>
   <data name="CheckInTaxExemptionInvalid" xml:space="preserve">
     <value>Questo motivo di esenzione dall'imposta di soggiorno non si può scegliere.</value>
+  </data>
+  <data name="CheckInVehiclePlateInvalid" xml:space="preserve">
+    <value>Targa non valida: usa lettere, cifre e trattini, al massimo {0} caratteri.</value>
   </data>
   <data name="CheckInDocumentProcessingFailed" xml:space="preserve">
     <value>Elaborazione del documento non riuscita. Riprova o inserisci i dati manualmente.</value>
@@ -8630,5 +8636,8 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="TicinoFileFormatInvalid" xml:space="preserve">
     <value>Formato del file non valido: scegli CSV o XML.</value>
+  </data>
+  <data name="TicinoNotAGroup" xml:space="preserve">
+    <value>Questo soggiorno non è un gruppo di almeno {0} persone (capogruppo e membri del gruppo): la scheda del gruppo non serve.</value>
   </data>
 </root>

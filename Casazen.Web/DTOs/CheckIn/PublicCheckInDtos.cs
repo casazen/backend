@@ -66,11 +66,23 @@ public class PublicCheckInContextResponse
     public bool? HasInvoiceData { get; set; }
 
     /// <summary>
-    /// Statistical fields the region of the property requires (<c>TourismType</c>, <c>TravelWay</c>, <c>EducationLevel</c>): the page asks
-    /// only these (data minimization). Empty when the comune is unknown or the region requires none.
+    /// The guest fields the regime of the property requires, the page asks only these (data minimization), as names of the properties of a guest
+    /// (<see cref="StayGuestSubmitDto"/>): the statistical fields the region requires (<c>TourismType</c>, <c>TravelWay</c>, <c>EducationLevel</c>;
+    /// none when the comune is unknown or the region requires none) and, for a property in canton Ticino (NF-132), <c>DocumentType</c> and
+    /// <c>DocumentNumber</c> (of every adult, family and group members included, or of every minor of a stay without adults, in a group of six or
+    /// more of its leader only: required),
+    /// <c>ResidenceStreet</c>, <c>ResidencePostalCode</c>, <c>ResidenceCityName</c> and <c>ResidenceCountryName</c> (the home and the state of
+    /// residence, as the residence block asks it: asked, optional).
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? RequiredGuestFields { get; set; }
+
+    /// <summary>
+    /// The page asks the plate of the car, once for the stay and optional (<see cref="PublicCheckInSubmitRequest.VehiclePlate"/>): the property is in
+    /// canton Ticino (NF-132). Sent with an open session only.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? AskVehiclePlate { get; set; }
 
     /// <summary>
     /// The language to open the page in (NF-40): the one the guest saved, otherwise the first supported language of the browser
@@ -269,6 +281,11 @@ public class PublicCheckInGuestPrefill
     public string? ResidenceProvince { get; set; }
     public string? ResidenceCountryCode { get; set; }
     public string? ResidenceCountryName { get; set; }
+
+    /// <summary>The home of the guest (NF-132): street and house number, postal code, town; null when not on file.</summary>
+    public string? ResidenceStreet { get; set; }
+    public string? ResidencePostalCode { get; set; }
+    public string? ResidenceCityName { get; set; }
     public string? TourismType { get; set; }
     public string? TravelWay { get; set; }
     public string? EducationLevel { get; set; }
@@ -301,6 +318,9 @@ public class PublicCheckInGuestPrefill
         ResidenceProvince = prefill.ResidenceProvince,
         ResidenceCountryCode = prefill.ResidenceCountryCode,
         ResidenceCountryName = prefill.ResidenceCountryName,
+        ResidenceStreet = prefill.ResidenceStreet,
+        ResidencePostalCode = prefill.ResidencePostalCode,
+        ResidenceCityName = prefill.ResidenceCityName,
         TourismType = prefill.TourismType,
         TravelWay = prefill.TravelWay,
         EducationLevel = prefill.EducationLevel,
@@ -402,6 +422,14 @@ public class PublicCheckInSubmitRequest
     /// corrects and sends again.
     /// </summary>
     public PublicCheckInInvoiceDto? Invoice { get; set; }
+
+    /// <summary>
+    /// The plate of the car (NF-132), asked once for the stay where the context says <c>askVehiclePlate</c>; optional. Not sent (<c>null</c>):
+    /// the stored plate stays; an empty text clears it. Spaces are removed and the letters upper-cased; letters, digits and hyphens only, at most
+    /// 20 (<c>VehiclePlate</c>: <c>CheckInVehiclePlateInvalid</c>). Write-only: the page never reads it back.
+    /// </summary>
+    [MaxLength(64, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
+    public string? VehiclePlate { get; set; }
 }
 
 /// <summary>
@@ -482,7 +510,9 @@ public class PublicCheckInInvoiceDto
 /// <summary>
 /// One guest. Always required: kind, names, sex, date of birth, born in Italy or not, citizenship. Born in Italy: comune
 /// and province; abroad: state. Document (kind or table code, number, place of issue) only for <c>SingleGuest</c>,
-/// <c>HeadOfFamily</c> and <c>HeadOfGroup</c>. Codes are optional (official tables, when imported).
+/// <c>HeadOfFamily</c> and <c>HeadOfGroup</c>; for a property in canton Ticino (NF-132) the kind and number of the document also of every other
+/// guest the police file notifies on their own row (every adult, or every minor of a stay without adults), their place of issue optional. Codes
+/// are optional (official tables, when imported).
 /// </summary>
 public class StayGuestSubmitDto
 {
@@ -571,6 +601,21 @@ public class StayGuestSubmitDto
     [MaxLength(StayGuestFieldLimits.Label, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
     public string? ResidenceCountryName { get; set; }
 
+    /// <summary>
+    /// Optional home of the guest (NF-132, «Indirizzo» of the Ticino police file): street and house number, at most 200 characters. Asked where
+    /// <c>requiredGuestFields</c> names it; stored encrypted.
+    /// </summary>
+    [MaxLength(StayGuest.ResidenceStreetMaxLength, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
+    public string? ResidenceStreet { get; set; }
+
+    /// <summary>Optional postal code of the home («CAP»), as written (letters allowed: a foreign code), at most 20 characters; stored upper case.</summary>
+    [MaxLength(StayGuest.ResidencePostalCodeMaxLength, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
+    public string? ResidencePostalCode { get; set; }
+
+    /// <summary>Optional town of the home («Domicilio»), at most 100 characters.</summary>
+    [MaxLength(StayGuest.ResidenceCityNameMaxLength, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
+    public string? ResidenceCityName { get; set; }
+
     /// <summary>Optional statistical fields (NF-40), codes of the closed lists: <c>holiday</c>, <c>business</c>, <c>other</c>.</summary>
     [MaxLength(IstatGuestFieldLists.MaxCodeLength, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
     public string? TourismType { get; set; }
@@ -618,6 +663,9 @@ public class StayGuestSubmitDto
         ResidenceProvince = ResidenceProvince,
         ResidenceCountryCode = ResidenceCountryCode,
         ResidenceCountryName = ResidenceCountryName,
+        ResidenceStreet = ResidenceStreet,
+        ResidencePostalCode = ResidencePostalCode,
+        ResidenceCityName = ResidenceCityName,
         TourismType = TourismType,
         TravelWay = TravelWay,
         EducationLevel = EducationLevel,
