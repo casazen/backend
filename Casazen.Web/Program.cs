@@ -200,6 +200,10 @@ builder.Services.AddCrmMarketing(builder.Configuration);
 // registered in AddCasazenOnboarding and behind Features:OctorateOnboarding where they are used.
 builder.Services.AddCasazenOnboarding(builder.Configuration);
 
+// The guest portal (epics E50-E60, casazen/backend#987): the stay link of a booking and the portal behind it, all registered in AddGuestPortal and
+// behind Features:GuestPortal where they are used (the endpoints).
+builder.Services.AddGuestPortal();
+
 // Localization — Italian (default) and English.
 // No ResourcesPath: resource names follow the marker type's namespace, so IStringLocalizer<SharedResources>
 // (Casazen.Web.Resources.SharedResources) reads Resources/SharedResources.resx and SharedResources.en.resx.

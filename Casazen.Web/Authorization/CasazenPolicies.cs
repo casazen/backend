@@ -140,6 +140,15 @@ public static class CasazenPolicies
     public const string ApprovalDecide = ShortRent + HostPermissions.ApprovalDecide;
 
     /// <summary>
+    /// «Portale ospiti» (E50/F01/US01/T01, NF-152, guest portal plan decision A7): set up the guest portal of the org (house guide, extras, suppliers and
+    /// their percentages, automatic replies, the wizard). Owner, administrators and property managers; not the collaborator nor the accountant.
+    /// Short-rent context. The permission is <see cref="HostPermissions.GuestPortalManage"/>. The link of a stay is not behind it: the endpoints of the
+    /// link ask for the permissions on the bookings (<see cref="BookingRead"/>, <see cref="BookingWrite"/>). Registered once here for the set-up
+    /// endpoints of the portal epics (E51-E59).
+    /// </summary>
+    public const string GuestPortalManage = ShortRent + HostPermissions.GuestPortalManage;
+
+    /// <summary>
     /// Read a property's long-term side that is not a lease: the long-rent service requests (D2, SU-07). Long-rent
     /// context only, so a short-rent <c>property.read</c> never reaches it; the row is checked with
     /// <see cref="LongRentPropertyOperations"/>.
@@ -234,6 +243,7 @@ public static class CasazenPolicies
         ServiceRequestWrite, GuestManage, AlloggiatiSubmit,
         VerificationDecision,
         ApprovalDecide,
+        GuestPortalManage,
         LongRentPropertyRead, LongRentPropertyWrite,
         LeaseRead, LeaseCreate, LeaseSign, LeaseRegister,
         OrgMembersManage, OrgActivityRead,

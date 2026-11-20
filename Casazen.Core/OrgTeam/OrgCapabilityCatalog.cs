@@ -101,6 +101,8 @@ public static class OrgCapabilityCatalog
                 P(Short, HostPermissions.AlloggiatiSubmit),
                 // E03/F04/US02/T01: the decision on the identity verification of a guest (owner, administrators, property managers).
                 P(Short, HostPermissions.VerificationDecision),
+                // E50/F01/US01/T01: «Portale ospiti», the set-up of the guest portal (owner, administrators, property managers).
+                P(Short, HostPermissions.GuestPortalManage),
             ]),
         new("money", OrgCapabilityGroups.ShortRent,
             Full: [P(Short, "payment.write")],

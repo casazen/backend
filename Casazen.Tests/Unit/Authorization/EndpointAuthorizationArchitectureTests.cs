@@ -87,6 +87,16 @@ public class EndpointAuthorizationArchitectureTests
     };
 
     /// <summary>
+    /// Policies registered before the first action that asks for them, each with its reason: the task that seeds a permission creates its policy once,
+    /// and the endpoints of the later tasks of the same plan use it. Still registered (the test checks it); an entry is harmless once an action uses
+    /// the policy.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> RegisteredAheadOfTheirEndpoints = new Dictionary<string, string>
+    {
+        [CasazenPolicies.GuestPortalManage] = "E50/F01/US01/T01 (NF-152, guest portal plan decision A7) creates the «Portale ospiti» permission once, with its seed, its token fallback and its policy, for the set-up endpoints of the guest portal epics (E51-E59: house guide, extras, suppliers and percentages, automatic replies, wizard); the endpoints of the stay link of a booking ask for booking.read and booking.write.",
+    };
+
+    /// <summary>
     /// The anonymous endpoints of the supplier showcase (SP-09), each with the reason it is public. The showcase is read by
     /// customers who have no account: they publish only what the supplier chose to publish, never a person, never the
     /// supplier's private calendar; every one is rate limited, never indexable, and (but the page) behind a feature flag.
@@ -469,8 +479,12 @@ public class EndpointAuthorizationArchitectureTests
         foreach (var policy in RegisteredPolicyNames())
         {
             Assert.True(await provider.GetPolicyAsync(policy) is not null, $"CasazenPolicies.{policy} is not registered.");
-            Assert.True(used.Contains(policy), $"Policy '{policy}' is registered but no action uses it: use it or remove it.");
+            Assert.True(
+                used.Contains(policy) || RegisteredAheadOfTheirEndpoints.ContainsKey(policy),
+                $"Policy '{policy}' is registered but no action uses it: use it or remove it.");
         }
+
+        Assert.All(RegisteredAheadOfTheirEndpoints, entry => Assert.True(entry.Value.Length >= 40, $"{entry.Key}: say why it comes before its endpoints"));
     }
 
     [Fact]

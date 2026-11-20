@@ -8727,4 +8727,10 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="TicinoNotAGroup" xml:space="preserve">
     <value>Questo soggiorno non è un gruppo di almeno {0} persone (capogruppo e membri del gruppo): la scheda del gruppo non serve.</value>
   </data>
+  <data name="GuestPortalBookingNotEligible" xml:space="preserve">
+    <value>Il link del soggiorno si crea solo per le prenotazioni confermate, in corso o concluse: non per una richiesta, una prenotazione annullata o un ospite che non si è presentato.</value>
+  </data>
+  <data name="GuestPortalStayEnded" xml:space="preserve">
+    <value>Il soggiorno è finito da più di 30 giorni: il link del soggiorno non si può più creare.</value>
+  </data>
 </root>

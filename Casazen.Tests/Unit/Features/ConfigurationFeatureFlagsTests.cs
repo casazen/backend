@@ -127,6 +127,10 @@ public class ConfigurationFeatureFlagsTests
                 "SiteEmbed",
                 // E30/F02/US01/T01: the staged alerts about the 24 hours of the notification of the guests of a Ticino property to the cantonal police, off until the product owner has seen them on an arrival.
                 "TicinoNotificationAlerts",
+                // E50/F01/US01/T01: the guest portal, the services of the suppliers in it and the automatic replies of its chat, off until they are delivered and decided.
+                "GuestPortal",
+                "GuestPortalSupplierServices",
+                "GuestPortalAutoReplies",
             },
             FeatureFlags.All);
     }

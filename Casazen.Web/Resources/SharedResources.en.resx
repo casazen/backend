@@ -8727,4 +8727,10 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="TicinoNotAGroup" xml:space="preserve">
     <value>This stay is not a group of at least {0} persons (group leader and group members): no group sheet is needed.</value>
   </data>
+  <data name="GuestPortalBookingNotEligible" xml:space="preserve">
+    <value>The stay link is only made for confirmed, checked-in or checked-out bookings: not for a request, a cancelled booking or a guest who did not show up.</value>
+  </data>
+  <data name="GuestPortalStayEnded" xml:space="preserve">
+    <value>The stay ended more than 30 days ago: the stay link can no longer be made.</value>
+  </data>
 </root>
