@@ -30,6 +30,19 @@ public class ResolveHostResponseDto
 
     /// <summary>The embeddable pages are on (NF-144): the flag <c>SiteEmbed</c>.</summary>
     public bool EmbedEnabled { get; set; }
+
+    /// <summary>
+    /// The tracking of the agency's pages (NF-149, E40/F01/US01/T04): always present; its container id is <c>null</c> while <c>SiteEmbed</c> is off
+    /// or the agency set none, and then the pages load nothing.
+    /// </summary>
+    public ResolveHostTrackingDto Tracking { get; set; } = new();
+}
+
+/// <summary>The tracking of a host's pages (E40/F01/US01/T04).</summary>
+public class ResolveHostTrackingDto
+{
+    /// <summary>The Google Tag Manager container (<c>GTM-…</c>, <c>GtmContainerIds</c>), loaded only after the visitor's consent; <c>null</c> for none.</summary>
+    public string? GtmContainerId { get; set; }
 }
 
 /// <summary>The surfaces a host serves besides the booking site (E40/F01/US01).</summary>

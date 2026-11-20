@@ -24,6 +24,7 @@ public sealed record PublicUrls(
 
 /// <summary>Owner-facing domain configuration snapshot for an org (#298 / US-024).</summary>
 /// <param name="Surfaces">The surfaces of the agency's own domain (E40/F01/US01), <c>null</c> while the flag <c>WhiteLabelHost</c> is off.</param>
+/// <param name="Tracking">The tracking of the agency's pages (E40/F01/US01/T04), <c>null</c> while the flag <c>SiteEmbed</c> is off.</param>
 public sealed record OrgDomainConfig(
     Guid OrgId,
     PublicHostMode PublicHostMode,
@@ -34,7 +35,24 @@ public sealed record OrgDomainConfig(
     DnsInstructions? DnsInstructions,
     PublicUrls PublicUrls,
     DomainStatusInfo Status,
-    OrgDomainSurfaces? Surfaces = null);
+    OrgDomainSurfaces? Surfaces = null,
+    OrgDomainTracking? Tracking = null);
+
+/// <summary>The tracking of the agency's pages (NF-149): its Google Tag Manager container (<see cref="GtmContainerIds"/>), or <c>null</c>.</summary>
+public sealed record OrgDomainTracking(string? GtmContainerId);
+
+public enum SetOrgDomainTrackingOutcome
+{
+    Success,
+    NotFound,
+
+    /// <summary>The text is no container id (<see cref="GtmContainerIds.TryNormalize"/>) — controller maps to 400 <c>gtm_container_id_invalid</c>.</summary>
+    Invalid,
+}
+
+public sealed record SetOrgDomainTrackingResult(
+    SetOrgDomainTrackingOutcome Outcome,
+    OrgDomainTracking? Tracking);
 
 /// <summary>
 /// The surfaces of the agency's own domain (E40/F01/US01, NF-140..NF-142): what the agency chose, the state of the owner sign-in on the
@@ -148,5 +166,14 @@ public interface IOrgDomainService
     Task<SetOrgDomainSurfacesResult> SetSurfacesAsync(
         Guid orgId,
         OrgDomainSurfaceSettings settings,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Saves the Google Tag Manager container of the agency's pages (E40/F01/US01/T04, NF-149), normalized by <see cref="GtmContainerIds"/>; an
+    /// empty value clears it. The cached <c>resolve-host</c> answers of the org's hosts are dropped. The flag <c>SiteEmbed</c> is the controller's gate.
+    /// </summary>
+    Task<SetOrgDomainTrackingResult> SetTrackingAsync(
+        Guid orgId,
+        string? gtmContainerId,
         CancellationToken cancellationToken = default);
 }

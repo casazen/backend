@@ -240,6 +240,32 @@ public partial class OrgDomainService(
         return new SetOrgDomainSurfacesResult(SetOrgDomainSurfacesOutcome.Success, BuildConfig(org, canUseCustomDomain));
     }
 
+    public async Task<SetOrgDomainTrackingResult> SetTrackingAsync(
+        Guid orgId,
+        string? gtmContainerId,
+        CancellationToken cancellationToken = default)
+    {
+        // The one rule of the format (NF-149): the typed text is never stored, logged or answered as it is.
+        if (!GtmContainerIds.TryNormalize(gtmContainerId, out var normalized))
+            return new SetOrgDomainTrackingResult(SetOrgDomainTrackingOutcome.Invalid, null);
+
+        var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
+        if (org is null)
+            return new SetOrgDomainTrackingResult(SetOrgDomainTrackingOutcome.NotFound, null);
+
+        org.GtmContainerId = normalized;
+        org.UpdatedAt = timeProvider.GetUtcNow().UtcDateTime;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        // The answer of resolve-host carries the container: every host of the org reads the new one at once.
+        if (org.CustomDomain is not null)
+            publicHostResolver.InvalidateCacheForHost(org.CustomDomain);
+        if (SubdomainHost(org.Subdomain) is { } subdomainHost)
+            publicHostResolver.InvalidateCacheForHost(subdomainHost);
+
+        return new SetOrgDomainTrackingResult(SetOrgDomainTrackingOutcome.Success, new OrgDomainTracking(normalized));
+    }
+
     private static void ClearCustomDomainFields(Org org)
     {
         org.CustomDomain = null;
@@ -280,7 +306,8 @@ public partial class OrgDomainService(
             dnsInstructions,
             publicUrls,
             BuildStatus(org),
-            BuildSurfaces(org));
+            BuildSurfaces(org),
+            IsEnabled(FeatureFlags.SiteEmbed) ? new OrgDomainTracking(org.GtmContainerId) : null);
     }
 
     /// <summary>The surfaces block of the settings (E40/F01/US01): <c>null</c> while <c>WhiteLabelHost</c> is off, so nothing changes for anybody.</summary>

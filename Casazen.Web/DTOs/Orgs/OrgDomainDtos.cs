@@ -24,6 +24,27 @@ public class OrgDomainConfigDto
 
     /// <summary>The surfaces of the agency's own domain (E40/F01/US01); <c>null</c> while the flag <c>WhiteLabelHost</c> is off.</summary>
     public OrgDomainSurfacesDto? Surfaces { get; set; }
+
+    /// <summary>The tracking of the agency's pages (E40/F01/US01/T04); <c>null</c> while the flag <c>SiteEmbed</c> is off.</summary>
+    public OrgDomainTrackingDto? Tracking { get; set; }
+}
+
+/// <summary>
+/// The Google Tag Manager container of the agency's pages (NF-149): the answer of <c>PUT /api/orgs/{orgId}/domain/tracking</c> and the <c>tracking</c>
+/// block of the domain settings. <c>null</c> when the agency set none.
+/// </summary>
+public class OrgDomainTrackingDto
+{
+    public string? GtmContainerId { get; set; }
+}
+
+/// <summary>
+/// Request body for <c>PUT /api/orgs/{orgId}/domain/tracking</c> (E40/F01/US01/T04): <c>GTM-</c> plus 4 to 12 letters or digits (case and spaces around
+/// are forgiven), <c>null</c> or empty to clear it. The format is checked by <c>GtmContainerIds</c> only, so no length attribute here.
+/// </summary>
+public class SetOrgDomainTrackingRequest
+{
+    public string? GtmContainerId { get; set; }
 }
 
 /// <summary>

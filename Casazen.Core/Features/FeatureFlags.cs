@@ -362,8 +362,9 @@ public static class FeatureFlags
 
     /// <summary>
     /// E41-E43 (NF-144..NF-149, site integration plan §5.2-§5.4): the embeddable booking pages, the page «Incorpora nel tuo sito», the WordPress plugin and the Google Tag Manager
-    /// container of the agency, <b>off by default</b>. Off, <c>GET api/public/resolve-host</c> and <c>GET api/public/orgs/{slug}</c> report <c>embedEnabled</c> false. It needs no
-    /// variable to start. The frontend reads the key <c>siteEmbed</c>.
+    /// container of the agency, <b>off by default</b>. Off, <c>GET api/public/resolve-host</c> and <c>GET api/public/orgs/{slug}</c> report <c>embedEnabled</c> false,
+    /// <c>resolve-host</c> gives no container id (<c>tracking.gtmContainerId</c> null), <c>GET api/orgs/{orgId}/domain</c> has no <c>tracking</c> block and
+    /// <c>PUT api/orgs/{orgId}/domain/tracking</c> answers 404 before authentication. It needs no variable to start. The frontend reads the key <c>siteEmbed</c>.
     /// </summary>
     public const string SiteEmbed = "SiteEmbed";
 

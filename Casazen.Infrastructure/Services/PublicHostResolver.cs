@@ -107,11 +107,12 @@ public class PublicHostResolver(
     private ResolveHostResponseDto BuildResponse(Org org, PublicHostMode publicHostMode)
     {
         var effectiveTier = entitlementService.ResolveEffectiveTier(org);
+        var siteEmbed = IsEnabled(FeatureFlags.SiteEmbed);
         var surfaces = HostSurfaceRules.Evaluate(
             org,
             publicHostMode,
             IsEnabled(FeatureFlags.WhiteLabelHost),
-            IsEnabled(FeatureFlags.SiteEmbed));
+            siteEmbed);
         return new ResolveHostResponseDto
         {
             OrgId = org.Id,
@@ -122,6 +123,8 @@ public class PublicHostResolver(
             Surfaces = new ResolveHostSurfacesDto { GuestArea = surfaces.GuestArea, OwnerPortal = surfaces.OwnerPortal },
             OwnerLoginReady = surfaces.OwnerLoginReady,
             EmbedEnabled = surfaces.EmbedEnabled,
+            // E40/F01/US01/T04: the container of the agency only while SiteEmbed is on, and only a valid one.
+            Tracking = new ResolveHostTrackingDto { GtmContainerId = GtmContainerIds.Served(org.GtmContainerId, siteEmbed) },
         };
     }
 

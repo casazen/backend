@@ -3286,6 +3286,9 @@
   <data name="OrgDomainNotConfigured" xml:space="preserve">
     <value>No custom domain is configured for this organization.</value>
   </data>
+  <data name="OrgGtmContainerIdInvalid" xml:space="preserve">
+    <value>The Google Tag Manager container ID is not valid: it must be GTM- followed by 4 to 12 letters or digits (for example GTM-ABC123).</value>
+  </data>
   <data name="OrgDomainVerificationFailed" xml:space="preserve">
     <value>Domain verification failed.</value>
   </data>

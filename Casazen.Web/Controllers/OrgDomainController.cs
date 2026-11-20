@@ -166,6 +166,40 @@ public class OrgDomainController(
         };
     }
 
+    /// <summary>
+    /// The Google Tag Manager container of the agency's pages (E40/F01/US01/T04, NF-149): <c>GTM-</c> plus 4 to 12 letters or digits, <c>null</c> or
+    /// empty clears it. 404 while <c>SiteEmbed</c> is off; 400 <c>gtm_container_id_invalid</c> (never echoing the text) for anything else.
+    /// </summary>
+    [HttpPut("tracking")]
+    [FeatureGate(FeatureFlags.SiteEmbed)]
+    [ProducesResponseType(typeof(OrgDomainTrackingDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrgDomainTrackingDto>> SetTracking(
+        Guid orgId,
+        [FromBody] SetOrgDomainTrackingRequest request,
+        CancellationToken cancellationToken)
+    {
+        var forbidden = await EnsureCallerOrgAsync(orgId, cancellationToken);
+        if (forbidden is not null)
+            return forbidden;
+
+        // The format has one rule (GtmContainerIds); the service applies it again before it stores anything.
+        if (!GtmContainerIds.TryNormalize(request.GtmContainerId, out _))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, GtmContainerIds.InvalidCode, "OrgGtmContainerIdInvalid");
+
+        var result = await orgDomainService.SetTrackingAsync(orgId, request.GtmContainerId, cancellationToken);
+        return result.Outcome switch
+        {
+            SetOrgDomainTrackingOutcome.Success when result.Tracking is not null =>
+                Ok(new OrgDomainTrackingDto { GtmContainerId = result.Tracking.GtmContainerId }),
+            SetOrgDomainTrackingOutcome.NotFound => NotFound(),
+            _ => this.ApiProblem(StatusCodes.Status400BadRequest, GtmContainerIds.InvalidCode, "OrgGtmContainerIdInvalid"),
+        };
+    }
+
     private async Task<ActionResult?> EnsureCallerOrgAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var callerOrgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
@@ -231,6 +265,9 @@ public class OrgDomainController(
                     LinksOnOwnDomain = surfaces.Effective.GuestLinksOnOwnDomain || surfaces.Effective.OwnerLinksOnOwnDomain,
                 },
             },
+        Tracking = config.Tracking is not { } tracking
+            ? null
+            : new OrgDomainTrackingDto { GtmContainerId = tracking.GtmContainerId },
     };
 
     /// <summary>The explanation of a <see cref="DomainIssues"/> code in the language of the request; <c>null</c> without a code or for an unknown one.</summary>
