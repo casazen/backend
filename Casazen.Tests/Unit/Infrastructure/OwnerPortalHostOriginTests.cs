@@ -87,29 +87,93 @@ public class OwnerPortalHostOriginTests
         Assert.True(context.HasSucceeded);
     }
 
-    private async Task<AuthorizationHandlerContext> AuthorizeAsync(string? origin, Guid[] agencies)
+    [Fact]
+    public async Task OwnerOfSeveralAgencies_OneClaimPerAgency_OriginOfTheSecond_Allowed()
+    {
+        // A real token carries the array agency_ids as one claim per agency: the owner of A and B is at home on the domain of B, which is not the first claim.
+        var context = await AuthorizeAsync(origin: "https://prenota.agenzia-b.it", agencyClaims: [AgencyA.ToString(), AgencyB.ToString()]);
+
+        Assert.True(context.HasSucceeded);
+    }
+
+    [Fact]
+    public async Task OwnerOfSeveralAgencies_OneClaimPerAgency_OriginOfAnotherOrg_Forbidden()
+    {
+        var other = Guid.Parse("cccccccc-0000-0000-0000-00000000000c");
+        _resolver.Setup(r => r.ResolveAsync("prenota.agenzia-c.it", It.IsAny<CancellationToken>())).ReturnsAsync(Host(other));
+
+        var context = await AuthorizeAsync(origin: "https://prenota.agenzia-c.it", agencyClaims: [AgencyA.ToString(), AgencyB.ToString()]);
+
+        Assert.False(context.HasSucceeded);
+        Assert.Contains(context.FailureReasons, r => r.Message == OwnerPortalHostOriginAuthorizationHandler.OtherAgencyReason);
+    }
+
+    [Fact]
+    public void AgencyIds_EveryShapeOfTheClaim_GiveTheSameIds()
+    {
+        // One claim per agency (the array of Auth0 as the JWT handler gives it), the JSON text of the array, a comma-separated list and one id: the same two agencies.
+        string[][] shapes =
+        [
+            [AgencyA.ToString(), AgencyB.ToString()],
+            [System.Text.Json.JsonSerializer.Serialize(new[] { AgencyA.ToString(), AgencyB.ToString() })],
+            [$"{AgencyA}, {AgencyB}"],
+            [AgencyA.ToString(), $"[\"{AgencyB}\"]", AgencyA.ToString()],
+        ];
+
+        foreach (var shape in shapes)
+        {
+            var ids = OwnerOf(shape).GetOwnerAgencyIds(Namespace);
+
+            Assert.Equal(2, ids.Count);
+            Assert.Contains(AgencyA, ids);
+            Assert.Contains(AgencyB, ids);
+        }
+
+        Assert.Equal(new[] { AgencyA }, OwnerOf([AgencyA.ToString()]).GetOwnerAgencyIds(Namespace));
+        Assert.Empty(OwnerOf(["not-an-id", "[broken"]).GetOwnerAgencyIds(Namespace));
+        Assert.Empty(OwnerOf([]).GetOwnerAgencyIds(Namespace));
+    }
+
+    /// <summary>The claim the way these tests always wrote it: ONE claim with the JSON text of the array (the shape of the other tests of the owner portal).</summary>
+    private Task<AuthorizationHandlerContext> AuthorizeAsync(string? origin, Guid[] agencies)
+    {
+        return AuthorizeAsync(origin, [System.Text.Json.JsonSerializer.Serialize(agencies.Select(a => a.ToString()))]);
+    }
+
+    /// <summary>One claim for each value of <paramref name="agencyClaims"/>: the shape of a real token, where the array of Auth0 becomes one claim per agency (as the roles do).</summary>
+    private async Task<AuthorizationHandlerContext> AuthorizeAsync(string? origin, string[] agencyClaims, bool authenticated = true)
     {
         var http = new DefaultHttpContext();
         if (origin is not null)
             http.Request.Headers.Origin = origin;
 
+        var context = new AuthorizationHandlerContext([new OwnerPortalHostOriginRequirement()], OwnerOf(agencyClaims, authenticated), http);
+        await NewHandler(http).HandleAsync(context);
+        return context;
+    }
+
+    private static ClaimsPrincipal OwnerOf(string[] agencyClaims, bool authenticated = true)
+    {
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, "auth0|owner"),
             new($"{Namespace}/context", "owner_portal"),
             new($"{Namespace}/owner_id", Guid.NewGuid().ToString()),
-            new($"{Namespace}/agency_ids", System.Text.Json.JsonSerializer.Serialize(agencies.Select(a => a.ToString()))),
         };
-        var user = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
-        var context = new AuthorizationHandlerContext([new OwnerPortalHostOriginRequirement()], user, http);
+        claims.AddRange(agencyClaims.Select(value => new Claim($"{Namespace}/agency_ids", value)));
 
-        var handler = new OwnerPortalHostOriginAuthorizationHandler(
+        // An identity with no authentication type is not authenticated.
+        return new ClaimsPrincipal(authenticated ? new ClaimsIdentity(claims, "TestAuth") : new ClaimsIdentity(claims));
+    }
+
+    private OwnerPortalHostOriginAuthorizationHandler NewHandler(HttpContext http)
+    {
+        var platformOrigins = new CorsOriginAllowList(new CorsOriginOptions { AllowedOrigins = { PlatformOrigin } }, allowLoopback: false);
+        return new OwnerPortalHostOriginAuthorizationHandler(
             new HttpContextAccessor { HttpContext = http },
-            new CorsOriginAllowList(new CorsOriginOptions { AllowedOrigins = { PlatformOrigin } }, allowLoopback: false),
+            platformOrigins,
             _resolver.Object,
             Options.Create(new Auth0Options { CustomClaimNamespace = Namespace }));
-        await handler.HandleAsync(context);
-        return context;
     }
 
     private static ResolveHostResponseDto Host(Guid orgId) => new()
