@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit.Services;
@@ -130,14 +131,14 @@ public class GuestPortalLinkIntegrationTests(GuestPortalEnabledFactory factory) 
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var property = HostScopeScenario.NewProperty(orgId, ownerId, "Casa del portale");
         var guest = new Guest { OrgId = orgId, FirstName = "Anna", LastName = "Ospite", Email = $"{Guid.NewGuid():N}@example.com" };
-        var today = DateTime.UtcNow.Date;
+        var today = TimeProvider.System.TodayInRome();
         var booking = new Booking
         {
             OrgId = orgId,
             PropertyId = property.Id,
             GuestId = guest.Id,
-            CheckInDate = DateTime.SpecifyKind(today.AddDays(5), DateTimeKind.Utc),
-            CheckOutDate = DateTime.SpecifyKind(today.AddDays(8), DateTimeKind.Utc),
+            CheckInDate = today.AddDays(5),
+            CheckOutDate = today.AddDays(8),
             NumberOfGuests = 2,
             Status = BookingStatus.Confirmed,
             Source = BookingSource.Airbnb,
