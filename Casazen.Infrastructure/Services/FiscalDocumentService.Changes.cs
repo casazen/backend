@@ -172,7 +172,7 @@ public sealed partial class FiscalDocumentService
             FiscalDocumentAmounts? now = null;
             try
             {
-                now = FiscalDocumentTotals.FromGross(GuestDocumentLineBuilder.LinesOf(built.Lines, issued, organization), rule.StampDuty);
+                now = FiscalDocumentTotals.FromGross(ComparableLinesOf(built, issued, organization), rule.StampDuty);
             }
             catch (DomainException)
             {
@@ -345,6 +345,20 @@ public sealed partial class FiscalDocumentService
         var stored = document.Lines.GroupBy(l => l.LineType).ToDictionary(g => g.Key, g => g.Sum(l => l.TotalPrice));
         var current = amounts.Lines.GroupBy(l => l.LineType).ToDictionary(g => g.Key, g => g.Sum(l => l.TotalPrice));
         return stored.Count == current.Count && stored.All(pair => current.TryGetValue(pair.Key, out var net) && net == pair.Value);
+    }
+
+    /// <summary>
+    /// The lines the booking bills now that an issued document is compared with (the ones its own issuer bills), <b>without a line of tourist tax that only the default brings</b>: an Italian portal booking
+    /// nobody said anything about is billed the tax «da pagare in struttura» since FIX/BE-IT-TOURISTTAX-DEFAULTS, and a document issued before that has no such line. That is no change of the booking: no «To do»
+    /// of a change, no credit note and no new document for the sole addition of that line (the tolerance is for a document with no line of tourist tax at all; any other difference is a change, and
+    /// the new draft carries the line). Anything else that says who collects (a rule of the comune, a record of the stay, an answer of the organization) is not the default and is compared as it is.
+    /// </summary>
+    private static IReadOnlyList<FiscalDocumentGrossLine> ComparableLinesOf(GuestDocumentLines built, FiscalDocument issued, OrgFiscalIssuerProfile organization)
+    {
+        var lines = GuestDocumentLineBuilder.LinesOf(built.Lines, issued, organization);
+        return built.TouristTaxFromDefault && !issued.Lines.Any(line => line.LineType == FiscalLineType.TouristTax)
+            ? [.. lines.Where(line => line.LineType != FiscalLineType.TouristTax)]
+            : lines;
     }
 
     /// <summary>The booking bills what the document says: the lines it bills now make the same total and the same net for every type of line (a booking that bills nothing any more does not).</summary>

@@ -90,6 +90,9 @@ public class FiscalDocumentsRegistrationTests
             (typeof(IFatturaPaXmlBuilder), typeof(FatturaPaXmlBuilder), ServiceLifetime.Singleton),
             (typeof(IOctorateDocumentImportService), typeof(OctorateDocumentImportService), ServiceLifetime.Scoped),
             (typeof(IGuestDocumentLineBuilder), typeof(GuestDocumentLineBuilder), ServiceLifetime.Scoped),
+
+            // The proposals and the hint the billing setup gives an Italian organization about the tourist tax of the portals (FIX/BE-IT-TOURISTTAX-DEFAULTS): read only.
+            (typeof(IItalianTouristTaxSetup), typeof(ItalianTouristTaxSetupService), ServiceLifetime.Scoped),
             (typeof(IDocumentPlanService), typeof(DocumentPlanService), ServiceLifetime.Scoped),
             (typeof(IFiscalDocumentService), typeof(FiscalDocumentService), ServiceLifetime.Scoped),
             (typeof(IBookingPaymentLedgerService), typeof(BookingPaymentLedgerService), ServiceLifetime.Scoped),
