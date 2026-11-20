@@ -30,6 +30,7 @@ public class HostNotifyingPathsArchitectureTests
         "PushAudience.BookingHosts(",
         "PushAudience.PropertyHosts(",
         "PushAudience.User(",
+        "PushAudience.OrgAdmins(",
 
         // The one query that says who may hear about a property (AM-03), outside the service.
         "HostNotificationAudience.UsersToTell(",
@@ -112,6 +113,8 @@ public class HostNotifyingPathsArchitectureTests
             ("the push to the hosts about the backup suppliers of a request: outside the eight kinds of event of NF-65", "none planned (outside the eight kinds of event of NF-65)"),
         ["Casazen.Infrastructure/Services/AlertRouter.cs"] =
             ("the popup alerts (ADR-025): the router decides who is alerted and when, and borrows only the quiet hours of the preferences; it does not read the channel settings yet", "E01 (the alert router reads the preferences, assumption of NF-65)"),
+        ["Casazen.Infrastructure/Services/OwnerLoginHostSync.cs"] =
+            ("the notices of the agency's own domain (E40/F01/US02/T01): «domain verified», «owner sign-in ready», «owner sign-in failed», the bell, the pop-up and the live refresh of the domain settings of the administrators of the org, who alone open them; not one of the eight kinds of event of NF-65", "none planned (outside the eight kinds of event of NF-65)"),
         ["Casazen.Infrastructure/Services/DemoEnvironmentService.cs"] =
             ("the sample popup alert it writes for the showcase org: test data of the demo, not an event told to a host", "none planned (demo data, not a notice)"),
     };

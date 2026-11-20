@@ -32,6 +32,10 @@ service (BookingNotifier, ServiceRequestNotifier, ShowcaseBookingNotifier, Notif
   (`User.OrgId`, else `User.SupplierOrgId`), the one its bell reads (`OwnNotifications`), never the org of the event; a staff account in no
   org is not told. The app has no screen of the staff, so `HangfirePushQueue` queues **no push to a phone** for this audience (it answers
   `false`, with an information line) and `PushDeliveryJob` resolves no device for it: the bell and its live update (§ 9) are the channel.
+* **The administrators of an org** (`PushAudience.OrgAdmins(orgId)`, `PushAudienceKind.OrgAdmins` = 13, E40/F01/US02/T01) are its active owner and
+  `Admin`s (`HostNotificationAudience.AdministratorsToTell`: an `OrgMember` Owner or Admin of the org, never a deactivated member, nobody of another org),
+  the people `OrgBillingAdminAuthorizationHandler` lets into the domain settings. Each row is under that org, the one their bell reads; `entityId` is the
+  org. The app has no screen of the domain, so, like the platform staff, this audience gets **no push on a phone**: the bell and its live update.
 * **The notification does not depend on the push being queued**: a push refused for its route, or a Hangfire that took one job and
   failed the other, leave the other alone. The answer of `Enqueue` is always the push's.
 
@@ -42,7 +46,7 @@ service (BookingNotifier, ServiceRequestNotifier, ShowcaseBookingNotifier, Notif
 | `Id`, `UserId` | The notification and the user who is told (`Users.Id`, the Auth0 subject). **Foreign key to `Users` `ON DELETE CASCADE`** |
 | `OrgId` | The org the event belongs to: the host org of the booking or property, or the **supplier org** for the supplier's inbox. `ITenantOwned`. **Foreign key to `Orgs` `ON DELETE CASCADE`** |
 | `Type` | A value of `PushTypes` (`new-booking`, `service-request-completed`, …), at most 64 characters |
-| `EntityId` | The **service request** for the `service-request-*` types, the **«Fallo per me» request** for `assist-requested`, the **property** for the three Ticino types, `ticino-notification-due`, `ticino-notification-overdue` and `ticino-notification-declared` (the id of the audience, `PushAudience.PropertyHosts`: `QueuedInAppNotification.From`), the **booking** for every other one; `null` if the event names none. Not a foreign key |
+| `EntityId` | The **service request** for the `service-request-*` types, the **«Fallo per me» request** for `assist-requested`, the **property** for the three Ticino types, `ticino-notification-due`, `ticino-notification-overdue` and `ticino-notification-declared` (the id of the audience, `PushAudience.PropertyHosts`: `QueuedInAppNotification.From`), the **org** for `domain-verified`, `owner-login-ready` and `owner-login-failed` (the id of the audience, `PushAudience.OrgAdmins`), the **booking** for every other one; `null` if the event names none. Not a foreign key |
 | `DeliveryKey` | The key of the push of the same event (`PushDeliveryKeys`), at most 200 characters. Never sent to a client |
 | `CreatedAt`, `ReadAt` | UTC instants (whole microseconds). `CreatedAt` is the instant of the event (taken when the push was queued, so a late run or a retry does not move it); `ReadAt` is `NULL` while unread |
 
@@ -84,6 +88,8 @@ and write what is still missing (at most three rounds, then Hangfire retries). R
 | `assist-requested` | the platform staff (`PushAudience.PlatformStaff`, see § 1), each under its own org: a host asked «Fallo per me» (`OnboardingAssistService.RequestAsync`, a new request only, § 10). Bell and live update only, no push on a phone | the «Fallo per me» request |
 | `assist-reopened` | the platform staff, as `assist-requested`: the host reopened a request support had marked done («Non funziona», `OnboardingAssistService.ReopenAsync`, E20/F03/US01/T02; key `assist-request:{id:N}:reopened:{instant}`) | the «Fallo per me» request |
 | `assist-verified`, `assist-declared` | each administrator of the org of the request (the owner and the `Admin`s, `HostNotificationAudience.AdministratorsToTell`): support marked the request done and CasaZen read it on the panel (`verified`: «Il collegamento è attivo») or the panel could not be read (`declared`: «Il supporto dichiara di aver collegato …»). A push to the phone of each (`PushAudience.User`, text `Push_AssistVerified_*` / `Push_AssistDeclared_*`, route `/properties`) and the entry of the bell written with it and published live by `OnboardingAssistOutcomeNotice` (E20/F03/US01/T02; key `assist-request:{id:N}:done:{instant}:{user}`, one per «Fatto» and person) | the «Fallo per me» request |
+| `domain-verified` | the administrators of the org (`PushAudience.OrgAdmins`, § 1), only with `Features__WhiteLabelHost` on: the custom domain of the org **became** verified (`DomainVerificationService`, «Verifica ora» or the periodic check; E40/F01/US02/T01). Delivery key `domain-verified:{orgId:N}:{DomainVerifiedAt, yyyyMMddHHmmssfff}`: once per verification, a later check that finds it verified again tells nobody, a domain verified again after a demotion is another event. Text `Push_DomainVerified_*` (*Dominio verificato*), never the name of the domain. Bell and live update only, no push on a phone | the org |
+| `owner-login-ready`, `owner-login-failed` | the administrators of the org, only with `Features__WhiteLabelHost` on: the state of the owner sign-in on the org's domain changed to `Ready` or `Failed`, by the automatic registration in Auth0 or by a platform administrator (`OwnerLoginHostSync`, [auth0.md](auth0.md) § 13; E40/F01/US02/T01). Delivery key `owner-login:{orgId:N}:ready:{instant}` / `…:failed:{instant}` (the instant of the change, to the millisecond): one per change. Texts `Push_OwnerLoginReady_*` / `Push_OwnerLoginFailed_*`, no domain name. Bell and live update only | the org |
 
 A new value of `PushTypes` gives a notification with no change here; the client shows a generic sentence for a type it does not know.
 
@@ -204,6 +210,7 @@ route of the same screen (the links the e-mails use are built in `PublicSiteLink
 | `assist-requested` | «Fallo per me» request | none: no push on a phone (the app has no screen of the staff) | the staff queue, `/app/admin/onboarding-assist` (the request by `entityId`) |
 | `assist-reopened` | «Fallo per me» request | none: no push on a phone (the app has no screen of the staff) | the staff queue, `/app/admin/onboarding-assist` (the request by `entityId`) |
 | `assist-verified`, `assist-declared` | «Fallo per me» request | `/properties` | the activation of the host, where its «Fallo per me» requests are listed (the request by `entityId`); the page reads the requests and the panel steps again |
+| `domain-verified`, `owner-login-ready`, `owner-login-failed` | org | none: no push on a phone (the app has no screen of the domain) | the domain settings, `/app/short-rent/settings/domain`; the open page reads the domain configuration again (`GET api/orgs/{orgId}/domain`, `surfaces.ownerLoginHostState`) |
 
 Notes: an in-app row has no booking id for the `service-request-*` types (its `entityId` is the **service request**); the booking
 of the request is only in the push. A client that needs it reads the request. A type the client does not know opens the list of
@@ -233,7 +240,9 @@ the truth). Keep a slow poll as a fallback.
 **Who publishes** (`IInAppNotificationPublisher`, `Casazen.Core/Services`; the implementation is `SignalRInAppNotificationPublisher` in
 `Casazen.Web`, the default is a no-op for tests and other hosts):
 
-* `InAppNotificationJob`, for every user whose row it has just written (`type` and `entityId` of the event);
+* `InAppNotificationJob`, for every user whose row it has just written (`type` and `entityId` of the event); for `domain-verified`,
+  `owner-login-ready` and `owner-login-failed` (E40/F01/US02/T01) that is each administrator of the org, `entityId` the org: the open domain settings
+  read `GET api/orgs/{orgId}/domain` again on it, with no reload;
 * `POST /api/me/notifications/{id}/read` and `read-all` (`type` and `entityId` `null`);
 * reading a guest thread (§ 10), `type` `guest-message` and `entityId` the booking.
 
@@ -299,7 +308,8 @@ at most 200 (`GuestMessageRules.UnreadThreadsMax`). Never any text. Use it for t
 `Casazen.Web/Infrastructure/{SignalRInAppNotificationPublisher,HubAccessToken}.cs`; guest messages:
 `Casazen.Infrastructure/Services/GuestMessageService.cs`, `Casazen.Web/Controllers/HostMessagesController.cs`; online check-in:
 `Casazen.Infrastructure/Services/GuestCheckInService.cs` (`PushToHosts`); «Fallo per me» to the staff:
-`Casazen.Infrastructure/Services/OnboardingAssistService.cs` (`TellStaff`), `Casazen.Infrastructure/Services/PlatformAdministrators.cs`.
+`Casazen.Infrastructure/Services/OnboardingAssistService.cs` (`TellStaff`), `Casazen.Infrastructure/Services/PlatformAdministrators.cs`; the domain of an
+org (E40/F01/US02/T01): `Casazen.Infrastructure/Services/OwnerLoginHostSync.cs` (tests `DomainNotificationsTests`, `OwnerLoginHostSyncTests`).
 Tests: `InAppNotificationPushDecoratorTests`, `InAppNotificationJobTests`, `InAppNotificationServiceTests`,
 `MeNotificationsControllerTests`, `InAppNotificationRetentionJobTests`,
 `InAppNotificationSqlShapeTests`, `InAppNotificationsIntegrationTests` (HTTP, the chain from a push to the

@@ -129,6 +129,9 @@ public static class RateLimitingServiceCollectionExtensions
         // The guest portal (E50/F01/US01/T02): per client IP and a hash of the token of the route, like the check-in. The reads of a page, and what the guest writes.
         new(RateLimitPolicies.GuestPortal, 120, OneMinute, PartitionByToken: true),
         new(RateLimitPolicies.GuestPortalWrite, 30, OneMinute, PartitionByToken: true),
+
+        // The agency's retry of the owner sign-in on its own domain (E40/F01/US02/T01): per signed-in person, since each call may read and write the Auth0 tenant that every host shares.
+        new(RateLimitPolicies.OwnerLoginRetry, 5, TimeSpan.FromMinutes(10), PartitionByUser: true),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)

@@ -3319,6 +3319,12 @@
   <data name="OrgDomainVerificationFailed" xml:space="preserve">
     <value>Domain verification failed.</value>
   </data>
+  <data name="OrgDomainNotVerified" xml:space="preserve">
+    <value>The custom domain is not verified yet: the owner sign-in can be enabled only on a verified domain.</value>
+  </data>
+  <data name="OwnerLoginStateInvalid" xml:space="preserve">
+    <value>Invalid state: use NotRequested, Pending, Ready or Failed.</value>
+  </data>
   <data name="OrgAccessDenied" xml:space="preserve">
     <value>Access denied for this organization.</value>
   </data>
