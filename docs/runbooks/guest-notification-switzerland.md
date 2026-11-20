@@ -1,6 +1,6 @@
 # Runbook: notification of the guests to the police in Switzerland (Ticino)
 
-**Issue:** casazen/backend#979 · **Requirements:** NF-126 (complete Ticino file), NF-127 (the 24 hours: staged alerts), NF-128 (retention, declaration, duplicates), NF-132 (Swiss data at the check-in) · **Format of the file:**
+**Issue:** casazen/backend#979 · **Requirements:** NF-126 (complete Ticino file), NF-127 (the 24 hours: staged alerts), NF-128 (retention, declaration, duplicates), NF-130 (the guest register), NF-132 (Swiss data at the check-in) · **Format of the file:**
 [`docs/compliance/ticino-notification-format.md`](../compliance/ticino-notification-format.md) · **Analysis:** `alloggiati-ch/analisi-tecnica.md`
 (decisions D1-D16) and `alloggiati-ch/specifica-ticino.md` (verified rules).
 
@@ -8,7 +8,8 @@ The police of canton Ticino want every guest notified **within 24 hours of the a
 never keeps a password or the seed of a one-time code and never simulates a browser (decision D1): CasaZen writes the file, the host uploads it and records the
 receipt, or declares the day uploaded. Sections 1-7 are the file, its data, the groups and the minors, and the retention of the documents (E30/F01); sections 8-13 are the staged alerts that
 watch the 24 hours (E30/F02/US01/T01); sections 14-20 are the declaration of a day, the guard against duplicates and the audit of the files (E30/F02/US02/T01); sections 21-24 are the regimes of Italy
-and of the 26 cantons, the card of a property and the readiness of a Swiss property (E29/F02/US01), with the catalog in [`docs/compliance/guest-registration-switzerland.md`](../compliance/guest-registration-switzerland.md).
+and of the 26 cantons, the card of a property and the readiness of a Swiss property (E29/F02/US01), with the catalog in [`docs/compliance/guest-registration-switzerland.md`](../compliance/guest-registration-switzerland.md);
+section 25 is the guest register of any Swiss property, Ticino included, a table to keep and to print (E31/F01/US01).
 
 ## 1. The flow
 
@@ -384,3 +385,62 @@ SELECT "GuestNotificationOverride", count(*) FROM casazen_test."Properties" WHER
 the catalog with an obligation, a channel, a certainty, a date and a source; Ticino, Appenzell Innerrhoden and Italy as above; the sentences in both languages; no supplier name), `GuestRegistrationRegimeResolverTests`
 (Lugano, the unknown place, Italy, the effective-duty table, the flag, the tenant), `PropertyGuestRegistrationControllerTests` (another org, a collaborator «Solo alcuni», the missing member), `GuestRegistrationPartEvaluatorTests`,
 `PropertyComplianceStatusServiceTests` (the Swiss step).
+
+## 25. The guest register of any Swiss property (E31/F01/US01/T01, NF-130, decision D12b)
+
+The host's own record of its guests for a period, as a clean table to keep and to print: what the cantons that only ask for a **register** (kept, and shown to the police) expect, and a table to copy
+from for the cantons that notify on a portal. It is the same for **every Swiss regime, Ticino included**; an Italian property has none (its register is the Alloggiati file). CasaZen writes a table and
+gives **no legal advice**: how long the host keeps it is the hint of the regime (§ 21), not a rule of the file. It sends nothing to anybody and never stores the file.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `Features__GuestRegistrationRegimes` | `false` | The flag of § 21: off, both endpoints answer 404 `not_found` before authentication |
+
+- **The endpoints** (`SwissComplianceController`, under `api/properties/{propertyId}/swiss`):
+  - `GET guest-register?from=&to=&format=csv`: the file. `from` and `to` are required (`yyyy-MM-dd`), both days **included**, by the **arrival day** of the stay; at most **366 days**, both ends counted
+    (400 `swiss_period_too_long`; `to` before `from`: 400 `swiss_period_invalid`; the same codes and words as the OTR report). `format` is `csv` or absent (another: 400 `guest_register_format_invalid`).
+  - `GET guest-register/info?from=&to=`: `{ propertyId, from, to, rowCount, retentionYears, regimeCode }`, what the screen reads before it downloads. No file, no audit row, no guest in it.
+  - **Permission** `guest.read` on top of the `booking.read` of the class, and the row check of the property (another org's property: 404 `property_not_found`; one the caller does not reach, a collaborator
+    «Solo alcuni» not given it: 403). `Cache-Control: private, no-store`. A property that is not in Switzerland (Italy, another country): 404 `guest_register_not_available`.
+  - **`X-Retention-Years`** (the file only): the `RetentionYears` of the regime of the property, the same value as `retentionYears` of the info. **Absent** when the sources do not say (Thurgau, Zurich, Uri...) and
+    for a property whose municipality is not known (`CH-UNKNOWN`: the register is made all the same, with no canton and no number).
+- **The columns** (`GuestRegisterFile.HeaderKeys`; one header line and nothing else): arrival, departure, last name, first name, date of birth, nationality, document type, document number, street, postal code,
+  city, country, vehicle plate, booking code, minor and **signature** (always empty, for the printed copy). Dates are `dd.MM.yyyy`; nationality and country are **alpha-3** (`TicinoCountryCodes`; a nationality that is
+  not in the table is left empty, never guessed); the document type is passport, identity card or other; the plate and the booking code (`XXXXX-XXXXX`) are repeated on every line of the stay so that each line stands
+  on its own; **minor** is yes under 18 at the arrival, no from 18, and empty when the check-in has no date of birth. The header and the words yes, no, passport, identity card and other are resource keys of
+  `SharedResources` (`GuestRegisterCol*`, `GuestRegisterYes`...), Italian or English by the language of the request (any other is Italian); the codes and the dates never change.
+- **The file**: written by the one writer of the files the host opens in a spreadsheet (`CsvWriter`, SR-10): **UTF-8 with its byte order mark**, `;`, CRLF after every line, a text that a spreadsheet would run as a
+  formula (it starts with `= + - @`, a tab or a CR) written with a leading apostrophe, a cell with a semicolon, a quote or a line break quoted. **No comment, title or note line**: it stays a table. A period with
+  no guest is the header line alone (200, never an error). At most 9,999 guests (the writer takes 10,000 lines, the header included: 422 `csv_too_many_rows`). Name: `registro-ospiti-ch-{from}-{to}.csv`.
+- **Which guests**: every guest of every stay of the property that **arrived** in the period (the stored arrival day), adults and minors, the rows of its check-in or, while it has none, the booker (the same reading as
+  the Ticino file, `TicinoStayFacts.From`); in the order of the arrival day, then the stay, then its check-in. A stay counts only if it owes a police communication
+  (`AlloggiatiStatusRules.ActiveBookingStatuses`: confirmed, checked in, checked out) and is not a no-show: **a request, a hold, a cancelled booking and a no-show are never listed**. A **future arrival** is listed
+  with its date (a host who prints the register for the next days gets the lines to sign at the arrival). A guest whose data are incomplete is **still a line**, with empty cells (unlike the Ticino file, nobody is left
+  out for a missing value); a stay with fewer guests recorded than the booking counts lists the recorded ones. A guest whose data the retention erased (`Gdpr:Retention:AlloggiatiData`) is still a line, with the
+  placeholder the erasure left.
+- **What CasaZen keeps, and what the regime says**: the register is rebuilt from the check-in on every request, and CasaZen erases the guest data 5 years after the check-out (`Gdpr:Retention:AlloggiatiData`). Where the
+  regime says a longer time (`retentionYears` above 5, a canton with 10), it is the **file the host downloaded** that has to be kept that long, in the host's own storage.
+- **The audit**: one row of `SwissNotificationFileEvents` for every file (§ 17), format `register`, `ArrivalDay` = the **first day of the period**, `RowCount` = the guests listed, `Sha256` of the bytes of the file, the
+  person who asked and the instant; no name, no document, no address, no plate, no booking code. A row that cannot be written fails the request. The info writes nothing. The day of a Ticino notification does not
+  count it (`SwissNotificationFileFormats.PoliceFile` is `csv` and `xml`).
+- **The log** holds ids, dates, the number of lines and the code of the regime, never a guest.
+
+### 25.1 Checking and rolling back
+
+```sql
+-- The registers made in the last days (replace the schema): counts and hashes, no name
+SELECT "PropertyId", "ArrivalDay", "RowCount", "CreatedByUserId", "CreatedAt", "Sha256"
+FROM casazen_test."SwissNotificationFileEvents" WHERE "Format" = 'register' ORDER BY "CreatedAt" DESC LIMIT 50;
+```
+
+- **Try it (test only, on the product owner's order)**: `Features__GuestRegistrationRegimes=true` on `test`; on a Swiss property with a stay, `GET api/properties/{id}/swiss/guest-register/info?from=2026-01-01&to=2026-12-31`,
+  then the file; open it in a spreadsheet set to Italian (the accents, the empty signature column).
+- **Roll back**: set the flag off, both endpoints answer 404 and nothing else changes. **No migration and no new variable**: the table of § 17 already accepts the format `register`.
+
+### 25.2 Code and tests
+
+`Casazen.Core/Regulatory/GuestRegistration/GuestRegisterFile.cs` (the line, the columns, the writer, the period rule), `Casazen.Core/Services/IGuestRegisterService.cs`, `Casazen.Infrastructure/Services/GuestRegisterService.cs`,
+`SwissComplianceController` (`DownloadGuestRegister`, `GetGuestRegisterInfo`) with `GuestRegisterQuery` and `GuestRegisterInfoResponse` in `SwissComplianceDtos.cs`. The reading of a stay shared with the Ticino file is
+`TicinoStayFacts.From` and `TicinoGuestFacts.From` (`TicinoPoliceFile.cs`). Tests: `GuestRegisterFileTests` (exact content, both languages, accents, the formula guard, minors, the home, the period rule),
+`GuestRegisterServiceTests` (the guests, `GuestRegister_ExcludesCancelledAndNoShow_Test`, the period by arrival day, the booker, the regime and the retention hint, an Italian property, another organization,
+`GuestRegister_Audit_NoPersonalData_Test`, nothing personal in the log) and `SwissComplianceControllerTests` (`GuestRegister_OtherOrganizationForbidden_Test`, the permission, the flag, the period and the format, the headers).

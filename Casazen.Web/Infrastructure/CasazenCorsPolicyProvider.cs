@@ -58,8 +58,9 @@ public sealed class CasazenCorsPolicyProvider(
             .WithHeaders("Authorization", "Content-Type", "Accept", "X-Requested-With", "Idempotency-Key", "X-SignalR-User-Agent", "X-Storefront-Chat")
             // The header that says the list of the calendar changes of a collaborator limited to some properties may leave older changes out (E08/F05/US02): a browser reads
             // a header of another origin only when the answer exposes it. Content-Disposition: the name of the file of a download (the CSV and Excel exports of the fiscal documents,
-            // E06/F03/US03/T01), which a page on another origin reads from the answer of its blob download.
-            .WithExposedHeaders(CalendarChangesController.TruncatedHeader, HeaderNames.ContentDisposition);
+            // E06/F03/US03/T01), which a page on another origin reads from the answer of its blob download. X-Retention-Years: the retention hint of the regime that comes with the file of the
+            // guest register of a Swiss property (E31/F01/US01/T01), the same number as the info the screen reads first.
+            .WithExposedHeaders(CalendarChangesController.TruncatedHeader, HeaderNames.ContentDisposition, SwissComplianceController.RetentionYearsHeader);
 
         // The SignalR client negotiates with credentials included by default: the hubs answer Access-Control-Allow-Credentials for the
         // allowed origins (echoed one by one, never "*"). The API itself stays without credentials: it uses no cookie.

@@ -8779,6 +8779,75 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="TicinoNotAGroup" xml:space="preserve">
     <value>Questo soggiorno non è un gruppo di almeno {0} persone (capogruppo e membri del gruppo): la scheda del gruppo non serve.</value>
   </data>
+  <data name="GuestRegisterNotAvailable" xml:space="preserve">
+    <value>Il registro degli ospiti da scaricare è per gli immobili in Svizzera: per un immobile in Italia il registro è il file di Alloggiati Web.</value>
+  </data>
+  <data name="GuestRegisterFormatInvalid" xml:space="preserve">
+    <value>Formato del registro non valido: è disponibile solo il CSV.</value>
+  </data>
+  <data name="GuestRegisterColArrival" xml:space="preserve">
+    <value>Arrivo</value>
+  </data>
+  <data name="GuestRegisterColDeparture" xml:space="preserve">
+    <value>Partenza</value>
+  </data>
+  <data name="GuestRegisterColLastName" xml:space="preserve">
+    <value>Cognome</value>
+  </data>
+  <data name="GuestRegisterColFirstName" xml:space="preserve">
+    <value>Nome</value>
+  </data>
+  <data name="GuestRegisterColBirthDate" xml:space="preserve">
+    <value>Data di nascita</value>
+  </data>
+  <data name="GuestRegisterColNationality" xml:space="preserve">
+    <value>Nazionalità</value>
+  </data>
+  <data name="GuestRegisterColDocumentType" xml:space="preserve">
+    <value>Tipo documento</value>
+  </data>
+  <data name="GuestRegisterColDocumentNumber" xml:space="preserve">
+    <value>Numero documento</value>
+  </data>
+  <data name="GuestRegisterColStreet" xml:space="preserve">
+    <value>Indirizzo</value>
+  </data>
+  <data name="GuestRegisterColPostalCode" xml:space="preserve">
+    <value>CAP</value>
+  </data>
+  <data name="GuestRegisterColCity" xml:space="preserve">
+    <value>Località</value>
+  </data>
+  <data name="GuestRegisterColCountry" xml:space="preserve">
+    <value>Paese</value>
+  </data>
+  <data name="GuestRegisterColVehiclePlate" xml:space="preserve">
+    <value>Targa</value>
+  </data>
+  <data name="GuestRegisterColBookingCode" xml:space="preserve">
+    <value>Codice prenotazione</value>
+  </data>
+  <data name="GuestRegisterColMinor" xml:space="preserve">
+    <value>Minorenne</value>
+  </data>
+  <data name="GuestRegisterColSignature" xml:space="preserve">
+    <value>Firma</value>
+  </data>
+  <data name="GuestRegisterYes" xml:space="preserve">
+    <value>Sì</value>
+  </data>
+  <data name="GuestRegisterNo" xml:space="preserve">
+    <value>No</value>
+  </data>
+  <data name="GuestRegisterDocumentPassport" xml:space="preserve">
+    <value>Passaporto</value>
+  </data>
+  <data name="GuestRegisterDocumentIdentityCard" xml:space="preserve">
+    <value>Carta d'identità</value>
+  </data>
+  <data name="GuestRegisterDocumentOther" xml:space="preserve">
+    <value>Altro</value>
+  </data>
   <data name="ActivationStepGuestRegistration" xml:space="preserve">
     <value>Notifica degli ospiti</value>
   </data>

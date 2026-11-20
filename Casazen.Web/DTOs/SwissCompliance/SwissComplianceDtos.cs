@@ -219,6 +219,52 @@ public sealed class OtrReportRequest
 }
 
 /// <summary>
+/// Query of <c>GET /api/properties/{propertyId}/swiss/guest-register</c> and of <c>GET …/guest-register/info</c> (E31/F01/US01/T01, NF-130): the period of the guest register, by arrival day,
+/// and the format of the file.
+/// </summary>
+public sealed class GuestRegisterQuery
+{
+    /// <summary>The csv of the register: the default and the only format.</summary>
+    public const string CsvFormat = "csv";
+
+    /// <summary>First day of the period, a calendar day (<c>2026-01-01</c>): the stays that arrive on it are listed.</summary>
+    [Required(ErrorMessage = "SwissPeriodFromRequired")]
+    public DateOnly? From { get; set; }
+
+    /// <summary>
+    /// Last day of the period, <b>inclusive</b> (<c>2026-03-31</c>): the stays that arrive on it are listed. Not before <see cref="From"/>, at most 366 days from it (both ends counted).
+    /// </summary>
+    [Required(ErrorMessage = "SwissPeriodToRequired")]
+    public DateOnly? To { get; set; }
+
+    /// <summary><c>csv</c> (default, and the only one), case-insensitive. Read by the file; the info does not need it.</summary>
+    public string? Format { get; set; }
+
+    /// <summary>The format asked is the csv: blank (the default) or <c>csv</c> in any case.</summary>
+    public static bool IsCsv(string? value) =>
+        string.IsNullOrWhiteSpace(value) || string.Equals(value.Trim(), CsvFormat, StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>
+/// What the guest register of a period holds, answer of <c>GET …/guest-register/info</c> (E31/F01/US01/T01, NF-130): the screen reads it before the download. No guest and no value of the
+/// file: counts, a number of years and a code.
+/// </summary>
+/// <param name="PropertyId">The property.</param>
+/// <param name="From">The first day of the period.</param>
+/// <param name="To">The last day of the period, inclusive.</param>
+/// <param name="RowCount">The lines of the register, the header not counted: the guests, adults and minors, of the stays that arrived in the period.</param>
+/// <param name="RetentionYears">How many years the regime of the property asks the host to keep the register, the same value as the header <c>X-Retention-Years</c> of the file; <c>null</c> when the sources do not say.</param>
+/// <param name="RegimeCode">The code of the regime of the property: <c>CH-TI</c>, <c>CH-ZH</c>... or <c>CH-UNKNOWN</c> while its municipality is not known.</param>
+public sealed record GuestRegisterInfoResponse(Guid PropertyId, DateOnly From, DateOnly To, int RowCount, int? RetentionYears, string RegimeCode)
+{
+    public static GuestRegisterInfoResponse Of(GuestRegisterInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        return new GuestRegisterInfoResponse(info.PropertyId, info.From, info.To, info.RowCount, info.RetentionYears, info.RegimeCode);
+    }
+}
+
+/// <summary>
 /// A Swiss compliance file the server generated, answer of <c>ticino-notification</c> and <c>otr-report</c>. Nothing is stored:
 /// the same request generates the file again from the bookings as they are at that moment, and a new <see cref="FileHash"/> if
 /// they changed. The frontend turns <see cref="Content"/> into a download (for instance

@@ -1,3 +1,7 @@
+using System.Globalization;
+using Casazen.Core.Documents;
+using Casazen.Core.Features;
+using Casazen.Core.Regulatory.GuestRegistration;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Core.Validation;
@@ -28,12 +32,18 @@ namespace Casazen.Web.Controllers;
 /// <c>guest.read</c> (as the Alloggiati record file does), and recording a receipt or declaring a day declares a legal communication done, so they ask
 /// <c>alloggiati.submit</c> (the owner and the property managers; not a collaborator). Then the property is authorized as a row
 /// (TN-3): one of another org is a 404, one the caller's scope does not reach (a collaborator «Solo alcuni» not given it) is a 403,
-/// and nothing is generated, declared or stored for either. No feature flag: the services were never behind one.</para>
+/// and nothing is generated, declared or stored for either. No feature flag: the services were never behind one, but for the two actions of the guest register below.</para>
+/// <para><b>The guest register</b> (E31/F01/US01/T01, NF-130, decision D12b): <c>GET guest-register?from=&amp;to=&amp;format=csv</c> is the table of the guests of the stays that arrived in a period
+/// (at most 366 days, by arrival day) of a property in <b>any</b> Swiss canton, Ticino included, as a CSV to keep and to print (UTF-8 with its byte order mark, <c>;</c>, an empty signature
+/// column), and <c>GET guest-register/info?from=&amp;to=</c> says before the download how many lines it has, the retention hint of the regime and the code of the regime. Both ask <c>guest.read</c>
+/// on top of the class, answer <c>private, no-store</c>, are behind <c>Features:GuestRegistrationRegimes</c> (404 before authentication while it is off) and answer 404 for a property that is not in
+/// Switzerland (an Italian property's register is the Alloggiati file). The file carries the retention hint of the regime in the header <c>X-Retention-Years</c> (absent when the sources do not
+/// say) and is never stored; every file leaves one audit row with no personal data (<c>SwissNotificationFileEvent</c>, format <c>register</c>).</para>
 /// <para><b>Errors</b> are ProblemDetails with a stable <c>code</c> (FD-05): 400 <c>validation_error</c> (a field is missing or is
 /// not a date, with <c>errors</c> per field), <c>swiss_period_invalid</c>, <c>swiss_period_too_long</c>,
-/// <c>swiss_receipt_type_invalid</c>, <c>swiss_receipt_file_invalid</c>; 401 <c>unauthorized</c>; 403 <c>forbidden</c>;
-/// 404 <c>property_not_found</c>; 409 <c>ticino_day_already_declared</c> (the file of a closed day without <c>confirmRegenerate</c>); 422 <c>property_not_in_ticino</c> (the property has no
-/// Swiss municipality or is in another canton), <c>ticino_declaration_day_in_future</c>, <c>ticino_declaration_receipt_invalid</c>.</para>
+/// <c>swiss_receipt_type_invalid</c>, <c>swiss_receipt_file_invalid</c>, <c>guest_register_format_invalid</c>; 401 <c>unauthorized</c>; 403 <c>forbidden</c>;
+/// 404 <c>property_not_found</c>, <c>guest_register_not_available</c>; 409 <c>ticino_day_already_declared</c> (the file of a closed day without <c>confirmRegenerate</c>); 422 <c>property_not_in_ticino</c> (the property has no
+/// Swiss municipality or is in another canton), <c>ticino_declaration_day_in_future</c>, <c>ticino_declaration_receipt_invalid</c>, <c>csv_too_many_rows</c>.</para>
 /// </remarks>
 [ApiController]
 [Route("api/properties/{propertyId:guid}/swiss")]
@@ -42,6 +52,7 @@ public class SwissComplianceController(
     ITicinoNotificationService ticinoNotifications,
     IOtrTaxService otrReports,
     ISwissComplianceReceiptService receipts,
+    IGuestRegisterService guestRegisters,
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
     ILogger<SwissComplianceController> logger) : ControllerBase
@@ -69,6 +80,9 @@ public class SwissComplianceController(
     public const string TicinoFileFormatInvalidCode = "ticino_file_format_invalid";
 
     public const int MaxPeriodDays = 366;
+
+    /// <summary>The header of the file of the guest register that says how many years the regime of the property asks the host to keep it; absent when the sources do not say.</summary>
+    public const string RetentionYearsHeader = "X-Retention-Years";
 
     private const string CsvContentType = "text/csv";
     private const long MaxReceiptRequestBytes = SwissComplianceReceipts.MaxFileBytes + 64 * 1024;
@@ -325,6 +339,99 @@ public class SwissComplianceController(
     }
 
     /// <summary>
+    /// The guest register of a Swiss property for a period (E31/F01/US01/T01, NF-130, decision D12b): one line for each guest, adults and minors, of the stays that arrived from <c>from</c> to
+    /// <c>to</c>, both included, by the arrival day (at most 366 days), as a CSV the host keeps and prints (UTF-8 with its byte order mark, <c>;</c>, one header line, an empty signature column).
+    /// It is the host's own record for the cantons that only ask for a register to be kept and shown to the police, and a source to copy from for the cantons that notify on a portal; it is the
+    /// same for every Swiss regime, Ticino included. Cancelled bookings, requests and no-shows are not listed. Rebuilt on every request and never stored; CasaZen gives no legal advice: the
+    /// retention hint is the one of the regime of the property.
+    /// </summary>
+    /// <param name="propertyId">The property.</param>
+    /// <param name="query"><c>from</c> and <c>to</c> (<c>yyyy-MM-dd</c>, both required) and <c>format</c> (<c>csv</c>, the default and the only one).</param>
+    /// <param name="cancellationToken">Aborts the request.</param>
+    /// <response code="200">
+    /// The file (attachment), never cached: it holds guest data. The header <c>X-Retention-Years</c> says how many years the regime asks the host to keep it, and is absent when the sources do
+    /// not say. A period with no guest is the header line alone. Every file leaves one audit row (format <c>register</c>, the first day, the lines, the hash; no personal data).
+    /// </response>
+    /// <response code="400"><c>validation_error</c>: <c>from</c> or <c>to</c> is missing or is not a date; <c>swiss_period_invalid</c>: <c>to</c> is before <c>from</c>; <c>swiss_period_too_long</c>: more than 366 days; <c>guest_register_format_invalid</c>.</response>
+    /// <response code="403">The caller may not read the bookings or the guests of this property.</response>
+    /// <response code="404"><c>property_not_found</c>: no such property in the caller's org; <c>guest_register_not_available</c>: the property is not in Switzerland (an Italian property's register is the Alloggiati file). 404 too, before authentication, while the flag is off.</response>
+    /// <response code="422"><c>csv_too_many_rows</c>: the period holds more lines than a file takes (10,000).</response>
+    [HttpGet("guest-register")]
+    [FeatureGate(FeatureFlags.GuestRegistrationRegimes)]
+    [Authorize(Policy = CasazenPolicies.GuestRead)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> DownloadGuestRegister(Guid propertyId, [FromQuery] GuestRegisterQuery query, CancellationToken cancellationToken)
+    {
+        var denied = await AuthorizeAsync(propertyId, BookingOperations.Read, cancellationToken);
+        if (denied is not null)
+            return denied;
+
+        if (!GuestRegisterQuery.IsCsv(query.Format))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, GuestRegisterErrorCodes.FormatInvalid, GuestRegisterErrorCodes.FormatInvalidMessageKey);
+
+        var from = query.From!.Value;
+        var to = query.To!.Value;
+        if (PeriodProblem(from, to) is { } period)
+            return period;
+
+        var file = await guestRegisters.GenerateAsync(
+            propertyId, from, to, new GuestRegisterRequest(User.GetUserId(), DocumentLanguages.Current), cancellationToken);
+
+        // Ids, dates and counts only: the log never names a guest.
+        logger.LogInformation(
+            "User {UserId} downloaded the guest register ({Rows} lines, regime {RegimeCode}) of property {PropertyId} for {FromDate}..{ToDate}",
+            User.GetUserId(), file.Rows, file.RegimeCode, propertyId, from, to);
+        Response.Headers.CacheControl = "private, no-store";
+        if (file.RetentionYears is { } years)
+            Response.Headers[RetentionYearsHeader] = years.ToString(CultureInfo.InvariantCulture);
+
+        return File(file.Content, file.ContentType, file.FileName);
+    }
+
+    /// <summary>
+    /// What the guest register of a period holds, before it is downloaded (E31/F01/US01/T01): <c>rowCount</c> (the guests of the stays that arrived in it), <c>retentionYears</c> (the hint of the
+    /// regime of the property, <c>null</c> when the sources do not say) and <c>regimeCode</c> (<c>CH-TI</c>, <c>CH-ZH</c>... or <c>CH-UNKNOWN</c>). The same period rules, the same permission and
+    /// the same answers as the file, and no file is made: nothing is audited, nothing personal is in the answer.
+    /// </summary>
+    /// <param name="propertyId">The property.</param>
+    /// <param name="query"><c>from</c> and <c>to</c> (<c>yyyy-MM-dd</c>, both required); <c>format</c> is read by the file only.</param>
+    /// <param name="cancellationToken">Aborts the request.</param>
+    /// <response code="200"><see cref="GuestRegisterInfoResponse"/>, never cached.</response>
+    /// <response code="400"><c>validation_error</c>, <c>swiss_period_invalid</c> or <c>swiss_period_too_long</c>, as the file.</response>
+    /// <response code="403">The caller may not read the bookings or the guests of this property.</response>
+    /// <response code="404"><c>property_not_found</c> or <c>guest_register_not_available</c>, as the file; 404 too, before authentication, while the flag is off.</response>
+    [HttpGet("guest-register/info")]
+    [FeatureGate(FeatureFlags.GuestRegistrationRegimes)]
+    [Authorize(Policy = CasazenPolicies.GuestRead)]
+    [ProducesResponseType(typeof(GuestRegisterInfoResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<GuestRegisterInfoResponse>> GetGuestRegisterInfo(
+        Guid propertyId,
+        [FromQuery] GuestRegisterQuery query,
+        CancellationToken cancellationToken)
+    {
+        var denied = await AuthorizeAsync(propertyId, BookingOperations.Read, cancellationToken);
+        if (denied is not null)
+            return denied;
+
+        var from = query.From!.Value;
+        var to = query.To!.Value;
+        if (PeriodProblem(from, to) is { } period)
+            return period;
+
+        var info = await guestRegisters.GetInfoAsync(propertyId, from, to, cancellationToken);
+
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(GuestRegisterInfoResponse.Of(info));
+    }
+
+    /// <summary>
     /// Generates the OTR overnight report of a period for a Ticino property (ADR-016): one CSV row per confirmed stay that
     /// overlaps the period, with the nights that fall inside it. Both ends of the period count: the night that starts on
     /// <c>toDate</c> is included.
@@ -457,6 +564,17 @@ public class SwissComplianceController(
 
     /// <summary>A day from the client as a stay date: midnight UTC of that day (the storage convention of the bookings).</summary>
     private static DateTime AsDay(DateOnly day) => DateTime.SpecifyKind(day.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+
+    /// <summary>
+    /// The 400 of a period the guest register cannot be made for (the same codes and words as the OTR report), or <c>null</c> when the period is fine. The one rule is
+    /// <see cref="GuestRegisterFile.PeriodErrorOf"/>, which the service applies too.
+    /// </summary>
+    private ObjectResult? PeriodProblem(DateOnly from, DateOnly to) => GuestRegisterFile.PeriodErrorOf(from, to) switch
+    {
+        GuestRegisterFile.PeriodInvalidCode => this.ApiProblem(StatusCodes.Status400BadRequest, PeriodInvalidCode, "SwissPeriodInvalid"),
+        GuestRegisterFile.PeriodTooLongCode => this.ApiProblem(StatusCodes.Status400BadRequest, PeriodTooLongCode, "SwissPeriodTooLong", GuestRegisterFile.MaxPeriodDays),
+        _ => null,
+    };
 
     /// <summary>TN-3: 404 when the property is not visible (another org), 403 when it is but the caller's scope or permission does not allow it.</summary>
     private async Task<ActionResult?> AuthorizeAsync(
