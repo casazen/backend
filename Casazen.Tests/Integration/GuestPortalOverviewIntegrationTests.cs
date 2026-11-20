@@ -73,6 +73,37 @@ public class GuestPortalOverviewIntegrationTests(GuestPortalEnabledFactory facto
         await OtaPartnerApiFeatureFlagTests.AssertNotFoundProblemAsync(response);
     }
 
+    /// <summary>
+    /// Permission rule (the token is the tenant of a portal request, whoever is signed in): a signed-in host of ANOTHER org and a signed-in user with no org
+    /// at all open the stay of the token exactly as an anonymous guest does, though the tenant filter of their own request matches nothing of it; the stay
+    /// is the one of the token, never the caller's, and a token that opens nothing is the same private 404 for them too.
+    /// </summary>
+    [PostgresFact]
+    public async Task Overview_SignedInCallerOfAnotherOrgOrWithNoOrg_OpensTheStayOfTheToken()
+    {
+        var token = await SeedStayWithLinkAsync();
+        var (otherOwnerId, _) = await OrgTeamHttp.SeedOwnerWithTeamRowsAsync(factory);
+        using var otherHost = factory.CreateAuthenticatedClient(otherOwnerId, roles: "PropertyOwner");
+        using var noOrg = factory.CreateAuthenticatedClient($"auth0|ospite-senza-org-{Guid.NewGuid():N}");
+
+        foreach (var client in new[] { otherHost, noOrg })
+        {
+            var response = await client.GetAsync($"/api/public/guest-portal/{token}");
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var stay = body.RootElement.GetProperty("stay");
+            Assert.Equal("Casa del Portale", stay.GetProperty("propertyName").GetString());
+            Assert.Equal("Ostuni", stay.GetProperty("city").GetString());
+            Assert.Equal("confirmed", stay.GetProperty("status").GetString());
+            Assert.False(body.RootElement.GetProperty("canSeeReserved").GetBoolean());
+
+            var unknown = await client.GetAsync("/api/public/guest-portal/Unknown_Token_0000000000000000000");
+            await OrgTeamHttp.AssertProblemAsync(unknown, HttpStatusCode.NotFound, GuestPortalRules.LinkInvalidCode);
+            Assert.Equal("no-store", unknown.Headers.CacheControl?.ToString());
+        }
+    }
+
     /// <summary>A confirmed stay from a portal at a house of a new org, arriving in five days, and its stay link.</summary>
     private async Task<string> SeedStayWithLinkAsync()
     {
